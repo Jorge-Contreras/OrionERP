@@ -13,6 +13,7 @@ builder.Services.AddSingleton<WeatherForecastService>();
 builder.Services.AddScoped<IComprobanteQueryService, ComprobanteQueryService>();
 builder.Services.AddScoped<ISatXmlInboxService, SatXmlInboxService>();
 builder.Services.AddScoped<ITransaccionQueryService, TransaccionQueryService>();
+builder.Services.AddScoped<IConciliacionService, ConciliacionService>();
 
 var app = builder.Build();
 

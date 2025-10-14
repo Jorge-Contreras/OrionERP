@@ -42,6 +42,7 @@ LEFT JOIN dbo.Receptor r                  ON r.Comprobante_ID = c.Comprobante_Id
 LEFT JOIN dbo.TimbreFiscalDigital t       ON t.Comprobante_ID = c.Comprobante_Id
 LEFT JOIN dbo.Transaccion_Comprobante tc  ON tc.Comprobante_ID = c.Comprobante_Id
 WHERE tc.Transaccion_ID = @TransaccionId
+AND r.RFC = 'OHM191112Q26'  -- filter by your company RFC
 ORDER BY c.Comprobante_Id DESC;";
 
       using var conn = new SqlConnection(_cs);

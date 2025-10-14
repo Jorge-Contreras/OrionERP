@@ -50,6 +50,7 @@ LEFT JOIN dbo.Comprobante c
        ON c.Comprobante_Id = tc.Comprobante_ID
 WHERE t.Fecha > DATEADD(DAY, -@DaysBack, @FechaXml)
   AND ABS(CONVERT(decimal(18,4), t.Monto)) = @MontoAbs
+  AND t.RFC='OHM191112Q26'
 GROUP BY t.ID, t.Concepto, t.Fecha, t.Monto, t.Cuenta, c.Comprobante_Id
 ORDER BY t.Fecha;";
 

@@ -17,6 +17,9 @@ namespace OrionERP.Web.Pages
     [Inject] protected ISatXmlInboxService InboxService { get; set; } = default!;
     [Inject] protected IComprobanteQueryService ComprobanteQuery { get; set; } = default!;
     [Inject] protected ITransaccionQueryService TransaccionQuery { get; set; } = default!;
+    [Inject] protected IConciliacionService Conciliacion { get; set; } = default!;
+
+
 
 
     protected List<SatXmlProcessResult> ProcessResults { get; } = new();
@@ -28,6 +31,9 @@ namespace OrionERP.Web.Pages
 
     protected ComprobanteListItem? SelectedComprobante { get; set; }
     protected List<TransaccionListItem> FilteredTransacciones { get; } = new();
+    protected int? SelectedTransaccionId { get; set; }
+    protected string? ConciliarMessage { get; set; }
+    protected bool IsConciliando { get; set; }
 
 
     // ---- UI State ----
@@ -41,6 +47,53 @@ namespace OrionERP.Web.Pages
 
 
     // ---- Events ----
+
+
+    protected void OnSelectTransaccion(TransaccionListItem t)
+    {
+      SelectedTransaccionId = t.Id;
+      ConciliarMessage = null;
+    }
+
+    protected async Task ConciliarAsync()
+    {
+      if (SelectedComprobante is null || SelectedTransaccionId is null)
+      {
+        ConciliarMessage = "Seleccione un comprobante y una transacción.";
+        return;
+      }
+
+      IsConciliando = true;
+      StateHasChanged();
+
+      var result = await Conciliacion.ConciliarAsync(
+          comprobanteId: SelectedComprobante.ComprobanteId,
+          transaccionId: SelectedTransaccionId.Value);
+
+      IsConciliando = false;
+      ConciliarMessage = result.Message;
+
+      if (result.Success)
+      {
+        // ✅ Refresh the top list so the reconciled Comprobante disappears from the 5505 list
+        await RefreshInvoicesAsync();
+
+        // ✅ UX reset: clear selections so the lower table collapses
+        SelectedTransaccionId = null;          // clear radio selection
+        SelectedComprobante = null;            // clear selected comprobante → hides candidates section
+        FilteredTransacciones.Clear();         // clear the list so no stale rows remain
+                                               // (Do NOT call RefreshCandidatesAsync() because SelectedComprobante is now null)
+      }
+      else
+      {
+        // optional: keep selections so user can try again
+      }
+
+      StateHasChanged();
+    }
+
+
+
 
     protected async Task OnSelectComprobanteAsync(ComprobanteListItem item)
     {

@@ -123,7 +123,10 @@ else if (Invoices.Count > 0)
             <tbody>
                 @foreach (var itm in Invoices)
                 {
-                    <tr>
+                    var isSelected = SelectedComprobante?.ComprobanteId == itm.ComprobanteId;
+                    <tr class="@(isSelected ? "table-primary" : "")"
+                        style="cursor:pointer"
+                        @onclick="() => OnSelectComprobanteAsync(itm)">
                         <td>@itm.Fecha.ToString("yyyy-MM-dd")</td>
                         <td>@itm.Uuid</td>
                         <td>@itm.EmisorNombre</td>
@@ -134,4 +137,52 @@ else if (Invoices.Count > 0)
             </tbody>
         </table>
     </div>
+}
+
+@if (SelectedComprobante is not null)
+{
+    <div class="d-flex align-items-center justify-content-between mt-4 mb-2">
+        <h5 class="mb-0">
+            Transacciones candidatas (monto = @SelectedComprobante.Total.ToString("N2"),
+            fecha &gt; @SelectedComprobante.Fecha.AddDays(-60).ToString("yyyy-MM-dd"))
+        </h5>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="RefreshCandidatesAsync">Actualizar</button>
+    </div>
+
+    @if (FilteredTransacciones.Count == 0)
+    {
+        <div class="alert alert-secondary">No se encontraron transacciones candidatas.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Concepto</th>
+                        <th>Fecha</th>
+                        <th class="text-end">Monto</th>
+                        <th>Cuenta</th>
+                        <th class="text-center">Adjuntos</th>
+                        <th class="text-center">Vinculada</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in FilteredTransacciones)
+                    {
+                        <tr>
+                            <td>@t.Id</td>
+                            <td>@t.Concepto</td>
+                            <td>@t.Fecha.ToString("yyyy-MM-dd")</td>
+                            <td class="text-end">@t.Monto1.ToString("N2")</td>
+                            <td>@t.Cuenta</td>
+                            <td class="text-center">@t.Adjuntos</td>
+                            <td class="text-center">@(t.ComprobanteId.HasValue ? "Sí" : "No")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 }

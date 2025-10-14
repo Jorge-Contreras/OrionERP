@@ -16,12 +16,19 @@ namespace OrionERP.Web.Pages
   {
     [Inject] protected ISatXmlInboxService InboxService { get; set; } = default!;
     [Inject] protected IComprobanteQueryService ComprobanteQuery { get; set; } = default!;
+    [Inject] protected ITransaccionQueryService TransaccionQuery { get; set; } = default!;
+
+
     protected List<SatXmlProcessResult> ProcessResults { get; } = new();
     protected List<ComprobanteListItem> Invoices { get; } = new();
     // ---- UI constants (adjust if needed) ----
     protected const int MaxFiles = 50;
     protected const long MaxFileSizeBytes = 5 * 1024 * 1024; // 5 MB per file
     protected static readonly string MaxFileSizeDisplay = "5 MB";
+
+    protected ComprobanteListItem? SelectedComprobante { get; set; }
+    protected List<TransaccionListItem> FilteredTransacciones { get; } = new();
+
 
     // ---- UI State ----
     protected List<SelectedFileVm> SelectedFiles { get; } = new();
@@ -34,6 +41,28 @@ namespace OrionERP.Web.Pages
 
 
     // ---- Events ----
+
+    protected async Task OnSelectComprobanteAsync(ComprobanteListItem item)
+    {
+      SelectedComprobante = item;
+
+      // The ComprobanteListItem.Total you already cast to decimal in Step 4 SQL.
+      var montoAbs = Math.Abs(item.Total);
+      var fechaXml = item.Fecha;
+
+      FilteredTransacciones.Clear();
+      var rows = await TransaccionQuery.GetCandidatesAsync(
+          fechaXml: fechaXml,
+          montoAbs: montoAbs,
+          daysBack: 60,
+          top: 200
+      );
+      FilteredTransacciones.AddRange(rows);
+      StateHasChanged();
+    }
+
+
+
     protected async Task OnFilesSelected(InputFileChangeEventArgs e)
     {
       ValidationMessages.Clear();
@@ -201,12 +230,15 @@ namespace OrionERP.Web.Pages
       double mb = kb / 1024d;
       return $"{mb:N2} MB";
     }
-    
+
     //INVOICE HELPERS
-    protected override async Task OnInitializedAsync()
+
+    protected async Task RefreshCandidatesAsync()
     {
-      //await RefreshInvoicesAsync();
+      if (SelectedComprobante is null) return;
+      await OnSelectComprobanteAsync(SelectedComprobante);
     }
+   
 
     protected async Task RefreshInvoicesAsync()
     {

@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using OrionERP.Application.SAT;
+using OrionERP.Infrastructure.SAT;
 using OrionERP.Web.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -8,6 +10,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddSingleton<WeatherForecastService>();
+builder.Services.AddScoped<IComprobanteQueryService, ComprobanteQueryService>();
+builder.Services.AddScoped<ISatXmlInboxService, SatXmlInboxService>();
 
 var app = builder.Build();
 

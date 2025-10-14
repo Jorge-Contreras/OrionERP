@@ -1,0 +1,137 @@
+@page "/cargar-xml-sat"
+
+<h1 class="mb-3">Cargar Facturas XML (SAT)</h1>
+
+<!-- Upload -->
+<div class="card mb-3">
+    <div class="card-body">
+        <h5 class="card-title">Seleccionar archivos XML</h5>
+        <p class="card-text">
+            Elige uno o varios <strong>archivos .xml</strong> del SAT.<br />
+            Límite: @MaxFiles archivos, @MaxFileSizeDisplay por archivo.
+        </p>
+
+        <InputFile OnChange="OnFilesSelected"
+                   multiple
+                   accept=".xml, text/xml, application/xml"
+                   disabled="@IsProcessing" />
+
+        @if (ValidationMessages.Count > 0)
+        {
+            <ul class="mt-3 text-danger">
+                @foreach (var msg in ValidationMessages)
+                {
+                    <li>@msg</li>
+                }
+            </ul>
+        }
+    </div>
+</div>
+
+<!-- Actions + selected files (only when there ARE selected files) -->
+@if (SelectedFiles.Count > 0)
+{
+    <div class="d-flex gap-2 mb-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm"
+                @onclick="ClearSelection" disabled="@IsProcessing">
+            Limpiar selección
+        </button>
+
+        <button type="button" class="btn btn-primary btn-sm"
+                disabled="@(!CanContinue)" @onclick="ContinueToProcess">
+            @(IsProcessing ? "Procesando..." : "Continuar")
+        </button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr>
+                    <th>Archivo</th>
+                    <th>Tamaño</th>
+                    <th>MIME</th>
+                    <th>Estado</th>
+                    <th style="width:1%;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var f in SelectedFiles)
+                {
+                    var rowClass = string.IsNullOrWhiteSpace(f.Error) ? "" : "table-danger";
+                    <tr class="@rowClass">
+                        <td>@f.Name</td>
+                        <td>@f.SizeDisplay</td>
+                        <td>@f.ContentType</td>
+                        <td>@(string.IsNullOrWhiteSpace(f.Error) ? "OK" : f.Error)</td>
+                        <td class="text-nowrap">
+                            <button type="button" class="btn btn-link btn-sm text-danger"
+                                    @onclick="() => RemoveFile(f.Id)">
+                                Quitar
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<!-- Resultado de carga (independent of SelectedFiles) -->
+@if (ProcessResults.Count > 0)
+{
+    <div class="d-flex align-items-center justify-content-between mt-3">
+        <h6 class="mb-0">Resultado de carga</h6>
+        <button type="button" class="btn btn-outline-secondary btn-sm"
+                @onclick="ClearResults" disabled="@IsProcessing">
+            Limpiar resultados
+        </button>
+    </div>
+    <ul class="mt-2">
+        @foreach (var r in ProcessResults)
+        {
+            <li>@r.FileName — @(r.Success ? "OK" : $"Error: {r.Message}")</li>
+        }
+    </ul>
+}
+
+<!-- XML cargados (pendientes de conciliar) (independent of SelectedFiles) -->
+<div class="d-flex align-items-center justify-content-between mt-4 mb-2">
+    <h5 class="mb-0">XML cargados (pendientes de conciliar)</h5>
+    <button type="button" class="btn btn-outline-secondary btn-sm"
+            @onclick="RefreshInvoicesAsync">
+        Actualizar
+    </button>
+</div>
+
+@if (Invoices.Count == 0)
+{
+    <div class="alert alert-secondary">No hay comprobantes pendientes (Transacción 5505).</div>
+}
+else if (Invoices.Count > 0)
+{
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>UUID</th>
+                    <th>Emisor</th>
+                    <th>Receptor</th>
+                    <th class="text-end">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var itm in Invoices)
+                {
+                    <tr>
+                        <td>@itm.Fecha.ToString("yyyy-MM-dd")</td>
+                        <td>@itm.Uuid</td>
+                        <td>@itm.EmisorNombre</td>
+                        <td>@itm.ReceptorNombre</td>
+                        <td class="text-end">@itm.Total.ToString("N2")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

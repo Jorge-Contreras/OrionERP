@@ -25,6 +25,22 @@ namespace OrionERP.Infrastructure.SAT
             ?? throw new InvalidOperationException("Missing ConnectionStrings:OrionDb");
     }
 
+    //Helpers
+    private static string UuidFromFileName(string fileName)
+    {
+      // Access used filename (without extension) as UUID token
+      var baseName = System.IO.Path.GetFileNameWithoutExtension(fileName);
+      return baseName?.Trim() ?? string.Empty;
+    }
+
+    private static string AttachmentLikePattern(string fileNameNoExt)
+    {
+      // Access did: LIKE '%<filename without ext>%'
+      return $"%{fileNameNoExt}%";
+    }
+
+
+
     // Now this just returns the configured placeholder ID (defaults to 5505).
     public async Task<int> EnsureInboxTransaccionAsync(CancellationToken ct = default)
     {
@@ -42,11 +58,10 @@ namespace OrionERP.Infrastructure.SAT
       return id;
     }
 
+    //Saves and Process the XML file
     public async Task<SatXmlProcessResult> SaveAndProcessAsync(Stream xmlStream, string fileName, CancellationToken ct = default)
     {
-      var placeholderId = await EnsureInboxTransaccionAsync(ct);
-
-      // Read bytes
+      // Read file bytes up-front (needed for either branch)
       byte[] bytes;
       using (var ms = new MemoryStream())
       {
@@ -54,55 +69,163 @@ namespace OrionERP.Infrastructure.SAT
         bytes = ms.ToArray();
       }
 
-      var ext = Path.GetExtension(fileName);
-      if (string.IsNullOrWhiteSpace(ext)) ext = ".xml";
+      var uuidCandidate = UuidFromFileName(fileName);
+      var placeholderId = await EnsureInboxTransaccionAsync(ct); // still 5505 (config)
 
-      const string insertAttach = @"
+      using var conn = new SqlConnection(_cs);
+      await conn.OpenAsync(ct);
+      using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
+
+      try
+      {
+        // --- pre-check: does UUID already exist & linked? ---
+        if (!string.IsNullOrWhiteSpace(uuidCandidate))
+        {
+          var (found, comprobanteId, transaccionId) =
+              await TryResolveExistingLinkedAsync(conn, tx, uuidCandidate, ct);
+
+          if (found && transaccionId.HasValue)
+          {
+            // Already linked to a transaction: DO NOT reprocess; ensure attachment exists there.
+            var inserted = await EnsureXmlAttachmentOnTranAsync(conn, tx, transaccionId.Value, fileName, bytes, ct);
+
+            await tx!.CommitAsync(ct);
+            return new SatXmlProcessResult(
+                fileName,
+                AttachmentId: 0,
+                Success: true,
+                Message: inserted
+                    ? $"Ya conciliado (TranID={transaccionId}). Se agregó el XML como adjunto."
+                    : $"Ya conciliado (TranID={transaccionId}). El adjunto XML ya existía.");
+          }
+        }
+
+        // --- fallback: process into inbox (5505) like Step 3 ---
+        // optional cleanup like Access
+        await CleanupDuplicateAttachmentsByNameAsync(conn, tx, fileName, ct);
+
+        const string insertAttach = @"
 INSERT INTO dbo.TRANSACTION_ATTACHMENT
 (TranID, Attachment, AttachmentName, AttachmentExtension, AttachmentDescription)
 VALUES (@TranID, @Attachment, @AttachmentName, @AttachmentExtension, @AttachmentDescription);
 SELECT CAST(SCOPE_IDENTITY() as int);";
 
-      using var conn = new SqlConnection(_cs);
-      await conn.OpenAsync(ct);
+        var ext = Path.GetExtension(fileName);
+        if (string.IsNullOrWhiteSpace(ext)) ext = ".xml";
 
-      var attachmentId = await conn.ExecuteScalarAsync<int>(
-          new CommandDefinition(
-              insertAttach,
-              new
-              {
-                TranID = placeholderId,               // <-- always 5505 (from config)
-                Attachment = bytes,
-                AttachmentName = fileName,
-                AttachmentExtension = ext.TrimStart('.'),
-                AttachmentDescription = "SAT XML upload"
-              },
-              commandType: CommandType.Text,
-              cancellationToken: ct
-          )
-      );
+        var attachmentId = await conn.ExecuteScalarAsync<int>(
+            new CommandDefinition(
+                insertAttach,
+                new
+                {
+                  TranID = placeholderId,
+                  Attachment = bytes,
+                  AttachmentName = fileName,
+                  AttachmentExtension = ext.TrimStart('.'),
+                  AttachmentDescription = "SAT XML upload"
+                },
+                tx, cancellationToken: ct)
+        );
 
-      // Call stored procedure
-      const string sp = "dbo.PROCESAR_SAT_XML";
-      try
-      {
+        // Call SP to parse into SAT tables
+        const string sp = "dbo.PROCESAR_SAT_XML";
         await conn.ExecuteAsync(
             new CommandDefinition(
                 sp,
                 new { TransaccionID = placeholderId, AttachmentID = attachmentId },
                 commandType: CommandType.StoredProcedure,
-                cancellationToken: ct
-            )
+                transaction: tx,
+                cancellationToken: ct)
         );
 
+        await tx!.CommitAsync(ct);
         return new SatXmlProcessResult(fileName, attachmentId, true, null);
       }
       catch (Exception ex)
       {
-        _logger.LogError(ex, "SP PROCESAR_SAT_XML failed for attachment {AttachmentId}", attachmentId);
-        return new SatXmlProcessResult(fileName, attachmentId, false, $"SP error: {ex.Message}");
+        try { await tx!.RollbackAsync(ct); } catch { /* ignore */ }
+        _logger.LogError(ex, "SaveAndProcessAsync failed for file {File}", fileName);
+        return new SatXmlProcessResult(fileName, 0, false, $"Error: {ex.Message}");
       }
     }
+
+
+    //Resolver to check if UUID already exists
+    private async Task<(bool found, int comprobanteId, int? transaccionId)> TryResolveExistingLinkedAsync(
+  SqlConnection conn, SqlTransaction? tx, string uuid, CancellationToken ct)
+    {
+      const string sql = @"
+SELECT TOP (1)
+    t.Comprobante_ID      AS ComprobanteId,
+    tc.Transaccion_ID     AS TransaccionId
+FROM dbo.TimbreFiscalDigital t
+LEFT JOIN dbo.Transaccion_Comprobante tc
+    ON tc.Comprobante_ID = t.Comprobante_ID
+WHERE t.UUID = @Uuid;";
+
+      var row = await conn.QueryFirstOrDefaultAsync<(int ComprobanteId, int? TransaccionId)>(
+          new CommandDefinition(sql, new { Uuid = uuid }, tx, cancellationToken: ct)
+      );
+
+      return row.ComprobanteId == 0
+          ? (false, 0, null)
+          : (true, row.ComprobanteId, row.TransaccionId);
+    }
+    //helper to ensure the XML attachment exists on a specific Transacción
+    private async Task<bool> EnsureXmlAttachmentOnTranAsync(
+        SqlConnection conn, SqlTransaction? tx, int tranId, string fileName, byte[] bytes, CancellationToken ct)
+    {
+      var fileNameNoExt = System.IO.Path.GetFileNameWithoutExtension(fileName);
+      const string existsSql = @"
+SELECT TOP(1) 1
+FROM dbo.TRANSACTION_ATTACHMENT
+WHERE TranID = @TranID
+  AND AttachmentExtension = 'xml'
+  AND AttachmentName LIKE @LikeName;";
+
+      var exists = await conn.ExecuteScalarAsync<int?>(
+          new CommandDefinition(existsSql,
+              new { TranID = tranId, LikeName = AttachmentLikePattern(fileNameNoExt) },
+              tx, cancellationToken: ct));
+
+      if (exists.HasValue) return false; // already present; nothing to do
+
+      const string insertAttach = @"
+INSERT INTO dbo.TRANSACTION_ATTACHMENT
+(TranID, Attachment, AttachmentName, AttachmentExtension, AttachmentDescription)
+VALUES (@TranID, @Attachment, @AttachmentName, 'xml', @AttachmentDescription);";
+
+      await conn.ExecuteAsync(
+          new CommandDefinition(insertAttach,
+              new
+              {
+                TranID = tranId,
+                Attachment = bytes,
+                AttachmentName = fileName,
+                AttachmentDescription = "SAT XML upload (linked existing)"
+              },
+              tx, cancellationToken: ct));
+
+      return true; // we inserted it
+    }
+
+    //CLEAN DUPLICATES ON ATTACHMENTS
+    private async Task<int> CleanupDuplicateAttachmentsByNameAsync(
+    SqlConnection conn, SqlTransaction? tx, string fileName, CancellationToken ct)
+    {
+      var fileNameNoExt = System.IO.Path.GetFileNameWithoutExtension(fileName);
+      const string delSql = @"
+DELETE FROM dbo.TRANSACTION_ATTACHMENT
+WHERE AttachmentExtension = 'xml'
+  AND AttachmentName LIKE @LikeName;";
+
+      return await conn.ExecuteAsync(
+          new CommandDefinition(delSql,
+              new { LikeName = AttachmentLikePattern(fileNameNoExt) }, tx, cancellationToken: ct));
+    }
+
+
+
   }
 
 }

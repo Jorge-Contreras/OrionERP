@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
-using OrionERP.Application.SAT;
-using OrionERP.Infrastructure.SAT;
+
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
@@ -9,8 +8,9 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 
-namespace OrionERP.Web.Pages
+namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
 {
   public partial class CargarXmlSat : ComponentBase
   {
@@ -194,7 +194,7 @@ namespace OrionERP.Web.Pages
 
       // 2) MIME hint (best-effort)
       if (!string.IsNullOrWhiteSpace(file.ContentType) &&
-          !(file.ContentType.Contains("xml", StringComparison.OrdinalIgnoreCase)))
+          !file.ContentType.Contains("xml", StringComparison.OrdinalIgnoreCase))
       {
         vm.Error = "Tipo MIME no es XML.";
         return vm;

@@ -5,9 +5,9 @@ using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
-using OrionERP.Application.SAT;
+using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 
-namespace OrionERP.Infrastructure.SAT
+namespace OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services
 {
   public sealed class TransaccionQueryService : ITransaccionQueryService
   {
@@ -16,7 +16,7 @@ namespace OrionERP.Infrastructure.SAT
     public TransaccionQueryService(IConfiguration cfg)
     {
       _cs = cfg.GetSection("ConnectionStrings")["OrionDb"]
-           ?? throw new System.InvalidOperationException("Missing ConnectionStrings:OrionDb");
+           ?? throw new InvalidOperationException("Missing ConnectionStrings:OrionDb");
     }
 
     public async Task<IReadOnlyList<TransaccionListItem>> GetCandidatesAsync(

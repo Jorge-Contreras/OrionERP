@@ -28,6 +28,7 @@ namespace OrionERP.Web.Pages
     protected const int MaxFiles = 50;
     protected const long MaxFileSizeBytes = 5 * 1024 * 1024; // 5 MB per file
     protected static readonly string MaxFileSizeDisplay = "5 MB";
+    
 
     protected ComprobanteListItem? SelectedComprobante { get; set; }
     protected List<TransaccionListItem> FilteredTransacciones { get; } = new();

@@ -104,6 +104,48 @@
 </div>
 
 
+
+
+
+
+@if (Invoices.Count == 0)
+{
+    <div class="alert alert-secondary">No hay comprobantes pendientes (Transacción 5505).</div>
+}
+else if (Invoices.Count > 0)
+{
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>UUID</th>
+                    <th>Emisor</th>
+                    <th>Receptor</th>
+                    <th class="text-end">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var itm in Invoices)
+                {
+                    var isSelected = SelectedComprobante?.ComprobanteId == itm.ComprobanteId;
+                    <tr class="@(isSelected ? "table-primary" : "")"
+                        style="cursor:pointer"
+                        @onclick="() => OnSelectComprobanteAsync(itm)">
+                        <td>@itm.Fecha.ToString("yyyy-MM-dd")</td>
+                        <td>@itm.Uuid</td>
+                        <td>@itm.EmisorNombre</td>
+                        <td>@itm.ReceptorNombre</td>
+                        <td class="text-end">@itm.Total.ToString("N2")</td>
+                    </tr>
+                }
+            </tbody>
+
+        </table>
+    </div>
+}
+
+
 <div class="d-flex gap-2 mt-2">
     <button class="btn btn-success btn-sm"
             disabled="@(!(SelectedTransaccionId.HasValue && SelectedComprobante is not null) || IsConciliando)"
@@ -119,49 +161,6 @@
     }
 
 </div>
-@if (Invoices.Count == 0)
-{
-    <div class="alert alert-secondary">No hay comprobantes pendientes (Transacción 5505).</div>
-}
-else if (Invoices.Count > 0)
-{
-    <div class="table-responsive">
-        <table class="table table-sm align-middle">
-            <thead>
-                <tr>
-                    <th style="width:1%"></th>
-                    <th>ID</th>
-                    <th>Concepto</th>
-                    <th>Fecha</th>
-                    <th class="text-end">Monto</th>
-                    <th>Cuenta</th>
-                    <th class="text-center">Adjuntos</th>
-                    <th class="text-center">Vinculada</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var t in FilteredTransacciones)
-                {
-                    var chosen = SelectedTransaccionId == t.Id;
-                    <tr class="@(chosen ? "table-active" : "")">
-                        <td class="text-center">
-                            <input type="radio" name="tranChoice" checked="@chosen" @onclick="() => OnSelectTransaccion(t)" />
-                        </td>
-                        <td>@t.Id</td>
-                        <td>@t.Concepto</td>
-                        <td>@t.Fecha.ToString("yyyy-MM-dd")</td>
-                        <td class="text-end">@t.Monto1.ToString("N2")</td>
-                        <td>@t.Cuenta</td>
-                        <td class="text-center">@t.Adjuntos</td>
-                        <td class="text-center">@(t.ComprobanteId.HasValue ? "Sí" : "No")</td>
-                    </tr>
-                }
-            </tbody>
-
-        </table>
-    </div>
-}
-
 @if (SelectedComprobante is not null)
 {
     <div class="d-flex align-items-center justify-content-between mt-4 mb-2">
@@ -182,6 +181,7 @@ else if (Invoices.Count > 0)
             <table class="table table-sm align-middle">
                 <thead>
                     <tr>
+                        <th style="width:1%"></th>
                         <th>ID</th>
                         <th>Concepto</th>
                         <th>Fecha</th>
@@ -194,7 +194,11 @@ else if (Invoices.Count > 0)
                 <tbody>
                     @foreach (var t in FilteredTransacciones)
                     {
-                        <tr>
+                        var chosen = SelectedTransaccionId == t.Id;
+                        <tr class="@(chosen ? "table-active" : "")">
+                            <td class="text-center">
+                                <input type="radio" name="tranChoice" checked="@chosen" @onclick="() => OnSelectTransaccion(t)" />
+                            </td>
                             <td>@t.Id</td>
                             <td>@t.Concepto</td>
                             <td>@t.Fecha.ToString("yyyy-MM-dd")</td>
@@ -205,6 +209,7 @@ else if (Invoices.Count > 0)
                         </tr>
                     }
                 </tbody>
+              
             </table>
         </div>
     }

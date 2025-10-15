@@ -5,9 +5,9 @@ using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
-using OrionERP.Application.SAT;
+using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 
-namespace OrionERP.Infrastructure.SAT
+namespace OrionERP.Infrastructure.Feautures.Cfdi.CargarXmlSat.Services
 {
   public sealed class ComprobanteQueryService : IComprobanteQueryService
   {

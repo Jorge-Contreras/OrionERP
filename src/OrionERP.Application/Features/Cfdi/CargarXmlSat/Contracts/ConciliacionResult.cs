@@ -1,4 +1,4 @@
-namespace OrionERP.Application.SAT
+namespace OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts
 {
   public sealed class ConciliacionResult
   {

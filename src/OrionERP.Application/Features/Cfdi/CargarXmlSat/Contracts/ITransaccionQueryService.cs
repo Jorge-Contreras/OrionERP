@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace OrionERP.Application.SAT
+namespace OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts
 {
   public interface ITransaccionQueryService
   {

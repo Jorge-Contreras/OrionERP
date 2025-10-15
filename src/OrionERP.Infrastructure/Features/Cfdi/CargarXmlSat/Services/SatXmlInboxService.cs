@@ -2,7 +2,7 @@ using Dapper;
 using Microsoft.Data.SqlClient;           // ✅ correct provider
 using Microsoft.Extensions.Configuration; // ✅ IConfiguration
 using Microsoft.Extensions.Logging;
-using OrionERP.Application.SAT;       // ✅ ILogger
+using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using System;
 using System.Data;
 using System.IO;
@@ -10,7 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
 
-namespace OrionERP.Infrastructure.SAT
+namespace OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services
 {
 
   public sealed class SatXmlInboxService : ISatXmlInboxService
@@ -102,7 +102,7 @@ private static string NormalizeUuid(string? s)
   private static string UuidFromFileName(string fileName)
     {
       // Access used filename (without extension) as UUID token
-      var baseName = System.IO.Path.GetFileNameWithoutExtension(fileName);
+      var baseName = Path.GetFileNameWithoutExtension(fileName);
       return baseName?.Trim() ?? string.Empty;
     }
 
@@ -252,7 +252,7 @@ WHERE UPPER(t.UUID) = UPPER(@Uuid);";
     private async Task<bool> EnsureXmlAttachmentOnTranAsync(
         SqlConnection conn, SqlTransaction? tx, int tranId, string fileName, byte[] bytes, CancellationToken ct)
     {
-      var fileNameNoExt = System.IO.Path.GetFileNameWithoutExtension(fileName);
+      var fileNameNoExt = Path.GetFileNameWithoutExtension(fileName);
       const string existsSql = @"
 SELECT TOP(1) 1
 FROM dbo.TRANSACTION_ATTACHMENT
@@ -290,7 +290,7 @@ VALUES (@TranID, @Attachment, @AttachmentName, 'xml', @AttachmentDescription);";
     private async Task<int> CleanupDuplicateAttachmentsByNameAsync(
     SqlConnection conn, SqlTransaction? tx, string fileName, CancellationToken ct)
     {
-      var fileNameNoExt = System.IO.Path.GetFileNameWithoutExtension(fileName);
+      var fileNameNoExt = Path.GetFileNameWithoutExtension(fileName);
       const string delSql = @"
 DELETE FROM dbo.TRANSACTION_ATTACHMENT
 WHERE AttachmentExtension = 'xml'

@@ -1,7 +1,8 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
-using OrionERP.Application.SAT;
-using OrionERP.Infrastructure.SAT;
+using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
+using OrionERP.Web.Configuration;
 using OrionERP.Web.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,11 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddSingleton<WeatherForecastService>();
-builder.Services.AddScoped<IComprobanteQueryService, ComprobanteQueryService>();
-builder.Services.AddScoped<ISatXmlInboxService, SatXmlInboxService>();
-builder.Services.AddScoped<ITransaccionQueryService, TransaccionQueryService>();
-builder.Services.AddScoped<IConciliacionService, ConciliacionService>();
-
+builder.Services.AddCfdiCargarXmlSat(); // neat 1-liner per feature
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

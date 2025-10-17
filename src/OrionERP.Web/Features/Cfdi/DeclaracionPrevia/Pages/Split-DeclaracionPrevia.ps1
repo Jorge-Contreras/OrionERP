@@ -1,3 +1,39 @@
+# Split-DeclaracionPrevia.ps1
+# Usage:  pwsh -File .\Split-DeclaracionPrevia.ps1
+# (Edit $Dir if your path is different.)
+
+param(
+  [string]$Dir = "C:\Users\jc_ca\OrionERP\src\OrionERP.Web\Features\Cfdi\DeclaracionPrevia\Pages"
+)
+
+Write-Host "Target directory: $Dir"
+
+if (-not (Test-Path $Dir)) {
+  throw "Directory not found: $Dir"
+}
+
+$orig = Join-Path $Dir "DeclaracionPrevia.razor.cs"
+if (Test-Path $orig) {
+  $ts = Get-Date -Format "yyyyMMdd-HHmmss"
+  $backup = "$orig.$ts.bak"
+  Copy-Item $orig $backup -Force
+  Write-Host "Backed up original to: $backup"
+  $renamed = Join-Path $Dir "DeclaracionPrevia.ORIGINAL_$ts.razor.cs"
+  Rename-Item $orig $renamed -Force
+  Write-Host "Renamed original to: $renamed"
+} else {
+  Write-Host "Original file not found (continuing to write split files)."
+}
+
+function Write-File {
+  param([string]$Name, [string]$Content)
+  $path = Join-Path $Dir $Name
+  $Content | Set-Content -Path $path -Encoding UTF8
+  Write-Host "Wrote $Name"
+}
+
+# ------------- Root (only place that inherits ComponentBase and holds Nav inject) -------------
+Write-File -Name "DeclaracionPrevia.Root.cs" -Content @'
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,20 +50,25 @@ using OfficeOpenXml;
 
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
-  
   public partial class DeclaracionPrevia : ComponentBase
   {
-   
-
     // Keep this too if you use it elsewhere:
-  
     // Data models corresponding to stored procedure outputs:
     [Inject] private NavigationManager Nav { get; set; } = default!;
-   
+  }
+}
+'@
+
+# ------------- Models (nested DTOs only) -------------
+Write-File -Name "DeclaracionPrevia.Models.cs" -Content @'
+using System;
+
+namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
+{
+  public partial class DeclaracionPrevia
+  {
     public class DeclaracionEmitida
     {
-     
-      
       public int Comprobante_Id { get; set; }
       public string? D { get; set; }            // "✓" or "X"
       public DateTime Fecha { get; set; }
@@ -136,9 +177,82 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       public int CountCFDIs { get; set; }
       public string? SumTotal { get; set; }
     }
+  }
+}
+'@
 
+# ------------- State (fields, sorting, pagination) -------------
+Write-File -Name "DeclaracionPrevia.State.cs" -Content @'
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
+{
+  public partial class DeclaracionPrevia
+  {
     // UI State
     private string? connectionString;
+
+    // Filter state
+    private List<string>? disponiblesRFCs;
+    private List<int>? disponibleYears;
+    private List<(int, string)>? disponibleMonths;
+    private string? selectedRfc;
+    private int selectedYear;
+    private int selectedMonth;
+    private bool isAnnual;
+
+    // Data lists and other outputs
+    private List<DeclaracionEmitida>? emitidas;
+    private List<DeclaracionRecibida>? recibidas;
+    private List<DesfaseItem>? desfase;
+    private List<PolizaNoConsolidada>? polizasNoConsolidadas;
+    private DeclaracionTotales? emitidasTotals;
+    private DeclaracionTotales? recibidasTotals;
+    private DesfaseTotales? desfaseTotals;
+    private string? impuestosSummary;
+    private string? bancosCajaSummary;
+
+    // For UI selection and messages
+    private DeclaracionEmitida? selectedEmitida;
+    private DeclaracionRecibida? selectedRecibida;
+    private string? statusMessage;
+    private string? errorMessage;
+
+    // Sorting state
+    private Dictionary<string, string>? emitidasSortableFields;
+    private Dictionary<string, string>? recibidasSortableFields;
+    private string? emitidasSortColumn;
+    private string? emitidasSortOrder;
+    private string? recibidasSortColumn;
+    private string? recibidasSortOrder;
+
+    // Pagination state (simple implementation)
+    private int pageSize = 50;
+    private int emitidasCurrentPage = 1;
+    private int emitidasPageCount = 1;
+    private IEnumerable<DeclaracionEmitida> emitidasPage => emitidas?.Skip((emitidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionEmitida>();
+    private int recibidasCurrentPage = 1;
+    private int recibidasPageCount = 1;
+    private IEnumerable<DeclaracionRecibida> recibidasPage => recibidas?.Skip((recibidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionRecibida>();
+  }
+}
+'@
+
+# ------------- Lifecycle + LoadAllData + date helpers -------------
+Write-File -Name "DeclaracionPrevia.LifecycleAndLoad.cs" -Content @'
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Dapper;
+using Microsoft.Data.SqlClient;
+
+namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
+{
+  public partial class DeclaracionPrevia
+  {
     protected override async Task OnInitializedAsync()
     {
       connectionString = Configuration.GetConnectionString("OrionDb");
@@ -187,48 +301,6 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       // Load initial data:
       await LoadAllData();
     }
-    // Filter state
-    private List<string>? disponiblesRFCs;
-    private List<int>? disponibleYears;
-    private List<(int, string)>? disponibleMonths;
-    private string? selectedRfc;
-    private int selectedYear;
-    private int selectedMonth;
-    private bool isAnnual;
-
-    // Data lists and other outputs
-    private List<DeclaracionEmitida>? emitidas;
-    private List<DeclaracionRecibida>? recibidas;
-    private List<DesfaseItem>? desfase;
-    private List<PolizaNoConsolidada>? polizasNoConsolidadas;
-    private DeclaracionTotales? emitidasTotals;
-    private DeclaracionTotales? recibidasTotals;
-    private DesfaseTotales? desfaseTotals;
-    private string? impuestosSummary;
-    private string? bancosCajaSummary;
-
-    // For UI selection and messages
-    private DeclaracionEmitida? selectedEmitida;
-    private DeclaracionRecibida? selectedRecibida;
-    private string? statusMessage;
-    private string? errorMessage;
-
-    // Sorting state
-    private Dictionary<string, string>? emitidasSortableFields;
-    private Dictionary<string, string>? recibidasSortableFields;
-    private string? emitidasSortColumn;
-    private string? emitidasSortOrder;
-    private string? recibidasSortColumn;
-    private string? recibidasSortOrder;
-
-    // Pagination state (simple implementation)
-    private int pageSize = 50;
-    private int emitidasCurrentPage = 1;
-    private int emitidasPageCount = 1;
-    private IEnumerable<DeclaracionEmitida> emitidasPage => emitidas?.Skip((emitidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionEmitida>();
-    private int recibidasCurrentPage = 1;
-    private int recibidasPageCount = 1;
-    private IEnumerable<DeclaracionRecibida> recibidasPage => recibidas?.Skip((recibidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionRecibida>();
 
     private async Task LoadAllData()
     {
@@ -300,7 +372,19 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private DateTime endDate => isAnnual
         ? new DateTime(selectedYear, 12, 31)
         : new DateTime(selectedYear, selectedMonth, DateTime.DaysInMonth(selectedYear, selectedMonth));
+  }
+}
+'@
 
+# ------------- Filters + Sorting -------------
+Write-File -Name "DeclaracionPrevia.FiltersAndSorting.cs" -Content @'
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Components;
+
+namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
+{
+  public partial class DeclaracionPrevia
+  {
     // Filter change handlers:
     private async Task OnFiltersChangedAsync()
     {
@@ -308,6 +392,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       recibidasCurrentPage = 1;
       await LoadAllData();
     }
+
     private async Task OnFilterChanged(ChangeEventArgs e)
     {
       // Whenever any filter (RFC, Year, Month, Annual) changes, reload data:
@@ -320,20 +405,20 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       if (emitidas != null)
       {
         // Sort emitidas list based on emitidasSortColumn and emitidasSortOrder
-        Comparison<DeclaracionEmitida> comparison = (a, b) => 0;
+        System.Comparison<DeclaracionEmitida> comparison = (a, b) => 0;
         switch (emitidasSortColumn)
         {
           case "Fecha":
             comparison = (a, b) => a.Fecha.CompareTo(b.Fecha);
             break;
           case "RECEPTOR":
-            comparison = (a, b) => string.Compare(a.RECEPTOR, b.RECEPTOR, StringComparison.CurrentCultureIgnoreCase);
+            comparison = (a, b) => string.Compare(a.RECEPTOR, b.RECEPTOR, System.StringComparison.CurrentCultureIgnoreCase);
             break;
           case "Total":
             comparison = (a, b) => a.Total.CompareTo(b.Total);
             break;
           case "FOLIO_FISCAL":
-            comparison = (a, b) => string.Compare(a.FOLIO_FISCAL, b.FOLIO_FISCAL, StringComparison.CurrentCultureIgnoreCase);
+            comparison = (a, b) => string.Compare(a.FOLIO_FISCAL, b.FOLIO_FISCAL, System.StringComparison.CurrentCultureIgnoreCase);
             break;
         }
         emitidas.Sort(comparison);
@@ -344,20 +429,20 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       if (recibidas != null)
       {
-        Comparison<DeclaracionRecibida> comparison = (a, b) => 0;
+        System.Comparison<DeclaracionRecibida> comparison = (a, b) => 0;
         switch (recibidasSortColumn)
         {
           case "Fecha":
             comparison = (a, b) => a.Fecha.CompareTo(b.Fecha);
             break;
           case "EMISOR":
-            comparison = (a, b) => string.Compare(a.EMISOR, b.EMISOR, StringComparison.CurrentCultureIgnoreCase);
+            comparison = (a, b) => string.Compare(a.EMISOR, b.EMISOR, System.StringComparison.CurrentCultureIgnoreCase);
             break;
           case "Total":
             comparison = (a, b) => a.Total.CompareTo(b.Total);
             break;
           case "FOLIO_FISCAL":
-            comparison = (a, b) => string.Compare(a.FOLIO_FISCAL, b.FOLIO_FISCAL, StringComparison.CurrentCultureIgnoreCase);
+            comparison = (a, b) => string.Compare(a.FOLIO_FISCAL, b.FOLIO_FISCAL, System.StringComparison.CurrentCultureIgnoreCase);
             break;
         }
         recibidas.Sort(comparison);
@@ -379,7 +464,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       await OnEmitidasSortsChangedAsync();
     }
     private async Task OnRecibidasSortChangedAsync()
-      {
+    {
       ApplySorting();
       recibidasCurrentPage = 1;
       await LoadAllData();
@@ -388,7 +473,21 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     {
       await OnRecibidasSortChangedAsync();
     }
+  }
+}
+'@
 
+# ------------- Selection + Toggle + Bulk exclude -------------
+Write-File -Name "DeclaracionPrevia.SelectionAndToggle.cs" -Content @'
+using System;
+using System.Threading.Tasks;
+using Dapper;
+using Microsoft.Data.SqlClient;
+
+namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
+{
+  public partial class DeclaracionPrevia
+  {
     // Row selection:
     private void SelectEmitida(DeclaracionEmitida item)
     {
@@ -477,7 +576,25 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         errorMessage = "Error al excluir pagos/devoluciones: " + ex.Message;
       }
     }
+  }
+}
+'@
 
+# ------------- Facturama cancel -------------
+Write-File -Name "DeclaracionPrevia.FacturamaCancel.cs" -Content @'
+using System;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Dapper;
+using Microsoft.Data.SqlClient;
+
+namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
+{
+  public partial class DeclaracionPrevia
+  {
     // Cancel selected Emitida CFDI via Facturama API
     private async Task CancelSelectedEmitidaCfdi()
     {
@@ -565,7 +682,24 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         errorMessage = "Error en el proceso de cancelación: " + ex.Message;
       }
     }
+  }
+}
+'@
 
+# ------------- Exports (DIOT + Excel) -------------
+Write-File -Name "DeclaracionPrevia.Exports.cs" -Content @'
+using System;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Dapper;
+using Microsoft.Data.SqlClient;
+using OfficeOpenXml;
+
+namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
+{
+  public partial class DeclaracionPrevia
+  {
     // Generate DIOT text file for the current period
     private async Task GenerateDIOT()
     {
@@ -577,7 +711,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       try
       {
-        using var conn = new SqlConnection(connectionString);
+        using var conn = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
         var lines = (await conn.QueryAsync<string>("EXEC dbo.GenerateDIOTTXT @Year, @Month, @receptor",
                         new { Year = selectedYear, Month = selectedMonth, receptor = selectedRfc })).ToList();
         if (lines == null || lines.Count == 0)
@@ -670,7 +804,6 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
           wsE.Cells[row, 15].Formula = $"SUM(O2:O{row - 1})";
           wsE.Cells[row, 16].Formula = $"SUM(P2:P{row - 1})";
           wsE.Cells[row, 17].Formula = $"SUM(Q2:Q{row - 1})";  // Total
-                                                               // Format as currency for relevant columns:
           for (int col = 7; col <= 17; col++)
             wsE.Column(col).Style.Numberformat.Format = "#,##0.00";
           wsE.Cells[1, 1, 1, headersE.Length].Style.Font.Bold = true;
@@ -747,7 +880,19 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         errorMessage = "Error al exportar a Excel: " + ex.Message;
       }
     }
+  }
+}
+'@
 
+# ------------- Navigation + Linked transaction + Pagination -------------
+Write-File -Name "DeclaracionPrevia.NavigationAndPagination.cs" -Content @'
+using Dapper;
+using Microsoft.Data.SqlClient;
+
+namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
+{
+  public partial class DeclaracionPrevia
+  {
     // Navigation or open detail functions:
     private void OpenEmitidaDetails(DeclaracionEmitida item)
     {
@@ -835,5 +980,10 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
     }
   }
-
 }
+'@
+
+Write-Host "---------------------------------------------"
+Write-Host "Split complete. Files created in:"
+Write-Host "  $Dir"
+Write-Host "Now build the solution. If needed, move the ORIGINAL_*.razor.cs backup elsewhere."

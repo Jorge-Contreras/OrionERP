@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @namespace OrionERP.Web.Pages
 @addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
 @{
@@ -6,3 +6,13 @@
 }
 
 <component type="typeof(App)" render-mode="ServerPrerendered" />
+<script>
+    window.triggerFileDownload = (fileName, dataUrl) => {
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+</script>

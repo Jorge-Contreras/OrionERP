@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using OfficeOpenXml;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
 using OrionERP.Web.Configuration;
 using OrionERP.Web.Data;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,3 +34,8 @@ app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
 app.Run();
+
+
+//SET OFFICEOPENXML LICENSE CONTEXT
+
+ExcelPackage.License.SetNonCommercialOrganization("Orion Habitat de Mexico S.A. de C.V.");

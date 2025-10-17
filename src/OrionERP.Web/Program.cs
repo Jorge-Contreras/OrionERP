@@ -8,6 +8,8 @@ using OrionERP.Web.Data;
 
 
 var builder = WebApplication.CreateBuilder(args);
+ExcelPackage.License.SetNonCommercialOrganization("Orion Habitat de Mexico S.A. de C.V.");
+
 
 // Add services to the container.
 builder.Services.AddRazorPages();
@@ -38,4 +40,4 @@ app.Run();
 
 //SET OFFICEOPENXML LICENSE CONTEXT
 
-ExcelPackage.License.SetNonCommercialOrganization("Orion Habitat de Mexico S.A. de C.V.");
+

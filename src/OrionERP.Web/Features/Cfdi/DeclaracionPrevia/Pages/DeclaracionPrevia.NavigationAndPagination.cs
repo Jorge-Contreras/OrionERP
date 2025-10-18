@@ -23,14 +23,9 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     }
     private void OpenLinkedTransaction(object item)
     {
-      // item could be DeclaracionEmitida or DeclaracionRecibida, both potentially have linked Transaccion info
       long? transId = null;
       if (item is DeclaracionEmitida de)
       {
-        // We need to find transaccion that corresponds. Possibly through Transaccion_Comprobante table:
-        // If we had loaded TransaccionId via a query or stored it, we would use it.
-        // The Access keydown event for Emitidas did: SELECT Transaccion_ID from Transaccion_Comprobante where Comprobante_ID = selected
-        // We can quickly query that:
         try
         {
           using var conn = new SqlConnection(connectionString);
@@ -40,10 +35,13 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       else if (item is DeclaracionRecibida dr)
       {
-        transId = dr.TransaccionVinculada;
-        if (!transId.HasValue)
+        // Fix: Try to parse Poliza (string?) to long? if possible
+        if (!string.IsNullOrWhiteSpace(dr.Poliza) && long.TryParse(dr.Poliza, out var polizaId))
         {
-          // If not already provided, query similarly:
+          transId = polizaId;
+        }
+        else
+        {
           try
           {
             using var conn = new SqlConnection(connectionString);

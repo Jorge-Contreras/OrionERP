@@ -1,0 +1,55 @@
+/* app.css — central entry point */
+@import 'tables.css';
+
+
+/* Horizontal, compact filter bar */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap; /* wrap on small screens */
+  align-items: center;
+  gap: .5rem 1rem; /* row/column gaps */
+}
+
+/* Label + control pairs stay tight */
+.filter-pair {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  white-space: nowrap; /* keep label + value together */
+}
+
+/* Make selects compact and only as wide as needed */
+.inline-select {
+  width: auto; /* override Bootstrap 100% width */
+  min-width: 10ch; /* give a small floor */
+}
+
+/* Smaller control height (Bootstrap-friendly) */
+.filter-bar .form-select {
+  padding: 2px 6px;
+  line-height: 1.1;
+  font-size: 13px;
+  height: auto;
+}
+
+
+/* Keep selects compact BUT reserve space for the caret */
+.form-select.inline-select {
+  padding: 2px 6px; /* compact */
+  padding-right: 2rem; /* <-- space for the caret so text doesn't hit it */
+  line-height: 1.1;
+  font-size: 13px;
+  height: auto;
+  /* optional: nudge & shrink caret a bit */
+  background-position: right .35rem center;
+  background-size: 12px 8px;
+}
+
+
+.summary-box {
+  white-space: pre-wrap; /* keeps CR/LF, wraps long lines */
+  font-family: inherit; /* use your app font instead of monospace */
+  font-size: 13px;
+  line-height: 1.25;
+  padding: .5rem; /* optional: small padding */
+}

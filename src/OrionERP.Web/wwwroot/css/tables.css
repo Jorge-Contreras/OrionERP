@@ -1,0 +1,94 @@
+/* Compact, readable table tuned for numbers — DENSE */
+.compact-table {
+  table-layout: auto; /* size columns by intrinsic content */
+  white-space: nowrap; /* prevent wrapping so width = longest cell */
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 13px; /* compact but readable */
+  line-height: 1.1; /* tighter line-height to reduce row height */
+}
+
+  /* Keep cells very tight (min row height) */
+  .compact-table th,
+  .compact-table td {
+    padding: 2px 6px; /* was .25rem .5rem — tighter */
+    vertical-align: middle; /* avoid extra height from baseline alignment */
+  }
+
+  /* Right-align numbers and make them line up better */
+  .compact-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums; /* monospaced digits for columns of numbers */
+  }
+
+  /* Make any controls inside cells compact too (so they don't stretch rows) */
+  .compact-table .btn {
+    padding: 2px 6px;
+    line-height: 1.1;
+    font-size: 12px;
+  }
+
+  .compact-table .form-control,
+  .compact-table .form-select,
+  .compact-table input,
+  .compact-table select {
+    padding: 2px 6px;
+    line-height: 1.1;
+    font-size: 12px;
+    height: auto; /* prevent Bootstrap from imposing a taller height */
+  }
+
+/* Ensure horizontal scroll on all sizes */
+.table-scroll {
+  overflow-x: auto;
+  width: 100%;
+}
+
+/* Selected row: visible, no layout shift */
+.compact-table tbody tr.table-active td,
+.compact-table tbody tr.selected td {
+  background-color: #fff6cc !important; /* soft yellow */
+  transition: background-color .15s ease;
+}
+
+  /* Left accent bar without adding a column */
+  .compact-table tbody tr.table-active td:first-child,
+  .compact-table tbody tr.selected td:first-child {
+    box-shadow: inset 4px 0 0 0 #f0b429; /* amber accent */
+  }
+
+
+/* Keep striped hover, but make non-selected rows subtle */
+.compact-table tbody tr:hover:not(.table-active):not(.selected) {
+  background-color: rgba(0,0,0,.03);
+}
+
+/* Ensure buttons are still neat inside selection */
+.compact-table tbody tr.table-active .btn,
+.compact-table tbody tr.selected .btn {
+  background-clip: padding-box; /* avoids weird borders on yellow bg */
+}
+
+/* Optional: stronger contrast for users who prefer more contrast */
+@media (prefers-contrast: more) {
+  .compact-table tbody tr.table-active,
+  .compact-table tbody tr.selected {
+    --selected-bg: #ffe680; /* a bit stronger */
+    --selected-accent: #e39a06;
+  }
+}
+
+
+/* Totals row: strong, readable emphasis */
+.compact-table tfoot.totals td {
+  background: var(--totals-bg, #fff7e6) !important; /* soft amber */
+  color: var(--totals-text, #2b2b2b);
+  font-weight: 700 !important; /* all cells bold */
+  border-top: 2px solid var(--totals-border, #ffd27a);
+}
+
+  /* Left accent without adding a new column */
+  .compact-table tfoot.totals td:first-child {
+    box-shadow: inset 4px 0 0 0 var(--totals-accent, #ffb020);
+  }
+
+

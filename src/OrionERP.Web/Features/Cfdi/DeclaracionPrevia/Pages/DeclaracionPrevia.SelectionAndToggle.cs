@@ -29,12 +29,14 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       try
       {
+        var selectedId = selectedEmitida.Comprobante_Id;
+        var wasExcluded = selectedEmitida.D == "✓";
         using var conn = new SqlConnection(connectionString);
         string sql = "UPDATE Comprobante SET Incluir_En_Declaracion = CASE WHEN Incluir_En_Declaracion = 1 THEN 0 ELSE 1 END WHERE Comprobante_Id = @Id";
         await conn.ExecuteAsync(sql, new { Id = selectedEmitida.Comprobante_Id });
         // Refresh data (or at least refresh that one item):
         await LoadAllData();
-        statusMessage = "Factura emitida marcada como " + (selectedEmitida.D == "✓" ? "EXCLUIDA" : "INCLUIDA") + " en la declaración.";
+        statusMessage = $"Factura recibida marcada como {(wasExcluded ? "EXCLUIDA" : "INCLUIDA")} en la declaración.";
       }
       catch (Exception ex)
       {
@@ -52,11 +54,13 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       try
       {
+        var selectedId = selectedRecibida.Comprobante_Id;
+        var wasExcluded = selectedRecibida.D == "✓";
         using var conn = new SqlConnection(connectionString);
         string sql = "UPDATE Comprobante SET Incluir_En_Declaracion = CASE WHEN Incluir_En_Declaracion = 1 THEN 0 ELSE 1 END WHERE Comprobante_Id = @Id";
         await conn.ExecuteAsync(sql, new { Id = selectedRecibida.Comprobante_Id });
         await LoadAllData();
-        statusMessage = "Factura recibida marcada como " + (selectedRecibida.D == "✓" ? "EXCLUIDA" : "INCLUIDA") + " en la declaración.";
+        statusMessage = $"Factura recibida marcada como {(wasExcluded ? "EXCLUIDA" : "INCLUIDA")} en la declaración.";
       }
       catch (Exception ex)
       {

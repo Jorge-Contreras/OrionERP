@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Data.SqlClient;
+using Microsoft.IdentityModel.Tokens;
 
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
@@ -62,63 +63,69 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     {
       errorMessage = null;
       statusMessage = null;
+
       try
       {
         using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync();
-        // Determine parameters for year/month
-        string yearParam = isAnnual ? selectedYear.ToString() : selectedYear.ToString();
-        string monthParam = isAnnual ? "NULL" : selectedMonth.ToString("D2");  // procedures expect NVARCHAR(2) for month or NULL
-        string? rfcParam = selectedRfc;
-        // Use a transaction or at least parallel queries if possible to reduce latency
-        // We'll query each dataset:
-        var emitidasTask = conn.QueryAsync<DeclaracionEmitida>("EXEC dbo.Declaracion_Emitidas @Year, @Month, @RFC_Emisor",
-                            new { Year = isAnnual ? (object)DBNull.Value : selectedYear.ToString(), Month = isAnnual ? (object)DBNull.Value : selectedMonth.ToString("D2"), RFC_Emisor = rfcParam });
-        var emitidasTotTask = conn.QueryFirstOrDefaultAsync<DeclaracionTotales>("EXEC dbo.Declaracion_Emitidas_Totales @Year, @Month, @RFC_Emisor",
-                            new { Year = isAnnual ? (object)DBNull.Value : selectedYear.ToString(), Month = isAnnual ? (object)DBNull.Value : selectedMonth.ToString("D2"), RFC_Emisor = rfcParam });
-        var recibidasTask = conn.QueryAsync<DeclaracionRecibida>("EXEC dbo.Declaracion_Recibidas @Year, @Month, @RFC_Receptor",
-                            new { Year = isAnnual ? (object)DBNull.Value : selectedYear.ToString(), Month = isAnnual ? (object)DBNull.Value : selectedMonth.ToString("D2"), RFC_Receptor = rfcParam });
-        var recibidasTotTask = conn.QueryFirstOrDefaultAsync<DeclaracionTotales>("EXEC dbo.Declaracion_Recibidas_Totales @Year, @Month, @RFC_Receptor",
-                            new { Year = isAnnual ? (object)DBNull.Value : selectedYear.ToString(), Month = isAnnual ? (object)DBNull.Value : selectedMonth.ToString("D2"), RFC_Receptor = rfcParam });
-        var desfaseTask = conn.QueryAsync<DesfaseItem>("EXEC dbo.Declaracion_Comprobantes_Con_Desfase @RFC, @Anio, @Mes",
-                            new { RFC = rfcParam, Anio = selectedYear, Mes = selectedMonth });
-        var desfaseTotTask = conn.QueryFirstOrDefaultAsync<DesfaseTotales>("EXEC dbo.Declaracion_Comprobantes_Con_Desfase_Totales @RFC, @Anio, @Mes",
-                            new { RFC = rfcParam, Anio = selectedYear, Mes = selectedMonth });
-        var polizasTask = conn.QueryAsync<PolizaNoConsolidada>("EXEC dbo.Polizas_No_Consolidadas @RFC, @Anio, @Mes",
-                            new { RFC = rfcParam, Anio = selectedYear, Mes = selectedMonth });
-        // Additionally, tax summary and banks:
-        var impuestosTask = conn.QueryFirstOrDefaultAsync<string>("EXEC dbo.CALCULATE_TAXES @RFC, @startDate, @endDate",
-                            new { RFC = rfcParam, startDate = GetSqlDate(startDate), endDate = GetSqlDate(endDate) });
-        var bancosTask = conn.QueryFirstOrDefaultAsync<decimal?>("EXEC dbo.Reporte_Bancos_Caja @Year, @Month, @RFC",
-                            new { Year = selectedYear, Month = (isAnnual ? (object)DBNull.Value : selectedMonth), RFC = rfcParam });
-        // Wait for all tasks:
-        emitidas = (await emitidasTask).AsList();
-        emitidasTotals = await emitidasTotTask;
-        recibidas = (await recibidasTask).AsList();
-        recibidasTotals = await recibidasTotTask;
-        desfase = (await desfaseTask).AsList();
-        desfaseTotals = await desfaseTotTask;
-        polizasNoConsolidadas = (await polizasTask).AsList();
-        impuestosSummary = await impuestosTask ?? "";
-        var bancosVal = await bancosTask;
-        bancosCajaSummary = bancosVal.HasValue ? bancosVal.Value.ToString("C2") : "$0.00";
-        // After loading, apply initial sorting:
+
+        var common = new
+        {
+          Year = isAnnual ? (object)DBNull.Value : selectedYear.ToString(),
+          Month = isAnnual ? (object)DBNull.Value : selectedMonth.ToString("D2"),
+          RFC_Emisor = selectedRfc,
+          RFC_Receptor = selectedRfc,
+          RFC = selectedRfc,
+          Anio = selectedYear,
+          Mes = selectedMonth,
+          startDate = GetSqlDate(startDate),
+          endDate = GetSqlDate(endDate)
+        };
+
+        // One after another—no parallel readers:
+        emitidas = (await conn.QueryAsync<DeclaracionEmitida>(
+          "EXEC dbo.Declaracion_Emitidas @Year, @Month, @RFC_Emisor", common)).AsList();
+
+        emitidasTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
+          "EXEC dbo.Declaracion_Emitidas_Totales @Year, @Month, @RFC_Emisor", common);
+
+        recibidas = (await conn.QueryAsync<DeclaracionRecibida>(
+          "EXEC dbo.Declaracion_Recibidas @Year, @Month, @RFC_Receptor", common)).AsList();
+
+        recibidasTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
+          "EXEC dbo.Declaracion_Recibidas_Totales @Year, @Month, @RFC_Receptor", common);
+
+        desfase = (await conn.QueryAsync<DesfaseItem>(
+          "EXEC dbo.Declaracion_Comprobantes_Con_Desfase @RFC, @Anio, @Mes", common)).AsList();
+
+        desfaseTotals = await conn.QueryFirstOrDefaultAsync<DesfaseTotales>(
+          "EXEC dbo.Declaracion_Comprobantes_Con_Desfase_Totales @RFC, @Anio, @Mes", common);
+
+        polizasNoConsolidadas = (await conn.QueryAsync<PolizaNoConsolidada>(
+          "EXEC dbo.Polizas_No_Consolidadas @RFC, @Anio, @Mes", common)).AsList();
+
+        impuestosSummary = await conn.QueryFirstOrDefaultAsync<string>(
+          "EXEC dbo.CALCULATE_TAXES @RFC, @startDate, @endDate", common) ?? "";
+
+        var bancosVal = await conn.QueryFirstOrDefaultAsync<string?>(
+          "EXEC dbo.Reporte_Bancos_Caja @Year, @Month, @RFC",
+          new { Year = selectedYear, Month = isAnnual ? (object)DBNull.Value : selectedMonth, RFC = selectedRfc });
+
+        bancosCajaSummary = bancosVal;
+
         ApplySorting();
-        // Reset selection and pagination:
-        selectedEmitida = null;
-        selectedRecibida = null;
+        selectedEmitida = null; selectedRecibida = null;
         emitidasCurrentPage = 1;
-        if (emitidas != null)
-          emitidasPageCount = (int)Math.Ceiling(emitidas.Count / (double)pageSize);
+        if (emitidas != null) emitidasPageCount = (int)Math.Ceiling(emitidas.Count / (double)pageSize);
         recibidasCurrentPage = 1;
-        if (recibidas != null)
-          recibidasPageCount = (int)Math.Ceiling(recibidas.Count / (double)pageSize);
+        if (recibidas != null) recibidasPageCount = (int)Math.Ceiling(recibidas.Count / (double)pageSize);
       }
       catch (Exception ex)
       {
         errorMessage = "Error loading data: " + ex.Message;
       }
     }
+
 
     // Utility to format date for SQL as string (if needed; SP might accept date properly too)
     private string GetSqlDate(DateTime dt) => dt.ToString("yyyy-MM-dd HH:mm:ss");

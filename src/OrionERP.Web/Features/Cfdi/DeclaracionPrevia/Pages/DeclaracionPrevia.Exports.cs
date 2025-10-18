@@ -123,15 +123,28 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         if (includeRecibidas && recibidas != null)
         {
           var wsR = package.Workbook.Worksheets.Add("Recibidas");
-          string[] headersR = new string[] { "Comprobante_ID", "Incluido", "Fecha", "Mes", "Año", "Emisor", "SubTotal", "Descuento", "SubTotal_Desc", "Actos16", "Actos0", "IVA", "IEPS", "IVA_RETENIDO", "ISR_RETENIDO", "IEPS_RETENIDO", "Total", "UUID", "FormaPago", "TipoDeComprobante", "MetodoPago", "UsoCFDI", "FechaPago", "Estatus", "Transaccion_ID" };
+
+          // Headers aligned to DeclaracionRecibida
+          string[] headersR = new string[]
+          {
+        "Comprobante_ID", "Incluido", "Fecha", "Mes", "Año", "Emisor",
+        "SubTotal", "Descuento", "SubTotal_Desc", "Actos16", "Actos0",
+        "IVA", "IEPS", "IVA_RETENIDO", "ISR_RETENIDO", "IEPS_RETENIDO",
+        "Total", "UUID", "FormaPago", "TipoDeComprobante", "MetodoPago",
+        "UsoCFDI", "FechaCancelacion", "Estatus", "Transacción Fechas",
+        "Poliza", "SumaPolizas"
+          };
+
+          // Write headers
           for (int j = 0; j < headersR.Length; j++)
             wsR.Cells[1, j + 1].Value = headersR[j];
+
           int row = 2;
           foreach (var it in recibidas)
           {
             wsR.Cells[row, 1].Value = it.Comprobante_Id;
             wsR.Cells[row, 2].Value = it.D;
-            wsR.Cells[row, 3].Value = it.Fecha;
+            wsR.Cells[row, 3].Value = it.Fecha; // you can also set a date format below
             wsR.Cells[row, 4].Value = it.MES_GLOBAL;
             wsR.Cells[row, 5].Value = it.ANIO_GLOBAL;
             wsR.Cells[row, 6].Value = it.EMISOR;
@@ -151,29 +164,47 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
             wsR.Cells[row, 20].Value = it.TipoDeComprobante;
             wsR.Cells[row, 21].Value = it.MetodoPago;
             wsR.Cells[row, 22].Value = it.UsoCFDI;
-            wsR.Cells[row, 23].Value = it.FechaPago?.ToString("yyyy-MM-dd");
+            wsR.Cells[row, 23].Value = it.FechaCancelacion?.ToString("yyyy-MM-dd");
             wsR.Cells[row, 24].Value = it.Estatus;
-            wsR.Cells[row, 25].Value = it.TransaccionVinculada;
+            wsR.Cells[row, 25].Value = it.fechastransacciones;
+            wsR.Cells[row, 26].Value = it.Poliza;
+            wsR.Cells[row, 27].Value = it.SumaPolizas;
             row++;
           }
-          // Totals:
+
+          // Totals row
           wsR.Cells[row, 1].Value = "Totals:";
-          wsR.Cells[row, 7].Formula = $"SUM(G2:G{row - 1})";
-          wsR.Cells[row, 8].Formula = $"SUM(H2:H{row - 1})";
-          wsR.Cells[row, 9].Formula = $"SUM(I2:I{row - 1})";
-          wsR.Cells[row, 10].Formula = $"SUM(J2:J{row - 1})";
-          wsR.Cells[row, 11].Formula = $"SUM(K2:K{row - 1})";
-          wsR.Cells[row, 12].Formula = $"SUM(L2:L{row - 1})";
-          wsR.Cells[row, 13].Formula = $"SUM(M2:M{row - 1})";
-          wsR.Cells[row, 14].Formula = $"SUM(N2:N{row - 1})";
-          wsR.Cells[row, 15].Formula = $"SUM(O2:O{row - 1})";
-          wsR.Cells[row, 16].Formula = $"SUM(P2:P{row - 1})";
-          wsR.Cells[row, 17].Formula = $"SUM(Q2:Q{row - 1})";
+
+          // Sum numeric money columns (G..Q = 7..17)
+          wsR.Cells[row, 7].Formula = $"SUM(G2:G{row - 1})";   // SubTotal
+          wsR.Cells[row, 8].Formula = $"SUM(H2:H{row - 1})";   // Descuento
+          wsR.Cells[row, 9].Formula = $"SUM(I2:I{row - 1})";   // SubTotal_Desc
+          wsR.Cells[row, 10].Formula = $"SUM(J2:J{row - 1})";   // Actos16
+          wsR.Cells[row, 11].Formula = $"SUM(K2:K{row - 1})";   // Actos0
+          wsR.Cells[row, 12].Formula = $"SUM(L2:L{row - 1})";   // IVA
+          wsR.Cells[row, 13].Formula = $"SUM(M2:M{row - 1})";   // IEPS
+          wsR.Cells[row, 14].Formula = $"SUM(N2:N{row - 1})";   // IVA_RETENIDO
+          wsR.Cells[row, 15].Formula = $"SUM(O2:O{row - 1})";   // ISR_RETENIDO
+          wsR.Cells[row, 16].Formula = $"SUM(P2:P{row - 1})";   // IEPS_RETENIDO
+          wsR.Cells[row, 17].Formula = $"SUM(Q2:Q{row - 1})";   // Total
+
+          // Number formats
           for (int col = 7; col <= 17; col++)
             wsR.Column(col).Style.Numberformat.Format = "#,##0.00";
+
+          // Optional: integer format for SumaPolizas
+          wsR.Column(27).Style.Numberformat.Format = "#,##0";
+
+          // Optional: date formats
+          wsR.Column(3).Style.Numberformat.Format = "yyyy-mm-dd"; // Fecha
+                                                                  // Column 23 is written as string above; if you store DateTime instead, format it:
+                                                                  // wsR.Column(23).Style.Numberformat.Format = "yyyy-mm-dd";
+
+          // Header style and autofit
           wsR.Cells[1, 1, 1, headersR.Length].Style.Font.Bold = true;
           wsR.Cells.AutoFitColumns();
         }
+
         // Prepare file for download:
         byte[] fileBytes = package.GetAsByteArray();
         string fileName = "DeclaracionPrevia";

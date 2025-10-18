@@ -1,0 +1,32 @@
+@page "/cfdi/declaracion-previa/resumen"
+@inject IJSRuntime JS
+
+<h3>Resumen – Declaración Previa</h3>
+
+@if (!string.IsNullOrWhiteSpace(BancosCaja))
+{
+    <h5 class="mt-3">Bancos y Caja</h5>
+    <div class="summary-box">@BancosCaja</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(Impuestos))
+{
+    <h5 class="mt-3">Impuestos</h5>
+    <div class="summary-box">@Impuestos</div>
+}
+
+@code {
+    private string? BancosCaja;
+    private string? Impuestos;
+
+    // Read from sessionStorage after the first render
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            BancosCaja = await JS.InvokeAsync<string>("sessionStorage.getItem", "bancosCajaSummary");
+            Impuestos = await JS.InvokeAsync<string>("sessionStorage.getItem", "impuestosSummary");
+            StateHasChanged();
+        }
+    }
+}

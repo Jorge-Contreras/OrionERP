@@ -10,6 +10,8 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
   public partial class DeclaracionPrevia
   {
+    
+
     protected override async Task OnInitializedAsync()
     {
       connectionString = Configuration.GetConnectionString("OrionDb");
@@ -66,12 +68,13 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
       try
       {
+        
         using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync();
 
         var common = new
         {
-          Year = isAnnual ? (object)DBNull.Value : selectedYear.ToString(),
+          Year = selectedYear.ToString(),
           Month = isAnnual ? (object)DBNull.Value : selectedMonth.ToString("D2"),
           RFC_Emisor = selectedRfc,
           RFC_Receptor = selectedRfc,
@@ -124,6 +127,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       {
         errorMessage = "Error loading data: " + ex.Message;
       }
+      
     }
 
 

@@ -3,7 +3,11 @@
 @inject IJSRuntime JS
 
 <h3>Declaración Previa</h3>
-
+@if (_filtering)
+{
+    <span class="spinner-border spinner-border-sm ms-2" role="status" aria-hidden="true"></span>
+    <span class="ms-1 small align-middle">Cargando…</span>
+}
 <div class="mb-3 filter-bar">
     <div class="filter-pair">
         <label class="fw-bold">RFC (Razón Social):</label>
@@ -232,11 +236,22 @@
 <div class="mb-2 filter-bar">
     <!-- Sorting controls for Recibidas -->
     
-    <div class="filter-pair">
+ 
 
-    <label>Ordenar por:</label>
-    <select @bind="recibidasSortColumn" @bind:after="OnRecibidasSortChangedAsync" class="form-select inline-select">
-    </select>
+    <div class="filter-pair">
+        <label for="recibSortCol">Ordenar por:</label>
+        <select id="recibSortCol"
+                @bind="recibidasSortColumn"
+                @bind:after="OnRecibidasSortChangedAsync"
+                class="form-select inline-select">
+            @if (recibidasSortableFields != null)
+            {
+                @foreach (var field in recibidasSortableFields)
+                {
+                    <option value="@field.Value">@field.Key</option>
+                }
+            }
+        </select>
     </div>
 
     <select @bind="recibidasSortOrder" @bind:after="OnRecibidasSortChangedAsync" class="form-select inline-select">

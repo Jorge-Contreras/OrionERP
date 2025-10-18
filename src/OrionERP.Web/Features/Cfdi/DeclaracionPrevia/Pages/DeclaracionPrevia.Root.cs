@@ -18,7 +18,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
   public partial class DeclaracionPrevia : ComponentBase
   {
-
+    private bool _filtering;
     private async Task OpenResumenTab()
     {
       // Persist the two strings into sessionStorage (works across pages/tabs)

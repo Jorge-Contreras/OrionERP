@@ -5,6 +5,7 @@ using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
 using OrionERP.Web.Configuration;
 using OrionERP.Web.Data;
+using OrionERP.Web.Features.Cfdi.DescargaMasiva;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,6 +17,9 @@ builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddSingleton<WeatherForecastService>();
 builder.Services.AddCfdiCargarXmlSat(); // neat 1-liner per feature
+builder.Services.AddOrionServices();   // neat 1-liner per project
+builder.Services.Configure<SatIntegrationOptions>(builder.Configuration.GetSection("SatIntegration"));
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

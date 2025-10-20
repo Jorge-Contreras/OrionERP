@@ -1,0 +1,1312 @@
+Folder PATH listing for volume Windows
+Volume serial number is 7400-D47F
+C:\USERS\JC_CA\GRUPO CARPIO DROPBOX\GRUPO ORION\SOFTWARE\GITHUBS\ORIONERP
+|   .editorconfig
+|   .gitattributes
+|   .gitignore
+|   global.json
+|   LICENSE
+|   OrionERP.sln
+|   OrionERP_Snapshot.ps1
+|   OrionERP_Snapshot_20251011_205142.md
+|   OrionERP_Snapshot_20251011_205715.md
+|   OrionERP_Snapshot_20251011_205926.md
+|   OrionERP_Snapshot_20251011_210025.md
+|   OrionERP_Snapshot_20251011_210125.md
+|   README.md
+|   SolutionTree.txt
+|   
++---.github
+|   |   PULL_REQUEST_TEMPLATE.md
+|   |   
+|   +---ISSUE_TEMPLATE
+|   |       bug.md
+|   |       feature.md
+|   |       
+|   \---workflows
+|           ci.yml
+|           
++---src
+|   +---OrionERP.Application
+|   |   |   Class1.cs
+|   |   |   OrionERP.Application.csproj
+|   |   |   
+|   |   +---bin
+|   |   |   +---Debug
+|   |   |   |   \---net9.0
+|   |   |   |           OrionERP.Application.deps.json
+|   |   |   |           OrionERP.Application.dll
+|   |   |   |           OrionERP.Application.pdb
+|   |   |   |           OrionERP.Domain.dll
+|   |   |   |           OrionERP.Domain.pdb
+|   |   |   |           
+|   |   |   \---Release
+|   |   |       \---net9.0
+|   |   |               OrionERP.Application.deps.json
+|   |   |               OrionERP.Application.dll
+|   |   |               OrionERP.Application.pdb
+|   |   |               OrionERP.Domain.dll
+|   |   |               OrionERP.Domain.pdb
+|   |   |               
+|   |   +---Features
+|   |   |   \---Cfdi
+|   |   |       \---CargarXmlSat
+|   |   |           +---Contracts
+|   |   |           |       ConciliacionResult.cs
+|   |   |           |       IComprobanteQueryService.cs
+|   |   |           |       IConciliacionService.cs
+|   |   |           |       ISatXmlInboxService.cs
+|   |   |           |       ITransaccionQueryService.cs
+|   |   |           |       TransaccionListItem.cs
+|   |   |           |       
+|   |   |           +---Dto
+|   |   |           \---UseCases
+|   |   \---obj
+|   |       |   OrionERP.Application.csproj.nuget.dgspec.json
+|   |       |   OrionERP.Application.csproj.nuget.g.props
+|   |       |   OrionERP.Application.csproj.nuget.g.targets
+|   |       |   project.assets.json
+|   |       |   project.nuget.cache
+|   |       |   
+|   |       +---Debug
+|   |       |   \---net9.0
+|   |       |       |   .NETCoreApp,Version=v9.0.AssemblyAttributes.cs
+|   |       |       |   OrionERP.298C170D.Up2Date
+|   |       |       |   OrionERP.Application.AssemblyInfo.cs
+|   |       |       |   OrionERP.Application.AssemblyInfoInputs.cache
+|   |       |       |   OrionERP.Application.assets.cache
+|   |       |       |   OrionERP.Application.csproj.AssemblyReference.cache
+|   |       |       |   OrionERP.Application.csproj.BuildWithSkipAnalyzers
+|   |       |       |   OrionERP.Application.csproj.CoreCompileInputs.cache
+|   |       |       |   OrionERP.Application.csproj.FileListAbsolute.txt
+|   |       |       |   OrionERP.Application.dll
+|   |       |       |   OrionERP.Application.GeneratedMSBuildEditorConfig.editorconfig
+|   |       |       |   OrionERP.Application.GlobalUsings.g.cs
+|   |       |       |   OrionERP.Application.pdb
+|   |       |       |   OrionERP.Application.sourcelink.json
+|   |       |       |   
+|   |       |       +---ref
+|   |       |       |       OrionERP.Application.dll
+|   |       |       |       
+|   |       |       \---refint
+|   |       |               OrionERP.Application.dll
+|   |       |               
+|   |       \---Release
+|   |           \---net9.0
+|   |               |   .NETCoreApp,Version=v9.0.AssemblyAttributes.cs
+|   |               |   OrionERP.298C170D.Up2Date
+|   |               |   OrionERP.Application.AssemblyInfo.cs
+|   |               |   OrionERP.Application.AssemblyInfoInputs.cache
+|   |               |   OrionERP.Application.assets.cache
+|   |               |   OrionERP.Application.csproj.AssemblyReference.cache
+|   |               |   OrionERP.Application.csproj.CoreCompileInputs.cache
+|   |               |   OrionERP.Application.csproj.FileListAbsolute.txt
+|   |               |   OrionERP.Application.dll
+|   |               |   OrionERP.Application.GeneratedMSBuildEditorConfig.editorconfig
+|   |               |   OrionERP.Application.GlobalUsings.g.cs
+|   |               |   OrionERP.Application.pdb
+|   |               |   OrionERP.Application.sourcelink.json
+|   |               |   
+|   |               +---ref
+|   |               |       OrionERP.Application.dll
+|   |               |       
+|   |               \---refint
+|   |                       OrionERP.Application.dll
+|   |                       
+|   +---OrionERP.Domain
+|   |   |   Class1.cs
+|   |   |   OrionERP.Domain.csproj
+|   |   |   
+|   |   +---bin
+|   |   |   +---Debug
+|   |   |   |   \---net9.0
+|   |   |   |           OrionERP.Domain.deps.json
+|   |   |   |           OrionERP.Domain.dll
+|   |   |   |           OrionERP.Domain.pdb
+|   |   |   |           
+|   |   |   \---Release
+|   |   |       \---net9.0
+|   |   |               OrionERP.Domain.deps.json
+|   |   |               OrionERP.Domain.dll
+|   |   |               OrionERP.Domain.pdb
+|   |   |               
+|   |   \---obj
+|   |       |   OrionERP.Domain.csproj.nuget.dgspec.json
+|   |       |   OrionERP.Domain.csproj.nuget.g.props
+|   |       |   OrionERP.Domain.csproj.nuget.g.targets
+|   |       |   project.assets.json
+|   |       |   project.nuget.cache
+|   |       |   
+|   |       +---Debug
+|   |       |   \---net9.0
+|   |       |       |   .NETCoreApp,Version=v9.0.AssemblyAttributes.cs
+|   |       |       |   OrionERP.Domain.AssemblyInfo.cs
+|   |       |       |   OrionERP.Domain.AssemblyInfoInputs.cache
+|   |       |       |   OrionERP.Domain.assets.cache
+|   |       |       |   OrionERP.Domain.csproj.BuildWithSkipAnalyzers
+|   |       |       |   OrionERP.Domain.csproj.CoreCompileInputs.cache
+|   |       |       |   OrionERP.Domain.csproj.FileListAbsolute.txt
+|   |       |       |   OrionERP.Domain.dll
+|   |       |       |   OrionERP.Domain.GeneratedMSBuildEditorConfig.editorconfig
+|   |       |       |   OrionERP.Domain.GlobalUsings.g.cs
+|   |       |       |   OrionERP.Domain.pdb
+|   |       |       |   OrionERP.Domain.sourcelink.json
+|   |       |       |   
+|   |       |       +---ref
+|   |       |       |       OrionERP.Domain.dll
+|   |       |       |       
+|   |       |       \---refint
+|   |       |               OrionERP.Domain.dll
+|   |       |               
+|   |       \---Release
+|   |           \---net9.0
+|   |               |   .NETCoreApp,Version=v9.0.AssemblyAttributes.cs
+|   |               |   OrionERP.Domain.AssemblyInfo.cs
+|   |               |   OrionERP.Domain.AssemblyInfoInputs.cache
+|   |               |   OrionERP.Domain.assets.cache
+|   |               |   OrionERP.Domain.csproj.CoreCompileInputs.cache
+|   |               |   OrionERP.Domain.csproj.FileListAbsolute.txt
+|   |               |   OrionERP.Domain.dll
+|   |               |   OrionERP.Domain.GeneratedMSBuildEditorConfig.editorconfig
+|   |               |   OrionERP.Domain.GlobalUsings.g.cs
+|   |               |   OrionERP.Domain.pdb
+|   |               |   OrionERP.Domain.sourcelink.json
+|   |               |   
+|   |               +---ref
+|   |               |       OrionERP.Domain.dll
+|   |               |       
+|   |               \---refint
+|   |                       OrionERP.Domain.dll
+|   |                       
+|   +---OrionERP.Infrastructure
+|   |   |   Class1.cs
+|   |   |   OrionERP.Infrastructure.csproj
+|   |   |   
+|   |   +---bin
+|   |   |   +---Debug
+|   |   |   |   \---net9.0
+|   |   |   |           OrionERP.Application.dll
+|   |   |   |           OrionERP.Application.pdb
+|   |   |   |           OrionERP.Domain.dll
+|   |   |   |           OrionERP.Domain.pdb
+|   |   |   |           OrionERP.Infrastructure.deps.json
+|   |   |   |           OrionERP.Infrastructure.dll
+|   |   |   |           OrionERP.Infrastructure.pdb
+|   |   |   |           
+|   |   |   \---Release
+|   |   |       \---net9.0
+|   |   |               OrionERP.Application.dll
+|   |   |               OrionERP.Application.pdb
+|   |   |               OrionERP.Domain.dll
+|   |   |               OrionERP.Domain.pdb
+|   |   |               OrionERP.Infrastructure.deps.json
+|   |   |               OrionERP.Infrastructure.dll
+|   |   |               OrionERP.Infrastructure.pdb
+|   |   |               
+|   |   +---Features
+|   |   |   \---Cfdi
+|   |   |       \---CargarXmlSat
+|   |   |           +---Dapper
+|   |   |           \---Services
+|   |   |                   ComprobanteQueryService.cs
+|   |   |                   ConciliacionService.cs
+|   |   |                   SatXmlInboxService.cs
+|   |   |                   TransaccionQueryService.cs
+|   |   |                   
+|   |   \---obj
+|   |       |   OrionERP.Infrastructure.csproj.nuget.dgspec.json
+|   |       |   OrionERP.Infrastructure.csproj.nuget.g.props
+|   |       |   OrionERP.Infrastructure.csproj.nuget.g.targets
+|   |       |   project.assets.json
+|   |       |   project.nuget.cache
+|   |       |   
+|   |       +---Debug
+|   |       |   \---net9.0
+|   |       |       |   .NETCoreApp,Version=v9.0.AssemblyAttributes.cs
+|   |       |       |   OrionERP.5FBCDFC0.Up2Date
+|   |       |       |   OrionERP.Infrastructure.AssemblyInfo.cs
+|   |       |       |   OrionERP.Infrastructure.AssemblyInfoInputs.cache
+|   |       |       |   OrionERP.Infrastructure.assets.cache
+|   |       |       |   OrionERP.Infrastructure.csproj.AssemblyReference.cache
+|   |       |       |   OrionERP.Infrastructure.csproj.BuildWithSkipAnalyzers
+|   |       |       |   OrionERP.Infrastructure.csproj.CoreCompileInputs.cache
+|   |       |       |   OrionERP.Infrastructure.csproj.FileListAbsolute.txt
+|   |       |       |   OrionERP.Infrastructure.dll
+|   |       |       |   OrionERP.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+|   |       |       |   OrionERP.Infrastructure.GlobalUsings.g.cs
+|   |       |       |   OrionERP.Infrastructure.pdb
+|   |       |       |   OrionERP.Infrastructure.sourcelink.json
+|   |       |       |   
+|   |       |       +---ref
+|   |       |       |       OrionERP.Infrastructure.dll
+|   |       |       |       
+|   |       |       \---refint
+|   |       |               OrionERP.Infrastructure.dll
+|   |       |               
+|   |       \---Release
+|   |           \---net9.0
+|   |               |   .NETCoreApp,Version=v9.0.AssemblyAttributes.cs
+|   |               |   OrionERP.5FBCDFC0.Up2Date
+|   |               |   OrionERP.Infrastructure.AssemblyInfo.cs
+|   |               |   OrionERP.Infrastructure.AssemblyInfoInputs.cache
+|   |               |   OrionERP.Infrastructure.assets.cache
+|   |               |   OrionERP.Infrastructure.csproj.AssemblyReference.cache
+|   |               |   OrionERP.Infrastructure.csproj.CoreCompileInputs.cache
+|   |               |   OrionERP.Infrastructure.csproj.FileListAbsolute.txt
+|   |               |   OrionERP.Infrastructure.dll
+|   |               |   OrionERP.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+|   |               |   OrionERP.Infrastructure.GlobalUsings.g.cs
+|   |               |   OrionERP.Infrastructure.pdb
+|   |               |   OrionERP.Infrastructure.sourcelink.json
+|   |               |   
+|   |               +---ref
+|   |               |       OrionERP.Infrastructure.dll
+|   |               |       
+|   |               \---refint
+|   |                       OrionERP.Infrastructure.dll
+|   |                       
+|   \---OrionERP.Web
+|       |   App.razor
+|       |   appsettings.Development.json
+|       |   appsettings.json
+|       |   OrionERP.Web.csproj
+|       |   Program.cs
+|       |   _Imports.razor
+|       |   
+|       +---bin
+|       |   +---Debug
+|       |   |   \---net9.0
+|       |   |       |   appsettings.Development.json
+|       |   |       |   appsettings.json
+|       |   |       |   Azure.Core.dll
+|       |   |       |   Azure.Identity.dll
+|       |   |       |   Dapper.dll
+|       |   |       |   EPPlus.dll
+|       |   |       |   EPPlus.Interfaces.dll
+|       |   |       |   Microsoft.Bcl.AsyncInterfaces.dll
+|       |   |       |   Microsoft.Bcl.Cryptography.dll
+|       |   |       |   Microsoft.Data.SqlClient.dll
+|       |   |       |   Microsoft.Extensions.Caching.Abstractions.dll
+|       |   |       |   Microsoft.Extensions.Caching.Memory.dll
+|       |   |       |   Microsoft.Extensions.Configuration.Abstractions.dll
+|       |   |       |   Microsoft.Extensions.Configuration.dll
+|       |   |       |   Microsoft.Extensions.Configuration.FileExtensions.dll
+|       |   |       |   Microsoft.Extensions.Configuration.Json.dll
+|       |   |       |   Microsoft.Extensions.DependencyInjection.Abstractions.dll
+|       |   |       |   Microsoft.Extensions.FileProviders.Abstractions.dll
+|       |   |       |   Microsoft.Extensions.FileProviders.Physical.dll
+|       |   |       |   Microsoft.Extensions.FileSystemGlobbing.dll
+|       |   |       |   Microsoft.Extensions.Logging.Abstractions.dll
+|       |   |       |   Microsoft.Extensions.Options.dll
+|       |   |       |   Microsoft.Extensions.Primitives.dll
+|       |   |       |   Microsoft.Identity.Client.dll
+|       |   |       |   Microsoft.Identity.Client.Extensions.Msal.dll
+|       |   |       |   Microsoft.IdentityModel.Abstractions.dll
+|       |   |       |   Microsoft.IdentityModel.JsonWebTokens.dll
+|       |   |       |   Microsoft.IdentityModel.Logging.dll
+|       |   |       |   Microsoft.IdentityModel.Protocols.dll
+|       |   |       |   Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
+|       |   |       |   Microsoft.IdentityModel.Tokens.dll
+|       |   |       |   Microsoft.IO.RecyclableMemoryStream.dll
+|       |   |       |   Microsoft.SqlServer.Server.dll
+|       |   |       |   OrionERP.Application.dll
+|       |   |       |   OrionERP.Application.pdb
+|       |   |       |   OrionERP.Domain.dll
+|       |   |       |   OrionERP.Domain.pdb
+|       |   |       |   OrionERP.Infrastructure.dll
+|       |   |       |   OrionERP.Infrastructure.pdb
+|       |   |       |   OrionERP.Web.deps.json
+|       |   |       |   OrionERP.Web.dll
+|       |   |       |   OrionERP.Web.exe
+|       |   |       |   OrionERP.Web.pdb
+|       |   |       |   OrionERP.Web.runtimeconfig.json
+|       |   |       |   OrionERP.Web.staticwebassets.endpoints.json
+|       |   |       |   OrionERP.Web.staticwebassets.runtime.json
+|       |   |       |   System.ClientModel.dll
+|       |   |       |   System.Configuration.ConfigurationManager.dll
+|       |   |       |   System.Diagnostics.EventLog.dll
+|       |   |       |   System.IdentityModel.Tokens.Jwt.dll
+|       |   |       |   System.Memory.Data.dll
+|       |   |       |   System.Security.Cryptography.Pkcs.dll
+|       |   |       |   System.Security.Cryptography.ProtectedData.dll
+|       |   |       |   System.Security.Cryptography.Xml.dll
+|       |   |       |   
+|       |   |       +---cs
+|       |   |       |       Microsoft.Data.SqlClient.resources.dll
+|       |   |       |       
+|       |   |       +---de
+|       |   |       |       Microsoft.Data.SqlClient.resources.dll
+|       |   |       |       
+|       |   |       +---es
+|       |   |       |       Microsoft.Data.SqlClient.resources.dll
+|       |   |       |       
+|       |   |       +---fr
+|       |   |       |       Microsoft.Data.SqlClient.resources.dll
+|       |   |       |       
+|       |   |       +---it
+|       |   |       |       Microsoft.Data.SqlClient.resources.dll
+|       |   |       |       
+|       |   |       +---ja
+|       |   |       |       Microsoft.Data.SqlClient.resources.dll
+|       |   |       |       
+|       |   |       +---ko
+|       |   |       |       Microsoft.Data.SqlClient.resources.dll
+|       |   |       |       
+|       |   |       +---pl
+|       |   |       |       Microsoft.Data.SqlClient.resources.dll
+|       |   |       |       
+|       |   |       +---pt-BR
+|       |   |       |       Microsoft.Data.SqlClient.resources.dll
+|       |   |       |       
+|       |   |       +---ru
+|       |   |       |       Microsoft.Data.SqlClient.resources.dll
+|       |   |       |       
+|       |   |       +---runtimes
+|       |   |       |   +---unix
+|       |   |       |   |   \---lib
+|       |   |       |   |       \---net9.0
+|       |   |       |   |               Microsoft.Data.SqlClient.dll
+|       |   |       |   |               
+|       |   |       |   +---win
+|       |   |       |   |   \---lib
+|       |   |       |   |       \---net9.0
+|       |   |       |   |               Microsoft.Data.SqlClient.dll
+|       |   |       |   |               System.Diagnostics.EventLog.dll
+|       |   |       |   |               System.Security.Cryptography.Pkcs.dll
+|       |   |       |   |               
+|       |   |       |   +---win-arm64
+|       |   |       |   |   \---native
+|       |   |       |   |           Microsoft.Data.SqlClient.SNI.dll
+|       |   |       |   |           
+|       |   |       |   +---win-x64
+|       |   |       |   |   \---native
+|       |   |       |   |           Microsoft.Data.SqlClient.SNI.dll
+|       |   |       |   |           
+|       |   |       |   \---win-x86
+|       |   |       |       \---native
+|       |   |       |               Microsoft.Data.SqlClient.SNI.dll
+|       |   |       |               
+|       |   |       +---tr
+|       |   |       |       Microsoft.Data.SqlClient.resources.dll
+|       |   |       |       
+|       |   |       +---zh-Hans
+|       |   |       |       Microsoft.Data.SqlClient.resources.dll
+|       |   |       |       
+|       |   |       \---zh-Hant
+|       |   |               Microsoft.Data.SqlClient.resources.dll
+|       |   |               
+|       |   \---Release
+|       |       \---net9.0
+|       |           |   appsettings.Development.json
+|       |           |   appsettings.json
+|       |           |   Azure.Core.dll
+|       |           |   Azure.Identity.dll
+|       |           |   Dapper.dll
+|       |           |   Microsoft.Bcl.AsyncInterfaces.dll
+|       |           |   Microsoft.Bcl.Cryptography.dll
+|       |           |   Microsoft.Data.SqlClient.dll
+|       |           |   Microsoft.Extensions.Caching.Abstractions.dll
+|       |           |   Microsoft.Extensions.Caching.Memory.dll
+|       |           |   Microsoft.Extensions.Configuration.Abstractions.dll
+|       |           |   Microsoft.Extensions.DependencyInjection.Abstractions.dll
+|       |           |   Microsoft.Extensions.Logging.Abstractions.dll
+|       |           |   Microsoft.Extensions.Options.dll
+|       |           |   Microsoft.Extensions.Primitives.dll
+|       |           |   Microsoft.Identity.Client.dll
+|       |           |   Microsoft.Identity.Client.Extensions.Msal.dll
+|       |           |   Microsoft.IdentityModel.Abstractions.dll
+|       |           |   Microsoft.IdentityModel.JsonWebTokens.dll
+|       |           |   Microsoft.IdentityModel.Logging.dll
+|       |           |   Microsoft.IdentityModel.Protocols.dll
+|       |           |   Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
+|       |           |   Microsoft.IdentityModel.Tokens.dll
+|       |           |   Microsoft.SqlServer.Server.dll
+|       |           |   OrionERP.Application.dll
+|       |           |   OrionERP.Application.pdb
+|       |           |   OrionERP.Domain.dll
+|       |           |   OrionERP.Domain.pdb
+|       |           |   OrionERP.Infrastructure.dll
+|       |           |   OrionERP.Infrastructure.pdb
+|       |           |   OrionERP.Web.deps.json
+|       |           |   OrionERP.Web.dll
+|       |           |   OrionERP.Web.exe
+|       |           |   OrionERP.Web.pdb
+|       |           |   OrionERP.Web.runtimeconfig.json
+|       |           |   OrionERP.Web.staticwebassets.endpoints.json
+|       |           |   OrionERP.Web.staticwebassets.runtime.json
+|       |           |   System.ClientModel.dll
+|       |           |   System.Configuration.ConfigurationManager.dll
+|       |           |   System.Diagnostics.EventLog.dll
+|       |           |   System.IdentityModel.Tokens.Jwt.dll
+|       |           |   System.Memory.Data.dll
+|       |           |   System.Security.Cryptography.Pkcs.dll
+|       |           |   System.Security.Cryptography.ProtectedData.dll
+|       |           |   
+|       |           +---cs
+|       |           |       Microsoft.Data.SqlClient.resources.dll
+|       |           |       
+|       |           +---de
+|       |           |       Microsoft.Data.SqlClient.resources.dll
+|       |           |       
+|       |           +---es
+|       |           |       Microsoft.Data.SqlClient.resources.dll
+|       |           |       
+|       |           +---fr
+|       |           |       Microsoft.Data.SqlClient.resources.dll
+|       |           |       
+|       |           +---it
+|       |           |       Microsoft.Data.SqlClient.resources.dll
+|       |           |       
+|       |           +---ja
+|       |           |       Microsoft.Data.SqlClient.resources.dll
+|       |           |       
+|       |           +---ko
+|       |           |       Microsoft.Data.SqlClient.resources.dll
+|       |           |       
+|       |           +---pl
+|       |           |       Microsoft.Data.SqlClient.resources.dll
+|       |           |       
+|       |           +---pt-BR
+|       |           |       Microsoft.Data.SqlClient.resources.dll
+|       |           |       
+|       |           +---ru
+|       |           |       Microsoft.Data.SqlClient.resources.dll
+|       |           |       
+|       |           +---runtimes
+|       |           |   +---unix
+|       |           |   |   \---lib
+|       |           |   |       \---net9.0
+|       |           |   |               Microsoft.Data.SqlClient.dll
+|       |           |   |               
+|       |           |   +---win
+|       |           |   |   \---lib
+|       |           |   |       \---net9.0
+|       |           |   |               Microsoft.Data.SqlClient.dll
+|       |           |   |               System.Diagnostics.EventLog.dll
+|       |           |   |               System.Security.Cryptography.Pkcs.dll
+|       |           |   |               
+|       |           |   +---win-arm64
+|       |           |   |   \---native
+|       |           |   |           Microsoft.Data.SqlClient.SNI.dll
+|       |           |   |           
+|       |           |   +---win-x64
+|       |           |   |   \---native
+|       |           |   |           Microsoft.Data.SqlClient.SNI.dll
+|       |           |   |           
+|       |           |   \---win-x86
+|       |           |       \---native
+|       |           |               Microsoft.Data.SqlClient.SNI.dll
+|       |           |               
+|       |           +---tr
+|       |           |       Microsoft.Data.SqlClient.resources.dll
+|       |           |       
+|       |           +---zh-Hans
+|       |           |       Microsoft.Data.SqlClient.resources.dll
+|       |           |       
+|       |           \---zh-Hant
+|       |                   Microsoft.Data.SqlClient.resources.dll
+|       |                   
+|       +---Configuration
+|       |       ServiceRegistration.cs
+|       |       
+|       +---Data
+|       |       WeatherForecast.cs
+|       |       WeatherForecastService.cs
+|       |       
+|       +---Features
+|       |   \---Cfdi
+|       |       +---CargarXmlSat
+|       |       |   \---Pages
+|       |       |           CargarXmlSat.razor
+|       |       |           CargarXMLSat.razor.cs
+|       |       |           
+|       |       \---DeclaracionPrevia
+|       |           \---Pages
+|       |                   DeclaracionPrevia.Exports.cs
+|       |                   DeclaracionPrevia.FacturamaCancel.cs
+|       |                   DeclaracionPrevia.FiltersAndSorting.cs
+|       |                   DeclaracionPrevia.LifecycleAndLoad.cs
+|       |                   DeclaracionPrevia.Models.cs
+|       |                   DeclaracionPrevia.NavigationAndPagination.cs
+|       |                   DeclaracionPrevia.razor
+|       |                   DeclaracionPrevia.Root.cs
+|       |                   DeclaracionPrevia.SelectionAndToggle.cs
+|       |                   DeclaracionPrevia.State.cs
+|       |                   DeclaracionPreviaResumen.razor
+|       |                   Split-DeclaracionPrevia.ps1
+|       |                   
+|       +---obj
+|       |   |   OrionERP.Web.csproj.nuget.dgspec.json
+|       |   |   OrionERP.Web.csproj.nuget.g.props
+|       |   |   OrionERP.Web.csproj.nuget.g.targets
+|       |   |   project.assets.json
+|       |   |   project.nuget.cache
+|       |   |   
+|       |   +---Debug
+|       |   |   \---net9.0
+|       |   |       |   .NETCoreApp,Version=v9.0.AssemblyAttributes.cs
+|       |   |       |   ApiEndpoints.json
+|       |   |       |   apphost.exe
+|       |   |       |   OrionERP.33B6569F.Up2Date
+|       |   |       |   OrionERP.Web.AssemblyInfo.cs
+|       |   |       |   OrionERP.Web.AssemblyInfoInputs.cache
+|       |   |       |   OrionERP.Web.assets.cache
+|       |   |       |   OrionERP.Web.csproj.AssemblyReference.cache
+|       |   |       |   OrionERP.Web.csproj.BuildWithSkipAnalyzers
+|       |   |       |   OrionERP.Web.csproj.CoreCompileInputs.cache
+|       |   |       |   OrionERP.Web.csproj.FileListAbsolute.txt
+|       |   |       |   OrionERP.Web.dll
+|       |   |       |   OrionERP.Web.GeneratedMSBuildEditorConfig.editorconfig
+|       |   |       |   OrionERP.Web.genruntimeconfig.cache
+|       |   |       |   OrionERP.Web.GlobalUsings.g.cs
+|       |   |       |   OrionERP.Web.MvcApplicationPartsAssemblyInfo.cache
+|       |   |       |   OrionERP.Web.pdb
+|       |   |       |   OrionERP.Web.RazorAssemblyInfo.cache
+|       |   |       |   OrionERP.Web.RazorAssemblyInfo.cs
+|       |   |       |   OrionERP.Web.sourcelink.json
+|       |   |       |   rbcswa.dswa.cache.json
+|       |   |       |   rjimswa.dswa.cache.json
+|       |   |       |   rjsmcshtml.dswa.cache.json
+|       |   |       |   rjsmrazor.dswa.cache.json
+|       |   |       |   rpswa.dswa.cache.json
+|       |   |       |   staticwebassets.build.endpoints.json
+|       |   |       |   staticwebassets.build.json
+|       |   |       |   staticwebassets.build.json.cache
+|       |   |       |   staticwebassets.development.json
+|       |   |       |   staticwebassets.references.upToDateCheck.txt
+|       |   |       |   staticwebassets.removed.txt
+|       |   |       |   staticwebassets.upToDateCheck.txt
+|       |   |       |   
+|       |   |       +---compressed
+|       |   |       |       1cf6hy0crm-prgg6f6j8q.gz
+|       |   |       |       2n5fipg2qb-kramdee703.gz
+|       |   |       |       4qlm0si5q8-bpk8xqwxhs.gz
+|       |   |       |       5sm75ctxbf-8inm30yfxf.gz
+|       |   |       |       8b93q95ge0-61n19gt1b8.gz
+|       |   |       |       ex3mgsuxiu-10uzszoped.gz
+|       |   |       |       gq68i3yui6-cmapd0fi15.gz
+|       |   |       |       jcf0omrm9y-wk8x8xm0ah.gz
+|       |   |       |       oc2lmss7i2-mq02u7bx4d.gz
+|       |   |       |       sfclu2cy60-egr5o4t57u.gz
+|       |   |       |       tfxkz75b7s-sd2oh28o7v.gz
+|       |   |       |       tosxqd7ht0-mq02u7bx4d.gz
+|       |   |       |       
+|       |   |       +---ref
+|       |   |       |       OrionERP.Web.dll
+|       |   |       |       
+|       |   |       +---refint
+|       |   |       |       OrionERP.Web.dll
+|       |   |       |       
+|       |   |       +---scopedcss
+|       |   |       |   +---bundle
+|       |   |       |   |       OrionERP.Web.styles.css
+|       |   |       |   |       
+|       |   |       |   +---projectbundle
+|       |   |       |   |       OrionERP.Web.bundle.scp.css
+|       |   |       |   |       
+|       |   |       |   \---Shared
+|       |   |       |           MainLayout.razor.rz.scp.css
+|       |   |       |           NavMenu.razor.rz.scp.css
+|       |   |       |           
+|       |   |       \---staticwebassets
+|       |   \---Release
+|       |       \---net9.0
+|       |           |   .NETCoreApp,Version=v9.0.AssemblyAttributes.cs
+|       |           |   apphost.exe
+|       |           |   OrionERP.33B6569F.Up2Date
+|       |           |   OrionERP.Web.AssemblyInfo.cs
+|       |           |   OrionERP.Web.AssemblyInfoInputs.cache
+|       |           |   OrionERP.Web.assets.cache
+|       |           |   OrionERP.Web.csproj.AssemblyReference.cache
+|       |           |   OrionERP.Web.csproj.CoreCompileInputs.cache
+|       |           |   OrionERP.Web.csproj.FileListAbsolute.txt
+|       |           |   OrionERP.Web.dll
+|       |           |   OrionERP.Web.GeneratedMSBuildEditorConfig.editorconfig
+|       |           |   OrionERP.Web.genruntimeconfig.cache
+|       |           |   OrionERP.Web.GlobalUsings.g.cs
+|       |           |   OrionERP.Web.MvcApplicationPartsAssemblyInfo.cache
+|       |           |   OrionERP.Web.pdb
+|       |           |   OrionERP.Web.RazorAssemblyInfo.cache
+|       |           |   OrionERP.Web.RazorAssemblyInfo.cs
+|       |           |   OrionERP.Web.sourcelink.json
+|       |           |   rbcswa.dswa.cache.json
+|       |           |   rjimswa.dswa.cache.json
+|       |           |   rjsmcshtml.dswa.cache.json
+|       |           |   rjsmrazor.dswa.cache.json
+|       |           |   rpswa.dswa.cache.json
+|       |           |   staticwebassets.build.endpoints.json
+|       |           |   staticwebassets.build.json
+|       |           |   staticwebassets.build.json.cache
+|       |           |   staticwebassets.development.json
+|       |           |   
+|       |           +---compressed
+|       |           |       1cf6hy0crm-prgg6f6j8q.gz
+|       |           |       4qlm0si5q8-bpk8xqwxhs.gz
+|       |           |       5sm75ctxbf-8inm30yfxf.gz
+|       |           |       8b93q95ge0-61n19gt1b8.gz
+|       |           |       ex3mgsuxiu-10uzszoped.gz
+|       |           |       gq68i3yui6-cmapd0fi15.gz
+|       |           |       jcf0omrm9y-wk8x8xm0ah.gz
+|       |           |       oc2lmss7i2-mq02u7bx4d.gz
+|       |           |       sfclu2cy60-egr5o4t57u.gz
+|       |           |       tosxqd7ht0-mq02u7bx4d.gz
+|       |           |       
+|       |           +---ref
+|       |           |       OrionERP.Web.dll
+|       |           |       
+|       |           +---refint
+|       |           |       OrionERP.Web.dll
+|       |           |       
+|       |           +---scopedcss
+|       |           |   +---bundle
+|       |           |   |       OrionERP.Web.styles.css
+|       |           |   |       
+|       |           |   +---projectbundle
+|       |           |   |       OrionERP.Web.bundle.scp.css
+|       |           |   |       
+|       |           |   \---Shared
+|       |           |           MainLayout.razor.rz.scp.css
+|       |           |           NavMenu.razor.rz.scp.css
+|       |           |           
+|       |           \---staticwebassets
+|       +---Pages
+|       |       Counter.razor
+|       |       Error.cshtml
+|       |       Error.cshtml.cs
+|       |       FetchData.razor
+|       |       Index.razor
+|       |       _Host.cshtml
+|       |       _Layout.cshtml
+|       |       
+|       +---Properties
+|       |       launchSettings.json
+|       |       
+|       +---Shared
+|       |       MainLayout.razor
+|       |       MainLayout.razor.css
+|       |       NavMenu.razor
+|       |       NavMenu.razor.css
+|       |       SurveyPrompt.razor
+|       |       
+|       \---wwwroot
+|           |   favicon.ico
+|           |   
+|           \---css
+|               |   app.css
+|               |   site.css
+|               |   tables.css
+|               |   
+|               +---bootstrap
+|               |       bootstrap.min.css
+|               |       bootstrap.min.css.map
+|               |       
+|               \---open-iconic
+|                   |   FONT-LICENSE
+|                   |   ICON-LICENSE
+|                   |   README.md
+|                   |   
+|                   \---font
+|                       +---css
+|                       |       open-iconic-bootstrap.min.css
+|                       |       
+|                       \---fonts
+|                               open-iconic.eot
+|                               open-iconic.otf
+|                               open-iconic.svg
+|                               open-iconic.ttf
+|                               open-iconic.woff
+|                               
+\---tests
+    +---OrionERP.IntegrationTests
+    |   |   OrionERP.IntegrationTests.csproj
+    |   |   UnitTest1.cs
+    |   |   
+    |   +---bin
+    |   |   +---Debug
+    |   |   |   \---net9.0
+    |   |   |       |   Microsoft.TestPlatform.CommunicationUtilities.dll
+    |   |   |       |   Microsoft.TestPlatform.CoreUtilities.dll
+    |   |   |       |   Microsoft.TestPlatform.CrossPlatEngine.dll
+    |   |   |       |   Microsoft.TestPlatform.PlatformAbstractions.dll
+    |   |   |       |   Microsoft.TestPlatform.Utilities.dll
+    |   |   |       |   Microsoft.VisualStudio.CodeCoverage.Shim.dll
+    |   |   |       |   Microsoft.VisualStudio.TestPlatform.Common.dll
+    |   |   |       |   Microsoft.VisualStudio.TestPlatform.ObjectModel.dll
+    |   |   |       |   Newtonsoft.Json.dll
+    |   |   |       |   OrionERP.IntegrationTests.deps.json
+    |   |   |       |   OrionERP.IntegrationTests.dll
+    |   |   |       |   OrionERP.IntegrationTests.pdb
+    |   |   |       |   OrionERP.IntegrationTests.runtimeconfig.json
+    |   |   |       |   testhost.dll
+    |   |   |       |   testhost.exe
+    |   |   |       |   xunit.abstractions.dll
+    |   |   |       |   xunit.assert.dll
+    |   |   |       |   xunit.core.dll
+    |   |   |       |   xunit.execution.dotnet.dll
+    |   |   |       |   xunit.runner.reporters.netcoreapp10.dll
+    |   |   |       |   xunit.runner.utility.netcoreapp10.dll
+    |   |   |       |   xunit.runner.visualstudio.testadapter.dll
+    |   |   |       |   
+    |   |   |       +---cs
+    |   |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |   |       |       
+    |   |   |       +---de
+    |   |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |   |       |       
+    |   |   |       +---es
+    |   |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |   |       |       
+    |   |   |       +---fr
+    |   |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |   |       |       
+    |   |   |       +---it
+    |   |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |   |       |       
+    |   |   |       +---ja
+    |   |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |   |       |       
+    |   |   |       +---ko
+    |   |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |   |       |       
+    |   |   |       +---pl
+    |   |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |   |       |       
+    |   |   |       +---pt-BR
+    |   |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |   |       |       
+    |   |   |       +---ru
+    |   |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |   |       |       
+    |   |   |       +---tr
+    |   |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |   |       |       
+    |   |   |       +---zh-Hans
+    |   |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |   |       |       
+    |   |   |       \---zh-Hant
+    |   |   |               Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |   |               Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |   |               Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |   |               Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |   |               Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |   |               
+    |   |   \---Release
+    |   |       \---net9.0
+    |   |           |   Microsoft.TestPlatform.CommunicationUtilities.dll
+    |   |           |   Microsoft.TestPlatform.CoreUtilities.dll
+    |   |           |   Microsoft.TestPlatform.CrossPlatEngine.dll
+    |   |           |   Microsoft.TestPlatform.PlatformAbstractions.dll
+    |   |           |   Microsoft.TestPlatform.Utilities.dll
+    |   |           |   Microsoft.VisualStudio.CodeCoverage.Shim.dll
+    |   |           |   Microsoft.VisualStudio.TestPlatform.Common.dll
+    |   |           |   Microsoft.VisualStudio.TestPlatform.ObjectModel.dll
+    |   |           |   Newtonsoft.Json.dll
+    |   |           |   OrionERP.IntegrationTests.deps.json
+    |   |           |   OrionERP.IntegrationTests.dll
+    |   |           |   OrionERP.IntegrationTests.pdb
+    |   |           |   OrionERP.IntegrationTests.runtimeconfig.json
+    |   |           |   testhost.dll
+    |   |           |   testhost.exe
+    |   |           |   xunit.abstractions.dll
+    |   |           |   xunit.assert.dll
+    |   |           |   xunit.core.dll
+    |   |           |   xunit.execution.dotnet.dll
+    |   |           |   xunit.runner.reporters.netcoreapp10.dll
+    |   |           |   xunit.runner.utility.netcoreapp10.dll
+    |   |           |   xunit.runner.visualstudio.testadapter.dll
+    |   |           |   
+    |   |           +---cs
+    |   |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |           |       
+    |   |           +---de
+    |   |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |           |       
+    |   |           +---es
+    |   |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |           |       
+    |   |           +---fr
+    |   |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |           |       
+    |   |           +---it
+    |   |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |           |       
+    |   |           +---ja
+    |   |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |           |       
+    |   |           +---ko
+    |   |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |           |       
+    |   |           +---pl
+    |   |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |           |       
+    |   |           +---pt-BR
+    |   |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |           |       
+    |   |           +---ru
+    |   |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |           |       
+    |   |           +---tr
+    |   |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |           |       
+    |   |           +---zh-Hans
+    |   |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |           |       
+    |   |           \---zh-Hant
+    |   |                   Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |   |                   Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |   |                   Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |   |                   Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |   |                   Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |   |                   
+    |   \---obj
+    |       |   OrionERP.IntegrationTests.csproj.nuget.dgspec.json
+    |       |   OrionERP.IntegrationTests.csproj.nuget.g.props
+    |       |   OrionERP.IntegrationTests.csproj.nuget.g.targets
+    |       |   project.assets.json
+    |       |   project.nuget.cache
+    |       |   
+    |       +---Debug
+    |       |   \---net9.0
+    |       |       |   .NETCoreApp,Version=v9.0.AssemblyAttributes.cs
+    |       |       |   OrionERP.63CBF8F5.Up2Date
+    |       |       |   OrionERP.IntegrationTests.AssemblyInfo.cs
+    |       |       |   OrionERP.IntegrationTests.AssemblyInfoInputs.cache
+    |       |       |   OrionERP.IntegrationTests.assets.cache
+    |       |       |   OrionERP.IntegrationTests.csproj.AssemblyReference.cache
+    |       |       |   OrionERP.IntegrationTests.csproj.CoreCompileInputs.cache
+    |       |       |   OrionERP.IntegrationTests.csproj.FileListAbsolute.txt
+    |       |       |   OrionERP.IntegrationTests.dll
+    |       |       |   OrionERP.IntegrationTests.GeneratedMSBuildEditorConfig.editorconfig
+    |       |       |   OrionERP.IntegrationTests.genruntimeconfig.cache
+    |       |       |   OrionERP.IntegrationTests.GlobalUsings.g.cs
+    |       |       |   OrionERP.IntegrationTests.pdb
+    |       |       |   OrionERP.IntegrationTests.sourcelink.json
+    |       |       |   
+    |       |       +---ref
+    |       |       |       OrionERP.IntegrationTests.dll
+    |       |       |       
+    |       |       \---refint
+    |       |               OrionERP.IntegrationTests.dll
+    |       |               
+    |       \---Release
+    |           \---net9.0
+    |               |   .NETCoreApp,Version=v9.0.AssemblyAttributes.cs
+    |               |   OrionERP.63CBF8F5.Up2Date
+    |               |   OrionERP.IntegrationTests.AssemblyInfo.cs
+    |               |   OrionERP.IntegrationTests.AssemblyInfoInputs.cache
+    |               |   OrionERP.IntegrationTests.assets.cache
+    |               |   OrionERP.IntegrationTests.csproj.AssemblyReference.cache
+    |               |   OrionERP.IntegrationTests.csproj.CoreCompileInputs.cache
+    |               |   OrionERP.IntegrationTests.csproj.FileListAbsolute.txt
+    |               |   OrionERP.IntegrationTests.dll
+    |               |   OrionERP.IntegrationTests.GeneratedMSBuildEditorConfig.editorconfig
+    |               |   OrionERP.IntegrationTests.genruntimeconfig.cache
+    |               |   OrionERP.IntegrationTests.GlobalUsings.g.cs
+    |               |   OrionERP.IntegrationTests.pdb
+    |               |   OrionERP.IntegrationTests.sourcelink.json
+    |               |   
+    |               +---ref
+    |               |       OrionERP.IntegrationTests.dll
+    |               |       
+    |               \---refint
+    |                       OrionERP.IntegrationTests.dll
+    |                       
+    \---OrionERP.UnitTests
+        |   OrionERP.UnitTests.csproj
+        |   UnitTest1.cs
+        |   
+        +---bin
+        |   +---Debug
+        |   |   \---net9.0
+        |   |       |   Microsoft.TestPlatform.CommunicationUtilities.dll
+        |   |       |   Microsoft.TestPlatform.CoreUtilities.dll
+        |   |       |   Microsoft.TestPlatform.CrossPlatEngine.dll
+        |   |       |   Microsoft.TestPlatform.PlatformAbstractions.dll
+        |   |       |   Microsoft.TestPlatform.Utilities.dll
+        |   |       |   Microsoft.VisualStudio.CodeCoverage.Shim.dll
+        |   |       |   Microsoft.VisualStudio.TestPlatform.Common.dll
+        |   |       |   Microsoft.VisualStudio.TestPlatform.ObjectModel.dll
+        |   |       |   Newtonsoft.Json.dll
+        |   |       |   OrionERP.UnitTests.deps.json
+        |   |       |   OrionERP.UnitTests.dll
+        |   |       |   OrionERP.UnitTests.pdb
+        |   |       |   OrionERP.UnitTests.runtimeconfig.json
+        |   |       |   testhost.dll
+        |   |       |   testhost.exe
+        |   |       |   xunit.abstractions.dll
+        |   |       |   xunit.assert.dll
+        |   |       |   xunit.core.dll
+        |   |       |   xunit.execution.dotnet.dll
+        |   |       |   xunit.runner.reporters.netcoreapp10.dll
+        |   |       |   xunit.runner.utility.netcoreapp10.dll
+        |   |       |   xunit.runner.visualstudio.testadapter.dll
+        |   |       |   
+        |   |       +---cs
+        |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |   |       |       
+        |   |       +---de
+        |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |   |       |       
+        |   |       +---es
+        |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |   |       |       
+        |   |       +---fr
+        |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |   |       |       
+        |   |       +---it
+        |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |   |       |       
+        |   |       +---ja
+        |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |   |       |       
+        |   |       +---ko
+        |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |   |       |       
+        |   |       +---pl
+        |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |   |       |       
+        |   |       +---pt-BR
+        |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |   |       |       
+        |   |       +---ru
+        |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |   |       |       
+        |   |       +---runtimes
+        |   |       |   +---unix
+        |   |       |   |   \---lib
+        |   |       |   |       \---net9.0
+        |   |       |   +---win
+        |   |       |   |   \---lib
+        |   |       |   |       \---net9.0
+        |   |       |   +---win-arm64
+        |   |       |   |   \---native
+        |   |       |   +---win-x64
+        |   |       |   |   \---native
+        |   |       |   \---win-x86
+        |   |       |       \---native
+        |   |       +---tr
+        |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |   |       |       
+        |   |       +---zh-Hans
+        |   |       |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |   |       |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |   |       |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |   |       |       
+        |   |       \---zh-Hant
+        |   |               Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |   |               Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |   |               Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |   |               Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |   |               Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |   |               
+        |   \---Release
+        |       \---net9.0
+        |           |   Microsoft.TestPlatform.CommunicationUtilities.dll
+        |           |   Microsoft.TestPlatform.CoreUtilities.dll
+        |           |   Microsoft.TestPlatform.CrossPlatEngine.dll
+        |           |   Microsoft.TestPlatform.PlatformAbstractions.dll
+        |           |   Microsoft.TestPlatform.Utilities.dll
+        |           |   Microsoft.VisualStudio.CodeCoverage.Shim.dll
+        |           |   Microsoft.VisualStudio.TestPlatform.Common.dll
+        |           |   Microsoft.VisualStudio.TestPlatform.ObjectModel.dll
+        |           |   Newtonsoft.Json.dll
+        |           |   OrionERP.UnitTests.deps.json
+        |           |   OrionERP.UnitTests.dll
+        |           |   OrionERP.UnitTests.pdb
+        |           |   OrionERP.UnitTests.runtimeconfig.json
+        |           |   testhost.dll
+        |           |   testhost.exe
+        |           |   xunit.abstractions.dll
+        |           |   xunit.assert.dll
+        |           |   xunit.core.dll
+        |           |   xunit.execution.dotnet.dll
+        |           |   xunit.runner.reporters.netcoreapp10.dll
+        |           |   xunit.runner.utility.netcoreapp10.dll
+        |           |   xunit.runner.visualstudio.testadapter.dll
+        |           |   
+        |           +---cs
+        |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |           |       
+        |           +---de
+        |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |           |       
+        |           +---es
+        |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |           |       
+        |           +---fr
+        |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |           |       
+        |           +---it
+        |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |           |       
+        |           +---ja
+        |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |           |       
+        |           +---ko
+        |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |           |       
+        |           +---pl
+        |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |           |       
+        |           +---pt-BR
+        |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |           |       
+        |           +---ru
+        |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |           |       
+        |           +---tr
+        |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |           |       
+        |           +---zh-Hans
+        |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |           |       
+        |           \---zh-Hant
+        |                   Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+        |                   Microsoft.TestPlatform.CoreUtilities.resources.dll
+        |                   Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+        |                   Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+        |                   Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+        |                   
+        \---obj
+            |   OrionERP.UnitTests.csproj.nuget.dgspec.json
+            |   OrionERP.UnitTests.csproj.nuget.g.props
+            |   OrionERP.UnitTests.csproj.nuget.g.targets
+            |   project.assets.json
+            |   project.nuget.cache
+            |   
+            +---Debug
+            |   \---net9.0
+            |       |   .NETCoreApp,Version=v9.0.AssemblyAttributes.cs
+            |       |   OrionERP.D039CA9F.Up2Date
+            |       |   OrionERP.UnitTests.AssemblyInfo.cs
+            |       |   OrionERP.UnitTests.AssemblyInfoInputs.cache
+            |       |   OrionERP.UnitTests.assets.cache
+            |       |   OrionERP.UnitTests.csproj.AssemblyReference.cache
+            |       |   OrionERP.UnitTests.csproj.CoreCompileInputs.cache
+            |       |   OrionERP.UnitTests.csproj.FileListAbsolute.txt
+            |       |   OrionERP.UnitTests.dll
+            |       |   OrionERP.UnitTests.GeneratedMSBuildEditorConfig.editorconfig
+            |       |   OrionERP.UnitTests.genruntimeconfig.cache
+            |       |   OrionERP.UnitTests.GlobalUsings.g.cs
+            |       |   OrionERP.UnitTests.pdb
+            |       |   OrionERP.UnitTests.sourcelink.json
+            |       |   
+            |       +---ref
+            |       |       OrionERP.UnitTests.dll
+            |       |       
+            |       \---refint
+            |               OrionERP.UnitTests.dll
+            |               
+            \---Release
+                \---net9.0
+                    |   .NETCoreApp,Version=v9.0.AssemblyAttributes.cs
+                    |   OrionERP.D039CA9F.Up2Date
+                    |   OrionERP.UnitTests.AssemblyInfo.cs
+                    |   OrionERP.UnitTests.AssemblyInfoInputs.cache
+                    |   OrionERP.UnitTests.assets.cache
+                    |   OrionERP.UnitTests.csproj.AssemblyReference.cache
+                    |   OrionERP.UnitTests.csproj.CoreCompileInputs.cache
+                    |   OrionERP.UnitTests.csproj.FileListAbsolute.txt
+                    |   OrionERP.UnitTests.dll
+                    |   OrionERP.UnitTests.GeneratedMSBuildEditorConfig.editorconfig
+                    |   OrionERP.UnitTests.genruntimeconfig.cache
+                    |   OrionERP.UnitTests.GlobalUsings.g.cs
+                    |   OrionERP.UnitTests.pdb
+                    |   OrionERP.UnitTests.sourcelink.json
+                    |   
+                    +---ref
+                    |       OrionERP.UnitTests.dll
+                    |       
+                    \---refint
+                            OrionERP.UnitTests.dll
+                            

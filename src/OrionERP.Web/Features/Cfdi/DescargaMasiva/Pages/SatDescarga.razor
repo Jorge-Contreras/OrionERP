@@ -1,0 +1,183 @@
+@page "/cfdi/descarga-masiva"
+@inherits SatDescargaPage
+@using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts
+<h3>Descarga Masiva SAT</h3>
+
+<div class="card p-3 mb-3">
+    <div class="row g-3">
+        <div class="col-md-3">
+            <label class="form-label">Fecha inicial (UTC)</label>
+            <input class="form-control" type="datetime-local" @bind="StartLocal" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Fecha final (UTC)</label>
+            <input class="form-control" type="datetime-local" @bind="EndLocal" />
+        </div>
+        <div class="col-md-2 form-check mt-4">
+            <input class="form-check-input" type="checkbox" id="issued" @bind="Issued" />
+            <label class="form-check-label" for="issued">Emitidos</label>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">RFC filtro (opcional)</label>
+            <input class="form-control" @bind="FilterRfc" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Tipo solicitud</label>
+            <select class="form-select" @bind="TipoSolicitud">
+                <option>CFDI</option>
+                <option>Metadata</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Estado comprobante (opcional)</label>
+            <select class="form-select" @bind="EstadoComprobante">
+                <option value="">(auto para Recibidos+CFDI=Vigente)</option>
+                <option>Vigente</option>
+                <option>Cancelado</option>
+            </select>
+        </div>
+        <div class="col-md-6 d-flex align-items-end justify-content-end">
+            <button class="btn btn-primary me-2" @onclick="SolicitarAsync" disabled="@Busy">Solicitar</button>
+            <button class="btn btn-secondary" @onclick="RefrescarAsync" disabled="@Busy">Actualizar estado</button>
+        </div>
+    </div>
+</div>
+
+@if (Busy)
+{
+    <p><em>Trabajando...</em></p>
+}
+
+<table class="table table-sm table-striped">
+    <thead>
+        <tr>
+            <th>Id</th>
+            <th>Folio</th>
+            <th>Tipo</th>
+            <th>Modo</th>
+            <th>RfcEmisor</th>
+            <th>RfcReceptor</th>
+            <th>Estado</th>
+            <th>CodEstado</th>
+            <th>CodEstatus</th>
+            <th>Paquetes</th>
+            <th>Última verificación</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var s in Solicitudes)
+        {
+            <tr>
+                <td>@s.Id</td>
+                <td>@s.Folio</td>
+                <td>@s.TipoSolicitud</td>
+                <td>@(s.Issued ? "Emitidos" : "Recibidos")</td>
+                <td>@s.RfcEmisor</td>
+                <td>@s.RfcReceptor</td>
+                <td>@(s.EstadoSolicitud.HasValue ? ((EstadoSolicitud)s.EstadoSolicitud.Value).ToString() : "")</td>
+                <td>@s.CodigoEstadoSolicitud</td>
+                <td>@s.CodEstatus</td>
+                <td>@s.PackageCount</td>
+                <td>@s.LastCheckedAtUtc</td>
+                <td>
+                    <button class="btn btn-outline-primary btn-sm"
+                            @onclick="() => DescargarYProcesarAsync(s.Id)"
+                            disabled="@(Busy || s.EstadoSolicitud != (int)EstadoSolicitud.Terminada)">
+                        Descargar y procesar
+                    </button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@if (LastSummary is not null)
+{
+    <div class="alert alert-info">
+        <strong>Procesamiento:</strong>
+        Paquetes: @LastSummary.Packages,
+        XMLs: @LastSummary.Xmls,
+        OK: @LastSummary.Ok,
+        Error: @LastSummary.Fail,
+        Total (OK): @((LastSummary.TotalImporte ?? 0m).ToString("C"))
+    </div>
+
+    <div class="row g-3">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">Top RFC Emisor</div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>RFC Emisor</th><th>CFDIs</th></tr></thead>
+                        <tbody>
+                            @foreach (var kv in LastSummary.ByEmisor.OrderByDescending(x => x.Value).Take(10))
+                            {
+                                <tr><td>@kv.Key</td><td>@kv.Value</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">Errores frecuentes</div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>Error</th><th>Veces</th></tr></thead>
+                        <tbody>
+                            @foreach (var e in LastSummary.Errors.OrderByDescending(x => x.Count).Take(10))
+                            {
+                                <tr><td>@e.Message</td><td>@e.Count</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mt-3">
+        <div class="card-header">Detalle de XML procesados</div>
+        <div class="card-body p-0">
+            <table class="table table-sm table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Paquete</th>
+                        <th>Archivo</th>
+                        <th>UUID</th>
+                        <th>Emisor</th>
+                        <th>Receptor</th>
+                        <th>Fecha</th>
+                        <th>Tipo</th>
+                        <th class="text-end">Subtotal</th>
+                        <th class="text-end">Total</th>
+                        <th>Estado</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in LastSummary.Details)
+                    {
+                        <tr class="@((d.Success ? "" : "table-danger"))">
+                            <td>@d.PackageId</td>
+                            <td>@d.FileName</td>
+                            <td>@d.Uuid</td>
+                            <td>@d.RfcEmisor</td>
+                            <td>@d.RfcReceptor</td>
+                            <td>@(d.FechaEmisionUtc?.ToString("yyyy-MM-dd HH:mm") ?? "")</td>
+                            <td>@d.TipoDeComprobante</td>
+                            <td class="text-end">@((d.SubTotal ?? 0m).ToString("N2"))</td>
+                            <td class="text-end">@((d.Total ?? 0m).ToString("N2"))</td>
+                            <td>@(d.Success ? "OK" : "Error")</td>
+                            <td>@d.Error</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+

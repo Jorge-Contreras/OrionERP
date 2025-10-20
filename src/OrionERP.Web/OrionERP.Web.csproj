@@ -16,4 +16,10 @@
     <UserSecretsId>69745113-6b83-4911-8ef8-2296396806a2</UserSecretsId>
   </PropertyGroup>
 
+  <ItemGroup>
+  <ProjectReference Include="..\OrionERP.Infrastructure\OrionERP.Infrastructure.csproj" />
+  <ProjectReference Include="..\..\..\SatMassiveDownload\SatMassiveDownload\Sat.MassiveDownload.csproj" />
+</ItemGroup>
+
+
 </Project>

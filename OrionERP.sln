@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrionERP.UnitTests", "tests
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrionERP.IntegrationTests", "tests\OrionERP.IntegrationTests\OrionERP.IntegrationTests.csproj", "{E496D761-A8FF-4739-ADD1-5E7388DDA50D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sat.MassiveDownload", "..\SatMassiveDownload\SatMassiveDownload\Sat.MassiveDownload.csproj", "{3824857B-BF69-3226-9768-5221D8F76CDF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -99,6 +101,18 @@ Global
 		{E496D761-A8FF-4739-ADD1-5E7388DDA50D}.Release|x64.Build.0 = Release|Any CPU
 		{E496D761-A8FF-4739-ADD1-5E7388DDA50D}.Release|x86.ActiveCfg = Release|Any CPU
 		{E496D761-A8FF-4739-ADD1-5E7388DDA50D}.Release|x86.Build.0 = Release|Any CPU
+		{3824857B-BF69-3226-9768-5221D8F76CDF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3824857B-BF69-3226-9768-5221D8F76CDF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3824857B-BF69-3226-9768-5221D8F76CDF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3824857B-BF69-3226-9768-5221D8F76CDF}.Debug|x64.Build.0 = Debug|Any CPU
+		{3824857B-BF69-3226-9768-5221D8F76CDF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3824857B-BF69-3226-9768-5221D8F76CDF}.Debug|x86.Build.0 = Debug|Any CPU
+		{3824857B-BF69-3226-9768-5221D8F76CDF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3824857B-BF69-3226-9768-5221D8F76CDF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3824857B-BF69-3226-9768-5221D8F76CDF}.Release|x64.ActiveCfg = Release|Any CPU
+		{3824857B-BF69-3226-9768-5221D8F76CDF}.Release|x64.Build.0 = Release|Any CPU
+		{3824857B-BF69-3226-9768-5221D8F76CDF}.Release|x86.ActiveCfg = Release|Any CPU
+		{3824857B-BF69-3226-9768-5221D8F76CDF}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -13,8 +13,11 @@ using System.Threading.Tasks;
 using static OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts.VerifyResultDto;
 using SatEstado = Sat.MassiveDownload.Models.EstadoSolicitud;
 using App = OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
+using SatISvc = Sat.MassiveDownload.Core.ISatMassiveService;
+using System.Security.Cryptography.X509Certificates;
 
 namespace OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Services;
+
 
 
 
@@ -28,15 +31,20 @@ public sealed class SatDownloadCoordinator : ISatDownloadCoordinator
   private readonly ISatSolicitudesRepository _solicitudes;
   private readonly ISatPaquetesRepository _paquetes;
   private readonly ISatXmlInboxService _inbox;
+  private readonly ISatMetadataIngestService _meta;
+  
 
-  public SatDownloadCoordinator(
-      ISatMassiveService sat,
-      ISatSolicitudesRepository solicitudes,
-      ISatPaquetesRepository paquetes,
-      ISatXmlInboxService inbox)
-  {
+   public SatDownloadCoordinator(
+     SatISvc sat,
+     ISatSolicitudesRepository solicitudes,
+     ISatPaquetesRepository paquetes,
+
+    ISatXmlInboxService inbox,
+    ISatMetadataIngestService meta)
+{
     _sat = sat; _solicitudes = solicitudes; _paquetes = paquetes; _inbox = inbox;
-  }
+    _meta = meta;
+}
 
   public async Task<int> CreateSolicitudAsync(SolicitudParams p, CancellationToken ct = default)
   {
@@ -153,15 +161,16 @@ public sealed class SatDownloadCoordinator : ISatDownloadCoordinator
     var pkgs = await _paquetes.ListBySolicitudAsync(solicitudId, ct);
     var summary = new App.ProcessSummary();
 
+    bool isMetadata = string.Equals(row.TipoSolicitud, "Metadata", StringComparison.OrdinalIgnoreCase);
+
     foreach (var pkg in pkgs.Where(p => !p.Processed))
     {
-      List<XmlProcessedItem> details;
       try
       {
         var bytes = await _sat.DownloadPackageAsync(pkg.PackageId, row.RfcSolicitante, ct);
         if (bytes is null || bytes.Length == 0)
         {
-          await _paquetes.MarkProcessedAsync(solicitudId, pkg.PackageId, new SatPackageProcessInfo
+          await _paquetes.MarkProcessedAsync(solicitudId, pkg.PackageId, new App.SatPackageProcessInfo
           {
             XmlCount = 0,
             SuccessCount = 0,
@@ -172,29 +181,52 @@ public sealed class SatDownloadCoordinator : ISatDownloadCoordinator
           continue;
         }
 
-        details = await SatZipIngestion.PushZipToInboxWithMetadataAsync(pkg.PackageId, bytes, _inbox, ct);
-
-        var ok = details.Count(x => x.Success);
-        var fail = details.Count - ok;
-
-        await _paquetes.MarkProcessedAsync(solicitudId, pkg.PackageId, new SatPackageProcessInfo
+        if (isMetadata)
         {
-          XmlCount = details.Count,
-          SuccessCount = ok,
-          FailureCount = fail,
-          ZipSizeBytes = bytes.LongLength
-        }, ct);
+          var metaDetails = await SatZipIngestion.PushZipMetadataAsync(pkg.PackageId, bytes, _meta, ct);
 
-        // Update global summary
-        summary.Packages++;
-        summary.Xmls += details.Count;
-        summary.Ok += ok;
-        summary.Fail += fail;
-        summary.Details.AddRange(details);
+          var ok = metaDetails.Count(x => x.Success);
+          var fail = metaDetails.Count - ok;
+
+          await _paquetes.MarkProcessedAsync(solicitudId, pkg.PackageId, new App.SatPackageProcessInfo
+          {
+            XmlCount = metaDetails.Count, // reusing column to store "files processed"
+            SuccessCount = ok,
+            FailureCount = fail,
+            ZipSizeBytes = bytes.LongLength
+          }, ct);
+
+          summary.Packages++;
+          summary.MetaFiles += metaDetails.Count;
+          summary.MetaOk += ok;
+          summary.MetaFail += fail;
+          summary.MetaDetails.AddRange(metaDetails);
+        }
+        else
+        {
+          var details = await SatZipIngestion.PushZipToInboxWithMetadataAsync(pkg.PackageId, bytes, _inbox, ct);
+
+          var ok = details.Count(x => x.Success);
+          var fail = details.Count - ok;
+
+          await _paquetes.MarkProcessedAsync(solicitudId, pkg.PackageId, new App.SatPackageProcessInfo
+          {
+            XmlCount = details.Count,
+            SuccessCount = ok,
+            FailureCount = fail,
+            ZipSizeBytes = bytes.LongLength
+          }, ct);
+
+          summary.Packages++;
+          summary.Xmls += details.Count;
+          summary.Ok += ok;
+          summary.Fail += fail;
+          summary.Details.AddRange(details);
+        }
       }
       catch (Exception ex)
       {
-        await _paquetes.MarkProcessedAsync(solicitudId, pkg.PackageId, new SatPackageProcessInfo
+        await _paquetes.MarkProcessedAsync(solicitudId, pkg.PackageId, new App.SatPackageProcessInfo
         {
           XmlCount = 0,
           SuccessCount = 0,
@@ -205,7 +237,7 @@ public sealed class SatDownloadCoordinator : ISatDownloadCoordinator
       }
     }
 
-    // Build aggregates for UI
+    // CFDI aggregates (as before)
     foreach (var d in summary.Details)
     {
       if (!string.IsNullOrWhiteSpace(d.RfcEmisor))
@@ -218,7 +250,7 @@ public sealed class SatDownloadCoordinator : ISatDownloadCoordinator
         summary.TotalImporte = (summary.TotalImporte ?? 0m) + d.Total.Value;
     }
 
-    // Error buckets
+    // Error buckets (CFDI)
     var buckets = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
     foreach (var d in summary.Details)
     {
@@ -226,10 +258,11 @@ public sealed class SatDownloadCoordinator : ISatDownloadCoordinator
         buckets[d.Error] = (buckets.TryGetValue(d.Error, out var c) ? c : 0) + 1;
     }
     foreach (var kv in buckets)
-      summary.Errors.Add(new ErrorBucket { Message = kv.Key, Count = kv.Value });
+      summary.Errors.Add(new App.ErrorBucket { Message = kv.Key, Count = kv.Value });
 
     return summary;
   }
+
 
 
   private static string ComputeRequestKey(SolicitudParams p)

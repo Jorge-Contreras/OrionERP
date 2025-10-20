@@ -179,5 +179,49 @@
             </table>
         </div>
     </div>
+
+
+}
+
+
+@if (LastSummary is not null && LastSummary.MetaFiles > 0)
+{
+    <div class="alert alert-secondary mt-2">
+        <strong>Metadata:</strong>
+        Archivos: @LastSummary.MetaFiles,
+        OK: @LastSummary.MetaOk,
+        Error: @LastSummary.MetaFail
+    </div>
+
+    <div class="card mt-2">
+        <div class="card-header">Detalle de Metadata procesada</div>
+        <div class="card-body p-0">
+            <table class="table table-sm table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Paquete</th>
+                        <th>Archivo</th>
+                        <th class="text-end">Bytes</th>
+                        <th class="text-end">Líneas</th>
+                        <th>Estado</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in LastSummary.MetaDetails)
+                    {
+                        <tr class="@((m.Success ? "" : "table-danger"))">
+                            <td>@m.PackageId</td>
+                            <td>@m.FileName</td>
+                            <td class="text-end">@m.ByteCount</td>
+                            <td class="text-end">@m.LineCount</td>
+                            <td>@(m.Success ? "OK" : "Error")</td>
+                            <td>@m.Error</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
 }
 

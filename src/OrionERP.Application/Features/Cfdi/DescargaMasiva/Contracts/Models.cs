@@ -19,8 +19,8 @@ namespace OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts
       bool Issued,
       string RfcSolicitante,
       string? FilterRfc,
-      string TipoSolicitud,
-      string? EstadoComprobante,
+      string TipoSolicitud,              // "CFDI" or "Metadata"
+      string? EstadoComprobante,         // for CFDI
       DateTime StartUtc,
       DateTime EndUtc,
       string? Notes = null
@@ -32,7 +32,7 @@ namespace OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts
     public Guid? Folio { get; set; }
     public string RfcSolicitante { get; set; } = "";
     public bool Issued { get; set; }
-    public string TipoSolicitud { get; set; } = "CFDI";
+    public string TipoSolicitud { get; set; } = "CFDI"; // or "Metadata"
     public string? EstadoComprobante { get; set; }
     public string? RfcEmisor { get; set; }
     public string? RfcReceptor { get; set; }
@@ -59,7 +59,7 @@ namespace OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts
     public long? ZipSizeBytes { get; set; }
     public bool Processed { get; set; }
     public DateTime? ProcessedAtUtc { get; set; }
-    public int? XmlCount { get; set; }
+    public int? XmlCount { get; set; }      // For Metadata we reuse as "files processed"
     public int? SuccessCount { get; set; }
     public int? FailureCount { get; set; }
     public string? ErrorMessage { get; set; }
@@ -85,7 +85,6 @@ namespace OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts
     public string? ErrorMessage { get; init; }
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
   // Detailed info for each processed XML (metadata + pipeline result)
   public sealed class XmlProcessedItem
   {
@@ -102,7 +101,18 @@ namespace OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts
     public string? Error { get; init; }
   }
 
-  // Bucket for common errors (message + count)
+  // Metadata processed file (TXT/CSV) outcome
+  public sealed class MetadataProcessedItem
+  {
+    public string PackageId { get; init; } = "";
+    public string FileName { get; init; } = "";
+    public int ByteCount { get; init; }
+    public int LineCount { get; init; }
+    public bool Success { get; init; }
+    public string? Error { get; init; }
+  }
+
+  // Bucket for common errors (message + count) in CFDI processing
   public sealed class ErrorBucket
   {
     public string Message { get; init; } = "";
@@ -112,19 +122,22 @@ namespace OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts
   // Final summary returned to the UI
   public sealed class ProcessSummary
   {
+    // CFDI totals
     public int Packages { get; set; }
     public int Xmls { get; set; }
     public int Ok { get; set; }
     public int Fail { get; set; }
-
     public List<XmlProcessedItem> Details { get; } = new();
-
     public Dictionary<string, int> ByEmisor { get; } = new();
     public Dictionary<string, int> ByReceptor { get; } = new();
-
     public List<ErrorBucket> Errors { get; } = new();
-
     public decimal? TotalImporte { get; set; }
+
+    // Metadata totals
+    public int MetaFiles { get; set; }
+    public int MetaOk { get; set; }
+    public int MetaFail { get; set; }
+    public List<MetadataProcessedItem> MetaDetails { get; } = new();
   }
 
   public sealed class VerifyResultDto

@@ -4,17 +4,16 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using static OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts.VerifyResultDto;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 using App = OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
 
 namespace OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Services;
 
 internal static class SatZipIngestion
 {
-  // New: returns XmlProcessedItem (richer info)
+  // CFDI path: parse XML metadata + push to inbox pipeline
   public static async Task<List<App.XmlProcessedItem>> PushZipToInboxWithMetadataAsync(
       string packageId,
       byte[] zipBytes,
@@ -37,7 +36,7 @@ internal static class SatZipIngestion
         byte[] xmlBytes;
         await using (var es = entry.Open())
         {
-          using var buf = new MemoryStream(capacity: entry.Length > 0 ? (int)Math.Min(entry.Length, int.MaxValue) : 0);
+          using var buf = new MemoryStream();
           await es.CopyToAsync(buf, ct);
           xmlBytes = buf.ToArray();
         }
@@ -67,6 +66,71 @@ internal static class SatZipIngestion
       catch (Exception ex)
       {
         items.Add(new App.XmlProcessedItem
+        {
+          PackageId = packageId,
+          FileName = entry.FullName,
+          Success = false,
+          Error = ex.Message
+        });
+      }
+    }
+
+    return items;
+  }
+
+  // Metadata path: read non-XML entries (txt/csv etc.), send full text to SQL SP
+  public static async Task<List<App.MetadataProcessedItem>> PushZipMetadataAsync(
+      string packageId,
+      byte[] zipBytes,
+      ISatMetadataIngestService ingest,
+      CancellationToken ct = default)
+  {
+    var items = new List<App.MetadataProcessedItem>();
+
+    using var ms = new MemoryStream(zipBytes, writable: false);
+    using var zip = new ZipArchive(ms, ZipArchiveMode.Read, leaveOpen: false);
+
+    foreach (var entry in zip.Entries)
+    {
+      if (string.IsNullOrWhiteSpace(entry.Name)) continue;
+
+      // Skip XML; treat everything else as metadata
+      if (entry.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+        continue;
+
+      try
+      {
+        string text;
+        int bytesLen;
+        int lineCount;
+
+        await using (var es = entry.Open())
+        using (var buf = new MemoryStream())
+        {
+          await es.CopyToAsync(buf, ct);
+          bytesLen = (int)buf.Length;
+
+          buf.Position = 0;
+          using var sr = new StreamReader(buf, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+          text = await sr.ReadToEndAsync();
+        }
+
+        lineCount = text.Split('\n').Length;
+
+        await ingest.IngestAsync(text, ct);
+
+        items.Add(new App.MetadataProcessedItem
+        {
+          PackageId = packageId,
+          FileName = entry.Name,
+          ByteCount = bytesLen,
+          LineCount = lineCount,
+          Success = true
+        });
+      }
+      catch (Exception ex)
+      {
+        items.Add(new App.MetadataProcessedItem
         {
           PackageId = packageId,
           FileName = entry.FullName,

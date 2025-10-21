@@ -5,8 +5,10 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace OrionERP.Infrastructure.Auth.Migrations
 {
+    /// <inheritdoc />
     public partial class InitIdentity : Migration
     {
+        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.EnsureSchema(
@@ -33,6 +35,7 @@ namespace OrionERP.Infrastructure.Auth.Migrations
                 columns: table => new
                 {
                     Id = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    EmployeeId = table.Column<int>(type: "int", nullable: true),
                     UserName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     NormalizedUserName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     Email = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
@@ -46,8 +49,7 @@ namespace OrionERP.Infrastructure.Auth.Migrations
                     TwoFactorEnabled = table.Column<bool>(type: "bit", nullable: false),
                     LockoutEnd = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     LockoutEnabled = table.Column<bool>(type: "bit", nullable: false),
-                    AccessFailedCount = table.Column<int>(type: "int", nullable: false),
-                    EmployeeId = table.Column<int>(type: "int", nullable: true)
+                    AccessFailedCount = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -105,8 +107,8 @@ namespace OrionERP.Infrastructure.Auth.Migrations
                 schema: "auth",
                 columns: table => new
                 {
-                    LoginProvider = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    ProviderKey = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    LoginProvider = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    ProviderKey = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
                     ProviderDisplayName = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     UserId = table.Column<string>(type: "nvarchar(450)", nullable: false)
                 },
@@ -155,8 +157,8 @@ namespace OrionERP.Infrastructure.Auth.Migrations
                 columns: table => new
                 {
                     UserId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    LoginProvider = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    LoginProvider = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
                     Value = table.Column<string>(type: "nvarchar(max)", nullable: true)
                 },
                 constraints: table =>
@@ -216,37 +218,55 @@ namespace OrionERP.Infrastructure.Auth.Migrations
                 column: "NormalizedUserName",
                 unique: true,
                 filter: "[NormalizedUserName] IS NOT NULL");
-        }
 
-        protected override void Down(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.DropTable(
-                name: "AspNetRoleClaims",
-                schema: "auth");
+      // at the end of Up():
+      migrationBuilder.AddForeignKey(
+          name: "FK_AspNetUsers_Capital_Humano_EmployeeId",
+          schema: "auth",
+          table: "AspNetUsers",
+          column: "EmployeeId",
+          principalSchema: "dbo",
+          principalTable: "Capital_Humano",
+          principalColumn: "ID",
+          onDelete: ReferentialAction.NoAction); // or Restrict
 
-            migrationBuilder.DropTable(
-                name: "AspNetUserClaims",
-                schema: "auth");
-
-            migrationBuilder.DropTable(
-                name: "AspNetUserLogins",
-                schema: "auth");
-
-            migrationBuilder.DropTable(
-                name: "AspNetUserRoles",
-                schema: "auth");
-
-            migrationBuilder.DropTable(
-                name: "AspNetUserTokens",
-                schema: "auth");
-
-            migrationBuilder.DropTable(
-                name: "AspNetRoles",
-                schema: "auth");
-
-            migrationBuilder.DropTable(
-                name: "AspNetUsers",
-                schema: "auth");
-        }
     }
+
+    /// <inheritdoc />
+    protected override void Down(MigrationBuilder migrationBuilder)
+    {
+      migrationBuilder.DropTable(
+          name: "AspNetRoleClaims",
+          schema: "auth");
+
+      migrationBuilder.DropTable(
+          name: "AspNetUserClaims",
+          schema: "auth");
+
+      migrationBuilder.DropTable(
+          name: "AspNetUserLogins",
+          schema: "auth");
+
+      migrationBuilder.DropTable(
+          name: "AspNetUserRoles",
+          schema: "auth");
+
+      migrationBuilder.DropTable(
+          name: "AspNetUserTokens",
+          schema: "auth");
+
+      migrationBuilder.DropTable(
+          name: "AspNetRoles",
+          schema: "auth");
+
+      migrationBuilder.DropTable(
+          name: "AspNetUsers",
+          schema: "auth");
+
+      migrationBuilder.DropForeignKey(
+    name: "FK_AspNetUsers_Capital_Humano_EmployeeId",
+    schema: "auth",
+    table: "AspNetUsers");
+    }
+  }
 }

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using OrionERP.Infrastructure.Auth;
 
@@ -11,9 +12,11 @@ using OrionERP.Infrastructure.Auth;
 namespace OrionERP.Infrastructure.Auth.Migrations
 {
     [DbContext(typeof(OrionIdentityDbContext))]
-    partial class OrionIdentityDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251021020938_InitIdentity")]
+    partial class InitIdentity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

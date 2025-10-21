@@ -1,0 +1,73 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.JSInterop
+@using OrionERP.Infrastructure.Auth
+@inject IRfcContext Rfc
+@inject IJSRuntime Js
+@inject NavigationManager Navigation
+@inject SignInManager<ApplicationUser> SignInManager
+
+<AuthorizeView>
+    <Authorized Context="context">
+        <span class="me-2">@context.User.Identity?.Name</span>
+        <select class="form-select form-select-sm d-inline-block w-auto me-2" value="@_selectedRfc" @onchange="OnRfcChanged">
+            <option value="">-- RFC --</option>
+            <option value="XAXX010101000">XAXX010101000</option>
+        </select>
+        <button class="btn btn-link btn-sm" @onclick="Logout">Cerrar sesión</button>
+    </Authorized>
+    <NotAuthorized>
+        <a class="btn btn-primary btn-sm" href="Identity/Account/Login">Iniciar sesión</a>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private const string RfcStorageKey = "orionerp.selectedRfc";
+    private string? _selectedRfc;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        var stored = await Js.InvokeAsync<string?>("localStorage.getItem", RfcStorageKey);
+        if (!string.IsNullOrWhiteSpace(stored))
+        {
+            _selectedRfc = stored;
+            Rfc.CurrentRfc = stored;
+            await InvokeAsync(StateHasChanged);
+        }
+        else if (!string.IsNullOrWhiteSpace(Rfc.CurrentRfc))
+        {
+            _selectedRfc = Rfc.CurrentRfc;
+            await Js.InvokeVoidAsync("localStorage.setItem", RfcStorageKey, _selectedRfc);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnRfcChanged(ChangeEventArgs e)
+    {
+        _selectedRfc = e.Value?.ToString();
+        Rfc.CurrentRfc = _selectedRfc;
+
+        if (string.IsNullOrWhiteSpace(_selectedRfc))
+        {
+            await Js.InvokeVoidAsync("localStorage.removeItem", RfcStorageKey);
+        }
+        else
+        {
+            await Js.InvokeVoidAsync("localStorage.setItem", RfcStorageKey, _selectedRfc);
+        }
+    }
+
+    private async Task Logout()
+    {
+        await SignInManager.SignOutAsync();
+        Rfc.CurrentRfc = null;
+        _selectedRfc = null;
+        await Js.InvokeVoidAsync("localStorage.removeItem", RfcStorageKey);
+        Navigation.NavigateTo("/", forceLoad: true);
+    }
+}

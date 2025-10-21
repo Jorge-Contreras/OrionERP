@@ -1,12 +1,19 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
     <ProjectReference Include="..\OrionERP.Application\OrionERP.Application.csproj" />
     <ProjectReference Include="..\OrionERP.Infrastructure\OrionERP.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\SatMassiveDownload\SatMassiveDownload\Sat.MassiveDownload.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="EPPlus" Version="8.2.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <PropertyGroup>
@@ -15,11 +22,5 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>69745113-6b83-4911-8ef8-2296396806a2</UserSecretsId>
   </PropertyGroup>
-
-  <ItemGroup>
-  <ProjectReference Include="..\OrionERP.Infrastructure\OrionERP.Infrastructure.csproj" />
-  <ProjectReference Include="..\..\..\SatMassiveDownload\SatMassiveDownload\Sat.MassiveDownload.csproj" />
-</ItemGroup>
-
 
 </Project>

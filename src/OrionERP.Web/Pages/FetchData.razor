@@ -1,4 +1,5 @@
-﻿@page "/fetchdata"
+@page "/fetchdata"
+@attribute [Authorize(Policy = "RoleForSelectedRfc")]
 
 <PageTitle>Weather forecast</PageTitle>
 

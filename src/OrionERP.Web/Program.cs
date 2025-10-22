@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -13,6 +15,8 @@ using OrionERP.Web.Configuration;
 using OrionERP.Web.Data;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
 using OrionERP.Web.Identity;
+
+
 // using Microsoft.AspNetCore.Identity.UI; // <- not required unless you explicitly call AddDefaultUI()
 
 var builder = WebApplication.CreateBuilder(args);
@@ -83,9 +87,18 @@ app.UseAuthorization();
 app.MapRazorPages();       // <- required for /Identity/Account/* pages
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
-// REMOVE the second pair (you had duplicates):
-// app.UseAuthentication();
-// app.UseAuthorization();
+
+
+app.MapGet("/auth/logout", async (HttpContext ctx) =>
+{
+  // If you use ASP.NET Core Identity, prefer:
+  await ctx.SignOutAsync(IdentityConstants.ApplicationScheme);
+
+  
+  // Redirect where you want after logout
+  ctx.Response.Redirect("/"); // or "/"
+});
+
 
 using (var scope = app.Services.CreateScope())
 {

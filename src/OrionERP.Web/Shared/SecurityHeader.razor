@@ -7,6 +7,7 @@
 @inject NavigationManager Navigation
 @inject SignInManager<ApplicationUser> SignInManager
 
+
 <AuthorizeView>
     <Authorized Context="context">
         <span class="me-2">@context.User.Identity?.Name</span>
@@ -14,7 +15,8 @@
             <option value="">-- RFC --</option>
             <option value="XAXX010101000">XAXX010101000</option>
         </select>
-        <button class="btn btn-link btn-sm" @onclick="Logout">Cerrar sesión</button>
+        <button class="btn btn-link btn-sm" @onclick="LogoutJs">Cerrar sesión</button>
+
     </Authorized>
     <NotAuthorized>
         <a class="btn btn-primary btn-sm" href="Identity/Account/Login">Iniciar sesión</a>
@@ -24,6 +26,11 @@
 @code {
     private const string RfcStorageKey = "orionerp.selectedRfc";
     private string? _selectedRfc;
+
+    private async Task LogoutJs()
+    {
+        await Js.InvokeVoidAsync("eval", "location.href = '/Auth/logout'");
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

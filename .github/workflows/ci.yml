@@ -8,8 +8,10 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
-          submodules: recursive
           fetch-depth: 0
       - run: dotnet restore OrionERP.sln
       - run: dotnet build OrionERP.sln --no-restore -c Release
       - run: dotnet test  OrionERP.sln --no-build -c Release --logger "trx;LogFileName=test_results.trx"
+      - name: List workspace
+        shell: pwsh
+        run: 'Get-ChildItem -Depth 2 | Select FullName'

@@ -1,0 +1,23 @@
+@using Microsoft.AspNetCore.Identity
+@using OrionERP.Infrastructure.Auth
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+
+<!-- Minimal login/logout UI for the Identity default layout.
+     This version avoids TagHelpers so you don't need _ViewImports.cshtml. -->
+<ul class="navbar-nav">
+    @if (SignInManager.IsSignedIn(User))
+    {
+        <li class="nav-item">
+            <form class="form-inline" method="post" action="/Identity/Account/Logout?returnUrl=/">
+                <button type="submit" class="nav-link btn btn-link">Logout</button>
+            </form>
+        </li>
+    }
+    else
+    {
+        <li class="nav-item">
+            <a class="nav-link" href="/Identity/Account/Login">Login</a>
+        </li>
+    }
+</ul>

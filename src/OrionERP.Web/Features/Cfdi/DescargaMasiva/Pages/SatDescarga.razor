@@ -1,6 +1,7 @@
 @page "/cfdi/descarga-masiva"
 @inherits SatDescargaPage
 @using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts
+@attribute [Authorize(Roles = "Administrador,SatOperator")]        
 <h3>Descarga Masiva SAT</h3>
 
 <div class="card p-3 mb-3">

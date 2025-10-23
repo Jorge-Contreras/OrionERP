@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using OfficeOpenXml;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using OrionERP.Infrastructure.Auth;
@@ -67,6 +68,14 @@ builder.Services.AddSingleton<WeatherForecastService>();
 builder.Services.AddCfdiCargarXmlSat();
 builder.Services.AddOrionServices();
 builder.Services.Configure<SatIntegrationOptions>(builder.Configuration.GetSection("SatIntegration"));
+builder.Host.UseWindowsService(); // <-- add this
+// optional: listen on 5000 explicitly
+// Only force a specific URL **when actually running as a Windows Service**
+if (OperatingSystem.IsWindows() && WindowsServiceHelpers.IsWindowsService())
+{
+  // Don’t force ports in dev; only in service mode
+  builder.WebHost.UseUrls("http://localhost:5000");
+}
 
 var app = builder.Build();
 

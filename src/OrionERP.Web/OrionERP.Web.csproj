@@ -4,7 +4,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="9.0.10" />
     <ProjectReference Include="..\OrionERP.Application\OrionERP.Application.csproj" />
     <ProjectReference Include="..\OrionERP.Infrastructure\OrionERP.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\..\SatMassiveDownload\SatMassiveDownload\Sat.MassiveDownload.csproj" />
+    <ProjectReference Include="..\..\SatMassiveDownload\SatMassiveDownload\Sat.MassiveDownload.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="9.0.10" />
     <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="9.0.10" />
   </ItemGroup>

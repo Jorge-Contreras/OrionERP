@@ -1,3 +1,4 @@
+# .github/workflows/ci.yml
 name: ci
 on: [push, pull_request]
 jobs:
@@ -5,13 +6,15 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # optional; remove if you don't need full history
+          submodules: false
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
-          fetch-depth: 0
       - run: dotnet restore OrionERP.sln
       - run: dotnet build OrionERP.sln --no-restore -c Release
-      - run: dotnet test  OrionERP.sln --no-build -c Release --logger "trx;LogFileName=test_results.trx"
+      - run: dotnet test OrionERP.sln --no-build -c Release --logger "trx;LogFileName=test_results.trx"
       - name: List workspace
         shell: pwsh
         run: 'Get-ChildItem -Depth 2 | Select FullName'

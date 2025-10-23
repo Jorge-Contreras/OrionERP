@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\SatMassiveDownload\SatMassiveDownload\Sat.MassiveDownload.csproj" />
+    <ProjectReference Include="..\..\SatMassiveDownload\SatMassiveDownload\Sat.MassiveDownload.csproj" />
     <ProjectReference Include="..\OrionERP.Application\OrionERP.Application.csproj" />
     <ProjectReference Include="..\OrionERP.Domain\OrionERP.Domain.csproj" />
   </ItemGroup>

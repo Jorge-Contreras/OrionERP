@@ -22,7 +22,6 @@ public class SatDescargaPage : ComponentBase
 {
   [Inject] protected ISatDownloadCoordinator Coordinator { get; set; } = default!;
   [Inject] protected ISatSolicitudesRepository SolicitudesRepo { get; set; } = default!;
-  [Inject] protected IOptions<SatIntegrationOptions> Opts { get; set; } = default!;
   [Inject] protected ISatRfcProfileRepository RfcProfiles { get; set; } = default!;
   [Inject] protected IUserRfcState RfcState { get; set; } = default!;
 
@@ -95,7 +94,7 @@ public class SatDescargaPage : ComponentBase
       var cert = await LoadCertAsync();
       var p = new SolicitudParams(
           Issued: Issued,
-          RfcSolicitante: Opts.Value.RfcSolicitante,
+          RfcSolicitante: RfcState.CurrentRfc,
           FilterRfc: FilterRfc,
           TipoSolicitud: TipoSolicitud,
           EstadoComprobante: EstadoComprobante,

@@ -1,16 +1,19 @@
+using Dapper;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.Data.SqlClient;
+using Microsoft.IdentityModel.Tokens;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
-using Dapper;
-using Microsoft.Data.SqlClient;
-using Microsoft.IdentityModel.Tokens;
 
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
   public partial class DeclaracionPrevia
   {
-    
+    [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
@@ -24,8 +27,14 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       try
       {
         // For RazonSocial list, query the Emisor table for distinct RFCs:
-        using var conn = new SqlConnection(connectionString);
-        disponiblesRFCs = (await conn.QueryAsync<string>("SELECT DISTINCT Rfc FROM Emisor ORDER BY Rfc")).AsList();
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = auth.User;
+
+        disponiblesRFCs = user.FindAll("rfc")
+            .Select(c => c.Value)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(r => r)
+            .ToList();
       }
       catch
       {
@@ -34,7 +43,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       if (disponiblesRFCs == null || disponiblesRFCs.Count == 0)
       {
         // If none found, just use a default from config or known value
-        disponiblesRFCs = new List<string> { "OHM191112Q26" };
+        disponiblesRFCs = new List<string> { "" };
       }
       selectedRfc = disponiblesRFCs[0];
       selectedYear = DateTime.Now.Year;

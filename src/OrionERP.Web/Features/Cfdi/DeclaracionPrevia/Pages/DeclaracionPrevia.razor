@@ -11,7 +11,7 @@
 <div class="mb-3 filter-bar">
     <div class="filter-pair">
         <label class="fw-bold">RFC (Razón Social):</label>
-        <select  @bind="selectedRfc" @bind:after="OnFiltersChangedAsync"
+        <select  @bind="selectedRfc" @bind:after="OnFiltersChangedAsync" 
                 class="form-select inline-select">
             @if (disponiblesRFCs != null)
             {
@@ -21,6 +21,9 @@
                 }
             }
         </select>
+        <RfcPicker 
+          @bind-SelectedRfc="selectedRfc"
+          @bind-SelectedRfc:after="OnFiltersChangedAsync"  />
     </div>
 
     <div class="filter-pair">

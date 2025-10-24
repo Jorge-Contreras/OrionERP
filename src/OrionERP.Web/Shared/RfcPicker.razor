@@ -1,0 +1,71 @@
+@using OrionERP.Web.State
+@implements IDisposable
+@inject IUserRfcState RfcState
+
+<div class="d-flex align-items-center gap-2">
+    <label class="form-label mb-0">RFC:</label>
+    <select class="form-select form-select-sm"
+            value="@RfcState.CurrentRfc"
+            @onchange="OnChanged"
+            disabled="@(!RfcState.AllowedRfcs.Any())"
+            style="width:auto; min-width: 14rem">
+        @if (!RfcState.AllowedRfcs.Any())
+        {
+            <option>(Sin RFC disponible)</option>
+        }
+        else
+        {
+            @foreach (var r in RfcState.AllowedRfcs)
+            {
+                <option value="@r">@r</option>
+            }
+        }
+    </select>
+</div>
+
+@code {
+    // Pattern A: event you can handle like <RfcPicker OnRfcChanged="..." />
+    [Parameter] public EventCallback<string?> OnRfcChanged { get; set; }
+
+    // Pattern B: two-way bind like <RfcPicker @bind-SelectedRfc="currentRfc" />
+    [Parameter] public string? SelectedRfc { get; set; }
+    [Parameter] public EventCallback<string?> SelectedRfcChanged { get; set; }
+
+    protected override void OnInitialized()
+    {
+        // If the current RFC changes elsewhere, update parent too
+        RfcState.Changed += OnExternalChange;
+    }
+
+    private async Task OnChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(value) && RfcState.TrySet(value))
+        {
+            // Notify parent via both patterns
+            await OnRfcChanged.InvokeAsync(value);
+            await SelectedRfcChanged.InvokeAsync(value);
+
+            // Re-render to reflect the new selection
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async void OnExternalChange()
+    {
+        // RFC changed from somewhere else (another component, login, etc.)
+        var value = RfcState.CurrentRfc;
+        try
+        {
+            await OnRfcChanged.InvokeAsync(value);
+            await SelectedRfcChanged.InvokeAsync(value);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* swallow */ }
+    }
+
+    public void Dispose()
+    {
+        RfcState.Changed -= OnExternalChange;
+    }
+}

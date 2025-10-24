@@ -1,0 +1,147 @@
+@page "/rfcs/register"
+@inherits OrionERP.Web.Features.Rfcs.Pages.RfcRegisterBase
+@using Microsoft.AspNetCore.Components.Forms
+
+<h3>Registrar RFC</h3>
+@if (!string.IsNullOrWhiteSpace(UiMessage))
+{
+    <div class="alert @UiMessageCss alert-dismissible fade show" role="alert">
+        @UiMessage
+        <button type="button" class="btn-close" @onclick="() => UiMessage = null" aria-label="Close"></button>
+    </div>
+}
+<EditForm Model="@Model" OnValidSubmit="SaveAsync" class="mt-3">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="mb-3">
+                <label class="form-label">RFC *</label>
+                <InputText class="form-control" @bind-Value="Model.Rfc" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Razón Social</label>
+                <InputText class="form-control" @bind-Value="Model.RazonSocial" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Nombre Comercial</label>
+                <InputText class="form-control" @bind-Value="Model.NombreComercial" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Email</label>
+                <InputText class="form-control" @bind-Value="Model.Email" type="email" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Dirección (línea 1)</label>
+                <InputText class="form-control" @bind-Value="Model.AddressLine1" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Dirección (línea 2)</label>
+                <InputText class="form-control" @bind-Value="Model.AddressLine2" />
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Municipio</label>
+                    <InputText class="form-control" @bind-Value="Model.Municipio" />
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Entidad Federativa</label>
+                    <InputText class="form-control" @bind-Value="Model.EntidadFederativa" />
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Código Postal</label>
+                    <InputText class="form-control" @bind-Value="Model.CodigoPostal" />
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Fecha Inicio Operaciones</label>
+                    <InputDate class="form-control" @bind-Value="Model.FechaInicioOperaciones" />
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Estatus Padrón</label>
+                <InputText class="form-control" @bind-Value="Model.EstatusPadron" />
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Fecha Último Cambio Estatus</label>
+                    <InputDate class="form-control" @bind-Value="Model.FechaUltCambioEstatus" />
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Fecha Emisión CSF</label>
+                    <InputDate class="form-control" @bind-Value="Model.EmisionFecha" />
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <fieldset class="mb-3">
+                <legend class="h6">Credenciales SAT FIEL</legend>
+
+                <InputRadioGroup @bind-Value="Model.Mode">
+                    <div class="form-check">
+                        <InputRadio class="form-check-input" Value="@(CredentialMode.Pfx)" />
+                        <label class="form-check-label">Subir un archivo .PFX</label>
+                    </div>
+                    <div class="form-check mt-1">
+                        <InputRadio class="form-check-input" Value="@(CredentialMode.CerKey)" />
+                        <label class="form-check-label">Subir archivos .CER y .KEY</label>
+                    </div>
+                </InputRadioGroup>
+            </fieldset>
+
+            @if (Model.Mode == CredentialMode.Pfx)
+            {
+                <div class="mb-3">
+                    <label class="form-label">Archivo .PFX</label>
+                    <InputFile OnChange="OnPfxSelected" />
+                    <div class="form-text">Seleccione el archivo .pfx emitido por el SAT.</div>
+                </div>
+            }
+            else
+            {
+                <div class="mb-3">
+                    <label class="form-label">Archivo .CER</label>
+                    <InputFile OnChange="OnCerSelected" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Archivo .KEY</label>
+                    <InputFile OnChange="OnKeySelected" />
+                </div>
+            }
+
+            <div class="mb-3">
+                <label class="form-label">Contraseña FIEL</label>
+                <InputText class="form-control" @bind-Value="Model.PasswordPlain" type="password" />
+                <div class="form-text">Se almacena de forma protegida en el servidor.</div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">CSF (JSON opcional)</label>
+                <InputTextArea class="form-control" @bind-Value="Model.CsfDataJson" rows="4" />
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-3 d-flex align-items-center gap-2">
+        <button type="submit" class="btn btn-primary" disabled="@Busy">
+            @(Busy ? "Guardando…" : "Guardar")
+        </button>
+        @if (Busy)
+        {
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        }
+    </div>
+</EditForm>

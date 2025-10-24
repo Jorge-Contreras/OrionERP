@@ -10,6 +10,8 @@ using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Services;
 using Sat.MassiveDownload; // ISatMassiveService, SatMassiveClient
 using Sat.MassiveDownload.Core;
 using SatISvc = Sat.MassiveDownload.Core.ISatMassiveService;
+using OrionERP.Application.Features.Rfcs.Contracts;
+using OrionERP.Infrastructure.Features.Rfcs.Dapper;
 
 
 namespace OrionERP.Web.Configuration;
@@ -19,6 +21,7 @@ public static class ServiceRegistration
   public static IServiceCollection AddCfdiCargarXmlSat(this IServiceCollection services)
   {
     services.AddHttpClient<SatISvc, Sat.MassiveDownload.SatMassiveClient>();
+    services.AddScoped<ISatRfcProfileRepository, SatRfcProfileRepository>();
 
     services.AddSingleton<SqlConnectionFactory>();
     // Application contracts are interfaces; Infrastructure has concrete impls

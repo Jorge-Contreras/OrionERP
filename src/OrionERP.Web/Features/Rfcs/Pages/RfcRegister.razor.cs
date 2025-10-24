@@ -1,0 +1,155 @@
+using System;
+using System.IO;
+using System.Threading.Tasks;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
+using AppRfcs = OrionERP.Application.Features.Rfcs.Contracts;
+
+namespace OrionERP.Web.Features.Rfcs.Pages
+{
+  public partial class RfcRegisterBase : ComponentBase
+  {
+    [Inject] protected AppRfcs.ISatRfcProfileRepository Repo { get; set; } = default!;
+
+    // Make the type accessible to the derived .razor
+    protected class FormModel
+    {
+      public string? Rfc { get; set; }
+      public string? RazonSocial { get; set; }
+      public string? NombreComercial { get; set; }
+      public string? RegimenCapital { get; set; }
+      public DateTime? FechaInicioOperaciones { get; set; }
+      public string? EstatusPadron { get; set; }
+      public DateTime? FechaUltCambioEstatus { get; set; }
+      public DateTime? EmisionFecha { get; set; }
+      public string? AddressLine1 { get; set; }
+      public string? AddressLine2 { get; set; }
+      public string? Municipio { get; set; }
+      public string? EntidadFederativa { get; set; }
+      public string? CodigoPostal { get; set; }
+      public string? CsfDataJson { get; set; }
+      public string? Email { get; set; }
+
+      public CredentialMode Mode { get; set; } = CredentialMode.Pfx;
+      public byte[]? PfxBytes { get; set; }
+      public byte[]? CerBytes { get; set; }
+      public byte[]? KeyBytes { get; set; }
+      public string? PasswordPlain { get; set; }
+    }
+
+    // Enum must also be accessible
+    protected enum CredentialMode { Pfx, CerKey }
+
+    // Expose the model to the derived .razor
+    protected FormModel Model { get; } = new();
+
+    // Estatus messages and notifications
+    protected bool Busy { get; set; }
+    protected string? UiMessage { get; set; }
+    protected string UiMessageCss { get; set; } = "alert-success";
+    private CancellationTokenSource? _msgCts;
+
+    protected async Task ShowMessageAsync(string text, string css = "alert-success", int ms = 3500)
+    {
+      _msgCts?.Cancel();
+      _msgCts = new();
+      UiMessage = text;
+      UiMessageCss = css;
+      StateHasChanged();
+
+      try { await Task.Delay(ms, _msgCts.Token); UiMessage = null; StateHasChanged(); }
+      catch (TaskCanceledException) { /* ignore */ }
+    }
+
+    protected async Task ShowSuccessAsync(string text) => await ShowMessageAsync(text, "alert-success");
+    protected async Task ShowErrorAsync(string text) => await ShowMessageAsync(text, "alert-danger", 6000);
+
+
+
+
+
+    // File handlers the .razor will call
+    protected async Task OnPfxSelected(InputFileChangeEventArgs e)
+      => Model.PfxBytes = await ReadAllAsync(e.File);
+
+    protected async Task OnCerSelected(InputFileChangeEventArgs e)
+      => Model.CerBytes = await ReadAllAsync(e.File);
+
+    protected async Task OnKeySelected(InputFileChangeEventArgs e)
+      => Model.KeyBytes = await ReadAllAsync(e.File);
+
+    private static async Task<byte[]> ReadAllAsync(IBrowserFile file)
+    {
+      await using var s = file.OpenReadStream(long.MaxValue);
+      using var ms = new MemoryStream();
+      await s.CopyToAsync(ms);
+      return ms.ToArray();
+    }
+
+    // Submit handler the .razor will call
+    protected async Task SaveAsync()
+    {
+      var dto = new AppRfcs.SatRfcProfileUpsert
+      {
+        Rfc = Model.Rfc?.Trim()?.ToUpperInvariant() ?? string.Empty,
+        RazonSocial = Model.RazonSocial,
+        NombreComercial = Model.NombreComercial,
+        RegimenCapital = Model.RegimenCapital,
+        FechaInicioOperaciones = Model.FechaInicioOperaciones,
+        EstatusPadron = Model.EstatusPadron,
+        FechaUltCambioEstatus = Model.FechaUltCambioEstatus,
+        EmisionFecha = Model.EmisionFecha,
+        AddressLine1 = Model.AddressLine1,
+        AddressLine2 = Model.AddressLine2,
+        Municipio = Model.Municipio,
+        EntidadFederativa = Model.EntidadFederativa,
+        CodigoPostal = Model.CodigoPostal,
+        CsfDataJson = Model.CsfDataJson,
+        Email = Model.Email
+      };
+
+      if (Model.Mode == CredentialMode.Pfx)
+      {
+        dto.SATFielPfx = Model.PfxBytes;
+        dto.SATFielCertificate = null;
+        dto.SATFielKey = null;
+      }
+      else
+      {
+        dto.SATFielCertificate = Model.CerBytes;
+        dto.SATFielKey = Model.KeyBytes;
+        dto.SATFielPfx = null;
+      }
+
+      dto.SATFielPasswordEnc = ProtectUtf8OrNull(Model.PasswordPlain);
+
+      if (Busy) return;
+      Busy = true; StateHasChanged();
+      try
+      {
+        await Repo.UpsertAsync(dto);     // your existing repo call
+        await ShowSuccessAsync($"RFC {Model.Rfc} guardado correctamente.");
+        // Optionally clear part of the form here if you want
+      }
+      catch (Exception ex)
+      {
+        await ShowErrorAsync($"Error al guardar: {ex.Message}");
+      }
+      finally
+      {
+        Busy = false; StateHasChanged();
+      }
+      // TODO: clear form or show a toast
+    }
+
+    // Can stay private; only SaveAsync uses it
+    private static byte[]? ProtectUtf8OrNull(string? plaintext)
+    {
+      if (string.IsNullOrEmpty(plaintext)) return null;
+      var bytes = Encoding.UTF8.GetBytes(plaintext);
+      return ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser);
+    }
+  }
+}

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.SqlClient;
@@ -16,6 +17,7 @@ using OrionERP.Web.Configuration;
 using OrionERP.Web.Data;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
 using OrionERP.Web.Identity;
+using OrionERP.Web.State;
 
 
 // using Microsoft.AspNetCore.Identity.UI; // <- not required unless you explicitly call AddDefaultUI()
@@ -49,7 +51,8 @@ builder.Services
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<OrionIdentityDbContext>()
     .AddDefaultTokenProviders(); // keep tokens (reset, etc.)
-
+builder.Services.AddScoped<IUserRfcState, UserRfcState>();
+builder.Services.AddScoped<ProtectedSessionStorage>();
 builder.Services.AddScoped<IRfcContext, RfcContext>();
 builder.Services.AddScoped<IAuthorizationHandler, RoleForRfcHandler>();
 builder.Services.AddAuthorization(options =>

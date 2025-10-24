@@ -5,13 +5,15 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
+using OrionERP.Web.State;
 using AppRfcs = OrionERP.Application.Features.Rfcs.Contracts;
 
 namespace OrionERP.Web.Features.Rfcs.Pages
 {
-  public partial class RfcRegisterBase : ComponentBase
+  public partial class RfcRegisterBase : ComponentBase, IDisposable
   {
     [Inject] protected AppRfcs.ISatRfcProfileRepository Repo { get; set; } = default!;
+    [Inject] protected IUserRfcState RfcState { get; set; } = default!;
 
     // Make the type accessible to the derived .razor
     protected class FormModel
@@ -50,6 +52,13 @@ namespace OrionERP.Web.Features.Rfcs.Pages
     protected string? UiMessage { get; set; }
     protected string UiMessageCss { get; set; } = "alert-success";
     private CancellationTokenSource? _msgCts;
+
+    protected override void OnInitialized()
+    {
+      base.OnInitialized();
+      RfcState.Changed += OnRfcChanged;
+      _ = LoadCurrentRfcAsync();
+    }
 
     protected async Task ShowMessageAsync(string text, string css = "alert-success", int ms = 3500)
     {
@@ -150,6 +159,112 @@ namespace OrionERP.Web.Features.Rfcs.Pages
       if (string.IsNullOrEmpty(plaintext)) return null;
       var bytes = Encoding.UTF8.GetBytes(plaintext);
       return ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser);
+    }
+
+    private void OnRfcChanged() => _ = InvokeAsync(LoadCurrentRfcAsync);
+
+    private async Task LoadCurrentRfcAsync()
+    {
+      var current = RfcState.CurrentRfc;
+      if (string.IsNullOrWhiteSpace(current))
+      {
+        await InvokeAsync(() =>
+        {
+          ResetModel();
+          StateHasChanged();
+          return Task.CompletedTask;
+        });
+        return;
+      }
+
+      try
+      {
+        var profile = await Repo.GetAsync(current);
+        await InvokeAsync(() =>
+        {
+          ApplyProfile(profile, current);
+          StateHasChanged();
+          return Task.CompletedTask;
+        });
+      }
+      catch (Exception ex)
+      {
+        await InvokeAsync(async () =>
+        {
+          ResetModel(current);
+          await ShowErrorAsync($"Error al cargar RFC {current}: {ex.Message}");
+        });
+      }
+    }
+
+    private void ApplyProfile(AppRfcs.SatRfcProfile? profile, string rfc)
+    {
+      ResetModel(rfc);
+      if (profile is null)
+      {
+        Model.Rfc = rfc;
+        return;
+      }
+
+      Model.Rfc = profile.Rfc;
+      Model.RazonSocial = profile.RazonSocial;
+      Model.NombreComercial = profile.NombreComercial;
+      Model.RegimenCapital = profile.RegimenCapital;
+      Model.FechaInicioOperaciones = profile.FechaInicioOperaciones;
+      Model.EstatusPadron = profile.EstatusPadron;
+      Model.FechaUltCambioEstatus = profile.FechaUltCambioEstatus;
+      Model.EmisionFecha = profile.EmisionFecha;
+      Model.AddressLine1 = profile.AddressLine1;
+      Model.AddressLine2 = profile.AddressLine2;
+      Model.Municipio = profile.Municipio;
+      Model.EntidadFederativa = profile.EntidadFederativa;
+      Model.CodigoPostal = profile.CodigoPostal;
+      Model.CsfDataJson = profile.CsfDataJson;
+      Model.Email = profile.Email;
+
+      if (profile.SATFielPfx is { Length: > 0 })
+      {
+        Model.Mode = CredentialMode.Pfx;
+        Model.PfxBytes = profile.SATFielPfx;
+        Model.CerBytes = null;
+        Model.KeyBytes = null;
+      }
+      else
+      {
+        Model.Mode = CredentialMode.CerKey;
+        Model.CerBytes = profile.SATFielCertificate;
+        Model.KeyBytes = profile.SATFielKey;
+        Model.PfxBytes = null;
+      }
+    }
+
+    private void ResetModel(string? rfc = null)
+    {
+      Model.Rfc = rfc;
+      Model.RazonSocial = null;
+      Model.NombreComercial = null;
+      Model.RegimenCapital = null;
+      Model.FechaInicioOperaciones = null;
+      Model.EstatusPadron = null;
+      Model.FechaUltCambioEstatus = null;
+      Model.EmisionFecha = null;
+      Model.AddressLine1 = null;
+      Model.AddressLine2 = null;
+      Model.Municipio = null;
+      Model.EntidadFederativa = null;
+      Model.CodigoPostal = null;
+      Model.CsfDataJson = null;
+      Model.Email = null;
+      Model.Mode = CredentialMode.Pfx;
+      Model.PfxBytes = null;
+      Model.CerBytes = null;
+      Model.KeyBytes = null;
+      Model.PasswordPlain = null;
+    }
+
+    public void Dispose()
+    {
+      RfcState.Changed -= OnRfcChanged;
     }
   }
 }

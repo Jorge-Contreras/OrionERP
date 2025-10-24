@@ -3,11 +3,15 @@ using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Options;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts; // ISatXmlInboxService if needed later
 using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
+using OrionERP.Application.Features.Rfcs.Contracts;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
+using OrionERP.Web.State;
 using Sat.MassiveDownload.Crypto; // CertificateLoader (from your Sat.MassiveDownload lib)
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using System.Threading.Tasks;
 using SatCertLoader = Sat.MassiveDownload.Crypto.CertificateLoader; // alias ours
 
@@ -19,6 +23,8 @@ public class SatDescargaPage : ComponentBase
   [Inject] protected ISatDownloadCoordinator Coordinator { get; set; } = default!;
   [Inject] protected ISatSolicitudesRepository SolicitudesRepo { get; set; } = default!;
   [Inject] protected IOptions<SatIntegrationOptions> Opts { get; set; } = default!;
+  [Inject] protected ISatRfcProfileRepository RfcProfiles { get; set; } = default!;
+  [Inject] protected IUserRfcState RfcState { get; set; } = default!;
 
   protected bool Busy { get; set; }
   protected List<SatSolicitudDto> Solicitudes { get; set; } = new();
@@ -44,19 +50,39 @@ public class SatDescargaPage : ComponentBase
     StateHasChanged();
   }
 
-  private X509Certificate2 LoadCert()
+  private async Task<X509Certificate2> LoadCertAsync()
   {
-    var o = Opts.Value;
-    if (o.UsePfx)
+    var currentRfc = RfcState.CurrentRfc;
+    if (string.IsNullOrWhiteSpace(currentRfc))
+      throw new InvalidOperationException("Selecciona un RFC para continuar.");
+
+    var profile = await RfcProfiles.GetAsync(currentRfc);
+    if (profile is null)
+      throw new InvalidOperationException($"No se encontraron credenciales para el RFC {currentRfc}.");
+
+    if (profile.SATFielCertificate is not { Length: > 0 } || profile.SATFielKey is not { Length: > 0 })
+      throw new InvalidOperationException($"El RFC {currentRfc} no tiene certificados .CER/.KEY registrados.");
+
+    var password = UnprotectUtf8OrNull(profile.SATFielPasswordEnc) ?? string.Empty;
+
+    return SatCertLoader.FromCerAndKeyBytes(
+      profile.SATFielCertificate,
+      profile.SATFielKey,
+      password);
+  }
+
+  private static string? UnprotectUtf8OrNull(byte[]? ciphertext)
+  {
+    if (ciphertext is not { Length: > 0 }) return null;
+
+    try
     {
-      if (string.IsNullOrWhiteSpace(o.PfxPath)) throw new InvalidOperationException("PfxPath vacío");
-      return SatCertLoader.FromPfx(o.PfxPath, o.PfxPassword ?? "");
+      var bytes = ProtectedData.Unprotect(ciphertext, null, DataProtectionScope.CurrentUser);
+      return Encoding.UTF8.GetString(bytes);
     }
-    else
+    catch (CryptographicException)
     {
-      if (string.IsNullOrWhiteSpace(o.CerPath) || string.IsNullOrWhiteSpace(o.KeyPath))
-        throw new InvalidOperationException("CerPath/KeyPath vacíos");
-      return SatCertLoader.FromCerAndKey(o.CerPath, o.KeyPath, o.KeyPassword ?? "");
+      return null;
     }
   }
 
@@ -66,7 +92,7 @@ public class SatDescargaPage : ComponentBase
     Busy = true; StateHasChanged();
     try
     {
-      var cert = LoadCert();
+      var cert = await LoadCertAsync();
       var p = new SolicitudParams(
           Issued: Issued,
           RfcSolicitante: Opts.Value.RfcSolicitante,
@@ -79,7 +105,7 @@ public class SatDescargaPage : ComponentBase
 
       var id = await Coordinator.CreateSolicitudAsync(p);
       // Send/Verify immediately to get a folio and packages if available
-      await Coordinator.VerifyAsync(id, LoadCert());
+      await Coordinator.VerifyAsync(id, cert);
       await LoadSolicitudesAsync();
     }
     catch (Exception ex)
@@ -98,9 +124,9 @@ public class SatDescargaPage : ComponentBase
     Busy = true; StateHasChanged();
     try
     {
+      var cert = await LoadCertAsync();
       foreach (var s in Solicitudes)
       {
-        var cert = LoadCert();
         await Coordinator.VerifyAsync(s.Id, cert);
       }
       await LoadSolicitudesAsync();
@@ -117,7 +143,7 @@ public class SatDescargaPage : ComponentBase
     Busy = true; StateHasChanged();
     try
     {
-      var cert = LoadCert();
+      var cert = await LoadCertAsync();
       LastSummary = await Coordinator.DownloadAndProcessAsync(solicitudId, cert);
       await LoadSolicitudesAsync();
     }

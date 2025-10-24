@@ -1,12 +1,14 @@
 using System;
 using System.IO;
-using System.Threading.Tasks;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using OrionERP.Web.State;
 using AppRfcs = OrionERP.Application.Features.Rfcs.Contracts;
+using Sat.MassiveDownload.Crypto;
 
 namespace OrionERP.Web.Features.Rfcs.Pages
 {
@@ -49,6 +51,7 @@ namespace OrionERP.Web.Features.Rfcs.Pages
 
     // Estatus messages and notifications
     protected bool Busy { get; set; }
+    protected bool Validating { get; set; }
     protected string? UiMessage { get; set; }
     protected string UiMessageCss { get; set; } = "alert-success";
     private CancellationTokenSource? _msgCts;
@@ -88,6 +91,57 @@ namespace OrionERP.Web.Features.Rfcs.Pages
 
     protected async Task OnKeySelected(InputFileChangeEventArgs e)
       => Model.KeyBytes = await ReadAllAsync(e.File);
+
+    protected async Task ValidateFielAsync()
+    {
+      if (Validating) return;
+
+      if (Model.Mode != CredentialMode.CerKey)
+      {
+        await ShowErrorAsync("La validación aplica únicamente para archivos .CER y .KEY.");
+        return;
+      }
+
+      if (string.IsNullOrWhiteSpace(Model.PasswordPlain))
+      {
+        await ShowErrorAsync("Proporciona la contraseña de la FIEL.");
+        return;
+      }
+
+      if (Model.CerBytes is not { Length: > 0 })
+      {
+        await ShowErrorAsync("Selecciona el archivo .CER.");
+        return;
+      }
+
+      if (Model.KeyBytes is not { Length: > 0 })
+      {
+        await ShowErrorAsync("Selecciona el archivo .KEY.");
+        return;
+      }
+
+      Validating = true;
+      StateHasChanged();
+
+      try
+      {
+        using var certificate = CertificateLoader.FromCerAndKeyBytes(
+          Model.CerBytes,
+          Model.KeyBytes,
+          Model.PasswordPlain);
+
+        await ShowSuccessAsync($"Certificado válido: {certificate.Subject}");
+      }
+      catch (Exception ex)
+      {
+        await ShowErrorAsync($"No se pudo validar la FIEL: {ex.Message}");
+      }
+      finally
+      {
+        Validating = false;
+        StateHasChanged();
+      }
+    }
 
     private static async Task<byte[]> ReadAllAsync(IBrowserFile file)
     {
@@ -159,6 +213,21 @@ namespace OrionERP.Web.Features.Rfcs.Pages
       if (string.IsNullOrEmpty(plaintext)) return null;
       var bytes = Encoding.UTF8.GetBytes(plaintext);
       return ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser);
+    }
+
+    private static string? UnprotectUtf8OrNull(byte[]? ciphertext)
+    {
+      if (ciphertext is not { Length: > 0 }) return null;
+
+      try
+      {
+        var bytes = ProtectedData.Unprotect(ciphertext, null, DataProtectionScope.CurrentUser);
+        return Encoding.UTF8.GetString(bytes);
+      }
+      catch (CryptographicException)
+      {
+        return null;
+      }
     }
 
     private void OnRfcChanged() => _ = InvokeAsync(LoadCurrentRfcAsync);
@@ -236,6 +305,8 @@ namespace OrionERP.Web.Features.Rfcs.Pages
         Model.KeyBytes = profile.SATFielKey;
         Model.PfxBytes = null;
       }
+
+      Model.PasswordPlain = UnprotectUtf8OrNull(profile.SATFielPasswordEnc);
     }
 
     private void ResetModel(string? rfc = null)

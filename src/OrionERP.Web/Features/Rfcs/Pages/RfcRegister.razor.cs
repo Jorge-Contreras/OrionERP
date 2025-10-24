@@ -61,6 +61,7 @@ namespace OrionERP.Web.Features.Rfcs.Pages
       base.OnInitialized();
       RfcState.Changed += OnRfcChanged;
       _ = LoadCurrentRfcAsync();
+     
     }
 
     protected async Task ShowMessageAsync(string text, string css = "alert-success", int ms = 3500)

@@ -11,10 +11,7 @@
 <AuthorizeView>
     <Authorized Context="context">
         <span class="me-2">@context.User.Identity?.Name</span>
-        <select class="form-select form-select-sm d-inline-block w-auto me-2" value="@_selectedRfc" @onchange="OnRfcChanged">
-            <option value="">-- RFC --</option>
-            <option value="XAXX010101000">XAXX010101000</option>
-        </select>
+        <RfcPicker/>
         <button class="btn btn-link btn-sm" @onclick="LogoutJs">Cerrar sesión</button>
 
     </Authorized>

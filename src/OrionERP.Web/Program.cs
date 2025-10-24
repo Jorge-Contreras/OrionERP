@@ -70,7 +70,7 @@ builder.Services.AddServerSideBlazor();
 builder.Services.AddSingleton<WeatherForecastService>();
 builder.Services.AddCfdiCargarXmlSat();
 builder.Services.AddOrionServices();
-builder.Services.Configure<SatIntegrationOptions>(builder.Configuration.GetSection("SatIntegration"));
+
 builder.Host.UseWindowsService(); // <-- add this
 // optional: listen on 5000 explicitly
 // Only force a specific URL **when actually running as a Windows Service**

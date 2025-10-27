@@ -10,6 +10,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using OfficeOpenXml;
+using OrionERP.Application.Common;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using OrionERP.Infrastructure.Auth;
 using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
@@ -51,6 +52,7 @@ builder.Services
     .AddEntityFrameworkStores<OrionIdentityDbContext>()
     .AddDefaultTokenProviders(); // keep tokens (reset, etc.)
 builder.Services.AddScoped<IUserRfcState, UserRfcState>();
+builder.Services.AddScoped<ICurrentRfcAccessor, UserRfcStateAccessor>();
 builder.Services.AddScoped<ProtectedSessionStorage>();
 builder.Services.AddScoped<IRfcContext, RfcContext>();
 builder.Services.AddScoped<IAuthorizationHandler, RoleForRfcHandler>();

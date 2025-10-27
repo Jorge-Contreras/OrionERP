@@ -19,6 +19,12 @@
     </PackageReference>
   
   </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="wwwroot\Images\OrionERP_Logo.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 <PropertyGroup>
   <PublishSingleFile>true</PublishSingleFile>
   <SelfContained>false</SelfContained> <!-- uses installed .NET runtime -->

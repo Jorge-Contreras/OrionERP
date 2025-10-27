@@ -7,14 +7,92 @@
 @inject NavigationManager Navigation
 @inject SignInManager<ApplicationUser> SignInManager
 
+<style>
+    /* --- Security header layout (scoped) --- */
+    .secbar {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        grid-template-areas: "left center right";
+        align-items: center;
+        gap: .75rem;
+        padding: .5rem .75rem;
+        /* optional separators—comment out if not needed */
+        /* border-bottom: 1px solid rgba(0,0,0,.08); */
+    }
+
+    .sec-left {
+        grid-area: left;
+        justify-self: start;
+    }
+
+    .sec-center {
+        grid-area: center;
+        justify-self: center;
+    }
+
+    .sec-right {
+        grid-area: right;
+        justify-self: end;
+    }
+
+    /* keep the picker nicely sized and centered */
+    .sec-center > * {
+        max-width: 420px;
+        width: 100%;
+    }
+
+    /* identity name styling */
+    .sec-identity {
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 28ch;
+    }
+
+    /* button tweaks so it aligns neatly */
+    .sec-logout.btn {
+        white-space: nowrap;
+    }
+
+    /* Responsive: stack picker on its own row on small screens */
+   
+
+    .sec-center {
+        justify-self: stretch;
+    }
+
+    /* Make the security header span the full width of its row */
+    .top-row > header.secbar {
+        width: 100%;
+    }
+
+    /* Neutralize the Bootstrap px-4 padding on this specific top-row */
+    .top-row.px-4 {
+        padding-left: .75rem !important; /* or 0 if you want it flush */
+        padding-right: .75rem !important;
+    }
+
+    
+</style>
 
 <AuthorizeView>
     <Authorized Context="context">
-        <span class="me-2">@context.User.Identity?.Name</span>
-        <RfcPicker/>
-        <button class="btn btn-link btn-sm" @onclick="LogoutJs">Cerrar sesión</button>
+        <header class="secbar" role="banner">
+            <div class="sec-left">
+                <span class="sec-identity">@context.User.Identity?.Name</span>
+            </div>
 
+            <div class="sec-center">
+                <RfcPicker />
+            </div>
+
+            <div class="sec-right">
+                <button class="btn btn-link btn-sm sec-logout" @onclick="LogoutJs">Cerrar sesión</button>
+            </div>
+        </header>
     </Authorized>
+
     <NotAuthorized>
         <a class="btn btn-primary btn-sm" href="Identity/Account/Login">Iniciar sesión</a>
     </NotAuthorized>
@@ -27,43 +105,6 @@
     private async Task LogoutJs()
     {
         await Js.InvokeVoidAsync("eval", "location.href = '/Auth/logout'");
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!firstRender)
-        {
-            return;
-        }
-
-        var stored = await Js.InvokeAsync<string?>("localStorage.getItem", RfcStorageKey);
-        if (!string.IsNullOrWhiteSpace(stored))
-        {
-            _selectedRfc = stored;
-            Rfc.CurrentRfc = stored;
-            await InvokeAsync(StateHasChanged);
-        }
-        else if (!string.IsNullOrWhiteSpace(Rfc.CurrentRfc))
-        {
-            _selectedRfc = Rfc.CurrentRfc;
-            await Js.InvokeVoidAsync("localStorage.setItem", RfcStorageKey, _selectedRfc);
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    private async Task OnRfcChanged(ChangeEventArgs e)
-    {
-        _selectedRfc = e.Value?.ToString();
-        Rfc.CurrentRfc = _selectedRfc;
-
-        if (string.IsNullOrWhiteSpace(_selectedRfc))
-        {
-            await Js.InvokeVoidAsync("localStorage.removeItem", RfcStorageKey);
-        }
-        else
-        {
-            await Js.InvokeVoidAsync("localStorage.setItem", RfcStorageKey, _selectedRfc);
-        }
     }
 
     private async Task Logout()

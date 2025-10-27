@@ -228,3 +228,117 @@ label {
     .blazor-error-boundary::after {
         content: "An error has occurred."
     }
+
+/* ===== ORION LOADER ===== */
+@keyframes orion-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Inline kit (for buttons, sections) */
+.orion-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: .9rem;
+  font-weight: 900;
+  font-size: clamp(1.1rem, 2.2vw, 1.5rem);
+  letter-spacing: .06em;
+  color: var(--orion-color-primary);
+}
+
+.orion-spinner {
+  width: 64px; /* big */
+  height: 64px;
+  border-radius: 50%;
+  border: 8px solid var(--orion-color-border);
+  border-top-color: var(--orion-color-accent);
+  border-right-color: var(--orion-color-accent);
+  animation: orion-spin .9s linear infinite;
+  filter: drop-shadow(0 6px 14px rgba(15,45,78,.22));
+}
+
+.orion-loading .orion-strong {
+  padding: .25rem .6rem;
+  border-radius: .6rem;
+  background: var(--orion-color-highlight);
+  color: #1b2533;
+  box-shadow: 0 8px 18px rgba(245,196,83,.35);
+}
+
+/* Full-screen overlay (covers everything) */
+.orion-loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15,45,78,.08);
+  backdrop-filter: blur(2px);
+  z-index: 1050; /* higher than top rows/menus */
+  display: grid;
+  place-items: center;
+}
+
+.orion-loading-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  background: var(--orion-color-surface);
+  border: 1px solid var(--orion-color-border);
+  border-radius: 14px;
+  box-shadow: 0 22px 48px rgba(15,45,78,.22);
+}
+
+.orion-spinner-xxl {
+  width: 96px;
+  height: 96px;
+  border: 10px solid var(--orion-color-border);
+  border-top-color: var(--orion-color-accent);
+  border-right-color: var(--orion-color-accent);
+  animation: orion-spin .9s linear infinite;
+}
+
+.orion-loading-title {
+  font-weight: 900;
+  font-size: clamp(1.25rem, 3vw, 1.75rem);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--orion-color-primary);
+  padding: .25rem .65rem;
+  border-radius: .6rem;
+  background: var(--orion-color-highlight);
+  box-shadow: 0 10px 22px rgba(245,196,83,.35);
+}
+
+/* Horizontal filter toolbar */
+.toolbar .form-label {
+  margin-bottom: .25rem;
+}
+
+/* Give fields a practical fixed width so row-cols-auto stays compact */
+.toolbar .form-control,
+.toolbar .form-select {
+  width: 14rem;
+}
+
+@media (min-width: 1400px) {
+  .toolbar .form-control,
+  .toolbar .form-select {
+    width: 16rem;
+  }
+}
+
+@media (max-width: 768px) {
+  /* On small screens, let them stack full-width */
+  .toolbar .form-control,
+  .toolbar .form-select {
+    width: 100%;
+  }
+}
+
+/* Checkbox aligns with the bottom of inputs */
+.toolbar .form-check {
+  margin-top: .35rem;
+}
+
+

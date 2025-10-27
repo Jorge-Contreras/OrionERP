@@ -7,8 +7,9 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+using OrionERP.Web.State;
+using System.Threading.Tasks;
 
 namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
 {
@@ -18,6 +19,7 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
     [Inject] protected IComprobanteQueryService ComprobanteQuery { get; set; } = default!;
     [Inject] protected ITransaccionQueryService TransaccionQuery { get; set; } = default!;
     [Inject] protected IConciliacionService Conciliacion { get; set; } = default!;
+    [Inject] protected IUserRfcState RfcState { get; set; } = default!;
 
 
 
@@ -104,10 +106,19 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
       var montoAbs = Math.Abs(item.Total);
       var fechaXml = item.Fecha;
 
+      var currentRfc = RfcState.CurrentRfc;
+      if (string.IsNullOrWhiteSpace(currentRfc))
+      {
+        FilteredTransacciones.Clear();
+        StateHasChanged();
+        return;
+      }
+
       FilteredTransacciones.Clear();
       var rows = await TransaccionQuery.GetCandidatesAsync(
           fechaXml: fechaXml,
           montoAbs: montoAbs,
+          rfc: currentRfc,
           daysBack: 60,
           top: 200
       );
@@ -296,8 +307,19 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
 
     protected async Task RefreshInvoicesAsync()
     {
+      var currentRfc = RfcState.CurrentRfc;
+      if (string.IsNullOrWhiteSpace(currentRfc))
+      {
+        Invoices.Clear();
+        StateHasChanged();
+        return;
+      }
+
       Invoices.Clear();
-      var list = await ComprobanteQuery.GetRecentFromPlaceholderAsync(placeholderTransaccionId: 5505, top: 100);
+      var list = await ComprobanteQuery.GetRecentFromPlaceholderAsync(
+          rfc: currentRfc,
+          placeholderTransaccionId: 5505,
+          top: 100);
       Invoices.AddRange(list);
       StateHasChanged();
     }

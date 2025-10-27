@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
+using OrionERP.Application.Common;
 using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
 
 namespace OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Dapper;
@@ -10,7 +11,13 @@ namespace OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Dapper;
 public sealed class SatSolicitudesRepository : ISatSolicitudesRepository
 {
   private readonly SqlConnectionFactory _factory;
-  public SatSolicitudesRepository(SqlConnectionFactory factory) => _factory = factory;
+  private readonly ICurrentRfcAccessor _rfcAccessor;
+
+  public SatSolicitudesRepository(SqlConnectionFactory factory, ICurrentRfcAccessor rfcAccessor)
+  {
+    _factory = factory;
+    _rfcAccessor = rfcAccessor;
+  }
 
   public async Task<int> InsertAsync(SatSolicitudDto dto, string requestKey, CancellationToken ct = default)
   {
@@ -103,9 +110,15 @@ where Id = @Id";
 
   public async Task<IEnumerable<SatSolicitudDto>> ListAsync(int? top = 100, CancellationToken ct = default)
   {
-    string sql = "select " + (top.HasValue ? $"top ({top.Value}) " : "") + "* from dbo.SatSolicitudes order by Id desc";
+    var currentRfc = _rfcAccessor.CurrentRfc;
+    if (string.IsNullOrWhiteSpace(currentRfc))
+      return Array.Empty<SatSolicitudDto>();
+
+    var topClause = top.HasValue ? $"top ({top.Value}) " : string.Empty;
+    var sql = $"select {topClause}* from dbo.SatSolicitudes where RfcSolicitante = @rfc order by Id desc";
     using var cn = _factory.Create();
-    return await cn.QueryAsync<SatSolicitudDto>(sql);
+    var command = new CommandDefinition(sql, new { rfc = currentRfc }, cancellationToken: ct);
+    return await cn.QueryAsync<SatSolicitudDto>(command);
   }
 
   public async Task SetFolioAsync(int id, Guid folio, CancellationToken ct = default)

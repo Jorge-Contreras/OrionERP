@@ -1,6 +1,7 @@
 @page "/cfdi/declaracion-previa"
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
+@attribute [Authorize(Roles = "Administrador,SatOperator")]
 
 <h3>Declaración Previa</h3>
 @if (_filtering)

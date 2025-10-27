@@ -1,0 +1,41 @@
+/* Layout base */
+.welcome-grid {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 100vh;
+  /* Variables locales al componente (sí funcionan con aislamiento) */
+  --hero-base: #1c2c35; /* azul gris oscuro */
+  --hero-deeper: #111c23; /* más profundo */
+  --hero-glow: rgba(160,189,205,.22); /* luz desde tu PNG (#A0BDCD) */
+  --brand-accent: #a0bdcd;
+}
+
+/* Marca en el título */
+.brand {
+  color: var(--brand-accent);
+}
+
+/* Héroe con fondo oscuro + glow */
+.hero-wrap {
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(1100px 700px at 20% 18%, var(--hero-glow) 0%, rgba(160,189,205,0) 60%), linear-gradient(180deg, var(--hero-base) 0%, var(--hero-deeper) 100%);
+}
+
+/* Imagen proporcional ocupando el resto */
+.hero-img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: center;
+}
+
+/* Viñeta sutil para profundidad */
+.hero-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(80% 60% at 70% 60%, rgba(0,0,0,.10), rgba(0,0,0,.18));
+  pointer-events: none;
+}

@@ -20,10 +20,12 @@ namespace OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts
   {
     Task<IReadOnlyList<ComprobanteListItem>> GetByTransaccionAsync(
         int transaccionId,
+        string rfc,
         int top = 100,
         CancellationToken ct = default);
 
     Task<IReadOnlyList<ComprobanteListItem>> GetRecentFromPlaceholderAsync(
+        string rfc,
         int placeholderTransaccionId = 5505,
         int top = 100,
         CancellationToken ct = default);

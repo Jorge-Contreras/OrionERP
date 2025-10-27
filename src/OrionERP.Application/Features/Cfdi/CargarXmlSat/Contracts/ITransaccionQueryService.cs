@@ -15,6 +15,7 @@ namespace OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts
     Task<IReadOnlyList<TransaccionListItem>> GetCandidatesAsync(
         DateTime fechaXml,
         decimal montoAbs,
+        string rfc,
         int daysBack = 60,
         int top = 200,
         CancellationToken ct = default);

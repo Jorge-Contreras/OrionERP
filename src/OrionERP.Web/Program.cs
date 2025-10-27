@@ -28,9 +28,8 @@ ExcelPackage.License.SetNonCommercialOrganization("Orion Habitat de Mexico S.A. 
 // Use ONE connection string name consistently.
 // Option A: keep "OrionDb". Make sure it exists in appsettings.json.
 // Option B: switch to "DefaultConnection".
-var connectionString = builder.Configuration.GetConnectionString("OrionDb")
-    ?? builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Server=bonhomia.ddns.net,1433;Database=grupocarpio;User Id=orion;Password=Orion82;TrustServerCertificate=True;MultipleActiveResultSets=True;";
+var connectionString = builder.Configuration.GetConnectionString("OrionDb");
+    
 
 builder.Services.AddDbContext<OrionIdentityDbContext>(opt =>
     opt.UseSqlServer(connectionString,

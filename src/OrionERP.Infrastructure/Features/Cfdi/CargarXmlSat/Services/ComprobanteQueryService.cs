@@ -1,17 +1,21 @@
+using Dapper;
+using Microsoft.AspNetCore.Components;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
+using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using System.Collections.Generic;
 using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
-using Dapper;
-using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
-using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+
+
 
 namespace OrionERP.Infrastructure.Feautures.Cfdi.CargarXmlSat.Services
 {
   public sealed class ComprobanteQueryService : IComprobanteQueryService
   {
     private readonly string _cs;
+    
 
     public ComprobanteQueryService(IConfiguration cfg)
     {
@@ -27,6 +31,9 @@ namespace OrionERP.Infrastructure.Feautures.Cfdi.CargarXmlSat.Services
     public async Task<IReadOnlyList<ComprobanteListItem>> GetByTransaccionAsync(
         int transaccionId, int top = 100, CancellationToken ct = default)
     {
+
+
+
       const string sql = @"
     SELECT TOP (@Top)
     c.Comprobante_Id        AS ComprobanteId,  

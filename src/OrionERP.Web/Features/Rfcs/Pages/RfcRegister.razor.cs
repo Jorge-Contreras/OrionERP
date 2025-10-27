@@ -336,7 +336,7 @@ namespace OrionERP.Web.Features.Rfcs.Pages
 
     public void Dispose()
     {
-      RfcState.Changed -= OnRfcChanged;
+     RfcState.Changed -= OnRfcChanged;
     }
   }
 }

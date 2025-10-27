@@ -34,6 +34,8 @@ public class SatDescargaPage : ComponentBase
   protected DateTime EndLocal { get; set; } = DateTime.UtcNow.Date.AddDays(1).AddSeconds(-1); // 23:59:59
   protected bool Issued { get; set; } = false;
   protected string? FilterRfc { get; set; }
+
+  protected string? RfcSolicitante { get; set; }
   protected string TipoSolicitud { get; set; } = "CFDI";
   protected string? EstadoComprobante { get; set; } = null;
 
@@ -42,7 +44,7 @@ public class SatDescargaPage : ComponentBase
     await LoadSolicitudesAsync();
   }
 
-  private async Task LoadSolicitudesAsync()
+  public async Task LoadSolicitudesAsync()
   {
     var rows = await SolicitudesRepo.ListAsync(100);
     Solicitudes = new List<SatSolicitudDto>(rows);

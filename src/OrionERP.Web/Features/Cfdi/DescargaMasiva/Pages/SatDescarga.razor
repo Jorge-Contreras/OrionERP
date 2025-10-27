@@ -3,55 +3,49 @@
 @using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 <h3>Descarga Masiva SAT</h3>
+<RfcPicker @bind-SelectedRfc="RfcSolicitante"
+           @bind-SelectedRfc:after="LoadSolicitudesAsync" />
 
 <div class="card p-3 mb-3">
-    <div class="toolbar row row-cols-auto g-3 align-items-end">
-        <div class="col">
-            <label class="form-label" for="fi">Fecha inicial (UTC)</label>
-            <input id="fi" type="datetime-local" class="form-control" />
-        </div>
+    <div class="row g-3">
 
-        <div class="col">
-            <label class="form-label" for="ff">Fecha final (UTC)</label>
-            <input id="ff" type="datetime-local" class="form-control" />
+        <div class="col-md-3">
+            <label class="form-label">Fecha inicial (UTC)</label>
+            <input class="form-control" type="datetime-local" @bind="StartLocal" />
         </div>
-
-        <div class="col d-flex align-items-center pt-2">
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="issued">
-                <label class="form-check-label" for="issued">Emitidos</label>
-            </div>
+        <div class="col-md-3">
+            <label class="form-label">Fecha final (UTC)</label>
+            <input class="form-control" type="datetime-local" @bind="EndLocal" />
         </div>
-
-        <div class="col">
-            <label class="form-label" for="rfc">RFC filtro (opcional)</label>
-            <input id="rfc" class="form-control" />
+        <div class="col-md-2 form-check mt-4">
+            <input class="form-check-input" type="checkbox" id="issued" @bind="Issued" />
+            <label class="form-check-label" for="issued">Emitidos</label>
         </div>
-
-        <div class="col">
-            <label class="form-label" for="tipo">Tipo solicitud</label>
-            <select id="tipo" class="form-select">
+        <div class="col-md-4">
+            <label class="form-label">RFC filtro (opcional)</label>
+            <input class="form-control" @bind="FilterRfc" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Tipo solicitud</label>
+            <select class="form-select" @bind="TipoSolicitud">
                 <option>CFDI</option>
                 <option>Metadata</option>
             </select>
         </div>
-
-        <div class="col">
-            <label class="form-label" for="estado">Estado comprobante (opcional)</label>
-            <select id="estado" class="form-select">
+        <div class="col-md-3">
+            <label class="form-label">Estado comprobante (opcional)</label>
+            <select class="form-select" @bind="EstadoComprobante">
                 <option value="">(auto para Recibidos+CFDI=Vigente)</option>
                 <option>Vigente</option>
                 <option>Cancelado</option>
             </select>
         </div>
-
-        <div class="col ms-auto d-flex gap-2">
-            <button class="btn btn-primary">Solicitar</button>
-            <button class="btn btn-secondary">Actualizar estado</button>
+        <div class="col-md-6 d-flex align-items-end justify-content-end">
+            <button class="btn btn-primary me-2" @onclick="SolicitarAsync" disabled="@Busy">Solicitar</button>
+            <button class="btn btn-secondary" @onclick="RefrescarAsync" disabled="@Busy">Actualizar estado</button>
         </div>
     </div>
 </div>
-
 
 @if (Busy)
 {

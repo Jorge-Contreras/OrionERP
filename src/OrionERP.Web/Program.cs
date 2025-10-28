@@ -21,28 +21,42 @@ using OrionERP.Web.Identity;
 using OrionERP.Web.State;
 using OrionERP.Web.Services;
 
-
 // using Microsoft.AspNetCore.Identity.UI; // <- not required unless you explicitly call AddDefaultUI()
 
 var builder = WebApplication.CreateBuilder(args);
 ExcelPackage.License.SetNonCommercialOrganization("Orion Habitat de Mexico S.A. de C.V.");
 
-// Use ONE connection string name consistently.
-// Option A: keep "OrionDb". Make sure it exists in appsettings.json.
-// Option B: switch to "DefaultConnection".
-var connectionString = builder.Configuration.GetConnectionString("OrionDb");
+// --- CONFIG: JSON is source of truth; ignore arbitrary env vars -----------------
+builder.Configuration.Sources.Clear();
 
+builder.Configuration
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true);
+
+// (Optional) In Development you can enable User Secrets by uncommenting the next two lines
+// if (builder.Environment.IsDevelopment())
+//     builder.Configuration.AddUserSecrets<Program>(optional: true);
+
+// Only allow platform env vars if needed; these WILL NOT include ConnectionStrings__*
+// Remove these two lines if you want to block env vars entirely.
+// (They’re safe to keep; they don’t affect your connection strings.)
+builder.Configuration
+    .AddEnvironmentVariables(prefix: "ASPNETCORE_")
+    .AddEnvironmentVariables(prefix: "DOTNET_");
+
+// -------------------------------------------------------------------------------
+
+// Resolve and validate the connection string strictly from JSON
 var conn = builder.Configuration.GetConnectionString("OrionDb");
-Console.WriteLine($"[BOOT] OrionDb='{conn}'");
+Console.WriteLine($"[BOOT] ENV={builder.Environment.EnvironmentName}  OrionDb='{conn}'");
 if (string.IsNullOrWhiteSpace(conn))
   throw new InvalidOperationException("Missing/empty ConnectionStrings:OrionDb");
 
-
 builder.Services.AddDbContext<OrionIdentityDbContext>(opt =>
-    opt.UseSqlServer(connectionString,
+    opt.UseSqlServer(conn,
         sql => sql.MigrationsAssembly("OrionERP.Infrastructure"))); // migrations live in Infrastructure
 
-// Identity with cookie auth + default UI pages (AddDefaultIdentity includes UI)
+// Identity with cookie auth + default token providers
 builder.Services
     .AddDefaultIdentity<ApplicationUser>(o =>
     {
@@ -56,7 +70,8 @@ builder.Services
     })
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<OrionIdentityDbContext>()
-    .AddDefaultTokenProviders(); // keep tokens (reset, etc.)
+    .AddDefaultTokenProviders();
+
 builder.Services.AddScoped<IUserRfcState, UserRfcState>();
 builder.Services.AddScoped<ICurrentRfcAccessor, UserRfcStateAccessor>();
 builder.Services.AddScoped<ProtectedSessionStorage>();
@@ -66,10 +81,8 @@ builder.Services.AddAuthorization(options =>
 {
   options.AddPolicy(
       "RoleForSelectedRfc",
-      policy => policy.Requirements.Add(new RoleForRfcRequirement("Administrador"))); // NOTE: ensure this role exists (see note below)
+      policy => policy.Requirements.Add(new RoleForRfcRequirement("Administrador")));
 });
-
-// builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider<ApplicationUser>>();
 
 builder.Services.AddRazorPages();      // Identity UI depends on Razor Pages
 builder.Services.AddServerSideBlazor();
@@ -79,38 +92,24 @@ builder.Services.AddCfdiCargarXmlSat();
 builder.Services.AddOrionServices();
 builder.Services.AddScoped<IUiMessageService, UiMessageService>();
 
-builder.Host.UseWindowsService(); // <-- add this
-// optional: listen on 5000 explicitly
-// Only force a specific URL **when actually running as a Windows Service**
+builder.Host.UseWindowsService();
+
+// Only force a specific URL when actually running as a Windows Service
 if (OperatingSystem.IsWindows() && WindowsServiceHelpers.IsWindowsService())
 {
-  // Don’t force ports in dev; only in service mode
   builder.WebHost.UseUrls("http://localhost:5000");
 }
 
 var app = builder.Build();
 
-///temp
-
-
+// Debug endpoint to inspect configuration sources/values
 app.MapGet("/__config", (IConfiguration cfg, IHostEnvironment env) =>
 {
   var root = (IConfigurationRoot)cfg;
   return Results.Text(
       $"ENV={env.EnvironmentName}\n\n" +
-      root.GetDebugView()   // shows each key and the provider that supplied it
-  );
+      root.GetDebugView());
 });
-
-
-
-
-
-///
-
-
-
-
 
 if (!app.Environment.IsDevelopment())
 {
@@ -123,29 +122,26 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
-app.UseAuthentication();   // <- keep this pair once, before mapping endpoints
+app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapRazorPages();       // <- required for /Identity/Account/* pages
+app.MapRazorPages();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
-
 app.MapGet("/auth/logout", async (HttpContext ctx) =>
 {
-  // If you use ASP.NET Core Identity, prefer:
   await ctx.SignOutAsync(IdentityConstants.ApplicationScheme);
-
-  
-  // Redirect where you want after logout
-  ctx.Response.Redirect("/"); // or "/"
+  ctx.Response.Redirect("/");
 });
 
-
+// Seed Identity
 using (var scope = app.Services.CreateScope())
 {
-  await IdentitySeeder.RunAsync(scope.ServiceProvider); // your existing static seeder
-                                                        // await CapitalHumanoImporter.ImportAsync(scope.ServiceProvider);
+  await IdentitySeeder.RunAsync(scope.ServiceProvider);
 }
 
 app.Run();
+
+// Needed only if you enable AddUserSecrets<Program> above (partial to link with implicit Program class)
+public partial class Program { }

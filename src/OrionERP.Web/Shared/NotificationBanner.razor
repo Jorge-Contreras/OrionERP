@@ -1,0 +1,41 @@
+@implements IDisposable
+@inject IUiMessageService MessageService
+
+@if (_currentMessage is not null)
+{
+    <div class="alert @_currentMessage.CssClass alert-dismissible fade show" role="alert">
+        @if (!string.IsNullOrWhiteSpace(_currentMessage.Title))
+        {
+            <strong>@_currentMessage.Title</strong>
+            <span class="ms-2">@_currentMessage.Message</span>
+        }
+        else
+        {
+            @_currentMessage.Message
+        }
+        <button type="button" class="btn-close" aria-label="Cerrar" @onclick="Dismiss"></button>
+    </div>
+}
+
+@code {
+    private UiMessage? _currentMessage;
+
+    protected override void OnInitialized()
+    {
+        _currentMessage = MessageService.Current;
+        MessageService.OnChange += HandleChange;
+    }
+
+    private void HandleChange()
+    {
+        _currentMessage = MessageService.Current;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void Dismiss() => MessageService.Clear();
+
+    public void Dispose()
+    {
+        MessageService.OnChange -= HandleChange;
+    }
+}

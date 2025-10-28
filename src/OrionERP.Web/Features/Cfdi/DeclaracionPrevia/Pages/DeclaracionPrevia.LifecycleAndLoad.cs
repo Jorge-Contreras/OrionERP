@@ -74,7 +74,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
     private async Task LoadAllData()
     {
-      errorMessage = null;
+      ClearErrorMessage();
       statusMessage = null;
 
       try
@@ -136,9 +136,9 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       catch (Exception ex)
       {
-        errorMessage = "Error loading data: " + ex.Message;
+        SetErrorMessage("Error loading data: " + ex.Message);
       }
-      
+
     }
 
 

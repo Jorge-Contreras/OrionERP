@@ -19,6 +19,7 @@ using OrionERP.Web.Data;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
 using OrionERP.Web.Identity;
 using OrionERP.Web.State;
+using OrionERP.Web.Services;
 
 
 // using Microsoft.AspNetCore.Identity.UI; // <- not required unless you explicitly call AddDefaultUI()
@@ -71,6 +72,7 @@ builder.Services.AddServerSideBlazor();
 builder.Services.AddSingleton<WeatherForecastService>();
 builder.Services.AddCfdiCargarXmlSat();
 builder.Services.AddOrionServices();
+builder.Services.AddScoped<IUiMessageService, UiMessageService>();
 
 builder.Host.UseWindowsService(); // <-- add this
 // optional: listen on 5000 explicitly

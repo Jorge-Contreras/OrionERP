@@ -17,7 +17,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       if (isAnnual)
       {
         // Typically DIOT is monthly; if annual, we might not allow
-        errorMessage = "La DIOT solo se puede generar para un periodo mensual específico.";
+        SetErrorMessage("La DIOT solo se puede generar para un periodo mensual específico.");
         return;
       }
       try
@@ -27,7 +27,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
                         new { Year = selectedYear, Month = selectedMonth, receptor = selectedRfc })).ToList();
         if (lines == null || lines.Count == 0)
         {
-          errorMessage = "No se obtuvieron datos para generar la DIOT.";
+          SetErrorMessage("No se obtuvieron datos para generar la DIOT.");
           return;
         }
         // Combine lines into one text blob
@@ -42,7 +42,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       catch (Exception ex)
       {
-        errorMessage = "Error al generar DIOT: " + ex.Message;
+        SetErrorMessage("Error al generar DIOT: " + ex.Message);
       }
     }
 
@@ -219,7 +219,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       catch (Exception ex)
       {
-        errorMessage = "Error al exportar a Excel: " + ex.Message;
+        SetErrorMessage("Error al exportar a Excel: " + ex.Message);
       }
     }
   }

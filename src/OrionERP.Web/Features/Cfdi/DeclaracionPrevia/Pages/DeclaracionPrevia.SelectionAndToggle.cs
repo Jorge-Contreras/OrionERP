@@ -40,7 +40,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       catch (Exception ex)
       {
-        errorMessage = "Error al actualizar factura emitida: " + ex.Message;
+        SetErrorMessage("Error al actualizar factura emitida: " + ex.Message);
       }
     }
 
@@ -64,7 +64,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       catch (Exception ex)
       {
-        errorMessage = "Error al actualizar factura recibida: " + ex.Message;
+        SetErrorMessage("Error al actualizar factura recibida: " + ex.Message);
       }
     }
 
@@ -96,7 +96,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       catch (Exception ex)
       {
-        errorMessage = "Error al excluir pagos/devoluciones: " + ex.Message;
+        SetErrorMessage("Error al excluir pagos/devoluciones: " + ex.Message);
       }
     }
   }

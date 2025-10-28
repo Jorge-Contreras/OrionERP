@@ -40,7 +40,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         var getResp = await client.GetAsync(queryUrl);
         if (!getResp.IsSuccessStatusCode)
         {
-          errorMessage = $"Error al buscar CFDI en Facturama. Status: {(int)getResp.StatusCode} - {getResp.ReasonPhrase}";
+          SetErrorMessage($"Error al buscar CFDI en Facturama. Status: {(int)getResp.StatusCode} - {getResp.ReasonPhrase}");
           return;
         }
         string getBody = await getResp.Content.ReadAsStringAsync();
@@ -56,12 +56,12 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         catch
         {
           // If parsing fails
-          errorMessage = "No se pudo interpretar la respuesta de Facturama (CFDI no encontrado?).";
+          SetErrorMessage("No se pudo interpretar la respuesta de Facturama (CFDI no encontrado?).");
           return;
         }
         if (string.IsNullOrEmpty(cfdiId))
         {
-          errorMessage = "No se encontró el CFDI en Facturama para ese UUID.";
+          SetErrorMessage("No se encontró el CFDI en Facturama para ese UUID.");
           return;
         }
         // 2. DELETE request to cancel
@@ -70,7 +70,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         string deleteBody = await deleteResp.Content.ReadAsStringAsync();
         if (!deleteResp.IsSuccessStatusCode)
         {
-          errorMessage = $"Error al solicitar la cancelación. Status: {(int)deleteResp.StatusCode}. Detalles: {deleteBody}";
+          SetErrorMessage($"Error al solicitar la cancelación. Status: {(int)deleteResp.StatusCode}. Detalles: {deleteBody}");
           return;
         }
         // Parse status if possible:
@@ -96,7 +96,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       catch (Exception ex)
       {
-        errorMessage = "Error en el proceso de cancelación: " + ex.Message;
+        SetErrorMessage("Error en el proceso de cancelación: " + ex.Message);
       }
     }
   }

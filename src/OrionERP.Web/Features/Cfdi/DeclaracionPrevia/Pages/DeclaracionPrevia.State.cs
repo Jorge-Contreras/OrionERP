@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Components;
+using OrionERP.Web.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -6,6 +8,8 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
   public partial class DeclaracionPrevia
   {
+    [Inject] private IUiMessageService UiMessages { get; set; } = default!;
+
     // UI State
     private string? connectionString;
 
@@ -51,5 +55,23 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private int recibidasCurrentPage = 1;
     private int recibidasPageCount = 1;
     private IEnumerable<DeclaracionRecibida> recibidasPage => recibidas?.Skip((recibidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionRecibida>();
+
+    private void ClearErrorMessage()
+    {
+      errorMessage = null;
+      if (UiMessages.Current?.Level == UiMessageLevel.Error)
+      {
+        UiMessages.Clear();
+      }
+    }
+
+    private void SetErrorMessage(string message)
+    {
+      errorMessage = message;
+      if (!string.IsNullOrWhiteSpace(message))
+      {
+        UiMessages.ShowError(message);
+      }
+    }
   }
 }

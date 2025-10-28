@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using OrionERP.Web.State;
+using OrionERP.Web.Services;
 using AppRfcs = OrionERP.Application.Features.Rfcs.Contracts;
 using Sat.MassiveDownload.Crypto;
 
@@ -16,6 +17,7 @@ namespace OrionERP.Web.Features.Rfcs.Pages
   {
     [Inject] protected AppRfcs.ISatRfcProfileRepository Repo { get; set; } = default!;
     [Inject] protected IUserRfcState RfcState { get; set; } = default!;
+    [Inject] protected IUiMessageService UiMessages { get; set; } = default!;
 
     // Make the type accessible to the derived .razor
     protected class FormModel
@@ -70,10 +72,18 @@ namespace OrionERP.Web.Features.Rfcs.Pages
       _msgCts = new();
       UiMessage = text;
       UiMessageCss = css;
+      PublishUiMessage(text, css);
       StateHasChanged();
 
       try { await Task.Delay(ms, _msgCts.Token); UiMessage = null; StateHasChanged(); }
       catch (TaskCanceledException) { /* ignore */ }
+      finally
+      {
+        if (UiMessages.Current?.Message == text)
+        {
+          UiMessages.Clear();
+        }
+      }
     }
 
     protected async Task ShowSuccessAsync(string text) => await ShowMessageAsync(text, "alert-success");
@@ -337,6 +347,18 @@ namespace OrionERP.Web.Features.Rfcs.Pages
     public void Dispose()
     {
      RfcState.Changed -= OnRfcChanged;
+    }
+
+    private void PublishUiMessage(string text, string css)
+    {
+      var level = css switch
+      {
+        "alert-danger" => UiMessageLevel.Error,
+        "alert-warning" => UiMessageLevel.Warning,
+        "alert-success" => UiMessageLevel.Success,
+        _ => UiMessageLevel.Info
+      };
+      UiMessages.Show(new UiMessage(level, text));
     }
   }
 }

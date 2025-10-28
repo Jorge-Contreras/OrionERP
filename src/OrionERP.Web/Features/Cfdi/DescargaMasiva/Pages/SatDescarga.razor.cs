@@ -6,6 +6,7 @@ using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
 using OrionERP.Application.Features.Rfcs.Contracts;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
 using OrionERP.Web.State;
+using OrionERP.Web.Services;
 using Sat.MassiveDownload.Crypto; // CertificateLoader (from your Sat.MassiveDownload lib)
 using System;
 using System.Collections.Generic;
@@ -24,6 +25,7 @@ public class SatDescargaPage : ComponentBase
   [Inject] protected ISatSolicitudesRepository SolicitudesRepo { get; set; } = default!;
   [Inject] protected ISatRfcProfileRepository RfcProfiles { get; set; } = default!;
   [Inject] protected IUserRfcState RfcState { get; set; } = default!;
+  [Inject] protected IUiMessageService UiMessages { get; set; } = default!;
 
   protected bool Busy { get; set; }
   protected List<SatSolicitudDto> Solicitudes { get; set; } = new();
@@ -46,9 +48,16 @@ public class SatDescargaPage : ComponentBase
 
   public async Task LoadSolicitudesAsync()
   {
-    var rows = await SolicitudesRepo.ListAsync(100);
-    Solicitudes = new List<SatSolicitudDto>(rows);
-    StateHasChanged();
+    try
+    {
+      var rows = await SolicitudesRepo.ListAsync(100);
+      Solicitudes = new List<SatSolicitudDto>(rows);
+      StateHasChanged();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"Error al cargar solicitudes: {ex.Message}");
+    }
   }
 
   private async Task<X509Certificate2> LoadCertAsync()
@@ -108,10 +117,11 @@ public class SatDescargaPage : ComponentBase
       // Send/Verify immediately to get a folio and packages if available
       await Coordinator.VerifyAsync(id, cert);
       await LoadSolicitudesAsync();
+      UiMessages.ShowSuccess("Solicitud enviada al SAT correctamente.");
     }
     catch (Exception ex)
     {
-      Console.WriteLine(ex);
+      UiMessages.ShowError($"Error al solicitar descarga: {ex.Message}");
     }
     finally
     {
@@ -131,6 +141,11 @@ public class SatDescargaPage : ComponentBase
         await Coordinator.VerifyAsync(s.Id, cert);
       }
       await LoadSolicitudesAsync();
+      UiMessages.ShowSuccess("Estado de solicitudes actualizado.");
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"Error al actualizar estado: {ex.Message}");
     }
     finally
     {
@@ -147,6 +162,11 @@ public class SatDescargaPage : ComponentBase
       var cert = await LoadCertAsync();
       LastSummary = await Coordinator.DownloadAndProcessAsync(solicitudId, cert);
       await LoadSolicitudesAsync();
+      UiMessages.ShowSuccess("Descarga y procesamiento completados.");
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"Error al descargar y procesar: {ex.Message}");
     }
     finally
     {

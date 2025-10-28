@@ -12,8 +12,8 @@ namespace OrionERP.Infrastructure.Features.Rfcs.Dapper
 
     public SatRfcProfileRepository(IConfiguration cfg)
     {
-      _connString = cfg.GetConnectionString("OrionDB")
-          ?? throw new System.InvalidOperationException("Missing connection string 'DefaultConnection'.");
+      _connString = cfg.GetConnectionString("OrionDb")
+          ?? throw new System.InvalidOperationException("Missing connection string 'OrionDb'.");
     }
 
     public async Task UpsertAsync(AppRfcs.SatRfcProfileUpsert dto)

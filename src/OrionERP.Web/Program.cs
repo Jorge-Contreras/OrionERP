@@ -31,7 +31,12 @@ ExcelPackage.License.SetNonCommercialOrganization("Orion Habitat de Mexico S.A. 
 // Option A: keep "OrionDb". Make sure it exists in appsettings.json.
 // Option B: switch to "DefaultConnection".
 var connectionString = builder.Configuration.GetConnectionString("OrionDb");
-    
+
+var conn = builder.Configuration.GetConnectionString("OrionDb");
+Console.WriteLine($"[BOOT] OrionDb='{conn}'");
+if (string.IsNullOrWhiteSpace(conn))
+  throw new InvalidOperationException("Missing/empty ConnectionStrings:OrionDb");
+
 
 builder.Services.AddDbContext<OrionIdentityDbContext>(opt =>
     opt.UseSqlServer(connectionString,
@@ -84,6 +89,28 @@ if (OperatingSystem.IsWindows() && WindowsServiceHelpers.IsWindowsService())
 }
 
 var app = builder.Build();
+
+///temp
+
+
+app.MapGet("/__config", (IConfiguration cfg, IHostEnvironment env) =>
+{
+  var root = (IConfigurationRoot)cfg;
+  return Results.Text(
+      $"ENV={env.EnvironmentName}\n\n" +
+      root.GetDebugView()   // shows each key and the provider that supplied it
+  );
+});
+
+
+
+
+
+///
+
+
+
+
 
 if (!app.Environment.IsDevelopment())
 {

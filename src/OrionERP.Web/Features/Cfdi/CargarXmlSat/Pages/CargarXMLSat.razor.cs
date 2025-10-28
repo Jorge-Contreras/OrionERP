@@ -1,16 +1,17 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
-
 using Microsoft.Extensions.DependencyInjection;
+using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
+using OrionERP.Web.Services;
+using OrionERP.Web.State;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
-using OrionERP.Web.State;
-using OrionERP.Web.Services;
 using System.Threading.Tasks;
+
 
 namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
 {
@@ -22,6 +23,9 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
     [Inject] protected IConciliacionService Conciliacion { get; set; } = default!;
     [Inject] protected IUserRfcState RfcState { get; set; } = default!;
     [Inject] protected IUiMessageService UiMessages { get; set; } = default!;
+    [Inject] protected ISatXmlInboxService satXmlInboxService { get; set; } = default!;
+
+
 
 
 
@@ -353,9 +357,10 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
       Invoices.Clear();
       try
       {
+        var placeholderId = await satXmlInboxService.EnsureInboxTransaccionAsync(); // still 5505 (config)
         var list = await ComprobanteQuery.GetRecentFromPlaceholderAsync(
             rfc: currentRfc,
-            placeholderTransaccionId: 5505,
+            placeholderTransaccionId: placeholderId,
             top: 100);
         Invoices.AddRange(list);
         StateHasChanged();

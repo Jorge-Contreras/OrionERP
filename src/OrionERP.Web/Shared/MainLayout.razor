@@ -1,4 +1,6 @@
+
 @inherits LayoutComponentBase
+@using OrionERP.Web.Services
 @inject IUiMessageService MessageService
 
 <PageTitle>OrionERP.Web</PageTitle>
@@ -16,20 +18,19 @@
         <div class="px-4">
             <NotificationBanner />
         </div>
+        <article>
+            <ErrorBoundary>
+                <ChildContent>
+                    @Body
+                </ChildContent>
 
-        <ErrorBoundary @ref="_errorBoundary" OnError="HandleError">
-            <ErrorContent>
-                <div class="alert alert-danger alert-dismissible fade show mx-4" role="alert">
-                    <strong>Ocurrió un error inesperado.</strong>
-                    <div class="mt-1">@context.Message</div>
-                    <button type="button" class="btn-close" aria-label="Cerrar" @onclick="Recover"></button>
-                </div>
-            </ErrorContent>
-
-            <article class="content px-0">
-                @Body
-            </article>
-        </ErrorBoundary>
+                <ErrorContent Context="ex">
+                    <div class="alert alert-danger">
+                        <strong>Unexpected error:</strong> @ex.Message
+                    </div>
+                </ErrorContent>
+            </ErrorBoundary>
+        </article>
     </main>
 </div>
 

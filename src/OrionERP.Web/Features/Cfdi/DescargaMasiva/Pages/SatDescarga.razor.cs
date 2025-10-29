@@ -7,12 +7,11 @@ using OrionERP.Application.Features.Rfcs.Contracts;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
 using OrionERP.Web.State;
 using OrionERP.Web.Services;
+using OrionERP.Web.Features.Shared;
 using Sat.MassiveDownload.Crypto; // CertificateLoader (from your Sat.MassiveDownload lib)
 using System;
 using System.Collections.Generic;
-using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using System.Threading.Tasks;
 using SatCertLoader = Sat.MassiveDownload.Crypto.CertificateLoader; // alias ours
 
@@ -75,27 +74,12 @@ public class SatDescargaPage : ComponentBase
     if (profile.SATFielCertificate is not { Length: > 0 } || profile.SATFielKey is not { Length: > 0 })
       throw new InvalidOperationException($"El RFC {currentRfc} no tiene certificados .CER/.KEY registrados.");
 
-    var password = UnprotectUtf8OrNull(profile.SATFielPasswordEnc) ?? string.Empty;
+    var password = RazorPageDataProtector.UnprotectUtf8OrNull(profile.SATFielPasswordEnc) ?? string.Empty;
 
     return SatCertLoader.FromCerAndKeyBytes(
       profile.SATFielCertificate,
       profile.SATFielKey,
       password);
-  }
-
-  private static string? UnprotectUtf8OrNull(byte[]? ciphertext)
-  {
-    if (ciphertext is not { Length: > 0 }) return null;
-
-    try
-    {
-      var bytes = ProtectedData.Unprotect(ciphertext, null, DataProtectionScope.CurrentUser);
-      return Encoding.UTF8.GetString(bytes);
-    }
-    catch (CryptographicException)
-    {
-      return null;
-    }
   }
 
   protected async Task SolicitarAsync()

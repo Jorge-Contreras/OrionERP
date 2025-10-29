@@ -1,13 +1,12 @@
 using System;
 using System.IO;
-using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using OrionERP.Web.State;
 using OrionERP.Web.Services;
+using OrionERP.Web.Features.Shared;
 using AppRfcs = OrionERP.Application.Features.Rfcs.Contracts;
 using Sat.MassiveDownload.Crypto;
 
@@ -57,11 +56,6 @@ namespace OrionERP.Web.Features.Rfcs.Pages
     protected string? UiMessage { get; set; }
     protected string UiMessageCss { get; set; } = "alert-success";
     private CancellationTokenSource? _msgCts;
-    private const string EncryptionKeyFileName = "rfc-register.aes.key";
-    private const int NonceSize = 12;
-    private const int TagSize = 16;
-    private static readonly Lazy<byte[]> EncryptionKey = new(LoadOrCreateKey, true);
-
     protected override void OnInitialized()
     {
       base.OnInitialized();
@@ -202,7 +196,7 @@ namespace OrionERP.Web.Features.Rfcs.Pages
         dto.SATFielPfx = null;
       }
 
-      dto.SATFielPasswordEnc = ProtectUtf8OrNull(Model.PasswordPlain);
+      dto.SATFielPasswordEnc = RazorPageDataProtector.ProtectUtf8OrNull(Model.PasswordPlain);
 
       if (Busy) return;
       Busy = true; StateHasChanged();
@@ -224,69 +218,6 @@ namespace OrionERP.Web.Features.Rfcs.Pages
     }
 
     // Can stay private; only SaveAsync uses it
-    private static byte[] LoadOrCreateKey()
-    {
-      var appDataDirectory = Path.Combine(AppContext.BaseDirectory, "App_Data");
-      Directory.CreateDirectory(appDataDirectory);
-      var keyPath = Path.Combine(appDataDirectory, EncryptionKeyFileName);
-
-      if (File.Exists(keyPath))
-      {
-        var existing = File.ReadAllBytes(keyPath);
-        if (existing.Length == 32)
-        {
-          return existing;
-        }
-      }
-
-      var key = RandomNumberGenerator.GetBytes(32);
-      using var fileStream = new FileStream(keyPath, FileMode.Create, FileAccess.Write, FileShare.None);
-      fileStream.Write(key, 0, key.Length);
-      return key;
-    }
-
-    private static byte[]? ProtectUtf8OrNull(string? plaintext)
-    {
-      if (string.IsNullOrEmpty(plaintext)) return null;
-      var bytes = Encoding.UTF8.GetBytes(plaintext);
-      var nonce = RandomNumberGenerator.GetBytes(NonceSize);
-      var ciphertext = new byte[bytes.Length];
-      var tag = new byte[TagSize];
-
-      using var aesGcm = new AesGcm(EncryptionKey.Value);
-      aesGcm.Encrypt(nonce, bytes, ciphertext, tag);
-
-      var payload = new byte[NonceSize + TagSize + ciphertext.Length];
-      Buffer.BlockCopy(nonce, 0, payload, 0, NonceSize);
-      Buffer.BlockCopy(tag, 0, payload, NonceSize, TagSize);
-      Buffer.BlockCopy(ciphertext, 0, payload, NonceSize + TagSize, ciphertext.Length);
-      return payload;
-    }
-
-    private static string? UnprotectUtf8OrNull(byte[]? ciphertext)
-    {
-      if (ciphertext is not { Length: > 0 }) return null;
-
-      if (ciphertext.Length < NonceSize + TagSize) return null;
-
-      try
-      {
-        var ciphertextSpan = ciphertext.AsSpan();
-        var nonce = ciphertextSpan[..NonceSize];
-        var tag = ciphertextSpan.Slice(NonceSize, TagSize);
-        var encryptedData = ciphertextSpan[(NonceSize + TagSize)..];
-        var plaintext = new byte[encryptedData.Length];
-
-        using var aesGcm = new AesGcm(EncryptionKey.Value);
-        aesGcm.Decrypt(nonce, encryptedData, tag, plaintext);
-        return Encoding.UTF8.GetString(plaintext);
-      }
-      catch (CryptographicException)
-      {
-        return null;
-      }
-    }
-
     private void OnRfcChanged() => _ = InvokeAsync(LoadCurrentRfcAsync);
 
     private async Task LoadCurrentRfcAsync()
@@ -363,7 +294,7 @@ namespace OrionERP.Web.Features.Rfcs.Pages
         Model.PfxBytes = null;
       }
 
-      Model.PasswordPlain = UnprotectUtf8OrNull(profile.SATFielPasswordEnc);
+      Model.PasswordPlain = RazorPageDataProtector.UnprotectUtf8OrNull(profile.SATFielPasswordEnc);
     }
 
     private void ResetModel(string? rfc = null)

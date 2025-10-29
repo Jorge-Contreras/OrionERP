@@ -26,6 +26,8 @@ public class SatDescargaPage : ComponentBase
   [Inject] protected ISatRfcProfileRepository RfcProfiles { get; set; } = default!;
   [Inject] protected IUserRfcState RfcState { get; set; } = default!;
   [Inject] protected IUiMessageService UiMessages { get; set; } = default!;
+  
+
 
   protected bool Busy { get; set; }
   protected List<SatSolicitudDto> Solicitudes { get; set; } = new();
@@ -40,6 +42,11 @@ public class SatDescargaPage : ComponentBase
   protected string? RfcSolicitante { get; set; }
   protected string TipoSolicitud { get; set; } = "CFDI";
   protected string? EstadoComprobante { get; set; } = null;
+
+  private const string EncryptionKeyFileName = "rfc-register.aes.key";
+  private const int NonceSize = 12;
+  private const int TagSize = 16;
+  private static readonly Lazy<byte[]> EncryptionKey = new(LoadOrCreateKey, true);
 
   protected override async Task OnInitializedAsync()
   {
@@ -85,10 +92,19 @@ public class SatDescargaPage : ComponentBase
   {
     if (ciphertext is not { Length: > 0 }) return null;
 
+    if (ciphertext.Length < NonceSize + TagSize) return null;
+
     try
     {
-      var bytes = ProtectedData.Unprotect(ciphertext, null, DataProtectionScope.CurrentUser);
-      return Encoding.UTF8.GetString(bytes);
+      var ciphertextSpan = ciphertext.AsSpan();
+      var nonce = ciphertextSpan[..NonceSize];
+      var tag = ciphertextSpan.Slice(NonceSize, TagSize);
+      var encryptedData = ciphertextSpan[(NonceSize + TagSize)..];
+      var plaintext = new byte[encryptedData.Length];
+
+      using var aesGcm = new AesGcm(EncryptionKey.Value);
+      aesGcm.Decrypt(nonce, encryptedData, tag, plaintext);
+      return Encoding.UTF8.GetString(plaintext);
     }
     catch (CryptographicException)
     {

@@ -43,11 +43,6 @@ public class SatDescargaPage : ComponentBase
   protected string TipoSolicitud { get; set; } = "CFDI";
   protected string? EstadoComprobante { get; set; } = null;
 
-  private const string EncryptionKeyFileName = "rfc-register.aes.key";
-  private const int NonceSize = 12;
-  private const int TagSize = 16;
-  private static readonly Lazy<byte[]> EncryptionKey = new(LoadOrCreateKey, true);
-
   protected override async Task OnInitializedAsync()
   {
     await LoadSolicitudesAsync();
@@ -92,19 +87,10 @@ public class SatDescargaPage : ComponentBase
   {
     if (ciphertext is not { Length: > 0 }) return null;
 
-    if (ciphertext.Length < NonceSize + TagSize) return null;
-
     try
     {
-      var ciphertextSpan = ciphertext.AsSpan();
-      var nonce = ciphertextSpan[..NonceSize];
-      var tag = ciphertextSpan.Slice(NonceSize, TagSize);
-      var encryptedData = ciphertextSpan[(NonceSize + TagSize)..];
-      var plaintext = new byte[encryptedData.Length];
-
-      using var aesGcm = new AesGcm(EncryptionKey.Value);
-      aesGcm.Decrypt(nonce, encryptedData, tag, plaintext);
-      return Encoding.UTF8.GetString(plaintext);
+      var bytes = ProtectedData.Unprotect(ciphertext, null, DataProtectionScope.CurrentUser);
+      return Encoding.UTF8.GetString(bytes);
     }
     catch (CryptographicException)
     {

@@ -20,7 +20,7 @@
   <div class="row g-3 align-items-end">
     <div class="col-md-4">
       <label class="form-label">RFC (Razón Social)</label>
-      <RfcPicker @bind-SelectedRfc="selectedRfc" @bind-SelectedRfc:after="OnRfcChangedAsync" />
+      <RfcPicker/>
     </div>
     <div class="col-md-3">
       <label class="form-label">Fecha inicio</label>
@@ -226,21 +226,20 @@
   private bool HasCompleteAccount => !string.IsNullOrWhiteSpace(selectedNivel1) && !string.IsNullOrWhiteSpace(selectedNivel2) && !string.IsNullOrWhiteSpace(selectedNivel3);
   private bool CanBuscar => HasCompleteAccount && !string.IsNullOrWhiteSpace(selectedRfc);
 
-  private Task OnRfcChangedAsync(string? value)
-  {
+  private Task OnRfcChangedAsync()
+{
     if (suppressRfcChange)
     {
-      suppressRfcChange = false;
-      selectedRfc = value;
-      return Task.CompletedTask;
+        suppressRfcChange = false;
+        return Task.CompletedTask;
     }
 
-    selectedRfc = value;
+    // selectedRfc is already updated by @bind
     ClearAccountSelection();
     registros.Clear();
     hasSearched = false;
     return Task.CompletedTask;
-  }
+}
 
   private async Task OnDirectAccountKeyDown(KeyboardEventArgs args)
   {

@@ -20,15 +20,23 @@ namespace Sat.MassiveDownload.Crypto
 
         public static X509Certificate2 FromCerAndKey(string cerPath, string keyPath, string keyPassword)
         {
-            var publicCert = new X509Certificate2(File.ReadAllBytes(cerPath));
+            var certificateBytes = File.ReadAllBytes(cerPath);
             var keyBytes = File.ReadAllBytes(keyPath);
+
+            return FromCerAndKeyBytes(certificateBytes, keyBytes, keyPassword);
+        }
+
+        public static X509Certificate2 FromCerAndKeyBytes(byte[] certificateBytes, byte[] keyBytes, string keyPassword)
+        {
+            var publicCert = new X509Certificate2(certificateBytes);
 
             RSA rsa;
 
             if (LooksLikePem(keyBytes))
             {
                 // --- RUTA PEM (BouncyCastle) ---
-                using var sr = new StreamReader(keyPath, Encoding.ASCII);
+                using var ms = new MemoryStream(keyBytes, writable: false);
+                using var sr = new StreamReader(ms, Encoding.ASCII);
                 var pemReader = new PemReader(sr, new PasswordFinder(keyPassword));
                 var obj = pemReader.ReadObject()
                           ?? throw new InvalidOperationException("No se pudo leer la llave privada (PEM).");

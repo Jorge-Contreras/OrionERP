@@ -1,4 +1,5 @@
-@page "/rfcs/register"
+@page "/cfdi/register"
+@attribute [Authorize(Roles = "Administrador,SatOperator")]
 @inherits OrionERP.Web.Features.Rfcs.Pages.RfcRegisterBase
 @using Microsoft.AspNetCore.Components.Forms
 
@@ -99,6 +100,8 @@
                         <label class="form-check-label">Subir archivos .CER y .KEY</label>
                     </div>
                 </InputRadioGroup>
+
+
             </fieldset>
 
             @if (Model.Mode == CredentialMode.Pfx)
@@ -126,6 +129,12 @@
                 <label class="form-label">Contraseña FIEL</label>
                 <InputText class="form-control" @bind-Value="Model.PasswordPlain" type="password" />
                 <div class="form-text">Se almacena de forma protegida en el servidor.</div>
+            </div>
+           
+            <div class="mb-3">
+                <button type="button" class="btn btn-outline-secondary" @onclick="ValidateFielAsync" disabled="@(Busy || Validating)">
+                    @(Validating ? "Validando…" : "Validar certificados SAT")
+                </button>
             </div>
 
             <div class="mb-3">

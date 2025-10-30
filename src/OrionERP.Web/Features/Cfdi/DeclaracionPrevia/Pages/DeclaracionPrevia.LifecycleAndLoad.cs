@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Data.SqlClient;
 using Microsoft.IdentityModel.Tokens;
+using OrionERP.Web.State;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,6 +15,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
   public partial class DeclaracionPrevia
   {
     [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
+    [Inject] protected IUserRfcState RfcState { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
@@ -45,7 +47,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         // If none found, just use a default from config or known value
         disponiblesRFCs = new List<string> { "" };
       }
-      selectedRfc = disponiblesRFCs[0];
+      selectedRfc = RfcState.CurrentRfc ;
       selectedYear = DateTime.Now.Year;
       selectedMonth = DateTime.Now.Month;
       isAnnual = false;
@@ -72,7 +74,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
     private async Task LoadAllData()
     {
-      errorMessage = null;
+      ClearErrorMessage();
       statusMessage = null;
 
       try
@@ -134,9 +136,9 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       catch (Exception ex)
       {
-        errorMessage = "Error loading data: " + ex.Message;
+        SetErrorMessage("Error loading data: " + ex.Message);
       }
-      
+
     }
 
 

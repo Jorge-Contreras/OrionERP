@@ -22,6 +22,7 @@ namespace OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services
     public async Task<IReadOnlyList<TransaccionListItem>> GetCandidatesAsync(
         DateTime fechaXml,
         decimal montoAbs,
+        string rfc,
         int daysBack = 60,
         int top = 200,
         CancellationToken ct = default)
@@ -50,7 +51,7 @@ LEFT JOIN dbo.Comprobante c
        ON c.Comprobante_Id = tc.Comprobante_ID
 WHERE t.Fecha > DATEADD(DAY, -@DaysBack, @FechaXml)
   AND ABS(CONVERT(decimal(18,4), t.Monto)) = @MontoAbs
-  AND t.RFC='OHM191112Q26'
+  AND t.RFC = @Rfc
 GROUP BY t.ID, t.Concepto, t.Fecha, t.Monto, t.Cuenta, c.Comprobante_Id
 ORDER BY t.Fecha;";
 
@@ -63,7 +64,8 @@ ORDER BY t.Fecha;";
                 FechaXml = fechaXml,
                 DaysBack = daysBack,
                 MontoAbs = montoAbs,
-                Top = top
+                Top = top,
+                Rfc = rfc
               },
               commandType: CommandType.Text,
               cancellationToken: ct

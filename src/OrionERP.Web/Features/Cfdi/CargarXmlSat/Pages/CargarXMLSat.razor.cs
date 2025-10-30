@@ -1,14 +1,17 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
-
 using Microsoft.Extensions.DependencyInjection;
+using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
+using OrionERP.Web.Services;
+using OrionERP.Web.State;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+
 
 namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
 {
@@ -18,6 +21,11 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
     [Inject] protected IComprobanteQueryService ComprobanteQuery { get; set; } = default!;
     [Inject] protected ITransaccionQueryService TransaccionQuery { get; set; } = default!;
     [Inject] protected IConciliacionService Conciliacion { get; set; } = default!;
+    [Inject] protected IUserRfcState RfcState { get; set; } = default!;
+    [Inject] protected IUiMessageService UiMessages { get; set; } = default!;
+    [Inject] protected ISatXmlInboxService satXmlInboxService { get; set; } = default!;
+
+
 
 
 
@@ -73,6 +81,14 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
 
       IsConciliando = false;
       ConciliarMessage = result.Message;
+      if (result.Success)
+      {
+        UiMessages.ShowSuccess(result.Message);
+      }
+      else
+      {
+        UiMessages.ShowError(result.Message);
+      }
 
       if (result.Success)
       {
@@ -104,15 +120,31 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
       var montoAbs = Math.Abs(item.Total);
       var fechaXml = item.Fecha;
 
+      var currentRfc = RfcState.CurrentRfc;
+      if (string.IsNullOrWhiteSpace(currentRfc))
+      {
+        FilteredTransacciones.Clear();
+        StateHasChanged();
+        return;
+      }
+
       FilteredTransacciones.Clear();
-      var rows = await TransaccionQuery.GetCandidatesAsync(
-          fechaXml: fechaXml,
-          montoAbs: montoAbs,
-          daysBack: 60,
-          top: 200
-      );
-      FilteredTransacciones.AddRange(rows);
-      StateHasChanged();
+      try
+      {
+        var rows = await TransaccionQuery.GetCandidatesAsync(
+            fechaXml: fechaXml,
+            montoAbs: montoAbs,
+            rfc: currentRfc,
+            daysBack: 60,
+            top: 200
+        );
+        FilteredTransacciones.AddRange(rows);
+        StateHasChanged();
+      }
+      catch (Exception ex)
+      {
+        UiMessages.ShowError("Error al obtener transacciones candidatas: " + ex.Message);
+      }
     }
 
 
@@ -248,6 +280,8 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
       // Take a snapshot; user might change selection while we process
       var batch = SelectedFiles.Where(x => string.IsNullOrWhiteSpace(x.Error)).ToList();
 
+      var successCount = 0;
+
       foreach (var f in batch)
       {
         try
@@ -255,10 +289,19 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
           using var stream = f.BrowserFile.OpenReadStream(MaxFileSizeBytes);
           var result = await InboxService.SaveAndProcessAsync(stream, f.Name);
           ProcessResults.Add(result);   // ✅ append, don’t Clear() first
+          if (result.Success)
+          {
+            successCount++;
+          }
+          else
+          {
+            UiMessages.ShowError($"Archivo {f.Name} procesado con errores: {result.Message}");
+          }
         }
         catch (Exception ex)
         {
           ProcessResults.Add(new SatXmlProcessResult(f.Name, 0, false, ex.Message));
+          UiMessages.ShowError($"Error al procesar {f.Name}: {ex.Message}");
         }
       }
 
@@ -266,6 +309,13 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
       var anySuccess = ProcessResults.TakeLast(batch.Count).Any(r => r.Success);
       if (anySuccess)
         SelectedFiles.Clear();
+
+      if (successCount > 0)
+      {
+        UiMessages.ShowSuccess(successCount == 1
+            ? "Se procesó correctamente 1 archivo XML."
+            : $"Se procesaron correctamente {successCount} archivos XML.");
+      }
 
       // Always refresh invoices from SQL, independent of SelectedFiles
       await RefreshInvoicesAsync();
@@ -296,10 +346,29 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
 
     protected async Task RefreshInvoicesAsync()
     {
+      var currentRfc = RfcState.CurrentRfc;
+      if (string.IsNullOrWhiteSpace(currentRfc))
+      {
+        Invoices.Clear();
+        StateHasChanged();
+        return;
+      }
+
       Invoices.Clear();
-      var list = await ComprobanteQuery.GetRecentFromPlaceholderAsync(placeholderTransaccionId: 5505, top: 100);
-      Invoices.AddRange(list);
-      StateHasChanged();
+      try
+      {
+        var placeholderId = await satXmlInboxService.EnsureInboxTransaccionAsync(); // still 5505 (config)
+        var list = await ComprobanteQuery.GetRecentFromPlaceholderAsync(
+            rfc: currentRfc,
+            placeholderTransaccionId: placeholderId,
+            top: 100);
+        Invoices.AddRange(list);
+        StateHasChanged();
+      }
+      catch (Exception ex)
+      {
+        UiMessages.ShowError("Error al cargar comprobantes: " + ex.Message);
+      }
     }
 
     // ViewModel for selected files

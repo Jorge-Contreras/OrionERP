@@ -1,4 +1,7 @@
+
 @inherits LayoutComponentBase
+@using OrionERP.Web.Services
+@inject IUiMessageService MessageService
 
 <PageTitle>OrionERP.Web</PageTitle>
 
@@ -9,12 +12,39 @@
 
     <main>
         <div class="top-row px-4 align-items-center d-flex justify-content-between">
-            <a href="https://docs.microsoft.com/aspnet/" target="_blank">About</a>
             <SecurityHeader />
         </div>
 
-        <article class="content px-4">
-            @Body
+        <div class="px-4">
+            <NotificationBanner />
+        </div>
+        <article>
+            <ErrorBoundary>
+                <ChildContent>
+                    @Body
+                </ChildContent>
+
+                <ErrorContent Context="ex">
+                    <div class="alert alert-danger">
+                        <strong>Unexpected error:</strong> @ex.Message
+                    </div>
+                </ErrorContent>
+            </ErrorBoundary>
         </article>
     </main>
 </div>
+
+@code {
+    private ErrorBoundary? _errorBoundary;
+
+    private void HandleError(Exception exception)
+    {
+        MessageService.ShowError($"Ocurrió un error inesperado: {exception.Message}");
+    }
+
+    private void Recover()
+    {
+        MessageService.Clear();
+        _errorBoundary?.Recover();
+    }
+}

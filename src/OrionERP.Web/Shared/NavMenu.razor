@@ -1,45 +1,60 @@
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">OrionERP.Web</a>
+        <a class="navbar-brand brand-logo" href="/">
+            <img src="/Images/OrionERP_Logo.png" alt="OrionERP logo">
+        </a>
         <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
             <span class="navbar-toggler-icon"></span>
         </button>
     </div>
 </div>
 
-<div class="@NavMenuCssClass" @onclick="ToggleNavMenu">
-    <nav class="flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="oi oi-home" aria-hidden="true"></span> Home
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="oi oi-plus" aria-hidden="true"></span> Counter
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="fetchdata">
-                <span class="oi oi-list-rich" aria-hidden="true"></span> Fetch data
-            </NavLink>
-        </div>
-    </nav>
+<div class="@NavMenuCssClass navmenu-body">
+    <nav class="px-2" aria-label="Primary">
+        <ul class="nav flex-column gap-1" @onclick:stopPropagation>
+            <li class="nav-section">General</li>
 
-    <li class="nav-item px-3">
-        <NavLink class="nav-link" href="/rfcs/register" Match="NavLinkMatch.All">
-            <span class="oi oi-plus" aria-hidden="true"></span> Registrar RFC
-        </NavLink>
-    </li>
+            <li class="nav-item">
+                <NavLink class="nav-link" href="/" Match="NavLinkMatch.All" title="Home">
+                    <span class="oi oi-home" aria-hidden="true"></span>
+                    <span class="label">Home</span>
+                </NavLink>
+            </li>
+            
+            <li class="nav-item">
+                <NavLink class="nav-link" href="/cfdi/register" Match="NavLinkMatch.All" title="Registrar RFC">
+                    <span class="oi oi-plus" aria-hidden="true"></span>
+                    <span class="label">Registrar RFC</span>
+                </NavLink>
+            </li>
+
+            <li class="nav-divider" role="separator" aria-hidden="true"></li>
+            <li class="nav-section">CFDI</li>
+
+            <li class="nav-item">
+                <NavLink class="nav-link" href="/cfdi/declaracion-previa" title="Declaración previa">
+                    <span class="oi oi-document" aria-hidden="true"></span>
+                    <span class="label">Declaración previa</span>
+                </NavLink>
+            </li>
+            <li class="nav-item">
+                <NavLink class="nav-link" href="/cfdi/descarga-masiva" title="Descarga masiva SAT">
+                    <span class="oi oi-cloud-download" aria-hidden="true"></span>
+                    <span class="label">Descarga masiva SAT</span>
+                </NavLink>
+            </li>
+            <li class="nav-item">
+                <NavLink class="nav-link" href="/cfdi/cargar-XML-SAT" title="Cargar XML">
+                    <span class="oi oi-cloud-upload" aria-hidden="true"></span>
+                    <span class="label">Cargar XML</span>
+                </NavLink>
+            </li>
+        </ul>
+    </nav>
 </div>
 
 @code {
     private bool collapseNavMenu = true;
-
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
-
-    private void ToggleNavMenu()
-    {
-        collapseNavMenu = !collapseNavMenu;
-    }
+    private void ToggleNavMenu() => collapseNavMenu = !collapseNavMenu;
 }

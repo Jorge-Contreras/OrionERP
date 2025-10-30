@@ -1,17 +1,21 @@
+using Dapper;
+using Microsoft.AspNetCore.Components;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
+using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using System.Collections.Generic;
 using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
-using Dapper;
-using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
-using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+
+
 
 namespace OrionERP.Infrastructure.Feautures.Cfdi.CargarXmlSat.Services
 {
   public sealed class ComprobanteQueryService : IComprobanteQueryService
   {
     private readonly string _cs;
+    
 
     public ComprobanteQueryService(IConfiguration cfg)
     {
@@ -21,12 +25,21 @@ namespace OrionERP.Infrastructure.Feautures.Cfdi.CargarXmlSat.Services
 
     // “Pending” area: all invoices tied to the placeholder transacción.
     public Task<IReadOnlyList<ComprobanteListItem>> GetRecentFromPlaceholderAsync(
-        int placeholderTransaccionId = 5505, int top = 100, CancellationToken ct = default)
-        => GetByTransaccionAsync(placeholderTransaccionId, top, ct);
+        string rfc,
+        int placeholderTransaccionId = 5505,
+        int top = 100,
+        CancellationToken ct = default)
+        => GetByTransaccionAsync(placeholderTransaccionId, rfc, top, ct);
 
     public async Task<IReadOnlyList<ComprobanteListItem>> GetByTransaccionAsync(
-        int transaccionId, int top = 100, CancellationToken ct = default)
+        int transaccionId,
+        string rfc,
+        int top = 100,
+        CancellationToken ct = default)
     {
+
+
+
       const string sql = @"
     SELECT TOP (@Top)
     c.Comprobante_Id        AS ComprobanteId,  
@@ -42,14 +55,14 @@ LEFT JOIN dbo.Receptor r                  ON r.Comprobante_ID = c.Comprobante_Id
 LEFT JOIN dbo.TimbreFiscalDigital t       ON t.Comprobante_ID = c.Comprobante_Id
 LEFT JOIN dbo.Transaccion_Comprobante tc  ON tc.Comprobante_ID = c.Comprobante_Id
 WHERE tc.Transaccion_ID = @TransaccionId
-AND r.RFC = 'OHM191112Q26'  -- filter by your company RFC
+AND r.RFC = @Rfc
 ORDER BY c.Comprobante_Id DESC;";
 
       using var conn = new SqlConnection(_cs);
       var rows = await conn.QueryAsync<ComprobanteListItem>(
           new CommandDefinition(
               sql,
-              new { TransaccionId = transaccionId, Top = top },
+              new { TransaccionId = transaccionId, Top = top, Rfc = rfc },
               commandType: CommandType.Text,
               cancellationToken: ct
           )

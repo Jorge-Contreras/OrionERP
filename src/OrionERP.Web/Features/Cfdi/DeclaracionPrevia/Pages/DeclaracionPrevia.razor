@@ -1,26 +1,19 @@
 @page "/cfdi/declaracion-previa"
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
+@attribute [Authorize(Roles = "Administrador,SatOperator")]
 
 <h3>Declaración Previa</h3>
 @if (_filtering)
 {
-    <span class="spinner-border spinner-border-sm ms-2" role="status" aria-hidden="true"></span>
-    <span class="ms-1 small align-middle">Cargando…</span>
+    <span class="orion-loading" role="status" aria-live="polite">
+        <span class="orion-spinner" aria-hidden="true"></span>
+        <span class="orion-strong">Cargando…</span>
+    </span>
 }
 <div class="mb-3 filter-bar">
     <div class="filter-pair">
         <label class="fw-bold">RFC (Razón Social):</label>
-        <select  @bind="selectedRfc" @bind:after="OnFiltersChangedAsync" 
-                class="form-select inline-select">
-            @if (disponiblesRFCs != null)
-            {
-                foreach (var rfc in disponiblesRFCs)
-                {
-                    <option value="@rfc">@rfc</option>
-                }
-            }
-        </select>
         <RfcPicker 
           @bind-SelectedRfc="selectedRfc"
           @bind-SelectedRfc:after="OnFiltersChangedAsync"  />

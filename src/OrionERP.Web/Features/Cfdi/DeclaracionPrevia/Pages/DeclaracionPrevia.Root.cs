@@ -26,10 +26,10 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       await JS.InvokeVoidAsync("sessionStorage.setItem", "impuestosSummary", impuestosSummary ?? "");
 
       // Open the summary page in a NEW TAB
-      await JS.InvokeVoidAsync("open", "/cfdi/declaracion-previa/resumen", "_blank");
+      //await JS.InvokeVoidAsync("open", "/cfdi/resumen", "_blank");
 
       // If you prefer same tab instead, use:
-      // Nav.NavigateTo("/cfdi/declaracion-previa/resumen");
+      Nav.NavigateTo("/cfdi/resumen");
     }
     // Keep this too if you use it elsewhere:
     // Data models corresponding to stored procedure outputs:

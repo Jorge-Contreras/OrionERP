@@ -1,0 +1,567 @@
+@page "/cfdi/registros-contables"
+@using OrionERP.Application.Features.Cfdi.ContabilidadRegistros
+@using OrionERP.Web.State
+@inject ICuentasContablesRepository CuentasRepository
+@inject IContabilidadRegistrosService RegistrosService
+@inject NavigationManager Navigation
+@inject IUserRfcState RfcState
+@attribute [Authorize(Roles = "Administrador,SatOperator")]
+
+<h3>Contabilidad &mdash; Registros</h3>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+  <div class="alert alert-danger" role="alert">
+    @errorMessage
+  </div>
+}
+
+<div class="card p-3 mb-3">
+  <div class="row g-3 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label">RFC (Razón Social)</label>
+      <RfcPicker @bind-SelectedRfc="selectedRfc" @bind-SelectedRfc:after="OnRfcChangedAsync" />
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Fecha inicio</label>
+      <input class="form-control" type="date" @bind="startDate" />
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Fecha fin</label>
+      <input class="form-control" type="date" @bind="endDate" />
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Cuenta #</label>
+      <input class="form-control" type="number" min="1" @bind="directAccountId" @onkeydown="OnDirectAccountKeyDown" />
+    </div>
+  </div>
+
+  <div class="mt-3">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label">Buscar Nivel 1</label>
+        <input class="form-control" placeholder="Ej. 102 o BANCOS" @bind="nivel1Term" @onkeydown="OnNivel1KeyDown" />
+        @if (nivel1Results.Any())
+        {
+          <div class="table-responsive mt-2">
+            <table class="table table-sm table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>Id</th>
+                  <th>RFC</th>
+                  <th>Nivel1</th>
+                  <th>Descripción</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach (var item in nivel1Results)
+                {
+                  <tr role="button" @onclick="() => SelectNivel1(item)">
+                    <td>@item.Id</td>
+                    <td>@item.RazonSocial</td>
+                    <td>@item.Nivel1</td>
+                    <td>@item.Descripcion</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Buscar Nivel 2</label>
+        <input class="form-control" placeholder="Ej. 01 o descripción" @bind="nivel2Term" @onkeydown="OnNivel2KeyDown" disabled="@(!CanSearchNivel2)" />
+        @if (nivel2Results.Any())
+        {
+          <div class="table-responsive mt-2">
+            <table class="table table-sm table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>Id</th>
+                  <th>Nivel2</th>
+                  <th>Descripción</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach (var item in nivel2Results)
+                {
+                  <tr role="button" @onclick="() => SelectNivel2(item)">
+                    <td>@item.Id</td>
+                    <td>@item.Nivel2</td>
+                    <td>@item.Descripcion</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Buscar Nivel 3</label>
+        <input class="form-control" placeholder="Ej. 02 o descripción" @bind="nivel3Term" @onkeydown="OnNivel3KeyDown" disabled="@(!CanSearchNivel3)" />
+        @if (nivel3Results.Any())
+        {
+          <div class="table-responsive mt-2">
+            <table class="table table-sm table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>Id</th>
+                  <th>Nivel3</th>
+                  <th>Descripción</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach (var item in nivel3Results)
+                {
+                  <tr role="button" @onclick="() => SelectNivel3(item)">
+                    <td>@item.Id</td>
+                    <td>@item.Nivel3</td>
+                    <td>@item.Descripcion</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-3 d-flex flex-wrap align-items-center gap-2">
+    @if (HasCompleteAccount)
+    {
+      <span class="badge text-bg-primary">Nivel1: @selectedNivel1</span>
+      <span class="badge text-bg-primary">Nivel2: @selectedNivel2</span>
+      <span class="badge text-bg-primary">Nivel3: @selectedNivel3</span>
+      @if (!string.IsNullOrWhiteSpace(selectedAccountDescripcion))
+      {
+        <span class="badge text-bg-info text-wrap">@selectedAccountDescripcion</span>
+      }
+    }
+    <button class="btn btn-primary ms-auto" @onclick="OnBuscarClickedAsync" disabled="@(!CanBuscar)">Buscar</button>
+  </div>
+</div>
+
+<div class="card p-3">
+  @if (isLoading)
+  {
+    <span class="orion-loading" role="status" aria-live="polite">
+      <span class="orion-spinner" aria-hidden="true"></span>
+      <span class="orion-strong">Trabajando…</span>
+    </span>
+  }
+  else if (registros.Any())
+  {
+    <div class="table-responsive">
+      <table class="table table-sm table-striped table-hover align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Id</th>
+            <th>Fecha</th>
+            <th>Cuenta</th>
+            <th>Nombre_Cuenta</th>
+            <th>Concepto</th>
+            <th>Debe</th>
+            <th>Haber</th>
+            <th>Balance</th>
+            <th>Poliza</th>
+            <th>Revisado</th>
+            <th>Referencia</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach (var row in registros)
+          {
+            <tr>
+              <td>@row.Id</td>
+              <td>@row.Fecha</td>
+              <td>@row.Cuenta</td>
+              <td>@row.Nombre_Cuenta</td>
+              <td>@row.Concepto</td>
+              <td>@row.Debe</td>
+              <td>@row.Haber</td>
+              <td>@row.Balance</td>
+              <td>@row.Poliza</td>
+              <td>@row.Revisado</td>
+              <td>@row.Referencia</td>
+              <td>
+                <button class="btn btn-link btn-sm" type="button" @onclick="() => GoToPoliza(row.Poliza)">Ver póliza</button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+  else if (hasSearched)
+  {
+    <div class="alert alert-info mb-0">Sin resultados</div>
+  }
+</div>
+
+@code {
+  private string? selectedRfc;
+  private DateTime startDate = new DateTime(DateTime.Today.Year, 1, 1);
+  private DateTime endDate = DateTime.Today;
+  private int? directAccountId;
+  private string nivel1Term = string.Empty;
+  private string nivel2Term = string.Empty;
+  private string nivel3Term = string.Empty;
+  private string? selectedNivel1;
+  private string? selectedNivel2;
+  private string? selectedNivel3;
+  private string? selectedAccountDescripcion;
+  private readonly List<CuentasContablesDto> nivel1Results = new();
+  private readonly List<CuentasContablesDto> nivel2Results = new();
+  private readonly List<CuentasContablesDto> nivel3Results = new();
+  private readonly List<RegistrosContablesRow> registros = new();
+  private bool hasSearched;
+  private bool isLoading;
+  private string? errorMessage;
+  private bool suppressRfcChange;
+
+  private bool CanSearchNivel2 => !string.IsNullOrWhiteSpace(selectedNivel1) && !string.IsNullOrWhiteSpace(selectedRfc);
+  private bool CanSearchNivel3 => !string.IsNullOrWhiteSpace(selectedNivel1) && !string.IsNullOrWhiteSpace(selectedNivel2) && !string.IsNullOrWhiteSpace(selectedRfc);
+  private bool HasCompleteAccount => !string.IsNullOrWhiteSpace(selectedNivel1) && !string.IsNullOrWhiteSpace(selectedNivel2) && !string.IsNullOrWhiteSpace(selectedNivel3);
+  private bool CanBuscar => HasCompleteAccount && !string.IsNullOrWhiteSpace(selectedRfc);
+
+  private Task OnRfcChangedAsync(string? value)
+  {
+    if (suppressRfcChange)
+    {
+      suppressRfcChange = false;
+      selectedRfc = value;
+      return Task.CompletedTask;
+    }
+
+    selectedRfc = value;
+    ClearAccountSelection();
+    registros.Clear();
+    hasSearched = false;
+    return Task.CompletedTask;
+  }
+
+  private async Task OnDirectAccountKeyDown(KeyboardEventArgs args)
+  {
+    if (args.Key == "Enter")
+    {
+      var resolved = await ResolveDirectAccountAsync();
+      if (resolved && CanBuscar)
+      {
+        await BuscarAsync();
+      }
+    }
+  }
+
+  private async Task OnNivel1KeyDown(KeyboardEventArgs args)
+  {
+    if (args.Key != "Enter")
+    {
+      return;
+    }
+
+    if (HasCompleteAccount && CanBuscar)
+    {
+      await BuscarAsync();
+    }
+    else
+    {
+      await SearchNivel1Async();
+    }
+  }
+
+  private async Task OnNivel2KeyDown(KeyboardEventArgs args)
+  {
+    if (args.Key != "Enter")
+    {
+      return;
+    }
+
+    if (!CanSearchNivel2)
+    {
+      await SearchNivel1Async();
+      return;
+    }
+
+    if (HasCompleteAccount && CanBuscar)
+    {
+      await BuscarAsync();
+    }
+    else
+    {
+      await SearchNivel2Async();
+    }
+  }
+
+  private async Task OnNivel3KeyDown(KeyboardEventArgs args)
+  {
+    if (args.Key != "Enter")
+    {
+      return;
+    }
+
+    if (!CanSearchNivel3)
+    {
+      if (!CanSearchNivel2)
+      {
+        await SearchNivel1Async();
+      }
+      else
+      {
+        await SearchNivel2Async();
+      }
+      return;
+    }
+
+    if (HasCompleteAccount && CanBuscar)
+    {
+      await BuscarAsync();
+    }
+    else
+    {
+      await SearchNivel3Async();
+    }
+  }
+
+  private async Task OnBuscarClickedAsync()
+  {
+    if (!HasCompleteAccount && directAccountId.HasValue)
+    {
+      var resolved = await ResolveDirectAccountAsync();
+      if (!resolved)
+      {
+        return;
+      }
+    }
+
+    if (!CanBuscar)
+    {
+      return;
+    }
+
+    await BuscarAsync();
+  }
+
+  private async Task SearchNivel1Async()
+  {
+    nivel1Results.Clear();
+    nivel2Results.Clear();
+    nivel3Results.Clear();
+
+    if (string.IsNullOrWhiteSpace(selectedRfc) || string.IsNullOrWhiteSpace(nivel1Term))
+    {
+      return;
+    }
+
+    try
+    {
+      var results = await CuentasRepository.SearchNivel1Async(selectedRfc, nivel1Term);
+      nivel1Results.AddRange(results);
+    }
+    catch (Exception ex)
+    {
+      ReportError("No se pudo buscar cuentas de nivel 1", ex);
+    }
+  }
+
+  private async Task SearchNivel2Async()
+  {
+    nivel2Results.Clear();
+    nivel3Results.Clear();
+
+    if (!CanSearchNivel2 || string.IsNullOrWhiteSpace(nivel2Term) || string.IsNullOrWhiteSpace(selectedNivel1))
+    {
+      return;
+    }
+
+    try
+    {
+      var results = await CuentasRepository.SearchNivel2Async(selectedRfc!, selectedNivel1!, nivel2Term);
+      nivel2Results.AddRange(results);
+    }
+    catch (Exception ex)
+    {
+      ReportError("No se pudo buscar cuentas de nivel 2", ex);
+    }
+  }
+
+  private async Task SearchNivel3Async()
+  {
+    nivel3Results.Clear();
+
+    if (!CanSearchNivel3 || string.IsNullOrWhiteSpace(nivel3Term) || string.IsNullOrWhiteSpace(selectedNivel1) || string.IsNullOrWhiteSpace(selectedNivel2))
+    {
+      return;
+    }
+
+    try
+    {
+      var results = await CuentasRepository.SearchNivel3Async(selectedRfc!, selectedNivel1!, selectedNivel2!, nivel3Term);
+      nivel3Results.AddRange(results);
+    }
+    catch (Exception ex)
+    {
+      ReportError("No se pudo buscar cuentas de nivel 3", ex);
+    }
+  }
+
+  private void SelectNivel1(CuentasContablesDto dto)
+  {
+    _ = SetRfcAsync(dto.RazonSocial);
+    selectedNivel1 = dto.Nivel1;
+    selectedNivel2 = null;
+    selectedNivel3 = null;
+    selectedAccountDescripcion = dto.Descripcion;
+    nivel1Term = dto.Nivel1;
+    nivel2Term = string.Empty;
+    nivel3Term = string.Empty;
+    nivel1Results.Clear();
+    nivel2Results.Clear();
+    nivel3Results.Clear();
+  }
+
+  private void SelectNivel2(CuentasContablesDto dto)
+  {
+    selectedNivel1 = dto.Nivel1;
+    selectedNivel2 = NormalizeTwoDigits(dto.Nivel2);
+    selectedNivel3 = null;
+    selectedAccountDescripcion = dto.Descripcion;
+    nivel2Term = selectedNivel2;
+    nivel3Term = string.Empty;
+    nivel2Results.Clear();
+    nivel3Results.Clear();
+  }
+
+  private void SelectNivel3(CuentasContablesDto dto)
+  {
+    selectedNivel1 = dto.Nivel1;
+    selectedNivel2 = NormalizeTwoDigits(dto.Nivel2);
+    selectedNivel3 = NormalizeTwoDigits(dto.Nivel3);
+    selectedAccountDescripcion = dto.Descripcion;
+    nivel3Term = selectedNivel3;
+    nivel3Results.Clear();
+  }
+
+  private async Task<bool> ResolveDirectAccountAsync()
+  {
+    if (directAccountId is null)
+    {
+      return false;
+    }
+
+    try
+    {
+      var account = await CuentasRepository.GetByIdAsync(directAccountId.Value);
+      if (account is null)
+      {
+        errorMessage = "No se encontró la cuenta contable.";
+        return false;
+      }
+
+      await ApplyAccountAsync(account);
+      return true;
+    }
+    catch (Exception ex)
+    {
+      ReportError("No se pudo resolver la cuenta contable", ex);
+      return false;
+    }
+  }
+
+  private async Task ApplyAccountAsync(CuentasContablesDto account)
+  {
+    await SetRfcAsync(account.RazonSocial);
+    selectedNivel1 = account.Nivel1;
+    selectedNivel2 = NormalizeTwoDigits(account.Nivel2);
+    selectedNivel3 = NormalizeTwoDigits(account.Nivel3);
+    selectedAccountDescripcion = account.Descripcion;
+    nivel1Term = selectedNivel1;
+    nivel2Term = selectedNivel2;
+    nivel3Term = selectedNivel3;
+    nivel1Results.Clear();
+    nivel2Results.Clear();
+    nivel3Results.Clear();
+  }
+
+  private async Task BuscarAsync()
+  {
+    if (!CanBuscar)
+    {
+      return;
+    }
+
+    isLoading = true;
+    errorMessage = null;
+    hasSearched = true;
+
+    try
+    {
+      var items = await RegistrosService.GetRegistrosAsync(startDate, endDate, selectedRfc!, selectedNivel1!, selectedNivel2!, selectedNivel3!);
+      registros.Clear();
+      registros.AddRange(items);
+    }
+    catch (Exception ex)
+    {
+      registros.Clear();
+      ReportError("No se pudo cargar información", ex);
+    }
+    finally
+    {
+      isLoading = false;
+    }
+  }
+
+  private async Task SetRfcAsync(string razonSocial)
+  {
+    if (string.IsNullOrWhiteSpace(razonSocial))
+    {
+      return;
+    }
+
+    if (!string.Equals(selectedRfc, razonSocial, StringComparison.OrdinalIgnoreCase))
+    {
+      suppressRfcChange = true;
+      selectedRfc = razonSocial;
+      if (!RfcState.TrySet(razonSocial))
+      {
+        suppressRfcChange = false;
+        await InvokeAsync(StateHasChanged);
+      }
+    }
+  }
+
+  private void ClearAccountSelection()
+  {
+    selectedNivel1 = null;
+    selectedNivel2 = null;
+    selectedNivel3 = null;
+    selectedAccountDescripcion = null;
+    nivel1Term = string.Empty;
+    nivel2Term = string.Empty;
+    nivel3Term = string.Empty;
+    nivel1Results.Clear();
+    nivel2Results.Clear();
+    nivel3Results.Clear();
+  }
+
+  private void GoToPoliza(int poliza)
+    => Navigation.NavigateTo($"/cfdi/polizas/{poliza}");
+
+  private static string NormalizeTwoDigits(string value)
+  {
+    var trimmed = value?.Trim() ?? string.Empty;
+    if (trimmed.Length == 1 && char.IsDigit(trimmed[0]))
+    {
+      return trimmed.PadLeft(2, '0');
+    }
+
+    return trimmed;
+  }
+
+  private void ReportError(string message, Exception exception)
+  {
+    errorMessage = message;
+    Console.Error.WriteLine($"[ContabilidadRegistros] {message}: {exception}");
+  }
+}

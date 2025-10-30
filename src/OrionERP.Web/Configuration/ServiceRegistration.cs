@@ -1,9 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+using OrionERP.Application.Features.Cfdi.ContabilidadRegistros;
 using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
 using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat;
 using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
+using OrionERP.Infrastructure.Features.Cfdi.ContabilidadRegistros;
 using OrionERP.Infrastructure.Feautures.Cfdi.CargarXmlSat.Services;
 using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Dapper;
 using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Services;
@@ -46,6 +48,9 @@ public static class ServiceRegistration
     services.AddScoped<ISatSolicitudesRepository, SatSolicitudesRepository>();
     services.AddScoped<ISatPaquetesRepository, SatPaquetesRepository>();
     services.AddScoped<ISatDownloadCoordinator, SatDownloadCoordinator>();
+
+    services.AddScoped<ICuentasContablesRepository, CuentasContablesRepository>();
+    services.AddScoped<IContabilidadRegistrosService, ContabilidadRegistrosService>();
 
     return services;
   }

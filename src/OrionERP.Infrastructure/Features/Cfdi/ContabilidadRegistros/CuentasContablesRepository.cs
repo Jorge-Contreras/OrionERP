@@ -17,14 +17,14 @@ public sealed class CuentasContablesRepository : ICuentasContablesRepository
 
   public async Task<IEnumerable<CuentasContablesDto>> SearchNivel1Async(string rfc, string term, int take = 200)
   {
-    if (string.IsNullOrWhiteSpace(rfc) || string.IsNullOrWhiteSpace(term))
+    if (string.IsNullOrWhiteSpace(rfc))
     {
       return Array.Empty<CuentasContablesDto>();
     }
 
     var normalizedRfc = rfc.Trim();
-    var normalizedTerm = term.Trim();
-    var likeTerm = normalizedTerm;
+    var normalizedTerm = term?.Trim() ?? string.Empty;
+    var hasTerm = normalizedTerm.Length > 0;
 
     const string sql = @"
 SELECT TOP (@take)
@@ -38,7 +38,7 @@ FROM dbo.CuentasContables
 WHERE RazonSocial = @rfc
   AND Nivel2 = '0'
   AND Nivel3 = '0'
-  AND (Nivel1 = @exact OR Descripcion LIKE @like)
+  AND (@hasTerm = 0 OR Nivel1 = @exact OR Descripcion LIKE @like)
 ORDER BY Nivel1;";
 
     using var connection = new SqlConnection(_connectionString);
@@ -49,21 +49,24 @@ ORDER BY Nivel1;";
           take,
           rfc = normalizedRfc,
           exact = normalizedTerm,
-          like = $"%{likeTerm}%"
+          like = hasTerm ? $"%{normalizedTerm}%" : "%",
+          hasTerm
         });
   }
 
   public async Task<IEnumerable<CuentasContablesDto>> SearchNivel2Async(string rfc, string nivel1, string term, int take = 25)
   {
-    if (string.IsNullOrWhiteSpace(rfc) || string.IsNullOrWhiteSpace(nivel1) || string.IsNullOrWhiteSpace(term))
+    if (string.IsNullOrWhiteSpace(rfc) || string.IsNullOrWhiteSpace(nivel1))
     {
       return Array.Empty<CuentasContablesDto>();
     }
 
     var normalizedRfc = rfc.Trim();
     var normalizedNivel1 = nivel1.Trim();
-    var normalizedTerm = NormalizeTwoDigits(term);
-    var likeTerm = term.Trim();
+    var inputTerm = term ?? string.Empty;
+    var trimmedTerm = inputTerm.Trim();
+    var hasTerm = trimmedTerm.Length > 0;
+    var normalizedTerm = NormalizeTwoDigits(trimmedTerm);
 
     const string sql = @"
 SELECT TOP (@take)
@@ -77,7 +80,7 @@ FROM dbo.CuentasContables
 WHERE RazonSocial = @rfc
   AND Nivel1 = @nivel1
   AND Nivel3 = '0'
-  AND (Nivel2 = @exact OR Descripcion LIKE @like)
+  AND (@hasTerm = 0 OR Nivel2 = @exact OR Descripcion LIKE @like)
 ORDER BY Nivel2;";
 
     using var connection = new SqlConnection(_connectionString);
@@ -89,14 +92,15 @@ ORDER BY Nivel2;";
           rfc = normalizedRfc,
           nivel1 = normalizedNivel1,
           exact = normalizedTerm,
-          like = $"%{likeTerm}%"
+          like = hasTerm ? $"%{trimmedTerm}%" : "%",
+          hasTerm
         });
   }
 
   public async Task<IEnumerable<CuentasContablesDto>> SearchNivel3Async(string rfc, string nivel1, string nivel2, string term, int take = 25)
   {
     if (string.IsNullOrWhiteSpace(rfc) || string.IsNullOrWhiteSpace(nivel1) ||
-        string.IsNullOrWhiteSpace(nivel2) || string.IsNullOrWhiteSpace(term))
+        string.IsNullOrWhiteSpace(nivel2))
     {
       return Array.Empty<CuentasContablesDto>();
     }
@@ -104,8 +108,10 @@ ORDER BY Nivel2;";
     var normalizedRfc = rfc.Trim();
     var normalizedNivel1 = nivel1.Trim();
     var normalizedNivel2 = NormalizeTwoDigits(nivel2);
-    var normalizedTerm = NormalizeTwoDigits(term);
-    var likeTerm = term.Trim();
+    var inputTerm = term ?? string.Empty;
+    var trimmedTerm = inputTerm.Trim();
+    var hasTerm = trimmedTerm.Length > 0;
+    var normalizedTerm = NormalizeTwoDigits(trimmedTerm);
 
     const string sql = @"
 SELECT TOP (@take)
@@ -119,7 +125,7 @@ FROM dbo.CuentasContables
 WHERE RazonSocial = @rfc
   AND Nivel1 = @nivel1
   AND Nivel2 = @nivel2
-  AND (Nivel3 = @exact OR Descripcion LIKE @like)
+  AND (@hasTerm = 0 OR Nivel3 = @exact OR Descripcion LIKE @like)
 ORDER BY Nivel3;";
 
     using var connection = new SqlConnection(_connectionString);
@@ -132,7 +138,8 @@ ORDER BY Nivel3;";
           nivel1 = normalizedNivel1,
           nivel2 = normalizedNivel2,
           exact = normalizedTerm,
-          like = $"%{likeTerm}%"
+          like = hasTerm ? $"%{trimmedTerm}%" : "%",
+          hasTerm
         });
   }
 

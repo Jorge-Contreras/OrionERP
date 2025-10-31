@@ -56,7 +56,7 @@
                             <tbody>
                                 @foreach (var item in nivel1Results)
                                 {
-                                    <tr role="button" @onclick="() => SelectNivel1(item)">
+                                    <tr role="button" @onclick="() => SelectNivel1Async(item)">
                                         <td>@item.Id</td>
                                         <td>@item.RazonSocial</td>
                                         <td>@item.Nivel1</td>
@@ -85,7 +85,7 @@
               <tbody>
                 @foreach (var item in nivel2Results)
                 {
-                  <tr role="button" @onclick="() => SelectNivel2(item)">
+                  <tr role="button" @onclick="() => SelectNivel2Async(item)">
                     <td>@item.Id</td>
                     <td>@item.Nivel2</td>
                     <td>@item.Descripcion</td>
@@ -128,11 +128,14 @@
   </div>
 
   <div class="mt-3 d-flex flex-wrap align-items-center gap-2">
-    @if (HasCompleteAccount)
+    @if (HasAccountSelection)
     {
       <span class="badge text-bg-primary">Nivel1: @selectedNivel1</span>
       <span class="badge text-bg-primary">Nivel2: @selectedNivel2</span>
-      <span class="badge text-bg-primary">Nivel3: @selectedNivel3</span>
+      @if (!string.IsNullOrWhiteSpace(selectedNivel3))
+      {
+        <span class="badge text-bg-primary">Nivel3: @selectedNivel3</span>
+      }
       @if (!string.IsNullOrWhiteSpace(selectedAccountDescripcion))
       {
         <span class="badge text-bg-info text-wrap">@selectedAccountDescripcion</span>
@@ -221,25 +224,45 @@
   private string? errorMessage;
   private bool suppressRfcChange;
 
+  private bool HasAccountSelection => !string.IsNullOrWhiteSpace(selectedNivel1) && !string.IsNullOrWhiteSpace(selectedNivel2);
   private bool CanSearchNivel2 => !string.IsNullOrWhiteSpace(selectedNivel1) && !string.IsNullOrWhiteSpace(selectedRfc);
-  private bool CanSearchNivel3 => !string.IsNullOrWhiteSpace(selectedNivel1) && !string.IsNullOrWhiteSpace(selectedNivel2) && !string.IsNullOrWhiteSpace(selectedRfc);
-  private bool HasCompleteAccount => !string.IsNullOrWhiteSpace(selectedNivel1) && !string.IsNullOrWhiteSpace(selectedNivel2) && !string.IsNullOrWhiteSpace(selectedNivel3);
-  private bool CanBuscar => HasCompleteAccount && !string.IsNullOrWhiteSpace(selectedRfc);
+  private bool CanSearchNivel3 => HasAccountSelection && !string.IsNullOrWhiteSpace(selectedRfc);
+  private bool HasCompleteAccount => HasAccountSelection && !string.IsNullOrWhiteSpace(selectedNivel3);
+  private bool CanBuscar => HasAccountSelection && !string.IsNullOrWhiteSpace(selectedRfc);
 
-  private Task OnRfcChangedAsync()
-{
+  protected override async Task OnInitializedAsync()
+  {
+    selectedRfc = RfcState.CurrentRfc;
+    if (string.IsNullOrWhiteSpace(selectedRfc))
+    {
+      RfcState.ResetToDefault();
+      selectedRfc = RfcState.CurrentRfc;
+    }
+
+    if (!string.IsNullOrWhiteSpace(selectedRfc))
+    {
+      await SearchNivel1Async(loadDefaults: true);
+    }
+  }
+
+  private async Task OnRfcChangedAsync()
+  {
     if (suppressRfcChange)
     {
-        suppressRfcChange = false;
-        return Task.CompletedTask;
+      suppressRfcChange = false;
+      return;
     }
 
     // selectedRfc is already updated by @bind
     ClearAccountSelection();
     registros.Clear();
     hasSearched = false;
-    return Task.CompletedTask;
-}
+
+    if (!string.IsNullOrWhiteSpace(selectedRfc))
+    {
+      await SearchNivel1Async(loadDefaults: true);
+    }
+  }
 
   private async Task OnDirectAccountKeyDown(KeyboardEventArgs args)
   {
@@ -260,13 +283,13 @@
       return;
     }
 
-    if (HasCompleteAccount && CanBuscar)
+    if (CanBuscar && Nivel1TermMatchesSelection())
     {
       await BuscarAsync();
     }
     else
     {
-      await SearchNivel1Async();
+      await SearchNivel1Async(loadDefaults: string.IsNullOrWhiteSpace(nivel1Term));
     }
   }
 
@@ -279,17 +302,17 @@
 
     if (!CanSearchNivel2)
     {
-      await SearchNivel1Async();
+      await SearchNivel1Async(loadDefaults: string.IsNullOrWhiteSpace(nivel1Term));
       return;
     }
 
-    if (HasCompleteAccount && CanBuscar)
+    if (CanBuscar && Nivel2TermMatchesSelection())
     {
       await BuscarAsync();
     }
     else
     {
-      await SearchNivel2Async();
+      await SearchNivel2Async(loadDefaults: string.IsNullOrWhiteSpace(nivel2Term));
     }
   }
 
@@ -304,22 +327,22 @@
     {
       if (!CanSearchNivel2)
       {
-        await SearchNivel1Async();
+        await SearchNivel1Async(loadDefaults: string.IsNullOrWhiteSpace(nivel1Term));
       }
       else
       {
-        await SearchNivel2Async();
+        await SearchNivel2Async(loadDefaults: string.IsNullOrWhiteSpace(nivel2Term));
       }
       return;
     }
 
-    if (HasCompleteAccount && CanBuscar)
+    if (CanBuscar && Nivel3TermMatchesSelection())
     {
       await BuscarAsync();
     }
     else
     {
-      await SearchNivel3Async();
+      await SearchNivel3Async(loadDefaults: string.IsNullOrWhiteSpace(nivel3Term));
     }
   }
 
@@ -342,20 +365,26 @@
     await BuscarAsync();
   }
 
-  private async Task SearchNivel1Async()
+  private async Task SearchNivel1Async(bool loadDefaults = false)
   {
     nivel1Results.Clear();
     nivel2Results.Clear();
     nivel3Results.Clear();
 
-    if (string.IsNullOrWhiteSpace(selectedRfc) || string.IsNullOrWhiteSpace(nivel1Term))
+    if (string.IsNullOrWhiteSpace(selectedRfc))
+    {
+      return;
+    }
+
+    var term = loadDefaults ? string.Empty : (nivel1Term?.Trim() ?? string.Empty);
+    if (!loadDefaults && string.IsNullOrWhiteSpace(term))
     {
       return;
     }
 
     try
     {
-      var results = await CuentasRepository.SearchNivel1Async(selectedRfc, nivel1Term);
+      var results = await CuentasRepository.SearchNivel1Async(selectedRfc, term, loadDefaults ? 25 : 200);
       nivel1Results.AddRange(results);
     }
     catch (Exception ex)
@@ -364,19 +393,25 @@
     }
   }
 
-  private async Task SearchNivel2Async()
+  private async Task SearchNivel2Async(bool loadDefaults = false)
   {
     nivel2Results.Clear();
     nivel3Results.Clear();
 
-    if (!CanSearchNivel2 || string.IsNullOrWhiteSpace(nivel2Term) || string.IsNullOrWhiteSpace(selectedNivel1))
+    if (!CanSearchNivel2 || string.IsNullOrWhiteSpace(selectedNivel1))
+    {
+      return;
+    }
+
+    var term = loadDefaults ? string.Empty : (nivel2Term?.Trim() ?? string.Empty);
+    if (!loadDefaults && string.IsNullOrWhiteSpace(term))
     {
       return;
     }
 
     try
     {
-      var results = await CuentasRepository.SearchNivel2Async(selectedRfc!, selectedNivel1!, nivel2Term);
+      var results = await CuentasRepository.SearchNivel2Async(selectedRfc!, selectedNivel1!, term);
       nivel2Results.AddRange(results);
     }
     catch (Exception ex)
@@ -385,18 +420,24 @@
     }
   }
 
-  private async Task SearchNivel3Async()
+  private async Task SearchNivel3Async(bool loadDefaults = false)
   {
     nivel3Results.Clear();
 
-    if (!CanSearchNivel3 || string.IsNullOrWhiteSpace(nivel3Term) || string.IsNullOrWhiteSpace(selectedNivel1) || string.IsNullOrWhiteSpace(selectedNivel2))
+    if (!CanSearchNivel3 || string.IsNullOrWhiteSpace(selectedNivel1) || string.IsNullOrWhiteSpace(selectedNivel2))
+    {
+      return;
+    }
+
+    var term = loadDefaults ? string.Empty : (nivel3Term?.Trim() ?? string.Empty);
+    if (!loadDefaults && string.IsNullOrWhiteSpace(term))
     {
       return;
     }
 
     try
     {
-      var results = await CuentasRepository.SearchNivel3Async(selectedRfc!, selectedNivel1!, selectedNivel2!, nivel3Term);
+      var results = await CuentasRepository.SearchNivel3Async(selectedRfc!, selectedNivel1!, selectedNivel2!, term);
       nivel3Results.AddRange(results);
     }
     catch (Exception ex)
@@ -405,9 +446,9 @@
     }
   }
 
-  private void SelectNivel1(CuentasContablesDto dto)
+  private async Task SelectNivel1Async(CuentasContablesDto dto)
   {
-    _ = SetRfcAsync(dto.RazonSocial);
+    await SetRfcAsync(dto.RazonSocial);
     selectedNivel1 = dto.Nivel1;
     selectedNivel2 = null;
     selectedNivel3 = null;
@@ -418,9 +459,14 @@
     nivel1Results.Clear();
     nivel2Results.Clear();
     nivel3Results.Clear();
+
+    if (CanSearchNivel2)
+    {
+      await SearchNivel2Async(loadDefaults: true);
+    }
   }
 
-  private void SelectNivel2(CuentasContablesDto dto)
+  private async Task SelectNivel2Async(CuentasContablesDto dto)
   {
     selectedNivel1 = dto.Nivel1;
     selectedNivel2 = NormalizeTwoDigits(dto.Nivel2);
@@ -430,6 +476,11 @@
     nivel3Term = string.Empty;
     nivel2Results.Clear();
     nivel3Results.Clear();
+
+    if (CanSearchNivel3)
+    {
+      await SearchNivel3Async(loadDefaults: true);
+    }
   }
 
   private void SelectNivel3(CuentasContablesDto dto)
@@ -496,7 +547,8 @@
 
     try
     {
-      var items = await RegistrosService.GetRegistrosAsync(startDate, endDate, selectedRfc!, selectedNivel1!, selectedNivel2!, selectedNivel3!);
+      var nivel3 = string.IsNullOrWhiteSpace(selectedNivel3) ? "00" : selectedNivel3!;
+      var items = await RegistrosService.GetRegistrosAsync(startDate, endDate, selectedRfc!, selectedNivel1!, selectedNivel2!, nivel3);
       registros.Clear();
       registros.AddRange(items);
     }
@@ -543,6 +595,18 @@
     nivel2Results.Clear();
     nivel3Results.Clear();
   }
+
+  private bool Nivel1TermMatchesSelection()
+    => !string.IsNullOrWhiteSpace(selectedNivel1)
+       && string.Equals((nivel1Term ?? string.Empty).Trim(), selectedNivel1.Trim(), StringComparison.OrdinalIgnoreCase);
+
+  private bool Nivel2TermMatchesSelection()
+    => !string.IsNullOrWhiteSpace(selectedNivel2)
+       && string.Equals(NormalizeTwoDigits(nivel2Term), selectedNivel2, StringComparison.OrdinalIgnoreCase);
+
+  private bool Nivel3TermMatchesSelection()
+    => !string.IsNullOrWhiteSpace(selectedNivel3)
+       && string.Equals(NormalizeTwoDigits(nivel3Term), selectedNivel3, StringComparison.OrdinalIgnoreCase);
 
   private void GoToPoliza(int poliza)
     => Navigation.NavigateTo($"/cfdi/polizas/{poliza}");

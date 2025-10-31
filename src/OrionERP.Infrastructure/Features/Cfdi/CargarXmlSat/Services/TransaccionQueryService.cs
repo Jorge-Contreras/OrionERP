@@ -47,7 +47,7 @@ LEFT JOIN dbo.TRANSACTION_ATTACHMENT ta
        ON ta.TranID = t.ID
 LEFT JOIN dbo.Transaccion_Comprobante tc
        ON tc.Transaccion_ID = t.ID
-LEFT JOIN dbo.Comprobante c
+LEFT JOIN cfdi.Comprobante c
        ON c.Comprobante_Id = tc.Comprobante_ID
 WHERE t.Fecha > DATEADD(DAY, -@DaysBack, @FechaXml)
   AND ABS(CONVERT(decimal(18,4), t.Monto)) = @MontoAbs

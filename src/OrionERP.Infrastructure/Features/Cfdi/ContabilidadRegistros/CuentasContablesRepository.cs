@@ -15,7 +15,7 @@ public sealed class CuentasContablesRepository : ICuentasContablesRepository
         ?? throw new InvalidOperationException("Missing connection string 'OrionDb'.");
   }
 
-  public async Task<IEnumerable<CuentasContablesDto>> SearchNivel1Async(string rfc, string term, int take = 25)
+  public async Task<IEnumerable<CuentasContablesDto>> SearchNivel1Async(string rfc, string term, int take = 200)
   {
     if (string.IsNullOrWhiteSpace(rfc) || string.IsNullOrWhiteSpace(term))
     {

@@ -30,7 +30,7 @@ namespace OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services
         // 1) Get Comprobante total (as decimal)
         const string sqlGetTotal = @"
 SELECT CAST(c.Total AS decimal(18,4)) 
-FROM dbo.Comprobante c
+FROM cfdi.Comprobante c
 WHERE c.Comprobante_Id = @ComprobanteId;";
 
         var total = await conn.ExecuteScalarAsync<decimal?>(

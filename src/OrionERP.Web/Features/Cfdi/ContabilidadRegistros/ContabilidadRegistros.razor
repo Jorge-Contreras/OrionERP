@@ -20,7 +20,7 @@
   <div class="row g-3 align-items-end">
     <div class="col-md-4">
       <label class="form-label">RFC (Razón Social)</label>
-      <RfcPicker/>
+            <RfcPicker @bind-SelectedRfc="selectedRfc" @bind-SelectedRfc:after="OnRfcChangedAsync" />
     </div>
     <div class="col-md-3">
       <label class="form-label">Fecha inicio</label>
@@ -43,29 +43,29 @@
         <input class="form-control" placeholder="Ej. 102 o BANCOS" @bind="nivel1Term" @onkeydown="OnNivel1KeyDown" />
         @if (nivel1Results.Any())
         {
-          <div class="table-responsive mt-2">
-            <table class="table table-sm table-hover mb-0">
-              <thead>
-                <tr>
-                  <th>Id</th>
-                  <th>RFC</th>
-                  <th>Nivel1</th>
-                  <th>Descripción</th>
-                </tr>
-              </thead>
-              <tbody>
-                @foreach (var item in nivel1Results)
-                {
-                  <tr role="button" @onclick="() => SelectNivel1(item)">
-                    <td>@item.Id</td>
-                    <td>@item.RazonSocial</td>
-                    <td>@item.Nivel1</td>
-                    <td>@item.Descripcion</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
+                    <div class="table-responsive mt-2" style="max-height: 320px; overflow-y: auto;">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Id</th>
+                                    <th>RFC</th>
+                                    <th>Nivel1</th>
+                                    <th>Descripción</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in nivel1Results)
+                                {
+                                    <tr role="button" @onclick="() => SelectNivel1(item)">
+                                        <td>@item.Id</td>
+                                        <td>@item.RazonSocial</td>
+                                        <td>@item.Nivel1</td>
+                                        <td>@item.Descripcion</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
         }
       </div>
       <div class="col-md-4">
@@ -152,9 +152,9 @@
   }
   else if (registros.Any())
   {
-    <div class="table-responsive">
-      <table class="table table-sm table-striped table-hover align-middle">
-        <thead class="table-light">
+        <div class="table-responsive table-scroll">
+            <table class="table table-sm table-bordered table-striped align-middle compact-table">
+        <thead class="table-dark">
           <tr>
             <th>Id</th>
             <th>Fecha</th>

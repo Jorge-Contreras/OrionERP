@@ -205,7 +205,7 @@ SELECT CAST(SCOPE_IDENTITY() as int);";
         );
 
         // Call SP to parse into SAT tables
-        const string sp = "dbo.PROCESAR_SAT_XML";
+        const string sp = "dbo.PROCESAR_SAT_XML_V2";
         await conn.ExecuteAsync(
             new CommandDefinition(
                 sp,

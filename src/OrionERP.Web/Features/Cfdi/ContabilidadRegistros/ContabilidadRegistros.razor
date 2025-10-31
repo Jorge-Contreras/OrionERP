@@ -32,7 +32,7 @@
     </div>
     <div class="col-md-2">
       <label class="form-label">Cuenta #</label>
-      <input class="form-control" type="number" min="1" @bind="directAccountId" @onkeydown="OnDirectAccountKeyDown" />
+      <input class="form-control" type="number" min="1" @bind="directAccountId" @onkeyup="OnDirectAccountKeyDown" />
     </div>
   </div>
 
@@ -40,7 +40,10 @@
     <div class="row g-3">
       <div class="col-md-4">
         <label class="form-label">Buscar Nivel 1</label>
-        <input class="form-control" placeholder="Ej. 102 o BANCOS" @bind="nivel1Term" @onkeydown="OnNivel1KeyDown" />
+        <input class="form-control" placeholder="Ej. 102 o BANCOS" @bind="nivel1Term" @onkeyup="OnNivel1KeyDown"
+                      
+        
+        />
         @if (nivel1Results.Any())
         {
                     <div class="table-responsive mt-2" style="max-height: 320px; overflow-y: auto;">
@@ -70,7 +73,7 @@
       </div>
       <div class="col-md-4">
         <label class="form-label">Buscar Nivel 2</label>
-        <input class="form-control" placeholder="Ej. 01 o descripción" @bind="nivel2Term" @onkeydown="OnNivel2KeyDown" disabled="@(!CanSearchNivel2)" />
+        <input class="form-control" placeholder="Ej. 01 o descripción" @bind="nivel2Term" @onkeyup="OnNivel2KeyDown" disabled="@(!CanSearchNivel2)" />
         @if (nivel2Results.Any())
         {
           <div class="table-responsive mt-2">
@@ -98,7 +101,7 @@
       </div>
       <div class="col-md-4">
         <label class="form-label">Buscar Nivel 3</label>
-        <input class="form-control" placeholder="Ej. 02 o descripción" @bind="nivel3Term" @onkeydown="OnNivel3KeyDown" disabled="@(!CanSearchNivel3)" />
+        <input class="form-control" placeholder="Ej. 02 o descripción" @bind="nivel3Term" @onkeyup="OnNivel3KeyDown" disabled="@(!CanSearchNivel3)" />
         @if (nivel3Results.Any())
         {
           <div class="table-responsive mt-2">
@@ -160,6 +163,8 @@
         <thead class="table-dark">
           <tr>
             <th>Id</th>
+            <th>Poliza</th>
+                        <th>Ver Poliza</th>
             <th>Fecha</th>
             <th>Cuenta</th>
             <th>Nombre_Cuenta</th>
@@ -167,9 +172,7 @@
             <th>Debe</th>
             <th>Haber</th>
             <th>Balance</th>
-            <th>Poliza</th>
             <th>Revisado</th>
-            <th>Referencia</th>
             <th></th>
           </tr>
         </thead>
@@ -178,6 +181,10 @@
           {
             <tr>
               <td>@row.Id</td>
+                            <td>@row.Poliza</td>
+              <td>
+              <button class="btn btn-link btn-sm" type="button" @onclick="() => GoToPoliza(row.Poliza)">Ver póliza</button>
+              </td>
               <td>@row.Fecha</td>
               <td>@row.Cuenta</td>
               <td>@row.Nombre_Cuenta</td>
@@ -185,12 +192,9 @@
               <td>@row.Debe</td>
               <td>@row.Haber</td>
               <td>@row.Balance</td>
-              <td>@row.Poliza</td>
+              
               <td>@row.Revisado</td>
-              <td>@row.Referencia</td>
-              <td>
-                <button class="btn btn-link btn-sm" type="button" @onclick="() => GoToPoliza(row.Poliza)">Ver póliza</button>
-              </td>
+              
             </tr>
           }
         </tbody>
@@ -229,6 +233,8 @@
   private bool CanSearchNivel3 => HasAccountSelection && !string.IsNullOrWhiteSpace(selectedRfc);
   private bool HasCompleteAccount => HasAccountSelection && !string.IsNullOrWhiteSpace(selectedNivel3);
   private bool CanBuscar => HasAccountSelection && !string.IsNullOrWhiteSpace(selectedRfc);
+
+
 
   protected override async Task OnInitializedAsync()
   {
@@ -627,4 +633,7 @@
     errorMessage = message;
     Console.Error.WriteLine($"[ContabilidadRegistros] {message}: {exception}");
   }
+
+    
+
 }

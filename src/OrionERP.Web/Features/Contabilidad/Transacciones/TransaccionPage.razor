@@ -1,6 +1,7 @@
 @page "/contabilidad/transacciones/{id:int}"
 @using System.Globalization
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
+@inherits TransaccionPage
 
 
 <PageTitle>Transacción @Header?.Folio ?? Id.ToString(CultureInfo.InvariantCulture)</PageTitle>

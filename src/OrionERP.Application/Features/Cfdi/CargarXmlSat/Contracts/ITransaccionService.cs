@@ -3,8 +3,18 @@ using System.Threading.Tasks;
 
 namespace OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 
-public record TransaccionCommandResult(bool Success, string Message)
+public sealed class TransaccionCommandResult
 {
+  private TransaccionCommandResult(bool success, string message)
+  {
+    Success = success;
+    Message = message;
+  }
+
+  public bool Success { get; }
+
+  public string Message { get; }
+
   public static TransaccionCommandResult Ok(string message)
     => new(true, message);
 

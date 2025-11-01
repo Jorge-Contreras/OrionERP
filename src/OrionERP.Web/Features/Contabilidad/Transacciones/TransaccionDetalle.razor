@@ -1,0 +1,202 @@
+@page "/contabilidad/transaccionDetalle/{Id:int}"
+@using OrionERP.Application.Features.Contabilidad.Transacciones
+@attribute [Authorize(Roles = "Administrador,SatOperator")]
+@inject ITransaccionService TransaccionService
+@inject IJSRuntime JS
+
+<h3 class="mb-3">Contabilidad &mdash; Transacción @Id</h3>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+  <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+
+@if (!string.IsNullOrEmpty(successMessage))
+{
+  <div class="alert alert-success" role="status">@successMessage</div>
+}
+
+@if (isLoading)
+{
+  <span class="orion-loading" role="status" aria-live="polite">
+    <span class="orion-spinner" aria-hidden="true"></span>
+    <span class="orion-strong">Cargando transacción…</span>
+  </span>
+}
+else if (header is null)
+{
+  <div class="alert alert-warning" role="alert">No se encontró la transacción solicitada.</div>
+}
+else
+{
+  <div class="card p-3 mb-3">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label">Concepto</label>
+        <input class="form-control" @bind="concepto" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Fecha</label>
+        <input class="form-control" type="date" @bind-value="fecha" @bind-value:format="yyyy-MM-dd" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Cuenta</label>
+        <input class="form-control" @bind="cuenta" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Monto</label>
+        <input class="form-control" type="number" step="0.01" @bind="monto" />
+      </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-center mt-3">
+      <div class="badge text-bg-secondary">RFC: @header.Rfc</div>
+      @if (header.ComprobanteId is not null)
+      {
+        <div class="badge text-bg-info">Comprobante: @header.ComprobanteId (Monto @header.ComprobanteMonto?.ToString("N2"))</div>
+      }
+      <button class="btn btn-primary ms-auto" @onclick="GuardarAsync" disabled="@isSaving">
+        @if (isSaving)
+        {
+          <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+        }
+        Guardar y cerrar
+      </button>
+    </div>
+  </div>
+
+  <div class="card p-3 mb-3">
+    <div class="d-flex align-items-center mb-2">
+      <h5 class="mb-0">Movimientos</h5>
+      <span class="ms-auto badge text-bg-dark">Debe: @totals.Debe.ToString("N2")</span>
+      <span class="ms-2 badge text-bg-dark">Haber: @totals.Haber.ToString("N2")</span>
+      <span class="ms-2 badge @(totals.Balance == 0 ? "text-bg-success" : "text-bg-warning")">
+        Balance: @totals.Balance.ToString("N2")
+      </span>
+    </div>
+    @if (movimientos.Count == 0)
+    {
+      <p class="text-muted mb-0">No hay movimientos registrados.</p>
+    }
+    else
+    {
+      <div class="table-responsive table-scroll">
+        <table class="table table-sm table-bordered align-middle compact-table">
+          <thead class="table-light">
+            <tr>
+              <th>Id</th>
+              <th>Cuenta</th>
+              <th>Nombre</th>
+              <th>Concepto</th>
+              <th class="text-end">Debe</th>
+              <th class="text-end">Haber</th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach (var row in movimientos)
+            {
+              <tr>
+                <td>@row.Id</td>
+                <td>@row.Cuenta</td>
+                <td>@row.NombreCuenta</td>
+                <td>@row.Concepto</td>
+                <td class="text-end">@row.Debe.ToString("N2")</td>
+                <td class="text-end">@row.Haber.ToString("N2")</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+
+  <div class="row">
+    <div class="col-lg-6">
+      <div class="card p-3 mb-3">
+        <div class="d-flex align-items-center mb-2">
+          <h5 class="mb-0">Adjuntos</h5>
+          <span class="badge text-bg-secondary ms-auto">@attachments.Count</span>
+        </div>
+        @if (attachments.Count == 0)
+        {
+          <p class="text-muted mb-0">No hay adjuntos para esta transacción.</p>
+        }
+        else
+        {
+          <ul class="list-group list-group-flush">
+            @foreach (var attachment in attachments)
+            {
+              <li class="list-group-item d-flex align-items-center gap-2">
+                <div class="flex-grow-1">
+                  <div class="fw-semibold">@attachment.AttachmentName</div>
+                  <small class="text-muted">
+                    @if (!string.IsNullOrWhiteSpace(attachment.AttachmentExtension))
+                    {
+                      <span>@attachment.AttachmentExtension.ToUpperInvariant()</span>
+                    }
+                    @if (attachment.Length.HasValue)
+                    {
+                      if (!string.IsNullOrWhiteSpace(attachment.AttachmentExtension))
+                      {
+                        <span> · </span>
+                      }
+                      <span>@FormatLength(attachment.Length.Value)</span>
+                    }
+                  </small>
+                </div>
+                <button class="btn btn-link btn-sm" @onclick="() => DescargarAdjuntoAsync(attachment)">Descargar</button>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card p-3 mb-3">
+        <div class="d-flex align-items-center mb-2">
+          <h5 class="mb-0">Comprobantes vinculados</h5>
+          <span class="badge text-bg-secondary ms-auto">@comprobantes.Count</span>
+        </div>
+        <div class="input-group mb-3">
+          <input class="form-control" type="number" min="1" placeholder="Comprobante ID" @bind-value="nuevoComprobanteId" @bind-value:event="oninput" />
+          <button class="btn btn-outline-primary" @onclick="VincularComprobanteAsync" disabled="@(nuevoComprobanteId is null)">Vincular</button>
+        </div>
+        @if (comprobantes.Count == 0)
+        {
+          <p class="text-muted mb-0">No hay comprobantes vinculados.</p>
+        }
+        else
+        {
+          <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle">
+              <thead>
+                <tr>
+                  <th>Id</th>
+                  <th>Serie</th>
+                  <th>Folio</th>
+                  <th>Fecha</th>
+                  <th class="text-end">Total</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach (var c in comprobantes)
+                {
+                  <tr>
+                    <td>@c.ComprobanteId</td>
+                    <td>@c.Serie</td>
+                    <td>@c.Folio</td>
+                    <td>@c.Fecha.ToString("yyyy-MM-dd")</td>
+                    <td class="text-end">@c.Total.ToString("N2")</td>
+                    <td class="text-end">
+                      <button class="btn btn-link btn-sm text-danger" @onclick="() => DesvincularComprobanteAsync(c.ComprobanteId)">Desvincular</button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+}

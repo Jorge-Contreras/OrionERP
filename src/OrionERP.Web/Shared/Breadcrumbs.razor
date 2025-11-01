@@ -1,0 +1,38 @@
+@implements IDisposable
+@inject IBreadcrumbService BreadcrumbService
+
+@if (BreadcrumbService.Items.Count > 0)
+{
+  <nav aria-label="breadcrumb" class="px-4 py-2">
+    <ol class="breadcrumb mb-0">
+      @foreach (var item in BreadcrumbService.Items)
+      {
+        if (item.Active || string.IsNullOrWhiteSpace(item.Url))
+        {
+          <li class="breadcrumb-item active" aria-current="page">@item.Text</li>
+        }
+        else
+        {
+          <li class="breadcrumb-item"><a href="@item.Url">@item.Text</a></li>
+        }
+      }
+    </ol>
+  </nav>
+}
+
+@code {
+  protected override void OnInitialized()
+  {
+    BreadcrumbService.Changed += OnChanged;
+  }
+
+  private void OnChanged()
+  {
+    InvokeAsync(StateHasChanged);
+  }
+
+  public void Dispose()
+  {
+    BreadcrumbService.Changed -= OnChanged;
+  }
+}

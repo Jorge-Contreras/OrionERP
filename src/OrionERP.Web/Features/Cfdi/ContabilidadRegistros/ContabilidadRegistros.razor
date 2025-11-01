@@ -615,7 +615,7 @@
        && string.Equals(NormalizeTwoDigits(nivel3Term), selectedNivel3, StringComparison.OrdinalIgnoreCase);
 
   private void GoToPoliza(int poliza)
-    => Navigation.NavigateTo($"/cfdi/polizas/{poliza}");
+    => Navigation.NavigateTo($"/Contabilidad/Transacciones/{poliza}");
 
   private static string NormalizeTwoDigits(string value)
   {

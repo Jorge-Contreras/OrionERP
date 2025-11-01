@@ -1,0 +1,398 @@
+@page "/contabilidad/transacciones/{id:int}"
+@using System.Globalization
+@attribute [Authorize(Roles = "Administrador,SatOperator")]
+
+
+<PageTitle>Transacción @Header?.Folio ?? Id.ToString(CultureInfo.InvariantCulture)</PageTitle>
+
+@if (IsLoading)
+{
+  <div class="orion-loading" role="status" aria-live="polite">
+    <span class="orion-spinner" aria-hidden="true"></span>
+    <span class="orion-strong">Cargando transacción…</span>
+  </div>
+}
+else if (!string.IsNullOrEmpty(ErrorMessage))
+{
+  <div class="alert alert-danger" role="alert">
+    <strong>Error:</strong> @ErrorMessage
+  </div>
+}
+else if (Header is not null)
+{
+  <div class="d-flex flex-column gap-3">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center gap-2">
+        <h5 class="mb-0 flex-grow-1">Datos de la transacción</h5>
+        <span class="badge text-bg-secondary">@Header.Status</span>
+      </div>
+      <div class="card-body">
+        <EditForm EditContext="HeaderEditContext" OnValidSubmit="SaveHeaderAsync">
+          <DataAnnotationsValidator />
+          <ValidationSummary />
+
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label">Folio</label>
+              <InputText class="form-control" @bind-Value="Header.Folio" readonly />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">RFC</label>
+              <InputText class="form-control" @bind-Value="Header.Rfc" readonly />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Fecha</label>
+              <InputDate class="form-control" @bind-Value="Header.Fecha" />
+              <ValidationMessage For="() => Header.Fecha" />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Categoría</label>
+              <div class="input-group">
+                <InputText class="form-control" @bind-Value="Header.Categoria" />
+                <button type="button" class="btn btn-outline-secondary" @onclick="OpenCategoriaPicker">
+                  <span class="oi oi-tags" aria-hidden="true"></span>
+                  <span class="visually-hidden">Seleccionar categoría</span>
+                </button>
+              </div>
+              <ValidationMessage For="() => Header.Categoria" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Concepto</label>
+              <InputText class="form-control" @bind-Value="Header.Concepto" />
+              <ValidationMessage For="() => Header.Concepto" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Referencia</label>
+              <InputText class="form-control" @bind-Value="Header.Referencia" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Memo</label>
+              <InputTextArea class="form-control" rows="1" @bind-Value="Header.Memo" />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Subtotal</label>
+              <InputNumber class="form-control" @bind-Value="Header.Subtotal" />
+              <ValidationMessage For="() => Header.Subtotal" />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">IVA</label>
+              <InputNumber class="form-control" @bind-Value="Header.Iva" />
+              <ValidationMessage For="() => Header.Iva" />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Total</label>
+              <InputNumber class="form-control" @bind-Value="Header.Monto" />
+              <ValidationMessage For="() => Header.Monto" />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Divisa</label>
+              <InputText class="form-control" @bind-Value="Header.Divisa" />
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 justify-content-end mt-4">
+            <button type="submit" class="btn btn-primary" disabled="@IsSavingHeader">
+              @if (IsSavingHeader)
+              {
+                <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+              }
+              Guardar cambios
+            </button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="ResetHeader" disabled="@IsSavingHeader">
+              Deshacer
+            </button>
+          </div>
+        </EditForm>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-xl-8 d-flex flex-column gap-3">
+        <div class="card shadow-sm">
+          <div class="card-header d-flex align-items-center">
+            <h5 class="mb-0 flex-grow-1">Movimientos</h5>
+            <button class="btn btn-sm btn-outline-primary" type="button" @onclick="() => OpenMovimientoModal(null)">
+              <span class="oi oi-plus me-1" aria-hidden="true"></span>Agregar
+            </button>
+          </div>
+          <div class="card-body">
+            @if (Movimientos.Count == 0)
+            {
+              <p class="text-muted mb-0">No hay movimientos registrados.</p>
+            }
+            else
+            {
+              <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Cuenta</th>
+                      <th>Concepto</th>
+                      <th class="text-end">Debe</th>
+                      <th class="text-end">Haber</th>
+                      <th>Memo</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @foreach (var movimiento in Movimientos.Select((item, index) => (item, index)))
+                    {
+                      <tr class="@GetMovimientoRowClass(movimiento.item)" @onclick="() => OpenMovimientoModal(movimiento.item)">
+                        <td>@(movimiento.index + 1)</td>
+                        <td>@movimiento.item.Cuenta</td>
+                        <td>@movimiento.item.Concepto</td>
+                        <td class="text-end">@movimiento.item.Debe.ToString("N2")</td>
+                        <td class="text-end">@movimiento.item.Haber.ToString("N2")</td>
+                        <td>
+                          @if (!string.IsNullOrWhiteSpace(movimiento.item.Memo))
+                          {
+                            <button type="button" class="btn btn-link p-0" @onclick:stopPropagation @onclick="() => OpenMemoZoom(movimiento.item.Memo!)">
+                              <span class="oi oi-document"></span>
+                            </button>
+                          }
+                        </td>
+                        <td class="text-end">
+                          <button type="button" class="btn btn-sm btn-outline-danger" @onclick:stopPropagation @onclick="() => RemoveMovimiento(movimiento.item)">
+                            <span class="oi oi-trash" aria-hidden="true"></span>
+                          </button>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="card shadow-sm">
+          <div class="card-header d-flex align-items-center">
+            <h5 class="mb-0 flex-grow-1">Archivos adjuntos</h5>
+            <label class="btn btn-sm btn-outline-primary mb-0">
+              <span class="oi oi-cloud-upload me-1" aria-hidden="true"></span>Subir
+              <InputFile class="d-none" multiple OnChange="OnAttachmentsSelected" />
+            </label>
+          </div>
+          <div class="card-body">
+            @if (Attachments.Count == 0)
+            {
+              <p class="text-muted mb-0">No hay archivos adjuntos.</p>
+            }
+            else
+            {
+              <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                  <thead>
+                    <tr>
+                      <th>Nombre</th>
+                      <th class="text-end">Tamaño</th>
+                      <th>Fecha</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @foreach (var attachment in Attachments)
+                    {
+                      <tr>
+                        <td>@attachment.Nombre</td>
+                        <td class="text-end">@attachment.TamanoHumano</td>
+                        <td>@attachment.CargadoEn.ToString("g")</td>
+                        <td class="text-end">
+                          <button class="btn btn-sm btn-outline-danger" type="button" @onclick="() => RemoveAttachment(attachment)">
+                            <span class="oi oi-trash" aria-hidden="true"></span>
+                          </button>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+
+      <div class="col-xl-4 d-flex flex-column gap-3">
+        <div class="card shadow-sm">
+          <div class="card-header">
+            <h5 class="mb-0">Comprobantes vinculados</h5>
+          </div>
+          <div class="card-body">
+            @if (Comprobantes.Count == 0)
+            {
+              <p class="text-muted mb-0">No hay comprobantes vinculados.</p>
+            }
+            else
+            {
+              <div class="table-responsive" style="max-height: 320px;">
+                <table class="table table-sm table-hover align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th>UUID</th>
+                      <th>Emisor</th>
+                      <th class="text-end">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @foreach (var comprobante in Comprobantes)
+                    {
+                      <tr>
+                        <td>@comprobante.Uuid</td>
+                        <td>@comprobante.Emisor</td>
+                        <td class="text-end">@comprobante.Total.ToString("N2")</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="card shadow-sm">
+          <div class="card-header">
+            <h5 class="mb-0">Resumen</h5>
+          </div>
+          <div class="card-body">
+            <dl class="row mb-0">
+              <dt class="col-6">Total movimientos</dt>
+              <dd class="col-6 text-end">@Movimientos.Count</dd>
+              <dt class="col-6">Suma Debe</dt>
+              <dd class="col-6 text-end">@Movimientos.Sum(m => m.Debe).ToString("N2")</dd>
+              <dt class="col-6">Suma Haber</dt>
+              <dd class="col-6 text-end">@Movimientos.Sum(m => m.Haber).ToString("N2")</dd>
+              <dt class="col-6">Archivos</dt>
+              <dd class="col-6 text-end">@Attachments.Count</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+@if (ShowMovimientoModal && MovimientoDraft is not null)
+{
+  <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.35);" role="dialog" aria-modal="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">@MovimientoModalTitle</h5>
+          <button type="button" class="btn-close" @onclick="CloseMovimientoModal"></button>
+        </div>
+        <div class="modal-body">
+          <EditForm EditContext="MovimientoEditContext" OnValidSubmit="SaveMovimientoAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label">Cuenta</label>
+                <InputText class="form-control" @bind-Value="MovimientoDraft.Cuenta" />
+                <ValidationMessage For="() => MovimientoDraft.Cuenta" />
+              </div>
+              <div class="col-md-8">
+                <label class="form-label">Concepto</label>
+                <div class="input-group">
+                  <InputText class="form-control" @bind-Value="MovimientoDraft.Concepto" />
+                  <button type="button" class="btn btn-outline-secondary" @onclick="CopyConceptoFromHeader">
+                    Copiar concepto
+                  </button>
+                </div>
+                <ValidationMessage For="() => MovimientoDraft.Concepto" />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Debe</label>
+                <InputNumber class="form-control" @bind-Value="MovimientoDraft.Debe" />
+                <ValidationMessage For="() => MovimientoDraft.Debe" />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Haber</label>
+                <InputNumber class="form-control" @bind-Value="MovimientoDraft.Haber" />
+                <ValidationMessage For="() => MovimientoDraft.Haber" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Memo</label>
+                <InputTextArea class="form-control" rows="2" @bind-Value="MovimientoDraft.Memo" />
+              </div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 my-3">
+              <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyMontoToMovimiento">Copiar monto</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopySubtotalToMovimiento">Copiar subtotal</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyIvaToMovimiento">Copiar IVA</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyConceptoFromHeader">Copiar concepto</button>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2">
+              <button class="btn btn-outline-secondary" type="button" @onclick="CloseMovimientoModal">Cancelar</button>
+              <button class="btn btn-primary" type="submit">Guardar movimiento</button>
+            </div>
+          </EditForm>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+@if (ShowCategoriaPicker)
+{
+  <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.35);" role="dialog" aria-modal="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Seleccionar categoría</h5>
+          <button type="button" class="btn-close" @onclick="CloseCategoriaPicker"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Buscar</label>
+            <input class="form-control" @bind="CategoriaSearchTerm" @bind:event="oninput" placeholder="Ej. Bancos" />
+          </div>
+          <div class="table-responsive" style="max-height: 320px;">
+            <table class="table table-hover">
+              <thead>
+                <tr>
+                  <th>Clave</th>
+                  <th>Descripción</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach (var categoria in FilteredCategorias)
+                {
+                  <tr role="button" @onclick="() => SelectCategoria(categoria)">
+                    <td>@categoria.Clave</td>
+                    <td>@categoria.Descripcion</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-secondary" type="button" @onclick="CloseCategoriaPicker">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+@if (ShowMemoZoom)
+{
+  <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.35);" role="dialog" aria-modal="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Memo</h5>
+          <button type="button" class="btn-close" @onclick="CloseMemoZoom"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-0">@MemoZoomText</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" type="button" @onclick="CloseMemoZoom">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}

@@ -136,18 +136,6 @@ public class DbStoredProcServiceTests
 
     protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior)
       => throw new NotSupportedException();
-
-    public override DbConnection Connection
-    {
-      get => DbConnection;
-      set => DbConnection = value;
-    }
-
-    public override DbTransaction? Transaction
-    {
-      get => DbTransaction;
-      set => DbTransaction = value;
-    }
   }
 
   internal sealed class FakeParameterCollection : DbParameterCollection

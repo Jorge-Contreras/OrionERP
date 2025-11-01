@@ -1,7 +1,7 @@
 @page "/contabilidad/transacciones/{id:int}"
 @using System.Globalization
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
-@inherits TransaccionPage
+
 
 <PageTitle>Transacción @Header?.Folio ?? Id.ToString(CultureInfo.InvariantCulture)</PageTitle>
 
@@ -12,13 +12,13 @@
     <span class="orion-strong">Cargando transacción…</span>
   </div>
 }
-@else if (!string.IsNullOrEmpty(ErrorMessage))
+else if (!string.IsNullOrEmpty(ErrorMessage))
 {
   <div class="alert alert-danger" role="alert">
     <strong>Error:</strong> @ErrorMessage
   </div>
 }
-@else if (Header is not null)
+else if (Header is not null)
 {
   <div class="d-flex flex-column gap-3">
     <div class="card shadow-sm">

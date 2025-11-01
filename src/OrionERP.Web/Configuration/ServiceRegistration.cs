@@ -37,7 +37,7 @@ public static class ServiceRegistration
     services.AddScoped<IComprobanteQueryService, ComprobanteQueryService>();
     services.AddScoped<ISatXmlInboxService, SatXmlInboxService>();
     services.AddScoped<IConciliacionService, ConciliacionService>();
-    services.AddScoped<ITransaccionService, TransaccionService>();
+    
     services.AddScoped<ISatMetadataIngestService, SatMetadataIngestService>();
 
     return services;
@@ -60,7 +60,7 @@ public static class ServiceRegistration
 
     services.AddScoped<ICuentasContablesRepository, CuentasContablesRepository>();
     services.AddScoped<IContabilidadRegistrosService, ContabilidadRegistrosService>();
-    services.AddScoped<ITransaccionService, TransaccionService>();
+    
 
     return services;
   }

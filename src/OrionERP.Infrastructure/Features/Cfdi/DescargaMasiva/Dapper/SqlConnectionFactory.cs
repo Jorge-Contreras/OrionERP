@@ -1,10 +1,11 @@
 using System.Data;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
+using OrionERP.Application.Common;
 
 namespace OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Dapper;
 
-public sealed class SqlConnectionFactory
+public sealed class SqlConnectionFactory : IDbConnectionFactory
 {
   private readonly string _cs;
   public SqlConnectionFactory(IConfiguration cfg)

@@ -2,8 +2,6 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.Extensions.DependencyInjection;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
-using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
-using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using OrionERP.Web.Services;
 using OrionERP.Web.State;
 using System;

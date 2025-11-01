@@ -7,27 +7,30 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
+using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Web.Services;
 
 namespace OrionERP.Web.Features.Contabilidad.Transacciones;
 
 public partial class TransaccionPage : ComponentBase, IDisposable
 {
-  private readonly List<CategoriaItem> _categorias = new();
+  private CancellationTokenSource? _loadCts;
   private TransaccionHeaderModel? _headerOriginal;
   private MovimientoModel? _movimientoTarget;
 
   [Parameter] public int Id { get; set; }
 
-  [Inject] public ITransaccionDetailService DetailService { get; set; } = default!;
+  [Inject] public ITransaccionService TransaccionService { get; set; } = default!;
   [Inject] public IBreadcrumbService Breadcrumbs { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
+
   protected TransaccionHeaderModel? Header { get; private set; }
   protected EditContext? HeaderEditContext { get; private set; }
   protected bool IsLoading { get; private set; } = true;
   protected bool IsSavingHeader { get; private set; }
   protected string? ErrorMessage { get; private set; }
 
+  protected MovimientoTotalsDto Totals { get; private set; } = new();
   protected List<MovimientoModel> Movimientos { get; } = new();
   protected List<AttachmentModel> Attachments { get; } = new();
   protected List<ComprobanteModel> Comprobantes { get; } = new();
@@ -37,84 +40,97 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected EditContext? MovimientoEditContext { get; private set; }
   protected string MovimientoModalTitle => _movimientoTarget is null ? "Agregar movimiento" : "Editar movimiento";
 
-  protected bool ShowCategoriaPicker { get; private set; }
-  protected string CategoriaSearchTerm { get; set; } = string.Empty;
-  protected IEnumerable<CategoriaItem> FilteredCategorias
-    => string.IsNullOrWhiteSpace(CategoriaSearchTerm)
-      ? _categorias
-      : _categorias.Where(c => c.Clave.Contains(CategoriaSearchTerm, StringComparison.OrdinalIgnoreCase)
-                               || c.Descripcion.Contains(CategoriaSearchTerm, StringComparison.OrdinalIgnoreCase))
-                   .Take(30);
-
-  protected bool ShowMemoZoom { get; private set; }
-  protected string? MemoZoomText { get; private set; }
+  protected string HeaderStatus => Totals.Balance == 0m ? "Balanceada" : "Desbalanceada";
+  protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
 
   protected override async Task OnParametersSetAsync()
   {
-    await LoadAsync();
+    _loadCts?.Cancel();
+    _loadCts?.Dispose();
+    _loadCts = new CancellationTokenSource();
+    await LoadAsync(_loadCts.Token);
   }
 
   private async Task LoadAsync(CancellationToken ct = default)
   {
     IsLoading = true;
     ErrorMessage = null;
+    UiMessages.Clear();
 
     try
     {
-      var dto = await DetailService.GetAsync(Id, ct);
+      var headerDto = await TransaccionService.GetHeaderAsync(Id, ct);
+      if (headerDto is null)
+      {
+        Header = null;
+        _headerOriginal = null;
+        Movimientos.Clear();
+        Attachments.Clear();
+        Comprobantes.Clear();
+        Totals = new MovimientoTotalsDto();
+        ErrorMessage = "No se encontró la transacción solicitada.";
+        return;
+      }
 
       Header = new TransaccionHeaderModel
       {
-        Folio = dto.Folio,
-        Rfc = dto.Rfc,
-        Fecha = dto.Fecha,
-        Categoria = dto.Categoria,
-        Concepto = dto.Concepto,
-        Referencia = dto.Referencia,
-        Memo = dto.Memo,
-        Subtotal = dto.Subtotal,
-        Iva = dto.Iva,
-        Monto = dto.Monto,
-        Divisa = dto.Divisa,
-        Status = dto.Status
+        Id = headerDto.Id,
+        Folio = headerDto.Id.ToString("0000", CultureInfo.InvariantCulture),
+        Rfc = headerDto.Rfc,
+        Fecha = headerDto.Fecha,
+        Cuenta = headerDto.Cuenta,
+        Concepto = headerDto.Concepto,
+        Monto = headerDto.Monto,
+        ComprobanteId = headerDto.ComprobanteId,
+        ComprobanteMonto = headerDto.ComprobanteMonto
       };
       _headerOriginal = Header.Clone();
       HeaderEditContext = new EditContext(Header);
 
       Movimientos.Clear();
-      Movimientos.AddRange(dto.Movimientos.Select(m => new MovimientoModel
+      var movimientosDto = await TransaccionService.GetMovimientosAsync(Id, ct);
+      Movimientos.AddRange(movimientosDto.Select(m => new MovimientoModel
       {
         Id = m.Id,
         Cuenta = m.Cuenta,
+        NombreCuenta = m.NombreCuenta,
         Concepto = m.Concepto,
         Debe = m.Debe,
-        Haber = m.Haber,
-        Memo = m.Memo
+        Haber = m.Haber
       }));
 
+      Totals = await TransaccionService.GetMovimientoTotalsAsync(Id, ct);
+      Header.Status = HeaderStatus;
+
       Attachments.Clear();
-      Attachments.AddRange(dto.Adjuntos.Select(a => new AttachmentModel
+      var attachmentsDto = await TransaccionService.GetAttachmentsAsync(Id, ct);
+      Attachments.AddRange(attachmentsDto.Select(a => new AttachmentModel
       {
-        Nombre = a.Nombre,
-        TamanoBytes = a.TamanoBytes,
-        CargadoEn = a.CargadoEn
+        Nombre = string.IsNullOrWhiteSpace(a.AttachmentName) ? $"Adjunto {a.Id}" : a.AttachmentName!,
+        Extension = string.IsNullOrWhiteSpace(a.AttachmentExtension) ? "-" : a.AttachmentExtension!,
+        TamanoBytes = a.Length ?? 0
       }));
 
       Comprobantes.Clear();
-      Comprobantes.AddRange(dto.Comprobantes.Select(c => new ComprobanteModel
+      var comprobantesDto = await TransaccionService.GetComprobantesAsync(Id, ct);
+      Comprobantes.AddRange(comprobantesDto.Select(c => new ComprobanteModel
       {
-        Uuid = c.Uuid,
-        Emisor = c.Emisor,
-        Total = c.Total
+        ComprobanteId = c.ComprobanteId,
+        Serie = c.Serie ?? string.Empty,
+        Folio = c.Folio ?? string.Empty,
+        Fecha = c.Fecha,
+        Total = c.Total,
+        Vinculado = c.Vinculado
       }));
-
-      _categorias.Clear();
-      _categorias.AddRange(dto.Categorias.Select(c => new CategoriaItem(c.Clave, c.Descripcion)));
 
       Breadcrumbs.Set(
         new BreadcrumbItem("Contabilidad", "/contabilidad"),
         new BreadcrumbItem("Transacciones", "/contabilidad/transacciones"),
-        new BreadcrumbItem($"Transacción {Header.Folio ?? Id.ToString(CultureInfo.InvariantCulture)}", null, true));
+        new BreadcrumbItem($"Transacción {Header.DisplayFolio}", null, true));
+    }
+    catch (OperationCanceledException)
+    {
+      // ignored
     }
     catch (Exception ex)
     {
@@ -150,9 +166,34 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     IsSavingHeader = true;
     try
     {
-      await Task.Delay(350); // simulate persistence
+      var request = new TransaccionGuardarCerrarRequest
+      {
+        TransaccionId = Header.Id,
+        Concepto = Header.Concepto,
+        Fecha = Header.Fecha,
+        Cuenta = Header.Cuenta,
+        Monto = Header.Monto
+      };
+
+      var result = await TransaccionService.GuardarYCerrarAsync(request);
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message ?? "No se pudo guardar la transacción.");
+        return;
+      }
+
+      if (result.Totals is not null)
+      {
+        Totals = result.Totals;
+        Header.Status = HeaderStatus;
+      }
+
       _headerOriginal = Header.Clone();
-      UiMessages.ShowSuccess("Datos de la transacción guardados.");
+      UiMessages.ShowSuccess(result.Message ?? "Datos de la transacción guardados.");
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"Error al guardar: {ex.Message}");
     }
     finally
     {
@@ -168,7 +209,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       MovimientoDraft = new MovimientoModel
       {
         Debe = Header?.Monto ?? 0m,
-        Haber = 0m
+        Haber = 0m,
+        Concepto = Header?.Concepto,
+        Cuenta = Header?.Cuenta
       };
     }
     else
@@ -212,35 +255,12 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     await InvokeAsync(StateHasChanged);
   }
 
-  protected void RemoveMovimiento(MovimientoModel movimiento)
-  {
-    Movimientos.Remove(movimiento);
-  }
-
   protected void CopyMontoToMovimiento()
   {
     if (MovimientoDraft is null || Header is null)
       return;
 
     MovimientoDraft.Debe = Header.Monto;
-    MovimientoEditContext?.NotifyFieldChanged(new FieldIdentifier(MovimientoDraft, nameof(MovimientoDraft.Debe)));
-  }
-
-  protected void CopySubtotalToMovimiento()
-  {
-    if (MovimientoDraft is null || Header is null)
-      return;
-
-    MovimientoDraft.Debe = Header.Subtotal;
-    MovimientoEditContext?.NotifyFieldChanged(new FieldIdentifier(MovimientoDraft, nameof(MovimientoDraft.Debe)));
-  }
-
-  protected void CopyIvaToMovimiento()
-  {
-    if (MovimientoDraft is null || Header is null)
-      return;
-
-    MovimientoDraft.Debe = Header.Iva;
     MovimientoEditContext?.NotifyFieldChanged(new FieldIdentifier(MovimientoDraft, nameof(MovimientoDraft.Debe)));
   }
 
@@ -253,110 +273,60 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     MovimientoEditContext?.NotifyFieldChanged(new FieldIdentifier(MovimientoDraft, nameof(MovimientoDraft.Concepto)));
   }
 
-  protected void OpenCategoriaPicker()
-  {
-    CategoriaSearchTerm = string.Empty;
-    ShowCategoriaPicker = true;
-  }
-
-  protected void CloseCategoriaPicker()
-  {
-    ShowCategoriaPicker = false;
-  }
-
-  protected void SelectCategoria(CategoriaItem categoria)
-  {
-    if (Header is null)
-      return;
-
-    Header.Categoria = categoria.Descripcion;
-    HeaderEditContext?.NotifyFieldChanged(new FieldIdentifier(Header, nameof(Header.Categoria)));
-    ShowCategoriaPicker = false;
-  }
-
-  protected void OpenMemoZoom(string memo)
-  {
-    MemoZoomText = memo;
-    ShowMemoZoom = true;
-  }
-
-  protected void CloseMemoZoom()
-  {
-    MemoZoomText = null;
-    ShowMemoZoom = false;
-  }
-
-  protected async Task OnAttachmentsSelected(InputFileChangeEventArgs e)
-  {
-    foreach (var file in e.GetMultipleFiles())
-    {
-      Attachments.Add(new AttachmentModel
-      {
-        Nombre = file.Name,
-        TamanoBytes = file.Size,
-        CargadoEn = DateTimeOffset.Now
-      });
-    }
-
-    UiMessages.ShowInfo("Archivo(s) agregados a la transacción.");
-    await InvokeAsync(StateHasChanged);
-  }
-
-  protected void RemoveAttachment(AttachmentModel attachment)
-  {
-    Attachments.Remove(attachment);
-  }
-
   public void Dispose()
   {
     Breadcrumbs.Clear();
+    _loadCts?.Cancel();
+    _loadCts?.Dispose();
   }
 
   protected sealed class TransaccionHeaderModel
   {
+    public int Id { get; set; }
     public string? Folio { get; set; }
     public string? Rfc { get; set; }
 
     [Required(ErrorMessage = "La fecha es obligatoria.")]
     public DateTime Fecha { get; set; }
 
-    [Required(ErrorMessage = "Selecciona una categoría.")]
-    public string? Categoria { get; set; }
+    [Required(ErrorMessage = "Captura una cuenta.")]
+    public string? Cuenta { get; set; }
 
     [Required(ErrorMessage = "Captura un concepto.")]
     public string? Concepto { get; set; }
 
-    public string? Referencia { get; set; }
-    public string? Memo { get; set; }
-
-    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Subtotal inválido.")]
-    public decimal Subtotal { get; set; }
-
-    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "IVA inválido.")]
-    public decimal Iva { get; set; }
-
     [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Monto inválido.")]
     public decimal Monto { get; set; }
 
-    public string? Divisa { get; set; }
-    public string Status { get; set; } = "Pendiente";
+    public int? ComprobanteId { get; set; }
+    public decimal? ComprobanteMonto { get; set; }
+    public string Status { get; set; } = "Desconocido";
+
+    public string DisplayFolio => string.IsNullOrWhiteSpace(Folio)
+      ? Id.ToString(CultureInfo.InvariantCulture)
+      : Folio;
+
+    public string ComprobanteResumen
+      => ComprobanteId is null
+        ? "Sin comprobante"
+        : ComprobanteMonto.HasValue
+          ? $"#{ComprobanteId} · {ComprobanteMonto.Value:N2}"
+          : $"#{ComprobanteId}";
 
     public TransaccionHeaderModel Clone()
       => (TransaccionHeaderModel)MemberwiseClone();
 
     public void CopyFrom(TransaccionHeaderModel other)
     {
+      Id = other.Id;
       Folio = other.Folio;
       Rfc = other.Rfc;
       Fecha = other.Fecha;
-      Categoria = other.Categoria;
+      Cuenta = other.Cuenta;
       Concepto = other.Concepto;
-      Referencia = other.Referencia;
-      Memo = other.Memo;
-      Subtotal = other.Subtotal;
-      Iva = other.Iva;
       Monto = other.Monto;
-      Divisa = other.Divisa;
+      ComprobanteId = other.ComprobanteId;
+      ComprobanteMonto = other.ComprobanteMonto;
       Status = other.Status;
     }
   }
@@ -367,6 +337,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     [Required(ErrorMessage = "La cuenta es obligatoria.")]
     public string? Cuenta { get; set; }
+
+    public string? NombreCuenta { get; set; }
 
     [Required(ErrorMessage = "El concepto es obligatorio.")]
     public string? Concepto { get; set; }
@@ -386,6 +358,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     {
       Id = other.Id;
       Cuenta = other.Cuenta;
+      NombreCuenta = other.NombreCuenta;
       Concepto = other.Concepto;
       Debe = other.Debe;
       Haber = other.Haber;
@@ -396,19 +369,20 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected sealed class AttachmentModel
   {
     public string Nombre { get; set; } = string.Empty;
+    public string Extension { get; set; } = string.Empty;
     public long TamanoBytes { get; set; }
-    public DateTimeOffset CargadoEn { get; set; }
     public string TamanoHumano => FormatSize(TamanoBytes);
   }
 
   protected sealed class ComprobanteModel
   {
-    public string Uuid { get; set; } = string.Empty;
-    public string Emisor { get; set; } = string.Empty;
+    public int ComprobanteId { get; set; }
+    public string Serie { get; set; } = string.Empty;
+    public string Folio { get; set; } = string.Empty;
+    public DateTime Fecha { get; set; }
     public decimal Total { get; set; }
+    public bool Vinculado { get; set; }
   }
-
-  protected sealed record CategoriaItem(string Clave, string Descripcion);
 
   private static string FormatSize(long bytes)
   {

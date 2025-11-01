@@ -60,7 +60,9 @@ public static class ServiceRegistration
 
     services.AddScoped<ICuentasContablesRepository, CuentasContablesRepository>();
     services.AddScoped<IContabilidadRegistrosService, ContabilidadRegistrosService>();
-    
+
+    services.AddScoped<ITransaccionService, TransaccionService>();
+
 
     return services;
   }

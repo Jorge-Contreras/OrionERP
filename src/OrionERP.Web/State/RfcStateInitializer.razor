@@ -13,7 +13,7 @@
 
     [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
     [Inject] private IUserRfcState RfcState { get; set; } = default!;
-    [Inject] private ProtectedSessionStorage Session { get; set; } = default!;
+    [Inject] private ProtectedLocalStorage Storage { get; set; } = default!;
 
     private bool _initialized;
 
@@ -44,7 +44,7 @@
         RfcState.InitializeFromClaims(user);
 
         // Restore last selection if still valid
-        var saved = await Session.GetAsync<string>("current_rfc");
+        var saved = await Storage.GetAsync<string>("current_rfc");
         if (saved.Success && !string.IsNullOrWhiteSpace(saved.Value))
         {
             if (!RfcState.TrySet(saved.Value))
@@ -77,7 +77,7 @@
 
     private async Task PersistCurrentAsync()
     {
-        await Session.SetAsync("current_rfc", RfcState.CurrentRfc ?? string.Empty);
+        await Storage.SetAsync("current_rfc", RfcState.CurrentRfc ?? string.Empty);
     }
 
     public void Dispose()

@@ -2,9 +2,7 @@
 @using System.Globalization
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
-
-
-<PageTitle>Transacción @Header?.Folio ?? Id.ToString(CultureInfo.InvariantCulture)</PageTitle>
+<PageTitle>Transacción @Header?.DisplayFolio ?? Id.ToString(CultureInfo.InvariantCulture)</PageTitle>
 
 @if (IsLoading)
 {
@@ -25,7 +23,7 @@ else if (Header is not null)
     <div class="card shadow-sm">
       <div class="card-header d-flex align-items-center gap-2">
         <h5 class="mb-0 flex-grow-1">Datos de la transacción</h5>
-        <span class="badge text-bg-secondary">@Header.Status</span>
+        <span class="badge @HeaderStatusCss">@HeaderStatus</span>
       </div>
       <div class="card-body">
         <EditForm EditContext="HeaderEditContext" OnValidSubmit="SaveHeaderAsync">
@@ -35,7 +33,7 @@ else if (Header is not null)
           <div class="row g-3">
             <div class="col-md-3">
               <label class="form-label">Folio</label>
-              <InputText class="form-control" @bind-Value="Header.Folio" readonly />
+              <InputText class="form-control" Value="@Header.DisplayFolio" readonly />
             </div>
             <div class="col-md-3">
               <label class="form-label">RFC</label>
@@ -47,47 +45,23 @@ else if (Header is not null)
               <ValidationMessage For="() => Header.Fecha" />
             </div>
             <div class="col-md-3">
-              <label class="form-label">Categoría</label>
-              <div class="input-group">
-                <InputText class="form-control" @bind-Value="Header.Categoria" />
-                <button type="button" class="btn btn-outline-secondary" @onclick="OpenCategoriaPicker">
-                  <span class="oi oi-tags" aria-hidden="true"></span>
-                  <span class="visually-hidden">Seleccionar categoría</span>
-                </button>
-              </div>
-              <ValidationMessage For="() => Header.Categoria" />
+              <label class="form-label">Cuenta contable</label>
+              <InputText class="form-control" @bind-Value="Header.Cuenta" />
+              <ValidationMessage For="() => Header.Cuenta" />
             </div>
-            <div class="col-md-4">
+            <div class="col-md-6">
               <label class="form-label">Concepto</label>
               <InputText class="form-control" @bind-Value="Header.Concepto" />
               <ValidationMessage For="() => Header.Concepto" />
             </div>
-            <div class="col-md-4">
-              <label class="form-label">Referencia</label>
-              <InputText class="form-control" @bind-Value="Header.Referencia" />
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Memo</label>
-              <InputTextArea class="form-control" rows="1" @bind-Value="Header.Memo" />
-            </div>
             <div class="col-md-3">
-              <label class="form-label">Subtotal</label>
-              <InputNumber class="form-control" @bind-Value="Header.Subtotal" />
-              <ValidationMessage For="() => Header.Subtotal" />
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">IVA</label>
-              <InputNumber class="form-control" @bind-Value="Header.Iva" />
-              <ValidationMessage For="() => Header.Iva" />
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Total</label>
+              <label class="form-label">Monto</label>
               <InputNumber class="form-control" @bind-Value="Header.Monto" />
               <ValidationMessage For="() => Header.Monto" />
             </div>
             <div class="col-md-3">
-              <label class="form-label">Divisa</label>
-              <InputText class="form-control" @bind-Value="Header.Divisa" />
+              <label class="form-label">Comprobante vinculado</label>
+              <InputText class="form-control" Value="@Header.ComprobanteResumen" readonly />
             </div>
           </div>
 
@@ -110,9 +84,14 @@ else if (Header is not null)
     <div class="row g-3">
       <div class="col-xl-8 d-flex flex-column gap-3">
         <div class="card shadow-sm">
-          <div class="card-header d-flex align-items-center">
+          <div class="card-header d-flex align-items-center gap-2 flex-wrap">
             <h5 class="mb-0 flex-grow-1">Movimientos</h5>
-            <button class="btn btn-sm btn-outline-primary" type="button" @onclick="() => OpenMovimientoModal(null)">
+            <span class="badge text-bg-dark">Debe: @Totals.Debe.ToString("N2")</span>
+            <span class="badge text-bg-dark">Haber: @Totals.Haber.ToString("N2")</span>
+            <span class="badge @(Totals.Balance == 0 ? "text-bg-success" : "text-bg-warning")">
+              Balance: @Totals.Balance.ToString("N2")
+            </span>
+            <button class="btn btn-sm btn-outline-primary ms-auto" type="button" @onclick="() => OpenMovimientoModal(null)">
               <span class="oi oi-plus me-1" aria-hidden="true"></span>Agregar
             </button>
           </div>
@@ -129,11 +108,10 @@ else if (Header is not null)
                     <tr>
                       <th>#</th>
                       <th>Cuenta</th>
+                      <th>Nombre</th>
                       <th>Concepto</th>
                       <th class="text-end">Debe</th>
                       <th class="text-end">Haber</th>
-                      <th>Memo</th>
-                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -142,22 +120,10 @@ else if (Header is not null)
                       <tr class="@GetMovimientoRowClass(movimiento.item)" @onclick="() => OpenMovimientoModal(movimiento.item)">
                         <td>@(movimiento.index + 1)</td>
                         <td>@movimiento.item.Cuenta</td>
+                        <td>@movimiento.item.NombreCuenta</td>
                         <td>@movimiento.item.Concepto</td>
                         <td class="text-end">@movimiento.item.Debe.ToString("N2")</td>
                         <td class="text-end">@movimiento.item.Haber.ToString("N2")</td>
-                        <td>
-                          @if (!string.IsNullOrWhiteSpace(movimiento.item.Memo))
-                          {
-                            <button type="button" class="btn btn-link p-0" @onclick:stopPropagation @onclick="() => OpenMemoZoom(movimiento.item.Memo!)">
-                              <span class="oi oi-document"></span>
-                            </button>
-                          }
-                        </td>
-                        <td class="text-end">
-                          <button type="button" class="btn btn-sm btn-outline-danger" @onclick:stopPropagation @onclick="() => RemoveMovimiento(movimiento.item)">
-                            <span class="oi oi-trash" aria-hidden="true"></span>
-                          </button>
-                        </td>
                       </tr>
                     }
                   </tbody>
@@ -170,10 +136,7 @@ else if (Header is not null)
         <div class="card shadow-sm">
           <div class="card-header d-flex align-items-center">
             <h5 class="mb-0 flex-grow-1">Archivos adjuntos</h5>
-            <label class="btn btn-sm btn-outline-primary mb-0">
-              <span class="oi oi-cloud-upload me-1" aria-hidden="true"></span>Subir
-              <InputFile class="d-none" multiple OnChange="OnAttachmentsSelected" />
-            </label>
+            <span class="badge text-bg-secondary">@Attachments.Count</span>
           </div>
           <div class="card-body">
             @if (Attachments.Count == 0)
@@ -187,9 +150,8 @@ else if (Header is not null)
                   <thead>
                     <tr>
                       <th>Nombre</th>
+                      <th>Extensión</th>
                       <th class="text-end">Tamaño</th>
-                      <th>Fecha</th>
-                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -197,13 +159,8 @@ else if (Header is not null)
                     {
                       <tr>
                         <td>@attachment.Nombre</td>
+                        <td>@attachment.Extension</td>
                         <td class="text-end">@attachment.TamanoHumano</td>
-                        <td>@attachment.CargadoEn.ToString("g")</td>
-                        <td class="text-end">
-                          <button class="btn btn-sm btn-outline-danger" type="button" @onclick="() => RemoveAttachment(attachment)">
-                            <span class="oi oi-trash" aria-hidden="true"></span>
-                          </button>
-                        </td>
                       </tr>
                     }
                   </tbody>
@@ -216,8 +173,9 @@ else if (Header is not null)
 
       <div class="col-xl-4 d-flex flex-column gap-3">
         <div class="card shadow-sm">
-          <div class="card-header">
-            <h5 class="mb-0">Comprobantes vinculados</h5>
+          <div class="card-header d-flex align-items-center">
+            <h5 class="mb-0 flex-grow-1">Comprobantes vinculados</h5>
+            <span class="badge text-bg-secondary">@Comprobantes.Count</span>
           </div>
           <div class="card-body">
             @if (Comprobantes.Count == 0)
@@ -230,8 +188,10 @@ else if (Header is not null)
                 <table class="table table-sm table-hover align-middle mb-0">
                   <thead>
                     <tr>
-                      <th>UUID</th>
-                      <th>Emisor</th>
+                      <th>Id</th>
+                      <th>Serie</th>
+                      <th>Folio</th>
+                      <th>Fecha</th>
                       <th class="text-end">Total</th>
                     </tr>
                   </thead>
@@ -239,8 +199,10 @@ else if (Header is not null)
                     @foreach (var comprobante in Comprobantes)
                     {
                       <tr>
-                        <td>@comprobante.Uuid</td>
-                        <td>@comprobante.Emisor</td>
+                        <td>@comprobante.ComprobanteId</td>
+                        <td>@comprobante.Serie</td>
+                        <td>@comprobante.Folio</td>
+                        <td>@comprobante.Fecha.ToString("yyyy-MM-dd")</td>
                         <td class="text-end">@comprobante.Total.ToString("N2")</td>
                       </tr>
                     }
@@ -260,17 +222,25 @@ else if (Header is not null)
               <dt class="col-6">Total movimientos</dt>
               <dd class="col-6 text-end">@Movimientos.Count</dd>
               <dt class="col-6">Suma Debe</dt>
-              <dd class="col-6 text-end">@Movimientos.Sum(m => m.Debe).ToString("N2")</dd>
+              <dd class="col-6 text-end">@Totals.Debe.ToString("N2")</dd>
               <dt class="col-6">Suma Haber</dt>
-              <dd class="col-6 text-end">@Movimientos.Sum(m => m.Haber).ToString("N2")</dd>
+              <dd class="col-6 text-end">@Totals.Haber.ToString("N2")</dd>
+              <dt class="col-6">Balance</dt>
+              <dd class="col-6 text-end">@Totals.Balance.ToString("N2")</dd>
               <dt class="col-6">Archivos</dt>
               <dd class="col-6 text-end">@Attachments.Count</dd>
+              <dt class="col-6">Comprobantes</dt>
+              <dd class="col-6 text-end">@Comprobantes.Count</dd>
             </dl>
           </div>
         </div>
       </div>
     </div>
   </div>
+}
+else
+{
+  <div class="alert alert-warning" role="alert">No se encontró la transacción solicitada.</div>
 }
 
 @if (ShowMovimientoModal && MovimientoDraft is not null)
@@ -292,14 +262,13 @@ else if (Header is not null)
                 <InputText class="form-control" @bind-Value="MovimientoDraft.Cuenta" />
                 <ValidationMessage For="() => MovimientoDraft.Cuenta" />
               </div>
-              <div class="col-md-8">
+              <div class="col-md-4">
+                <label class="form-label">Nombre cuenta</label>
+                <InputText class="form-control" @bind-Value="MovimientoDraft.NombreCuenta" />
+              </div>
+              <div class="col-md-4">
                 <label class="form-label">Concepto</label>
-                <div class="input-group">
-                  <InputText class="form-control" @bind-Value="MovimientoDraft.Concepto" />
-                  <button type="button" class="btn btn-outline-secondary" @onclick="CopyConceptoFromHeader">
-                    Copiar concepto
-                  </button>
-                </div>
+                <InputText class="form-control" @bind-Value="MovimientoDraft.Concepto" />
                 <ValidationMessage For="() => MovimientoDraft.Concepto" />
               </div>
               <div class="col-md-3">
@@ -320,8 +289,6 @@ else if (Header is not null)
 
             <div class="d-flex flex-wrap gap-2 my-3">
               <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyMontoToMovimiento">Copiar monto</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopySubtotalToMovimiento">Copiar subtotal</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyIvaToMovimiento">Copiar IVA</button>
               <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyConceptoFromHeader">Copiar concepto</button>
             </div>
 
@@ -330,68 +297,6 @@ else if (Header is not null)
               <button class="btn btn-primary" type="submit">Guardar movimiento</button>
             </div>
           </EditForm>
-        </div>
-      </div>
-    </div>
-  </div>
-}
-
-@if (ShowCategoriaPicker)
-{
-  <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.35);" role="dialog" aria-modal="true">
-    <div class="modal-dialog modal-lg">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">Seleccionar categoría</h5>
-          <button type="button" class="btn-close" @onclick="CloseCategoriaPicker"></button>
-        </div>
-        <div class="modal-body">
-          <div class="mb-3">
-            <label class="form-label">Buscar</label>
-            <input class="form-control" @bind="CategoriaSearchTerm" @bind:event="oninput" placeholder="Ej. Bancos" />
-          </div>
-          <div class="table-responsive" style="max-height: 320px;">
-            <table class="table table-hover">
-              <thead>
-                <tr>
-                  <th>Clave</th>
-                  <th>Descripción</th>
-                </tr>
-              </thead>
-              <tbody>
-                @foreach (var categoria in FilteredCategorias)
-                {
-                  <tr role="button" @onclick="() => SelectCategoria(categoria)">
-                    <td>@categoria.Clave</td>
-                    <td>@categoria.Descripcion</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-outline-secondary" type="button" @onclick="CloseCategoriaPicker">Cerrar</button>
-        </div>
-      </div>
-    </div>
-  </div>
-}
-
-@if (ShowMemoZoom)
-{
-  <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.35);" role="dialog" aria-modal="true">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">Memo</h5>
-          <button type="button" class="btn-close" @onclick="CloseMemoZoom"></button>
-        </div>
-        <div class="modal-body">
-          <p class="mb-0">@MemoZoomText</p>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-primary" type="button" @onclick="CloseMemoZoom">Cerrar</button>
         </div>
       </div>
     </div>

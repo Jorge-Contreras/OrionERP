@@ -74,7 +74,7 @@ builder.Services
 
 builder.Services.AddScoped<IUserRfcState, UserRfcState>();
 builder.Services.AddScoped<ICurrentRfcAccessor, UserRfcStateAccessor>();
-builder.Services.AddScoped<ProtectedSessionStorage>();
+builder.Services.AddScoped<ProtectedLocalStorage>();
 builder.Services.AddScoped<IRfcContext, RfcContext>();
 builder.Services.AddScoped<IAuthorizationHandler, RoleForRfcHandler>();
 builder.Services.AddAuthorization(options =>
@@ -92,7 +92,6 @@ builder.Services.AddCfdiCargarXmlSat();
 builder.Services.AddOrionServices();
 builder.Services.AddScoped<IUiMessageService, UiMessageService>();
 builder.Services.AddScoped<IBreadcrumbService, BreadcrumbService>();
-builder.Services.AddScoped<ITransaccionDetailService, FakeTransaccionDetailService>();
 
 builder.Host.UseWindowsService();
 

@@ -18,4 +18,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OrionERP.Application\OrionERP.Application.csproj" />
+    <ProjectReference Include="..\..\src\OrionERP.Infrastructure\OrionERP.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>

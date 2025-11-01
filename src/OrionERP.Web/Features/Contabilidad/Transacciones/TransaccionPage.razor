@@ -3,6 +3,7 @@
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
 
+
 <PageTitle>Transacción @Header?.Folio ?? Id.ToString(CultureInfo.InvariantCulture)</PageTitle>
 
 @if (IsLoading)

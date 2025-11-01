@@ -87,12 +87,45 @@
             Limpiar resultados
         </button>
     </div>
-    <ul class="mt-2">
+    <ul class="mt-2 list-unstyled">
         @foreach (var r in ProcessResults)
         {
-            <li>@r.FileName — @(r.Success ? "OK " : $"Error: ") - @(r.Message)</li>
+            <li class="mb-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <span class="fw-semibold">@r.FileName</span>
+                    <span class="badge text-bg-@(r.Success ? "success" : "danger")">@(r.Success ? "OK" : "Error")</span>
+                    @if (r.AttachmentId > 0)
+                    {
+                        <span class="badge text-bg-secondary">Adjunto: @r.AttachmentId</span>
+                        <button type="button"
+                                class="btn btn-link btn-sm px-2"
+                                disabled="@(!SelectedTransaccionId.HasValue || AttachmentProcessing == r.AttachmentId)"
+                                @onclick="() => ProcessSatXmlAsync(r.AttachmentId)">
+                            @(AttachmentProcessing == r.AttachmentId ? "Procesando..." : "Procesar en transacción seleccionada")
+                        </button>
+                    }
+                    <span class="text-muted">
+                        @if (!string.IsNullOrWhiteSpace(r.Message))
+                        {
+                            @r.Message
+                        }
+                        else if (r.Success)
+                        {
+                            <text>Listo para conciliar.</text>
+                        }
+                        else
+                        {
+                            <text>Sin detalles.</text>
+                        }
+                    </span>
+                </div>
+            </li>
         }
     </ul>
+    @if (!SelectedTransaccionId.HasValue)
+    {
+        <small class="text-muted">Selecciona una transacción para habilitar el procesamiento de XML.</small>
+    }
 }
 
 <!-- XML cargados (pendientes de conciliar) (independent of SelectedFiles) -->
@@ -212,6 +245,25 @@ else if (Invoices.Count > 0)
                 </tbody>
               
             </table>
+        </div>
+        <div class="mt-3">
+            <h6 class="fw-semibold">Acciones sobre la transacción seleccionada</h6>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <div class="input-group input-group-sm" style="max-width:220px;">
+                    <span class="input-group-text">Categoría</span>
+                    <input type="number"
+                           class="form-control"
+                           placeholder="ID de plantilla"
+                           @bind="CategoriaPlantillaIdInput"
+                           @bind:event="oninput" />
+                </div>
+                <button class="btn btn-outline-primary btn-sm"
+                        disabled="@(!SelectedTransaccionId.HasValue || string.IsNullOrWhiteSpace(CategoriaPlantillaIdInput) || IsApplyingCategoria)"
+                        @onclick="ApplyCategoriaPlantillaAsync">
+                    @(IsApplyingCategoria ? "Aplicando..." : "Aplicar plantilla")
+                </button>
+            </div>
+            <small class="text-muted">Captura el ID de la plantilla y selecciona una transacción para ejecutar la acción.</small>
         </div>
     }
 }

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat;
+using OrionERP.Application.Common;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using OrionERP.Application.Features.Cfdi.ContabilidadRegistros;
 using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
@@ -9,6 +10,7 @@ using OrionERP.Infrastructure.Features.Cfdi.ContabilidadRegistros;
 using OrionERP.Infrastructure.Feautures.Cfdi.CargarXmlSat.Services;
 using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Dapper;
 using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Services;
+using OrionERP.Infrastructure.Common;
 using Sat.MassiveDownload; // ISatMassiveService, SatMassiveClient
 using Sat.MassiveDownload.Core;
 using SatISvc = Sat.MassiveDownload.Core.ISatMassiveService;
@@ -26,11 +28,14 @@ public static class ServiceRegistration
     services.AddScoped<ISatRfcProfileRepository, SatRfcProfileRepository>();
 
     services.AddSingleton<SqlConnectionFactory>();
+    services.AddSingleton<IDbConnectionFactory>(sp => sp.GetRequiredService<SqlConnectionFactory>());
+    services.AddScoped<IDbStoredProcService, DbStoredProcService>();
     // Application contracts are interfaces; Infrastructure has concrete impls
     services.AddScoped<ITransaccionQueryService, TransaccionQueryService>();
     services.AddScoped<IComprobanteQueryService, ComprobanteQueryService>();
     services.AddScoped<ISatXmlInboxService, SatXmlInboxService>();
     services.AddScoped<IConciliacionService, ConciliacionService>();
+    services.AddScoped<ITransaccionService, TransaccionService>();
     services.AddScoped<ISatMetadataIngestService, SatMetadataIngestService>();
 
     return services;
@@ -45,6 +50,8 @@ public static class ServiceRegistration
 
     // Dapper infra for DescargaMasiva
     services.AddSingleton<SqlConnectionFactory>();
+    services.AddSingleton<IDbConnectionFactory>(sp => sp.GetRequiredService<SqlConnectionFactory>());
+    services.AddScoped<IDbStoredProcService, DbStoredProcService>();
     services.AddScoped<ISatSolicitudesRepository, SatSolicitudesRepository>();
     services.AddScoped<ISatPaquetesRepository, SatPaquetesRepository>();
     services.AddScoped<ISatDownloadCoordinator, SatDownloadCoordinator>();

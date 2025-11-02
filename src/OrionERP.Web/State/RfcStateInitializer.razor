@@ -1,6 +1,8 @@
 @using System.Security.Claims
+@using System.Threading
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @using OrionERP.Web.State
 @implements IDisposable
@@ -14,48 +16,79 @@
     [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
     [Inject] private IUserRfcState RfcState { get; set; } = default!;
     [Inject] private ProtectedLocalStorage Storage { get; set; } = default!;
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
 
     private bool _initialized;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _initialized) return;
+        if (firstRender)
+        {
+            AuthStateProvider.AuthenticationStateChanged += OnAuthStateChanged;
+            Navigation.LocationChanged += OnLocationChanged;
+        }
 
-        // Re-run init if auth state changes (e.g., user logs in/out)
-        AuthStateProvider.AuthenticationStateChanged += OnAuthStateChanged;
-
-        await InitializeAsync();
-        _initialized = true;
+        if (firstRender || !_initialized || !RfcState.AllowedRfcs.Any())
+        {
+            await EnsureInitializedAsync();
+        }
     }
 
-    private async Task InitializeAsync()
+    private async Task EnsureInitializedAsync(bool force = false, AuthenticationState? state = null)
     {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        await _initLock.WaitAsync();
+        try
+        {
+            if (!force && _initialized && RfcState.AllowedRfcs.Any())
+            {
+                return;
+            }
+
+            state ??= await AuthStateProvider.GetAuthenticationStateAsync();
+            await InitializeCoreAsync(state);
+            _initialized = true;
+        }
+        finally
+        {
+            _initLock.Release();
+        }
+    }
+
+    private async Task InitializeCoreAsync(AuthenticationState authState)
+    {
         var user = authState.User;
 
         if (user.Identity?.IsAuthenticated != true)
         {
-            // Clear allowed/selected when not authenticated
             RfcState.InitializeFromClaims(new ClaimsPrincipal());
+            RfcState.Changed -= OnRfcChangedPersist;
+            RfcState.Changed += OnRfcChangedPersist;
+            await PersistCurrentAsync();
+            await InvokeAsync(StateHasChanged);
             return;
         }
 
-        // Build allowed set from claims
         RfcState.InitializeFromClaims(user);
 
-        // Restore last selection if still valid
         var saved = await Storage.GetAsync<string>("current_rfc");
         if (saved.Success && !string.IsNullOrWhiteSpace(saved.Value))
         {
             if (!RfcState.TrySet(saved.Value))
+            {
                 RfcState.ResetToDefault();
+            }
+        }
+        else
+        {
+            RfcState.ResetToDefault();
         }
 
-        // Persist on every change
-        RfcState.Changed -= OnRfcChangedPersist; // avoid dup subscription
+        RfcState.Changed -= OnRfcChangedPersist;
         RfcState.Changed += OnRfcChangedPersist;
 
-        StateHasChanged();
+        await PersistCurrentAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async void OnAuthStateChanged(Task<AuthenticationState> task)
@@ -63,11 +96,14 @@
         try
         {
             var state = await task;
-            RfcState.InitializeFromClaims(state.User);
-            await PersistCurrentAsync();
-            await InvokeAsync(StateHasChanged);
+            await EnsureInitializedAsync(force: true, state);
         }
         catch { /* no-op */ }
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        _ = EnsureInitializedAsync();
     }
 
     private async void OnRfcChangedPersist()
@@ -84,5 +120,6 @@
     {
         AuthStateProvider.AuthenticationStateChanged -= OnAuthStateChanged;
         RfcState.Changed -= OnRfcChangedPersist;
+        Navigation.LocationChanged -= OnLocationChanged;
     }
 }

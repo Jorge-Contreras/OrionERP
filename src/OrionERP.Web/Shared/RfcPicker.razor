@@ -1,6 +1,6 @@
+@using Microsoft.AspNetCore.Components
 @using OrionERP.Web.State
 @implements IDisposable
-@inject IUserRfcState RfcState
 
 <div class="d-flex align-items-center gap-2">
     <label class="form-label mb-0">RFC:</label>
@@ -24,6 +24,8 @@
 </div>
 
 @code {
+    [Inject] public IUserRfcState RfcState { get; set; } = default!;
+
     // Pattern A: event you can handle like <RfcPicker OnRfcChanged="..." />
     [Parameter] public EventCallback<string?> OnRfcChanged { get; set; }
 

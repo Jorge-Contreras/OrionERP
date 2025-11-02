@@ -41,14 +41,13 @@ WHERE t.ID = @TransaccionId;";
   {
     const string sql = @"SELECT
     rc.ID                 AS Id,
-    rc.Transaccion_ID     AS TransaccionId,
-    rc.Cuenta             AS Cuenta,
+    rc.TransaccionID     AS TransaccionId,
     rc.Nombre_Cuenta      AS NombreCuenta,
     rc.Concepto           AS Concepto,
     CAST(ISNULL(rc.Debe, 0) AS decimal(18,4))  AS Debe,
     CAST(ISNULL(rc.Haber, 0) AS decimal(18,4)) AS Haber
 FROM dbo.Registro_Contable rc
-WHERE rc.Transaccion_ID = @TransaccionId
+WHERE rc.TransaccionID = @TransaccionId
 ORDER BY rc.ID;";
 
     using var conn = new SqlConnection(_cs);
@@ -278,7 +277,7 @@ WHERE ID = @TransaccionId;";
     CAST(ISNULL(SUM(rc.Debe), 0) AS decimal(18,4))  AS Debe,
     CAST(ISNULL(SUM(rc.Haber), 0) AS decimal(18,4)) AS Haber
 FROM dbo.Registro_Contable rc
-WHERE rc.Transaccion_ID = @TransaccionId;";
+WHERE rc.TransaccionID = @TransaccionId;";
 
     var totals = await conn.QueryFirstOrDefaultAsync<MovimientoTotalsDto>(
         new CommandDefinition(sql, new { TransaccionId = transaccionId }, transaction, cancellationToken: ct));

@@ -92,7 +92,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       Movimientos.AddRange(movimientosDto.Select(m => new MovimientoModel
       {
         Id = m.Id,
-        Cuenta = m.Cuenta,
         NombreCuenta = m.NombreCuenta,
         Concepto = m.Concepto,
         Debe = m.Debe,
@@ -211,8 +210,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         Debe = Header?.Monto ?? 0m,
         Haber = 0m,
         Concepto = Header?.Concepto,
-        Cuenta = Header?.Cuenta
-      };
+       };
     }
     else
     {
@@ -336,8 +334,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     public int Id { get; set; }
 
     [Required(ErrorMessage = "La cuenta es obligatoria.")]
-    public string? Cuenta { get; set; }
-
+    
     public string? NombreCuenta { get; set; }
 
     [Required(ErrorMessage = "El concepto es obligatorio.")]
@@ -357,7 +354,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     public void CopyFrom(MovimientoModel other)
     {
       Id = other.Id;
-      Cuenta = other.Cuenta;
       NombreCuenta = other.NombreCuenta;
       Concepto = other.Concepto;
       Debe = other.Debe;

@@ -39,26 +39,64 @@ public sealed class UserRfcState : IUserRfcState
 
   public void InitializeFromClaims(ClaimsPrincipal user)
   {
-    if (user?.Identity is null || !user.Identity.IsAuthenticated) return;
+    if (user?.Identity is null || !user.Identity.IsAuthenticated)
+    {
+      bool cleared;
+      lock (_gate)
+      {
+        cleared = _allowed.Count != 0 || _current is not null;
+        if (cleared)
+        {
+          _allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+          _current = null;
+        }
+      }
+
+      if (cleared)
+      {
+        Changed?.Invoke();
+      }
+
+      return;
+    }
 
     var fromClaims = user.FindAll("rfc")
                          .Select(c => c.Value)
                          .Where(v => !string.IsNullOrWhiteSpace(v))
                          .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+    bool changed = false;
     lock (_gate)
     {
-      _allowed = fromClaims;
+      if (!_allowed.SetEquals(fromClaims))
+      {
+        _allowed = fromClaims;
+        changed = true;
+      }
+
       if (_allowed.Count == 0)
       {
-        _current = null;
+        if (_current is not null)
+        {
+          _current = null;
+          changed = true;
+        }
       }
       else if (_current is null || !_allowed.Contains(_current))
       {
-        _current = _allowed.OrderBy(r => r).FirstOrDefault();
+        var next = _allowed.OrderBy(r => r).FirstOrDefault();
+        if (!string.Equals(_current, next, StringComparison.OrdinalIgnoreCase))
+        {
+          _current = next;
+          changed = true;
+        }
       }
     }
-    Changed?.Invoke();
+
+    if (changed)
+    {
+      Changed?.Invoke();
+    }
   }
 
   public bool TrySet(string rfc)

@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Web.Services;
+using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Contabilidad.Transacciones;
 
@@ -17,12 +18,14 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private CancellationTokenSource? _loadCts;
   private TransaccionHeaderModel? _headerOriginal;
   private MovimientoModel? _movimientoTarget;
+  private bool _rfcInitialized;
+  private bool _isDisposed;
 
   [Parameter] public int Id { get; set; }
 
   [Inject] public ITransaccionService TransaccionService { get; set; } = default!;
-  [Inject] public IBreadcrumbService Breadcrumbs { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
+  [Inject] public IUserRfcState RfcState { get; set; } = default!;
 
   protected TransaccionHeaderModel? Header { get; private set; }
   protected EditContext? HeaderEditContext { get; private set; }
@@ -43,11 +46,34 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string HeaderStatus => Totals.Balance == 0m ? "Balanceada" : "Desbalanceada";
   protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
 
+  protected override void OnInitialized()
+  {
+    _rfcInitialized = RfcState.AllowedRfcs.Any() || RfcState.CurrentRfc is not null;
+    if (!_rfcInitialized)
+    {
+      IsLoading = true;
+    }
+
+    RfcState.Changed += OnRfcStateChanged;
+  }
+
   protected override async Task OnParametersSetAsync()
+  {
+    if (!_rfcInitialized)
+    {
+      IsLoading = true;
+      return;
+    }
+
+    await PerformLoadAsync();
+  }
+
+  private async Task PerformLoadAsync()
   {
     _loadCts?.Cancel();
     _loadCts?.Dispose();
     _loadCts = new CancellationTokenSource();
+
     await LoadAsync(_loadCts.Token);
   }
 
@@ -121,11 +147,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         Total = c.Total,
         Vinculado = c.Vinculado
       }));
-
-      Breadcrumbs.Set(
-        new BreadcrumbItem("Contabilidad", "/contabilidad"),
-        new BreadcrumbItem("Transacciones", "/contabilidad/transacciones"),
-        new BreadcrumbItem($"Transacción {Header.DisplayFolio}", null, true));
     }
     catch (OperationCanceledException)
     {
@@ -273,9 +294,27 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   public void Dispose()
   {
-    Breadcrumbs.Clear();
+    if (_isDisposed)
+      return;
+
+    _isDisposed = true;
+    RfcState.Changed -= OnRfcStateChanged;
     _loadCts?.Cancel();
     _loadCts?.Dispose();
+  }
+
+  private async void OnRfcStateChanged()
+  {
+    if (_isDisposed)
+      return;
+
+    _rfcInitialized = true;
+
+    await InvokeAsync(async () =>
+    {
+      await PerformLoadAsync();
+      StateHasChanged();
+    });
   }
 
   protected sealed class TransaccionHeaderModel

@@ -91,7 +91,6 @@ builder.Services.AddSingleton<WeatherForecastService>();
 builder.Services.AddCfdiCargarXmlSat();
 builder.Services.AddOrionServices();
 builder.Services.AddScoped<IUiMessageService, UiMessageService>();
-builder.Services.AddScoped<IBreadcrumbService, BreadcrumbService>();
 
 builder.Host.UseWindowsService();
 

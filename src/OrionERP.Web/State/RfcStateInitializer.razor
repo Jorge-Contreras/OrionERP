@@ -110,18 +110,18 @@
 
         RfcState.InitializeFromClaims(user);
 
-        var saved = await Storage.GetAsync<string>("current_rfc");
-        if (saved.Success && !string.IsNullOrWhiteSpace(saved.Value))
-        {
-            if (!RfcState.TrySet(saved.Value))
-            {
-                RfcState.ResetToDefault();
-            }
-        }
-        else
-        {
-            RfcState.ResetToDefault();
-        }
+        // var saved = await Storage.GetAsync<string>("current_rfc");
+        // if (saved.Success && !string.IsNullOrWhiteSpace(saved.Value))
+        // {
+        //     if (!RfcState.TrySet(saved.Value))
+        //     {
+        //         RfcState.ResetToDefault();
+        //     }
+        // }
+        // else
+        // {
+        //     RfcState.ResetToDefault();
+        // }
 
         RfcState.Changed -= OnRfcChangedPersist;
         RfcState.Changed += OnRfcChangedPersist;
@@ -158,7 +158,7 @@
 
     private async Task PersistCurrentAsync()
     {
-        await Storage.SetAsync("current_rfc", RfcState.CurrentRfc ?? string.Empty);
+        // await Storage.SetAsync("current_rfc", RfcState.CurrentRfc ?? string.Empty);
     }
 
     public void Dispose()

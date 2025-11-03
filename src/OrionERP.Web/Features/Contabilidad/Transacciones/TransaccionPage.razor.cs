@@ -1,15 +1,17 @@
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Forms;
+using OrionERP.Application.Features.Contabilidad.Transacciones;
+using OrionERP.Web.Services;
+using OrionERP.Web.State;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Forms;
-using OrionERP.Application.Features.Contabilidad.Transacciones;
-using OrionERP.Web.Services;
-using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Contabilidad.Transacciones;
 
@@ -26,6 +28,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   [Inject] public ITransaccionService TransaccionService { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
   [Inject] public IUserRfcState RfcState { get; set; } = default!;
+  [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
 
   protected TransaccionHeaderModel? Header { get; private set; }
   protected EditContext? HeaderEditContext { get; private set; }
@@ -46,8 +49,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string HeaderStatus => Totals.Balance == 0m ? "Balanceada" : "Desbalanceada";
   protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
 
-  protected override void OnInitialized()
+  protected override async Task OnInitializedAsync()
   {
+    AuthenticationState state = new AuthenticationState(new ClaimsPrincipal());
+    state = await AuthStateProvider.GetAuthenticationStateAsync();
+    RfcState.InitializeFromClaims(new ClaimsPrincipal(state.User));
     _rfcInitialized = RfcState.AllowedRfcs.Any() || RfcState.CurrentRfc is not null;
     if (!_rfcInitialized)
     {

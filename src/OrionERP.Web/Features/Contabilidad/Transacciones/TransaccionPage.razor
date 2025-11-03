@@ -2,6 +2,8 @@
 @using System.Globalization
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
+    
+
 <PageTitle>Transacción @Header?.DisplayFolio ?? Id.ToString(CultureInfo.InvariantCulture)</PageTitle>
 
 @if (IsLoading)
@@ -297,3 +299,4 @@ else
     </div>
   </div>
 }
+

@@ -20,6 +20,7 @@
 
     private bool _initialized;
     private readonly SemaphoreSlim _initLock = new(1, 1);
+    private string? _lastIdentityStamp;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -71,7 +72,32 @@
             RfcState.Changed += OnRfcChangedPersist;
             await PersistCurrentAsync();
             await InvokeAsync(StateHasChanged);
+            _lastIdentityStamp = null;
             return;
+        }
+
+        var hadRfcs = RfcState.AllowedRfcs.Count > 0;
+        var rfcClaims = user.FindAll("rfc")
+                            .Select(c => c.Value)
+                            .Where(v => !string.IsNullOrWhiteSpace(v))
+                            .ToList();
+
+        var identityStamp = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? user.FindFirst("sub")?.Value
+            ?? user.Identity?.Name;
+
+        if (identityStamp is null && rfcClaims.Any())
+        {
+            identityStamp = string.Join('|', rfcClaims.OrderBy(r => r, StringComparer.OrdinalIgnoreCase));
+        }
+
+        if (!rfcClaims.Any() && hadRfcs)
+        {
+            var sameIdentity = string.Equals(identityStamp, _lastIdentityStamp, StringComparison.Ordinal);
+            if (sameIdentity)
+            {
+                return;
+            }
         }
 
         RfcState.InitializeFromClaims(user);
@@ -94,6 +120,7 @@
 
         await PersistCurrentAsync();
         await InvokeAsync(StateHasChanged);
+        _lastIdentityStamp = identityStamp;
     }
 
     private async void OnAuthStateChanged(Task<AuthenticationState> task)

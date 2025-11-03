@@ -46,7 +46,7 @@
             }
 
             state ??= await AuthStateProvider.GetAuthenticationStateAsync();
-            await InitializeCoreAsync(state);
+            await InitializeCoreAsync(state, force);
             _initialized = true;
         }
         finally
@@ -55,12 +55,17 @@
         }
     }
 
-    private async Task InitializeCoreAsync(AuthenticationState authState)
+    private async Task InitializeCoreAsync(AuthenticationState authState, bool force)
     {
         var user = authState.User;
 
         if (user.Identity?.IsAuthenticated != true)
         {
+            if (!force && _initialized && (RfcState.AllowedRfcs.Any() || RfcState.CurrentRfc is not null))
+            {
+                return;
+            }
+
             RfcState.InitializeFromClaims(new ClaimsPrincipal());
             RfcState.Changed -= OnRfcChangedPersist;
             RfcState.Changed += OnRfcChangedPersist;

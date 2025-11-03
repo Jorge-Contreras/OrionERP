@@ -20,7 +20,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private CancellationTokenSource? _loadCts;
   private TransaccionHeaderModel? _headerOriginal;
   private MovimientoModel? _movimientoTarget;
-  private bool _rfcInitialized;
+ 
   private bool _isDisposed;
 
   [Parameter] public int Id { get; set; }
@@ -49,28 +49,16 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string HeaderStatus => Totals.Balance == 0m ? "Balanceada" : "Desbalanceada";
   protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
 
-  protected override async Task OnInitializedAsync()
+  protected override void OnInitialized()
   {
-    AuthenticationState state = new AuthenticationState(new ClaimsPrincipal());
-    state = await AuthStateProvider.GetAuthenticationStateAsync();
-    RfcState.InitializeFromClaims(new ClaimsPrincipal(state.User));
-    _rfcInitialized = RfcState.AllowedRfcs.Any() || RfcState.CurrentRfc is not null;
-    if (!_rfcInitialized)
-    {
-      IsLoading = true;
-    }
-
+   
+    
     RfcState.Changed += OnRfcStateChanged;
   }
 
   protected override async Task OnParametersSetAsync()
   {
-    if (!_rfcInitialized)
-    {
-      IsLoading = true;
-      return;
-    }
-
+   
     await PerformLoadAsync();
   }
 
@@ -313,8 +301,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   {
     if (_isDisposed)
       return;
-
-    _rfcInitialized = true;
 
     await InvokeAsync(async () =>
     {

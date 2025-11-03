@@ -46,7 +46,7 @@ FROM cfdi.Comprobante c
 LEFT JOIN cfdi.Emisor e                    ON e.Comprobante_ID = c.Comprobante_Id
 LEFT JOIN cfdi.Receptor r                  ON r.Comprobante_ID = c.Comprobante_Id
 LEFT JOIN cfdi.TimbreFiscalDigital t       ON t.Comprobante_ID = c.Comprobante_Id
-LEFT JOIN cfdi.Transaccion_Comprobante tc  ON tc.Comprobante_ID = c.Comprobante_Id
+LEFT JOIN dbo.Transaccion_Comprobante tc  ON tc.Comprobante_ID = c.Comprobante_Id
 WHERE tc.Transaccion_ID = @TransaccionId
   AND r.RFC = @Rfc
 ORDER BY c.Comprobante_Id DESC;";

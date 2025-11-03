@@ -121,7 +121,7 @@ private static string NormalizeUuid(string? s)
       if (!int.TryParse(idStr, out var id)) id = 5505;
 
       // Optional safety: verify it exists (kept light; you said it already exists)
-      const string sql = "SELECT 1 FROM dbo.Transacciones WHERE ID = @ID;";
+      const string sql = "SELECT 1 FROM dbo.Transacciones WHERE ID = @id;";
       using var conn = new SqlConnection(_cs);
       await conn.OpenAsync(ct);
       var exists = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(sql, new { ID = id }, cancellationToken: ct));

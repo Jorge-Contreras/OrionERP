@@ -22,6 +22,11 @@
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private string? _lastIdentityStamp;
 
+    protected override async Task OnInitializedAsync()
+    {
+        await EnsureInitializedAsync(force: true);
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -30,7 +35,7 @@
             Navigation.LocationChanged += OnLocationChanged;
         }
 
-        if (firstRender || !_initialized || !RfcState.AllowedRfcs.Any())
+        if (!_initialized)
         {
             await EnsureInitializedAsync();
         }

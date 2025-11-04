@@ -29,7 +29,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         try
         {
           using var conn = new SqlConnection(connectionString);
-          transId = conn.ExecuteScalar<long?>("SELECT Transaccion_ID FROM Transaccion_Comprobante WHERE Comprobante_ID = @Cid", new { Cid = de.Comprobante_Id });
+          transId = conn.ExecuteScalar<long?>("SELECT top 1 Transaccion_ID FROM Transaccion_Comprobante WHERE Comprobante_ID = @Cid", new { Cid = de.Comprobante_Id });
         }
         catch { transId = null; }
       }
@@ -52,7 +52,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       if (transId.HasValue)
       {
-        Nav.NavigateTo($"/transacciones/{transId.Value}");
+        Nav.NavigateTo($"/Contabilidad/transacciones/{transId.Value}");
       }
       else
       {

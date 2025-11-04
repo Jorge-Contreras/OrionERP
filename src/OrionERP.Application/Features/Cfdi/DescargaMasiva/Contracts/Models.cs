@@ -12,7 +12,8 @@ namespace OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts
     Terminada = 3,
     Error = 4,
     Rechazada = 5,
-    Vencida = 6
+    Vencida = 6,
+    Procesada = 7
   }
 
   public sealed record SolicitudParams(

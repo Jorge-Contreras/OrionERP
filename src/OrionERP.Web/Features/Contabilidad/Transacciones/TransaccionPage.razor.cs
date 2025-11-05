@@ -15,15 +15,12 @@ using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.JSInterop;
-using Microsoft.AspNetCore.Components.Web;
 
 namespace OrionERP.Web.Features.Contabilidad.Transacciones;
 
 public partial class TransaccionPage : ComponentBase, IDisposable
 {
   private CancellationTokenSource? _loadCts;
-  private CancellationTokenSource? _proyectoSearchCts;
-  private CancellationTokenSource? _compraSearchCts;
   private TransaccionHeaderModel? _headerOriginal;
   private MovimientoModel? _movimientoTarget;
   private int? _attachmentDownloadingId;
@@ -32,14 +29,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private int? cuentaDirectInput;
 
   private bool _isDisposed;
-
-  private const int DefaultLookupLimit = 25;
-  private const int SearchLookupLimit = 100;
-
-  private string proyectoSearchTerm = string.Empty;
-  private string compraSearchTerm = string.Empty;
-  private bool isSearchingProyecto;
-  private bool isSearchingCompra;
 
   [Parameter] public int Id { get; set; }
 
@@ -101,11 +90,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     NominaOptions.Clear();
     FormaPagoOptions.Clear();
 
-    proyectoSearchTerm = string.Empty;
-    compraSearchTerm = string.Empty;
-    isSearchingProyecto = false;
-    isSearchingCompra = false;
-
     var currentRfc = RfcState.CurrentRfc;
     if (string.IsNullOrWhiteSpace(currentRfc))
     {
@@ -116,9 +100,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       var categorias = await TransaccionService.GetCategoriasAsync(currentRfc, ct);
       CategoriaOptions.AddRange(categorias);
 
-      await LoadProyectoOptionsAsync(currentRfc, Header?.ProyectoId, ct);
+      var actividades = await TransaccionService.GetActividadesAsync(currentRfc, ct);
+      ProyectoOptions.AddRange(actividades);
 
-      await LoadCompraOptionsAsync(currentRfc, Header?.CompraId, ct);
+      var compras = await TransaccionService.GetComprasAsync(currentRfc, ct);
+      CompraOptions.AddRange(compras);
 
       var servicios = await TransaccionService.GetServiciosAsync(currentRfc, ct);
       ServicioOptions.AddRange(servicios);
@@ -139,8 +125,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     _loadCts?.Cancel();
     _loadCts?.Dispose();
     _loadCts = new CancellationTokenSource();
-
-    CancelLookupSearches();
 
     await LoadAsync(_loadCts.Token);
   }
@@ -750,7 +734,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     RfcState.Changed -= OnRfcStateChanged;
     _loadCts?.Cancel();
     _loadCts?.Dispose();
-    CancelLookupSearches();
   }
 
   private async void OnRfcStateChanged()

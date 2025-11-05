@@ -125,22 +125,6 @@ else if (Header is not null)
             </div>
             <div class="col-md-4">
               <label class="form-label">Proyecto</label>
-              <div class="input-group mb-2">
-                <input class="form-control" placeholder="Buscar por id o descripción" value="@proyectoSearchTerm"
-                       @oninput="OnProyectoSearchInput" @onkeydown="OnProyectoSearchKeyDown" @onkeydown:stopPropagation />
-                <button type="button" class="btn btn-outline-secondary" @onclick="async () => await SearchProyectoOptionsAsync()" disabled="@isSearchingProyecto">
-                  @if (isSearchingProyecto)
-                  {
-                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                    <span class="visually-hidden">Buscando…</span>
-                  }
-                  else
-                  {
-                    <span class="oi oi-magnifying-glass" aria-hidden="true"></span>
-                    <span class="visually-hidden">Buscar</span>
-                  }
-                </button>
-              </div>
               <InputSelect class="form-select" @bind-Value="Header.ProyectoId">
                 <option value="">Sin proyecto</option>
                 @foreach (var proyecto in ProyectoOptions)
@@ -151,22 +135,6 @@ else if (Header is not null)
             </div>
             <div class="col-md-4">
               <label class="form-label">Compra</label>
-              <div class="input-group mb-2">
-                <input class="form-control" placeholder="Buscar por id o descripción" value="@compraSearchTerm"
-                       @oninput="OnCompraSearchInput" @onkeydown="OnCompraSearchKeyDown" @onkeydown:stopPropagation />
-                <button type="button" class="btn btn-outline-secondary" @onclick="async () => await SearchCompraOptionsAsync()" disabled="@isSearchingCompra">
-                  @if (isSearchingCompra)
-                  {
-                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                    <span class="visually-hidden">Buscando…</span>
-                  }
-                  else
-                  {
-                    <span class="oi oi-magnifying-glass" aria-hidden="true"></span>
-                    <span class="visually-hidden">Buscar</span>
-                  }
-                </button>
-              </div>
               <InputSelect class="form-select" @bind-Value="Header.CompraId">
                 <option value="">Sin compra</option>
                 @foreach (var compra in CompraOptions)

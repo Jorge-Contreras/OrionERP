@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
+using OrionERP.Application.Features.Cfdi.ContabilidadRegistros;
+using OrionERP.Web.Components.CuentasContables;
 using OrionERP.Web.Services;
 using OrionERP.Web.State;
 using System;
@@ -25,6 +27,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private TransaccionHeaderModel? _headerOriginal;
   private MovimientoModel? _movimientoTarget;
   private int? _attachmentDownloadingId;
+  private CuentasContablesPicker? cuentaPicker;
+  private CuentasContablesSelection? _cuentaSelectionOriginal;
+  private int? cuentaDirectInput;
 
   private bool _isDisposed;
 
@@ -43,6 +48,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   [Inject] public IUserRfcState RfcState { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
   [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
+  [Inject] public ICuentasContablesRepository CuentasRepository { get; set; } = default!;
 
   protected TransaccionHeaderModel? Header { get; private set; }
   protected EditContext? HeaderEditContext { get; private set; }
@@ -67,6 +73,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected MovimientoModel? MovimientoDraft { get; private set; }
   protected EditContext? MovimientoEditContext { get; private set; }
   protected string MovimientoModalTitle => _movimientoTarget is null ? "Agregar movimiento" : "Editar movimiento";
+  protected CuentasContablesSelection? CuentaSelection { get; private set; }
 
   protected string HeaderStatus => Totals.Balance == 0m ? "Balanceada" : "Desbalanceada";
   protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
@@ -356,6 +363,43 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     compraSearchTerm = args?.Value?.ToString() ?? string.Empty;
   }
 
+  private async Task OnCuentaDirectKeyDown(KeyboardEventArgs args)
+  {
+    if (args.Key is not ("Enter" or "NumpadEnter"))
+      return;
+
+    if (cuentaDirectInput.HasValue && cuentaPicker is not null)
+    {
+      await cuentaPicker.ResolveAccountByIdAsync(cuentaDirectInput.Value);
+    }
+  }
+
+  private async Task OnCuentaSelectionChangedAsync(CuentasContablesSelection? selection)
+  {
+    CuentaSelection = selection is null ? null : selection with { };
+    cuentaDirectInput = selection?.Id;
+
+    if (Header is not null)
+    {
+      Header.Cuenta = selection?.Id?.ToString(CultureInfo.InvariantCulture);
+      Header.CuentaDescripcion = selection?.Descripcion;
+    }
+
+    if (!string.IsNullOrWhiteSpace(selection?.Rfc)
+        && Header?.Rfc is string headerRfc
+        && !string.Equals(headerRfc, selection.Rfc, StringComparison.OrdinalIgnoreCase))
+    {
+      UiMessages.ShowWarning($"La cuenta seleccionada pertenece al RFC {selection.Rfc}.");
+    }
+
+    await InvokeAsync(StateHasChanged);
+  }
+
+  private void OnCuentaPickerError(string message)
+  {
+    UiMessages.ShowError(message);
+  }
+
   private void CancelLookupSearches()
   {
     _proyectoSearchCts?.Cancel();
@@ -413,8 +457,35 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         ComprobanteId = headerDto.ComprobanteId,
         ComprobanteMonto = headerDto.ComprobanteMonto
       };
+
+      CuentaSelection = null;
+      cuentaDirectInput = null;
+      _cuentaSelectionOriginal = null;
+
+      if (int.TryParse(headerDto.Cuenta, out var cuentaId))
+      {
+        var cuentaDto = await CuentasRepository.GetByIdAsync(cuentaId);
+        if (cuentaDto is not null)
+        {
+          var selection = CreateSelectionFromDto(cuentaDto);
+          CuentaSelection = selection with { };
+          _cuentaSelectionOriginal = selection with { };
+          cuentaDirectInput = selection.Id;
+          Header.CuentaDescripcion = selection.Descripcion;
+        }
+        else
+        {
+          Header.CuentaDescripcion = null;
+        }
+      }
+      else
+      {
+        Header.CuentaDescripcion = null;
+      }
+
       await LoadLookupDataAsync(ct);
       _headerOriginal = Header.Clone();
+      _cuentaSelectionOriginal = CuentaSelection is null ? null : CuentaSelection with { };
       HeaderEditContext = new EditContext(Header);
 
       Movimientos.Clear();
@@ -477,6 +548,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     Header.CopyFrom(_headerOriginal);
     HeaderEditContext = new EditContext(Header);
+    CuentaSelection = _cuentaSelectionOriginal is null ? null : _cuentaSelectionOriginal with { };
+    cuentaDirectInput = CuentaSelection?.Id;
+    Header.CuentaDescripcion = CuentaSelection?.Descripcion;
     StateHasChanged();
   }
 
@@ -499,6 +573,15 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       UiMessages.ShowError("Selecciona un tipo de póliza y una forma de pago.");
       return;
     }
+
+    if (CuentaSelection?.Id is null)
+    {
+      UiMessages.ShowError("Selecciona una cuenta contable.");
+      return;
+    }
+
+    Header.Cuenta = CuentaSelection.Id.Value.ToString(CultureInfo.InvariantCulture);
+    Header.CuentaDescripcion = CuentaSelection.Descripcion;
 
     IsSavingHeader = true;
     try
@@ -536,6 +619,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       }
 
       _headerOriginal = Header.Clone();
+      _cuentaSelectionOriginal = CuentaSelection is null ? null : CuentaSelection with { };
       UiMessages.ShowSuccess(result.Message ?? "Datos de la transacción guardados.");
     }
     catch (Exception ex)
@@ -681,6 +765,28 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     });
   }
 
+  private static CuentasContablesSelection CreateSelectionFromDto(CuentasContablesDto dto)
+    => new()
+    {
+      Id = dto.Id,
+      Rfc = dto.RazonSocial,
+      Nivel1 = dto.Nivel1,
+      Nivel2 = NormalizeTwoDigits(dto.Nivel2),
+      Nivel3 = NormalizeTwoDigits(dto.Nivel3),
+      Descripcion = dto.Descripcion
+    };
+
+  private static string NormalizeTwoDigits(string value)
+  {
+    var trimmed = value?.Trim() ?? string.Empty;
+    if (trimmed.Length == 1 && char.IsDigit(trimmed[0]))
+    {
+      return trimmed.PadLeft(2, '0');
+    }
+
+    return trimmed;
+  }
+
   protected sealed class TransaccionHeaderModel
   {
     public int Id { get; set; }
@@ -691,6 +797,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     public DateTime Fecha { get; set; }
 
     public string? Cuenta { get; set; }
+
+    public string? CuentaDescripcion { get; set; }
 
     [Required(ErrorMessage = "Captura un concepto.")]
     public string? Concepto { get; set; }
@@ -759,6 +867,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       Facturado = other.Facturado;
       Referencia = other.Referencia;
       Memo = other.Memo;
+      CuentaDescripcion = other.CuentaDescripcion;
       ProyectoId = other.ProyectoId;
       CompraId = other.CompraId;
       ServicioId = other.ServicioId;

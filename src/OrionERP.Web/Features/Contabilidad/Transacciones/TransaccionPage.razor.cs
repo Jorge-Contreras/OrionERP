@@ -12,6 +12,7 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.JSInterop;
 
 namespace OrionERP.Web.Features.Contabilidad.Transacciones;
 
@@ -20,7 +21,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private CancellationTokenSource? _loadCts;
   private TransaccionHeaderModel? _headerOriginal;
   private MovimientoModel? _movimientoTarget;
- 
+  private int? _attachmentDownloadingId;
+
   private bool _isDisposed;
 
   [Parameter] public int Id { get; set; }
@@ -29,6 +31,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
   [Inject] public IUserRfcState RfcState { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
+  [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
 
   protected TransaccionHeaderModel? Header { get; private set; }
   protected EditContext? HeaderEditContext { get; private set; }
@@ -125,6 +128,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       var attachmentsDto = await TransaccionService.GetAttachmentsAsync(Id, ct);
       Attachments.AddRange(attachmentsDto.Select(a => new AttachmentModel
       {
+        Id = a.Id,
         Nombre = string.IsNullOrWhiteSpace(a.AttachmentName) ? $"Adjunto {a.Id}" : a.AttachmentName!,
         Extension = string.IsNullOrWhiteSpace(a.AttachmentExtension) ? "-" : a.AttachmentExtension!,
         TamanoBytes = a.Length ?? 0
@@ -286,6 +290,44 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     MovimientoEditContext?.NotifyFieldChanged(new FieldIdentifier(MovimientoDraft, nameof(MovimientoDraft.Concepto)));
   }
 
+  protected bool IsAttachmentDownloading(AttachmentModel attachment)
+    => attachment.Id == _attachmentDownloadingId;
+
+  protected async Task DownloadAttachmentAsync(AttachmentModel attachment)
+  {
+    if (attachment is null)
+      return;
+
+    _attachmentDownloadingId = attachment.Id;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var content = await TransaccionService.GetAttachmentContentAsync(attachment.Id);
+      if (content is null || content.Bytes is null || content.Bytes.Length == 0)
+      {
+        UiMessages.ShowError("No se encontró el contenido del adjunto.");
+        return;
+      }
+
+      var fileName = string.IsNullOrWhiteSpace(content.FileName) ? attachment.Nombre : content.FileName;
+      var contentType = string.IsNullOrWhiteSpace(content.ContentType) ? "application/octet-stream" : content.ContentType;
+      var base64 = Convert.ToBase64String(content.Bytes);
+      var dataUrl = $"data:{contentType};base64,{base64}";
+
+      await JsRuntime.InvokeVoidAsync("triggerFileDownload", fileName, dataUrl);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"Error al descargar adjunto: {ex.Message}");
+    }
+    finally
+    {
+      _attachmentDownloadingId = null;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
   public void Dispose()
   {
     if (_isDisposed)
@@ -395,6 +437,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected sealed class AttachmentModel
   {
+    public int Id { get; set; }
     public string Nombre { get; set; } = string.Empty;
     public string Extension { get; set; } = string.Empty;
     public long TamanoBytes { get; set; }

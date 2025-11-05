@@ -153,15 +153,33 @@ else if (Header is not null)
                       <th>Nombre</th>
                       <th>Extensión</th>
                       <th class="text-end">Tamaño</th>
+                      <th class="text-end">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     @foreach (var attachment in Attachments)
                     {
-                      <tr>
+                      <tr @ondblclick="async () => await DownloadAttachmentAsync(attachment)" style="cursor: pointer;">
                         <td>@attachment.Nombre</td>
                         <td>@attachment.Extension</td>
                         <td class="text-end">@attachment.TamanoHumano</td>
+                        <td class="text-end">
+                          <button type="button"
+                                  class="btn btn-sm btn-outline-primary"
+                                  disabled="@IsAttachmentDownloading(attachment)"
+                                  @onclick="async () => await DownloadAttachmentAsync(attachment)">
+                            @if (IsAttachmentDownloading(attachment))
+                            {
+                              <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                              <span>Descargando&hellip;</span>
+                            }
+                            else
+                            {
+                              <span class="oi oi-cloud-download me-1" aria-hidden="true"></span>
+                              <span>Descargar</span>
+                            }
+                          </button>
+                        </td>
                       </tr>
                     }
                   </tbody>

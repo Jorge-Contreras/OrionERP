@@ -113,6 +113,66 @@ ORDER BY c.Descripcion ASC;";
     return rows.AsList();
   }
 
+  public async Task<IReadOnlyList<LookupInt32Dto>> SearchActividadesAsync(string rfc, string? term, int maxResults = 50, CancellationToken ct = default)
+  {
+    const string sql = @"SELECT TOP (@MaxResults)
+    a.ID          AS Id,
+    a.Descripcion AS Description
+FROM dbo.Actividad a
+WHERE a.RFC = @Rfc
+  AND (
+    @Term IS NULL
+    OR CAST(a.ID AS nvarchar(20)) LIKE @TermLike
+    OR a.Descripcion LIKE @TermLike
+  )
+ORDER BY
+  CASE WHEN @Term IS NOT NULL AND CAST(a.ID AS nvarchar(20)) = @Term THEN 0 ELSE 1 END,
+  a.Descripcion ASC;";
+
+    var parameters = new
+    {
+      Rfc = rfc,
+      Term = term,
+      TermLike = term is null ? null : $"%{term}%",
+      MaxResults = maxResults
+    };
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<LookupInt32Dto>(
+        new CommandDefinition(sql, parameters, cancellationToken: ct));
+    return rows.AsList();
+  }
+
+  public async Task<IReadOnlyList<LookupInt32Dto>> SearchComprasAsync(string rfc, string? term, int maxResults = 50, CancellationToken ct = default)
+  {
+    const string sql = @"SELECT TOP (@MaxResults)
+    c.ID          AS Id,
+    c.Descripcion AS Description
+FROM dbo.Compra c
+WHERE c.RFC = @Rfc
+  AND (
+    @Term IS NULL
+    OR CAST(c.ID AS nvarchar(20)) LIKE @TermLike
+    OR c.Descripcion LIKE @TermLike
+  )
+ORDER BY
+  CASE WHEN @Term IS NOT NULL AND CAST(c.ID AS nvarchar(20)) = @Term THEN 0 ELSE 1 END,
+  c.Descripcion ASC;";
+
+    var parameters = new
+    {
+      Rfc = rfc,
+      Term = term,
+      TermLike = term is null ? null : $"%{term}%",
+      MaxResults = maxResults
+    };
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<LookupInt32Dto>(
+        new CommandDefinition(sql, parameters, cancellationToken: ct));
+    return rows.AsList();
+  }
+
   public async Task<IReadOnlyList<LookupInt32Dto>> GetServiciosAsync(string rfc, CancellationToken ct = default)
   {
     const string sql = @"SELECT

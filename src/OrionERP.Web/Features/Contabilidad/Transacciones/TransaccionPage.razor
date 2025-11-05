@@ -101,6 +101,11 @@ else if (Header is not null)
             </div>
             <div class="col-md-4">
               <label class="form-label">Proyecto</label>
+              <div class="input-group mb-2">
+                <InputText class="form-control" @bind-Value="ProyectoSearchTerm" placeholder="Buscar por ID o descripción"
+                           @onkeydown="HandleProyectoSearchKeyDown" />
+                <button class="btn btn-outline-secondary" type="button" @onclick="SearchProyectoOptions">Buscar</button>
+              </div>
               <InputSelect class="form-select" @bind-Value="Header.ProyectoId">
                 <option value="">Sin proyecto</option>
                 @foreach (var proyecto in ProyectoOptions)
@@ -111,6 +116,11 @@ else if (Header is not null)
             </div>
             <div class="col-md-4">
               <label class="form-label">Compra</label>
+              <div class="input-group mb-2">
+                <InputText class="form-control" @bind-Value="CompraSearchTerm" placeholder="Buscar por ID o descripción"
+                           @onkeydown="HandleCompraSearchKeyDown" />
+                <button class="btn btn-outline-secondary" type="button" @onclick="SearchCompraOptions">Buscar</button>
+              </div>
               <InputSelect class="form-select" @bind-Value="Header.CompraId">
                 <option value="">Sin compra</option>
                 @foreach (var compra in CompraOptions)

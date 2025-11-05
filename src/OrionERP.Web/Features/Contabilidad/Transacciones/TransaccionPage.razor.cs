@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Components.Web;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Web.Services;
 using OrionERP.Web.State;
@@ -22,6 +23,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private TransaccionHeaderModel? _headerOriginal;
   private MovimientoModel? _movimientoTarget;
   private int? _attachmentDownloadingId;
+  private readonly List<LookupInt32Dto> _allProyectoOptions = new();
+  private readonly List<LookupInt32Dto> _allCompraOptions = new();
 
   private bool _isDisposed;
 
@@ -52,6 +55,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected List<FormaPagoLookupDto> FormaPagoOptions { get; } = new();
   protected IReadOnlyList<string> TipoPolizaOptions { get; } = new[] { "INGRESO", "EGRESO", "DIARIO" };
 
+  protected string ProyectoSearchTerm { get; set; } = string.Empty;
+  protected string CompraSearchTerm { get; set; } = string.Empty;
+
   protected bool ShowMovimientoModal { get; private set; }
   protected MovimientoModel? MovimientoDraft { get; private set; }
   protected EditContext? MovimientoEditContext { get; private set; }
@@ -62,9 +68,35 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected override void OnInitialized()
   {
-   
-    
+
+
     RfcState.Changed += OnRfcStateChanged;
+  }
+
+  protected void SearchProyectoOptions()
+  {
+    ApplyLookupFilter(ProyectoSearchTerm, _allProyectoOptions, ProyectoOptions, Header?.ProyectoId);
+  }
+
+  protected void SearchCompraOptions()
+  {
+    ApplyLookupFilter(CompraSearchTerm, _allCompraOptions, CompraOptions, Header?.CompraId);
+  }
+
+  protected void HandleProyectoSearchKeyDown(KeyboardEventArgs args)
+  {
+    if (args.Key == "Enter")
+    {
+      SearchProyectoOptions();
+    }
+  }
+
+  protected void HandleCompraSearchKeyDown(KeyboardEventArgs args)
+  {
+    if (args.Key == "Enter")
+    {
+      SearchCompraOptions();
+    }
   }
 
   protected override async Task OnParametersSetAsync()
@@ -76,12 +108,16 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private async Task LoadLookupDataAsync(CancellationToken ct)
   {
     CategoriaOptions.Clear();
+    _allProyectoOptions.Clear();
     ProyectoOptions.Clear();
+    _allCompraOptions.Clear();
     CompraOptions.Clear();
     ServicioOptions.Clear();
     ReservacionOptions.Clear();
     NominaOptions.Clear();
     FormaPagoOptions.Clear();
+    ProyectoSearchTerm = string.Empty;
+    CompraSearchTerm = string.Empty;
 
     var currentRfc = RfcState.CurrentRfc;
     if (string.IsNullOrWhiteSpace(currentRfc))
@@ -94,10 +130,12 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       CategoriaOptions.AddRange(categorias);
 
       var actividades = await TransaccionService.GetActividadesAsync(currentRfc, ct);
-      ProyectoOptions.AddRange(actividades);
+      _allProyectoOptions.AddRange(actividades);
+      EnsureSelectedProyectoOption();
 
       var compras = await TransaccionService.GetComprasAsync(currentRfc, ct);
-      CompraOptions.AddRange(compras);
+      _allCompraOptions.AddRange(compras);
+      EnsureSelectedCompraOption();
 
       var servicios = await TransaccionService.GetServiciosAsync(currentRfc, ct);
       ServicioOptions.AddRange(servicios);
@@ -111,6 +149,70 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     var formasPago = await TransaccionService.GetFormasPagoAsync(ct);
     FormaPagoOptions.AddRange(formasPago);
+  }
+
+  private void ApplyLookupFilter(string? searchTerm, List<LookupInt32Dto> source, List<LookupInt32Dto> target, int? selectedId)
+  {
+    target.Clear();
+
+    var trimmed = searchTerm?.Trim();
+    if (string.IsNullOrWhiteSpace(trimmed))
+    {
+      EnsureSelectedOption(selectedId, source, target);
+      return;
+    }
+
+    var candidates = new List<LookupInt32Dto>();
+    if (int.TryParse(trimmed, out var id))
+    {
+      candidates.AddRange(source.Where(option => option.Id == id));
+    }
+
+    candidates.AddRange(source.Where(option => !string.IsNullOrWhiteSpace(option.Display) &&
+                                             option.Display.Contains(trimmed, StringComparison.OrdinalIgnoreCase)));
+
+    var seen = new HashSet<int>();
+    foreach (var option in candidates)
+    {
+      if (seen.Add(option.Id))
+      {
+        target.Add(option);
+      }
+    }
+
+    if (target.Count == 0)
+    {
+      EnsureSelectedOption(selectedId, source, target);
+    }
+  }
+
+  private void EnsureSelectedProyectoOption()
+  {
+    EnsureSelectedOption(Header?.ProyectoId, _allProyectoOptions, ProyectoOptions);
+  }
+
+  private void EnsureSelectedCompraOption()
+  {
+    EnsureSelectedOption(Header?.CompraId, _allCompraOptions, CompraOptions);
+  }
+
+  private static void EnsureSelectedOption(int? selectedId, List<LookupInt32Dto> source, List<LookupInt32Dto> target)
+  {
+    if (selectedId is null)
+    {
+      return;
+    }
+
+    if (target.Any(option => option.Id == selectedId.Value))
+    {
+      return;
+    }
+
+    var selected = source.FirstOrDefault(option => option.Id == selectedId.Value);
+    if (selected is not null)
+    {
+      target.Add(selected);
+    }
   }
 
   private async Task PerformLoadAsync()
@@ -183,6 +285,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
       Totals = await TransaccionService.GetMovimientoTotalsAsync(Id, ct);
       Header.Status = HeaderStatus;
+
+      EnsureSelectedProyectoOption();
+      EnsureSelectedCompraOption();
 
       Attachments.Clear();
       var attachmentsDto = await TransaccionService.GetAttachmentsAsync(Id, ct);

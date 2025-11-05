@@ -43,6 +43,14 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected List<MovimientoModel> Movimientos { get; } = new();
   protected List<AttachmentModel> Attachments { get; } = new();
   protected List<ComprobanteModel> Comprobantes { get; } = new();
+  protected List<LookupInt32Dto> CategoriaOptions { get; } = new();
+  protected List<LookupInt32Dto> ProyectoOptions { get; } = new();
+  protected List<LookupInt32Dto> CompraOptions { get; } = new();
+  protected List<LookupInt32Dto> ServicioOptions { get; } = new();
+  protected List<LookupStringDto> ReservacionOptions { get; } = new();
+  protected List<LookupInt32Dto> NominaOptions { get; } = new();
+  protected List<FormaPagoLookupDto> FormaPagoOptions { get; } = new();
+  protected IReadOnlyList<string> TipoPolizaOptions { get; } = new[] { "INGRESO", "EGRESO", "DIARIO" };
 
   protected bool ShowMovimientoModal { get; private set; }
   protected MovimientoModel? MovimientoDraft { get; private set; }
@@ -63,6 +71,46 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   {
    
     await PerformLoadAsync();
+  }
+
+  private async Task LoadLookupDataAsync(CancellationToken ct)
+  {
+    CategoriaOptions.Clear();
+    ProyectoOptions.Clear();
+    CompraOptions.Clear();
+    ServicioOptions.Clear();
+    ReservacionOptions.Clear();
+    NominaOptions.Clear();
+    FormaPagoOptions.Clear();
+
+    var currentRfc = RfcState.CurrentRfc;
+    if (string.IsNullOrWhiteSpace(currentRfc))
+    {
+      currentRfc = Header?.Rfc;
+    }
+    if (!string.IsNullOrWhiteSpace(currentRfc))
+    {
+      var categorias = await TransaccionService.GetCategoriasAsync(currentRfc, ct);
+      CategoriaOptions.AddRange(categorias);
+
+      var actividades = await TransaccionService.GetActividadesAsync(currentRfc, ct);
+      ProyectoOptions.AddRange(actividades);
+
+      var compras = await TransaccionService.GetComprasAsync(currentRfc, ct);
+      CompraOptions.AddRange(compras);
+
+      var servicios = await TransaccionService.GetServiciosAsync(currentRfc, ct);
+      ServicioOptions.AddRange(servicios);
+
+      var reservaciones = await TransaccionService.GetReservacionesAsync(currentRfc, ct);
+      ReservacionOptions.AddRange(reservaciones);
+
+      var nominas = await TransaccionService.GetNominasAsync(currentRfc, ct);
+      NominaOptions.AddRange(nominas);
+    }
+
+    var formasPago = await TransaccionService.GetFormasPagoAsync(ct);
+    FormaPagoOptions.AddRange(formasPago);
   }
 
   private async Task PerformLoadAsync()
@@ -104,9 +152,21 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         Cuenta = headerDto.Cuenta,
         Concepto = headerDto.Concepto,
         Monto = headerDto.Monto,
+        CategoriaId = headerDto.Categoria,
+        Facturado = headerDto.Facturado ?? false,
+        Referencia = headerDto.Referencia,
+        Memo = headerDto.Memo,
+        ProyectoId = headerDto.ProyectoId,
+        CompraId = headerDto.CompraId,
+        ServicioId = headerDto.ServicioId,
+        ReservacionId = headerDto.ReservacionId,
+        NominaId = headerDto.NominaId,
+        TipoPoliza = headerDto.TipoPoliza,
+        FormaPago = headerDto.FormaPago,
         ComprobanteId = headerDto.ComprobanteId,
         ComprobanteMonto = headerDto.ComprobanteMonto
       };
+      await LoadLookupDataAsync(ct);
       _headerOriginal = Header.Clone();
       HeaderEditContext = new EditContext(Header);
 
@@ -181,6 +241,18 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     if (!HeaderEditContext.Validate())
       return;
 
+    if (Header.CategoriaId is null)
+    {
+      UiMessages.ShowError("Selecciona una categoría.");
+      return;
+    }
+
+    if (string.IsNullOrWhiteSpace(Header.TipoPoliza) || string.IsNullOrWhiteSpace(Header.FormaPago))
+    {
+      UiMessages.ShowError("Selecciona un tipo de póliza y una forma de pago.");
+      return;
+    }
+
     IsSavingHeader = true;
     try
     {
@@ -190,7 +262,17 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         Concepto = Header.Concepto,
         Fecha = Header.Fecha,
         Cuenta = Header.Cuenta,
-        Monto = Header.Monto
+        Monto = Header.Monto,
+        Categoria = Header.CategoriaId.Value,
+        Facturado = Header.Facturado,
+        Memo = string.IsNullOrWhiteSpace(Header.Memo) ? null : Header.Memo.Trim(),
+        ProyectoId = Header.ProyectoId,
+        CompraId = Header.CompraId,
+        ServicioId = Header.ServicioId,
+        ReservacionId = string.IsNullOrWhiteSpace(Header.ReservacionId) ? null : Header.ReservacionId,
+        NominaId = Header.NominaId,
+        TipoPoliza = Header.TipoPoliza!.Trim(),
+        FormaPago = Header.FormaPago!.Trim()
       };
 
       var result = await TransaccionService.GuardarYCerrarAsync(request);
@@ -360,7 +442,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     [Required(ErrorMessage = "La fecha es obligatoria.")]
     public DateTime Fecha { get; set; }
 
-    [Required(ErrorMessage = "Captura una cuenta.")]
     public string? Cuenta { get; set; }
 
     [Required(ErrorMessage = "Captura un concepto.")]
@@ -368,6 +449,29 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Monto inválido.")]
     public decimal Monto { get; set; }
+
+    [Required(ErrorMessage = "Selecciona una categoría.")]
+    public int? CategoriaId { get; set; }
+
+    public bool Facturado { get; set; }
+
+    public string? Referencia { get; set; }
+
+    [StringLength(500, ErrorMessage = "El memo no puede exceder 500 caracteres.")]
+    public string? Memo { get; set; }
+
+    public int? ProyectoId { get; set; }
+    public int? CompraId { get; set; }
+    public int? ServicioId { get; set; }
+    public string? ReservacionId { get; set; }
+    public int? NominaId { get; set; }
+
+    [Required(ErrorMessage = "Selecciona un tipo de póliza.")]
+    public string? TipoPoliza { get; set; }
+
+    [Required(ErrorMessage = "Selecciona una forma de pago.")]
+    [StringLength(10, ErrorMessage = "La forma de pago no puede exceder 10 caracteres.")]
+    public string? FormaPago { get; set; }
 
     public int? ComprobanteId { get; set; }
     public decimal? ComprobanteMonto { get; set; }
@@ -384,6 +488,13 @@ public partial class TransaccionPage : ComponentBase, IDisposable
           ? $"#{ComprobanteId} · {ComprobanteMonto.Value:N2}"
           : $"#{ComprobanteId}";
 
+    public string ReferenciaPreview
+      => string.IsNullOrWhiteSpace(Referencia)
+        ? "-"
+        : Referencia!.Length <= 10
+          ? Referencia
+          : Referencia[..10];
+
     public TransaccionHeaderModel Clone()
       => (TransaccionHeaderModel)MemberwiseClone();
 
@@ -396,6 +507,17 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       Cuenta = other.Cuenta;
       Concepto = other.Concepto;
       Monto = other.Monto;
+      CategoriaId = other.CategoriaId;
+      Facturado = other.Facturado;
+      Referencia = other.Referencia;
+      Memo = other.Memo;
+      ProyectoId = other.ProyectoId;
+      CompraId = other.CompraId;
+      ServicioId = other.ServicioId;
+      ReservacionId = other.ReservacionId;
+      NominaId = other.NominaId;
+      TipoPoliza = other.TipoPoliza;
+      FormaPago = other.FormaPago;
       ComprobanteId = other.ComprobanteId;
       ComprobanteMonto = other.ComprobanteMonto;
       Status = other.Status;

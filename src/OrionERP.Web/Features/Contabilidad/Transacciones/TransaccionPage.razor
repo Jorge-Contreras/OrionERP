@@ -33,37 +33,126 @@ else if (Header is not null)
           <ValidationSummary />
 
           <div class="row g-3">
-            <div class="col-md-3">
-              <label class="form-label">Folio</label>
-              <input class="form-control" value="@Header.DisplayFolio" readonly />
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">RFC</label>
-              <InputText class="form-control" @bind-Value="Header.Rfc" readonly />
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Fecha</label>
-              <InputDate class="form-control" @bind-Value="Header.Fecha" />
-              <ValidationMessage For="() => Header.Fecha" />
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Cuenta contable</label>
-              <InputText class="form-control" @bind-Value="Header.Cuenta" />
-              <ValidationMessage For="() => Header.Cuenta" />
+            <div class="col-md-2">
+              <label class="form-label">ID</label>
+              <input class="form-control" value="@Header.Id" readonly />
             </div>
             <div class="col-md-6">
               <label class="form-label">Concepto</label>
               <InputText class="form-control" @bind-Value="Header.Concepto" />
               <ValidationMessage For="() => Header.Concepto" />
             </div>
+            <div class="col-md-2">
+              <label class="form-label">Fecha</label>
+              <InputDate class="form-control" @bind-Value="Header.Fecha" />
+              <ValidationMessage For="() => Header.Fecha" />
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+              <div class="form-check mb-1">
+                <InputCheckbox class="form-check-input" id="facturadoCheck" @bind-Value="Header.Facturado" />
+                <label class="form-check-label" for="facturadoCheck">Facturado</label>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">RFC</label>
+              <input class="form-control-plaintext text-muted" value="@Header.Rfc" readonly />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Categoría</label>
+              <InputSelect class="form-select" @bind-Value="Header.CategoriaId">
+                <option value="">Selecciona una categoría</option>
+                @foreach (var categoria in CategoriaOptions)
+                {
+                  <option value="@categoria.Id">@categoria.Display</option>
+                }
+              </InputSelect>
+              <ValidationMessage For="() => Header.CategoriaId" />
+            </div>
             <div class="col-md-3">
               <label class="form-label">Monto</label>
-              <InputNumber class="form-control" @bind-Value="Header.Monto" />
+              <InputNumber class="form-control" step="0.01" @bind-Value="Header.Monto" />
               <ValidationMessage For="() => Header.Monto" />
             </div>
             <div class="col-md-3">
-              <label class="form-label">Comprobante vinculado</label>
-              <input class="form-control" value="@Header.ComprobanteResumen" readonly />
+              <label class="form-label">Referencia</label>
+              <input class="form-control" value="@Header.ReferenciaPreview" readonly title="@Header.Referencia ?? string.Empty" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Tipo de póliza</label>
+              <InputSelect class="form-select" @bind-Value="Header.TipoPoliza">
+                <option value="">Selecciona un tipo</option>
+                @foreach (var tipo in TipoPolizaOptions)
+                {
+                  <option value="@tipo">@tipo</option>
+                }
+              </InputSelect>
+              <ValidationMessage For="() => Header.TipoPoliza" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Forma de pago</label>
+              <InputSelect class="form-select" @bind-Value="Header.FormaPago">
+                <option value="">Selecciona una forma</option>
+                @foreach (var forma in FormaPagoOptions)
+                {
+                  <option value="@forma.Clave">@forma.Display</option>
+                }
+              </InputSelect>
+              <ValidationMessage For="() => Header.FormaPago" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Proyecto</label>
+              <InputSelect class="form-select" @bind-Value="Header.ProyectoId">
+                <option value="">Sin proyecto</option>
+                @foreach (var proyecto in ProyectoOptions)
+                {
+                  <option value="@proyecto.Id">@proyecto.Display</option>
+                }
+              </InputSelect>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Compra</label>
+              <InputSelect class="form-select" @bind-Value="Header.CompraId">
+                <option value="">Sin compra</option>
+                @foreach (var compra in CompraOptions)
+                {
+                  <option value="@compra.Id">@compra.Display</option>
+                }
+              </InputSelect>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Servicio</label>
+              <InputSelect class="form-select" @bind-Value="Header.ServicioId">
+                <option value="">Sin servicio</option>
+                @foreach (var servicio in ServicioOptions)
+                {
+                  <option value="@servicio.Id">@servicio.Display</option>
+                }
+              </InputSelect>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Reservación</label>
+              <InputSelect class="form-select" @bind-Value="Header.ReservacionId">
+                <option value="">Sin reservación</option>
+                @foreach (var reservacion in ReservacionOptions)
+                {
+                  <option value="@reservacion.Id">@reservacion.Display</option>
+                }
+              </InputSelect>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Nómina</label>
+              <InputSelect class="form-select" @bind-Value="Header.NominaId">
+                <option value="">Sin nómina</option>
+                @foreach (var nomina in NominaOptions)
+                {
+                  <option value="@nomina.Id">@nomina.Display</option>
+                }
+              </InputSelect>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Memo</label>
+              <InputTextArea class="form-control" rows="4" @bind-Value="Header.Memo" />
+              <ValidationMessage For="() => Header.Memo" />
             </div>
           </div>
 

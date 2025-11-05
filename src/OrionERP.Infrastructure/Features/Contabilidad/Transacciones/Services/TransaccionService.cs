@@ -25,6 +25,17 @@ public sealed class TransaccionService : ITransaccionService
     CAST(t.Monto AS decimal(18,4)) AS Monto,
     t.Cuenta            AS Cuenta,
     t.RFC               AS Rfc,
+    t.Categoria         AS Categoria,
+    t.Facturado         AS Facturado,
+    t.Referencia        AS Referencia,
+    t.Memo              AS Memo,
+    t.ProyectoID        AS ProyectoId,
+    t.CompraID          AS CompraId,
+    t.ServicioID        AS ServicioId,
+    t.ReservacionID     AS ReservacionId,
+    t.NominaID          AS NominaId,
+    t.Tipo_Poliza       AS TipoPoliza,
+    t.Forma_Pago        AS FormaPago,
     tc.Comprobante_ID   AS ComprobanteId,
     CAST(tc.Monto AS decimal(18,4)) AS ComprobanteMonto
 FROM dbo.Transacciones t
@@ -53,6 +64,111 @@ ORDER BY rc.ID;";
     using var conn = new SqlConnection(_cs);
     var rows = await conn.QueryAsync<TransaccionMovimientoDto>(
         new CommandDefinition(sql, new { TransaccionId = transaccionId }, cancellationToken: ct));
+    return rows.AsList();
+  }
+
+  public async Task<IReadOnlyList<LookupInt32Dto>> GetCategoriasAsync(string rfc, CancellationToken ct = default)
+  {
+    const string sql = @"SELECT
+    c.ID           AS Id,
+    c.Descripcion  AS Description
+FROM dbo.Categorias c
+WHERE c.GrupoCategoria = 'PLANTILLA'
+  AND c.RFC = @Rfc
+ORDER BY c.Descripcion ASC;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<LookupInt32Dto>(
+        new CommandDefinition(sql, new { Rfc = rfc }, cancellationToken: ct));
+    return rows.AsList();
+  }
+
+  public async Task<IReadOnlyList<LookupInt32Dto>> GetActividadesAsync(string rfc, CancellationToken ct = default)
+  {
+    const string sql = @"SELECT
+    a.ID          AS Id,
+    a.Descripcion AS Description
+FROM dbo.Actividad a
+WHERE a.RFC = @Rfc
+ORDER BY a.Descripcion ASC;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<LookupInt32Dto>(
+        new CommandDefinition(sql, new { Rfc = rfc }, cancellationToken: ct));
+    return rows.AsList();
+  }
+
+  public async Task<IReadOnlyList<LookupInt32Dto>> GetComprasAsync(string rfc, CancellationToken ct = default)
+  {
+    const string sql = @"SELECT
+    c.ID          AS Id,
+    c.Descripcion AS Description
+FROM dbo.Compra c
+WHERE c.RFC = @Rfc
+ORDER BY c.Descripcion ASC;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<LookupInt32Dto>(
+        new CommandDefinition(sql, new { Rfc = rfc }, cancellationToken: ct));
+    return rows.AsList();
+  }
+
+  public async Task<IReadOnlyList<LookupInt32Dto>> GetServiciosAsync(string rfc, CancellationToken ct = default)
+  {
+    const string sql = @"SELECT
+    s.ID          AS Id,
+    s.Descripcion AS Description
+FROM dbo.Servicios s
+WHERE s.RFC = @Rfc
+ORDER BY s.Descripcion ASC;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<LookupInt32Dto>(
+        new CommandDefinition(sql, new { Rfc = rfc }, cancellationToken: ct));
+    return rows.AsList();
+  }
+
+  public async Task<IReadOnlyList<LookupStringDto>> GetReservacionesAsync(string rfc, CancellationToken ct = default)
+  {
+    const string sql = @"SELECT
+    r.ID     AS Id,
+    r.Nombre AS Description
+FROM dbo.LISTA_DE_RESERVACIONES r
+WHERE r.RFC = @Rfc
+ORDER BY r.Nombre ASC;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<LookupStringDto>(
+        new CommandDefinition(sql, new { Rfc = rfc }, cancellationToken: ct));
+    return rows.AsList();
+  }
+
+  public async Task<IReadOnlyList<LookupInt32Dto>> GetNominasAsync(string rfc, CancellationToken ct = default)
+  {
+    const string sql = @"SELECT
+    ch.ID          AS Id,
+    ch.NombreCorto AS Description
+FROM dbo.Capital_Humano ch
+WHERE ch.RFC = @Rfc
+ORDER BY ch.NombreCorto ASC;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<LookupInt32Dto>(
+        new CommandDefinition(sql, new { Rfc = rfc }, cancellationToken: ct));
+    return rows.AsList();
+  }
+
+  public async Task<IReadOnlyList<FormaPagoLookupDto>> GetFormasPagoAsync(CancellationToken ct = default)
+  {
+    const string sql = @"SELECT
+    fp.Clave        AS Clave,
+    fp.Descripcion  AS Descripcion
+FROM dbo.Formas_Pago fp
+ORDER BY fp.Clave ASC;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<FormaPagoLookupDto>(
+        new CommandDefinition(sql, cancellationToken: ct));
     return rows.AsList();
   }
 
@@ -234,7 +350,17 @@ WHERE Transaccion_ID = @TransaccionId
 SET Concepto = @Concepto,
     Fecha = @Fecha,
     Cuenta = @Cuenta,
-    Monto = @Monto
+    Monto = @Monto,
+    Categoria = @Categoria,
+    Facturado = @Facturado,
+    Memo = @Memo,
+    ProyectoID = @ProyectoId,
+    CompraID = @CompraId,
+    ServicioID = @ServicioId,
+    ReservacionID = @ReservacionId,
+    NominaID = @NominaId,
+    Tipo_Poliza = @TipoPoliza,
+    Forma_Pago = @FormaPago
 WHERE ID = @TransaccionId;";
 
       var affected = await conn.ExecuteAsync(
@@ -245,7 +371,17 @@ WHERE ID = @TransaccionId;";
                 request.Concepto,
                 request.Fecha,
                 request.Cuenta,
-                request.Monto
+                request.Monto,
+                request.Categoria,
+                request.Facturado,
+                request.Memo,
+                request.ProyectoId,
+                request.CompraId,
+                request.ServicioId,
+                request.ReservacionId,
+                request.NominaId,
+                request.TipoPoliza,
+                request.FormaPago
               },
               tx,
               cancellationToken: ct));

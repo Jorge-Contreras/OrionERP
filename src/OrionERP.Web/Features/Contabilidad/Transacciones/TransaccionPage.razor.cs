@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading;
@@ -24,11 +25,15 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private TransaccionHeaderModel? _headerOriginal;
   private MovimientoModel? _movimientoTarget;
   private int? _attachmentDownloadingId;
+  private int? _movimientoDeletingId;
   private readonly List<LookupInt32Dto> _allProyectoOptions = new();
   private readonly List<LookupInt32Dto> _allCompraOptions = new();
   private CuentaContablePicker? CuentaPicker;
+  private int _attachmentInputKey;
 
   private bool _isDisposed;
+
+  private const long AttachmentMaxFileSize = TransaccionAttachmentCreateRequest.MaxFileSizeBytes;
 
   [Parameter] public int Id { get; set; }
 
@@ -71,6 +76,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected string HeaderStatus => Totals.Balance == 0m ? "Balanceada" : "Desbalanceada";
   protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
+  protected bool IsUploadingAttachment { get; private set; }
 
   protected override void OnInitialized()
   {
@@ -278,33 +284,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       _headerOriginal = Header.Clone();
       HeaderEditContext = new EditContext(Header);
 
-      Movimientos.Clear();
-      var movimientosDto = await TransaccionService.GetMovimientosAsync(Id, ct);
-      Movimientos.AddRange(movimientosDto.Select(m => new MovimientoModel
-      {
-        Id = m.Id,
-        NombreCuenta = m.NombreCuenta,
-        Descripcion = m.NombreCuenta,
-        Concepto = m.Concepto,
-        Debe = m.Debe,
-        Haber = m.Haber
-      }));
-
-      Totals = await TransaccionService.GetMovimientoTotalsAsync(Id, ct);
-      Header.Status = HeaderStatus;
-
+      await ReloadMovimientosAsync(ct);
       EnsureSelectedProyectoOption();
       EnsureSelectedCompraOption();
 
-      Attachments.Clear();
-      var attachmentsDto = await TransaccionService.GetAttachmentsAsync(Id, ct);
-      Attachments.AddRange(attachmentsDto.Select(a => new AttachmentModel
-      {
-        Id = a.Id,
-        Nombre = string.IsNullOrWhiteSpace(a.AttachmentName) ? $"Adjunto {a.Id}" : a.AttachmentName!,
-        Extension = string.IsNullOrWhiteSpace(a.AttachmentExtension) ? "-" : a.AttachmentExtension!,
-        TamanoBytes = a.Length ?? 0
-      }));
+      await ReloadAttachmentsAsync(ct);
 
       Comprobantes.Clear();
       var comprobantesDto = await TransaccionService.GetComprobantesAsync(Id, ct);
@@ -673,8 +657,45 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     };
   }
 
+  private async Task ReloadMovimientosAsync(CancellationToken ct = default)
+  {
+    Movimientos.Clear();
+    var movimientosDto = await TransaccionService.GetMovimientosAsync(Id, ct);
+    Movimientos.AddRange(movimientosDto.Select(m => new MovimientoModel
+    {
+      Id = m.Id,
+      NombreCuenta = m.NombreCuenta,
+      Descripcion = m.NombreCuenta,
+      Concepto = m.Concepto,
+      Debe = m.Debe,
+      Haber = m.Haber
+    }));
+
+    Totals = await TransaccionService.GetMovimientoTotalsAsync(Id, ct);
+    if (Header is not null)
+    {
+      Header.Status = HeaderStatus;
+    }
+  }
+
+  private async Task ReloadAttachmentsAsync(CancellationToken ct = default)
+  {
+    Attachments.Clear();
+    var attachmentsDto = await TransaccionService.GetAttachmentsAsync(Id, ct);
+    Attachments.AddRange(attachmentsDto.Select(a => new AttachmentModel
+    {
+      Id = a.Id,
+      Nombre = string.IsNullOrWhiteSpace(a.AttachmentName) ? $"Adjunto {a.Id}" : a.AttachmentName!,
+      Extension = string.IsNullOrWhiteSpace(a.AttachmentExtension) ? "-" : a.AttachmentExtension!,
+      TamanoBytes = a.Length ?? 0
+    }));
+  }
+
   protected bool IsAttachmentDownloading(AttachmentModel attachment)
     => attachment.Id == _attachmentDownloadingId;
+
+  protected bool IsMovimientoDeleting(MovimientoModel movimiento)
+    => movimiento is not null && movimiento.Id == _movimientoDeletingId;
 
   protected async Task DownloadAttachmentAsync(AttachmentModel attachment)
   {
@@ -707,6 +728,122 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     finally
     {
       _attachmentDownloadingId = null;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected async Task DeleteMovimientoAsync(MovimientoModel movimiento)
+  {
+    if (movimiento is null || Header is null)
+      return;
+
+    bool confirm;
+    try
+    {
+      confirm = await JsRuntime.InvokeAsync<bool>("confirm", $"¿Deseas eliminar el movimiento '{movimiento.NombreCuenta}'?");
+    }
+    catch
+    {
+      confirm = true;
+    }
+
+    if (!confirm)
+      return;
+
+    _movimientoDeletingId = movimiento.Id;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      await TransaccionService.DeleteMovimientoAsync(Header.Id, movimiento.Id);
+      await ReloadMovimientosAsync();
+      UiMessages.ShowSuccess("Movimiento eliminado.");
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo eliminar el movimiento: {ex.Message}");
+    }
+    finally
+    {
+      _movimientoDeletingId = null;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected async Task OnAttachmentSelectedAsync(InputFileChangeEventArgs args)
+  {
+    if (Header is null || args.FileCount == 0)
+    {
+      _attachmentInputKey++;
+      await InvokeAsync(StateHasChanged);
+      return;
+    }
+
+    var file = args.File;
+    if (file is null)
+    {
+      _attachmentInputKey++;
+      await InvokeAsync(StateHasChanged);
+      return;
+    }
+
+    if (file.Size == 0)
+    {
+      UiMessages.ShowError("El archivo seleccionado está vacío.");
+      _attachmentInputKey++;
+      await InvokeAsync(StateHasChanged);
+      return;
+    }
+
+    if (file.Size > AttachmentMaxFileSize)
+    {
+      UiMessages.ShowError("El archivo excede el tamaño máximo permitido (5 MB).");
+      _attachmentInputKey++;
+      await InvokeAsync(StateHasChanged);
+      return;
+    }
+
+    IsUploadingAttachment = true;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      await using var stream = file.OpenReadStream(AttachmentMaxFileSize);
+      using var ms = new MemoryStream();
+      await stream.CopyToAsync(ms);
+      var bytes = ms.ToArray();
+
+      var extension = Path.GetExtension(file.Name);
+      if (!string.IsNullOrWhiteSpace(extension))
+      {
+        extension = extension.Trim().TrimStart('.');
+      }
+      else
+      {
+        extension = null;
+      }
+
+      var request = new TransaccionAttachmentCreateRequest
+      {
+        TransaccionId = Header.Id,
+        FileName = file.Name,
+        Extension = extension,
+        Description = "Archivo adjunto (carga manual)",
+        Content = bytes
+      };
+
+      await TransaccionService.AddAttachmentAsync(request);
+      await ReloadAttachmentsAsync();
+      UiMessages.ShowSuccess("Archivo cargado correctamente.");
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"Error al cargar el archivo: {ex.Message}");
+    }
+    finally
+    {
+      IsUploadingAttachment = false;
+      _attachmentInputKey++;
       await InvokeAsync(StateHasChanged);
     }
   }

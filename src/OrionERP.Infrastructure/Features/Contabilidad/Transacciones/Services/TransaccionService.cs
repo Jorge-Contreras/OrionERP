@@ -1,3 +1,4 @@
+using System;
 using System.Data;
 using Dapper;
 using Microsoft.Data.SqlClient;
@@ -195,6 +196,57 @@ ORDER BY ta.ID DESC;";
     var rows = await conn.QueryAsync<TransaccionAttachmentDto>(
         new CommandDefinition(sql, new { TransaccionId = transaccionId }, cancellationToken: ct));
     return rows.AsList();
+  }
+
+  public async Task<TransaccionAttachmentDto> AddAttachmentAsync(TransaccionAttachmentCreateRequest request, CancellationToken ct = default)
+  {
+    if (request is null)
+      throw new ArgumentNullException(nameof(request));
+
+    if (request.Content is null || request.Content.Length == 0)
+      throw new ArgumentException("El archivo adjunto no contiene datos.", nameof(request));
+
+    if (request.Content.Length > TransaccionAttachmentCreateRequest.MaxFileSizeBytes)
+      throw new InvalidOperationException("El archivo adjunto excede el tamaño máximo permitido (5 MB).");
+
+    const string insertSql = @"
+INSERT INTO dbo.TRANSACTION_ATTACHMENT
+(TranID, Attachment, AttachmentName, AttachmentExtension, AttachmentDescription)
+VALUES (@TranID, @Attachment, @AttachmentName, @AttachmentExtension, @AttachmentDescription);
+SELECT CAST(SCOPE_IDENTITY() AS int);";
+
+    var newId = await ExecuteInsertAsync(
+      insertSql,
+      new
+      {
+        TranID = request.TransaccionId,
+        Attachment = request.Content,
+        AttachmentName = request.FileName,
+        AttachmentExtension = string.IsNullOrWhiteSpace(request.Extension) ? null : request.Extension,
+        AttachmentDescription = string.IsNullOrWhiteSpace(request.Description)
+          ? "Archivo adjunto (carga manual)"
+          : request.Description
+      },
+      ct);
+
+    const string selectSql = @"SELECT
+    ta.ID                    AS Id,
+    ta.TranID                AS TransaccionId,
+    ta.AttachmentName        AS AttachmentName,
+    ta.AttachmentExtension   AS AttachmentExtension,
+    ta.AttachmentDescription AS AttachmentDescription,
+    CAST(DATALENGTH(ta.Attachment) AS bigint) AS Length
+FROM dbo.TRANSACTION_ATTACHMENT ta
+WHERE ta.ID = @AttachmentId;";
+
+    using var conn = new SqlConnection(_cs);
+    var dto = await conn.QueryFirstOrDefaultAsync<TransaccionAttachmentDto>(
+      new CommandDefinition(selectSql, new { AttachmentId = newId }, cancellationToken: ct));
+
+    if (dto is null)
+      throw new InvalidOperationException("No se pudo recuperar el adjunto creado.");
+
+    return dto;
   }
 
   public async Task<TransaccionAttachmentContent?> GetAttachmentContentAsync(int attachmentId, CancellationToken ct = default)
@@ -401,6 +453,24 @@ WHERE ID = @TransaccionId;";
       try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
       return TransaccionGuardarCerrarResult.Fail($"Error al guardar: {ex.Message}");
     }
+  }
+
+  public async Task DeleteMovimientoAsync(int transaccionId, int movimientoId, CancellationToken ct = default)
+  {
+    const string sql = @"DELETE FROM dbo.Registro_Contable
+WHERE ID = @MovimientoId
+  AND TransaccionID = @TransaccionId;";
+
+    using var conn = new SqlConnection(_cs);
+    await conn.ExecuteAsync(
+      new CommandDefinition(sql, new { MovimientoId = movimientoId, TransaccionId = transaccionId }, cancellationToken: ct));
+  }
+
+  private async Task<int> ExecuteInsertAsync(string sql, object parameters, CancellationToken ct)
+  {
+    using var conn = new SqlConnection(_cs);
+    return await conn.ExecuteScalarAsync<int>(
+      new CommandDefinition(sql, parameters, cancellationToken: ct));
   }
 
   private static async Task<MovimientoTotalsDto> LoadTotalsAsync(

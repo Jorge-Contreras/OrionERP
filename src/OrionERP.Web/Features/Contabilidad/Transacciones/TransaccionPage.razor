@@ -373,7 +373,8 @@ else
           <button type="button" class="btn-close" @onclick="CloseMovimientoModal"></button>
         </div>
         <div class="modal-body">
-          <EditForm EditContext="MovimientoEditContext" OnValidSubmit="SaveMovimientoAsync">
+          <EditForm EditContext="MovimientoEditContext"
+                    OnSubmit="HandleMovimientoSubmitAsync">
             <DataAnnotationsValidator />
             <ValidationSummary />
 
@@ -461,7 +462,7 @@ else
 
               <div class="d-flex justify-content-end gap-2">
                 <button class="btn btn-outline-secondary" type="button" @onclick="CloseMovimientoModal">Cancelar</button>
-                <button class="btn btn-primary" type="submit">Guardar movimiento</button>
+                <button class="btn btn-primary" type="submit" @onclick="MarkMovimientoSaveRequested">Guardar movimiento</button>
               </div>
             </div>
           </EditForm>

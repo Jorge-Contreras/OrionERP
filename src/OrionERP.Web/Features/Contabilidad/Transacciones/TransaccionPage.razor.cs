@@ -24,6 +24,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private TransaccionHeaderModel? _headerOriginal;
   private MovimientoModel? _movimientoTarget;
   private int? _attachmentDownloadingId;
+  private bool _isMovimientoSaveRequested;
   private readonly List<LookupInt32Dto> _allProyectoOptions = new();
   private readonly List<LookupInt32Dto> _allCompraOptions = new();
   private CuentaContablePicker? CuentaPicker;
@@ -450,6 +451,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     MovimientoCuentaSelection = null;
     IsCuentaPickerVisible = false;
     CuentaPickerError = null;
+    _isMovimientoSaveRequested = false;
   }
 
   protected void ShowCuentaPicker()
@@ -467,6 +469,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   {
     IsCuentaPickerVisible = false;
     CuentaPickerError = null;
+  }
+
+  protected void MarkMovimientoSaveRequested()
+  {
+    _isMovimientoSaveRequested = true;
   }
 
   protected Task OnCuentaPickerRfcChangedAsync(string? rfc)
@@ -500,7 +507,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     NotifyMovimientoFieldChanged(nameof(MovimientoDraft.NombreCuenta));
 
     CuentaPickerError = null;
-    IsCuentaPickerVisible = false;
+
+    if (selection?.HasNivel3 == true)
+    {
+      IsCuentaPickerVisible = false;
+    }
 
     await InvokeAsync(StateHasChanged);
   }
@@ -519,12 +530,17 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     await InvokeAsync(StateHasChanged);
   }
 
-  protected async Task SaveMovimientoAsync()
+  protected async Task HandleMovimientoSubmitAsync(EditContext editContext)
   {
-    if (MovimientoEditContext is null || MovimientoDraft is null)
+    if (!_isMovimientoSaveRequested)
       return;
 
-    if (!MovimientoEditContext.Validate())
+    _isMovimientoSaveRequested = false;
+
+    if (MovimientoDraft is null || MovimientoEditContext is null || editContext != MovimientoEditContext)
+      return;
+
+    if (!editContext.Validate())
       return;
 
     if (_movimientoTarget is null)

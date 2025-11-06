@@ -1,5 +1,6 @@
 @page "/contabilidad/transacciones/{id:int}"
 @using System.Globalization
+@using OrionERP.Web.Shared
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
     
@@ -375,41 +376,93 @@ else
           <EditForm EditContext="MovimientoEditContext" OnValidSubmit="SaveMovimientoAsync">
             <DataAnnotationsValidator />
             <ValidationSummary />
-            <div class="row g-3">
-             
-              <div class="col-md-4">
-                <label class="form-label">Nombre cuenta</label>
-                <InputText class="form-control" @bind-Value="MovimientoDraft.NombreCuenta" />
-              </div>
-              <div class="col-md-4">
-                <label class="form-label">Concepto</label>
-                <InputText class="form-control" @bind-Value="MovimientoDraft.Concepto" />
-                <ValidationMessage For="() => MovimientoDraft.Concepto" />
-              </div>
-              <div class="col-md-3">
-                <label class="form-label">Debe</label>
-                <InputNumber class="form-control" @bind-Value="MovimientoDraft.Debe" />
-                <ValidationMessage For="() => MovimientoDraft.Debe" />
-              </div>
-              <div class="col-md-3">
-                <label class="form-label">Haber</label>
-                <InputNumber class="form-control" @bind-Value="MovimientoDraft.Haber" />
-                <ValidationMessage For="() => MovimientoDraft.Haber" />
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">Memo</label>
-                <InputTextArea class="form-control" rows="2" @bind-Value="MovimientoDraft.Memo" />
-              </div>
-            </div>
 
-            <div class="d-flex flex-wrap gap-2 my-3">
-              <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyMontoToMovimiento">Copiar monto</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyConceptoFromHeader">Copiar concepto</button>
-            </div>
+            <div class="d-flex flex-column gap-3">
+              <div class="d-flex flex-wrap gap-2 align-items-center">
+                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="ShowCuentaPicker">Buscar/Reemplazar Cuenta</button>
+                @if (!string.IsNullOrWhiteSpace(MovimientoDraft?.Descripcion))
+                {
+                  <span class="badge text-bg-info text-wrap flex-grow-1">@MovimientoDraft!.Descripcion</span>
+                }
+              </div>
+              <ValidationMessage For="() => MovimientoDraft!.NombreCuenta" />
 
-            <div class="d-flex justify-content-end gap-2">
-              <button class="btn btn-outline-secondary" type="button" @onclick="CloseMovimientoModal">Cancelar</button>
-              <button class="btn btn-primary" type="submit">Guardar movimiento</button>
+              @if (IsCuentaPickerVisible)
+              {
+                <div class="border rounded p-3 bg-light-subtle">
+                  <CuentaContablePicker
+                    @ref="CuentaPicker"
+                    SelectedRfc="@CuentaPickerRfc"
+                    SelectedRfcChanged="@OnCuentaPickerRfcChangedAsync"
+                    Selection="@MovimientoCuentaSelection"
+                    SelectionChanged="@OnCuentaPickerSelectionChangedAsync"
+                    SearchRequested="@OnCuentaPickerSearchRequestedAsync"
+                    ErrorChanged="@OnCuentaPickerErrorChangedAsync" />
+
+                  @if (!string.IsNullOrWhiteSpace(CuentaPickerError))
+                  {
+                    <div class="alert alert-danger mt-3 mb-0" role="alert">@CuentaPickerError</div>
+                  }
+
+                  <div class="d-flex justify-content-end mt-3">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="HideCuentaPicker">Cerrar</button>
+                  </div>
+                </div>
+              }
+
+              <div class="d-flex flex-wrap gap-2">
+                <span class="badge text-bg-secondary">Nivel 1: @FormatNivelValue(MovimientoDraft?.Nivel1)</span>
+                <span class="badge text-bg-secondary">Nivel 2: @FormatNivelValue(MovimientoDraft?.Nivel2)</span>
+                <span class="badge text-bg-secondary">Nivel 3: @FormatNivelValue(MovimientoDraft?.Nivel3)</span>
+              </div>
+
+              <div class="row g-3 align-items-end">
+                <div class="col-lg-8">
+                  <label class="form-label text-uppercase">Concepto</label>
+                    <InputText class="form-control" @bind-Value="MovimientoDraft!.Concepto" />
+                    <ValidationMessage For="() => MovimientoDraft!.Concepto" />
+                </div>
+                <div class="col-lg-4 d-flex align-items-end">
+                  <button type="button" class="btn btn-outline-secondary w-100" @onclick="CopyConceptoFromHeader">Concepto póliza</button>
+                </div>
+              </div>
+
+              <div class="row g-3 align-items-end">
+                <div class="col-lg-4">
+                  <label class="form-label text-uppercase">Debe</label>
+                  <InputNumber class="form-control" step="0.01" @bind-Value="MovimientoDraft!.Debe" />
+                  <ValidationMessage For="() => MovimientoDraft!.Debe" />
+                </div>
+                <div class="col-lg-8">
+                  <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyMontoToDebe">Copiar monto a Debe</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ApplySubtotalToDebe">Subtotal</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ApplyIvaToDebe">IVA</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ClearDebe">Cero</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row g-3 align-items-end">
+                <div class="col-lg-4">
+                  <label class="form-label text-uppercase">Haber</label>
+                  <InputNumber class="form-control" step="0.01" @bind-Value="MovimientoDraft!.Haber" />
+                  <ValidationMessage For="() => MovimientoDraft!.Haber" />
+                </div>
+                <div class="col-lg-8">
+                  <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyMontoToHaber">Copiar monto a Haber</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ApplySubtotalToHaber">Subtotal</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ApplyIvaToHaber">IVA</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ClearHaber">Cero</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="d-flex justify-content-end gap-2">
+                <button class="btn btn-outline-secondary" type="button" @onclick="CloseMovimientoModal">Cancelar</button>
+                <button class="btn btn-primary" type="submit">Guardar movimiento</button>
+              </div>
             </div>
           </EditForm>
         </div>

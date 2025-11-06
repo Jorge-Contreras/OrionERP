@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Web.Services;
+using OrionERP.Web.Shared;
 using OrionERP.Web.State;
 using System;
 using System.Collections.Generic;
@@ -25,6 +26,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private int? _attachmentDownloadingId;
   private readonly List<LookupInt32Dto> _allProyectoOptions = new();
   private readonly List<LookupInt32Dto> _allCompraOptions = new();
+  private CuentaContablePicker? CuentaPicker;
 
   private bool _isDisposed;
 
@@ -62,6 +64,10 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected MovimientoModel? MovimientoDraft { get; private set; }
   protected EditContext? MovimientoEditContext { get; private set; }
   protected string MovimientoModalTitle => _movimientoTarget is null ? "Agregar movimiento" : "Editar movimiento";
+  protected bool IsCuentaPickerVisible { get; private set; }
+  protected CuentaContableSelection? MovimientoCuentaSelection { get; private set; }
+  protected string? CuentaPickerRfc { get; private set; }
+  protected string? CuentaPickerError { get; private set; }
 
   protected string HeaderStatus => Totals.Balance == 0m ? "Balanceada" : "Desbalanceada";
   protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
@@ -278,6 +284,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       {
         Id = m.Id,
         NombreCuenta = m.NombreCuenta,
+        Descripcion = m.NombreCuenta,
         Concepto = m.Concepto,
         Debe = m.Debe,
         Haber = m.Haber
@@ -416,7 +423,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         Debe = Header?.Monto ?? 0m,
         Haber = 0m,
         Concepto = Header?.Concepto,
-       };
+        NombreCuenta = Header?.Cuenta,
+        Descripcion = Header?.Cuenta
+      };
     }
     else
     {
@@ -425,6 +434,10 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
 
     MovimientoEditContext = new EditContext(MovimientoDraft!);
+    CuentaPickerError = null;
+    CuentaPickerRfc = Header?.Rfc;
+    MovimientoCuentaSelection = MovimientoDraft is null ? null : CreateCuentaSelectionFromMovimiento(MovimientoDraft);
+    IsCuentaPickerVisible = false;
     ShowMovimientoModal = true;
   }
 
@@ -434,6 +447,76 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     MovimientoDraft = null;
     MovimientoEditContext = null;
     _movimientoTarget = null;
+    MovimientoCuentaSelection = null;
+    IsCuentaPickerVisible = false;
+    CuentaPickerError = null;
+  }
+
+  protected void ShowCuentaPicker()
+  {
+    if (Header is null || MovimientoDraft is null)
+      return;
+
+    CuentaPickerError = null;
+    CuentaPickerRfc = Header.Rfc;
+    MovimientoCuentaSelection = CreateCuentaSelectionFromMovimiento(MovimientoDraft);
+    IsCuentaPickerVisible = true;
+  }
+
+  protected void HideCuentaPicker()
+  {
+    IsCuentaPickerVisible = false;
+    CuentaPickerError = null;
+  }
+
+  protected Task OnCuentaPickerRfcChangedAsync(string? rfc)
+  {
+    CuentaPickerRfc = rfc;
+    return Task.CompletedTask;
+  }
+
+  protected async Task OnCuentaPickerSelectionChangedAsync(CuentaContableSelection? selection)
+  {
+    MovimientoCuentaSelection = selection;
+
+    if (MovimientoDraft is null)
+      return;
+
+    MovimientoDraft.CuentaId = selection?.Id;
+    MovimientoDraft.Nivel1 = selection?.Nivel1;
+    MovimientoDraft.Nivel2 = selection?.Nivel2;
+    MovimientoDraft.Nivel3 = selection?.Nivel3;
+    MovimientoDraft.Descripcion = selection?.Descripcion;
+    if (!string.IsNullOrWhiteSpace(selection?.Descripcion))
+    {
+      MovimientoDraft.NombreCuenta = selection.Descripcion;
+    }
+
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.CuentaId));
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Nivel1));
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Nivel2));
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Nivel3));
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Descripcion));
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.NombreCuenta));
+
+    CuentaPickerError = null;
+    IsCuentaPickerVisible = false;
+
+    await InvokeAsync(StateHasChanged);
+  }
+
+  protected async Task OnCuentaPickerSearchRequestedAsync()
+  {
+    if (CuentaPicker is not null)
+    {
+      await CuentaPicker.TryResolveDirectAccountAsync();
+    }
+  }
+
+  protected async Task OnCuentaPickerErrorChangedAsync(string? error)
+  {
+    CuentaPickerError = error;
+    await InvokeAsync(StateHasChanged);
   }
 
   protected async Task SaveMovimientoAsync()
@@ -459,13 +542,76 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     await InvokeAsync(StateHasChanged);
   }
 
-  protected void CopyMontoToMovimiento()
+  protected void CopyMontoToDebe()
   {
     if (MovimientoDraft is null || Header is null)
       return;
 
     MovimientoDraft.Debe = Header.Monto;
-    MovimientoEditContext?.NotifyFieldChanged(new FieldIdentifier(MovimientoDraft, nameof(MovimientoDraft.Debe)));
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Debe));
+  }
+
+  protected void ApplySubtotalToDebe()
+  {
+    if (MovimientoDraft is null || Header is null)
+      return;
+
+    MovimientoDraft.Debe = CalculateSubtotal(Header.Monto);
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Debe));
+  }
+
+  protected void ApplyIvaToDebe()
+  {
+    if (MovimientoDraft is null || Header is null)
+      return;
+
+    MovimientoDraft.Debe = CalculateIva(Header.Monto);
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Debe));
+  }
+
+  protected void ClearDebe()
+  {
+    if (MovimientoDraft is null)
+      return;
+
+    MovimientoDraft.Debe = 0m;
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Debe));
+  }
+
+  protected void CopyMontoToHaber()
+  {
+    if (MovimientoDraft is null || Header is null)
+      return;
+
+    MovimientoDraft.Haber = Header.Monto;
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Haber));
+  }
+
+  protected void ApplySubtotalToHaber()
+  {
+    if (MovimientoDraft is null || Header is null)
+      return;
+
+    MovimientoDraft.Haber = CalculateSubtotal(Header.Monto);
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Haber));
+  }
+
+  protected void ApplyIvaToHaber()
+  {
+    if (MovimientoDraft is null || Header is null)
+      return;
+
+    MovimientoDraft.Haber = CalculateIva(Header.Monto);
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Haber));
+  }
+
+  protected void ClearHaber()
+  {
+    if (MovimientoDraft is null)
+      return;
+
+    MovimientoDraft.Haber = 0m;
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Haber));
   }
 
   protected void CopyConceptoFromHeader()
@@ -475,6 +621,49 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     MovimientoDraft.Concepto = Header.Concepto;
     MovimientoEditContext?.NotifyFieldChanged(new FieldIdentifier(MovimientoDraft, nameof(MovimientoDraft.Concepto)));
+  }
+
+  protected static string FormatNivelValue(string? value)
+    => string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+  private void NotifyMovimientoFieldChanged(string propertyName)
+  {
+    if (MovimientoDraft is null || MovimientoEditContext is null)
+      return;
+
+    MovimientoEditContext.NotifyFieldChanged(new FieldIdentifier(MovimientoDraft, propertyName));
+  }
+
+  private static decimal CalculateSubtotal(decimal amount)
+    => amount == 0m
+       ? 0m
+       : decimal.Round(amount / 1.16m, 2, MidpointRounding.AwayFromZero);
+
+  private static decimal CalculateIva(decimal amount)
+    => amount == 0m
+       ? 0m
+       : decimal.Round(amount * 0.16m, 2, MidpointRounding.AwayFromZero);
+
+  private CuentaContableSelection? CreateCuentaSelectionFromMovimiento(MovimientoModel movimiento)
+  {
+    if (string.IsNullOrWhiteSpace(movimiento.Nivel1)
+        && string.IsNullOrWhiteSpace(movimiento.Nivel2)
+        && string.IsNullOrWhiteSpace(movimiento.Nivel3)
+        && string.IsNullOrWhiteSpace(movimiento.Descripcion)
+        && movimiento.CuentaId is null)
+    {
+      return null;
+    }
+
+    return new CuentaContableSelection
+    {
+      Id = movimiento.CuentaId,
+      Rfc = Header?.Rfc ?? CuentaPickerRfc,
+      Nivel1 = movimiento.Nivel1,
+      Nivel2 = movimiento.Nivel2,
+      Nivel3 = movimiento.Nivel3,
+      Descripcion = movimiento.Descripcion ?? movimiento.NombreCuenta
+    };
   }
 
   protected bool IsAttachmentDownloading(AttachmentModel attachment)
@@ -633,9 +822,19 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   {
     public int Id { get; set; }
 
+    public int? CuentaId { get; set; }
+
     [Required(ErrorMessage = "La cuenta es obligatoria.")]
-    
+
     public string? NombreCuenta { get; set; }
+
+    public string? Nivel1 { get; set; }
+
+    public string? Nivel2 { get; set; }
+
+    public string? Nivel3 { get; set; }
+
+    public string? Descripcion { get; set; }
 
     [Required(ErrorMessage = "El concepto es obligatorio.")]
     public string? Concepto { get; set; }
@@ -654,7 +853,12 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     public void CopyFrom(MovimientoModel other)
     {
       Id = other.Id;
+      CuentaId = other.CuentaId;
       NombreCuenta = other.NombreCuenta;
+      Nivel1 = other.Nivel1;
+      Nivel2 = other.Nivel2;
+      Nivel3 = other.Nivel3;
+      Descripcion = other.Descripcion;
       Concepto = other.Concepto;
       Debe = other.Debe;
       Haber = other.Haber;

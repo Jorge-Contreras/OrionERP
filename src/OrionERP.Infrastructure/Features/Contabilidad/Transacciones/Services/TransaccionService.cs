@@ -1,8 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
+using System.Threading;
+using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using OrionERP.Application.Common;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 
 namespace OrionERP.Infrastructure.Features.Contabilidad.Transacciones.Services;
@@ -10,11 +15,18 @@ namespace OrionERP.Infrastructure.Features.Contabilidad.Transacciones.Services;
 public sealed class TransaccionService : ITransaccionService
 {
   private readonly string _cs;
+  private readonly IDbStoredProcService _storedProcService;
+  private readonly ILogger<TransaccionService> _logger;
 
-  public TransaccionService(IConfiguration cfg)
+  public TransaccionService(
+      IConfiguration cfg,
+      IDbStoredProcService storedProcService,
+      ILogger<TransaccionService> logger)
   {
     _cs = cfg.GetConnectionString("OrionDb")
          ?? throw new InvalidOperationException("Missing connection string: OrionDb");
+    _storedProcService = storedProcService ?? throw new ArgumentNullException(nameof(storedProcService));
+    _logger = logger ?? throw new ArgumentNullException(nameof(logger));
   }
 
   public async Task<TransaccionHeaderDto?> GetHeaderAsync(int transaccionId, CancellationToken ct = default)
@@ -47,6 +59,53 @@ WHERE t.ID = @TransaccionId;";
     using var conn = new SqlConnection(_cs);
     return await conn.QueryFirstOrDefaultAsync<TransaccionHeaderDto>(
         new CommandDefinition(sql, new { TransaccionId = transaccionId }, cancellationToken: ct));
+  }
+
+  public async Task<IReadOnlyList<TransaccionListItem>> GetCandidatesAsync(
+      DateTime fechaXml,
+      decimal montoAbs,
+      string rfc,
+      int daysBack = 60,
+      int top = 200,
+      CancellationToken ct = default)
+  {
+    const string sql = @"SELECT TOP (@Top)
+    t.ID                                    AS Id,
+    t.Concepto                              AS Concepto,
+    t.Fecha                                 AS Fecha,
+    ABS(CONVERT(decimal(18,4), t.Monto))    AS Monto1,
+    t.Cuenta                                AS Cuenta,
+    COUNT(ta.ID)                            AS Adjuntos,
+    c.Comprobante_Id                        AS ComprobanteId
+FROM dbo.Transacciones t
+LEFT JOIN dbo.TRANSACTION_ATTACHMENT ta
+       ON ta.TranID = t.ID
+LEFT JOIN dbo.Transaccion_Comprobante tc
+       ON tc.Transaccion_ID = t.ID
+LEFT JOIN cfdi.Comprobante c
+       ON c.Comprobante_Id = tc.Comprobante_ID
+WHERE t.Fecha > DATEADD(DAY, -@DaysBack, @FechaXml)
+  AND ABS(CONVERT(decimal(18,4), t.Monto)) = @MontoAbs
+  AND t.RFC = @Rfc
+GROUP BY t.ID, t.Concepto, t.Fecha, t.Monto, t.Cuenta, c.Comprobante_Id
+ORDER BY t.Fecha;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<TransaccionListItem>(
+        new CommandDefinition(
+            sql,
+            new
+            {
+              FechaXml = fechaXml,
+              DaysBack = daysBack,
+              MontoAbs = montoAbs,
+              Top = top,
+              Rfc = rfc
+            },
+            commandType: CommandType.Text,
+            cancellationToken: ct));
+
+    return rows.AsList();
   }
 
   public async Task<IReadOnlyList<TransaccionMovimientoDto>> GetMovimientosAsync(int transaccionId, CancellationToken ct = default)
@@ -460,6 +519,80 @@ WHERE ID = @TransaccionId;";
     {
       try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
       return TransaccionGuardarCerrarResult.Fail($"Error al guardar: {ex.Message}");
+    }
+  }
+
+  public async Task<TransaccionCommandResult> ApplyCategoriaPlantillaAsync(
+      int transaccionId,
+      int categoriaId,
+      CancellationToken ct = default)
+  {
+    var parameters = new Dictionary<string, object?>
+    {
+      ["@TransactionID"] = transaccionId,
+      ["@CategoriaID"] = categoriaId
+    };
+
+    try
+    {
+      _logger.LogInformation(
+          "Applying category template {CategoriaId} to transaction {TransactionId}",
+          categoriaId,
+          transaccionId);
+
+      await _storedProcService.ExecuteAsync(
+          "dbo.APLICAR_PLANTILLA_CATEGORIA",
+          parameters,
+          ct);
+
+      return TransaccionCommandResult.Ok("Plantilla aplicada correctamente a la transacción seleccionada.");
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(
+          ex,
+          "Failed to apply category template {CategoriaId} to transaction {TransactionId}",
+          categoriaId,
+          transaccionId);
+
+      return TransaccionCommandResult.Fail("No se pudo aplicar la plantilla de categoría. Revisa los datos e inténtalo nuevamente.");
+    }
+  }
+
+  public async Task<TransaccionCommandResult> ProcessSatXmlAsync(
+      int attachmentId,
+      int transaccionId,
+      CancellationToken ct = default)
+  {
+    var parameters = new Dictionary<string, object?>
+    {
+      ["@AttachmentID"] = attachmentId,
+      ["@TransaccionID"] = transaccionId
+    };
+
+    try
+    {
+      _logger.LogInformation(
+          "Processing SAT XML attachment {AttachmentId} for transaction {TransactionId}",
+          attachmentId,
+          transaccionId);
+
+      await _storedProcService.ExecuteAsync(
+          "dbo.PROCESAR_SAT_XML",
+          parameters,
+          ct);
+
+      return TransaccionCommandResult.Ok("El XML del SAT se procesó correctamente para la transacción seleccionada.");
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(
+          ex,
+          "Failed to process SAT XML attachment {AttachmentId} for transaction {TransactionId}",
+          attachmentId,
+          transaccionId);
+
+      return TransaccionCommandResult.Fail("No se pudo procesar el XML del SAT. Verifica el adjunto y vuelve a intentar.");
     }
   }
 

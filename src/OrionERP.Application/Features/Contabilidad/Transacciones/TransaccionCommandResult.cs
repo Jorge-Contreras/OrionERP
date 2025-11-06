@@ -1,4 +1,4 @@
-namespace OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+namespace OrionERP.Application.Features.Contabilidad.Transacciones;
 
 public sealed record class TransaccionCommandResult(bool Success, string Message)
 {

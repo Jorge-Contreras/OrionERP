@@ -1,4 +1,6 @@
-namespace OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts
+using System;
+
+namespace OrionERP.Application.Features.Contabilidad.Transacciones
 {
   public sealed class TransaccionListItem
   {

@@ -48,6 +48,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected EditContext? HeaderEditContext { get; private set; }
   protected bool IsLoading { get; private set; } = true;
   protected bool IsSavingHeader { get; private set; }
+  protected bool IsApplyingPlantilla { get; private set; }
   protected string? ErrorMessage { get; private set; }
 
   protected MovimientoTotalsDto Totals { get; private set; } = new();
@@ -395,6 +396,57 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     finally
     {
       IsSavingHeader = false;
+    }
+  }
+
+  protected async Task ApplyCategoriaPlantillaAsync()
+  {
+    if (Header is null)
+      return;
+
+    if (Header.CategoriaId is null)
+    {
+      UiMessages.ShowWarning("Selecciona una categoría antes de aplicar la plantilla.");
+      return;
+    }
+
+    bool confirm;
+    try
+    {
+      confirm = await JsRuntime.InvokeAsync<bool>("confirm", "¿Estas seguro que deseas aplicar esta plantilla a la poliza?");
+    }
+    catch
+    {
+      confirm = true;
+    }
+
+    if (!confirm)
+      return;
+
+    IsApplyingPlantilla = true;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var result = await TransaccionService.ApplyCategoriaPlantillaAsync(Header.Id, Header.CategoriaId.Value);
+      if (result.Success)
+      {
+        UiMessages.ShowSuccess(result.Message);
+        await ReloadMovimientosAsync();
+      }
+      else
+      {
+        UiMessages.ShowError(result.Message);
+      }
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"Error al aplicar la plantilla: {ex.Message}");
+    }
+    finally
+    {
+      IsApplyingPlantilla = false;
+      await InvokeAsync(StateHasChanged);
     }
   }
 

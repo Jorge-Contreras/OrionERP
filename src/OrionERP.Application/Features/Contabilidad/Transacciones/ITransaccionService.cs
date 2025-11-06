@@ -1,3 +1,8 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
 namespace OrionERP.Application.Features.Contabilidad.Transacciones;
 
 public interface ITransaccionService
@@ -12,6 +17,21 @@ public interface ITransaccionService
   Task<IReadOnlyList<TransaccionComprobanteDto>> GetComprobantesAsync(int transaccionId, CancellationToken ct = default);
   Task ToggleComprobanteAsync(int transaccionId, int comprobanteId, bool vincular, CancellationToken ct = default);
   Task<TransaccionGuardarCerrarResult> GuardarYCerrarAsync(TransaccionGuardarCerrarRequest request, CancellationToken ct = default);
+  Task<IReadOnlyList<TransaccionListItem>> GetCandidatesAsync(
+      DateTime fechaXml,
+      decimal montoAbs,
+      string rfc,
+      int daysBack = 60,
+      int top = 200,
+      CancellationToken ct = default);
+  Task<TransaccionCommandResult> ApplyCategoriaPlantillaAsync(
+      int transaccionId,
+      int categoriaId,
+      CancellationToken ct = default);
+  Task<TransaccionCommandResult> ProcessSatXmlAsync(
+      int attachmentId,
+      int transaccionId,
+      CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> GetCategoriasAsync(string rfc, CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> GetActividadesAsync(string rfc, CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> GetComprasAsync(string rfc, CancellationToken ct = default);

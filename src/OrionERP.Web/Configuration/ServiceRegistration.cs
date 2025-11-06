@@ -12,8 +12,6 @@ using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Services;
 using OrionERP.Infrastructure.Features.Rfcs.Dapper;
 using Sat.MassiveDownload;
 using Sat.MassiveDownload.Core;
-using CfdiITransaccionService = OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts.ITransaccionService;
-using CfdiTransaccionService = OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services.TransaccionService;
 using ContabITransaccionService = OrionERP.Application.Features.Contabilidad.Transacciones.ITransaccionService;
 using ContabTransaccionService = OrionERP.Infrastructure.Features.Contabilidad.Transacciones.Services.TransaccionService;
 
@@ -30,11 +28,10 @@ public static class ServiceRegistration
     services.AddSingleton<IDbConnectionFactory>(sp => sp.GetRequiredService<SqlConnectionFactory>());
     services.AddScoped<IDbStoredProcService, DbStoredProcService>();
 
-    services.AddScoped<ITransaccionQueryService, TransaccionQueryService>();
     services.AddScoped<IComprobanteQueryService, ComprobanteQueryService>();
     services.AddScoped<ISatXmlInboxService, SatXmlInboxService>();
     services.AddScoped<IConciliacionService, ConciliacionService>();
-    services.AddScoped<CfdiITransaccionService, CfdiTransaccionService>();
+    services.AddScoped<ContabITransaccionService, ContabTransaccionService>();
 
     services.AddScoped<ISatMetadataIngestService, SatMetadataIngestService>();
 

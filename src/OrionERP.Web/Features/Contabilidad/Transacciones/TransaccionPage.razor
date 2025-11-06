@@ -210,10 +210,10 @@ else if (Header is not null)
                     <tr>
                       <th>#</th>
                       <th>Cuenta</th>
-                      <th>Nombre</th>
                       <th>Concepto</th>
                       <th class="text-end">Debe</th>
                       <th class="text-end">Haber</th>
+                      <th class="text-end">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -225,6 +225,25 @@ else if (Header is not null)
                         <td>@movimiento.item.Concepto</td>
                         <td class="text-end">@movimiento.item.Debe.ToString("N2")</td>
                         <td class="text-end">@movimiento.item.Haber.ToString("N2")</td>
+                        <td class="text-end">
+                          <button type="button"
+                                  class="btn btn-sm btn-outline-danger"
+                                  title="Eliminar movimiento"
+                                  disabled="@IsMovimientoDeleting(movimiento.item)"
+                                  @onclick="async () => await DeleteMovimientoAsync(movimiento.item)"
+                                  @onclick:stopPropagation="true">
+                            @if (IsMovimientoDeleting(movimiento.item))
+                            {
+                              <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                              <span class="visually-hidden">Eliminando…</span>
+                            }
+                            else
+                            {
+                              <span class="oi oi-trash" aria-hidden="true"></span>
+                              <span class="visually-hidden">Eliminar</span>
+                            }
+                          </button>
+                        </td>
                       </tr>
                     }
                   </tbody>
@@ -235,9 +254,25 @@ else if (Header is not null)
         </div>
 
         <div class="card shadow-sm">
-          <div class="card-header d-flex align-items-center">
+          <div class="card-header d-flex align-items-center flex-wrap gap-2">
             <h5 class="mb-0 flex-grow-1">Archivos adjuntos</h5>
             <span class="badge text-bg-secondary">@Attachments.Count</span>
+            <label class="btn btn-sm btn-outline-primary ms-auto mb-0 @(IsUploadingAttachment ? "disabled" : string.Empty)">
+              @if (IsUploadingAttachment)
+              {
+                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                <span>Cargando…</span>
+              }
+              else
+              {
+                <span class="oi oi-cloud-upload me-1" aria-hidden="true"></span>
+                <span>Cargar archivo</span>
+              }
+              <InputFile @key="_attachmentInputKey"
+                         class="d-none"
+                         OnChange="OnAttachmentSelectedAsync"
+                         disabled="@IsUploadingAttachment" />
+            </label>
           </div>
           <div class="card-body">
             @if (Attachments.Count == 0)

@@ -24,7 +24,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private TransaccionHeaderModel? _headerOriginal;
   private MovimientoModel? _movimientoTarget;
   private int? _attachmentDownloadingId;
-  private bool _isMovimientoSaveRequested;
   private readonly List<LookupInt32Dto> _allProyectoOptions = new();
   private readonly List<LookupInt32Dto> _allCompraOptions = new();
   private CuentaContablePicker? CuentaPicker;
@@ -470,11 +469,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     CuentaPickerError = null;
   }
 
-  protected void MarkMovimientoSaveRequested()
-  {
-    _isMovimientoSaveRequested = true;
-  }
-
   protected Task OnCuentaPickerRfcChangedAsync(string? rfc)
   {
     CuentaPickerRfc = rfc;
@@ -506,11 +500,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     NotifyMovimientoFieldChanged(nameof(MovimientoDraft.NombreCuenta));
 
     CuentaPickerError = null;
-
-    if (selection?.HasNivel3 == true)
-    {
-      IsCuentaPickerVisible = false;
-    }
+    IsCuentaPickerVisible = false;
 
     await InvokeAsync(StateHasChanged);
   }
@@ -533,11 +523,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   {
     if (MovimientoEditContext is null || MovimientoDraft is null)
       return;
-
-    if (!_isMovimientoSaveRequested)
-      return;
-
-    _isMovimientoSaveRequested = false;
 
     if (!MovimientoEditContext.Validate())
       return;

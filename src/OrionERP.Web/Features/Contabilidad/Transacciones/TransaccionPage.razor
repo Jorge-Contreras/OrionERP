@@ -299,21 +299,38 @@ else if (Header is not null)
                         <td>@attachment.Extension</td>
                         <td class="text-end">@attachment.TamanoHumano</td>
                         <td class="text-end">
-                          <button type="button"
-                                  class="btn btn-sm btn-outline-primary"
-                                  disabled="@IsAttachmentDownloading(attachment)"
-                                  @onclick="async () => await DownloadAttachmentAsync(attachment)">
-                            @if (IsAttachmentDownloading(attachment))
-                            {
-                              <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
-                              <span>Descargando&hellip;</span>
-                            }
-                            else
-                            {
-                              <span class="oi oi-cloud-download me-1" aria-hidden="true"></span>
-                              <span>Descargar</span>
-                            }
-                          </button>
+                          <div class="d-inline-flex gap-2">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-primary"
+                                    disabled="@(IsAttachmentDownloading(attachment) || IsAttachmentDeleting(attachment))"
+                                    @onclick="async () => await DownloadAttachmentAsync(attachment)">
+                              @if (IsAttachmentDownloading(attachment))
+                              {
+                                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                                <span>Descargando&hellip;</span>
+                              }
+                              else
+                              {
+                                <span class="oi oi-cloud-download me-1" aria-hidden="true"></span>
+                                <span>Descargar</span>
+                              }
+                            </button>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-danger"
+                                    disabled="@(IsAttachmentDeleting(attachment) || IsAttachmentDownloading(attachment))"
+                                    @onclick="async () => await DeleteAttachmentAsync(attachment)">
+                              @if (IsAttachmentDeleting(attachment))
+                              {
+                                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                                <span>Eliminando&hellip;</span>
+                              }
+                              else
+                              {
+                                <span class="oi oi-trash me-1" aria-hidden="true"></span>
+                                <span>Eliminar</span>
+                              }
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     }

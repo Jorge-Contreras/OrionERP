@@ -283,6 +283,14 @@ WHERE ta.ID = @AttachmentId;";
     };
   }
 
+  public async Task DeleteAttachmentAsync(int attachmentId, CancellationToken ct = default)
+  {
+    const string sql = @"DELETE FROM dbo.TRANSACTION_ATTACHMENT WHERE ID = @AttachmentId;";
+
+    using var conn = new SqlConnection(_cs);
+    await conn.ExecuteAsync(new CommandDefinition(sql, new { AttachmentId = attachmentId }, cancellationToken: ct));
+  }
+
   public async Task<IReadOnlyList<TransaccionComprobanteDto>> GetComprobantesAsync(int transaccionId, CancellationToken ct = default)
   {
     const string sql = @"SELECT

@@ -25,6 +25,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private TransaccionHeaderModel? _headerOriginal;
   private MovimientoModel? _movimientoTarget;
   private int? _attachmentDownloadingId;
+  private int? _attachmentDeletingId;
   private int? _movimientoDeletingId;
   private readonly List<LookupInt32Dto> _allProyectoOptions = new();
   private readonly List<LookupInt32Dto> _allCompraOptions = new();
@@ -694,6 +695,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected bool IsAttachmentDownloading(AttachmentModel attachment)
     => attachment.Id == _attachmentDownloadingId;
 
+  protected bool IsAttachmentDeleting(AttachmentModel attachment)
+    => attachment.Id == _attachmentDeletingId;
+
   protected bool IsMovimientoDeleting(MovimientoModel movimiento)
     => movimiento is not null && movimiento.Id == _movimientoDeletingId;
 
@@ -728,6 +732,44 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     finally
     {
       _attachmentDownloadingId = null;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected async Task DeleteAttachmentAsync(AttachmentModel attachment)
+  {
+    if (attachment is null)
+      return;
+
+    bool confirm;
+    try
+    {
+      confirm = await JsRuntime.InvokeAsync<bool>("confirm", $"¿Deseas eliminar el adjunto '{attachment.Nombre}'?");
+    }
+    catch
+    {
+      confirm = true;
+    }
+
+    if (!confirm)
+      return;
+
+    _attachmentDeletingId = attachment.Id;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      await TransaccionService.DeleteAttachmentAsync(attachment.Id);
+      await ReloadAttachmentsAsync();
+      UiMessages.ShowSuccess("Archivo adjunto eliminado.");
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo eliminar el archivo adjunto: {ex.Message}");
+    }
+    finally
+    {
+      _attachmentDeletingId = null;
       await InvokeAsync(StateHasChanged);
     }
   }

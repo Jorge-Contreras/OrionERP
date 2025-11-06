@@ -5,7 +5,8 @@
 <div class="row g-3 align-items-end">
   <div class="col-md-2">
     <label class="form-label">Cuenta #</label>
-    <input class="form-control" type="number" min="1" @bind="directAccountId" @onkeyup="OnDirectAccountKeyDown" />
+    <input class="form-control" type="number" min="1" @bind="directAccountId" @bind:event="oninput"
+           @onkeydown="OnDirectAccountKeyDown" />
   </div>
 </div>
 

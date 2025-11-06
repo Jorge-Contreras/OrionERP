@@ -12,77 +12,65 @@ using System.Xml;
 
 namespace OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services
 {
-
   public sealed class SatXmlInboxService : ISatXmlInboxService
   {
+    // ===== XML Helpers for UUID extraction and normalization =====
+    private static string NormalizeUuid(string? s)
+      => string.IsNullOrWhiteSpace(s) ? string.Empty : s.Trim().ToUpperInvariant();
 
-    // XML Helpers for UUID extraction and normalization
-
-
-// … inside SatXmlInboxService class …
-
-private static string NormalizeUuid(string? s)
-    => string.IsNullOrWhiteSpace(s) ? string.Empty : s.Trim().ToUpperInvariant();
-
-  /// <summary>
-  /// Stream-reads XML and returns the UUID from any element whose LocalName == "TimbreFiscalDigital".
-  /// Ignores namespaces; safe settings (no DTD, no external fetch).
-  /// Returns null if not found or on XML errors.
-  /// </summary>
-  private static string? TryExtractUuidFromXml(byte[] bytes)
-  {
-    if (bytes is null || bytes.Length == 0) return null;
-
-    var settings = new XmlReaderSettings
+    /// <summary>
+    /// Stream-reads XML and returns the UUID from any element whose LocalName == "TimbreFiscalDigital".
+    /// Ignores namespaces; safe settings (no DTD, no external fetch).
+    /// Returns null if not found or on XML errors.
+    /// </summary>
+    private static string? TryExtractUuidFromXml(byte[] bytes)
     {
-      IgnoreComments = true,
-      IgnoreProcessingInstructions = true,
-      IgnoreWhitespace = true,
-      DtdProcessing = DtdProcessing.Prohibit,
-      XmlResolver = null
-    };
+      if (bytes is null || bytes.Length == 0) return null;
 
-    try
-    {
-      using var ms = new MemoryStream(bytes);
-      using var xr = XmlReader.Create(ms, settings);
-
-      while (xr.Read())
+      var settings = new XmlReaderSettings
       {
-        if (xr.NodeType == XmlNodeType.Element && xr.LocalName == "TimbreFiscalDigital")
-        {
-          // Prefer exact "UUID"
-          var uuid = xr.GetAttribute("UUID");
-          if (!string.IsNullOrWhiteSpace(uuid))
-            return NormalizeUuid(uuid);
+        IgnoreComments = true,
+        IgnoreProcessingInstructions = true,
+        IgnoreWhitespace = true,
+        DtdProcessing = DtdProcessing.Prohibit,
+        XmlResolver = null
+      };
 
-          // Fallback: search attributes case-insensitively (handles "Uuid"/"uuid" etc.)
-          if (xr.HasAttributes)
+      try
+      {
+        using var ms = new MemoryStream(bytes);
+        using var xr = XmlReader.Create(ms, settings);
+
+        while (xr.Read())
+        {
+          if (xr.NodeType == XmlNodeType.Element && xr.LocalName == "TimbreFiscalDigital")
           {
-            xr.MoveToFirstAttribute();
-            do
+            // Prefer exact "UUID"
+            var uuid = xr.GetAttribute("UUID");
+            if (!string.IsNullOrWhiteSpace(uuid))
+              return NormalizeUuid(uuid);
+
+            // Fallback: attributes case-insensitively ("Uuid"/"uuid", etc.)
+            if (xr.HasAttributes)
             {
-              if (string.Equals(xr.LocalName, "UUID", StringComparison.OrdinalIgnoreCase))
-                return NormalizeUuid(xr.Value);
-            } while (xr.MoveToNextAttribute());
+              xr.MoveToFirstAttribute();
+              do
+              {
+                if (string.Equals(xr.LocalName, "UUID", StringComparison.OrdinalIgnoreCase))
+                  return NormalizeUuid(xr.Value);
+              } while (xr.MoveToNextAttribute());
+            }
           }
         }
       }
+      catch
+      {
+        // swallow parse errors and fall back to filename
+      }
+      return null;
     }
-    catch
-    {
-      // swallow parse errors and fall back to filename
-    }
-    return null;
-  }
 
-
-
-
-
-
-
-  private readonly string _cs;
+    private readonly string _cs;
     private readonly IConfiguration _cfg;
     private readonly ILogger<SatXmlInboxService> _logger;
 
@@ -94,12 +82,8 @@ private static string NormalizeUuid(string? s)
             ?? throw new InvalidOperationException("Missing ConnectionStrings:OrionDb");
     }
 
-   
-
-
-
-  //Helpers
-  private static string UuidFromFileName(string fileName)
+    // ===== Small helpers =====
+    private static string UuidFromFileName(string fileName)
     {
       // Access used filename (without extension) as UUID token
       var baseName = Path.GetFileNameWithoutExtension(fileName);
@@ -112,26 +96,32 @@ private static string NormalizeUuid(string? s)
       return $"%{fileNameNoExt}%";
     }
 
-
-
-    // Now this just returns the configured placeholder ID (defaults to 5505).
+    /// <summary>
+    /// Returns the configured placeholder ID (defaults to 5505), validating it exists.
+    /// </summary>
     public async Task<int> EnsureInboxTransaccionAsync(CancellationToken ct = default)
     {
       var idStr = _cfg["SatXml:PlaceholderTransaccionId"];
       if (!int.TryParse(idStr, out var id)) id = 5505;
 
-      // Optional safety: verify it exists (kept light; you said it already exists)
       const string sql = "SELECT 1 FROM dbo.Transacciones WHERE ID = @ID;";
       using var conn = new SqlConnection(_cs);
       await conn.OpenAsync(ct);
-      var exists = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(sql, new { ID = id }, cancellationToken: ct));
+      var exists = await conn.ExecuteScalarAsync<int?>(
+        new CommandDefinition(sql, new { ID = id }, cancellationToken: ct));
+
       if (!exists.HasValue)
         throw new InvalidOperationException($"Configured placeholder Transacciones.ID={id} not found. Create it or change SatXml:PlaceholderTransaccionId.");
 
       return id;
     }
 
-    //Saves and Process the XML file
+    /// <summary>
+    /// Saves and processes the XML file:
+    /// - If UUID is already linked to a Transacción, ensures/fetches an XML attachment under that Transacción,
+    ///   then calls dbo.PROCESAR_SAT_XML_V2 with (TransaccionID=that, AttachmentID=found/new).
+    /// - Otherwise, inserts under the placeholder Transacción and processes there.
+    /// </summary>
     public async Task<SatXmlProcessResult> SaveAndProcessAsync(Stream xmlStream, string fileName, CancellationToken ct = default)
     {
       // Read file bytes up-front (needed for either branch)
@@ -147,7 +137,7 @@ private static string NormalizeUuid(string? s)
           ? uuidFromXml
           : NormalizeUuid(UuidFromFileName(fileName));
 
-      var placeholderId = await EnsureInboxTransaccionAsync(ct); // still 5505 (config)
+      var placeholderId = await EnsureInboxTransaccionAsync(ct); // e.g., 5505 (from config)
 
       using var conn = new SqlConnection(_cs);
       await conn.OpenAsync(ct);
@@ -155,30 +145,38 @@ private static string NormalizeUuid(string? s)
 
       try
       {
-        // --- pre-check: does UUID already exist & linked? ---
+        // --- Branch A: UUID already exists & linked to a Transacción ---
         if (!string.IsNullOrWhiteSpace(uuidCandidate))
         {
-          var (found, comprobanteId, transaccionId) =
+          var (found, _comprobanteId, transaccionId) =
               await TryResolveExistingLinkedAsync(conn, tx, uuidCandidate, ct);
 
           if (found && transaccionId.HasValue)
           {
-            // Already linked to a transaction: DO NOT reprocess; ensure attachment exists there.
-            var inserted = await EnsureXmlAttachmentOnTranAsync(conn, tx, transaccionId.Value, fileName, bytes, ct);
+            // Ensure/fetch the attachment for the already-linked Transacción
+            var (attachmentId, createdNew) = await EnsureXmlAttachmentOnTranAsync(
+              conn, tx, transaccionId.Value, fileName, bytes, ct);
+
+            // Re-process using the existing Transacción and the located/created AttachmentID
+            const string spReprocess = "cfdi.PROCESAR_SAT_XML_V2";
+            await conn.ExecuteAsync(
+              new CommandDefinition(
+                spReprocess,
+                new { TransaccionID = transaccionId.Value, AttachmentID = attachmentId },
+                commandType: CommandType.StoredProcedure,
+                transaction: tx,
+                cancellationToken: ct));
 
             await tx!.CommitAsync(ct);
-            return new SatXmlProcessResult(
-                fileName,
-                AttachmentId: 0,
-                Success: true,
-                Message: inserted
-                    ? $"Ya conciliado (TranID={transaccionId}). Se agregó el XML como adjunto."
-                    : $"Ya conciliado (TranID={transaccionId}). El adjunto XML ya existía.");
+            var msg = createdNew
+              ? $"Reprocesado (TranID={transaccionId}). Se agregó el XML como adjunto (AttachmentID={attachmentId})."
+              : $"Reprocesado (TranID={transaccionId}). Se reutilizó el adjunto existente (AttachmentID={attachmentId}).";
+
+            return new SatXmlProcessResult(fileName, attachmentId, true, msg);
           }
         }
 
-        // --- fallback: process into inbox (5505) like Step 3 ---
-        // optional cleanup like Access
+        // --- Branch B: Not linked → process in inbox/placeholder (e.g., 5505) ---
         await CleanupDuplicateAttachmentsByNameAsync(conn, tx, fileName, ct);
 
         const string insertAttach = @"
@@ -190,7 +188,7 @@ SELECT CAST(SCOPE_IDENTITY() as int);";
         var ext = Path.GetExtension(fileName);
         if (string.IsNullOrWhiteSpace(ext)) ext = ".xml";
 
-        var attachmentId = await conn.ExecuteScalarAsync<int>(
+        var placeholderAttachmentId = await conn.ExecuteScalarAsync<int>(
             new CommandDefinition(
                 insertAttach,
                 new
@@ -201,22 +199,20 @@ SELECT CAST(SCOPE_IDENTITY() as int);";
                   AttachmentExtension = ext.TrimStart('.'),
                   AttachmentDescription = "SAT XML upload"
                 },
-                tx, cancellationToken: ct)
-        );
+                tx, cancellationToken: ct));
 
-        // Call SP to parse into SAT tables
-        const string sp = "dbo.PROCESAR_SAT_XML_V2";
+        // Parse/process into SAT tables
+        const string sp = "cfdi.PROCESAR_SAT_XML_V2";
         await conn.ExecuteAsync(
             new CommandDefinition(
                 sp,
-                new { TransaccionID = placeholderId, AttachmentID = attachmentId },
+                new { TransaccionID = placeholderId, AttachmentID = placeholderAttachmentId },
                 commandType: CommandType.StoredProcedure,
                 transaction: tx,
-                cancellationToken: ct)
-        );
+                cancellationToken: ct));
 
         await tx!.CommitAsync(ct);
-        return new SatXmlProcessResult(fileName, attachmentId, true, null);
+        return new SatXmlProcessResult(fileName, placeholderAttachmentId, true, null);
       }
       catch (Exception ex)
       {
@@ -226,10 +222,11 @@ SELECT CAST(SCOPE_IDENTITY() as int);";
       }
     }
 
-
-    //Resolver to check if UUID already exists
+    /// <summary>
+    /// Check if UUID already exists and if it is linked to a Transacción.
+    /// </summary>
     private async Task<(bool found, int comprobanteId, int? transaccionId)> TryResolveExistingLinkedAsync(
-  SqlConnection conn, SqlTransaction? tx, string uuid, CancellationToken ct)
+      SqlConnection conn, SqlTransaction? tx, string uuid, CancellationToken ct)
     {
       const string sql = @"
 SELECT TOP (1)
@@ -241,54 +238,69 @@ LEFT JOIN dbo.Transaccion_Comprobante tc
 WHERE UPPER(t.UUID) = UPPER(@Uuid);";
 
       var row = await conn.QueryFirstOrDefaultAsync<(int ComprobanteId, int? TransaccionId)>(
-          new CommandDefinition(sql, new { Uuid = uuid }, tx, cancellationToken: ct)
-      );
+          new CommandDefinition(sql, new { Uuid = uuid }, tx, cancellationToken: ct));
 
       return row.ComprobanteId == 0
           ? (false, 0, null)
           : (true, row.ComprobanteId, row.TransaccionId);
     }
-    //helper to ensure the XML attachment exists on a specific Transacción
-    private async Task<bool> EnsureXmlAttachmentOnTranAsync(
-        SqlConnection conn, SqlTransaction? tx, int tranId, string fileName, byte[] bytes, CancellationToken ct)
+
+    /// <summary>
+    /// Ensures an XML attachment exists on the given Transacción.
+    /// If an exact-name (case-insensitive) match exists (or a LIKE '%nameNoExt%'), returns its ID.
+    /// Otherwise inserts a new attachment and returns the new ID.
+    /// </summary>
+    private async Task<(int AttachmentId, bool CreatedNew)> EnsureXmlAttachmentOnTranAsync(
+      SqlConnection conn, SqlTransaction? tx, int tranId, string fileName, byte[] bytes, CancellationToken ct)
     {
       var fileNameNoExt = Path.GetFileNameWithoutExtension(fileName);
-      const string existsSql = @"
-SELECT TOP(1) 1
+
+      const string findSql = @"
+SELECT TOP(1) ID
 FROM dbo.TRANSACTION_ATTACHMENT
 WHERE TranID = @TranID
   AND AttachmentExtension = 'xml'
-  AND AttachmentName LIKE @LikeName;";
+  AND (LOWER(AttachmentName) = LOWER(@AttachmentName) OR AttachmentName LIKE @LikeName)
+ORDER BY CASE WHEN LOWER(AttachmentName) = LOWER(@AttachmentName) THEN 0 ELSE 1 END, ID DESC;";
 
-      var exists = await conn.ExecuteScalarAsync<int?>(
-          new CommandDefinition(existsSql,
-              new { TranID = tranId, LikeName = AttachmentLikePattern(fileNameNoExt) },
-              tx, cancellationToken: ct));
+      var existingId = await conn.ExecuteScalarAsync<int?>(
+        new CommandDefinition(
+          findSql,
+          new { TranID = tranId, AttachmentName = fileName, LikeName = AttachmentLikePattern(fileNameNoExt) },
+          tx, cancellationToken: ct));
 
-      if (exists.HasValue) return false; // already present; nothing to do
+      if (existingId.HasValue)
+      {
+        return (existingId.Value, false);
+      }
 
-      const string insertAttach = @"
+      const string insertSql = @"
 INSERT INTO dbo.TRANSACTION_ATTACHMENT
 (TranID, Attachment, AttachmentName, AttachmentExtension, AttachmentDescription)
-VALUES (@TranID, @Attachment, @AttachmentName, 'xml', @AttachmentDescription);";
+VALUES (@TranID, @Attachment, @AttachmentName, 'xml', @AttachmentDescription);
+SELECT CAST(SCOPE_IDENTITY() as int);";
 
-      await conn.ExecuteAsync(
-          new CommandDefinition(insertAttach,
-              new
-              {
-                TranID = tranId,
-                Attachment = bytes,
-                AttachmentName = fileName,
-                AttachmentDescription = "SAT XML upload (linked existing)"
-              },
-              tx, cancellationToken: ct));
+      var newId = await conn.ExecuteScalarAsync<int>(
+        new CommandDefinition(
+          insertSql,
+          new
+          {
+            TranID = tranId,
+            Attachment = bytes,
+            AttachmentName = fileName,
+            AttachmentDescription = "SAT XML upload (linked existing)"
+          },
+          tx, cancellationToken: ct));
 
-      return true; // we inserted it
+      return (newId, true);
     }
 
-    //CLEAN DUPLICATES ON ATTACHMENTS
+    /// <summary>
+    /// Deletes duplicate placeholder attachments by LIKE(filename-without-ext).
+    /// Keeps the table tidy before inserting into the placeholder (inbox) Transacción.
+    /// </summary>
     private async Task<int> CleanupDuplicateAttachmentsByNameAsync(
-    SqlConnection conn, SqlTransaction? tx, string fileName, CancellationToken ct)
+      SqlConnection conn, SqlTransaction? tx, string fileName, CancellationToken ct)
     {
       var fileNameNoExt = Path.GetFileNameWithoutExtension(fileName);
       const string delSql = @"
@@ -300,9 +312,5 @@ WHERE AttachmentExtension = 'xml'
           new CommandDefinition(delSql,
               new { LikeName = AttachmentLikePattern(fileNameNoExt) }, tx, cancellationToken: ct));
     }
-
-
-
   }
-
 }

@@ -36,8 +36,8 @@ SELECT TOP (@take)
        Descripcion
 FROM dbo.CuentasContables
 WHERE RazonSocial = @rfc
-  AND Nivel2 = '0'
-  AND Nivel3 = '0'
+  AND Nivel2 = '00'
+  AND Nivel3 = '00'
   AND (@hasTerm = 0 OR Nivel1 = @exact OR Descripcion LIKE @like)
 ORDER BY Nivel1;";
 
@@ -79,7 +79,7 @@ SELECT TOP (@take)
 FROM dbo.CuentasContables
 WHERE RazonSocial = @rfc
   AND Nivel1 = @nivel1
-  AND Nivel3 = '0'
+  AND Nivel3 = '00'
   AND (@hasTerm = 0 OR Nivel2 = @exact OR Descripcion LIKE @like)
 ORDER BY Nivel2;";
 

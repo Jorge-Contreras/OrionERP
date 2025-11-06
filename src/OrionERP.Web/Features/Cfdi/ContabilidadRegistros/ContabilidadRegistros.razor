@@ -1,7 +1,7 @@
 @page "/cfdi/registros-contables"
 @using OrionERP.Application.Features.Cfdi.ContabilidadRegistros
+@using OrionERP.Web.Shared
 @using OrionERP.Web.State
-@inject ICuentasContablesRepository CuentasRepository
 @inject IContabilidadRegistrosService RegistrosService
 @inject NavigationManager Navigation
 @inject IUserRfcState RfcState
@@ -30,118 +30,28 @@
       <label class="form-label">Fecha fin</label>
       <input class="form-control" type="date" @bind="endDate" />
     </div>
-    <div class="col-md-2">
-      <label class="form-label">Cuenta #</label>
-      <input class="form-control" type="number" min="1" @bind="directAccountId" @onkeyup="OnDirectAccountKeyDown" />
-    </div>
   </div>
 
-  <div class="mt-3">
-    <div class="row g-3">
-      <div class="col-md-4">
-        <label class="form-label">Buscar Nivel 1</label>
-        <input class="form-control" placeholder="Ej. 102 o BANCOS" @bind="nivel1Term" @onkeyup="OnNivel1KeyDown"
-                      
-        
-        />
-        @if (nivel1Results.Any())
-        {
-                    <div class="table-responsive mt-2" style="max-height: 320px; overflow-y: auto;">
-                        <table class="table table-sm table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th>Id</th>
-                                    <th>RFC</th>
-                                    <th>Nivel1</th>
-                                    <th>Descripción</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var item in nivel1Results)
-                                {
-                                    <tr role="button" @onclick="() => SelectNivel1Async(item)">
-                                        <td>@item.Id</td>
-                                        <td>@item.RazonSocial</td>
-                                        <td>@item.Nivel1</td>
-                                        <td>@item.Descripcion</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-        }
-      </div>
-      <div class="col-md-4">
-        <label class="form-label">Buscar Nivel 2</label>
-        <input class="form-control" placeholder="Ej. 01 o descripción" @bind="nivel2Term" @onkeyup="OnNivel2KeyDown" disabled="@(!CanSearchNivel2)" />
-        @if (nivel2Results.Any())
-        {
-          <div class="table-responsive mt-2">
-            <table class="table table-sm table-hover mb-0">
-              <thead>
-                <tr>
-                  <th>Id</th>
-                  <th>Nivel2</th>
-                  <th>Descripción</th>
-                </tr>
-              </thead>
-              <tbody>
-                @foreach (var item in nivel2Results)
-                {
-                  <tr role="button" @onclick="() => SelectNivel2Async(item)">
-                    <td>@item.Id</td>
-                    <td>@item.Nivel2</td>
-                    <td>@item.Descripcion</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        }
-      </div>
-      <div class="col-md-4">
-        <label class="form-label">Buscar Nivel 3</label>
-        <input class="form-control" placeholder="Ej. 02 o descripción" @bind="nivel3Term" @onkeyup="OnNivel3KeyDown" disabled="@(!CanSearchNivel3)" />
-        @if (nivel3Results.Any())
-        {
-          <div class="table-responsive mt-2">
-            <table class="table table-sm table-hover mb-0">
-              <thead>
-                <tr>
-                  <th>Id</th>
-                  <th>Nivel3</th>
-                  <th>Descripción</th>
-                </tr>
-              </thead>
-              <tbody>
-                @foreach (var item in nivel3Results)
-                {
-                  <tr role="button" @onclick="() => SelectNivel3(item)">
-                    <td>@item.Id</td>
-                    <td>@item.Nivel3</td>
-                    <td>@item.Descripcion</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        }
-      </div>
-    </div>
-  </div>
+  <CuentaContablePicker
+    @ref="accountPicker"
+    @bind-SelectedRfc="selectedRfc"
+    @bind-SelectedRfc:after="OnAccountPickerRfcChangedAsync"
+    @bind-Selection="accountSelection"
+    SearchRequested="OnAccountPickerSearchRequestedAsync"
+    ErrorChanged="OnAccountPickerErrorChangedAsync" />
 
   <div class="mt-3 d-flex flex-wrap align-items-center gap-2">
     @if (HasAccountSelection)
     {
-      <span class="badge text-bg-primary">Nivel1: @selectedNivel1</span>
-      <span class="badge text-bg-primary">Nivel2: @selectedNivel2</span>
-      @if (!string.IsNullOrWhiteSpace(selectedNivel3))
+      <span class="badge text-bg-primary">Nivel1: @accountSelection!.Nivel1</span>
+      <span class="badge text-bg-primary">Nivel2: @accountSelection!.Nivel2</span>
+      @if (!string.IsNullOrWhiteSpace(accountSelection!.Nivel3))
       {
-        <span class="badge text-bg-primary">Nivel3: @selectedNivel3</span>
+        <span class="badge text-bg-primary">Nivel3: @accountSelection!.Nivel3</span>
       }
-      @if (!string.IsNullOrWhiteSpace(selectedAccountDescripcion))
+      @if (!string.IsNullOrWhiteSpace(accountSelection!.Descripcion))
       {
-        <span class="badge text-bg-info text-wrap">@selectedAccountDescripcion</span>
+        <span class="badge text-bg-info text-wrap">@accountSelection!.Descripcion</span>
       }
     }
     <button class="btn btn-primary ms-auto" @onclick="OnBuscarClickedAsync" disabled="@(!CanBuscar)">Buscar</button>
@@ -208,35 +118,23 @@
 </div>
 
 @code {
+  private CuentaContablePicker? accountPicker;
+  private CuentaContableSelection? accountSelection;
   private string? selectedRfc;
+  private string? lastComponentRfc;
   private DateTime startDate = new DateTime(DateTime.Today.Year, 1, 1);
   private DateTime endDate = DateTime.Today;
-  private int? directAccountId;
-  private string nivel1Term = string.Empty;
-  private string nivel2Term = string.Empty;
-  private string nivel3Term = string.Empty;
-  private string? selectedNivel1;
-  private string? selectedNivel2;
-  private string? selectedNivel3;
-  private string? selectedAccountDescripcion;
-  private readonly List<CuentasContablesDto> nivel1Results = new();
-  private readonly List<CuentasContablesDto> nivel2Results = new();
-  private readonly List<CuentasContablesDto> nivel3Results = new();
   private readonly List<RegistrosContablesRow> registros = new();
   private bool hasSearched;
   private bool isLoading;
   private string? errorMessage;
   private bool suppressRfcChange;
 
-  private bool HasAccountSelection => !string.IsNullOrWhiteSpace(selectedNivel1) && !string.IsNullOrWhiteSpace(selectedNivel2);
-  private bool CanSearchNivel2 => !string.IsNullOrWhiteSpace(selectedNivel1) && !string.IsNullOrWhiteSpace(selectedRfc);
-  private bool CanSearchNivel3 => HasAccountSelection && !string.IsNullOrWhiteSpace(selectedRfc);
-  private bool HasCompleteAccount => HasAccountSelection && !string.IsNullOrWhiteSpace(selectedNivel3);
+  private bool HasAccountSelection => accountSelection?.HasNivel2 ?? false;
+  private bool HasCompleteAccount => accountSelection?.HasNivel3 ?? false;
   private bool CanBuscar => HasAccountSelection && !string.IsNullOrWhiteSpace(selectedRfc);
 
-
-
-  protected override async Task OnInitializedAsync()
+  protected override Task OnInitializedAsync()
   {
     selectedRfc = RfcState.CurrentRfc;
     if (string.IsNullOrWhiteSpace(selectedRfc))
@@ -245,10 +143,7 @@
       selectedRfc = RfcState.CurrentRfc;
     }
 
-    if (!string.IsNullOrWhiteSpace(selectedRfc))
-    {
-      await SearchNivel1Async(loadDefaults: true);
-    }
+    return Task.CompletedTask;
   }
 
   private async Task OnRfcChangedAsync()
@@ -259,104 +154,56 @@
       return;
     }
 
-    // selectedRfc is already updated by @bind
-    ClearAccountSelection();
+    accountSelection = null;
     registros.Clear();
     hasSearched = false;
+    errorMessage = null;
 
-    if (!string.IsNullOrWhiteSpace(selectedRfc))
+    await InvokeAsync(StateHasChanged);
+  }
+
+  private async Task OnAccountPickerRfcChangedAsync()
+  {
+    if (string.IsNullOrWhiteSpace(selectedRfc))
     {
-      await SearchNivel1Async(loadDefaults: true);
+      return;
+    }
+
+    if (string.Equals(lastComponentRfc, selectedRfc, StringComparison.OrdinalIgnoreCase))
+    {
+      return;
+    }
+
+    lastComponentRfc = selectedRfc;
+    suppressRfcChange = true;
+    if (!RfcState.TrySet(selectedRfc))
+    {
+      suppressRfcChange = false;
+      await InvokeAsync(StateHasChanged);
     }
   }
 
-  private async Task OnDirectAccountKeyDown(KeyboardEventArgs args)
+  private Task OnAccountPickerErrorChangedAsync(string? message)
   {
-    if (args.Key == "Enter")
-    {
-      var resolved = await ResolveDirectAccountAsync();
-      if (resolved && CanBuscar)
-      {
-        await BuscarAsync();
-      }
-    }
+    errorMessage = message;
+    return Task.CompletedTask;
   }
 
-  private async Task OnNivel1KeyDown(KeyboardEventArgs args)
+  private async Task OnAccountPickerSearchRequestedAsync()
   {
-    if (args.Key != "Enter")
+    if (!CanBuscar)
     {
       return;
     }
 
-    if (CanBuscar && Nivel1TermMatchesSelection())
-    {
-      await BuscarAsync();
-    }
-    else
-    {
-      await SearchNivel1Async(loadDefaults: string.IsNullOrWhiteSpace(nivel1Term));
-    }
-  }
-
-  private async Task OnNivel2KeyDown(KeyboardEventArgs args)
-  {
-    if (args.Key != "Enter")
-    {
-      return;
-    }
-
-    if (!CanSearchNivel2)
-    {
-      await SearchNivel1Async(loadDefaults: string.IsNullOrWhiteSpace(nivel1Term));
-      return;
-    }
-
-    if (CanBuscar && Nivel2TermMatchesSelection())
-    {
-      await BuscarAsync();
-    }
-    else
-    {
-      await SearchNivel2Async(loadDefaults: string.IsNullOrWhiteSpace(nivel2Term));
-    }
-  }
-
-  private async Task OnNivel3KeyDown(KeyboardEventArgs args)
-  {
-    if (args.Key != "Enter")
-    {
-      return;
-    }
-
-    if (!CanSearchNivel3)
-    {
-      if (!CanSearchNivel2)
-      {
-        await SearchNivel1Async(loadDefaults: string.IsNullOrWhiteSpace(nivel1Term));
-      }
-      else
-      {
-        await SearchNivel2Async(loadDefaults: string.IsNullOrWhiteSpace(nivel2Term));
-      }
-      return;
-    }
-
-    if (CanBuscar && Nivel3TermMatchesSelection())
-    {
-      await BuscarAsync();
-    }
-    else
-    {
-      await SearchNivel3Async(loadDefaults: string.IsNullOrWhiteSpace(nivel3Term));
-    }
+    await BuscarAsync();
   }
 
   private async Task OnBuscarClickedAsync()
   {
-    if (!HasCompleteAccount && directAccountId.HasValue)
+    if (accountPicker?.RequiresDirectAccountResolution == true)
     {
-      var resolved = await ResolveDirectAccountAsync();
+      var resolved = await accountPicker.TryResolveDirectAccountAsync();
       if (!resolved)
       {
         return;
@@ -371,178 +218,9 @@
     await BuscarAsync();
   }
 
-  private async Task SearchNivel1Async(bool loadDefaults = false)
-  {
-    nivel1Results.Clear();
-    nivel2Results.Clear();
-    nivel3Results.Clear();
-
-    if (string.IsNullOrWhiteSpace(selectedRfc))
-    {
-      return;
-    }
-
-    var term = loadDefaults ? string.Empty : (nivel1Term?.Trim() ?? string.Empty);
-    if (!loadDefaults && string.IsNullOrWhiteSpace(term))
-    {
-      return;
-    }
-
-    try
-    {
-      var results = await CuentasRepository.SearchNivel1Async(selectedRfc, term, loadDefaults ? 25 : 200);
-      nivel1Results.AddRange(results);
-    }
-    catch (Exception ex)
-    {
-      ReportError("No se pudo buscar cuentas de nivel 1", ex);
-    }
-  }
-
-  private async Task SearchNivel2Async(bool loadDefaults = false)
-  {
-    nivel2Results.Clear();
-    nivel3Results.Clear();
-
-    if (!CanSearchNivel2 || string.IsNullOrWhiteSpace(selectedNivel1))
-    {
-      return;
-    }
-
-    var term = loadDefaults ? string.Empty : (nivel2Term?.Trim() ?? string.Empty);
-    if (!loadDefaults && string.IsNullOrWhiteSpace(term))
-    {
-      return;
-    }
-
-    try
-    {
-      var results = await CuentasRepository.SearchNivel2Async(selectedRfc!, selectedNivel1!, term);
-      nivel2Results.AddRange(results);
-    }
-    catch (Exception ex)
-    {
-      ReportError("No se pudo buscar cuentas de nivel 2", ex);
-    }
-  }
-
-  private async Task SearchNivel3Async(bool loadDefaults = false)
-  {
-    nivel3Results.Clear();
-
-    if (!CanSearchNivel3 || string.IsNullOrWhiteSpace(selectedNivel1) || string.IsNullOrWhiteSpace(selectedNivel2))
-    {
-      return;
-    }
-
-    var term = loadDefaults ? string.Empty : (nivel3Term?.Trim() ?? string.Empty);
-    if (!loadDefaults && string.IsNullOrWhiteSpace(term))
-    {
-      return;
-    }
-
-    try
-    {
-      var results = await CuentasRepository.SearchNivel3Async(selectedRfc!, selectedNivel1!, selectedNivel2!, term);
-      nivel3Results.AddRange(results);
-    }
-    catch (Exception ex)
-    {
-      ReportError("No se pudo buscar cuentas de nivel 3", ex);
-    }
-  }
-
-  private async Task SelectNivel1Async(CuentasContablesDto dto)
-  {
-    await SetRfcAsync(dto.RazonSocial);
-    selectedNivel1 = dto.Nivel1;
-    selectedNivel2 = null;
-    selectedNivel3 = null;
-    selectedAccountDescripcion = dto.Descripcion;
-    nivel1Term = dto.Nivel1;
-    nivel2Term = string.Empty;
-    nivel3Term = string.Empty;
-    nivel1Results.Clear();
-    nivel2Results.Clear();
-    nivel3Results.Clear();
-
-    if (CanSearchNivel2)
-    {
-      await SearchNivel2Async(loadDefaults: true);
-    }
-  }
-
-  private async Task SelectNivel2Async(CuentasContablesDto dto)
-  {
-    selectedNivel1 = dto.Nivel1;
-    selectedNivel2 = NormalizeTwoDigits(dto.Nivel2);
-    selectedNivel3 = null;
-    selectedAccountDescripcion = dto.Descripcion;
-    nivel2Term = selectedNivel2;
-    nivel3Term = string.Empty;
-    nivel2Results.Clear();
-    nivel3Results.Clear();
-
-    if (CanSearchNivel3)
-    {
-      await SearchNivel3Async(loadDefaults: true);
-    }
-  }
-
-  private void SelectNivel3(CuentasContablesDto dto)
-  {
-    selectedNivel1 = dto.Nivel1;
-    selectedNivel2 = NormalizeTwoDigits(dto.Nivel2);
-    selectedNivel3 = NormalizeTwoDigits(dto.Nivel3);
-    selectedAccountDescripcion = dto.Descripcion;
-    nivel3Term = selectedNivel3;
-    nivel3Results.Clear();
-  }
-
-  private async Task<bool> ResolveDirectAccountAsync()
-  {
-    if (directAccountId is null)
-    {
-      return false;
-    }
-
-    try
-    {
-      var account = await CuentasRepository.GetByIdAsync(directAccountId.Value);
-      if (account is null)
-      {
-        errorMessage = "No se encontró la cuenta contable.";
-        return false;
-      }
-
-      await ApplyAccountAsync(account);
-      return true;
-    }
-    catch (Exception ex)
-    {
-      ReportError("No se pudo resolver la cuenta contable", ex);
-      return false;
-    }
-  }
-
-  private async Task ApplyAccountAsync(CuentasContablesDto account)
-  {
-    await SetRfcAsync(account.RazonSocial);
-    selectedNivel1 = account.Nivel1;
-    selectedNivel2 = NormalizeTwoDigits(account.Nivel2);
-    selectedNivel3 = NormalizeTwoDigits(account.Nivel3);
-    selectedAccountDescripcion = account.Descripcion;
-    nivel1Term = selectedNivel1;
-    nivel2Term = selectedNivel2;
-    nivel3Term = selectedNivel3;
-    nivel1Results.Clear();
-    nivel2Results.Clear();
-    nivel3Results.Clear();
-  }
-
   private async Task BuscarAsync()
   {
-    if (!CanBuscar)
+    if (!CanBuscar || accountSelection is null)
     {
       return;
     }
@@ -553,8 +231,8 @@
 
     try
     {
-      var nivel3 = string.IsNullOrWhiteSpace(selectedNivel3) ? "00" : selectedNivel3!;
-      var items = await RegistrosService.GetRegistrosAsync(startDate, endDate, selectedRfc!, selectedNivel1!, selectedNivel2!, nivel3);
+      var nivel3 = string.IsNullOrWhiteSpace(accountSelection.Nivel3) ? "00" : accountSelection.Nivel3!;
+      var items = await RegistrosService.GetRegistrosAsync(startDate, endDate, selectedRfc!, accountSelection.Nivel1!, accountSelection.Nivel2!, nivel3);
       registros.Clear();
       registros.AddRange(items);
     }
@@ -569,71 +247,12 @@
     }
   }
 
-  private async Task SetRfcAsync(string razonSocial)
-  {
-    if (string.IsNullOrWhiteSpace(razonSocial))
-    {
-      return;
-    }
-
-    if (!string.Equals(selectedRfc, razonSocial, StringComparison.OrdinalIgnoreCase))
-    {
-      suppressRfcChange = true;
-      selectedRfc = razonSocial;
-      if (!RfcState.TrySet(razonSocial))
-      {
-        suppressRfcChange = false;
-        await InvokeAsync(StateHasChanged);
-      }
-    }
-  }
-
-  private void ClearAccountSelection()
-  {
-    selectedNivel1 = null;
-    selectedNivel2 = null;
-    selectedNivel3 = null;
-    selectedAccountDescripcion = null;
-    nivel1Term = string.Empty;
-    nivel2Term = string.Empty;
-    nivel3Term = string.Empty;
-    nivel1Results.Clear();
-    nivel2Results.Clear();
-    nivel3Results.Clear();
-  }
-
-  private bool Nivel1TermMatchesSelection()
-    => !string.IsNullOrWhiteSpace(selectedNivel1)
-       && string.Equals((nivel1Term ?? string.Empty).Trim(), selectedNivel1.Trim(), StringComparison.OrdinalIgnoreCase);
-
-  private bool Nivel2TermMatchesSelection()
-    => !string.IsNullOrWhiteSpace(selectedNivel2)
-       && string.Equals(NormalizeTwoDigits(nivel2Term), selectedNivel2, StringComparison.OrdinalIgnoreCase);
-
-  private bool Nivel3TermMatchesSelection()
-    => !string.IsNullOrWhiteSpace(selectedNivel3)
-       && string.Equals(NormalizeTwoDigits(nivel3Term), selectedNivel3, StringComparison.OrdinalIgnoreCase);
-
   private void GoToPoliza(int poliza)
-    => Navigation.NavigateTo($"/cfdi/polizas/{poliza}");
-
-  private static string NormalizeTwoDigits(string value)
-  {
-    var trimmed = value?.Trim() ?? string.Empty;
-    if (trimmed.Length == 1 && char.IsDigit(trimmed[0]))
-    {
-      return trimmed.PadLeft(2, '0');
-    }
-
-    return trimmed;
-  }
+    => Navigation.NavigateTo($"/contabilidad/transacciones/{poliza}");
 
   private void ReportError(string message, Exception exception)
   {
     errorMessage = message;
     Console.Error.WriteLine($"[ContabilidadRegistros] {message}: {exception}");
   }
-
-    
-
 }

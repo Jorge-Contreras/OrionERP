@@ -119,13 +119,24 @@ public class SatDescargaPage : ComponentBase
   {
     if (Busy) return;
     Busy = true; StateHasChanged();
+
     try
     {
-      var cert = await LoadCertAsync();
-      foreach (var s in Solicitudes)
+      // Only those with EstadoSolicitud == 1
+      var toVerify = Solicitudes
+        .Where(s => s.EstadoSolicitud.HasValue && s.EstadoSolicitud.Value == 1)
+        .ToList();
+
+      if (toVerify.Count > 0)
       {
-        await Coordinator.VerifyAsync(s.Id, cert);
+        var cert = await LoadCertAsync();
+
+        foreach (var s in toVerify)
+        {
+          await Coordinator.VerifyAsync(s.Id, cert);
+        }
       }
+
       await LoadSolicitudesAsync();
       UiMessages.ShowSuccess("Estado de solicitudes actualizado.");
     }
@@ -139,6 +150,7 @@ public class SatDescargaPage : ComponentBase
     }
   }
 
+
   protected async Task DescargarYProcesarAsync(int solicitudId)
   {
     if (Busy) return;
@@ -146,7 +158,28 @@ public class SatDescargaPage : ComponentBase
     try
     {
       var cert = await LoadCertAsync();
+
+      // 1) Download + process
       LastSummary = await Coordinator.DownloadAndProcessAsync(solicitudId, cert);
+
+      // 2) Mark as Procesada (7) BEFORE notifying the user
+      var current = await SolicitudesRepo.GetAsync(solicitudId);
+      await SolicitudesRepo.UpdateVerifySnapshotAsync(
+        solicitudId,
+        new SatVerifySnapshot
+        {
+          Estado = EstadoSolicitud.Procesada, // = 7
+                                              // Keep whatever SAT codes you might already have:
+          CodigoEstadoSolicitud = current?.CodigoEstadoSolicitud,
+          CodEstatus = current?.CodEstatus,
+          Mensaje = "Procesada localmente",
+          NumeroCfdis = current?.NumeroCfdis ?? 0,
+          PackageIds = Array.Empty<string>(),
+          // Also close the lifecycle if it wasn’t already closed:
+          IsTerminated = true
+        });
+
+      // 3) Refresh grid and notify
       await LoadSolicitudesAsync();
       UiMessages.ShowSuccess("Descarga y procesamiento completados.");
     }
@@ -159,4 +192,5 @@ public class SatDescargaPage : ComponentBase
       Busy = false; StateHasChanged();
     }
   }
+
 }

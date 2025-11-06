@@ -1,3 +1,5 @@
+using System;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -6,6 +8,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting.WindowsServices;
@@ -72,9 +75,66 @@ builder.Services
     .AddEntityFrameworkStores<OrionIdentityDbContext>()
     .AddDefaultTokenProviders();
 
+builder.Services.ConfigureApplicationCookie(options =>
+{
+  options.Events ??= new CookieAuthenticationEvents();
+
+  options.Events.OnRedirectToLogin = context =>
+  {
+    if (IsApiOrBlazorCircuitRequest(context.Request))
+    {
+      context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+      return Task.CompletedTask;
+    }
+
+    context.Response.Redirect(context.RedirectUri);
+    return Task.CompletedTask;
+  };
+
+  options.Events.OnRedirectToAccessDenied = context =>
+  {
+    if (IsApiOrBlazorCircuitRequest(context.Request))
+    {
+      context.Response.StatusCode = StatusCodes.Status403Forbidden;
+      return Task.CompletedTask;
+    }
+
+    context.Response.Redirect(context.RedirectUri);
+    return Task.CompletedTask;
+  };
+});
+
+static bool IsApiOrBlazorCircuitRequest(HttpRequest request)
+{
+  if (request.Path.StartsWithSegments("/_blazor"))
+  {
+    return true;
+  }
+
+  if (string.Equals(request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase))
+  {
+    return true;
+  }
+
+  var acceptHeaders = request.GetTypedHeaders().Accept;
+  if (acceptHeaders is not null)
+  {
+    foreach (var mediaType in acceptHeaders)
+    {
+      if (mediaType.MediaType.HasValue &&
+          mediaType.MediaType.Value.Equals("application/json", StringComparison.OrdinalIgnoreCase))
+      {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 builder.Services.AddScoped<IUserRfcState, UserRfcState>();
 builder.Services.AddScoped<ICurrentRfcAccessor, UserRfcStateAccessor>();
-builder.Services.AddScoped<ProtectedSessionStorage>();
+builder.Services.AddScoped<ProtectedLocalStorage>();
 builder.Services.AddScoped<IRfcContext, RfcContext>();
 builder.Services.AddScoped<IAuthorizationHandler, RoleForRfcHandler>();
 builder.Services.AddAuthorization(options =>

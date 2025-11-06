@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.Extensions.DependencyInjection;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
-using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
 using OrionERP.Web.Services;
 using OrionERP.Web.State;
 using System;
@@ -21,6 +20,7 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
     [Inject] protected IComprobanteQueryService ComprobanteQuery { get; set; } = default!;
     [Inject] protected ITransaccionQueryService TransaccionQuery { get; set; } = default!;
     [Inject] protected IConciliacionService Conciliacion { get; set; } = default!;
+    [Inject] protected ITransaccionService TransaccionService { get; set; } = default!;
     [Inject] protected IUserRfcState RfcState { get; set; } = default!;
     [Inject] protected IUiMessageService UiMessages { get; set; } = default!;
     [Inject] protected ISatXmlInboxService satXmlInboxService { get; set; } = default!;
@@ -43,6 +43,9 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
     protected int? SelectedTransaccionId { get; set; }
     protected string? ConciliarMessage { get; set; }
     protected bool IsConciliando { get; set; }
+    protected string CategoriaPlantillaIdInput { get; set; } = string.Empty;
+    protected bool IsApplyingCategoria { get; set; }
+    protected int? AttachmentProcessing { get; set; }
 
 
     // ---- UI State ----
@@ -107,6 +110,95 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
       }
 
       StateHasChanged();
+    }
+
+    protected async Task ApplyCategoriaPlantillaAsync()
+    {
+      if (!SelectedTransaccionId.HasValue)
+      {
+        UiMessages.ShowWarning("Selecciona una transacción antes de aplicar la plantilla de categoría.");
+        return;
+      }
+
+      if (!int.TryParse(CategoriaPlantillaIdInput, NumberStyles.Integer, CultureInfo.InvariantCulture, out var categoriaId) || categoriaId <= 0)
+      {
+        UiMessages.ShowWarning("Captura un identificador de categoría válido.");
+        return;
+      }
+
+      IsApplyingCategoria = true;
+      StateHasChanged();
+
+      try
+      {
+        var result = await TransaccionService.ApplyCategoriaPlantillaAsync(
+            SelectedTransaccionId.Value,
+            categoriaId);
+
+        if (result.Success)
+        {
+          UiMessages.ShowSuccess(result.Message);
+          await RefreshCandidatesAsync();
+        }
+        else
+        {
+          UiMessages.ShowError(result.Message);
+        }
+      }
+      catch (Exception ex)
+      {
+        UiMessages.ShowError("Error al aplicar la plantilla de categoría: " + ex.Message);
+      }
+      finally
+      {
+        IsApplyingCategoria = false;
+        StateHasChanged();
+      }
+    }
+
+    protected async Task ProcessSatXmlAsync(int attachmentId)
+    {
+      if (attachmentId <= 0)
+      {
+        UiMessages.ShowWarning("El resultado seleccionado no tiene un adjunto válido para procesar.");
+        return;
+      }
+
+      if (!SelectedTransaccionId.HasValue)
+      {
+        UiMessages.ShowWarning("Selecciona una transacción antes de procesar el XML del SAT.");
+        return;
+      }
+
+      AttachmentProcessing = attachmentId;
+      StateHasChanged();
+
+      try
+      {
+        var result = await TransaccionService.ProcessSatXmlAsync(
+            attachmentId,
+            SelectedTransaccionId.Value);
+
+        if (result.Success)
+        {
+          UiMessages.ShowSuccess(result.Message);
+          await RefreshCandidatesAsync();
+          await RefreshInvoicesAsync();
+        }
+        else
+        {
+          UiMessages.ShowError(result.Message);
+        }
+      }
+      catch (Exception ex)
+      {
+        UiMessages.ShowError("Error al procesar el XML del SAT: " + ex.Message);
+      }
+      finally
+      {
+        AttachmentProcessing = null;
+        StateHasChanged();
+      }
     }
 
 

@@ -1,0 +1,526 @@
+@page "/contabilidad/transacciones/{id:int}"
+@using System.Globalization
+@using OrionERP.Web.Shared
+@attribute [Authorize(Roles = "Administrador,SatOperator")]
+
+    
+
+<PageTitle>Transacción @Header?.DisplayFolio ?? Id.ToString(CultureInfo.InvariantCulture)</PageTitle>
+
+@if (IsLoading)
+{
+  <div class="orion-loading" role="status" aria-live="polite">
+    <span class="orion-spinner" aria-hidden="true"></span>
+    <span class="orion-strong">Cargando transacción…</span>
+  </div>
+}
+else if (!string.IsNullOrEmpty(ErrorMessage))
+{
+  <div class="alert alert-danger" role="alert">
+    <strong>Error:</strong> @ErrorMessage
+  </div>
+}
+else if (Header is not null)
+{
+  <div class="d-flex flex-column gap-3">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center gap-2">
+        <h5 class="mb-0 flex-grow-1">Datos de la transacción</h5>
+        <span class="badge @HeaderStatusCss">@HeaderStatus</span>
+      </div>
+      <div class="card-body">
+        <EditForm EditContext="HeaderEditContext" OnValidSubmit="SaveHeaderAsync">
+          <DataAnnotationsValidator />
+          <ValidationSummary />
+
+          <div class="row g-3">
+            <div class="col-md-2">
+              <label class="form-label">ID</label>
+              <input class="form-control" value="@Header.Id" readonly />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Concepto</label>
+              <InputText class="form-control" @bind-Value="Header.Concepto" />
+              <ValidationMessage For="() => Header.Concepto" />
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Fecha</label>
+              <InputDate class="form-control" @bind-Value="Header.Fecha" />
+              <ValidationMessage For="() => Header.Fecha" />
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+              <div class="form-check mb-1">
+                <InputCheckbox class="form-check-input" id="facturadoCheck" @bind-Value="Header.Facturado" />
+                <label class="form-check-label" for="facturadoCheck">Facturado</label>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">RFC</label>
+              <input class="form-control-plaintext text-muted" value="@Header.Rfc" readonly />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Categoría</label>
+              <InputSelect class="form-select" @bind-Value="Header.CategoriaId">
+                <option value="">Selecciona una categoría</option>
+                @foreach (var categoria in CategoriaOptions)
+                {
+                  <option value="@categoria.Id">@categoria.Display</option>
+                }
+              </InputSelect>
+              <ValidationMessage For="() => Header.CategoriaId" />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Monto</label>
+              <InputNumber class="form-control" step="0.01" @bind-Value="Header.Monto" />
+              <ValidationMessage For="() => Header.Monto" />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Referencia</label>
+              <input class="form-control" value="@Header.ReferenciaPreview" readonly title="@Header.Referencia ?? string.Empty" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Tipo de póliza</label>
+              <InputSelect class="form-select" @bind-Value="Header.TipoPoliza">
+                <option value="">Selecciona un tipo</option>
+                @foreach (var tipo in TipoPolizaOptions)
+                {
+                  <option value="@tipo">@tipo</option>
+                }
+              </InputSelect>
+              <ValidationMessage For="() => Header.TipoPoliza" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Forma de pago</label>
+              <InputSelect class="form-select" @bind-Value="Header.FormaPago">
+                <option value="">Selecciona una forma</option>
+                @foreach (var forma in FormaPagoOptions)
+                {
+                  <option value="@forma.Clave">@forma.Display</option>
+                }
+              </InputSelect>
+              <ValidationMessage For="() => Header.FormaPago" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Proyecto</label>
+              <div class="input-group mb-2">
+                <InputText class="form-control" @bind-Value="ProyectoSearchTerm" placeholder="Buscar por ID o descripción"
+                           @onkeydown="HandleProyectoSearchKeyDown" />
+                <button class="btn btn-outline-secondary" type="button" @onclick="SearchProyectoOptions">Buscar</button>
+              </div>
+              <InputSelect class="form-select" @bind-Value="Header.ProyectoId">
+                <option value="">Sin proyecto</option>
+                @foreach (var proyecto in ProyectoOptions)
+                {
+                  <option value="@proyecto.Id">@proyecto.Display</option>
+                }
+              </InputSelect>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Compra</label>
+              <div class="input-group mb-2">
+                <InputText class="form-control" @bind-Value="CompraSearchTerm" placeholder="Buscar por ID o descripción"
+                           @onkeydown="HandleCompraSearchKeyDown" />
+                <button class="btn btn-outline-secondary" type="button" @onclick="SearchCompraOptions">Buscar</button>
+              </div>
+              <InputSelect class="form-select" @bind-Value="Header.CompraId">
+                <option value="">Sin compra</option>
+                @foreach (var compra in CompraOptions)
+                {
+                  <option value="@compra.Id">@compra.Display</option>
+                }
+              </InputSelect>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Servicio</label>
+              <InputSelect class="form-select" @bind-Value="Header.ServicioId">
+                <option value="">Sin servicio</option>
+                @foreach (var servicio in ServicioOptions)
+                {
+                  <option value="@servicio.Id">@servicio.Display</option>
+                }
+              </InputSelect>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Reservación</label>
+              <InputSelect class="form-select" @bind-Value="Header.ReservacionId">
+                <option value="">Sin reservación</option>
+                @foreach (var reservacion in ReservacionOptions)
+                {
+                  <option value="@reservacion.Id">@reservacion.Display</option>
+                }
+              </InputSelect>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Nómina</label>
+              <InputSelect class="form-select" @bind-Value="Header.NominaId">
+                <option value="">Sin nómina</option>
+                @foreach (var nomina in NominaOptions)
+                {
+                  <option value="@nomina.Id">@nomina.Display</option>
+                }
+              </InputSelect>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Memo</label>
+              <InputTextArea class="form-control" rows="4" @bind-Value="Header.Memo" />
+              <ValidationMessage For="() => Header.Memo" />
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 justify-content-end mt-4">
+            <button type="submit" class="btn btn-primary" disabled="@IsSavingHeader">
+              @if (IsSavingHeader)
+              {
+                <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+              }
+              Guardar cambios
+            </button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="ResetHeader" disabled="@IsSavingHeader">
+              Deshacer
+            </button>
+          </div>
+        </EditForm>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-xl-8 d-flex flex-column gap-3">
+        <div class="card shadow-sm">
+          <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+            <h5 class="mb-0 flex-grow-1">Movimientos</h5>
+            <span class="badge text-bg-dark">Debe: @Totals.Debe.ToString("N2")</span>
+            <span class="badge text-bg-dark">Haber: @Totals.Haber.ToString("N2")</span>
+            <span class="badge @(Totals.Balance == 0 ? "text-bg-success" : "text-bg-warning")">
+              Balance: @Totals.Balance.ToString("N2")
+            </span>
+            <button class="btn btn-sm btn-outline-primary ms-auto" type="button" @onclick="() => OpenMovimientoModal(null)">
+              <span class="oi oi-plus me-1" aria-hidden="true"></span>Agregar
+            </button>
+          </div>
+          <div class="card-body">
+            @if (Movimientos.Count == 0)
+            {
+              <p class="text-muted mb-0">No hay movimientos registrados.</p>
+            }
+            else
+            {
+              <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Cuenta</th>
+                      <th>Concepto</th>
+                      <th class="text-end">Debe</th>
+                      <th class="text-end">Haber</th>
+                      <th class="text-end">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @foreach (var movimiento in Movimientos.Select((item, index) => (item, index)))
+                    {
+                      <tr class="@GetMovimientoRowClass(movimiento.item)" @onclick="() => OpenMovimientoModal(movimiento.item)">
+                        <td>@(movimiento.index + 1)</td>
+                        <td>@movimiento.item.NombreCuenta</td>
+                        <td>@movimiento.item.Concepto</td>
+                        <td class="text-end">@movimiento.item.Debe.ToString("N2")</td>
+                        <td class="text-end">@movimiento.item.Haber.ToString("N2")</td>
+                        <td class="text-end">
+                          <button type="button"
+                                  class="btn btn-sm btn-outline-danger"
+                                  title="Eliminar movimiento"
+                                  disabled="@IsMovimientoDeleting(movimiento.item)"
+                                  @onclick="async () => await DeleteMovimientoAsync(movimiento.item)"
+                                  @onclick:stopPropagation="true">
+                            @if (IsMovimientoDeleting(movimiento.item))
+                            {
+                              <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                              <span class="visually-hidden">Eliminando…</span>
+                            }
+                            else
+                            {
+                              <span class="oi oi-trash" aria-hidden="true"></span>
+                              <span class="visually-hidden">Eliminar</span>
+                            }
+                          </button>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="card shadow-sm">
+          <div class="card-header d-flex align-items-center flex-wrap gap-2">
+            <h5 class="mb-0 flex-grow-1">Archivos adjuntos</h5>
+            <span class="badge text-bg-secondary">@Attachments.Count</span>
+            <label class="btn btn-sm btn-outline-primary ms-auto mb-0 @(IsUploadingAttachment ? "disabled" : string.Empty)">
+              @if (IsUploadingAttachment)
+              {
+                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                <span>Cargando…</span>
+              }
+              else
+              {
+                <span class="oi oi-cloud-upload me-1" aria-hidden="true"></span>
+                <span>Cargar archivo</span>
+              }
+              <InputFile @key="_attachmentInputKey"
+                         class="d-none"
+                         OnChange="OnAttachmentSelectedAsync"
+                         disabled="@IsUploadingAttachment" />
+            </label>
+          </div>
+          <div class="card-body">
+            @if (Attachments.Count == 0)
+            {
+              <p class="text-muted mb-0">No hay archivos adjuntos.</p>
+            }
+            else
+            {
+              <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                  <thead>
+                    <tr>
+                      <th>Nombre</th>
+                      <th>Extensión</th>
+                      <th class="text-end">Tamaño</th>
+                      <th class="text-end">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @foreach (var attachment in Attachments)
+                    {
+                      <tr @ondblclick="async () => await DownloadAttachmentAsync(attachment)" style="cursor: pointer;">
+                        <td>@attachment.Nombre</td>
+                        <td>@attachment.Extension</td>
+                        <td class="text-end">@attachment.TamanoHumano</td>
+                        <td class="text-end">
+                          <div class="d-inline-flex gap-2">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-primary"
+                                    disabled="@(IsAttachmentDownloading(attachment) || IsAttachmentDeleting(attachment))"
+                                    @onclick="async () => await DownloadAttachmentAsync(attachment)">
+                              @if (IsAttachmentDownloading(attachment))
+                              {
+                                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                                <span>Descargando&hellip;</span>
+                              }
+                              else
+                              {
+                                <span class="oi oi-cloud-download me-1" aria-hidden="true"></span>
+                                <span>Descargar</span>
+                              }
+                            </button>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-danger"
+                                    disabled="@(IsAttachmentDeleting(attachment) || IsAttachmentDownloading(attachment))"
+                                    @onclick="async () => await DeleteAttachmentAsync(attachment)">
+                              @if (IsAttachmentDeleting(attachment))
+                              {
+                                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                                <span>Eliminando&hellip;</span>
+                              }
+                              else
+                              {
+                                <span class="oi oi-trash me-1" aria-hidden="true"></span>
+                                <span>Eliminar</span>
+                              }
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+
+      <div class="col-xl-4 d-flex flex-column gap-3">
+        <div class="card shadow-sm">
+          <div class="card-header d-flex align-items-center">
+            <h5 class="mb-0 flex-grow-1">Comprobantes vinculados</h5>
+            <span class="badge text-bg-secondary">@Comprobantes.Count</span>
+          </div>
+          <div class="card-body">
+            @if (Comprobantes.Count == 0)
+            {
+              <p class="text-muted mb-0">No hay comprobantes vinculados.</p>
+            }
+            else
+            {
+              <div class="table-responsive" style="max-height: 320px;">
+                <table class="table table-sm table-hover align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th>Id</th>
+                      <th>Serie</th>
+                      <th>Folio</th>
+                      <th>Fecha</th>
+                      <th class="text-end">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @foreach (var comprobante in Comprobantes)
+                    {
+                      <tr>
+                        <td>@comprobante.ComprobanteId</td>
+                        <td>@comprobante.Serie</td>
+                        <td>@comprobante.Folio</td>
+                        <td>@comprobante.Fecha.ToString("yyyy-MM-dd")</td>
+                        <td class="text-end">@comprobante.Total.ToString("N2")</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="card shadow-sm">
+          <div class="card-header">
+            <h5 class="mb-0">Resumen</h5>
+          </div>
+          <div class="card-body">
+            <dl class="row mb-0">
+              <dt class="col-6">Total movimientos</dt>
+              <dd class="col-6 text-end">@Movimientos.Count</dd>
+              <dt class="col-6">Suma Debe</dt>
+              <dd class="col-6 text-end">@Totals.Debe.ToString("N2")</dd>
+              <dt class="col-6">Suma Haber</dt>
+              <dd class="col-6 text-end">@Totals.Haber.ToString("N2")</dd>
+              <dt class="col-6">Balance</dt>
+              <dd class="col-6 text-end">@Totals.Balance.ToString("N2")</dd>
+              <dt class="col-6">Archivos</dt>
+              <dd class="col-6 text-end">@Attachments.Count</dd>
+              <dt class="col-6">Comprobantes</dt>
+              <dd class="col-6 text-end">@Comprobantes.Count</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+}
+else
+{
+  <div class="alert alert-warning" role="alert">No se encontró la transacción solicitada.</div>
+}
+
+@if (ShowMovimientoModal && MovimientoDraft is not null)
+{
+  <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.35);" role="dialog" aria-modal="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">@MovimientoModalTitle</h5>
+          <button type="button" class="btn-close" @onclick="CloseMovimientoModal"></button>
+        </div>
+        <div class="modal-body">
+          <EditForm EditContext="MovimientoEditContext"
+                    OnSubmit="PreventMovimientoSubmit">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="d-flex flex-column gap-3">
+              <div class="d-flex flex-wrap gap-2 align-items-center">
+                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="ShowCuentaPicker">Buscar/Reemplazar Cuenta</button>
+                @if (!string.IsNullOrWhiteSpace(MovimientoDraft?.Descripcion))
+                {
+                  <span class="badge text-bg-info text-wrap flex-grow-1">@MovimientoDraft!.Descripcion</span>
+                }
+              </div>
+              <ValidationMessage For="() => MovimientoDraft!.NombreCuenta" />
+
+              @if (IsCuentaPickerVisible)
+              {
+                <div class="border rounded p-3 bg-light-subtle">
+                  <CuentaContablePicker
+                    @ref="CuentaPicker"
+                    SelectedRfc="@CuentaPickerRfc"
+                    SelectedRfcChanged="@OnCuentaPickerRfcChangedAsync"
+                    Selection="@MovimientoCuentaSelection"
+                    SelectionChanged="@OnCuentaPickerSelectionChangedAsync"
+                    SearchRequested="@OnCuentaPickerSearchRequestedAsync"
+                    ErrorChanged="@OnCuentaPickerErrorChangedAsync" />
+
+                  @if (!string.IsNullOrWhiteSpace(CuentaPickerError))
+                  {
+                    <div class="alert alert-danger mt-3 mb-0" role="alert">@CuentaPickerError</div>
+                  }
+
+                  <div class="d-flex justify-content-end mt-3">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="HideCuentaPicker">Cerrar</button>
+                  </div>
+                </div>
+              }
+
+              <div class="d-flex flex-wrap gap-2">
+                <span class="badge text-bg-secondary">Nivel 1: @FormatNivelValue(MovimientoDraft?.Nivel1)</span>
+                <span class="badge text-bg-secondary">Nivel 2: @FormatNivelValue(MovimientoDraft?.Nivel2)</span>
+                <span class="badge text-bg-secondary">Nivel 3: @FormatNivelValue(MovimientoDraft?.Nivel3)</span>
+              </div>
+
+              <div class="row g-3 align-items-end">
+                <div class="col-lg-8">
+                  <label class="form-label text-uppercase">Concepto</label>
+                    <InputText class="form-control" @bind-Value="MovimientoDraft!.Concepto" />
+                    <ValidationMessage For="() => MovimientoDraft!.Concepto" />
+                </div>
+                <div class="col-lg-4 d-flex align-items-end">
+                  <button type="button" class="btn btn-outline-secondary w-100" @onclick="CopyConceptoFromHeader">Concepto póliza</button>
+                </div>
+              </div>
+
+              <div class="row g-3 align-items-end">
+                <div class="col-lg-4">
+                  <label class="form-label text-uppercase">Debe</label>
+                  <InputNumber class="form-control" step="0.01" @bind-Value="MovimientoDraft!.Debe" />
+                  <ValidationMessage For="() => MovimientoDraft!.Debe" />
+                </div>
+                <div class="col-lg-8">
+                  <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyMontoToDebe">Copiar monto a Debe</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ApplySubtotalToDebe">Subtotal</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ApplyIvaToDebe">IVA</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ClearDebe">Cero</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row g-3 align-items-end">
+                <div class="col-lg-4">
+                  <label class="form-label text-uppercase">Haber</label>
+                  <InputNumber class="form-control" step="0.01" @bind-Value="MovimientoDraft!.Haber" />
+                  <ValidationMessage For="() => MovimientoDraft!.Haber" />
+                </div>
+                <div class="col-lg-8">
+                  <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyMontoToHaber">Copiar monto a Haber</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ApplySubtotalToHaber">Subtotal</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ApplyIvaToHaber">IVA</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ClearHaber">Cero</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="d-flex justify-content-end gap-2">
+                <button class="btn btn-outline-secondary" type="button" @onclick="CloseMovimientoModal">Cancelar</button>
+                <button class="btn btn-primary" type="button" @onclick="SaveMovimientoAsync">Guardar movimiento</button>
+              </div>
+            </div>
+          </EditForm>
+        </div>
+      </div>
+    </div>
+  </div>
+} 
+

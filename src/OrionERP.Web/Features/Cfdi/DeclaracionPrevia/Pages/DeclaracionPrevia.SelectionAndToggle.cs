@@ -124,7 +124,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       {
         using var conn = new SqlConnection(connectionString);
         var resultados = (await conn.QueryAsync<PagoComplementoResumen>(
-          "EXEC cfdi.usp_Pagos20_Resumen_ByUUID @UUID_DoctoRelacionado",
+          "EXEC cfdi.Complemento_Resumen_By_UUID @UUID_DoctoRelacionado",
           new { UUID_DoctoRelacionado = uuid })).AsList();
 
         if (isEmitida)

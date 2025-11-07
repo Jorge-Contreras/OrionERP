@@ -13,7 +13,6 @@ public sealed class TransaccionGuardarCerrarRequest
   public int? ProyectoId { get; set; }
   public int? CompraId { get; set; }
   public int? ServicioId { get; set; }
-  public string? ReservacionId { get; set; }
   public int? NominaId { get; set; }
   public string? TipoPoliza { get; set; }
   public string? FormaPago { get; set; }

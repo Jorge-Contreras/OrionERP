@@ -119,5 +119,24 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       public int CountCFDIs { get; set; }
       public string? SumTotal { get; set; }
     }
+
+    public class PagoComplementoResumen
+    {
+      public int Pago_Id { get; set; }
+      public string? Folio { get; set; }
+      public DateTime FechaPago { get; set; }
+      public string? FormaDePagoP { get; set; }
+      public string? MonedaP { get; set; }
+      public decimal MontoPago { get; set; }
+      public int NumParcialidad { get; set; }
+      public string? MonedaDR { get; set; }
+      public decimal ImpSaldoAnt { get; set; }
+      public decimal ImpPagado { get; set; }
+      public decimal ImpSaldoInsoluto { get; set; }
+      public decimal Tot_P_Traslados { get; set; }
+      public decimal Tot_P_Retenciones { get; set; }
+      public decimal Tot_DR_Traslados { get; set; }
+      public decimal Tot_DR_Retenciones { get; set; }
+    }
   }
 }

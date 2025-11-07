@@ -24,14 +24,23 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
     // Data lists and other outputs
     private List<DeclaracionEmitida>? emitidas;
+    private List<DeclaracionEmitida>? emitidasNomina;
     private List<DeclaracionRecibida>? recibidas;
+    private List<DeclaracionRecibida>? recibidasNomina;
     private List<DesfaseItem>? desfase;
     private List<PolizaNoConsolidada>? polizasNoConsolidadas;
     private DeclaracionTotales? emitidasTotals;
+    private DeclaracionTotales? emitidasNominaTotals;
+    private DeclaracionTotales? emitidasNominaDeclaracionTotals;
     private DeclaracionTotales? recibidasTotals;
+    private DeclaracionTotales? recibidasNominaTotals;
+    private DeclaracionTotales? recibidasNominaDeclaracionTotals;
     private DesfaseTotales? desfaseTotals;
     private string? impuestosSummary;
     private string? bancosCajaSummary;
+
+    private List<PagoComplementoResumen>? emitidasComplementos;
+    private List<PagoComplementoResumen>? recibidasComplementos;
 
     // For UI selection and messages
     private DeclaracionEmitida? selectedEmitida;

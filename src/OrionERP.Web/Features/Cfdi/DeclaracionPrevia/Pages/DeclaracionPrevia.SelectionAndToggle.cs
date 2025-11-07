@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Data.SqlClient;
@@ -8,15 +9,19 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
   public partial class DeclaracionPrevia
   {
     // Row selection:
-    private void SelectEmitida(DeclaracionEmitida item)
+    private async Task SelectEmitidaAsync(DeclaracionEmitida item)
     {
       selectedEmitida = item;
       selectedRecibida = null;
+      recibidasComplementos = new List<PagoComplementoResumen>();
+      await LoadComplementosAsync(item?.FOLIO_FISCAL, isEmitida: true);
     }
-    private void SelectRecibida(DeclaracionRecibida item)
+    private async Task SelectRecibidaAsync(DeclaracionRecibida item)
     {
       selectedRecibida = item;
       selectedEmitida = null;
+      emitidasComplementos = new List<PagoComplementoResumen>();
+      await LoadComplementosAsync(item?.FOLIO_FISCAL, isEmitida: false);
     }
 
     // Toggle Include/Exclude for selected invoice (Emitidas)
@@ -97,6 +102,43 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       catch (Exception ex)
       {
         SetErrorMessage("Error al excluir pagos/devoluciones: " + ex.Message);
+      }
+    }
+
+    private async Task LoadComplementosAsync(string? uuidText, bool isEmitida)
+    {
+      if (string.IsNullOrWhiteSpace(uuidText) || !Guid.TryParse(uuidText, out var uuid))
+      {
+        if (isEmitida)
+        {
+          emitidasComplementos = new List<PagoComplementoResumen>();
+        }
+        else
+        {
+          recibidasComplementos = new List<PagoComplementoResumen>();
+        }
+        return;
+      }
+
+      try
+      {
+        using var conn = new SqlConnection(connectionString);
+        var resultados = (await conn.QueryAsync<PagoComplementoResumen>(
+          "EXEC cfdi.usp_Pagos20_Resumen_ByUUID @UUID_DoctoRelacionado",
+          new { UUID_DoctoRelacionado = uuid })).AsList();
+
+        if (isEmitida)
+        {
+          emitidasComplementos = resultados;
+        }
+        else
+        {
+          recibidasComplementos = resultados;
+        }
+      }
+      catch (Exception ex)
+      {
+        SetErrorMessage("Error al cargar complementos de pago: " + ex.Message);
       }
     }
   }

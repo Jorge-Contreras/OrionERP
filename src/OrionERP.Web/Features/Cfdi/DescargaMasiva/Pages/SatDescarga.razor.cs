@@ -89,9 +89,11 @@ public class SatDescargaPage : ComponentBase
     try
     {
       var cert = await LoadCertAsync();
+      var currentRfc = RfcState.CurrentRfc
+        ?? throw new InvalidOperationException("Selecciona un RFC para continuar.");
       var p = new SolicitudParams(
           Issued: Issued,
-          RfcSolicitante: RfcState.CurrentRfc,
+          RfcSolicitante: currentRfc,
           FilterRfc: FilterRfc,
           TipoSolicitud: TipoSolicitud,
           EstadoComprobante: EstadoComprobante,

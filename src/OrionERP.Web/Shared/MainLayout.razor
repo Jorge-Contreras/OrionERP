@@ -19,7 +19,7 @@
             <NotificationBanner />
         </div>
         <article>
-            <ErrorBoundary>
+            <ErrorBoundary @ref="_errorBoundary" OnError="HandleError">
                 <ChildContent>
                     @Body
                 </ChildContent>

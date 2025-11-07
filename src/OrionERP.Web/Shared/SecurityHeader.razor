@@ -100,7 +100,6 @@
 
 @code {
     private const string RfcStorageKey = "orionerp.selectedRfc";
-    private string? _selectedRfc;
 
     private async Task LogoutJs()
     {
@@ -111,7 +110,6 @@
     {
         await SignInManager.SignOutAsync();
         Rfc.CurrentRfc = null;
-        _selectedRfc = null;
         await Js.InvokeVoidAsync("localStorage.removeItem", RfcStorageKey);
         Navigation.NavigateTo("/", forceLoad: true);
     }

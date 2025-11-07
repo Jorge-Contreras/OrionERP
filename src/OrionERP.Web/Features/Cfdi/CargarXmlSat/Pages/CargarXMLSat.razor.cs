@@ -82,14 +82,18 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
           transaccionId: SelectedTransaccionId.Value);
 
       IsConciliando = false;
-      ConciliarMessage = result.Message;
+      var message = string.IsNullOrWhiteSpace(result.Message)
+        ? "Operación completada."
+        : result.Message;
+
+      ConciliarMessage = message;
       if (result.Success)
       {
-        UiMessages.ShowSuccess(result.Message);
+        UiMessages.ShowSuccess(message);
       }
       else
       {
-        UiMessages.ShowError(result.Message);
+        UiMessages.ShowError(message);
       }
 
       if (result.Success)
@@ -134,14 +138,18 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
             SelectedTransaccionId.Value,
             categoriaId);
 
+        var message = string.IsNullOrWhiteSpace(result.Message)
+          ? "Operación completada."
+          : result.Message;
+
         if (result.Success)
         {
-          UiMessages.ShowSuccess(result.Message);
+          UiMessages.ShowSuccess(message);
           await RefreshCandidatesAsync();
         }
         else
         {
-          UiMessages.ShowError(result.Message);
+          UiMessages.ShowError(message);
         }
       }
       catch (Exception ex)

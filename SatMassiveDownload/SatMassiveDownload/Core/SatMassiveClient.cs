@@ -39,12 +39,9 @@ public sealed class SatMassiveClient : ISatMassiveService
 
     public async Task AuthenticateAsync(X509Certificate2 cert, CancellationToken ct = default)
     {
-        // 1) Build WS-Security header: Timestamp + BinarySecurityToken + Signature(RSA-SHA1)
-        // 2) Build SOAP envelope with <Autentica/>
-        // 3) POST with SOAPAction: http://DescargaMasivaTerceros.gob.mx/IAutenticacion/Autentica
-        // 4) Parse token from response into _token
+        ArgumentNullException.ThrowIfNull(cert);
 
-        var soapXml = BuildAuthEnvelope(cert);                 // TODO: implement
+        var soapXml = BuildAuthEnvelope(cert);
         var req = new HttpRequestMessage(HttpMethod.Post, AuthUrl)
         {
             Content = new StringContent(soapXml, Encoding.UTF8, "text/xml")
@@ -54,11 +51,15 @@ public sealed class SatMassiveClient : ISatMassiveService
         var resp = await _http.SendAsync(req, ct);
         var xml = await resp.Content.ReadAsStringAsync(ct);
         resp.EnsureSuccessStatusCode();
-        _cert = cert;
 
-        _token = ExtractToken(xml);                            // TODO: implement
-        if (string.IsNullOrWhiteSpace(_token))
+        var token = ExtractToken(xml);
+        if (string.IsNullOrWhiteSpace(token))
+        {
             throw new InvalidOperationException("SAT token not found");
+        }
+
+        _cert = cert;
+        _token = token;
     }
 
     public async Task<string> RequestAsync(DateTime startUtc, DateTime endUtc, bool issued,
@@ -66,8 +67,9 @@ public sealed class SatMassiveClient : ISatMassiveService
                                            string tipoSolicitud = "CFDI", string? estado = null,
                                            CancellationToken ct = default)
     {
-        EnsureToken();
-        var envelope = BuildRequestEnvelope(startUtc, endUtc, issued, rfcSolicitante, rfcFiltro, tipoSolicitud, estado); // signature inside
+        var token = GetTokenOrThrow();
+        var cert = GetCertificateOrThrow();
+        var envelope = BuildRequestEnvelope(cert, startUtc, endUtc, issued, rfcSolicitante, rfcFiltro, tipoSolicitud, estado);
         var action = issued
             ? "http://DescargaMasivaTerceros.sat.gob.mx/ISolicitaDescargaService/SolicitaDescargaEmitidos"
             : "http://DescargaMasivaTerceros.sat.gob.mx/ISolicitaDescargaService/SolicitaDescargaRecibidos";
@@ -77,7 +79,7 @@ public sealed class SatMassiveClient : ISatMassiveService
             Content = new StringContent(envelope, Encoding.UTF8, "text/xml")
         };
         req.Headers.Add("SOAPAction", action);
-        req.Headers.TryAddWithoutValidation("Authorization", $@"WRAP access_token=""{_token}""");
+        req.Headers.TryAddWithoutValidation("Authorization", $@"WRAP access_token=""{token}""");
 
         var resp = await _http.SendAsync(req, ct);
         var xml = await resp.Content.ReadAsStringAsync(ct);
@@ -88,15 +90,16 @@ public sealed class SatMassiveClient : ISatMassiveService
 
     public async Task<VerifyResult> VerifyAsync(string idSolicitud, string rfcSolicitante, CancellationToken ct = default)
     {
-        EnsureToken();
-        var envelope = BuildVerifyEnvelope(idSolicitud, rfcSolicitante);
+        var token = GetTokenOrThrow();
+        var cert = GetCertificateOrThrow();
+        var envelope = BuildVerifyEnvelope(cert, idSolicitud, rfcSolicitante);
 
         var req = new HttpRequestMessage(HttpMethod.Post, VerifyUrl)
         {
             Content = new StringContent(envelope, Encoding.UTF8, "text/xml")
         };
         req.Headers.Add("SOAPAction", "http://DescargaMasivaTerceros.sat.gob.mx/IVerificaSolicitudDescargaService/VerificaSolicitudDescarga");
-        req.Headers.TryAddWithoutValidation("Authorization", $@"WRAP access_token=""{_token}""");
+        req.Headers.TryAddWithoutValidation("Authorization", $@"WRAP access_token=""{token}""");
 
         var resp = await _http.SendAsync(req, ct);
         var xml = await resp.Content.ReadAsStringAsync(ct);
@@ -108,8 +111,9 @@ public sealed class SatMassiveClient : ISatMassiveService
 
     public async Task<byte[]?> DownloadPackageAsync(string idPaquete, string rfcSolicitante, CancellationToken ct = default)
     {
-        EnsureToken();
-        var envelope = BuildDownloadEnvelope(idPaquete, rfcSolicitante); // signature inside
+        var token = GetTokenOrThrow();
+        var cert = GetCertificateOrThrow();
+        var envelope = BuildDownloadEnvelope(cert, idPaquete, rfcSolicitante);
 
         var req = new HttpRequestMessage(HttpMethod.Post, DownloadUrl)
         {
@@ -126,11 +130,21 @@ public sealed class SatMassiveClient : ISatMassiveService
         return string.IsNullOrWhiteSpace(base64) ? null : Convert.FromBase64String(base64);
     }
 
-    private void EnsureToken()
+    private string GetTokenOrThrow()
     {
         if (string.IsNullOrWhiteSpace(_token))
+        {
             throw new InvalidOperationException("Not authenticated: call AuthenticateAsync first");
+        }
+
+        return _token;
     }
+
+    private X509Certificate2 GetCertificateOrThrow()
+        => _cert ?? throw new InvalidOperationException("Cert not set. Call AuthenticateAsync first.");
+
+    private static RSA GetRequiredRsaPrivateKey(X509Certificate2 cert)
+        => cert.GetRSAPrivateKey() ?? throw new InvalidOperationException("Certificate has no RSA private key.");
 
     // ===== Helpers to implement =====
     // Dentro de SatMassiveClient
@@ -155,9 +169,7 @@ public sealed class SatMassiveClient : ISatMassiveService
 
     private static string BuildAuthEnvelope(X509Certificate2 cert)
     {
-        // Validaciones básicas
-        RSA? rsa = cert.GetRSAPrivateKey();
-        if (rsa is null) throw new InvalidOperationException("El certificado no contiene llave privada RSA.");
+        using RSA rsa = GetRequiredRsaPrivateKey(cert);
 
         var doc = new XmlDocument { PreserveWhitespace = true };
 
@@ -266,14 +278,17 @@ public sealed class SatMassiveClient : ISatMassiveService
         return doc.OuterXml;
     }
     
-    private string BuildRequestEnvelope(
-    DateTime s, DateTime e, bool issued,
-    string? rfcSol, string? rfcFiltro,
-    string tipo, string? estado)
+    private static string BuildRequestEnvelope(
+        X509Certificate2 cert,
+        DateTime s,
+        DateTime e,
+        bool issued,
+        string? rfcSol,
+        string? rfcFiltro,
+        string tipo,
+        string? estado)
     {
-        if (_cert is null) throw new InvalidOperationException("Cert not set. Call AuthenticateAsync first.");
-        RSA? rsa = _cert.GetRSAPrivateKey();
-        if (rsa is null) throw new InvalidOperationException("Certificate has no RSA private key.");
+        using RSA rsa = GetRequiredRsaPrivateKey(cert);
 
         var doc = new XmlDocument { PreserveWhitespace = true };
 
@@ -340,8 +355,8 @@ public sealed class SatMassiveClient : ISatMassiveService
         signedXml.AddReference(reference);
 
         var ki = new KeyInfo();
-        var x509 = new KeyInfoX509Data(_cert);
-        x509.AddCertificate(_cert);
+        var x509 = new KeyInfoX509Data(cert);
+        x509.AddCertificate(cert);
         ki.AddClause(x509);
         signedXml.KeyInfo = ki;
 
@@ -352,11 +367,9 @@ public sealed class SatMassiveClient : ISatMassiveService
     }
 
 
-    private string BuildVerifyEnvelope(string idSolicitud, string rfcSolicitante)
+    private static string BuildVerifyEnvelope(X509Certificate2 cert, string idSolicitud, string rfcSolicitante)
 {
-    if (_cert is null) throw new InvalidOperationException("Cert not set.");
-    RSA? rsa = _cert.GetRSAPrivateKey();
-    if (rsa is null) throw new InvalidOperationException("Certificate has no RSA private key.");
+    using RSA rsa = GetRequiredRsaPrivateKey(cert);
 
     var doc = new XmlDocument { PreserveWhitespace = true };
 
@@ -388,8 +401,8 @@ public sealed class SatMassiveClient : ISatMassiveService
     sx.AddReference(r);
 
     var ki = new KeyInfo();
-    var x509 = new KeyInfoX509Data(_cert);
-    x509.AddCertificate(_cert);
+    var x509 = new KeyInfoX509Data(cert);
+    x509.AddCertificate(cert);
     ki.AddClause(x509);
     sx.KeyInfo = ki;
 
@@ -399,11 +412,9 @@ public sealed class SatMassiveClient : ISatMassiveService
     return doc.OuterXml;
 }
 
-    private string BuildDownloadEnvelope(string idPaquete, string rfcSolicitante)
+    private static string BuildDownloadEnvelope(X509Certificate2 cert, string idPaquete, string rfcSolicitante)
     {
-        if (_cert is null) throw new InvalidOperationException("Cert not set.");
-        RSA? rsa = _cert.GetRSAPrivateKey();
-        if (rsa is null) throw new InvalidOperationException("Certificate has no RSA private key.");
+        using RSA rsa = GetRequiredRsaPrivateKey(cert);
 
         var doc = new XmlDocument { PreserveWhitespace = true };
 
@@ -436,8 +447,8 @@ public sealed class SatMassiveClient : ISatMassiveService
         sx.AddReference(r);
 
         var ki = new KeyInfo();
-        var x509 = new KeyInfoX509Data(_cert);
-        x509.AddCertificate(_cert);
+        var x509 = new KeyInfoX509Data(cert);
+        x509.AddCertificate(cert);
         ki.AddClause(x509);
         sx.KeyInfo = ki;
 

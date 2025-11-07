@@ -156,9 +156,10 @@
         catch { /* no-op */ }
     }
 
-    private async Task PersistCurrentAsync()
+    private Task PersistCurrentAsync()
     {
         // await Storage.SetAsync("current_rfc", RfcState.CurrentRfc ?? string.Empty);
+        return Task.CompletedTask;
     }
 
     public void Dispose()

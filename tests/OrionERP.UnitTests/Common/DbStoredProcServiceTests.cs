@@ -1,3 +1,4 @@
+using System;
 using Microsoft.Extensions.Logging.Abstractions;
 using OrionERP.Application.Common;
 using OrionERP.Infrastructure.Common;
@@ -46,6 +47,10 @@ public class DbStoredProcServiceTests
         });
   }
 
+#nullable disable
+
+#nullable disable
+
   private sealed class FakeConnectionFactory : IDbConnectionFactory
   {
     private readonly FakeDbConnection _connection;
@@ -59,9 +64,15 @@ public class DbStoredProcServiceTests
   {
     private ConnectionState _state = ConnectionState.Closed;
 
-    public FakeDbCommand? LastCommand { get; private set; }
+    public FakeDbCommand LastCommand { get; private set; }
 
-    public override string ConnectionString { get; set; } = string.Empty;
+    private string _connectionString = string.Empty;
+
+    public override string ConnectionString
+    {
+      get => _connectionString;
+      set => _connectionString = value ?? string.Empty;
+    }
 
     public override string Database => "Fake";
 
@@ -101,17 +112,29 @@ public class DbStoredProcServiceTests
 
     public List<FakeDbParameter> ParametersList => _parameters.Parameters;
 
-    public override string CommandText { get; set; } = string.Empty;
+    private string _commandText = string.Empty;
+
+    public override string CommandText
+    {
+      get => _commandText;
+      set => _commandText = value ?? string.Empty;
+    }
 
     public override int CommandTimeout { get; set; } = 30;
 
     public override CommandType CommandType { get; set; } = CommandType.Text;
 
-    protected override DbConnection DbConnection { get; set; } = default!;
+    private DbConnection _connection;
+
+    protected override DbConnection DbConnection
+    {
+      get => _connection ?? throw new InvalidOperationException("Connection not initialized.");
+      set => _connection = value;
+    }
 
     protected override DbParameterCollection DbParameterCollection => _parameters;
 
-    protected override DbTransaction? DbTransaction { get; set; } = null;
+    protected override DbTransaction DbTransaction { get; set; } = null;
 
     public override bool DesignTimeVisible { get; set; } = false;
 
@@ -126,7 +149,7 @@ public class DbStoredProcServiceTests
     public override Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
       => Task.FromResult(1);
 
-    public override object? ExecuteScalar() => null;
+    public override object ExecuteScalar() => null;
 
     public override void Prepare()
     {
@@ -153,6 +176,7 @@ public class DbStoredProcServiceTests
 
     public override int Add(object value)
     {
+      ArgumentNullException.ThrowIfNull(value);
       _parameters.Add((DbParameter)value);
       return _parameters.Count - 1;
     }
@@ -170,7 +194,8 @@ public class DbStoredProcServiceTests
 
     public override void Clear() => _parameters.Clear();
 
-    public override bool Contains(object value) => _parameters.Contains((DbParameter)value);
+    public override bool Contains(object value)
+      => value is not null && _parameters.Contains((DbParameter)value);
 
     public override bool Contains(string value)
       => _parameters.Any(p => string.Equals(p.ParameterName, value, StringComparison.OrdinalIgnoreCase));
@@ -184,13 +209,17 @@ public class DbStoredProcServiceTests
     protected override DbParameter GetParameter(string parameterName)
       => _parameters.First(p => string.Equals(p.ParameterName, parameterName, StringComparison.OrdinalIgnoreCase));
 
-    public override int IndexOf(object value) => _parameters.IndexOf((DbParameter)value);
+    public override int IndexOf(object value)
+      => value is null ? -1 : _parameters.IndexOf((DbParameter)value);
 
     public override int IndexOf(string parameterName)
       => _parameters.FindIndex(p => string.Equals(p.ParameterName, parameterName, StringComparison.OrdinalIgnoreCase));
 
     public override void Insert(int index, object value)
-      => _parameters.Insert(index, (DbParameter)value);
+    {
+      ArgumentNullException.ThrowIfNull(value);
+      _parameters.Insert(index, (DbParameter)value);
+    }
 
     public override bool IsFixedSize => false;
 
@@ -199,7 +228,12 @@ public class DbStoredProcServiceTests
     public override bool IsSynchronized => false;
 
     public override void Remove(object value)
-      => _parameters.Remove((DbParameter)value);
+    {
+      if (value is DbParameter parameter)
+      {
+        _parameters.Remove(parameter);
+      }
+    }
 
     public override void RemoveAt(int index) => _parameters.RemoveAt(index);
 
@@ -237,11 +271,23 @@ public class DbStoredProcServiceTests
 
     public override bool IsNullable { get; set; } = true;
 
-    public override string ParameterName { get; set; } = string.Empty;
+    private string _parameterName = string.Empty;
 
-    public override string SourceColumn { get; set; } = string.Empty;
+    public override string ParameterName
+    {
+      get => _parameterName;
+      set => _parameterName = value ?? string.Empty;
+    }
 
-    public override object? Value { get; set; } = null;
+    private string _sourceColumn = string.Empty;
+
+    public override string SourceColumn
+    {
+      get => _sourceColumn;
+      set => _sourceColumn = value ?? string.Empty;
+    }
+
+    public override object Value { get; set; } = null;
 
     public override bool SourceColumnNullMapping { get; set; } = false;
 
@@ -249,7 +295,9 @@ public class DbStoredProcServiceTests
 
     public override void ResetDbType()
     {
-    }
   }
+#nullable restore
+}
+#nullable restore
 }
 

@@ -1,7 +1,3 @@
-using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
-using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
-using Sat.MassiveDownload.Core;           // ISatMassiveService
-using Sat.MassiveDownload.Models;    // VerifyResult, EstadoSolicitud
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,279 +6,290 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using static OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts.VerifyResultDto;
+using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
+using Sat.MassiveDownload.Core;
 using SatEstado = Sat.MassiveDownload.Models.EstadoSolicitud;
 using App = OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
-using SatISvc = Sat.MassiveDownload.Core.ISatMassiveService;
-using System.Security.Cryptography.X509Certificates;
 
 namespace OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Services;
 
-
-
-
 public sealed class SatDownloadCoordinator : ISatDownloadCoordinator
 {
+    private static EstadoSolicitud Map(SatEstado estado)
+        => (EstadoSolicitud)(int)estado;
 
-  private static OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts.EstadoSolicitud Map(SatEstado s)
-    => (OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts.EstadoSolicitud)(int)s;
+    private readonly ISatMassiveService _sat;
+    private readonly ISatSolicitudesRepository _solicitudes;
+    private readonly ISatPaquetesRepository _paquetes;
+    private readonly ISatXmlInboxService _inbox;
+    private readonly ISatMetadataIngestService _meta;
 
-  private readonly ISatMassiveService _sat;
-  private readonly ISatSolicitudesRepository _solicitudes;
-  private readonly ISatPaquetesRepository _paquetes;
-  private readonly ISatXmlInboxService _inbox;
-  private readonly ISatMetadataIngestService _meta;
-  
-
-   public SatDownloadCoordinator(
-     SatISvc sat,
-     ISatSolicitudesRepository solicitudes,
-     ISatPaquetesRepository paquetes,
-
-    ISatXmlInboxService inbox,
-    ISatMetadataIngestService meta)
-{
-    _sat = sat; _solicitudes = solicitudes; _paquetes = paquetes; _inbox = inbox;
-    _meta = meta;
-}
-
-  public async Task<int> CreateSolicitudAsync(SolicitudParams p, CancellationToken ct = default)
-  {
-    var key = ComputeRequestKey(p);
-
-    var existing = await _solicitudes.FindByRequestKeyAsync(key, ct);
-    if (existing is not null) return existing.Id;
-
-    // For Recibidos + CFDI, SAT v1.5 requires Vigente
-    var estado = (!p.Issued && string.Equals(p.TipoSolicitud, "CFDI", StringComparison.OrdinalIgnoreCase))
-        ? (p.EstadoComprobante ?? "Vigente")
-        : p.EstadoComprobante;
-
-    // We'll set Folio after RequestAsync succeeds
-    var emisor = p.Issued ? p.RfcSolicitante : p.FilterRfc;
-    var receptor = p.Issued ? p.FilterRfc : p.RfcSolicitante;
-
-    var dto = new SatSolicitudDto
+    public SatDownloadCoordinator(
+        ISatMassiveService sat,
+        ISatSolicitudesRepository solicitudes,
+        ISatPaquetesRepository paquetes,
+        ISatXmlInboxService inbox,
+        ISatMetadataIngestService meta)
     {
-      RfcSolicitante = p.RfcSolicitante,
-      Issued = p.Issued,
-      TipoSolicitud = p.TipoSolicitud,
-      EstadoComprobante = estado,
-      RfcEmisor = emisor,
-      RfcReceptor = receptor,
-      FechaInicialUtc = p.StartUtc.ToUniversalTime(),
-      FechaFinalUtc = p.EndUtc.ToUniversalTime(),
-      PackageCount = 0
-    };
-
-    // Insert now to get an Id; then actually call SAT
-    var id = await _solicitudes.InsertAsync(dto, key, ct);
-
-    return id;
-  }
-
-  public async Task<VerifyResultDto> VerifyAsync(int solicitudId, X509Certificate2 cert, CancellationToken ct = default)
-  {
-    var row = await _solicitudes.GetAsync(solicitudId, ct)
-        ?? throw new InvalidOperationException("Solicitud no encontrada");
-
-    await _sat.AuthenticateAsync(cert, ct);
-
-    // If request wasn't sent yet (Folio null), send it now
-    if (row.Folio is null || row.Folio == Guid.Empty)
-    {
-      var folioStr = await _sat.RequestAsync(
-    row.FechaInicialUtc, row.FechaFinalUtc, row.Issued, row.RfcSolicitante, row.Issued ? row.RfcReceptor : row.RfcEmisor,
-    row.TipoSolicitud, row.EstadoComprobante, ct);
-
-      // Persist folio if it’s a valid GUID (SAT returns GUIDs in practice)
-      if (Guid.TryParse(folioStr?.Trim(), out var folioGuid))
-      {
-        await _solicitudes.SetFolioAsync(row.Id, folioGuid, ct);
-        row.Folio = folioGuid; // keep in-memory in sync
-      }
-      else
-      {
-        // Extremely unlikely with SAT, but log just in case
-        Console.WriteLine($"[WARN] Folio no es GUID: '{folioStr}'");
-      }
-
-      // Save a first "Aceptada" snapshot (optional but useful)
-      await _solicitudes.UpdateVerifySnapshotAsync(row.Id, new SatVerifySnapshot
-      {
-        Estado = Map(SatEstado.Aceptada),
-        CodigoEstadoSolicitud = null,
-        CodEstatus = "5000",
-        Mensaje = "Solicitud Aceptada",
-        NumeroCfdis = 0,
-        PackageIds = Array.Empty<string>(),
-        IsTerminated = false
-      }, ct);
-
-      // refresh row (optional)
-      row = await _solicitudes.GetAsync(solicitudId, ct)
-          ?? throw new InvalidOperationException("Solicitud no encontrada (post-insert)");
-
+        _sat = sat ?? throw new ArgumentNullException(nameof(sat));
+        _solicitudes = solicitudes ?? throw new ArgumentNullException(nameof(solicitudes));
+        _paquetes = paquetes ?? throw new ArgumentNullException(nameof(paquetes));
+        _inbox = inbox ?? throw new ArgumentNullException(nameof(inbox));
+        _meta = meta ?? throw new ArgumentNullException(nameof(meta));
     }
 
-    var v = await _sat.VerifyAsync(row.Folio!.ToString()!, row.RfcSolicitante, ct);
-
-    // Update DB snapshot
-    await _solicitudes.UpdateVerifySnapshotAsync(row.Id, new SatVerifySnapshot
+    public async Task<int> CreateSolicitudAsync(SolicitudParams parameters, CancellationToken ct = default)
     {
-      Estado = Map(v.Estado),
-      CodigoEstadoSolicitud = v.CodigoEstadoSolicitud,
-      CodEstatus = v.CodEstatus,
-      Mensaje = v.Mensaje,
-      NumeroCfdis = v.NumeroCfdis,
-      PackageIds = v.PackageIds,
-      IsTerminated = Map(v.Estado) == Map(SatEstado.Terminada)
-    }, ct);
+        ArgumentNullException.ThrowIfNull(parameters);
 
-    return new VerifyResultDto
-    {
-      Estado = Map(v.Estado),
-      CodigoEstadoSolicitud = v.CodigoEstadoSolicitud,
-      CodEstatus = v.CodEstatus,
-      Mensaje = v.Mensaje,
-      NumeroCfdis = v.NumeroCfdis,
-      PackageIds = v.PackageIds,
-      HumanStatus = v.HumanStatus
-    };
-  }
-
-  public async Task<App.ProcessSummary> DownloadAndProcessAsync(int solicitudId, X509Certificate2 cert, CancellationToken ct = default)
-  {
-    var row = await _solicitudes.GetAsync(solicitudId, ct)
-        ?? throw new InvalidOperationException("Solicitud no encontrada");
-
-    await _sat.AuthenticateAsync(cert, ct);
-
-    var pkgs = await _paquetes.ListBySolicitudAsync(solicitudId, ct);
-    var summary = new App.ProcessSummary();
-
-    bool isMetadata = string.Equals(row.TipoSolicitud, "Metadata", StringComparison.OrdinalIgnoreCase);
-
-    foreach (var pkg in pkgs.Where(p => !p.Processed))
-    {
-      try
-      {
-        var bytes = await _sat.DownloadPackageAsync(pkg.PackageId, row.RfcSolicitante, ct);
-        if (bytes is null || bytes.Length == 0)
+        var requestKey = ComputeRequestKey(parameters);
+        var existing = await _solicitudes.FindByRequestKeyAsync(requestKey, ct).ConfigureAwait(false);
+        if (existing is not null)
         {
-          await _paquetes.MarkProcessedAsync(solicitudId, pkg.PackageId, new App.SatPackageProcessInfo
-          {
-            XmlCount = 0,
-            SuccessCount = 0,
-            FailureCount = 0,
-            ZipSizeBytes = 0,
-            ErrorMessage = "ZIP vacío"
-          }, ct);
-          continue;
+            return existing.Id;
         }
 
-        if (isMetadata)
+        var estado = !parameters.Issued && string.Equals(parameters.TipoSolicitud, "CFDI", StringComparison.OrdinalIgnoreCase)
+            ? parameters.EstadoComprobante ?? "Vigente"
+            : parameters.EstadoComprobante;
+
+        var emisor = parameters.Issued ? parameters.RfcSolicitante : parameters.FilterRfc;
+        var receptor = parameters.Issued ? parameters.FilterRfc : parameters.RfcSolicitante;
+
+        var dto = new SatSolicitudDto
         {
-          var metaDetails = await SatZipIngestion.PushZipMetadataAsync(pkg.PackageId, bytes, _meta, ct);
+            RfcSolicitante = parameters.RfcSolicitante,
+            Issued = parameters.Issued,
+            TipoSolicitud = parameters.TipoSolicitud,
+            EstadoComprobante = estado,
+            RfcEmisor = emisor,
+            RfcReceptor = receptor,
+            FechaInicialUtc = parameters.StartUtc.ToUniversalTime(),
+            FechaFinalUtc = parameters.EndUtc.ToUniversalTime(),
+            PackageCount = 0
+        };
 
-          var ok = metaDetails.Count(x => x.Success);
-          var fail = metaDetails.Count - ok;
+        var id = await _solicitudes.InsertAsync(dto, requestKey, ct).ConfigureAwait(false);
+        return id;
+    }
 
-          await _paquetes.MarkProcessedAsync(solicitudId, pkg.PackageId, new App.SatPackageProcessInfo
-          {
-            XmlCount = metaDetails.Count, // reusing column to store "files processed"
-            SuccessCount = ok,
-            FailureCount = fail,
-            ZipSizeBytes = bytes.LongLength
-          }, ct);
+    public async Task<VerifyResultDto> VerifyAsync(int solicitudId, X509Certificate2 cert, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(cert);
 
-          summary.Packages++;
-          summary.MetaFiles += metaDetails.Count;
-          summary.MetaOk += ok;
-          summary.MetaFail += fail;
-          summary.MetaDetails.AddRange(metaDetails);
+        var solicitud = await _solicitudes.GetAsync(solicitudId, ct).ConfigureAwait(false)
+                       ?? throw new InvalidOperationException("Solicitud no encontrada");
+
+        await _sat.AuthenticateAsync(cert, ct).ConfigureAwait(false);
+
+        if (!solicitud.Folio.HasValue || solicitud.Folio.Value == Guid.Empty)
+        {
+            var folioStr = await _sat.RequestAsync(
+                solicitud.FechaInicialUtc,
+                solicitud.FechaFinalUtc,
+                solicitud.Issued,
+                solicitud.RfcSolicitante,
+                solicitud.Issued ? solicitud.RfcReceptor : solicitud.RfcEmisor,
+                solicitud.TipoSolicitud,
+                solicitud.EstadoComprobante,
+                ct).ConfigureAwait(false);
+
+            if (Guid.TryParse(folioStr?.Trim(), out var folioGuid))
+            {
+                await _solicitudes.SetFolioAsync(solicitud.Id, folioGuid, ct).ConfigureAwait(false);
+                solicitud.Folio = folioGuid;
+            }
+            else if (!string.IsNullOrWhiteSpace(folioStr))
+            {
+                Console.Error.WriteLine($"[WARN] Folio no es GUID: '{folioStr}'");
+            }
+
+            await _solicitudes.UpdateVerifySnapshotAsync(solicitud.Id, new SatVerifySnapshot
+            {
+                Estado = Map(SatEstado.Aceptada),
+                CodigoEstadoSolicitud = null,
+                CodEstatus = "5000",
+                Mensaje = "Solicitud Aceptada",
+                NumeroCfdis = 0,
+                PackageIds = Array.Empty<string>(),
+                IsTerminated = false
+            }, ct).ConfigureAwait(false);
+
+            solicitud = await _solicitudes.GetAsync(solicitudId, ct).ConfigureAwait(false)
+                         ?? throw new InvalidOperationException("Solicitud no encontrada (post-insert)");
         }
-        else
+
+        var folio = solicitud.Folio ?? throw new InvalidOperationException("La solicitud no tiene folio asignado.");
+        var verify = await _sat.VerifyAsync(folio.ToString(), solicitud.RfcSolicitante, ct).ConfigureAwait(false);
+
+        await _solicitudes.UpdateVerifySnapshotAsync(solicitud.Id, new SatVerifySnapshot
         {
-          var details = await SatZipIngestion.PushZipToInboxWithMetadataAsync(pkg.PackageId, bytes, _inbox, ct);
+            Estado = Map(verify.Estado),
+            CodigoEstadoSolicitud = verify.CodigoEstadoSolicitud,
+            CodEstatus = verify.CodEstatus,
+            Mensaje = verify.Mensaje,
+            NumeroCfdis = verify.NumeroCfdis,
+            PackageIds = verify.PackageIds,
+            IsTerminated = Map(verify.Estado) == Map(SatEstado.Terminada)
+        }, ct).ConfigureAwait(false);
 
-          var ok = details.Count(x => x.Success);
-          var fail = details.Count - ok;
+        return new VerifyResultDto
+        {
+            Estado = Map(verify.Estado),
+            CodigoEstadoSolicitud = verify.CodigoEstadoSolicitud,
+            CodEstatus = verify.CodEstatus,
+            Mensaje = verify.Mensaje,
+            NumeroCfdis = verify.NumeroCfdis,
+            PackageIds = verify.PackageIds,
+            HumanStatus = verify.HumanStatus
+        };
+    }
 
-          await _paquetes.MarkProcessedAsync(solicitudId, pkg.PackageId, new App.SatPackageProcessInfo
-          {
-            XmlCount = details.Count,
-            SuccessCount = ok,
-            FailureCount = fail,
-            ZipSizeBytes = bytes.LongLength
-          }, ct);
+    public async Task<App.ProcessSummary> DownloadAndProcessAsync(int solicitudId, X509Certificate2 cert, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(cert);
 
-          summary.Packages++;
-          summary.Xmls += details.Count;
-          summary.Ok += ok;
-          summary.Fail += fail;
-          summary.Details.AddRange(details);
+        var solicitud = await _solicitudes.GetAsync(solicitudId, ct).ConfigureAwait(false)
+                       ?? throw new InvalidOperationException("Solicitud no encontrada");
+
+        await _sat.AuthenticateAsync(cert, ct).ConfigureAwait(false);
+
+        var paquetes = await _paquetes.ListBySolicitudAsync(solicitudId, ct).ConfigureAwait(false);
+        var summary = new App.ProcessSummary();
+        var isMetadata = string.Equals(solicitud.TipoSolicitud, "Metadata", StringComparison.OrdinalIgnoreCase);
+
+        foreach (var paquete in paquetes.Where(p => !p.Processed))
+        {
+            try
+            {
+                var bytes = await _sat.DownloadPackageAsync(paquete.PackageId, solicitud.RfcSolicitante, ct).ConfigureAwait(false);
+                if (bytes is null || bytes.Length == 0)
+                {
+                    await _paquetes.MarkProcessedAsync(solicitudId, paquete.PackageId, new App.SatPackageProcessInfo
+                    {
+                        XmlCount = 0,
+                        SuccessCount = 0,
+                        FailureCount = 0,
+                        ZipSizeBytes = 0,
+                        ErrorMessage = "ZIP vacío"
+                    }, ct).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (isMetadata)
+                {
+                    var metaDetails = await SatZipIngestion.PushZipMetadataAsync(paquete.PackageId, bytes, _meta, ct).ConfigureAwait(false);
+                    var ok = metaDetails.Count(d => d.Success);
+                    var fail = metaDetails.Count - ok;
+
+                    await _paquetes.MarkProcessedAsync(solicitudId, paquete.PackageId, new App.SatPackageProcessInfo
+                    {
+                        XmlCount = metaDetails.Count,
+                        SuccessCount = ok,
+                        FailureCount = fail,
+                        ZipSizeBytes = bytes.LongLength
+                    }, ct).ConfigureAwait(false);
+
+                    summary.Packages++;
+                    summary.MetaFiles += metaDetails.Count;
+                    summary.MetaOk += ok;
+                    summary.MetaFail += fail;
+                    summary.MetaDetails.AddRange(metaDetails);
+                }
+                else
+                {
+                    var details = await SatZipIngestion.PushZipToInboxWithMetadataAsync(paquete.PackageId, bytes, _inbox, ct).ConfigureAwait(false);
+                    var ok = details.Count(d => d.Success);
+                    var fail = details.Count - ok;
+
+                    await _paquetes.MarkProcessedAsync(solicitudId, paquete.PackageId, new App.SatPackageProcessInfo
+                    {
+                        XmlCount = details.Count,
+                        SuccessCount = ok,
+                        FailureCount = fail,
+                        ZipSizeBytes = bytes.LongLength
+                    }, ct).ConfigureAwait(false);
+
+                    summary.Packages++;
+                    summary.Xmls += details.Count;
+                    summary.Ok += ok;
+                    summary.Fail += fail;
+                    summary.Details.AddRange(details);
+                }
+            }
+            catch (Exception ex)
+            {
+                await _paquetes.MarkProcessedAsync(solicitudId, paquete.PackageId, new App.SatPackageProcessInfo
+                {
+                    XmlCount = 0,
+                    SuccessCount = 0,
+                    FailureCount = 0,
+                    ZipSizeBytes = 0,
+                    ErrorMessage = ex.Message
+                }, ct).ConfigureAwait(false);
+            }
         }
-      }
-      catch (Exception ex)
-      {
-        await _paquetes.MarkProcessedAsync(solicitudId, pkg.PackageId, new App.SatPackageProcessInfo
+
+        foreach (var detail in summary.Details)
         {
-          XmlCount = 0,
-          SuccessCount = 0,
-          FailureCount = 0,
-          ZipSizeBytes = 0,
-          ErrorMessage = ex.Message
-        }, ct);
-      }
+            if (!string.IsNullOrWhiteSpace(detail.RfcEmisor))
+            {
+                summary.ByEmisor[detail.RfcEmisor] = summary.ByEmisor.TryGetValue(detail.RfcEmisor, out var current)
+                    ? current + 1
+                    : 1;
+            }
+
+            if (!string.IsNullOrWhiteSpace(detail.RfcReceptor))
+            {
+                summary.ByReceptor[detail.RfcReceptor] = summary.ByReceptor.TryGetValue(detail.RfcReceptor, out var current)
+                    ? current + 1
+                    : 1;
+            }
+
+            if (detail.Success && detail.Total is not null)
+            {
+                summary.TotalImporte = (summary.TotalImporte ?? 0m) + detail.Total.Value;
+            }
+        }
+
+        var errorBuckets = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var detail in summary.Details)
+        {
+            if (!detail.Success && !string.IsNullOrWhiteSpace(detail.Error))
+            {
+                errorBuckets[detail.Error] = errorBuckets.TryGetValue(detail.Error, out var current)
+                    ? current + 1
+                    : 1;
+            }
+        }
+
+        foreach (var (message, count) in errorBuckets)
+        {
+            summary.Errors.Add(new App.ErrorBucket { Message = message, Count = count });
+        }
+
+        return summary;
     }
 
-    // CFDI aggregates (as before)
-    foreach (var d in summary.Details)
+    private static string ComputeRequestKey(SolicitudParams parameters)
     {
-      if (!string.IsNullOrWhiteSpace(d.RfcEmisor))
-        summary.ByEmisor[d.RfcEmisor] = (summary.ByEmisor.TryGetValue(d.RfcEmisor, out var c) ? c : 0) + 1;
+        var emisor = parameters.Issued ? parameters.RfcSolicitante : parameters.FilterRfc;
+        var receptor = parameters.Issued ? parameters.FilterRfc : parameters.RfcSolicitante;
 
-      if (!string.IsNullOrWhiteSpace(d.RfcReceptor))
-        summary.ByReceptor[d.RfcReceptor] = (summary.ByReceptor.TryGetValue(d.RfcReceptor, out var c2) ? c2 : 0) + 1;
-
-      if (d.Success && d.Total is not null)
-        summary.TotalImporte = (summary.TotalImporte ?? 0m) + d.Total.Value;
-    }
-
-    // Error buckets (CFDI)
-    var buckets = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-    foreach (var d in summary.Details)
-    {
-      if (!d.Success && !string.IsNullOrWhiteSpace(d.Error))
-        buckets[d.Error] = (buckets.TryGetValue(d.Error, out var c) ? c : 0) + 1;
-    }
-    foreach (var kv in buckets)
-      summary.Errors.Add(new App.ErrorBucket { Message = kv.Key, Count = kv.Value });
-
-    return summary;
-  }
-
-
-
-  private static string ComputeRequestKey(SolicitudParams p)
-  {
-    var emisor = p.Issued ? p.RfcSolicitante : p.FilterRfc;
-    var receptor = p.Issued ? p.FilterRfc : p.RfcSolicitante;
-
-    var payload = string.Join("|", new[]
-    {
-            p.Issued ? "Emitidos" : "Recibidos",
-            p.TipoSolicitud ?? "",
-            p.EstadoComprobante ?? "",
-            p.RfcSolicitante ?? "",
-            emisor ?? "",
-            receptor ?? "",
-            p.StartUtc.ToUniversalTime().ToString("O"),
-            p.EndUtc.ToUniversalTime().ToString("O")
+        var payload = string.Join("|", new[]
+        {
+            parameters.Issued ? "Emitidos" : "Recibidos",
+            parameters.TipoSolicitud ?? string.Empty,
+            parameters.EstadoComprobante ?? string.Empty,
+            parameters.RfcSolicitante ?? string.Empty,
+            emisor ?? string.Empty,
+            receptor ?? string.Empty,
+            parameters.StartUtc.ToUniversalTime().ToString("O"),
+            parameters.EndUtc.ToUniversalTime().ToString("O")
         });
 
-    using var sha = SHA256.Create();
-    return Convert.ToHexString(sha.ComputeHash(Encoding.UTF8.GetBytes(payload)));
-  }
+        using var sha = SHA256.Create();
+        return Convert.ToHexString(sha.ComputeHash(Encoding.UTF8.GetBytes(payload)));
+    }
 }

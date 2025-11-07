@@ -21,7 +21,7 @@ public static class RazorPageDataProtector
     var ciphertext = new byte[bytes.Length];
     var tag = new byte[TagSize];
 
-    using var aesGcm = new AesGcm(EncryptionKey.Value);
+    using var aesGcm = new AesGcm(EncryptionKey.Value, TagSize);
     aesGcm.Encrypt(nonce, bytes, ciphertext, tag);
 
     var payload = new byte[NonceSize + TagSize + ciphertext.Length];
@@ -44,7 +44,7 @@ public static class RazorPageDataProtector
       var encryptedData = ciphertextSpan[(NonceSize + TagSize)..];
       var plaintext = new byte[encryptedData.Length];
 
-      using var aesGcm = new AesGcm(EncryptionKey.Value);
+      using var aesGcm = new AesGcm(EncryptionKey.Value, TagSize);
       aesGcm.Decrypt(nonce, encryptedData, tag, plaintext);
       return Encoding.UTF8.GetString(plaintext);
     }

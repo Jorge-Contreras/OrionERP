@@ -31,10 +31,8 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private List<PolizaNoConsolidada>? polizasNoConsolidadas;
     private DeclaracionTotales? emitidasTotals;
     private DeclaracionTotales? emitidasNominaTotals;
-    private DeclaracionTotales? emitidasNominaDeclaracionTotals;
     private DeclaracionTotales? recibidasTotals;
     private DeclaracionTotales? recibidasNominaTotals;
-    private DeclaracionTotales? recibidasNominaDeclaracionTotals;
     private DesfaseTotales? desfaseTotals;
     private string? impuestosSummary;
     private string? bancosCajaSummary;

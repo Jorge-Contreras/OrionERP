@@ -4,6 +4,16 @@
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
 <h3>Declaración Previa</h3>
+<style>
+    .sea-green-highlight {
+        background-color: #2e8b57;
+        color: #fff;
+    }
+
+    .table-active.sea-green-highlight {
+        background-color: #246947;
+    }
+</style>
 @if (_filtering)
 {
     <span class="orion-loading" role="status" aria-live="polite">
@@ -145,7 +155,7 @@
                                 @foreach (var item in emitidasPage)
                                 {
                                     <tr @onclick="async () => await SelectEmitidaAsync(item)"
-                                        class="@((selectedEmitida?.Comprobante_Id == item.Comprobante_Id ? "table-active" : ""))"
+                                        class="@GetEmitidaRowClass(item)"
                                         style="cursor:pointer;">
                                         <td>@item.D</td>
                                         <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
@@ -392,31 +402,6 @@
                                     </div>
                                 }
 
-                                @if (emitidasNominaDeclaracionTotals != null)
-                                {
-                                    <div class="table-responsive table-scroll mt-3">
-                                        <table class="table table-sm table-bordered table-striped align-middle compact-table">
-                                            <tbody>
-                                                <tr class="table-light">
-                                                    <td colspan="4"><strong># CFDIs:</strong> @emitidasNominaDeclaracionTotals.CountCFDIs</td>
-                                                    <td><strong>Totales:</strong></td>
-                                                    <td class="num">@emitidasNominaDeclaracionTotals.SumSubTotal.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaDeclaracionTotals.SumDescuento.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaDeclaracionTotals.SumSubTotalDesc.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaDeclaracionTotals.SumActos16.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaDeclaracionTotals.SumActos0.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaDeclaracionTotals.SumIVA.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaDeclaracionTotals.SumIEPS.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaDeclaracionTotals.SumIVA_RETENIDO.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaDeclaracionTotals.SumISR_RETENIDO.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaDeclaracionTotals.SumIEPS_RETENIDO.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaDeclaracionTotals.SumTotal.ToString("N2")</td>
-                                                    <td colspan="10"></td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                }
                             </div>
                         </div>
                     </div>
@@ -501,7 +486,7 @@
                                 @foreach (var item in recibidasPage)
                                 {
                                     <tr @onclick="async () => await SelectRecibidaAsync(item)"
-                                        class="@((selectedRecibida?.Comprobante_Id == item.Comprobante_Id ? "table-active" : ""))"
+                                        class="@GetRecibidaRowClass(item)"
                                         style="cursor:pointer;">
                                         <td>@item.D</td>
                                         <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
@@ -750,31 +735,6 @@
                                     </div>
                                 }
 
-                                @if (recibidasNominaDeclaracionTotals != null)
-                                {
-                                    <div class="table-responsive table-scroll mt-3">
-                                        <table class="table table-sm table-bordered table-striped align-middle compact-table">
-                                            <tbody>
-                                                <tr class="table-light">
-                                                    <td colspan="4"><strong># CFDIs:</strong> @recibidasNominaDeclaracionTotals.CountCFDIs</td>
-                                                    <td><strong>Totales:</strong></td>
-                                                    <td class="num">@recibidasNominaDeclaracionTotals.SumSubTotal.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaDeclaracionTotals.SumDescuento.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaDeclaracionTotals.SumSubTotalDesc.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaDeclaracionTotals.SumActos16.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaDeclaracionTotals.SumActos0.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaDeclaracionTotals.SumIVA.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaDeclaracionTotals.SumIEPS.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaDeclaracionTotals.SumIVA_RETENIDO.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaDeclaracionTotals.SumISR_RETENIDO.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaDeclaracionTotals.SumIEPS_RETENIDO.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaDeclaracionTotals.SumTotal.ToString("N2")</td>
-                                                    <td colspan="10"></td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                }
                             </div>
                         </div>
                     </div>

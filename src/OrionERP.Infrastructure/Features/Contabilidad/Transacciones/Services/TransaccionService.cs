@@ -337,16 +337,36 @@ WHERE ta.ID = @AttachmentId;";
   public async Task<IReadOnlyList<TransaccionComprobanteDto>> GetComprobantesAsync(int transaccionId, CancellationToken ct = default)
   {
     const string sql = @"SELECT
-    c.Comprobante_Id                       AS ComprobanteId,
-    c.Serie                                AS Serie,
-    c.Folio                                AS Folio,
-    c.Fecha                                AS Fecha,
-    CAST(c.Total AS decimal(18,4))         AS Total,
-    CAST(CASE WHEN tc.Transaccion_ID IS NULL THEN 0 ELSE 1 END AS bit) AS Vinculado
-FROM dbo.Transaccion_Comprobante tc
-INNER JOIN cfdi.Comprobante c ON c.Comprobante_Id = tc.Comprobante_ID
+    CAST(tc.Monto AS decimal(18, 4))                       AS PolizaMonto,
+    tc.Comprobante_ID                                      AS ComprobanteId,
+    CASE WHEN cd.Incluir_En_Declaracion = 1 THEN N'✔' ELSE N'X' END AS D,
+    cd.Fecha,
+    cd.MESES                                               AS MesGlobal,
+    cd.ANIO                                                AS AnioGlobal,
+    cd.EMISOR                                              AS Emisor,
+    CAST(cd.SubTotal AS decimal(18, 4))                    AS SubTotal,
+    CAST(cd.Descuento AS decimal(18, 4))                   AS Descuento,
+    CAST(cd.SubTotal_Desc AS decimal(18, 4))               AS SubTotalDesc,
+    CAST(cd.Actos_16 AS decimal(18, 4))                    AS Actos16,
+    CAST(cd.Actos_0 AS decimal(18, 4))                     AS Actos0,
+    CAST(cd.IVA AS decimal(18, 4))                         AS Iva,
+    CAST(cd.IEPS AS decimal(18, 4))                        AS Ieps,
+    CAST(cd.IVA_RETENIDO AS decimal(18, 4))                AS IvaRetenido,
+    CAST(cd.ISR_RETENIDO AS decimal(18, 4))                AS IsrRetenido,
+    CAST(cd.IEPS_RETENIDO AS decimal(18, 4))               AS IepsRetenido,
+    CAST(cd.Total AS decimal(18, 4))                       AS Total,
+    cd.FOLIO_FISCAL                                        AS FolioFiscal,
+    cd.FormaPago,
+    cd.TipoDeComprobante,
+    cd.MetodoPago,
+    cd.UsoCFDI                                             AS UsoCfdi,
+    cd.FechaCancelacion,
+    cd.Estatus,
+    tc.Transaccion_ID                                      AS TransaccionId
+FROM dbo.Transaccion_Comprobante AS tc
+INNER JOIN cfdi.Comprobante_Detalle AS cd ON tc.Comprobante_ID = cd.Comprobante_Id
 WHERE tc.Transaccion_ID = @TransaccionId
-ORDER BY c.Fecha DESC;";
+ORDER BY cd.Fecha DESC;";
 
     using var conn = new SqlConnection(_cs);
     var rows = await conn.QueryAsync<TransaccionComprobanteDto>(

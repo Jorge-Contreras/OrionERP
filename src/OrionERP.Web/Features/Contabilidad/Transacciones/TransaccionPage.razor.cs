@@ -308,11 +308,32 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       var comprobantesDto = await TransaccionService.GetComprobantesAsync(Id, ct);
       Comprobantes.AddRange(comprobantesDto.Select(c => new ComprobanteModel
       {
+        PolizaMonto = c.PolizaMonto,
         ComprobanteId = c.ComprobanteId,
-        Serie = c.Serie ?? string.Empty,
-        Folio = c.Folio ?? string.Empty,
+        D = c.D ?? string.Empty,
         Fecha = c.Fecha,
+        MesGlobal = c.MesGlobal ?? string.Empty,
+        AnioGlobal = c.AnioGlobal,
+        Emisor = c.Emisor ?? string.Empty,
+        SubTotal = c.SubTotal,
+        Descuento = c.Descuento,
+        SubTotalDesc = c.SubTotalDesc,
+        Actos16 = c.Actos16,
+        Actos0 = c.Actos0,
+        Iva = c.Iva,
+        Ieps = c.Ieps,
+        IvaRetenido = c.IvaRetenido,
+        IsrRetenido = c.IsrRetenido,
+        IepsRetenido = c.IepsRetenido,
         Total = c.Total,
+        FolioFiscal = c.FolioFiscal ?? string.Empty,
+        FormaPago = c.FormaPago ?? string.Empty,
+        TipoDeComprobante = c.TipoDeComprobante ?? string.Empty,
+        MetodoPago = c.MetodoPago ?? string.Empty,
+        UsoCfdi = c.UsoCfdi ?? string.Empty,
+        FechaCancelacion = c.FechaCancelacion,
+        Estatus = c.Estatus ?? string.Empty,
+        TransaccionId = c.TransaccionId,
         Vinculado = c.Vinculado
       }));
     }
@@ -1124,11 +1145,32 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected sealed class ComprobanteModel
   {
+    public decimal? PolizaMonto { get; set; }
     public int ComprobanteId { get; set; }
-    public string Serie { get; set; } = string.Empty;
-    public string Folio { get; set; } = string.Empty;
+    public string D { get; set; } = string.Empty;
     public DateTime Fecha { get; set; }
-    public decimal Total { get; set; }
+    public string MesGlobal { get; set; } = string.Empty;
+    public int? AnioGlobal { get; set; }
+    public string Emisor { get; set; } = string.Empty;
+    public decimal? SubTotal { get; set; }
+    public decimal? Descuento { get; set; }
+    public decimal? SubTotalDesc { get; set; }
+    public decimal? Actos16 { get; set; }
+    public decimal? Actos0 { get; set; }
+    public decimal? Iva { get; set; }
+    public decimal? Ieps { get; set; }
+    public decimal? IvaRetenido { get; set; }
+    public decimal? IsrRetenido { get; set; }
+    public decimal? IepsRetenido { get; set; }
+    public decimal? Total { get; set; }
+    public string FolioFiscal { get; set; } = string.Empty;
+    public string FormaPago { get; set; } = string.Empty;
+    public string TipoDeComprobante { get; set; } = string.Empty;
+    public string MetodoPago { get; set; } = string.Empty;
+    public string UsoCfdi { get; set; } = string.Empty;
+    public DateTime? FechaCancelacion { get; set; }
+    public string Estatus { get; set; } = string.Empty;
+    public int TransaccionId { get; set; }
     public bool Vinculado { get; set; }
   }
 

@@ -109,9 +109,6 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         emitidasNominaTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
           "EXEC cfdi.Declaracion_Emitidas_Nomina_Totales @Year, @Month, @RFC_Emisor", common);
 
-        emitidasNominaDeclaracionTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
-          "EXEC cfdi.Declaracion_Emitidas_Nomina_Totales @Year, @Month, @RFC_Emisor", common);
-
         recibidas = (await conn.QueryAsync<DeclaracionRecibida>(
           "EXEC dbo.Declaracion_Recibidas @Year, @Month, @RFC_Receptor", common)).AsList();
 
@@ -122,10 +119,6 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
           "EXEC cfdi.Declaracion_Recibidas_Nomina @Year, @Month, @RFC_Receptor", common)).AsList();
 
         recibidasNominaTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
-          "EXEC cfdi.Declaracion_Recibidas_Nomina_Totales @Year, @Month, @RFC_Receptor", common);
-
-        recibidasNominaDeclaracionTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
-          //"EXEC dbo.Declaracion_Nomina_Totales @Year, @Month, @RFC_Receptor", common);
           "EXEC cfdi.Declaracion_Recibidas_Nomina_Totales @Year, @Month, @RFC_Receptor", common);
 
         desfase = (await conn.QueryAsync<DesfaseItem>(

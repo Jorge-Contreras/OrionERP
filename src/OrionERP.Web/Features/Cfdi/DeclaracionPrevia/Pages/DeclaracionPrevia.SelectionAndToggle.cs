@@ -141,5 +141,39 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         SetErrorMessage("Error al cargar complementos de pago: " + ex.Message);
       }
     }
+
+    private string GetEmitidaRowClass(DeclaracionEmitida item)
+    {
+      var classes = new List<string>();
+
+      if (selectedEmitida?.Comprobante_Id == item.Comprobante_Id)
+      {
+        classes.Add("table-active");
+      }
+
+      if (string.Equals(item.MetodoPago, "PPD", StringComparison.OrdinalIgnoreCase))
+      {
+        classes.Add("sea-green-highlight");
+      }
+
+      return string.Join(" ", classes);
+    }
+
+    private string GetRecibidaRowClass(DeclaracionRecibida item)
+    {
+      var classes = new List<string>();
+
+      if (selectedRecibida?.Comprobante_Id == item.Comprobante_Id)
+      {
+        classes.Add("table-active");
+      }
+
+      if (string.Equals(item.MetodoPago, "PPD", StringComparison.OrdinalIgnoreCase))
+      {
+        classes.Add("sea-green-highlight");
+      }
+
+      return string.Join(" ", classes);
+    }
   }
 }

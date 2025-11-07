@@ -21,6 +21,14 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones;
 
 public partial class TransaccionPage : ComponentBase, IDisposable
 {
+  protected enum SectionPanel
+  {
+    Movimientos,
+    Comprobantes,
+    Attachments,
+    Resumen
+  }
+
   private CancellationTokenSource? _loadCts;
   private TransaccionHeaderModel? _headerOriginal;
   private MovimientoModel? _movimientoTarget;
@@ -31,6 +39,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private readonly List<LookupInt32Dto> _allCompraOptions = new();
   private CuentaContablePicker? CuentaPicker;
   private int _attachmentInputKey;
+  private SectionPanel? _expandedSection = SectionPanel.Movimientos;
 
   private bool _isDisposed;
 
@@ -48,6 +57,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected EditContext? HeaderEditContext { get; private set; }
   protected bool IsLoading { get; private set; } = true;
   protected bool IsSavingHeader { get; private set; }
+  protected bool IsApplyingPlantilla { get; private set; }
   protected string? ErrorMessage { get; private set; }
 
   protected MovimientoTotalsDto Totals { get; private set; } = new();
@@ -58,7 +68,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected List<LookupInt32Dto> ProyectoOptions { get; } = new();
   protected List<LookupInt32Dto> CompraOptions { get; } = new();
   protected List<LookupInt32Dto> ServicioOptions { get; } = new();
-  protected List<LookupStringDto> ReservacionOptions { get; } = new();
   protected List<LookupInt32Dto> NominaOptions { get; } = new();
   protected List<FormaPagoLookupDto> FormaPagoOptions { get; } = new();
   protected IReadOnlyList<string> TipoPolizaOptions { get; } = new[] { "INGRESO", "EGRESO", "DIARIO" };
@@ -78,6 +87,15 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string HeaderStatus => Totals.Balance == 0m ? "Balanceada" : "Desbalanceada";
   protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
   protected bool IsUploadingAttachment { get; private set; }
+
+  protected bool IsSectionExpanded(SectionPanel section) => _expandedSection == section;
+
+  protected string GetSectionToggleIcon(SectionPanel section) => IsSectionExpanded(section) ? "oi-chevron-bottom" : "oi-chevron-right";
+
+  protected void ToggleSection(SectionPanel section)
+  {
+    _expandedSection = _expandedSection == section ? (SectionPanel?)null : section;
+  }
 
   protected override void OnInitialized()
   {
@@ -126,7 +144,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     _allCompraOptions.Clear();
     CompraOptions.Clear();
     ServicioOptions.Clear();
-    ReservacionOptions.Clear();
     NominaOptions.Clear();
     FormaPagoOptions.Clear();
     ProyectoSearchTerm = string.Empty;
@@ -152,9 +169,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
       var servicios = await TransaccionService.GetServiciosAsync(currentRfc, ct);
       ServicioOptions.AddRange(servicios);
-
-      var reservaciones = await TransaccionService.GetReservacionesAsync(currentRfc, ct);
-      ReservacionOptions.AddRange(reservaciones);
 
       var nominas = await TransaccionService.GetNominasAsync(currentRfc, ct);
       NominaOptions.AddRange(nominas);
@@ -274,7 +288,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         ProyectoId = headerDto.ProyectoId,
         CompraId = headerDto.CompraId,
         ServicioId = headerDto.ServicioId,
-        ReservacionId = headerDto.ReservacionId,
         NominaId = headerDto.NominaId,
         TipoPoliza = headerDto.TipoPoliza,
         FormaPago = headerDto.FormaPago,
@@ -295,11 +308,32 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       var comprobantesDto = await TransaccionService.GetComprobantesAsync(Id, ct);
       Comprobantes.AddRange(comprobantesDto.Select(c => new ComprobanteModel
       {
+        PolizaMonto = c.PolizaMonto,
         ComprobanteId = c.ComprobanteId,
-        Serie = c.Serie ?? string.Empty,
-        Folio = c.Folio ?? string.Empty,
+        D = c.D ?? string.Empty,
         Fecha = c.Fecha,
+        MesGlobal = c.MesGlobal ?? string.Empty,
+        AnioGlobal = c.AnioGlobal,
+        Emisor = c.Emisor ?? string.Empty,
+        SubTotal = c.SubTotal,
+        Descuento = c.Descuento,
+        SubTotalDesc = c.SubTotalDesc,
+        Actos16 = c.Actos16,
+        Actos0 = c.Actos0,
+        Iva = c.Iva,
+        Ieps = c.Ieps,
+        IvaRetenido = c.IvaRetenido,
+        IsrRetenido = c.IsrRetenido,
+        IepsRetenido = c.IepsRetenido,
         Total = c.Total,
+        FolioFiscal = c.FolioFiscal ?? string.Empty,
+        FormaPago = c.FormaPago ?? string.Empty,
+        TipoDeComprobante = c.TipoDeComprobante ?? string.Empty,
+        MetodoPago = c.MetodoPago ?? string.Empty,
+        UsoCfdi = c.UsoCfdi ?? string.Empty,
+        FechaCancelacion = c.FechaCancelacion,
+        Estatus = c.Estatus ?? string.Empty,
+        TransaccionId = c.TransaccionId,
         Vinculado = c.Vinculado
       }));
     }
@@ -366,7 +400,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         ProyectoId = Header.ProyectoId,
         CompraId = Header.CompraId,
         ServicioId = Header.ServicioId,
-        ReservacionId = string.IsNullOrWhiteSpace(Header.ReservacionId) ? null : Header.ReservacionId,
         NominaId = Header.NominaId,
         TipoPoliza = Header.TipoPoliza!.Trim(),
         FormaPago = Header.FormaPago!.Trim()
@@ -395,6 +428,57 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     finally
     {
       IsSavingHeader = false;
+    }
+  }
+
+  protected async Task ApplyCategoriaPlantillaAsync()
+  {
+    if (Header is null)
+      return;
+
+    if (Header.CategoriaId is null)
+    {
+      UiMessages.ShowWarning("Selecciona una categoría antes de aplicar la plantilla.");
+      return;
+    }
+
+    bool confirm;
+    try
+    {
+      confirm = await JsRuntime.InvokeAsync<bool>("confirm", "¿Estas seguro que deseas aplicar esta plantilla a la poliza?");
+    }
+    catch
+    {
+      confirm = true;
+    }
+
+    if (!confirm)
+      return;
+
+    IsApplyingPlantilla = true;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var result = await TransaccionService.ApplyCategoriaPlantillaAsync(Header.Id, Header.CategoriaId.Value);
+      if (result.Success)
+      {
+        UiMessages.ShowSuccess(result.Message);
+        await ReloadMovimientosAsync();
+      }
+      else
+      {
+        UiMessages.ShowError(result.Message);
+      }
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"Error al aplicar la plantilla: {ex.Message}");
+    }
+    finally
+    {
+      IsApplyingPlantilla = false;
+      await InvokeAsync(StateHasChanged);
     }
   }
 
@@ -943,7 +1027,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     public int? ProyectoId { get; set; }
     public int? CompraId { get; set; }
     public int? ServicioId { get; set; }
-    public string? ReservacionId { get; set; }
     public int? NominaId { get; set; }
 
     [Required(ErrorMessage = "Selecciona un tipo de póliza.")]
@@ -994,7 +1077,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       ProyectoId = other.ProyectoId;
       CompraId = other.CompraId;
       ServicioId = other.ServicioId;
-      ReservacionId = other.ReservacionId;
       NominaId = other.NominaId;
       TipoPoliza = other.TipoPoliza;
       FormaPago = other.FormaPago;
@@ -1063,11 +1145,32 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected sealed class ComprobanteModel
   {
+    public decimal? PolizaMonto { get; set; }
     public int ComprobanteId { get; set; }
-    public string Serie { get; set; } = string.Empty;
-    public string Folio { get; set; } = string.Empty;
+    public string D { get; set; } = string.Empty;
     public DateTime Fecha { get; set; }
-    public decimal Total { get; set; }
+    public string MesGlobal { get; set; } = string.Empty;
+    public int? AnioGlobal { get; set; }
+    public string Emisor { get; set; } = string.Empty;
+    public decimal? SubTotal { get; set; }
+    public decimal? Descuento { get; set; }
+    public decimal? SubTotalDesc { get; set; }
+    public decimal? Actos16 { get; set; }
+    public decimal? Actos0 { get; set; }
+    public decimal? Iva { get; set; }
+    public decimal? Ieps { get; set; }
+    public decimal? IvaRetenido { get; set; }
+    public decimal? IsrRetenido { get; set; }
+    public decimal? IepsRetenido { get; set; }
+    public decimal? Total { get; set; }
+    public string FolioFiscal { get; set; } = string.Empty;
+    public string FormaPago { get; set; } = string.Empty;
+    public string TipoDeComprobante { get; set; } = string.Empty;
+    public string MetodoPago { get; set; } = string.Empty;
+    public string UsoCfdi { get; set; } = string.Empty;
+    public DateTime? FechaCancelacion { get; set; }
+    public string Estatus { get; set; } = string.Empty;
+    public int TransaccionId { get; set; }
     public bool Vinculado { get; set; }
   }
 

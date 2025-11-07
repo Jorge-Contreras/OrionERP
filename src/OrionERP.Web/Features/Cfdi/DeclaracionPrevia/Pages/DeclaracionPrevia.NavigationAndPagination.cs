@@ -1,5 +1,6 @@
 using Dapper;
 using Microsoft.Data.SqlClient;
+using Microsoft.JSInterop;
 
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
@@ -21,7 +22,8 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         Nav.NavigateTo($"/cfdi/comprobante/{item.Comprobante_Id}");
       }
     }
-    private void OpenLinkedTransaction(object item)
+    // Change method signature to async Task to allow use of 'await'
+    private async Task OpenLinkedTransaction(object item)
     {
       long? transId = null;
       if (item is DeclaracionEmitida de)
@@ -50,13 +52,25 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
           catch { transId = null; }
         }
       }
-      if (transId.HasValue)
-      {
-        Nav.NavigateTo($"/Contabilidad/transacciones/{transId.Value}");
-      }
-      else
+
+
+      if (!transId.HasValue)
       {
         statusMessage = "No se encontró una Transacción vinculada a este CFDI.";
+        return;
+      }
+
+      var url = $"/Contabilidad/transacciones/{transId.Value}";
+
+      try
+      {
+        // Open in a new tab (safer flags to avoid tab-nabbing)
+        await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+      }
+      catch
+      {
+        // Fallback in same tab if JS interop/popup blocked
+        Nav.NavigateTo(url);
       }
     }
 

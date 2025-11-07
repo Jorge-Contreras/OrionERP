@@ -103,11 +103,23 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         emitidasTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
           "EXEC dbo.Declaracion_Emitidas_Totales @Year, @Month, @RFC_Emisor", common);
 
+        emitidasNomina = (await conn.QueryAsync<DeclaracionEmitida>(
+          "EXEC cfdi.Declaracion_Emitidas_Nomina @Year, @Month, @RFC_Emisor", common)).AsList();
+
+        emitidasNominaTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
+          "EXEC cfdi.Declaracion_Emitidas_Nomina_Totales @Year, @Month, @RFC_Emisor", common);
+
         recibidas = (await conn.QueryAsync<DeclaracionRecibida>(
           "EXEC dbo.Declaracion_Recibidas @Year, @Month, @RFC_Receptor", common)).AsList();
 
         recibidasTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
           "EXEC dbo.Declaracion_Recibidas_Totales @Year, @Month, @RFC_Receptor", common);
+
+        recibidasNomina = (await conn.QueryAsync<DeclaracionRecibida>(
+          "EXEC cfdi.Declaracion_Recibidas_Nomina @Year, @Month, @RFC_Receptor", common)).AsList();
+
+        recibidasNominaTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
+          "EXEC cfdi.Declaracion_Recibidas_Nomina_Totales @Year, @Month, @RFC_Receptor", common);
 
         desfase = (await conn.QueryAsync<DesfaseItem>(
           "EXEC dbo.Declaracion_Comprobantes_Con_Desfase @RFC, @Anio, @Mes", common)).AsList();
@@ -129,6 +141,8 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
         ApplySorting();
         selectedEmitida = null; selectedRecibida = null;
+        emitidasComplementos = new List<PagoComplementoResumen>();
+        recibidasComplementos = new List<PagoComplementoResumen>();
         emitidasCurrentPage = 1;
         if (emitidas != null) emitidasPageCount = (int)Math.Ceiling(emitidas.Count / (double)pageSize);
         recibidasCurrentPage = 1;

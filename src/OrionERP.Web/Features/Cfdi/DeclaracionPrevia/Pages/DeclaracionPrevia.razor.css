@@ -1,0 +1,63 @@
+/* Base green row */
+tr.sea-green-highlight {
+  --bs-table-bg: #CEFAD0;
+  --bs-table-color: #fff;
+  font-weight: 700;
+}
+
+
+/* Keep green even if also .table-active */
+  tr.sea-green-highlight.table-active {
+    --bs-table-bg: #CEFAD0;
+    --bs-table-color: #fff;
+  }
+
+.sea-green-highlight {
+  background-color: #CEFAD0;
+  color: #fff;
+}
+
+/* YourPage.razor.css */
+#headingEmitidas .accordion-button {
+  font-family: system-ui;
+  color: black;
+  font-weight: 350;
+  font-size: clamp(1.15rem, 1rem + 0.8vw, 1.9rem);
+  background: rgba(13,110,253,.06);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+  #headingEmitidas .accordion-button:hover {
+    background: linear-gradient(180deg, rgba(13,110,253,.18), rgba(13,110,253,.06));
+  }
+
+  #headingEmitidas .accordion-button[aria-expanded="true"] {
+    background: linear-gradient(180deg, rgba(13,110,253,.22), rgba(13,110,253,.08));
+  }
+
+  #headingEmitidas .accordion-button::after {
+    filter: contrast(1.1);
+  }
+
+/* YourPage.razor.css */
+#headingRecibidas .accordion-button {
+ 
+  font-family: system-ui;
+  color: black;
+  font-weight: 350;
+  font-size: clamp(1.15rem, 1rem + 0.8vw, 1.9rem);
+  background: rgba(13,110,253,.06);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+  #headingRecibidas .accordion-button:hover {
+    background: linear-gradient(180deg, rgba(13,110,253,.18), rgba(13,110,253,.06));
+  }
+
+  #headingRecibidas .accordion-button[aria-expanded="true"] {
+    background: linear-gradient(180deg, rgba(13,110,253,.22), rgba(13,110,253,.08));
+  }
+
+  #headingRecibidas .accordion-button::after {
+    filter: contrast(1.1);
+  }

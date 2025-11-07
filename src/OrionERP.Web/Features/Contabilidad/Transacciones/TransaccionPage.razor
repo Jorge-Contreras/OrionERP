@@ -33,133 +33,128 @@ else if (Header is not null)
           <DataAnnotationsValidator />
           <ValidationSummary />
 
-          <div class="row g-3">
-            <div class="col-md-2">
-              <label class="form-label">ID</label>
-              <input class="form-control" value="@Header.Id" readonly />
+          <div class="row gy-4">
+            <div class="col-12">
+              <div class="row g-3 align-items-end">
+                <div class="col-6 col-md-3 col-lg-2">
+                  <label class="form-label">ID</label>
+                  <input class="form-control" value="@Header.Id" readonly />
+                </div>
+                <div class="col-6 col-md-3 col-lg-2">
+                  <label class="form-label">Fecha</label>
+                  <InputDate class="form-control" @bind-Value="Header.Fecha" />
+                  <ValidationMessage For="() => Header.Fecha" />
+                </div>
+                <div class="col-12 col-md-6 col-lg-3">
+                  <label class="form-label">Tipo de póliza</label>
+                  <InputSelect class="form-select" @bind-Value="Header.TipoPoliza">
+                    <option value="">Selecciona un tipo</option>
+                    @foreach (var tipo in TipoPolizaOptions)
+                    {
+                      <option value="@tipo">@tipo</option>
+                    }
+                  </InputSelect>
+                  <ValidationMessage For="() => Header.TipoPoliza" />
+                </div>
+                <div class="col-12 col-md-6 col-lg-3">
+                  <label class="form-label">Forma de pago</label>
+                  <InputSelect class="form-select" @bind-Value="Header.FormaPago">
+                    <option value="">Selecciona una forma</option>
+                    @foreach (var forma in FormaPagoOptions)
+                    {
+                      <option value="@forma.Clave">@forma.Display</option>
+                    }
+                  </InputSelect>
+                  <ValidationMessage For="() => Header.FormaPago" />
+                </div>
+                <div class="col-12 col-lg-2">
+                  <div class="form-check form-switch mt-2 mb-0">
+                    <InputCheckbox class="form-check-input" id="facturadoCheck" @bind-Value="Header.Facturado" />
+                    <label class="form-check-label" for="facturadoCheck">Facturado</label>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="col-md-6">
+
+            <div class="col-12">
               <label class="form-label">Concepto</label>
               <InputText class="form-control" @bind-Value="Header.Concepto" />
               <ValidationMessage For="() => Header.Concepto" />
             </div>
-            <div class="col-md-2">
-              <label class="form-label">Fecha</label>
-              <InputDate class="form-control" @bind-Value="Header.Fecha" />
-              <ValidationMessage For="() => Header.Fecha" />
-            </div>
-            <div class="col-md-2 d-flex align-items-end">
-              <div class="form-check mb-1">
-                <InputCheckbox class="form-check-input" id="facturadoCheck" @bind-Value="Header.Facturado" />
-                <label class="form-check-label" for="facturadoCheck">Facturado</label>
+
+            <div class="col-12">
+              <div class="row g-3 align-items-end">
+                <div class="col-12 col-md-4 col-xl-3">
+                  <label class="form-label">Monto</label>
+                  <InputNumber class="form-control" step="0.01" @bind-Value="Header.Monto" />
+                  <ValidationMessage For="() => Header.Monto" />
+                </div>
+                <div class="col-12 col-md-4 col-xl-3">
+                  <label class="form-label">Referencia</label>
+                  <input class="form-control" value="@Header.ReferenciaPreview" readonly title="@Header.Referencia ?? string.Empty" />
+                </div>
+                <div class="col-12 col-md-4 col-xl-3">
+                  <label class="form-label">RFC</label>
+                  <input class="form-control-plaintext text-muted" value="@Header.Rfc" readonly />
+                </div>
               </div>
             </div>
-            <div class="col-md-3">
-              <label class="form-label">RFC</label>
-              <input class="form-control-plaintext text-muted" value="@Header.Rfc" readonly />
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Categoría</label>
-              <InputSelect class="form-select" @bind-Value="Header.CategoriaId">
-                <option value="">Selecciona una categoría</option>
-                @foreach (var categoria in CategoriaOptions)
-                {
-                  <option value="@categoria.Id">@categoria.Display</option>
-                }
-              </InputSelect>
-              <ValidationMessage For="() => Header.CategoriaId" />
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Monto</label>
-              <InputNumber class="form-control" step="0.01" @bind-Value="Header.Monto" />
-              <ValidationMessage For="() => Header.Monto" />
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Referencia</label>
-              <input class="form-control" value="@Header.ReferenciaPreview" readonly title="@Header.Referencia ?? string.Empty" />
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Tipo de póliza</label>
-              <InputSelect class="form-select" @bind-Value="Header.TipoPoliza">
-                <option value="">Selecciona un tipo</option>
-                @foreach (var tipo in TipoPolizaOptions)
-                {
-                  <option value="@tipo">@tipo</option>
-                }
-              </InputSelect>
-              <ValidationMessage For="() => Header.TipoPoliza" />
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Forma de pago</label>
-              <InputSelect class="form-select" @bind-Value="Header.FormaPago">
-                <option value="">Selecciona una forma</option>
-                @foreach (var forma in FormaPagoOptions)
-                {
-                  <option value="@forma.Clave">@forma.Display</option>
-                }
-              </InputSelect>
-              <ValidationMessage For="() => Header.FormaPago" />
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Proyecto</label>
-              <div class="input-group mb-2">
-                <InputText class="form-control" @bind-Value="ProyectoSearchTerm" placeholder="Buscar por ID o descripción"
-                           @onkeydown="HandleProyectoSearchKeyDown" />
-                <button class="btn btn-outline-secondary" type="button" @onclick="SearchProyectoOptions">Buscar</button>
+
+            <div class="col-12">
+              <div class="row g-4">
+                <div class="col-12 col-xl-6">
+                  <label class="form-label">Proyecto</label>
+                  <div class="input-group mb-2">
+                    <InputText class="form-control" @bind-Value="ProyectoSearchTerm" placeholder="Buscar por ID o descripción"
+                               @onkeydown="HandleProyectoSearchKeyDown" />
+                    <button class="btn btn-outline-secondary" type="button" @onclick="SearchProyectoOptions">Buscar</button>
+                  </div>
+                  <InputSelect class="form-select" @bind-Value="Header.ProyectoId">
+                    <option value="">Sin proyecto</option>
+                    @foreach (var proyecto in ProyectoOptions)
+                    {
+                      <option value="@proyecto.Id">@proyecto.Display</option>
+                    }
+                  </InputSelect>
+                </div>
+                <div class="col-12 col-xl-6">
+                  <label class="form-label">Compra</label>
+                  <div class="input-group mb-2">
+                    <InputText class="form-control" @bind-Value="CompraSearchTerm" placeholder="Buscar por ID o descripción"
+                               @onkeydown="HandleCompraSearchKeyDown" />
+                    <button class="btn btn-outline-secondary" type="button" @onclick="SearchCompraOptions">Buscar</button>
+                  </div>
+                  <InputSelect class="form-select" @bind-Value="Header.CompraId">
+                    <option value="">Sin compra</option>
+                    @foreach (var compra in CompraOptions)
+                    {
+                      <option value="@compra.Id">@compra.Display</option>
+                    }
+                  </InputSelect>
+                </div>
+                <div class="col-12 col-xl-6 col-xxl-4">
+                  <label class="form-label">Servicio</label>
+                  <InputSelect class="form-select" @bind-Value="Header.ServicioId">
+                    <option value="">Sin servicio</option>
+                    @foreach (var servicio in ServicioOptions)
+                    {
+                      <option value="@servicio.Id">@servicio.Display</option>
+                    }
+                  </InputSelect>
+                </div>
+                <div class="col-12 col-xl-6 col-xxl-4">
+                  <label class="form-label">Nómina</label>
+                  <InputSelect class="form-select" @bind-Value="Header.NominaId">
+                    <option value="">Sin nómina</option>
+                    @foreach (var nomina in NominaOptions)
+                    {
+                      <option value="@nomina.Id">@nomina.Display</option>
+                    }
+                  </InputSelect>
+                </div>
               </div>
-              <InputSelect class="form-select" @bind-Value="Header.ProyectoId">
-                <option value="">Sin proyecto</option>
-                @foreach (var proyecto in ProyectoOptions)
-                {
-                  <option value="@proyecto.Id">@proyecto.Display</option>
-                }
-              </InputSelect>
             </div>
-            <div class="col-md-4">
-              <label class="form-label">Compra</label>
-              <div class="input-group mb-2">
-                <InputText class="form-control" @bind-Value="CompraSearchTerm" placeholder="Buscar por ID o descripción"
-                           @onkeydown="HandleCompraSearchKeyDown" />
-                <button class="btn btn-outline-secondary" type="button" @onclick="SearchCompraOptions">Buscar</button>
-              </div>
-              <InputSelect class="form-select" @bind-Value="Header.CompraId">
-                <option value="">Sin compra</option>
-                @foreach (var compra in CompraOptions)
-                {
-                  <option value="@compra.Id">@compra.Display</option>
-                }
-              </InputSelect>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Servicio</label>
-              <InputSelect class="form-select" @bind-Value="Header.ServicioId">
-                <option value="">Sin servicio</option>
-                @foreach (var servicio in ServicioOptions)
-                {
-                  <option value="@servicio.Id">@servicio.Display</option>
-                }
-              </InputSelect>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Reservación</label>
-              <InputSelect class="form-select" @bind-Value="Header.ReservacionId">
-                <option value="">Sin reservación</option>
-                @foreach (var reservacion in ReservacionOptions)
-                {
-                  <option value="@reservacion.Id">@reservacion.Display</option>
-                }
-              </InputSelect>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Nómina</label>
-              <InputSelect class="form-select" @bind-Value="Header.NominaId">
-                <option value="">Sin nómina</option>
-                @foreach (var nomina in NominaOptions)
-                {
-                  <option value="@nomina.Id">@nomina.Display</option>
-                }
-              </InputSelect>
-            </div>
+
             <div class="col-12">
               <label class="form-label">Memo</label>
               <InputTextArea class="form-control" rows="4" @bind-Value="Header.Memo" />
@@ -167,231 +162,320 @@ else if (Header is not null)
             </div>
           </div>
 
-          <div class="d-flex gap-2 justify-content-end mt-4">
-            <button type="submit" class="btn btn-primary" disabled="@IsSavingHeader">
-              @if (IsSavingHeader)
-              {
-                <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
-              }
-              Guardar cambios
-            </button>
-            <button type="button" class="btn btn-outline-secondary" @onclick="ResetHeader" disabled="@IsSavingHeader">
-              Deshacer
-            </button>
+          <div class="d-flex flex-column flex-lg-row gap-3 align-items-stretch align-items-lg-end mt-4">
+            <div class="flex-grow-1">
+              <label class="form-label">Categoría (Plantilla)</label>
+              <div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-end gap-2">
+                <InputSelect class="form-select flex-grow-1" @bind-Value="Header.CategoriaId">
+                  <option value="">Selecciona una categoría</option>
+                  @foreach (var categoria in CategoriaOptions)
+                  {
+                    <option value="@categoria.Id">@categoria.Display</option>
+                  }
+                </InputSelect>
+                <button type="button" class="btn btn-outline-secondary" @onclick="ApplyCategoriaPlantillaAsync" disabled="@IsApplyingPlantilla">
+                  @if (IsApplyingPlantilla)
+                  {
+                    <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                  }
+                  Aplicar Plantilla
+                </button>
+              </div>
+              <ValidationMessage For="() => Header.CategoriaId" />
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 justify-content-end ms-lg-auto">
+              <button type="button" class="btn btn-outline-secondary" @onclick="ResetHeader" disabled="@IsSavingHeader">
+                Deshacer
+              </button>
+              <button type="submit" class="btn btn-primary" disabled="@IsSavingHeader">
+                @if (IsSavingHeader)
+                {
+                  <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+                }
+                Guardar cambios
+              </button>
+            </div>
           </div>
         </EditForm>
       </div>
     </div>
 
-    <div class="row g-3">
-      <div class="col-xl-8 d-flex flex-column gap-3">
-        <div class="card shadow-sm">
-          <div class="card-header d-flex align-items-center gap-2 flex-wrap">
-            <h5 class="mb-0 flex-grow-1">Movimientos</h5>
-            <span class="badge text-bg-dark">Debe: @Totals.Debe.ToString("N2")</span>
-            <span class="badge text-bg-dark">Haber: @Totals.Haber.ToString("N2")</span>
-            <span class="badge @(Totals.Balance == 0 ? "text-bg-success" : "text-bg-warning")">
-              Balance: @Totals.Balance.ToString("N2")
-            </span>
-            <button class="btn btn-sm btn-outline-primary ms-auto" type="button" @onclick="() => OpenMovimientoModal(null)">
-              <span class="oi oi-plus me-1" aria-hidden="true"></span>Agregar
-            </button>
-          </div>
-          <div class="card-body">
-            @if (Movimientos.Count == 0)
-            {
-              <p class="text-muted mb-0">No hay movimientos registrados.</p>
-            }
-            else
-            {
-              <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Cuenta</th>
-                      <th>Concepto</th>
-                      <th class="text-end">Debe</th>
-                      <th class="text-end">Haber</th>
-                      <th class="text-end">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    @foreach (var movimiento in Movimientos.Select((item, index) => (item, index)))
-                    {
-                      <tr class="@GetMovimientoRowClass(movimiento.item)" @onclick="() => OpenMovimientoModal(movimiento.item)">
-                        <td>@(movimiento.index + 1)</td>
-                        <td>@movimiento.item.NombreCuenta</td>
-                        <td>@movimiento.item.Concepto</td>
-                        <td class="text-end">@movimiento.item.Debe.ToString("N2")</td>
-                        <td class="text-end">@movimiento.item.Haber.ToString("N2")</td>
-                        <td class="text-end">
-                          <button type="button"
-                                  class="btn btn-sm btn-outline-danger"
-                                  title="Eliminar movimiento"
-                                  disabled="@IsMovimientoDeleting(movimiento.item)"
-                                  @onclick="async () => await DeleteMovimientoAsync(movimiento.item)"
-                                  @onclick:stopPropagation="true">
-                            @if (IsMovimientoDeleting(movimiento.item))
-                            {
-                              <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-                              <span class="visually-hidden">Eliminando…</span>
-                            }
-                            else
-                            {
-                              <span class="oi oi-trash" aria-hidden="true"></span>
-                              <span class="visually-hidden">Eliminar</span>
-                            }
-                          </button>
-                        </td>
-                      </tr>
-                    }
-                  </tbody>
-                </table>
-              </div>
-            }
-          </div>
-        </div>
-
-        <div class="card shadow-sm">
-          <div class="card-header d-flex align-items-center flex-wrap gap-2">
-            <h5 class="mb-0 flex-grow-1">Archivos adjuntos</h5>
-            <span class="badge text-bg-secondary">@Attachments.Count</span>
-            <label class="btn btn-sm btn-outline-primary ms-auto mb-0 @(IsUploadingAttachment ? "disabled" : string.Empty)">
-              @if (IsUploadingAttachment)
-              {
-                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
-                <span>Cargando…</span>
-              }
-              else
-              {
-                <span class="oi oi-cloud-upload me-1" aria-hidden="true"></span>
-                <span>Cargar archivo</span>
-              }
-              <InputFile @key="_attachmentInputKey"
-                         class="d-none"
-                         OnChange="OnAttachmentSelectedAsync"
-                         disabled="@IsUploadingAttachment" />
-            </label>
-          </div>
-          <div class="card-body">
-            @if (Attachments.Count == 0)
-            {
-              <p class="text-muted mb-0">No hay archivos adjuntos.</p>
-            }
-            else
-            {
-              <div class="table-responsive">
-                <table class="table table-sm align-middle">
-                  <thead>
-                    <tr>
-                      <th>Nombre</th>
-                      <th>Extensión</th>
-                      <th class="text-end">Tamaño</th>
-                      <th class="text-end">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    @foreach (var attachment in Attachments)
-                    {
-                      <tr @ondblclick="async () => await DownloadAttachmentAsync(attachment)" style="cursor: pointer;">
-                        <td>@attachment.Nombre</td>
-                        <td>@attachment.Extension</td>
-                        <td class="text-end">@attachment.TamanoHumano</td>
-                        <td class="text-end">
-                          <div class="d-inline-flex gap-2">
-                            <button type="button"
-                                    class="btn btn-sm btn-outline-primary"
-                                    disabled="@(IsAttachmentDownloading(attachment) || IsAttachmentDeleting(attachment))"
-                                    @onclick="async () => await DownloadAttachmentAsync(attachment)">
-                              @if (IsAttachmentDownloading(attachment))
-                              {
-                                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
-                                <span>Descargando&hellip;</span>
-                              }
-                              else
-                              {
-                                <span class="oi oi-cloud-download me-1" aria-hidden="true"></span>
-                                <span>Descargar</span>
-                              }
-                            </button>
-                            <button type="button"
-                                    class="btn btn-sm btn-outline-danger"
-                                    disabled="@(IsAttachmentDeleting(attachment) || IsAttachmentDownloading(attachment))"
-                                    @onclick="async () => await DeleteAttachmentAsync(attachment)">
-                              @if (IsAttachmentDeleting(attachment))
-                              {
-                                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
-                                <span>Eliminando&hellip;</span>
-                              }
-                              else
-                              {
-                                <span class="oi oi-trash me-1" aria-hidden="true"></span>
-                                <span>Eliminar</span>
-                              }
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    }
-                  </tbody>
-                </table>
-              </div>
-            }
-          </div>
-        </div>
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+        <button type="button"
+                class="btn btn-link text-decoration-none text-reset px-0 flex-grow-1 text-start d-flex align-items-center gap-2"
+                @onclick="() => ToggleSection(SectionPanel.Movimientos)"
+                aria-expanded="@IsSectionExpanded(SectionPanel.Movimientos).ToString().ToLowerInvariant()"
+                aria-controls="movimientosSection">
+          <span class="oi @GetSectionToggleIcon(SectionPanel.Movimientos)" aria-hidden="true"></span>
+          <span class="h5 mb-0">Movimientos</span>
+        </button>
+        <span class="badge text-bg-dark">Debe: @Totals.Debe.ToString("N2")</span>
+        <span class="badge text-bg-dark">Haber: @Totals.Haber.ToString("N2")</span>
+        <span class="badge @(Totals.Balance == 0 ? "text-bg-success" : "text-bg-warning")">
+          Balance: @Totals.Balance.ToString("N2")
+        </span>
+        <button class="btn btn-sm btn-outline-primary ms-auto" type="button" @onclick="() => OpenMovimientoModal(null)">
+          <span class="oi oi-plus me-1" aria-hidden="true"></span>Agregar
+        </button>
       </div>
+      <div id="movimientosSection" class="card-body @(IsSectionExpanded(SectionPanel.Movimientos) ? string.Empty : "d-none")">
+        @if (Movimientos.Count == 0)
+        {
+          <p class="text-muted mb-0">No hay movimientos registrados.</p>
+        }
+        else
+        {
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Cuenta</th>
+                  <th>Concepto</th>
+                  <th class="text-end">Debe</th>
+                  <th class="text-end">Haber</th>
+                  <th class="text-end">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach (var movimiento in Movimientos.Select((item, index) => (item, index)))
+                {
+                  <tr class="@GetMovimientoRowClass(movimiento.item)" @onclick="() => OpenMovimientoModal(movimiento.item)">
+                    <td>@(movimiento.index + 1)</td>
+                    <td>@movimiento.item.NombreCuenta</td>
+                    <td>@movimiento.item.Concepto</td>
+                    <td class="text-end">@movimiento.item.Debe.ToString("N2")</td>
+                    <td class="text-end">@movimiento.item.Haber.ToString("N2")</td>
+                    <td class="text-end">
+                      <button type="button"
+                              class="btn btn-sm btn-outline-danger"
+                              title="Eliminar movimiento"
+                              disabled="@IsMovimientoDeleting(movimiento.item)"
+                              @onclick="async () => await DeleteMovimientoAsync(movimiento.item)"
+                              @onclick:stopPropagation="true">
+                        @if (IsMovimientoDeleting(movimiento.item))
+                        {
+                          <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                          <span class="visually-hidden">Eliminando…</span>
+                        }
+                        else
+                        {
+                          <span class="oi oi-trash" aria-hidden="true"></span>
+                          <span class="visually-hidden">Eliminar</span>
+                        }
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    </div>
 
-      <div class="col-xl-4 d-flex flex-column gap-3">
-        <div class="card shadow-sm">
-          <div class="card-header d-flex align-items-center">
-            <h5 class="mb-0 flex-grow-1">Comprobantes vinculados</h5>
-            <span class="badge text-bg-secondary">@Comprobantes.Count</span>
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+        <button type="button"
+                class="btn btn-link text-decoration-none text-reset px-0 flex-grow-1 text-start d-flex align-items-center gap-2"
+                @onclick="() => ToggleSection(SectionPanel.Comprobantes)"
+                aria-expanded="@IsSectionExpanded(SectionPanel.Comprobantes).ToString().ToLowerInvariant()"
+                aria-controls="comprobantesSection">
+          <span class="oi @GetSectionToggleIcon(SectionPanel.Comprobantes)" aria-hidden="true"></span>
+          <span class="h5 mb-0">Comprobantes vinculados</span>
+        </button>
+        <span class="badge text-bg-secondary">@Comprobantes.Count</span>
+      </div>
+      <div id="comprobantesSection" class="card-body @(IsSectionExpanded(SectionPanel.Comprobantes) ? string.Empty : "d-none")">
+        @if (Comprobantes.Count == 0)
+        {
+          <p class="text-muted mb-0">No hay comprobantes vinculados.</p>
+        }
+        else
+        {
+          <div class="table-responsive table-scroll" style="max-height: 320px;">
+            <table class="table table-sm table-bordered table-striped align-middle compact-table mb-0">
+              <thead class="table-dark">
+                <tr>
+                  <th>Comprobante</th>
+                  <th>✔</th>
+                  <th>Fecha</th>
+                  <th>Mes</th>
+                  <th>Año</th>
+                  <th>Emisor</th>
+                  <th class="num">SubTotal</th>
+                  <th class="num">Descuento</th>
+                  <th class="num">SubTotal Desc</th>
+                  <th class="num">Actos 16%</th>
+                  <th class="num">Actos 0%</th>
+                  <th class="num">IVA</th>
+                  <th class="num">IEPS</th>
+                  <th class="num">IVA Retenido</th>
+                  <th class="num">ISR Retenido</th>
+                  <th class="num">IEPS Retenido</th>
+                  <th class="num">Total</th>
+                  <th>UUID</th>
+                  <th>Forma Pago</th>
+                  <th>Tipo CFDI</th>
+                  <th>Método Pago</th>
+                  <th>Uso CFDI</th>
+                  <th>Fecha Cancel.</th>
+                  <th>Estatus</th>
+                  <th class="num">$ Póliza</th>
+                  <th>Transacción</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach (var comprobante in Comprobantes)
+                {
+                  <tr>
+                    <td>@comprobante.ComprobanteId</td>
+                    <td>@comprobante.D</td>
+                    <td>@comprobante.Fecha.ToString("yyyy-MM-dd")</td>
+                    <td>@comprobante.MesGlobal</td>
+                    <td>@(comprobante.AnioGlobal?.ToString() ?? string.Empty)</td>
+                    <td>@comprobante.Emisor</td>
+                    <td class="num">@((comprobante.SubTotal ?? 0m).ToString("N2"))</td>
+                    <td class="num">@((comprobante.Descuento ?? 0m).ToString("N2"))</td>
+                    <td class="num">@((comprobante.SubTotalDesc ?? 0m).ToString("N2"))</td>
+                    <td class="num">@((comprobante.Actos16 ?? 0m).ToString("N2"))</td>
+                    <td class="num">@((comprobante.Actos0 ?? 0m).ToString("N2"))</td>
+                    <td class="num">@((comprobante.Iva ?? 0m).ToString("N2"))</td>
+                    <td class="num">@((comprobante.Ieps ?? 0m).ToString("N2"))</td>
+                    <td class="num">@((comprobante.IvaRetenido ?? 0m).ToString("N2"))</td>
+                    <td class="num">@((comprobante.IsrRetenido ?? 0m).ToString("N2"))</td>
+                    <td class="num">@((comprobante.IepsRetenido ?? 0m).ToString("N2"))</td>
+                    <td class="num">@((comprobante.Total ?? 0m).ToString("N2"))</td>
+                    <td>@comprobante.FolioFiscal</td>
+                    <td>@comprobante.FormaPago</td>
+                    <td>@comprobante.TipoDeComprobante</td>
+                    <td>@comprobante.MetodoPago</td>
+                    <td>@comprobante.UsoCfdi</td>
+                    <td>@(comprobante.FechaCancelacion?.ToString("yyyy-MM-dd") ?? string.Empty)</td>
+                    <td>@comprobante.Estatus</td>
+                    <td class="num">@((comprobante.PolizaMonto ?? 0m).ToString("N2"))</td>
+                    <td>@comprobante.TransaccionId</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
           </div>
-          <div class="card-body">
-            @if (Comprobantes.Count == 0)
-            {
-              <p class="text-muted mb-0">No hay comprobantes vinculados.</p>
-            }
-            else
-            {
-              <div class="table-responsive" style="max-height: 320px;">
-                <table class="table table-sm table-hover align-middle mb-0">
-                  <thead>
-                    <tr>
-                      <th>Id</th>
-                      <th>Serie</th>
-                      <th>Folio</th>
-                      <th>Fecha</th>
-                      <th class="text-end">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    @foreach (var comprobante in Comprobantes)
-                    {
-                      <tr>
-                        <td>@comprobante.ComprobanteId</td>
-                        <td>@comprobante.Serie</td>
-                        <td>@comprobante.Folio</td>
-                        <td>@comprobante.Fecha.ToString("yyyy-MM-dd")</td>
-                        <td class="text-end">@comprobante.Total.ToString("N2")</td>
-                      </tr>
-                    }
-                  </tbody>
-                </table>
-              </div>
-            }
-          </div>
-        </div>
+        }
+      </div>
+    </div>
 
-        <div class="card shadow-sm">
-          <div class="card-header">
-            <h5 class="mb-0">Resumen</h5>
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center flex-wrap gap-2">
+        <button type="button"
+                class="btn btn-link text-decoration-none text-reset px-0 flex-grow-1 text-start d-flex align-items-center gap-2"
+                @onclick="() => ToggleSection(SectionPanel.Attachments)"
+                aria-expanded="@IsSectionExpanded(SectionPanel.Attachments).ToString().ToLowerInvariant()"
+                aria-controls="attachmentsSection">
+          <span class="oi @GetSectionToggleIcon(SectionPanel.Attachments)" aria-hidden="true"></span>
+          <span class="h5 mb-0">Archivos adjuntos</span>
+        </button>
+        <span class="badge text-bg-secondary">@Attachments.Count</span>
+        <label class="btn btn-sm btn-outline-primary ms-auto mb-0 @(IsUploadingAttachment ? "disabled" : string.Empty)">
+          @if (IsUploadingAttachment)
+          {
+            <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+            <span>Cargando…</span>
+          }
+          else
+          {
+            <span class="oi oi-cloud-upload me-1" aria-hidden="true"></span>
+            <span>Cargar archivo</span>
+          }
+          <InputFile @key="_attachmentInputKey"
+                     class="d-none"
+                     OnChange="OnAttachmentSelectedAsync"
+                     disabled="@IsUploadingAttachment" />
+        </label>
+      </div>
+      <div id="attachmentsSection" class="card-body @(IsSectionExpanded(SectionPanel.Attachments) ? string.Empty : "d-none")">
+        @if (Attachments.Count == 0)
+        {
+          <p class="text-muted mb-0">No hay archivos adjuntos.</p>
+        }
+        else
+        {
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Extensión</th>
+                  <th class="text-end">Tamaño</th>
+                  <th class="text-end">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach (var attachment in Attachments)
+                {
+                  <tr @ondblclick="async () => await DownloadAttachmentAsync(attachment)" style="cursor: pointer;">
+                    <td>@attachment.Nombre</td>
+                    <td>@attachment.Extension</td>
+                    <td class="text-end">@attachment.TamanoHumano</td>
+                    <td class="text-end">
+                      <div class="d-inline-flex gap-2">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-primary"
+                                disabled="@(IsAttachmentDownloading(attachment) || IsAttachmentDeleting(attachment))"
+                                @onclick="async () => await DownloadAttachmentAsync(attachment)">
+                          @if (IsAttachmentDownloading(attachment))
+                          {
+                            <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                            <span>Descargando&hellip;</span>
+                          }
+                          else
+                          {
+                            <span class="oi oi-cloud-download me-1" aria-hidden="true"></span>
+                            <span>Descargar</span>
+                          }
+                        </button>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-danger"
+                                disabled="@(IsAttachmentDeleting(attachment) || IsAttachmentDownloading(attachment))"
+                                @onclick="async () => await DeleteAttachmentAsync(attachment)">
+                          @if (IsAttachmentDeleting(attachment))
+                          {
+                            <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                            <span>Eliminando&hellip;</span>
+                          }
+                          else
+                          {
+                            <span class="oi oi-trash me-1" aria-hidden="true"></span>
+                            <span>Eliminar</span>
+                          }
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
           </div>
-          <div class="card-body">
-            <dl class="row mb-0">
-              <dt class="col-6">Total movimientos</dt>
-              <dd class="col-6 text-end">@Movimientos.Count</dd>
+        }
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-header d-flex align-items-center gap-2">
+        <button type="button"
+                class="btn btn-link text-decoration-none text-reset px-0 flex-grow-1 text-start d-flex align-items-center gap-2"
+                @onclick="() => ToggleSection(SectionPanel.Resumen)"
+                aria-expanded="@IsSectionExpanded(SectionPanel.Resumen).ToString().ToLowerInvariant()"
+                aria-controls="resumenSection">
+          <span class="oi @GetSectionToggleIcon(SectionPanel.Resumen)" aria-hidden="true"></span>
+          <span class="h5 mb-0">Resumen</span>
+        </button>
+      </div>
+      <div id="resumenSection" class="card-body @(IsSectionExpanded(SectionPanel.Resumen) ? string.Empty : "d-none")">
+        <dl class="row mb-0">
+          <dt class="col-6">Total movimientos</dt>
+          <dd class="col-6 text-end">@Movimientos.Count</dd>
               <dt class="col-6">Suma Debe</dt>
               <dd class="col-6 text-end">@Totals.Debe.ToString("N2")</dd>
               <dt class="col-6">Suma Haber</dt>
@@ -404,8 +488,6 @@ else if (Header is not null)
               <dd class="col-6 text-end">@Comprobantes.Count</dd>
             </dl>
           </div>
-        </div>
-      </div>
     </div>
   </div>
   

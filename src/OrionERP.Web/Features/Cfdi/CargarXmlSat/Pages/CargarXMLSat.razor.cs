@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
-using Microsoft.Extensions.DependencyInjection;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Web.Services;
 using OrionERP.Web.State;
 using System;
@@ -18,7 +18,6 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
   {
     [Inject] protected ISatXmlInboxService InboxService { get; set; } = default!;
     [Inject] protected IComprobanteQueryService ComprobanteQuery { get; set; } = default!;
-    [Inject] protected ITransaccionQueryService TransaccionQuery { get; set; } = default!;
     [Inject] protected IConciliacionService Conciliacion { get; set; } = default!;
     [Inject] protected ITransaccionService TransaccionService { get; set; } = default!;
     [Inject] protected IUserRfcState RfcState { get; set; } = default!;
@@ -223,7 +222,7 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
       FilteredTransacciones.Clear();
       try
       {
-        var rows = await TransaccionQuery.GetCandidatesAsync(
+        var rows = await TransaccionService.GetCandidatesAsync(
             fechaXml: fechaXml,
             montoAbs: montoAbs,
             rfc: currentRfc,

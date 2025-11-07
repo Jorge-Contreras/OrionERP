@@ -45,7 +45,6 @@ public sealed class TransaccionService : ITransaccionService
     t.ProyectoID        AS ProyectoId,
     t.CompraID          AS CompraId,
     t.ServicioID        AS ServicioId,
-    t.ReservacionID     AS ReservacionId,
     t.NominaID          AS NominaId,
     t.Tipo_Poliza       AS TipoPoliza,
     t.Forma_Pago        AS FormaPago,
@@ -184,21 +183,6 @@ ORDER BY s.Descripcion ASC;";
 
     using var conn = new SqlConnection(_cs);
     var rows = await conn.QueryAsync<LookupInt32Dto>(
-        new CommandDefinition(sql, new { Rfc = rfc }, cancellationToken: ct));
-    return rows.AsList();
-  }
-
-  public async Task<IReadOnlyList<LookupStringDto>> GetReservacionesAsync(string rfc, CancellationToken ct = default)
-  {
-    const string sql = @"SELECT
-    r.ID     AS Id,
-    r.Nombre AS Description
-FROM dbo.LISTA_DE_RESERVACIONES r
-WHERE r.RFC = @Rfc
-ORDER BY r.Nombre ASC;";
-
-    using var conn = new SqlConnection(_cs);
-    var rows = await conn.QueryAsync<LookupStringDto>(
         new CommandDefinition(sql, new { Rfc = rfc }, cancellationToken: ct));
     return rows.AsList();
   }
@@ -476,7 +460,6 @@ SET Concepto = @Concepto,
     ProyectoID = @ProyectoId,
     CompraID = @CompraId,
     ServicioID = @ServicioId,
-    ReservacionID = @ReservacionId,
     NominaID = @NominaId,
     Tipo_Poliza = @TipoPoliza,
     Forma_Pago = @FormaPago
@@ -497,7 +480,6 @@ WHERE ID = @TransaccionId;";
                 request.ProyectoId,
                 request.CompraId,
                 request.ServicioId,
-                request.ReservacionId,
                 request.NominaId,
                 request.TipoPoliza,
                 request.FormaPago

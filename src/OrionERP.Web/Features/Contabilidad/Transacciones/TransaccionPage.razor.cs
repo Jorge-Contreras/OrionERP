@@ -68,7 +68,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected List<LookupInt32Dto> ProyectoOptions { get; } = new();
   protected List<LookupInt32Dto> CompraOptions { get; } = new();
   protected List<LookupInt32Dto> ServicioOptions { get; } = new();
-  protected List<LookupStringDto> ReservacionOptions { get; } = new();
   protected List<LookupInt32Dto> NominaOptions { get; } = new();
   protected List<FormaPagoLookupDto> FormaPagoOptions { get; } = new();
   protected IReadOnlyList<string> TipoPolizaOptions { get; } = new[] { "INGRESO", "EGRESO", "DIARIO" };
@@ -145,7 +144,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     _allCompraOptions.Clear();
     CompraOptions.Clear();
     ServicioOptions.Clear();
-    ReservacionOptions.Clear();
     NominaOptions.Clear();
     FormaPagoOptions.Clear();
     ProyectoSearchTerm = string.Empty;
@@ -171,9 +169,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
       var servicios = await TransaccionService.GetServiciosAsync(currentRfc, ct);
       ServicioOptions.AddRange(servicios);
-
-      var reservaciones = await TransaccionService.GetReservacionesAsync(currentRfc, ct);
-      ReservacionOptions.AddRange(reservaciones);
 
       var nominas = await TransaccionService.GetNominasAsync(currentRfc, ct);
       NominaOptions.AddRange(nominas);
@@ -293,7 +288,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         ProyectoId = headerDto.ProyectoId,
         CompraId = headerDto.CompraId,
         ServicioId = headerDto.ServicioId,
-        ReservacionId = headerDto.ReservacionId,
         NominaId = headerDto.NominaId,
         TipoPoliza = headerDto.TipoPoliza,
         FormaPago = headerDto.FormaPago,
@@ -385,7 +379,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         ProyectoId = Header.ProyectoId,
         CompraId = Header.CompraId,
         ServicioId = Header.ServicioId,
-        ReservacionId = string.IsNullOrWhiteSpace(Header.ReservacionId) ? null : Header.ReservacionId,
         NominaId = Header.NominaId,
         TipoPoliza = Header.TipoPoliza!.Trim(),
         FormaPago = Header.FormaPago!.Trim()
@@ -1013,7 +1006,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     public int? ProyectoId { get; set; }
     public int? CompraId { get; set; }
     public int? ServicioId { get; set; }
-    public string? ReservacionId { get; set; }
     public int? NominaId { get; set; }
 
     [Required(ErrorMessage = "Selecciona un tipo de póliza.")]
@@ -1064,7 +1056,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       ProyectoId = other.ProyectoId;
       CompraId = other.CompraId;
       ServicioId = other.ServicioId;
-      ReservacionId = other.ReservacionId;
       NominaId = other.NominaId;
       TipoPoliza = other.TipoPoliza;
       FormaPago = other.FormaPago;

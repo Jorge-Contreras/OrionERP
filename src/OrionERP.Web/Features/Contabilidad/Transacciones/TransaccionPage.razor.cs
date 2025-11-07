@@ -21,6 +21,14 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones;
 
 public partial class TransaccionPage : ComponentBase, IDisposable
 {
+  private enum SectionPanel
+  {
+    Movimientos,
+    Comprobantes,
+    Attachments,
+    Resumen
+  }
+
   private CancellationTokenSource? _loadCts;
   private TransaccionHeaderModel? _headerOriginal;
   private MovimientoModel? _movimientoTarget;
@@ -31,6 +39,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private readonly List<LookupInt32Dto> _allCompraOptions = new();
   private CuentaContablePicker? CuentaPicker;
   private int _attachmentInputKey;
+  private SectionPanel? _expandedSection = SectionPanel.Movimientos;
 
   private bool _isDisposed;
 
@@ -79,6 +88,15 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string HeaderStatus => Totals.Balance == 0m ? "Balanceada" : "Desbalanceada";
   protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
   protected bool IsUploadingAttachment { get; private set; }
+
+  protected bool IsSectionExpanded(SectionPanel section) => _expandedSection == section;
+
+  protected string GetSectionToggleIcon(SectionPanel section) => IsSectionExpanded(section) ? "oi-chevron-bottom" : "oi-chevron-right";
+
+  protected void ToggleSection(SectionPanel section)
+  {
+    _expandedSection = _expandedSection == section ? (SectionPanel?)null : section;
+  }
 
   protected override void OnInitialized()
   {

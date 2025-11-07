@@ -21,7 +21,7 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones;
 
 public partial class TransaccionPage : ComponentBase, IDisposable
 {
-  private enum SectionPanel
+  protected enum SectionPanel
   {
     Movimientos,
     Comprobantes,

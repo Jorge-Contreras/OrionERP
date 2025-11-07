@@ -4,16 +4,7 @@
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
 <h3>Declaración Previa</h3>
-<style>
-    .sea-green-highlight {
-        background-color: #2e8b57;
-        color: #fff;
-    }
 
-    .table-active.sea-green-highlight {
-        background-color: #246947;
-    }
-</style>
 @if (_filtering)
 {
     <span class="orion-loading" role="status" aria-live="polite">

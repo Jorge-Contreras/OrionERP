@@ -1,7 +1,7 @@
 /* Base green row */
 tr.sea-green-highlight {
   --bs-table-bg: #CEFAD0;
-  --bs-table-color: #fff;
+  --bs-table-color: black;
   font-weight: 700;
 }
 
@@ -9,7 +9,7 @@ tr.sea-green-highlight {
 /* Keep green even if also .table-active */
   tr.sea-green-highlight.table-active {
     --bs-table-bg: #CEFAD0;
-    --bs-table-color: #fff;
+    --bs-table-color: black;
   }
 
 .sea-green-highlight {

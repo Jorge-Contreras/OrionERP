@@ -124,7 +124,7 @@ public class SatDescargaPage : ComponentBase
     {
       // Only those with EstadoSolicitud == 1
       var toVerify = Solicitudes
-        .Where(s => s.EstadoSolicitud.HasValue && s.EstadoSolicitud.Value == 1)
+        .Where(s => s.EstadoSolicitud.HasValue && (s.EstadoSolicitud.Value == 1 || s.EstadoSolicitud.Value== 2 ))
         .ToList();
 
       if (toVerify.Count > 0)

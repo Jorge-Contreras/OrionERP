@@ -207,6 +207,113 @@ ORDER BY t.Fecha DESC, t.ID DESC;";
     };
   }
 
+  public async Task<int> CreateAutoPoliciesAsync(
+      string rfc,
+      int year,
+      int month,
+      int? accountId,
+      CancellationToken cancellationToken = default)
+  {
+    if (string.IsNullOrWhiteSpace(rfc))
+    {
+      return 0;
+    }
+
+    const string selectSql = @"
+SELECT
+    M.Movimiento_ID AS MovimientoId,
+    M.Dia,
+    M.Concepto,
+    M.Tipo,
+    M.Cargo,
+    M.Abono,
+    M.Cuenta_Banco_ID AS CuentaBancoId
+FROM bancos.Movimientos AS M
+WHERE M.RFC = @Rfc
+  AND YEAR(M.Dia) = @Year
+  AND MONTH(M.Dia) = @Month
+  AND (@AccountId IS NULL OR M.Cuenta_Banco_ID = @AccountId)
+  AND M.Transaccion_ID IS NULL
+ORDER BY M.Dia, M.Movimiento_ID;";
+
+    var parameters = new
+    {
+      Rfc = rfc,
+      Year = year,
+      Month = month,
+      AccountId = accountId
+    };
+
+    using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+    var candidates = await connection
+        .QueryAsync<AutoPolicyCandidate>(selectSql, parameters)
+        .ConfigureAwait(false);
+
+    cancellationToken.ThrowIfCancellationRequested();
+
+    var processed = 0;
+
+    foreach (var candidate in candidates)
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+
+      var monto = string.Equals(candidate.Tipo, "I", StringComparison.OrdinalIgnoreCase)
+        ? candidate.Cargo
+        : candidate.Abono;
+
+      var spParameters = new DynamicParameters();
+      spParameters.Add("@RFC", rfc, DbType.String);
+      spParameters.Add("@Fecha", candidate.Dia, DbType.DateTime2);
+      spParameters.Add("@Concepto", candidate.Concepto, DbType.String);
+      spParameters.Add("@Tipo", candidate.Tipo, DbType.StringFixedLength, size: 1);
+      spParameters.Add("@Monto", monto, DbType.Decimal);
+      spParameters.Add("@CuentaBancoID", candidate.CuentaBancoId, DbType.Int32);
+      spParameters.Add("@TransaccionID", dbType: DbType.Int32, direction: ParameterDirection.Output);
+
+      await connection.ExecuteAsync(
+              "dbo.Crear_Transaccion_Contable_Banco",
+              spParameters,
+              commandType: CommandType.StoredProcedure)
+          .ConfigureAwait(false);
+
+      var transactionId = spParameters.Get<int?>("@TransaccionID");
+
+      if (transactionId.HasValue && transactionId.Value > 0)
+      {
+        await connection.ExecuteAsync(
+                "UPDATE bancos.Movimientos SET Transaccion_ID = @TransaccionId WHERE Movimiento_ID = @MovimientoId;",
+                new { TransaccionId = transactionId.Value, MovimientoId = candidate.MovimientoId })
+            .ConfigureAwait(false);
+
+        processed++;
+      }
+    }
+
+    return processed;
+  }
+
+  public async Task LinkMovementToTransactionAsync(
+      long movimientoId,
+      int transaccionId,
+      CancellationToken cancellationToken = default)
+  {
+    if (movimientoId <= 0)
+    {
+      throw new ArgumentOutOfRangeException(nameof(movimientoId));
+    }
+
+    if (transaccionId <= 0)
+    {
+      throw new ArgumentOutOfRangeException(nameof(transaccionId));
+    }
+
+    const string sql = "UPDATE bancos.Movimientos SET Transaccion_ID = @TransaccionId WHERE Movimiento_ID = @MovimientoId;";
+
+    using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+    await connection.ExecuteAsync(sql, new { MovimientoId = movimientoId, TransaccionId = transaccionId })
+        .ConfigureAwait(false);
+  }
+
   private async Task<IDbConnection> OpenConnectionAsync(CancellationToken cancellationToken)
   {
     var connection = _connectionFactory.Create();
@@ -239,5 +346,16 @@ ORDER BY t.Fecha DESC, t.ID DESC;";
     }
 
     return Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+  }
+
+  private sealed record AutoPolicyCandidate
+  {
+    public long MovimientoId { get; init; }
+    public DateTime Dia { get; init; }
+    public string Concepto { get; init; } = string.Empty;
+    public string Tipo { get; init; } = string.Empty;
+    public decimal Cargo { get; init; }
+    public decimal Abono { get; init; }
+    public int CuentaBancoId { get; init; }
   }
 }

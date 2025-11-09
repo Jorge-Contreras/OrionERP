@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
@@ -148,13 +149,13 @@ ORDER BY M.Secuencia_Clave;";
 
     return new ProcessBbvaResult
     {
-      Insertados = Convert.ToInt32(record["Insertados"] ?? 0),
-      Actualizados = Convert.ToInt32(record["Actualizados"] ?? 0),
-      CuentaBancoId = Convert.ToInt32(record["Cuenta_Banco_ID"] ?? 0),
-      NombreBanco = Convert.ToString(record["Nombre_Banco"] ?? string.Empty) ?? string.Empty,
-      NumeroCuenta = Convert.ToString(record["Numero_Cuenta"] ?? string.Empty) ?? string.Empty,
-      ArchivoHash = Convert.ToString(record["ArchivoHash"] ?? string.Empty) ?? string.Empty,
-      BalanceWarnings = Convert.ToInt32(record["Balance_Warnings"] ?? 0)
+      Insertados = GetInt32(record, "Insertados"),
+      Actualizados = GetInt32(record, "Actualizados"),
+      CuentaBancoId = GetInt32(record, "Cuenta_Banco_ID"),
+      NombreBanco = GetString(record, "Nombre_Banco"),
+      NumeroCuenta = GetString(record, "Numero_Cuenta"),
+      ArchivoHash = GetString(record, "ArchivoHash"),
+      BalanceWarnings = GetInt32(record, "Balance_Warnings")
     };
   }
 
@@ -170,5 +171,25 @@ ORDER BY M.Secuencia_Clave;";
 
     connection.Open();
     return connection;
+  }
+
+  private static int GetInt32(IDictionary<string, object?> record, string key)
+  {
+    if (!record.TryGetValue(key, out var value) || value is null || value is DBNull)
+    {
+      return 0;
+    }
+
+    return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+  }
+
+  private static string GetString(IDictionary<string, object?> record, string key)
+  {
+    if (!record.TryGetValue(key, out var value) || value is null || value is DBNull)
+    {
+      return string.Empty;
+    }
+
+    return Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
   }
 }

@@ -20,10 +20,17 @@ public sealed class BancosService : IBancosService
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
   }
 
-  public async Task<IReadOnlyList<BankAccountDto>> GetAccountsAsync(CancellationToken cancellationToken = default)
+  public async Task<IReadOnlyList<BankAccountDto>> GetAccountsAsync(
+      string rfc,
+      CancellationToken cancellationToken = default)
   {
+    if (string.IsNullOrWhiteSpace(rfc))
+    {
+      return Array.Empty<BankAccountDto>();
+    }
+
     const string sql = @"
-SELECT 
+SELECT
     Cuenta_Banco_ID AS CuentaBancoId,
     Nombre_Banco AS NombreBanco,
     Numero_Cuenta AS NumeroCuenta,
@@ -34,10 +41,11 @@ SELECT
     Activo,
     Fecha_Alta AS FechaAlta
 FROM bancos.Cuentas_Banco
+WHERE RFC = @Rfc
 ORDER BY Fecha_Alta DESC;";
 
     using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-    var rows = await connection.QueryAsync<BankAccountDto>(sql).ConfigureAwait(false);
+    var rows = await connection.QueryAsync<BankAccountDto>(sql, new { Rfc = rfc }).ConfigureAwait(false);
     cancellationToken.ThrowIfCancellationRequested();
     return rows.AsList();
   }
@@ -109,6 +117,49 @@ ORDER BY M.Secuencia_Clave;";
 
     using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
     var rows = await connection.QueryAsync<BankMovementDto>(sql, parameters).ConfigureAwait(false);
+    cancellationToken.ThrowIfCancellationRequested();
+    return rows.AsList();
+  }
+
+  public async Task<IReadOnlyList<PendingBankTransactionDto>> GetPendingTransactionsAsync(
+      string rfc,
+      int year,
+      int month,
+      CancellationToken cancellationToken = default)
+  {
+    if (string.IsNullOrWhiteSpace(rfc))
+    {
+      return Array.Empty<PendingBankTransactionDto>();
+    }
+
+    const string sql = @"
+SELECT
+    t.ID AS TransaccionId,
+    t.Fecha,
+    t.Forma_Pago AS FormaPago,
+    t.Concepto,
+    CAST(ISNULL(t.Monto, 0) AS decimal(19,2)) AS Monto
+FROM dbo.Transacciones AS t
+WHERE t.RFC = @Rfc
+  AND t.Forma_Pago = '03'
+  AND YEAR(t.Fecha) = @Year
+  AND MONTH(t.Fecha) = @Month
+  AND NOT EXISTS (
+      SELECT 1
+      FROM bancos.Movimientos AS m
+      WHERE m.Transaccion_ID = t.ID
+  )
+ORDER BY t.Fecha DESC, t.ID DESC;";
+
+    var parameters = new
+    {
+      Rfc = rfc,
+      Year = year,
+      Month = month
+    };
+
+    using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+    var rows = await connection.QueryAsync<PendingBankTransactionDto>(sql, parameters).ConfigureAwait(false);
     cancellationToken.ThrowIfCancellationRequested();
     return rows.AsList();
   }

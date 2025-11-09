@@ -35,6 +35,7 @@ public partial class BancosPage : ComponentBase, IDisposable
   private static readonly CultureInfo CurrencyCulture = new("es-MX");
 
   private CancellationTokenSource? _movementsCts;
+  private CancellationTokenSource? _pendingTransactionsCts;
   private CancellationTokenSource? _textFilterDebounceCts;
 
   private string? _currentRfc;
@@ -45,15 +46,19 @@ public partial class BancosPage : ComponentBase, IDisposable
 
   protected List<BankAccountDto> Accounts { get; } = new();
   protected List<BankMovementDto> Movements { get; } = new();
+  protected List<PendingBankTransactionDto> PendingTransactions { get; } = new();
   protected List<int> AvailableYears { get; } = new();
 
   protected bool IsInitializing { get; private set; } = true;
   protected bool IsLoadingAccounts { get; private set; }
   protected bool IsLoadingMovements { get; private set; }
+  protected bool IsLoadingPendingTransactions { get; private set; }
   protected bool IsProcessingFile { get; private set; }
 
   protected string? ErrorMessage { get; private set; }
   protected int? SelectedAccountId { get; private set; }
+  protected int? SelectedPendingTransactionId { get; private set; }
+  protected long? SelectedMovimientoId { get; private set; }
   protected int SelectedMonth { get; set; } = DateTime.Today.Month;
   protected int SelectedYear { get; set; } = DateTime.Today.Year;
   protected string? TextFilter { get; private set; }
@@ -61,6 +66,13 @@ public partial class BancosPage : ComponentBase, IDisposable
   protected int FileInputKey { get; private set; }
 
   protected IReadOnlyList<KeyValuePair<int, string>> MonthOptions => MonthOptionsInternal;
+
+  protected bool CanLink => SelectedPendingTransactionId.HasValue && SelectedMovimientoId.HasValue;
+
+  protected bool HasPendingTransactions => PendingTransactions.Count > 0;
+
+  protected string? AutoPolizasTooltip
+    => HasPendingTransactions ? "Disponible cuando no haya transacciones pendientes por ligar." : null;
 
   protected string SelectedAccountLabel
     => Accounts.FirstOrDefault(a => a.CuentaBancoId == SelectedAccountId) is { } account
@@ -77,6 +89,8 @@ public partial class BancosPage : ComponentBase, IDisposable
   {
     _movementsCts?.Cancel();
     _movementsCts?.Dispose();
+    _pendingTransactionsCts?.Cancel();
+    _pendingTransactionsCts?.Dispose();
     _textFilterDebounceCts?.Cancel();
     _textFilterDebounceCts?.Dispose();
   }
@@ -85,13 +99,22 @@ public partial class BancosPage : ComponentBase, IDisposable
     => value.ToString("C2", CurrencyCulture);
 
   protected async Task ReloadMovementsAsync()
-    => await LoadMovementsAsync();
+  {
+    await LoadPendingTransactionsAsync();
+    await LoadMovementsAsync();
+  }
 
   protected async Task OnMonthChangedAsync()
-    => await LoadMovementsAsync();
+  {
+    await LoadPendingTransactionsAsync();
+    await LoadMovementsAsync();
+  }
 
   protected async Task OnYearChangedAsync()
-    => await LoadMovementsAsync();
+  {
+    await LoadPendingTransactionsAsync();
+    await LoadMovementsAsync();
+  }
 
   protected async Task OnAccountSelected(int accountId)
   {
@@ -102,8 +125,49 @@ public partial class BancosPage : ComponentBase, IDisposable
 
     SelectedAccountId = accountId;
     LastProcessResult = null;
+    SelectedMovimientoId = null;
     await LoadMovementsAsync();
     await InvokeAsync(StateHasChanged);
+  }
+
+  protected void OnPendingTransactionSelected(int transaccionId)
+  {
+    SelectedPendingTransactionId = SelectedPendingTransactionId == transaccionId
+      ? null
+      : transaccionId;
+
+    _ = InvokeAsync(StateHasChanged);
+  }
+
+  protected void OnMovementSelected(long movimientoId)
+  {
+    SelectedMovimientoId = SelectedMovimientoId == movimientoId
+      ? null
+      : movimientoId;
+
+    _ = InvokeAsync(StateHasChanged);
+  }
+
+  protected void OnLinkClicked()
+  {
+    if (!CanLink)
+    {
+      UiMessages.ShowWarning("Selecciona una transacción y un movimiento.");
+      return;
+    }
+
+    UiMessages.ShowInfo("El proceso de ligado se implementará próximamente.");
+  }
+
+  protected void OnAutoPolizasClicked()
+  {
+    if (HasPendingTransactions)
+    {
+      UiMessages.ShowWarning("Disponible cuando no haya transacciones pendientes por ligar.");
+      return;
+    }
+
+    UiMessages.ShowInfo("Creación de pólizas automáticas disponible próximamente.");
   }
 
   protected void OnTextFilterChanged(ChangeEventArgs args)
@@ -179,6 +243,7 @@ public partial class BancosPage : ComponentBase, IDisposable
       }
 
       await LoadMovementsAsync();
+      await LoadPendingTransactionsAsync();
     }
     catch (OperationCanceledException)
     {
@@ -209,6 +274,7 @@ public partial class BancosPage : ComponentBase, IDisposable
 
       await LoadAccountsInternalAsync();
       await LoadYearsInternalAsync();
+      await LoadPendingTransactionsAsync();
       await LoadMovementsAsync();
     }
     catch (Exception)
@@ -231,7 +297,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     try
     {
       Accounts.Clear();
-      var accounts = await BancosService.GetAccountsAsync();
+      var accounts = await BancosService.GetAccountsAsync(_currentRfc ?? string.Empty);
       Accounts.AddRange(accounts);
     }
     catch (Exception)
@@ -284,6 +350,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     if (string.IsNullOrWhiteSpace(_currentRfc))
     {
       Movements.Clear();
+      SelectedMovimientoId = null;
       return;
     }
 
@@ -309,6 +376,10 @@ public partial class BancosPage : ComponentBase, IDisposable
           localCts.Token);
 
       Movements.AddRange(rows);
+      if (!Movements.Any(m => m.MovimientoId == SelectedMovimientoId))
+      {
+        SelectedMovimientoId = null;
+      }
     }
     catch (OperationCanceledException)
     {
@@ -325,6 +396,61 @@ public partial class BancosPage : ComponentBase, IDisposable
         IsLoadingMovements = false;
         localCts.Dispose();
         _movementsCts = null;
+        await InvokeAsync(StateHasChanged);
+      }
+    }
+  }
+
+  private async Task LoadPendingTransactionsAsync()
+  {
+    if (string.IsNullOrWhiteSpace(_currentRfc))
+    {
+      PendingTransactions.Clear();
+      SelectedPendingTransactionId = null;
+      return;
+    }
+
+    var previousCts = _pendingTransactionsCts;
+    previousCts?.Cancel();
+    previousCts?.Dispose();
+
+    _pendingTransactionsCts = new CancellationTokenSource();
+    var localCts = _pendingTransactionsCts;
+
+    IsLoadingPendingTransactions = true;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      PendingTransactions.Clear();
+      var rows = await BancosService.GetPendingTransactionsAsync(
+          _currentRfc,
+          SelectedYear,
+          SelectedMonth,
+          localCts.Token);
+
+      PendingTransactions.AddRange(rows);
+
+      if (!PendingTransactions.Any(t => t.TransaccionId == SelectedPendingTransactionId))
+      {
+        SelectedPendingTransactionId = null;
+      }
+    }
+    catch (OperationCanceledException)
+    {
+      // Ignore cancellation
+    }
+    catch (Exception)
+    {
+      UiMessages.ShowError("No se pudieron cargar las transacciones pendientes.");
+    }
+    finally
+    {
+      if (ReferenceEquals(_pendingTransactionsCts, localCts))
+      {
+        IsLoadingPendingTransactions = false;
+        localCts.Dispose();
+        _pendingTransactionsCts = null;
         await InvokeAsync(StateHasChanged);
       }
     }

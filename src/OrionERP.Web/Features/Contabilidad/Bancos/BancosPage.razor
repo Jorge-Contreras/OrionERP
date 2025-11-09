@@ -138,10 +138,74 @@ else
             <input id="text-filter" class="form-control" type="text" placeholder="Escribe para filtrar…" value="@TextFilter" @oninput="OnTextFilterChanged" />
           </div>
           <div class="ms-lg-auto">
-            <button class="btn btn-outline-secondary" @onclick="ReloadMovementsAsync" disabled="@IsLoadingMovements">
+            <button class="btn btn-outline-secondary" @onclick="ReloadMovementsAsync" disabled="@(IsLoadingMovements || IsLoadingPendingTransactions)">
               @(IsLoadingMovements ? "Cargando…" : "Recargar")
             </button>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="pending-heading" class="card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h2 id="pending-heading" class="h5 mb-0">Transacciones pendientes (Forma de pago "03")</h2>
+          <span class="badge bg-secondary">@PendingTransactions.Count pendientes</span>
+        </div>
+
+        @if (IsLoadingPendingTransactions)
+        {
+          <div class="orion-loading" role="status" aria-live="polite">
+            <span class="orion-spinner" aria-hidden="true"></span>
+            <span class="orion-strong">Cargando transacciones pendientes…</span>
+          </div>
+        }
+        else if (PendingTransactions.Count == 0)
+        {
+          <div class="alert alert-success mb-0">No hay transacciones pendientes por ligar.</div>
+        }
+        else
+        {
+          <div class="table-responsive" style="max-height: 180px;">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col">ID</th>
+                  <th scope="col">Fecha</th>
+                  <th scope="col">Forma de pago</th>
+                  <th scope="col">Concepto</th>
+                  <th scope="col" class="text-end">Monto</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach (var pending in PendingTransactions)
+                {
+                  var isSelected = pending.TransaccionId == SelectedPendingTransactionId;
+                  var rowClass = isSelected ? "table-primary" : string.Empty;
+                  <tr class="@rowClass" style="cursor: pointer;" aria-selected="@(isSelected ? "true" : "false")" @onclick="@(() => OnPendingTransactionSelected(pending.TransaccionId))">
+                    <td>@pending.TransaccionId</td>
+                    <td>@pending.Fecha.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                    <td>@pending.FormaPago</td>
+                    <td class="text-wrap">@pending.Concepto</td>
+                    <td class="text-end">@FormatCurrency(pending.Monto)</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    </section>
+
+    <section aria-label="Acciones de conciliación" class="card">
+      <div class="card-body py-2">
+        <div class="d-flex flex-wrap justify-content-end align-items-center gap-2">
+          <button class="btn btn-primary btn-sm" type="button" @onclick="OnLinkClicked" disabled="@(!CanLink)">Ligar</button>
+          <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="OnAutoPolizasClicked" disabled="@HasPendingTransactions" title="@AutoPolizasTooltip">Crear pólizas auto</button>
+          @if (HasPendingTransactions)
+          {
+            <span class="text-muted small" role="note">Disponible cuando no haya transacciones pendientes por ligar.</span>
+          }
         </div>
       </div>
     </section>
@@ -194,7 +258,9 @@ else
               <tbody>
                 @foreach (var movement in Movements)
                 {
-                  <tr>
+                  var isSelected = movement.MovimientoId == SelectedMovimientoId;
+                  var rowClass = isSelected ? "table-primary" : string.Empty;
+                  <tr class="@rowClass" style="cursor: pointer;" aria-selected="@(isSelected ? "true" : "false")" @onclick="@(() => OnMovementSelected(movement.MovimientoId))">
                     <td>@movement.MovimientoId</td>
                     <td>@movement.Dia.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
                     <td>@movement.Line</td>

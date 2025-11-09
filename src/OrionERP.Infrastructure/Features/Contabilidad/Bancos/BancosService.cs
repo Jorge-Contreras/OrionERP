@@ -135,17 +135,14 @@ ORDER BY M.Secuencia_Clave;";
     parameters.Add("@Cuenta_Banco_ID", accountId, DbType.Int32);
 
     using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-    var record = await connection.QuerySingleOrDefaultAsync<IDictionary<string, object?>>( 
-        storedProcedure,
-        parameters,
-        commandType: CommandType.StoredProcedure).ConfigureAwait(false);
+    var row = await connection.QuerySingleOrDefaultAsync(
+       storedProcedure,
+       parameters,
+       commandType: CommandType.StoredProcedure);
 
-    cancellationToken.ThrowIfCancellationRequested();
+    if (row is null) return null;
 
-    if (record is null)
-    {
-      return null;
-    }
+    var record = (IDictionary<string, object?>)row;
 
     return new ProcessBbvaResult
     {
@@ -155,7 +152,7 @@ ORDER BY M.Secuencia_Clave;";
       NombreBanco = GetString(record, "Nombre_Banco"),
       NumeroCuenta = GetString(record, "Numero_Cuenta"),
       ArchivoHash = GetString(record, "ArchivoHash"),
-      BalanceWarnings = GetInt32(record, "Balance_Warnings")
+      BalanceWarnings = GetInt32(record, "Balance_Warnings"),
     };
   }
 

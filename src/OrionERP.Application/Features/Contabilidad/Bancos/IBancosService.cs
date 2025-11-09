@@ -24,4 +24,14 @@ public interface IBancosService
       string fileContents,
       int accountId,
       CancellationToken cancellationToken = default);
+  Task<int> CreateAutoPoliciesAsync(
+      string rfc,
+      int year,
+      int month,
+      int? accountId,
+      CancellationToken cancellationToken = default);
+  Task LinkMovementToTransactionAsync(
+      long movimientoId,
+      int transaccionId,
+      CancellationToken cancellationToken = default);
 }

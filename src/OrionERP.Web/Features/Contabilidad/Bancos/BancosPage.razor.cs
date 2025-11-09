@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.JSInterop;
 using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Web.Services;
 using OrionERP.Web.State;
@@ -43,6 +44,7 @@ public partial class BancosPage : ComponentBase, IDisposable
   [Inject] public IBancosService BancosService { get; set; } = default!;
   [Inject] public IUserRfcState RfcState { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
+  [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
 
   protected List<BankAccountDto> Accounts { get; } = new();
   protected List<BankMovementDto> Movements { get; } = new();
@@ -148,7 +150,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     _ = InvokeAsync(StateHasChanged);
   }
 
-  protected void OnLinkClicked()
+  protected async Task OnLinkClicked()
   {
     if (!CanLink)
     {
@@ -156,10 +158,49 @@ public partial class BancosPage : ComponentBase, IDisposable
       return;
     }
 
-    UiMessages.ShowInfo("El proceso de ligado se implementará próximamente.");
+    var movement = Movements.FirstOrDefault(m => m.MovimientoId == SelectedMovimientoId);
+    var transaction = PendingTransactions.FirstOrDefault(t => t.TransaccionId == SelectedPendingTransactionId);
+
+    if (movement is null || transaction is null)
+    {
+      UiMessages.ShowWarning("Selecciona una transacción y un movimiento válidos.");
+      return;
+    }
+
+    var hasExistingPolicy = movement.Policy.HasValue && movement.Policy.Value > 0;
+    var confirmationMessage = hasExistingPolicy
+      ? "El movimiento ya tiene una póliza ligada. ¿Deseas reemplazarla con la transacción seleccionada?"
+      : "¿Deseas ligar la transacción seleccionada con el movimiento?";
+
+    bool confirm;
+    try
+    {
+      confirm = await JsRuntime.InvokeAsync<bool>("confirm", confirmationMessage);
+    }
+    catch
+    {
+      confirm = true;
+    }
+
+    if (!confirm)
+    {
+      return;
+    }
+
+    try
+    {
+      await BancosService.LinkMovementToTransactionAsync(movement.MovimientoId, transaction.TransaccionId);
+      UiMessages.ShowSuccess("Movimiento ligado correctamente.");
+      await LoadPendingTransactionsAsync();
+      await LoadMovementsAsync();
+    }
+    catch (Exception)
+    {
+      UiMessages.ShowError("No se pudo ligar el movimiento seleccionado.");
+    }
   }
 
-  protected void OnAutoPolizasClicked()
+  protected async Task OnAutoPolizasClicked()
   {
     if (HasPendingTransactions)
     {
@@ -167,7 +208,53 @@ public partial class BancosPage : ComponentBase, IDisposable
       return;
     }
 
-    UiMessages.ShowInfo("Creación de pólizas automáticas disponible próximamente.");
+    if (string.IsNullOrWhiteSpace(_currentRfc))
+    {
+      UiMessages.ShowWarning("Selecciona un RFC válido antes de continuar.");
+      return;
+    }
+
+    bool confirm;
+    try
+    {
+      confirm = await JsRuntime.InvokeAsync<bool>("confirm", "¿Estas seguro que quieres Crear Polizas para cada una de los Movimientos sin Poliza?");
+    }
+    catch
+    {
+      confirm = true;
+    }
+
+    if (!confirm)
+    {
+      return;
+    }
+
+    try
+    {
+      var created = await BancosService.CreateAutoPoliciesAsync(
+          _currentRfc,
+          SelectedYear,
+          SelectedMonth,
+          SelectedAccountId);
+
+      if (created == 0)
+      {
+        UiMessages.ShowInfo("No se encontraron movimientos pendientes para crear pólizas.");
+      }
+      else
+      {
+        UiMessages.ShowSuccess($"Se crearon {created} póliza(s) automáticamente.");
+      }
+    }
+    catch (Exception)
+    {
+      UiMessages.ShowError("Ocurrió un error al crear las pólizas automáticas.");
+    }
+    finally
+    {
+      await LoadPendingTransactionsAsync();
+      await LoadMovementsAsync();
+    }
   }
 
   protected void OnTextFilterChanged(ChangeEventArgs args)

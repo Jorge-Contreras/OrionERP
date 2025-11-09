@@ -3,7 +3,22 @@
 @using OrionERP.Web.Shared
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
-    
+
+<style>
+  .transaccion-header .form-control,
+  .transaccion-header .form-select,
+  .transaccion-header .form-control-plaintext {
+    font-weight: 500;
+  }
+
+  .transaccion-header .row.g-3,
+  .transaccion-header .row.g-4,
+  .transaccion-header .row.gy-4 {
+    --bs-gutter-y: 0.3125rem;
+  }
+</style>
+
+
 
 <PageTitle>Transacción @Header?.DisplayFolio ?? Id.ToString(CultureInfo.InvariantCulture)</PageTitle>
 
@@ -28,7 +43,7 @@ else if (Header is not null)
         <h5 class="mb-0 flex-grow-1">Datos de la transacción</h5>
         <span class="badge @HeaderStatusCss">@HeaderStatus</span>
       </div>
-      <div class="card-body">
+      <div class="card-body transaccion-header">
         <EditForm EditContext="HeaderEditContext" OnValidSubmit="SaveHeaderAsync">
           <DataAnnotationsValidator />
           <ValidationSummary />

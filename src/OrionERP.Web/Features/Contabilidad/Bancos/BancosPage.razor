@@ -188,9 +188,6 @@ else
                   <th scope="col" class="text-end">Abono</th>
                   <th scope="col" class="text-end">Saldo</th>
                   <th scope="col">Fecha de carga</th>
-                  <th scope="col">Banco</th>
-                  <th scope="col">Cuenta</th>
-                  <th scope="col">Secuencia clave</th>
                   <th scope="col">Póliza</th>
                 </tr>
               </thead>
@@ -207,9 +204,6 @@ else
                     <td class="text-end">@FormatCurrency(movement.Abono)</td>
                     <td class="text-end">@FormatCurrency(movement.Saldo)</td>
                     <td>@movement.FechaCarga.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
-                    <td>@movement.NombreBanco</td>
-                    <td>@movement.NumeroCuenta</td>
-                    <td>@movement.SecuenciaClave</td>
                     <td>
                       @if (movement.Policy.HasValue && movement.Policy.Value > 0)
                       {

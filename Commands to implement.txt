@@ -12,4 +12,4 @@ setx /M ConnectionStrings__OrionDb "Server=bonhomia.ddns.net,1433;Database=grupo
 Command to publish
 
 dotnet clean .\src\OrionERP.Web\OrionERP.Web.csproj
-dotnet publish .\src\OrionERP.Web\OrionERP.Web.csproj -c Release -r win-x64 --self-contained false -o C:\Services\OrionERP\publish
+dotnet publish .\src\OrionERP.Web\OrionERP.Web.csproj -c Release -r win-x64 --self-contained false -o "C:\Users\jc_ca\Grupo Carpio Dropbox\Grupo Orion\Software\GitHubs\Production\OrionERP"

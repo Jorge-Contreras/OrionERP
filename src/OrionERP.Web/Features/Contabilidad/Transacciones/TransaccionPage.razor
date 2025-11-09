@@ -3,7 +3,51 @@
 @using OrionERP.Web.Shared
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
-    
+
+<style>
+  .transaccion-header .form-control,
+  .transaccion-header .form-select,
+  .transaccion-header .form-control-plaintext {
+    font-weight: 500;
+  }
+
+  .transaccion-header .row.g-3,
+  .transaccion-header .row.g-4,
+  .transaccion-header .row.gy-4 {
+    --bs-gutter-y: 0.3125rem;
+  }
+
+    /* === Categoria (Plantilla) layout === */
+    .transaccion-header .categoria-col {
+        /* don’t let this column stretch; leaves a big empty gap before the right buttons */
+        max-width: 100%;
+    }
+
+    .transaccion-header .categoria-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end; /* vertical bottoms aligned */
+        justify-content: flex-start; /* both controls left-aligned */
+        gap: .5rem; /* space between select and button */
+    }
+
+        /* limit the “input box” (the select) to ~30 characters wide */
+        .transaccion-header .categoria-row .form-select {
+            width: 30ch; /* approx width of 30 characters */
+            max-width: 100%; /* still behave on very narrow screens */
+        }
+
+    @@media (min-width: 992px) { /* lg and up */
+        /* create a large horizontal gap between this section and the right action buttons */
+        .transaccion-header .categoria-col
+
+    {
+        margin-right: auto;
+    }
+
+    }</style>
+
+
 
 <PageTitle>Transacción @Header?.DisplayFolio ?? Id.ToString(CultureInfo.InvariantCulture)</PageTitle>
 
@@ -28,7 +72,7 @@ else if (Header is not null)
         <h5 class="mb-0 flex-grow-1">Datos de la transacción</h5>
         <span class="badge @HeaderStatusCss">@HeaderStatus</span>
       </div>
-      <div class="card-body">
+      <div class="card-body transaccion-header">
         <EditForm EditContext="HeaderEditContext" OnValidSubmit="SaveHeaderAsync">
           <DataAnnotationsValidator />
           <ValidationSummary />
@@ -163,26 +207,27 @@ else if (Header is not null)
           </div>
 
           <div class="d-flex flex-column flex-lg-row gap-3 align-items-stretch align-items-lg-end mt-4">
-            <div class="flex-grow-1">
-              <label class="form-label">Categoría (Plantilla)</label>
-              <div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-end gap-2">
-                <InputSelect class="form-select flex-grow-1" @bind-Value="Header.CategoriaId">
-                  <option value="">Selecciona una categoría</option>
-                  @foreach (var categoria in CategoriaOptions)
-                  {
-                    <option value="@categoria.Id">@categoria.Display</option>
-                  }
-                </InputSelect>
-                <button type="button" class="btn btn-outline-secondary" @onclick="ApplyCategoriaPlantillaAsync" disabled="@IsApplyingPlantilla">
-                  @if (IsApplyingPlantilla)
-                  {
-                    <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
-                  }
-                  Aplicar Plantilla
-                </button>
-              </div>
-              <ValidationMessage For="() => Header.CategoriaId" />
-            </div>
+                        <div class="categoria-col">
+                            <label class="form-label">Categoría (Plantilla)</label>
+                            <div class="categoria-row">
+                                <InputSelect class="form-select" @bind-Value="Header.CategoriaId">
+                                    <option value="">Selecciona una categoría</option>
+                                    @foreach (var categoria in CategoriaOptions)
+                                    {
+                                        <option value="@categoria.Id">@categoria.Display</option>
+                                    }
+                                </InputSelect>
+                                <button type="button" class="btn btn-outline-secondary" @onclick="ApplyCategoriaPlantillaAsync" disabled="@IsApplyingPlantilla">
+                                    @if (IsApplyingPlantilla)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                                    }
+                                    Aplicar Plantilla
+                                </button>
+                            </div>
+                            <ValidationMessage For="() => Header.CategoriaId" />
+                        </div>
+
 
             <div class="d-flex flex-wrap gap-2 justify-content-end ms-lg-auto">
               <button type="button" class="btn btn-outline-secondary" @onclick="ResetHeader" disabled="@IsSavingHeader">

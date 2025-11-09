@@ -54,24 +54,39 @@ public static class RazorPageDataProtector
     }
   }
 
-  private static byte[] LoadOrCreateKey()
-  {
-    var appDataDirectory = Path.Combine(AppContext.BaseDirectory, "App_Data");
-    Directory.CreateDirectory(appDataDirectory);
-    var keyPath = Path.Combine(appDataDirectory, EncryptionKeyFileName);
+ 
+private static byte[] LoadOrCreateKey() // consider renaming to LoadKey
+{
+  var appDataDirectory = Path.Combine(AppContext.BaseDirectory, "App_Data");
+  var keyPath = Path.Combine(appDataDirectory, EncryptionKeyFileName);
 
-    if (File.Exists(keyPath))
+  // Optional: ensure directory exists (harmless even if you throw on missing file)
+  Directory.CreateDirectory(appDataDirectory);
+
+  if (File.Exists(keyPath))
+  {
+    byte[] existing;
+    try
     {
-      var existing = File.ReadAllBytes(keyPath);
-      if (existing.Length == 32)
-      {
-        return existing;
-      }
+      existing = File.ReadAllBytes(keyPath);
+    }
+    catch (Exception ex)
+    {
+      throw new IOException($"Failed to read encryption key at '{keyPath}'.", ex);
     }
 
-    var key = RandomNumberGenerator.GetBytes(32);
-    using var fileStream = new FileStream(keyPath, FileMode.Create, FileAccess.Write, FileShare.None);
-    fileStream.Write(key, 0, key.Length);
-    return key;
+    if (existing.Length != 32)
+      throw new InvalidDataException(
+          $"Encryption key must be 32 bytes (256-bit). Found {existing.Length} bytes at '{keyPath}'.");
+
+    return existing;
   }
+
+  // <- This makes all code paths return a value (by throwing here)
+  throw new FileNotFoundException(
+      $"Encryption key not found at '{keyPath}'. " +
+      "Ensure the file is deployed to App_Data and copied on publish.",
+      keyPath);
+}
+
 }

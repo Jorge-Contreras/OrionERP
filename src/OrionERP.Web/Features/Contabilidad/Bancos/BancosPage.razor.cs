@@ -81,6 +81,12 @@ public partial class BancosPage : ComponentBase, IDisposable
       ? $"{account.NombreBanco} · {account.NumeroCuenta}"
       : "Ninguna";
 
+  protected override void OnInitialized()
+  {
+    base.OnInitialized();
+    RfcState.Changed += OnRfcStateChanged;
+  }
+
   protected override async Task OnInitializedAsync()
   {
     await base.OnInitializedAsync();
@@ -95,6 +101,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     _pendingTransactionsCts?.Dispose();
     _textFilterDebounceCts?.Cancel();
     _textFilterDebounceCts?.Dispose();
+    RfcState.Changed -= OnRfcStateChanged;
   }
 
   protected string FormatCurrency(decimal value)
@@ -374,6 +381,47 @@ public partial class BancosPage : ComponentBase, IDisposable
       IsInitializing = false;
       await InvokeAsync(StateHasChanged);
     }
+  }
+
+  private void OnRfcStateChanged()
+  {
+    _ = InvokeAsync(HandleRfcChangedAsync);
+  }
+
+  private async Task HandleRfcChangedAsync()
+  {
+    var nextRfc = RfcState.CurrentRfc;
+
+    if (string.Equals(_currentRfc, nextRfc, StringComparison.OrdinalIgnoreCase))
+    {
+      return;
+    }
+
+    _currentRfc = nextRfc;
+    SelectedAccountId = null;
+    SelectedPendingTransactionId = null;
+    SelectedMovimientoId = null;
+    LastProcessResult = null;
+    ErrorMessage = null;
+
+    _movementsCts?.Cancel();
+    _pendingTransactionsCts?.Cancel();
+    _textFilterDebounceCts?.Cancel();
+
+    if (string.IsNullOrWhiteSpace(_currentRfc))
+    {
+      Accounts.Clear();
+      Movements.Clear();
+      PendingTransactions.Clear();
+      AvailableYears.Clear();
+      await InvokeAsync(StateHasChanged);
+      return;
+    }
+
+    await LoadAccountsInternalAsync();
+    await LoadYearsInternalAsync();
+    await LoadPendingTransactionsAsync();
+    await LoadMovementsAsync();
   }
 
   private async Task LoadAccountsInternalAsync()

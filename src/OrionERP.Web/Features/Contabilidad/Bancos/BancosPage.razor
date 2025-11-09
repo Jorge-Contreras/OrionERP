@@ -183,7 +183,7 @@ else
                   var isSelected = pending.TransaccionId == SelectedPendingTransactionId;
                   var rowClass = isSelected ? "table-primary" : string.Empty;
                   <tr class="@rowClass" style="cursor: pointer;" aria-selected="@(isSelected ? "true" : "false")" @onclick="@(() => OnPendingTransactionSelected(pending.TransaccionId))">
-                    <td>@pending.TransaccionId</td>
+                    <td><a href="/Contabilidad/Transacciones/@pending.TransaccionId" target="_blank" rel="noopener">@pending.TransaccionId</a></td>
                     <td>@pending.Fecha.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
                     <td>@pending.FormaPago</td>
                     <td class="text-wrap">@pending.Concepto</td>

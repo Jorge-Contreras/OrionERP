@@ -1,0 +1,232 @@
+@page "/contabilidad/bancos"
+@using System.Globalization
+@attribute [Authorize(Roles = "Administrador,SatOperator")]
+
+<PageTitle>Bancos – Cuentas y Movimientos</PageTitle>
+
+<h1 class="mb-4">Bancos – Cuentas y Movimientos</h1>
+
+@if (!string.IsNullOrEmpty(ErrorMessage))
+{
+  <div class="alert alert-danger" role="alert">
+    <strong>Error:</strong> @ErrorMessage
+  </div>
+}
+else if (IsInitializing)
+{
+  <div class="orion-loading" role="status" aria-live="polite">
+    <span class="orion-spinner" aria-hidden="true"></span>
+    <span class="orion-strong">Cargando información…</span>
+  </div>
+}
+else
+{
+  <div class="d-flex flex-column gap-4">
+    <section aria-labelledby="accounts-heading" class="card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h2 id="accounts-heading" class="h5 mb-0">Cuentas bancarias</h2>
+          <span class="text-muted small">Total: @Accounts.Count</span>
+        </div>
+
+        @if (IsLoadingAccounts)
+        {
+          <div class="orion-loading" role="status" aria-live="polite">
+            <span class="orion-spinner" aria-hidden="true"></span>
+            <span class="orion-strong">Cargando cuentas…</span>
+          </div>
+        }
+        else if (Accounts.Count == 0)
+        {
+          <div class="alert alert-info mb-0">No se encontraron cuentas bancarias.</div>
+        }
+        else
+        {
+          <div class="table-responsive" style="max-height: 20vh;">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col">Banco</th>
+                  <th scope="col">Cuenta</th>
+                  <th scope="col">Titular</th>
+                  <th scope="col">Tipo</th>
+                  <th scope="col">CLABE</th>
+                  <th scope="col">RFC</th>
+                  <th scope="col">Activo</th>
+                  <th scope="col">Fecha alta</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach (var account in Accounts)
+                {
+                  var isSelected = account.CuentaBancoId == SelectedAccountId;
+                  var rowClass = isSelected ? "table-primary" : string.Empty;
+                  <tr class="@rowClass" style="cursor: pointer;" @onclick="() => OnAccountSelected(account.CuentaBancoId)">
+                    <td>@account.NombreBanco</td>
+                    <td>@account.NumeroCuenta</td>
+                    <td>@account.NombreTitular</td>
+                    <td>@account.TipoCuenta</td>
+                    <td>@(string.IsNullOrWhiteSpace(account.ClabeCuenta) ? "—" : account.ClabeCuenta)</td>
+                    <td>@account.Rfc</td>
+                    <td>@(account.Activo ? "Sí" : "No")</td>
+                    <td>@account.FechaAlta.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    </section>
+
+    <section aria-labelledby="process-heading" class="card">
+      <div class="card-body d-flex flex-column gap-3">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <h2 id="process-heading" class="h5 mb-0 flex-grow-1">Procesar archivo de banco</h2>
+          <label class="btn btn-primary mb-0">
+            @(IsProcessingFile ? "Procesando…" : "Procesar archivo de banco")
+            <InputFile @key="FileInputKey" class="d-none" accept=".txt,.xml" OnChange="OnFileSelectedAsync" disabled="@IsProcessingFile" />
+          </label>
+        </div>
+
+        @if (LastProcessResult is not null)
+        {
+          <div class="card bg-light">
+            <div class="card-body">
+              <h3 class="h6">Resumen del procesamiento</h3>
+              <dl class="row mb-0">
+                <dt class="col-sm-4">Insertados</dt>
+                <dd class="col-sm-8">@LastProcessResult.Insertados</dd>
+                <dt class="col-sm-4">Actualizados</dt>
+                <dd class="col-sm-8">@LastProcessResult.Actualizados</dd>
+                <dt class="col-sm-4">Cuenta</dt>
+                <dd class="col-sm-8">@LastProcessResult.NumeroCuenta (@LastProcessResult.NombreBanco)</dd>
+                <dt class="col-sm-4">Hash del archivo</dt>
+                <dd class="col-sm-8 text-break">@LastProcessResult.ArchivoHash</dd>
+                <dt class="col-sm-4">Advertencias de balance</dt>
+                <dd class="col-sm-8">@LastProcessResult.BalanceWarnings</dd>
+              </dl>
+            </div>
+          </div>
+        }
+      </div>
+    </section>
+
+    <section aria-labelledby="filters-heading" class="card">
+      <div class="card-body">
+        <div class="d-flex flex-column flex-lg-row align-items-lg-end gap-3">
+          <div>
+            <label class="form-label" for="month-select">Mes</label>
+            <select id="month-select" class="form-select" @bind="SelectedMonth" @bind:after="OnMonthChangedAsync">
+              @foreach (var month in MonthOptions)
+              {
+                <option value="@month.Key">@month.Value</option>
+              }
+            </select>
+          </div>
+          <div>
+            <label class="form-label" for="year-select">Año</label>
+            <select id="year-select" class="form-select" @bind="SelectedYear" @bind:after="OnYearChangedAsync">
+              @foreach (var year in AvailableYears)
+              {
+                <option value="@year">@year</option>
+              }
+            </select>
+          </div>
+          <div class="flex-grow-1">
+            <label class="form-label" for="text-filter">Buscar en concepto</label>
+            <input id="text-filter" class="form-control" type="text" placeholder="Escribe para filtrar…" value="@TextFilter" @oninput="OnTextFilterChanged" />
+          </div>
+          <div class="ms-lg-auto">
+            <button class="btn btn-outline-secondary" @onclick="ReloadMovementsAsync" disabled="@IsLoadingMovements">
+              @(IsLoadingMovements ? "Cargando…" : "Recargar")
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="movements-heading" class="card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h2 id="movements-heading" class="h5 mb-0">Movimientos</h2>
+          <div class="text-muted small">
+            @if (SelectedAccountId.HasValue)
+            {
+              <span>Cuenta seleccionada: @SelectedAccountLabel</span>
+            }
+            else
+            {
+              <span>Selecciona una cuenta para ver los movimientos.</span>
+            }
+          </div>
+        </div>
+
+        @if (IsLoadingMovements)
+        {
+          <div class="orion-loading" role="status" aria-live="polite">
+            <span class="orion-spinner" aria-hidden="true"></span>
+            <span class="orion-strong">Cargando movimientos…</span>
+          </div>
+        }
+        else if (Movements.Count == 0)
+        {
+          <div class="alert alert-info mb-0">No hay movimientos para los filtros seleccionados.</div>
+        }
+        else
+        {
+          <div class="table-responsive" style="max-height: 70vh;">
+            <table class="table table-sm table-striped table-hover align-middle mb-0">
+              <thead class="table-dark">
+                <tr>
+                  <th scope="col">ID</th>
+                  <th scope="col">Día</th>
+                  <th scope="col">Línea</th>
+                  <th scope="col">Concepto</th>
+                  <th scope="col">Tipo</th>
+                  <th scope="col" class="text-end">Cargo</th>
+                  <th scope="col" class="text-end">Abono</th>
+                  <th scope="col" class="text-end">Saldo</th>
+                  <th scope="col">Fecha de carga</th>
+                  <th scope="col">Banco</th>
+                  <th scope="col">Cuenta</th>
+                  <th scope="col">Secuencia clave</th>
+                  <th scope="col">Póliza</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach (var movement in Movements)
+                {
+                  <tr>
+                    <td>@movement.MovimientoId</td>
+                    <td>@movement.Dia.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                    <td>@movement.Line</td>
+                    <td class="text-wrap">@movement.Concepto</td>
+                    <td>@movement.Tipo</td>
+                    <td class="text-end">@FormatCurrency(movement.Cargo)</td>
+                    <td class="text-end">@FormatCurrency(movement.Abono)</td>
+                    <td class="text-end">@FormatCurrency(movement.Saldo)</td>
+                    <td>@movement.FechaCarga.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
+                    <td>@movement.NombreBanco</td>
+                    <td>@movement.NumeroCuenta</td>
+                    <td>@movement.SecuenciaClave</td>
+                    <td>
+                      @if (movement.Policy.HasValue && movement.Policy.Value > 0)
+                      {
+                        <a href="/Contabilidad/Transacciones/#@movement.Policy" target="_blank" rel="noopener">@movement.Policy</a>
+                      }
+                      else
+                      {
+                        <span class="text-muted">—</span>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    </section>
+  </div>
+}

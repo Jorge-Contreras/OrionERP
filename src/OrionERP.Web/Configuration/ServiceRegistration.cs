@@ -4,12 +4,14 @@ using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using OrionERP.Application.Features.Cfdi.ContabilidadRegistros;
 using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
 using OrionERP.Application.Features.Rfcs.Contracts;
+using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Infrastructure.Common;
 using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
 using OrionERP.Infrastructure.Features.Cfdi.ContabilidadRegistros;
 using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Dapper;
 using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Services;
 using OrionERP.Infrastructure.Features.Rfcs.Dapper;
+using OrionERP.Infrastructure.Features.Contabilidad.Bancos;
 using Sat.MassiveDownload;
 using Sat.MassiveDownload.Core;
 using ContabITransaccionService = OrionERP.Application.Features.Contabilidad.Transacciones.ITransaccionService;
@@ -51,6 +53,7 @@ public static class ServiceRegistration
 
     services.AddScoped<ICuentasContablesRepository, CuentasContablesRepository>();
     services.AddScoped<IContabilidadRegistrosService, ContabilidadRegistrosService>();
+    services.AddScoped<IBancosService, BancosService>();
 
     services.AddScoped<ContabITransaccionService, ContabTransaccionService>();
 

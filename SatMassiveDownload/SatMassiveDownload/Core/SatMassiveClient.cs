@@ -1,4 +1,4 @@
-﻿// Core/SatMassiveClient.cs
+// Core/SatMassiveClient.cs
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -300,8 +300,8 @@ public sealed class SatMassiveClient : ISatMassiveService
         }
         // Common required
         if (!string.IsNullOrWhiteSpace(rfcSol)) SetAttr("RfcSolicitante", rfcSol);
-        SetAttr("FechaInicial", s.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"));
-        SetAttr("FechaFinal", e.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"));
+        SetAttr("FechaInicial", s.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+        SetAttr("FechaFinal", e.ToString("yyyy-MM-ddTHH:mm:ssZ"));
         if (!string.IsNullOrWhiteSpace(tipo)) SetAttr("TipoSolicitud", tipo);
 
         // v1.5 rule: Recibidos + XML => only Vigente is allowed

@@ -454,6 +454,24 @@ ORDER BY M.Dia, M.Movimiento_ID;";
     return processed;
   }
 
+  public async Task UnlinkMovementAsync(
+      long movimientoId,
+      CancellationToken cancellationToken = default)
+  {
+    if (movimientoId <= 0)
+    {
+      throw new ArgumentOutOfRangeException(nameof(movimientoId));
+    }
+
+    const string sql = @"UPDATE bancos.Movimientos
+SET Transaccion_ID = NULL
+WHERE Movimiento_ID = @MovimientoId;";
+
+    using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+    await connection.ExecuteAsync(sql, new { MovimientoId = movimientoId }).ConfigureAwait(false);
+    cancellationToken.ThrowIfCancellationRequested();
+  }
+
   public async Task LinkMovementToTransactionAsync(
       long movimientoId,
       int transaccionId,

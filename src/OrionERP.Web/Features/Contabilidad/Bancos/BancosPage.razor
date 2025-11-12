@@ -311,7 +311,13 @@ else
 
     <section aria-label="Acciones de conciliación" class="card">
       <div class="card-body py-2">
-        <div class="d-flex flex-wrap justify-content-end align-items-center gap-2">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <div class="form-check mb-0">
+            <InputCheckbox id="filter-unlinked-movements" class="form-check-input" @bind-Value="ShowOnlyUnlinkedMovements" />
+            <label class="form-check-label" for="filter-unlinked-movements">Movimientos sin ligar</label>
+          </div>
+          <button class="btn btn-outline-danger btn-sm" type="button" @onclick="OnUnlinkClicked" disabled="@(!CanUnlink)">Desligar</button>
+          <div class="flex-grow-1"></div>
           <button class="btn btn-primary btn-sm" type="button" @onclick="OnLinkClicked" disabled="@(!CanLink)">Ligar</button>
           <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="OnAutoPolizasClicked" disabled="@HasPendingTransactions" title="@AutoPolizasTooltip">Crear pólizas auto</button>
           @if (HasPendingTransactions)
@@ -369,7 +375,7 @@ else
                 </tr>
               </thead>
               <tbody>
-                @foreach (var movement in Movements)
+                @foreach (var movement in VisibleMovements)
                 {
                   var isSelected = movement.MovimientoId == SelectedMovimientoId;
                   var rowClass = isSelected ? "table-primary" : string.Empty;

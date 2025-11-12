@@ -37,4 +37,7 @@ public interface IBancosService
       long movimientoId,
       int transaccionId,
       CancellationToken cancellationToken = default);
+  Task UnlinkMovementAsync(
+      long movimientoId,
+      CancellationToken cancellationToken = default);
 }

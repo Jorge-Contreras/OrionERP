@@ -24,6 +24,9 @@ public interface ITransaccionService
       int daysBack = 60,
       int top = 200,
       CancellationToken ct = default);
+  Task<IReadOnlyList<TransaccionCfdiCandidateDto>> GetCfdiCandidatesAsync(TransaccionCfdiSearchRequest request, CancellationToken ct = default);
+  Task<IReadOnlyList<long>> GetLinkedCfdiIdsAsync(int transaccionId, CancellationToken ct = default);
+  Task<TransaccionCommandResult> LinkCfdiAsync(TransaccionCfdiLinkRequest request, CancellationToken ct = default);
   Task<TransaccionCommandResult> ApplyCategoriaPlantillaAsync(
       int transaccionId,
       int categoriaId,

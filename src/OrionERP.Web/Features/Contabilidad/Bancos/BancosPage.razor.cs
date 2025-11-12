@@ -64,6 +64,7 @@ public partial class BancosPage : ComponentBase, IDisposable
   protected long? SelectedMovimientoId { get; private set; }
   protected int SelectedMonth { get; set; } = DateTime.Today.Month;
   protected int SelectedYear { get; set; } = DateTime.Today.Year;
+  private bool _showOnlyUnlinkedMovements;
   protected string? TextFilter { get; private set; }
   protected ProcessBbvaResult? LastProcessResult { get; private set; }
   protected int FileInputKey { get; private set; }
@@ -73,10 +74,32 @@ public partial class BancosPage : ComponentBase, IDisposable
   protected bool IsAccountModalVisible { get; private set; }
   protected bool IsSavingAccount { get; private set; }
   protected bool IsDeletingAccount { get; private set; }
+  protected bool ShowOnlyUnlinkedMovements
+  {
+    get => _showOnlyUnlinkedMovements;
+    set
+    {
+      if (_showOnlyUnlinkedMovements == value)
+      {
+        return;
+      }
+
+      _showOnlyUnlinkedMovements = value;
+
+      if (_showOnlyUnlinkedMovements && GetSelectedMovement() is { Policy: not null and > 0 })
+      {
+        SelectedMovimientoId = null;
+      }
+
+      _ = InvokeAsync(StateHasChanged);
+    }
+  }
 
   protected IReadOnlyList<KeyValuePair<int, string>> MonthOptions => MonthOptionsInternal;
 
   protected bool CanLink => SelectedPendingTransactionId.HasValue && SelectedMovimientoId.HasValue;
+
+  protected bool CanUnlink => GetSelectedMovement() is { Policy: int policyValue } && policyValue > 0;
 
   protected bool HasPendingTransactions => PendingTransactions.Count > 0;
 
@@ -87,6 +110,11 @@ public partial class BancosPage : ComponentBase, IDisposable
     => Accounts.FirstOrDefault(a => a.CuentaBancoId == SelectedAccountId) is { } account
       ? $"{account.NombreBanco} · {account.NumeroCuenta}"
       : "Ninguna";
+
+  protected IEnumerable<BankMovementDto> VisibleMovements
+    => ShowOnlyUnlinkedMovements
+      ? Movements.Where(m => m.Policy is null or <= 0)
+      : Movements;
 
   protected override void OnInitialized()
   {
@@ -333,6 +361,11 @@ public partial class BancosPage : ComponentBase, IDisposable
     _ = InvokeAsync(StateHasChanged);
   }
 
+  private BankMovementDto? GetSelectedMovement()
+    => SelectedMovimientoId.HasValue
+      ? Movements.FirstOrDefault(m => m.MovimientoId == SelectedMovimientoId.Value)
+      : null;
+
   protected async Task OnLinkClicked()
   {
     if (!CanLink)
@@ -374,12 +407,59 @@ public partial class BancosPage : ComponentBase, IDisposable
     {
       await BancosService.LinkMovementToTransactionAsync(movement.MovimientoId, transaction.TransaccionId);
       UiMessages.ShowSuccess("Movimiento ligado correctamente.");
+      SelectedMovimientoId = null;
+      SelectedPendingTransactionId = null;
       await LoadPendingTransactionsAsync();
       await LoadMovementsAsync();
     }
     catch (Exception)
     {
       UiMessages.ShowError("No se pudo ligar el movimiento seleccionado.");
+    }
+  }
+
+  protected async Task OnUnlinkClicked()
+  {
+    var movement = GetSelectedMovement();
+
+    if (movement is null)
+    {
+      UiMessages.ShowWarning("Selecciona un movimiento válido.");
+      return;
+    }
+
+    if (movement.Policy is null or <= 0)
+    {
+      UiMessages.ShowWarning("El movimiento seleccionado no tiene una póliza ligada.");
+      return;
+    }
+
+    bool confirm;
+    try
+    {
+      confirm = await JsRuntime.InvokeAsync<bool>("confirm", "¿Estas Seguro que deseas desligar este Movimiento?");
+    }
+    catch
+    {
+      confirm = true;
+    }
+
+    if (!confirm)
+    {
+      return;
+    }
+
+    try
+    {
+      await BancosService.UnlinkMovementAsync(movement.MovimientoId);
+      UiMessages.ShowSuccess("Movimiento desligado correctamente.");
+      SelectedMovimientoId = null;
+      await LoadPendingTransactionsAsync();
+      await LoadMovementsAsync();
+    }
+    catch (Exception)
+    {
+      UiMessages.ShowError("No se pudo desligar el movimiento seleccionado.");
     }
   }
 

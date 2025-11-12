@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
@@ -105,6 +106,137 @@ ORDER BY t.Fecha;";
             cancellationToken: ct));
 
     return rows.AsList();
+  }
+
+  public async Task<IReadOnlyList<TransaccionCfdiCandidateDto>> GetCfdiCandidatesAsync(
+      TransaccionCfdiSearchRequest request,
+      CancellationToken ct = default)
+  {
+    if (request is null)
+      throw new ArgumentNullException(nameof(request));
+
+    var parameters = new DynamicParameters();
+    parameters.Add("@Monto", request.Monto);
+    parameters.Add("@Concepto", request.Concepto);
+    parameters.Add("@Rfc", request.Rfc);
+    parameters.Add("@Comprobante_ID", request.ComprobanteId);
+    parameters.Add("@Renglones", request.Renglones);
+    parameters.Add("@Tipo", request.Tipo);
+    parameters.Add("@Comprobantes_In", string.IsNullOrWhiteSpace(request.ComprobantesCsv) ? null : request.ComprobantesCsv);
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<CfdiCandidateRow>(
+        new CommandDefinition(
+            "cfdi.CFDIs_Candidatos_Para_Poliza",
+            parameters,
+            commandType: CommandType.StoredProcedure,
+            cancellationToken: ct));
+
+    return rows
+        .Select(row => new TransaccionCfdiCandidateDto
+        {
+          ComprobanteId = row.Comprobante_Id,
+          Fecha = row.Fecha,
+          Tipo = row.Tipo,
+          Serie = row.Serie,
+          Folio = row.Folio,
+          EmisorRfc = row.Emisor_Rfc,
+          ReceptorRfc = row.Receptor_Rfc,
+          Uuid = row.UUID,
+          FormaPago = row.FormaPago,
+          Total = row.Total,
+          Polizas = row.Polizas,
+          Asignado = row.Asignado,
+          MetodoPago = row.MetodoPago,
+          UsoCfdi = row.UsoCFDI,
+          Conceptos = row.Conceptos
+        })
+        .ToList();
+  }
+
+  public async Task<IReadOnlyList<long>> GetLinkedCfdiIdsAsync(int transaccionId, CancellationToken ct = default)
+  {
+    const string sql = @"SELECT CAST(TC.Comprobante_ID AS bigint) AS Id
+FROM dbo.Transaccion_Comprobante AS TC
+WHERE TC.Transaccion_ID = @Id
+UNION
+SELECT CAST(TD.DoctoRelacionado_Id AS bigint) AS Id
+FROM dbo.Transaccion_DoctoRelacionado AS TD
+WHERE TD.Transaccion_ID = @Id;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<long>(
+        new CommandDefinition(sql, new { Id = transaccionId }, cancellationToken: ct));
+
+    return rows.AsList();
+  }
+
+  public async Task<TransaccionCommandResult> LinkCfdiAsync(
+      TransaccionCfdiLinkRequest request,
+      CancellationToken ct = default)
+  {
+    if (request is null)
+      throw new ArgumentNullException(nameof(request));
+
+    using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
+
+    try
+    {
+      if (request.UseDoctoRelacionadoTable)
+      {
+        const string sql = @"INSERT INTO dbo.Transaccion_DoctoRelacionado (Transaccion_ID, DoctoRelacionado_Id, Monto)
+VALUES (@TransaccionId, @DoctoRelacionadoId, @Monto);";
+
+        await conn.ExecuteAsync(
+            new CommandDefinition(
+                sql,
+                new
+                {
+                  TransaccionId = request.TransaccionId,
+                  DoctoRelacionadoId = request.ComprobanteId,
+                  Monto = request.Monto
+                },
+                tx,
+                cancellationToken: ct));
+      }
+      else
+      {
+        const string sql = @"INSERT INTO dbo.Transaccion_Comprobante (Transaccion_ID, Comprobante_ID, Monto)
+VALUES (@TransaccionId, @ComprobanteId, @Monto);";
+
+        await conn.ExecuteAsync(
+            new CommandDefinition(
+                sql,
+                new
+                {
+                  TransaccionId = request.TransaccionId,
+                  ComprobanteId = request.ComprobanteId,
+                  Monto = request.Monto
+                },
+                tx,
+                cancellationToken: ct));
+      }
+
+      await tx!.CommitAsync(ct);
+      return TransaccionCommandResult.Ok("Transacción ligada correctamente.");
+    }
+    catch (SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
+    {
+      try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
+      return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
+    }
+    catch (Exception ex)
+    {
+      try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
+      _logger.LogError(
+          ex,
+          "Failed to link CFDI {ComprobanteId} to transaction {TransaccionId}",
+          request.ComprobanteId,
+          request.TransaccionId);
+      return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
+    }
   }
 
   public async Task<IReadOnlyList<TransaccionMovimientoDto>> GetMovimientosAsync(int transaccionId, CancellationToken ct = default)
@@ -607,6 +739,25 @@ WHERE ID = @MovimientoId
     using var conn = new SqlConnection(_cs);
     await conn.ExecuteAsync(
       new CommandDefinition(sql, new { MovimientoId = movimientoId, TransaccionId = transaccionId }, cancellationToken: ct));
+  }
+
+  private sealed class CfdiCandidateRow
+  {
+    public long Comprobante_Id { get; set; }
+    public DateTime Fecha { get; set; }
+    public string? Tipo { get; set; }
+    public string? Serie { get; set; }
+    public string? Folio { get; set; }
+    public string? Emisor_Rfc { get; set; }
+    public string? Receptor_Rfc { get; set; }
+    public string? UUID { get; set; }
+    public string? FormaPago { get; set; }
+    public decimal Total { get; set; }
+    public int Polizas { get; set; }
+    public decimal Asignado { get; set; }
+    public string? MetodoPago { get; set; }
+    public string? UsoCFDI { get; set; }
+    public string? Conceptos { get; set; }
   }
 
   private async Task<int> ExecuteInsertAsync(string sql, object parameters, CancellationToken ct)

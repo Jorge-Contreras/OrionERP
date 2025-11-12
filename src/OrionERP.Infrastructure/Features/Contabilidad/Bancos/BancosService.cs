@@ -266,7 +266,7 @@ WHERE M.RFC = @Rfc
   AND YEAR(M.Dia) = @Year
   AND MONTH(M.Dia) = @Month
   AND (@TextFilter IS NULL OR M.Concepto LIKE '%' + @TextFilter + '%')
-ORDER BY M.Secuencia_Clave;";
+ORDER BY M.Secuencia_Clave desc;";
 
     var parameters = new
     {

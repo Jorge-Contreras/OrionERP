@@ -355,6 +355,7 @@ else
             <table class="table table-sm table-striped table-hover align-middle mb-0">
               <thead class="table-light">
                 <tr>
+                  <th scope="col">Póliza</th>
                   <th scope="col">ID</th>
                   <th scope="col">Día</th>
                   <th scope="col">Línea</th>
@@ -364,7 +365,7 @@ else
                   <th scope="col" class="text-end">Abono</th>
                   <th scope="col" class="text-end">Saldo</th>
                   <th scope="col">Fecha de carga</th>
-                  <th scope="col">Póliza</th>
+                                    <th scope="col">Ligar</th>
                 </tr>
               </thead>
               <tbody>
@@ -373,6 +374,16 @@ else
                   var isSelected = movement.MovimientoId == SelectedMovimientoId;
                   var rowClass = isSelected ? "table-primary" : string.Empty;
                   <tr class="@rowClass" style="cursor: pointer;" aria-selected="@(isSelected ? "true" : "false")" @onclick="@(() => OnMovementSelected(movement.MovimientoId))">
+                                        <td>
+                                            @if (movement.Policy.HasValue && movement.Policy.Value > 0)
+                                            {
+                                                <a href="/Contabilidad/Transacciones/@movement.Policy" target="_blank" rel="noopener">@movement.Policy</a>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </td>
                     <td>@movement.MovimientoId</td>
                     <td>@movement.Dia.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
                     <td>@movement.Line</td>
@@ -382,16 +393,17 @@ else
                     <td class="text-end">@FormatCurrency(movement.Abono)</td>
                     <td class="text-end">@FormatCurrency(movement.Saldo)</td>
                     <td>@movement.FechaCarga.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
-                    <td>
-                      @if (movement.Policy.HasValue && movement.Policy.Value > 0)
-                      {
-                        <a href="/Contabilidad/Transacciones/@movement.Policy" target="_blank" rel="noopener">@movement.Policy</a>
-                      }
-                      else
-                      {
-                        <span class="text-muted">—</span>
-                      }
-                    </td>
+                                        <td>
+                                            @if (movement.Policy.HasValue && movement.Policy.Value > 0)
+                                            {
+                                                <a href="/Contabilidad/LigarTransacciones/@movement.Policy" target="_blank" rel="noopener">ligar</a>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </td>
+                    
                   </tr>
                 }
               </tbody>

@@ -60,15 +60,16 @@
         <tr>
             <th>Id</th>
             <th>Folio</th>
+            <th>Fecha Inicial</th>
+            <th>Fecha Final</th>
+            <th>Estado</th>
+            <th></th>
             <th>Tipo</th>
             <th>Modo</th>
             <th>RfcSolicitante</th>
             <th>EstadoComprobante</th>
             <th>RfcEmisor</th>
             <th>RfcReceptor</th>
-            <th>FechaInicialUtc</th>
-            <th>FechaFinalUtc</th>
-            <th>Estado</th>
             <th>CodEstado</th>
             <th>CodEstatus</th>
             <th>Mensaje</th>
@@ -78,7 +79,7 @@
             <th>Última verificación</th>
             <th>Terminado</th>
             <th>RequestKey</th>
-            <th></th>
+            
         </tr>
     </thead>
     <tbody>
@@ -87,24 +88,9 @@
             <tr>
                 <td>@s.Id</td>
                 <td>@s.Folio</td>
-                <td>@s.TipoSolicitud</td>
-                <td>@(s.Issued ? "Emitidos" : "Recibidos")</td>
-                <td>@s.RfcSolicitante</td>
-                <td>@s.EstadoComprobante</td>
-                <td>@s.RfcEmisor</td>
-                <td>@s.RfcReceptor</td>
                 <td>@s.FechaInicialUtc</td>
                 <td>@s.FechaFinalUtc</td>
                 <td>@(s.EstadoSolicitud.HasValue ? ((EstadoSolicitud)s.EstadoSolicitud.Value).ToString() : "")</td>
-                <td>@s.CodigoEstadoSolicitud</td>
-                <td>@s.CodEstatus</td>
-                <td>@s.Mensaje</td>
-                <td>@(s.NumeroCfdis?.ToString() ?? "")</td>
-                <td>@s.PackageCount</td>
-                <td>@s.CreatedAtUtc</td>
-                <td>@s.LastCheckedAtUtc</td>
-                <td>@s.TerminatedAtUtc</td>
-                <td>@s.RequestKey</td>
                 <td>
                     <button class="btn btn-outline-primary btn-sm"
                             @onclick="() => DescargarYProcesarAsync(s.Id)"
@@ -112,6 +98,22 @@
                         Descargar y procesar
                     </button>
                 </td>
+                <td>@s.TipoSolicitud</td>
+                <td>@(s.Issued ? "Emitidos" : "Recibidos")</td>
+                <td>@s.RfcSolicitante</td>
+                <td>@s.EstadoComprobante</td>
+                <td>@s.RfcEmisor</td>
+                <td>@s.RfcReceptor</td>
+                <td>@s.CodEstatus</td>
+                <td>@s.CodigoEstadoSolicitud</td>
+                <td>@s.Mensaje</td>
+                <td>@(s.NumeroCfdis?.ToString() ?? "")</td>
+                <td>@s.PackageCount</td>
+                <td>@s.CreatedAtUtc</td>
+                <td>@s.LastCheckedAtUtc</td>
+                <td>@s.TerminatedAtUtc</td>
+                <td>@s.RequestKey</td>
+                
             </tr>
         }
     </tbody>

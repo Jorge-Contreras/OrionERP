@@ -43,6 +43,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   private bool _isDisposed;
 
+  private static readonly CultureInfo CurrencyCulture = new("es-MX");
+
   private const long AttachmentMaxFileSize = TransaccionAttachmentCreateRequest.MaxFileSizeBytes;
 
   [Parameter] public int Id { get; set; }
@@ -63,7 +65,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected MovimientoTotalsDto Totals { get; private set; } = new();
   protected List<MovimientoModel> Movimientos { get; } = new();
   protected List<AttachmentModel> Attachments { get; } = new();
-  protected List<ComprobanteModel> Comprobantes { get; } = new();
+  protected List<TransaccionCfdiCandidateDto> Comprobantes { get; } = new();
   protected List<LookupInt32Dto> CategoriaOptions { get; } = new();
   protected List<LookupInt32Dto> ProyectoOptions { get; } = new();
   protected List<LookupInt32Dto> CompraOptions { get; } = new();
@@ -91,6 +93,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected bool IsSectionExpanded(SectionPanel section) => _expandedSection == section;
 
   protected string GetSectionToggleIcon(SectionPanel section) => IsSectionExpanded(section) ? "oi-chevron-bottom" : "oi-chevron-right";
+
+  protected string FormatCurrency(decimal value)
+    => value.ToString("C2", CurrencyCulture);
 
   protected void ToggleSection(SectionPanel section)
   {
@@ -303,39 +308,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       EnsureSelectedCompraOption();
 
       await ReloadAttachmentsAsync(ct);
-
-      Comprobantes.Clear();
-      var comprobantesDto = await TransaccionService.GetComprobantesAsync(Id, ct);
-      Comprobantes.AddRange(comprobantesDto.Select(c => new ComprobanteModel
-      {
-        PolizaMonto = c.PolizaMonto,
-        ComprobanteId = c.ComprobanteId,
-        D = c.D ?? string.Empty,
-        Fecha = c.Fecha,
-        MesGlobal = c.MesGlobal ?? string.Empty,
-        AnioGlobal = c.AnioGlobal,
-        Emisor = c.Emisor ?? string.Empty,
-        SubTotal = c.SubTotal,
-        Descuento = c.Descuento,
-        SubTotalDesc = c.SubTotalDesc,
-        Actos16 = c.Actos16,
-        Actos0 = c.Actos0,
-        Iva = c.Iva,
-        Ieps = c.Ieps,
-        IvaRetenido = c.IvaRetenido,
-        IsrRetenido = c.IsrRetenido,
-        IepsRetenido = c.IepsRetenido,
-        Total = c.Total,
-        FolioFiscal = c.FolioFiscal ?? string.Empty,
-        FormaPago = c.FormaPago ?? string.Empty,
-        TipoDeComprobante = c.TipoDeComprobante ?? string.Empty,
-        MetodoPago = c.MetodoPago ?? string.Empty,
-        UsoCfdi = c.UsoCfdi ?? string.Empty,
-        FechaCancelacion = c.FechaCancelacion,
-        Estatus = c.Estatus ?? string.Empty,
-        TransaccionId = c.TransaccionId,
-        Vinculado = c.Vinculado
-      }));
+      await ReloadComprobantesAsync(ct);
     }
     catch (OperationCanceledException)
     {
@@ -776,6 +749,43 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }));
   }
 
+  private async Task ReloadComprobantesAsync(CancellationToken ct = default)
+  {
+    Comprobantes.Clear();
+
+    if (Header is null)
+    {
+      return;
+    }
+
+    try
+    {
+      var ids = await TransaccionService.GetLinkedCfdiIdsAsync(Header.Id, ct);
+      if (ids.Count == 0)
+      {
+        return;
+      }
+
+      var request = new TransaccionCfdiSearchRequest
+      {
+        Rfc = Header.Rfc ?? string.Empty,
+        ComprobantesCsv = string.Join(',', ids),
+        Renglones = Math.Max(ids.Count, 25)
+      };
+
+      var rows = await TransaccionService.GetCfdiCandidatesAsync(request, ct);
+      Comprobantes.AddRange(rows);
+    }
+    catch (OperationCanceledException)
+    {
+      // ignored
+    }
+    catch (Exception)
+    {
+      UiMessages.ShowError("No se pudieron cargar los comprobantes ligados.");
+    }
+  }
+
   protected bool IsAttachmentDownloading(AttachmentModel attachment)
     => attachment.Id == _attachmentDownloadingId;
 
@@ -1141,37 +1151,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     public string Extension { get; set; } = string.Empty;
     public long TamanoBytes { get; set; }
     public string TamanoHumano => FormatSize(TamanoBytes);
-  }
-
-  protected sealed class ComprobanteModel
-  {
-    public decimal? PolizaMonto { get; set; }
-    public int ComprobanteId { get; set; }
-    public string D { get; set; } = string.Empty;
-    public DateTime Fecha { get; set; }
-    public string MesGlobal { get; set; } = string.Empty;
-    public int? AnioGlobal { get; set; }
-    public string Emisor { get; set; } = string.Empty;
-    public decimal? SubTotal { get; set; }
-    public decimal? Descuento { get; set; }
-    public decimal? SubTotalDesc { get; set; }
-    public decimal? Actos16 { get; set; }
-    public decimal? Actos0 { get; set; }
-    public decimal? Iva { get; set; }
-    public decimal? Ieps { get; set; }
-    public decimal? IvaRetenido { get; set; }
-    public decimal? IsrRetenido { get; set; }
-    public decimal? IepsRetenido { get; set; }
-    public decimal? Total { get; set; }
-    public string FolioFiscal { get; set; } = string.Empty;
-    public string FormaPago { get; set; } = string.Empty;
-    public string TipoDeComprobante { get; set; } = string.Empty;
-    public string MetodoPago { get; set; } = string.Empty;
-    public string UsoCfdi { get; set; } = string.Empty;
-    public DateTime? FechaCancelacion { get; set; }
-    public string Estatus { get; set; } = string.Empty;
-    public int TransaccionId { get; set; }
-    public bool Vinculado { get; set; }
   }
 
   private static string FormatSize(long bytes)

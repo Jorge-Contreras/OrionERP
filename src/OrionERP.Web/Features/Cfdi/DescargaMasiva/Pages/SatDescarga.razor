@@ -55,7 +55,8 @@
     </span>
 }
 
-<table class="table table-sm table-bordered table-striped align-middle compact-table">
+<div class="table-responsive mb-3">
+  <table class="table table-sm table-bordered table-striped align-middle compact-table">
     <thead>
         <tr>
             <th>Id</th>
@@ -66,6 +67,7 @@
             <th></th>
             <th>Tipo</th>
             <th>Modo</th>
+            <th>Creado</th>
             <th>RfcSolicitante</th>
             <th>EstadoComprobante</th>
             <th>RfcEmisor</th>
@@ -75,7 +77,6 @@
             <th>Mensaje</th>
             <th>Núm. CFDIs</th>
             <th>Paquetes</th>
-            <th>Creado</th>
             <th>Última verificación</th>
             <th>Terminado</th>
             <th>RequestKey</th>
@@ -100,6 +101,7 @@
                 </td>
                 <td>@s.TipoSolicitud</td>
                 <td>@(s.Issued ? "Emitidos" : "Recibidos")</td>
+                <td>@s.CreatedAtUtc</td>
                 <td>@s.RfcSolicitante</td>
                 <td>@s.EstadoComprobante</td>
                 <td>@s.RfcEmisor</td>
@@ -109,7 +111,7 @@
                 <td>@s.Mensaje</td>
                 <td>@(s.NumeroCfdis?.ToString() ?? "")</td>
                 <td>@s.PackageCount</td>
-                <td>@s.CreatedAtUtc</td>
+                
                 <td>@s.LastCheckedAtUtc</td>
                 <td>@s.TerminatedAtUtc</td>
                 <td>@s.RequestKey</td>
@@ -118,6 +120,7 @@
         }
     </tbody>
 </table>
+</div>
 
 @if (LastSummary is not null)
 {
@@ -169,7 +172,8 @@
     <div class="card mt-3">
         <div class="card-header">Detalle de XML procesados</div>
         <div class="card-body p-0">
-            <table class="table table-sm table-striped mb-0">
+            <div class="table-responsive mb-3">
+                <table class="table table-sm table-bordered table-striped align-middle compact-table">
                 <thead>
                     <tr>
                         <th>Paquete</th>
@@ -204,6 +208,8 @@
                     }
                 </tbody>
             </table>
+            </div>
+
         </div>
     </div>
 
@@ -223,7 +229,8 @@
     <div class="card mt-2">
         <div class="card-header">Detalle de Metadata procesada</div>
         <div class="card-body p-0">
-            <table class="table table-sm table-striped mb-0">
+            <div class="table-responsive mb-3">
+                <table class="table table-sm table-bordered table-striped align-middle compact-table">
                 <thead>
                     <tr>
                         <th>Paquete</th>
@@ -248,6 +255,7 @@
                     }
                 </tbody>
             </table>
+            </div>
         </div>
     </div>
 }

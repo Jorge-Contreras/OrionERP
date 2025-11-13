@@ -342,3 +342,18 @@ label {
 }
 
 
+/* Critical: allow the content column to shrink below its content width */
+.page > main,
+.page > main > article,
+.page > main .px-4,
+.page > main .card {
+  min-width: 0;
+}
+
+/* Keep the page itself from creating a global X scrollbar */
+html, body, .page {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+

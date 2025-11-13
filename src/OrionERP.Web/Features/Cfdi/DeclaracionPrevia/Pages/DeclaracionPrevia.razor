@@ -733,106 +733,128 @@
             </div>
         </div>
     </div>
-</div>
-<!-- Desfase Section -->
-<h4 class="mt-5">Pólizas de este mes que pagan comprobantes de otros meses</h4>
-<div class="table-responsive">
-    <table class="table table-sm table-bordered">
-        <thead class="table-dark">
-            <tr>
-                <th>ID Comprobante</th>
-                <th>Transacción ID</th>
-                <th>Fecha Comp.</th>
-                <th>Mes Comp.</th>
-                <th>Año Comp.</th>
-                <th>RFC Emisor</th>
-                <th>RFC Receptor</th>
-                <th>Monto</th>
-                <th>Cuenta Pago</th>
-                <th>Fecha Pago (Transacción)</th>
-                <th>... <!-- other columns if any --></th>
-            </tr>
-        </thead>
-        <tbody>
-            @if (desfase != null)
-            {
-                @foreach (var item in desfase)
-                {
-                    <tr>
-                        <td>@item.Comprobante_Id</td>
-                        <td>@item.Transaccion_Id</td>
-                        <td>@item.FechaComprobante?.ToString("yyyy-MM-dd")</td>
-                        <td>@item.MesComprobante</td>
-                        <td>@item.AnioComprobante</td>
-                        <td>@item.RFC_Emisor</td>
-                        <td>@item.RFC_Receptor</td>
-                        <td>@string.Format("{0:N2}", item.TotalComprobante)</td>
-                        <td>@item.CuentaPago</td>
-                        <td>@item.FechaTransaccion?.ToString("yyyy-MM-dd")</td>
-                        <td>@item.Observaciones</td>
-                    </tr>
-                }
-            }
-        </tbody>
-        @if (desfaseTotals != null)
-        {
-            <tfoot class="table-light">
-                <tr>
-                    <td colspan="3"><strong># CFDIs:</strong> @desfaseTotals.CountCFDIs</td>
-                    <td colspan="2"><strong>Total Monto:</strong> @desfaseTotals.SumTotal</td>
-                    <td colspan="7"></td>
-                </tr>
-            </tfoot>
-        }
-    </table>
-</div>
 
-<!-- Pólizas No Consolidadas Section -->
-<h4 class="mt-5">Pólizas No Consolidadas</h4>
-<div class="table-responsive table-scroll">
-    <table class="table table-sm table-bordered compact-table">
-        <thead class="table-dark">
-            <tr>
-                <th class="num">ID Transacción</th>   <!-- p.ID -->
-                <th>Fecha</th>                         <!-- p.Fecha -->
-                <th>Concepto</th>                      <!-- p.PolizaConcepto -->
-                <th class="num">Debe</th>              <!-- p.Debe -->
-                <th class="num">Haber</th>             <!-- p.Haber -->
-                <th>Cuenta Debe</th>                   <!-- p.CuentaDebe -->
-                <th>Cuenta Haber</th>                  <!-- p.CuentaHaber -->
-                <th class="num">Total Comprobantes</th><!-- p.Total_Comprobantes -->
-                <th class="num"># CFDIs</th>           <!-- p.ComprobanteCount -->
-                <th>Revisado</th>                      <!-- p.Revisado -->
-                <th>Memo</th>                          <!-- p.Memo -->
-                <th>Consolidado</th>                   <!-- p.Consolidado -->
-            </tr>
-        </thead>
-        <tbody>
-            @if (polizasNoConsolidadas != null)
-            {
-                @foreach (var p in polizasNoConsolidadas)
-                {
-                    <tr>
-                        <td class="num">
-                            <a href="@($"/transacciones/{p.ID}")" target="_blank">@p.ID</a>
-                        </td>
-                        <td>@p.Fecha.ToString("yyyy-MM-dd")</td>
-                        <td>@p.PolizaConcepto</td>
-                        <td class="num">@string.Format("{0:N2}", p.Debe)</td>
-                        <td class="num">@string.Format("{0:N2}", p.Haber)</td>
-                        <td>@p.CuentaDebe</td>
-                        <td>@p.CuentaHaber</td>
-                        <td class="num">@string.Format("{0:N2}", p.Total_Comprobantes)</td>
-                        <td class="num">@p.ComprobanteCount</td>
-                        <td>@(p.Revisado ? "✔" : "")</td>
-                        <td>@p.Memo</td>
-                        <td>@p.Consolidado</td>
-                    </tr>
-                }
-            }
-        </tbody>
-    </table>
+   
+    <div class="accordion-item mt-4">
+        <h2 class="accordion-header" id="headingOtros">
+            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOtras" aria-expanded="true" aria-controls="collapseOtras">
+                OTROS
+            </button>
+        </h2>
+        <div id="collapseOtras" class="accordion-collapse collapse" data-bs-parent="#declaracionAccordion">
+            <!-- Desfase Section -->
+            <h4 class="mt-5">Pólizas de este mes que pagan comprobantes de otros meses</h4>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>ID Comprobante</th>
+                            <th>Transacción ID</th>
+                            <th>Fecha Comp.</th>
+                            <th>Mes Comp.</th>
+                            <th>Año Comp.</th>
+                            <th>RFC Emisor</th>
+                            <th>RFC Receptor</th>
+                            <th>Monto</th>
+                            <th>Cuenta Pago</th>
+                            <th>Fecha Pago (Transacción)</th>
+                            <th>... <!-- other columns if any --></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (desfase != null)
+                        {
+                            @foreach (var item in desfase)
+                            {
+                                <tr>
+                                    <td>@item.Comprobante_Id</td>
+                                    <td>@item.Transaccion_Id</td>
+                                    <td>@item.FechaComprobante?.ToString("yyyy-MM-dd")</td>
+                                    <td>@item.MesComprobante</td>
+                                    <td>@item.AnioComprobante</td>
+                                    <td>@item.RFC_Emisor</td>
+                                    <td>@item.RFC_Receptor</td>
+                                    <td>@string.Format("{0:N2}", item.TotalComprobante)</td>
+                                    <td>@item.CuentaPago</td>
+                                    <td>@item.FechaTransaccion?.ToString("yyyy-MM-dd")</td>
+                                    <td>@item.Observaciones</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                    @if (desfaseTotals != null)
+                    {
+                        <tfoot class="table-light">
+                            <tr>
+                                <td colspan="3"><strong># CFDIs:</strong> @desfaseTotals.CountCFDIs</td>
+                                <td colspan="2"><strong>Total Monto:</strong> @desfaseTotals.SumTotal</td>
+                                <td colspan="7"></td>
+                            </tr>
+                        </tfoot>
+                    }
+                </table>
+            </div>
+
+            <!-- Pólizas No Consolidadas Section -->
+            <h4 class="mt-5">Pólizas No Consolidadas</h4>
+            <div class="table-responsive table-scroll">
+                <table class="table table-sm table-bordered compact-table">
+                    <thead class="table-dark">
+                        <tr>
+                            <th class="num">ID Transacción</th>   <!-- p.ID -->
+                            <th>Fecha</th>                         <!-- p.Fecha -->
+                            <th>Concepto</th>                      <!-- p.PolizaConcepto -->
+                            <th class="num">Debe</th>              <!-- p.Debe -->
+                            <th class="num">Haber</th>             <!-- p.Haber -->
+                            <th>Cuenta Debe</th>                   <!-- p.CuentaDebe -->
+                            <th>Cuenta Haber</th>                  <!-- p.CuentaHaber -->
+                            <th class="num">Total Comprobantes</th><!-- p.Total_Comprobantes -->
+                            <th class="num"># CFDIs</th>           <!-- p.ComprobanteCount -->
+                            <th>Revisado</th>                      <!-- p.Revisado -->
+                            <th>Memo</th>                          <!-- p.Memo -->
+                            <th>Consolidado</th>                   <!-- p.Consolidado -->
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (polizasNoConsolidadas != null)
+                        {
+                            @foreach (var p in polizasNoConsolidadas)
+                            {
+                                <tr>
+                                    <td class="num">
+                                        <a href="@($"/transacciones/{p.ID}")" target="_blank">@p.ID</a>
+                                    </td>
+                                    <td>@p.Fecha.ToString("yyyy-MM-dd")</td>
+                                    <td>@p.PolizaConcepto</td>
+                                    <td class="num">@string.Format("{0:N2}", p.Debe)</td>
+                                    <td class="num">@string.Format("{0:N2}", p.Haber)</td>
+                                    <td>@p.CuentaDebe</td>
+                                    <td>@p.CuentaHaber</td>
+                                    <td class="num">@string.Format("{0:N2}", p.Total_Comprobantes)</td>
+                                    <td class="num">@p.ComprobanteCount</td>
+                                    <td>@(p.Revisado ? "✔" : "")</td>
+                                    <td>@p.Memo</td>
+                                    <td>@p.Consolidado</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+                
+            </div>
+
+
+
+
+        </div>
 </div>
+</div>
+        
+
+
+
+
+
 
 
 <!-- Display messages -->

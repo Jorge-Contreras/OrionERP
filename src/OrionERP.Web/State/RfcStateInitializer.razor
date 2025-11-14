@@ -20,9 +20,12 @@
     [Inject] private NavigationManager Navigation { get; set; } = default!;
     [Inject] private IRfcContext RfcContext { get; set; } = default!;
 
+    private const string StorageKeyPrefix = "current_rfc";
+
     private bool _initialized;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private string? _lastIdentityStamp;
+    private string _storageKey = StorageKeyPrefix;
 
     protected override async Task OnInitializedAsync()
     {
@@ -70,6 +73,8 @@
 
         if (user.Identity?.IsAuthenticated != true)
         {
+            _storageKey = StorageKeyPrefix;
+
             if (!force && _initialized && (RfcState.AllowedRfcs.Any() || RfcState.CurrentRfc is not null))
             {
                 return;
@@ -109,19 +114,19 @@
         }
 
         RfcState.InitializeFromClaims(user);
+        _storageKey = BuildStorageKey(identityStamp);
 
-        // var saved = await Storage.GetAsync<string>("current_rfc");
-        // if (saved.Success && !string.IsNullOrWhiteSpace(saved.Value))
-        // {
-        //     if (!RfcState.TrySet(saved.Value))
-        //     {
-        //         RfcState.ResetToDefault();
-        //     }
-        // }
-        // else
-        // {
-        //     RfcState.ResetToDefault();
-        // }
+        if (RfcState.AllowedRfcs.Count > 0)
+        {
+            var saved = await Storage.GetAsync<string>(_storageKey);
+            if (saved.Success && !string.IsNullOrWhiteSpace(saved.Value))
+            {
+                if (!RfcState.TrySet(saved.Value))
+                {
+                    RfcState.ResetToDefault();
+                }
+            }
+        }
 
         RfcState.Changed -= OnRfcChangedPersist;
         RfcState.Changed += OnRfcChangedPersist;
@@ -158,8 +163,13 @@
 
     private async Task PersistCurrentAsync()
     {
-        // await Storage.SetAsync("current_rfc", RfcState.CurrentRfc ?? string.Empty);
+        await Storage.SetAsync(_storageKey, RfcState.CurrentRfc ?? string.Empty);
     }
+
+    private static string BuildStorageKey(string? identityStamp)
+        => identityStamp is null
+            ? StorageKeyPrefix
+            : $"{StorageKeyPrefix}::{identityStamp}";
 
     public void Dispose()
     {

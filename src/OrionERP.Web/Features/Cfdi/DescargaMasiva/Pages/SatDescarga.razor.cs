@@ -51,7 +51,7 @@ public class SatDescargaPage : ComponentBase
   {
     try
     {
-      var rows = await SolicitudesRepo.ListAsync(100);
+      var rows = await SolicitudesRepo.ListAsync(15);
       Solicitudes = new List<SatSolicitudDto>(rows);
       StateHasChanged();
     }

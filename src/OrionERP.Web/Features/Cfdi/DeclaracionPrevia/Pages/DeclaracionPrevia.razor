@@ -364,34 +364,42 @@
                                                 </tr>
                                             }
                                         </tbody>
+
+
+                                        @if (emitidasNominaTotals != null)
+                                        {
+                                            <tfoot class="table-light totals">
+                                               
+                                                    <tr class="table-light">
+                                                        <td colspan="4"><strong># CFDIs:</strong> @emitidasNominaTotals.CountCFDIs</td>
+                                                        <td><strong>Totales:</strong></td>
+                                                        <td class="num">@emitidasNominaTotals.SumSubTotal.ToString("N2")</td>
+                                                        <td class="num">@emitidasNominaTotals.SumDescuento.ToString("N2")</td>
+                                                        <td class="num">@emitidasNominaTotals.SumSubTotalDesc.ToString("N2")</td>
+                                                        <td class="num">@emitidasNominaTotals.SumActos16.ToString("N2")</td>
+                                                        <td class="num">@emitidasNominaTotals.SumActos0.ToString("N2")</td>
+                                                        <td class="num">@emitidasNominaTotals.SumIVA.ToString("N2")</td>
+                                                        <td class="num">@emitidasNominaTotals.SumIEPS.ToString("N2")</td>
+                                                        <td class="num">@emitidasNominaTotals.SumIVA_RETENIDO.ToString("N2")</td>
+                                                        <td class="num">@emitidasNominaTotals.SumISR_RETENIDO.ToString("N2")</td>
+                                                        <td class="num">@emitidasNominaTotals.SumIEPS_RETENIDO.ToString("N2")</td>
+                                                        <td class="num">@emitidasNominaTotals.SumTotal.ToString("N2")</td>
+                                                        <td colspan="10"></td>
+                                                    </tr>
+                                                
+                                            </tfoot>
+
+                                        }
+
+
+
+
+
+
                                     </table>
                                 </div>
 
-                                @if (emitidasNominaTotals != null)
-                                {
-                                    <div class="table-responsive table-scroll mt-3">
-                                        <table class="table table-sm table-bordered table-striped align-middle compact-table">
-                                            <tbody>
-                                                <tr class="table-light">
-                                                    <td colspan="4"><strong># CFDIs:</strong> @emitidasNominaTotals.CountCFDIs</td>
-                                                    <td><strong>Totales:</strong></td>
-                                                    <td class="num">@emitidasNominaTotals.SumSubTotal.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumDescuento.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumSubTotalDesc.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumActos16.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumActos0.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumIVA.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumIEPS.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumIVA_RETENIDO.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumISR_RETENIDO.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumIEPS_RETENIDO.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumTotal.ToString("N2")</td>
-                                                    <td colspan="10"></td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                }
+                             
 
                             </div>
                         </div>

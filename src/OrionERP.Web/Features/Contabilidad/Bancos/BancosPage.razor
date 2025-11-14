@@ -402,7 +402,11 @@ else
                                         <td>
                                             @if (movement.Policy.HasValue && movement.Policy.Value > 0)
                                             {
-                                                <a href="/Contabilidad/LigarTransacciones/@movement.Policy" target="_blank" rel="noopener">ligar</a>
+                                                <a class="btn btn-sm btn-outline-success"
+                                                   href="/Contabilidad/LigarTransacciones/@movement.Policy"
+                                                   target="_blank" rel="noopener">
+                                                    Ligar
+                                                </a>
                                             }
                                             else
                                             {

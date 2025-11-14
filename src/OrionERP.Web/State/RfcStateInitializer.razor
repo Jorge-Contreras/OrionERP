@@ -27,11 +27,6 @@
     private string? _lastIdentityStamp;
     private string _storageKey = StorageKeyPrefix;
 
-    protected override async Task OnInitializedAsync()
-    {
-        await EnsureInitializedAsync(force: true);
-    }
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -42,7 +37,7 @@
 
         if (!_initialized)
         {
-            await EnsureInitializedAsync();
+            await EnsureInitializedAsync(force: firstRender);
         }
     }
 

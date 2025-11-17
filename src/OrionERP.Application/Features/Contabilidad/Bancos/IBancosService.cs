@@ -26,6 +26,7 @@ public interface IBancosService
   Task<ProcessBbvaResult?> ProcessBbvaFileAsync(
       string fileContents,
       int accountId,
+      decimal initialBalance,
       CancellationToken cancellationToken = default);
   Task<int> CreateAutoPoliciesAsync(
       string rfc,

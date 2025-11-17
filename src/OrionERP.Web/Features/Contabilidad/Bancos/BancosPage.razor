@@ -195,6 +195,14 @@ else
       <div class="card-body d-flex flex-column gap-3">
         <div class="d-flex flex-wrap align-items-center gap-2">
           <h2 id="process-heading" class="h5 mb-0 flex-grow-1">Procesar archivo de banco</h2>
+          <div class="d-flex flex-column">
+            <label class="form-label mb-1" for="initial-balance">Saldo Inicial</label>
+            <InputNumber id="initial-balance"
+                         class="form-control"
+                         TValue="decimal?"
+                         @bind-Value="InitialBalance"
+                         step="0.01" />
+          </div>
           <label class="btn btn-primary mb-0">
             @(IsProcessingFile ? "Procesando…" : "Procesar archivo de banco")
             <InputFile @key="FileInputKey" class="d-none" accept=".txt,.xml" OnChange="OnFileSelectedAsync" disabled="@IsProcessingFile" />

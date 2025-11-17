@@ -329,6 +329,7 @@ ORDER BY t.Fecha DESC, t.ID DESC;";
   public async Task<ProcessBbvaResult?> ProcessBbvaFileAsync(
       string fileContents,
       int accountId,
+      decimal initialBalance,
       CancellationToken cancellationToken = default)
   {
     if (string.IsNullOrWhiteSpace(fileContents))
@@ -341,11 +342,12 @@ ORDER BY t.Fecha DESC, t.ID DESC;";
       throw new ArgumentOutOfRangeException(nameof(accountId));
     }
 
-    const string storedProcedure = "bancos.Procesar_Movimientos_BBVA";
+    const string storedProcedure = "bancos.Procesar_Movimientos_SANTANDER";
 
     var parameters = new DynamicParameters();
-    parameters.Add("@ArchivoTexto", fileContents, DbType.String);
+    parameters.Add("@ArchivoXML", fileContents, DbType.String);
     parameters.Add("@Cuenta_Banco_ID", accountId, DbType.Int32);
+    parameters.Add("@SaldoInicial", initialBalance, DbType.Decimal);
 
     using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
     var row = await connection.QuerySingleOrDefaultAsync(

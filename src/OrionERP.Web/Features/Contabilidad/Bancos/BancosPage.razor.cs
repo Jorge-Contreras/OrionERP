@@ -64,6 +64,7 @@ public partial class BancosPage : ComponentBase, IDisposable
   protected long? SelectedMovimientoId { get; private set; }
   protected int SelectedMonth { get; set; } = DateTime.Today.Month;
   protected int SelectedYear { get; set; } = DateTime.Today.Year;
+  protected decimal? InitialBalance { get; set; } = 0m;
   private bool _showOnlyUnlinkedMovements;
   protected string? TextFilter { get; private set; }
   protected ProcessBbvaResult? LastProcessResult { get; private set; }
@@ -579,7 +580,8 @@ public partial class BancosPage : ComponentBase, IDisposable
         return;
       }
 
-      var result = await BancosService.ProcessBbvaFileAsync(content, SelectedAccountId.Value);
+      var initialBalance = InitialBalance ?? 0m;
+      var result = await BancosService.ProcessBbvaFileAsync(content, SelectedAccountId.Value, initialBalance);
 
       if (result is null)
       {

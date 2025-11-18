@@ -342,7 +342,7 @@ ORDER BY t.Fecha DESC, t.ID DESC;";
       throw new ArgumentOutOfRangeException(nameof(accountId));
     }
 
-    const string storedProcedure = "bancos.Procesar_Movimientos_SANTANDER";
+    const string storedProcedure = "bancos.Procesar_Movimientos_XML";
 
     var parameters = new DynamicParameters();
     parameters.Add("@ArchivoXML", fileContents, DbType.String);

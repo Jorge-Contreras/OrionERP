@@ -76,7 +76,7 @@
                         <tbody>
                             @foreach (var row in HojaTrabajoData)
                             {
-                                <tr class="@GetRowClass(row)">
+                                <tr class="@GetRowClass(row)" @onclick="() => SelectRow(row)" style="cursor: pointer;">
                                     <td>@row.Descripcion</td>
                                     @for (var i = 0; i < 12; i++)
                                     {

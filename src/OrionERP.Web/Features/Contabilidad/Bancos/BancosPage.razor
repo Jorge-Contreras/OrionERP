@@ -205,7 +205,7 @@ else
           </div>
           <label class="btn btn-primary mb-0">
             @(IsProcessingFile ? "Procesando…" : "Procesar archivo de banco")
-            <InputFile @key="FileInputKey" class="d-none" accept=".txt,.xml" OnChange="OnFileSelectedAsync" disabled="@IsProcessingFile" />
+            <InputFile @key="FileInputKey" class="d-none" accept=".txt,.xml" OnChange="OnFileSelectedAsync" disabled="@(IsProcessingFile || !SelectedAccountId.HasValue)" />
           </label>
         </div>
 

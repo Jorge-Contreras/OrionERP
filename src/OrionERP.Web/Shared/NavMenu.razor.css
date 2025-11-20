@@ -1,13 +1,26 @@
 /* ===== NavMenu.razor.css (clean, solid, no gradients) ===== */
 
+:root {
+  --nav-surface: #0f172a;
+  --nav-text: rgba(255, 255, 255, 0.92);
+  --nav-border: rgba(255, 255, 255, 0.06);
+  --nav-hover: rgba(255, 255, 255, 0.08);
+  --nav-active: rgba(255, 255, 255, 0.14);
+  --nav-accent: #1fa0d7;
+  --nav-shadow: 8px 0 18px rgba(10, 25, 43, 0.35);
+  --nav-inset-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.15);
+}
+
 .navbar-toggler {
   background-color: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
-.top-row {
+:global(.top-row) {
   height: 3.5rem;
-  background: transparent;
+  background: var(--nav-surface) !important;
+  color: var(--nav-text);
+  border-bottom: 1px solid var(--nav-border);
   padding-inline: 1rem;
 }
 
@@ -28,11 +41,12 @@
 
 /* ---- Sidebar container ---- */
 .navmenu-body {
-  background: #0f172a !important; /* solid dark slate */
-  color: rgba(255, 255, 255, 0.92);
+  background: var(--nav-surface) !important; /* solid dark slate */
+  color: var(--nav-text);
   min-height: 100vh;
   padding: .5rem .75rem 1rem;
-  border-right: 1px solid rgba(255,255,255,.06);
+  border-right: 1px solid var(--nav-border);
+  box-shadow: var(--nav-shadow);
   min-width: 240px;
   max-width: 280px;
 }
@@ -67,7 +81,7 @@
     gap: .6rem;
     padding: .55rem .6rem;
     border-radius: .5rem;
-    color: rgba(255, 255, 255, 0.92) !important;
+    color: var(--nav-text) !important;
     background: transparent !important;
     background-image: none !important;
     text-decoration: none;
@@ -84,21 +98,21 @@
     /* Hover & active (subtle, no pills) */
     .nav-item ::deep a:hover,
     .navmenu-body .nav-link:hover {
-      background: rgba(255, 255, 255, .08) !important;
+      background: var(--nav-hover) !important;
       color: #fff !important;
     }
 
     .nav-item ::deep a.active,
     .navmenu-body .nav-link.active {
-      background: rgba(255, 255, 255, .14) !important;
+      background: var(--nav-active) !important;
       color: #fff !important;
-      box-shadow: inset 3px 0 0 #1fa0d7; /* slim accent bar */
+      box-shadow: inset 3px 0 0 var(--nav-accent); /* slim accent bar */
     }
 
     /* Focus-visible accessibility */
     .nav-item ::deep a:focus-visible,
     .navmenu-body .nav-link:focus-visible {
-      outline: 2px solid #1fa0d7;
+      outline: 2px solid var(--nav-accent);
       outline-offset: 2px;
     }
 
@@ -114,37 +128,37 @@
 }
 
 /* === Fix: make the top navbar row visible inside the sidebar === */
-.sidebar .top-row {
-  background: #0f172a !important; /* solid dark */
-  color: rgba(255,255,255,.92);
-  border-bottom: 1px solid rgba(255,255,255,.06);
+:global(.sidebar) :global(.top-row) {
+  background: var(--nav-surface) !important; /* solid dark */
+  color: var(--nav-text);
+  border-bottom: 1px solid var(--nav-border);
   position: sticky; /* keep it visible when scrolling */
   top: 0;
   z-index: 2;
 }
 
   /* Brand color on dark background */
-  .sidebar .top-row .navbar-brand {
+  :global(.sidebar) :global(.top-row) .navbar-brand {
     color: #fff !important;
   }
 
   /* Make the hamburger visible on dark */
-  .sidebar .top-row .navbar-toggler {
+  :global(.sidebar) :global(.top-row) .navbar-toggler {
     border-color: rgba(255,255,255,.35);
     background-color: rgba(255,255,255,.08);
   }
 
   /* Explicit white hamburger icon (works even if Bootstrap vars change) */
-  .sidebar .top-row .navbar-dark .navbar-toggler-icon,
-  .sidebar .top-row .navbar-toggler-icon {
+  :global(.sidebar) :global(.top-row) .navbar-dark .navbar-toggler-icon,
+  :global(.sidebar) :global(.top-row) .navbar-toggler-icon {
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255,255,255,0.9)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
   }
 
 /* Optional: if you also want a solid header when not wrapped by .sidebar */
-.top-row {
-  background: #0f172a !important;
-  color: rgba(255,255,255,.92);
-  border-bottom: 1px solid rgba(255,255,255,.06);
+:global(.top-row) {
+  background: var(--nav-surface) !important;
+  color: var(--nav-text);
+  border-bottom: 1px solid var(--nav-border);
 }
 
 
@@ -169,13 +183,13 @@
   }
 
 /* --- Sidebar brand logo: fill width, keep aspect ratio --- */
-.sidebar .top-row {
+:global(.sidebar) :global(.top-row) {
   /* let the row adapt to the logo height instead of a fixed 3.5rem */
   height: auto !important;
   padding: .5rem .75rem; /* comfy padding */
 }
 
-  .sidebar .top-row .container-fluid {
+  :global(.sidebar) :global(.top-row) .container-fluid {
     padding: 0; /* remove extra side padding so the logo truly spans the sidebar */
   }
 
@@ -196,7 +210,7 @@
   }
 
 /* Keep the toggler visible and aligned on the right */
-.sidebar .top-row .navbar-toggler {
+:global(.sidebar) :global(.top-row) .navbar-toggler {
   margin-left: .5rem;
 }
 
@@ -206,4 +220,42 @@
   transition: transform .15s ease;
 }
 
+/* --- Responsive layout & spacing borrowed from the layout file --- */
+@media (max-width: 640.98px) {
+  :global(.top-row:not(.auth)) {
+    display: none;
+  }
 
+  :global(.top-row.auth) {
+    justify-content: space-between;
+  }
+
+  :global(.top-row) a,
+  :global(.top-row) .btn-link {
+    margin-left: 0;
+  }
+}
+
+@media (min-width: 641px) {
+  :global(.sidebar) {
+    background: var(--nav-surface) !important;
+    color: var(--nav-text);
+    box-shadow: var(--nav-inset-shadow);
+    width: 260px;
+    height: 100vh;
+    position: sticky;
+    top: 0;
+  }
+
+  :global(.top-row) {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  :global(.page) :global(.top-row),
+  :global(.page) article {
+    padding-left: 2rem !important;
+    padding-right: 1.5rem !important;
+  }
+}

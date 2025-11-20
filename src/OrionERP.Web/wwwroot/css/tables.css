@@ -1,3 +1,6 @@
+/* tables.css — table-specific styling built on shared utilities. Keep
+   component rules for data grids here; rely on utilities.css for tokens. */
+
 /* Compact, readable table tuned for numbers — DENSE */
 .compact-table {
   table-layout: auto; /* size columns by intrinsic content */

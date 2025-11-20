@@ -38,6 +38,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
         public bool IsExporting { get; private set; }
         public string? ErrorMessage { get; private set; }
         public List<HojaTrabajoDto> HojaTrabajoData { get; private set; } = new();
+        public HojaTrabajoDto? SelectedRow { get; private set; }
 
         private static readonly CultureInfo MexicanCulture = new("es-MX");
 
@@ -74,6 +75,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
             try
             {
                 HojaTrabajoData = await ReportesService.GetHojaTrabajoAsync(Anio, CurrentRfc);
+                SelectedRow = null;
             }
             catch (Exception ex)
             {
@@ -89,7 +91,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
         private string GetRowClass(HojaTrabajoDto row)
         {
             var index = HojaTrabajoData.IndexOf(row);
-            return index switch
+            var baseClass = index switch
             {
                 0 or 1 => "section-0",
                 2 or 3 => "section-1",
@@ -98,6 +100,13 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
                 8 or 9 => "section-4",
                 _ => "section-5",
             };
+
+            if (SelectedRow == row)
+            {
+                return $"{baseClass} table-active fw-bold".Trim();
+            }
+
+            return baseClass;
         }
 
         private string GetCellClass(HojaTrabajoDto row, int monthIndex)
@@ -136,6 +145,11 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
         public void Dispose()
         {
             RfcState.Changed -= OnRfcStateChanged;
+        }
+
+        private void SelectRow(HojaTrabajoDto row)
+        {
+            SelectedRow = row;
         }
     }
 }

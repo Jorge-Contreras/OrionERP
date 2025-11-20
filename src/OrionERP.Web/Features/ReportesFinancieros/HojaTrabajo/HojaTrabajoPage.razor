@@ -1,0 +1,93 @@
+@page "/ReportesFinancieros/HojaTrabajo"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Administrador")]
+
+<PageTitle>Hoja de Trabajo IVA / ISR</PageTitle>
+
+<h1 class="mb-4">Hoja de Trabajo IVA / ISR</h1>
+
+<div class="d-flex flex-column gap-4">
+    <section aria-labelledby="filtros-heading" class="card">
+        <div class="card-body">
+            <h2 id="filtros-heading" class="h5">Filtros</h2>
+            <div class="d-flex flex-row flex-wrap align-items-center gap-3">
+                <div>
+                    <label class="form-label" for="anio-selector">Año</label>
+                    <select id="anio-selector" class="form-select" style="width: 120px;" @bind="Anio">
+                        @for (var year = 2040; year >= 1990; year--)
+                        {
+                            <option value="@year">@year</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">RFC actual</label>
+                    <input type="text" class="form-control" value="@CurrentRfc" readOnly style="font-weight: 600;" />
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section aria-labelledby="hoja-trabajo-heading" class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 id="hoja-trabajo-heading" class="h5 mb-0">Hoja de trabajo IVA / ISR</h2>
+                <button class="btn btn-outline-primary btn-sm" @onclick="() => ExportToExcel(JS)" disabled="@(IsExporting || IsLoading)">
+                    <i class="bi bi-file-excel"></i> Exportar a Excel
+                </button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(ErrorMessage))
+            {
+                <div class="alert alert-danger">
+                    <strong>Error al cargar la hoja de trabajo:</strong> @ErrorMessage
+                </div>
+            }
+
+            @if (IsLoading)
+            {
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Descripción</th>
+                                <th>ENERO</th>
+                                <th>FEBRERO</th>
+                                <th>MARZO</th>
+                                <th>ABRIL</th>
+                                <th>MAYO</th>
+                                <th>JUNIO</th>
+                                <th>JULIO</th>
+                                <th>AGOSTO</th>
+                                <th>SEPTIEMBRE</th>
+                                <th>OCTUBRE</th>
+                                <th>NOVIEMBRE</th>
+                                <th>DICIEMBRE</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in HojaTrabajoData)
+                            {
+                                <tr class="@GetRowClass(row)">
+                                    <td>@row.Descripcion</td>
+                                    @for (var i = 0; i < 12; i++)
+                                    {
+                                        <td class="@GetCellClass(row, i)">@GetFormattedValue(row, i)</td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </section>
+</div>

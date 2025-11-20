@@ -1,20 +1,21 @@
 /* Base green row */
 tr.sea-green-highlight {
   --bs-table-bg: #CEFAD0;
-  --bs-table-color: black;
+  --bs-table-color: var(--bs-body-color);
   font-weight: 700;
 }
 
 
 /* Keep green even if also .table-active */
-  tr.sea-green-highlight.table-active {
-    --bs-table-bg: #CEFAD0;
-    --bs-table-color: black;
-  }
+tr.sea-green-highlight.table-active {
+  --bs-table-bg: #CEFAD0;
+  --bs-table-color: var(--bs-body-color);
+}
 
 .sea-green-highlight {
   background-color: #CEFAD0;
-  color: #fff;
+  color: var(--bs-body-color);
+  /* Use the default body color for contrast on the light green background */
 }
 
 /* YourPage.razor.css */

@@ -1,0 +1,107 @@
+/* utilities.css — shared design tokens and helper utilities. Define global
+   variables and reusable layout helpers here; component/page styles should
+   import and extend these tokens rather than redefining them. */
+
+:root {
+  --orion-font-family: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --orion-font-size: 14px;
+  --orion-line-height: 1.4;
+
+  --orion-color-bg: #eef2f6;
+  --orion-color-surface: #ffffff;
+  --orion-color-surface-alt: #f7f9fc;
+  --orion-color-border: #d7dde5;
+  --orion-color-border-strong: #b7c3d4;
+
+  --orion-color-text: #1b2533;
+  --orion-color-text-muted: #6b7a90;
+  --orion-color-primary: #0f2d4e;
+  --orion-color-primary-soft: #1c446f;
+  --orion-color-accent: #1f8aae;
+  --orion-color-accent-soft: #d6ecf5;
+  --orion-color-highlight: #f5c453;
+  --orion-color-danger: #d64550;
+  --orion-color-success: #2f9e44;
+
+  color-scheme: light;
+}
+
+/* Horizontal, compact filter bar */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem 1rem;
+}
+
+/* Label + control pairs stay tight */
+.filter-pair {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  white-space: nowrap;
+}
+
+/* Make selects compact and only as wide as needed */
+.inline-select {
+  width: auto;
+  min-width: 10ch;
+}
+
+/* Smaller control height (Bootstrap-friendly) */
+.filter-bar .form-select {
+  padding: 2px 6px;
+  line-height: 1.1;
+  font-size: 13px;
+  height: auto;
+}
+
+/* Keep selects compact BUT reserve space for the caret */
+.form-select.inline-select {
+  padding: 2px 6px;
+  padding-right: 2rem;
+  line-height: 1.1;
+  font-size: 13px;
+  height: auto;
+  background-position: right .35rem center;
+  background-size: 12px 8px;
+}
+
+.summary-box {
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.25;
+  padding: .5rem;
+}
+
+/* Horizontal filter toolbar */
+.toolbar .form-label {
+  margin-bottom: .25rem;
+}
+
+/* Give fields a practical fixed width so row-cols-auto stays compact */
+.toolbar .form-control,
+.toolbar .form-select {
+  width: 14rem;
+}
+
+@media (min-width: 1400px) {
+  .toolbar .form-control,
+  .toolbar .form-select {
+    width: 16rem;
+  }
+}
+
+@media (max-width: 768px) {
+  /* On small screens, let them stack full-width */
+  .toolbar .form-control,
+  .toolbar .form-select {
+    width: 100%;
+  }
+}
+
+/* Checkbox aligns with the bottom of inputs */
+.toolbar .form-check {
+  margin-top: .35rem;
+}

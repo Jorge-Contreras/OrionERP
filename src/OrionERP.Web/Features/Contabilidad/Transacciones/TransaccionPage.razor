@@ -3,49 +3,33 @@
 @using OrionERP.Web.Shared
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
-
 <style>
-  .transaccion-header .form-control,
-  .transaccion-header .form-select,
-  .transaccion-header .form-control-plaintext {
-    font-weight: 500;
-  }
-
-  .transaccion-header .row.g-3,
-  .transaccion-header .row.g-4,
-  .transaccion-header .row.gy-4 {
-    --bs-gutter-y: 0.3125rem;
-  }
-
-    /* === Categoria (Plantilla) layout === */
-    .transaccion-header .categoria-col {
-        /* don’t let this column stretch; leaves a big empty gap before the right buttons */
-        max-width: 100%;
+    .transaccion-header {
+        background-color: #FFD966;
     }
 
-    .transaccion-header .categoria-row {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: flex-end; /* vertical bottoms aligned */
-        justify-content: flex-start; /* both controls left-aligned */
-        gap: .5rem; /* space between select and button */
-    }
-
-        /* limit the “input box” (the select) to ~30 characters wide */
-        .transaccion-header .categoria-row .form-select {
-            width: 30ch; /* approx width of 30 characters */
-            max-width: 100%; /* still behave on very narrow screens */
+        /* Tighten vertical space between rows */
+        .transaccion-header .row.g-3,
+        .transaccion-header .row.g-4,
+        .transaccion-header .row.gy-4 {
+            --bs-gutter-y: 0.25rem;
         }
 
-    @@media (min-width: 992px) { /* lg and up */
-        /* create a large horizontal gap between this section and the right action buttons */
-        .transaccion-header .categoria-col
+        /* Labels: normal black, small bottom margin */
+        .transaccion-header .form-label,
+        .transaccion-header .form-check-label {
+            color: #000;
+            margin-bottom: 0.15rem;
+        }
 
-    {
-        margin-right: auto;
-    }
-
-    }</style>
+        /* Make text inside controls bold */
+        .transaccion-header .form-control,
+        .transaccion-header .form-select,
+        .transaccion-header .form-control-plaintext,
+        .transaccion-header .input-group-text {
+            font-weight: 600; /* or 500 if you prefer slightly lighter */
+        }
+</style>
 
 
 

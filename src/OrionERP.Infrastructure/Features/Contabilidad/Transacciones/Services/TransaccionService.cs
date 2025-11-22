@@ -868,25 +868,66 @@ WHERE ID = @MovimientoId
               t.Forma_Pago AS FormaPago
           FROM dbo.Transacciones t
           /**where**/
-          ORDER BY t.Fecha DESC"
+          /**orderby**/"
       );
 
       if (filter.Id.HasValue)
       {
           sqlBuilder.Where("t.ID = @Id", new { filter.Id });
       }
-      if (filter.Fecha.HasValue)
+      if (filter.Year.HasValue)
       {
-          sqlBuilder.Where("CAST(t.Fecha AS DATE) = @Fecha", new { Fecha = filter.Fecha.Value.Date });
+          sqlBuilder.Where("YEAR(t.Fecha) = @Year", new { filter.Year });
       }
-      if (!string.IsNullOrWhiteSpace(filter.Texto))
+      if (filter.Month.HasValue)
       {
-          sqlBuilder.Where("(t.Concepto LIKE @Texto OR t.Memo LIKE @Texto)", new { Texto = $"%{filter.Texto}%" });
+          sqlBuilder.Where("MONTH(t.Fecha) = @Month", new { filter.Month });
       }
-
+      if (!string.IsNullOrWhiteSpace(filter.Concepto))
+      {
+          sqlBuilder.Where("t.Concepto LIKE @Concepto", new { Concepto = $"%{filter.Concepto}%" });
+      }
+      if (filter.Monto.HasValue)
+      {
+          sqlBuilder.Where("t.Monto = @Monto", new { filter.Monto });
+      }
+      if (!string.IsNullOrWhiteSpace(filter.TipoPoliza))
+      {
+          sqlBuilder.Where("t.Tipo_Poliza LIKE @TipoPoliza", new { TipoPoliza = $"%{filter.TipoPoliza}%" });
+      }
+      if (!string.IsNullOrWhiteSpace(filter.FormaPago))
+      {
+          sqlBuilder.Where("t.Forma_Pago LIKE @FormaPago", new { FormaPago = $"%{filter.FormaPago}%" });
+      }
       if (!string.IsNullOrWhiteSpace(filter.Rfc))
       {
           sqlBuilder.Where("t.RFC = @Rfc", new { filter.Rfc });
+      }
+
+      if (!string.IsNullOrWhiteSpace(filter.SortBy))
+      {
+          var columnMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+          {
+              { "Id", "t.ID" },
+              { "Fecha", "t.Fecha" },
+              { "Concepto", "t.Concepto" },
+              { "Monto", "t.Monto" },
+              { "TipoPoliza", "t.Tipo_Poliza" },
+              { "FormaPago", "t.Forma_Pago" }
+          };
+
+          if (columnMap.TryGetValue(filter.SortBy, out var dbColumn))
+          {
+              sqlBuilder.OrderBy($"{dbColumn} {(filter.SortAsc ? "ASC" : "DESC")}");
+          }
+          else
+          {
+              sqlBuilder.OrderBy("t.Fecha DESC");
+          }
+      }
+      else
+      {
+          sqlBuilder.OrderBy("t.Fecha DESC");
       }
 
       using var conn = new SqlConnection(_cs);

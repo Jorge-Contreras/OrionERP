@@ -8,20 +8,34 @@
 <div class="row">
     <div class="col-md-3">
         <div class="form-group">
-            <label for="id">ID</label>
-            <InputNumber id="id" class="form-control" @bind-Value="Filter.Id" />
+            <label for="year">Año</label>
+            <select id="year" class="form-control" @bind="Filter.Year">
+                <option value="">Todos</option>
+                @for (var year = 2035; year >= 2000; year--)
+                {
+                    <option value="@year">@year</option>
+                }
+            </select>
         </div>
     </div>
     <div class="col-md-3">
         <div class="form-group">
-            <label for="fecha">Fecha</label>
-            <InputDate id="fecha" class="form-control" @bind-Value="Filter.Fecha" />
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="form-group">
-            <label for="texto">Concepto o Memo</label>
-            <InputText id="texto" class="form-control" @bind-Value="Filter.Texto" />
+            <label for="month">Mes</label>
+            <select id="month" class="form-control" @bind="Filter.Month">
+                <option value="">Todos</option>
+                <option value="1">Enero</option>
+                <option value="2">Febrero</option>
+                <option value="3">Marzo</option>
+                <option value="4">Abril</option>
+                <option value="5">Mayo</option>
+                <option value="6">Junio</option>
+                <option value="7">Julio</option>
+                <option value="8">Agosto</option>
+                <option value="9">Septiembre</option>
+                <option value="10">Octubre</option>
+                <option value="11">Noviembre</option>
+                <option value="12">Diciembre</option>
+            </select>
         </div>
     </div>
 </div>
@@ -43,12 +57,53 @@ else
     <table class="table table-striped mt-4">
         <thead>
             <tr>
-                <th>ID</th>
-                <th>Fecha</th>
-                <th>Concepto</th>
-                <th>Monto</th>
-                <th>Tipo de Póliza</th>
-                <th>Forma de Pago</th>
+                <th>
+                    <a href="#" @onclick='() => Sort("Id")'>ID</a>
+                    @if (Filter.SortBy == "Id")
+                    {
+                        <span>@(Filter.SortAsc ? "▲" : "▼")</span>
+                    }
+                    <InputNumber class="form-control" @bind-Value="Filter.Id" />
+                </th>
+                <th>
+                    <a href="#" @onclick='() => Sort("Fecha")'>Fecha</a>
+                    @if (Filter.SortBy == "Fecha")
+                    {
+                        <span>@(Filter.SortAsc ? "▲" : "▼")</span>
+                    }
+                </th>
+                <th>
+                    <a href="#" @onclick='() => Sort("Concepto")'>Concepto</a>
+                    @if (Filter.SortBy == "Concepto")
+                    {
+                        <span>@(Filter.SortAsc ? "▲" : "▼")</span>
+                    }
+                    <InputText class="form-control" @bind-Value="Filter.Concepto" />
+                </th>
+                <th>
+                    <a href="#" @onclick='() => Sort("Monto")'>Monto</a>
+                    @if (Filter.SortBy == "Monto")
+                    {
+                        <span>@(Filter.SortAsc ? "▲" : "▼")</span>
+                    }
+                    <InputNumber class="form-control" @bind-Value="Filter.Monto" />
+                </th>
+                <th>
+                    <a href="#" @onclick='() => Sort("TipoPoliza")'>Tipo de Póliza</a>
+                    @if (Filter.SortBy == "TipoPoliza")
+                    {
+                        <span>@(Filter.SortAsc ? "▲" : "▼")</span>
+                    }
+                    <InputText class="form-control" @bind-Value="Filter.TipoPoliza" />
+                </th>
+                <th>
+                    <a href="#" @onclick='() => Sort("FormaPago")'>Forma de Pago</a>
+                    @if (Filter.SortBy == "FormaPago")
+                    {
+                        <span>@(Filter.SortAsc ? "▲" : "▼")</span>
+                    }
+                    <InputText class="form-control" @bind-Value="Filter.FormaPago" />
+                </th>
                 <th></th>
             </tr>
         </thead>

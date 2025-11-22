@@ -23,6 +23,8 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
         protected override async Task OnInitializedAsync()
         {
             RfcState.Changed += OnRfcStateChanged;
+            Filter.Year = DateTime.Now.Year;
+            Filter.Month = DateTime.Now.Month;
             await LoadTransacciones();
         }
 
@@ -34,6 +36,20 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
         protected async Task ClearFilters()
         {
             Filter = new TransaccionFilter();
+            await LoadTransacciones();
+        }
+
+        protected async Task Sort(string columnName)
+        {
+            if (Filter.SortBy == columnName)
+            {
+                Filter.SortAsc = !Filter.SortAsc;
+            }
+            else
+            {
+                Filter.SortBy = columnName;
+                Filter.SortAsc = true;
+            }
             await LoadTransacciones();
         }
 

@@ -6,6 +6,7 @@ namespace OrionERP.Application.Features.Contabilidad.Transacciones
     {
         public int? Id { get; set; }
         public DateTime? Fecha { get; set; }
-        public string Texto { get; set; }
+        public string? Texto { get; set; }
+        public string? Rfc { get; set; }
     }
 }

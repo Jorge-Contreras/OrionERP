@@ -22,8 +22,7 @@ public class TransaccionCreateRequest
     [Required]
     public string FormaPago { get; set; }
 
-    [Required]
-    public int CategoriaId { get; set; }
+    public int? CategoriaId { get; set; }
 
     public bool Facturado { get; set; }
     public string? Memo { get; set; }

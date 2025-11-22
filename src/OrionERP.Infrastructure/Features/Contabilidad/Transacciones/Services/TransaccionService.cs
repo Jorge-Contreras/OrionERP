@@ -802,10 +802,50 @@ WHERE ID = @MovimientoId
           VALUES (@Rfc, @Fecha, @Concepto, @Monto, @TipoPoliza, @FormaPago, @CategoriaId, @Facturado, @Memo, @ProyectoId, @CompraId, @ServicioId, @NominaId, @Cuenta);
           SELECT CAST(SCOPE_IDENTITY() as int);";
 
+      const string defaultCategoriaSql = @"
+          SELECT TOP (1) c.ID
+          FROM dbo.Categorias c
+          WHERE c.GrupoCategoria = 'PLANTILLA'
+            AND c.RFC = @Rfc
+          ORDER BY c.Descripcion ASC;";
+
       try
       {
           using var conn = new SqlConnection(_cs);
-          var newId = await conn.ExecuteScalarAsync<int>(new CommandDefinition(sql, request, cancellationToken: ct));
+          var categoriaId = request.CategoriaId;
+
+          if (!categoriaId.HasValue)
+          {
+              categoriaId = await conn.ExecuteScalarAsync<int?>(
+                  new CommandDefinition(defaultCategoriaSql, new { request.Rfc }, cancellationToken: ct));
+
+              if (!categoriaId.HasValue)
+              {
+                  return TransaccionCreateResult.Fail("No se encontró una categoría válida para la transacción.");
+              }
+          }
+
+          var newId = await conn.ExecuteScalarAsync<int>(
+              new CommandDefinition(
+                  sql,
+                  new
+                  {
+                      request.Rfc,
+                      request.Fecha,
+                      request.Concepto,
+                      request.Monto,
+                      request.TipoPoliza,
+                      request.FormaPago,
+                      CategoriaId = categoriaId,
+                      request.Facturado,
+                      request.Memo,
+                      request.ProyectoId,
+                      request.CompraId,
+                      request.ServicioId,
+                      request.NominaId,
+                      request.Cuenta
+                  },
+                  cancellationToken: ct));
           return TransaccionCreateResult.Ok(newId, "Transacción creada correctamente.");
       }
       catch (Exception ex)
@@ -842,6 +882,11 @@ WHERE ID = @MovimientoId
       if (!string.IsNullOrWhiteSpace(filter.Texto))
       {
           sqlBuilder.Where("(t.Concepto LIKE @Texto OR t.Memo LIKE @Texto)", new { Texto = $"%{filter.Texto}%" });
+      }
+
+      if (!string.IsNullOrWhiteSpace(filter.Rfc))
+      {
+          sqlBuilder.Where("t.RFC = @Rfc", new { filter.Rfc });
       }
 
       using var conn = new SqlConnection(_cs);

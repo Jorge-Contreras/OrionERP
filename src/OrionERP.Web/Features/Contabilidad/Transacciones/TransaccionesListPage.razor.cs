@@ -39,6 +39,20 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
             await LoadTransacciones();
         }
 
+        protected async Task Sort(string columnName)
+        {
+            if (Filter.SortBy == columnName)
+            {
+                Filter.SortAsc = !Filter.SortAsc;
+            }
+            else
+            {
+                Filter.SortBy = columnName;
+                Filter.SortAsc = true;
+            }
+            await LoadTransacciones();
+        }
+
         private async Task LoadTransacciones()
         {
             IsLoading = true;

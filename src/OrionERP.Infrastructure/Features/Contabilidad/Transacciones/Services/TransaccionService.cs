@@ -798,14 +798,54 @@ WHERE ID = @MovimientoId
   public async Task<TransaccionCreateResult> CreateTransaccionAsync(TransaccionCreateRequest request, CancellationToken ct = default)
   {
       const string sql = @"
-          INSERT INTO dbo.Transacciones (RFC, Fecha, Concepto, Monto, Tipo_Poliza, Forma_Pago, Facturado, Memo, ProyectoID, CompraID, ServicioID, NominaID, Cuenta)
-          VALUES (@Rfc, @Fecha, @Concepto, @Monto, @TipoPoliza, @FormaPago, @Facturado, @Memo, @ProyectoId, @CompraId, @ServicioId, @NominaId, @Cuenta);
+          INSERT INTO dbo.Transacciones (RFC, Fecha, Concepto, Monto, Tipo_Poliza, Forma_Pago, Categoria, Facturado, Memo, ProyectoID, CompraID, ServicioID, NominaID, Cuenta)
+          VALUES (@Rfc, @Fecha, @Concepto, @Monto, @TipoPoliza, @FormaPago, @CategoriaId, @Facturado, @Memo, @ProyectoId, @CompraId, @ServicioId, @NominaId, @Cuenta);
           SELECT CAST(SCOPE_IDENTITY() as int);";
+
+      const string defaultCategoriaSql = @"
+          SELECT TOP (1) c.ID
+          FROM dbo.Categorias c
+          WHERE c.GrupoCategoria = 'PLANTILLA'
+            AND c.RFC = @Rfc
+          ORDER BY c.Descripcion ASC;";
 
       try
       {
           using var conn = new SqlConnection(_cs);
-          var newId = await conn.ExecuteScalarAsync<int>(new CommandDefinition(sql, request, cancellationToken: ct));
+          var categoriaId = request.CategoriaId;
+
+          if (!categoriaId.HasValue)
+          {
+              categoriaId = await conn.ExecuteScalarAsync<int?>(
+                  new CommandDefinition(defaultCategoriaSql, new { request.Rfc }, cancellationToken: ct));
+
+              if (!categoriaId.HasValue)
+              {
+                  return TransaccionCreateResult.Fail("No se encontró una categoría válida para la transacción.");
+              }
+          }
+
+          var newId = await conn.ExecuteScalarAsync<int>(
+              new CommandDefinition(
+                  sql,
+                  new
+                  {
+                      request.Rfc,
+                      request.Fecha,
+                      request.Concepto,
+                      request.Monto,
+                      request.TipoPoliza,
+                      request.FormaPago,
+                      CategoriaId = categoriaId,
+                      request.Facturado,
+                      request.Memo,
+                      request.ProyectoId,
+                      request.CompraId,
+                      request.ServicioId,
+                      request.NominaId,
+                      request.Cuenta
+                  },
+                  cancellationToken: ct));
           return TransaccionCreateResult.Ok(newId, "Transacción creada correctamente.");
       }
       catch (Exception ex)

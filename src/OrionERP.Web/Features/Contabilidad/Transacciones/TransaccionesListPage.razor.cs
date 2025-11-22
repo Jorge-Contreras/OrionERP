@@ -23,6 +23,8 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
         protected override async Task OnInitializedAsync()
         {
             RfcState.Changed += OnRfcStateChanged;
+            Filter.Year = DateTime.Now.Year;
+            Filter.Month = DateTime.Now.Month;
             await LoadTransacciones();
         }
 

@@ -8,5 +8,7 @@ namespace OrionERP.Application.Features.Contabilidad.Transacciones
         public DateTime? Fecha { get; set; }
         public string? Texto { get; set; }
         public string? Rfc { get; set; }
+        public int? Year { get; set; }
+        public int? Month { get; set; }
     }
 }

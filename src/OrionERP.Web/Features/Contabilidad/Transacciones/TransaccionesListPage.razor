@@ -14,11 +14,37 @@
     </div>
     <div class="col-md-3">
         <div class="form-group">
-            <label for="fecha">Fecha</label>
-            <InputDate id="fecha" class="form-control" @bind-Value="Filter.Fecha" />
+            <label for="year">Año</label>
+            <select id="year" class="form-control" @bind="Filter.Year">
+                <option value="">Todos</option>
+                @for (var year = 2035; year >= 2000; year--)
+                {
+                    <option value="@year">@year</option>
+                }
+            </select>
         </div>
     </div>
-    <div class="col-md-6">
+    <div class="col-md-3">
+        <div class="form-group">
+            <label for="month">Mes</label>
+            <select id="month" class="form-control" @bind="Filter.Month">
+                <option value="">Todos</option>
+                <option value="1">Enero</option>
+                <option value="2">Febrero</option>
+                <option value="3">Marzo</option>
+                <option value="4">Abril</option>
+                <option value="5">Mayo</option>
+                <option value="6">Junio</option>
+                <option value="7">Julio</option>
+                <option value="8">Agosto</option>
+                <option value="9">Septiembre</option>
+                <option value="10">Octubre</option>
+                <option value="11">Noviembre</option>
+                <option value="12">Diciembre</option>
+            </select>
+        </div>
+    </div>
+    <div class="col-md-3">
         <div class="form-group">
             <label for="texto">Concepto o Memo</label>
             <InputText id="texto" class="form-control" @bind-Value="Filter.Texto" />

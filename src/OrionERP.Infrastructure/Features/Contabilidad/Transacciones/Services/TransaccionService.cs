@@ -875,9 +875,13 @@ WHERE ID = @MovimientoId
       {
           sqlBuilder.Where("t.ID = @Id", new { filter.Id });
       }
-      if (filter.Fecha.HasValue)
+      if (filter.Year.HasValue)
       {
-          sqlBuilder.Where("CAST(t.Fecha AS DATE) = @Fecha", new { Fecha = filter.Fecha.Value.Date });
+          sqlBuilder.Where("YEAR(t.Fecha) = @Year", new { filter.Year });
+      }
+      if (filter.Month.HasValue)
+      {
+          sqlBuilder.Where("MONTH(t.Fecha) = @Month", new { filter.Month });
       }
       if (!string.IsNullOrWhiteSpace(filter.Texto))
       {

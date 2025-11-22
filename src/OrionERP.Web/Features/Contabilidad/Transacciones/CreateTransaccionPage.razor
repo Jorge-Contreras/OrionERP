@@ -59,18 +59,6 @@
             <ValidationMessage For="@(() => Model.FormaPago)" />
         </div>
 
-        <div class="form-group">
-            <label for="categoria">Categoría</label>
-            <InputSelect id="categoria" class="form-control" @bind-Value="Model.CategoriaId">
-                <option value="">Seleccione una categoría</option>
-                @foreach (var categoria in CategoriaOptions)
-                {
-                    <option value="@categoria.Id">@categoria.Display</option>
-                }
-            </InputSelect>
-            <ValidationMessage For="@(() => Model.CategoriaId)" />
-        </div>
-
         <button type="submit" class="btn btn-primary" disabled="@IsSaving">
             @if (IsSaving)
             {

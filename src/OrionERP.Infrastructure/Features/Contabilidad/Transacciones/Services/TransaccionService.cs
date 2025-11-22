@@ -798,8 +798,8 @@ WHERE ID = @MovimientoId
   public async Task<TransaccionCreateResult> CreateTransaccionAsync(TransaccionCreateRequest request, CancellationToken ct = default)
   {
       const string sql = @"
-          INSERT INTO dbo.Transacciones (RFC, Fecha, Concepto, Monto, Tipo_Poliza, Forma_Pago, Categoria, Facturado, Memo, ProyectoID, CompraID, ServicioID, NominaID, Cuenta)
-          VALUES (@Rfc, @Fecha, @Concepto, @Monto, @TipoPoliza, @FormaPago, @CategoriaId, @Facturado, @Memo, @ProyectoId, @CompraId, @ServicioId, @NominaId, @Cuenta);
+          INSERT INTO dbo.Transacciones (RFC, Fecha, Concepto, Monto, Tipo_Poliza, Forma_Pago, Facturado, Memo, ProyectoID, CompraID, ServicioID, NominaID, Cuenta)
+          VALUES (@Rfc, @Fecha, @Concepto, @Monto, @TipoPoliza, @FormaPago, @Facturado, @Memo, @ProyectoId, @CompraId, @ServicioId, @NominaId, @Cuenta);
           SELECT CAST(SCOPE_IDENTITY() as int);";
 
       try
@@ -842,6 +842,11 @@ WHERE ID = @MovimientoId
       if (!string.IsNullOrWhiteSpace(filter.Texto))
       {
           sqlBuilder.Where("(t.Concepto LIKE @Texto OR t.Memo LIKE @Texto)", new { Texto = $"%{filter.Texto}%" });
+      }
+
+      if (!string.IsNullOrWhiteSpace(filter.Rfc))
+      {
+          sqlBuilder.Where("t.RFC = @Rfc", new { filter.Rfc });
       }
 
       using var conn = new SqlConnection(_cs);

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Web.Services;
+using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Contabilidad.Transacciones
 {
@@ -12,33 +13,28 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
     {
         [Inject]
         public ITransaccionService TransaccionService { get; set; } = default!;
-
         [Inject]
         public IUiMessageService UiMessages { get; set; } = default!;
-
         [Inject]
         public NavigationManager NavManager { get; set; } = default!;
+        [Inject]
+        public IUserRfcState RfcState { get; set; } = default!;
 
         protected TransaccionCreateRequest Model { get; set; } = new();
         protected EditContext EditContext { get; set; } = default!;
         protected bool IsSaving { get; set; }
 
         protected List<FormaPagoLookupDto> FormaPagoOptions { get; } = new();
-        protected List<LookupInt32Dto> CategoriaOptions { get; } = new();
         protected IReadOnlyList<string> TipoPolizaOptions { get; } = new[] { "INGRESO", "EGRESO", "DIARIO" };
 
         protected override async Task OnInitializedAsync()
         {
             Model.Fecha = DateTime.Today;
+            Model.Rfc = RfcState.CurrentRfc;
             EditContext = new EditContext(Model);
 
             var formasPago = await TransaccionService.GetFormasPagoAsync();
             FormaPagoOptions.AddRange(formasPago);
-
-            // Note: This will load all categories. You may want to filter by RFC.
-            // For now, we'll load them all as a placeholder.
-            var categorias = await TransaccionService.GetCategoriasAsync("");
-            CategoriaOptions.AddRange(categorias);
         }
 
         protected async Task HandleValidSubmit()

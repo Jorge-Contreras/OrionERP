@@ -240,6 +240,10 @@ else if (Header is not null)
                 }
                 Guardar cambios
               </button>
+              <button type="button" class="btn btn-danger" @onclick="DeleteTransaccionAsync" disabled="@IsSavingHeader">
+                  <span class="oi oi-trash me-1" aria-hidden="true"></span>
+                  Eliminar
+              </button>
             </div>
           </div>
         </EditForm>

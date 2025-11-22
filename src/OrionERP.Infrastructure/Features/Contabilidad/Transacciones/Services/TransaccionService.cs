@@ -741,6 +741,116 @@ WHERE ID = @MovimientoId
       new CommandDefinition(sql, new { MovimientoId = movimientoId, TransaccionId = transaccionId }, cancellationToken: ct));
   }
 
+  public async Task<TransaccionCommandResult> DeleteTransaccionAsync(int transaccionId, CancellationToken ct = default)
+  {
+      using var conn = new SqlConnection(_cs);
+      await conn.OpenAsync(ct);
+      using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
+
+      try
+      {
+          const string checkSql = @"
+              IF EXISTS (SELECT 1 FROM dbo.Actividad_Transacciones WHERE TransaccionID = @TransaccionId) OR
+                 EXISTS (SELECT 1 FROM dbo.Registro_Contable WHERE TransaccionID = @TransaccionId) OR
+                 EXISTS (SELECT 1 FROM dbo.Transaccion_Comprobante WHERE Transaccion_ID = @TransaccionId) OR
+                 EXISTS (SELECT 1 FROM dbo.Transaccion_DoctoRelacionado WHERE Transaccion_ID = @TransaccionId) OR
+                 EXISTS (SELECT 1 FROM dbo.Reservation_Transacciones WHERE TransaccionID = @TransaccionId) OR
+                 EXISTS (SELECT 1 FROM dbo.TRANSACTION_ATTACHMENT WHERE TranID = @TransaccionId) OR
+                 EXISTS (SELECT 1 FROM bancos.Movimientos WHERE Transaccion_ID = @TransaccionId)
+              BEGIN
+                  SELECT 1;
+              END
+              ELSE
+              BEGIN
+                  SELECT 0;
+              END";
+
+          var hasRelatedRecords = await conn.ExecuteScalarAsync<bool>(
+              new CommandDefinition(checkSql, new { TransaccionId = transaccionId }, tx, cancellationToken: ct));
+
+          if (hasRelatedRecords)
+          {
+              await tx!.RollbackAsync(ct);
+              return TransaccionCommandResult.Fail("No se puede eliminar la transacción porque tiene registros relacionados (movimientos, adjuntos, comprobantes, etc.).");
+          }
+
+          const string deleteSql = @"DELETE FROM dbo.Transacciones WHERE ID = @TransaccionId;";
+          var affectedRows = await conn.ExecuteAsync(
+              new CommandDefinition(deleteSql, new { TransaccionId = transaccionId }, tx, cancellationToken: ct));
+
+          if (affectedRows == 0)
+          {
+              await tx!.RollbackAsync(ct);
+              return TransaccionCommandResult.Fail("No se encontró la transacción a eliminar.");
+          }
+
+          await tx!.CommitAsync(ct);
+          return TransaccionCommandResult.Ok("Transacción eliminada correctamente.");
+      }
+      catch (Exception ex)
+      {
+          try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
+          _logger.LogError(ex, "Error al eliminar la transacción {TransaccionId}", transaccionId);
+          return TransaccionCommandResult.Fail($"Ocurrió un error al eliminar la transacción: {ex.Message}");
+      }
+  }
+
+  public async Task<TransaccionCreateResult> CreateTransaccionAsync(TransaccionCreateRequest request, CancellationToken ct = default)
+  {
+      const string sql = @"
+          INSERT INTO dbo.Transacciones (RFC, Fecha, Concepto, Monto, Tipo_Poliza, Forma_Pago, Categoria, Facturado, Memo, ProyectoID, CompraID, ServicioID, NominaID, Cuenta)
+          VALUES (@Rfc, @Fecha, @Concepto, @Monto, @TipoPoliza, @FormaPago, @CategoriaId, @Facturado, @Memo, @ProyectoId, @CompraId, @ServicioId, @NominaId, @Cuenta);
+          SELECT CAST(SCOPE_IDENTITY() as int);";
+
+      try
+      {
+          using var conn = new SqlConnection(_cs);
+          var newId = await conn.ExecuteScalarAsync<int>(new CommandDefinition(sql, request, cancellationToken: ct));
+          return TransaccionCreateResult.Ok(newId, "Transacción creada correctamente.");
+      }
+      catch (Exception ex)
+      {
+          _logger.LogError(ex, "Error al crear la transacción.");
+          return TransaccionCreateResult.Fail($"Ocurrió un error al crear la transacción: {ex.Message}");
+      }
+  }
+
+  public async Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesListAsync(TransaccionFilter filter, CancellationToken ct = default)
+  {
+      var sqlBuilder = new SqlBuilder();
+      var template = sqlBuilder.AddTemplate(@"
+          SELECT
+              t.ID AS Id,
+              t.Fecha,
+              t.Concepto,
+              t.Monto,
+              t.Tipo_Poliza AS TipoPoliza,
+              t.Forma_Pago AS FormaPago
+          FROM dbo.Transacciones t
+          /**where**/
+          ORDER BY t.Fecha DESC"
+      );
+
+      if (filter.Id.HasValue)
+      {
+          sqlBuilder.Where("t.ID = @Id", new { filter.Id });
+      }
+      if (filter.Fecha.HasValue)
+      {
+          sqlBuilder.Where("CAST(t.Fecha AS DATE) = @Fecha", new { Fecha = filter.Fecha.Value.Date });
+      }
+      if (!string.IsNullOrWhiteSpace(filter.Texto))
+      {
+          sqlBuilder.Where("(t.Concepto LIKE @Texto OR t.Memo LIKE @Texto)", new { Texto = $"%{filter.Texto}%" });
+      }
+
+      using var conn = new SqlConnection(_cs);
+      var rows = await conn.QueryAsync<TransaccionListItemDto>(
+          new CommandDefinition(template.RawSql, template.Parameters, cancellationToken: ct)
+      );
+      return rows.AsList();
+  }
+
   private sealed class CfdiCandidateRow
   {
     public long Comprobante_Id { get; set; }

@@ -54,6 +54,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   [Inject] public IUserRfcState RfcState { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
   [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
+  [Inject] public NavigationManager NavManager { get; set; } = default!;
 
   protected TransaccionHeaderModel? Header { get; private set; }
   protected EditContext? HeaderEditContext { get; private set; }
@@ -982,6 +983,45 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       _attachmentInputKey++;
       await InvokeAsync(StateHasChanged);
     }
+  }
+
+  protected async Task DeleteTransaccionAsync()
+  {
+      if (Header is null) return;
+
+      try
+      {
+          var confirmation = await JsRuntime.InvokeAsync<string>("prompt", "Para confirmar la eliminación, escribe 'Delete' y presiona Aceptar:");
+          if (confirmation != "Delete")
+          {
+              UiMessages.ShowInfo("La eliminación ha sido cancelada.");
+              return;
+          }
+
+          IsSavingHeader = true;
+          await InvokeAsync(StateHasChanged);
+
+          var result = await TransaccionService.DeleteTransaccionAsync(Header.Id);
+
+          if (result.Success)
+          {
+              UiMessages.ShowSuccess(result.Message ?? "Transacción eliminada correctamente.");
+              NavManager.NavigateTo("/contabilidad/transacciones/list"); // Redirect to list page
+          }
+          else
+          {
+              UiMessages.ShowError(result.Message ?? "No se pudo eliminar la transacción.");
+          }
+      }
+      catch (Exception ex)
+      {
+          UiMessages.ShowError($"Ocurrió un error al intentar eliminar la transacción: {ex.Message}");
+      }
+      finally
+      {
+          IsSavingHeader = false;
+          await InvokeAsync(StateHasChanged);
+      }
   }
 
   public void Dispose()

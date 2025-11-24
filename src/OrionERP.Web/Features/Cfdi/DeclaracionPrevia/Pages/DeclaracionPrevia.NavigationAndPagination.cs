@@ -23,6 +23,40 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
     }
     // Change method signature to async Task to allow use of 'await'
+    private async Task HandlePolizaClick(object item)
+    {
+        if (item is DeclaracionEmitida de && de.Poliza == _placeholderTransaccionId)
+        {
+            try
+            {
+                var newTransaccionId = await GenerarPolizaDesdeComprobante(de.Comprobante_Id);
+                de.Poliza = newTransaccionId;
+                await OpenLinkedTransaction(de);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Error al crear la póliza: {ex.Message}";
+            }
+        }
+        else if (item is DeclaracionRecibida dr && dr.Poliza == _placeholderTransaccionId.ToString())
+        {
+            try
+            {
+                var newTransaccionId = await GenerarPolizaDesdeComprobante(dr.Comprobante_Id);
+                dr.Poliza = newTransaccionId.ToString();
+                await OpenLinkedTransaction(dr);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Error al crear la póliza: {ex.Message}";
+            }
+        }
+        else
+        {
+            await OpenLinkedTransaction(item);
+        }
+    }
+
     private async Task OpenLinkedTransaction(object item)
     {
       long? transId = null;

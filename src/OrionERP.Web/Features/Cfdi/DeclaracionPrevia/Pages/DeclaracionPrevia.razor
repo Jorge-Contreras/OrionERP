@@ -216,6 +216,13 @@
                 }
             </table>
         </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <small>Mostrando página @emitidasCurrentPage de @emitidasPageCount</small>
+            <div class="btn-group" role="group" aria-label="Paginación facturas emitidas">
+                <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousEmitidasPage" disabled="@(emitidasCurrentPage <= 1)">Anterior</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="NextEmitidasPage" disabled="@(emitidasCurrentPage >= emitidasPageCount)">Siguiente</button>
+            </div>
+        </div>
         <h5 class="mt-4">Complementos de Pago</h5>
         <div class="table-responsive table-scroll">
             <table class="table table-sm table-bordered table-striped align-middle compact-table">
@@ -515,6 +522,13 @@
                     </tfoot>
                 }
             </table>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <small>Mostrando página @recibidasCurrentPage de @recibidasPageCount</small>
+            <div class="btn-group" role="group" aria-label="Paginación facturas recibidas">
+                <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousRecibidasPage" disabled="@(recibidasCurrentPage <= 1)">Anterior</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="NextRecibidasPage" disabled="@(recibidasCurrentPage >= recibidasPageCount)">Siguiente</button>
+            </div>
         </div>
         <h5 class="mt-4">Complementos de Pago</h5>
         <div class="table-responsive table-scroll">

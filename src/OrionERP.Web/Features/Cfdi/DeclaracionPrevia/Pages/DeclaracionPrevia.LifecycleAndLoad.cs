@@ -143,10 +143,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         selectedEmitida = null; selectedRecibida = null;
         emitidasComplementos = new List<PagoComplementoResumen>();
         recibidasComplementos = new List<PagoComplementoResumen>();
-        emitidasCurrentPage = 1;
-        if (emitidas != null) emitidasPageCount = (int)Math.Ceiling(emitidas.Count / (double)pageSize);
-        recibidasCurrentPage = 1;
-        if (recibidas != null) recibidasPageCount = (int)Math.Ceiling(recibidas.Count / (double)pageSize);
+        ResetPagination();
       }
       catch (Exception ex)
       {

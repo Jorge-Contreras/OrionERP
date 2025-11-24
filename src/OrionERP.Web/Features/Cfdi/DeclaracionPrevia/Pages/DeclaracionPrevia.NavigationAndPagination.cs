@@ -74,34 +74,5 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
     }
 
-    // Pagination controls:
-    private void NextEmitidasPage()
-    {
-      if (emitidasCurrentPage < emitidasPageCount)
-      {
-        emitidasCurrentPage++;
-      }
-    }
-    private void PrevEmitidasPage()
-    {
-      if (emitidasCurrentPage > 1)
-      {
-        emitidasCurrentPage--;
-      }
-    }
-    private void NextRecibidasPage()
-    {
-      if (recibidasCurrentPage < recibidasPageCount)
-      {
-        recibidasCurrentPage++;
-      }
-    }
-    private void PrevRecibidasPage()
-    {
-      if (recibidasCurrentPage > 1)
-      {
-        recibidasCurrentPage--;
-      }
-    }
   }
 }

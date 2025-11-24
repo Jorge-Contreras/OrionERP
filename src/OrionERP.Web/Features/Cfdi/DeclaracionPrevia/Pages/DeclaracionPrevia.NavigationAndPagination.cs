@@ -25,12 +25,12 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     // Change method signature to async Task to allow use of 'await'
     private async Task HandlePolizaClick(object item)
     {
-        if (item is DeclaracionEmitida de && de.Poliza == _placeholderTransaccionId)
+        if (item is DeclaracionEmitida de && de.Poliza == _placeholderTransaccionId.ToString())
         {
             try
             {
                 var newTransaccionId = await GenerarPolizaDesdeComprobante(de.Comprobante_Id);
-                de.Poliza = newTransaccionId;
+                de.Poliza = newTransaccionId.ToString();
                 await OpenLinkedTransaction(de);
             }
             catch (Exception ex)

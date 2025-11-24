@@ -161,11 +161,11 @@
                                     
                                 </td>
                                 <td>
-                                    <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId ? "btn-outline-danger" : "btn-outline-success")"
-                                            title="@(item.Poliza == _placeholderTransaccionId ? "Crear Póliza" : "Ir a Transacción")"
+                                    <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
+                                            title="@(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
                                             @onclick:stopPropagation="true"
                                             @onclick="() => HandlePolizaClick(item)">
-                                        @(item.Poliza == _placeholderTransaccionId ? "Crear" : item.Poliza.ToString())
+                                        @(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : item.Poliza.ToString())
                                     </button>
                                 </td>
                                 <td>@item.D</td>
@@ -356,11 +356,11 @@
                                                 <td>@item.Estatus</td>
                                                 <td>@item.fechastransacciones</td>
                                                 <td>
-                                                    <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId ? "btn-outline-danger" : "btn-outline-success")"
-                                                            title="@(item.Poliza == _placeholderTransaccionId ? "Crear Póliza" : "Ir a Transacción")"
+                                                    <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
+                                                            title="@(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
                                                             @onclick:stopPropagation="true"
                                                             @onclick="() => HandlePolizaClick(item)">
-                                                        @(item.Poliza == _placeholderTransaccionId ? "Crear" : item.Poliza.ToString())
+                                                        @(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : item.Poliza.ToString())
                                                     </button>
                                                 </td>
                                                 <td class="num">@item.SumaPolizas</td>

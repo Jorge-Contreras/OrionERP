@@ -113,6 +113,8 @@
             <table class="table table-sm table-bordered table-striped align-middle compact-table">
                 <thead class="table-dark">
                     <tr>
+                        <th>Acciones</th>
+                        <th>Poliza</th>
                         <th>✔</th>
                         <th @onclick="@(() => SortEmitidasByColumn("Fecha"))">Fecha @GetSortIndicator("Fecha", emitidasSortColumn, emitidasSortOrder)</th>
                         <th>Mes</th>
@@ -139,7 +141,7 @@
                         <th>Transacción Fechas</th>
                         <th>Poliza</th>
                         <th class="num">Suma Polizas</th>
-                        <th>Acciones</th>
+                        
                     </tr>
                 </thead>
                 <tbody>
@@ -150,6 +152,22 @@
                             <tr @onclick="async () => await SelectEmitidaAsync(item)"
                                 class="@GetEmitidaRowClass(item)"
                                 style="cursor:pointer;">
+                                <td>
+                                    <button class="btn btn-sm btn-outline-info"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => OpenEmitidaDetails(item)">
+                                        PDF
+                                    </button>
+                                    
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-success"
+                                            title="Ir a Transacción"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => OpenLinkedTransaction(item)">
+                                        @item.Poliza
+                                    </button>
+                                </td>
                                 <td>@item.D</td>
                                 <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
                                 <td>@item.MES_GLOBAL</td>
@@ -174,21 +192,8 @@
                                 <td>@(item.FechaCancelacion.HasValue ? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : "")</td>
                                 <td>@item.Estatus</td>
                                 <td>@item.fechastransacciones</td>
-                                <td>@item.Poliza</td>
                                 <td class="num">@item.SumaPolizas</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-info"
-                                            @onclick:stopPropagation="true"
-                                            @onclick="() => OpenEmitidaDetails(item)">
-                                        Ver
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-success"
-                                            title="Ir a Transacción"
-                                            @onclick:stopPropagation="true"
-                                            @onclick="() => OpenLinkedTransaction(item)">
-                                        Tx
-                                    </button>
-                                </td>
+                               
                             </tr>
                         }
                     }

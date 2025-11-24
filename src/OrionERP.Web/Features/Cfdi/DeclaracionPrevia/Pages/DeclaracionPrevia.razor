@@ -161,11 +161,11 @@
                                     
                                 </td>
                                 <td>
-                                    <button class="btn btn-sm btn-outline-success"
-                                            title="Ir a Transacción"
+                                    <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
+                                            title="@(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
                                             @onclick:stopPropagation="true"
-                                            @onclick="() => OpenLinkedTransaction(item)">
-                                        @item.Poliza
+                                            @onclick="() => HandlePolizaClick(item)">
+                                        @(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : item.Poliza.ToString())
                                     </button>
                                 </td>
                                 <td>@item.D</td>
@@ -355,7 +355,14 @@
                                                 <td>@(item.FechaCancelacion.HasValue ? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : "")</td>
                                                 <td>@item.Estatus</td>
                                                 <td>@item.fechastransacciones</td>
-                                                <td>@item.Poliza</td>
+                                                <td>
+                                                    <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
+                                                            title="@(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
+                                                            @onclick:stopPropagation="true"
+                                                            @onclick="() => HandlePolizaClick(item)">
+                                                        @(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : item.Poliza.ToString())
+                                                    </button>
+                                                </td>
                                                 <td class="num">@item.SumaPolizas</td>
                                             </tr>
                                         }
@@ -494,11 +501,11 @@
                                             @onclick="() => OpenRecibidaDetails(item)">
                                         Ver
                                     </button>
-                                    <button class="btn btn-sm btn-outline-success"
-                                            title="Ir a Transacción"
+                                    <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
+                                            title="@(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
                                             @onclick:stopPropagation="true"
-                                            @onclick="() => OpenLinkedTransaction(item)">
-                                        Tx
+                                            @onclick="() => HandlePolizaClick(item)">
+                                        @(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : "Tx")
                                     </button>
                                 </td>
                             </tr>
@@ -662,7 +669,14 @@
                                                 <td>@(item.FechaCancelacion.HasValue ? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : "")</td>
                                                 <td>@item.Estatus</td>
                                                 <td>@item.fechastransacciones</td>
-                                                <td>@item.Poliza</td>
+                                                <td>
+                                                    <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
+                                                            title="@(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
+                                                            @onclick:stopPropagation="true"
+                                                            @onclick="() => HandlePolizaClick(item)">
+                                                        @(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : "Tx")
+                                                    </button>
+                                                </td>
                                                 <td class="num">@((item.SumaPolizas.HasValue) ? item.SumaPolizas.Value.ToString("N0") : "")</td>
                                             </tr>
                                         }

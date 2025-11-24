@@ -16,9 +16,11 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
   {
     [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
     [Inject] protected IUserRfcState RfcState { get; set; } = default!;
+    private int _placeholderTransaccionId;
 
     protected override async Task OnInitializedAsync()
     {
+      _placeholderTransaccionId = int.Parse(Configuration["SatXml:PlaceholderTransaccionId"]);
       connectionString = Configuration.GetConnectionString("OrionDb");
       // Initialize filter defaults:
       disponibleYears = Enumerable.Range(2020, 7).ToList();  // 2020-2026

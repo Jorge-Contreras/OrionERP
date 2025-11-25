@@ -10,11 +10,11 @@
     </button>
 </td>
 <td>
-    <button class="btn btn-sm @(Item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
-            title="@(Item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
+    <button class="btn btn-sm @(IsPlaceholderPoliza ? "btn-outline-danger" : "btn-outline-success")"
+            title="@(IsPlaceholderPoliza ? "Crear Póliza" : "Ir a Transacción")"
             @onclick:stopPropagation="true"
             @onclick="() => HandlePolizaClick()">
-        @(Item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : Item.Poliza.ToString())
+        @(IsPlaceholderPoliza ? "Crear" : ItemPoliza)
     </button>
 </td>
 
@@ -29,6 +29,15 @@
     public EventCallback<object> OnHandlePolizaClick { get; set; }
 
     private string _placeholderTransaccionId => Configuration["PlaceholderTransaccionId"];
+
+    private string? ItemPoliza => Item switch
+    {
+        DeclaracionPrevia.DeclaracionEmitida emitida => emitida.Poliza,
+        DeclaracionPrevia.DeclaracionRecibida recibida => recibida.Poliza,
+        _ => null
+    };
+
+    private bool IsPlaceholderPoliza => ItemPoliza == _placeholderTransaccionId?.ToString();
 
     private async Task OpenDetails()
     {

@@ -1,0 +1,42 @@
+
+@using OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
+@inject IConfiguration Configuration
+
+<td>
+    <button class="btn btn-sm btn-outline-info"
+            @onclick:stopPropagation="true"
+            @onclick="() => OpenDetails()">
+        PDF
+    </button>
+</td>
+<td>
+    <button class="btn btn-sm @(Item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
+            title="@(Item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
+            @onclick:stopPropagation="true"
+            @onclick="() => HandlePolizaClick()">
+        @(Item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : Item.Poliza.ToString())
+    </button>
+</td>
+
+@code {
+    [Parameter]
+    public object Item { get; set; }
+
+    [Parameter]
+    public EventCallback<object> OnOpenDetails { get; set; }
+
+    [Parameter]
+    public EventCallback<object> OnHandlePolizaClick { get; set; }
+
+    private string _placeholderTransaccionId => Configuration["PlaceholderTransaccionId"];
+
+    private async Task OpenDetails()
+    {
+        await OnOpenDetails.InvokeAsync(Item);
+    }
+
+    private async Task HandlePolizaClick()
+    {
+        await OnHandlePolizaClick.InvokeAsync(Item);
+    }
+}

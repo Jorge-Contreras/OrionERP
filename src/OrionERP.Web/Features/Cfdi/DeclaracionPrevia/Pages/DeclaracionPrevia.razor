@@ -151,22 +151,7 @@
                             <tr @onclick="async () => await SelectEmitidaAsync(item)"
                                 class="@GetEmitidaRowClass(item)"
                                 style="cursor:pointer;">
-                                <td>
-                                    <button class="btn btn-sm btn-outline-info"
-                                            @onclick:stopPropagation="true"
-                                            @onclick="() => OpenEmitidaDetails(item)">
-                                        PDF
-                                    </button>
-                                    
-                                </td>
-                                <td>
-                                    <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
-                                            title="@(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
-                                            @onclick:stopPropagation="true"
-                                            @onclick="() => HandlePolizaClick(item)">
-                                        @(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : item.Poliza.ToString())
-                                    </button>
-                                </td>
+                                <ActionButtons Item="item" OnOpenDetails="OpenEmitidaDetails" OnHandlePolizaClick="HandlePolizaClick" />
                                 <td>@item.D</td>
                                 <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
                                 <td>@item.MES_GLOBAL</td>
@@ -296,6 +281,8 @@
                             <table class="table table-sm table-bordered table-striped align-middle compact-table">
                                 <thead class="table-dark">
                                     <tr>
+                                        <th>Acciones</th>
+                                        <th>Poliza</th>
                                         <th>✔</th>
                                         <th>Fecha</th>
                                         <th>Mes</th>
@@ -330,6 +317,7 @@
                                         foreach (var item in emitidasNomina)
                                         {
                                             <tr>
+                                                <ActionButtons Item="item" OnOpenDetails="OpenEmitidaDetails" OnHandlePolizaClick="HandlePolizaClick" />
                                                 <td>@item.D</td>
                                                 <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
                                                 <td>@item.MES_GLOBAL</td>
@@ -431,6 +419,8 @@
             <table class="table table-sm table-bordered table-striped align-middle compact-table">
                 <thead class="table-dark">
                     <tr>
+                        <th>Acciones</th>
+                        <th>Poliza</th>
                         <th>✔</th>
                         <th @onclick="@(() => SortRecibidasByColumn("Fecha"))">Fecha @GetSortIndicator("Fecha", recibidasSortColumn, recibidasSortOrder)</th>
                         <th>Mes</th>
@@ -468,6 +458,7 @@
                             <tr @onclick="async () => await SelectRecibidaAsync(item)"
                                 class="@GetRecibidaRowClass(item)"
                                 style="cursor:pointer;">
+                                <ActionButtons Item="item" OnOpenDetails="OpenRecibidaDetails" OnHandlePolizaClick="HandlePolizaClick" />
                                 <td>@item.D</td>
                                 <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
                                 <td>@item.MES_GLOBAL</td>
@@ -610,6 +601,8 @@
                             <table class="table table-sm table-bordered table-striped align-middle compact-table">
                                 <thead class="table-dark">
                                     <tr>
+                                        <th>Acciones</th>
+                                        <th>Poliza</th>
                                         <th>✔</th>
                                         <th>Fecha</th>
                                         <th>Mes</th>
@@ -644,6 +637,7 @@
                                         foreach (var item in recibidasNomina)
                                         {
                                             <tr>
+                                                <ActionButtons Item="item" OnOpenDetails="OpenRecibidaDetails" OnHandlePolizaClick="HandlePolizaClick" />
                                                 <td>@item.D</td>
                                                 <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
                                                 <td>@item.MES_GLOBAL</td>

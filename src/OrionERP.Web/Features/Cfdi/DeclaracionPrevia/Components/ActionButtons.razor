@@ -28,7 +28,7 @@
     [Parameter]
     public EventCallback<object> OnHandlePolizaClick { get; set; }
 
-    private string _placeholderTransaccionId => Configuration["PlaceholderTransaccionId"];
+    private string _placeholderTransaccionId => Configuration["SatXml:PlaceholderTransaccionId"];
 
     private string? ItemPoliza => Item switch
     {

@@ -1,5 +1,6 @@
 <!-- UNIQUE_COMMENT_FOR_DEBUGGING -->
 @page "/cfdi/declaracion-previa"
+@using OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Components
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
@@ -151,7 +152,9 @@
                             <tr @onclick="async () => await SelectEmitidaAsync(item)"
                                 class="@GetEmitidaRowClass(item)"
                                 style="cursor:pointer;">
-                                <ActionButtons Item="item" OnOpenDetails="OpenEmitidaDetails" OnHandlePolizaClick="HandlePolizaClick" />
+                                <ActionButtons Item="item"
+                                               OnOpenDetails="@(obj => OpenEmitidaDetails((DeclaracionEmitida)obj))"
+                                               OnHandlePolizaClick="HandlePolizaClick" />
                                 <td>@item.D</td>
                                 <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
                                 <td>@item.MES_GLOBAL</td>
@@ -317,7 +320,9 @@
                                         foreach (var item in emitidasNomina)
                                         {
                                             <tr>
-                                                <ActionButtons Item="item" OnOpenDetails="OpenEmitidaDetails" OnHandlePolizaClick="HandlePolizaClick" />
+                                                <ActionButtons Item="item"
+                                                               OnOpenDetails="@(obj => OpenEmitidaDetails((DeclaracionEmitida)obj))"
+                                                               OnHandlePolizaClick="HandlePolizaClick" />
                                                 <td>@item.D</td>
                                                 <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
                                                 <td>@item.MES_GLOBAL</td>
@@ -458,7 +463,9 @@
                             <tr @onclick="async () => await SelectRecibidaAsync(item)"
                                 class="@GetRecibidaRowClass(item)"
                                 style="cursor:pointer;">
-                                <ActionButtons Item="item" OnOpenDetails="OpenRecibidaDetails" OnHandlePolizaClick="HandlePolizaClick" />
+                                <ActionButtons Item="item"
+                                               OnOpenDetails="@(obj => OpenEmitidaDetails((DeclaracionEmitida)obj))"
+                                               OnHandlePolizaClick="HandlePolizaClick" />
                                 <td>@item.D</td>
                                 <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
                                 <td>@item.MES_GLOBAL</td>
@@ -637,7 +644,9 @@
                                         foreach (var item in recibidasNomina)
                                         {
                                             <tr>
-                                                <ActionButtons Item="item" OnOpenDetails="OpenRecibidaDetails" OnHandlePolizaClick="HandlePolizaClick" />
+                                                <ActionButtons Item="item"
+                                                               OnOpenDetails="@(obj => OpenEmitidaDetails((DeclaracionEmitida)obj))"
+                                                               OnHandlePolizaClick="HandlePolizaClick" />
                                                 <td>@item.D</td>
                                                 <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
                                                 <td>@item.MES_GLOBAL</td>

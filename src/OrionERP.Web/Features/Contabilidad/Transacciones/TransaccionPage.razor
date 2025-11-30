@@ -35,7 +35,7 @@
 
 <PageTitle>Transacción @Header?.DisplayFolio ?? Id.ToString(CultureInfo.InvariantCulture)</PageTitle>
 
-@if (IsLoading)
+@if (IsLoading || Header is null || HeaderEditContext is null)
 {
   <div class="orion-loading" role="status" aria-live="polite">
     <span class="orion-spinner" aria-hidden="true"></span>

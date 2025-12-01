@@ -105,3 +105,11 @@
 .toolbar .form-check {
   margin-top: .35rem;
 }
+
+/* Truncate long text with an ellipsis (...) */
+.truncate-text {
+    max-width: 50ch;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

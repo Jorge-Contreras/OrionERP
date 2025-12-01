@@ -152,7 +152,7 @@ else if (Header is not null)
                                         <td class="text-end">@FormatCurrency(linked.Asignado)</td>
                                         <td>@linked.MetodoPago</td>
                                         <td>@linked.UsoCfdi</td>
-                                        <td class="text-wrap">@linked.Conceptos</td>
+                                        <td><span class="truncate-text">@linked.Conceptos</span></td>
                                     </tr>
                                 }
                             </tbody>
@@ -253,11 +253,7 @@ else if (Header is not null)
                     <td class="text-end">@FormatCurrency(candidate.Asignado)</td>
                     <td>@candidate.MetodoPago</td>
                     <td>@candidate.UsoCfdi</td>
-                                        <td class="text-wrap">
-                                            @(candidate.Conceptos?.Length > 50
-                                                                            ? candidate.Conceptos.Substring(0, 50) + "..."
-                                                                            : candidate.Conceptos)
-                            </td>
+                                        <td><span class="truncate-text">@candidate.Conceptos</span></td>
                   </tr>
                 }
               </tbody>

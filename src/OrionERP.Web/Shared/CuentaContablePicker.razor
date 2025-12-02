@@ -162,7 +162,7 @@
 
   private string? currentRfc;
   private string? lastLoadedRfc;
-  private CuentaContableSelection? currentSelection;
+    private CuentaContableSelection currentSelection = new();
   private int? directAccountId;
   private string nivel1Term = string.Empty;
   private string nivel2Term = string.Empty;
@@ -606,12 +606,20 @@
         }
         else
         {
-            var newId = await CuentasRepository.CreateNivel3Async(
-                RfcState.CurrentRfc,
-                currentSelection.Nivel1,
-                currentSelection.Nivel2,
-                nivel3Model.Nivel3,
-                nivel3Model.Descripcion);
+          if (string.IsNullOrWhiteSpace(RfcState.CurrentRfc)
+              || string.IsNullOrWhiteSpace(currentSelection.Nivel1)
+              || string.IsNullOrWhiteSpace(currentSelection.Nivel2))
+          {
+              await NotifyErrorAsync("Selecciona una cuenta de nivel 1 y nivel 2 antes de crear un nivel 3.");
+              return;
+          }
+
+          var newId = await CuentasRepository.CreateNivel3Async(
+              RfcState.CurrentRfc,
+              currentSelection.Nivel1!,
+              currentSelection.Nivel2!,
+              nivel3Model.Nivel3,
+              nivel3Model.Descripcion);
 
             if (newId == -1)
             {

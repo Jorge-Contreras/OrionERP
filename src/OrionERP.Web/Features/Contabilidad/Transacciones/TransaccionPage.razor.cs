@@ -35,8 +35,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private int? _attachmentDownloadingId;
   private int? _attachmentDeletingId;
   private int? _movimientoDeletingId;
-  private readonly List<LookupInt32Dto> _allProyectoOptions = new();
-  private readonly List<LookupInt32Dto> _allCompraOptions = new();
+  private readonly List<LookupInt32Dto> _allProyectoOptions = [];
+  private readonly List<LookupInt32Dto> _allCompraOptions = [];
   private CuentaContablePicker? CuentaPicker;
   private int _attachmentInputKey;
   private SectionPanel? _expandedSection = SectionPanel.Movimientos;
@@ -64,15 +64,15 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string? ErrorMessage { get; private set; }
 
   protected MovimientoTotalsDto Totals { get; private set; } = new();
-  protected List<MovimientoModel> Movimientos { get; } = new();
-  protected List<AttachmentModel> Attachments { get; } = new();
-  protected List<TransaccionCfdiCandidateDto> Comprobantes { get; } = new();
-  protected List<LookupInt32Dto> CategoriaOptions { get; } = new();
-  protected List<LookupInt32Dto> ProyectoOptions { get; } = new();
-  protected List<LookupInt32Dto> CompraOptions { get; } = new();
-  protected List<LookupInt32Dto> ServicioOptions { get; } = new();
-  protected List<LookupInt32Dto> NominaOptions { get; } = new();
-  protected List<FormaPagoLookupDto> FormaPagoOptions { get; } = new();
+  protected List<MovimientoModel> Movimientos { get; } = [];
+  protected List<AttachmentModel> Attachments { get; } = [];
+  protected List<TransaccionCfdiCandidateDto> Comprobantes { get; } = [];
+  protected List<LookupInt32Dto> CategoriaOptions { get; } = [];
+  protected List<LookupInt32Dto> ProyectoOptions { get; } = [];
+  protected List<LookupInt32Dto> CompraOptions { get; } = [];
+  protected List<LookupInt32Dto> ServicioOptions { get; } = [];
+  protected List<LookupInt32Dto> NominaOptions { get; } = [];
+  protected List<FormaPagoLookupDto> FormaPagoOptions { get; } = [];
   protected IReadOnlyList<string> TipoPolizaOptions { get; } = new[] { "INGRESO", "EGRESO", "DIARIO" };
 
   protected string ProyectoSearchTerm { get; set; } = string.Empty;
@@ -95,7 +95,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected string GetSectionToggleIcon(SectionPanel section) => IsSectionExpanded(section) ? "oi-chevron-bottom" : "oi-chevron-right";
 
-  protected string FormatCurrency(decimal value)
+  protected static string FormatCurrency(decimal value)
     => value.ToString("C2", CurrencyCulture);
 
   protected void ToggleSection(SectionPanel section)
@@ -1066,6 +1066,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     RfcState.Changed -= OnRfcStateChanged;
     _loadCts?.Cancel();
     _loadCts?.Dispose();
+    GC.SuppressFinalize(this);
   }
 
   private async void OnRfcStateChanged()

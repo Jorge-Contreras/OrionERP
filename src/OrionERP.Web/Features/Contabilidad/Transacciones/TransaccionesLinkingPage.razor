@@ -32,6 +32,21 @@
     font-size: 0.875rem;
     font-weight: 600;
   }
+    /* Limit Conceptos column width */
+    .linking-table td.conceptos-col {
+        width: 40ch; /* or 50ch if you prefer */
+        max-width: 40ch;
+    }
+
+        /* Force ellipsis on the text inside */
+        .linking-table td.conceptos-col .truncate-text {
+            display: block; /* or inline-block */
+            width: 100%; /* critical: definite width */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
 </style>
 
 @if (IsLoading)
@@ -253,7 +268,7 @@ else if (Header is not null)
                     <td class="text-end">@FormatCurrency(candidate.Asignado)</td>
                     <td>@candidate.MetodoPago</td>
                     <td>@candidate.UsoCfdi</td>
-                                        <td><span class="truncate-text">@candidate.Conceptos</span></td>
+                                        <td class="conceptos-col"><span class="truncate-text">@candidate.Conceptos</span></td>
                   </tr>
                 }
               </tbody>

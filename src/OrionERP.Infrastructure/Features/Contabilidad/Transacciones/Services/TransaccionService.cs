@@ -921,16 +921,16 @@ WHERE ID = @MovimientoId
 
           if (columnMap.TryGetValue(filter.SortBy, out var dbColumn))
           {
-              sqlBuilder.OrderBy($"{dbColumn} {(filter.SortAsc ? "ASC" : "DESC")}");
+            _ = sqlBuilder.OrderBy($"{dbColumn} {(filter.SortAsc ? "ASC" : "DESC")}");
           }
           else
           {
-              sqlBuilder.OrderBy("t.Fecha DESC");
+            _ = sqlBuilder.OrderBy("t.Fecha DESC");
           }
       }
       else
       {
-          sqlBuilder.OrderBy("t.Fecha DESC");
+        _ = sqlBuilder.OrderBy("t.Fecha DESC");
       }
 
       using var conn = new SqlConnection(_cs);
@@ -954,7 +954,7 @@ WHERE ID = @MovimientoId
           const string deleteSql = @"DELETE FROM dbo.Registro_Contable WHERE TransaccionID = @TransaccionId;";
           await conn.ExecuteAsync(new CommandDefinition(deleteSql, new { request.TransaccionId }, tx, cancellationToken: ct));
 
-          if (request.Movimientos.Any())
+            if (request.Movimientos.Count != 0)
           {
               const string insertSql = @"
                   INSERT INTO dbo.Registro_Contable (TransaccionID, Nivel1, Nivel2, Nivel3, Nombre_Cuenta, Concepto, Debe, Haber)

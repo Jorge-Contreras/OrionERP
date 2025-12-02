@@ -392,6 +392,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         Header.Status = HeaderStatus;
       }
 
+      await GuardarMovimientosAsync();
+
       _headerOriginal = Header.Clone();
       UiMessages.ShowSuccess(result.Message ?? "Datos de la transacción guardados.");
     }
@@ -571,25 +573,50 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected async Task SaveMovimientoAsync()
   {
-    if (MovimientoDraft is null || MovimientoEditContext is null)
-      return;
+      if (MovimientoDraft is null || MovimientoEditContext is null || Header is null)
+          return;
 
-    if (!MovimientoEditContext.Validate())
-      return;
+      if (!MovimientoEditContext.Validate())
+          return;
 
-    if (_movimientoTarget is null)
-    {
-      MovimientoDraft.Id = Movimientos.Count == 0 ? 1 : Movimientos.Max(m => m.Id) + 1;
-      Movimientos.Add(MovimientoDraft.Clone());
-    }
-    else
-    {
-      _movimientoTarget.CopyFrom(MovimientoDraft);
-    }
+      if (_movimientoTarget is null)
+      {
+          MovimientoDraft.Id = Movimientos.Count == 0 ? 1 : Movimientos.Max(m => m.Id) + 1;
+          Movimientos.Add(MovimientoDraft.Clone());
+      }
+      else
+      {
+          _movimientoTarget.CopyFrom(MovimientoDraft);
+      }
 
-    UiMessages.ShowSuccess("Movimiento guardado.");
-    CloseMovimientoModal();
-    await InvokeAsync(StateHasChanged);
+      UiMessages.ShowSuccess("Movimiento guardado.");
+      CloseMovimientoModal();
+      await InvokeAsync(StateHasChanged);
+  }
+
+  private async Task GuardarMovimientosAsync()
+  {
+      if (Header is null) return;
+
+      var request = new TransaccionMovimientosUpdateRequest
+      {
+          TransaccionId = Header.Id,
+          Movimientos = Movimientos.Select(m => new TransaccionMovimientoUpdateItem
+          {
+              Id = m.Id,
+              CuentaId = m.CuentaId,
+              NombreCuenta = m.NombreCuenta,
+              Concepto = m.Concepto,
+              Debe = m.Debe,
+              Haber = m.Haber
+          }).ToList()
+      };
+
+      var result = await TransaccionService.GuardarMovimientosAsync(request);
+      if (!result.Success)
+      {
+          UiMessages.ShowError(result.Message ?? "No se pudieron guardar los movimientos.");
+      }
   }
 
   protected void CopyMontoToDebe()

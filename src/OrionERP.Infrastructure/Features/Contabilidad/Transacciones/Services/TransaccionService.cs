@@ -937,6 +937,50 @@ WHERE ID = @MovimientoId
       return rows.AsList();
   }
 
+  public async Task<TransaccionCommandResult> GuardarMovimientosAsync(TransaccionMovimientosUpdateRequest request, CancellationToken ct = default)
+  {
+      if (request is null)
+          throw new ArgumentNullException(nameof(request));
+
+      using var conn = new SqlConnection(_cs);
+      await conn.OpenAsync(ct);
+      using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
+
+      try
+      {
+          const string deleteSql = @"DELETE FROM dbo.Registro_Contable WHERE TransaccionID = @TransaccionId;";
+          await conn.ExecuteAsync(new CommandDefinition(deleteSql, new { request.TransaccionId }, tx, cancellationToken: ct));
+
+          if (request.Movimientos.Any())
+          {
+              const string insertSql = @"
+                  INSERT INTO dbo.Registro_Contable (TransaccionID, Nombre_Cuenta, Concepto, Debe, Haber, Cuenta_ID)
+                  VALUES (@TransaccionId, @NombreCuenta, @Concepto, @Debe, @Haber, @CuentaId);";
+
+              var movementsToInsert = request.Movimientos.Select(m => new
+              {
+                  request.TransaccionId,
+                  m.NombreCuenta,
+                  m.Concepto,
+                  m.Debe,
+                  m.Haber,
+                  m.CuentaId
+              });
+
+              await conn.ExecuteAsync(new CommandDefinition(insertSql, movementsToInsert, tx, cancellationToken: ct));
+          }
+
+          await tx!.CommitAsync(ct);
+          return TransaccionCommandResult.Ok("Movimientos guardados correctamente.");
+      }
+      catch (Exception ex)
+      {
+          try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
+          _logger.LogError(ex, "Error al guardar movimientos para la transacción {TransaccionId}", request.TransaccionId);
+          return TransaccionCommandResult.Fail($"Ocurrió un error al guardar los movimientos: {ex.Message}");
+      }
+  }
+
   private sealed class CfdiCandidateRow
   {
     public long Comprobante_Id { get; set; }

@@ -174,4 +174,58 @@ WHERE id = @id;";
 
     return trimmed;
   }
+
+  public async Task<int> CreateNivel3Async(string rfc, string nivel1, string nivel2, string nivel3, string descripcion)
+  {
+      const string checkSql = @"
+SELECT COUNT(*)
+FROM dbo.CuentasContables
+WHERE RazonSocial = @rfc
+  AND Nivel1 = @nivel1
+  AND Nivel2 = @nivel2
+  AND Nivel3 = @nivel3;";
+
+      const string insertSql = @"
+INSERT INTO dbo.CuentasContables (RazonSocial, Nivel1, Nivel2, Nivel3, Descripcion)
+VALUES (@rfc, @nivel1, @nivel2, @nivel3, @descripcion);
+SELECT CAST(SCOPE_IDENTITY() as int);";
+
+      using var connection = new SqlConnection(_connectionString);
+      var existingCount = await connection.ExecuteScalarAsync<int>(
+          checkSql,
+          new
+          {
+              rfc,
+              nivel1,
+              nivel2,
+              nivel3
+          });
+
+      if (existingCount > 0)
+      {
+          return -1; // Indicates a duplicate
+      }
+
+      return await connection.ExecuteScalarAsync<int>(
+          insertSql,
+          new
+          {
+              rfc,
+              nivel1,
+              nivel2,
+              nivel3,
+              descripcion
+          });
+  }
+
+  public async Task UpdateNivel3DescripcionAsync(int id, string descripcion)
+  {
+      const string sql = @"
+UPDATE dbo.CuentasContables
+SET Descripcion = @descripcion
+WHERE id = @id;";
+
+      using var connection = new SqlConnection(_connectionString);
+      await connection.ExecuteAsync(sql, new { id, descripcion });
+  }
 }

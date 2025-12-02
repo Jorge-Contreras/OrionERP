@@ -265,6 +265,7 @@ else if (Header is not null)
               <thead>
                 <tr>
                   <th>#</th>
+                  <th>Codigo</th>
                   <th>Cuenta</th>
                   <th>Concepto</th>
                   <th class="text-end">Debe</th>
@@ -277,9 +278,10 @@ else if (Header is not null)
                 {
                   <tr class="@GetMovimientoRowClass(movimiento.item)" @onclick="() => OpenMovimientoModal(movimiento.item)">
                     <td>@(movimiento.index + 1)</td>
+                                        <td>@movimiento.item.Nivel1.@movimiento.item.Nivel2.@movimiento.item.Nivel3</td>
                     <td>@movimiento.item.NombreCuenta</td>
-                    <td>@movimiento.item.Concepto</td>
-                    <td class="text-end">@movimiento.item.Debe.ToString("N2")</td>
+                                        <td>@movimiento.item.Concepto</td>
+                    <td class="text-end">@movimiento.item.Debe.ToString("N2") </td>
                     <td class="text-end">@movimiento.item.Haber.ToString("N2")</td>
                     <td class="text-end">
                       <button type="button"

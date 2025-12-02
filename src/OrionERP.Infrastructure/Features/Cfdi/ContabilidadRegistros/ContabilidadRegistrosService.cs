@@ -17,12 +17,12 @@ public sealed class ContabilidadRegistrosService : IContabilidadRegistrosService
   }
 
   public async Task<IEnumerable<RegistrosContablesRow>> GetRegistrosAsync(
-      DateTime startDate,
-      DateTime endDate,
-      string rfc,
-      string nivel1,
-      string nivel2,
-      string nivel3)
+    DateTime startDate,
+    DateTime endDate,
+    string rfc,
+    string nivel1,
+    string nivel2,
+    string nivel3)
   {
     if (string.IsNullOrWhiteSpace(rfc) ||
         string.IsNullOrWhiteSpace(nivel1) ||
@@ -32,9 +32,13 @@ public sealed class ContabilidadRegistrosService : IContabilidadRegistrosService
       return Array.Empty<RegistrosContablesRow>();
     }
 
+    // Normalize dates
+    var normalizedStart = startDate.Date;
+    var normalizedEnd = endDate.Date.AddDays(1).AddTicks(-1);
+
     var parameters = new DynamicParameters();
-    parameters.Add("@startDate", startDate, DbType.DateTime);
-    parameters.Add("@endDate", endDate, DbType.DateTime);
+    parameters.Add("@startDate", normalizedStart, DbType.DateTime);
+    parameters.Add("@endDate", normalizedEnd, DbType.DateTime);
     parameters.Add("@RFC", rfc.Trim(), DbType.String);
     parameters.Add("@Nivel1", nivel1.Trim(), DbType.String);
     parameters.Add("@Nivel2", NormalizeTwoDigits(nivel2), DbType.String);
@@ -46,6 +50,7 @@ public sealed class ContabilidadRegistrosService : IContabilidadRegistrosService
         parameters,
         commandType: CommandType.StoredProcedure);
   }
+
 
   private static string NormalizeTwoDigits(string value)
   {

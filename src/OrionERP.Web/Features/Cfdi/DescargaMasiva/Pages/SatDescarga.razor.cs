@@ -85,16 +85,17 @@ public class SatDescargaPage : ComponentBase
   protected async Task SolicitarAsync()
   {
     if (Busy) return;
-    Busy = true; StateHasChanged();
-    try
-    {
-      var cert = await LoadCertAsync();
-      var p = new SolicitudParams(
-          Issued: Issued,
-          RfcSolicitante: RfcState.CurrentRfc,
-          FilterRfc: FilterRfc,
-          TipoSolicitud: TipoSolicitud,
-          EstadoComprobante: EstadoComprobante,
+      Busy = true; StateHasChanged();
+      try
+      {
+        var cert = await LoadCertAsync();
+        var rfcSolicitante = RfcState.CurrentRfc ?? string.Empty;
+        var p = new SolicitudParams(
+            Issued: Issued,
+            RfcSolicitante: rfcSolicitante,
+            FilterRfc: FilterRfc,
+            TipoSolicitud: TipoSolicitud,
+            EstadoComprobante: EstadoComprobante,
           StartUtc: DateTime.SpecifyKind(StartLocal, DateTimeKind.Utc),
           EndUtc: DateTime.SpecifyKind(EndLocal, DateTimeKind.Utc)
       );

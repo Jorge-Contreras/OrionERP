@@ -77,20 +77,20 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
       IsConciliando = true;
       StateHasChanged();
 
-      var result = await Conciliacion.ConciliarAsync(
-          comprobanteId: SelectedComprobante.ComprobanteId,
-          transaccionId: SelectedTransaccionId.Value);
+    var result = await Conciliacion.ConciliarAsync(
+        comprobanteId: SelectedComprobante.ComprobanteId,
+        transaccionId: SelectedTransaccionId.Value);
 
-      IsConciliando = false;
-      ConciliarMessage = result.Message;
-      if (result.Success)
-      {
-        UiMessages.ShowSuccess(result.Message);
-      }
-      else
-      {
-        UiMessages.ShowError(result.Message);
-      }
+    IsConciliando = false;
+    ConciliarMessage = result.Message ?? string.Empty;
+    if (result.Success)
+    {
+      UiMessages.ShowSuccess(result.Message ?? "Conciliación completada correctamente.");
+    }
+    else
+    {
+      UiMessages.ShowError(result.Message ?? "No se pudo conciliar el comprobante.");
+    }
 
       if (result.Success)
       {

@@ -180,12 +180,12 @@
   public bool RequiresDirectAccountResolution => directAccountId.HasValue && !(currentSelection?.HasNivel3 ?? false);
 
   protected override async Task OnParametersSetAsync()
-  {
-    if (!EqualsReference(currentSelection, Selection))
     {
-      currentSelection = Selection;
-      SyncSelectionState();
-    }
+      if (!EqualsReference(currentSelection, Selection))
+      {
+        currentSelection = Selection ?? new CuentaContableSelection();
+        SyncSelectionState();
+      }
 
     if (!string.Equals(currentRfc, SelectedRfc, StringComparison.OrdinalIgnoreCase))
     {

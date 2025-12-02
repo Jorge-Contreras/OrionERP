@@ -605,6 +605,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
           {
               Id = m.Id,
               CuentaId = m.CuentaId,
+              Nivel1 = m.Nivel1,
+              Nivel2 = m.Nivel2,
+              Nivel3 = m.Nivel3,
               NombreCuenta = m.NombreCuenta,
               Concepto = m.Concepto,
               Debe = m.Debe,
@@ -750,6 +753,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     Movimientos.AddRange(movimientosDto.Select(m => new MovimientoModel
     {
       Id = m.Id,
+      Nivel1 = m.Nivel1,
+      Nivel2 = m.Nivel2,
+      Nivel3 = m.Nivel3,
       NombreCuenta = m.NombreCuenta,
       Descripcion = m.NombreCuenta,
       Concepto = m.Concepto,

@@ -241,9 +241,12 @@ VALUES (@TransaccionId, @ComprobanteId, @Monto);";
 
   public async Task<IReadOnlyList<TransaccionMovimientoDto>> GetMovimientosAsync(int transaccionId, CancellationToken ct = default)
   {
-    const string sql = @"SELECT
+      const string sql = @"SELECT
     rc.ID                 AS Id,
     rc.TransaccionID     AS TransaccionId,
+    rc.Nivel1,
+    rc.Nivel2,
+    rc.Nivel3,
     rc.Nombre_Cuenta      AS NombreCuenta,
     rc.Concepto           AS Concepto,
     CAST(ISNULL(rc.Debe, 0) AS decimal(18,4))  AS Debe,
@@ -954,17 +957,19 @@ WHERE ID = @MovimientoId
           if (request.Movimientos.Any())
           {
               const string insertSql = @"
-                  INSERT INTO dbo.Registro_Contable (TransaccionID, Nombre_Cuenta, Concepto, Debe, Haber, Cuenta_ID)
-                  VALUES (@TransaccionId, @NombreCuenta, @Concepto, @Debe, @Haber, @CuentaId);";
+                  INSERT INTO dbo.Registro_Contable (TransaccionID, Nivel1, Nivel2, Nivel3, Nombre_Cuenta, Concepto, Debe, Haber)
+                  VALUES (@TransaccionId, @Nivel1, @Nivel2, @Nivel3, @NombreCuenta, @Concepto, @Debe, @Haber);";
 
               var movementsToInsert = request.Movimientos.Select(m => new
               {
                   request.TransaccionId,
+                  m.Nivel1,
+                  m.Nivel2,
+                  m.Nivel3,
                   m.NombreCuenta,
                   m.Concepto,
                   m.Debe,
-                  m.Haber,
-                  m.CuentaId
+                  m.Haber
               });
 
               await conn.ExecuteAsync(new CommandDefinition(insertSql, movementsToInsert, tx, cancellationToken: ct));

@@ -348,11 +348,12 @@
                                                 <td>@item.Estatus</td>
                                                 <td>@item.fechastransacciones</td>
                                                 <td>
-                                                    <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
-                                                            title="@(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
+                                                    @{ var placeholderValue = _placeholderTransaccionId.ToString(); var polizaValue = item.Poliza ?? string.Empty; }
+                                                    <button class="btn btn-sm @(polizaValue == placeholderValue ? "btn-outline-danger" : "btn-outline-success")"
+                                                            title="@(polizaValue == placeholderValue ? "Crear Póliza" : "Ir a Transacción")"
                                                             @onclick:stopPropagation="true"
                                                             @onclick="() => HandlePolizaClick(item)">
-                                                        @(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : item.Poliza.ToString())
+                                                        @(polizaValue == placeholderValue ? "Crear" : polizaValue)
                                                     </button>
                                                 </td>
                                                 <td class="num">@item.SumaPolizas</td>

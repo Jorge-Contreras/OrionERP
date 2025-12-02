@@ -3,17 +3,13 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using Org.BouncyCastle.OpenSsl;
-using Org.BouncyCastle.Crypto;
-using Org.BouncyCastle.Crypto.Parameters;
-using Org.BouncyCastle.Security;
 
 namespace Sat.MassiveDownload.Crypto
 {
     public static class CertificateLoader
     {
         public static X509Certificate2 FromPfx(string pfxPath, string pfxPassword)
-            => new X509Certificate2(
+            => X509CertificateLoader.LoadPkcs12FromFile(
                 pfxPath,
                 pfxPassword,
                 X509KeyStorageFlags.Exportable | X509KeyStorageFlags.EphemeralKeySet);
@@ -28,48 +24,45 @@ namespace Sat.MassiveDownload.Crypto
 
         public static X509Certificate2 FromCerAndKeyBytes(byte[] certificateBytes, byte[] keyBytes, string keyPassword)
         {
-            var publicCert = new X509Certificate2(certificateBytes);
+            var publicCert = X509CertificateLoader.LoadCertificate(certificateBytes);
 
-            RSA rsa;
+            using var rsa = RSA.Create();
 
             if (LooksLikePem(keyBytes))
             {
-                // --- RUTA PEM (BouncyCastle) ---
-                using var ms = new MemoryStream(keyBytes, writable: false);
-                using var sr = new StreamReader(ms, Encoding.ASCII);
-                var pemReader = new PemReader(sr, new PasswordFinder(keyPassword));
-                var obj = pemReader.ReadObject()
-                          ?? throw new InvalidOperationException("No se pudo leer la llave privada (PEM).");
-
-                var rsaParams = obj switch
+                var pem = Encoding.ASCII.GetString(keyBytes);
+                try
                 {
-                    AsymmetricCipherKeyPair kp => (RsaPrivateCrtKeyParameters)kp.Private,
-                    RsaPrivateCrtKeyParameters rp => rp,
-                    AsymmetricKeyParameter akp when akp.IsPrivate => (RsaPrivateCrtKeyParameters)akp,
-                    _ => throw new InvalidOperationException($"Tipo de llave PEM no soportado: {obj.GetType().Name}")
-                };
-
-                rsa = DotNetUtilities.ToRSA(rsaParams);
+                    rsa.ImportFromEncryptedPem(pem, keyPassword);
+                }
+                catch (CryptographicException)
+                {
+                    try
+                    {
+                        rsa.ImportFromPem(pem);
+                    }
+                    catch (CryptographicException ex)
+                    {
+                        throw new InvalidOperationException(
+                            "No se pudo leer la llave privada (.key). Verifica contraseña y que sea PKCS#8 (PEM).",
+                            ex);
+                    }
+                }
             }
             else
             {
-                // --- RUTA DER (nativa .NET) ---
-                rsa = RSA.Create();
                 try
                 {
-                    // PKCS#8 ENCRIPTADA (caso típico e.firma .key del SAT)
                     rsa.ImportEncryptedPkcs8PrivateKey(keyPassword.AsSpan(), keyBytes, out _);
                 }
                 catch (CryptographicException)
                 {
                     try
                     {
-                        // PKCS#8 SIN encriptar
                         rsa.ImportPkcs8PrivateKey(keyBytes, out _);
                     }
                     catch (CryptographicException ex)
                     {
-                        rsa.Dispose();
                         throw new InvalidOperationException(
                             "No se pudo leer la llave privada (.key). Verifica contraseña y que sea PKCS#8 (DER).", ex);
                     }
@@ -77,15 +70,12 @@ namespace Sat.MassiveDownload.Crypto
             }
 
             // Asociar la private key al certificado y devolver un X509 “bien horneado”
-            using (rsa)
-            {
-                using var withPrivate = publicCert.CopyWithPrivateKey(rsa);
-                var pfxBytes = withPrivate.Export(X509ContentType.Pkcs12);
-                return new X509Certificate2(
-                    pfxBytes,
-                    (string?)null, // <- evita overload de SecureString
-                    X509KeyStorageFlags.Exportable | X509KeyStorageFlags.EphemeralKeySet);
-            }
+            using var withPrivate = publicCert.CopyWithPrivateKey(rsa);
+            var pfxBytes = withPrivate.Export(X509ContentType.Pkcs12);
+            return X509CertificateLoader.LoadPkcs12(
+                pfxBytes,
+                password: null,
+                keyStorageFlags: X509KeyStorageFlags.Exportable | X509KeyStorageFlags.EphemeralKeySet);
         }
 
         private static bool LooksLikePem(byte[] data)
@@ -94,9 +84,5 @@ namespace Sat.MassiveDownload.Crypto
             return head.Contains("-----BEGIN", StringComparison.Ordinal);
         }
 
-        private sealed class PasswordFinder(string pass) : IPasswordFinder
-        {
-            public char[] GetPassword() => pass.ToCharArray();
-        }
     }
 }

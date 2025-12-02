@@ -6,21 +6,21 @@ namespace OrionERP.Application.Features.Contabilidad.Transacciones;
 public class TransaccionCreateRequest
 {
     [Required]
-    public string Rfc { get; set; }
+    public string Rfc { get; set; } = string.Empty;
 
     [Required]
     public DateTime Fecha { get; set; }
 
     [Required]
-    public string Concepto { get; set; }
+    public string Concepto { get; set; } = string.Empty;
 
     public decimal Monto { get; set; }
 
     [Required]
-    public string TipoPoliza { get; set; }
+    public string TipoPoliza { get; set; } = string.Empty;
 
     [Required]
-    public string FormaPago { get; set; }
+    public string FormaPago { get; set; } = string.Empty;
 
     public int? CategoriaId { get; set; }
 

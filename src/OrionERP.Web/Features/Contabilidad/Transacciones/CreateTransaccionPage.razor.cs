@@ -27,11 +27,11 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
         protected List<FormaPagoLookupDto> FormaPagoOptions { get; } = new();
         protected IReadOnlyList<string> TipoPolizaOptions { get; } = new[] { "INGRESO", "EGRESO", "DIARIO" };
 
-        protected override async Task OnInitializedAsync()
-        {
-            Model.Fecha = DateTime.Today;
-            Model.Rfc = RfcState.CurrentRfc;
-            EditContext = new EditContext(Model);
+            protected override async Task OnInitializedAsync()
+            {
+                Model.Fecha = DateTime.Today;
+                Model.Rfc = RfcState.CurrentRfc ?? string.Empty;
+                EditContext = new EditContext(Model);
 
             var formasPago = await TransaccionService.GetFormasPagoAsync();
             FormaPagoOptions.AddRange(formasPago);

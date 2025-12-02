@@ -20,7 +20,10 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
     protected override async Task OnInitializedAsync()
     {
-      _placeholderTransaccionId = int.Parse(Configuration["SatXml:PlaceholderTransaccionId"]);
+      var placeholderSetting = Configuration["SatXml:PlaceholderTransaccionId"];
+      _placeholderTransaccionId = int.TryParse(placeholderSetting, out var parsedPlaceholder)
+        ? parsedPlaceholder
+        : 0;
       connectionString = Configuration.GetConnectionString("OrionDb");
       // Initialize filter defaults:
       disponibleYears = Enumerable.Range(2020, 7).ToList();  // 2020-2026

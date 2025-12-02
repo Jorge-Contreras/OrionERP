@@ -224,7 +224,7 @@ public sealed class SatMassiveClient : ISatMassiveService
         {
             SigningKey = rsa
         };
-        signedXml.SignedInfo.CanonicalizationMethod = SignedXml.XmlDsigExcC14NTransformUrl;    // exc-c14n
+        signedXml.SignedInfo!.CanonicalizationMethod = SignedXml.XmlDsigExcC14NTransformUrl;    // exc-c14n
         signedXml.SignedInfo.SignatureMethod = SignedXml.XmlDsigRSASHA1Url;                    // rsa-sha1 (requisito SAT)
 
         var reference = new Reference("#_0")
@@ -331,7 +331,7 @@ public sealed class SatMassiveClient : ISatMassiveService
 
         // Sign <des:solicitud> (enveloped, exc-c14n, RSA-SHA1)
         var signedXml = new SignedXml(solicitud) { SigningKey = rsa };
-        signedXml.SignedInfo.CanonicalizationMethod = SignedXml.XmlDsigExcC14NTransformUrl;
+        signedXml.SignedInfo!.CanonicalizationMethod = SignedXml.XmlDsigExcC14NTransformUrl;
         signedXml.SignedInfo.SignatureMethod = SignedXml.XmlDsigRSASHA1Url;
 
         var reference = new Reference("") { DigestMethod = SignedXml.XmlDsigSHA1Url };
@@ -379,7 +379,7 @@ public sealed class SatMassiveClient : ISatMassiveService
     SetAttr("RfcSolicitante", rfcSolicitante);
 
     var sx = new SignedXml(sol) { SigningKey = rsa };
-    sx.SignedInfo.CanonicalizationMethod = SignedXml.XmlDsigExcC14NTransformUrl;
+    sx.SignedInfo!.CanonicalizationMethod = SignedXml.XmlDsigExcC14NTransformUrl;
     sx.SignedInfo.SignatureMethod        = SignedXml.XmlDsigRSASHA1Url;
 
     var r = new Reference("") { DigestMethod = SignedXml.XmlDsigSHA1Url };
@@ -427,7 +427,7 @@ public sealed class SatMassiveClient : ISatMassiveService
         SetAttr("RfcSolicitante", rfcSolicitante);
 
         var sx = new SignedXml(pet) { SigningKey = rsa };
-        sx.SignedInfo.CanonicalizationMethod = SignedXml.XmlDsigExcC14NTransformUrl;
+        sx.SignedInfo!.CanonicalizationMethod = SignedXml.XmlDsigExcC14NTransformUrl;
         sx.SignedInfo.SignatureMethod = SignedXml.XmlDsigRSASHA1Url;
 
         var r = new Reference("") { DigestMethod = SignedXml.XmlDsigSHA1Url };
@@ -525,10 +525,14 @@ public sealed class SatMassiveClient : ISatMassiveService
         }
         else
         {
-            foreach (XmlNode n in res.SelectNodes("./*[local-name()='IdsPaquetes']"))
+            var packageNodes = res.SelectNodes("./*[local-name()='IdsPaquetes']");
+            if (packageNodes is not null)
             {
-                var t = n.InnerText?.Trim();
-                if (!string.IsNullOrEmpty(t)) ids.Add(t);
+                foreach (XmlNode n in packageNodes)
+                {
+                    var t = n.InnerText?.Trim();
+                    if (!string.IsNullOrEmpty(t)) ids.Add(t);
+                }
             }
         }
 

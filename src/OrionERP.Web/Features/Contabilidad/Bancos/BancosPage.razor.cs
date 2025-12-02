@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -63,13 +64,43 @@ public partial class BancosPage : ComponentBase, IDisposable
   protected long? SelectedMovimientoId { get; private set; }
   protected int SelectedMonth { get; set; } = DateTime.Today.Month;
   protected int SelectedYear { get; set; } = DateTime.Today.Year;
+  protected decimal? InitialBalance { get; set; } = 0m;
+  private bool _showOnlyUnlinkedMovements;
   protected string? TextFilter { get; private set; }
   protected ProcessBbvaResult? LastProcessResult { get; private set; }
   protected int FileInputKey { get; private set; }
+  protected EditContext? AccountEditContext { get; private set; }
+  protected BankAccountInputModel? AccountDraft { get; private set; }
+  protected string AccountModalTitle { get; private set; } = string.Empty;
+  protected bool IsAccountModalVisible { get; private set; }
+  protected bool IsSavingAccount { get; private set; }
+  protected bool IsDeletingAccount { get; private set; }
+  protected bool ShowOnlyUnlinkedMovements
+  {
+    get => _showOnlyUnlinkedMovements;
+    set
+    {
+      if (_showOnlyUnlinkedMovements == value)
+      {
+        return;
+      }
+
+      _showOnlyUnlinkedMovements = value;
+
+      if (_showOnlyUnlinkedMovements && GetSelectedMovement() is { Policy: not null and > 0 })
+      {
+        SelectedMovimientoId = null;
+      }
+
+      _ = InvokeAsync(StateHasChanged);
+    }
+  }
 
   protected IReadOnlyList<KeyValuePair<int, string>> MonthOptions => MonthOptionsInternal;
 
   protected bool CanLink => SelectedPendingTransactionId.HasValue && SelectedMovimientoId.HasValue;
+
+  protected bool CanUnlink => GetSelectedMovement() is { Policy: int policyValue } && policyValue > 0;
 
   protected bool HasPendingTransactions => PendingTransactions.Count > 0;
 
@@ -80,6 +111,17 @@ public partial class BancosPage : ComponentBase, IDisposable
     => Accounts.FirstOrDefault(a => a.CuentaBancoId == SelectedAccountId) is { } account
       ? $"{account.NombreBanco} · {account.NumeroCuenta}"
       : "Ninguna";
+
+  protected IEnumerable<BankMovementDto> VisibleMovements
+    => ShowOnlyUnlinkedMovements
+      ? Movements.Where(m => m.Policy is null or <= 0)
+      : Movements;
+
+  protected override void OnInitialized()
+  {
+    base.OnInitialized();
+    RfcState.Changed += OnRfcStateChanged;
+  }
 
   protected override async Task OnInitializedAsync()
   {
@@ -95,6 +137,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     _pendingTransactionsCts?.Dispose();
     _textFilterDebounceCts?.Cancel();
     _textFilterDebounceCts?.Dispose();
+    RfcState.Changed -= OnRfcStateChanged;
   }
 
   protected string FormatCurrency(decimal value)
@@ -132,6 +175,175 @@ public partial class BancosPage : ComponentBase, IDisposable
     await InvokeAsync(StateHasChanged);
   }
 
+  protected void ShowCreateAccountModal()
+  {
+    if (string.IsNullOrWhiteSpace(_currentRfc))
+    {
+      UiMessages.ShowWarning("Selecciona un RFC antes de registrar cuentas bancarias.");
+      return;
+    }
+
+    AccountDraft = BankAccountInputModel.CreateNew(_currentRfc);
+    AccountModalTitle = "Agregar cuenta bancaria";
+    AccountEditContext = new EditContext(AccountDraft);
+    IsAccountModalVisible = true;
+  }
+
+  protected void ShowEditAccountModal(BankAccountDto account)
+  {
+    if (account is null)
+    {
+      return;
+    }
+
+    AccountDraft = BankAccountInputModel.FromAccount(account);
+    AccountModalTitle = $"Editar cuenta bancaria – {account.NombreBanco}";
+    AccountEditContext = new EditContext(AccountDraft);
+    IsAccountModalVisible = true;
+  }
+
+  protected void CloseAccountModal()
+  {
+    IsAccountModalVisible = false;
+    AccountEditContext = null;
+    AccountDraft = null;
+  }
+
+  protected async Task HandleAccountValidSubmit()
+  {
+    if (AccountDraft is null)
+    {
+      return;
+    }
+
+    if (IsSavingAccount)
+    {
+      return;
+    }
+
+    var draft = AccountDraft;
+    var request = draft.ToRequest();
+    var isNewAccount = !draft.CuentaBancoId.HasValue;
+    var wasSelected = draft.CuentaBancoId.HasValue && SelectedAccountId == draft.CuentaBancoId.Value;
+
+    IsSavingAccount = true;
+
+    try
+    {
+      BankAccountDto? savedAccount;
+
+      if (draft.CuentaBancoId.HasValue)
+      {
+        savedAccount = await BancosService.UpdateAccountAsync(draft.CuentaBancoId.Value, request);
+
+        if (savedAccount is null)
+        {
+          UiMessages.ShowError("La cuenta bancaria ya no existe.");
+          return;
+        }
+
+        UiMessages.ShowSuccess("Cuenta bancaria actualizada correctamente.");
+      }
+      else
+      {
+        savedAccount = await BancosService.CreateAccountAsync(request);
+        UiMessages.ShowSuccess("Cuenta bancaria registrada correctamente.");
+      }
+
+      var savedAccountId = savedAccount.CuentaBancoId;
+
+      CloseAccountModal();
+
+      await LoadAccountsInternalAsync();
+
+      SelectedAccountId = savedAccountId;
+
+      if (isNewAccount)
+      {
+        SelectedMovimientoId = null;
+        LastProcessResult = null;
+        await LoadMovementsAsync();
+      }
+      else if (wasSelected)
+      {
+        await InvokeAsync(StateHasChanged);
+      }
+    }
+    catch (Exception)
+    {
+      UiMessages.ShowError("No se pudo guardar la cuenta bancaria.");
+    }
+    finally
+    {
+      IsSavingAccount = false;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected async Task DeleteAccountAsync(BankAccountDto account)
+  {
+    if (account is null)
+    {
+      return;
+    }
+
+    if (IsDeletingAccount)
+    {
+      return;
+    }
+
+    if (string.IsNullOrWhiteSpace(_currentRfc))
+    {
+      UiMessages.ShowWarning("Selecciona un RFC válido antes de eliminar cuentas bancarias.");
+      return;
+    }
+
+    var confirmationMessage = $"¿Deseas eliminar la cuenta {account.NombreBanco} · {account.NumeroCuenta}?";
+
+    bool confirm;
+    try
+    {
+      confirm = await JsRuntime.InvokeAsync<bool>("confirm", confirmationMessage);
+    }
+    catch
+    {
+      confirm = true;
+    }
+
+    if (!confirm)
+    {
+      return;
+    }
+
+    IsDeletingAccount = true;
+
+    try
+    {
+      await BancosService.DeleteAccountAsync(account.CuentaBancoId, _currentRfc);
+
+      if (SelectedAccountId == account.CuentaBancoId)
+      {
+        SelectedAccountId = null;
+        SelectedMovimientoId = null;
+        LastProcessResult = null;
+        Movements.Clear();
+      }
+
+      await LoadAccountsInternalAsync();
+
+      UiMessages.ShowSuccess("Cuenta bancaria eliminada correctamente.");
+    }
+    catch (Exception)
+    {
+      UiMessages.ShowError("No se pudo eliminar la cuenta bancaria.");
+    }
+    finally
+    {
+      IsDeletingAccount = false;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
   protected void OnPendingTransactionSelected(int transaccionId)
   {
     SelectedPendingTransactionId = SelectedPendingTransactionId == transaccionId
@@ -149,6 +361,11 @@ public partial class BancosPage : ComponentBase, IDisposable
 
     _ = InvokeAsync(StateHasChanged);
   }
+
+  private BankMovementDto? GetSelectedMovement()
+    => SelectedMovimientoId.HasValue
+      ? Movements.FirstOrDefault(m => m.MovimientoId == SelectedMovimientoId.Value)
+      : null;
 
   protected async Task OnLinkClicked()
   {
@@ -191,12 +408,59 @@ public partial class BancosPage : ComponentBase, IDisposable
     {
       await BancosService.LinkMovementToTransactionAsync(movement.MovimientoId, transaction.TransaccionId);
       UiMessages.ShowSuccess("Movimiento ligado correctamente.");
+      SelectedMovimientoId = null;
+      SelectedPendingTransactionId = null;
       await LoadPendingTransactionsAsync();
       await LoadMovementsAsync();
     }
     catch (Exception)
     {
       UiMessages.ShowError("No se pudo ligar el movimiento seleccionado.");
+    }
+  }
+
+  protected async Task OnUnlinkClicked()
+  {
+    var movement = GetSelectedMovement();
+
+    if (movement is null)
+    {
+      UiMessages.ShowWarning("Selecciona un movimiento válido.");
+      return;
+    }
+
+    if (movement.Policy is null or <= 0)
+    {
+      UiMessages.ShowWarning("El movimiento seleccionado no tiene una póliza ligada.");
+      return;
+    }
+
+    bool confirm;
+    try
+    {
+      confirm = await JsRuntime.InvokeAsync<bool>("confirm", "¿Estas Seguro que deseas desligar este Movimiento?");
+    }
+    catch
+    {
+      confirm = true;
+    }
+
+    if (!confirm)
+    {
+      return;
+    }
+
+    try
+    {
+      await BancosService.UnlinkMovementAsync(movement.MovimientoId);
+      UiMessages.ShowSuccess("Movimiento desligado correctamente.");
+      SelectedMovimientoId = null;
+      await LoadPendingTransactionsAsync();
+      await LoadMovementsAsync();
+    }
+    catch (Exception)
+    {
+      UiMessages.ShowError("No se pudo desligar el movimiento seleccionado.");
     }
   }
 
@@ -316,7 +580,8 @@ public partial class BancosPage : ComponentBase, IDisposable
         return;
       }
 
-      var result = await BancosService.ProcessBbvaFileAsync(content, SelectedAccountId.Value);
+      var initialBalance = InitialBalance ?? 0m;
+      var result = await BancosService.ProcessBbvaFileAsync(content, SelectedAccountId.Value, initialBalance);
 
       if (result is null)
       {
@@ -374,6 +639,48 @@ public partial class BancosPage : ComponentBase, IDisposable
       IsInitializing = false;
       await InvokeAsync(StateHasChanged);
     }
+  }
+
+  private void OnRfcStateChanged()
+  {
+    _ = InvokeAsync(HandleRfcChangedAsync);
+  }
+
+  private async Task HandleRfcChangedAsync()
+  {
+    var nextRfc = RfcState.CurrentRfc;
+
+    if (string.Equals(_currentRfc, nextRfc, StringComparison.OrdinalIgnoreCase))
+    {
+      return;
+    }
+
+    _currentRfc = nextRfc;
+    CloseAccountModal();
+    SelectedAccountId = null;
+    SelectedPendingTransactionId = null;
+    SelectedMovimientoId = null;
+    LastProcessResult = null;
+    ErrorMessage = null;
+
+    _movementsCts?.Cancel();
+    _pendingTransactionsCts?.Cancel();
+    _textFilterDebounceCts?.Cancel();
+
+    if (string.IsNullOrWhiteSpace(_currentRfc))
+    {
+      Accounts.Clear();
+      Movements.Clear();
+      PendingTransactions.Clear();
+      AvailableYears.Clear();
+      await InvokeAsync(StateHasChanged);
+      return;
+    }
+
+    await LoadAccountsInternalAsync();
+    await LoadYearsInternalAsync();
+    await LoadPendingTransactionsAsync();
+    await LoadMovementsAsync();
   }
 
   private async Task LoadAccountsInternalAsync()
@@ -548,5 +855,93 @@ public partial class BancosPage : ComponentBase, IDisposable
     await using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
     using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
     return await reader.ReadToEndAsync();
+  }
+
+  protected sealed class BankAccountInputModel
+  {
+    public int? CuentaBancoId { get; init; }
+
+    public DateTime? FechaAlta { get; init; }
+
+    [Required]
+    [StringLength(100)]
+    public string NombreBanco { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(50)]
+    public string NumeroCuenta { get; set; } = string.Empty;
+
+    [StringLength(100)]
+    public string? TipoCuenta { get; set; }
+
+    [StringLength(200)]
+    public string? NombreTitular { get; set; }
+
+    [StringLength(50)]
+    public string? ClabeCuenta { get; set; }
+
+    [Required]
+    [StringLength(50)]
+    public string Rfc { get; set; } = string.Empty;
+
+    public bool Activo { get; set; } = true;
+
+    public int? CuentaContableId { get; set; }
+
+    public int? CuentaContableEgreso { get; set; }
+
+    public int? CuentaContableIngreso { get; set; }
+
+    public static BankAccountInputModel CreateNew(string rfc)
+      => new()
+      {
+        Rfc = rfc,
+        Activo = true,
+      };
+
+    public static BankAccountInputModel FromAccount(BankAccountDto account)
+      => new()
+      {
+        CuentaBancoId = account.CuentaBancoId,
+        FechaAlta = account.FechaAlta,
+        NombreBanco = account.NombreBanco,
+        NumeroCuenta = account.NumeroCuenta,
+        TipoCuenta = string.IsNullOrWhiteSpace(account.TipoCuenta) ? null : account.TipoCuenta,
+        NombreTitular = string.IsNullOrWhiteSpace(account.NombreTitular) ? null : account.NombreTitular,
+        ClabeCuenta = string.IsNullOrWhiteSpace(account.ClabeCuenta) ? null : account.ClabeCuenta,
+        Rfc = account.Rfc,
+        Activo = account.Activo,
+        CuentaContableId = NormalizeCuenta(account.CuentaContableId),
+        CuentaContableEgreso = NormalizeCuenta(account.CuentaContableEgreso),
+        CuentaContableIngreso = NormalizeCuenta(account.CuentaContableIngreso),
+      };
+
+    public BankAccountRequest ToRequest()
+      => new()
+      {
+        NombreBanco = NombreBanco.Trim(),
+        NumeroCuenta = NumeroCuenta.Trim(),
+        TipoCuenta = NormalizeString(TipoCuenta),
+        NombreTitular = NormalizeString(NombreTitular),
+        ClabeCuenta = NormalizeString(ClabeCuenta),
+        Rfc = Rfc.Trim(),
+        Activo = Activo,
+        CuentaContableId = NormalizeCuenta(CuentaContableId),
+        CuentaContableEgreso = NormalizeCuenta(CuentaContableEgreso),
+        CuentaContableIngreso = NormalizeCuenta(CuentaContableIngreso),
+      };
+
+    private static string? NormalizeString(string? value)
+    {
+      if (string.IsNullOrWhiteSpace(value))
+      {
+        return null;
+      }
+
+      return value.Trim();
+    }
+
+    private static int? NormalizeCuenta(int? value)
+      => value.HasValue && value.Value > 0 ? value : null;
   }
 }

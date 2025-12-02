@@ -33,8 +33,8 @@ public class SatDescargaPage : ComponentBase
   protected ProcessSummary? LastSummary { get; set; }
 
   // UI state
-  protected DateTime StartLocal { get; set; } = DateTime.UtcNow.Date;                 // 00:00 today UTC
-  protected DateTime EndLocal { get; set; } = DateTime.UtcNow.Date.AddDays(1).AddSeconds(-1); // 23:59:59
+  protected DateTime StartLocal { get; set; } = DateTime.Now.Date;                
+  protected DateTime EndLocal { get; set; } = DateTime.Now.Date.AddDays(1).AddSeconds(-1); // 23:59:59
   protected bool Issued { get; set; } = false;
   protected string? FilterRfc { get; set; }
 
@@ -51,7 +51,7 @@ public class SatDescargaPage : ComponentBase
   {
     try
     {
-      var rows = await SolicitudesRepo.ListAsync(100);
+      var rows = await SolicitudesRepo.ListAsync(15);
       Solicitudes = new List<SatSolicitudDto>(rows);
       StateHasChanged();
     }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
@@ -105,6 +106,137 @@ ORDER BY t.Fecha;";
             cancellationToken: ct));
 
     return rows.AsList();
+  }
+
+  public async Task<IReadOnlyList<TransaccionCfdiCandidateDto>> GetCfdiCandidatesAsync(
+      TransaccionCfdiSearchRequest request,
+      CancellationToken ct = default)
+  {
+    if (request is null)
+      throw new ArgumentNullException(nameof(request));
+
+    var parameters = new DynamicParameters();
+    parameters.Add("@Monto", request.Monto);
+    parameters.Add("@Concepto", request.Concepto);
+    parameters.Add("@Rfc", request.Rfc);
+    parameters.Add("@Comprobante_ID", request.ComprobanteId);
+    parameters.Add("@Renglones", request.Renglones);
+    parameters.Add("@Tipo", request.Tipo);
+    parameters.Add("@Comprobantes_In", string.IsNullOrWhiteSpace(request.ComprobantesCsv) ? null : request.ComprobantesCsv);
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<CfdiCandidateRow>(
+        new CommandDefinition(
+            "cfdi.CFDIs_Candidatos_Para_Poliza",
+            parameters,
+            commandType: CommandType.StoredProcedure,
+            cancellationToken: ct));
+
+    return rows
+        .Select(row => new TransaccionCfdiCandidateDto
+        {
+          ComprobanteId = row.Comprobante_Id,
+          Fecha = row.Fecha,
+          Tipo = row.Tipo,
+          Serie = row.Serie,
+          Folio = row.Folio,
+          EmisorRfc = row.Emisor_Rfc,
+          ReceptorRfc = row.Receptor_Rfc,
+          Uuid = row.UUID,
+          FormaPago = row.FormaPago,
+          Total = row.Total,
+          Polizas = row.Polizas,
+          Asignado = row.Asignado,
+          MetodoPago = row.MetodoPago,
+          UsoCfdi = row.UsoCFDI,
+          Conceptos = row.Conceptos
+        })
+        .ToList();
+  }
+
+  public async Task<IReadOnlyList<long>> GetLinkedCfdiIdsAsync(int transaccionId, CancellationToken ct = default)
+  {
+    const string sql = @"SELECT CAST(TC.Comprobante_ID AS bigint) AS Id
+FROM dbo.Transaccion_Comprobante AS TC
+WHERE TC.Transaccion_ID = @Id
+UNION
+SELECT CAST(TD.DoctoRelacionado_Id AS bigint) AS Id
+FROM dbo.Transaccion_DoctoRelacionado AS TD
+WHERE TD.Transaccion_ID = @Id;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<long>(
+        new CommandDefinition(sql, new { Id = transaccionId }, cancellationToken: ct));
+
+    return rows.AsList();
+  }
+
+  public async Task<TransaccionCommandResult> LinkCfdiAsync(
+      TransaccionCfdiLinkRequest request,
+      CancellationToken ct = default)
+  {
+    if (request is null)
+      throw new ArgumentNullException(nameof(request));
+
+    using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
+
+    try
+    {
+      if (request.UseDoctoRelacionadoTable)
+      {
+        const string sql = @"INSERT INTO dbo.Transaccion_DoctoRelacionado (Transaccion_ID, DoctoRelacionado_Id, Monto)
+VALUES (@TransaccionId, @DoctoRelacionadoId, @Monto);";
+
+        await conn.ExecuteAsync(
+            new CommandDefinition(
+                sql,
+                new
+                {
+                  TransaccionId = request.TransaccionId,
+                  DoctoRelacionadoId = request.ComprobanteId,
+                  Monto = request.Monto
+                },
+                tx,
+                cancellationToken: ct));
+      }
+      else
+      {
+        const string sql = @"INSERT INTO dbo.Transaccion_Comprobante (Transaccion_ID, Comprobante_ID, Monto)
+VALUES (@TransaccionId, @ComprobanteId, @Monto);";
+
+        await conn.ExecuteAsync(
+            new CommandDefinition(
+                sql,
+                new
+                {
+                  TransaccionId = request.TransaccionId,
+                  ComprobanteId = request.ComprobanteId,
+                  Monto = request.Monto
+                },
+                tx,
+                cancellationToken: ct));
+      }
+
+      await tx!.CommitAsync(ct);
+      return TransaccionCommandResult.Ok("Transacción ligada correctamente.");
+    }
+    catch (SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
+    {
+      try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
+      return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
+    }
+    catch (Exception ex)
+    {
+      try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
+      _logger.LogError(
+          ex,
+          "Failed to link CFDI {ComprobanteId} to transaction {TransaccionId}",
+          request.ComprobanteId,
+          request.TransaccionId);
+      return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
+    }
   }
 
   public async Task<IReadOnlyList<TransaccionMovimientoDto>> GetMovimientosAsync(int transaccionId, CancellationToken ct = default)
@@ -607,6 +739,221 @@ WHERE ID = @MovimientoId
     using var conn = new SqlConnection(_cs);
     await conn.ExecuteAsync(
       new CommandDefinition(sql, new { MovimientoId = movimientoId, TransaccionId = transaccionId }, cancellationToken: ct));
+  }
+
+  public async Task<TransaccionCommandResult> DeleteTransaccionAsync(int transaccionId, CancellationToken ct = default)
+  {
+      using var conn = new SqlConnection(_cs);
+      await conn.OpenAsync(ct);
+      using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
+
+      try
+      {
+          const string checkSql = @"
+              IF EXISTS (SELECT 1 FROM dbo.Actividad_Transacciones WHERE TransaccionID = @TransaccionId) OR
+                 EXISTS (SELECT 1 FROM dbo.Registro_Contable WHERE TransaccionID = @TransaccionId) OR
+                 EXISTS (SELECT 1 FROM dbo.Transaccion_Comprobante WHERE Transaccion_ID = @TransaccionId) OR
+                 EXISTS (SELECT 1 FROM dbo.Transaccion_DoctoRelacionado WHERE Transaccion_ID = @TransaccionId) OR
+                 EXISTS (SELECT 1 FROM dbo.Reservation_Transacciones WHERE TransaccionID = @TransaccionId) OR
+                 EXISTS (SELECT 1 FROM dbo.TRANSACTION_ATTACHMENT WHERE TranID = @TransaccionId) OR
+                 EXISTS (SELECT 1 FROM bancos.Movimientos WHERE Transaccion_ID = @TransaccionId)
+              BEGIN
+                  SELECT 1;
+              END
+              ELSE
+              BEGIN
+                  SELECT 0;
+              END";
+
+          var hasRelatedRecords = await conn.ExecuteScalarAsync<bool>(
+              new CommandDefinition(checkSql, new { TransaccionId = transaccionId }, tx, cancellationToken: ct));
+
+          if (hasRelatedRecords)
+          {
+              await tx!.RollbackAsync(ct);
+              return TransaccionCommandResult.Fail("No se puede eliminar la transacción porque tiene registros relacionados (movimientos, adjuntos, comprobantes, etc.).");
+          }
+
+          const string deleteSql = @"DELETE FROM dbo.Transacciones WHERE ID = @TransaccionId;";
+          var affectedRows = await conn.ExecuteAsync(
+              new CommandDefinition(deleteSql, new { TransaccionId = transaccionId }, tx, cancellationToken: ct));
+
+          if (affectedRows == 0)
+          {
+              await tx!.RollbackAsync(ct);
+              return TransaccionCommandResult.Fail("No se encontró la transacción a eliminar.");
+          }
+
+          await tx!.CommitAsync(ct);
+          return TransaccionCommandResult.Ok("Transacción eliminada correctamente.");
+      }
+      catch (Exception ex)
+      {
+          try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
+          _logger.LogError(ex, "Error al eliminar la transacción {TransaccionId}", transaccionId);
+          return TransaccionCommandResult.Fail($"Ocurrió un error al eliminar la transacción: {ex.Message}");
+      }
+  }
+
+  public async Task<TransaccionCreateResult> CreateTransaccionAsync(TransaccionCreateRequest request, CancellationToken ct = default)
+  {
+      const string sql = @"
+          INSERT INTO dbo.Transacciones (RFC, Fecha, Concepto, Monto, Tipo_Poliza, Forma_Pago, Categoria, Facturado, Memo, ProyectoID, CompraID, ServicioID, NominaID, Cuenta)
+          VALUES (@Rfc, @Fecha, @Concepto, @Monto, @TipoPoliza, @FormaPago, @CategoriaId, @Facturado, @Memo, @ProyectoId, @CompraId, @ServicioId, @NominaId, @Cuenta);
+          SELECT CAST(SCOPE_IDENTITY() as int);";
+
+      const string defaultCategoriaSql = @"
+          SELECT TOP (1) c.ID
+          FROM dbo.Categorias c
+          WHERE c.GrupoCategoria = 'PLANTILLA'
+            AND c.RFC = @Rfc
+          ORDER BY c.Descripcion ASC;";
+
+      try
+      {
+          using var conn = new SqlConnection(_cs);
+          var categoriaId = request.CategoriaId;
+
+          if (!categoriaId.HasValue)
+          {
+              categoriaId = await conn.ExecuteScalarAsync<int?>(
+                  new CommandDefinition(defaultCategoriaSql, new { request.Rfc }, cancellationToken: ct));
+
+              if (!categoriaId.HasValue)
+              {
+                  return TransaccionCreateResult.Fail("No se encontró una categoría válida para la transacción.");
+              }
+          }
+
+          var newId = await conn.ExecuteScalarAsync<int>(
+              new CommandDefinition(
+                  sql,
+                  new
+                  {
+                      request.Rfc,
+                      request.Fecha,
+                      request.Concepto,
+                      request.Monto,
+                      request.TipoPoliza,
+                      request.FormaPago,
+                      CategoriaId = categoriaId,
+                      request.Facturado,
+                      request.Memo,
+                      request.ProyectoId,
+                      request.CompraId,
+                      request.ServicioId,
+                      request.NominaId,
+                      request.Cuenta
+                  },
+                  cancellationToken: ct));
+          return TransaccionCreateResult.Ok(newId, "Transacción creada correctamente.");
+      }
+      catch (Exception ex)
+      {
+          _logger.LogError(ex, "Error al crear la transacción.");
+          return TransaccionCreateResult.Fail($"Ocurrió un error al crear la transacción: {ex.Message}");
+      }
+  }
+
+  public async Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesListAsync(TransaccionFilter filter, CancellationToken ct = default)
+  {
+      var sqlBuilder = new SqlBuilder();
+      var template = sqlBuilder.AddTemplate(@"
+          SELECT
+              t.ID AS Id,
+              t.Fecha,
+              t.Concepto,
+              t.Monto,
+              t.Tipo_Poliza AS TipoPoliza,
+              t.Forma_Pago AS FormaPago
+          FROM dbo.Transacciones t
+          /**where**/
+          /**orderby**/"
+      );
+
+      if (filter.Id.HasValue)
+      {
+          sqlBuilder.Where("t.ID = @Id", new { filter.Id });
+      }
+      if (filter.Year.HasValue)
+      {
+          sqlBuilder.Where("YEAR(t.Fecha) = @Year", new { filter.Year });
+      }
+      if (filter.Month.HasValue)
+      {
+          sqlBuilder.Where("MONTH(t.Fecha) = @Month", new { filter.Month });
+      }
+      if (!string.IsNullOrWhiteSpace(filter.Concepto))
+      {
+          sqlBuilder.Where("t.Concepto LIKE @Concepto", new { Concepto = $"%{filter.Concepto}%" });
+      }
+      if (filter.Monto.HasValue)
+      {
+          sqlBuilder.Where("t.Monto = @Monto", new { filter.Monto });
+      }
+      if (!string.IsNullOrWhiteSpace(filter.TipoPoliza))
+      {
+          sqlBuilder.Where("t.Tipo_Poliza LIKE @TipoPoliza", new { TipoPoliza = $"%{filter.TipoPoliza}%" });
+      }
+      if (!string.IsNullOrWhiteSpace(filter.FormaPago))
+      {
+          sqlBuilder.Where("t.Forma_Pago LIKE @FormaPago", new { FormaPago = $"%{filter.FormaPago}%" });
+      }
+      if (!string.IsNullOrWhiteSpace(filter.Rfc))
+      {
+          sqlBuilder.Where("t.RFC = @Rfc", new { filter.Rfc });
+      }
+
+      if (!string.IsNullOrWhiteSpace(filter.SortBy))
+      {
+          var columnMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+          {
+              { "Id", "t.ID" },
+              { "Fecha", "t.Fecha" },
+              { "Concepto", "t.Concepto" },
+              { "Monto", "t.Monto" },
+              { "TipoPoliza", "t.Tipo_Poliza" },
+              { "FormaPago", "t.Forma_Pago" }
+          };
+
+          if (columnMap.TryGetValue(filter.SortBy, out var dbColumn))
+          {
+              sqlBuilder.OrderBy($"{dbColumn} {(filter.SortAsc ? "ASC" : "DESC")}");
+          }
+          else
+          {
+              sqlBuilder.OrderBy("t.Fecha DESC");
+          }
+      }
+      else
+      {
+          sqlBuilder.OrderBy("t.Fecha DESC");
+      }
+
+      using var conn = new SqlConnection(_cs);
+      var rows = await conn.QueryAsync<TransaccionListItemDto>(
+          new CommandDefinition(template.RawSql, template.Parameters, cancellationToken: ct)
+      );
+      return rows.AsList();
+  }
+
+  private sealed class CfdiCandidateRow
+  {
+    public long Comprobante_Id { get; set; }
+    public DateTime Fecha { get; set; }
+    public string? Tipo { get; set; }
+    public string? Serie { get; set; }
+    public string? Folio { get; set; }
+    public string? Emisor_Rfc { get; set; }
+    public string? Receptor_Rfc { get; set; }
+    public string? UUID { get; set; }
+    public string? FormaPago { get; set; }
+    public decimal Total { get; set; }
+    public int Polizas { get; set; }
+    public decimal Asignado { get; set; }
+    public string? MetodoPago { get; set; }
+    public string? UsoCFDI { get; set; }
+    public string? Conceptos { get; set; }
   }
 
   private async Task<int> ExecuteInsertAsync(string sql, object parameters, CancellationToken ct)

@@ -83,23 +83,50 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
     private async Task OnEmitidasSortsChangedAsync()
     {
-      ApplySorting();
-      emitidasCurrentPage = 1;
-      await LoadAllData();
+        ApplySorting();
+        emitidasCurrentPage = 1;
+        await LoadAllData();
     }
-    private async Task OnEmitidasSortChanged(ChangeEventArgs e)
-    {
-      await OnEmitidasSortsChangedAsync();
-    }
+
     private async Task OnRecibidasSortChangedAsync()
     {
-      ApplySorting();
-      recibidasCurrentPage = 1;
-      await LoadAllData();
+        ApplySorting();
+        recibidasCurrentPage = 1;
+        await LoadAllData();
     }
-    private async Task OnRecibidasSortChanged(ChangeEventArgs e)
+
+    private async Task SortEmitidasByColumn(string columnName)
     {
-      await OnRecibidasSortChangedAsync();
+        if (emitidasSortColumn == columnName)
+        {
+            emitidasSortOrder = emitidasSortOrder == "ASC" ? "DESC" : "ASC";
+        }
+        else
+        {
+            emitidasSortColumn = columnName;
+            emitidasSortOrder = "ASC";
+        }
+        await OnEmitidasSortsChangedAsync();
+    }
+
+    private async Task SortRecibidasByColumn(string columnName)
+    {
+        if (recibidasSortColumn == columnName)
+        {
+            recibidasSortOrder = recibidasSortOrder == "ASC" ? "DESC" : "ASC";
+        }
+        else
+        {
+            recibidasSortColumn = columnName;
+            recibidasSortOrder = "ASC";
+        }
+        await OnRecibidasSortChangedAsync();
+    }
+
+    private string GetSortIndicator(string columnName, string currentSortColumn, string currentSortOrder)
+    {
+        if (currentSortColumn != columnName) return "";
+        return currentSortOrder == "ASC" ? "▲" : "▼";
     }
   }
 }

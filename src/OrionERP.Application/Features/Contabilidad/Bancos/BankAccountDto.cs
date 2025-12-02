@@ -13,4 +13,7 @@ public sealed record BankAccountDto
   public string Rfc { get; init; } = string.Empty;
   public bool Activo { get; init; }
   public DateTime FechaAlta { get; init; }
+  public int? CuentaContableId { get; init; }
+  public int? CuentaContableEgreso { get; init; }
+  public int? CuentaContableIngreso { get; init; }
 }

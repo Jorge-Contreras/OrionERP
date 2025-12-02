@@ -1,4 +1,6 @@
+<!-- UNIQUE_COMMENT_FOR_DEBUGGING -->
 @page "/cfdi/declaracion-previa"
+@using OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Components
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
@@ -62,777 +64,769 @@
 
 
 
-<div class="accordion mt-4" id="declaracionAccordion">
-    <div class="accordion-item">
-        <h2 class="accordion-header" id="headingEmitidas">
-            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseEmitidas" aria-expanded="true" aria-controls="collapseEmitidas">
-                EMITIDAS
-            </button>
-        </h2>
-        <div id="collapseEmitidas" class="accordion-collapse collapse show" data-bs-parent="#declaracionAccordion">
-            <div class="accordion-body">
-                <div class="mb-2 filter-bar">
-                    <div class="filter-pair">
-                        <label for="emitSortCol">Ordenar por:</label>
-                        <select id="emitSortCol"
-                                @bind="emitidasSortColumn"
-                                @bind:after="OnEmitidasSortsChangedAsync"
-                                class="form-select inline-select">
-                            @if (emitidasSortableFields != null)
-                            {
-                                @foreach (var field in emitidasSortableFields)
-                                {
-                                    <option value="@field.Value">@field.Key</option>
-                                }
-                            }
-                        </select>
-                    </div>
-
-                    <select id="emitSortDir"
-                            @bind="emitidasSortOrder"
-                            @bind:after="OnEmitidasSortsChangedAsync"
-                            class="form-select inline-select">
-                        <option value="ASC">ASC</option>
-                        <option value="DESC">DESC</option>
-                    </select>
-
-                    <button class="btn btn-sm btn-outline-primary" @onclick="ToggleEmitidaSelected">
-                        Excluir / Incluir
-                    </button>
-                    <button class="btn btn-sm btn-warning" @onclick="CancelSelectedEmitidaCfdi">
-                        Cancelar CFDI
-                    </button>
-                    <button class="btn btn-sm btn-secondary" @onclick="ExportExcelEmitidas">
-                        Exportar Emitidas a Excel
-                    </button>
-                </div>
-
-                <div class="table-responsive table-scroll">
-                    <table class="table table-sm table-bordered table-striped align-middle compact-table">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>✔</th>
-                                <th>Fecha</th>
-                                <th>Mes</th>
-                                <th>Año</th>
-                                <th>Receptor</th>
-                                <th class="num">SubTotal</th>
-                                <th class="num">Descuento</th>
-                                <th class="num">SubTotal_Desc</th>
-                                <th class="num">Actos16%</th>
-                                <th class="num">Actos0%</th>
-                                <th class="num">IVA</th>
-                                <th class="num">IEPS</th>
-                                <th class="num">IVA Retenido</th>
-                                <th class="num">ISR Retenido</th>
-                                <th class="num">IEPS Retenido</th>
-                                <th class="num">Total</th>
-                                <th>UUID</th>
-                                <th>Forma Pago</th>
-                                <th>Tipo CFDI</th>
-                                <th>Método Pago</th>
-                                <th>Uso CFDI</th>
-                                <th>Fecha Cancel.</th>
-                                <th>Estatus</th>
-                                <th>Transacción Fechas</th>
-                                <th>Poliza</th>
-                                <th class="num">Suma Polizas</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (emitidas != null)
-                            {
-                                @foreach (var item in emitidasPage)
-                                {
-                                    <tr @onclick="async () => await SelectEmitidaAsync(item)"
-                                        class="@GetEmitidaRowClass(item)"
-                                        style="cursor:pointer;">
-                                        <td>@item.D</td>
-                                        <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
-                                        <td>@item.MES_GLOBAL</td>
-                                        <td>@item.ANIO_GLOBAL</td>
-                                        <td>@item.RECEPTOR</td>
-                                        <td class="num">@string.Format("{0:N2}", item.SubTotal)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.Descuento)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.SubTotal_Desc)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.Actos_16)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.Actos_0)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.IVA)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.IEPS)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.IVA_RETENIDO)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.ISR_RETENIDO)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.IEPS_RETENIDO)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.Total)</td>
-                                        <td>@item.FOLIO_FISCAL</td>
-                                        <td>@item.FormaPago</td>
-                                        <td>@item.TipoDeComprobante</td>
-                                        <td>@item.MetodoPago</td>
-                                        <td>@item.UsoCFDI</td>
-                                        <td>@(item.FechaCancelacion.HasValue? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : "")</td>
-                                        <td>@item.Estatus</td>
-                                        <td>@item.fechastransacciones</td>
-                                        <td>@item.Poliza</td>
-                                        <td class="num">@item.SumaPolizas</td>
-                                        <td>
-                                            <button class="btn btn-sm btn-outline-info"
-                                                    @onclick:stopPropagation="true"
-                                                    @onclick="() => OpenEmitidaDetails(item)">
-                                                Ver
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-success"
-                                                    title="Ir a Transacción"
-                                                    @onclick:stopPropagation="true"
-                                                    @onclick="() => OpenLinkedTransaction(item)">
-                                                Tx
-                                            </button>
-                                        </td>
-                                    </tr>
-                                }
-                            }
-                        </tbody>
-                        @if (emitidasTotals != null)
+<ul class="nav nav-tabs" id="declaracionTab" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="emitidas-tab" data-bs-toggle="tab" data-bs-target="#emitidas" type="button" role="tab" aria-controls="emitidas" aria-selected="true">EMITIDAS</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="recibidas-tab" data-bs-toggle="tab" data-bs-target="#recibidas" type="button" role="tab" aria-controls="recibidas" aria-selected="false">RECIBIDAS</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="otros-tab" data-bs-toggle="tab" data-bs-target="#otros" type="button" role="tab" aria-controls="otros" aria-selected="false">OTROS</button>
+    </li>
+</ul>
+<div class="tab-content" id="declaracionTabContent">
+    <div class="tab-pane fade show active" id="emitidas" role="tabpanel" aria-labelledby="emitidas-tab">
+        <div class="mb-2 filter-bar">
+            <div class="filter-pair">
+                <label for="emitSortCol">Ordenar por:</label>
+                <select id="emitSortCol"
+                        @bind="emitidasSortColumn"
+                        @bind:after="OnEmitidasSortsChangedAsync"
+                        class="form-select inline-select">
+                    @if (emitidasSortableFields != null)
+                    {
+                        @foreach (var field in emitidasSortableFields)
                         {
-                            <tfoot class="table-light totals">
-                                <tr>
-                                    <td colspan="4"><strong># CFDIs:</strong> @emitidasTotals.CountCFDIs</td>
-                                    <td><strong>Totales:</strong></td>
-                                    <td class="num">@emitidasTotals.SumSubTotal.ToString("N2")</td>
-                                    <td class="num">@emitidasTotals.SumDescuento.ToString("N2")</td>
-                                    <td class="num">@emitidasTotals.SumSubTotalDesc.ToString("N2")</td>
-                                    <td class="num">@emitidasTotals.SumActos16.ToString("N2")</td>
-                                    <td class="num">@emitidasTotals.SumActos0.ToString("N2")</td>
-                                    <td class="num">@emitidasTotals.SumIVA.ToString("N2")</td>
-                                    <td class="num">@emitidasTotals.SumIEPS.ToString("N2")</td>
-                                    <td class="num">@emitidasTotals.SumIVA_RETENIDO.ToString("N2")</td>
-                                    <td class="num">@emitidasTotals.SumISR_RETENIDO.ToString("N2")</td>
-                                    <td class="num">@emitidasTotals.SumIEPS_RETENIDO.ToString("N2")</td>
-                                    <td class="num">@emitidasTotals.SumTotal.ToString("N2")</td>
-                                    <td colspan="11"></td>
-                                </tr>
-                            </tfoot>
+                            <option value="@field.Value">@field.Key</option>
                         }
-                    </table>
-                </div>
-
-                @if (emitidasPageCount > 1)
-                {
-                    <div>
-                        Página: @emitidasCurrentPage / @emitidasPageCount
-                        <button class="btn btn-sm btn-outline-primary" @onclick="PrevEmitidasPage" disabled="@(@emitidasCurrentPage <= 1)">Anterior</button>
-                        <button class="btn btn-sm btn-outline-primary" @onclick="NextEmitidasPage" disabled="@(@emitidasCurrentPage >= emitidasPageCount)">Siguiente</button>
-                    </div>
-                }
-
-                <h5 class="mt-4">Complementos de Pago</h5>
-                <div class="table-responsive table-scroll">
-                    <table class="table table-sm table-bordered table-striped align-middle compact-table">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>Pago Id</th>
-                                <th>Folio</th>
-                                <th>Fecha Pago</th>
-                                <th>Forma Pago</th>
-                                <th>Moneda Pago</th>
-                                <th class="num">Monto Pago</th>
-                                <th class="num">Parcialidad</th>
-                                <th>Moneda DR</th>
-                                <th class="num">Saldo Anterior</th>
-                                <th class="num">Importe Pagado</th>
-                                <th class="num">Saldo Insoluto</th>
-                                <th class="num">Tot P Traslados</th>
-                                <th class="num">Tot P Retenciones</th>
-                                <th class="num">Tot DR Traslados</th>
-                                <th class="num">Tot DR Retenciones</th>
+                    }
+                </select>
+            </div>
+            <select id="emitSortDir"
+                    @bind="emitidasSortOrder"
+                    @bind:after="OnEmitidasSortsChangedAsync"
+                    class="form-select inline-select">
+                <option value="ASC">ASC</option>
+                <option value="DESC">DESC</option>
+            </select>
+            <button class="btn btn-sm btn-outline-primary" @onclick="ToggleEmitidaSelected">
+                Excluir / Incluir
+            </button>
+            <button class="btn btn-sm btn-warning" @onclick="CancelSelectedEmitidaCfdi">
+                Cancelar CFDI
+            </button>
+            <button class="btn btn-sm btn-secondary" @onclick="ExportExcelEmitidas">
+                Exportar Emitidas a Excel
+            </button>
+        </div>
+        <div class="table-responsive table-scroll">
+            <table class="table table-sm table-bordered table-striped align-middle compact-table">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Acciones</th>
+                        <th>Poliza</th>
+                        <th>✔</th>
+                        <th @onclick="@(() => SortEmitidasByColumn("Fecha"))">Fecha @GetSortIndicator("Fecha", emitidasSortColumn, emitidasSortOrder)</th>
+                        <th>Mes</th>
+                        <th>Año</th>
+                        <th @onclick="@(() => SortEmitidasByColumn("RECEPTOR"))">Receptor @GetSortIndicator("RECEPTOR", emitidasSortColumn, emitidasSortOrder)</th>
+                        <th class="num">SubTotal</th>
+                        <th class="num">Descuento</th>
+                        <th class="num">SubTotal_Desc</th>
+                        <th class="num">Actos16%</th>
+                        <th class="num">Actos0%</th>
+                        <th class="num">IVA</th>
+                        <th class="num">IEPS</th>
+                        <th class="num">IVA Retenido</th>
+                        <th class="num">ISR Retenido</th>
+                        <th class="num">IEPS Retenido</th>
+                        <th @onclick="@(() => SortEmitidasByColumn("Total"))" class="num">Total @GetSortIndicator("Total", emitidasSortColumn, emitidasSortOrder)</th>
+                        <th @onclick="@(() => SortEmitidasByColumn("FOLIO_FISCAL"))">UUID @GetSortIndicator("FOLIO_FISCAL", emitidasSortColumn, emitidasSortOrder)</th>
+                        <th>Forma Pago</th>
+                        <th>Tipo CFDI</th>
+                        <th>Método Pago</th>
+                        <th>Uso CFDI</th>
+                        <th>Fecha Cancel.</th>
+                        <th>Estatus</th>
+                        <th>Transacción Fechas</th>
+                        <th class="num">Suma Polizas</th>
+                        
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (emitidas != null)
+                    {
+                        @foreach (var item in emitidasPage)
+                        {
+                            <tr @onclick="async () => await SelectEmitidaAsync(item)"
+                                class="@GetEmitidaRowClass(item)"
+                                style="cursor:pointer;">
+                                <ActionButtons Item="item"
+                                               OnOpenDetails="@(obj => OpenEmitidaDetails((DeclaracionEmitida)obj))"
+                                               OnHandlePolizaClick="HandlePolizaClick" />
+                                <td>@item.D</td>
+                                <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
+                                <td>@item.MES_GLOBAL</td>
+                                <td>@item.ANIO_GLOBAL</td>
+                                <td>@item.RECEPTOR</td>
+                                <td class="num">@string.Format("{0:N2}", item.SubTotal)</td>
+                                <td class="num">@string.Format("{0:N2}", item.Descuento)</td>
+                                <td class="num">@string.Format("{0:N2}", item.SubTotal_Desc)</td>
+                                <td class="num">@string.Format("{0:N2}", item.Actos_16)</td>
+                                <td class="num">@string.Format("{0:N2}", item.Actos_0)</td>
+                                <td class="num">@string.Format("{0:N2}", item.IVA)</td>
+                                <td class="num">@string.Format("{0:N2}", item.IEPS)</td>
+                                <td class="num">@string.Format("{0:N2}", item.IVA_RETENIDO)</td>
+                                <td class="num">@string.Format("{0:N2}", item.ISR_RETENIDO)</td>
+                                <td class="num">@string.Format("{0:N2}", item.IEPS_RETENIDO)</td>
+                                <td class="num">@string.Format("{0:N2}", item.Total)</td>
+                                <td>@item.FOLIO_FISCAL</td>
+                                <td>@item.FormaPago</td>
+                                <td>@item.TipoDeComprobante</td>
+                                <td>@item.MetodoPago</td>
+                                <td>@item.UsoCFDI</td>
+                                <td>@(item.FechaCancelacion.HasValue ? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : "")</td>
+                                <td>@item.Estatus</td>
+                                <td>@item.fechastransacciones</td>
+                                <td class="num">@item.SumaPolizas</td>
+                               
                             </tr>
-                        </thead>
-                        <tbody>
-                            @if (emitidasComplementos != null && emitidasComplementos.Count > 0)
-                            {
-                                foreach (var complemento in emitidasComplementos)
-                                {
+                        }
+                    }
+                </tbody>
+                @if (emitidasTotals != null)
+                {
+                    <tfoot class="table-light totals">
+                        <tr>
+                            <td colspan="4"><strong># CFDIs:</strong> @emitidasTotals.CountCFDIs</td>
+                            <td><strong>Totales:</strong></td>
+                            <td class="num">@emitidasTotals.SumSubTotal.ToString("N2")</td>
+                            <td class="num">@emitidasTotals.SumDescuento.ToString("N2")</td>
+                            <td class="num">@emitidasTotals.SumSubTotalDesc.ToString("N2")</td>
+                            <td class="num">@emitidasTotals.SumActos16.ToString("N2")</td>
+                            <td class="num">@emitidasTotals.SumActos0.ToString("N2")</td>
+                            <td class="num">@emitidasTotals.SumIVA.ToString("N2")</td>
+                            <td class="num">@emitidasTotals.SumIEPS.ToString("N2")</td>
+                            <td class="num">@emitidasTotals.SumIVA_RETENIDO.ToString("N2")</td>
+                            <td class="num">@emitidasTotals.SumISR_RETENIDO.ToString("N2")</td>
+                            <td class="num">@emitidasTotals.SumIEPS_RETENIDO.ToString("N2")</td>
+                            <td class="num">@emitidasTotals.SumTotal.ToString("N2")</td>
+                            <td colspan="11"></td>
+                        </tr>
+                    </tfoot>
+                }
+            </table>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <small>Mostrando página @emitidasCurrentPage de @emitidasPageCount</small>
+            <div class="btn-group" role="group" aria-label="Paginación facturas emitidas">
+                <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousEmitidasPage" disabled="@(emitidasCurrentPage <= 1)">Anterior</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="NextEmitidasPage" disabled="@(emitidasCurrentPage >= emitidasPageCount)">Siguiente</button>
+            </div>
+        </div>
+        <h5 class="mt-4">Complementos de Pago</h5>
+        <div class="table-responsive table-scroll">
+            <table class="table table-sm table-bordered table-striped align-middle compact-table">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Pago Id</th>
+                        <th>Folio</th>
+                        <th>Fecha Pago</th>
+                        <th>Forma Pago</th>
+                        <th>Moneda Pago</th>
+                        <th class="num">Monto Pago</th>
+                        <th class="num">Parcialidad</th>
+                        <th>Moneda DR</th>
+                        <th class="num">Saldo Anterior</th>
+                        <th class="num">Importe Pagado</th>
+                        <th class="num">Saldo Insoluto</th>
+                        <th class="num">Tot P Traslados</th>
+                        <th class="num">Tot P Retenciones</th>
+                        <th class="num">Tot DR Traslados</th>
+                        <th class="num">Tot DR Retenciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (emitidasComplementos != null && emitidasComplementos.Count > 0)
+                    {
+                        foreach (var complemento in emitidasComplementos)
+                        {
+                            <tr>
+                                <td>@complemento.Pago_Id</td>
+                                <td>@complemento.Folio</td>
+                                <td>@complemento.FechaPago.ToString("yyyy-MM-dd")</td>
+                                <td>@complemento.FormaDePagoP</td>
+                                <td>@complemento.MonedaP</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.MontoPago)</td>
+                                <td class="num">@complemento.NumParcialidad</td>
+                                <td>@complemento.MonedaDR</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoAnt)</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.ImpPagado)</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoInsoluto)</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Traslados)</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Retenciones)</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Traslados)</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Retenciones)</td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="15" class="text-center">Selecciona un CFDI para ver sus complementos de pago.</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="accordion mt-4" id="emitidasNominaAccordion">
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="headingEmitidasNomina">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseEmitidasNomina" aria-expanded="false" aria-controls="collapseEmitidasNomina">
+                        NOMINA
+                    </button>
+                </h2>
+                <div id="collapseEmitidasNomina" class="accordion-collapse collapse" data-bs-parent="#emitidasNominaAccordion">
+                    <div class="accordion-body">
+                        <h5>Facturas Emitidas de Nómina</h5>
+                        <div class="table-responsive table-scroll">
+                            <table class="table table-sm table-bordered table-striped align-middle compact-table">
+                                <thead class="table-dark">
                                     <tr>
-                                        <td>@complemento.Pago_Id</td>
-                                        <td>@complemento.Folio</td>
-                                        <td>@complemento.FechaPago.ToString("yyyy-MM-dd")</td>
-                                        <td>@complemento.FormaDePagoP</td>
-                                        <td>@complemento.MonedaP</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.MontoPago)</td>
-                                        <td class="num">@complemento.NumParcialidad</td>
-                                        <td>@complemento.MonedaDR</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoAnt)</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.ImpPagado)</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoInsoluto)</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Traslados)</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Retenciones)</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Traslados)</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Retenciones)</td>
+                                        <th>Acciones</th>
+                                        <th>Poliza</th>
+                                        <th>✔</th>
+                                        <th>Fecha</th>
+                                        <th>Mes</th>
+                                        <th>Año</th>
+                                        <th>Receptor</th>
+                                        <th class="num">SubTotal</th>
+                                        <th class="num">Descuento</th>
+                                        <th class="num">SubTotal_Desc</th>
+                                        <th class="num">Actos16%</th>
+                                        <th class="num">Actos0%</th>
+                                        <th class="num">IVA</th>
+                                        <th class="num">IEPS</th>
+                                        <th class="num">IVA Retenido</th>
+                                        <th class="num">ISR Retenido</th>
+                                        <th class="num">IEPS Retenido</th>
+                                        <th class="num">Total</th>
+                                        <th>UUID</th>
+                                        <th>Forma Pago</th>
+                                        <th>Tipo CFDI</th>
+                                        <th>Método Pago</th>
+                                        <th>Uso CFDI</th>
+                                        <th>Fecha Cancel.</th>
+                                        <th>Estatus</th>
+                                        <th>Transacción Fechas</th>
+                                        <th>Poliza</th>
+                                        <th class="num">Suma Polizas</th>
                                     </tr>
-                                }
-                            }
-                            else
-                            {
-                                <tr>
-                                    <td colspan="15" class="text-center">Selecciona un CFDI para ver sus complementos de pago.</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="accordion mt-4" id="emitidasNominaAccordion">
-                    <div class="accordion-item">
-                        <h2 class="accordion-header" id="headingEmitidasNomina">
-                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseEmitidasNomina" aria-expanded="false" aria-controls="collapseEmitidasNomina">
-                                NOMINA
-                            </button>
-                        </h2>
-                        <div id="collapseEmitidasNomina" class="accordion-collapse collapse" data-bs-parent="#emitidasNominaAccordion">
-                            <div class="accordion-body">
-                                <h5>Facturas Emitidas de Nómina</h5>
-                                <div class="table-responsive table-scroll">
-                                    <table class="table table-sm table-bordered table-striped align-middle compact-table">
-                                        <thead class="table-dark">
+                                </thead>
+                                <tbody>
+                                    @if (emitidasNomina != null && emitidasNomina.Count > 0)
+                                    {
+                                        foreach (var item in emitidasNomina)
+                                        {
                                             <tr>
-                                                <th>✔</th>
-                                                <th>Fecha</th>
-                                                <th>Mes</th>
-                                                <th>Año</th>
-                                                <th>Receptor</th>
-                                                <th class="num">SubTotal</th>
-                                                <th class="num">Descuento</th>
-                                                <th class="num">SubTotal_Desc</th>
-                                                <th class="num">Actos16%</th>
-                                                <th class="num">Actos0%</th>
-                                                <th class="num">IVA</th>
-                                                <th class="num">IEPS</th>
-                                                <th class="num">IVA Retenido</th>
-                                                <th class="num">ISR Retenido</th>
-                                                <th class="num">IEPS Retenido</th>
-                                                <th class="num">Total</th>
-                                                <th>UUID</th>
-                                                <th>Forma Pago</th>
-                                                <th>Tipo CFDI</th>
-                                                <th>Método Pago</th>
-                                                <th>Uso CFDI</th>
-                                                <th>Fecha Cancel.</th>
-                                                <th>Estatus</th>
-                                                <th>Transacción Fechas</th>
-                                                <th>Poliza</th>
-                                                <th class="num">Suma Polizas</th>
+                                                <ActionButtons Item="item"
+                                                               OnOpenDetails="@(obj => OpenEmitidaDetails((DeclaracionEmitida)obj))"
+                                                               OnHandlePolizaClick="HandlePolizaClick" />
+                                                <td>@item.D</td>
+                                                <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
+                                                <td>@item.MES_GLOBAL</td>
+                                                <td>@item.ANIO_GLOBAL</td>
+                                                <td>@item.RECEPTOR</td>
+                                                <td class="num">@string.Format("{0:N2}", item.SubTotal)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.Descuento)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.SubTotal_Desc)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.Actos_16)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.Actos_0)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.IVA)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.IEPS)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.IVA_RETENIDO)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.ISR_RETENIDO)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.IEPS_RETENIDO)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.Total)</td>
+                                                <td>@item.FOLIO_FISCAL</td>
+                                                <td>@item.FormaPago</td>
+                                                <td>@item.TipoDeComprobante</td>
+                                                <td>@item.MetodoPago</td>
+                                                <td>@item.UsoCFDI</td>
+                                                <td>@(item.FechaCancelacion.HasValue ? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : "")</td>
+                                                <td>@item.Estatus</td>
+                                                <td>@item.fechastransacciones</td>
+                                                <td>
+                                                    <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
+                                                            title="@(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
+                                                            @onclick:stopPropagation="true"
+                                                            @onclick="() => HandlePolizaClick(item)">
+                                                        @(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : item.Poliza.ToString())
+                                                    </button>
+                                                </td>
+                                                <td class="num">@item.SumaPolizas</td>
                                             </tr>
-                                        </thead>
-                                        <tbody>
-                                            @if (emitidasNomina != null && emitidasNomina.Count > 0)
-                                            {
-                                                foreach (var item in emitidasNomina)
-                                                {
-                                                    <tr>
-                                                        <td>@item.D</td>
-                                                        <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
-                                                        <td>@item.MES_GLOBAL</td>
-                                                        <td>@item.ANIO_GLOBAL</td>
-                                                        <td>@item.RECEPTOR</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.SubTotal)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.Descuento)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.SubTotal_Desc)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.Actos_16)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.Actos_0)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.IVA)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.IEPS)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.IVA_RETENIDO)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.ISR_RETENIDO)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.IEPS_RETENIDO)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.Total)</td>
-                                                        <td>@item.FOLIO_FISCAL</td>
-                                                        <td>@item.FormaPago</td>
-                                                        <td>@item.TipoDeComprobante</td>
-                                                        <td>@item.MetodoPago</td>
-                                                        <td>@item.UsoCFDI</td>
-                                                        <td>@(item.FechaCancelacion.HasValue? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : "")</td>
-                                                        <td>@item.Estatus</td>
-                                                        <td>@item.fechastransacciones</td>
-                                                        <td>@item.Poliza</td>
-                                                        <td class="num">@item.SumaPolizas</td>
-                                                    </tr>
-                                                }
-                                            }
-                                            else
-                                            {
-                                                <tr>
-                                                    <td colspan="25" class="text-center">No se encontraron CFDIs de nómina emitidos.</td>
-                                                </tr>
-                                            }
-                                        </tbody>
-                                    </table>
-                                </div>
-
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <tr>
+                                            <td colspan="25" class="text-center">No se encontraron CFDIs de nómina emitidos.</td>
+                                        </tr>
+                                    }
+                                </tbody>
                                 @if (emitidasNominaTotals != null)
                                 {
-                                    <div class="table-responsive table-scroll mt-3">
-                                        <table class="table table-sm table-bordered table-striped align-middle compact-table">
-                                            <tbody>
-                                                <tr class="table-light">
-                                                    <td colspan="4"><strong># CFDIs:</strong> @emitidasNominaTotals.CountCFDIs</td>
-                                                    <td><strong>Totales:</strong></td>
-                                                    <td class="num">@emitidasNominaTotals.SumSubTotal.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumDescuento.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumSubTotalDesc.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumActos16.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumActos0.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumIVA.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumIEPS.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumIVA_RETENIDO.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumISR_RETENIDO.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumIEPS_RETENIDO.ToString("N2")</td>
-                                                    <td class="num">@emitidasNominaTotals.SumTotal.ToString("N2")</td>
-                                                    <td colspan="10"></td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                    <tfoot class="table-light totals">
+                                        <tr class="table-light">
+                                            <td colspan="4"><strong># CFDIs:</strong> @emitidasNominaTotals.CountCFDIs</td>
+                                            <td><strong>Totales:</strong></td>
+                                            <td class="num">@emitidasNominaTotals.SumSubTotal.ToString("N2")</td>
+                                            <td class="num">@emitidasNominaTotals.SumDescuento.ToString("N2")</td>
+                                            <td class="num">@emitidasNominaTotals.SumSubTotalDesc.ToString("N2")</td>
+                                            <td class="num">@emitidasNominaTotals.SumActos16.ToString("N2")</td>
+                                            <td class="num">@emitidasNominaTotals.SumActos0.ToString("N2")</td>
+                                            <td class="num">@emitidasNominaTotals.SumIVA.ToString("N2")</td>
+                                            <td class="num">@emitidasNominaTotals.SumIEPS.ToString("N2")</td>
+                                            <td class="num">@emitidasNominaTotals.SumIVA_RETENIDO.ToString("N2")</td>
+                                            <td class="num">@emitidasNominaTotals.SumISR_RETENIDO.ToString("N2")</td>
+                                            <td class="num">@emitidasNominaTotals.SumIEPS_RETENIDO.ToString("N2")</td>
+                                            <td class="num">@emitidasNominaTotals.SumTotal.ToString("N2")</td>
+                                            <td colspan="10"></td>
+                                        </tr>
+                                    </tfoot>
                                 }
-
-                            </div>
+                            </table>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <div class="accordion-item mt-3">
-        <h2 class="accordion-header" id="headingRecibidas">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRecibidas" aria-expanded="false" aria-controls="collapseRecibidas">
-                RECIBIDAS
-            </button>
-        </h2>
-        <div id="collapseRecibidas" class="accordion-collapse collapse" data-bs-parent="#declaracionAccordion">
-            <div class="accordion-body">
-                <div class="mb-2 filter-bar">
-                    <div class="filter-pair">
-                        <label for="recibSortCol">Ordenar por:</label>
-                        <select id="recibSortCol"
-                                @bind="recibidasSortColumn"
-                                @bind:after="OnRecibidasSortChangedAsync"
-                                class="form-select inline-select">
-                            @if (recibidasSortableFields != null)
-                            {
-                                @foreach (var field in recibidasSortableFields)
-                                {
-                                    <option value="@field.Value">@field.Key</option>
-                                }
-                            }
-                        </select>
-                    </div>
-
-                    <select @bind="recibidasSortOrder" @bind:after="OnRecibidasSortChangedAsync" class="form-select inline-select">
-                        <option value="ASC">ASC</option>
-                        <option value="DESC">DESC</option>
-                    </select>
-
-                    <button class="btn btn-sm btn-outline-primary ms-3" @onclick="ToggleRecibidaSelected">Excluir / Incluir</button>
-                    <button class="btn btn-sm btn-outline-primary ms-1" @onclick="ExcludePagosYDevoluciones">Excluir Pagos/Dev</button>
-                    <button class="btn btn-sm btn-secondary ms-1" @onclick="ExportExcelRecibidas">Exportar Recibidas a Excel</button>
-                    <button class="btn btn-sm btn-info ms-1" @onclick="GenerateDIOT">Generar DIOT</button>
-                </div>
-
-                <div class="table-scroll">
-                    <table class="table table-sm table-bordered table-striped align-middle compact-table">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>✔</th>
-                                <th>Fecha</th>
-                                <th>Mes</th>
-                                <th>Año</th>
-                                <th>Emisor</th>
-                                <th class="num">SubTotal</th>
-                                <th class="num">Descuento</th>
-                                <th class="num">SubTotal_Desc</th>
-                                <th class="num">Actos16%</th>
-                                <th class="num">Actos0%</th>
-                                <th class="num">IVA</th>
-                                <th class="num">IEPS</th>
-                                <th class="num">IVA Retenido</th>
-                                <th class="num">ISR Retenido</th>
-                                <th class="num">IEPS Retenido</th>
-                                <th class="num">Total</th>
-                                <th>UUID</th>
-                                <th>Forma Pago</th>
-                                <th>Tipo CFDI</th>
-                                <th>Método Pago</th>
-                                <th>Uso CFDI</th>
-                                <th>Fecha Cancel.</th>
-                                <th>Estatus</th>
-                                <th>Transacción Fechas</th>
-                                <th>Póliza</th>
-                                <th class="num">Suma Pólizas</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-
-                        <tbody>
-                            @if (recibidas != null)
-                            {
-                                @foreach (var item in recibidasPage)
-                                {
-                                    <tr @onclick="async () => await SelectRecibidaAsync(item)"
-                                        class="@GetRecibidaRowClass(item)"
-                                        style="cursor:pointer;">
-                                        <td>@item.D</td>
-                                        <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
-                                        <td>@item.MES_GLOBAL</td>
-                                        <td>@item.ANIO_GLOBAL</td>
-                                        <td>@item.EMISOR</td>
-                                        <td class="num">@string.Format("{0:N2}", item.SubTotal)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.Descuento)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.SubTotal_Desc)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.Actos_16)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.Actos_0)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.IVA)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.IEPS)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.IVA_RETENIDO)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.ISR_RETENIDO)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.IEPS_RETENIDO)</td>
-                                        <td class="num">@string.Format("{0:N2}", item.Total)</td>
-                                        <td>@item.FOLIO_FISCAL</td>
-                                        <td>@item.FormaPago</td>
-                                        <td>@item.TipoDeComprobante</td>
-                                        <td>@item.MetodoPago</td>
-                                        <td>@item.UsoCFDI</td>
-                                        <td>@(item.FechaCancelacion.HasValue? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : "")</td>
-                                        <td>@item.Estatus</td>
-                                        <td>@item.fechastransacciones</td>
-                                        <td>@item.Poliza</td>
-                                        <td class="num">@((item.SumaPolizas.HasValue) ? item.SumaPolizas.Value.ToString("N0") : "")</td>
-                                        <td>
-                                            <button class="btn btn-sm btn-outline-info"
-                                                    @onclick:stopPropagation="true"
-                                                    @onclick="() => OpenRecibidaDetails(item)">
-                                                Ver
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-success"
-                                                    title="Ir a Transacción"
-                                                    @onclick:stopPropagation="true"
-                                                    @onclick="() => OpenLinkedTransaction(item)">
-                                                Tx
-                                            </button>
-                                        </td>
-                                    </tr>
-                                }
-                            }
-                        </tbody>
-
-                        @if (recibidasTotals != null)
+    <div class="tab-pane fade" id="recibidas" role="tabpanel" aria-labelledby="recibidas-tab">
+        <div class="mb-2 filter-bar">
+            <div class="filter-pair">
+                <label for="recibSortCol">Ordenar por:</label>
+                <select id="recibSortCol"
+                        @bind="recibidasSortColumn"
+                        @bind:after="OnRecibidasSortChangedAsync"
+                        class="form-select inline-select">
+                    @if (recibidasSortableFields != null)
+                    {
+                        @foreach (var field in recibidasSortableFields)
                         {
-                            <tfoot class="table-light totals">
-                                <tr>
-                                    <td colspan="4"><strong># CFDIs:</strong> @recibidasTotals.CountCFDIs</td>
-                                    <td><strong>Totales:</strong></td>
-                                    <td class="num">@recibidasTotals.SumSubTotal.ToString("N2")</td>
-                                    <td class="num">@recibidasTotals.SumDescuento.ToString("N2")</td>
-                                    <td class="num">@recibidasTotals.SumSubTotalDesc.ToString("N2")</td>
-                                    <td class="num">@recibidasTotals.SumActos16.ToString("N2")</td>
-                                    <td class="num">@recibidasTotals.SumActos0.ToString("N2")</td>
-                                    <td class="num">@recibidasTotals.SumIVA.ToString("N2")</td>
-                                    <td class="num">@recibidasTotals.SumIEPS.ToString("N2")</td>
-                                    <td class="num">@recibidasTotals.SumIVA_RETENIDO.ToString("N2")</td>
-                                    <td class="num">@recibidasTotals.SumISR_RETENIDO.ToString("N2")</td>
-                                    <td class="num">@recibidasTotals.SumIEPS_RETENIDO.ToString("N2")</td>
-                                    <td class="num">@recibidasTotals.SumTotal.ToString("N2")</td>
-                                    <td colspan="11"></td>
-                                </tr>
-                            </tfoot>
+                            <option value="@field.Value">@field.Key</option>
                         }
-
-                    </table>
-                </div>
-
-                @if (recibidasPageCount > 1)
-                {
-                    <div>
-                        Página: @recibidasCurrentPage / @recibidasPageCount
-                        <button class="btn btn-sm btn-outline-primary" @onclick="PrevRecibidasPage" disabled="@(@recibidasCurrentPage <= 1)">Anterior</button>
-                        <button class="btn btn-sm btn-outline-primary" @onclick="NextRecibidasPage" disabled="@(@recibidasCurrentPage >= recibidasPageCount)">Siguiente</button>
-                    </div>
-                }
-
-                <h5 class="mt-4">Complementos de Pago</h5>
-                <div class="table-responsive table-scroll">
-                    <table class="table table-sm table-bordered table-striped align-middle compact-table">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>Pago Id</th>
-                                <th>Folio</th>
-                                <th>Fecha Pago</th>
-                                <th>Forma Pago</th>
-                                <th>Moneda Pago</th>
-                                <th class="num">Monto Pago</th>
-                                <th class="num">Parcialidad</th>
-                                <th>Moneda DR</th>
-                                <th class="num">Saldo Anterior</th>
-                                <th class="num">Importe Pagado</th>
-                                <th class="num">Saldo Insoluto</th>
-                                <th class="num">Tot P Traslados</th>
-                                <th class="num">Tot P Retenciones</th>
-                                <th class="num">Tot DR Traslados</th>
-                                <th class="num">Tot DR Retenciones</th>
+                    }
+                </select>
+            </div>
+            <select @bind="recibidasSortOrder" @bind:after="OnRecibidasSortChangedAsync" class="form-select inline-select">
+                <option value="ASC">ASC</option>
+                <option value="DESC">DESC</option>
+            </select>
+            <button class="btn btn-sm btn-outline-primary ms-3" @onclick="ToggleRecibidaSelected">Excluir / Incluir</button>
+            <button class="btn btn-sm btn-outline-primary ms-1" @onclick="ExcludePagosYDevoluciones">Excluir Pagos/Dev</button>
+            <button class="btn btn-sm btn-secondary ms-1" @onclick="ExportExcelRecibidas">Exportar Recibidas a Excel</button>
+            <button class="btn btn-sm btn-info ms-1" @onclick="GenerateDIOT">Generar DIOT</button>
+        </div>
+        <div class="table-scroll">
+            <table class="table table-sm table-bordered table-striped align-middle compact-table">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Acciones</th>
+                        <th>Poliza</th>
+                        <th>✔</th>
+                        <th @onclick="@(() => SortRecibidasByColumn("Fecha"))">Fecha @GetSortIndicator("Fecha", recibidasSortColumn, recibidasSortOrder)</th>
+                        <th>Mes</th>
+                        <th>Año</th>
+                        <th @onclick="@(() => SortRecibidasByColumn("EMISOR"))">Emisor @GetSortIndicator("EMISOR", recibidasSortColumn, recibidasSortOrder)</th>
+                        <th class="num">SubTotal</th>
+                        <th class="num">Descuento</th>
+                        <th class="num">SubTotal_Desc</th>
+                        <th class="num">Actos16%</th>
+                        <th class="num">Actos0%</th>
+                        <th class="num">IVA</th>
+                        <th class="num">IEPS</th>
+                        <th class="num">IVA Retenido</th>
+                        <th class="num">ISR Retenido</th>
+                        <th class="num">IEPS Retenido</th>
+                        <th @onclick="@(() => SortRecibidasByColumn("Total"))" class="num">Total @GetSortIndicator("Total", recibidasSortColumn, recibidasSortOrder)</th>
+                        <th @onclick="@(() => SortRecibidasByColumn("FOLIO_FISCAL"))">UUID @GetSortIndicator("FOLIO_FISCAL", recibidasSortColumn, recibidasSortOrder)</th>
+                        <th>Forma Pago</th>
+                        <th>Tipo CFDI</th>
+                        <th>Método Pago</th>
+                        <th>Uso CFDI</th>
+                        <th>Fecha Cancel.</th>
+                        <th>Estatus</th>
+                        <th>Transacción Fechas</th>
+                        <th>Póliza</th>
+                        <th class="num">Suma Pólizas</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (recibidas != null)
+                    {
+                        @foreach (var item in recibidasPage)
+                        {
+                            <tr @onclick="async () => await SelectRecibidaAsync(item)"
+                                class="@GetRecibidaRowClass(item)"
+                                style="cursor:pointer;">
+                                <ActionButtons Item="item"
+                                               OnOpenDetails="@(obj => OpenEmitidaDetails((DeclaracionEmitida)obj))"
+                                               OnHandlePolizaClick="HandlePolizaClick" />
+                                <td>@item.D</td>
+                                <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
+                                <td>@item.MES_GLOBAL</td>
+                                <td>@item.ANIO_GLOBAL</td>
+                                <td>@item.EMISOR</td>
+                                <td class="num">@string.Format("{0:N2}", item.SubTotal)</td>
+                                <td class="num">@string.Format("{0:N2}", item.Descuento)</td>
+                                <td class="num">@string.Format("{0:N2}", item.SubTotal_Desc)</td>
+                                <td class="num">@string.Format("{0:N2}", item.Actos_16)</td>
+                                <td class="num">@string.Format("{0:N2}", item.Actos_0)</td>
+                                <td class="num">@string.Format("{0:N2}", item.IVA)</td>
+                                <td class="num">@string.Format("{0:N2}", item.IEPS)</td>
+                                <td class="num">@string.Format("{0:N2}", item.IVA_RETENIDO)</td>
+                                <td class="num">@string.Format("{0:N2}", item.ISR_RETENIDO)</td>
+                                <td class="num">@string.Format("{0:N2}", item.IEPS_RETENIDO)</td>
+                                <td class="num">@string.Format("{0:N2}", item.Total)</td>
+                                <td>@item.FOLIO_FISCAL</td>
+                                <td>@item.FormaPago</td>
+                                <td>@item.TipoDeComprobante</td>
+                                <td>@item.MetodoPago</td>
+                                <td>@item.UsoCFDI</td>
+                                <td>@(item.FechaCancelacion.HasValue ? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : "")</td>
+                                <td>@item.Estatus</td>
+                                <td>@item.fechastransacciones</td>
+                                <td>@item.Poliza</td>
+                                <td class="num">@((item.SumaPolizas.HasValue) ? item.SumaPolizas.Value.ToString("N0") : "")</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-info"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => OpenRecibidaDetails(item)">
+                                        Ver
+                                    </button>
+                                    <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
+                                            title="@(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => HandlePolizaClick(item)">
+                                        @(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : "Tx")
+                                    </button>
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody>
-                            @if (recibidasComplementos != null && recibidasComplementos.Count > 0)
-                            {
-                                foreach (var complemento in recibidasComplementos)
-                                {
+                        }
+                    }
+                </tbody>
+                @if (recibidasTotals != null)
+                {
+                    <tfoot class="table-light totals">
+                        <tr>
+                            <td colspan="4"><strong># CFDIs:</strong> @recibidasTotals.CountCFDIs</td>
+                            <td><strong>Totales:</strong></td>
+                            <td class="num">@recibidasTotals.SumSubTotal.ToString("N2")</td>
+                            <td class="num">@recibidasTotals.SumDescuento.ToString("N2")</td>
+                            <td class="num">@recibidasTotals.SumSubTotalDesc.ToString("N2")</td>
+                            <td class="num">@recibidasTotals.SumActos16.ToString("N2")</td>
+                            <td class="num">@recibidasTotals.SumActos0.ToString("N2")</td>
+                            <td class="num">@recibidasTotals.SumIVA.ToString("N2")</td>
+                            <td class="num">@recibidasTotals.SumIEPS.ToString("N2")</td>
+                            <td class="num">@recibidasTotals.SumIVA_RETENIDO.ToString("N2")</td>
+                            <td class="num">@recibidasTotals.SumISR_RETENIDO.ToString("N2")</td>
+                            <td class="num">@recibidasTotals.SumIEPS_RETENIDO.ToString("N2")</td>
+                            <td class="num">@recibidasTotals.SumTotal.ToString("N2")</td>
+                            <td colspan="11"></td>
+                        </tr>
+                    </tfoot>
+                }
+            </table>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <small>Mostrando página @recibidasCurrentPage de @recibidasPageCount</small>
+            <div class="btn-group" role="group" aria-label="Paginación facturas recibidas">
+                <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousRecibidasPage" disabled="@(recibidasCurrentPage <= 1)">Anterior</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="NextRecibidasPage" disabled="@(recibidasCurrentPage >= recibidasPageCount)">Siguiente</button>
+            </div>
+        </div>
+        <h5 class="mt-4">Complementos de Pago</h5>
+        <div class="table-responsive table-scroll">
+            <table class="table table-sm table-bordered table-striped align-middle compact-table">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Pago Id</th>
+                        <th>Folio</th>
+                        <th>Fecha Pago</th>
+                        <th>Forma Pago</th>
+                        <th>Moneda Pago</th>
+                        <th class="num">Monto Pago</th>
+                        <th class="num">Parcialidad</th>
+                        <th>Moneda DR</th>
+                        <th class="num">Saldo Anterior</th>
+                        <th class="num">Importe Pagado</th>
+                        <th class="num">Saldo Insoluto</th>
+                        <th class="num">Tot P Traslados</th>
+                        <th class="num">Tot P Retenciones</th>
+                        <th class="num">Tot DR Traslados</th>
+                        <th class="num">Tot DR Retenciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (recibidasComplementos != null && recibidasComplementos.Count > 0)
+                    {
+                        foreach (var complemento in recibidasComplementos)
+                        {
+                            <tr>
+                                <td>@complemento.Pago_Id</td>
+                                <td>@complemento.Folio</td>
+                                <td>@complemento.FechaPago.ToString("yyyy-MM-dd")</td>
+                                <td>@complemento.FormaDePagoP</td>
+                                <td>@complemento.MonedaP</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.MontoPago)</td>
+                                <td class="num">@complemento.NumParcialidad</td>
+                                <td>@complemento.MonedaDR</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoAnt)</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.ImpPagado)</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoInsoluto)</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Traslados)</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Retenciones)</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Traslados)</td>
+                                <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Retenciones)</td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="15" class="text-center">Selecciona un CFDI para ver sus complementos de pago.</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="accordion mt-4" id="recibidasNominaAccordion">
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="headingRecibidasNomina">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRecibidasNomina" aria-expanded="false" aria-controls="collapseRecibidasNomina">
+                        NOMINA
+                    </button>
+                </h2>
+                <div id="collapseRecibidasNomina" class="accordion-collapse collapse" data-bs-parent="#recibidasNominaAccordion">
+                    <div class="accordion-body">
+                        <h5>Facturas Recibidas de Nómina</h5>
+                        <div class="table-responsive table-scroll">
+                            <table class="table table-sm table-bordered table-striped align-middle compact-table">
+                                <thead class="table-dark">
                                     <tr>
-                                        <td>@complemento.Pago_Id</td>
-                                        <td>@complemento.Folio</td>
-                                        <td>@complemento.FechaPago.ToString("yyyy-MM-dd")</td>
-                                        <td>@complemento.FormaDePagoP</td>
-                                        <td>@complemento.MonedaP</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.MontoPago)</td>
-                                        <td class="num">@complemento.NumParcialidad</td>
-                                        <td>@complemento.MonedaDR</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoAnt)</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.ImpPagado)</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoInsoluto)</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Traslados)</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Retenciones)</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Traslados)</td>
-                                        <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Retenciones)</td>
+                                        <th>Acciones</th>
+                                        <th>Poliza</th>
+                                        <th>✔</th>
+                                        <th>Fecha</th>
+                                        <th>Mes</th>
+                                        <th>Año</th>
+                                        <th>Emisor</th>
+                                        <th class="num">SubTotal</th>
+                                        <th class="num">Descuento</th>
+                                        <th class="num">SubTotal_Desc</th>
+                                        <th class="num">Actos16%</th>
+                                        <th class="num">Actos0%</th>
+                                        <th class="num">IVA</th>
+                                        <th class="num">IEPS</th>
+                                        <th class="num">IVA Retenido</th>
+                                        <th class="num">ISR Retenido</th>
+                                        <th class="num">IEPS Retenido</th>
+                                        <th class="num">Total</th>
+                                        <th>UUID</th>
+                                        <th>Forma Pago</th>
+                                        <th>Tipo CFDI</th>
+                                        <th>Método Pago</th>
+                                        <th>Uso CFDI</th>
+                                        <th>Fecha Cancel.</th>
+                                        <th>Estatus</th>
+                                        <th>Transacción Fechas</th>
+                                        <th>Póliza</th>
+                                        <th class="num">Suma Pólizas</th>
                                     </tr>
-                                }
-                            }
-                            else
-                            {
-                                <tr>
-                                    <td colspan="15" class="text-center">Selecciona un CFDI para ver sus complementos de pago.</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="accordion mt-4" id="recibidasNominaAccordion">
-                    <div class="accordion-item">
-                        <h2 class="accordion-header" id="headingRecibidasNomina">
-                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRecibidasNomina" aria-expanded="false" aria-controls="collapseRecibidasNomina">
-                                NOMINA
-                            </button>
-                        </h2>
-                        <div id="collapseRecibidasNomina" class="accordion-collapse collapse" data-bs-parent="#recibidasNominaAccordion">
-                            <div class="accordion-body">
-                                <h5>Facturas Recibidas de Nómina</h5>
-                                <div class="table-responsive table-scroll">
-                                    <table class="table table-sm table-bordered table-striped align-middle compact-table">
-                                        <thead class="table-dark">
+                                </thead>
+                                <tbody>
+                                    @if (recibidasNomina != null && recibidasNomina.Count > 0)
+                                    {
+                                        foreach (var item in recibidasNomina)
+                                        {
                                             <tr>
-                                                <th>✔</th>
-                                                <th>Fecha</th>
-                                                <th>Mes</th>
-                                                <th>Año</th>
-                                                <th>Emisor</th>
-                                                <th class="num">SubTotal</th>
-                                                <th class="num">Descuento</th>
-                                                <th class="num">SubTotal_Desc</th>
-                                                <th class="num">Actos16%</th>
-                                                <th class="num">Actos0%</th>
-                                                <th class="num">IVA</th>
-                                                <th class="num">IEPS</th>
-                                                <th class="num">IVA Retenido</th>
-                                                <th class="num">ISR Retenido</th>
-                                                <th class="num">IEPS Retenido</th>
-                                                <th class="num">Total</th>
-                                                <th>UUID</th>
-                                                <th>Forma Pago</th>
-                                                <th>Tipo CFDI</th>
-                                                <th>Método Pago</th>
-                                                <th>Uso CFDI</th>
-                                                <th>Fecha Cancel.</th>
-                                                <th>Estatus</th>
-                                                <th>Transacción Fechas</th>
-                                                <th>Póliza</th>
-                                                <th class="num">Suma Pólizas</th>
+                                                <ActionButtons Item="item"
+                                                               OnOpenDetails="@(obj => OpenEmitidaDetails((DeclaracionEmitida)obj))"
+                                                               OnHandlePolizaClick="HandlePolizaClick" />
+                                                <td>@item.D</td>
+                                                <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
+                                                <td>@item.MES_GLOBAL</td>
+                                                <td>@item.ANIO_GLOBAL</td>
+                                                <td>@item.EMISOR</td>
+                                                <td class="num">@string.Format("{0:N2}", item.SubTotal)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.Descuento)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.SubTotal_Desc)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.Actos_16)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.Actos_0)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.IVA)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.IEPS)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.IVA_RETENIDO)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.ISR_RETENIDO)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.IEPS_RETENIDO)</td>
+                                                <td class="num">@string.Format("{0:N2}", item.Total)</td>
+                                                <td>@item.FOLIO_FISCAL</td>
+                                                <td>@item.FormaPago</td>
+                                                <td>@item.TipoDeComprobante</td>
+                                                <td>@item.MetodoPago</td>
+                                                <td>@item.UsoCFDI</td>
+                                                <td>@(item.FechaCancelacion.HasValue ? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : "")</td>
+                                                <td>@item.Estatus</td>
+                                                <td>@item.fechastransacciones</td>
+                                                <td>
+                                                    <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
+                                                            title="@(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
+                                                            @onclick:stopPropagation="true"
+                                                            @onclick="() => HandlePolizaClick(item)">
+                                                        @(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : "Tx")
+                                                    </button>
+                                                </td>
+                                                <td class="num">@((item.SumaPolizas.HasValue) ? item.SumaPolizas.Value.ToString("N0") : "")</td>
                                             </tr>
-                                        </thead>
-                                        <tbody>
-                                            @if (recibidasNomina != null && recibidasNomina.Count > 0)
-                                            {
-                                                foreach (var item in recibidasNomina)
-                                                {
-                                                    <tr>
-                                                        <td>@item.D</td>
-                                                        <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
-                                                        <td>@item.MES_GLOBAL</td>
-                                                        <td>@item.ANIO_GLOBAL</td>
-                                                        <td>@item.EMISOR</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.SubTotal)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.Descuento)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.SubTotal_Desc)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.Actos_16)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.Actos_0)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.IVA)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.IEPS)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.IVA_RETENIDO)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.ISR_RETENIDO)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.IEPS_RETENIDO)</td>
-                                                        <td class="num">@string.Format("{0:N2}", item.Total)</td>
-                                                        <td>@item.FOLIO_FISCAL</td>
-                                                        <td>@item.FormaPago</td>
-                                                        <td>@item.TipoDeComprobante</td>
-                                                        <td>@item.MetodoPago</td>
-                                                        <td>@item.UsoCFDI</td>
-                                                        <td>@(item.FechaCancelacion.HasValue? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : "")</td>
-                                                        <td>@item.Estatus</td>
-                                                        <td>@item.fechastransacciones</td>
-                                                        <td>@item.Poliza</td>
-                                                        <td class="num">@((item.SumaPolizas.HasValue) ? item.SumaPolizas.Value.ToString("N0") : "")</td>
-                                                    </tr>
-                                                }
-                                            }
-                                            else
-                                            {
-                                                <tr>
-                                                    <td colspan="25" class="text-center">No se encontraron CFDIs de nómina recibidos.</td>
-                                                </tr>
-                                            }
-                                        </tbody>
-                                    </table>
-                                </div>
-
-                                @if (recibidasNominaTotals != null)
-                                {
-                                    <div class="table-responsive table-scroll mt-3">
-                                        <table class="table table-sm table-bordered table-striped align-middle compact-table">
-                                            <tbody>
-                                                <tr class="table-light">
-                                                    <td colspan="4"><strong># CFDIs:</strong> @recibidasNominaTotals.CountCFDIs</td>
-                                                    <td><strong>Totales:</strong></td>
-                                                    <td class="num">@recibidasNominaTotals.SumSubTotal.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaTotals.SumDescuento.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaTotals.SumSubTotalDesc.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaTotals.SumActos16.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaTotals.SumActos0.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaTotals.SumIVA.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaTotals.SumIEPS.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaTotals.SumIVA_RETENIDO.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaTotals.SumISR_RETENIDO.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaTotals.SumIEPS_RETENIDO.ToString("N2")</td>
-                                                    <td class="num">@recibidasNominaTotals.SumTotal.ToString("N2")</td>
-                                                    <td colspan="10"></td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                }
-
-                            </div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <tr>
+                                            <td colspan="25" class="text-center">No se encontraron CFDIs de nómina recibidos.</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
                         </div>
+                        @if (recibidasNominaTotals != null)
+                        {
+                            <div class="table-responsive table-scroll mt-3">
+                                <table class="table table-sm table-bordered table-striped align-middle compact-table">
+                                    <tbody>
+                                        <tr class="table-light">
+                                            <td colspan="4"><strong># CFDIs:</strong> @recibidasNominaTotals.CountCFDIs</td>
+                                            <td><strong>Totales:</strong></td>
+                                            <td class="num">@recibidasNominaTotals.SumSubTotal.ToString("N2")</td>
+                                            <td class="num">@recibidasNominaTotals.SumDescuento.ToString("N2")</td>
+                                            <td class="num">@recibidasNominaTotals.SumSubTotalDesc.ToString("N2")</td>
+                                            <td class="num">@recibidasNominaTotals.SumActos16.ToString("N2")</td>
+                                            <td class="num">@recibidasNominaTotals.SumActos0.ToString("N2")</td>
+                                            <td class="num">@recibidasNominaTotals.SumIVA.ToString("N2")</td>
+                                            <td class="num">@recibidasNominaTotals.SumIEPS.ToString("N2")</td>
+                                            <td class="num">@recibidasNominaTotals.SumIVA_RETENIDO.ToString("N2")</td>
+                                            <td class="num">@recibidasNominaTotals.SumISR_RETENIDO.ToString("N2")</td>
+                                            <td class="num">@recibidasNominaTotals.SumIEPS_RETENIDO.ToString("N2")</td>
+                                            <td class="num">@recibidasNominaTotals.SumTotal.ToString("N2")</td>
+                                            <td colspan="10"></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
                     </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
-<!-- Desfase Section -->
-<h4 class="mt-5">Pólizas de este mes que pagan comprobantes de otros meses</h4>
-<div class="table-responsive">
-    <table class="table table-sm table-bordered">
-        <thead class="table-dark">
-            <tr>
-                <th>ID Comprobante</th>
-                <th>Transacción ID</th>
-                <th>Fecha Comp.</th>
-                <th>Mes Comp.</th>
-                <th>Año Comp.</th>
-                <th>RFC Emisor</th>
-                <th>RFC Receptor</th>
-                <th>Monto</th>
-                <th>Cuenta Pago</th>
-                <th>Fecha Pago (Transacción)</th>
-                <th>... <!-- other columns if any --></th>
-            </tr>
-        </thead>
-        <tbody>
-            @if (desfase != null)
-            {
-                @foreach (var item in desfase)
-                {
+    <div class="tab-pane fade" id="otros" role="tabpanel" aria-labelledby="otros-tab">
+        <h4 class="mt-5">Pólizas de este mes que pagan comprobantes de otros meses</h4>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered">
+                <thead class="table-dark">
                     <tr>
-                        <td>@item.Comprobante_Id</td>
-                        <td>@item.Transaccion_Id</td>
-                        <td>@item.FechaComprobante?.ToString("yyyy-MM-dd")</td>
-                        <td>@item.MesComprobante</td>
-                        <td>@item.AnioComprobante</td>
-                        <td>@item.RFC_Emisor</td>
-                        <td>@item.RFC_Receptor</td>
-                        <td>@string.Format("{0:N2}", item.TotalComprobante)</td>
-                        <td>@item.CuentaPago</td>
-                        <td>@item.FechaTransaccion?.ToString("yyyy-MM-dd")</td>
-                        <td>@item.Observaciones</td>
+                        <th>ID Comprobante</th>
+                        <th>Transacción ID</th>
+                        <th>Fecha Comp.</th>
+                        <th>Mes Comp.</th>
+                        <th>Año Comp.</th>
+                        <th>RFC Emisor</th>
+                        <th>RFC Receptor</th>
+                        <th>Monto</th>
+                        <th>Cuenta Pago</th>
+                        <th>Fecha Pago (Transacción)</th>
+                        <th>... <!-- other columns if any --></th>
                     </tr>
+                </thead>
+                <tbody>
+                    @if (desfase != null)
+                    {
+                        @foreach (var item in desfase)
+                        {
+                            <tr>
+                                <td>@item.Comprobante_Id</td>
+                                <td>@item.Transaccion_Id</td>
+                                <td>@item.FechaComprobante?.ToString("yyyy-MM-dd")</td>
+                                <td>@item.MesComprobante</td>
+                                <td>@item.AnioComprobante</td>
+                                <td>@item.RFC_Emisor</td>
+                                <td>@item.RFC_Receptor</td>
+                                <td>@string.Format("{0:N2}", item.TotalComprobante)</td>
+                                <td>@item.CuentaPago</td>
+                                <td>@item.FechaTransaccion?.ToString("yyyy-MM-dd")</td>
+                                <td>@item.Observaciones</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+                @if (desfaseTotals != null)
+                {
+                    <tfoot class="table-light">
+                        <tr>
+                            <td colspan="3"><strong># CFDIs:</strong> @desfaseTotals.CountCFDIs</td>
+                            <td colspan="2"><strong>Total Monto:</strong> @desfaseTotals.SumTotal</td>
+                            <td colspan="7"></td>
+                        </tr>
+                    </tfoot>
                 }
-            }
-        </tbody>
-        @if (desfaseTotals != null)
-        {
-            <tfoot class="table-light">
-                <tr>
-                    <td colspan="3"><strong># CFDIs:</strong> @desfaseTotals.CountCFDIs</td>
-                    <td colspan="2"><strong>Total Monto:</strong> @desfaseTotals.SumTotal</td>
-                    <td colspan="7"></td>
-                </tr>
-            </tfoot>
-        }
-    </table>
+            </table>
+        </div>
+        <h4 class="mt-5">Pólizas No Consolidadas</h4>
+        <div class="table-responsive table-scroll">
+            <table class="table table-sm table-bordered compact-table">
+                <thead class="table-dark">
+                    <tr>
+                        <th class="num">ID Transacción</th>   <!-- p.ID -->
+                        <th>Fecha</th>                         <!-- p.Fecha -->
+                        <th>Concepto</th>                      <!-- p.PolizaConcepto -->
+                        <th class="num">Debe</th>              <!-- p.Debe -->
+                        <th class="num">Haber</th>             <!-- p.Haber -->
+                        <th>Cuenta Debe</th>                   <!-- p.CuentaDebe -->
+                        <th>Cuenta Haber</th>                  <!-- p.CuentaHaber -->
+                        <th class="num">Total Comprobantes</th><!-- p.Total_Comprobantes -->
+                        <th class="num"># CFDIs</th>           <!-- p.ComprobanteCount -->
+                        <th>Revisado</th>                      <!-- p.Revisado -->
+                        <th>Memo</th>                          <!-- p.Memo -->
+                        <th>Consolidado</th>                   <!-- p.Consolidado -->
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (polizasNoConsolidadas != null)
+                    {
+                        @foreach (var p in polizasNoConsolidadas)
+                        {
+                            <tr>
+                                <td class="num">
+                                    <a href="@($"/transacciones/{p.ID}")" target="_blank">@p.ID</a>
+                                </td>
+                                <td>@p.Fecha.ToString("yyyy-MM-dd")</td>
+                                <td>@p.PolizaConcepto</td>
+                                <td class="num">@string.Format("{0:N2}", p.Debe)</td>
+                                <td class="num">@string.Format("{0:N2}", p.Haber)</td>
+                                <td>@p.CuentaDebe</td>
+                                <td>@p.CuentaHaber</td>
+                                <td class="num">@string.Format("{0:N2}", p.Total_Comprobantes)</td>
+                                <td class="num">@p.ComprobanteCount</td>
+                                <td>@(p.Revisado ? "✔" : "")</td>
+                                <td>@p.Memo</td>
+                                <td>@p.Consolidado</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
+        
 
-<!-- Pólizas No Consolidadas Section -->
-<h4 class="mt-5">Pólizas No Consolidadas</h4>
-<div class="table-responsive table-scroll">
-    <table class="table table-sm table-bordered compact-table">
-        <thead class="table-dark">
-            <tr>
-                <th class="num">ID Transacción</th>   <!-- p.ID -->
-                <th>Fecha</th>                         <!-- p.Fecha -->
-                <th>Concepto</th>                      <!-- p.PolizaConcepto -->
-                <th class="num">Debe</th>              <!-- p.Debe -->
-                <th class="num">Haber</th>             <!-- p.Haber -->
-                <th>Cuenta Debe</th>                   <!-- p.CuentaDebe -->
-                <th>Cuenta Haber</th>                  <!-- p.CuentaHaber -->
-                <th class="num">Total Comprobantes</th><!-- p.Total_Comprobantes -->
-                <th class="num"># CFDIs</th>           <!-- p.ComprobanteCount -->
-                <th>Revisado</th>                      <!-- p.Revisado -->
-                <th>Memo</th>                          <!-- p.Memo -->
-                <th>Consolidado</th>                   <!-- p.Consolidado -->
-            </tr>
-        </thead>
-        <tbody>
-            @if (polizasNoConsolidadas != null)
-            {
-                @foreach (var p in polizasNoConsolidadas)
-                {
-                    <tr>
-                        <td class="num">
-                            <a href="@($"/transacciones/{p.ID}")" target="_blank">@p.ID</a>
-                        </td>
-                        <td>@p.Fecha.ToString("yyyy-MM-dd")</td>
-                        <td>@p.PolizaConcepto</td>
-                        <td class="num">@string.Format("{0:N2}", p.Debe)</td>
-                        <td class="num">@string.Format("{0:N2}", p.Haber)</td>
-                        <td>@p.CuentaDebe</td>
-                        <td>@p.CuentaHaber</td>
-                        <td class="num">@string.Format("{0:N2}", p.Total_Comprobantes)</td>
-                        <td class="num">@p.ComprobanteCount</td>
-                        <td>@(p.Revisado ? "✔" : "")</td>
-                        <td>@p.Memo</td>
-                        <td>@p.Consolidado</td>
-                    </tr>
-                }
-            }
-        </tbody>
-    </table>
-</div>
+
+
+
+
 
 
 <!-- Display messages -->

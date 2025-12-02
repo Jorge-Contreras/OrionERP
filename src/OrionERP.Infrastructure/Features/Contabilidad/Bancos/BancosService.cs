@@ -15,6 +15,23 @@ public sealed class BancosService : IBancosService
 {
   private readonly IDbConnectionFactory _connectionFactory;
 
+  private const string AccountSelectSql = @"
+SELECT
+    Cuenta_Banco_ID AS CuentaBancoId,
+    Nombre_Banco AS NombreBanco,
+    Numero_Cuenta AS NumeroCuenta,
+    Tipo_Cuenta AS TipoCuenta,
+    Nombre_Titular AS NombreTitular,
+    CLABE_Cuenta AS ClabeCuenta,
+    RFC,
+    Activo,
+    Fecha_Alta AS FechaAlta,
+    Cuenta_Contable_ID AS CuentaContableId,
+    Cuenta_Contable_Egreso AS CuentaContableEgreso,
+    Cuenta_Contable_Ingreso AS CuentaContableIngreso
+FROM bancos.Cuentas_Banco
+";
+
   public BancosService(IDbConnectionFactory connectionFactory)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
@@ -29,25 +46,170 @@ public sealed class BancosService : IBancosService
       return Array.Empty<BankAccountDto>();
     }
 
-    const string sql = @"
-SELECT
-    Cuenta_Banco_ID AS CuentaBancoId,
-    Nombre_Banco AS NombreBanco,
-    Numero_Cuenta AS NumeroCuenta,
-    Tipo_Cuenta AS TipoCuenta,
-    Nombre_Titular AS NombreTitular,
-    CLABE_Cuenta AS ClabeCuenta,
-    RFC,
-    Activo,
-    Fecha_Alta AS FechaAlta
-FROM bancos.Cuentas_Banco
-WHERE RFC = @Rfc
-ORDER BY Fecha_Alta DESC;";
+    var sql = AccountSelectSql + "WHERE RFC = @Rfc\nORDER BY Fecha_Alta DESC;";
 
     using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
     var rows = await connection.QueryAsync<BankAccountDto>(sql, new { Rfc = rfc }).ConfigureAwait(false);
     cancellationToken.ThrowIfCancellationRequested();
     return rows.AsList();
+  }
+
+  public async Task<BankAccountDto> CreateAccountAsync(
+      BankAccountRequest request,
+      CancellationToken cancellationToken = default)
+  {
+    if (request is null)
+    {
+      throw new ArgumentNullException(nameof(request));
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Rfc))
+    {
+      throw new ArgumentException("RFC is required.", nameof(request));
+    }
+
+    const string insertSql = @"
+INSERT INTO bancos.Cuentas_Banco (
+    Nombre_Banco,
+    Numero_Cuenta,
+    Tipo_Cuenta,
+    Nombre_Titular,
+    CLABE_Cuenta,
+    RFC,
+    Activo,
+    Cuenta_Contable_ID,
+    Cuenta_Contable_Egreso,
+    Cuenta_Contable_Ingreso)
+OUTPUT INSERTED.Cuenta_Banco_ID
+VALUES (
+    @NombreBanco,
+    @NumeroCuenta,
+    @TipoCuenta,
+    @NombreTitular,
+    @ClabeCuenta,
+    @Rfc,
+    @Activo,
+    @CuentaContableId,
+    @CuentaContableEgreso,
+    @CuentaContableIngreso);
+";
+
+    using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+    var parameters = new
+    {
+      request.NombreBanco,
+      request.NumeroCuenta,
+      request.TipoCuenta,
+      request.NombreTitular,
+      request.ClabeCuenta,
+      request.Rfc,
+      request.Activo,
+      request.CuentaContableId,
+      request.CuentaContableEgreso,
+      request.CuentaContableIngreso
+    };
+
+    var newId = await connection.ExecuteScalarAsync<int>(insertSql, parameters).ConfigureAwait(false);
+    cancellationToken.ThrowIfCancellationRequested();
+
+    var account = await GetAccountByIdAsync(connection, newId, cancellationToken).ConfigureAwait(false);
+
+    if (account is null)
+    {
+      throw new InvalidOperationException("The inserted bank account could not be retrieved.");
+    }
+
+    return account;
+  }
+
+  public async Task<BankAccountDto?> UpdateAccountAsync(
+      int accountId,
+      BankAccountRequest request,
+      CancellationToken cancellationToken = default)
+  {
+    if (accountId <= 0)
+    {
+      throw new ArgumentOutOfRangeException(nameof(accountId));
+    }
+
+    if (request is null)
+    {
+      throw new ArgumentNullException(nameof(request));
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Rfc))
+    {
+      throw new ArgumentException("RFC is required.", nameof(request));
+    }
+
+    const string updateSql = @"
+UPDATE bancos.Cuentas_Banco
+SET
+    Nombre_Banco = @NombreBanco,
+    Numero_Cuenta = @NumeroCuenta,
+    Tipo_Cuenta = @TipoCuenta,
+    Nombre_Titular = @NombreTitular,
+    CLABE_Cuenta = @ClabeCuenta,
+    RFC = @Rfc,
+    Activo = @Activo,
+    Cuenta_Contable_ID = @CuentaContableId,
+    Cuenta_Contable_Egreso = @CuentaContableEgreso,
+    Cuenta_Contable_Ingreso = @CuentaContableIngreso
+WHERE Cuenta_Banco_ID = @CuentaBancoId
+  AND RFC = @Rfc;
+";
+
+    using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+    var parameters = new
+    {
+      CuentaBancoId = accountId,
+      request.NombreBanco,
+      request.NumeroCuenta,
+      request.TipoCuenta,
+      request.NombreTitular,
+      request.ClabeCuenta,
+      request.Rfc,
+      request.Activo,
+      request.CuentaContableId,
+      request.CuentaContableEgreso,
+      request.CuentaContableIngreso
+    };
+
+    var affected = await connection.ExecuteAsync(updateSql, parameters).ConfigureAwait(false);
+    cancellationToken.ThrowIfCancellationRequested();
+
+    if (affected == 0)
+    {
+      return null;
+    }
+
+    return await GetAccountByIdAsync(connection, accountId, cancellationToken).ConfigureAwait(false);
+  }
+
+  public async Task DeleteAccountAsync(
+      int accountId,
+      string rfc,
+      CancellationToken cancellationToken = default)
+  {
+    if (accountId <= 0)
+    {
+      throw new ArgumentOutOfRangeException(nameof(accountId));
+    }
+
+    if (string.IsNullOrWhiteSpace(rfc))
+    {
+      throw new ArgumentException("RFC is required.", nameof(rfc));
+    }
+
+    const string deleteSql = @"
+DELETE FROM bancos.Cuentas_Banco
+WHERE Cuenta_Banco_ID = @CuentaBancoId
+  AND RFC = @Rfc;
+";
+
+    using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+    await connection.ExecuteAsync(deleteSql, new { CuentaBancoId = accountId, Rfc = rfc }).ConfigureAwait(false);
+    cancellationToken.ThrowIfCancellationRequested();
   }
 
   public async Task<IReadOnlyList<int>> GetAvailableYearsAsync(string rfc, CancellationToken cancellationToken = default)
@@ -104,7 +266,7 @@ WHERE M.RFC = @Rfc
   AND YEAR(M.Dia) = @Year
   AND MONTH(M.Dia) = @Month
   AND (@TextFilter IS NULL OR M.Concepto LIKE '%' + @TextFilter + '%')
-ORDER BY M.Secuencia_Clave;";
+ORDER BY M.Secuencia_Clave desc;";
 
     var parameters = new
     {
@@ -167,6 +329,7 @@ ORDER BY t.Fecha DESC, t.ID DESC;";
   public async Task<ProcessBbvaResult?> ProcessBbvaFileAsync(
       string fileContents,
       int accountId,
+      decimal initialBalance,
       CancellationToken cancellationToken = default)
   {
     if (string.IsNullOrWhiteSpace(fileContents))
@@ -179,11 +342,12 @@ ORDER BY t.Fecha DESC, t.ID DESC;";
       throw new ArgumentOutOfRangeException(nameof(accountId));
     }
 
-    const string storedProcedure = "bancos.Procesar_Movimientos_BBVA";
+    const string storedProcedure = "bancos.Procesar_Movimientos_XML";
 
     var parameters = new DynamicParameters();
-    parameters.Add("@ArchivoTexto", fileContents, DbType.String);
+    parameters.Add("@ArchivoXML", fileContents, DbType.String);
     parameters.Add("@Cuenta_Banco_ID", accountId, DbType.Int32);
+    parameters.Add("@SaldoInicial", initialBalance, DbType.Decimal);
 
     using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
     var row = await connection.QuerySingleOrDefaultAsync(
@@ -292,6 +456,24 @@ ORDER BY M.Dia, M.Movimiento_ID;";
     return processed;
   }
 
+  public async Task UnlinkMovementAsync(
+      long movimientoId,
+      CancellationToken cancellationToken = default)
+  {
+    if (movimientoId <= 0)
+    {
+      throw new ArgumentOutOfRangeException(nameof(movimientoId));
+    }
+
+    const string sql = @"UPDATE bancos.Movimientos
+SET Transaccion_ID = NULL
+WHERE Movimiento_ID = @MovimientoId;";
+
+    using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+    await connection.ExecuteAsync(sql, new { MovimientoId = movimientoId }).ConfigureAwait(false);
+    cancellationToken.ThrowIfCancellationRequested();
+  }
+
   public async Task LinkMovementToTransactionAsync(
       long movimientoId,
       int transaccionId,
@@ -346,6 +528,18 @@ ORDER BY M.Dia, M.Movimiento_ID;";
     }
 
     return Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+  }
+
+  private static async Task<BankAccountDto?> GetAccountByIdAsync(
+      IDbConnection connection,
+      int accountId,
+      CancellationToken cancellationToken)
+  {
+    var sql = AccountSelectSql + "WHERE Cuenta_Banco_ID = @CuentaBancoId;";
+    var account = await connection.QuerySingleOrDefaultAsync<BankAccountDto>(sql, new { CuentaBancoId = accountId })
+        .ConfigureAwait(false);
+    cancellationToken.ThrowIfCancellationRequested();
+    return account;
   }
 
   private sealed record AutoPolicyCandidate

@@ -20,14 +20,13 @@
     [Inject] private NavigationManager Navigation { get; set; } = default!;
     [Inject] private IRfcContext RfcContext { get; set; } = default!;
 
+    private const string StorageKeyPrefix = "current_rfc";
+
     private bool _initialized;
+    private bool _pendingInitialization = true;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private string? _lastIdentityStamp;
-
-    protected override async Task OnInitializedAsync()
-    {
-        await EnsureInitializedAsync(force: true);
-    }
+    private string _storageKey = StorageKeyPrefix;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -37,9 +36,10 @@
             Navigation.LocationChanged += OnLocationChanged;
         }
 
-        if (!_initialized)
+        if (_pendingInitialization || !_initialized)
         {
-            await EnsureInitializedAsync();
+            var force = _pendingInitialization || firstRender;
+            await EnsureInitializedAsync(force: force);
         }
     }
 
@@ -48,6 +48,8 @@
         await _initLock.WaitAsync();
         try
         {
+            _pendingInitialization = false;
+
             if (!force && _initialized && RfcState.AllowedRfcs.Any())
             {
                 return;
@@ -55,6 +57,12 @@
 
             state ??= await AuthStateProvider.GetAuthenticationStateAsync();
             await InitializeCoreAsync(state, force);
+
+            if (_pendingInitialization)
+            {
+                return;
+            }
+
             RfcContext.CurrentRfc = RfcState.CurrentRfc;
             _initialized = true;
         }
@@ -70,6 +78,8 @@
 
         if (user.Identity?.IsAuthenticated != true)
         {
+            _storageKey = StorageKeyPrefix;
+
             if (!force && _initialized && (RfcState.AllowedRfcs.Any() || RfcState.CurrentRfc is not null))
             {
                 return;
@@ -109,19 +119,27 @@
         }
 
         RfcState.InitializeFromClaims(user);
+        _storageKey = BuildStorageKey(identityStamp);
 
-        // var saved = await Storage.GetAsync<string>("current_rfc");
-        // if (saved.Success && !string.IsNullOrWhiteSpace(saved.Value))
-        // {
-        //     if (!RfcState.TrySet(saved.Value))
-        //     {
-        //         RfcState.ResetToDefault();
-        //     }
-        // }
-        // else
-        // {
-        //     RfcState.ResetToDefault();
-        // }
+        if (RfcState.AllowedRfcs.Count > 0)
+        {
+            try
+            {
+                var saved = await Storage.GetAsync<string>(_storageKey);
+                if (saved.Success && !string.IsNullOrWhiteSpace(saved.Value))
+                {
+                    if (!RfcState.TrySet(saved.Value))
+                    {
+                        RfcState.ResetToDefault();
+                    }
+                }
+            }
+            catch (InvalidOperationException ex) when (IsBrowserStorageUnavailable(ex))
+            {
+                _pendingInitialization = true;
+                return;
+            }
+        }
 
         RfcState.Changed -= OnRfcChangedPersist;
         RfcState.Changed += OnRfcChangedPersist;
@@ -158,8 +176,23 @@
 
     private async Task PersistCurrentAsync()
     {
-        // await Storage.SetAsync("current_rfc", RfcState.CurrentRfc ?? string.Empty);
+        try
+        {
+            await Storage.SetAsync(_storageKey, RfcState.CurrentRfc ?? string.Empty);
+        }
+        catch (InvalidOperationException ex) when (IsBrowserStorageUnavailable(ex))
+        {
+            _pendingInitialization = true;
+        }
     }
+
+    private static bool IsBrowserStorageUnavailable(InvalidOperationException ex)
+        => ex.Message.Contains("JavaScript interop calls cannot be issued at this time", StringComparison.Ordinal);
+
+    private static string BuildStorageKey(string? identityStamp)
+        => identityStamp is null
+            ? StorageKeyPrefix
+            : $"{StorageKeyPrefix}::{identityStamp}";
 
     public void Dispose()
     {

@@ -108,7 +108,7 @@
             {
                 <div class="mb-3">
                     <label class="form-label">Archivo .PFX</label>
-                    <InputFile OnChange="OnPfxSelected" />
+                    <InputFile OnChange="OnPfxSelected" Accept=".pfx" />
                     <div class="form-text">Seleccione el archivo .pfx emitido por el SAT.</div>
                 </div>
             }
@@ -116,12 +116,12 @@
             {
                 <div class="mb-3">
                     <label class="form-label">Archivo .CER</label>
-                    <InputFile OnChange="OnCerSelected" />
+                    <InputFile OnChange="OnCerSelected" Accept=".cer" />
                 </div>
 
                 <div class="mb-3">
                     <label class="form-label">Archivo .KEY</label>
-                    <InputFile OnChange="OnKeySelected" />
+                    <InputFile OnChange="OnKeySelected" Accept=".key" />
                 </div>
             }
 

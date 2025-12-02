@@ -23,7 +23,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       try
       {
         using var conn = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
-        var lines = (await conn.QueryAsync<string>("EXEC dbo.GenerateDIOTTXT @Year, @Month, @receptor",
+        var lines = (await conn.QueryAsync<string>("EXEC cfdi.GenerateDIOTTXT @Year, @Month, @receptor",
                         new { Year = selectedYear, Month = selectedMonth, receptor = selectedRfc })).ToList();
         if (lines == null || lines.Count == 0)
         {

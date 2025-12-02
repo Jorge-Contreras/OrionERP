@@ -1,0 +1,74 @@
+@page "/contabilidad/transacciones/new"
+@attribute [Authorize(Roles = "Administrador,SatOperator")]
+
+<PageTitle>Nueva Transacción</PageTitle>
+
+<h3>Nueva Transacción</h3>
+
+@if (Model is not null)
+{
+    <EditForm EditContext="EditContext" OnValidSubmit="HandleValidSubmit">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <div class="form-group">
+            <label for="rfc">RFC</label>
+            <InputText id="rfc" class="form-control" @bind-Value="Model.Rfc" />
+            <ValidationMessage For="@(() => Model.Rfc)" />
+        </div>
+
+        <div class="form-group">
+            <label for="fecha">Fecha</label>
+            <InputDate id="fecha" class="form-control" @bind-Value="Model.Fecha" />
+            <ValidationMessage For="@(() => Model.Fecha)" />
+        </div>
+
+        <div class="form-group">
+            <label for="concepto">Concepto</label>
+            <InputText id="concepto" class="form-control" @bind-Value="Model.Concepto" />
+            <ValidationMessage For="@(() => Model.Concepto)" />
+        </div>
+
+        <div class="form-group">
+            <label for="monto">Monto</label>
+            <InputNumber id="monto" class="form-control" @bind-Value="Model.Monto" />
+            <ValidationMessage For="@(() => Model.Monto)" />
+        </div>
+
+        <div class="form-group">
+            <label for="tipoPoliza">Tipo de Póliza</label>
+            <InputSelect id="tipoPoliza" class="form-control" @bind-Value="Model.TipoPoliza">
+                <option value="">Seleccione un tipo</option>
+                @foreach (var tipo in TipoPolizaOptions)
+                {
+                    <option value="@tipo">@tipo</option>
+                }
+            </InputSelect>
+            <ValidationMessage For="@(() => Model.TipoPoliza)" />
+        </div>
+
+        <div class="form-group">
+            <label for="formaPago">Forma de Pago</label>
+            <InputSelect id="formaPago" class="form-control" @bind-Value="Model.FormaPago">
+                <option value="">Seleccione una forma de pago</option>
+                @foreach (var forma in FormaPagoOptions)
+                {
+                    <option value="@forma.Clave">@forma.Display</option>
+                }
+            </InputSelect>
+            <ValidationMessage For="@(() => Model.FormaPago)" />
+        </div>
+
+        <button type="submit" class="btn btn-primary" disabled="@IsSaving">
+            @if (IsSaving)
+            {
+                <span class="spinner-border spinner-border-sm mr-1"></span>
+            }
+            Crear Transacción
+        </button>
+    </EditForm>
+}
+else
+{
+    <p>Cargando...</p>
+}

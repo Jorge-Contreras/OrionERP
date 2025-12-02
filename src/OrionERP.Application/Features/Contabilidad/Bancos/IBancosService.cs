@@ -7,6 +7,9 @@ namespace OrionERP.Application.Features.Contabilidad.Bancos;
 public interface IBancosService
 {
   Task<IReadOnlyList<BankAccountDto>> GetAccountsAsync(string rfc, CancellationToken cancellationToken = default);
+  Task<BankAccountDto> CreateAccountAsync(BankAccountRequest request, CancellationToken cancellationToken = default);
+  Task<BankAccountDto?> UpdateAccountAsync(int accountId, BankAccountRequest request, CancellationToken cancellationToken = default);
+  Task DeleteAccountAsync(int accountId, string rfc, CancellationToken cancellationToken = default);
   Task<IReadOnlyList<int>> GetAvailableYearsAsync(string rfc, CancellationToken cancellationToken = default);
   Task<IReadOnlyList<BankMovementDto>> GetMovementsAsync(
       string rfc,
@@ -23,6 +26,7 @@ public interface IBancosService
   Task<ProcessBbvaResult?> ProcessBbvaFileAsync(
       string fileContents,
       int accountId,
+      decimal initialBalance,
       CancellationToken cancellationToken = default);
   Task<int> CreateAutoPoliciesAsync(
       string rfc,
@@ -33,5 +37,8 @@ public interface IBancosService
   Task LinkMovementToTransactionAsync(
       long movimientoId,
       int transaccionId,
+      CancellationToken cancellationToken = default);
+  Task UnlinkMovementAsync(
+      long movimientoId,
       CancellationToken cancellationToken = default);
 }

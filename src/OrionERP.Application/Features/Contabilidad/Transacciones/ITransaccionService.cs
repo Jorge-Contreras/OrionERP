@@ -24,6 +24,9 @@ public interface ITransaccionService
       int daysBack = 60,
       int top = 200,
       CancellationToken ct = default);
+  Task<IReadOnlyList<TransaccionCfdiCandidateDto>> GetCfdiCandidatesAsync(TransaccionCfdiSearchRequest request, CancellationToken ct = default);
+  Task<IReadOnlyList<long>> GetLinkedCfdiIdsAsync(int transaccionId, CancellationToken ct = default);
+  Task<TransaccionCommandResult> LinkCfdiAsync(TransaccionCfdiLinkRequest request, CancellationToken ct = default);
   Task<TransaccionCommandResult> ApplyCategoriaPlantillaAsync(
       int transaccionId,
       int categoriaId,
@@ -39,4 +42,7 @@ public interface ITransaccionService
   Task<IReadOnlyList<LookupInt32Dto>> GetNominasAsync(string rfc, CancellationToken ct = default);
   Task<IReadOnlyList<FormaPagoLookupDto>> GetFormasPagoAsync(CancellationToken ct = default);
   Task DeleteMovimientoAsync(int transaccionId, int movimientoId, CancellationToken ct = default);
+  Task<TransaccionCommandResult> DeleteTransaccionAsync(int transaccionId, CancellationToken ct = default);
+  Task<TransaccionCreateResult> CreateTransaccionAsync(TransaccionCreateRequest request, CancellationToken ct = default);
+  Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesListAsync(TransaccionFilter filter, CancellationToken ct = default);
 }

@@ -1,5 +1,6 @@
 @page "/contabilidad/bancos"
 @using System.Globalization
+@using Microsoft.AspNetCore.Components.Forms
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
 <PageTitle>Bancos – Cuentas y Movimientos</PageTitle>
@@ -22,11 +23,106 @@ else if (IsInitializing)
 else
 {
   <div class="d-flex flex-column gap-4">
+    @if (IsAccountModalVisible && AccountDraft is not null && AccountEditContext is not null)
+    {
+      <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.35);" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">@AccountModalTitle</h5>
+              <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CloseAccountModal"></button>
+            </div>
+            <div class="modal-body">
+              <EditForm EditContext="AccountEditContext" OnValidSubmit="HandleAccountValidSubmit">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="row g-3">
+                  <div class="col-12">
+                    <label class="form-label" for="bank-name">Banco</label>
+                    <InputText id="bank-name" class="form-control" @bind-Value="AccountDraft!.NombreBanco" />
+                    <ValidationMessage For="() => AccountDraft!.NombreBanco" />
+                  </div>
+
+                  <div class="col-md-6">
+                    <label class="form-label" for="bank-account-number">Número de cuenta</label>
+                    <InputText id="bank-account-number" class="form-control" @bind-Value="AccountDraft!.NumeroCuenta" />
+                    <ValidationMessage For="() => AccountDraft!.NumeroCuenta" />
+                  </div>
+
+                  <div class="col-md-6">
+                    <label class="form-label" for="bank-account-type">Tipo de cuenta</label>
+                    <InputText id="bank-account-type" class="form-control" @bind-Value="AccountDraft!.TipoCuenta" />
+                  </div>
+
+                  <div class="col-12">
+                    <label class="form-label" for="bank-holder">Nombre del titular</label>
+                    <InputText id="bank-holder" class="form-control" @bind-Value="AccountDraft!.NombreTitular" />
+                  </div>
+
+                  <div class="col-md-6">
+                    <label class="form-label" for="bank-clabe">CLABE</label>
+                    <InputText id="bank-clabe" class="form-control" @bind-Value="AccountDraft!.ClabeCuenta" />
+                  </div>
+
+                  <div class="col-md-6">
+                    <label class="form-label" for="bank-rfc">RFC</label>
+                    <InputText id="bank-rfc" class="form-control" @bind-Value="AccountDraft!.Rfc" readonly />
+                    <ValidationMessage For="() => AccountDraft!.Rfc" />
+                  </div>
+
+                  @if (AccountDraft!.FechaAlta.HasValue)
+                  {
+                    <div class="col-md-6">
+                      <label class="form-label" for="bank-created-at">Fecha de alta</label>
+                      <input id="bank-created-at" class="form-control" value='@AccountDraft!.FechaAlta.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)' readonly />
+                    </div>
+                  }
+
+                  <div class="col-12">
+                    <div class="form-check form-switch">
+                      <InputCheckbox class="form-check-input" @bind-Value="AccountDraft!.Activo" id="bank-active" />
+                      <label class="form-check-label" for="bank-active">Cuenta activa</label>
+                    </div>
+                  </div>
+
+                  <div class="col-md-4">
+                    <label class="form-label" for="bank-account-general">Cuenta contable (general)</label>
+                    <InputNumber TValue="int?" id="bank-account-general" class="form-control" @bind-Value="AccountDraft!.CuentaContableId" />
+                  </div>
+
+                  <div class="col-md-4">
+                    <label class="form-label" for="bank-account-expense">Cuenta contable egreso</label>
+                    <InputNumber TValue="int?" id="bank-account-expense" class="form-control" @bind-Value="AccountDraft!.CuentaContableEgreso" />
+                  </div>
+
+                  <div class="col-md-4">
+                    <label class="form-label" for="bank-account-income">Cuenta contable ingreso</label>
+                    <InputNumber TValue="int?" id="bank-account-income" class="form-control" @bind-Value="AccountDraft!.CuentaContableIngreso" />
+                  </div>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                  <button class="btn btn-outline-secondary" type="button" @onclick="CloseAccountModal" disabled="@(IsSavingAccount)">Cancelar</button>
+                  <button class="btn btn-primary" type="submit" disabled="@(IsSavingAccount)">
+                    @(IsSavingAccount ? "Guardando…" : "Guardar cuenta")
+                  </button>
+                </div>
+              </EditForm>
+            </div>
+          </div>
+        </div>
+      </div>
+    }
+
     <section aria-labelledby="accounts-heading" class="card">
       <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
           <h2 id="accounts-heading" class="h5 mb-0">Cuentas bancarias</h2>
           <span class="text-muted small">Total: @Accounts.Count</span>
+          <div class="ms-auto">
+            <button type="button" class="btn btn-sm btn-primary" @onclick="ShowCreateAccountModal">Agregar cuenta</button>
+          </div>
         </div>
 
         @if (IsLoadingAccounts)
@@ -54,6 +150,7 @@ else
                   <th scope="col">RFC</th>
                   <th scope="col">Activo</th>
                   <th scope="col">Fecha alta</th>
+                  <th scope="col" class="text-end">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -70,6 +167,21 @@ else
                     <td>@account.Rfc</td>
                     <td>@(account.Activo ? "Sí" : "No")</td>
                     <td>@account.FechaAlta.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                    <td class="text-end">
+                      <div class="btn-group btn-group-sm" role="group" aria-label="Acciones de cuenta">
+                        <button type="button"
+                                class="btn btn-outline-secondary"
+                                title="Editar"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => ShowEditAccountModal(account)">Editar</button>
+                        <button type="button"
+                                class="btn btn-outline-danger"
+                                title="Eliminar"
+                                disabled="@(IsDeletingAccount)"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => DeleteAccountAsync(account)">Eliminar</button>
+                      </div>
+                    </td>
                   </tr>
                 }
               </tbody>
@@ -83,9 +195,17 @@ else
       <div class="card-body d-flex flex-column gap-3">
         <div class="d-flex flex-wrap align-items-center gap-2">
           <h2 id="process-heading" class="h5 mb-0 flex-grow-1">Procesar archivo de banco</h2>
+          <div class="d-flex flex-column">
+            <label class="form-label mb-1" for="initial-balance">Saldo Inicial</label>
+            <InputNumber id="initial-balance"
+                         class="form-control"
+                         TValue="decimal?"
+                         @bind-Value="InitialBalance"
+                         step="0.01" />
+          </div>
           <label class="btn btn-primary mb-0">
             @(IsProcessingFile ? "Procesando…" : "Procesar archivo de banco")
-            <InputFile @key="FileInputKey" class="d-none" accept=".txt,.xml" OnChange="OnFileSelectedAsync" disabled="@IsProcessingFile" />
+            <InputFile @key="FileInputKey" class="d-none" accept=".txt,.xml" OnChange="OnFileSelectedAsync" disabled="@(IsProcessingFile)" />
           </label>
         </div>
 
@@ -199,7 +319,13 @@ else
 
     <section aria-label="Acciones de conciliación" class="card">
       <div class="card-body py-2">
-        <div class="d-flex flex-wrap justify-content-end align-items-center gap-2">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <div class="form-check mb-0">
+            <InputCheckbox id="filter-unlinked-movements" class="form-check-input" @bind-Value="ShowOnlyUnlinkedMovements" />
+            <label class="form-check-label" for="filter-unlinked-movements">Movimientos sin ligar</label>
+          </div>
+          <button class="btn btn-outline-danger btn-sm" type="button" @onclick="OnUnlinkClicked" disabled="@(!CanUnlink)">Desligar</button>
+          <div class="flex-grow-1"></div>
           <button class="btn btn-primary btn-sm" type="button" @onclick="OnLinkClicked" disabled="@(!CanLink)">Ligar</button>
           <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="OnAutoPolizasClicked" disabled="@HasPendingTransactions" title="@AutoPolizasTooltip">Crear pólizas auto</button>
           @if (HasPendingTransactions)
@@ -243,6 +369,7 @@ else
             <table class="table table-sm table-striped table-hover align-middle mb-0">
               <thead class="table-light">
                 <tr>
+                  <th scope="col">Póliza</th>
                   <th scope="col">ID</th>
                   <th scope="col">Día</th>
                   <th scope="col">Línea</th>
@@ -252,15 +379,25 @@ else
                   <th scope="col" class="text-end">Abono</th>
                   <th scope="col" class="text-end">Saldo</th>
                   <th scope="col">Fecha de carga</th>
-                  <th scope="col">Póliza</th>
+                                    <th scope="col">Ligar</th>
                 </tr>
               </thead>
               <tbody>
-                @foreach (var movement in Movements)
+                @foreach (var movement in VisibleMovements)
                 {
                   var isSelected = movement.MovimientoId == SelectedMovimientoId;
                   var rowClass = isSelected ? "table-primary" : string.Empty;
                   <tr class="@rowClass" style="cursor: pointer;" aria-selected="@(isSelected ? "true" : "false")" @onclick="@(() => OnMovementSelected(movement.MovimientoId))">
+                                        <td>
+                                            @if (movement.Policy.HasValue && movement.Policy.Value > 0)
+                                            {
+                                                <a href="/Contabilidad/Transacciones/@movement.Policy" target="_blank" rel="noopener">@movement.Policy</a>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </td>
                     <td>@movement.MovimientoId</td>
                     <td>@movement.Dia.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
                     <td>@movement.Line</td>
@@ -270,16 +407,21 @@ else
                     <td class="text-end">@FormatCurrency(movement.Abono)</td>
                     <td class="text-end">@FormatCurrency(movement.Saldo)</td>
                     <td>@movement.FechaCarga.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
-                    <td>
-                      @if (movement.Policy.HasValue && movement.Policy.Value > 0)
-                      {
-                        <a href="/Contabilidad/Transacciones/@movement.Policy" target="_blank" rel="noopener">@movement.Policy</a>
-                      }
-                      else
-                      {
-                        <span class="text-muted">—</span>
-                      }
-                    </td>
+                                        <td>
+                                            @if (movement.Policy.HasValue && movement.Policy.Value > 0)
+                                            {
+                                                <a class="btn btn-sm btn-outline-success"
+                                                   href="/Contabilidad/LigarTransacciones/@movement.Policy"
+                                                   target="_blank" rel="noopener">
+                                                    Ligar
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </td>
+                    
                   </tr>
                 }
               </tbody>

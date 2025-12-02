@@ -3,55 +3,39 @@
 @using OrionERP.Web.Shared
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
-
 <style>
-  .transaccion-header .form-control,
-  .transaccion-header .form-select,
-  .transaccion-header .form-control-plaintext {
-    font-weight: 500;
-  }
-
-  .transaccion-header .row.g-3,
-  .transaccion-header .row.g-4,
-  .transaccion-header .row.gy-4 {
-    --bs-gutter-y: 0.3125rem;
-  }
-
-    /* === Categoria (Plantilla) layout === */
-    .transaccion-header .categoria-col {
-        /* don’t let this column stretch; leaves a big empty gap before the right buttons */
-        max-width: 100%;
+    .transaccion-header {
+        background-color: #FFD966;
     }
 
-    .transaccion-header .categoria-row {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: flex-end; /* vertical bottoms aligned */
-        justify-content: flex-start; /* both controls left-aligned */
-        gap: .5rem; /* space between select and button */
-    }
-
-        /* limit the “input box” (the select) to ~30 characters wide */
-        .transaccion-header .categoria-row .form-select {
-            width: 30ch; /* approx width of 30 characters */
-            max-width: 100%; /* still behave on very narrow screens */
+        /* Tighten vertical space between rows */
+        .transaccion-header .row.g-3,
+        .transaccion-header .row.g-4,
+        .transaccion-header .row.gy-4 {
+            --bs-gutter-y: 0.25rem;
         }
 
-    @@media (min-width: 992px) { /* lg and up */
-        /* create a large horizontal gap between this section and the right action buttons */
-        .transaccion-header .categoria-col
+        /* Labels: normal black, small bottom margin */
+        .transaccion-header .form-label,
+        .transaccion-header .form-check-label {
+            color: #000;
+            margin-bottom: 0.15rem;
+        }
 
-    {
-        margin-right: auto;
-    }
-
-    }</style>
+        /* Make text inside controls bold */
+        .transaccion-header .form-control,
+        .transaccion-header .form-select,
+        .transaccion-header .form-control-plaintext,
+        .transaccion-header .input-group-text {
+            font-weight: 600; /* or 500 if you prefer slightly lighter */
+        }
+</style>
 
 
 
 <PageTitle>Transacción @Header?.DisplayFolio ?? Id.ToString(CultureInfo.InvariantCulture)</PageTitle>
 
-@if (IsLoading)
+@if (IsLoading || Header is null || HeaderEditContext is null)
 {
   <div class="orion-loading" role="status" aria-live="polite">
     <span class="orion-spinner" aria-hidden="true"></span>
@@ -240,6 +224,10 @@ else if (Header is not null)
                 }
                 Guardar cambios
               </button>
+              <button type="button" class="btn btn-danger" @onclick="DeleteTransaccionAsync" disabled="@IsSavingHeader">
+                  <span class="oi oi-trash me-1" aria-hidden="true"></span>
+                  Eliminar
+              </button>
             </div>
           </div>
         </EditForm>
@@ -341,35 +329,24 @@ else if (Header is not null)
         else
         {
           <div class="table-responsive table-scroll" style="max-height: 320px;">
-            <table class="table table-sm table-bordered table-striped align-middle compact-table mb-0">
-              <thead class="table-dark">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead class="table-light">
                 <tr>
-                  <th>Comprobante</th>
-                  <th>✔</th>
-                  <th>Fecha</th>
-                  <th>Mes</th>
-                  <th>Año</th>
-                  <th>Emisor</th>
-                  <th class="num">SubTotal</th>
-                  <th class="num">Descuento</th>
-                  <th class="num">SubTotal Desc</th>
-                  <th class="num">Actos 16%</th>
-                  <th class="num">Actos 0%</th>
-                  <th class="num">IVA</th>
-                  <th class="num">IEPS</th>
-                  <th class="num">IVA Retenido</th>
-                  <th class="num">ISR Retenido</th>
-                  <th class="num">IEPS Retenido</th>
-                  <th class="num">Total</th>
-                  <th>UUID</th>
-                  <th>Forma Pago</th>
-                  <th>Tipo CFDI</th>
-                  <th>Método Pago</th>
-                  <th>Uso CFDI</th>
-                  <th>Fecha Cancel.</th>
-                  <th>Estatus</th>
-                  <th class="num">$ Póliza</th>
-                  <th>Transacción</th>
+                  <th scope="col">Comprobante ID</th>
+                  <th scope="col">Fecha</th>
+                  <th scope="col">Tipo</th>
+                  <th scope="col">Serie</th>
+                  <th scope="col">Folio</th>
+                  <th scope="col">Emisor RFC</th>
+                  <th scope="col">Receptor RFC</th>
+                  <th scope="col">UUID</th>
+                  <th scope="col">Forma Pago</th>
+                  <th scope="col" class="text-end">Total</th>
+                  <th scope="col">#Pólizas</th>
+                  <th scope="col" class="text-end">Asignado</th>
+                  <th scope="col">Método Pago</th>
+                  <th scope="col">Uso CFDI</th>
+                  <th scope="col">Conceptos</th>
                 </tr>
               </thead>
               <tbody>
@@ -377,31 +354,20 @@ else if (Header is not null)
                 {
                   <tr>
                     <td>@comprobante.ComprobanteId</td>
-                    <td>@comprobante.D</td>
-                    <td>@comprobante.Fecha.ToString("yyyy-MM-dd")</td>
-                    <td>@comprobante.MesGlobal</td>
-                    <td>@(comprobante.AnioGlobal?.ToString() ?? string.Empty)</td>
-                    <td>@comprobante.Emisor</td>
-                    <td class="num">@((comprobante.SubTotal ?? 0m).ToString("N2"))</td>
-                    <td class="num">@((comprobante.Descuento ?? 0m).ToString("N2"))</td>
-                    <td class="num">@((comprobante.SubTotalDesc ?? 0m).ToString("N2"))</td>
-                    <td class="num">@((comprobante.Actos16 ?? 0m).ToString("N2"))</td>
-                    <td class="num">@((comprobante.Actos0 ?? 0m).ToString("N2"))</td>
-                    <td class="num">@((comprobante.Iva ?? 0m).ToString("N2"))</td>
-                    <td class="num">@((comprobante.Ieps ?? 0m).ToString("N2"))</td>
-                    <td class="num">@((comprobante.IvaRetenido ?? 0m).ToString("N2"))</td>
-                    <td class="num">@((comprobante.IsrRetenido ?? 0m).ToString("N2"))</td>
-                    <td class="num">@((comprobante.IepsRetenido ?? 0m).ToString("N2"))</td>
-                    <td class="num">@((comprobante.Total ?? 0m).ToString("N2"))</td>
-                    <td>@comprobante.FolioFiscal</td>
+                    <td>@comprobante.Fecha.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
+                    <td>@comprobante.Tipo</td>
+                    <td>@comprobante.Serie</td>
+                    <td>@comprobante.Folio</td>
+                    <td>@comprobante.EmisorRfc</td>
+                    <td>@comprobante.ReceptorRfc</td>
+                    <td>@comprobante.Uuid</td>
                     <td>@comprobante.FormaPago</td>
-                    <td>@comprobante.TipoDeComprobante</td>
+                    <td class="text-end">@FormatCurrency(comprobante.Total)</td>
+                    <td>@comprobante.Polizas</td>
+                    <td class="text-end">@FormatCurrency(comprobante.Asignado)</td>
                     <td>@comprobante.MetodoPago</td>
                     <td>@comprobante.UsoCfdi</td>
-                    <td>@(comprobante.FechaCancelacion?.ToString("yyyy-MM-dd") ?? string.Empty)</td>
-                    <td>@comprobante.Estatus</td>
-                    <td class="num">@((comprobante.PolizaMonto ?? 0m).ToString("N2"))</td>
-                    <td>@comprobante.TransaccionId</td>
+                    <td class="text-wrap">@comprobante.Conceptos</td>
                   </tr>
                 }
               </tbody>

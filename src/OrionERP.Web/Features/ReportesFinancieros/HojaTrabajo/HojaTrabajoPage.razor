@@ -32,9 +32,17 @@
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h2 id="hoja-trabajo-heading" class="h5 mb-0">Hoja de trabajo IVA / ISR</h2>
-                <button class="btn btn-outline-primary btn-sm" @onclick="() => ExportToExcel(JS)" disabled="@(IsExporting || IsLoading)">
-                    <i class="bi bi-file-excel"></i> Exportar a Excel
-                </button>
+                <div class="btn-group" role="group" aria-label="Exportar a Excel">
+                    <button class="btn btn-outline-primary btn-sm" @onclick='() => ExportToExcel(JS, HojaTrabajoCfdi, "CFDIs")' disabled="@(IsExporting || IsLoading || HojaTrabajoCfdi.Count == 0)">
+                        <i class="bi bi-file-excel"></i> Exportar CFDIs
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm" @onclick='() => ExportToExcel(JS, HojaTrabajoContabilidad, "Contabilidad")' disabled="@(IsExporting || IsLoading || HojaTrabajoContabilidad.Count == 0)">
+                        <i class="bi bi-file-excel"></i> Exportar Contabilidad
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm" @onclick='() => ExportToExcel(JS, HojaTrabajoAcumulados, "ISR_Acumulados")' disabled="@(IsExporting || IsLoading || HojaTrabajoAcumulados.Count == 0)">
+                        <i class="bi bi-file-excel"></i> Exportar ISR / Acumulados
+                    </button>
+                </div>
             </div>
 
             @if (!string.IsNullOrEmpty(ErrorMessage))
@@ -54,38 +62,145 @@
             }
             else
             {
-                <div class="table-responsive">
-                    <table class="table table-sm table-bordered">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Descripción</th>
-                                <th>ENERO</th>
-                                <th>FEBRERO</th>
-                                <th>MARZO</th>
-                                <th>ABRIL</th>
-                                <th>MAYO</th>
-                                <th>JUNIO</th>
-                                <th>JULIO</th>
-                                <th>AGOSTO</th>
-                                <th>SEPTIEMBRE</th>
-                                <th>OCTUBRE</th>
-                                <th>NOVIEMBRE</th>
-                                <th>DICIEMBRE</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var row in HojaTrabajoData)
-                            {
-                                <tr class="@GetRowClass(row)" @onclick="() => SelectRow(row)" style="cursor: pointer;">
-                                    <td>@row.Descripcion</td>
-                                    @for (var i = 0; i < 12; i++)
-                                    {
-                                        <td class="@GetCellClass(row, i)">@GetFormattedValue(row, i)</td>
-                                    }
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(ActiveTab == HojaTrabajoTab.Cfdi ? "active" : string.Empty)" type="button" role="tab" @onclick="() => SetActiveTab(HojaTrabajoTab.Cfdi)">CFDIs (IVA)</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(ActiveTab == HojaTrabajoTab.Contabilidad ? "active" : string.Empty)" type="button" role="tab" @onclick="() => SetActiveTab(HojaTrabajoTab.Contabilidad)">Contabilidad</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(ActiveTab == HojaTrabajoTab.Acumulados ? "active" : string.Empty)" type="button" role="tab" @onclick="() => SetActiveTab(HojaTrabajoTab.Acumulados)">ISR / Acumulados</button>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <div class="tab-pane fade @(ActiveTab == HojaTrabajoTab.Cfdi ? "show active" : string.Empty)">
+                        @if (HojaTrabajoCfdi.Count == 0)
+                        {
+                            <p class="text-muted">No hay datos para mostrar.</p>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Descripción</th>
+                                            <th>ENERO</th>
+                                            <th>FEBRERO</th>
+                                            <th>MARZO</th>
+                                            <th>ABRIL</th>
+                                            <th>MAYO</th>
+                                            <th>JUNIO</th>
+                                            <th>JULIO</th>
+                                            <th>AGOSTO</th>
+                                            <th>SEPTIEMBRE</th>
+                                            <th>OCTUBRE</th>
+                                            <th>NOVIEMBRE</th>
+                                            <th>DICIEMBRE</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in HojaTrabajoCfdi)
+                                        {
+                                            <tr class="@GetRowClass(row, HojaTrabajoCfdi, HojaTrabajoTab.Cfdi)" @onclick="() => SelectRow(row, HojaTrabajoTab.Cfdi)" style="cursor: pointer;">
+                                                <td>@row.Descripcion</td>
+                                                @for (var i = 0; i < 12; i++)
+                                                {
+                                                    <td class="@GetCellClass(row, i)">@GetFormattedValue(row, i)</td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                    <div class="tab-pane fade @(ActiveTab == HojaTrabajoTab.Contabilidad ? "show active" : string.Empty)">
+                        @if (HojaTrabajoContabilidad.Count == 0)
+                        {
+                            <p class="text-muted">No hay datos para mostrar.</p>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Descripción</th>
+                                            <th>ENERO</th>
+                                            <th>FEBRERO</th>
+                                            <th>MARZO</th>
+                                            <th>ABRIL</th>
+                                            <th>MAYO</th>
+                                            <th>JUNIO</th>
+                                            <th>JULIO</th>
+                                            <th>AGOSTO</th>
+                                            <th>SEPTIEMBRE</th>
+                                            <th>OCTUBRE</th>
+                                            <th>NOVIEMBRE</th>
+                                            <th>DICIEMBRE</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in HojaTrabajoContabilidad)
+                                        {
+                                            <tr class="@GetRowClass(row, HojaTrabajoContabilidad, HojaTrabajoTab.Contabilidad)" @onclick="() => SelectRow(row, HojaTrabajoTab.Contabilidad)" style="cursor: pointer;">
+                                                <td>@row.Descripcion</td>
+                                                @for (var i = 0; i < 12; i++)
+                                                {
+                                                    <td class="@GetCellClass(row, i)">@GetFormattedValue(row, i)</td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                    <div class="tab-pane fade @(ActiveTab == HojaTrabajoTab.Acumulados ? "show active" : string.Empty)">
+                        @if (HojaTrabajoAcumulados.Count == 0)
+                        {
+                            <p class="text-muted">No hay datos para mostrar.</p>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Descripción</th>
+                                            <th>ENERO</th>
+                                            <th>FEBRERO</th>
+                                            <th>MARZO</th>
+                                            <th>ABRIL</th>
+                                            <th>MAYO</th>
+                                            <th>JUNIO</th>
+                                            <th>JULIO</th>
+                                            <th>AGOSTO</th>
+                                            <th>SEPTIEMBRE</th>
+                                            <th>OCTUBRE</th>
+                                            <th>NOVIEMBRE</th>
+                                            <th>DICIEMBRE</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in HojaTrabajoAcumulados)
+                                        {
+                                            <tr class="@GetRowClass(row, HojaTrabajoAcumulados, HojaTrabajoTab.Acumulados)" @onclick="() => SelectRow(row, HojaTrabajoTab.Acumulados)" style="cursor: pointer;">
+                                                <td>@row.Descripcion</td>
+                                                @for (var i = 0; i < 12; i++)
+                                                {
+                                                    <td class="@GetCellClass(row, i)">@GetFormattedValue(row, i)</td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
                 </div>
             }
         </div>

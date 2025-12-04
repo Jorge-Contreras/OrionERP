@@ -3,6 +3,7 @@ using OrionERP.Application.Common;
 using OrionERP.Application.Features.ReportesFinancieros;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
@@ -16,19 +17,89 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
             _connectionFactory = connectionFactory;
         }
 
-        public async Task<List<HojaTrabajoDto>> GetHojaTrabajoAsync(int anio, string rfc)
+        public async Task<HojaTrabajoViewModel> GetHojaTrabajoAsync(int anio, string rfc)
         {
             using var connection = _connectionFactory.Create();
             connection.Open();
 
             var parameters = new { Anio = anio, Rfc = rfc };
-            var result = await connection.QueryAsync<HojaTrabajoDto>(
-                "contabilidad.Rpt_HojaTrabajo",
+            using var multi = await connection.QueryMultipleAsync(
+                "contabilidad.Rpt_PapelTrajo",
                 parameters,
                 commandType: CommandType.StoredProcedure,
                 commandTimeout: 30);
 
-            return result.AsList();
+            var cfdiRows = (await multi.ReadAsync<HojaTrabajoLongRowDto>()).ToList();
+            var contabilidadRows = (await multi.ReadAsync<HojaTrabajoLongRowDto>()).ToList();
+            var acumuladosRows = (await multi.ReadAsync<HojaTrabajoLongRowDto>()).ToList();
+
+            return new HojaTrabajoViewModel
+            {
+                Cfdi = PivotRows(cfdiRows),
+                Contabilidad = PivotRows(contabilidadRows),
+                Acumulados = PivotRows(acumuladosRows)
+            };
+        }
+
+        private static List<HojaTrabajoTablaDto> PivotRows(IEnumerable<HojaTrabajoLongRowDto> rows)
+        {
+            return rows
+                .GroupBy(r => new { r.Descripcion, r.Orden })
+                .Select(group =>
+                {
+                    var dto = new HojaTrabajoTablaDto
+                    {
+                        Descripcion = group.Key.Descripcion,
+                        Orden = group.Key.Orden,
+                    };
+
+                    foreach (var row in group)
+                    {
+                        switch (row.Mes)
+                        {
+                            case 1:
+                                dto.ENERO = row.Monto;
+                                break;
+                            case 2:
+                                dto.FEBRERO = row.Monto;
+                                break;
+                            case 3:
+                                dto.MARZO = row.Monto;
+                                break;
+                            case 4:
+                                dto.ABRIL = row.Monto;
+                                break;
+                            case 5:
+                                dto.MAYO = row.Monto;
+                                break;
+                            case 6:
+                                dto.JUNIO = row.Monto;
+                                break;
+                            case 7:
+                                dto.JULIO = row.Monto;
+                                break;
+                            case 8:
+                                dto.AGOSTO = row.Monto;
+                                break;
+                            case 9:
+                                dto.SEPTIEMBRE = row.Monto;
+                                break;
+                            case 10:
+                                dto.OCTUBRE = row.Monto;
+                                break;
+                            case 11:
+                                dto.NOVIEMBRE = row.Monto;
+                                break;
+                            case 12:
+                                dto.DICIEMBRE = row.Monto;
+                                break;
+                        }
+                    }
+
+                    return dto;
+                })
+                .OrderBy(dto => dto.Orden)
+                .ToList();
         }
     }
 }

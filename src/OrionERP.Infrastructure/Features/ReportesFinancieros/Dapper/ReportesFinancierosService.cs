@@ -24,7 +24,7 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
 
             var parameters = new { Anio = anio, Rfc = rfc };
             using var multi = await connection.QueryMultipleAsync(
-                "contabilidad.Rpt_PapelTrajo",
+                "contabilidad.Rpt_PapelTrabajo",
                 parameters,
                 commandType: CommandType.StoredProcedure,
                 commandTimeout: 30);

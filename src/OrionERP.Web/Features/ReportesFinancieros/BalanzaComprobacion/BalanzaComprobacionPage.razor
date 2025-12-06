@@ -93,7 +93,7 @@
     </div>
 
     <!-- RESULTADOS -->
-    <div class="card">
+    <div id="balanza-comprobacion-print-root" class="card">
         <div class="card-body">
 
             <div class="d-flex justify-content-between align-items-center mb-2">
@@ -107,11 +107,7 @@
                     }
                 </div>
 
-                <button class="btn btn-outline-secondary btn-sm no-print"
-                        @onclick="PrintAsync"
-                        disabled="@(!Resultados.Any())">
-                    Imprimir
-                </button>
+                
             </div>
 
             @if (IsLoading)
@@ -132,7 +128,7 @@
                 <div id="balanza-print">
 
                     <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle balanza-table">
+                        <table id="balanza-comprobacion-table" class="table table-sm table-bordered align-middle balanza-table">
                             <thead class="table-light">
                                 <tr>
                                     <th style="min-width: 340px;">CUENTA</th>
@@ -171,19 +167,26 @@
     </div>
 </div>
 
+
+
 <style>
-    /* Indentación por nivel */
-    .balanza-indent-1 {
-        padding-left: .25rem;
+    /* Base cell padding, optional */
+    .balanza-table td {
+        padding-right: .5rem; /* keep nice right padding */
     }
 
-    .balanza-indent-2 {
-        padding-left: 1.25rem;
-    }
+        /* Stronger selectors than Bootstrap */
+        .balanza-table td.balanza-indent-1 {
+            padding-left: .25rem;
+        }
 
-    .balanza-indent-3 {
-        padding-left: 2.25rem;
-    }
+        .balanza-table td.balanza-indent-2 {
+            padding-left: 1.25rem;
+        }
+
+        .balanza-table td.balanza-indent-3 {
+            padding-left: 2.25rem;
+        }
 
     /* Peso visual por jerarquía */
     .level-1 td {
@@ -240,5 +243,5 @@
     th, td {
         font-size: 11px;
     }
-
-    }</style>
+    }
+   </style>

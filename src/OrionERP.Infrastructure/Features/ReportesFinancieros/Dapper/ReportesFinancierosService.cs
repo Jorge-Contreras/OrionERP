@@ -1,6 +1,7 @@
 using Dapper;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.ReportesFinancieros;
+using OrionERP.Application.Features.ReportesFinancieros.Models;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -15,6 +16,25 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
         public ReportesFinancierosService(IDbConnectionFactory connectionFactory)
         {
             _connectionFactory = connectionFactory;
+        }
+
+        public async Task<IReadOnlyList<BalanzaComprobacionRow>> GetBalanzaComprobacionAsync(
+            int anio,
+            int? mes,
+            string? rfc)
+        {
+            using var connection = _connectionFactory.Create();
+            connection.Open();
+
+            var parameters = new { Anio = anio, Mes = mes, Rfc = rfc };
+
+            var result = await connection.QueryAsync<BalanzaComprobacionRow>(
+                "reporteFinanciero.Rpt_BalanzaComprobacion",
+                parameters,
+                commandType: CommandType.StoredProcedure,
+                commandTimeout: 30);
+
+            return result.AsList();
         }
 
         public async Task<HojaTrabajoViewModel> GetHojaTrabajoAsync(int anio, string rfc)

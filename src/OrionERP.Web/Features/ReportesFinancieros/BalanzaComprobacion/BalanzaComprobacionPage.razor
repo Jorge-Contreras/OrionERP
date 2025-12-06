@@ -1,0 +1,192 @@
+@page "/ReportesFinancieros/BalanzaComprobacion"
+@page "/reportes-financieros/balanza-comprobacion"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Administrador")]
+@using System.Globalization
+
+<PageTitle>Balanza de Comprobación</PageTitle>
+
+<h1 class="mb-4">Balanza de Comprobación</h1>
+
+<div class="d-flex flex-column gap-4">
+    <section aria-labelledby="filtros-heading" class="card no-print">
+        <div class="card-body">
+            <div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-3">
+                <div>
+                    <h2 id="filtros-heading" class="h5 mb-2">Filtros</h2>
+                    <p class="text-muted mb-0">Configure el periodo y RFC para generar la balanza.</p>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <button class="btn btn-primary" @onclick="BuscarAsync" disabled="@(IsLoading || string.IsNullOrWhiteSpace(CurrentRfc))">
+                        <i class="bi bi-search"></i>
+                        Buscar / Generar
+                    </button>
+                    <button class="btn btn-outline-secondary" @onclick="PrintAsync" disabled="@(IsLoading || !Resultados.Any())">
+                        <i class="bi bi-printer"></i>
+                        Imprimir
+                    </button>
+                </div>
+            </div>
+
+            <div class="row g-3 align-items-end">
+                <div class="col-md-2 col-sm-4">
+                    <label class="form-label" for="anio-selector">Año</label>
+                    <select id="anio-selector" class="form-select" @bind="Anio">
+                        @for (var year = DateTime.Now.Year + 1; year >= 1990; year--)
+                        {
+                            <option value="@year">@year</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-3 col-sm-5">
+                    <label class="form-label" for="mes-selector">Mes</label>
+                    <select id="mes-selector" class="form-select" value="@MesSelectValue" @onchange="OnMesChanged">
+                        <option value="">Anual</option>
+                        @for (var month = 1; month <= 12; month++)
+                        {
+                            <option value="@month">@($"{month:00} - {new DateTime(2000, month, 1).ToString("MMMM", new CultureInfo("es-MX"))}")</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-4 col-sm-12">
+                    <label class="form-label mb-1 d-block">RFC</label>
+                    <RfcPicker OnRfcChanged="OnRfcChangedFromPicker" />
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section aria-labelledby="resultados-heading" class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div>
+                    <h2 id="resultados-heading" class="h5 mb-1">Resultados</h2>
+                    <div class="text-muted small">
+                        <span class="me-3">RFC: @(!string.IsNullOrWhiteSpace(CurrentRfc) ? CurrentRfc : "(sin RFC)")</span>
+                        @if (!string.IsNullOrEmpty(PeriodoDescripcion))
+                        {
+                            <span>Periodo: @PeriodoDescripcion</span>
+                        }
+                    </div>
+                </div>
+                <div class="no-print">
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="PrintAsync" disabled="@(IsLoading || !Resultados.Any())">
+                        <i class="bi bi-printer"></i>
+                        Imprimir
+                    </button>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(ErrorMessage))
+            {
+                <div class="alert alert-danger" role="alert">
+                    <strong>Error:</strong> @ErrorMessage
+                </div>
+            }
+
+            @if (IsLoading)
+            {
+                <div class="text-center my-4">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                </div>
+            }
+            else if (string.IsNullOrWhiteSpace(CurrentRfc))
+            {
+                <p class="text-muted">Seleccione un RFC para generar la balanza de comprobación.</p>
+            }
+            else if (!Resultados.Any())
+            {
+                <p class="text-muted">No hay datos para mostrar con los filtros seleccionados.</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered balanza-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="min-width: 240px;">Cuenta</th>
+                                <th class="text-end">Debe Ant.</th>
+                                <th class="text-end">Haber Ant.</th>
+                                <th class="text-end">Saldo Inicial</th>
+                                <th class="text-end">@DebeMesLabel</th>
+                                <th class="text-end">@HaberMesLabel</th>
+                                <th class="text-end">@SaldoMesLabel</th>
+                                <th class="text-end">Saldo Final</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in OrderedRows)
+                            {
+                                <tr class="@GetRowClass(row)">
+                                    <td class="@GetIndentClass(row)">@GetCuentaDescripcion(row)</td>
+                                    <td class="text-end">@FormatMonto(row.Debe_Ant)</td>
+                                    <td class="text-end">@FormatMonto(row.Haber_Ant)</td>
+                                    <td class="text-end">@FormatMonto(row.Saldo_Inicial)</td>
+                                    <td class="text-end">@FormatMonto(row.Debe_Mes)</td>
+                                    <td class="text-end">@FormatMonto(row.Haber_Mes)</td>
+                                    <td class="text-end">@FormatMonto(row.Saldo_Mes)</td>
+                                    <td class="text-end">@FormatMonto(row.Saldo_Final)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </section>
+</div>
+
+<style>
+    .balanza-table tbody tr.level-1 {
+        font-weight: 700;
+        font-size: 1rem;
+    }
+
+    .balanza-table tbody tr.level-2 {
+        font-weight: 600;
+    }
+
+    .balanza-table tbody tr.level-3 {
+        font-weight: 500;
+    }
+
+    .balanza-indent-1 {
+        padding-left: 0.5rem;
+    }
+
+    .balanza-indent-2 {
+        padding-left: 1.25rem;
+    }
+
+    .balanza-indent-3 {
+        padding-left: 2rem;
+    }
+
+    @media print {
+        .no-print {
+            display: none !important;
+        }
+
+        body {
+            background: #fff;
+        }
+
+        .card {
+            border: none;
+            box-shadow: none;
+        }
+
+        .balanza-table th,
+        .balanza-table td {
+            padding: 0.35rem 0.5rem;
+        }
+
+        .balanza-table {
+            font-size: 0.9rem;
+        }
+    }
+</style>

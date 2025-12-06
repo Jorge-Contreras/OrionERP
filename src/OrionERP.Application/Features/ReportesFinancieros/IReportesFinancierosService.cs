@@ -1,11 +1,17 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using OrionERP.Application.Features.ReportesFinancieros.Models;
 
 namespace OrionERP.Application.Features.ReportesFinancieros
 {
     public interface IReportesFinancierosService
     {
         Task<HojaTrabajoViewModel> GetHojaTrabajoAsync(int anio, string rfc);
+
+        Task<IReadOnlyList<BalanzaComprobacionRow>> GetBalanzaComprobacionAsync(
+            int anio,
+            int? mes,
+            string? rfc);
     }
 
     public class HojaTrabajoLongRowDto

@@ -103,13 +103,13 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
             }
         }
 
-        private IEnumerable<BalanzaComprobacionRow> OrderedRows => Resultados
-            .OrderBy(r => r.Nivel1)
-            .ThenBy(r => r.SortNivel2)
-            .ThenBy(r => r.SortNivel3)
-            .ThenBy(r => r.Nombre_Cuenta);
+    private IEnumerable<BalanzaComprobacionRow> OrderedRows => Resultados
+ .OrderBy(r => r.Nivel1)
+ .ThenBy(r => r.SortNivel2)
+ .ThenBy(r => r.SortNivel3)
+ .ThenBy(r => r.NivelJerarquia);
 
-        private string PeriodoDescripcion
+    private string PeriodoDescripcion
         {
             get
             {
@@ -168,8 +168,8 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
 
         private async Task PrintAsync()
         {
-            await JS.InvokeVoidAsync("window.print");
-        }
+      await JS.InvokeVoidAsync("orionPrintBalanza");
+    }
 
         public void Dispose()
         {

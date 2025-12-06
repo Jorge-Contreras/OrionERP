@@ -6,156 +6,175 @@
 
 <PageTitle>Balanza de Comprobación</PageTitle>
 
-<h1 class="mb-4">Balanza de Comprobación</h1>
+<div class="balanza-page">
 
-<div class="d-flex flex-column gap-4">
-    <section aria-labelledby="filtros-heading" class="card no-print">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="m-0">Balanza de Comprobación</h1>
+    </div>
+
+    <!-- FILTROS -->
+    <div class="card mb-3 no-print">
         <div class="card-body">
-            <div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-3">
-                <div>
-                    <h2 id="filtros-heading" class="h5 mb-2">Filtros</h2>
-                    <p class="text-muted mb-0">Configure el periodo y RFC para generar la balanza.</p>
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+                <div class="flex-grow-1">
+                    <h6 class="mb-1">Filtros</h6>
+                    <div class="text-muted small mb-3">
+                        Configure el periodo y RFC para generar la balanza.
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-12 col-md-2">
+                            <label class="form-label small text-muted">AÑO</label>
+                            <select class="form-select"
+                                    @bind="Anio">
+                                @{
+                                    var current = DateTime.Now.Year;
+                                    for (int y = current - 5; y <= current + 1; y++)
+                                    {
+                                        <option value="@y">@y</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+
+                        <div class="col-12 col-md-4">
+                            <label class="form-label small text-muted">MES</label>
+                            <select class="form-select"
+                                    value="@MesSelectValue"
+                                    @onchange="OnMesChanged">
+                                <option value="">Anual</option>
+                                <option value="1">01 - enero</option>
+                                <option value="2">02 - febrero</option>
+                                <option value="3">03 - marzo</option>
+                                <option value="4">04 - abril</option>
+                                <option value="5">05 - mayo</option>
+                                <option value="6">06 - junio</option>
+                                <option value="7">07 - julio</option>
+                                <option value="8">08 - agosto</option>
+                                <option value="9">09 - septiembre</option>
+                                <option value="10">10 - octubre</option>
+                                <option value="11">11 - noviembre</option>
+                                <option value="12">12 - diciembre</option>
+                            </select>
+                        </div>
+
+                        <div class="col-12 col-md-4">
+                            <label class="form-label small text-muted">RFC</label>
+
+                            <!-- Si ya tienes un picker reutilizable, úsalo aquí -->
+                            <!-- Ejemplo esperado por el code-behind -->
+                            <!--
+                            <RfcPicker SelectedRfc="CurrentRfc"
+                                       SelectedRfcChanged="OnRfcChangedFromPicker" />
+                            -->
+                            <!-- Fallback simple -->
+                            <input class="form-control"
+                                   value="@CurrentRfc"
+                                   @onchange="async e => await OnRfcChangedFromPicker(e.Value?.ToString())" />
+                        </div>
+                    </div>
                 </div>
-                <div class="d-flex flex-wrap align-items-center gap-2">
-                    <button class="btn btn-primary" @onclick="BuscarAsync" disabled="@(IsLoading || string.IsNullOrWhiteSpace(CurrentRfc))">
-                        <i class="bi bi-search"></i>
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary"
+                            @onclick="BuscarAsync"
+                            disabled="@IsLoading">
                         Buscar / Generar
                     </button>
-                    <button class="btn btn-outline-secondary" @onclick="PrintAsync" disabled="@(IsLoading || !Resultados.Any())">
-                        <i class="bi bi-printer"></i>
+
+                    <button class="btn btn-outline-secondary"
+                            @onclick="PrintAsync"
+                            disabled="@(!Resultados.Any())">
                         Imprimir
                     </button>
-                </div>
-            </div>
-
-            <div class="row g-3 align-items-end">
-                <div class="col-md-2 col-sm-4">
-                    <label class="form-label" for="anio-selector">Año</label>
-                    <select id="anio-selector" class="form-select" @bind="Anio">
-                        @for (var year = DateTime.Now.Year + 1; year >= 1990; year--)
-                        {
-                            <option value="@year">@year</option>
-                        }
-                    </select>
-                </div>
-
-                <div class="col-md-3 col-sm-5">
-                    <label class="form-label" for="mes-selector">Mes</label>
-                    <select id="mes-selector" class="form-select" value="@MesSelectValue" @onchange="OnMesChanged">
-                        <option value="">Anual</option>
-                        @for (var month = 1; month <= 12; month++)
-                        {
-                            <option value="@month">@($"{month:00} - {new DateTime(2000, month, 1).ToString("MMMM", new CultureInfo("es-MX"))}")</option>
-                        }
-                    </select>
-                </div>
-
-                <div class="col-md-4 col-sm-12">
-                    <label class="form-label mb-1 d-block">RFC</label>
-                    <RfcPicker OnRfcChanged="OnRfcChangedFromPicker" />
                 </div>
             </div>
         </div>
-    </section>
+    </div>
 
-    <section aria-labelledby="resultados-heading" class="card">
+    <!-- RESULTADOS -->
+    <div class="card">
         <div class="card-body">
-            <div class="d-flex justify-content-between align-items-start mb-3">
-                <div>
-                    <h2 id="resultados-heading" class="h5 mb-1">Resultados</h2>
-                    <div class="text-muted small">
-                        <span class="me-3">RFC: @(!string.IsNullOrWhiteSpace(CurrentRfc) ? CurrentRfc : "(sin RFC)")</span>
-                        @if (!string.IsNullOrEmpty(PeriodoDescripcion))
-                        {
-                            <span>Periodo: @PeriodoDescripcion</span>
-                        }
-                    </div>
-                </div>
-                <div class="no-print">
-                    <button class="btn btn-outline-secondary btn-sm" @onclick="PrintAsync" disabled="@(IsLoading || !Resultados.Any())">
-                        <i class="bi bi-printer"></i>
-                        Imprimir
-                    </button>
-                </div>
-            </div>
 
-            @if (!string.IsNullOrEmpty(ErrorMessage))
-            {
-                <div class="alert alert-danger" role="alert">
-                    <strong>Error:</strong> @ErrorMessage
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div>
+                    <h6 class="mb-0">Resultados</h6>
+                    @if (!string.IsNullOrWhiteSpace(CurrentRfc) && !string.IsNullOrWhiteSpace(PeriodoDescripcion))
+                    {
+                        <div class="small text-muted">
+                            RFC: @CurrentRfc &nbsp;&nbsp; Periodo: @PeriodoDescripcion
+                        </div>
+                    }
                 </div>
-            }
+
+                <button class="btn btn-outline-secondary btn-sm no-print"
+                        @onclick="PrintAsync"
+                        disabled="@(!Resultados.Any())">
+                    Imprimir
+                </button>
+            </div>
 
             @if (IsLoading)
             {
-                <div class="text-center my-4">
-                    <div class="spinner-border" role="status">
-                        <span class="visually-hidden">Cargando...</span>
-                    </div>
-                </div>
+                <div class="text-muted">Cargando...</div>
             }
-            else if (string.IsNullOrWhiteSpace(CurrentRfc))
+            else if (!string.IsNullOrWhiteSpace(ErrorMessage))
             {
-                <p class="text-muted">Seleccione un RFC para generar la balanza de comprobación.</p>
+                <div class="alert alert-danger">@ErrorMessage</div>
             }
             else if (!Resultados.Any())
             {
-                <p class="text-muted">No hay datos para mostrar con los filtros seleccionados.</p>
+                <div class="text-muted">No hay datos para los filtros seleccionados.</div>
             }
             else
             {
-                <div class="table-responsive">
-                    <table class="table table-sm table-bordered balanza-table">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="min-width: 240px;">Cuenta</th>
-                                <th class="text-end">Debe Ant.</th>
-                                <th class="text-end">Haber Ant.</th>
-                                <th class="text-end">Saldo Inicial</th>
-                                <th class="text-end">@DebeMesLabel</th>
-                                <th class="text-end">@HaberMesLabel</th>
-                                <th class="text-end">@SaldoMesLabel</th>
-                                <th class="text-end">Saldo Final</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var row in OrderedRows)
-                            {
-                                <tr class="@GetRowClass(row)">
-                                    <td class="@GetIndentClass(row)">@GetCuentaDescripcion(row)</td>
-                                    <td class="text-end">@FormatMonto(row.Debe_Ant)</td>
-                                    <td class="text-end">@FormatMonto(row.Haber_Ant)</td>
-                                    <td class="text-end">@FormatMonto(row.Saldo_Inicial)</td>
-                                    <td class="text-end">@FormatMonto(row.Debe_Mes)</td>
-                                    <td class="text-end">@FormatMonto(row.Haber_Mes)</td>
-                                    <td class="text-end">@FormatMonto(row.Saldo_Mes)</td>
-                                    <td class="text-end">@FormatMonto(row.Saldo_Final)</td>
+                <!-- ESTA ES LA ZONA QUE VAMOS A IMPRIMIR -->
+                <div id="balanza-print">
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle balanza-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="min-width: 340px;">CUENTA</th>
+                                    <th class="text-end">DEBE ANT.</th>
+                                    <th class="text-end">HABER ANT.</th>
+                                    <th class="text-end">SALDO INICIAL</th>
+                                    <th class="text-end">@DebeMesLabel.ToUpperInvariant()</th>
+                                    <th class="text-end">@HaberMesLabel.ToUpperInvariant()</th>
+                                    <th class="text-end">@SaldoMesLabel.ToUpperInvariant()</th>
+                                    <th class="text-end">SALDO FINAL</th>
                                 </tr>
-                            }
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in OrderedRows)
+                                {
+                                    <tr class="@GetRowClass(row)">
+                                        <td class="@GetIndentClass(row)">
+                                            @GetCuentaDescripcion(row)
+                                        </td>
+                                        <td class="text-end">@FormatMonto(row.Debe_Ant)</td>
+                                        <td class="text-end">@FormatMonto(row.Haber_Ant)</td>
+                                        <td class="text-end">@FormatMonto(row.Saldo_Inicial)</td>
+                                        <td class="text-end">@FormatMonto(row.Debe_Mes)</td>
+                                        <td class="text-end">@FormatMonto(row.Haber_Mes)</td>
+                                        <td class="text-end">@FormatMonto(row.Saldo_Mes)</td>
+                                        <td class="text-end">@FormatMonto(row.Saldo_Final)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
                 </div>
             }
         </div>
-    </section>
+    </div>
 </div>
 
 <style>
-    .balanza-table tbody tr.level-1 {
-        font-weight: 700;
-        font-size: 1rem;
-    }
-
-    .balanza-table tbody tr.level-2 {
-        font-weight: 600;
-    }
-
-    .balanza-table tbody tr.level-3 {
-        font-weight: 500;
-    }
-
+    /* Indentación por nivel */
     .balanza-indent-1 {
-        padding-left: 0.5rem;
+        padding-left: .25rem;
     }
 
     .balanza-indent-2 {
@@ -163,30 +182,63 @@
     }
 
     .balanza-indent-3 {
-        padding-left: 2rem;
+        padding-left: 2.25rem;
     }
 
-    @media print {
-        .no-print {
-            display: none !important;
-        }
-
-        body {
-            background: #fff;
-        }
-
-        .card {
-            border: none;
-            box-shadow: none;
-        }
-
-        .balanza-table th,
-        .balanza-table td {
-            padding: 0.35rem 0.5rem;
-        }
-
-        .balanza-table {
-            font-size: 0.9rem;
-        }
+    /* Peso visual por jerarquía */
+    .level-1 td {
+        font-weight: 700;
+        background: #f8f9fa;
     }
-</style>
+
+    .level-2 td {
+        font-weight: 600;
+        background: #fcfcfd;
+    }
+
+    .level-3 td {
+        font-weight: 400;
+    }
+
+    .balanza-table th, .balanza-table td {
+        white-space: nowrap;
+    }
+
+    /* Impresión */
+    @@media print {
+        .no-print
+
+    {
+        display: none !important;
+    }
+
+    /* Oculta TODO excepto el contenedor de impresión */
+    body * {
+        visibility: hidden !important;
+    }
+
+    #balanza-print, #balanza-print * {
+        visibility: visible !important;
+    }
+
+    #balanza-print {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+    }
+
+    /* Evita recortes por responsive wrapper */
+    .table-responsive {
+        overflow: visible !important;
+    }
+
+    table {
+        width: 100% !important;
+    }
+
+    th, td {
+        font-size: 11px;
+    }
+
+    }</style>

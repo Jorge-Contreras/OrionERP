@@ -61,7 +61,7 @@ public class DbStoredProcServiceTests
 
     public FakeDbCommand? LastCommand { get; private set; }
 
-    public override string? ConnectionString { get; set; } = string.Empty;
+    public override string ConnectionString { get; set; } = string.Empty;
 
     public override string Database => "Fake";
 
@@ -101,13 +101,13 @@ public class DbStoredProcServiceTests
 
     public List<FakeDbParameter> ParametersList => _parameters.Parameters;
 
-      public override string? CommandText { get; set; } = string.Empty;
+    public override string CommandText { get; set; } = string.Empty;
 
     public override int CommandTimeout { get; set; } = 30;
 
     public override CommandType CommandType { get; set; } = CommandType.Text;
 
-      protected override DbConnection? DbConnection { get; set; } = default!;
+    protected override DbConnection? DbConnection { get; set; } = default!;
 
     protected override DbParameterCollection DbParameterCollection => _parameters;
 
@@ -237,9 +237,9 @@ public class DbStoredProcServiceTests
 
     public override bool IsNullable { get; set; } = true;
 
-      public override string? ParameterName { get; set; } = string.Empty;
+     public override string ParameterName { get; set; } = string.Empty;
 
-      public override string? SourceColumn { get; set; } = string.Empty;
+    public override string SourceColumn { get; set; } = string.Empty;
 
     public override object? Value { get; set; } = null;
 

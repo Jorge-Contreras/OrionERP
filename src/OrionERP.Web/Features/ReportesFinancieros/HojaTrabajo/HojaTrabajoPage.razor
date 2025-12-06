@@ -36,6 +36,9 @@
                     <button class="btn btn-outline-primary btn-sm" @onclick='() => ExportToExcel(JS, HojaTrabajoCfdi, "CFDIs")' disabled="@(IsExporting || IsLoading || HojaTrabajoCfdi.Count == 0)">
                         <i class="bi bi-file-excel"></i> Exportar CFDIs
                     </button>
+                    <button class="btn btn-outline-primary btn-sm" @onclick='() => ExportToExcel(JS, HojaTrabajoComplementos, "Complementos")' disabled="@(IsExporting || IsLoading || HojaTrabajoComplementos.Count == 0)">
+                        <i class="bi bi-file-excel"></i> Exportar Complementos
+                    </button>
                     <button class="btn btn-outline-primary btn-sm" @onclick='() => ExportToExcel(JS, HojaTrabajoContabilidad, "Contabilidad")' disabled="@(IsExporting || IsLoading || HojaTrabajoContabilidad.Count == 0)">
                         <i class="bi bi-file-excel"></i> Exportar Contabilidad
                     </button>

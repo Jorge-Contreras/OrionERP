@@ -37,6 +37,7 @@ namespace OrionERP.Application.Features.ReportesFinancieros
     public class HojaTrabajoViewModel
     {
         public List<HojaTrabajoTablaDto> Cfdi { get; set; } = new();
+        public List<HojaTrabajoTablaDto> Complementos { get; set; } = new();
         public List<HojaTrabajoTablaDto> Contabilidad { get; set; } = new();
         public List<HojaTrabajoTablaDto> Acumulados { get; set; } = new();
     }

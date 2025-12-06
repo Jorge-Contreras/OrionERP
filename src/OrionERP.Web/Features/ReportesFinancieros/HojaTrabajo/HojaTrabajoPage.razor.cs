@@ -38,6 +38,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
         public bool IsExporting { get; private set; }
         public string? ErrorMessage { get; private set; }
         public List<HojaTrabajoTablaDto> HojaTrabajoCfdi { get; private set; } = new();
+        public List<HojaTrabajoTablaDto> HojaTrabajoComplementos { get; private set; } = new();
         public List<HojaTrabajoTablaDto> HojaTrabajoContabilidad { get; private set; } = new();
         public List<HojaTrabajoTablaDto> HojaTrabajoAcumulados { get; private set; } = new();
         public HojaTrabajoTab ActiveTab { get; private set; } = HojaTrabajoTab.Cfdi;
@@ -69,6 +70,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
             if (string.IsNullOrEmpty(CurrentRfc))
             {
                 HojaTrabajoCfdi.Clear();
+                HojaTrabajoComplementos.Clear();
                 HojaTrabajoContabilidad.Clear();
                 HojaTrabajoAcumulados.Clear();
                 _selectedRows.Clear();
@@ -83,6 +85,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
             {
                 var result = await ReportesService.GetHojaTrabajoAsync(Anio, CurrentRfc);
                 HojaTrabajoCfdi = result.Cfdi;
+                HojaTrabajoComplementos = result.Complementos;
                 HojaTrabajoContabilidad = result.Contabilidad;
                 HojaTrabajoAcumulados = result.Acumulados;
                 ActiveTab = HojaTrabajoTab.Cfdi;
@@ -177,6 +180,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
     public enum HojaTrabajoTab
     {
         Cfdi,
+        Complementos,
         Contabilidad,
         Acumulados
     }

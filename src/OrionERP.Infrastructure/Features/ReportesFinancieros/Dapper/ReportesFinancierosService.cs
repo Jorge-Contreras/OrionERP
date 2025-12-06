@@ -32,10 +32,12 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
             var cfdiRows = (await multi.ReadAsync<HojaTrabajoLongRowDto>()).ToList();
             var contabilidadRows = (await multi.ReadAsync<HojaTrabajoLongRowDto>()).ToList();
             var acumuladosRows = (await multi.ReadAsync<HojaTrabajoLongRowDto>()).ToList();
+            var complementosRows = (await multi.ReadAsync<HojaTrabajoLongRowDto>()).ToList();
 
             return new HojaTrabajoViewModel
             {
                 Cfdi = PivotRows(cfdiRows),
+                Complementos = PivotRows(complementosRows),
                 Contabilidad = PivotRows(contabilidadRows),
                 Acumulados = PivotRows(acumuladosRows)
             };

@@ -1,14 +1,11 @@
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.ReportesFinancieros;
 using OrionERP.Application.Features.ReportesFinancieros.Models;
 using OrionERP.Web.State;
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http.Extensions;
+
 
 namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
 {

@@ -199,7 +199,9 @@
       nivel2Results.Clear();
       nivel3Results.Clear();
 
-      if (!string.IsNullOrWhiteSpace(currentRfc))
+      var shouldLoadDefaults = !(currentSelection?.HasNivel1 ?? false);
+
+      if (shouldLoadDefaults && !string.IsNullOrWhiteSpace(currentRfc))
       {
         await SearchNivel1Async(loadDefaults: true);
       }

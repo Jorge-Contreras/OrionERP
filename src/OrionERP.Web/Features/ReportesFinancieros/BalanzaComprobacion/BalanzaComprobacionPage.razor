@@ -144,7 +144,7 @@
                             <tbody>
                                 @foreach (var row in OrderedRows)
                                 {
-                                    <tr class="@GetRowClass(row)">
+                                    <tr class="@GetRowClass(row)" @onclick="() => GoToContabilidadRegistros(row)" style="cursor: pointer;">
                                         <td class="@GetIndentClass(row)">
                                             @GetCuentaDescripcion(row)
                                         </td>

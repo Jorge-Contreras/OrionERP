@@ -1,4 +1,5 @@
 @page "/cfdi/registros-contables"
+@using Microsoft.AspNetCore.Components
 @using OrionERP.Application.Features.Cfdi.ContabilidadRegistros
 @using OrionERP.Web.Shared
 @using OrionERP.Web.State
@@ -129,6 +130,19 @@
   private bool isLoading;
   private string? errorMessage;
   private bool suppressRfcChange;
+  private string? lastQueryKey;
+
+  [Parameter, SupplyParameterFromQuery(Name = "nivel1")]
+  public string? QueryNivel1 { get; set; }
+
+  [Parameter, SupplyParameterFromQuery(Name = "nivel2")]
+  public string? QueryNivel2 { get; set; }
+
+  [Parameter, SupplyParameterFromQuery(Name = "nivel3")]
+  public string? QueryNivel3 { get; set; }
+
+  [Parameter, SupplyParameterFromQuery(Name = "rfc")]
+  public string? QueryRfc { get; set; }
 
   private bool HasAccountSelection => accountSelection?.HasNivel2 ?? false;
   private bool HasCompleteAccount => accountSelection?.HasNivel3 ?? false;
@@ -144,6 +158,47 @@
     }
 
     return Task.CompletedTask;
+  }
+
+  protected override async Task OnParametersSetAsync()
+  {
+    if (string.IsNullOrWhiteSpace(selectedRfc))
+    {
+      selectedRfc = RfcState.CurrentRfc;
+    }
+
+    if (string.IsNullOrWhiteSpace(selectedRfc) && !string.IsNullOrWhiteSpace(QueryRfc))
+    {
+      selectedRfc = QueryRfc;
+    }
+
+    if (!string.IsNullOrWhiteSpace(QueryRfc) && !string.Equals(QueryRfc, RfcState.CurrentRfc, StringComparison.OrdinalIgnoreCase))
+    {
+      if (RfcState.TrySet(QueryRfc))
+      {
+        selectedRfc = RfcState.CurrentRfc;
+      }
+    }
+
+    var currentQueryKey = $"{QueryNivel1}|{QueryNivel2}|{QueryNivel3}|{QueryRfc}";
+
+    if (!string.IsNullOrWhiteSpace(QueryNivel1) && !string.Equals(currentQueryKey, lastQueryKey, StringComparison.Ordinal))
+    {
+      accountSelection = new CuentaContableSelection
+      {
+        Nivel1 = QueryNivel1,
+        Nivel2 = string.IsNullOrWhiteSpace(QueryNivel2) ? null : QueryNivel2,
+        Nivel3 = string.IsNullOrWhiteSpace(QueryNivel3) ? null : QueryNivel3,
+        Rfc = selectedRfc
+      };
+
+      lastQueryKey = currentQueryKey;
+
+      if (CanBuscar)
+      {
+        await BuscarAsync();
+      }
+    }
   }
 
   private async Task OnRfcChangedAsync()

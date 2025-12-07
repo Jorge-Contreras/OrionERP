@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.ReportesFinancieros;
 using OrionERP.Application.Features.ReportesFinancieros.Models;
@@ -21,6 +22,9 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
 
         [Inject]
         private IJSRuntime JS { get; set; } = default!;
+
+        [Inject]
+        private NavigationManager Navigation { get; set; } = default!;
 
         private static readonly CultureInfo MexicanCulture = new("es-MX");
 
@@ -103,11 +107,11 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
             }
         }
 
-    private IEnumerable<BalanzaComprobacionRow> OrderedRows => Resultados
- .OrderBy(r => r.Nivel1)
- .ThenBy(r => r.SortNivel2)
- .ThenBy(r => r.SortNivel3)
- .ThenBy(r => r.NivelJerarquia);
+        private IEnumerable<BalanzaComprobacionRow> OrderedRows => Resultados
+            .OrderBy(r => r.Nivel1)
+            .ThenBy(r => r.SortNivel2)
+            .ThenBy(r => r.SortNivel3)
+            .ThenBy(r => r.NivelJerarquia);
 
     private string PeriodoDescripcion
         {
@@ -168,8 +172,35 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
 
         private async Task PrintAsync()
         {
-      await JS.InvokeVoidAsync("orionPrintBalanza");
-    }
+            await JS.InvokeVoidAsync("orionPrintBalanza");
+        }
+
+        private void GoToContabilidadRegistros(BalanzaComprobacionRow row)
+        {
+            if (string.IsNullOrWhiteSpace(CurrentRfc))
+            {
+                return;
+            }
+
+            var query = new QueryBuilder
+            {
+                { "nivel1", row.Nivel1 },
+            };
+
+            if (!string.IsNullOrWhiteSpace(row.Nivel2))
+            {
+                query.Add("nivel2", row.Nivel2);
+            }
+
+            if (!string.IsNullOrWhiteSpace(row.Nivel3))
+            {
+                query.Add("nivel3", row.Nivel3);
+            }
+
+            query.Add("rfc", CurrentRfc);
+
+            Navigation.NavigateTo($"/cfdi/registros-contables{query.ToQueryString()}");
+        }
 
         public void Dispose()
         {

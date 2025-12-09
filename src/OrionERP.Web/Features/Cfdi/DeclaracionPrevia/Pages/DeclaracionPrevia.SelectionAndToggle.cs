@@ -153,7 +153,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
       if (string.Equals(item.MetodoPago, "PPD", StringComparison.OrdinalIgnoreCase))
       {
-        classes.Add("sea-green-highlight");
+        classes.Add("highlight-table-row");
       }
 
       return string.Join(" ", classes);
@@ -170,7 +170,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
       if (string.Equals(item.MetodoPago, "PPD", StringComparison.OrdinalIgnoreCase))
       {
-        classes.Add("sea-green-highlight");
+        classes.Add("highlight-table-row");
       }
 
       return string.Join(" ", classes);

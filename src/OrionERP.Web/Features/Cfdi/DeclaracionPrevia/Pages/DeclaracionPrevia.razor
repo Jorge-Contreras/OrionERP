@@ -180,8 +180,60 @@
                                 <td>@item.Estatus</td>
                                 <td>@item.fechastransacciones</td>
                                 <td class="num">@item.SumaPolizas</td>
-                               
+
                             </tr>
+                            @if (selectedEmitida?.Comprobante_Id == item.Comprobante_Id && emitidasComplementos?.Count > 0)
+                            {
+                                <tr class="table-secondary">
+                                    <td colspan="27">
+                                        <div class="table-responsive table-scroll mb-2">
+                                            <table class="table table-sm table-bordered table-striped align-middle compact-table mb-0">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th>Pago Id</th>
+                                                        <th>Folio</th>
+                                                        <th>Fecha Pago</th>
+                                                        <th>Forma Pago</th>
+                                                        <th>Moneda Pago</th>
+                                                        <th class="num">Monto Pago</th>
+                                                        <th class="num">Parcialidad</th>
+                                                        <th>Moneda DR</th>
+                                                        <th class="num">Saldo Anterior</th>
+                                                        <th class="num">Importe Pagado</th>
+                                                        <th class="num">Saldo Insoluto</th>
+                                                        <th class="num">Tot P Traslados</th>
+                                                        <th class="num">Tot P Retenciones</th>
+                                                        <th class="num">Tot DR Traslados</th>
+                                                        <th class="num">Tot DR Retenciones</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var complemento in emitidasComplementos)
+                                                    {
+                                                        <tr>
+                                                            <td>@complemento.Pago_Id</td>
+                                                            <td>@complemento.Folio</td>
+                                                            <td>@complemento.FechaPago.ToString("yyyy-MM-dd")</td>
+                                                            <td>@complemento.FormaDePagoP</td>
+                                                            <td>@complemento.MonedaP</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.MontoPago)</td>
+                                                            <td class="num">@complemento.NumParcialidad</td>
+                                                            <td>@complemento.MonedaDR</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoAnt)</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.ImpPagado)</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoInsoluto)</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Traslados)</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Retenciones)</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Traslados)</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Retenciones)</td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
                         }
                     }
                 </tbody>
@@ -214,61 +266,6 @@
                 <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousEmitidasPage" disabled="@(emitidasCurrentPage <= 1)">Anterior</button>
                 <button class="btn btn-sm btn-outline-secondary" @onclick="NextEmitidasPage" disabled="@(emitidasCurrentPage >= emitidasPageCount)">Siguiente</button>
             </div>
-        </div>
-        <h5 class="mt-4">Complementos de Pago</h5>
-        <div class="table-responsive table-scroll">
-            <table class="table table-sm table-bordered table-striped align-middle compact-table">
-                <thead class="table-dark">
-                    <tr>
-                        <th>Pago Id</th>
-                        <th>Folio</th>
-                        <th>Fecha Pago</th>
-                        <th>Forma Pago</th>
-                        <th>Moneda Pago</th>
-                        <th class="num">Monto Pago</th>
-                        <th class="num">Parcialidad</th>
-                        <th>Moneda DR</th>
-                        <th class="num">Saldo Anterior</th>
-                        <th class="num">Importe Pagado</th>
-                        <th class="num">Saldo Insoluto</th>
-                        <th class="num">Tot P Traslados</th>
-                        <th class="num">Tot P Retenciones</th>
-                        <th class="num">Tot DR Traslados</th>
-                        <th class="num">Tot DR Retenciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @if (emitidasComplementos != null && emitidasComplementos.Count > 0)
-                    {
-                        foreach (var complemento in emitidasComplementos)
-                        {
-                            <tr>
-                                <td>@complemento.Pago_Id</td>
-                                <td>@complemento.Folio</td>
-                                <td>@complemento.FechaPago.ToString("yyyy-MM-dd")</td>
-                                <td>@complemento.FormaDePagoP</td>
-                                <td>@complemento.MonedaP</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.MontoPago)</td>
-                                <td class="num">@complemento.NumParcialidad</td>
-                                <td>@complemento.MonedaDR</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoAnt)</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.ImpPagado)</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoInsoluto)</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Traslados)</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Retenciones)</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Traslados)</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Retenciones)</td>
-                            </tr>
-                        }
-                    }
-                    else
-                    {
-                        <tr>
-                            <td colspan="15" class="text-center">Selecciona un CFDI para ver sus complementos de pago.</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
         </div>
         <div class="accordion mt-4" id="emitidasNominaAccordion">
             <div class="accordion-item">
@@ -507,6 +504,58 @@
                                     </button>
                                 </td>
                             </tr>
+                            @if (selectedRecibida?.Comprobante_Id == item.Comprobante_Id && recibidasComplementos?.Count > 0)
+                            {
+                                <tr class="table-secondary">
+                                    <td colspan="29">
+                                        <div class="table-responsive table-scroll mb-2">
+                                            <table class="table table-sm table-bordered table-striped align-middle compact-table mb-0">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th>Pago Id</th>
+                                                        <th>Folio</th>
+                                                        <th>Fecha Pago</th>
+                                                        <th>Forma Pago</th>
+                                                        <th>Moneda Pago</th>
+                                                        <th class="num">Monto Pago</th>
+                                                        <th class="num">Parcialidad</th>
+                                                        <th>Moneda DR</th>
+                                                        <th class="num">Saldo Anterior</th>
+                                                        <th class="num">Importe Pagado</th>
+                                                        <th class="num">Saldo Insoluto</th>
+                                                        <th class="num">Tot P Traslados</th>
+                                                        <th class="num">Tot P Retenciones</th>
+                                                        <th class="num">Tot DR Traslados</th>
+                                                        <th class="num">Tot DR Retenciones</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var complemento in recibidasComplementos)
+                                                    {
+                                                        <tr>
+                                                            <td>@complemento.Pago_Id</td>
+                                                            <td>@complemento.Folio</td>
+                                                            <td>@complemento.FechaPago.ToString("yyyy-MM-dd")</td>
+                                                            <td>@complemento.FormaDePagoP</td>
+                                                            <td>@complemento.MonedaP</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.MontoPago)</td>
+                                                            <td class="num">@complemento.NumParcialidad</td>
+                                                            <td>@complemento.MonedaDR</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoAnt)</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.ImpPagado)</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoInsoluto)</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Traslados)</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Retenciones)</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Traslados)</td>
+                                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Retenciones)</td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
                         }
                     }
                 </tbody>
@@ -539,61 +588,6 @@
                 <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousRecibidasPage" disabled="@(recibidasCurrentPage <= 1)">Anterior</button>
                 <button class="btn btn-sm btn-outline-secondary" @onclick="NextRecibidasPage" disabled="@(recibidasCurrentPage >= recibidasPageCount)">Siguiente</button>
             </div>
-        </div>
-        <h5 class="mt-4">Complementos de Pago</h5>
-        <div class="table-responsive table-scroll">
-            <table class="table table-sm table-bordered table-striped align-middle compact-table">
-                <thead class="table-dark">
-                    <tr>
-                        <th>Pago Id</th>
-                        <th>Folio</th>
-                        <th>Fecha Pago</th>
-                        <th>Forma Pago</th>
-                        <th>Moneda Pago</th>
-                        <th class="num">Monto Pago</th>
-                        <th class="num">Parcialidad</th>
-                        <th>Moneda DR</th>
-                        <th class="num">Saldo Anterior</th>
-                        <th class="num">Importe Pagado</th>
-                        <th class="num">Saldo Insoluto</th>
-                        <th class="num">Tot P Traslados</th>
-                        <th class="num">Tot P Retenciones</th>
-                        <th class="num">Tot DR Traslados</th>
-                        <th class="num">Tot DR Retenciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @if (recibidasComplementos != null && recibidasComplementos.Count > 0)
-                    {
-                        foreach (var complemento in recibidasComplementos)
-                        {
-                            <tr>
-                                <td>@complemento.Pago_Id</td>
-                                <td>@complemento.Folio</td>
-                                <td>@complemento.FechaPago.ToString("yyyy-MM-dd")</td>
-                                <td>@complemento.FormaDePagoP</td>
-                                <td>@complemento.MonedaP</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.MontoPago)</td>
-                                <td class="num">@complemento.NumParcialidad</td>
-                                <td>@complemento.MonedaDR</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoAnt)</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.ImpPagado)</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoInsoluto)</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Traslados)</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Retenciones)</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Traslados)</td>
-                                <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Retenciones)</td>
-                            </tr>
-                        }
-                    }
-                    else
-                    {
-                        <tr>
-                            <td colspan="15" class="text-center">Selecciona un CFDI para ver sus complementos de pago.</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
         </div>
         <div class="accordion mt-4" id="recibidasNominaAccordion">
             <div class="accordion-item">

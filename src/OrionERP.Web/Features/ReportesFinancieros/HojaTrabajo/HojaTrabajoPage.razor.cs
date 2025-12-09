@@ -41,6 +41,8 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
         public List<HojaTrabajoTablaDto> HojaTrabajoComplementos { get; private set; } = new();
         public List<HojaTrabajoTablaDto> HojaTrabajoContabilidad { get; private set; } = new();
         public List<HojaTrabajoTablaDto> HojaTrabajoAcumulados { get; private set; } = new();
+        public List<HojaTrabajoTablaDto> HojaTrabajoTipoE { get; private set; } = new();
+        public List<HojaTrabajoTablaDto> HojaTrabajoTipoN { get; private set; } = new();
         public HojaTrabajoTab ActiveTab { get; private set; } = HojaTrabajoTab.Cfdi;
 
         private readonly Dictionary<HojaTrabajoTab, HojaTrabajoTablaDto?> _selectedRows = new();
@@ -73,6 +75,8 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
                 HojaTrabajoComplementos.Clear();
                 HojaTrabajoContabilidad.Clear();
                 HojaTrabajoAcumulados.Clear();
+                HojaTrabajoTipoE.Clear();
+                HojaTrabajoTipoN.Clear();
                 _selectedRows.Clear();
                 return;
             }
@@ -88,6 +92,8 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
                 HojaTrabajoComplementos = result.Complementos;
                 HojaTrabajoContabilidad = result.Contabilidad;
                 HojaTrabajoAcumulados = result.Acumulados;
+                HojaTrabajoTipoE = result.TipoE;
+                HojaTrabajoTipoN = result.TipoN;
                 ActiveTab = HojaTrabajoTab.Cfdi;
                 _selectedRows.Clear();
             }
@@ -182,6 +188,8 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
         Cfdi,
         Complementos,
         Contabilidad,
-        Acumulados
+        Acumulados,
+        TipoE,
+        TipoN
     }
 }

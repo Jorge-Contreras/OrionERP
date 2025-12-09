@@ -46,5 +46,7 @@ namespace OrionERP.Application.Features.ReportesFinancieros
         public List<HojaTrabajoTablaDto> Complementos { get; set; } = new();
         public List<HojaTrabajoTablaDto> Contabilidad { get; set; } = new();
         public List<HojaTrabajoTablaDto> Acumulados { get; set; } = new();
+        public List<HojaTrabajoTablaDto> TipoE { get; set; } = new();
+        public List<HojaTrabajoTablaDto> TipoN { get; set; } = new();
     }
 }

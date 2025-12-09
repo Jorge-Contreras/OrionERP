@@ -45,6 +45,12 @@
                     <button class="btn btn-outline-primary btn-sm" @onclick='() => ExportToExcel(JS, HojaTrabajoAcumulados, "ISR_Acumulados")' disabled="@(IsExporting || IsLoading || HojaTrabajoAcumulados.Count == 0)">
                         <i class="bi bi-file-excel"></i> Exportar ISR / Acumulados
                     </button>
+                    <button class="btn btn-outline-primary btn-sm" @onclick='() => ExportToExcel(JS, HojaTrabajoTipoE, "CFDIs Tipo E")' disabled="@(IsExporting || IsLoading || HojaTrabajoTipoE.Count == 0)">
+                        <i class="bi bi-file-excel"></i> Exportar CFDIs Tipo E
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm" @onclick='() => ExportToExcel(JS, HojaTrabajoTipoN, "CFDIs Tipo N")' disabled="@(IsExporting || IsLoading || HojaTrabajoTipoN.Count == 0)">
+                        <i class="bi bi-file-excel"></i> Exportar CFDIs Tipo N
+                    </button>
                 </div>
             </div>
 
@@ -77,6 +83,12 @@
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link @(ActiveTab == HojaTrabajoTab.Acumulados ? "active" : string.Empty)" type="button" role="tab" @onclick="() => SetActiveTab(HojaTrabajoTab.Acumulados)">ISR / Acumulados</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(ActiveTab == HojaTrabajoTab.TipoE ? "active" : string.Empty)" type="button" role="tab" @onclick="() => SetActiveTab(HojaTrabajoTab.TipoE)">CFDIs Tipo E</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(ActiveTab == HojaTrabajoTab.TipoN ? "active" : string.Empty)" type="button" role="tab" @onclick="() => SetActiveTab(HojaTrabajoTab.TipoN)">CFDIs Tipo N</button>
                     </li>
                 </ul>
 
@@ -237,6 +249,90 @@
                                         @foreach (var row in HojaTrabajoAcumulados)
                                         {
                                             <tr class="@GetRowClass(row, HojaTrabajoAcumulados, HojaTrabajoTab.Acumulados)" @onclick="() => SelectRow(row, HojaTrabajoTab.Acumulados)" style="cursor: pointer;">
+                                                <td>@row.Descripcion</td>
+                                                @for (var i = 0; i < 12; i++)
+                                                {
+                                                    <td class="@GetCellClass(row, i)">@GetFormattedValue(row, i)</td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                    <div class="tab-pane fade @(ActiveTab == HojaTrabajoTab.TipoE ? "show active" : string.Empty)">
+                        @if (HojaTrabajoTipoE.Count == 0)
+                        {
+                            <p class="text-muted">No hay datos para mostrar.</p>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Descripción</th>
+                                            <th>ENERO</th>
+                                            <th>FEBRERO</th>
+                                            <th>MARZO</th>
+                                            <th>ABRIL</th>
+                                            <th>MAYO</th>
+                                            <th>JUNIO</th>
+                                            <th>JULIO</th>
+                                            <th>AGOSTO</th>
+                                            <th>SEPTIEMBRE</th>
+                                            <th>OCTUBRE</th>
+                                            <th>NOVIEMBRE</th>
+                                            <th>DICIEMBRE</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in HojaTrabajoTipoE)
+                                        {
+                                            <tr class="@GetRowClass(row, HojaTrabajoTipoE, HojaTrabajoTab.TipoE)" @onclick="() => SelectRow(row, HojaTrabajoTab.TipoE)" style="cursor: pointer;">
+                                                <td>@row.Descripcion</td>
+                                                @for (var i = 0; i < 12; i++)
+                                                {
+                                                    <td class="@GetCellClass(row, i)">@GetFormattedValue(row, i)</td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                    <div class="tab-pane fade @(ActiveTab == HojaTrabajoTab.TipoN ? "show active" : string.Empty)">
+                        @if (HojaTrabajoTipoN.Count == 0)
+                        {
+                            <p class="text-muted">No hay datos para mostrar.</p>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Descripción</th>
+                                            <th>ENERO</th>
+                                            <th>FEBRERO</th>
+                                            <th>MARZO</th>
+                                            <th>ABRIL</th>
+                                            <th>MAYO</th>
+                                            <th>JUNIO</th>
+                                            <th>JULIO</th>
+                                            <th>AGOSTO</th>
+                                            <th>SEPTIEMBRE</th>
+                                            <th>OCTUBRE</th>
+                                            <th>NOVIEMBRE</th>
+                                            <th>DICIEMBRE</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in HojaTrabajoTipoN)
+                                        {
+                                            <tr class="@GetRowClass(row, HojaTrabajoTipoN, HojaTrabajoTab.TipoN)" @onclick="() => SelectRow(row, HojaTrabajoTab.TipoN)" style="cursor: pointer;">
                                                 <td>@row.Descripcion</td>
                                                 @for (var i = 0; i < 12; i++)
                                                 {

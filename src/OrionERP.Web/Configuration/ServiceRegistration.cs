@@ -3,6 +3,7 @@ using OrionERP.Application.Common;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using OrionERP.Application.Features.Cfdi.ContabilidadRegistros;
 using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
+using OrionERP.Application.Features.Cfdi.HtmlCFDI;
 using OrionERP.Application.Features.Rfcs.Contracts;
 using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Infrastructure.Common;
@@ -10,6 +11,7 @@ using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
 using OrionERP.Infrastructure.Features.Cfdi.ContabilidadRegistros;
 using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Dapper;
 using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Services;
+using OrionERP.Infrastructure.Features.Cfdi.HtmlCFDI;
 using OrionERP.Infrastructure.Features.Rfcs.Dapper;
 using OrionERP.Infrastructure.Features.Contabilidad.Bancos;
 using OrionERP.Application.Features.ReportesFinancieros;
@@ -36,6 +38,9 @@ public static class ServiceRegistration
     services.AddScoped<ISatXmlInboxService, SatXmlInboxService>();
     services.AddScoped<IConciliacionService, ConciliacionService>();
     services.AddScoped<ContabITransaccionService, ContabTransaccionService>();
+    services.AddScoped<CfdiReadableParser>();
+    services.AddScoped<ITransactionAttachmentRepository, TransactionAttachmentRepository>();
+    services.AddScoped<IHtmlCfdiService, HtmlCfdiService>();
 
     services.AddScoped<ISatMetadataIngestService, SatMetadataIngestService>();
 
@@ -59,6 +64,9 @@ public static class ServiceRegistration
     services.AddScoped<IReportesFinancierosService, ReportesFinancierosService>();
 
     services.AddScoped<ContabITransaccionService, ContabTransaccionService>();
+    services.AddScoped<CfdiReadableParser>();
+    services.AddScoped<ITransactionAttachmentRepository, TransactionAttachmentRepository>();
+    services.AddScoped<IHtmlCfdiService, HtmlCfdiService>();
 
     return services;
   }

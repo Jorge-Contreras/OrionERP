@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -9,6 +10,7 @@ using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting.WindowsServices;
@@ -28,6 +30,14 @@ using OrionERP.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 ExcelPackage.License.SetNonCommercialOrganization("Orion Habitat de Mexico S.A. de C.V.");
+
+var appDataDirectory = Path.Combine(AppContext.BaseDirectory, "App_Data", "keys");
+Directory.CreateDirectory(appDataDirectory);
+
+builder.Services
+    .AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(appDataDirectory))
+    .SetApplicationName("OrionERP");
 
 // --- CONFIG: JSON is source of truth; ignore arbitrary env vars -----------------
 builder.Configuration.Sources.Clear();
@@ -177,7 +187,6 @@ if (!app.Environment.IsDevelopment())
   app.UseHsts();
 }
 
-app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();

@@ -1,0 +1,258 @@
+@using OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
+
+@using System.Linq
+
+<table class="table table-sm table-bordered table-striped align-middle compact-table">
+    <thead class="table-dark">
+        <tr>
+            <th>Acciones</th>
+            <th>Poliza</th>
+            <th>✔</th>
+            <th @onclick="@(() => TriggerSort("Fecha"))">Fecha @GetSortIndicator("Fecha")</th>
+            <th>Mes</th>
+            <th>Año</th>
+            <th>@CounterpartyHeader</th>
+            <th class="num">SubTotal</th>
+            <th class="num">Descuento</th>
+            <th class="num">SubTotal_Desc</th>
+            <th class="num">Actos16%</th>
+            <th class="num">Actos0%</th>
+            <th class="num">IVA</th>
+            <th class="num">IEPS</th>
+            <th class="num">IVA Retenido</th>
+            <th class="num">ISR Retenido</th>
+            <th class="num">IEPS Retenido</th>
+            <th @onclick="@(() => TriggerSort("Total"))" class="num">Total @GetSortIndicator("Total")</th>
+            <th @onclick="@(() => TriggerSort("FOLIO_FISCAL"))">UUID @GetSortIndicator("FOLIO_FISCAL")</th>
+            <th>Forma Pago</th>
+            <th>Tipo CFDI</th>
+            <th>Método Pago</th>
+            <th>Uso CFDI</th>
+            <th>Fecha Cancel.</th>
+            <th>Estatus</th>
+            <th>Transacción Fechas</th>
+            @if (ShowSumPolizas)
+            {
+                <th class="num">Suma Polizas</th>
+            }
+            @if (ShowXmlAttachment)
+            {
+                <th class="num">XML Attachment ID</th>
+            }
+            @if (ExtraHeaderColumns is not null)
+            {
+                @ExtraHeaderColumns
+            }
+        </tr>
+    </thead>
+    <tbody>
+        @if (Items is not null && Items.Any())
+        {
+            foreach (var item in Items)
+            {
+                <tr @onclick="() => HandleRowClick(item)"
+                    class="@GetRowClass(item)"
+                    style="cursor:pointer;">
+                    @if (ActionButtonsTemplate is not null)
+                    {
+                        @ActionButtonsTemplate(item)
+                    }
+                    else
+                    {
+                        <ActionButtons Item="item"
+                                       OnOpenDetails="@(async (obj) => await HandleOpenDetails(item))"
+                                       OnHandlePolizaClick="@(async (obj) => await HandlePolizaClick(item))" />
+                    }
+                    <td>@item.D</td>
+                    <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
+                    <td>@item.MES_GLOBAL</td>
+                    <td>@item.ANIO_GLOBAL</td>
+                    <td>@CounterpartySelector(item)</td>
+                    <td class="num">@FormatCurrency(item.SubTotal)</td>
+                    <td class="num">@FormatCurrency(item.Descuento)</td>
+                    <td class="num">@FormatCurrency(item.SubTotal_Desc)</td>
+                    <td class="num">@FormatCurrency(item.Actos_16)</td>
+                    <td class="num">@FormatCurrency(item.Actos_0)</td>
+                    <td class="num">@FormatCurrency(item.IVA)</td>
+                    <td class="num">@FormatCurrency(item.IEPS)</td>
+                    <td class="num">@FormatCurrency(item.IVA_RETENIDO)</td>
+                    <td class="num">@FormatCurrency(item.ISR_RETENIDO)</td>
+                    <td class="num">@FormatCurrency(item.IEPS_RETENIDO)</td>
+                    <td class="num">@FormatCurrency(item.Total)</td>
+                    <td>@item.FOLIO_FISCAL</td>
+                    <td>@item.FormaPago</td>
+                    <td>@item.TipoDeComprobante</td>
+                    <td>@item.MetodoPago</td>
+                    <td>@item.UsoCFDI</td>
+                    <td>@(item.FechaCancelacion.HasValue ? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : string.Empty)</td>
+                    <td>@item.Estatus</td>
+                    <td>@item.fechastransacciones</td>
+                    @if (ShowSumPolizas)
+                    {
+                        <td class="num">@FormatInteger(item.SumaPolizas)</td>
+                    }
+                    @if (ShowXmlAttachment)
+                    {
+                        <td class="num">@item.XML_Attachment_ID</td>
+                    }
+                    @if (ExtraColumns is not null)
+                    {
+                        @ExtraColumns(item)
+                    }
+                </tr>
+                if (DetailsTemplate is not null)
+                {
+                    var detailsContent = DetailsTemplate(item);
+                    if (detailsContent is not null)
+                    {
+                        <tr class="table-secondary">
+                            <td colspan="@EffectiveColumnCount">
+                                @detailsContent
+                            </td>
+                        </tr>
+                    }
+                }
+            }
+        }
+        else
+        {
+            <tr>
+                <td colspan="@EffectiveColumnCount" class="text-center">@NoDataMessage</td>
+            </tr>
+        }
+    </tbody>
+    @if (Totals is not null)
+    {
+        <tfoot class="table-light totals">
+            <tr>
+                <td colspan="4"><strong># CFDIs:</strong> @Totals.CountCFDIs</td>
+                <td><strong>Totales:</strong></td>
+                <td class="num">@Totals.SumSubTotal.ToString("N2")</td>
+                <td class="num">@Totals.SumDescuento.ToString("N2")</td>
+                <td class="num">@Totals.SumSubTotalDesc.ToString("N2")</td>
+                <td class="num">@Totals.SumActos16.ToString("N2")</td>
+                <td class="num">@Totals.SumActos0.ToString("N2")</td>
+                <td class="num">@Totals.SumIVA.ToString("N2")</td>
+                <td class="num">@Totals.SumIEPS.ToString("N2")</td>
+                <td class="num">@Totals.SumIVA_RETENIDO.ToString("N2")</td>
+                <td class="num">@Totals.SumISR_RETENIDO.ToString("N2")</td>
+                <td class="num">@Totals.SumIEPS_RETENIDO.ToString("N2")</td>
+                <td class="num">@Totals.SumTotal.ToString("N2")</td>
+                <td colspan="@RemainingColumns"></td>
+            </tr>
+        </tfoot>
+    }
+</table>
+
+@code {
+    private const int BaseColumnCount = 28;
+
+    [Parameter]
+    public IEnumerable<DeclaracionPrevia.DeclaracionCfdiBase>? Items { get; set; }
+
+    [Parameter]
+    public DeclaracionPrevia.DeclaracionTotales? Totals { get; set; }
+
+    [Parameter]
+    public EventCallback<DeclaracionPrevia.DeclaracionCfdiBase> OnRowClick { get; set; }
+
+    [Parameter]
+    public EventCallback<DeclaracionPrevia.DeclaracionCfdiBase> OnOpenDetails { get; set; }
+
+    [Parameter]
+    public EventCallback<DeclaracionPrevia.DeclaracionCfdiBase> OnHandlePolizaClick { get; set; }
+
+    [Parameter]
+    public Func<DeclaracionPrevia.DeclaracionCfdiBase, string?>? RowClassResolver { get; set; }
+
+    [Parameter]
+    public string CounterpartyHeader { get; set; } = "Receptor";
+
+    [Parameter]
+    public Func<DeclaracionPrevia.DeclaracionCfdiBase, string?> CounterpartySelector { get; set; } = item => item.RECEPTOR;
+
+    [Parameter]
+    public RenderFragment<DeclaracionPrevia.DeclaracionCfdiBase>? ExtraHeaderColumns { get; set; }
+
+    [Parameter]
+    public RenderFragment<DeclaracionPrevia.DeclaracionCfdiBase>? ExtraColumns { get; set; }
+
+    [Parameter]
+    public RenderFragment<DeclaracionPrevia.DeclaracionCfdiBase>? DetailsTemplate { get; set; }
+
+    [Parameter]
+    public RenderFragment<DeclaracionPrevia.DeclaracionCfdiBase>? ActionButtonsTemplate { get; set; }
+
+    [Parameter]
+    public bool ShowSumPolizas { get; set; } = true;
+
+    [Parameter]
+    public bool ShowXmlAttachment { get; set; } = true;
+
+    [Parameter]
+    public int AdditionalColumnsCount { get; set; }
+
+    [Parameter]
+    public string NoDataMessage { get; set; } = "No se encontraron CFDIs.";
+
+    [Parameter]
+    public string? CurrentSortColumn { get; set; }
+
+    [Parameter]
+    public string? CurrentSortOrder { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnSort { get; set; }
+
+    private int EffectiveColumnCount => BaseColumnCount - (ShowSumPolizas ? 0 : 1) - (ShowXmlAttachment ? 0 : 1) + AdditionalColumnsCount;
+
+    private int RemainingColumns => Math.Max(0, EffectiveColumnCount - 16);
+
+    private string GetRowClass(DeclaracionPrevia.DeclaracionCfdiBase item) => RowClassResolver?.Invoke(item) ?? string.Empty;
+
+    private string GetSortIndicator(string columnName)
+    {
+        if (string.IsNullOrEmpty(CurrentSortColumn) || !string.Equals(CurrentSortColumn, columnName, StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Empty;
+        }
+
+        return string.Equals(CurrentSortOrder, "ASC", StringComparison.OrdinalIgnoreCase) ? "▲" : "▼";
+    }
+
+    private async Task TriggerSort(string columnName)
+    {
+        if (OnSort.HasDelegate)
+        {
+            await OnSort.InvokeAsync(columnName);
+        }
+    }
+
+    private async Task HandleRowClick(DeclaracionPrevia.DeclaracionCfdiBase item)
+    {
+        if (OnRowClick.HasDelegate)
+        {
+            await OnRowClick.InvokeAsync(item);
+        }
+    }
+
+    private async Task HandleOpenDetails(DeclaracionPrevia.DeclaracionCfdiBase item)
+    {
+        if (OnOpenDetails.HasDelegate)
+        {
+            await OnOpenDetails.InvokeAsync(item);
+        }
+    }
+
+    private async Task HandlePolizaClick(DeclaracionPrevia.DeclaracionCfdiBase item)
+    {
+        if (OnHandlePolizaClick.HasDelegate)
+        {
+            await OnHandlePolizaClick.InvokeAsync(item);
+        }
+    }
+
+    private static string FormatCurrency(decimal value) => string.Format("{0:N2}", value);
+
+    private static string FormatInteger(int? value) => value.HasValue ? value.Value.ToString("N0") : string.Empty;
+}

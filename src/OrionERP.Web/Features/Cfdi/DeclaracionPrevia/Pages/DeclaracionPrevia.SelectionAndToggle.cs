@@ -9,19 +9,48 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
   public partial class DeclaracionPrevia
   {
     // Row selection:
-    private async Task SelectEmitidaAsync(DeclaracionEmitida item)
+    private async Task SelectEmitidaAsync(DeclaracionEmitida item) => await SelectCfdiAsync(item);
+
+    private async Task SelectRecibidaAsync(DeclaracionRecibida item) => await SelectCfdiAsync(item);
+
+    private async Task SelectCfdiAsync(DeclaracionCfdiBase? item)
     {
-      selectedEmitida = item;
-      selectedRecibida = null;
-      recibidasComplementos = new List<PagoComplementoResumen>();
-      await LoadComplementosAsync(item?.FOLIO_FISCAL, isEmitida: true);
-    }
-    private async Task SelectRecibidaAsync(DeclaracionRecibida item)
-    {
-      selectedRecibida = item;
       selectedEmitida = null;
+      selectedRecibida = null;
       emitidasComplementos = new List<PagoComplementoResumen>();
-      await LoadComplementosAsync(item?.FOLIO_FISCAL, isEmitida: false);
+      recibidasComplementos = new List<PagoComplementoResumen>();
+
+      if (item == null)
+      {
+        return;
+      }
+
+      if (item is DeclaracionEmitida emitida)
+      {
+        selectedEmitida = emitida;
+        await LoadComplementosAsync(item.FOLIO_FISCAL, isEmitida: true);
+        return;
+      }
+
+      if (item is DeclaracionRecibida recibida)
+      {
+        selectedRecibida = recibida;
+        await LoadComplementosAsync(item.FOLIO_FISCAL, isEmitida: false);
+        return;
+      }
+
+      if (item.EsEmitida)
+      {
+        selectedEmitida = new DeclaracionEmitida(item);
+        await LoadComplementosAsync(item.FOLIO_FISCAL, isEmitida: true);
+        return;
+      }
+
+      if (item.EsRecibida)
+      {
+        selectedRecibida = new DeclaracionRecibida(item);
+        await LoadComplementosAsync(item.FOLIO_FISCAL, isEmitida: false);
+      }
     }
 
     // Toggle Include/Exclude for selected invoice (Emitidas)

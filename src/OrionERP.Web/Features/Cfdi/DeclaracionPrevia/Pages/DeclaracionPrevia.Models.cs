@@ -4,6 +4,41 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
   public partial class DeclaracionPrevia
   {
+    public class DeclaracionCfdiBase
+    {
+      public int Comprobante_Id { get; set; }
+      public string? D { get; set; }
+      public DateTime Fecha { get; set; }
+      public string? MES_GLOBAL { get; set; }
+      public string? ANIO_GLOBAL { get; set; }
+      public string? EMISOR { get; set; }
+      public string? RECEPTOR { get; set; }
+      public decimal SubTotal { get; set; }
+      public decimal Descuento { get; set; }
+      public decimal SubTotal_Desc { get; set; }
+      public decimal Actos_16 { get; set; }
+      public decimal Actos_0 { get; set; }
+      public decimal IVA { get; set; }
+      public decimal IEPS { get; set; }
+      public decimal IVA_RETENIDO { get; set; }
+      public decimal ISR_RETENIDO { get; set; }
+      public decimal IEPS_RETENIDO { get; set; }
+      public decimal Total { get; set; }
+      public string? FOLIO_FISCAL { get; set; }
+      public string? FormaPago { get; set; }
+      public string? TipoDeComprobante { get; set; }
+      public string? MetodoPago { get; set; }
+      public string? UsoCFDI { get; set; }
+      public DateTime? FechaCancelacion { get; set; }
+      public string? Estatus { get; set; }
+      public string? fechastransacciones { get; set; }
+      public string? Poliza { get; set; }
+      public int? SumaPolizas { get; set; }
+      public int? XML_Attachment_ID { get; set; }
+      public bool EsEmitida { get; set; }
+      public bool EsRecibida { get; set; }
+    }
+
     public class DeclaracionEmitida
     {
       public int Comprobante_Id { get; set; }

@@ -101,30 +101,48 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
           endDate = GetSqlDate(endDate)
         };
 
-        // One after another—no parallel readers:
-        emitidas = (await conn.QueryAsync<DeclaracionEmitida>(
-          "EXEC dbo.Declaracion_Emitidas @Year, @Month, @RFC_Emisor", common)).AsList();
+        var allCfdiBase = (await conn.QueryAsync<DeclaracionCfdiBase>(
+          "EXEC cfdi.Declaracion_CFDI_Base @Year, @Month, @RFC", new
+          {
+            Year = selectedYear,
+            Month = isAnnual ? (object)DBNull.Value : selectedMonth,
+            RFC = selectedRfc
+          })).AsList();
 
-        emitidasTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
-          "EXEC dbo.Declaracion_Emitidas_Totales @Year, @Month, @RFC_Emisor", common);
+        var emitidasBase = allCfdiBase
+          .Where(x => x.EsEmitida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante))
+          .ToList();
 
-        emitidasNomina = (await conn.QueryAsync<DeclaracionEmitida>(
-          "EXEC cfdi.Declaracion_Emitidas_Nomina @Year, @Month, @RFC_Emisor", common)).AsList();
+        var recibidasBase = allCfdiBase
+          .Where(x => x.EsRecibida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante))
+          .ToList();
 
-        emitidasNominaTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
-          "EXEC cfdi.Declaracion_Emitidas_Nomina_Totales @Year, @Month, @RFC_Emisor", common);
+        var nominaEmitidasBase = allCfdiBase
+          .Where(x => x.EsEmitida && IsNomina(x.TipoDeComprobante))
+          .ToList();
 
-        recibidas = (await conn.QueryAsync<DeclaracionRecibida>(
-          "EXEC dbo.Declaracion_Recibidas @Year, @Month, @RFC_Receptor", common)).AsList();
+        var nominaRecibidasBase = allCfdiBase
+          .Where(x => x.EsRecibida && IsNomina(x.TipoDeComprobante))
+          .ToList();
 
-        recibidasTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
-          "EXEC dbo.Declaracion_Recibidas_Totales @Year, @Month, @RFC_Receptor", common);
+        var tipoERecibidasBase = allCfdiBase
+          .Where(x => x.EsRecibida && IsTipoE(x.TipoDeComprobante))
+          .ToList();
 
-        recibidasNomina = (await conn.QueryAsync<DeclaracionRecibida>(
-          "EXEC cfdi.Declaracion_Recibidas_Nomina @Year, @Month, @RFC_Receptor", common)).AsList();
+        emitidas = emitidasBase.Select(ToDeclaracionEmitida).ToList();
+        emitidasTotals = ComputeDeclaracionTotales(emitidasBase);
 
-        recibidasNominaTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
-          "EXEC cfdi.Declaracion_Recibidas_Nomina_Totales @Year, @Month, @RFC_Receptor", common);
+        emitidasNomina = nominaEmitidasBase.Select(ToDeclaracionEmitida).ToList();
+        emitidasNominaTotals = ComputeDeclaracionTotales(nominaEmitidasBase);
+
+        recibidas = recibidasBase.Select(ToDeclaracionRecibida).ToList();
+        recibidasTotals = ComputeDeclaracionTotales(recibidasBase);
+
+        recibidasNomina = nominaRecibidasBase.Select(ToDeclaracionRecibida).ToList();
+        recibidasNominaTotals = ComputeDeclaracionTotales(nominaRecibidasBase);
+
+        recibidasTipoE = tipoERecibidasBase.Select(ToDeclaracionRecibida).ToList();
+        recibidasTipoETotals = ComputeDeclaracionTotales(tipoERecibidasBase);
 
         desfase = (await conn.QueryAsync<DesfaseItem>(
           "EXEC dbo.Declaracion_Comprobantes_Con_Desfase @RFC, @Anio, @Mes", common)).AsList();
@@ -157,6 +175,97 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
     }
 
+
+    private DeclaracionTotales ComputeDeclaracionTotales(IEnumerable<DeclaracionCfdiBase> items)
+    {
+      var list = items?.ToList() ?? new List<DeclaracionCfdiBase>();
+
+      return new DeclaracionTotales
+      {
+        CountCFDIs = list.Count,
+        SumSubTotal = SatRound(list.Sum(x => x.SubTotal)),
+        SumDescuento = SatRound(list.Sum(x => x.Descuento)),
+        SumSubTotalDesc = SatRound(list.Sum(x => x.SubTotal_Desc)),
+        SumActos16 = SatRound(list.Sum(x => x.Actos_16)),
+        SumActos0 = SatRound(list.Sum(x => x.Actos_0)),
+        SumIVA = SatRound(list.Sum(x => x.IVA)),
+        SumIEPS = SatRound(list.Sum(x => x.IEPS)),
+        SumIVA_RETENIDO = SatRound(list.Sum(x => x.IVA_RETENIDO)),
+        SumISR_RETENIDO = SatRound(list.Sum(x => x.ISR_RETENIDO)),
+        SumIEPS_RETENIDO = SatRound(list.Sum(x => x.IEPS_RETENIDO)),
+        SumTotal = SatRound(list.Sum(x => x.Total))
+      };
+    }
+
+    private static DeclaracionEmitida ToDeclaracionEmitida(DeclaracionCfdiBase item) => new DeclaracionEmitida
+    {
+      Comprobante_Id = item.Comprobante_Id,
+      D = item.D,
+      Fecha = item.Fecha,
+      MES_GLOBAL = item.MES_GLOBAL,
+      ANIO_GLOBAL = item.ANIO_GLOBAL,
+      RECEPTOR = item.RECEPTOR,
+      SubTotal = item.SubTotal,
+      Descuento = item.Descuento,
+      SubTotal_Desc = item.SubTotal_Desc,
+      Actos_16 = item.Actos_16,
+      Actos_0 = item.Actos_0,
+      IVA = item.IVA,
+      IEPS = item.IEPS,
+      IVA_RETENIDO = item.IVA_RETENIDO,
+      ISR_RETENIDO = item.ISR_RETENIDO,
+      IEPS_RETENIDO = item.IEPS_RETENIDO,
+      Total = item.Total,
+      FOLIO_FISCAL = item.FOLIO_FISCAL,
+      FormaPago = item.FormaPago,
+      TipoDeComprobante = item.TipoDeComprobante,
+      MetodoPago = item.MetodoPago,
+      UsoCFDI = item.UsoCFDI,
+      FechaCancelacion = item.FechaCancelacion,
+      Estatus = item.Estatus,
+      fechastransacciones = item.fechastransacciones,
+      Poliza = item.Poliza,
+      SumaPolizas = item.SumaPolizas,
+      XML_Attachment_ID = item.XML_Attachment_ID
+    };
+
+    private static DeclaracionRecibida ToDeclaracionRecibida(DeclaracionCfdiBase item) => new DeclaracionRecibida
+    {
+      Comprobante_Id = item.Comprobante_Id,
+      D = item.D,
+      Fecha = item.Fecha,
+      MES_GLOBAL = item.MES_GLOBAL,
+      ANIO_GLOBAL = item.ANIO_GLOBAL,
+      EMISOR = item.EMISOR,
+      SubTotal = item.SubTotal,
+      Descuento = item.Descuento,
+      SubTotal_Desc = item.SubTotal_Desc,
+      Actos_16 = item.Actos_16,
+      Actos_0 = item.Actos_0,
+      IVA = item.IVA,
+      IEPS = item.IEPS,
+      IVA_RETENIDO = item.IVA_RETENIDO,
+      ISR_RETENIDO = item.ISR_RETENIDO,
+      IEPS_RETENIDO = item.IEPS_RETENIDO,
+      Total = item.Total,
+      FOLIO_FISCAL = item.FOLIO_FISCAL,
+      FormaPago = item.FormaPago,
+      TipoDeComprobante = item.TipoDeComprobante,
+      MetodoPago = item.MetodoPago,
+      UsoCFDI = item.UsoCFDI,
+      FechaCancelacion = item.FechaCancelacion,
+      Estatus = item.Estatus,
+      fechastransacciones = item.fechastransacciones,
+      Poliza = item.Poliza,
+      SumaPolizas = item.SumaPolizas,
+      XML_Attachment_ID = item.XML_Attachment_ID
+    };
+
+    private static decimal SatRound(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
+
+    private static bool IsNomina(string? tipoDeComprobante) => string.Equals(tipoDeComprobante, "N", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsTipoE(string? tipoDeComprobante) => string.Equals(tipoDeComprobante, "E", StringComparison.OrdinalIgnoreCase);
 
     // Utility to format date for SQL as string (if needed; SP might accept date properly too)
     private string GetSqlDate(DateTime dt) => dt.ToString("yyyy-MM-dd HH:mm:ss");

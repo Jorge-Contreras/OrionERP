@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -46,173 +47,70 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
     }
 
-    // Export Emitidas list to Excel
-    private async Task ExportExcelEmitidas()
-    {
-      await ExportExcel(includeEmitidas: true, includeRecibidas: false);
-    }
-    // Export Recibidas list to Excel
-    private async Task ExportExcelRecibidas()
-    {
-      await ExportExcel(includeEmitidas: false, includeRecibidas: true);
-    }
-    // Combined export (if needed, can call include both)
-    private async Task ExportExcel(bool includeEmitidas, bool includeRecibidas)
+    private async Task ExportExcelEmitidas() => await ExportExcel(includeEmitidas: true);
+
+    private async Task ExportExcelRecibidas() => await ExportExcel(includeRecibidas: true);
+
+    private async Task ExportExcelNominaEmitida() => await ExportExcel(includeNominaEmitida: true);
+
+    private async Task ExportExcelNominaRecibida() => await ExportExcel(includeNominaRecibida: true);
+
+    private async Task ExportExcelTipoEEmitidas() => await ExportExcel(includeTipoEEmitidas: true);
+
+    private async Task ExportExcelTipoERecibidas() => await ExportExcel(includeTipoERecibidas: true);
+
+    private async Task ExportExcel(
+      bool includeEmitidas = false,
+      bool includeRecibidas = false,
+      bool includeNominaEmitida = false,
+      bool includeNominaRecibida = false,
+      bool includeTipoEEmitidas = false,
+      bool includeTipoERecibidas = false)
     {
       try
       {
-        // Using EPPlus to create Excel in memory
         using var package = new OfficeOpenXml.ExcelPackage();
-        if (includeEmitidas && emitidas != null)
+        var includedSheets = new List<string>();
+
+        if (includeEmitidas && AddWorksheet(package, "Emitidas", emitidasBase))
         {
-          var wsE = package.Workbook.Worksheets.Add("Emitidas");
-          // Headers:
-          string[] headersE = new string[] { "Comprobante_ID", "Incluido", "Fecha", "Mes", "Año", "Receptor", "SubTotal", "Descuento", "SubTotal_Desc", "Actos16", "Actos0", "IVA", "IEPS", "IVA_RETENIDO", "ISR_RETENIDO", "IEPS_RETENIDO", "Total", "UUID", "FormaPago", "TipoDeComprobante", "MetodoPago", "UsoCFDI", "FechaCancelacion", "Estatus", "Poliza", "SumaPolizas", "XML_Attachment_ID" };
-          for (int j = 0; j < headersE.Length; j++)
-            wsE.Cells[1, j + 1].Value = headersE[j];
-          // Data rows:
-          int row = 2;
-          foreach (var it in emitidas)
-          {
-            wsE.Cells[row, 1].Value = it.Comprobante_Id;
-            wsE.Cells[row, 2].Value = it.D;
-            wsE.Cells[row, 3].Value = it.Fecha;
-            wsE.Cells[row, 4].Value = it.MES_GLOBAL;
-            wsE.Cells[row, 5].Value = it.ANIO_GLOBAL;
-            wsE.Cells[row, 6].Value = it.RECEPTOR;
-            wsE.Cells[row, 7].Value = it.SubTotal;
-            wsE.Cells[row, 8].Value = it.Descuento;
-            wsE.Cells[row, 9].Value = it.SubTotal_Desc;
-            wsE.Cells[row, 10].Value = it.Actos_16;
-            wsE.Cells[row, 11].Value = it.Actos_0;
-            wsE.Cells[row, 12].Value = it.IVA;
-            wsE.Cells[row, 13].Value = it.IEPS;
-            wsE.Cells[row, 14].Value = it.IVA_RETENIDO;
-            wsE.Cells[row, 15].Value = it.ISR_RETENIDO;
-            wsE.Cells[row, 16].Value = it.IEPS_RETENIDO;
-            wsE.Cells[row, 17].Value = it.Total;
-            wsE.Cells[row, 18].Value = it.FOLIO_FISCAL;
-            wsE.Cells[row, 19].Value = it.FormaPago;
-            wsE.Cells[row, 20].Value = it.TipoDeComprobante;
-            wsE.Cells[row, 21].Value = it.MetodoPago;
-            wsE.Cells[row, 22].Value = it.UsoCFDI;
-            wsE.Cells[row, 23].Value = it.FechaCancelacion?.ToString("yyyy-MM-dd");
-            wsE.Cells[row, 24].Value = it.Estatus;
-            wsE.Cells[row, 25].Value = it.Poliza;
-            wsE.Cells[row, 26].Value = it.SumaPolizas;
-            wsE.Cells[row, 27].Value = it.XML_Attachment_ID;
-            row++;
-          }
-          // Totals row:
-          wsE.Cells[row, 1].Value = "Totals:";
-          wsE.Cells[row, 7].Formula = $"SUM(G2:G{row - 1})";   // SubTotal
-          wsE.Cells[row, 8].Formula = $"SUM(H2:H{row - 1})";
-          wsE.Cells[row, 9].Formula = $"SUM(I2:I{row - 1})";
-          wsE.Cells[row, 10].Formula = $"SUM(J2:J{row - 1})";
-          wsE.Cells[row, 11].Formula = $"SUM(K2:K{row - 1})";
-          wsE.Cells[row, 12].Formula = $"SUM(L2:L{row - 1})";
-          wsE.Cells[row, 13].Formula = $"SUM(M2:M{row - 1})";
-          wsE.Cells[row, 14].Formula = $"SUM(N2:N{row - 1})";
-          wsE.Cells[row, 15].Formula = $"SUM(O2:O{row - 1})";
-          wsE.Cells[row, 16].Formula = $"SUM(P2:P{row - 1})";
-          wsE.Cells[row, 17].Formula = $"SUM(Q2:Q{row - 1})";  // Total
-          for (int col = 7; col <= 17; col++)
-            wsE.Column(col).Style.Numberformat.Format = "#,##0.00";
-          wsE.Cells[1, 1, 1, headersE.Length].Style.Font.Bold = true;
-          wsE.Cells.AutoFitColumns();
-        }
-        if (includeRecibidas && recibidas != null)
-        {
-          var wsR = package.Workbook.Worksheets.Add("Recibidas");
-
-          // Headers aligned to DeclaracionRecibida
-          string[] headersR = new string[]
-          {
-        "Comprobante_ID", "Incluido", "Fecha", "Mes", "Año", "Emisor",
-        "SubTotal", "Descuento", "SubTotal_Desc", "Actos16", "Actos0",
-        "IVA", "IEPS", "IVA_RETENIDO", "ISR_RETENIDO", "IEPS_RETENIDO",
-        "Total", "UUID", "FormaPago", "TipoDeComprobante", "MetodoPago",
-        "UsoCFDI", "FechaCancelacion", "Estatus", "Transacción Fechas",
-        "Poliza", "SumaPolizas"
-          };
-
-          // Write headers
-          for (int j = 0; j < headersR.Length; j++)
-            wsR.Cells[1, j + 1].Value = headersR[j];
-
-          int row = 2;
-          foreach (var it in recibidas)
-          {
-            wsR.Cells[row, 1].Value = it.Comprobante_Id;
-            wsR.Cells[row, 2].Value = it.D;
-            wsR.Cells[row, 3].Value = it.Fecha; // you can also set a date format below
-            wsR.Cells[row, 4].Value = it.MES_GLOBAL;
-            wsR.Cells[row, 5].Value = it.ANIO_GLOBAL;
-            wsR.Cells[row, 6].Value = it.EMISOR;
-            wsR.Cells[row, 7].Value = it.SubTotal;
-            wsR.Cells[row, 8].Value = it.Descuento;
-            wsR.Cells[row, 9].Value = it.SubTotal_Desc;
-            wsR.Cells[row, 10].Value = it.Actos_16;
-            wsR.Cells[row, 11].Value = it.Actos_0;
-            wsR.Cells[row, 12].Value = it.IVA;
-            wsR.Cells[row, 13].Value = it.IEPS;
-            wsR.Cells[row, 14].Value = it.IVA_RETENIDO;
-            wsR.Cells[row, 15].Value = it.ISR_RETENIDO;
-            wsR.Cells[row, 16].Value = it.IEPS_RETENIDO;
-            wsR.Cells[row, 17].Value = it.Total;
-            wsR.Cells[row, 18].Value = it.FOLIO_FISCAL;
-            wsR.Cells[row, 19].Value = it.FormaPago;
-            wsR.Cells[row, 20].Value = it.TipoDeComprobante;
-            wsR.Cells[row, 21].Value = it.MetodoPago;
-            wsR.Cells[row, 22].Value = it.UsoCFDI;
-            wsR.Cells[row, 23].Value = it.FechaCancelacion?.ToString("yyyy-MM-dd");
-            wsR.Cells[row, 24].Value = it.Estatus;
-            wsR.Cells[row, 25].Value = it.fechastransacciones;
-            wsR.Cells[row, 26].Value = it.Poliza;
-            wsR.Cells[row, 27].Value = it.SumaPolizas;
-            row++;
-          }
-
-          // Totals row
-          wsR.Cells[row, 1].Value = "Totals:";
-
-          // Sum numeric money columns (G..Q = 7..17)
-          wsR.Cells[row, 7].Formula = $"SUM(G2:G{row - 1})";   // SubTotal
-          wsR.Cells[row, 8].Formula = $"SUM(H2:H{row - 1})";   // Descuento
-          wsR.Cells[row, 9].Formula = $"SUM(I2:I{row - 1})";   // SubTotal_Desc
-          wsR.Cells[row, 10].Formula = $"SUM(J2:J{row - 1})";   // Actos16
-          wsR.Cells[row, 11].Formula = $"SUM(K2:K{row - 1})";   // Actos0
-          wsR.Cells[row, 12].Formula = $"SUM(L2:L{row - 1})";   // IVA
-          wsR.Cells[row, 13].Formula = $"SUM(M2:M{row - 1})";   // IEPS
-          wsR.Cells[row, 14].Formula = $"SUM(N2:N{row - 1})";   // IVA_RETENIDO
-          wsR.Cells[row, 15].Formula = $"SUM(O2:O{row - 1})";   // ISR_RETENIDO
-          wsR.Cells[row, 16].Formula = $"SUM(P2:P{row - 1})";   // IEPS_RETENIDO
-          wsR.Cells[row, 17].Formula = $"SUM(Q2:Q{row - 1})";   // Total
-
-          // Number formats
-          for (int col = 7; col <= 17; col++)
-            wsR.Column(col).Style.Numberformat.Format = "#,##0.00";
-
-          // Optional: integer format for SumaPolizas
-          wsR.Column(27).Style.Numberformat.Format = "#,##0";
-
-          // Optional: date formats
-          wsR.Column(3).Style.Numberformat.Format = "yyyy-mm-dd"; // Fecha
-                                                                  // Column 23 is written as string above; if you store DateTime instead, format it:
-                                                                  // wsR.Column(23).Style.Numberformat.Format = "yyyy-mm-dd";
-
-          // Header style and autofit
-          wsR.Cells[1, 1, 1, headersR.Length].Style.Font.Bold = true;
-          wsR.Cells.AutoFitColumns();
+          includedSheets.Add("Emitidas");
         }
 
-        // Prepare file for download:
+        if (includeRecibidas && AddWorksheet(package, "Recibidas", recibidasBase))
+        {
+          includedSheets.Add("Recibidas");
+        }
+
+        if (includeNominaEmitida && AddWorksheet(package, "Nómina Emitida", emitidasNominaBase))
+        {
+          includedSheets.Add("NominaEmitida");
+        }
+
+        if (includeNominaRecibida && AddWorksheet(package, "Nómina Recibida", recibidasNominaBase))
+        {
+          includedSheets.Add("NominaRecibida");
+        }
+
+        if (includeTipoEEmitidas && AddWorksheet(package, "Tipo E Emitidas", tipoEEmitidasBase))
+        {
+          includedSheets.Add("TipoEEmitidas");
+        }
+
+        if (includeTipoERecibidas && AddWorksheet(package, "Tipo E Recibidas", tipoERecibidasBase))
+        {
+          includedSheets.Add("TipoERecibidas");
+        }
+
+        if (includedSheets.Count == 0)
+        {
+          SetErrorMessage("No hay datos para exportar.");
+          return;
+        }
+
         byte[] fileBytes = package.GetAsByteArray();
         string fileName = "DeclaracionPrevia";
-        if (includeEmitidas && includeRecibidas) fileName += "_Emitidas_Recibidas";
-        else if (includeEmitidas) fileName += "_Emitidas";
-        else if (includeRecibidas) fileName += "_Recibidas";
-        fileName += $"_{selectedYear}{(isAnnual ? "" : "_" + selectedMonth.ToString("D2"))}.xlsx";
+        fileName += $"_{string.Join("_", includedSheets)}_{selectedYear}{(isAnnual ? string.Empty : "_" + selectedMonth.ToString("D2"))}.xlsx";
         string base64 = Convert.ToBase64String(fileBytes);
         string dataUrl = $"data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{base64}";
         await JS.InvokeVoidAsync("triggerFileDownload", fileName, dataUrl);
@@ -222,6 +120,96 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       {
         SetErrorMessage("Error al exportar a Excel: " + ex.Message);
       }
+    }
+
+    private bool AddWorksheet(OfficeOpenXml.ExcelPackage package, string sheetName, IEnumerable<DeclaracionCfdiBase>? items)
+    {
+      if (items == null || !items.Any())
+      {
+        return false;
+      }
+
+      var worksheet = package.Workbook.Worksheets.Add(sheetName);
+      string[] headers =
+      {
+        "Comprobante_ID", "Incluido", "Fecha", "Mes", "Año", "Emisor", "RFC Emisor", "Receptor",
+        "RFC Receptor", "SubTotal", "Descuento", "SubTotal_Desc", "Actos16", "Actos0", "IVA",
+        "IEPS", "IVA_RETENIDO", "ISR_RETENIDO", "IEPS_RETENIDO", "Total", "UUID", "FormaPago",
+        "TipoDeComprobante", "MetodoPago", "UsoCFDI", "FechaCancelacion", "Estatus", "Transacción Fechas",
+        "Poliza", "SumaPolizas", "XML_Attachment_ID", "EsEmitida", "EsRecibida"
+      };
+
+      for (int j = 0; j < headers.Length; j++)
+      {
+        worksheet.Cells[1, j + 1].Value = headers[j];
+      }
+
+      int row = 2;
+      foreach (var item in items)
+      {
+        worksheet.Cells[row, 1].Value = item.Comprobante_Id;
+        worksheet.Cells[row, 2].Value = item.D;
+        worksheet.Cells[row, 3].Value = item.Fecha;
+        worksheet.Cells[row, 4].Value = item.MES_GLOBAL;
+        worksheet.Cells[row, 5].Value = item.ANIO_GLOBAL;
+        worksheet.Cells[row, 6].Value = item.EMISOR;
+        worksheet.Cells[row, 7].Value = item.RFC_EMISOR;
+        worksheet.Cells[row, 8].Value = item.RECEPTOR;
+        worksheet.Cells[row, 9].Value = item.RFC_RECEPTOR;
+        worksheet.Cells[row, 10].Value = item.SubTotal;
+        worksheet.Cells[row, 11].Value = item.Descuento;
+        worksheet.Cells[row, 12].Value = item.SubTotal_Desc;
+        worksheet.Cells[row, 13].Value = item.Actos_16;
+        worksheet.Cells[row, 14].Value = item.Actos_0;
+        worksheet.Cells[row, 15].Value = item.IVA;
+        worksheet.Cells[row, 16].Value = item.IEPS;
+        worksheet.Cells[row, 17].Value = item.IVA_RETENIDO;
+        worksheet.Cells[row, 18].Value = item.ISR_RETENIDO;
+        worksheet.Cells[row, 19].Value = item.IEPS_RETENIDO;
+        worksheet.Cells[row, 20].Value = item.Total;
+        worksheet.Cells[row, 21].Value = item.FOLIO_FISCAL;
+        worksheet.Cells[row, 22].Value = item.FormaPago;
+        worksheet.Cells[row, 23].Value = item.TipoDeComprobante;
+        worksheet.Cells[row, 24].Value = item.MetodoPago;
+        worksheet.Cells[row, 25].Value = item.UsoCFDI;
+        worksheet.Cells[row, 26].Value = item.FechaCancelacion;
+        worksheet.Cells[row, 27].Value = item.Estatus;
+        worksheet.Cells[row, 28].Value = item.fechastransacciones;
+        worksheet.Cells[row, 29].Value = item.Poliza;
+        worksheet.Cells[row, 30].Value = item.SumaPolizas;
+        worksheet.Cells[row, 31].Value = item.XML_Attachment_ID;
+        worksheet.Cells[row, 32].Value = item.EsEmitida;
+        worksheet.Cells[row, 33].Value = item.EsRecibida;
+        row++;
+      }
+
+      worksheet.Cells[row, 1].Value = "Totals:";
+      worksheet.Cells[row, 10].Formula = $"SUM(J2:J{row - 1})";
+      worksheet.Cells[row, 11].Formula = $"SUM(K2:K{row - 1})";
+      worksheet.Cells[row, 12].Formula = $"SUM(L2:L{row - 1})";
+      worksheet.Cells[row, 13].Formula = $"SUM(M2:M{row - 1})";
+      worksheet.Cells[row, 14].Formula = $"SUM(N2:N{row - 1})";
+      worksheet.Cells[row, 15].Formula = $"SUM(O2:O{row - 1})";
+      worksheet.Cells[row, 16].Formula = $"SUM(P2:P{row - 1})";
+      worksheet.Cells[row, 17].Formula = $"SUM(Q2:Q{row - 1})";
+      worksheet.Cells[row, 18].Formula = $"SUM(R2:R{row - 1})";
+      worksheet.Cells[row, 19].Formula = $"SUM(S2:S{row - 1})";
+      worksheet.Cells[row, 20].Formula = $"SUM(T2:T{row - 1})";
+      worksheet.Cells[row, 30].Formula = $"SUM(AD2:AD{row - 1})";
+
+      for (int col = 10; col <= 20; col++)
+      {
+        worksheet.Column(col).Style.Numberformat.Format = "#,##0.00";
+      }
+
+      worksheet.Column(30).Style.Numberformat.Format = "#,##0";
+      worksheet.Column(3).Style.Numberformat.Format = "yyyy-mm-dd";
+      worksheet.Column(26).Style.Numberformat.Format = "yyyy-mm-dd";
+
+      worksheet.Cells[1, 1, 1, headers.Length].Style.Font.Bold = true;
+      worksheet.Cells.AutoFitColumns();
+
+      return true;
     }
   }
 }

@@ -313,6 +313,11 @@
         </div>
     </div>
     <div class="tab-pane fade" id="tipo-e-emitidas" role="tabpanel" aria-labelledby="tipo-e-emitidas-tab">
+        <div class="mb-2 filter-bar">
+            <button class="btn btn-sm btn-secondary" @onclick="ExportExcelTipoEEmitidas">
+                Exportar Tipo E Emitidas a Excel
+            </button>
+        </div>
         <div class="table-responsive table-scroll">
             <CFDITable Items="tipoEEmitidasPage"
                        Totals="tipoEEmitidasTotals"
@@ -386,6 +391,11 @@
         </div>
     </div>
     <div class="tab-pane fade" id="tipo-e-recibidas" role="tabpanel" aria-labelledby="tipo-e-recibidas-tab">
+        <div class="mb-2 filter-bar">
+            <button class="btn btn-sm btn-secondary" @onclick="ExportExcelTipoERecibidas">
+                Exportar Tipo E Recibidas a Excel
+            </button>
+        </div>
         <div class="table-scroll">
             <CFDITable Items="tipoERecibidasPage"
                        Totals="tipoERecibidasTotals"
@@ -479,7 +489,10 @@
         </div>
     </div>
     <div class="tab-pane fade" id="nomina-emitidas" role="tabpanel" aria-labelledby="nomina-emitidas-tab">
-        <h5 class="mt-3">Facturas Emitidas de Nómina</h5>
+        <div class="d-flex align-items-center mb-2">
+            <h5 class="mt-3 mb-0">Facturas Emitidas de Nómina</h5>
+            <button class="btn btn-sm btn-secondary ms-2" @onclick="ExportExcelNominaEmitida">Exportar Nómina Emitidas a Excel</button>
+        </div>
         <div class="table-responsive table-scroll">
             <CFDITable Items="emitidasNomina"
                        Totals="emitidasNominaTotals"
@@ -492,7 +505,10 @@
         </div>
     </div>
     <div class="tab-pane fade" id="nomina-recibidas" role="tabpanel" aria-labelledby="nomina-recibidas-tab">
-        <h5 class="mt-3">Facturas Recibidas de Nómina</h5>
+        <div class="d-flex align-items-center mb-2">
+            <h5 class="mt-3 mb-0">Facturas Recibidas de Nómina</h5>
+            <button class="btn btn-sm btn-secondary ms-2" @onclick="ExportExcelNominaRecibida">Exportar Nómina Recibidas a Excel</button>
+        </div>
         <div class="table-responsive table-scroll">
             <CFDITable Items="recibidasNomina"
                        Totals="recibidasNominaTotals"

@@ -67,7 +67,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         {
           var wsE = package.Workbook.Worksheets.Add("Emitidas");
           // Headers:
-          string[] headersE = new string[] { "Comprobante_ID", "Incluido", "Fecha", "Mes", "Año", "Receptor", "SubTotal", "Descuento", "SubTotal_Desc", "Actos16", "Actos0", "IVA", "IEPS", "IVA_RETENIDO", "ISR_RETENIDO", "IEPS_RETENIDO", "Total", "UUID", "FormaPago", "TipoDeComprobante", "MetodoPago", "UsoCFDI", "FechaCancelacion", "Estatus", "Poliza", "SumaPolizas" };
+          string[] headersE = new string[] { "Comprobante_ID", "Incluido", "Fecha", "Mes", "Año", "Receptor", "SubTotal", "Descuento", "SubTotal_Desc", "Actos16", "Actos0", "IVA", "IEPS", "IVA_RETENIDO", "ISR_RETENIDO", "IEPS_RETENIDO", "Total", "UUID", "FormaPago", "TipoDeComprobante", "MetodoPago", "UsoCFDI", "FechaCancelacion", "Estatus", "Poliza", "SumaPolizas", "XML_Attachment_ID" };
           for (int j = 0; j < headersE.Length; j++)
             wsE.Cells[1, j + 1].Value = headersE[j];
           // Data rows:
@@ -100,6 +100,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
             wsE.Cells[row, 24].Value = it.Estatus;
             wsE.Cells[row, 25].Value = it.Poliza;
             wsE.Cells[row, 26].Value = it.SumaPolizas;
+            wsE.Cells[row, 27].Value = it.XML_Attachment_ID;
             row++;
           }
           // Totals row:

@@ -33,6 +33,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       public string? fechastransacciones { get; set; }
       public string? Poliza { get; set; }
       public int? SumaPolizas { get; set; }
+      public int? XML_Attachment_ID { get; set; }
     }
 
     public class DeclaracionRecibida
@@ -64,6 +65,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       public string? fechastransacciones { get; set; }
       public string? Poliza { get; set; }
       public int? SumaPolizas { get; set; }
+      public int? XML_Attachment_ID { get; set; }
     }
 
     public class DesfaseItem

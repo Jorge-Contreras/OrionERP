@@ -147,7 +147,8 @@
                         <th>Estatus</th>
                         <th>Transacción Fechas</th>
                         <th class="num">Suma Polizas</th>
-                        
+                        <th class="num">XML Attachment ID</th>
+
                     </tr>
                 </thead>
                 <tbody>
@@ -186,12 +187,13 @@
                                 <td>@item.Estatus</td>
                                 <td>@item.fechastransacciones</td>
                                 <td class="num">@item.SumaPolizas</td>
+                                <td class="num">@item.XML_Attachment_ID</td>
 
                             </tr>
                             @if (selectedEmitida?.Comprobante_Id == item.Comprobante_Id && emitidasComplementos?.Count > 0)
                             {
                                 <tr class="table-secondary">
-                                    <td colspan="27">
+                                    <td colspan="28">
                                         <div class="table-responsive table-scroll mb-2">
                                             <table class="table table-sm table-bordered table-striped align-middle compact-table mb-0">
                                                 <thead class="table-dark">
@@ -260,7 +262,7 @@
                             <td class="num">@emitidasTotals.SumISR_RETENIDO.ToString("N2")</td>
                             <td class="num">@emitidasTotals.SumIEPS_RETENIDO.ToString("N2")</td>
                             <td class="num">@emitidasTotals.SumTotal.ToString("N2")</td>
-                            <td colspan="11"></td>
+                            <td colspan="12"></td>
                         </tr>
                     </tfoot>
                 }
@@ -506,6 +508,7 @@
                         <th>Transacción Fechas</th>
                         <th>Poliza</th>
                         <th class="num">Suma Polizas</th>
+                        <th class="num">XML Attachment ID</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -551,13 +554,14 @@
                                     </button>
                                 </td>
                                 <td class="num">@item.SumaPolizas</td>
+                                <td class="num">@item.XML_Attachment_ID</td>
                             </tr>
                         }
                     }
                     else
                     {
                         <tr>
-                            <td colspan="25" class="text-center">No se encontraron CFDIs de nómina emitidos.</td>
+                            <td colspan="29" class="text-center">No se encontraron CFDIs de nómina emitidos.</td>
                         </tr>
                     }
                 </tbody>

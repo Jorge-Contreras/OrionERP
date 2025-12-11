@@ -197,69 +197,9 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       };
     }
 
-    private static DeclaracionEmitida ToDeclaracionEmitida(DeclaracionCfdiBase item) => new DeclaracionEmitida
-    {
-      Comprobante_Id = item.Comprobante_Id,
-      D = item.D,
-      Fecha = item.Fecha,
-      MES_GLOBAL = item.MES_GLOBAL,
-      ANIO_GLOBAL = item.ANIO_GLOBAL,
-      RECEPTOR = item.RECEPTOR,
-      SubTotal = item.SubTotal,
-      Descuento = item.Descuento,
-      SubTotal_Desc = item.SubTotal_Desc,
-      Actos_16 = item.Actos_16,
-      Actos_0 = item.Actos_0,
-      IVA = item.IVA,
-      IEPS = item.IEPS,
-      IVA_RETENIDO = item.IVA_RETENIDO,
-      ISR_RETENIDO = item.ISR_RETENIDO,
-      IEPS_RETENIDO = item.IEPS_RETENIDO,
-      Total = item.Total,
-      FOLIO_FISCAL = item.FOLIO_FISCAL,
-      FormaPago = item.FormaPago,
-      TipoDeComprobante = item.TipoDeComprobante,
-      MetodoPago = item.MetodoPago,
-      UsoCFDI = item.UsoCFDI,
-      FechaCancelacion = item.FechaCancelacion,
-      Estatus = item.Estatus,
-      fechastransacciones = item.fechastransacciones,
-      Poliza = item.Poliza,
-      SumaPolizas = item.SumaPolizas,
-      XML_Attachment_ID = item.XML_Attachment_ID
-    };
+    private static DeclaracionEmitida ToDeclaracionEmitida(DeclaracionCfdiBase item) => new DeclaracionEmitida(item);
 
-    private static DeclaracionRecibida ToDeclaracionRecibida(DeclaracionCfdiBase item) => new DeclaracionRecibida
-    {
-      Comprobante_Id = item.Comprobante_Id,
-      D = item.D,
-      Fecha = item.Fecha,
-      MES_GLOBAL = item.MES_GLOBAL,
-      ANIO_GLOBAL = item.ANIO_GLOBAL,
-      EMISOR = item.EMISOR,
-      SubTotal = item.SubTotal,
-      Descuento = item.Descuento,
-      SubTotal_Desc = item.SubTotal_Desc,
-      Actos_16 = item.Actos_16,
-      Actos_0 = item.Actos_0,
-      IVA = item.IVA,
-      IEPS = item.IEPS,
-      IVA_RETENIDO = item.IVA_RETENIDO,
-      ISR_RETENIDO = item.ISR_RETENIDO,
-      IEPS_RETENIDO = item.IEPS_RETENIDO,
-      Total = item.Total,
-      FOLIO_FISCAL = item.FOLIO_FISCAL,
-      FormaPago = item.FormaPago,
-      TipoDeComprobante = item.TipoDeComprobante,
-      MetodoPago = item.MetodoPago,
-      UsoCFDI = item.UsoCFDI,
-      FechaCancelacion = item.FechaCancelacion,
-      Estatus = item.Estatus,
-      fechastransacciones = item.fechastransacciones,
-      Poliza = item.Poliza,
-      SumaPolizas = item.SumaPolizas,
-      XML_Attachment_ID = item.XML_Attachment_ID
-    };
+    private static DeclaracionRecibida ToDeclaracionRecibida(DeclaracionCfdiBase item) => new DeclaracionRecibida(item);
 
     private static decimal SatRound(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
 

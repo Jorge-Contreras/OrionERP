@@ -127,6 +127,8 @@
             <tr>
                 <td colspan="4"><strong># CFDIs:</strong> @Totals.CountCFDIs</td>
                 <td><strong>Totales:</strong></td>
+                <td></td>
+                <td></td>
                 <td class="num">@Totals.SumSubTotal.ToString("N2")</td>
                 <td class="num">@Totals.SumDescuento.ToString("N2")</td>
                 <td class="num">@Totals.SumSubTotalDesc.ToString("N2")</td>
@@ -206,7 +208,7 @@
 
     private int EffectiveColumnCount => BaseColumnCount - (ShowSumPolizas ? 0 : 1) - (ShowXmlAttachment ? 0 : 1) + AdditionalColumnsCount;
 
-    private int RemainingColumns => Math.Max(0, EffectiveColumnCount - 16);
+    private int RemainingColumns => Math.Max(0, EffectiveColumnCount - 18);
 
     private string GetRowClass(DeclaracionPrevia.DeclaracionCfdiBase item) => RowClassResolver?.Invoke(item) ?? string.Empty;
 

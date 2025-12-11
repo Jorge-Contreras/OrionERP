@@ -101,7 +101,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
           endDate = GetSqlDate(endDate)
         };
 
-        var allCfdiBase = (await conn.QueryAsync<DeclaracionCfdiBase>(
+        allCfdiBase = (await conn.QueryAsync<DeclaracionCfdiBase>(
           "EXEC cfdi.Declaracion_CFDI_Base @Year, @Month, @RFC", new
           {
             Year = selectedYear,
@@ -109,40 +109,47 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
             RFC = selectedRfc
           })).AsList();
 
-        var emitidasBase = allCfdiBase
+        emitidasBase = allCfdiBase
           .Where(x => x.EsEmitida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante))
           .ToList();
 
-        var recibidasBase = allCfdiBase
+        recibidasBase = allCfdiBase
           .Where(x => x.EsRecibida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante))
           .ToList();
 
-        var nominaEmitidasBase = allCfdiBase
+        emitidasNominaBase = allCfdiBase
           .Where(x => x.EsEmitida && IsNomina(x.TipoDeComprobante))
           .ToList();
 
-        var nominaRecibidasBase = allCfdiBase
+        recibidasNominaBase = allCfdiBase
           .Where(x => x.EsRecibida && IsNomina(x.TipoDeComprobante))
           .ToList();
 
-        var tipoERecibidasBase = allCfdiBase
+        tipoEEmitidasBase = allCfdiBase
+          .Where(x => x.EsEmitida && IsTipoE(x.TipoDeComprobante))
+          .ToList();
+
+        tipoERecibidasBase = allCfdiBase
           .Where(x => x.EsRecibida && IsTipoE(x.TipoDeComprobante))
           .ToList();
 
         emitidas = emitidasBase.Select(ToDeclaracionEmitida).ToList();
         emitidasTotals = ComputeDeclaracionTotales(emitidasBase);
 
-        emitidasNomina = nominaEmitidasBase.Select(ToDeclaracionEmitida).ToList();
-        emitidasNominaTotals = ComputeDeclaracionTotales(nominaEmitidasBase);
+        emitidasNomina = emitidasNominaBase.Select(ToDeclaracionEmitida).ToList();
+        emitidasNominaTotals = ComputeDeclaracionTotales(emitidasNominaBase);
 
         recibidas = recibidasBase.Select(ToDeclaracionRecibida).ToList();
         recibidasTotals = ComputeDeclaracionTotales(recibidasBase);
 
-        recibidasNomina = nominaRecibidasBase.Select(ToDeclaracionRecibida).ToList();
-        recibidasNominaTotals = ComputeDeclaracionTotales(nominaRecibidasBase);
+        recibidasNomina = recibidasNominaBase.Select(ToDeclaracionRecibida).ToList();
+        recibidasNominaTotals = ComputeDeclaracionTotales(recibidasNominaBase);
 
-        recibidasTipoE = tipoERecibidasBase.Select(ToDeclaracionRecibida).ToList();
-        recibidasTipoETotals = ComputeDeclaracionTotales(tipoERecibidasBase);
+        tipoEEmitidas = tipoEEmitidasBase.Select(ToDeclaracionEmitida).ToList();
+        tipoEEmitidasTotals = ComputeDeclaracionTotales(tipoEEmitidasBase);
+
+        tipoERecibidas = tipoERecibidasBase.Select(ToDeclaracionRecibida).ToList();
+        tipoERecibidasTotals = ComputeDeclaracionTotales(tipoERecibidasBase);
 
         desfase = (await conn.QueryAsync<DesfaseItem>(
           "EXEC dbo.Declaracion_Comprobantes_Con_Desfase @RFC, @Anio, @Mes", common)).AsList();

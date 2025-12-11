@@ -11,6 +11,8 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       _filtering = true;
       emitidasCurrentPage = 1;
       recibidasCurrentPage = 1;
+      tipoEEmitidasCurrentPage = 1;
+      tipoERecibidasCurrentPage = 1;
       try
       {
         await LoadAllData();
@@ -30,69 +32,91 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     // Sorting:
     private void ApplySorting()
     {
-      if (emitidas != null)
+      SortEmitidasList(emitidas);
+      SortEmitidasList(emitidasNomina);
+      SortEmitidasList(tipoEEmitidas);
+
+      SortRecibidasList(recibidas);
+      SortRecibidasList(recibidasNomina);
+      SortRecibidasList(tipoERecibidas);
+    }
+
+    private void SortEmitidasList(List<DeclaracionEmitida>? items)
+    {
+      if (items == null)
       {
-        // Sort emitidas list based on emitidasSortColumn and emitidasSortOrder
-        System.Comparison<DeclaracionEmitida> comparison = (a, b) => 0;
-        switch (emitidasSortColumn)
-        {
-          case "Fecha":
-            comparison = (a, b) => a.Fecha.CompareTo(b.Fecha);
-            break;
-          case "RECEPTOR":
-            comparison = (a, b) => string.Compare(a.RECEPTOR, b.RECEPTOR, System.StringComparison.CurrentCultureIgnoreCase);
-            break;
-          case "Total":
-            comparison = (a, b) => a.Total.CompareTo(b.Total);
-            break;
-          case "FOLIO_FISCAL":
-            comparison = (a, b) => string.Compare(a.FOLIO_FISCAL, b.FOLIO_FISCAL, System.StringComparison.CurrentCultureIgnoreCase);
-            break;
-        }
-        emitidas.Sort(comparison);
-        if (emitidasSortOrder == "DESC")
-        {
-          emitidas.Reverse();
-        }
+        return;
       }
-      if (recibidas != null)
+
+      System.Comparison<DeclaracionEmitida> comparison = (a, b) => 0;
+      switch (emitidasSortColumn)
       {
-        System.Comparison<DeclaracionRecibida> comparison = (a, b) => 0;
-        switch (recibidasSortColumn)
-        {
-          case "Fecha":
-            comparison = (a, b) => a.Fecha.CompareTo(b.Fecha);
-            break;
-          case "EMISOR":
-            comparison = (a, b) => string.Compare(a.EMISOR, b.EMISOR, System.StringComparison.CurrentCultureIgnoreCase);
-            break;
-          case "Total":
-            comparison = (a, b) => a.Total.CompareTo(b.Total);
-            break;
-          case "FOLIO_FISCAL":
-            comparison = (a, b) => string.Compare(a.FOLIO_FISCAL, b.FOLIO_FISCAL, System.StringComparison.CurrentCultureIgnoreCase);
-            break;
-        }
-        recibidas.Sort(comparison);
-        if (recibidasSortOrder == "DESC")
-        {
-          recibidas.Reverse();
-        }
+        case "Fecha":
+          comparison = (a, b) => a.Fecha.CompareTo(b.Fecha);
+          break;
+        case "RECEPTOR":
+          comparison = (a, b) => string.Compare(a.RECEPTOR, b.RECEPTOR, System.StringComparison.CurrentCultureIgnoreCase);
+          break;
+        case "Total":
+          comparison = (a, b) => a.Total.CompareTo(b.Total);
+          break;
+        case "FOLIO_FISCAL":
+          comparison = (a, b) => string.Compare(a.FOLIO_FISCAL, b.FOLIO_FISCAL, System.StringComparison.CurrentCultureIgnoreCase);
+          break;
+      }
+
+      items.Sort(comparison);
+      if (emitidasSortOrder == "DESC")
+      {
+        items.Reverse();
+      }
+    }
+
+    private void SortRecibidasList(List<DeclaracionRecibida>? items)
+    {
+      if (items == null)
+      {
+        return;
+      }
+
+      System.Comparison<DeclaracionRecibida> comparison = (a, b) => 0;
+      switch (recibidasSortColumn)
+      {
+        case "Fecha":
+          comparison = (a, b) => a.Fecha.CompareTo(b.Fecha);
+          break;
+        case "EMISOR":
+          comparison = (a, b) => string.Compare(a.EMISOR, b.EMISOR, System.StringComparison.CurrentCultureIgnoreCase);
+          break;
+        case "Total":
+          comparison = (a, b) => a.Total.CompareTo(b.Total);
+          break;
+        case "FOLIO_FISCAL":
+          comparison = (a, b) => string.Compare(a.FOLIO_FISCAL, b.FOLIO_FISCAL, System.StringComparison.CurrentCultureIgnoreCase);
+          break;
+      }
+
+      items.Sort(comparison);
+      if (recibidasSortOrder == "DESC")
+      {
+        items.Reverse();
       }
     }
 
     private async Task OnEmitidasSortsChangedAsync()
     {
-        ApplySorting();
-        emitidasCurrentPage = 1;
-        await LoadAllData();
+      ApplySorting();
+      emitidasCurrentPage = 1;
+      tipoEEmitidasCurrentPage = 1;
+      await LoadAllData();
     }
 
     private async Task OnRecibidasSortChangedAsync()
     {
-        ApplySorting();
-        recibidasCurrentPage = 1;
-        await LoadAllData();
+      ApplySorting();
+      recibidasCurrentPage = 1;
+      tipoERecibidasCurrentPage = 1;
+      await LoadAllData();
     }
 
     private async Task SortEmitidasByColumn(string columnName)

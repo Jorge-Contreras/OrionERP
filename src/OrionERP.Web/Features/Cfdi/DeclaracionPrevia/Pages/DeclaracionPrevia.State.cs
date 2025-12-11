@@ -23,18 +23,27 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private bool isAnnual;
 
     // Data lists and other outputs
+    private List<DeclaracionCfdiBase>? allCfdiBase;
+    private List<DeclaracionCfdiBase>? emitidasBase;
+    private List<DeclaracionCfdiBase>? recibidasBase;
+    private List<DeclaracionCfdiBase>? emitidasNominaBase;
+    private List<DeclaracionCfdiBase>? recibidasNominaBase;
+    private List<DeclaracionCfdiBase>? tipoEEmitidasBase;
+    private List<DeclaracionCfdiBase>? tipoERecibidasBase;
     private List<DeclaracionEmitida>? emitidas;
     private List<DeclaracionEmitida>? emitidasNomina;
     private List<DeclaracionRecibida>? recibidas;
     private List<DeclaracionRecibida>? recibidasNomina;
-    private List<DeclaracionRecibida>? recibidasTipoE;
+    private List<DeclaracionEmitida>? tipoEEmitidas;
+    private List<DeclaracionRecibida>? tipoERecibidas;
     private List<DesfaseItem>? desfase;
     private List<PolizaNoConsolidada>? polizasNoConsolidadas;
     private DeclaracionTotales? emitidasTotals;
     private DeclaracionTotales? emitidasNominaTotals;
     private DeclaracionTotales? recibidasTotals;
     private DeclaracionTotales? recibidasNominaTotals;
-    private DeclaracionTotales? recibidasTipoETotals;
+    private DeclaracionTotales? tipoEEmitidasTotals;
+    private DeclaracionTotales? tipoERecibidasTotals;
     private DesfaseTotales? desfaseTotals;
     private string? impuestosSummary;
     private string? bancosCajaSummary;
@@ -64,6 +73,12 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private int recibidasCurrentPage = 1;
     private int recibidasPageCount = 1;
     private IEnumerable<DeclaracionRecibida> recibidasPage => recibidas?.Skip((recibidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionRecibida>();
+    private int tipoEEmitidasCurrentPage = 1;
+    private int tipoEEmitidasPageCount = 1;
+    private IEnumerable<DeclaracionEmitida> tipoEEmitidasPage => tipoEEmitidas?.Skip((tipoEEmitidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionEmitida>();
+    private int tipoERecibidasCurrentPage = 1;
+    private int tipoERecibidasPageCount = 1;
+    private IEnumerable<DeclaracionRecibida> tipoERecibidasPage => tipoERecibidas?.Skip((tipoERecibidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionRecibida>();
 
     private void ClearErrorMessage()
     {

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Data.SqlClient;
@@ -41,16 +42,40 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
       if (item.EsEmitida)
       {
-        selectedEmitida = new DeclaracionEmitida(item);
+        selectedEmitida = FindEmitidaById(item.Comprobante_Id) ?? new DeclaracionEmitida(item);
         await LoadComplementosAsync(item.FOLIO_FISCAL, isEmitida: true);
         return;
       }
 
       if (item.EsRecibida)
       {
-        selectedRecibida = new DeclaracionRecibida(item);
+        selectedRecibida = FindRecibidaById(item.Comprobante_Id) ?? new DeclaracionRecibida(item);
         await LoadComplementosAsync(item.FOLIO_FISCAL, isEmitida: false);
       }
+    }
+
+    private DeclaracionEmitida? FindEmitidaById(int comprobanteId)
+    {
+      if (selectedEmitida?.Comprobante_Id == comprobanteId)
+      {
+        return selectedEmitida;
+      }
+
+      return emitidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
+        ?? emitidasNomina?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
+        ?? tipoEEmitidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId);
+    }
+
+    private DeclaracionRecibida? FindRecibidaById(int comprobanteId)
+    {
+      if (selectedRecibida?.Comprobante_Id == comprobanteId)
+      {
+        return selectedRecibida;
+      }
+
+      return recibidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
+        ?? recibidasNomina?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
+        ?? tipoERecibidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId);
     }
 
     // Toggle Include/Exclude for selected invoice (Emitidas)

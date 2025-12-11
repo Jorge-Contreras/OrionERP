@@ -33,8 +33,8 @@
     private string? ItemPoliza => Item switch
     {
         DeclaracionPrevia.DeclaracionCfdiBase baseCfdi => baseCfdi.Poliza,
-        DeclaracionPrevia.DeclaracionEmitida emitida => emitida.Poliza,
-        DeclaracionPrevia.DeclaracionRecibida recibida => recibida.Poliza,
+        // DeclaracionPrevia.DeclaracionEmitida emitida => emitida.Poliza,
+        // DeclaracionPrevia.DeclaracionRecibida recibida => recibida.Poliza,
         _ => null
     };
 

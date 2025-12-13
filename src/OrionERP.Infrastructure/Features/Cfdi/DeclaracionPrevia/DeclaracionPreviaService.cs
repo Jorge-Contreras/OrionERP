@@ -1,4 +1,5 @@
 using System.Data;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text;
@@ -13,13 +14,13 @@ namespace OrionERP.Infrastructure.Features.Cfdi.DeclaracionPrevia;
 public class DeclaracionPreviaService : IDeclaracionPreviaService
 {
   private readonly string _connectionString;
-  private readonly IHttpClientFactory _httpClientFactory;
+  private readonly HttpClient _httpClient;
   private readonly IConfiguration _configuration;
 
-  public DeclaracionPreviaService(IConfiguration configuration, IHttpClientFactory httpClientFactory)
+  public DeclaracionPreviaService(IConfiguration configuration, HttpClient httpClient)
   {
     _configuration = configuration;
-    _httpClientFactory = httpClientFactory;
+    _httpClient = httpClient;
     _connectionString = configuration.GetConnectionString("OrionDb")
       ?? throw new InvalidOperationException("Missing connection string 'OrionDb'.");
   }
@@ -185,12 +186,11 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
     string facturamaPassword = _configuration["Facturama:Password"] ?? "Orion2020";
     string authHeader = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{facturamaUser}:{facturamaPassword}"));
 
-    var client = _httpClientFactory.CreateClient();
-    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authHeader);
-    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authHeader);
+    _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
     string queryUrl = $"https://api.facturama.mx/cfdi?type=issued&uuid={uuid}";
-    var getResp = await client.GetAsync(queryUrl);
+    var getResp = await _httpClient.GetAsync(queryUrl);
     getResp.EnsureSuccessStatusCode();
 
     string getBody = await getResp.Content.ReadAsStringAsync();
@@ -209,7 +209,7 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
     }
 
     string cancelUrl = $"https://api.facturama.mx/cfdi/{cfdiId}?type=issued&motive=02";
-    var deleteResp = await client.DeleteAsync(cancelUrl);
+    var deleteResp = await _httpClient.DeleteAsync(cancelUrl);
     deleteResp.EnsureSuccessStatusCode();
 
     using var conn = new SqlConnection(_connectionString);

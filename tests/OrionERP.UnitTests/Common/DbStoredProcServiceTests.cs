@@ -107,7 +107,7 @@ public class DbStoredProcServiceTests
 
     public override CommandType CommandType { get; set; } = CommandType.Text;
 
-    protected override DbConnection DbConnection { get; set; } = default!;
+    protected override DbConnection? DbConnection { get; set; } = default!;
 
     protected override DbParameterCollection DbParameterCollection => _parameters;
 
@@ -237,7 +237,7 @@ public class DbStoredProcServiceTests
 
     public override bool IsNullable { get; set; } = true;
 
-    public override string ParameterName { get; set; } = string.Empty;
+     public override string ParameterName { get; set; } = string.Empty;
 
     public override string SourceColumn { get; set; } = string.Empty;
 

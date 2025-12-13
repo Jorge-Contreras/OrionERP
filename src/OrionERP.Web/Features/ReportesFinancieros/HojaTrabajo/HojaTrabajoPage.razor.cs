@@ -37,8 +37,15 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
         public bool IsLoading { get; private set; }
         public bool IsExporting { get; private set; }
         public string? ErrorMessage { get; private set; }
-        public List<HojaTrabajoDto> HojaTrabajoData { get; private set; } = new();
-        public HojaTrabajoDto? SelectedRow { get; private set; }
+        public List<HojaTrabajoTablaDto> HojaTrabajoCfdi { get; private set; } = new();
+        public List<HojaTrabajoTablaDto> HojaTrabajoComplementos { get; private set; } = new();
+        public List<HojaTrabajoTablaDto> HojaTrabajoContabilidad { get; private set; } = new();
+        public List<HojaTrabajoTablaDto> HojaTrabajoAcumulados { get; private set; } = new();
+        public List<HojaTrabajoTablaDto> HojaTrabajoTipoE { get; private set; } = new();
+        public List<HojaTrabajoTablaDto> HojaTrabajoTipoN { get; private set; } = new();
+        public HojaTrabajoTab ActiveTab { get; private set; } = HojaTrabajoTab.Cfdi;
+
+        private readonly Dictionary<HojaTrabajoTab, HojaTrabajoTablaDto?> _selectedRows = new();
 
         private static readonly CultureInfo MexicanCulture = new("es-MX");
 
@@ -64,7 +71,13 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
         {
             if (string.IsNullOrEmpty(CurrentRfc))
             {
-                HojaTrabajoData.Clear();
+                HojaTrabajoCfdi.Clear();
+                HojaTrabajoComplementos.Clear();
+                HojaTrabajoContabilidad.Clear();
+                HojaTrabajoAcumulados.Clear();
+                HojaTrabajoTipoE.Clear();
+                HojaTrabajoTipoN.Clear();
+                _selectedRows.Clear();
                 return;
             }
 
@@ -74,8 +87,15 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
 
             try
             {
-                HojaTrabajoData = await ReportesService.GetHojaTrabajoAsync(Anio, CurrentRfc);
-                SelectedRow = null;
+                var result = await ReportesService.GetHojaTrabajoAsync(Anio, CurrentRfc);
+                HojaTrabajoCfdi = result.Cfdi;
+                HojaTrabajoComplementos = result.Complementos;
+                HojaTrabajoContabilidad = result.Contabilidad;
+                HojaTrabajoAcumulados = result.Acumulados;
+                HojaTrabajoTipoE = result.TipoE;
+                HojaTrabajoTipoN = result.TipoN;
+                ActiveTab = HojaTrabajoTab.Cfdi;
+                _selectedRows.Clear();
             }
             catch (Exception ex)
             {
@@ -88,9 +108,9 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
             }
         }
 
-        private string GetRowClass(HojaTrabajoDto row)
+        private string GetRowClass(HojaTrabajoTablaDto row, List<HojaTrabajoTablaDto> data, HojaTrabajoTab tab)
         {
-            var index = HojaTrabajoData.IndexOf(row);
+            var index = data.IndexOf(row);
             var baseClass = index switch
             {
                 0 or 1 => "section-0",
@@ -101,7 +121,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
                 _ => "section-5",
             };
 
-            if (SelectedRow == row)
+            if (TryGetSelectedRow(tab, out var selectedRow) && selectedRow == row)
             {
                 return $"{baseClass} table-active fw-bold".Trim();
             }
@@ -109,20 +129,20 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
             return baseClass;
         }
 
-        private string GetCellClass(HojaTrabajoDto row, int monthIndex)
+        private string GetCellClass(HojaTrabajoTablaDto row, int monthIndex)
         {
             var value = GetMonthValue(row, monthIndex);
             return value < 0 ? "negative-number" : string.Empty;
         }
 
-        private string GetFormattedValue(HojaTrabajoDto row, int monthIndex)
+        private string GetFormattedValue(HojaTrabajoTablaDto row, int monthIndex)
         {
             var value = GetMonthValue(row, monthIndex);
             var format = row.Descripcion == "COEFICIENTE_UTILIDAD" ? "N4" : "N2";
             return value.ToString(format, MexicanCulture);
         }
 
-        private decimal GetMonthValue(HojaTrabajoDto row, int monthIndex)
+        private decimal GetMonthValue(HojaTrabajoTablaDto row, int monthIndex)
         {
             return monthIndex switch
             {
@@ -147,9 +167,29 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
             RfcState.Changed -= OnRfcStateChanged;
         }
 
-        private void SelectRow(HojaTrabajoDto row)
+        private void SelectRow(HojaTrabajoTablaDto row, HojaTrabajoTab tab)
         {
-            SelectedRow = row;
+            _selectedRows[tab] = row;
         }
+
+        private bool TryGetSelectedRow(HojaTrabajoTab tab, out HojaTrabajoTablaDto? row)
+        {
+            return _selectedRows.TryGetValue(tab, out row);
+        }
+
+        private void SetActiveTab(HojaTrabajoTab tab)
+        {
+            ActiveTab = tab;
+        }
+    }
+
+    public enum HojaTrabajoTab
+    {
+        Cfdi,
+        Complementos,
+        Contabilidad,
+        Acumulados,
+        TipoE,
+        TipoN
     }
 }

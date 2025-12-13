@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Data.SqlClient;
@@ -9,19 +10,72 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
   public partial class DeclaracionPrevia
   {
     // Row selection:
-    private async Task SelectEmitidaAsync(DeclaracionEmitida item)
+    private async Task SelectEmitidaAsync(DeclaracionEmitida item) => await SelectCfdiAsync(item);
+
+    private async Task SelectRecibidaAsync(DeclaracionRecibida item) => await SelectCfdiAsync(item);
+
+    private async Task SelectCfdiAsync(DeclaracionCfdiBase? item)
     {
-      selectedEmitida = item;
-      selectedRecibida = null;
-      recibidasComplementos = new List<PagoComplementoResumen>();
-      await LoadComplementosAsync(item?.FOLIO_FISCAL, isEmitida: true);
-    }
-    private async Task SelectRecibidaAsync(DeclaracionRecibida item)
-    {
-      selectedRecibida = item;
       selectedEmitida = null;
+      selectedRecibida = null;
       emitidasComplementos = new List<PagoComplementoResumen>();
-      await LoadComplementosAsync(item?.FOLIO_FISCAL, isEmitida: false);
+      recibidasComplementos = new List<PagoComplementoResumen>();
+
+      if (item == null)
+      {
+        return;
+      }
+
+      if (item is DeclaracionEmitida emitida)
+      {
+        selectedEmitida = emitida;
+        await LoadComplementosAsync(item.FOLIO_FISCAL, isEmitida: true);
+        return;
+      }
+
+      if (item is DeclaracionRecibida recibida)
+      {
+        selectedRecibida = recibida;
+        await LoadComplementosAsync(item.FOLIO_FISCAL, isEmitida: false);
+        return;
+      }
+
+      if (item.EsEmitida)
+      {
+        selectedEmitida = FindEmitidaById(item.Comprobante_Id) ?? new DeclaracionEmitida(item);
+        await LoadComplementosAsync(item.FOLIO_FISCAL, isEmitida: true);
+        return;
+      }
+
+      if (item.EsRecibida)
+      {
+        selectedRecibida = FindRecibidaById(item.Comprobante_Id) ?? new DeclaracionRecibida(item);
+        await LoadComplementosAsync(item.FOLIO_FISCAL, isEmitida: false);
+      }
+    }
+
+    private DeclaracionEmitida? FindEmitidaById(int comprobanteId)
+    {
+      if (selectedEmitida?.Comprobante_Id == comprobanteId)
+      {
+        return selectedEmitida;
+      }
+
+      return emitidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
+        ?? emitidasNomina?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
+        ?? tipoEEmitidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId);
+    }
+
+    private DeclaracionRecibida? FindRecibidaById(int comprobanteId)
+    {
+      if (selectedRecibida?.Comprobante_Id == comprobanteId)
+      {
+        return selectedRecibida;
+      }
+
+      return recibidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
+        ?? recibidasNomina?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
+        ?? tipoERecibidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId);
     }
 
     // Toggle Include/Exclude for selected invoice (Emitidas)
@@ -153,7 +207,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
       if (string.Equals(item.MetodoPago, "PPD", StringComparison.OrdinalIgnoreCase))
       {
-        classes.Add("sea-green-highlight");
+        classes.Add("highlight-table-row");
       }
 
       return string.Join(" ", classes);
@@ -170,7 +224,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
       if (string.Equals(item.MetodoPago, "PPD", StringComparison.OrdinalIgnoreCase))
       {
-        classes.Add("sea-green-highlight");
+        classes.Add("highlight-table-row");
       }
 
       return string.Join(" ", classes);

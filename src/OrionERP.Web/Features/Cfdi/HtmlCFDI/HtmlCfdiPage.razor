@@ -1,0 +1,28 @@
+@page "/cfdi/html-cfdi/{id:int}"
+@using OrionERP.Application.Features.Cfdi.HtmlCFDI
+@attribute [Authorize(Roles = "Administrador,SatOperator")]
+
+<h3>CFDI en HTML</h3>
+
+<div class="mb-3 text-muted">Adjunto #@Id</div>
+
+@if (IsLoading)
+{
+    <div class="alert alert-info">Cargando CFDI...</div>
+}
+else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+{
+    <div class="alert alert-danger">@ErrorMessage</div>
+}
+else if (Document is null)
+{
+    <div class="alert alert-warning">No se pudo cargar el CFDI.</div>
+}
+else if (Document.TipoDeComprobante == "P")
+{
+    <CfdiPago20View Document="Document" />
+}
+else
+{
+    <CfdiComprobanteView Document="Document" />
+}

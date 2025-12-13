@@ -1,12 +1,13 @@
 using OrionERP.Application.Common;
+using OrionERP.Infrastructure.Auth;
 
 namespace OrionERP.Web.State;
 
 public sealed class UserRfcStateAccessor : ICurrentRfcAccessor
 {
-  private readonly IUserRfcState _state;
+  private readonly IRfcContext _context;
 
-  public UserRfcStateAccessor(IUserRfcState state) => _state = state;
+  public UserRfcStateAccessor(IRfcContext context) => _context = context;
 
-  public string? CurrentRfc => _state.CurrentRfc;
+  public string? CurrentRfc => _context.CurrentRfc;
 }

@@ -6,6 +6,6 @@ public sealed record CuentasContablesDto
   public string RazonSocial { get; init; } = string.Empty;
   public string Nivel1 { get; init; } = string.Empty;
   public string Nivel2 { get; init; } = string.Empty;
-  public string Nivel3 { get; init; } = string.Empty;
-  public string Descripcion { get; init; } = string.Empty;
+  public string Nivel3 { get; set; } = string.Empty;
+  public string Descripcion { get; set; } = string.Empty;
 }

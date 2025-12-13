@@ -6,7 +6,7 @@
     <button class="btn btn-sm btn-outline-info"
             @onclick:stopPropagation="true"
             @onclick="() => OpenDetails()">
-        PDF
+        CFDI
     </button>
 </td>
 <td>
@@ -20,7 +20,7 @@
 
 @code {
     [Parameter]
-    public object Item { get; set; }
+    public object? Item { get; set; }
 
     [Parameter]
     public EventCallback<object> OnOpenDetails { get; set; }
@@ -28,12 +28,13 @@
     [Parameter]
     public EventCallback<object> OnHandlePolizaClick { get; set; }
 
-    private string _placeholderTransaccionId => Configuration["SatXml:PlaceholderTransaccionId"];
+    private string? _placeholderTransaccionId => Configuration["SatXml:PlaceholderTransaccionId"];
 
     private string? ItemPoliza => Item switch
     {
-        DeclaracionPrevia.DeclaracionEmitida emitida => emitida.Poliza,
-        DeclaracionPrevia.DeclaracionRecibida recibida => recibida.Poliza,
+        DeclaracionPrevia.DeclaracionCfdiBase baseCfdi => baseCfdi.Poliza,
+        // DeclaracionPrevia.DeclaracionEmitida emitida => emitida.Poliza,
+        // DeclaracionPrevia.DeclaracionRecibida recibida => recibida.Poliza,
         _ => null
     };
 

@@ -2,14 +2,16 @@ using OfficeOpenXml;
 using System;
 using System.Threading.Tasks;
 using Microsoft.JSInterop;
+using System.Collections.Generic;
+using OrionERP.Application.Features.ReportesFinancieros;
 
 namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
 {
     public partial class HojaTrabajoPage
     {
-        private async Task ExportToExcel(IJSRuntime js)
+        private async Task ExportToExcel(IJSRuntime js, List<HojaTrabajoTablaDto> data, string sheetName)
         {
-            if (IsExporting)
+            if (IsExporting || data.Count == 0)
                 return;
 
             IsExporting = true;
@@ -17,7 +19,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
             try
             {
                 using var package = new ExcelPackage();
-                var worksheet = package.Workbook.Worksheets.Add("Hoja de Trabajo");
+                var worksheet = package.Workbook.Worksheets.Add(sheetName);
 
                 // Headers
                 string[] headers = { "Descripción", "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE" };
@@ -27,9 +29,9 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
                 }
 
                 // Data
-                for (int i = 0; i < HojaTrabajoData.Count; i++)
+                for (int i = 0; i < data.Count; i++)
                 {
-                    var row = HojaTrabajoData[i];
+                    var row = data[i];
                     worksheet.Cells[i + 2, 1].Value = row.Descripcion;
                     worksheet.Cells[i + 2, 2].Value = row.ENERO;
                     worksheet.Cells[i + 2, 3].Value = row.FEBRERO;
@@ -48,7 +50,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
                 worksheet.Cells.AutoFitColumns();
 
                 var fileBytes = await package.GetAsByteArrayAsync();
-                var fileName = $"HojaTrabajoIVA_{Anio}_{CurrentRfc}.xlsx";
+                var fileName = $"HojaTrabajo_{sheetName}_{Anio}_{CurrentRfc}.xlsx";
                 var base64 = Convert.ToBase64String(fileBytes);
                 var dataUrl = $"data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{base64}";
 

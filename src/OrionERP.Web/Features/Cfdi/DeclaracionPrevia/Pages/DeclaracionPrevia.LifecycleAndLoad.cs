@@ -20,7 +20,10 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
     protected override async Task OnInitializedAsync()
     {
-      _placeholderTransaccionId = int.Parse(Configuration["SatXml:PlaceholderTransaccionId"]);
+      var placeholderSetting = Configuration["SatXml:PlaceholderTransaccionId"];
+      _placeholderTransaccionId = int.TryParse(placeholderSetting, out var parsedPlaceholder)
+        ? parsedPlaceholder
+        : 0;
       connectionString = Configuration.GetConnectionString("OrionDb");
       // Initialize filter defaults:
       disponibleYears = Enumerable.Range(2020, 7).ToList();  // 2020-2026
@@ -98,30 +101,55 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
           endDate = GetSqlDate(endDate)
         };
 
-        // One after another—no parallel readers:
-        emitidas = (await conn.QueryAsync<DeclaracionEmitida>(
-          "EXEC dbo.Declaracion_Emitidas @Year, @Month, @RFC_Emisor", common)).AsList();
+        allCfdiBase = (await conn.QueryAsync<DeclaracionCfdiBase>(
+          "EXEC cfdi.Declaracion_CFDI_Base @Year, @Month, @RFC", new
+          {
+            Year = selectedYear,
+            Month = isAnnual ? (object)DBNull.Value : selectedMonth,
+            RFC = selectedRfc
+          })).AsList();
 
-        emitidasTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
-          "EXEC dbo.Declaracion_Emitidas_Totales @Year, @Month, @RFC_Emisor", common);
+        emitidasBase = allCfdiBase
+          .Where(x => x.EsEmitida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante))
+          .ToList();
 
-        emitidasNomina = (await conn.QueryAsync<DeclaracionEmitida>(
-          "EXEC cfdi.Declaracion_Emitidas_Nomina @Year, @Month, @RFC_Emisor", common)).AsList();
+        recibidasBase = allCfdiBase
+          .Where(x => x.EsRecibida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante))
+          .ToList();
 
-        emitidasNominaTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
-          "EXEC cfdi.Declaracion_Emitidas_Nomina_Totales @Year, @Month, @RFC_Emisor", common);
+        emitidasNominaBase = allCfdiBase
+          .Where(x => x.EsEmitida && IsNomina(x.TipoDeComprobante))
+          .ToList();
 
-        recibidas = (await conn.QueryAsync<DeclaracionRecibida>(
-          "EXEC dbo.Declaracion_Recibidas @Year, @Month, @RFC_Receptor", common)).AsList();
+        recibidasNominaBase = allCfdiBase
+          .Where(x => x.EsRecibida && IsNomina(x.TipoDeComprobante))
+          .ToList();
 
-        recibidasTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
-          "EXEC dbo.Declaracion_Recibidas_Totales @Year, @Month, @RFC_Receptor", common);
+        tipoEEmitidasBase = allCfdiBase
+          .Where(x => x.EsEmitida && IsTipoE(x.TipoDeComprobante))
+          .ToList();
 
-        recibidasNomina = (await conn.QueryAsync<DeclaracionRecibida>(
-          "EXEC cfdi.Declaracion_Recibidas_Nomina @Year, @Month, @RFC_Receptor", common)).AsList();
+        tipoERecibidasBase = allCfdiBase
+          .Where(x => x.EsRecibida && IsTipoE(x.TipoDeComprobante))
+          .ToList();
 
-        recibidasNominaTotals = await conn.QueryFirstOrDefaultAsync<DeclaracionTotales>(
-          "EXEC cfdi.Declaracion_Recibidas_Nomina_Totales @Year, @Month, @RFC_Receptor", common);
+        emitidas = emitidasBase.Select(ToDeclaracionEmitida).ToList();
+        emitidasTotals = ComputeDeclaracionTotales(emitidasBase);
+
+        emitidasNomina = emitidasNominaBase.Select(ToDeclaracionEmitida).ToList();
+        emitidasNominaTotals = ComputeDeclaracionTotales(emitidasNominaBase);
+
+        recibidas = recibidasBase.Select(ToDeclaracionRecibida).ToList();
+        recibidasTotals = ComputeDeclaracionTotales(recibidasBase);
+
+        recibidasNomina = recibidasNominaBase.Select(ToDeclaracionRecibida).ToList();
+        recibidasNominaTotals = ComputeDeclaracionTotales(recibidasNominaBase);
+
+        tipoEEmitidas = tipoEEmitidasBase.Select(ToDeclaracionEmitida).ToList();
+        tipoEEmitidasTotals = ComputeDeclaracionTotales(tipoEEmitidasBase);
+
+        tipoERecibidas = tipoERecibidasBase.Select(ToDeclaracionRecibida).ToList();
+        tipoERecibidasTotals = ComputeDeclaracionTotales(tipoERecibidasBase);
 
         desfase = (await conn.QueryAsync<DesfaseItem>(
           "EXEC dbo.Declaracion_Comprobantes_Con_Desfase @RFC, @Anio, @Mes", common)).AsList();
@@ -154,6 +182,37 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
     }
 
+
+    private DeclaracionTotales ComputeDeclaracionTotales(IEnumerable<DeclaracionCfdiBase> items)
+    {
+      var list = items?.ToList() ?? new List<DeclaracionCfdiBase>();
+
+      return new DeclaracionTotales
+      {
+        CountCFDIs = list.Count,
+        SumSubTotal = SatRound(list.Sum(x => x.SubTotal)),
+        SumDescuento = SatRound(list.Sum(x => x.Descuento)),
+        SumSubTotalDesc = SatRound(list.Sum(x => x.SubTotal_Desc)),
+        SumActos16 = SatRound(list.Sum(x => x.Actos_16)),
+        SumActos0 = SatRound(list.Sum(x => x.Actos_0)),
+        SumIVA = SatRound(list.Sum(x => x.IVA)),
+        SumIEPS = SatRound(list.Sum(x => x.IEPS)),
+        SumIVA_RETENIDO = SatRound(list.Sum(x => x.IVA_RETENIDO)),
+        SumISR_RETENIDO = SatRound(list.Sum(x => x.ISR_RETENIDO)),
+        SumIEPS_RETENIDO = SatRound(list.Sum(x => x.IEPS_RETENIDO)),
+        SumTotal = SatRound(list.Sum(x => x.Total))
+      };
+    }
+
+    private static DeclaracionEmitida ToDeclaracionEmitida(DeclaracionCfdiBase item) => new DeclaracionEmitida(item);
+
+    private static DeclaracionRecibida ToDeclaracionRecibida(DeclaracionCfdiBase item) => new DeclaracionRecibida(item);
+
+    private static decimal SatRound(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
+
+    private static bool IsNomina(string? tipoDeComprobante) => string.Equals(tipoDeComprobante, "N", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsTipoE(string? tipoDeComprobante) => string.Equals(tipoDeComprobante, "E", StringComparison.OrdinalIgnoreCase);
 
     // Utility to format date for SQL as string (if needed; SP might accept date properly too)
     private string GetSqlDate(DateTime dt) => dt.ToString("yyyy-MM-dd HH:mm:ss");

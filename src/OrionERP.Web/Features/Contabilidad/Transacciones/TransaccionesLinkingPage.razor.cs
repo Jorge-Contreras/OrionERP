@@ -21,8 +21,8 @@ public partial class TransaccionesLinkingPage : ComponentBase
   [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
 
   protected TransaccionHeaderDto? Header { get; private set; }
-  protected List<TransaccionCfdiCandidateDto> CandidateRows { get; } = new();
-  protected List<TransaccionCfdiCandidateDto> LinkedRows { get; } = new();
+  protected List<TransaccionCfdiCandidateDto> CandidateRows { get; } = [];
+  protected List<TransaccionCfdiCandidateDto> LinkedRows { get; } = [];
   protected CandidateFilterState Filters { get; } = new();
   protected TransaccionCfdiCandidateDto? SelectedCandidate { get; private set; }
 

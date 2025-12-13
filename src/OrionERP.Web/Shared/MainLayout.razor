@@ -35,7 +35,7 @@
 </div>
 
 @code {
-    private ErrorBoundary? _errorBoundary;
+    [CascadingParameter] private ErrorBoundary? _errorBoundary { get; set; }
 
     private void HandleError(Exception exception)
     {

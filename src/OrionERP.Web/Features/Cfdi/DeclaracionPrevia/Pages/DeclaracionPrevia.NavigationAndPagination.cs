@@ -7,12 +7,24 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
   public partial class DeclaracionPrevia
   {
     // Navigation or open detail functions:
-    private void OpenEmitidaDetails(DeclaracionEmitida item)
+    private async Task OpenEmitidaDetails(DeclaracionEmitida item)
     {
       // For now, navigate to Comprobante detail page if exists
-      if (item != null)
+      if (item.XML_Attachment_ID != null)
       {
-        Nav.NavigateTo($"/cfdi/comprobante/{item.Comprobante_Id}");
+        var url = $"/cfdi/html-cfdi/{item.XML_Attachment_ID}";
+
+        try
+        {
+          // Open in a new tab (safer flags to avoid tab-nabbing)
+          await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+        }
+        catch
+        {
+          // Fallback in same tab if JS interop/popup blocked
+          Nav.NavigateTo(url);
+        }
+
       }
     }
     private void OpenRecibidaDetails(DeclaracionRecibida item)

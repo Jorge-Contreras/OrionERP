@@ -98,20 +98,18 @@
     </NotAuthorized>
 </AuthorizeView>
 
-@code {
-    private const string RfcStorageKey = "orionerp.selectedRfc";
-    private string? _selectedRfc;
+  @code {
+      private const string RfcStorageKey = "orionerp.selectedRfc";
 
-    private async Task LogoutJs()
-    {
-        await Js.InvokeVoidAsync("eval", "location.href = '/Auth/logout'");
+      private async Task LogoutJs()
+      {
+          await Js.InvokeVoidAsync("eval", "location.href = '/Auth/logout'");
     }
 
     private async Task Logout()
     {
         await SignInManager.SignOutAsync();
         Rfc.CurrentRfc = null;
-        _selectedRfc = null;
         await Js.InvokeVoidAsync("localStorage.removeItem", RfcStorageKey);
         Navigation.NavigateTo("/", forceLoad: true);
     }

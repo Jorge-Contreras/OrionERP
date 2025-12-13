@@ -3,6 +3,7 @@ using OrionERP.Web.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia.DTOs;
 
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
@@ -10,46 +11,36 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
   {
     [Inject] private IUiMessageService UiMessages { get; set; } = default!;
 
-    // UI State
-    private string? connectionString;
-
     // Filter state
-    private List<string>? disponiblesRFCs;
-    private List<int>? disponibleYears;
-    private List<(int, string)>? disponibleMonths;
-    private string? selectedRfc;
+    private List<string> disponiblesRFCs = new();
+    private List<int> disponibleYears = new();
+    private List<(int, string)> disponibleMonths = new();
+    private string selectedRfc = "";
     private int selectedYear;
     private int selectedMonth;
     private bool isAnnual;
 
     // Data lists and other outputs
-    private List<DeclaracionCfdiBase>? allCfdiBase;
-    private List<DeclaracionCfdiBase>? emitidasBase;
-    private List<DeclaracionCfdiBase>? recibidasBase;
-    private List<DeclaracionCfdiBase>? emitidasNominaBase;
-    private List<DeclaracionCfdiBase>? recibidasNominaBase;
-    private List<DeclaracionCfdiBase>? tipoEEmitidasBase;
-    private List<DeclaracionCfdiBase>? tipoERecibidasBase;
-    private List<DeclaracionEmitida>? emitidas;
-    private List<DeclaracionEmitida>? emitidasNomina;
-    private List<DeclaracionRecibida>? recibidas;
-    private List<DeclaracionRecibida>? recibidasNomina;
-    private List<DeclaracionEmitida>? tipoEEmitidas;
-    private List<DeclaracionRecibida>? tipoERecibidas;
-    private List<DesfaseItem>? desfase;
-    private List<PolizaNoConsolidada>? polizasNoConsolidadas;
-    private DeclaracionTotales? emitidasTotals;
-    private DeclaracionTotales? emitidasNominaTotals;
-    private DeclaracionTotales? recibidasTotals;
-    private DeclaracionTotales? recibidasNominaTotals;
-    private DeclaracionTotales? tipoEEmitidasTotals;
-    private DeclaracionTotales? tipoERecibidasTotals;
-    private DesfaseTotales? desfaseTotals;
-    private string? impuestosSummary;
-    private string? bancosCajaSummary;
+    private List<DeclaracionEmitida> emitidas = new();
+    private List<DeclaracionEmitida> emitidasNomina = new();
+    private List<DeclaracionRecibida> recibidas = new();
+    private List<DeclaracionRecibida> recibidasNomina = new();
+    private List<DeclaracionEmitida> tipoEEmitidas = new();
+    private List<DeclaracionRecibida> tipoERecibidas = new();
+    private List<DesfaseItem> desfase = new();
+    private List<PolizaNoConsolidada> polizasNoConsolidadas = new();
+    private DeclaracionTotales emitidasTotals = new();
+    private DeclaracionTotales emitidasNominaTotals = new();
+    private DeclaracionTotales recibidasTotals = new();
+    private DeclaracionTotales recibidasNominaTotals = new();
+    private DeclaracionTotales tipoEEmitidasTotals = new();
+    private DeclaracionTotales tipoERecibidasTotals = new();
+    private DesfaseTotales desfaseTotals = new();
+    private string impuestosSummary = "";
+    private string bancosCajaSummary = "";
 
-    private List<PagoComplementoResumen>? emitidasComplementos;
-    private List<PagoComplementoResumen>? recibidasComplementos;
+    private List<PagoComplementoResumen> emitidasComplementos = new();
+    private List<PagoComplementoResumen> recibidasComplementos = new();
 
     // For UI selection and messages
     private DeclaracionEmitida? selectedEmitida;
@@ -58,12 +49,12 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private string? errorMessage;
 
     // Sorting state
-    private Dictionary<string, string>? emitidasSortableFields;
-    private Dictionary<string, string>? recibidasSortableFields;
-    private string? emitidasSortColumn;
-    private string? emitidasSortOrder;
-    private string? recibidasSortColumn;
-    private string? recibidasSortOrder;
+    private Dictionary<string, string> emitidasSortableFields = new();
+    private Dictionary<string, string> recibidasSortableFields = new();
+    private string emitidasSortColumn = "";
+    private string emitidasSortOrder = "";
+    private string recibidasSortColumn = "";
+    private string recibidasSortOrder = "";
 
     // Pagination state (simple implementation)
     private int pageSize = 50;

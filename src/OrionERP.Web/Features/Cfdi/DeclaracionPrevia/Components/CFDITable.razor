@@ -1,5 +1,4 @@
-@using OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
-
+@using OrionERP.Application.Features.Cfdi.DeclaracionPrevia.DTOs
 @using System.Linq
 
 <table class="table table-sm table-bordered table-striped align-middle compact-table">
@@ -150,40 +149,40 @@
     private const int BaseColumnCount = 28;
 
     [Parameter]
-    public IEnumerable<DeclaracionPrevia.DeclaracionCfdiBase>? Items { get; set; }
+    public IEnumerable<DeclaracionCfdiBase>? Items { get; set; }
 
     [Parameter]
-    public DeclaracionPrevia.DeclaracionTotales? Totals { get; set; }
+    public DeclaracionTotales? Totals { get; set; }
 
     [Parameter]
-    public EventCallback<DeclaracionPrevia.DeclaracionCfdiBase> OnRowClick { get; set; }
+    public EventCallback<DeclaracionCfdiBase> OnRowClick { get; set; }
 
     [Parameter]
-    public EventCallback<DeclaracionPrevia.DeclaracionCfdiBase> OnOpenDetails { get; set; }
+    public EventCallback<DeclaracionCfdiBase> OnOpenDetails { get; set; }
 
     [Parameter]
-    public EventCallback<DeclaracionPrevia.DeclaracionCfdiBase> OnHandlePolizaClick { get; set; }
+    public EventCallback<DeclaracionCfdiBase> OnHandlePolizaClick { get; set; }
 
     [Parameter]
-    public Func<DeclaracionPrevia.DeclaracionCfdiBase, string?>? RowClassResolver { get; set; }
+    public Func<DeclaracionCfdiBase, string?>? RowClassResolver { get; set; }
 
     [Parameter]
     public string CounterpartyHeader { get; set; } = "Receptor";
 
     [Parameter]
-    public Func<DeclaracionPrevia.DeclaracionCfdiBase, string?> CounterpartySelector { get; set; } = item => item.RECEPTOR;
+    public Func<DeclaracionCfdiBase, string?> CounterpartySelector { get; set; } = item => item.RECEPTOR;
 
     [Parameter]
-    public RenderFragment<DeclaracionPrevia.DeclaracionCfdiBase>? ExtraHeaderColumns { get; set; }
+    public RenderFragment<DeclaracionCfdiBase>? ExtraHeaderColumns { get; set; }
 
     [Parameter]
-    public RenderFragment<DeclaracionPrevia.DeclaracionCfdiBase>? ExtraColumns { get; set; }
+    public RenderFragment<DeclaracionCfdiBase>? ExtraColumns { get; set; }
 
     [Parameter]
-    public RenderFragment<DeclaracionPrevia.DeclaracionCfdiBase>? DetailsTemplate { get; set; }
+    public RenderFragment<DeclaracionCfdiBase>? DetailsTemplate { get; set; }
 
     [Parameter]
-    public RenderFragment<DeclaracionPrevia.DeclaracionCfdiBase>? ActionButtonsTemplate { get; set; }
+    public RenderFragment<DeclaracionCfdiBase>? ActionButtonsTemplate { get; set; }
 
     [Parameter]
     public bool ShowSumPolizas { get; set; } = true;
@@ -210,7 +209,7 @@
 
     private int RemainingColumns => Math.Max(0, EffectiveColumnCount - 18);
 
-    private string GetRowClass(DeclaracionPrevia.DeclaracionCfdiBase item) => RowClassResolver?.Invoke(item) ?? string.Empty;
+    private string GetRowClass(DeclaracionCfdiBase item) => RowClassResolver?.Invoke(item) ?? string.Empty;
 
     private string GetSortIndicator(string columnName)
     {
@@ -230,7 +229,7 @@
         }
     }
 
-    private async Task HandleRowClick(DeclaracionPrevia.DeclaracionCfdiBase item)
+    private async Task HandleRowClick(DeclaracionCfdiBase item)
     {
         if (OnRowClick.HasDelegate)
         {
@@ -238,7 +237,7 @@
         }
     }
 
-    private async Task HandleOpenDetails(DeclaracionPrevia.DeclaracionCfdiBase item)
+    private async Task HandleOpenDetails(DeclaracionCfdiBase item)
     {
         if (OnOpenDetails.HasDelegate)
         {
@@ -246,7 +245,7 @@
         }
     }
 
-    private async Task HandlePolizaClick(DeclaracionPrevia.DeclaracionCfdiBase item)
+    private async Task HandlePolizaClick(DeclaracionCfdiBase item)
     {
         if (OnHandlePolizaClick.HasDelegate)
         {

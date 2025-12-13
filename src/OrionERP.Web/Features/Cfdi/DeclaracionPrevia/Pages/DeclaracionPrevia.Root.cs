@@ -2,18 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Text;
-using System.Text.Json;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Text;
-using System.Text.Json;
-using System.Net.Http;
-using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using OfficeOpenXml;
@@ -43,10 +31,11 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     // Keep this too if you use it elsewhere:
     // Data models corresponding to stored procedure outputs:
     [Inject] private NavigationManager Nav { get; set; } = default!;
+    [Inject] private IJSRuntime JS { get; set; } = default!;
 
     private async Task<int> GenerarPolizaDesdeComprobante(int comprobanteId)
     {
-        return await DeclaracionPreviaService.GenerarPolizaDesdeComprobanteAsync(comprobanteId, RfcState.CurrentRfc);
+        return await DeclaracionPreviaService.GenerarPolizaDesdeComprobanteAsync(comprobanteId, selectedRfc);
     }
   }
 }

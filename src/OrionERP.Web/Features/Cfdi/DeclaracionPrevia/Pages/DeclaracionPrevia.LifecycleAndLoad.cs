@@ -8,6 +8,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
+using System.Text;
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia.Interfaces;
+
 
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
@@ -51,7 +54,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         // If none found, just use a default from config or known value
         disponiblesRFCs = new List<string> { "" };
       }
-      selectedRfc = RfcState.CurrentRfc ;
+      selectedRfc = RfcState.CurrentRfc ?? "";
       selectedYear = DateTime.Now.Year;
       selectedMonth = DateTime.Now.Month;
       isAnnual = false;
@@ -114,5 +117,95 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         SetErrorMessage("Error loading data: " + ex.Message);
       }
     }
+
+    private async Task GenerateDIOT()
+    {
+        if (isAnnual)
+        {
+            SetErrorMessage("La DIOT solo se puede generar para un periodo mensual específico.");
+            return;
+        }
+        try
+        {
+            var diotContent = await DeclaracionPreviaService.GenerateDiotAsync(selectedYear, selectedMonth, selectedRfc);
+            if (string.IsNullOrEmpty(diotContent))
+            {
+                SetErrorMessage("No se obtuvieron datos para generar la DIOT.");
+                return;
+            }
+            string fileName = $"DIOT-{selectedRfc}-{selectedYear}-{selectedMonth:D2}.txt";
+            var contentBytes = Encoding.UTF8.GetBytes(diotContent);
+            string base64 = Convert.ToBase64String(contentBytes);
+            string dataUrl = $"data:text/plain;base64,{base64}";
+            await JS.InvokeVoidAsync("triggerFileDownload", fileName, dataUrl);
+            statusMessage = "Archivo DIOT generado y descargado.";
+        }
+        catch (Exception ex)
+        {
+            SetErrorMessage("Error al generar DIOT: " + ex.Message);
+        }
+    }
+
+    private async Task ExcludePagosYDevoluciones()
+    {
+        try
+        {
+            var affected = await DeclaracionPreviaService.ExcludePagosYDevolucionesAsync(selectedRfc, selectedYear, isAnnual ? null : selectedMonth);
+            await LoadAllData();
+            if (affected > 0)
+            {
+                statusMessage = $"Se excluyeron {affected} comprobantes de tipo Pago/Devolución de la declaración.";
+            }
+            else
+            {
+                statusMessage = "No se encontraron CFDIs de tipo Pago o Devolución para excluir.";
+            }
+        }
+        catch (Exception ex)
+        {
+            SetErrorMessage("Error al excluir pagos/devoluciones: " + ex.Message);
+        }
+    }
+
+    private async Task ToggleRecibidaSelected()
+    {
+        if (selectedRecibida == null)
+        {
+            statusMessage = "Selecciona una factura recibida primero.";
+            return;
+        }
+        try
+        {
+            await DeclaracionPreviaService.ToggleInclusionAsync(selectedRecibida.Comprobante_Id);
+            await LoadAllData();
+            statusMessage = $"Factura recibida marcada como {(selectedRecibida.D == "✓" ? "EXCLUIDA" : "INCLUIDA")} en la declaración.";
+        }
+        catch (Exception ex)
+        {
+            SetErrorMessage("Error al actualizar factura recibida: " + ex.Message);
+        }
+    }
+
+    private async Task ToggleEmitidaSelected()
+    {
+        if (selectedEmitida == null)
+        {
+            statusMessage = "Selecciona una factura emitida primero.";
+            return;
+        }
+        try
+        {
+            await DeclaracionPreviaService.ToggleInclusionAsync(selectedEmitida.Comprobante_Id);
+            await LoadAllData();
+            statusMessage = $"Factura emitida marcada como {(selectedEmitida.D == "✓" ? "EXCLUIDA" : "INCLUIDA")} en la declaración.";
+        }
+        catch (Exception ex)
+        {
+            SetErrorMessage("Error al actualizar factura emitida: " + ex.Message);
+        }
+    }
+
+    private static DeclaracionEmitida ToDeclaracionEmitida(DeclaracionCfdiBase item) => new DeclaracionEmitida(item);
+    private static DeclaracionRecibida ToDeclaracionRecibida(DeclaracionCfdiBase item) => new DeclaracionRecibida(item);
   }
 }

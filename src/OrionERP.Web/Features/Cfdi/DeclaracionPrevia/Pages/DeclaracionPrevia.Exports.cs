@@ -3,50 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Dapper;
-using Microsoft.Data.SqlClient;
 using OfficeOpenXml;
 using Microsoft.JSInterop;
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia.DTOs;
 
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
   public partial class DeclaracionPrevia
   {
-    // Generate DIOT text file for the current period
-    private async Task GenerateDIOT()
-    {
-      if (isAnnual)
-      {
-        // Typically DIOT is monthly; if annual, we might not allow
-        SetErrorMessage("La DIOT solo se puede generar para un periodo mensual específico.");
-        return;
-      }
-      try
-      {
-        using var conn = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
-        var lines = (await conn.QueryAsync<string>("EXEC cfdi.GenerateDIOTTXT @Year, @Month, @receptor",
-                        new { Year = selectedYear, Month = selectedMonth, receptor = selectedRfc })).ToList();
-        if (lines == null || lines.Count == 0)
-        {
-          SetErrorMessage("No se obtuvieron datos para generar la DIOT.");
-          return;
-        }
-        // Combine lines into one text blob
-        string diotContent = string.Join("\r\n", lines);
-        string fileName = $"DIOT-{selectedRfc}-{selectedYear}-{selectedMonth:D2}.txt";
-        // Initiate download via JS (create a Blob and download)
-        var contentBytes = Encoding.UTF8.GetBytes(diotContent);
-        string base64 = Convert.ToBase64String(contentBytes);
-        string dataUrl = $"data:text/plain;base64,{base64}";
-        await JS.InvokeVoidAsync("triggerFileDownload", fileName, dataUrl);
-        statusMessage = "Archivo DIOT generado y descargado.";
-      }
-      catch (Exception ex)
-      {
-        SetErrorMessage("Error al generar DIOT: " + ex.Message);
-      }
-    }
-
     private async Task ExportExcelEmitidas() => await ExportExcel(includeEmitidas: true);
 
     private async Task ExportExcelRecibidas() => await ExportExcel(includeRecibidas: true);
@@ -72,32 +36,32 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         using var package = new OfficeOpenXml.ExcelPackage();
         var includedSheets = new List<string>();
 
-        if (includeEmitidas && AddWorksheet(package, "Emitidas", emitidasBase))
+        if (includeEmitidas && AddWorksheet(package, "Emitidas", emitidas))
         {
           includedSheets.Add("Emitidas");
         }
 
-        if (includeRecibidas && AddWorksheet(package, "Recibidas", recibidasBase))
+        if (includeRecibidas && AddWorksheet(package, "Recibidas", recibidas))
         {
           includedSheets.Add("Recibidas");
         }
 
-        if (includeNominaEmitida && AddWorksheet(package, "Nómina Emitida", emitidasNominaBase))
+        if (includeNominaEmitida && AddWorksheet(package, "Nómina Emitida", emitidasNomina))
         {
           includedSheets.Add("NominaEmitida");
         }
 
-        if (includeNominaRecibida && AddWorksheet(package, "Nómina Recibida", recibidasNominaBase))
+        if (includeNominaRecibida && AddWorksheet(package, "Nómina Recibida", recibidasNomina))
         {
           includedSheets.Add("NominaRecibida");
         }
 
-        if (includeTipoEEmitidas && AddWorksheet(package, "Tipo E Emitidas", tipoEEmitidasBase))
+        if (includeTipoEEmitidas && AddWorksheet(package, "Tipo E Emitidas", tipoEEmitidas))
         {
           includedSheets.Add("TipoEEmitidas");
         }
 
-        if (includeTipoERecibidas && AddWorksheet(package, "Tipo E Recibidas", tipoERecibidasBase))
+        if (includeTipoERecibidas && AddWorksheet(package, "Tipo E Recibidas", tipoERecibidas))
         {
           includedSheets.Add("TipoERecibidas");
         }

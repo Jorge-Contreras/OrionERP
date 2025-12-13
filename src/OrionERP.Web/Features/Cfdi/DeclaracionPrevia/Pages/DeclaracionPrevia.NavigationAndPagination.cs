@@ -1,6 +1,7 @@
-using Dapper;
-using Microsoft.Data.SqlClient;
 using Microsoft.JSInterop;
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia.DTOs;
+using System;
+using System.Threading.Tasks;
 
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
@@ -71,54 +72,46 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
     private async Task OpenLinkedTransaction(object item)
     {
-      long? transId = null;
-      if (item is DeclaracionEmitida de)
-      {
+        long? transId = null;
+        if (item is DeclaracionEmitida de)
+        {
+            if (!string.IsNullOrWhiteSpace(de.Poliza) && long.TryParse(de.Poliza, out var polizaId))
+            {
+                transId = polizaId;
+            }
+            else
+            {
+                transId = await DeclaracionPreviaService.GetLinkedTransactionIdAsync(de.Comprobante_Id);
+            }
+        }
+        else if (item is DeclaracionRecibida dr)
+        {
+            if (!string.IsNullOrWhiteSpace(dr.Poliza) && long.TryParse(dr.Poliza, out var polizaId))
+            {
+                transId = polizaId;
+            }
+            else
+            {
+                transId = await DeclaracionPreviaService.GetLinkedTransactionIdAsync(dr.Comprobante_Id);
+            }
+        }
+
+        if (!transId.HasValue)
+        {
+            statusMessage = "No se encontró una Transacción vinculada a este CFDI.";
+            return;
+        }
+
+        var url = $"/Contabilidad/transacciones/{transId.Value}";
+
         try
         {
-          using var conn = new SqlConnection(connectionString);
-          transId = conn.ExecuteScalar<long?>("SELECT top 1 Transaccion_ID FROM Transaccion_Comprobante WHERE Comprobante_ID = @Cid", new { Cid = de.Comprobante_Id });
+            await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
         }
-        catch { transId = null; }
-      }
-      else if (item is DeclaracionRecibida dr)
-      {
-        // Fix: Try to parse Poliza (string?) to long? if possible
-        if (!string.IsNullOrWhiteSpace(dr.Poliza) && long.TryParse(dr.Poliza, out var polizaId))
+        catch
         {
-          transId = polizaId;
+            Nav.NavigateTo(url);
         }
-        else
-        {
-          try
-          {
-            using var conn = new SqlConnection(connectionString);
-            transId = conn.ExecuteScalar<long?>("SELECT Transaccion_ID FROM Transaccion_Comprobante WHERE Comprobante_ID = @Cid", new { Cid = dr.Comprobante_Id });
-          }
-          catch { transId = null; }
-        }
-      }
-
-
-      if (!transId.HasValue)
-      {
-        statusMessage = "No se encontró una Transacción vinculada a este CFDI.";
-        return;
-      }
-
-      var url = $"/Contabilidad/transacciones/{transId.Value}";
-
-      try
-      {
-        // Open in a new tab (safer flags to avoid tab-nabbing)
-        await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
-      }
-      catch
-      {
-        // Fallback in same tab if JS interop/popup blocked
-        Nav.NavigateTo(url);
-      }
     }
-
   }
 }

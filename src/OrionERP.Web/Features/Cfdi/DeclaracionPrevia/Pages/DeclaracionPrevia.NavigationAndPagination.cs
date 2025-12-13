@@ -1,18 +1,21 @@
-using Dapper;
-using Microsoft.Data.SqlClient;
 using Microsoft.JSInterop;
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
   public partial class DeclaracionPrevia
   {
     // Navigation or open detail functions:
-    private async Task OpenEmitidaDetails(DeclaracionEmitida item)
+    private async Task OpenEmitidaDetails(DeclaracionCfdiBase item)
     {
-      // For now, navigate to Comprobante detail page if exists
-      if (item.XML_Attachment_ID != null)
+      if (item is not DeclaracionEmitida emitida)
       {
-        var url = $"/cfdi/html-cfdi/{item.XML_Attachment_ID}";
+        return;
+      }
+      // For now, navigate to Comprobante detail page if exists
+      if (emitida.XML_Attachment_ID != null)
+      {
+        var url = $"/cfdi/html-cfdi/{emitida.XML_Attachment_ID}";
 
         try
         {
@@ -27,11 +30,11 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
       }
     }
-    private void OpenRecibidaDetails(DeclaracionRecibida item)
+    private void OpenRecibidaDetails(DeclaracionCfdiBase item)
     {
-      if (item != null)
+      if (item is DeclaracionRecibida recibida)
       {
-        Nav.NavigateTo($"/cfdi/comprobante/{item.Comprobante_Id}");
+        Nav.NavigateTo($"/cfdi/comprobante/{recibida.Comprobante_Id}");
       }
     }
     // Change method signature to async Task to allow use of 'await'
@@ -76,8 +79,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       {
         try
         {
-          using var conn = new SqlConnection(connectionString);
-          transId = conn.ExecuteScalar<long?>("SELECT top 1 Transaccion_ID FROM Transaccion_Comprobante WHERE Comprobante_ID = @Cid", new { Cid = de.Comprobante_Id });
+          transId = await DeclaracionService.GetLinkedTransactionIdAsync(de.Comprobante_Id);
         }
         catch { transId = null; }
       }
@@ -92,8 +94,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         {
           try
           {
-            using var conn = new SqlConnection(connectionString);
-            transId = conn.ExecuteScalar<long?>("SELECT Transaccion_ID FROM Transaccion_Comprobante WHERE Comprobante_ID = @Cid", new { Cid = dr.Comprobante_Id });
+            transId = await DeclaracionService.GetLinkedTransactionIdAsync(dr.Comprobante_Id);
           }
           catch { transId = null; }
         }

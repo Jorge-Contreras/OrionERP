@@ -3,10 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Dapper;
-using Microsoft.Data.SqlClient;
-using OfficeOpenXml;
 using Microsoft.JSInterop;
+using OfficeOpenXml;
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
@@ -23,9 +22,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       try
       {
-        using var conn = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
-        var lines = (await conn.QueryAsync<string>("EXEC cfdi.GenerateDIOTTXT @Year, @Month, @receptor",
-                        new { Year = selectedYear, Month = selectedMonth, receptor = selectedRfc })).ToList();
+        var lines = (await DeclaracionService.GenerateDiotAsync(selectedRfc ?? string.Empty, selectedYear, selectedMonth)).ToList();
         if (lines == null || lines.Count == 0)
         {
           SetErrorMessage("No se obtuvieron datos para generar la DIOT.");

@@ -1,4 +1,5 @@
 
+@using OrionERP.Application.Features.Cfdi.DeclaracionPrevia
 @using OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 @inject IConfiguration Configuration
 
@@ -32,9 +33,7 @@
 
     private string? ItemPoliza => Item switch
     {
-        DeclaracionPrevia.DeclaracionCfdiBase baseCfdi => baseCfdi.Poliza,
-        // DeclaracionPrevia.DeclaracionEmitida emitida => emitida.Poliza,
-        // DeclaracionPrevia.DeclaracionRecibida recibida => recibida.Poliza,
+        DeclaracionCfdiBase baseCfdi => baseCfdi.Poliza,
         _ => null
     };
 

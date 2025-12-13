@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Web.Services;
 using System;
 using System.Collections.Generic;
@@ -9,9 +10,6 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
   public partial class DeclaracionPrevia
   {
     [Inject] private IUiMessageService UiMessages { get; set; } = default!;
-
-    // UI State
-    private string? connectionString;
 
     // Filter state
     private List<string>? disponiblesRFCs;

@@ -1,5 +1,6 @@
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {

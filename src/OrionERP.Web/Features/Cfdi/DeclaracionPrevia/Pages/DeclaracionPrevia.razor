@@ -125,10 +125,10 @@
         <div class="table-responsive table-scroll">
             <CFDITable Items="emitidasPage"
                        Totals="emitidasTotals"
-                       OnRowClick="@(item => SelectEmitidaAsync(ToDeclaracionEmitida(item)))"
-                       OnOpenDetails="@(item => OpenEmitidaDetails(ToDeclaracionEmitida(item)))"
-                       OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
-                       RowClassResolver="@(item => GetEmitidaRowClass(ToDeclaracionEmitida(item)))"
+                       OnRowClick="SelectEmitidaAsync"
+                       OnOpenDetails="OpenEmitidaDetails"
+                       OnHandlePolizaClick="HandlePolizaClick"
+                       RowClassResolver="GetEmitidaRowClass"
                        CounterpartyHeader="Receptor"
                        CounterpartySelector="@(item => item.RECEPTOR)"
                        CurrentSortColumn="emitidasSortColumn"
@@ -223,10 +223,10 @@
         <div class="table-scroll">
             <CFDITable Items="recibidasPage"
                        Totals="recibidasTotals"
-                       OnRowClick="@(item => SelectRecibidaAsync(ToDeclaracionRecibida(item)))"
-                       OnOpenDetails="@(item => OpenEmitidaDetails(ToDeclaracionEmitida(item)))"
+                       OnRowClick="SelectRecibidaAsync"
+                       OnOpenDetails="OpenEmitidaDetails"
                        OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
-                       RowClassResolver="@(item => GetRecibidaRowClass(ToDeclaracionRecibida(item)))"
+                       RowClassResolver="GetRecibidaRowClass"
                        CounterpartyHeader="Emisor"
                        CounterpartySelector="@(item => item.EMISOR)"
                        ShowXmlAttachment="false"
@@ -241,7 +241,7 @@
                     <td>
                         <button class="btn btn-sm btn-outline-info"
                                 @onclick:stopPropagation="true"
-                                @onclick="() => OpenRecibidaDetails(ToDeclaracionRecibida(item))">
+                               @onclick="() => OpenRecibidaDetails(item)">
                             Ver
                         </button>
                         <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
@@ -321,10 +321,10 @@
         <div class="table-responsive table-scroll">
             <CFDITable Items="tipoEEmitidasPage"
                        Totals="tipoEEmitidasTotals"
-                       OnRowClick="@(item => SelectEmitidaAsync(ToDeclaracionEmitida(item)))"
-                       OnOpenDetails="@(item => OpenEmitidaDetails(ToDeclaracionEmitida(item)))"
-                       OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
-                       RowClassResolver="@(item => GetEmitidaRowClass(ToDeclaracionEmitida(item)))"
+                       OnRowClick="SelectEmitidaAsync"
+                       OnOpenDetails="OpenEmitidaDetails"
+                       OnHandlePolizaClick="HandlePolizaClick"
+                       RowClassResolver="GetEmitidaRowClass"
                        CounterpartyHeader="Receptor"
                        CounterpartySelector="@(item => item.RECEPTOR)"
                        CurrentSortColumn="emitidasSortColumn"
@@ -399,10 +399,10 @@
         <div class="table-scroll">
             <CFDITable Items="tipoERecibidasPage"
                        Totals="tipoERecibidasTotals"
-                       OnRowClick="@(item => SelectRecibidaAsync(ToDeclaracionRecibida(item)))"
-                       OnOpenDetails="@(item => OpenEmitidaDetails(ToDeclaracionEmitida(item)))"
-                       OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
-                       RowClassResolver="@(item => GetRecibidaRowClass(ToDeclaracionRecibida(item)))"
+                       OnRowClick="SelectRecibidaAsync"
+                       OnOpenDetails="OpenEmitidaDetails"
+                       OnHandlePolizaClick="HandlePolizaClick"
+                       RowClassResolver="GetRecibidaRowClass"
                        CounterpartyHeader="Emisor"
                        CounterpartySelector="@(item => item.EMISOR)"
                        ShowXmlAttachment="false"
@@ -417,7 +417,7 @@
                     <td>
                         <button class="btn btn-sm btn-outline-info"
                                 @onclick:stopPropagation="true"
-                                @onclick="() => OpenRecibidaDetails(ToDeclaracionRecibida(item))">
+                                @onclick="() => OpenRecibidaDetails(item)">
                             Ver
                         </button>
                         <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
@@ -496,7 +496,7 @@
         <div class="table-responsive table-scroll">
             <CFDITable Items="emitidasNomina"
                        Totals="emitidasNominaTotals"
-                       OnOpenDetails="@(item => OpenEmitidaDetails(ToDeclaracionEmitida(item)))"
+                       OnOpenDetails="OpenEmitidaDetails"
                        OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
                        CounterpartyHeader="Receptor"
                        CounterpartySelector="@(item => item.RECEPTOR)"
@@ -512,7 +512,7 @@
         <div class="table-responsive table-scroll">
             <CFDITable Items="recibidasNomina"
                        Totals="recibidasNominaTotals"
-                       OnOpenDetails="@(item => OpenEmitidaDetails(ToDeclaracionEmitida(item)))"
+                       OnOpenDetails="OpenEmitidaDetails"
                        OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
                        CounterpartyHeader="Emisor"
                        CounterpartySelector="@(item => item.EMISOR)"

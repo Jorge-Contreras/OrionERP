@@ -16,6 +16,8 @@ using OrionERP.Infrastructure.Features.Rfcs.Dapper;
 using OrionERP.Infrastructure.Features.Contabilidad.Bancos;
 using OrionERP.Application.Features.ReportesFinancieros;
 using OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper;
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia.Interfaces;
+using OrionERP.Infrastructure.Features.Cfdi.DeclaracionPrevia.Services;
 using Sat.MassiveDownload;
 using Sat.MassiveDownload.Core;
 using ContabITransaccionService = OrionERP.Application.Features.Contabilidad.Transacciones.ITransaccionService;
@@ -67,6 +69,8 @@ public static class ServiceRegistration
     services.AddScoped<CfdiReadableParser>();
     services.AddScoped<ITransactionAttachmentRepository, TransactionAttachmentRepository>();
     services.AddScoped<IHtmlCfdiService, HtmlCfdiService>();
+
+    services.AddScoped<IDeclaracionPreviaService, DeclaracionPreviaService>();
 
     return services;
   }

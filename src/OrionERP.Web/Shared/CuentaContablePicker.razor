@@ -33,7 +33,7 @@
               {
                 <tr role="button" @onclick="() => SelectNivel1Async(item)">
                   <td>@item.Id</td>
-                  @* <td>@item.RazonSocial</td> *@
+                  @* <td>@item.Rfc</td> *@
                   <td>@item.Nivel1</td>
                   <td>@item.Descripcion</td>
                 </tr>
@@ -401,12 +401,12 @@
 
   private async Task SelectNivel1Async(CuentasContablesDto dto)
   {
-    await SetRfcAsync(dto.RazonSocial);
+    await SetRfcAsync(dto.Rfc);
 
     currentSelection = new CuentaContableSelection
     {
       Id = dto.Id,
-      Rfc = dto.RazonSocial,
+      Rfc = dto.Rfc,
       Nivel1 = dto.Nivel1,
       Nivel2 = null,
       Nivel3 = null,
@@ -434,7 +434,7 @@
     currentSelection = new CuentaContableSelection
     {
       Id = dto.Id,
-      Rfc = dto.RazonSocial,
+      Rfc = dto.Rfc,
       Nivel1 = dto.Nivel1,
       Nivel2 = NormalizeTwoDigits(dto.Nivel2),
       Nivel3 = null,
@@ -460,7 +460,7 @@
     currentSelection = new CuentaContableSelection
     {
       Id = dto.Id,
-      Rfc = dto.RazonSocial,
+      Rfc = dto.Rfc,
       Nivel1 = dto.Nivel1,
       Nivel2 = NormalizeTwoDigits(dto.Nivel2),
       Nivel3 = NormalizeTwoDigits(dto.Nivel3),
@@ -502,12 +502,12 @@
 
   private async Task ApplyAccountAsync(CuentasContablesDto account)
   {
-    await SetRfcAsync(account.RazonSocial);
+    await SetRfcAsync(account.Rfc);
 
     currentSelection = new CuentaContableSelection
     {
       Id = account.Id,
-      Rfc = account.RazonSocial,
+      Rfc = account.Rfc,
       Nivel1 = account.Nivel1,
       Nivel2 = NormalizeTwoDigits(account.Nivel2),
       Nivel3 = NormalizeTwoDigits(account.Nivel3),
@@ -524,19 +524,19 @@
     nivel3Results.Clear();
   }
 
-  private async Task SetRfcAsync(string razonSocial)
+  private async Task SetRfcAsync(string rfc)
   {
-    if (string.IsNullOrWhiteSpace(razonSocial))
+    if (string.IsNullOrWhiteSpace(rfc))
     {
       return;
     }
 
-    if (!string.Equals(currentRfc, razonSocial, StringComparison.OrdinalIgnoreCase))
+    if (!string.Equals(currentRfc, rfc, StringComparison.OrdinalIgnoreCase))
     {
-      currentRfc = razonSocial;
+      currentRfc = rfc;
       if (SelectedRfcChanged.HasDelegate)
       {
-        await SelectedRfcChanged.InvokeAsync(razonSocial);
+        await SelectedRfcChanged.InvokeAsync(rfc);
       }
     }
   }

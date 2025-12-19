@@ -237,6 +237,37 @@
 
 @code {
     private const int BaseColumnCount = 28;
+    private static readonly IReadOnlyList<string?> BaseColumnWidths = new List<string?>
+    {
+        "8rem", // Acciones
+        "6rem", // Poliza
+        "3rem", // ✔
+        "10ch", // Fecha
+        "5ch", // Mes
+        "6ch", // Año
+        "50ch", // Counterparty
+        "14ch", // SubTotal
+        "14ch", // Descuento
+        "15ch", // SubTotal_Desc
+        "14ch", // Actos16%
+        "14ch", // Actos0%
+        "14ch", // IVA
+        "14ch", // IEPS
+        "14ch", // IVA Retenido
+        "14ch", // ISR Retenido
+        "15ch", // IEPS Retenido
+        "14ch", // Total
+        "38ch", // UUID
+        "6ch", // Forma Pago
+        "7ch", // Tipo CFDI
+        "8ch", // Método Pago
+        "7ch", // Uso CFDI
+        "15ch", // Fecha Cancel.
+        "11ch", // Estatus
+        "26ch", // Transacción Fechas
+        "14ch", // Suma Polizas
+        "19ch"  // XML Attachment ID
+    };
 
     [Parameter]
     public IEnumerable<DeclaracionCfdiBase>? Items { get; set; }
@@ -359,12 +390,12 @@
                 return Totals;
             }
 
-            if (HasActiveFilters || Totals is null)
+            if (!HasActiveFilters && Totals is not null)
             {
-                return CalculateTotals(_filteredItems);
+                return Totals;
             }
 
-            return Totals;
+            return CalculateTotals(_filteredItems);
         }
     }
 
@@ -381,15 +412,40 @@
     private RenderFragment RenderColumnGroup() => builder =>
     {
         var sequence = 0;
+        var widths = GetEffectiveColumnWidths().ToList();
+
         builder.OpenElement(sequence++, "colgroup");
         for (var i = 0; i < EffectiveColumnCount; i++)
         {
             builder.OpenElement(sequence++, "col");
+            if (i < widths.Count && !string.IsNullOrEmpty(widths[i]))
+            {
+                builder.AddAttribute(sequence++, "style", $"width:{widths[i]}");
+            }
             builder.CloseElement();
         }
 
         builder.CloseElement();
     };
+
+    private IEnumerable<string?> GetEffectiveColumnWidths()
+    {
+        var widths = BaseColumnWidths.ToList();
+
+        if (!ShowSumPolizas && widths.Count > 26)
+        {
+            widths.RemoveAt(26);
+        }
+
+        if (!ShowXmlAttachment && widths.Count > (ShowSumPolizas ? 27 : 26))
+        {
+            widths.RemoveAt(ShowSumPolizas ? 27 : 26);
+        }
+
+        widths.AddRange(Enumerable.Repeat<string?>(null, AdditionalColumnsCount));
+
+        return widths;
+    }
 
     private string GetRowClass(DeclaracionCfdiBase item) => RowClassResolver?.Invoke(item) ?? string.Empty;
 
@@ -652,23 +708,30 @@
             : source.ThenBy(selector);
     }
 
-    private DeclaracionTotales CalculateTotals(IEnumerable<DeclaracionCfdiBase> source)
+    private DeclaracionTotales CalculateTotals(IEnumerable<DeclaracionCfdiBase> source) =>
+        DeclaracionTotalesCalculator.Compute(source);
+
+    private static class DeclaracionTotalesCalculator
     {
-        var list = source.ToList();
-        return new DeclaracionTotales
+        public static DeclaracionTotales Compute(IEnumerable<DeclaracionCfdiBase> source)
         {
-            CountCFDIs = list.Count,
-            SumSubTotal = list.Sum(item => item.SubTotal),
-            SumDescuento = list.Sum(item => item.Descuento),
-            SumSubTotalDesc = list.Sum(item => item.SubTotal_Desc),
-            SumActos16 = list.Sum(item => item.Actos_16),
-            SumActos0 = list.Sum(item => item.Actos_0),
-            SumIVA = list.Sum(item => item.IVA),
-            SumIEPS = list.Sum(item => item.IEPS),
-            SumIVA_RETENIDO = list.Sum(item => item.IVA_RETENIDO),
-            SumISR_RETENIDO = list.Sum(item => item.ISR_RETENIDO),
-            SumIEPS_RETENIDO = list.Sum(item => item.IEPS_RETENIDO),
-            SumTotal = list.Sum(item => item.Total)
-        };
+            var list = source.ToList();
+
+            return new DeclaracionTotales
+            {
+                CountCFDIs = list.Count,
+                SumSubTotal = list.Sum(item => item.SubTotal),
+                SumDescuento = list.Sum(item => item.Descuento),
+                SumSubTotalDesc = list.Sum(item => item.SubTotal_Desc),
+                SumActos16 = list.Sum(item => item.Actos_16),
+                SumActos0 = list.Sum(item => item.Actos_0),
+                SumIVA = list.Sum(item => item.IVA),
+                SumIEPS = list.Sum(item => item.IEPS),
+                SumIVA_RETENIDO = list.Sum(item => item.IVA_RETENIDO),
+                SumISR_RETENIDO = list.Sum(item => item.ISR_RETENIDO),
+                SumIEPS_RETENIDO = list.Sum(item => item.IEPS_RETENIDO),
+                SumTotal = list.Sum(item => item.Total)
+            };
+        }
     }
 }

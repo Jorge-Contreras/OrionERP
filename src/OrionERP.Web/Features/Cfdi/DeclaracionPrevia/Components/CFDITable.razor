@@ -63,18 +63,8 @@
                             </th>
                             <th></th>
                             <th></th>
-                            @if (ShowSumPolizas)
-                            {
-                                <th></th>
-                            }
-                            @if (ShowXmlAttachment)
-                            {
-                                <th></th>
-                            }
-                            @for (var i = 0; i < AdditionalColumnsCount; i++)
-                            {
-                                <th></th>
-                            }
+                            <th></th>
+                            <th></th>
                         </tr>
                     </thead>
                 </table>
@@ -112,18 +102,8 @@
                     <th>Fecha Cancel.</th>
                     <th>Estatus</th>
                     <th>Transacción Fechas</th>
-                    @if (ShowSumPolizas)
-                    {
-                        <th class="num">Suma Polizas</th>
-                    }
-                    @if (ShowXmlAttachment)
-                    {
-                        <th class="num">XML Attachment ID</th>
-                    }
-                    @if (ExtraHeaderColumns is not null)
-                    {
-                        @ExtraHeaderColumns
-                    }
+                    <th class="num">Suma Polizas</th>
+                    <th class="num">XML Attachment ID</th>
                 </tr>
             </thead>
             <tbody>
@@ -168,18 +148,8 @@
                             <td>@(item.FechaCancelacion.HasValue ? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : string.Empty)</td>
                             <td>@item.Estatus</td>
                             <td>@item.fechastransacciones</td>
-                            @if (ShowSumPolizas)
-                            {
-                                <td class="num">@FormatInteger(item.SumaPolizas)</td>
-                            }
-                            @if (ShowXmlAttachment)
-                            {
-                                <td class="num">@item.XML_Attachment_ID</td>
-                            }
-                            @if (ExtraColumns is not null)
-                            {
-                                @ExtraColumns(item)
-                            }
+                            <td class="num">@FormatInteger(item.SumaPolizas)</td>
+                            <td class="num">@item.XML_Attachment_ID</td>
                         </tr>
                         if (DetailsTemplate is not null)
                         {
@@ -294,30 +264,15 @@
     public Func<DeclaracionCfdiBase, string?> CounterpartySelector { get; set; } = item => item.RECEPTOR;
 
     [Parameter]
-    public RenderFragment<DeclaracionCfdiBase>? ExtraHeaderColumns { get; set; }
-
-    [Parameter]
-    public RenderFragment<DeclaracionCfdiBase>? ExtraColumns { get; set; }
-
-    [Parameter]
     public RenderFragment<DeclaracionCfdiBase>? DetailsTemplate { get; set; }
 
     [Parameter]
     public RenderFragment<DeclaracionCfdiBase>? ActionButtonsTemplate { get; set; }
 
     [Parameter]
-    public bool ShowSumPolizas { get; set; } = true;
-
-    [Parameter]
-    public bool ShowXmlAttachment { get; set; } = true;
-
-    [Parameter]
-    public int AdditionalColumnsCount { get; set; }
-
-    [Parameter]
     public string NoDataMessage { get; set; } = "No se encontraron CFDIs.";
 
-    private int EffectiveColumnCount => BaseColumnCount - (ShowSumPolizas ? 0 : 1) - (ShowXmlAttachment ? 0 : 1) + AdditionalColumnsCount;
+    private int EffectiveColumnCount => BaseColumnCount;
 
     private int RemainingColumns => Math.Max(0, EffectiveColumnCount - 18);
 
@@ -430,21 +385,7 @@
 
     private IEnumerable<string?> GetEffectiveColumnWidths()
     {
-        var widths = BaseColumnWidths.ToList();
-
-        if (!ShowSumPolizas && widths.Count > 26)
-        {
-            widths.RemoveAt(26);
-        }
-
-        if (!ShowXmlAttachment && widths.Count > (ShowSumPolizas ? 27 : 26))
-        {
-            widths.RemoveAt(ShowSumPolizas ? 27 : 26);
-        }
-
-        widths.AddRange(Enumerable.Repeat<string?>(null, AdditionalColumnsCount));
-
-        return widths;
+        return BaseColumnWidths;
     }
 
     private string GetRowClass(DeclaracionCfdiBase item) => RowClassResolver?.Invoke(item) ?? string.Empty;

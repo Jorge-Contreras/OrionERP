@@ -247,7 +247,10 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
 
   private static DeclaracionTotales ComputeDeclaracionTotales(IEnumerable<DeclaracionCfdiBase> items)
   {
-    var list = items?.ToList() ?? new List<DeclaracionCfdiBase>();
+    var list = items?
+      .Where(x => !string.Equals(x.D?.Trim(), "X", StringComparison.OrdinalIgnoreCase))
+      .ToList()
+      ?? new List<DeclaracionCfdiBase>();
 
     return new DeclaracionTotales
     {

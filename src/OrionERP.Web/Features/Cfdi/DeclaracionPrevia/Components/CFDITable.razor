@@ -322,7 +322,18 @@
         ["FechaCancelacion"] = item => item.FechaCancelacion ?? DateTime.MinValue
     };
 
-    private DeclaracionTotales? DisplayTotals => Items is not null ? CalculateTotals(_filteredItems) : Totals;
+    private DeclaracionTotales? DisplayTotals
+    {
+        get
+        {
+            if (Totals is not null)
+            {
+                return Totals;
+            }
+
+            return Items is not null ? CalculateTotals(_filteredItems) : null;
+        }
+    }
 
     protected override void OnParametersSet()
     {

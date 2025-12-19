@@ -14,6 +14,7 @@
             </div>
             <div class="cfdi-table__filters-table">
                 <table class="table table-sm table-bordered table-striped align-middle compact-table cfdi-table__table cfdi-table__filter-table">
+                    @RenderColumnGroup()
                     <thead class="table-secondary filter-row">
                         <tr>
                             <th></th>
@@ -82,6 +83,7 @@
     </details>
     <div class="cfdi-table__viewport">
         <table class="table table-sm table-bordered table-striped align-middle compact-table cfdi-table__table cfdi-table__main-table">
+            @RenderColumnGroup()
             <thead class="table-dark">
                 <tr>
                     <th>Acciones</th>
@@ -207,6 +209,7 @@
     {
         <div class="cfdi-table__totals">
             <table class="table table-sm table-bordered table-striped align-middle compact-table cfdi-table__table cfdi-table__totals-table">
+                @RenderColumnGroup()
                 <tbody>
                     <tr class="table-light totals">
                         <td colspan="4"><strong># CFDIs:</strong> @DisplayTotals.CountCFDIs</td>
@@ -351,12 +354,17 @@
     {
         get
         {
-            if (Totals is not null)
+            if (Items is null)
             {
                 return Totals;
             }
 
-            return Items is not null ? CalculateTotals(_filteredItems) : null;
+            if (HasActiveFilters || Totals is null)
+            {
+                return CalculateTotals(_filteredItems);
+            }
+
+            return Totals;
         }
     }
 
@@ -369,6 +377,19 @@
         }
         ApplyFiltersAndSorting();
     }
+
+    private RenderFragment RenderColumnGroup() => builder =>
+    {
+        var sequence = 0;
+        builder.OpenElement(sequence++, "colgroup");
+        for (var i = 0; i < EffectiveColumnCount; i++)
+        {
+            builder.OpenElement(sequence++, "col");
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+    };
 
     private string GetRowClass(DeclaracionCfdiBase item) => RowClassResolver?.Invoke(item) ?? string.Empty;
 

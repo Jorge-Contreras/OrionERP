@@ -184,27 +184,8 @@
                        OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
                        RowClassResolver="GetRecibidaRowClass"
                        CounterpartyHeader="Emisor"
-                       CounterpartySelector="@(item => item.EMISOR)"
-                       ShowXmlAttachment="false"
-                       AdditionalColumnsCount="1">
-                <ExtraHeaderColumns Context="_">
-                    <th>Acciones</th>
-                </ExtraHeaderColumns>
-                <ExtraColumns Context="item">
-                    <td>
-                        <button class="btn btn-sm btn-outline-info"
-                                @onclick:stopPropagation="true"
-                               @onclick="() => OpenRecibidaDetails(item)">
-                            Ver
-                        </button>
-                        <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
-                                title="@(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
-                                @onclick:stopPropagation="true"
-                                @onclick="() => HandlePolizaClick(item)">
-                            @(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : "Tx")
-                        </button>
-                    </td>
-                </ExtraColumns>
+                       CounterpartySelector="@(item => item.EMISOR)">
+               
                 <DetailsTemplate Context="item">
                     @if (selectedRecibida?.Comprobante_Id == item.Comprobante_Id && recibidasComplementos?.Count > 0)
                     {
@@ -355,26 +336,8 @@
                        RowClassResolver="GetRecibidaRowClass"
                        CounterpartyHeader="Emisor"
                        CounterpartySelector="@(item => item.EMISOR)"
-                       ShowXmlAttachment="false"
-                       AdditionalColumnsCount="1">
-                <ExtraHeaderColumns Context="_">
-                    <th>Acciones</th>
-                </ExtraHeaderColumns>
-                <ExtraColumns Context="item">
-                    <td>
-                        <button class="btn btn-sm btn-outline-info"
-                                @onclick:stopPropagation="true"
-                                @onclick="() => OpenRecibidaDetails(item)">
-                            Ver
-                        </button>
-                        <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
-                                title="@(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
-                                @onclick:stopPropagation="true"
-                                @onclick="() => HandlePolizaClick(item)">
-                            @(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : "Tx")
-                        </button>
-                    </td>
-                </ExtraColumns>
+                       >
+               
                 <DetailsTemplate Context="item">
                     @if (selectedRecibida?.Comprobante_Id == item.Comprobante_Id && recibidasComplementos?.Count > 0)
                     {
@@ -463,7 +426,6 @@
                        OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
                        CounterpartyHeader="Emisor"
                        CounterpartySelector="@(item => item.EMISOR)"
-                       ShowXmlAttachment="false"
                        NoDataMessage="No se encontraron CFDIs de nómina recibidos.">
             </CFDITable>
         </div>

@@ -44,23 +44,6 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       selectedYear = DateTime.Now.Year;
       selectedMonth = DateTime.Now.Month;
       isAnnual = false;
-      // Setup sortable fields:
-      emitidasSortableFields = new Dictionary<string, string> {
-                {"Fecha", "Fecha"},
-                {"Receptor", "RECEPTOR"},
-                {"Total", "Total"},
-                {"UUID", "FOLIO_FISCAL"}
-            };
-      recibidasSortableFields = new Dictionary<string, string> {
-                {"Fecha", "Fecha"},
-                {"Emisor", "EMISOR"},
-                {"Total", "Total"},
-                {"UUID", "FOLIO_FISCAL"}
-            };
-      emitidasSortColumn = "Fecha";
-      emitidasSortOrder = "ASC";
-      recibidasSortColumn = "Fecha";
-      recibidasSortOrder = "ASC";
       // Load initial data:
       await LoadAllData();
     }
@@ -104,7 +87,6 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         impuestosSummary = data.ImpuestosSummary;
         bancosCajaSummary = data.BancosCajaSummary;
 
-        ApplySorting();
         selectedEmitida = null; selectedRecibida = null;
         emitidasComplementos = new List<PagoComplementoResumen>();
         recibidasComplementos = new List<PagoComplementoResumen>();

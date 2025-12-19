@@ -9,7 +9,7 @@
             <th>Acciones</th>
             <th>Poliza</th>
             <th>✔</th>
-            <th @onclick="@(() => TriggerSort("Fecha"))">Fecha @GetSortIndicator("Fecha")</th>
+            <th>Fecha</th>
             <th>Mes</th>
             <th>Año</th>
             <th>@CounterpartyHeader</th>
@@ -23,8 +23,8 @@
             <th class="num">IVA Retenido</th>
             <th class="num">ISR Retenido</th>
             <th class="num">IEPS Retenido</th>
-            <th @onclick="@(() => TriggerSort("Total"))" class="num">Total @GetSortIndicator("Total")</th>
-            <th @onclick="@(() => TriggerSort("FOLIO_FISCAL"))">UUID @GetSortIndicator("FOLIO_FISCAL")</th>
+            <th class="num">Total</th>
+            <th>UUID</th>
             <th>Forma Pago</th>
             <th>Tipo CFDI</th>
             <th>Método Pago</th>
@@ -45,11 +45,71 @@
                 @ExtraHeaderColumns
             }
         </tr>
+        <tr class="table-secondary">
+            <th></th>
+            <th></th>
+            <th>
+                <select class="form-select form-select-sm" value="@_checkStatusFilter" @onchange="OnCheckStatusChanged">
+                    <option value="">Todos</option>
+                    <option value="checked">✔</option>
+                    <option value="unchecked">X</option>
+                </select>
+            </th>
+            <th>
+                @RenderSortSelect("Fecha")
+            </th>
+            <th></th>
+            <th></th>
+            <th>
+                @RenderMultiSelect(CounterpartyOptions, _selectedCounterparties, OnCounterpartyFilterChanged)
+            </th>
+            <th>@RenderSortSelect("SubTotal")</th>
+            <th>@RenderSortSelect("Descuento")</th>
+            <th>@RenderSortSelect("SubTotal_Desc")</th>
+            <th>@RenderSortSelect("Actos_16")</th>
+            <th>@RenderSortSelect("Actos_0")</th>
+            <th>@RenderSortSelect("IVA")</th>
+            <th>@RenderSortSelect("IEPS")</th>
+            <th>@RenderSortSelect("IVA_RETENIDO")</th>
+            <th>@RenderSortSelect("ISR_RETENIDO")</th>
+            <th>@RenderSortSelect("IEPS_RETENIDO")</th>
+            <th>@RenderSortSelect("Total")</th>
+            <th></th>
+            <th>
+                @RenderMultiSelect(FormaPagoOptions, _selectedFormaPago, OnFormaPagoFilterChanged)
+            </th>
+            <th>
+                @RenderMultiSelect(TipoCfdiOptions, _selectedTipoCfdi, OnTipoCfdiFilterChanged)
+            </th>
+            <th>
+                @RenderMultiSelect(MetodoPagoOptions, _selectedMetodoPago, OnMetodoPagoFilterChanged)
+            </th>
+            <th>
+                @RenderMultiSelect(UsoCfdiOptions, _selectedUsoCfdi, OnUsoCfdiFilterChanged)
+            </th>
+            <th>
+                @RenderSortSelect("FechaCancelacion")
+            </th>
+            <th></th>
+            <th></th>
+            @if (ShowSumPolizas)
+            {
+                <th></th>
+            }
+            @if (ShowXmlAttachment)
+            {
+                <th></th>
+            }
+            @for (var i = 0; i < AdditionalColumnsCount; i++)
+            {
+                <th></th>
+            }
+        </tr>
     </thead>
     <tbody>
-        @if (Items is not null && Items.Any())
+        @if (_filteredItems.Any())
         {
-            foreach (var item in Items)
+            foreach (var item in _filteredItems)
             {
                 <tr @onclick="() => HandleRowClick(item)"
                     class="@GetRowClass(item)"
@@ -122,25 +182,25 @@
             </tr>
         }
     </tbody>
-    @if (Totals is not null)
+    @if (DisplayTotals is not null)
     {
         <tfoot class="table-light totals">
             <tr>
-                <td colspan="4"><strong># CFDIs:</strong> @Totals.CountCFDIs</td>
+                <td colspan="4"><strong># CFDIs:</strong> @DisplayTotals.CountCFDIs</td>
                 <td><strong>Totales:</strong></td>
                 <td></td>
                 <td></td>
-                <td class="num">@Totals.SumSubTotal.ToString("N2")</td>
-                <td class="num">@Totals.SumDescuento.ToString("N2")</td>
-                <td class="num">@Totals.SumSubTotalDesc.ToString("N2")</td>
-                <td class="num">@Totals.SumActos16.ToString("N2")</td>
-                <td class="num">@Totals.SumActos0.ToString("N2")</td>
-                <td class="num">@Totals.SumIVA.ToString("N2")</td>
-                <td class="num">@Totals.SumIEPS.ToString("N2")</td>
-                <td class="num">@Totals.SumIVA_RETENIDO.ToString("N2")</td>
-                <td class="num">@Totals.SumISR_RETENIDO.ToString("N2")</td>
-                <td class="num">@Totals.SumIEPS_RETENIDO.ToString("N2")</td>
-                <td class="num">@Totals.SumTotal.ToString("N2")</td>
+                <td class="num">@DisplayTotals.SumSubTotal.ToString("N2")</td>
+                <td class="num">@DisplayTotals.SumDescuento.ToString("N2")</td>
+                <td class="num">@DisplayTotals.SumSubTotalDesc.ToString("N2")</td>
+                <td class="num">@DisplayTotals.SumActos16.ToString("N2")</td>
+                <td class="num">@DisplayTotals.SumActos0.ToString("N2")</td>
+                <td class="num">@DisplayTotals.SumIVA.ToString("N2")</td>
+                <td class="num">@DisplayTotals.SumIEPS.ToString("N2")</td>
+                <td class="num">@DisplayTotals.SumIVA_RETENIDO.ToString("N2")</td>
+                <td class="num">@DisplayTotals.SumISR_RETENIDO.ToString("N2")</td>
+                <td class="num">@DisplayTotals.SumIEPS_RETENIDO.ToString("N2")</td>
+                <td class="num">@DisplayTotals.SumTotal.ToString("N2")</td>
                 <td colspan="@RemainingColumns"></td>
             </tr>
         </tfoot>
@@ -198,38 +258,83 @@
     [Parameter]
     public string NoDataMessage { get; set; } = "No se encontraron CFDIs.";
 
-    [Parameter]
-    public string? CurrentSortColumn { get; set; }
-
-    [Parameter]
-    public string? CurrentSortOrder { get; set; }
-
-    [Parameter]
-    public EventCallback<string> OnSort { get; set; }
-
     private int EffectiveColumnCount => BaseColumnCount - (ShowSumPolizas ? 0 : 1) - (ShowXmlAttachment ? 0 : 1) + AdditionalColumnsCount;
 
     private int RemainingColumns => Math.Max(0, EffectiveColumnCount - 18);
 
+    private readonly List<DeclaracionCfdiBase> _originalItems = new();
+    private List<DeclaracionCfdiBase> _filteredItems = new();
+    private string _checkStatusFilter = string.Empty;
+    private HashSet<string> _selectedCounterparties = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _selectedFormaPago = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _selectedTipoCfdi = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _selectedMetodoPago = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _selectedUsoCfdi = new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly Dictionary<string, string> _sortSelections = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Fecha"] = string.Empty,
+        ["SubTotal"] = string.Empty,
+        ["Descuento"] = string.Empty,
+        ["SubTotal_Desc"] = string.Empty,
+        ["Actos_16"] = string.Empty,
+        ["Actos_0"] = string.Empty,
+        ["IVA"] = string.Empty,
+        ["IEPS"] = string.Empty,
+        ["IVA_RETENIDO"] = string.Empty,
+        ["ISR_RETENIDO"] = string.Empty,
+        ["IEPS_RETENIDO"] = string.Empty,
+        ["Total"] = string.Empty,
+        ["FechaCancelacion"] = string.Empty
+    };
+
+    private static readonly IReadOnlyList<string> SortColumnOrder = new List<string>
+    {
+        "Fecha",
+        "SubTotal",
+        "Descuento",
+        "SubTotal_Desc",
+        "Actos_16",
+        "Actos_0",
+        "IVA",
+        "IEPS",
+        "IVA_RETENIDO",
+        "ISR_RETENIDO",
+        "IEPS_RETENIDO",
+        "Total",
+        "FechaCancelacion"
+    };
+
+    private static readonly Dictionary<string, Func<DeclaracionCfdiBase, IComparable?>> SortSelectors = new()
+    {
+        ["Fecha"] = item => item.Fecha,
+        ["SubTotal"] = item => item.SubTotal,
+        ["Descuento"] = item => item.Descuento,
+        ["SubTotal_Desc"] = item => item.SubTotal_Desc,
+        ["Actos_16"] = item => item.Actos_16,
+        ["Actos_0"] = item => item.Actos_0,
+        ["IVA"] = item => item.IVA,
+        ["IEPS"] = item => item.IEPS,
+        ["IVA_RETENIDO"] = item => item.IVA_RETENIDO,
+        ["ISR_RETENIDO"] = item => item.ISR_RETENIDO,
+        ["IEPS_RETENIDO"] = item => item.IEPS_RETENIDO,
+        ["Total"] = item => item.Total,
+        ["FechaCancelacion"] = item => item.FechaCancelacion ?? DateTime.MinValue
+    };
+
+    private DeclaracionTotales? DisplayTotals => Items is not null ? CalculateTotals(_filteredItems) : Totals;
+
+    protected override void OnParametersSet()
+    {
+        _originalItems.Clear();
+        if (Items is not null)
+        {
+            _originalItems.AddRange(Items);
+        }
+        ApplyFiltersAndSorting();
+    }
+
     private string GetRowClass(DeclaracionCfdiBase item) => RowClassResolver?.Invoke(item) ?? string.Empty;
-
-    private string GetSortIndicator(string columnName)
-    {
-        if (string.IsNullOrEmpty(CurrentSortColumn) || !string.Equals(CurrentSortColumn, columnName, StringComparison.OrdinalIgnoreCase))
-        {
-            return string.Empty;
-        }
-
-        return string.Equals(CurrentSortOrder, "ASC", StringComparison.OrdinalIgnoreCase) ? "▲" : "▼";
-    }
-
-    private async Task TriggerSort(string columnName)
-    {
-        if (OnSort.HasDelegate)
-        {
-            await OnSort.InvokeAsync(columnName);
-        }
-    }
 
     private async Task HandleRowClick(DeclaracionCfdiBase item)
     {
@@ -258,4 +363,229 @@
     private static string FormatCurrency(decimal value) => string.Format("{0:N2}", value);
 
     private static string FormatInteger(int? value) => value.HasValue ? value.Value.ToString("N0") : string.Empty;
+
+    private void ApplyFiltersAndSorting()
+    {
+        var query = _originalItems.AsEnumerable();
+
+        if (_checkStatusFilter == "checked")
+        {
+            query = query.Where(item => IsChecked(item.D));
+        }
+        else if (_checkStatusFilter == "unchecked")
+        {
+            query = query.Where(item => !IsChecked(item.D));
+        }
+
+        if (_selectedCounterparties.Any())
+        {
+            query = query.Where(item => _selectedCounterparties.Contains(Normalize(CounterpartySelector(item))));
+        }
+
+        if (_selectedFormaPago.Any())
+        {
+            query = query.Where(item => _selectedFormaPago.Contains(Normalize(item.FormaPago)));
+        }
+
+        if (_selectedTipoCfdi.Any())
+        {
+            query = query.Where(item => _selectedTipoCfdi.Contains(Normalize(item.TipoDeComprobante)));
+        }
+
+        if (_selectedMetodoPago.Any())
+        {
+            query = query.Where(item => _selectedMetodoPago.Contains(Normalize(item.MetodoPago)));
+        }
+
+        if (_selectedUsoCfdi.Any())
+        {
+            query = query.Where(item => _selectedUsoCfdi.Contains(Normalize(item.UsoCFDI)));
+        }
+
+        query = ApplySorting(query);
+
+        _filteredItems = query.ToList();
+    }
+
+    private static bool IsChecked(string? value) => string.Equals(value?.Trim(), "✔", StringComparison.OrdinalIgnoreCase);
+
+    private static string Normalize(string? value) => value?.Trim() ?? string.Empty;
+
+    private static HashSet<string> ExtractSelectedValues(ChangeEventArgs args)
+    {
+        return args.Value switch
+        {
+            string[] array => new HashSet<string>(array.Where(v => !string.IsNullOrWhiteSpace(v)), StringComparer.OrdinalIgnoreCase),
+            string single when !string.IsNullOrWhiteSpace(single) => new HashSet<string>(new[] { single }, StringComparer.OrdinalIgnoreCase),
+            _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        };
+    }
+
+    private void OnCheckStatusChanged(ChangeEventArgs args)
+    {
+        _checkStatusFilter = args.Value?.ToString() ?? string.Empty;
+        ApplyFiltersAndSorting();
+    }
+
+    private void OnCounterpartyFilterChanged(ChangeEventArgs args)
+    {
+        _selectedCounterparties = ExtractSelectedValues(args);
+        ApplyFiltersAndSorting();
+    }
+
+    private void OnFormaPagoFilterChanged(ChangeEventArgs args)
+    {
+        _selectedFormaPago = ExtractSelectedValues(args);
+        ApplyFiltersAndSorting();
+    }
+
+    private void OnTipoCfdiFilterChanged(ChangeEventArgs args)
+    {
+        _selectedTipoCfdi = ExtractSelectedValues(args);
+        ApplyFiltersAndSorting();
+    }
+
+    private void OnMetodoPagoFilterChanged(ChangeEventArgs args)
+    {
+        _selectedMetodoPago = ExtractSelectedValues(args);
+        ApplyFiltersAndSorting();
+    }
+
+    private void OnUsoCfdiFilterChanged(ChangeEventArgs args)
+    {
+        _selectedUsoCfdi = ExtractSelectedValues(args);
+        ApplyFiltersAndSorting();
+    }
+
+    private RenderFragment RenderSortSelect(string columnKey) => builder =>
+    {
+        var sequence = 0;
+        builder.OpenElement(sequence++, "select");
+        builder.AddAttribute(sequence++, "class", "form-select form-select-sm");
+        builder.AddAttribute(sequence++, "value", GetSortSelection(columnKey));
+        builder.AddAttribute(sequence++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, args => OnSortSelectionChanged(args, columnKey)));
+        builder.OpenElement(sequence++, "option");
+        builder.AddAttribute(sequence++, "value", string.Empty);
+        builder.AddContent(sequence++, "Sin orden");
+        builder.CloseElement();
+        builder.OpenElement(sequence++, "option");
+        builder.AddAttribute(sequence++, "value", "ASC");
+        builder.AddAttribute(sequence++, "selected", GetSortSelection(columnKey) == "ASC");
+        builder.AddContent(sequence++, "ASC");
+        builder.CloseElement();
+        builder.OpenElement(sequence++, "option");
+        builder.AddAttribute(sequence++, "value", "DESC");
+        builder.AddAttribute(sequence++, "selected", GetSortSelection(columnKey) == "DESC");
+        builder.AddContent(sequence++, "DESC");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private RenderFragment RenderMultiSelect(IEnumerable<string> options, HashSet<string> selectedValues, Action<ChangeEventArgs> handler) => builder =>
+    {
+        var sequence = 0;
+        builder.OpenElement(sequence++, "select");
+        builder.AddAttribute(sequence++, "multiple", "multiple");
+        builder.AddAttribute(sequence++, "class", "form-select form-select-sm filter-multiselect");
+        builder.AddAttribute(sequence++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, handler));
+        foreach (var option in options)
+        {
+            builder.OpenElement(sequence++, "option");
+            builder.AddAttribute(sequence++, "value", option);
+            builder.AddAttribute(sequence++, "selected", selectedValues.Contains(option));
+            builder.AddContent(sequence++, option);
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    };
+
+    private string GetSortSelection(string columnKey)
+    {
+        return _sortSelections.TryGetValue(columnKey, out var value) ? value : string.Empty;
+    }
+
+    private void OnSortSelectionChanged(ChangeEventArgs args, string columnKey)
+    {
+        var value = args.Value?.ToString();
+        _sortSelections[columnKey] = value == "ASC" || value == "DESC" ? value : string.Empty;
+        ApplyFiltersAndSorting();
+    }
+
+    private IEnumerable<string> CounterpartyOptions => GetDistinctOptions(item => CounterpartySelector(item));
+
+    private IEnumerable<string> FormaPagoOptions => GetDistinctOptions(item => item.FormaPago);
+
+    private IEnumerable<string> TipoCfdiOptions => GetDistinctOptions(item => item.TipoDeComprobante);
+
+    private IEnumerable<string> MetodoPagoOptions => GetDistinctOptions(item => item.MetodoPago);
+
+    private IEnumerable<string> UsoCfdiOptions => GetDistinctOptions(item => item.UsoCFDI);
+
+    private IEnumerable<string> GetDistinctOptions(Func<DeclaracionCfdiBase, string?> selector)
+    {
+        return _originalItems
+            .Select(selector)
+            .Select(Normalize)
+            .Where(value => !string.IsNullOrEmpty(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value);
+    }
+
+    private IEnumerable<DeclaracionCfdiBase> ApplySorting(IEnumerable<DeclaracionCfdiBase> source)
+    {
+        IOrderedEnumerable<DeclaracionCfdiBase>? ordered = null;
+
+        foreach (var column in SortColumnOrder)
+        {
+            if (!_sortSelections.TryGetValue(column, out var direction) || string.IsNullOrEmpty(direction))
+            {
+                continue;
+            }
+
+            if (!SortSelectors.TryGetValue(column, out var selector))
+            {
+                continue;
+            }
+
+            ordered = ordered == null
+                ? ApplyInitialSort(source, direction, selector)
+                : ApplySubsequentSort(ordered, direction, selector);
+        }
+
+        return ordered ?? source;
+    }
+
+    private static IOrderedEnumerable<DeclaracionCfdiBase> ApplyInitialSort(IEnumerable<DeclaracionCfdiBase> source, string direction, Func<DeclaracionCfdiBase, IComparable?> selector)
+    {
+        return string.Equals(direction, "DESC", StringComparison.OrdinalIgnoreCase)
+            ? source.OrderByDescending(selector)
+            : source.OrderBy(selector);
+    }
+
+    private static IOrderedEnumerable<DeclaracionCfdiBase> ApplySubsequentSort(IOrderedEnumerable<DeclaracionCfdiBase> source, string direction, Func<DeclaracionCfdiBase, IComparable?> selector)
+    {
+        return string.Equals(direction, "DESC", StringComparison.OrdinalIgnoreCase)
+            ? source.ThenByDescending(selector)
+            : source.ThenBy(selector);
+    }
+
+    private DeclaracionTotales CalculateTotals(IEnumerable<DeclaracionCfdiBase> source)
+    {
+        var list = source.ToList();
+        return new DeclaracionTotales
+        {
+            CountCFDIs = list.Count,
+            SumSubTotal = list.Sum(item => item.SubTotal),
+            SumDescuento = list.Sum(item => item.Descuento),
+            SumSubTotalDesc = list.Sum(item => item.SubTotal_Desc),
+            SumActos16 = list.Sum(item => item.Actos_16),
+            SumActos0 = list.Sum(item => item.Actos_0),
+            SumIVA = list.Sum(item => item.IVA),
+            SumIEPS = list.Sum(item => item.IEPS),
+            SumIVA_RETENIDO = list.Sum(item => item.IVA_RETENIDO),
+            SumISR_RETENIDO = list.Sum(item => item.ISR_RETENIDO),
+            SumIEPS_RETENIDO = list.Sum(item => item.IEPS_RETENIDO),
+            SumTotal = list.Sum(item => item.Total)
+        };
+    }
 }

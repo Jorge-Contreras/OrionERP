@@ -55,14 +55,6 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private string? statusMessage;
     private string? errorMessage;
 
-    // Sorting state
-    private Dictionary<string, string>? emitidasSortableFields;
-    private Dictionary<string, string>? recibidasSortableFields;
-    private string? emitidasSortColumn;
-    private string? emitidasSortOrder;
-    private string? recibidasSortColumn;
-    private string? recibidasSortOrder;
-
     // Pagination state (simple implementation)
     private int pageSize = 50;
     private int emitidasCurrentPage = 1;

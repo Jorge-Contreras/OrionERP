@@ -3,209 +3,219 @@
 
 @using System.Linq
 
-<table class="table table-sm table-bordered table-striped align-middle compact-table">
-    <thead class="table-dark">
-        <tr>
-            <th>Acciones</th>
-            <th>Poliza</th>
-            <th>✔</th>
-            <th>Fecha</th>
-            <th>Mes</th>
-            <th>Año</th>
-            <th>@CounterpartyHeader</th>
-            <th class="num">SubTotal</th>
-            <th class="num">Descuento</th>
-            <th class="num">SubTotal_Desc</th>
-            <th class="num">Actos16%</th>
-            <th class="num">Actos0%</th>
-            <th class="num">IVA</th>
-            <th class="num">IEPS</th>
-            <th class="num">IVA Retenido</th>
-            <th class="num">ISR Retenido</th>
-            <th class="num">IEPS Retenido</th>
-            <th class="num">Total</th>
-            <th>UUID</th>
-            <th>Forma Pago</th>
-            <th>Tipo CFDI</th>
-            <th>Método Pago</th>
-            <th>Uso CFDI</th>
-            <th>Fecha Cancel.</th>
-            <th>Estatus</th>
-            <th>Transacción Fechas</th>
-            @if (ShowSumPolizas)
-            {
-                <th class="num">Suma Polizas</th>
-            }
-            @if (ShowXmlAttachment)
-            {
-                <th class="num">XML Attachment ID</th>
-            }
-            @if (ExtraHeaderColumns is not null)
-            {
-                @ExtraHeaderColumns
-            }
-        </tr>
-        <tr class="table-secondary">
-            <th></th>
-            <th></th>
-            <th>
-                <select class="form-select form-select-sm" value="@_checkStatusFilter" @onchange="OnCheckStatusChanged">
-                    <option value="">Todos</option>
-                    <option value="checked">✔</option>
-                    <option value="unchecked">X</option>
-                </select>
-            </th>
-            <th>
-                @RenderSortSelect("Fecha")
-            </th>
-            <th></th>
-            <th></th>
-            <th>
-                @RenderMultiSelect(CounterpartyOptions, _selectedCounterparties, OnCounterpartyFilterChanged)
-            </th>
-            <th>@RenderSortSelect("SubTotal")</th>
-            <th>@RenderSortSelect("Descuento")</th>
-            <th>@RenderSortSelect("SubTotal_Desc")</th>
-            <th>@RenderSortSelect("Actos_16")</th>
-            <th>@RenderSortSelect("Actos_0")</th>
-            <th>@RenderSortSelect("IVA")</th>
-            <th>@RenderSortSelect("IEPS")</th>
-            <th>@RenderSortSelect("IVA_RETENIDO")</th>
-            <th>@RenderSortSelect("ISR_RETENIDO")</th>
-            <th>@RenderSortSelect("IEPS_RETENIDO")</th>
-            <th>@RenderSortSelect("Total")</th>
-            <th></th>
-            <th>
-                @RenderMultiSelect(FormaPagoOptions, _selectedFormaPago, OnFormaPagoFilterChanged)
-            </th>
-            <th>
-                @RenderMultiSelect(TipoCfdiOptions, _selectedTipoCfdi, OnTipoCfdiFilterChanged)
-            </th>
-            <th>
-                @RenderMultiSelect(MetodoPagoOptions, _selectedMetodoPago, OnMetodoPagoFilterChanged)
-            </th>
-            <th>
-                @RenderMultiSelect(UsoCfdiOptions, _selectedUsoCfdi, OnUsoCfdiFilterChanged)
-            </th>
-            <th>
-                @RenderSortSelect("FechaCancelacion")
-            </th>
-            <th></th>
-            <th></th>
-            @if (ShowSumPolizas)
-            {
-                <th></th>
-            }
-            @if (ShowXmlAttachment)
-            {
-                <th></th>
-            }
-            @for (var i = 0; i < AdditionalColumnsCount; i++)
-            {
-                <th></th>
-            }
-        </tr>
-    </thead>
-    <tbody>
-        @if (_filteredItems.Any())
-        {
-            foreach (var item in _filteredItems)
-            {
-                <tr @onclick="() => HandleRowClick(item)"
-                    class="@GetRowClass(item)"
-                    style="cursor:pointer;">
-                    @if (ActionButtonsTemplate is not null)
-                    {
-                        @ActionButtonsTemplate(item)
-                    }
-                    else
-                    {
-                        <ActionButtons Item="item"
-                                       OnOpenDetails="@(async (obj) => await HandleOpenDetails(item))"
-                                       OnHandlePolizaClick="@(async (obj) => await HandlePolizaClick(item))" />
-                    }
-                    <td>@item.D</td>
-                    <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
-                    <td>@item.MES_GLOBAL</td>
-                    <td>@item.ANIO_GLOBAL</td>
-                    <td>@CounterpartySelector(item)</td>
-                    <td class="num">@FormatCurrency(item.SubTotal)</td>
-                    <td class="num">@FormatCurrency(item.Descuento)</td>
-                    <td class="num">@FormatCurrency(item.SubTotal_Desc)</td>
-                    <td class="num">@FormatCurrency(item.Actos_16)</td>
-                    <td class="num">@FormatCurrency(item.Actos_0)</td>
-                    <td class="num">@FormatCurrency(item.IVA)</td>
-                    <td class="num">@FormatCurrency(item.IEPS)</td>
-                    <td class="num">@FormatCurrency(item.IVA_RETENIDO)</td>
-                    <td class="num">@FormatCurrency(item.ISR_RETENIDO)</td>
-                    <td class="num">@FormatCurrency(item.IEPS_RETENIDO)</td>
-                    <td class="num">@FormatCurrency(item.Total)</td>
-                    <td>@item.FOLIO_FISCAL</td>
-                    <td>@item.FormaPago</td>
-                    <td>@item.TipoDeComprobante</td>
-                    <td>@item.MetodoPago</td>
-                    <td>@item.UsoCFDI</td>
-                    <td>@(item.FechaCancelacion.HasValue ? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : string.Empty)</td>
-                    <td>@item.Estatus</td>
-                    <td>@item.fechastransacciones</td>
+<div class="cfdi-table">
+    <div class="cfdi-table__toolbar">
+        <button class="btn btn-outline-secondary btn-sm" @onclick="ClearFilters" disabled="@(!HasActiveFilters)">
+            Borrar filtros
+        </button>
+    </div>
+    <div class="cfdi-table__viewport">
+        <table class="table table-sm table-bordered table-striped align-middle compact-table cfdi-table__table">
+            <thead class="table-dark">
+                <tr>
+                    <th>Acciones</th>
+                    <th>Poliza</th>
+                    <th>✔</th>
+                    <th>Fecha</th>
+                    <th>Mes</th>
+                    <th>Año</th>
+                    <th>@CounterpartyHeader</th>
+                    <th class="num">SubTotal</th>
+                    <th class="num">Descuento</th>
+                    <th class="num">SubTotal_Desc</th>
+                    <th class="num">Actos16%</th>
+                    <th class="num">Actos0%</th>
+                    <th class="num">IVA</th>
+                    <th class="num">IEPS</th>
+                    <th class="num">IVA Retenido</th>
+                    <th class="num">ISR Retenido</th>
+                    <th class="num">IEPS Retenido</th>
+                    <th class="num">Total</th>
+                    <th>UUID</th>
+                    <th>Forma Pago</th>
+                    <th>Tipo CFDI</th>
+                    <th>Método Pago</th>
+                    <th>Uso CFDI</th>
+                    <th>Fecha Cancel.</th>
+                    <th>Estatus</th>
+                    <th>Transacción Fechas</th>
                     @if (ShowSumPolizas)
                     {
-                        <td class="num">@FormatInteger(item.SumaPolizas)</td>
+                        <th class="num">Suma Polizas</th>
                     }
                     @if (ShowXmlAttachment)
                     {
-                        <td class="num">@item.XML_Attachment_ID</td>
+                        <th class="num">XML Attachment ID</th>
                     }
-                    @if (ExtraColumns is not null)
+                    @if (ExtraHeaderColumns is not null)
                     {
-                        @ExtraColumns(item)
+                        @ExtraHeaderColumns
                     }
                 </tr>
-                if (DetailsTemplate is not null)
-                {
-                    var detailsContent = DetailsTemplate(item);
-                    if (detailsContent is not null)
+                <tr class="table-secondary filter-row">
+                    <th></th>
+                    <th></th>
+                    <th>
+                        <select class="form-select form-select-sm" value="@_checkStatusFilter" @onchange="OnCheckStatusChanged">
+                            <option value="">Todos</option>
+                            <option value="checked">✔</option>
+                            <option value="unchecked">X</option>
+                        </select>
+                    </th>
+                    <th>
+                        @RenderSortSelect("Fecha")
+                    </th>
+                    <th></th>
+                    <th></th>
+                    <th>
+                        @RenderMultiSelect(CounterpartyOptions, _selectedCounterparties, OnCounterpartyFilterChanged)
+                    </th>
+                    <th>@RenderSortSelect("SubTotal")</th>
+                    <th>@RenderSortSelect("Descuento")</th>
+                    <th>@RenderSortSelect("SubTotal_Desc")</th>
+                    <th>@RenderSortSelect("Actos_16")</th>
+                    <th>@RenderSortSelect("Actos_0")</th>
+                    <th>@RenderSortSelect("IVA")</th>
+                    <th>@RenderSortSelect("IEPS")</th>
+                    <th>@RenderSortSelect("IVA_RETENIDO")</th>
+                    <th>@RenderSortSelect("ISR_RETENIDO")</th>
+                    <th>@RenderSortSelect("IEPS_RETENIDO")</th>
+                    <th>@RenderSortSelect("Total")</th>
+                    <th></th>
+                    <th>
+                        @RenderMultiSelect(FormaPagoOptions, _selectedFormaPago, OnFormaPagoFilterChanged)
+                    </th>
+                    <th>
+                        @RenderMultiSelect(TipoCfdiOptions, _selectedTipoCfdi, OnTipoCfdiFilterChanged)
+                    </th>
+                    <th>
+                        @RenderMultiSelect(MetodoPagoOptions, _selectedMetodoPago, OnMetodoPagoFilterChanged)
+                    </th>
+                    <th>
+                        @RenderMultiSelect(UsoCfdiOptions, _selectedUsoCfdi, OnUsoCfdiFilterChanged)
+                    </th>
+                    <th>
+                        @RenderSortSelect("FechaCancelacion")
+                    </th>
+                    <th></th>
+                    <th></th>
+                    @if (ShowSumPolizas)
                     {
-                        <tr class="table-secondary">
-                            <td colspan="@EffectiveColumnCount">
-                                @detailsContent
-                            </td>
+                        <th></th>
+                    }
+                    @if (ShowXmlAttachment)
+                    {
+                        <th></th>
+                    }
+                    @for (var i = 0; i < AdditionalColumnsCount; i++)
+                    {
+                        <th></th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @if (_filteredItems.Any())
+                {
+                    foreach (var item in _filteredItems)
+                    {
+                        <tr @onclick="() => HandleRowClick(item)"
+                            class="@GetRowClass(item)"
+                            style="cursor:pointer;">
+                            @if (ActionButtonsTemplate is not null)
+                            {
+                                @ActionButtonsTemplate(item)
+                            }
+                            else
+                            {
+                                <ActionButtons Item="item"
+                                               OnOpenDetails="@(async (obj) => await HandleOpenDetails(item))"
+                                               OnHandlePolizaClick="@(async (obj) => await HandlePolizaClick(item))" />
+                            }
+                            <td>@item.D</td>
+                            <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
+                            <td>@item.MES_GLOBAL</td>
+                            <td>@item.ANIO_GLOBAL</td>
+                            <td>@CounterpartySelector(item)</td>
+                            <td class="num">@FormatCurrency(item.SubTotal)</td>
+                            <td class="num">@FormatCurrency(item.Descuento)</td>
+                            <td class="num">@FormatCurrency(item.SubTotal_Desc)</td>
+                            <td class="num">@FormatCurrency(item.Actos_16)</td>
+                            <td class="num">@FormatCurrency(item.Actos_0)</td>
+                            <td class="num">@FormatCurrency(item.IVA)</td>
+                            <td class="num">@FormatCurrency(item.IEPS)</td>
+                            <td class="num">@FormatCurrency(item.IVA_RETENIDO)</td>
+                            <td class="num">@FormatCurrency(item.ISR_RETENIDO)</td>
+                            <td class="num">@FormatCurrency(item.IEPS_RETENIDO)</td>
+                            <td class="num">@FormatCurrency(item.Total)</td>
+                            <td>@item.FOLIO_FISCAL</td>
+                            <td>@item.FormaPago</td>
+                            <td>@item.TipoDeComprobante</td>
+                            <td>@item.MetodoPago</td>
+                            <td>@item.UsoCFDI</td>
+                            <td>@(item.FechaCancelacion.HasValue ? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : string.Empty)</td>
+                            <td>@item.Estatus</td>
+                            <td>@item.fechastransacciones</td>
+                            @if (ShowSumPolizas)
+                            {
+                                <td class="num">@FormatInteger(item.SumaPolizas)</td>
+                            }
+                            @if (ShowXmlAttachment)
+                            {
+                                <td class="num">@item.XML_Attachment_ID</td>
+                            }
+                            @if (ExtraColumns is not null)
+                            {
+                                @ExtraColumns(item)
+                            }
                         </tr>
+                        if (DetailsTemplate is not null)
+                        {
+                            var detailsContent = DetailsTemplate(item);
+                            if (detailsContent is not null)
+                            {
+                                <tr class="table-secondary">
+                                    <td colspan="@EffectiveColumnCount">
+                                        @detailsContent
+                                    </td>
+                                </tr>
+                            }
+                        }
                     }
                 }
+                else
+                {
+                    <tr>
+                        <td colspan="@EffectiveColumnCount" class="text-center">@NoDataMessage</td>
+                    </tr>
+                }
+            </tbody>
+            @if (DisplayTotals is not null)
+            {
+                <tfoot class="table-light totals">
+                    <tr>
+                        <td colspan="4"><strong># CFDIs:</strong> @DisplayTotals.CountCFDIs</td>
+                        <td><strong>Totales:</strong></td>
+                        <td></td>
+                        <td></td>
+                        <td class="num">@DisplayTotals.SumSubTotal.ToString("N2")</td>
+                        <td class="num">@DisplayTotals.SumDescuento.ToString("N2")</td>
+                        <td class="num">@DisplayTotals.SumSubTotalDesc.ToString("N2")</td>
+                        <td class="num">@DisplayTotals.SumActos16.ToString("N2")</td>
+                        <td class="num">@DisplayTotals.SumActos0.ToString("N2")</td>
+                        <td class="num">@DisplayTotals.SumIVA.ToString("N2")</td>
+                        <td class="num">@DisplayTotals.SumIEPS.ToString("N2")</td>
+                        <td class="num">@DisplayTotals.SumIVA_RETENIDO.ToString("N2")</td>
+                        <td class="num">@DisplayTotals.SumISR_RETENIDO.ToString("N2")</td>
+                        <td class="num">@DisplayTotals.SumIEPS_RETENIDO.ToString("N2")</td>
+                        <td class="num">@DisplayTotals.SumTotal.ToString("N2")</td>
+                        <td colspan="@RemainingColumns"></td>
+                    </tr>
+                </tfoot>
             }
-        }
-        else
-        {
-            <tr>
-                <td colspan="@EffectiveColumnCount" class="text-center">@NoDataMessage</td>
-            </tr>
-        }
-    </tbody>
-    @if (DisplayTotals is not null)
-    {
-        <tfoot class="table-light totals">
-            <tr>
-                <td colspan="4"><strong># CFDIs:</strong> @DisplayTotals.CountCFDIs</td>
-                <td><strong>Totales:</strong></td>
-                <td></td>
-                <td></td>
-                <td class="num">@DisplayTotals.SumSubTotal.ToString("N2")</td>
-                <td class="num">@DisplayTotals.SumDescuento.ToString("N2")</td>
-                <td class="num">@DisplayTotals.SumSubTotalDesc.ToString("N2")</td>
-                <td class="num">@DisplayTotals.SumActos16.ToString("N2")</td>
-                <td class="num">@DisplayTotals.SumActos0.ToString("N2")</td>
-                <td class="num">@DisplayTotals.SumIVA.ToString("N2")</td>
-                <td class="num">@DisplayTotals.SumIEPS.ToString("N2")</td>
-                <td class="num">@DisplayTotals.SumIVA_RETENIDO.ToString("N2")</td>
-                <td class="num">@DisplayTotals.SumISR_RETENIDO.ToString("N2")</td>
-                <td class="num">@DisplayTotals.SumIEPS_RETENIDO.ToString("N2")</td>
-                <td class="num">@DisplayTotals.SumTotal.ToString("N2")</td>
-                <td colspan="@RemainingColumns"></td>
-            </tr>
-        </tfoot>
-    }
-</table>
+        </table>
+
+    </div>
+</div>
 
 @code {
     private const int BaseColumnCount = 28;
@@ -422,6 +432,15 @@
 
     private static string Normalize(string? value) => value?.Trim() ?? string.Empty;
 
+    private bool HasActiveFilters =>
+        !string.IsNullOrEmpty(_checkStatusFilter) ||
+        _selectedCounterparties.Any() ||
+        _selectedFormaPago.Any() ||
+        _selectedTipoCfdi.Any() ||
+        _selectedMetodoPago.Any() ||
+        _selectedUsoCfdi.Any() ||
+        _sortSelections.Any(kv => !string.IsNullOrEmpty(kv.Value));
+
     private static HashSet<string> ExtractSelectedValues(ChangeEventArgs args)
     {
         return args.Value switch
@@ -465,6 +484,23 @@
     private void OnUsoCfdiFilterChanged(ChangeEventArgs args)
     {
         _selectedUsoCfdi = ExtractSelectedValues(args);
+        ApplyFiltersAndSorting();
+    }
+
+    private void ClearFilters()
+    {
+        _checkStatusFilter = string.Empty;
+        _selectedCounterparties.Clear();
+        _selectedFormaPago.Clear();
+        _selectedTipoCfdi.Clear();
+        _selectedMetodoPago.Clear();
+        _selectedUsoCfdi.Clear();
+
+        foreach (var key in _sortSelections.Keys.ToList())
+        {
+            _sortSelections[key] = string.Empty;
+        }
+
         ApplyFiltersAndSorting();
     }
 

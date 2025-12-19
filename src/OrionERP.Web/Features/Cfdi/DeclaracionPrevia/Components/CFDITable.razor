@@ -4,13 +4,84 @@
 @using System.Linq
 
 <div class="cfdi-table">
-    <div class="cfdi-table__toolbar">
-        <button class="btn btn-outline-secondary btn-sm" @onclick="ClearFilters" disabled="@(!HasActiveFilters)">
-            Borrar filtros
-        </button>
-    </div>
+    <details class="cfdi-table__filters" open>
+        <summary>Filtros</summary>
+        <div class="cfdi-table__filters-body">
+            <div class="cfdi-table__toolbar">
+                <button class="btn btn-outline-secondary btn-sm" @onclick="ClearFilters" disabled="@(!HasActiveFilters)">
+                    Borrar filtros
+                </button>
+            </div>
+            <div class="cfdi-table__filters-table">
+                <table class="table table-sm table-bordered table-striped align-middle compact-table cfdi-table__table cfdi-table__filter-table">
+                    <thead class="table-secondary filter-row">
+                        <tr>
+                            <th></th>
+                            <th></th>
+                            <th>
+                                <select class="form-select form-select-sm" value="@_checkStatusFilter" @onchange="OnCheckStatusChanged">
+                                    <option value="">Todos</option>
+                                    <option value="checked">✔</option>
+                                    <option value="unchecked">X</option>
+                                </select>
+                            </th>
+                            <th>
+                                @RenderSortSelect("Fecha")
+                            </th>
+                            <th></th>
+                            <th></th>
+                            <th>
+                                @RenderMultiSelect(CounterpartyOptions, _selectedCounterparties, OnCounterpartyFilterChanged)
+                            </th>
+                            <th>@RenderSortSelect("SubTotal")</th>
+                            <th>@RenderSortSelect("Descuento")</th>
+                            <th>@RenderSortSelect("SubTotal_Desc")</th>
+                            <th>@RenderSortSelect("Actos_16")</th>
+                            <th>@RenderSortSelect("Actos_0")</th>
+                            <th>@RenderSortSelect("IVA")</th>
+                            <th>@RenderSortSelect("IEPS")</th>
+                            <th>@RenderSortSelect("IVA_RETENIDO")</th>
+                            <th>@RenderSortSelect("ISR_RETENIDO")</th>
+                            <th>@RenderSortSelect("IEPS_RETENIDO")</th>
+                            <th>@RenderSortSelect("Total")</th>
+                            <th></th>
+                            <th>
+                                @RenderMultiSelect(FormaPagoOptions, _selectedFormaPago, OnFormaPagoFilterChanged)
+                            </th>
+                            <th>
+                                @RenderMultiSelect(TipoCfdiOptions, _selectedTipoCfdi, OnTipoCfdiFilterChanged)
+                            </th>
+                            <th>
+                                @RenderMultiSelect(MetodoPagoOptions, _selectedMetodoPago, OnMetodoPagoFilterChanged)
+                            </th>
+                            <th>
+                                @RenderMultiSelect(UsoCfdiOptions, _selectedUsoCfdi, OnUsoCfdiFilterChanged)
+                            </th>
+                            <th>
+                                @RenderSortSelect("FechaCancelacion")
+                            </th>
+                            <th></th>
+                            <th></th>
+                            @if (ShowSumPolizas)
+                            {
+                                <th></th>
+                            }
+                            @if (ShowXmlAttachment)
+                            {
+                                <th></th>
+                            }
+                            @for (var i = 0; i < AdditionalColumnsCount; i++)
+                            {
+                                <th></th>
+                            }
+                        </tr>
+                    </thead>
+                </table>
+            </div>
+        </div>
+    </details>
     <div class="cfdi-table__viewport">
-        <table class="table table-sm table-bordered table-striped align-middle compact-table cfdi-table__table">
+        <table class="table table-sm table-bordered table-striped align-middle compact-table cfdi-table__table cfdi-table__main-table">
             <thead class="table-dark">
                 <tr>
                     <th>Acciones</th>
@@ -50,66 +121,6 @@
                     @if (ExtraHeaderColumns is not null)
                     {
                         @ExtraHeaderColumns
-                    }
-                </tr>
-                <tr class="table-secondary filter-row">
-                    <th></th>
-                    <th></th>
-                    <th>
-                        <select class="form-select form-select-sm" value="@_checkStatusFilter" @onchange="OnCheckStatusChanged">
-                            <option value="">Todos</option>
-                            <option value="checked">✔</option>
-                            <option value="unchecked">X</option>
-                        </select>
-                    </th>
-                    <th>
-                        @RenderSortSelect("Fecha")
-                    </th>
-                    <th></th>
-                    <th></th>
-                    <th>
-                        @RenderMultiSelect(CounterpartyOptions, _selectedCounterparties, OnCounterpartyFilterChanged)
-                    </th>
-                    <th>@RenderSortSelect("SubTotal")</th>
-                    <th>@RenderSortSelect("Descuento")</th>
-                    <th>@RenderSortSelect("SubTotal_Desc")</th>
-                    <th>@RenderSortSelect("Actos_16")</th>
-                    <th>@RenderSortSelect("Actos_0")</th>
-                    <th>@RenderSortSelect("IVA")</th>
-                    <th>@RenderSortSelect("IEPS")</th>
-                    <th>@RenderSortSelect("IVA_RETENIDO")</th>
-                    <th>@RenderSortSelect("ISR_RETENIDO")</th>
-                    <th>@RenderSortSelect("IEPS_RETENIDO")</th>
-                    <th>@RenderSortSelect("Total")</th>
-                    <th></th>
-                    <th>
-                        @RenderMultiSelect(FormaPagoOptions, _selectedFormaPago, OnFormaPagoFilterChanged)
-                    </th>
-                    <th>
-                        @RenderMultiSelect(TipoCfdiOptions, _selectedTipoCfdi, OnTipoCfdiFilterChanged)
-                    </th>
-                    <th>
-                        @RenderMultiSelect(MetodoPagoOptions, _selectedMetodoPago, OnMetodoPagoFilterChanged)
-                    </th>
-                    <th>
-                        @RenderMultiSelect(UsoCfdiOptions, _selectedUsoCfdi, OnUsoCfdiFilterChanged)
-                    </th>
-                    <th>
-                        @RenderSortSelect("FechaCancelacion")
-                    </th>
-                    <th></th>
-                    <th></th>
-                    @if (ShowSumPolizas)
-                    {
-                        <th></th>
-                    }
-                    @if (ShowXmlAttachment)
-                    {
-                        <th></th>
-                    }
-                    @for (var i = 0; i < AdditionalColumnsCount; i++)
-                    {
-                        <th></th>
                     }
                 </tr>
             </thead>
@@ -189,10 +200,15 @@
                     </tr>
                 }
             </tbody>
-            @if (DisplayTotals is not null)
-            {
-                <tfoot class="table-light totals">
-                    <tr>
+        </table>
+
+    </div>
+    @if (DisplayTotals is not null)
+    {
+        <div class="cfdi-table__totals">
+            <table class="table table-sm table-bordered table-striped align-middle compact-table cfdi-table__table cfdi-table__totals-table">
+                <tbody>
+                    <tr class="table-light totals">
                         <td colspan="4"><strong># CFDIs:</strong> @DisplayTotals.CountCFDIs</td>
                         <td><strong>Totales:</strong></td>
                         <td></td>
@@ -210,11 +226,10 @@
                         <td class="num">@DisplayTotals.SumTotal.ToString("N2")</td>
                         <td colspan="@RemainingColumns"></td>
                     </tr>
-                </tfoot>
-            }
-        </table>
-
-    </div>
+                </tbody>
+            </table>
+        </div>
+    }
 </div>
 
 @code {

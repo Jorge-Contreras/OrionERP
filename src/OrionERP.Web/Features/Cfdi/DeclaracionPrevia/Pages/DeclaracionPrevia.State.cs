@@ -55,21 +55,6 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private string? statusMessage;
     private string? errorMessage;
 
-    // Pagination state (simple implementation)
-    private int pageSize = 50;
-    private int emitidasCurrentPage = 1;
-    private int emitidasPageCount = 1;
-    private IEnumerable<DeclaracionEmitida> emitidasPage => emitidas?.Skip((emitidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionEmitida>();
-    private int recibidasCurrentPage = 1;
-    private int recibidasPageCount = 1;
-    private IEnumerable<DeclaracionRecibida> recibidasPage => recibidas?.Skip((recibidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionRecibida>();
-    private int tipoEEmitidasCurrentPage = 1;
-    private int tipoEEmitidasPageCount = 1;
-    private IEnumerable<DeclaracionEmitida> tipoEEmitidasPage => tipoEEmitidas?.Skip((tipoEEmitidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionEmitida>();
-    private int tipoERecibidasCurrentPage = 1;
-    private int tipoERecibidasPageCount = 1;
-    private IEnumerable<DeclaracionRecibida> tipoERecibidasPage => tipoERecibidas?.Skip((tipoERecibidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionRecibida>();
-
     private void ClearErrorMessage()
     {
       errorMessage = null;

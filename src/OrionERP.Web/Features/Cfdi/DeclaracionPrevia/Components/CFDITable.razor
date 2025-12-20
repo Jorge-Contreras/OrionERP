@@ -1,6 +1,7 @@
 @using OrionERP.Application.Features.Cfdi.DeclaracionPrevia
 @using OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
+@using System
 @using System.Linq
 
 <div class="cfdi-table">
@@ -109,7 +110,7 @@
             <tbody>
                 @if (_filteredItems.Any())
                 {
-                    foreach (var item in _filteredItems)
+                    foreach (var item in _pagedItems)
                     {
                         <tr @onclick="() => HandleRowClick(item)"
                             class="@GetRowClass(item)"
@@ -175,6 +176,14 @@
         </table>
 
     </div>
+    <div class="d-flex justify-content-between align-items-center cfdi-table__pagination">
+        <small>Mostrando página @_currentPage de @_pageCount</small>
+        <div class="btn-group" role="group" aria-label="Paginación CFDIs">
+            <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousPage" disabled="@(_currentPage <= 1)">Anterior</button>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="NextPage" disabled="@(_currentPage >= _pageCount)">Siguiente</button>
+        </div>
+    </div>
+
     @if (DisplayTotals is not null)
     {
         <div class="cfdi-table__totals">
@@ -243,6 +252,9 @@
     public IEnumerable<DeclaracionCfdiBase>? Items { get; set; }
 
     [Parameter]
+    public int PageSize { get; set; } = 50;
+
+    [Parameter]
     public DeclaracionTotales? Totals { get; set; }
 
     [Parameter]
@@ -278,6 +290,9 @@
 
     private readonly List<DeclaracionCfdiBase> _originalItems = new();
     private List<DeclaracionCfdiBase> _filteredItems = new();
+    private IReadOnlyList<DeclaracionCfdiBase> _pagedItems = Array.Empty<DeclaracionCfdiBase>();
+    private int _currentPage = 1;
+    private int _pageCount = 1;
     private string _checkStatusFilter = string.Empty;
     private HashSet<string> _selectedCounterparties = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _selectedFormaPago = new(StringComparer.OrdinalIgnoreCase);
@@ -361,6 +376,7 @@
         {
             _originalItems.AddRange(Items);
         }
+        _currentPage = 1;
         ApplyFiltersAndSorting();
     }
 
@@ -418,7 +434,7 @@
 
     private static string FormatInteger(int? value) => value.HasValue ? value.Value.ToString("N0") : string.Empty;
 
-    private void ApplyFiltersAndSorting()
+    private void ApplyFiltersAndSorting(bool resetPage = true)
     {
         var query = _originalItems.AsEnumerable();
 
@@ -459,6 +475,27 @@
         query = ApplySorting(query);
 
         _filteredItems = query.ToList();
+        UpdatePagination(resetPage);
+    }
+
+    private void UpdatePagination(bool resetPage)
+    {
+        var effectivePageSize = Math.Max(1, PageSize);
+        _pageCount = Math.Max(1, (int)Math.Ceiling(_filteredItems.Count / (double)effectivePageSize));
+
+        if (resetPage)
+        {
+            _currentPage = 1;
+        }
+        else
+        {
+            _currentPage = Math.Min(Math.Max(1, _currentPage), _pageCount);
+        }
+
+        _pagedItems = _filteredItems
+            .Skip((_currentPage - 1) * effectivePageSize)
+            .Take(effectivePageSize)
+            .ToList();
     }
 
     private static bool IsChecked(string? value) => string.Equals(value?.Trim(), "✔", StringComparison.OrdinalIgnoreCase);
@@ -589,6 +626,24 @@
         var value = args.Value?.ToString();
         _sortSelections[columnKey] = value == "ASC" || value == "DESC" ? value : string.Empty;
         ApplyFiltersAndSorting();
+    }
+
+    private void NextPage()
+    {
+        if (_currentPage < _pageCount)
+        {
+            _currentPage++;
+            UpdatePagination(resetPage: false);
+        }
+    }
+
+    private void PreviousPage()
+    {
+        if (_currentPage > 1)
+        {
+            _currentPage--;
+            UpdatePagination(resetPage: false);
+        }
     }
 
     private IEnumerable<string> CounterpartyOptions => GetDistinctOptions(item => CounterpartySelector(item));

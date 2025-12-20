@@ -10,10 +10,6 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private async Task OnFiltersChangedAsync()
     {
       _filtering = true;
-      emitidasCurrentPage = 1;
-      recibidasCurrentPage = 1;
-      tipoEEmitidasCurrentPage = 1;
-      tipoERecibidasCurrentPage = 1;
       try
       {
         await LoadAllData();

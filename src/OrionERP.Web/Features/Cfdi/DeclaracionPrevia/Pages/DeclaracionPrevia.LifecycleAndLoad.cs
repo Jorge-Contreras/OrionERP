@@ -90,7 +90,6 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         selectedEmitida = null; selectedRecibida = null;
         emitidasComplementos = new List<PagoComplementoResumen>();
         recibidasComplementos = new List<PagoComplementoResumen>();
-        ResetPagination();
       }
       catch (Exception ex)
       {

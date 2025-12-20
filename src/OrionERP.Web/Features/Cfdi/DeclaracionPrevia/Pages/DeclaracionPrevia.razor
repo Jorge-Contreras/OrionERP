@@ -101,8 +101,9 @@
             </button>
         </div>
         <div class="table-responsive table-scroll">
-            <CFDITable Items="emitidasPage"
+            <CFDITable Items="emitidas"
                        Totals="emitidasTotals"
+                       PageSize="50"
                        OnRowClick="SelectEmitidaAsync"
                        OnOpenDetails="OpenEmitidaDetails"
                        OnHandlePolizaClick="HandlePolizaClick"
@@ -161,13 +162,6 @@
                 </DetailsTemplate>
             </CFDITable>
         </div>
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <small>Mostrando página @emitidasCurrentPage de @emitidasPageCount</small>
-            <div class="btn-group" role="group" aria-label="Paginación facturas emitidas">
-                <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousEmitidasPage" disabled="@(emitidasCurrentPage <= 1)">Anterior</button>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="NextEmitidasPage" disabled="@(emitidasCurrentPage >= emitidasPageCount)">Siguiente</button>
-            </div>
-        </div>
     </div>
     <div class="tab-pane fade" id="recibidas" role="tabpanel" aria-labelledby="recibidas-tab">
         <div class="mb-2 filter-bar">
@@ -177,8 +171,9 @@
             <button class="btn btn-sm btn-info ms-1" @onclick="GenerateDIOT">Generar DIOT</button>
         </div>
         <div class="table-scroll">
-            <CFDITable Items="recibidasPage"
+            <CFDITable Items="recibidas"
                        Totals="recibidasTotals"
+                       PageSize="50"
                        OnRowClick="SelectRecibidaAsync"
                        OnOpenDetails="OpenEmitidaDetails"
                        OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
@@ -238,13 +233,6 @@
                 </DetailsTemplate>
             </CFDITable>
         </div>
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <small>Mostrando página @recibidasCurrentPage de @recibidasPageCount</small>
-            <div class="btn-group" role="group" aria-label="Paginación facturas recibidas">
-                <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousRecibidasPage" disabled="@(recibidasCurrentPage <= 1)">Anterior</button>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="NextRecibidasPage" disabled="@(recibidasCurrentPage >= recibidasPageCount)">Siguiente</button>
-            </div>
-        </div>
     </div>
     <div class="tab-pane fade" id="tipo-e-emitidas" role="tabpanel" aria-labelledby="tipo-e-emitidas-tab">
         <div class="mb-2 filter-bar">
@@ -253,8 +241,9 @@
             </button>
         </div>
         <div class="table-responsive table-scroll">
-            <CFDITable Items="tipoEEmitidasPage"
+            <CFDITable Items="tipoEEmitidas"
                        Totals="tipoEEmitidasTotals"
+                       PageSize="50"
                        OnRowClick="SelectEmitidaAsync"
                        OnOpenDetails="OpenEmitidaDetails"
                        OnHandlePolizaClick="HandlePolizaClick"
@@ -313,13 +302,6 @@
                 </DetailsTemplate>
             </CFDITable>
         </div>
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <small>Mostrando página @tipoEEmitidasCurrentPage de @tipoEEmitidasPageCount</small>
-            <div class="btn-group" role="group" aria-label="Paginación facturas tipo E emitidas">
-                <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousTipoEEmitidasPage" disabled="@(tipoEEmitidasCurrentPage <= 1)">Anterior</button>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="NextTipoEEmitidasPage" disabled="@(tipoEEmitidasCurrentPage >= tipoEEmitidasPageCount)">Siguiente</button>
-            </div>
-        </div>
     </div>
     <div class="tab-pane fade" id="tipo-e-recibidas" role="tabpanel" aria-labelledby="tipo-e-recibidas-tab">
         <div class="mb-2 filter-bar">
@@ -328,8 +310,9 @@
             </button>
         </div>
         <div class="table-scroll">
-            <CFDITable Items="tipoERecibidasPage"
+            <CFDITable Items="tipoERecibidas"
                        Totals="tipoERecibidasTotals"
+                       PageSize="50"
                        OnRowClick="SelectRecibidaAsync"
                        OnOpenDetails="OpenEmitidaDetails"
                        OnHandlePolizaClick="HandlePolizaClick"
@@ -389,13 +372,6 @@
                     }
                 </DetailsTemplate>
             </CFDITable>
-        </div>
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <small>Mostrando página @tipoERecibidasCurrentPage de @tipoERecibidasPageCount</small>
-            <div class="btn-group" role="group" aria-label="Paginación facturas tipo E recibidas">
-                <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousTipoERecibidasPage" disabled="@(tipoERecibidasCurrentPage <= 1)">Anterior</button>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="NextTipoERecibidasPage" disabled="@(tipoERecibidasCurrentPage >= tipoERecibidasPageCount)">Siguiente</button>
-            </div>
         </div>
     </div>
     <div class="tab-pane fade" id="nomina-emitidas" role="tabpanel" aria-labelledby="nomina-emitidas-tab">

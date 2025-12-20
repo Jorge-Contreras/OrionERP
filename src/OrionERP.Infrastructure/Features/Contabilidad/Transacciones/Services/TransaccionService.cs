@@ -180,61 +180,36 @@ WHERE TD.Transaccion_ID = @Id;";
 
     using var conn = new SqlConnection(_cs);
     await conn.OpenAsync(ct);
-    using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
 
     try
     {
-      if (request.UseDoctoRelacionadoTable)
-      {
-        const string sql = @"INSERT INTO dbo.Transaccion_DoctoRelacionado (Transaccion_ID, DoctoRelacionado_Id, Monto)
-VALUES (@TransaccionId, @DoctoRelacionadoId, @Monto);";
+      await conn.ExecuteAsync(
+          new CommandDefinition(
+              "contabilidad.Ligar_CFDI_Poliza",
+              new
+              {
+                TransaccionId = request.TransaccionId,
+                ComprobanteId = request.ComprobanteId,
+                Monto = request.Monto,
+                UseDoctoRelacionadoTable = request.UseDoctoRelacionadoTable
+              },
+              commandType: CommandType.StoredProcedure,
+              cancellationToken: ct));
 
-        await conn.ExecuteAsync(
-            new CommandDefinition(
-                sql,
-                new
-                {
-                  TransaccionId = request.TransaccionId,
-                  DoctoRelacionadoId = request.ComprobanteId,
-                  Monto = request.Monto
-                },
-                tx,
-                cancellationToken: ct));
-      }
-      else
-      {
-        const string sql = @"INSERT INTO dbo.Transaccion_Comprobante (Transaccion_ID, Comprobante_ID, Monto)
-VALUES (@TransaccionId, @ComprobanteId, @Monto);";
-
-        await conn.ExecuteAsync(
-            new CommandDefinition(
-                sql,
-                new
-                {
-                  TransaccionId = request.TransaccionId,
-                  ComprobanteId = request.ComprobanteId,
-                  Monto = request.Monto
-                },
-                tx,
-                cancellationToken: ct));
-      }
-
-      await tx!.CommitAsync(ct);
       return TransaccionCommandResult.Ok("Transacción ligada correctamente.");
     }
     catch (SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
     {
-      try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
       return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
     }
     catch (Exception ex)
     {
-      try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
       _logger.LogError(
           ex,
           "Failed to link CFDI {ComprobanteId} to transaction {TransaccionId}",
           request.ComprobanteId,
           request.TransaccionId);
+
       return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
     }
   }

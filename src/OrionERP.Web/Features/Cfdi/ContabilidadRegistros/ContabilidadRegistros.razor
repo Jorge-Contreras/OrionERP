@@ -55,7 +55,8 @@
         <span class="badge text-bg-info text-wrap">@accountSelection!.Descripcion</span>
       }
     }
-    <button class="btn btn-primary ms-auto" @onclick="OnBuscarClickedAsync" disabled="@(!CanBuscar)">Buscar</button>
+        <a href="/contabilidad/transacciones/new" class="btn btn-success ms-auto">Nueva Transacción</a>
+    <button class="btn btn-primary" @onclick="OnBuscarClickedAsync" disabled="@(!CanBuscar)">Buscar</button>
   </div>
 </div>
 

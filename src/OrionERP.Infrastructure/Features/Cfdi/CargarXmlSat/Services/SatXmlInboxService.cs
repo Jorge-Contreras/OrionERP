@@ -176,8 +176,7 @@ namespace OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services
           }
         }
 
-        // --- Branch B: Not linked → process in inbox/placeholder (e.g., 5505) ---
-        await CleanupDuplicateAttachmentsByNameAsync(conn, tx, fileName, ct);
+      
 
         const string insertAttach = @"
 INSERT INTO dbo.TRANSACTION_ATTACHMENT
@@ -294,23 +293,6 @@ SELECT CAST(SCOPE_IDENTITY() as int);";
 
       return (newId, true);
     }
-
-    /// <summary>
-    /// Deletes duplicate placeholder attachments by LIKE(filename-without-ext).
-    /// Keeps the table tidy before inserting into the placeholder (inbox) Transacción.
-    /// </summary>
-    private async Task<int> CleanupDuplicateAttachmentsByNameAsync(
-      SqlConnection conn, SqlTransaction? tx, string fileName, CancellationToken ct)
-    {
-      var fileNameNoExt = Path.GetFileNameWithoutExtension(fileName);
-      const string delSql = @"
-DELETE FROM dbo.TRANSACTION_ATTACHMENT
-WHERE AttachmentExtension = 'xml'
-  AND AttachmentName LIKE @LikeName;";
-
-      return await conn.ExecuteAsync(
-          new CommandDefinition(delSql,
-              new { LikeName = AttachmentLikePattern(fileNameNoExt) }, tx, cancellationToken: ct));
-    }
+  
   }
 }

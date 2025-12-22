@@ -27,6 +27,7 @@
 </td>
 
 @code {
+
     [Parameter]
     public object? Item { get; set; }
 
@@ -43,7 +44,7 @@
 
     private async Task OpenDetails()
     {
-        if (Item is not DeclaracionEmitida emitida || emitida.XML_Attachment_ID is null)
+        if (Item is not DeclaracionCfdiBase emitida || emitida.XML_Attachment_ID is null)
         {
             return;
         }
@@ -89,12 +90,8 @@
 
     private async Task OpenLinkedTransaction(DeclaracionCfdiBase declaracion)
     {
-        long? transId = declaracion switch
-        {
-            DeclaracionEmitida emitida => await TryGetLinkedTransactionId(() => DeclaracionService.GetLinkedTransactionIdAsync(emitida.Comprobante_Id)),
-            DeclaracionRecibida recibida => await GetRecibidaTransactionId(recibida),
-            _ => null
-        };
+
+        long? transId = await DeclaracionService.GetLinkedTransactionIdAsync(declaracion.Comprobante_Id);
 
         if (!transId.HasValue)
         {
@@ -114,27 +111,7 @@
         }
     }
 
-    private async Task<long?> GetRecibidaTransactionId(DeclaracionRecibida recibida)
-    {
-        if (!string.IsNullOrWhiteSpace(recibida.Poliza) && long.TryParse(recibida.Poliza, out var polizaId))
-        {
-            return polizaId;
-        }
-
-        return await TryGetLinkedTransactionId(() => DeclaracionService.GetLinkedTransactionIdAsync(recibida.Comprobante_Id));
-    }
-
-    private async Task<long?> TryGetLinkedTransactionId(Func<Task<long?>> resolver)
-    {
-        try
-        {
-            return await resolver();
-        }
-        catch
-        {
-            return null;
-        }
-    }
+   
 
     private async Task<int> GenerarPolizaDesdeComprobante(int comprobanteId)
     {

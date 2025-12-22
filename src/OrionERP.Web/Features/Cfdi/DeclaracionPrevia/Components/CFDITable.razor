@@ -1,5 +1,4 @@
 @using OrionERP.Application.Features.Cfdi.DeclaracionPrevia
-@using OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
 @using System
 @using System.Linq
@@ -122,8 +121,7 @@
                             else
                             {
                                 <ActionButtons Item="item"
-                                               OnOpenDetails="@(async (obj) => await HandleOpenDetails(item))"
-                                               OnHandlePolizaClick="@(async (obj) => await HandlePolizaClick(item))" />
+                                               />
                             }
                             <td>@item.D</td>
                             <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
@@ -259,12 +257,6 @@
 
     [Parameter]
     public EventCallback<DeclaracionCfdiBase> OnRowClick { get; set; }
-
-    [Parameter]
-    public EventCallback<DeclaracionCfdiBase> OnOpenDetails { get; set; }
-
-    [Parameter]
-    public EventCallback<DeclaracionCfdiBase> OnHandlePolizaClick { get; set; }
 
     [Parameter]
     public Func<DeclaracionCfdiBase, string?>? RowClassResolver { get; set; }
@@ -411,22 +403,6 @@
         if (OnRowClick.HasDelegate)
         {
             await OnRowClick.InvokeAsync(item);
-        }
-    }
-
-    private async Task HandleOpenDetails(DeclaracionCfdiBase item)
-    {
-        if (OnOpenDetails.HasDelegate)
-        {
-            await OnOpenDetails.InvokeAsync(item);
-        }
-    }
-
-    private async Task HandlePolizaClick(DeclaracionCfdiBase item)
-    {
-        if (OnHandlePolizaClick.HasDelegate)
-        {
-            await OnHandlePolizaClick.InvokeAsync(item);
         }
     }
 

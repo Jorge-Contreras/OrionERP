@@ -1,12 +1,19 @@
 
+@using Microsoft.JSInterop
 @using OrionERP.Application.Features.Cfdi.DeclaracionPrevia
-@using OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
+@using OrionERP.Web.Services
+@using OrionERP.Web.State
 @inject IConfiguration Configuration
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject IDeclaracionPreviaService DeclaracionService
+@inject IUserRfcState RfcState
+@inject IUiMessageService UiMessages
 
 <td>
     <button class="btn btn-sm btn-outline-info"
             @onclick:stopPropagation="true"
-            @onclick="() => OpenDetails()">
+            @onclick="OpenDetails">
         CFDI
     </button>
 </td>
@@ -14,7 +21,7 @@
     <button class="btn btn-sm @(IsPlaceholderPoliza ? "btn-outline-danger" : "btn-outline-success")"
             title="@(IsPlaceholderPoliza ? "Crear Póliza" : "Ir a Transacción")"
             @onclick:stopPropagation="true"
-            @onclick="() => HandlePolizaClick()">
+            @onclick="HandlePolizaClick">
         @(IsPlaceholderPoliza ? "Crear" : ItemPoliza)
     </button>
 </td>
@@ -23,13 +30,8 @@
     [Parameter]
     public object? Item { get; set; }
 
-    [Parameter]
-    public EventCallback<object> OnOpenDetails { get; set; }
-
-    [Parameter]
-    public EventCallback<object> OnHandlePolizaClick { get; set; }
-
-    private string? _placeholderTransaccionId => Configuration["SatXml:PlaceholderTransaccionId"];
+    private int? PlaceholderTransaccionId => _placeholderTransaccionId ??= ParsePlaceholder(Configuration["SatXml:PlaceholderTransaccionId"]);
+    private int? _placeholderTransaccionId;
 
     private string? ItemPoliza => Item switch
     {
@@ -37,15 +39,110 @@
         _ => null
     };
 
-    private bool IsPlaceholderPoliza => ItemPoliza == _placeholderTransaccionId?.ToString();
+    private bool IsPlaceholderPoliza => PlaceholderTransaccionId.HasValue && ItemPoliza == PlaceholderTransaccionId.Value.ToString();
 
     private async Task OpenDetails()
     {
-        await OnOpenDetails.InvokeAsync(Item);
+        if (Item is not DeclaracionEmitida emitida || emitida.XML_Attachment_ID is null)
+        {
+            return;
+        }
+
+        var url = $"/cfdi/html-cfdi/{emitida.XML_Attachment_ID}";
+
+        try
+        {
+            await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+        }
+        catch
+        {
+            Nav.NavigateTo(url);
+        }
     }
 
     private async Task HandlePolizaClick()
     {
-        await OnHandlePolizaClick.InvokeAsync(Item);
+        if (Item is not DeclaracionCfdiBase declaracion)
+        {
+            return;
+        }
+
+        if (IsPlaceholderPoliza)
+        {
+            try
+            {
+                var newTransaccionId = await GenerarPolizaDesdeComprobante(declaracion.Comprobante_Id);
+                declaracion.Poliza = newTransaccionId.ToString();
+                await InvokeAsync(StateHasChanged);
+                await OpenLinkedTransaction(declaracion);
+            }
+            catch (Exception ex)
+            {
+                UiMessages.ShowError($"Error al crear la póliza: {ex.Message}");
+            }
+        }
+        else
+        {
+            await OpenLinkedTransaction(declaracion);
+        }
+    }
+
+    private async Task OpenLinkedTransaction(DeclaracionCfdiBase declaracion)
+    {
+        long? transId = declaracion switch
+        {
+            DeclaracionEmitida emitida => await TryGetLinkedTransactionId(() => DeclaracionService.GetLinkedTransactionIdAsync(emitida.Comprobante_Id)),
+            DeclaracionRecibida recibida => await GetRecibidaTransactionId(recibida),
+            _ => null
+        };
+
+        if (!transId.HasValue)
+        {
+            UiMessages.ShowWarning("No se encontró una Transacción vinculada a este CFDI.");
+            return;
+        }
+
+        var url = $"/Contabilidad/transacciones/{transId.Value}";
+
+        try
+        {
+            await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+        }
+        catch
+        {
+            Nav.NavigateTo(url);
+        }
+    }
+
+    private async Task<long?> GetRecibidaTransactionId(DeclaracionRecibida recibida)
+    {
+        if (!string.IsNullOrWhiteSpace(recibida.Poliza) && long.TryParse(recibida.Poliza, out var polizaId))
+        {
+            return polizaId;
+        }
+
+        return await TryGetLinkedTransactionId(() => DeclaracionService.GetLinkedTransactionIdAsync(recibida.Comprobante_Id));
+    }
+
+    private async Task<long?> TryGetLinkedTransactionId(Func<Task<long?>> resolver)
+    {
+        try
+        {
+            return await resolver();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<int> GenerarPolizaDesdeComprobante(int comprobanteId)
+    {
+        return await DeclaracionService.GenerarPolizaDesdeComprobanteAsync(comprobanteId, RfcState.CurrentRfc ?? string.Empty);
+    }
+
+    private static int? ParsePlaceholder(string? placeholderSetting)
+    {
+        return int.TryParse(placeholderSetting, out var parsedPlaceholder) ? parsedPlaceholder : null;
     }
 }

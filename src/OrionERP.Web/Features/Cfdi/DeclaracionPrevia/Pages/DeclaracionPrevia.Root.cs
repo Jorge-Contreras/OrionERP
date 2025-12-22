@@ -24,10 +24,5 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     // Keep this too if you use it elsewhere:
     // Data models corresponding to stored procedure outputs:
     [Inject] private NavigationManager Nav { get; set; } = default!;
-
-    private async Task<int> GenerarPolizaDesdeComprobante(int comprobanteId)
-    {
-        return await DeclaracionService.GenerarPolizaDesdeComprobanteAsync(comprobanteId, RfcState.CurrentRfc ?? string.Empty);
-    }
   }
 }

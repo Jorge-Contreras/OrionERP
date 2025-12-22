@@ -105,8 +105,6 @@
                        Totals="emitidasTotals"
                        PageSize="50"
                        OnRowClick="SelectEmitidaAsync"
-                       OnOpenDetails="OpenEmitidaDetails"
-                       OnHandlePolizaClick="HandlePolizaClick"
                        RowClassResolver="GetEmitidaRowClass"
                        CounterpartyHeader="Receptor"
                        CounterpartySelector="@(item => item.RECEPTOR)">
@@ -175,8 +173,6 @@
                        Totals="recibidasTotals"
                        PageSize="50"
                        OnRowClick="SelectRecibidaAsync"
-                       OnOpenDetails="OpenEmitidaDetails"
-                       OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
                        RowClassResolver="GetRecibidaRowClass"
                        CounterpartyHeader="Emisor"
                        CounterpartySelector="@(item => item.EMISOR)">
@@ -245,8 +241,6 @@
                        Totals="tipoEEmitidasTotals"
                        PageSize="50"
                        OnRowClick="SelectEmitidaAsync"
-                       OnOpenDetails="OpenEmitidaDetails"
-                       OnHandlePolizaClick="HandlePolizaClick"
                        RowClassResolver="GetEmitidaRowClass"
                        CounterpartyHeader="Receptor"
                        CounterpartySelector="@(item => item.RECEPTOR)">
@@ -314,8 +308,6 @@
                        Totals="tipoERecibidasTotals"
                        PageSize="50"
                        OnRowClick="SelectRecibidaAsync"
-                       OnOpenDetails="OpenEmitidaDetails"
-                       OnHandlePolizaClick="HandlePolizaClick"
                        RowClassResolver="GetRecibidaRowClass"
                        CounterpartyHeader="Emisor"
                        CounterpartySelector="@(item => item.EMISOR)"
@@ -382,8 +374,6 @@
         <div class="table-responsive table-scroll">
             <CFDITable Items="emitidasNomina"
                        Totals="emitidasNominaTotals"
-                       OnOpenDetails="OpenEmitidaDetails"
-                       OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
                        CounterpartyHeader="Receptor"
                        CounterpartySelector="@(item => item.RECEPTOR)"
                        NoDataMessage="No se encontraron CFDIs de nómina emitidos.">
@@ -398,8 +388,6 @@
         <div class="table-responsive table-scroll">
             <CFDITable Items="recibidasNomina"
                        Totals="recibidasNominaTotals"
-                       OnOpenDetails="OpenEmitidaDetails"
-                       OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
                        CounterpartyHeader="Emisor"
                        CounterpartySelector="@(item => item.EMISOR)"
                        NoDataMessage="No se encontraron CFDIs de nómina recibidos.">

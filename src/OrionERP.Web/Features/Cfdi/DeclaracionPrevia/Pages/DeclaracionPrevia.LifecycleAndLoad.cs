@@ -15,14 +15,9 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
     [Inject] protected IUserRfcState RfcState { get; set; } = default!;
     [Inject] private IDeclaracionPreviaService DeclaracionService { get; set; } = default!;
-    private int _placeholderTransaccionId;
 
     protected override async Task OnInitializedAsync()
     {
-      var placeholderSetting = Configuration["SatXml:PlaceholderTransaccionId"];
-      _placeholderTransaccionId = int.TryParse(placeholderSetting, out var parsedPlaceholder)
-        ? parsedPlaceholder
-        : 0;
       try
       {
         // For RazonSocial list, query the Emisor table for distinct RFCs:

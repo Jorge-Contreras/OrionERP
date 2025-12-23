@@ -358,6 +358,12 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
     }
 
+    if (Totals.Balance != 0m)
+    {
+      UiMessages.ShowWarning("Los Cargos y los Abonos no coinciden, verifique los movimientos Contables");
+      return;
+    }
+
     IsSavingHeader = true;
     try
     {

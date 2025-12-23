@@ -71,46 +71,62 @@
         </div>
       }
     </div>
-    <div class="col-md-4">
-      <label class="form-label">Buscar Nivel 3</label>
-      <div class="input-group">
-        <input class="form-control" placeholder="Ej. 02 o descripción" @bind="nivel3Term" @onkeyup="OnNivel3KeyDown" onkeydown="if (event.key === 'Enter') { event.preventDefault(); }" disabled="@(!CanSearchNivel3)" />
-        @if (CanSearchNivel3)
-        {
-            <button class="btn btn-outline-primary" type="button" @onclick="ShowCreateNivel3Modal">Crear Nuevo</button>
-        }
-    </div>
-      @if (nivel3Results.Any())
-      {
-        <div class="table-responsive mt-2" style="max-height: 320px; overflow-y: auto;">
-          <table class="table table-sm table-hover mb-0">
-            <thead>
-              <tr>
-                <th>Id</th>
-                <th>Nivel3</th>
-                <th>Descripción</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              @foreach (var item in nivel3Results)
-              {
-                <tr role="button" @onclick="() => SelectNivel3(item)">
-                  <td>@item.Id</td>
-                  <td>@item.Nivel3</td>
-                  <td>@item.Descripcion</td>
-                  <td>
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => ShowEditNivel3Modal(item)" @onclick:stopPropagation="true">
-                                            <i class="oi oi-pencil"></i>
+        <div class="col-md-4">
+            <label class="form-label">Buscar Nivel 3</label>
+
+            <div class="input-group">
+                <input class="form-control"
+                       placeholder="Ej. 02 o descripción"
+                       @bind-value="nivel3Term"
+                       @bind-value:event="oninput"
+                       @onkeydown="OnNivel3KeyDown"
+                       disabled="@(!CanSearchNivel3)" />
+
+                @if (CanSearchNivel3)
+                {
+                    <button class="btn btn-outline-primary"
+                            type="button"
+                            @onclick="ShowCreateNivel3Modal">
+                        Crear Nuevo
                     </button>
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
+                }
+            </div>
+
+            @if (nivel3Results.Any())
+            {
+                <div class="table-responsive mt-2" style="max-height: 320px; overflow-y: auto;">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Id</th>
+                                <th>Nivel3</th>
+                                <th>Descripción</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in nivel3Results)
+                            {
+                                <tr role="button" @onclick="() => SelectNivel3(item)">
+                                    <td>@item.Id</td>
+                                    <td>@item.Nivel3</td>
+                                    <td>@item.Descripcion</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-secondary"
+                                                type="button"
+                                                @onclick="() => ShowEditNivel3Modal(item)"
+                                                @onclick:stopPropagation="true">
+                                            <i class="oi oi-pencil"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
         </div>
-      }
-    </div>
+
   </div>
 </div>
 @if (showNivel3Modal)
@@ -288,35 +304,29 @@
     }
   }
 
-  private async Task OnNivel3KeyDown(KeyboardEventArgs args)
-  {
-    if (args.Key != "Enter")
+    private async Task OnNivel3KeyDown(KeyboardEventArgs args)
     {
-      return;
+        // Some keyboards/browsers can report NumpadEnter via Code, so this is a safe add.
+        var isEnter = args.Key == "Enter" || args.Code == "NumpadEnter";
+        if (!isEnter)
+            return;
+
+        if (!CanSearchNivel3)
+        {
+            if (!CanSearchNivel2)
+                await SearchNivel1Async(loadDefaults: string.IsNullOrWhiteSpace(nivel1Term));
+            else
+                await SearchNivel2Async(loadDefaults: string.IsNullOrWhiteSpace(nivel2Term));
+
+            return;
+        }
+
+        if (CanBuscar && Nivel3TermMatchesSelection())
+            await SearchRequested.InvokeAsync();
+        else
+            await SearchNivel3Async(loadDefaults: string.IsNullOrWhiteSpace(nivel3Term));
     }
 
-    if (!CanSearchNivel3)
-    {
-      if (!CanSearchNivel2)
-      {
-        await SearchNivel1Async(loadDefaults: string.IsNullOrWhiteSpace(nivel1Term));
-      }
-      else
-      {
-        await SearchNivel2Async(loadDefaults: string.IsNullOrWhiteSpace(nivel2Term));
-      }
-      return;
-    }
-
-    if (CanBuscar && Nivel3TermMatchesSelection())
-    {
-      await SearchRequested.InvokeAsync();
-    }
-    else
-    {
-      await SearchNivel3Async(loadDefaults: string.IsNullOrWhiteSpace(nivel3Term));
-    }
-  }
 
   private async Task SearchNivel1Async(bool loadDefaults = false)
   {

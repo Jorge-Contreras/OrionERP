@@ -589,6 +589,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
           _movimientoTarget.CopyFrom(MovimientoDraft);
       }
 
+      UpdateTotalsFromMovimientos();
+
       UiMessages.ShowSuccess("Movimiento guardado.");
       CloseMovimientoModal();
       await InvokeAsync(StateHasChanged);
@@ -744,6 +746,23 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       Nivel3 = movimiento.Nivel3,
       Descripcion = movimiento.Descripcion ?? movimiento.NombreCuenta
     };
+  }
+
+  private void UpdateTotalsFromMovimientos()
+  {
+    var totalDebe = Movimientos.Sum(m => m.Debe);
+    var totalHaber = Movimientos.Sum(m => m.Haber);
+
+    Totals = new MovimientoTotalsDto
+    {
+      Debe = totalDebe,
+      Haber = totalHaber
+    };
+
+    if (Header is not null)
+    {
+      Header.Status = HeaderStatus;
+    }
   }
 
   private async Task ReloadMovimientosAsync(CancellationToken ct = default)

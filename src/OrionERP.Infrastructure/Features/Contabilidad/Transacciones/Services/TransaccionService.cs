@@ -303,7 +303,8 @@ ORDER BY s.Descripcion ASC;";
     ch.ID          AS Id,
     ch.NombreCorto AS Description
 FROM dbo.Capital_Humano ch
-WHERE ch.RFC = @Rfc
+WHERE ch.RFC = @Rfc 
+      AND ch.Status='ACTIVO'
 ORDER BY ch.NombreCorto ASC;";
 
     using var conn = new SqlConnection(_cs);

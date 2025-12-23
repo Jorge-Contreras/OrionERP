@@ -74,7 +74,7 @@
     <div class="col-md-4">
       <label class="form-label">Buscar Nivel 3</label>
       <div class="input-group">
-        <input class="form-control" placeholder="Ej. 02 o descripción" @bind="nivel3Term" @onkeyup="OnNivel3KeyDown" disabled="@(!CanSearchNivel3)" />
+        <input class="form-control" placeholder="Ej. 02 o descripción" @bind="nivel3Term" @onkeyup="OnNivel3KeyDown" onkeydown="if (event.key === 'Enter') { event.preventDefault(); }" disabled="@(!CanSearchNivel3)" />
         @if (CanSearchNivel3)
         {
             <button class="btn btn-outline-primary" type="button" @onclick="ShowCreateNivel3Modal">Crear Nuevo</button>

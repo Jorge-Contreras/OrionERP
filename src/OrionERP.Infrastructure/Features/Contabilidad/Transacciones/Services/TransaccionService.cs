@@ -916,6 +916,33 @@ WHERE ID = @MovimientoId
       return rows.AsList();
   }
 
+  public async Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesByUuidAsync(string uuid, CancellationToken ct = default)
+  {
+    if (string.IsNullOrWhiteSpace(uuid))
+      return Array.Empty<TransaccionListItemDto>();
+
+    const string sql = @"SELECT
+    T.ID                          AS Id,
+    T.Fecha                       AS Fecha,
+    T.Concepto                    AS Concepto,
+    CAST(T.Monto AS decimal(18,4)) AS Monto,
+    T.Tipo_Poliza                 AS TipoPoliza,
+    T.Forma_Pago                  AS FormaPago
+FROM cfdi.TimbreFiscalDigital AS TFD
+JOIN dbo.Transaccion_Comprobante AS TC
+  ON TC.Comprobante_ID = TFD.Comprobante_Id
+JOIN dbo.Transacciones AS T
+  ON T.ID = TC.Transaccion_ID
+WHERE TFD.UUID = @Uuid
+ORDER BY T.Fecha;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<TransaccionListItemDto>(
+        new CommandDefinition(sql, new { Uuid = uuid }, cancellationToken: ct));
+
+    return rows.AsList();
+  }
+
   public async Task<TransaccionCommandResult> GuardarMovimientosAsync(TransaccionMovimientosUpdateRequest request, CancellationToken ct = default)
   {
       if (request is null)

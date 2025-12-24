@@ -8,6 +8,7 @@ namespace OrionERP.Application.Features.Contabilidad.Transacciones
         public DateTime Fecha { get; set; }
         public string Concepto { get; set; } = string.Empty;
         public decimal Monto { get; set; }
+        public decimal MontoAsignado { get; set; }
         public string TipoPoliza { get; set; } = string.Empty;
         public string FormaPago { get; set; } = string.Empty;
     }

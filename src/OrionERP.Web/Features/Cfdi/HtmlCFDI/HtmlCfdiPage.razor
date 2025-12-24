@@ -31,6 +31,7 @@
                         <th>Fecha</th>
                         <th>Concepto</th>
                         <th>Monto</th>
+                        <th>Monto Asignado</th>
                         <th>Tipo de Póliza</th>
                         <th>Forma de Pago</th>
                         <th></th>
@@ -44,6 +45,7 @@
                             <td>@poliza.Fecha.ToShortDateString()</td>
                             <td>@poliza.Concepto</td>
                             <td>@poliza.Monto</td>
+                            <td>@poliza.MontoAsignado</td>
                             <td>@poliza.TipoPoliza</td>
                             <td>@poliza.FormaPago</td>
                             <td>
@@ -52,6 +54,14 @@
                         </tr>
                     }
                 </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="4"></td>
+                        <td><strong>Total:</strong></td>
+                        <td>@TotalMontoAsignado</td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
             </table>
         }
     </div>

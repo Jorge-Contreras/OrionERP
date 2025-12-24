@@ -926,6 +926,7 @@ WHERE ID = @MovimientoId
     T.Fecha                       AS Fecha,
     T.Concepto                    AS Concepto,
     CAST(T.Monto AS decimal(18,4)) AS Monto,
+    CAST(TC.Monto AS decimal(18,4))   AS MontoAsignado,
     T.Tipo_Poliza                 AS TipoPoliza,
     T.Forma_Pago                  AS FormaPago
 FROM cfdi.TimbreFiscalDigital AS TFD

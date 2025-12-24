@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using System.Linq;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Application.Features.Cfdi.HtmlCFDI;
 using OrionERP.Web.Services;
@@ -25,6 +26,7 @@ public partial class HtmlCfdiPage : ComponentBase
   protected bool IsPolizasCollapsed { get; set; } = false;
   protected bool IsPolizasLoading { get; set; }
   protected List<TransaccionListItemDto> Polizas { get; } = new();
+  protected decimal TotalMontoAsignado => Polizas.Sum(p => p.MontoAsignado);
 
   protected override async Task OnParametersSetAsync()
   {

@@ -14,6 +14,9 @@ public interface ITransaccionService
   Task<TransaccionAttachmentContent?> GetAttachmentContentAsync(int attachmentId, CancellationToken ct = default);
   Task<TransaccionAttachmentDto> AddAttachmentAsync(TransaccionAttachmentCreateRequest request, CancellationToken ct = default);
   Task DeleteAttachmentAsync(int attachmentId, CancellationToken ct = default);
+  Task<int> GetComprobanteIdByXmlAttachmentAsync(int attachmentId, CancellationToken ct = default);
+  Task<bool> IsComprobanteLinkedToTransaccionAsync(int transaccionId, int comprobanteId, CancellationToken ct = default);
+  Task MoveAttachmentToTransaccionAsync(int attachmentId, int transaccionId, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionComprobanteDto>> GetComprobantesAsync(int transaccionId, CancellationToken ct = default);
   Task ToggleComprobanteAsync(int transaccionId, int comprobanteId, bool vincular, CancellationToken ct = default);
   Task<TransaccionGuardarCerrarResult> GuardarYCerrarAsync(TransaccionGuardarCerrarRequest request, CancellationToken ct = default);

@@ -16,6 +16,7 @@ using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.JSInterop;
+using Microsoft.Extensions.Configuration;
 
 namespace OrionERP.Web.Features.Contabilidad.Transacciones;
 
@@ -55,6 +56,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
   [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
   [Inject] public NavigationManager NavManager { get; set; } = default!;
+  [Inject] public IConfiguration Configuration { get; set; } = default!;
 
   protected TransaccionHeaderModel? Header { get; private set; }
   protected EditContext? HeaderEditContext { get; private set; }
@@ -910,40 +912,126 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected async Task DeleteAttachmentAsync(AttachmentModel attachment)
   {
-    if (attachment is null)
+    if (attachment is null || Header is null)
       return;
 
-    bool confirm;
+    var extension = (attachment.Extension ?? string.Empty).Trim().ToLowerInvariant();
+    var isXml = extension == "xml";
+
+    if (!isXml)
+    {
+      var confirmed = await ConfirmAsync("¿Estás seguro que deseas borrar este archivo adjunto?");
+      if (!confirmed)
+        return;
+
+      await ExecuteAttachmentMutationAsync(
+          attachment.Id,
+          () => TransaccionService.DeleteAttachmentAsync(attachment.Id),
+          "Archivo adjunto eliminado.");
+      return;
+    }
+
+    int comprobanteId;
     try
     {
-      confirm = await JsRuntime.InvokeAsync<bool>("confirm", $"¿Deseas eliminar el adjunto '{attachment.Nombre}'?");
+      comprobanteId = await TransaccionService.GetComprobanteIdByXmlAttachmentAsync(attachment.Id);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo validar el XML: {ex.Message}");
+      return;
+    }
+
+    if (comprobanteId <= 0)
+    {
+      var confirmed = await ConfirmAsync("Este XML no está ligado a ningún comprobante. ¿Deseas borrarlo?");
+      if (!confirmed)
+        return;
+
+      await ExecuteAttachmentMutationAsync(
+          attachment.Id,
+          () => TransaccionService.DeleteAttachmentAsync(attachment.Id),
+          "Archivo adjunto eliminado.");
+      return;
+    }
+
+    bool isLinkedToCurrent;
+    try
+    {
+      isLinkedToCurrent = await TransaccionService.IsComprobanteLinkedToTransaccionAsync(Header.Id, comprobanteId);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo validar el vínculo del comprobante: {ex.Message}");
+      return;
+    }
+
+    if (isLinkedToCurrent)
+    {
+      UiMessages.ShowWarning("Este XML está ligado a esta Póliza y no puede ser borrado.");
+      return;
+    }
+
+    var placeholderTransaccionId = GetPlaceholderTransaccionId();
+    if (!placeholderTransaccionId.HasValue)
+    {
+      UiMessages.ShowError("No se pudo determinar la póliza temporal configurada.");
+      return;
+    }
+
+    var moveConfirmMessage =
+      $"Este XML está ligado a un comprobante, pero no a esta Póliza.\n" +
+      $"No se borrará; se moverá a la póliza temporal (TranID = {placeholderTransaccionId}).\n" +
+      "¿Deseas continuar?";
+
+    var moveConfirmed = await ConfirmAsync(moveConfirmMessage);
+    if (!moveConfirmed)
+      return;
+
+    await ExecuteAttachmentMutationAsync(
+        attachment.Id,
+        () => TransaccionService.MoveAttachmentToTransaccionAsync(attachment.Id, placeholderTransaccionId.Value),
+        "XML movido a la póliza temporal.");
+  }
+
+  private async Task<bool> ConfirmAsync(string message)
+  {
+    try
+    {
+      return await JsRuntime.InvokeAsync<bool>("confirm", message);
     }
     catch
     {
-      confirm = true;
+      return true;
     }
+  }
 
-    if (!confirm)
-      return;
-
-    _attachmentDeletingId = attachment.Id;
+  private async Task ExecuteAttachmentMutationAsync(int attachmentId, Func<Task> mutation, string successMessage)
+  {
+    _attachmentDeletingId = attachmentId;
     await InvokeAsync(StateHasChanged);
 
     try
     {
-      await TransaccionService.DeleteAttachmentAsync(attachment.Id);
+      await mutation();
       await ReloadAttachmentsAsync();
-      UiMessages.ShowSuccess("Archivo adjunto eliminado.");
+      UiMessages.ShowSuccess(successMessage);
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo eliminar el archivo adjunto: {ex.Message}");
+      UiMessages.ShowError($"No se pudo actualizar el archivo adjunto: {ex.Message}");
     }
     finally
     {
       _attachmentDeletingId = null;
       await InvokeAsync(StateHasChanged);
     }
+  }
+
+  private int? GetPlaceholderTransaccionId()
+  {
+    var placeholder = Configuration["SatXml:PlaceholderTransaccionId"];
+    return int.TryParse(placeholder, out var parsed) ? parsed : null;
   }
 
   protected async Task DeleteMovimientoAsync(MovimientoModel movimiento)

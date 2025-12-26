@@ -446,6 +446,44 @@ WHERE ta.ID = @AttachmentId;";
     await conn.ExecuteAsync(new CommandDefinition(sql, new { AttachmentId = attachmentId }, cancellationToken: ct));
   }
 
+  public async Task<int> GetComprobanteIdByXmlAttachmentAsync(int attachmentId, CancellationToken ct = default)
+  {
+    const string sql = @"SELECT TOP 1 Comprobante_ID
+FROM cfdi.comprobante
+WHERE XML_Attachment_ID = @AttachmentId;";
+
+    using var conn = new SqlConnection(_cs);
+    var comprobanteId = await conn.ExecuteScalarAsync<int?>(
+        new CommandDefinition(sql, new { AttachmentId = attachmentId }, cancellationToken: ct));
+
+    return comprobanteId ?? 0;
+  }
+
+  public async Task<bool> IsComprobanteLinkedToTransaccionAsync(int transaccionId, int comprobanteId, CancellationToken ct = default)
+  {
+    const string sql = @"SELECT TOP 1 1
+FROM dbo.Transaccion_Comprobante
+WHERE Transaccion_ID = @TransaccionId
+  AND Comprobante_ID = @ComprobanteId;";
+
+    using var conn = new SqlConnection(_cs);
+    var exists = await conn.ExecuteScalarAsync<int?>(
+        new CommandDefinition(sql, new { TransaccionId = transaccionId, ComprobanteId = comprobanteId }, cancellationToken: ct));
+
+    return exists.HasValue;
+  }
+
+  public async Task MoveAttachmentToTransaccionAsync(int attachmentId, int transaccionId, CancellationToken ct = default)
+  {
+    const string sql = @"UPDATE dbo.TRANSACTION_ATTACHMENT
+SET TranID = @TransaccionId
+WHERE ID = @AttachmentId;";
+
+    using var conn = new SqlConnection(_cs);
+    await conn.ExecuteAsync(
+        new CommandDefinition(sql, new { AttachmentId = attachmentId, TransaccionId = transaccionId }, cancellationToken: ct));
+  }
+
   public async Task<IReadOnlyList<TransaccionComprobanteDto>> GetComprobantesAsync(int transaccionId, CancellationToken ct = default)
   {
     const string sql = @"SELECT

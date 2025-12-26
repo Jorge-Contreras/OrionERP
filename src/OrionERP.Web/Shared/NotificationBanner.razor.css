@@ -1,0 +1,59 @@
+.notification-surface {
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    right: 0.75rem;
+    z-index: 120;
+    display: flex;
+    justify-content: flex-end;
+    pointer-events: none;
+}
+
+.notification-card {
+    width: min(460px, 92vw);
+    pointer-events: auto;
+    box-shadow: 0 10px 30px rgba(15, 45, 78, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
+    border: 1px solid rgba(15, 45, 78, 0.12);
+    border-left-width: 8px;
+    padding-right: 2.5rem;
+    position: relative;
+}
+
+.notification-card[data-level="error"] {
+    border-left-color: #b42318;
+}
+
+.notification-card[data-level="warning"] {
+    border-left-color: #eab308;
+}
+
+.notification-card[data-level="success"] {
+    border-left-color: #15803d;
+}
+
+.notification-card[data-level="info"] {
+    border-left-color: #0f2d4e;
+}
+
+.notification-title {
+    font-weight: 700;
+    margin-bottom: 0.15rem;
+}
+
+.notification-body {
+    line-height: 1.4;
+}
+
+.notification-card .btn-close {
+    position: absolute;
+    right: 0.75rem;
+    top: 0.75rem;
+}
+
+@media (min-width: 641px) {
+    .notification-surface {
+        top: calc(3.5rem + 0.75rem);
+        right: 1.5rem;
+        left: auto;
+    }
+}

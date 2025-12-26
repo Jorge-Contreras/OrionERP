@@ -3,17 +3,22 @@
 
 @if (_currentMessage is not null)
 {
-    <div class="alert @_currentMessage.CssClass alert-dismissible fade show" role="alert">
-        @if (!string.IsNullOrWhiteSpace(_currentMessage.Title))
-        {
-            <strong>@_currentMessage.Title</strong>
-            <span class="ms-2">@_currentMessage.Message</span>
-        }
-        else
-        {
-            @_currentMessage.Message
-        }
-        <button type="button" class="btn-close" aria-label="Cerrar" @onclick="Dismiss"></button>
+    <div class="notification-surface" role="presentation">
+        <div class="alert @_currentMessage.CssClass alert-dismissible fade show notification-card"
+             data-level="@_currentMessage.Level.ToString().ToLowerInvariant()"
+             aria-live="@(IsUrgent(_currentMessage) ? "assertive" : "polite")"
+             role="alert">
+            @if (!string.IsNullOrWhiteSpace(_currentMessage.Title))
+            {
+                <div class="notification-title">@_currentMessage.Title</div>
+                <div class="notification-body">@_currentMessage.Message</div>
+            }
+            else
+            {
+                <div class="notification-body">@_currentMessage.Message</div>
+            }
+            <button type="button" class="btn-close" aria-label="Cerrar" @onclick="Dismiss"></button>
+        </div>
     </div>
 }
 
@@ -33,6 +38,9 @@
     }
 
     private void Dismiss() => MessageService.Clear();
+
+    private static bool IsUrgent(UiMessage message) =>
+        message.Level is UiMessageLevel.Error or UiMessageLevel.Warning;
 
     public void Dispose()
     {

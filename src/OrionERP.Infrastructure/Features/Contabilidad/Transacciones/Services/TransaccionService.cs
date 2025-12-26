@@ -18,6 +18,7 @@ public sealed class TransaccionService : ITransaccionService
   private readonly string _cs;
   private readonly IDbStoredProcService _storedProcService;
   private readonly ILogger<TransaccionService> _logger;
+  private readonly int? _placeholderTransaccionId;
 
   public TransaccionService(
       IConfiguration cfg,
@@ -28,6 +29,12 @@ public sealed class TransaccionService : ITransaccionService
          ?? throw new InvalidOperationException("Missing connection string: OrionDb");
     _storedProcService = storedProcService ?? throw new ArgumentNullException(nameof(storedProcService));
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+    var placeholderSetting = cfg["SatXml:PlaceholderTransaccionId"];
+    if (int.TryParse(placeholderSetting, out var parsedPlaceholder))
+    {
+      _placeholderTransaccionId = parsedPlaceholder;
+    }
   }
 
   public async Task<TransaccionHeaderDto?> GetHeaderAsync(int transaccionId, CancellationToken ct = default)
@@ -438,12 +445,73 @@ WHERE ta.ID = @AttachmentId;";
     };
   }
 
-  public async Task DeleteAttachmentAsync(int attachmentId, CancellationToken ct = default)
+  public async Task<TransaccionAttachmentDeleteResult> DeleteAttachmentAsync(
+      int transaccionId,
+      int attachmentId,
+      CancellationToken ct = default)
   {
-    const string sql = @"DELETE FROM dbo.TRANSACTION_ATTACHMENT WHERE ID = @AttachmentId;";
+    const string attachmentSql = @"SELECT TOP (1)
+    ta.ID                  AS AttachmentId,
+    ta.TranID              AS TranId,
+    ta.AttachmentExtension AS AttachmentExtension
+FROM dbo.TRANSACTION_ATTACHMENT ta
+WHERE ta.ID = @AttachmentId;";
 
     using var conn = new SqlConnection(_cs);
-    await conn.ExecuteAsync(new CommandDefinition(sql, new { AttachmentId = attachmentId }, cancellationToken: ct));
+    var attachment = await conn.QueryFirstOrDefaultAsync<AttachmentLookup>(
+        new CommandDefinition(attachmentSql, new { AttachmentId = attachmentId }, cancellationToken: ct));
+
+    if (attachment is null)
+    {
+      return TransaccionAttachmentDeleteResult.Fail("El adjunto no existe o ya fue eliminado.");
+    }
+
+    if (IsXmlExtension(attachment.AttachmentExtension))
+    {
+      const string comprobanteSql = @"SELECT TOP (1) Comprobante_ID
+FROM cfdi.Comprobante
+WHERE XML_Attachment_ID = @AttachmentId;";
+
+      var comprobanteId = await conn.QueryFirstOrDefaultAsync<int?>(
+          new CommandDefinition(comprobanteSql, new { AttachmentId = attachmentId }, cancellationToken: ct));
+
+      if (comprobanteId.HasValue && comprobanteId.Value > 0)
+      {
+        if (transaccionId > 0 && attachment.TranId.HasValue && attachment.TranId.Value == transaccionId)
+        {
+          return TransaccionAttachmentDeleteResult.Blocked("Este XML está ligado a esta póliza y no puede ser borrado.");
+        }
+
+        if (!_placeholderTransaccionId.HasValue)
+        {
+          return TransaccionAttachmentDeleteResult.Fail(
+              "No se pudo reubicar el XML porque falta la configuración SatXml:PlaceholderTransaccionId.");
+        }
+
+        const string updateSql = @"UPDATE dbo.TRANSACTION_ATTACHMENT
+SET TranID = @PlaceholderTransaccionId
+WHERE ID = @AttachmentId;";
+
+        await conn.ExecuteAsync(
+            new CommandDefinition(
+                updateSql,
+                new
+                {
+                  PlaceholderTransaccionId = _placeholderTransaccionId.Value,
+                  AttachmentId = attachmentId
+                },
+                cancellationToken: ct));
+
+        return TransaccionAttachmentDeleteResult.Moved(_placeholderTransaccionId.Value, comprobanteId.Value);
+      }
+    }
+
+    const string deleteSql = @"DELETE FROM dbo.TRANSACTION_ATTACHMENT WHERE ID = @AttachmentId;";
+
+    await conn.ExecuteAsync(
+        new CommandDefinition(deleteSql, new { AttachmentId = attachmentId }, cancellationToken: ct));
+
+    return TransaccionAttachmentDeleteResult.Deleted();
   }
 
   public async Task<IReadOnlyList<TransaccionComprobanteDto>> GetComprobantesAsync(int transaccionId, CancellationToken ct = default)
@@ -1035,6 +1103,18 @@ WHERE rc.TransaccionID = @TransaccionId;";
 
     return totals ?? new MovimientoTotalsDto();
   }
+
+  private static bool IsXmlExtension(string? extension)
+  {
+    if (string.IsNullOrWhiteSpace(extension))
+    {
+      return false;
+    }
+
+    return string.Equals(extension.Trim(), "XML", StringComparison.OrdinalIgnoreCase);
+  }
+
+  private sealed record AttachmentLookup(int AttachmentId, int? TranId, string? AttachmentExtension);
 
   private static string ResolveContentType(string? extension)
   {

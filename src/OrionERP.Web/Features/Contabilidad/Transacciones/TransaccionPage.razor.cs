@@ -931,9 +931,28 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     try
     {
-      await TransaccionService.DeleteAttachmentAsync(attachment.Id);
+      var result = await TransaccionService.DeleteAttachmentAsync(Id, attachment.Id);
+      if (result.Blocked)
+      {
+        UiMessages.ShowWarning(result.Message);
+        return;
+      }
+
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
       await ReloadAttachmentsAsync();
-      UiMessages.ShowSuccess("Archivo adjunto eliminado.");
+      if (result.MovedToPlaceholder)
+      {
+        UiMessages.ShowInfo(result.Message);
+      }
+      else
+      {
+        UiMessages.ShowSuccess(result.Message);
+      }
     }
     catch (Exception ex)
     {

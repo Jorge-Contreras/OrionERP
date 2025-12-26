@@ -23,7 +23,7 @@ public partial class HtmlCfdiPage : ComponentBase
   protected CfdiReadableDocument? Document { get; set; }
   protected string? ErrorMessage { get; set; }
   protected bool IsLoading { get; set; }
-  protected bool IsPolizasCollapsed { get; set; } = false;
+  protected bool IsPolizasCollapsed { get; set; } = true;
   protected bool IsPolizasLoading { get; set; }
   protected List<TransaccionListItemDto> Polizas { get; } = new();
   protected decimal TotalMontoAsignado => Polizas.Sum(p => p.MontoAsignado);

@@ -335,6 +335,7 @@ else if (Header is not null)
               <thead class="table-light">
                 <tr>
                   <th scope="col">Comprobante ID</th>
+                  <th scope="col">XML Attachment ID</th>
                   <th scope="col">Fecha</th>
                   <th scope="col">Tipo</th>
                   <th scope="col">Serie</th>
@@ -356,6 +357,7 @@ else if (Header is not null)
                 {
                   <tr>
                     <td>@comprobante.ComprobanteId</td>
+                    <td>@comprobante.XmlAttachmentId</td>
                     <td>@comprobante.Fecha.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
                     <td>@comprobante.Tipo</td>
                     <td>@comprobante.Serie</td>
@@ -618,4 +620,3 @@ else
     </div>
   </div>
 } 
-

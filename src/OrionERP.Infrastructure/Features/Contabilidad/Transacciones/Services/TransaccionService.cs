@@ -149,7 +149,8 @@ ORDER BY t.Fecha;";
           Asignado = row.Asignado,
           MetodoPago = row.MetodoPago,
           UsoCfdi = row.UsoCFDI,
-          Conceptos = row.Conceptos
+          Conceptos = row.Conceptos,
+          XmlAttachmentId = row.XML_Attachment_ID
         })
         .ToList();
   }
@@ -1007,6 +1008,7 @@ ORDER BY T.Fecha;";
     public string? MetodoPago { get; set; }
     public string? UsoCFDI { get; set; }
     public string? Conceptos { get; set; }
+    public int? XML_Attachment_ID { get; set; }
   }
 
   private async Task<int> ExecuteInsertAsync(string sql, object parameters, CancellationToken ct)

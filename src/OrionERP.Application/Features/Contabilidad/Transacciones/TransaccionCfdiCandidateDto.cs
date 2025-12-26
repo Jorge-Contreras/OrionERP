@@ -19,4 +19,5 @@ public sealed class TransaccionCfdiCandidateDto
   public string? MetodoPago { get; set; }
   public string? UsoCfdi { get; set; }
   public string? Conceptos { get; set; }
+  public int? XmlAttachmentId { get; set; }
 }

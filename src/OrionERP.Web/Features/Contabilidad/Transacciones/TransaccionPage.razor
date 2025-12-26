@@ -335,6 +335,7 @@ else if (Header is not null)
               <thead class="table-light">
                 <tr>
                   <th scope="col">Comprobante ID</th>
+                  <th scope="col">CFDI</th>
                   <th scope="col">XML Attachment ID</th>
                   <th scope="col">Fecha</th>
                   <th scope="col">Tipo</th>
@@ -357,6 +358,14 @@ else if (Header is not null)
                 {
                   <tr>
                     <td>@comprobante.ComprobanteId</td>
+                    <td>
+                      <button type="button"
+                              class="btn btn-sm btn-outline-info"
+                              disabled="@(!comprobante.XmlAttachmentId.HasValue)"
+                              @onclick="() => OpenComprobanteCfdiAsync(comprobante)">
+                        CFDI-@comprobante.ComprobanteId
+                      </button>
+                    </td>
                     <td>@comprobante.XmlAttachmentId</td>
                     <td>@comprobante.Fecha.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
                     <td>@comprobante.Tipo</td>

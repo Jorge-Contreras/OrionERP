@@ -845,6 +845,25 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
   }
 
+  protected async Task OpenComprobanteCfdiAsync(TransaccionCfdiCandidateDto? comprobante)
+  {
+    if (comprobante?.XmlAttachmentId is null)
+    {
+      return;
+    }
+
+    var url = $"/cfdi/html-cfdi/{comprobante.XmlAttachmentId}";
+
+    try
+    {
+      await JsRuntime.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+    }
+    catch
+    {
+      NavManager.NavigateTo(url);
+    }
+  }
+
   protected bool IsAttachmentDownloading(AttachmentModel attachment)
     => attachment.Id == _attachmentDownloadingId;
 

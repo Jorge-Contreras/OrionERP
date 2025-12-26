@@ -53,7 +53,7 @@ else if (Header is not null)
   <div class="d-flex flex-column gap-3">
     <div class="card shadow-sm">
       <div class="card-header d-flex align-items-center gap-2">
-        <h5 class="mb-0 flex-grow-1">Datos de la transacción</h5>
+        <h5 class="mb-0 flex-grow-1">Datos de la Poliza</h5>
         <span class="badge @HeaderStatusCss">@HeaderStatus</span>
       </div>
       <div class="card-body transaccion-header">
@@ -336,7 +336,6 @@ else if (Header is not null)
                 <tr>
                   <th scope="col">Comprobante ID</th>
                   <th scope="col">CFDI</th>
-                  <th scope="col">XML Attachment ID</th>
                   <th scope="col">Fecha</th>
                   <th scope="col">Tipo</th>
                   <th scope="col">Serie</th>
@@ -366,7 +365,6 @@ else if (Header is not null)
                         CFDI-@comprobante.ComprobanteId
                       </button>
                     </td>
-                    <td>@comprobante.XmlAttachmentId</td>
                     <td>@comprobante.Fecha.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
                     <td>@comprobante.Tipo</td>
                     <td>@comprobante.Serie</td>

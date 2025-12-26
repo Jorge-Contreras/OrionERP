@@ -1,4 +1,3 @@
-
 @using Microsoft.JSInterop
 @using OrionERP.Application.Features.Cfdi.DeclaracionPrevia
 @using OrionERP.Web.Services
@@ -29,27 +28,23 @@
 @code {
 
     [Parameter]
-    public object? Item { get; set; }
+    public DeclaracionCfdiBase Item { get; set; } = default!;
 
     private int? PlaceholderTransaccionId => _placeholderTransaccionId ??= ParsePlaceholder(Configuration["SatXml:PlaceholderTransaccionId"]);
     private int? _placeholderTransaccionId;
 
-    private string? ItemPoliza => Item switch
-    {
-        DeclaracionCfdiBase baseCfdi => baseCfdi.Poliza,
-        _ => null
-    };
+    private string? ItemPoliza => Item.Poliza;
 
     private bool IsPlaceholderPoliza => PlaceholderTransaccionId.HasValue && ItemPoliza == PlaceholderTransaccionId.Value.ToString();
 
     private async Task OpenDetails()
     {
-        if (Item is not DeclaracionCfdiBase emitida || emitida.XML_Attachment_ID is null)
+        if (Item.XML_Attachment_ID is null)
         {
             return;
         }
 
-        var url = $"/cfdi/html-cfdi/{emitida.XML_Attachment_ID}";
+        var url = $"/cfdi/html-cfdi/{Item.XML_Attachment_ID}";
 
         try
         {
@@ -63,19 +58,14 @@
 
     private async Task HandlePolizaClick()
     {
-        if (Item is not DeclaracionCfdiBase declaracion)
-        {
-            return;
-        }
-
         if (IsPlaceholderPoliza)
         {
             try
             {
-                var newTransaccionId = await GenerarPolizaDesdeComprobante(declaracion.Comprobante_Id);
-                declaracion.Poliza = newTransaccionId.ToString();
+                var newTransaccionId = await GenerarPolizaDesdeComprobante(Item.Comprobante_Id);
+                Item.Poliza = newTransaccionId.ToString();
                 await InvokeAsync(StateHasChanged);
-                await OpenLinkedTransaction(declaracion);
+                await OpenLinkedTransaction();
             }
             catch (Exception ex)
             {
@@ -84,14 +74,13 @@
         }
         else
         {
-            await OpenLinkedTransaction(declaracion);
+            await OpenLinkedTransaction();
         }
     }
 
-    private async Task OpenLinkedTransaction(DeclaracionCfdiBase declaracion)
+    private async Task OpenLinkedTransaction()
     {
-
-        long? transId = await DeclaracionService.GetLinkedTransactionIdAsync(declaracion.Comprobante_Id);
+        long? transId = await DeclaracionService.GetLinkedTransactionIdAsync(Item.Comprobante_Id);
 
         if (!transId.HasValue)
         {
@@ -110,8 +99,6 @@
             Nav.NavigateTo(url);
         }
     }
-
-   
 
     private async Task<int> GenerarPolizaDesdeComprobante(int comprobanteId)
     {

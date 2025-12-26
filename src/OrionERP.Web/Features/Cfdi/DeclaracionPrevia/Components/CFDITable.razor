@@ -8,6 +8,9 @@
         <summary>Filtros</summary>
         <div class="cfdi-table__filters-body">
             <div class="cfdi-table__toolbar">
+                <button class="btn btn-outline-primary btn-sm me-2" @onclick="ApplyTotalDifferentFromPolizasFilter">
+                    Total <> Polizas
+                </button>
                 <button class="btn btn-outline-secondary btn-sm" @onclick="ClearFilters" disabled="@(!HasActiveFilters)">
                     Borrar filtros
                 </button>
@@ -214,6 +217,7 @@
 
 @code {
     private const int BaseColumnCount = 28;
+    private const decimal TotalPolizasTolerance = 2m;
     private static readonly IReadOnlyList<string?> BaseColumnWidths = new List<string?>
     {
         "8rem", // Acciones
@@ -291,6 +295,7 @@
     private HashSet<string> _selectedTipoCfdi = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _selectedMetodoPago = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _selectedUsoCfdi = new(StringComparer.OrdinalIgnoreCase);
+    private bool _filterTotalDifferentFromPolizas;
 
     private readonly Dictionary<string, string> _sortSelections = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -448,6 +453,11 @@
             query = query.Where(item => _selectedUsoCfdi.Contains(Normalize(item.UsoCFDI)));
         }
 
+        if (_filterTotalDifferentFromPolizas)
+        {
+            query = query.Where(HasTotalPolizasDifference);
+        }
+
         query = ApplySorting(query);
 
         _filteredItems = query.ToList();
@@ -478,6 +488,17 @@
 
     private static string Normalize(string? value) => value?.Trim() ?? string.Empty;
 
+    private bool HasTotalPolizasDifference(DeclaracionCfdiBase item)
+    {
+        if (!item.SumaPolizas.HasValue)
+        {
+            return true;
+        }
+
+        var difference = Math.Abs(item.Total - item.SumaPolizas.Value);
+        return difference > TotalPolizasTolerance;
+    }
+
     private bool HasActiveFilters =>
         !string.IsNullOrEmpty(_checkStatusFilter) ||
         _selectedCounterparties.Any() ||
@@ -485,6 +506,7 @@
         _selectedTipoCfdi.Any() ||
         _selectedMetodoPago.Any() ||
         _selectedUsoCfdi.Any() ||
+        _filterTotalDifferentFromPolizas ||
         _sortSelections.Any(kv => !string.IsNullOrEmpty(kv.Value));
 
     private static HashSet<string> ExtractSelectedValues(ChangeEventArgs args)
@@ -535,19 +557,32 @@
 
     private void ClearFilters()
     {
+        ResetFiltersAndSorting();
+
+        ApplyFiltersAndSorting();
+    }
+
+    private void ApplyTotalDifferentFromPolizasFilter()
+    {
+        ResetFiltersAndSorting();
+        _filterTotalDifferentFromPolizas = true;
+        ApplyFiltersAndSorting();
+    }
+
+    private void ResetFiltersAndSorting()
+    {
         _checkStatusFilter = string.Empty;
         _selectedCounterparties.Clear();
         _selectedFormaPago.Clear();
         _selectedTipoCfdi.Clear();
         _selectedMetodoPago.Clear();
         _selectedUsoCfdi.Clear();
+        _filterTotalDifferentFromPolizas = false;
 
         foreach (var key in _sortSelections.Keys.ToList())
         {
             _sortSelections[key] = string.Empty;
         }
-
-        ApplyFiltersAndSorting();
     }
 
     private RenderFragment RenderSortSelect(string columnKey) => builder =>

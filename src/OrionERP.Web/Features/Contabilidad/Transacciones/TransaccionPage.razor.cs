@@ -36,7 +36,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private int? _attachmentDownloadingId;
   private int? _attachmentDeletingId;
   private int? _movimientoDeletingId;
-  private int? _unlinkingComprobanteId;
+  private long? _unlinkingComprobanteId;
   private readonly List<LookupInt32Dto> _allProyectoOptions = [];
   private readonly List<LookupInt32Dto> _allCompraOptions = [];
   private CuentaContablePicker? CuentaPicker;

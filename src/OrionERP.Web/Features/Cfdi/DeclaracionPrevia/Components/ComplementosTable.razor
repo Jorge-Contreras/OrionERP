@@ -533,9 +533,14 @@
             : source.ThenBy(selector);
     }
 
+    private static bool IsIncludedComplemento(DeclaracionComplementoBase item) =>
+        !string.Equals(item.D?.Trim(), "X", StringComparison.OrdinalIgnoreCase);
+
     private ComplementoTotals CalculateTotals(IEnumerable<DeclaracionComplementoBase> source)
     {
-        var list = source.ToList();
+        var list = source
+            .Where(IsIncludedComplemento)
+            .ToList();
 
         return new ComplementoTotals
         {

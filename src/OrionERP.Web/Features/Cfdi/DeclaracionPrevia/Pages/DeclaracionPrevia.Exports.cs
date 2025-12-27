@@ -250,9 +250,16 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       return true;
     }
 
+    private static bool IsIncludedComplemento(DeclaracionComplementoBase item) =>
+      !string.Equals(item.D?.Trim(), "X", StringComparison.OrdinalIgnoreCase);
+
     private bool AddComplementosWorksheet(OfficeOpenXml.ExcelPackage package, string sheetName, IEnumerable<DeclaracionComplementoBase>? items)
     {
-      if (items == null || !items.Any())
+      var includedItems = items?
+        .Where(IsIncludedComplemento)
+        .ToList();
+
+      if (includedItems == null || includedItems.Count == 0)
       {
         return false;
       }
@@ -272,7 +279,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
 
       int row = 2;
-      foreach (var item in items)
+      foreach (var item in includedItems)
       {
         worksheet.Cells[row, 1].Value = item.Comprobante_Id;
         worksheet.Cells[row, 2].Value = item.Poliza;

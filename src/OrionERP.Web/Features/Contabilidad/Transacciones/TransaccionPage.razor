@@ -322,6 +322,11 @@ else if (Header is not null)
           <span class="h5 mb-0">Comprobantes vinculados</span>
         </button>
         <span class="badge text-bg-secondary">@Comprobantes.Count</span>
+        <a class="btn btn-sm btn-outline-success ms-auto"
+           href="/Contabilidad/LigarTransacciones/@Header.Id"
+           target="_blank" rel="noopener">
+          Ligar Comprobante
+        </a>
       </div>
       <div id="comprobantesSection" class="card-body @(IsSectionExpanded(SectionPanel.Comprobantes) ? string.Empty : "d-none")">
         @if (Comprobantes.Count == 0)

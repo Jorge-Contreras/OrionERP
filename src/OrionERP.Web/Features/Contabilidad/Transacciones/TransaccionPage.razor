@@ -350,6 +350,7 @@ else if (Header is not null)
                   <th scope="col">Método Pago</th>
                   <th scope="col">Uso CFDI</th>
                   <th scope="col">Conceptos</th>
+                  <th scope="col">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -379,6 +380,18 @@ else if (Header is not null)
                     <td>@comprobante.MetodoPago</td>
                     <td>@comprobante.UsoCfdi</td>
                     <td class="text-wrap">@comprobante.Conceptos</td>
+                    <td>
+                      <button type="button"
+                              class="btn btn-sm btn-outline-warning"
+                              disabled="@IsComprobanteUnlinking(comprobante)"
+                              @onclick="() => UnlinkComprobanteAsync(comprobante)">
+                        @if (IsComprobanteUnlinking(comprobante))
+                        {
+                          <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                        }
+                        Desligar
+                      </button>
+                    </td>
                   </tr>
                 }
               </tbody>

@@ -36,6 +36,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private int? _attachmentDownloadingId;
   private int? _attachmentDeletingId;
   private int? _movimientoDeletingId;
+  private int? _unlinkingComprobanteId;
   private readonly List<LookupInt32Dto> _allProyectoOptions = [];
   private readonly List<LookupInt32Dto> _allCompraOptions = [];
   private CuentaContablePicker? CuentaPicker;
@@ -874,6 +875,65 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected bool IsMovimientoDeleting(MovimientoModel movimiento)
     => movimiento is not null && movimiento.Id == _movimientoDeletingId;
+
+  protected bool IsComprobanteUnlinking(TransaccionCfdiCandidateDto comprobante)
+    => comprobante is not null && comprobante.ComprobanteId == _unlinkingComprobanteId;
+
+  protected async Task UnlinkComprobanteAsync(TransaccionCfdiCandidateDto comprobante)
+  {
+    if (Header is null)
+    {
+      return;
+    }
+
+    var confirmed = await ConfirmAsync("¿Estás seguro que deseas desligar este comprobante de esta póliza?");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    var placeholderTransaccionId = GetPlaceholderTransaccionId();
+    if (!placeholderTransaccionId.HasValue)
+    {
+      UiMessages.ShowError("No se pudo determinar la póliza temporal configurada.");
+      return;
+    }
+
+    _unlinkingComprobanteId = comprobante.ComprobanteId;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var request = new TransaccionComprobanteUnlinkRequest
+      {
+        CurrentTransaccionId = Header.Id,
+        TempTransaccionId = placeholderTransaccionId.Value,
+        ComprobanteId = comprobante.ComprobanteId
+      };
+
+      var result = await TransaccionService.UnlinkComprobanteAsync(request);
+      if (!result.Success)
+      {
+        UiMessages.ShowWarning(result.Message ?? "No se encontró el vínculo de este comprobante con la póliza actual.");
+      }
+      else
+      {
+        UiMessages.ShowSuccess(result.Message ?? "Comprobante desligado correctamente.");
+      }
+
+      await ReloadComprobantesAsync();
+      await ReloadAttachmentsAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo desligar el comprobante: {ex.Message}");
+    }
+    finally
+    {
+      _unlinkingComprobanteId = null;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
 
   protected async Task DownloadAttachmentAsync(AttachmentModel attachment)
   {

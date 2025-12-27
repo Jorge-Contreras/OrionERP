@@ -611,6 +611,77 @@ WHERE Transaccion_ID = @TransaccionId
     }
   }
 
+  public async Task<TransaccionCommandResult> UnlinkComprobanteAsync(TransaccionComprobanteUnlinkRequest request, CancellationToken ct = default)
+  {
+    if (request is null)
+      throw new ArgumentNullException(nameof(request));
+
+    using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
+
+    try
+    {
+      const string sqlUpdateLink = @"UPDATE dbo.Transaccion_Comprobante
+SET Transaccion_ID = @TempTransaccionId
+WHERE Transaccion_ID = @CurrentTransaccionId
+  AND Comprobante_ID = @ComprobanteId;";
+
+      var updated = await conn.ExecuteAsync(
+          new CommandDefinition(
+              sqlUpdateLink,
+              new
+              {
+                request.TempTransaccionId,
+                request.CurrentTransaccionId,
+                request.ComprobanteId
+              },
+              tx,
+              cancellationToken: ct));
+
+      if (updated == 0)
+      {
+        await tx!.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("No se encontró el vínculo de este comprobante con la póliza actual.");
+      }
+
+      const string sqlAttachment = @"SELECT XML_Attachment_ID
+FROM cfdi.comprobante
+WHERE Comprobante_ID = @ComprobanteId;";
+
+      var attachmentId = await conn.ExecuteScalarAsync<int?>(
+          new CommandDefinition(sqlAttachment, new { request.ComprobanteId }, tx, cancellationToken: ct));
+
+      if (attachmentId.HasValue && attachmentId.Value > 0)
+      {
+        const string sqlMoveAttachment = @"UPDATE dbo.TRANSACTION_ATTACHMENT
+SET TranID = @TempTransaccionId
+WHERE ID = @AttachmentId;";
+
+        await conn.ExecuteAsync(
+            new CommandDefinition(
+                sqlMoveAttachment,
+                new { AttachmentId = attachmentId.Value, request.TempTransaccionId },
+                tx,
+                cancellationToken: ct));
+      }
+
+      await tx!.CommitAsync(ct);
+      return TransaccionCommandResult.Ok("Comprobante desligado correctamente.");
+    }
+    catch (Exception ex)
+    {
+      try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
+      _logger.LogError(
+          ex,
+          "Failed to unlink Comprobante {ComprobanteId} from Transaccion {TransaccionId}",
+          request.ComprobanteId,
+          request.CurrentTransaccionId);
+
+      return TransaccionCommandResult.Fail("No se pudo desligar el comprobante. Inténtalo de nuevo.");
+    }
+  }
+
   public async Task<TransaccionGuardarCerrarResult> GuardarYCerrarAsync(TransaccionGuardarCerrarRequest request, CancellationToken ct = default)
   {
     using var conn = new SqlConnection(_cs);

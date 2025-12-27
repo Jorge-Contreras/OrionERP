@@ -19,6 +19,7 @@ public interface ITransaccionService
   Task MoveAttachmentToTransaccionAsync(int attachmentId, int transaccionId, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionComprobanteDto>> GetComprobantesAsync(int transaccionId, CancellationToken ct = default);
   Task ToggleComprobanteAsync(int transaccionId, int comprobanteId, bool vincular, CancellationToken ct = default);
+  Task<TransaccionCommandResult> UnlinkComprobanteAsync(TransaccionComprobanteUnlinkRequest request, CancellationToken ct = default);
   Task<TransaccionGuardarCerrarResult> GuardarYCerrarAsync(TransaccionGuardarCerrarRequest request, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionListItem>> GetCandidatesAsync(
       DateTime fechaXml,

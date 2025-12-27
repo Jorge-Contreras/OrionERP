@@ -28,12 +28,17 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private List<DeclaracionCfdiBase>? recibidasNominaBase;
     private List<DeclaracionCfdiBase>? tipoEEmitidasBase;
     private List<DeclaracionCfdiBase>? tipoERecibidasBase;
+    private List<DeclaracionComplementoBase>? complementosBase;
+    private List<DeclaracionComplementoBase>? complementosEmitidosBase;
+    private List<DeclaracionComplementoBase>? complementosRecibidosBase;
     private List<DeclaracionEmitida>? emitidas;
     private List<DeclaracionEmitida>? emitidasNomina;
     private List<DeclaracionRecibida>? recibidas;
     private List<DeclaracionRecibida>? recibidasNomina;
     private List<DeclaracionEmitida>? tipoEEmitidas;
     private List<DeclaracionRecibida>? tipoERecibidas;
+    private List<DeclaracionComplementoEmitido>? complementosEmitidos;
+    private List<DeclaracionComplementoRecibido>? complementosRecibidos;
     private List<DesfaseItem>? desfase;
     private List<PolizaNoConsolidada>? polizasNoConsolidadas;
     private DeclaracionTotales? emitidasTotals;

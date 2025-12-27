@@ -28,7 +28,7 @@
 @code {
 
     [Parameter]
-    public DeclaracionCfdiBase Item { get; set; } = default!;
+    public IDeclaracionComprobanteItem Item { get; set; } = default!;
 
     private int? PlaceholderTransaccionId => _placeholderTransaccionId ??= ParsePlaceholder(Configuration["SatXml:PlaceholderTransaccionId"]);
     private int? _placeholderTransaccionId;

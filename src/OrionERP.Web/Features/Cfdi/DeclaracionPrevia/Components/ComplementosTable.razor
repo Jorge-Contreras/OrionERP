@@ -1,0 +1,572 @@
+@using OrionERP.Application.Features.Cfdi.DeclaracionPrevia
+
+<div class="cfdi-table">
+    <details class="cfdi-table__filters" closed>
+        <summary>Filtros</summary>
+        <div class="cfdi-table__filters-body">
+            <div class="cfdi-table__filters-table">
+                <table class="table table-sm table-bordered table-striped align-middle compact-table cfdi-table__table cfdi-table__filter-table">
+                    @RenderColumnGroup()
+                    <thead class="table-secondary filter-row">
+                        <tr>
+                            <th></th>
+                            <th></th>
+                            <th>@RenderSortSelect("Comprobante_Id")</th>
+                            <th></th>
+                            <th></th>
+                            <th>@RenderSortSelect("FechaPago")</th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th>@RenderSortSelect("ImpSaldoAnt")</th>
+                            <th>@RenderSortSelect("ImpPagado")</th>
+                            <th>@RenderSortSelect("ImpSaldoInsoluto")</th>
+                            <th>@RenderSortSelect("Comp_Actos16")</th>
+                            <th>@RenderSortSelect("Comp_IVA")</th>
+                            <th>@RenderSortSelect("MontoPago")</th>
+                            <th></th>
+                            <th>
+                                @RenderMultiSelect(EmisorOptions, _selectedEmisores, OnEmisorFilterChanged)
+                            </th>
+                            <th>
+                                @RenderMultiSelect(ReceptorOptions, _selectedReceptores, OnReceptorFilterChanged)
+                            </th>
+                            <th></th>
+                            <th>
+                                @RenderMultiSelect(FormaPagoOptions, _selectedFormaPago, OnFormaPagoFilterChanged)
+                            </th>
+                            <th>
+                                @RenderMultiSelect(MonedaPagoOptions, _selectedMonedaPago, OnMonedaPagoFilterChanged)
+                            </th>
+                            <th></th>
+                            <th></th>
+                            <th>
+                                @RenderMultiSelect(MonedaDrOptions, _selectedMonedaDr, OnMonedaDrFilterChanged)
+                            </th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                </table>
+            </div>
+        </div>
+    </details>
+    <div class="cfdi-table__viewport">
+        <table class="table table-sm table-bordered table-striped align-middle compact-table cfdi-table__table cfdi-table__main-table">
+            @RenderColumnGroup()
+            <thead class="table-dark">
+                <tr>
+                    <th>CFDI</th>
+                    <th>Poliza</th>
+                    <th>Folio</th>
+                    <th>✔</th>
+                    <th class="num">Polizas</th>
+                    <th>Fecha Pago</th>
+                    <th>Mes</th>
+                    <th>Año</th>
+                    <th class="num">Parcialidad</th>
+                    <th class="num">Saldo Ant.</th>
+                    <th class="num">Importe Pagado</th>
+                    <th class="num">Saldo Insoluto</th>
+                    <th class="num">Comp. Actos16</th>
+                    <th class="num">Comp. IVA</th>
+                    <th class="num">Monto Pago</th>
+                    <th>UUID Comprobante</th>
+                    <th>Emisor RFC</th>
+                    <th>Receptor RFC</th>
+                    <th class="num">Pago Id</th>
+                    <th>Forma Pago</th>
+                    <th>Moneda Pago</th>
+                    <th class="num">Docto Relacionado</th>
+                    <th>UUID Docto Rel.</th>
+                    <th>Moneda DR</th>
+                    <th class="num">XML Attachment ID</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_filteredItems.Any())
+                {
+                    foreach (var item in _pagedItems)
+                    {
+                        <tr @onclick="() => HandleRowClick(item)"
+                            style="cursor:pointer;">
+                            @if (ActionButtonsTemplate is not null)
+                            {
+                                @ActionButtonsTemplate(item)
+                            }
+                            else
+                            {
+                                <ActionButtons Item="item" />
+                            }
+                            <td>@item.Folio</td>
+                            <td>@item.D</td>
+                            <td class="num">@item.Polizas</td>
+                            <td>@FormatDate(item.FechaPago)</td>
+                            <td>@item.MES_GLOBAL</td>
+                            <td>@item.ANIO_GLOBAL</td>
+                            <td class="num">@item.NumParcialidad</td>
+                            <td class="num">@FormatDecimal(item.ImpSaldoAnt)</td>
+                            <td class="num">@FormatDecimal(item.ImpPagado)</td>
+                            <td class="num">@FormatDecimal(item.ImpSaldoInsoluto)</td>
+                            <td class="num">@FormatDecimal(item.Comp_Actos16)</td>
+                            <td class="num">@FormatDecimal(item.Comp_IVA)</td>
+                            <td class="num">@FormatDecimal(item.MontoPago)</td>
+                            <td>@item.ComprobanteUUID</td>
+                            <td>@item.EmisorRfc</td>
+                            <td>@item.ReceptorRfc</td>
+                            <td class="num">@item.Pago_Id</td>
+                            <td>@item.FormaDePagoP</td>
+                            <td>@item.MonedaP</td>
+                            <td class="num">@item.DoctoRelacionado_Id</td>
+                            <td>@item.UUID_DoctoRelacionado</td>
+                            <td>@item.MonedaDR</td>
+                            <td class="num">@item.XML_Attachment_ID</td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="@EffectiveColumnCount" class="text-center">@NoDataMessage</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="d-flex justify-content-between align-items-center cfdi-table__pagination">
+        <small>Mostrando página @_currentPage de @_pageCount</small>
+        <div class="btn-group" role="group" aria-label="Paginación Complementos">
+            <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousPage" disabled="@(_currentPage <= 1)">Anterior</button>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="NextPage" disabled="@(_currentPage >= _pageCount)">Siguiente</button>
+        </div>
+    </div>
+    @if (DisplayTotals is not null)
+    {
+        <div class="cfdi-table__totals">
+            <table class="table table-sm table-bordered table-striped align-middle compact-table cfdi-table__table cfdi-table__totals-table">
+                @RenderColumnGroup()
+                <tbody>
+                    <tr class="table-light totals">
+                        <td colspan="6"><strong># Complementos:</strong> @DisplayTotals.Count</td>
+                        <td><strong>Totales:</strong></td>
+                        <td class="num">@DisplayTotals.SumImpSaldoAnt.ToString("N6")</td>
+                        <td class="num">@DisplayTotals.SumImpPagado.ToString("N6")</td>
+                        <td class="num">@DisplayTotals.SumImpSaldoInsoluto.ToString("N6")</td>
+                        <td class="num">@DisplayTotals.SumCompActos16.ToString("N6")</td>
+                        <td class="num">@DisplayTotals.SumCompIVA.ToString("N6")</td>
+                        <td class="num">@DisplayTotals.SumMontoPago.ToString("N6")</td>
+                        <td colspan="@RemainingColumns"></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private const int BaseColumnCount = 25;
+    private static readonly IReadOnlyList<string?> BaseColumnWidths = new List<string?>
+    {
+        "8rem", // Acciones
+        "6rem", // Poliza
+        "14ch", // Folio
+        "4ch",  // D
+        "8ch",  // Polizas
+        "12ch", // Fecha Pago
+        "6ch",  // Mes
+        "6ch",  // Año
+        "10ch", // Parcialidad
+        "16ch", // ImpSaldoAnt
+        "16ch", // ImpPagado
+        "16ch", // ImpSaldoInsoluto
+        "16ch", // Comp_Actos16
+        "16ch", // Comp_IVA
+        "16ch", // MontoPago
+        "38ch", // ComprobanteUUID
+        "16ch", // EmisorRfc
+        "16ch", // ReceptorRfc
+        "10ch", // Pago_Id
+        "12ch", // FormaDePagoP
+        "10ch", // MonedaP
+        "12ch", // DoctoRelacionado_Id
+        "38ch", // UUID_DoctoRelacionado
+        "10ch", // MonedaDR
+        "14ch"  // XML_Attachment_ID
+    };
+
+    [Parameter]
+    public IEnumerable<DeclaracionComplementoBase>? Items { get; set; }
+
+    [Parameter]
+    public int PageSize { get; set; } = 50;
+
+    [Parameter]
+    public EventCallback<DeclaracionComplementoBase> OnRowClick { get; set; }
+
+    [Parameter]
+    public RenderFragment<DeclaracionComplementoBase>? ActionButtonsTemplate { get; set; }
+
+    [Parameter]
+    public string NoDataMessage { get; set; } = "No se encontraron complementos.";
+
+    private int EffectiveColumnCount => BaseColumnCount;
+
+    private int RemainingColumns => Math.Max(0, EffectiveColumnCount - 13);
+
+    private readonly List<DeclaracionComplementoBase> _originalItems = new();
+    private List<DeclaracionComplementoBase> _filteredItems = new();
+    private IReadOnlyList<DeclaracionComplementoBase> _pagedItems = Array.Empty<DeclaracionComplementoBase>();
+    private int _currentPage = 1;
+    private int _pageCount = 1;
+    private HashSet<string> _selectedEmisores = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _selectedReceptores = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _selectedFormaPago = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _selectedMonedaPago = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _selectedMonedaDr = new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly Dictionary<string, string> _sortSelections = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Comprobante_Id"] = string.Empty,
+        ["FechaPago"] = string.Empty,
+        ["ImpSaldoAnt"] = string.Empty,
+        ["ImpPagado"] = string.Empty,
+        ["ImpSaldoInsoluto"] = string.Empty,
+        ["Comp_Actos16"] = string.Empty,
+        ["Comp_IVA"] = string.Empty,
+        ["MontoPago"] = string.Empty
+    };
+
+    private static readonly IReadOnlyList<string> SortColumnOrder = new List<string>
+    {
+        "Comprobante_Id",
+        "FechaPago",
+        "ImpSaldoAnt",
+        "ImpPagado",
+        "ImpSaldoInsoluto",
+        "Comp_Actos16",
+        "Comp_IVA",
+        "MontoPago"
+    };
+
+    private static readonly Dictionary<string, Func<DeclaracionComplementoBase, IComparable?>> SortSelectors = new()
+    {
+        ["Comprobante_Id"] = item => item.Comprobante_Id,
+        ["FechaPago"] = item => item.FechaPago ?? DateTime.MinValue,
+        ["ImpSaldoAnt"] = item => item.ImpSaldoAnt ?? 0m,
+        ["ImpPagado"] = item => item.ImpPagado ?? 0m,
+        ["ImpSaldoInsoluto"] = item => item.ImpSaldoInsoluto ?? 0m,
+        ["Comp_Actos16"] = item => item.Comp_Actos16 ?? 0m,
+        ["Comp_IVA"] = item => item.Comp_IVA ?? 0m,
+        ["MontoPago"] = item => item.MontoPago ?? 0m
+    };
+
+    private ComplementoTotals? DisplayTotals => CalculateTotals(_filteredItems);
+
+    protected override void OnParametersSet()
+    {
+        _originalItems.Clear();
+        if (Items is not null)
+        {
+            _originalItems.AddRange(Items);
+        }
+        _currentPage = 1;
+        ApplyFiltersAndSorting();
+    }
+
+    private RenderFragment RenderColumnGroup() => builder =>
+    {
+        var sequence = 0;
+        var widths = GetEffectiveColumnWidths().ToList();
+
+        builder.OpenElement(sequence++, "colgroup");
+        for (var i = 0; i < EffectiveColumnCount; i++)
+        {
+            builder.OpenElement(sequence++, "col");
+            if (i < widths.Count && !string.IsNullOrEmpty(widths[i]))
+            {
+                builder.AddAttribute(sequence++, "style", $"width:{widths[i]}");
+            }
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+    };
+
+    private IEnumerable<string?> GetEffectiveColumnWidths()
+    {
+        return BaseColumnWidths;
+    }
+
+    private async Task HandleRowClick(DeclaracionComplementoBase item)
+    {
+        if (OnRowClick.HasDelegate)
+        {
+            await OnRowClick.InvokeAsync(item);
+        }
+    }
+
+    private static string? FormatDate(DateTime? value) => value?.ToString("yyyy-MM-dd");
+
+    private static string FormatDecimal(decimal? value) => value.HasValue ? string.Format("{0:N6}", value.Value) : string.Empty;
+
+    private void ApplyFiltersAndSorting(bool resetPage = true)
+    {
+        var query = _originalItems.AsEnumerable();
+
+        if (_selectedEmisores.Any())
+        {
+            query = query.Where(item => _selectedEmisores.Contains(Normalize(item.EmisorRfc)));
+        }
+
+        if (_selectedReceptores.Any())
+        {
+            query = query.Where(item => _selectedReceptores.Contains(Normalize(item.ReceptorRfc)));
+        }
+
+        if (_selectedFormaPago.Any())
+        {
+            query = query.Where(item => _selectedFormaPago.Contains(Normalize(item.FormaDePagoP)));
+        }
+
+        if (_selectedMonedaPago.Any())
+        {
+            query = query.Where(item => _selectedMonedaPago.Contains(Normalize(item.MonedaP)));
+        }
+
+        if (_selectedMonedaDr.Any())
+        {
+            query = query.Where(item => _selectedMonedaDr.Contains(Normalize(item.MonedaDR)));
+        }
+
+        query = ApplySorting(query);
+
+        _filteredItems = query.ToList();
+        UpdatePagination(resetPage);
+    }
+
+    private void UpdatePagination(bool resetPage)
+    {
+        var effectivePageSize = Math.Max(1, PageSize);
+        _pageCount = Math.Max(1, (int)Math.Ceiling(_filteredItems.Count / (double)effectivePageSize));
+
+        if (resetPage)
+        {
+            _currentPage = 1;
+        }
+        else
+        {
+            _currentPage = Math.Min(Math.Max(1, _currentPage), _pageCount);
+        }
+
+        _pagedItems = _filteredItems
+            .Skip((_currentPage - 1) * effectivePageSize)
+            .Take(effectivePageSize)
+            .ToList();
+    }
+
+    private static string Normalize(string? value) => value?.Trim() ?? string.Empty;
+
+    private bool HasActiveFilters =>
+        _selectedEmisores.Any() ||
+        _selectedReceptores.Any() ||
+        _selectedFormaPago.Any() ||
+        _selectedMonedaPago.Any() ||
+        _selectedMonedaDr.Any() ||
+        _sortSelections.Any(kv => !string.IsNullOrEmpty(kv.Value));
+
+    private void OnEmisorFilterChanged(ChangeEventArgs args)
+    {
+        _selectedEmisores = ExtractSelectedValues(args);
+        ApplyFiltersAndSorting();
+    }
+
+    private void OnReceptorFilterChanged(ChangeEventArgs args)
+    {
+        _selectedReceptores = ExtractSelectedValues(args);
+        ApplyFiltersAndSorting();
+    }
+
+    private void OnFormaPagoFilterChanged(ChangeEventArgs args)
+    {
+        _selectedFormaPago = ExtractSelectedValues(args);
+        ApplyFiltersAndSorting();
+    }
+
+    private void OnMonedaPagoFilterChanged(ChangeEventArgs args)
+    {
+        _selectedMonedaPago = ExtractSelectedValues(args);
+        ApplyFiltersAndSorting();
+    }
+
+    private void OnMonedaDrFilterChanged(ChangeEventArgs args)
+    {
+        _selectedMonedaDr = ExtractSelectedValues(args);
+        ApplyFiltersAndSorting();
+    }
+
+    private RenderFragment RenderSortSelect(string columnKey) => builder =>
+    {
+        var sequence = 0;
+        builder.OpenElement(sequence++, "select");
+        builder.AddAttribute(sequence++, "class", "form-select form-select-sm");
+        builder.AddAttribute(sequence++, "value", GetSortSelection(columnKey));
+        builder.AddAttribute(sequence++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, args => OnSortSelectionChanged(args, columnKey)));
+        builder.OpenElement(sequence++, "option");
+        builder.AddAttribute(sequence++, "value", string.Empty);
+        builder.AddContent(sequence++, "Sin orden");
+        builder.CloseElement();
+        builder.OpenElement(sequence++, "option");
+        builder.AddAttribute(sequence++, "value", "ASC");
+        builder.AddAttribute(sequence++, "selected", GetSortSelection(columnKey) == "ASC");
+        builder.AddContent(sequence++, "ASC");
+        builder.CloseElement();
+        builder.OpenElement(sequence++, "option");
+        builder.AddAttribute(sequence++, "value", "DESC");
+        builder.AddAttribute(sequence++, "selected", GetSortSelection(columnKey) == "DESC");
+        builder.AddContent(sequence++, "DESC");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private RenderFragment RenderMultiSelect(IEnumerable<string> options, HashSet<string> selectedValues, Action<ChangeEventArgs> handler) => builder =>
+    {
+        var sequence = 0;
+        builder.OpenElement(sequence++, "select");
+        builder.AddAttribute(sequence++, "multiple", "multiple");
+        builder.AddAttribute(sequence++, "class", "form-select form-select-sm filter-multiselect");
+        builder.AddAttribute(sequence++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, handler));
+        foreach (var option in options)
+        {
+            builder.OpenElement(sequence++, "option");
+            builder.AddAttribute(sequence++, "value", option);
+            builder.AddAttribute(sequence++, "selected", selectedValues.Contains(option));
+            builder.AddContent(sequence++, option);
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    };
+
+    private string GetSortSelection(string columnKey)
+    {
+        return _sortSelections.TryGetValue(columnKey, out var value) ? value : string.Empty;
+    }
+
+    private void OnSortSelectionChanged(ChangeEventArgs args, string columnKey)
+    {
+        var value = args.Value?.ToString();
+        _sortSelections[columnKey] = value == "ASC" || value == "DESC" ? value : string.Empty;
+        ApplyFiltersAndSorting();
+    }
+
+    private void NextPage()
+    {
+        if (_currentPage < _pageCount)
+        {
+            _currentPage++;
+            UpdatePagination(resetPage: false);
+        }
+    }
+
+    private void PreviousPage()
+    {
+        if (_currentPage > 1)
+        {
+            _currentPage--;
+            UpdatePagination(resetPage: false);
+        }
+    }
+
+    private IEnumerable<string> EmisorOptions => GetDistinctOptions(item => item.EmisorRfc);
+
+    private IEnumerable<string> ReceptorOptions => GetDistinctOptions(item => item.ReceptorRfc);
+
+    private IEnumerable<string> FormaPagoOptions => GetDistinctOptions(item => item.FormaDePagoP);
+
+    private IEnumerable<string> MonedaPagoOptions => GetDistinctOptions(item => item.MonedaP);
+
+    private IEnumerable<string> MonedaDrOptions => GetDistinctOptions(item => item.MonedaDR);
+
+    private IEnumerable<string> GetDistinctOptions(Func<DeclaracionComplementoBase, string?> selector)
+    {
+        return _originalItems
+            .Select(selector)
+            .Select(Normalize)
+            .Where(value => !string.IsNullOrEmpty(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value);
+    }
+
+    private IEnumerable<DeclaracionComplementoBase> ApplySorting(IEnumerable<DeclaracionComplementoBase> source)
+    {
+        IOrderedEnumerable<DeclaracionComplementoBase>? ordered = null;
+
+        foreach (var column in SortColumnOrder)
+        {
+            if (!_sortSelections.TryGetValue(column, out var direction) || string.IsNullOrEmpty(direction))
+            {
+                continue;
+            }
+
+            if (!SortSelectors.TryGetValue(column, out var selector))
+            {
+                continue;
+            }
+
+            ordered = ordered == null
+                ? ApplyInitialSort(source, direction, selector)
+                : ApplySubsequentSort(ordered, direction, selector);
+        }
+
+        return ordered ?? source;
+    }
+
+    private static IOrderedEnumerable<DeclaracionComplementoBase> ApplyInitialSort(IEnumerable<DeclaracionComplementoBase> source, string direction, Func<DeclaracionComplementoBase, IComparable?> selector)
+    {
+        return string.Equals(direction, "DESC", StringComparison.OrdinalIgnoreCase)
+            ? source.OrderByDescending(selector)
+            : source.OrderBy(selector);
+    }
+
+    private static IOrderedEnumerable<DeclaracionComplementoBase> ApplySubsequentSort(IOrderedEnumerable<DeclaracionComplementoBase> source, string direction, Func<DeclaracionComplementoBase, IComparable?> selector)
+    {
+        return string.Equals(direction, "DESC", StringComparison.OrdinalIgnoreCase)
+            ? source.ThenByDescending(selector)
+            : source.ThenBy(selector);
+    }
+
+    private ComplementoTotals CalculateTotals(IEnumerable<DeclaracionComplementoBase> source)
+    {
+        var list = source.ToList();
+
+        return new ComplementoTotals
+        {
+            Count = list.Count,
+            SumImpSaldoAnt = list.Sum(item => item.ImpSaldoAnt ?? 0m),
+            SumImpPagado = list.Sum(item => item.ImpPagado ?? 0m),
+            SumImpSaldoInsoluto = list.Sum(item => item.ImpSaldoInsoluto ?? 0m),
+            SumCompActos16 = list.Sum(item => item.Comp_Actos16 ?? 0m),
+            SumCompIVA = list.Sum(item => item.Comp_IVA ?? 0m),
+            SumMontoPago = list.Sum(item => item.MontoPago ?? 0m)
+        };
+    }
+
+    private static HashSet<string> ExtractSelectedValues(ChangeEventArgs args)
+    {
+        return args.Value switch
+        {
+            string[] array => new HashSet<string>(array.Where(v => !string.IsNullOrWhiteSpace(v)), StringComparer.OrdinalIgnoreCase),
+            string single when !string.IsNullOrWhiteSpace(single) => new HashSet<string>(new[] { single }, StringComparer.OrdinalIgnoreCase),
+            _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        };
+    }
+
+    private sealed class ComplementoTotals
+    {
+        public int Count { get; init; }
+        public decimal SumImpSaldoAnt { get; init; }
+        public decimal SumImpPagado { get; init; }
+        public decimal SumImpSaldoInsoluto { get; init; }
+        public decimal SumCompActos16 { get; init; }
+        public decimal SumCompIVA { get; init; }
+        public decimal SumMontoPago { get; init; }
+    }
+}

@@ -1,6 +1,15 @@
+using System;
+
 namespace OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 
-public class DeclaracionCfdiBase
+public interface IDeclaracionComprobanteItem
+{
+  int Comprobante_Id { get; }
+  string? Poliza { get; set; }
+  int? XML_Attachment_ID { get; set; }
+}
+
+public class DeclaracionCfdiBase : IDeclaracionComprobanteItem
 {
   public int Comprobante_Id { get; set; }
   public string? D { get; set; }
@@ -173,4 +182,95 @@ public class PagoComplementoResumen
   public decimal Tot_P_Retenciones { get; set; }
   public decimal Tot_DR_Traslados { get; set; }
   public decimal Tot_DR_Retenciones { get; set; }
+}
+
+public class DeclaracionComplementoBase : IDeclaracionComprobanteItem
+{
+  public int Comprobante_Id { get; set; }
+  public string? Folio { get; set; }
+  public string D { get; set; } = string.Empty;
+  public string? Poliza { get; set; }
+  public int? Polizas { get; set; }
+  public DateTime? FechaPago { get; set; }
+  public string? MES_GLOBAL { get; set; }
+  public string? ANIO_GLOBAL { get; set; }
+  public int? NumParcialidad { get; set; }
+  public decimal? ImpSaldoAnt { get; set; }
+  public decimal? ImpPagado { get; set; }
+  public decimal? ImpSaldoInsoluto { get; set; }
+  public decimal? Comp_Actos16 { get; set; }
+  public decimal? Comp_IVA { get; set; }
+  public decimal? MontoPago { get; set; }
+  public string? ComprobanteUUID { get; set; }
+  public string? EmisorRfc { get; set; }
+  public string? ReceptorRfc { get; set; }
+  public int? Pago_Id { get; set; }
+  public string? FormaDePagoP { get; set; }
+  public string? MonedaP { get; set; }
+  public int? DoctoRelacionado_Id { get; set; }
+  public Guid? UUID_DoctoRelacionado { get; set; }
+  public string? MonedaDR { get; set; }
+  public bool EsEmitida { get; set; }
+  public bool EsRecibida { get; set; }
+  public int? XML_Attachment_ID { get; set; }
+
+  protected void CopyFrom(DeclaracionComplementoBase source)
+  {
+    if (source == null)
+    {
+      return;
+    }
+
+    Comprobante_Id = source.Comprobante_Id;
+    Folio = source.Folio;
+    D = source.D;
+    Poliza = source.Poliza;
+    Polizas = source.Polizas;
+    FechaPago = source.FechaPago;
+    MES_GLOBAL = source.MES_GLOBAL;
+    ANIO_GLOBAL = source.ANIO_GLOBAL;
+    NumParcialidad = source.NumParcialidad;
+    ImpSaldoAnt = source.ImpSaldoAnt;
+    ImpPagado = source.ImpPagado;
+    ImpSaldoInsoluto = source.ImpSaldoInsoluto;
+    Comp_Actos16 = source.Comp_Actos16;
+    Comp_IVA = source.Comp_IVA;
+    MontoPago = source.MontoPago;
+    ComprobanteUUID = source.ComprobanteUUID;
+    EmisorRfc = source.EmisorRfc;
+    ReceptorRfc = source.ReceptorRfc;
+    Pago_Id = source.Pago_Id;
+    FormaDePagoP = source.FormaDePagoP;
+    MonedaP = source.MonedaP;
+    DoctoRelacionado_Id = source.DoctoRelacionado_Id;
+    UUID_DoctoRelacionado = source.UUID_DoctoRelacionado;
+    MonedaDR = source.MonedaDR;
+    EsEmitida = source.EsEmitida;
+    EsRecibida = source.EsRecibida;
+    XML_Attachment_ID = source.XML_Attachment_ID;
+  }
+}
+
+public class DeclaracionComplementoEmitido : DeclaracionComplementoBase
+{
+  public DeclaracionComplementoEmitido()
+  {
+  }
+
+  public DeclaracionComplementoEmitido(DeclaracionComplementoBase source)
+  {
+    CopyFrom(source);
+  }
+}
+
+public class DeclaracionComplementoRecibido : DeclaracionComplementoBase
+{
+  public DeclaracionComplementoRecibido()
+  {
+  }
+
+  public DeclaracionComplementoRecibido(DeclaracionComplementoBase source)
+  {
+    CopyFrom(source);
+  }
 }

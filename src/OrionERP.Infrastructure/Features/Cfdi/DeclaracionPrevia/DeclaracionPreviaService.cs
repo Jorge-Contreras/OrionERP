@@ -82,6 +82,18 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       .Where(x => x.EsRecibida && IsTipoE(x.TipoDeComprobante))
       .ToList();
 
+    var complementosBase = (await conn.QueryAsync<DeclaracionComplementoBase>(
+      "EXEC cfdi.Declaracion_Complementos_Base @Year, @Month, @RFC",
+      new { Year = request.Year, Month = request.IsAnnual ? (object?)DBNull.Value : request.Month, RFC = request.Rfc })).ToList();
+
+    var complementosEmitidosBase = complementosBase
+      .Where(x => x.EsEmitida)
+      .ToList();
+
+    var complementosRecibidosBase = complementosBase
+      .Where(x => x.EsRecibida)
+      .ToList();
+
     var desfase = (await conn.QueryAsync<DesfaseItem>(
       "EXEC dbo.Declaracion_Comprobantes_Con_Desfase @RFC, @Anio, @Mes", common)).ToList();
 
@@ -108,12 +120,17 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       RecibidasNominaBase = recibidasNominaBase,
       TipoEEmitidasBase = tipoEEmitidasBase,
       TipoERecibidasBase = tipoERecibidasBase,
+      ComplementosBase = complementosBase,
+      ComplementosEmitidosBase = complementosEmitidosBase,
+      ComplementosRecibidosBase = complementosRecibidosBase,
       Emitidas = emitidasBase.Select(ToDeclaracionEmitida).ToList(),
       Recibidas = recibidasBase.Select(ToDeclaracionRecibida).ToList(),
       EmitidasNomina = emitidasNominaBase.Select(ToDeclaracionEmitida).ToList(),
       RecibidasNomina = recibidasNominaBase.Select(ToDeclaracionRecibida).ToList(),
       TipoEEmitidas = tipoEEmitidasBase.Select(ToDeclaracionEmitida).ToList(),
       TipoERecibidas = tipoERecibidasBase.Select(ToDeclaracionRecibida).ToList(),
+      ComplementosEmitidos = complementosEmitidosBase.Select(ToComplementoEmitido).ToList(),
+      ComplementosRecibidos = complementosRecibidosBase.Select(ToComplementoRecibido).ToList(),
       EmitidasTotals = ComputeDeclaracionTotales(emitidasBase),
       EmitidasNominaTotals = ComputeDeclaracionTotales(emitidasNominaBase),
       RecibidasTotals = ComputeDeclaracionTotales(recibidasBase),
@@ -236,6 +253,10 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
   private static DeclaracionEmitida ToDeclaracionEmitida(DeclaracionCfdiBase item) => new(item);
 
   private static DeclaracionRecibida ToDeclaracionRecibida(DeclaracionCfdiBase item) => new(item);
+
+  private static DeclaracionComplementoEmitido ToComplementoEmitido(DeclaracionComplementoBase item) => new(item);
+
+  private static DeclaracionComplementoRecibido ToComplementoRecibido(DeclaracionComplementoBase item) => new(item);
 
   private static decimal SatRound(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
 

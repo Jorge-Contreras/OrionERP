@@ -72,6 +72,12 @@
         <button class="nav-link" id="recibidas-tab" data-bs-toggle="tab" data-bs-target="#recibidas" type="button" role="tab" aria-controls="recibidas" aria-selected="false">RECIBIDAS</button>
     </li>
     <li class="nav-item" role="presentation">
+        <button class="nav-link" id="complementos-emitidos-tab" data-bs-toggle="tab" data-bs-target="#complementos-emitidos" type="button" role="tab" aria-controls="complementos-emitidos" aria-selected="false">COMPLEMENTOS EMITIDOS</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="complementos-recibidos-tab" data-bs-toggle="tab" data-bs-target="#complementos-recibidos" type="button" role="tab" aria-controls="complementos-recibidos" aria-selected="false">COMPLEMENTOS RECIBIDOS</button>
+    </li>
+    <li class="nav-item" role="presentation">
         <button class="nav-link" id="tipo-e-emitidas-tab" data-bs-toggle="tab" data-bs-target="#tipo-e-emitidas" type="button" role="tab" aria-controls="tipo-e-emitidas" aria-selected="false">TIPO E EMITIDAS</button>
     </li>
     <li class="nav-item" role="presentation">
@@ -159,6 +165,30 @@
                     }
                 </DetailsTemplate>
             </CFDITable>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="complementos-emitidos" role="tabpanel" aria-labelledby="complementos-emitidos-tab">
+        <div class="mb-2 filter-bar">
+            <button class="btn btn-sm btn-secondary" @onclick="ExportExcelComplementosEmitidos">
+                Exportar Complementos Emitidos a Excel
+            </button>
+        </div>
+        <div class="table-responsive table-scroll">
+            <ComplementosTable Items="complementosEmitidosBase"
+                               PageSize="50">
+            </ComplementosTable>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="complementos-recibidos" role="tabpanel" aria-labelledby="complementos-recibidos-tab">
+        <div class="mb-2 filter-bar">
+            <button class="btn btn-sm btn-secondary" @onclick="ExportExcelComplementosRecibidos">
+                Exportar Complementos Recibidos a Excel
+            </button>
+        </div>
+        <div class="table-responsive table-scroll">
+            <ComplementosTable Items="complementosRecibidosBase"
+                               PageSize="50">
+            </ComplementosTable>
         </div>
     </div>
     <div class="tab-pane fade" id="recibidas" role="tabpanel" aria-labelledby="recibidas-tab">

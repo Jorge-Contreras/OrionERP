@@ -250,6 +250,35 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       new { Cid = comprobanteId });
   }
 
+  public async Task<ComprobanteDetalleDto?> GetComprobanteDetalleAsync(int comprobanteId)
+  {
+    const string sql = @"
+SELECT TOP (1)
+    [Comprobante_Id]       AS Comprobante_Id,
+    [UsoCFDI]              AS UsoCFDI,
+    [RECEPTOR]             AS RECEPTOR,
+    [EMISOR]               AS EMISOR,
+    [FOLIO_FISCAL]         AS FOLIO_FISCAL,
+    [Fecha]                AS Fecha,
+    [SubTotal]             AS SubTotal,
+    [SubTotal_Desc]        AS SubTotal_Desc,
+    [IVA]                  AS IVA,
+    [IEPS]                 AS IEPS,
+    [IVA_RETENIDO]         AS IVA_RETENIDO,
+    [ISR_RETENIDO]         AS ISR_RETENIDO,
+    [IEPS_RETENIDO]        AS IEPS_RETENIDO,
+    [Actos_16]             AS Actos_16,
+    [Actos_0]              AS Actos_0,
+    [Total]                AS Total
+FROM [grupocarpio].[cfdi].[Comprobante_Detalle]
+WHERE Comprobante_Id = @Comprobante_Id;";
+
+    using var conn = new SqlConnection(_connectionString);
+    return await conn.QueryFirstOrDefaultAsync<ComprobanteDetalleDto>(
+      sql,
+      new { Comprobante_Id = comprobanteId });
+  }
+
   private static DeclaracionEmitida ToDeclaracionEmitida(DeclaracionCfdiBase item) => new(item);
 
   private static DeclaracionRecibida ToDeclaracionRecibida(DeclaracionCfdiBase item) => new(item);

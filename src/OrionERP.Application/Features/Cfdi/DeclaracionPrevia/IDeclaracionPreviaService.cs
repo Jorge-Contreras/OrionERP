@@ -13,6 +13,7 @@ public interface IDeclaracionPreviaService
   Task CancelEmitidaAsync(string uuid, int comprobanteId);
   Task<IReadOnlyList<string>> GenerateDiotAsync(string rfc, int year, int month);
   Task<long?> GetLinkedTransactionIdAsync(int comprobanteId);
+  Task<ComprobanteDetalleDto?> GetComprobanteDetalleAsync(int comprobanteId);
 }
 
 public record DeclaracionPreviaRequest(string Rfc, int Year, int? Month, bool IsAnnual)

@@ -18,10 +18,10 @@
 </td>
 <td>
     <button class="btn btn-sm @(IsPlaceholderPoliza ? "btn-outline-danger" : "btn-outline-success")"
-            title="@(IsPlaceholderPoliza ? "Crear Póliza" : "Ir a Transacción")"
+            title="@(IsPlaceholderPoliza ? "Buscar Póliza" : "Ir a Transacción")"
             @onclick:stopPropagation="true"
             @onclick="HandlePolizaClick">
-        @(IsPlaceholderPoliza ? "Crear" : ItemPoliza)
+        @(IsPlaceholderPoliza ? "Buscar" : ItemPoliza)
     </button>
 </td>
 
@@ -60,16 +60,15 @@
     {
         if (IsPlaceholderPoliza)
         {
+            var url = $"https://localhost:7089/cfdi/LigarCFDI_Poliza/{Item.Comprobante_Id}";
+
             try
             {
-                var newTransaccionId = await GenerarPolizaDesdeComprobante(Item.Comprobante_Id);
-                Item.Poliza = newTransaccionId.ToString();
-                await InvokeAsync(StateHasChanged);
-                await OpenLinkedTransaction();
+                await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
             }
-            catch (Exception ex)
+            catch
             {
-                UiMessages.ShowError($"Error al crear la póliza: {ex.Message}");
+                Nav.NavigateTo(url);
             }
         }
         else
@@ -98,11 +97,6 @@
         {
             Nav.NavigateTo(url);
         }
-    }
-
-    private async Task<int> GenerarPolizaDesdeComprobante(int comprobanteId)
-    {
-        return await DeclaracionService.GenerarPolizaDesdeComprobanteAsync(comprobanteId, RfcState.CurrentRfc ?? string.Empty);
     }
 
     private static int? ParsePlaceholder(string? placeholderSetting)

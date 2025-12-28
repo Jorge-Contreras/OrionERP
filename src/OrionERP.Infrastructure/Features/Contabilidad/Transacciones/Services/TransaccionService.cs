@@ -524,6 +524,29 @@ ORDER BY cd.Fecha DESC;";
     return rows.AsList();
   }
 
+  public async Task<TransaccionCommandResult> InsertTransaccionComprobanteAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default)
+  {
+    const string sql = @"INSERT INTO dbo.Transaccion_Comprobante (Transaccion_ID, Comprobante_ID, Monto)
+VALUES (@TransaccionId, @ComprobanteId, @Monto);";
+
+    try
+    {
+      using var conn = new SqlConnection(_cs);
+      await conn.ExecuteAsync(
+        new CommandDefinition(sql, new { TransaccionId = transaccionId, ComprobanteId = comprobanteId, Monto = monto }, cancellationToken: ct));
+      return TransaccionCommandResult.Ok("Transacción ligada correctamente.");
+    }
+    catch (SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
+    {
+      return TransaccionCommandResult.Fail("Ya existe un vínculo entre esta transacción y el CFDI.");
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Error al ligar transacción {TransaccionId} con comprobante {ComprobanteId}", transaccionId, comprobanteId);
+      return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
+    }
+  }
+
   public async Task ToggleComprobanteAsync(int transaccionId, int comprobanteId, bool vincular, CancellationToken ct = default)
   {
     using var conn = new SqlConnection(_cs);
@@ -1050,6 +1073,29 @@ ORDER BY T.Fecha;";
     using var conn = new SqlConnection(_cs);
     var rows = await conn.QueryAsync<TransaccionListItemDto>(
         new CommandDefinition(sql, new { Uuid = uuid }, cancellationToken: ct));
+
+    return rows.AsList();
+  }
+
+  public async Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesByComprobanteIdAsync(int comprobanteId, CancellationToken ct = default)
+  {
+    const string sql = @"SELECT
+    T.ID                          AS Id,
+    T.Fecha                       AS Fecha,
+    T.Concepto                    AS Concepto,
+    CAST(T.Monto AS decimal(18,4)) AS Monto,
+    CAST(TC.Monto AS decimal(18,4))   AS MontoAsignado,
+    T.Tipo_Poliza                 AS TipoPoliza,
+    T.Forma_Pago                  AS FormaPago
+FROM dbo.Transaccion_Comprobante AS TC
+JOIN dbo.Transacciones AS T
+  ON T.ID = TC.Transaccion_ID
+WHERE TC.Comprobante_ID = @ComprobanteId
+ORDER BY T.Fecha;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<TransaccionListItemDto>(
+        new CommandDefinition(sql, new { ComprobanteId = comprobanteId }, cancellationToken: ct));
 
     return rows.AsList();
   }

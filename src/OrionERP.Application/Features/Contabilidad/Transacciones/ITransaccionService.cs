@@ -17,6 +17,7 @@ public interface ITransaccionService
   Task<int> GetComprobanteIdByXmlAttachmentAsync(int attachmentId, CancellationToken ct = default);
   Task<bool> IsComprobanteLinkedToTransaccionAsync(int transaccionId, int comprobanteId, CancellationToken ct = default);
   Task MoveAttachmentToTransaccionAsync(int attachmentId, int transaccionId, CancellationToken ct = default);
+  Task<TransaccionCommandResult> InsertTransaccionComprobanteAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionComprobanteDto>> GetComprobantesAsync(int transaccionId, CancellationToken ct = default);
   Task ToggleComprobanteAsync(int transaccionId, int comprobanteId, bool vincular, CancellationToken ct = default);
   Task<TransaccionCommandResult> UnlinkComprobanteAsync(TransaccionComprobanteUnlinkRequest request, CancellationToken ct = default);
@@ -50,5 +51,6 @@ public interface ITransaccionService
   Task<TransaccionCreateResult> CreateTransaccionAsync(TransaccionCreateRequest request, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesListAsync(TransaccionFilter filter, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesByUuidAsync(string uuid, CancellationToken ct = default);
+  Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesByComprobanteIdAsync(int comprobanteId, CancellationToken ct = default);
   Task<TransaccionCommandResult> GuardarMovimientosAsync(TransaccionMovimientosUpdateRequest request, CancellationToken ct = default);
 }

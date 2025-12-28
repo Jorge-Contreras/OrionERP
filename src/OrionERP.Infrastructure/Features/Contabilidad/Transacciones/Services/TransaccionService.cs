@@ -15,6 +15,7 @@ namespace OrionERP.Infrastructure.Features.Contabilidad.Transacciones.Services;
 
 public sealed class TransaccionService : ITransaccionService
 {
+  private readonly IConfiguration _cfg;
   private readonly string _cs;
   private readonly IDbStoredProcService _storedProcService;
   private readonly ILogger<TransaccionService> _logger;
@@ -24,7 +25,8 @@ public sealed class TransaccionService : ITransaccionService
       IDbStoredProcService storedProcService,
       ILogger<TransaccionService> logger)
   {
-    _cs = cfg.GetConnectionString("OrionDb")
+    _cfg = cfg ?? throw new ArgumentNullException(nameof(cfg));
+    _cs = _cfg.GetConnectionString("OrionDb")
          ?? throw new InvalidOperationException("Missing connection string: OrionDb");
     _storedProcService = storedProcService ?? throw new ArgumentNullException(nameof(storedProcService));
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -522,6 +524,124 @@ ORDER BY cd.Fecha DESC;";
     var rows = await conn.QueryAsync<TransaccionComprobanteDto>(
         new CommandDefinition(sql, new { TransaccionId = transaccionId }, cancellationToken: ct));
     return rows.AsList();
+  }
+
+  public async Task<TransaccionCommandResult> LinkCfdiReplacingPlaceholderAndRelinkAttachmentAsync(
+      int transaccionId,
+      int comprobanteId,
+      decimal monto,
+      CancellationToken ct = default)
+  {
+    var placeholderId = 0;
+    var placeholderValue = _cfg["SatXml:PlaceholderTransaccionId"];
+    if (int.TryParse(placeholderValue, out var parsed) && parsed > 0)
+    {
+      placeholderId = parsed;
+    }
+
+    await using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+
+    try
+    {
+      var hasPlaceholder = false;
+
+      if (placeholderId > 0)
+      {
+        const string sqlPlaceholderExists = @"SELECT COUNT(1)
+FROM dbo.Transaccion_Comprobante
+WHERE Comprobante_ID = @ComprobanteId
+  AND Transaccion_ID = @PlaceholderId;";
+
+        var placeholderCount = await conn.ExecuteScalarAsync<int>(
+            new CommandDefinition(
+                sqlPlaceholderExists,
+                new { ComprobanteId = comprobanteId, PlaceholderId = placeholderId },
+                tx,
+                cancellationToken: ct));
+
+        hasPlaceholder = placeholderCount > 0;
+      }
+
+      if (hasPlaceholder)
+      {
+        const string sqlUpdate = @"UPDATE dbo.Transaccion_Comprobante
+SET Transaccion_ID = @TransaccionId,
+    Monto = @Monto
+WHERE Comprobante_ID = @ComprobanteId
+  AND Transaccion_ID = @PlaceholderId;";
+
+        await conn.ExecuteAsync(
+            new CommandDefinition(
+                sqlUpdate,
+                new
+                {
+                  TransaccionId = transaccionId,
+                  ComprobanteId = comprobanteId,
+                  PlaceholderId = placeholderId,
+                  Monto = monto
+                },
+                tx,
+                cancellationToken: ct));
+      }
+      else
+      {
+        const string sqlInsert = @"INSERT INTO dbo.Transaccion_Comprobante (Transaccion_ID, Comprobante_ID, Monto)
+VALUES (@TransaccionId, @ComprobanteId, @Monto);";
+
+        await conn.ExecuteAsync(
+            new CommandDefinition(
+                sqlInsert,
+                new { TransaccionId = transaccionId, ComprobanteId = comprobanteId, Monto = monto },
+                tx,
+                cancellationToken: ct));
+      }
+
+      const string sqlAttachmentId = @"SELECT XML_Attachment_ID
+FROM cfdi.Comprobante
+WHERE Comprobante_ID = @ComprobanteId;";
+
+      var attachmentId = await conn.ExecuteScalarAsync<int?>(
+          new CommandDefinition(
+              sqlAttachmentId,
+              new { ComprobanteId = comprobanteId },
+              tx,
+              cancellationToken: ct));
+
+      if (attachmentId.HasValue && attachmentId.Value > 0)
+      {
+        const string sqlUpdateAttachment = @"UPDATE dbo.TRANSACTION_ATTACHMENT
+SET TranID = @TransaccionId
+WHERE ID = @AttachmentId;";
+
+        await conn.ExecuteAsync(
+            new CommandDefinition(
+                sqlUpdateAttachment,
+                new { TransaccionId = transaccionId, AttachmentId = attachmentId.Value },
+                tx,
+                cancellationToken: ct));
+      }
+
+      await tx.CommitAsync(ct);
+      return TransaccionCommandResult.Ok("Transacción ligada correctamente.");
+    }
+    catch (SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
+    {
+      await tx.RollbackAsync(ct);
+      return TransaccionCommandResult.Fail("Ya existe un vínculo entre esta transacción y el CFDI.");
+    }
+    catch (Exception ex)
+    {
+      await tx.RollbackAsync(ct);
+      _logger.LogError(
+          ex,
+          "Error al ligar transacción {TransaccionId} con comprobante {ComprobanteId} reemplazando placeholder {PlaceholderId}",
+          transaccionId,
+          comprobanteId,
+          placeholderId);
+      return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
+    }
   }
 
   public async Task<TransaccionCommandResult> InsertTransaccionComprobanteAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default)

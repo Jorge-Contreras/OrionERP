@@ -1,12 +1,9 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
-using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Web.Services;
-using OrionERP.Web.State;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -17,12 +14,7 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
   public partial class CargarXmlSat : ComponentBase
   {
     [Inject] protected ISatXmlInboxService InboxService { get; set; } = default!;
-    [Inject] protected IComprobanteQueryService ComprobanteQuery { get; set; } = default!;
-    [Inject] protected IConciliacionService Conciliacion { get; set; } = default!;
-    [Inject] protected ITransaccionService TransaccionService { get; set; } = default!;
-    [Inject] protected IUserRfcState RfcState { get; set; } = default!;
     [Inject] protected IUiMessageService UiMessages { get; set; } = default!;
-    [Inject] protected ISatXmlInboxService satXmlInboxService { get; set; } = default!;
 
 
 
@@ -30,21 +22,11 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
 
 
     protected List<SatXmlProcessResult> ProcessResults { get; } = new();
-    protected List<ComprobanteListItem> Invoices { get; } = new();
     // ---- UI constants (adjust if needed) ----
     protected const int MaxFiles = 50;
     protected const long MaxFileSizeBytes = 5 * 1024 * 1024; // 5 MB per file
     protected static readonly string MaxFileSizeDisplay = "5 MB";
     
-
-    protected ComprobanteListItem? SelectedComprobante { get; set; }
-    protected List<TransaccionListItem> FilteredTransacciones { get; } = new();
-    protected int? SelectedTransaccionId { get; set; }
-    protected string? ConciliarMessage { get; set; }
-    protected bool IsConciliando { get; set; }
-    protected string CategoriaPlantillaIdInput { get; set; } = string.Empty;
-    protected bool IsApplyingCategoria { get; set; }
-    protected int? AttachmentProcessing { get; set; }
 
 
     // ---- UI State ----
@@ -58,185 +40,6 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
 
 
     // ---- Events ----
-
-
-    protected void OnSelectTransaccion(TransaccionListItem t)
-    {
-      SelectedTransaccionId = t.Id;
-      ConciliarMessage = null;
-    }
-
-    protected async Task ConciliarAsync()
-    {
-      if (SelectedComprobante is null || SelectedTransaccionId is null)
-      {
-        ConciliarMessage = "Seleccione un comprobante y una transacción.";
-        return;
-      }
-
-      IsConciliando = true;
-      StateHasChanged();
-
-    var result = await Conciliacion.ConciliarAsync(
-        comprobanteId: SelectedComprobante.ComprobanteId,
-        transaccionId: SelectedTransaccionId.Value);
-
-    IsConciliando = false;
-    ConciliarMessage = result.Message ?? string.Empty;
-    if (result.Success)
-    {
-      UiMessages.ShowSuccess(result.Message ?? "Conciliación completada correctamente.");
-    }
-    else
-    {
-      UiMessages.ShowError(result.Message ?? "No se pudo conciliar el comprobante.");
-    }
-
-      if (result.Success)
-      {
-        // ✅ Refresh the top list so the reconciled Comprobante disappears from the 5505 list
-        await RefreshInvoicesAsync();
-
-        // ✅ UX reset: clear selections so the lower table collapses
-        SelectedTransaccionId = null;          // clear radio selection
-        SelectedComprobante = null;            // clear selected comprobante → hides candidates section
-        FilteredTransacciones.Clear();         // clear the list so no stale rows remain
-                                               // (Do NOT call RefreshCandidatesAsync() because SelectedComprobante is now null)
-      }
-      else
-      {
-        // optional: keep selections so user can try again
-      }
-
-      StateHasChanged();
-    }
-
-    protected async Task ApplyCategoriaPlantillaAsync()
-    {
-      if (!SelectedTransaccionId.HasValue)
-      {
-        UiMessages.ShowWarning("Selecciona una transacción antes de aplicar la plantilla de categoría.");
-        return;
-      }
-
-      if (!int.TryParse(CategoriaPlantillaIdInput, NumberStyles.Integer, CultureInfo.InvariantCulture, out var categoriaId) || categoriaId <= 0)
-      {
-        UiMessages.ShowWarning("Captura un identificador de categoría válido.");
-        return;
-      }
-
-      IsApplyingCategoria = true;
-      StateHasChanged();
-
-      try
-      {
-        var result = await TransaccionService.ApplyCategoriaPlantillaAsync(
-            SelectedTransaccionId.Value,
-            categoriaId);
-
-        if (result.Success)
-        {
-          UiMessages.ShowSuccess(result.Message);
-          await RefreshCandidatesAsync();
-        }
-        else
-        {
-          UiMessages.ShowError(result.Message);
-        }
-      }
-      catch (Exception ex)
-      {
-        UiMessages.ShowError("Error al aplicar la plantilla de categoría: " + ex.Message);
-      }
-      finally
-      {
-        IsApplyingCategoria = false;
-        StateHasChanged();
-      }
-    }
-
-    protected async Task ProcessSatXmlAsync(int attachmentId)
-    {
-      if (attachmentId <= 0)
-      {
-        UiMessages.ShowWarning("El resultado seleccionado no tiene un adjunto válido para procesar.");
-        return;
-      }
-
-      if (!SelectedTransaccionId.HasValue)
-      {
-        UiMessages.ShowWarning("Selecciona una transacción antes de procesar el XML del SAT.");
-        return;
-      }
-
-      AttachmentProcessing = attachmentId;
-      StateHasChanged();
-
-      try
-      {
-        var result = await TransaccionService.ProcessSatXmlAsync(
-            attachmentId,
-            SelectedTransaccionId.Value);
-
-        if (result.Success)
-        {
-          UiMessages.ShowSuccess(result.Message);
-          await RefreshCandidatesAsync();
-          await RefreshInvoicesAsync();
-        }
-        else
-        {
-          UiMessages.ShowError(result.Message);
-        }
-      }
-      catch (Exception ex)
-      {
-        UiMessages.ShowError("Error al procesar el XML del SAT: " + ex.Message);
-      }
-      finally
-      {
-        AttachmentProcessing = null;
-        StateHasChanged();
-      }
-    }
-
-
-
-
-    protected async Task OnSelectComprobanteAsync(ComprobanteListItem item)
-    {
-      SelectedComprobante = item;
-
-      // The ComprobanteListItem.Total you already cast to decimal in Step 4 SQL.
-      var montoAbs = Math.Abs(item.Total);
-      var fechaXml = item.Fecha;
-
-      var currentRfc = RfcState.CurrentRfc;
-      if (string.IsNullOrWhiteSpace(currentRfc))
-      {
-        FilteredTransacciones.Clear();
-        StateHasChanged();
-        return;
-      }
-
-      FilteredTransacciones.Clear();
-      try
-      {
-        var rows = await TransaccionService.GetCandidatesAsync(
-            fechaXml: fechaXml,
-            montoAbs: montoAbs,
-            rfc: currentRfc,
-            daysBack: 60,
-            top: 200
-        );
-        FilteredTransacciones.AddRange(rows);
-        StateHasChanged();
-      }
-      catch (Exception ex)
-      {
-        UiMessages.ShowError("Error al obtener transacciones candidatas: " + ex.Message);
-      }
-    }
 
 
 
@@ -408,9 +211,6 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
             : $"Se procesaron correctamente {successCount} archivos XML.");
       }
 
-      // Always refresh invoices from SQL, independent of SelectedFiles
-      await RefreshInvoicesAsync();
-
       IsProcessing = false;
       StateHasChanged();
     }
@@ -424,42 +224,6 @@ namespace OrionERP.Web.Features.Cfdi.CargarXmlSat.Pages
       if (kb < 1024) return $"{kb:N1} KB";
       double mb = kb / 1024d;
       return $"{mb:N2} MB";
-    }
-
-    //INVOICE HELPERS
-
-    protected async Task RefreshCandidatesAsync()
-    {
-      if (SelectedComprobante is null) return;
-      await OnSelectComprobanteAsync(SelectedComprobante);
-    }
-   
-
-    protected async Task RefreshInvoicesAsync()
-    {
-      var currentRfc = RfcState.CurrentRfc;
-      if (string.IsNullOrWhiteSpace(currentRfc))
-      {
-        Invoices.Clear();
-        StateHasChanged();
-        return;
-      }
-
-      Invoices.Clear();
-      try
-      {
-        var placeholderId = await satXmlInboxService.EnsureInboxTransaccionAsync(); // still 5505 (config)
-        var list = await ComprobanteQuery.GetRecentFromPlaceholderAsync(
-            rfc: currentRfc,
-            placeholderTransaccionId: placeholderId,
-            top: 100);
-        Invoices.AddRange(list);
-        StateHasChanged();
-      }
-      catch (Exception ex)
-      {
-        UiMessages.ShowError("Error al cargar comprobantes: " + ex.Message);
-      }
     }
 
     // ViewModel for selected files

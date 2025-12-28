@@ -20,6 +20,8 @@ using Sat.MassiveDownload;
 using Sat.MassiveDownload.Core;
 using ContabITransaccionService = OrionERP.Application.Features.Contabilidad.Transacciones.ITransaccionService;
 using ContabTransaccionService = OrionERP.Infrastructure.Features.Contabilidad.Transacciones.Services.TransaccionService;
+using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
+using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 
 namespace OrionERP.Web.Configuration;
 

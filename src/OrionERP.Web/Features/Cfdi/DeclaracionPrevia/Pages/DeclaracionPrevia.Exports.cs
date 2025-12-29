@@ -46,7 +46,11 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
     private async Task ExportExcelEmitidas() => await ExportExcel(includeEmitidas: true);
 
+    private async Task ExportExcelEmitidasPpd() => await ExportExcel(includeEmitidasPpd: true);
+
     private async Task ExportExcelRecibidas() => await ExportExcel(includeRecibidas: true);
+
+    private async Task ExportExcelRecibidasPpd() => await ExportExcel(includeRecibidasPpd: true);
 
     private async Task ExportExcelNominaEmitida() => await ExportExcel(includeNominaEmitida: true);
 
@@ -62,7 +66,9 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
     private async Task ExportExcel(
       bool includeEmitidas = false,
+      bool includeEmitidasPpd = false,
       bool includeRecibidas = false,
+      bool includeRecibidasPpd = false,
       bool includeNominaEmitida = false,
       bool includeNominaRecibida = false,
       bool includeTipoEEmitidas = false,
@@ -78,9 +84,19 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
           includedSheets.Add("Emitidas");
         }
 
+        if (includeEmitidasPpd && AddWorksheet(package, "Emitidas PPD", emitidasPpdBase))
+        {
+          includedSheets.Add("EmitidasPPD");
+        }
+
         if (includeRecibidas && AddWorksheet(package, "Recibidas", recibidasBase))
         {
           includedSheets.Add("Recibidas");
+        }
+
+        if (includeRecibidasPpd && AddWorksheet(package, "Recibidas PPD", recibidasPpdBase))
+        {
+          includedSheets.Add("RecibidasPPD");
         }
 
         if (includeNominaEmitida && AddWorksheet(package, "Nómina Emitida", emitidasNominaBase))

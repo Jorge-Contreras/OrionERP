@@ -73,6 +73,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
 
       return emitidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
+        ?? emitidasPpd?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
         ?? emitidasNomina?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
         ?? tipoEEmitidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId);
     }
@@ -85,6 +86,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
 
       return recibidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
+        ?? recibidasPpd?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
         ?? recibidasNomina?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
         ?? tipoERecibidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId);
     }

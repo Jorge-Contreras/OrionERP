@@ -41,7 +41,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private readonly List<LookupInt32Dto> _allCompraOptions = [];
   private CuentaContablePicker? CuentaPicker;
   private int _attachmentInputKey;
-  private SectionPanel? _expandedSection = SectionPanel.Movimientos;
+  private SectionPanel _activeSection = SectionPanel.Movimientos;
 
   private bool _isDisposed;
 
@@ -94,16 +94,16 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
   protected bool IsUploadingAttachment { get; private set; }
 
-  protected bool IsSectionExpanded(SectionPanel section) => _expandedSection == section;
+  protected bool IsActiveSection(SectionPanel section) => _activeSection == section;
 
-  protected string GetSectionToggleIcon(SectionPanel section) => IsSectionExpanded(section) ? "oi-chevron-bottom" : "oi-chevron-right";
+  protected string GetTabButtonClass(SectionPanel section) => $"nav-link {(IsActiveSection(section) ? "active" : string.Empty)}";
 
   protected static string FormatCurrency(decimal value)
     => value.ToString("C2", CurrencyCulture);
 
-  protected void ToggleSection(SectionPanel section)
+  protected void ActivateSection(SectionPanel section)
   {
-    _expandedSection = _expandedSection == section ? (SectionPanel?)null : section;
+    _activeSection = section;
   }
 
   protected override void OnInitialized()

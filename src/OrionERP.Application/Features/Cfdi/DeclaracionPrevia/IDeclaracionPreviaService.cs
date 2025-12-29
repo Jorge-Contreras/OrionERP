@@ -32,6 +32,8 @@ public class DeclaracionPreviaData
   public IReadOnlyList<DeclaracionCfdiBase> AllCfdiBase { get; init; } = Array.Empty<DeclaracionCfdiBase>();
   public IReadOnlyList<DeclaracionCfdiBase> EmitidasBase { get; init; } = Array.Empty<DeclaracionCfdiBase>();
   public IReadOnlyList<DeclaracionCfdiBase> RecibidasBase { get; init; } = Array.Empty<DeclaracionCfdiBase>();
+  public IReadOnlyList<DeclaracionCfdiBase> EmitidasPpdBase { get; init; } = Array.Empty<DeclaracionCfdiBase>();
+  public IReadOnlyList<DeclaracionCfdiBase> RecibidasPpdBase { get; init; } = Array.Empty<DeclaracionCfdiBase>();
   public IReadOnlyList<DeclaracionCfdiBase> EmitidasNominaBase { get; init; } = Array.Empty<DeclaracionCfdiBase>();
   public IReadOnlyList<DeclaracionCfdiBase> RecibidasNominaBase { get; init; } = Array.Empty<DeclaracionCfdiBase>();
   public IReadOnlyList<DeclaracionCfdiBase> TipoEEmitidasBase { get; init; } = Array.Empty<DeclaracionCfdiBase>();
@@ -41,6 +43,8 @@ public class DeclaracionPreviaData
   public IReadOnlyList<DeclaracionComplementoBase> ComplementosRecibidosBase { get; init; } = Array.Empty<DeclaracionComplementoBase>();
   public IReadOnlyList<DeclaracionEmitida> Emitidas { get; init; } = Array.Empty<DeclaracionEmitida>();
   public IReadOnlyList<DeclaracionRecibida> Recibidas { get; init; } = Array.Empty<DeclaracionRecibida>();
+  public IReadOnlyList<DeclaracionEmitida> EmitidasPpd { get; init; } = Array.Empty<DeclaracionEmitida>();
+  public IReadOnlyList<DeclaracionRecibida> RecibidasPpd { get; init; } = Array.Empty<DeclaracionRecibida>();
   public IReadOnlyList<DeclaracionEmitida> EmitidasNomina { get; init; } = Array.Empty<DeclaracionEmitida>();
   public IReadOnlyList<DeclaracionRecibida> RecibidasNomina { get; init; } = Array.Empty<DeclaracionRecibida>();
   public IReadOnlyList<DeclaracionEmitida> TipoEEmitidas { get; init; } = Array.Empty<DeclaracionEmitida>();
@@ -50,8 +54,10 @@ public class DeclaracionPreviaData
   public IReadOnlyList<DesfaseItem> Desfase { get; init; } = Array.Empty<DesfaseItem>();
   public IReadOnlyList<PolizaNoConsolidada> PolizasNoConsolidadas { get; init; } = Array.Empty<PolizaNoConsolidada>();
   public DeclaracionTotales? EmitidasTotals { get; init; }
+  public DeclaracionTotales? EmitidasPpdTotals { get; init; }
   public DeclaracionTotales? EmitidasNominaTotals { get; init; }
   public DeclaracionTotales? RecibidasTotals { get; init; }
+  public DeclaracionTotales? RecibidasPpdTotals { get; init; }
   public DeclaracionTotales? RecibidasNominaTotals { get; init; }
   public DeclaracionTotales? TipoEEmitidasTotals { get; init; }
   public DeclaracionTotales? TipoERecibidasTotals { get; init; }

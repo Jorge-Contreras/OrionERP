@@ -24,6 +24,8 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private List<DeclaracionCfdiBase>? allCfdiBase;
     private List<DeclaracionCfdiBase>? emitidasBase;
     private List<DeclaracionCfdiBase>? recibidasBase;
+    private List<DeclaracionCfdiBase>? emitidasPpdBase;
+    private List<DeclaracionCfdiBase>? recibidasPpdBase;
     private List<DeclaracionCfdiBase>? emitidasNominaBase;
     private List<DeclaracionCfdiBase>? recibidasNominaBase;
     private List<DeclaracionCfdiBase>? tipoEEmitidasBase;
@@ -32,8 +34,10 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private List<DeclaracionComplementoBase>? complementosEmitidosBase;
     private List<DeclaracionComplementoBase>? complementosRecibidosBase;
     private List<DeclaracionEmitida>? emitidas;
+    private List<DeclaracionEmitida>? emitidasPpd;
     private List<DeclaracionEmitida>? emitidasNomina;
     private List<DeclaracionRecibida>? recibidas;
+    private List<DeclaracionRecibida>? recibidasPpd;
     private List<DeclaracionRecibida>? recibidasNomina;
     private List<DeclaracionEmitida>? tipoEEmitidas;
     private List<DeclaracionRecibida>? tipoERecibidas;
@@ -42,8 +46,10 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private List<DesfaseItem>? desfase;
     private List<PolizaNoConsolidada>? polizasNoConsolidadas;
     private DeclaracionTotales? emitidasTotals;
+    private DeclaracionTotales? emitidasPpdTotals;
     private DeclaracionTotales? emitidasNominaTotals;
     private DeclaracionTotales? recibidasTotals;
+    private DeclaracionTotales? recibidasPpdTotals;
     private DeclaracionTotales? recibidasNominaTotals;
     private DeclaracionTotales? tipoEEmitidasTotals;
     private DeclaracionTotales? tipoERecibidasTotals;

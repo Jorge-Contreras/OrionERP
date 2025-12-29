@@ -17,6 +17,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.JSInterop;
 using Microsoft.Extensions.Configuration;
+using OrionERP.Application.Features.Contabilidad.Bancos;
 
 namespace OrionERP.Web.Features.Contabilidad.Transacciones;
 
@@ -26,6 +27,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   {
     Movimientos,
     Comprobantes,
+    Banco,
     Attachments,
     Resumen
   }
@@ -37,6 +39,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private int? _attachmentDeletingId;
   private int? _movimientoDeletingId;
   private long? _unlinkingComprobanteId;
+  private long? _unlinkingBancoMovimientoId;
   private readonly List<LookupInt32Dto> _allProyectoOptions = [];
   private readonly List<LookupInt32Dto> _allCompraOptions = [];
   private CuentaContablePicker? CuentaPicker;
@@ -58,6 +61,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
   [Inject] public NavigationManager NavManager { get; set; } = default!;
   [Inject] public IConfiguration Configuration { get; set; } = default!;
+  [Inject] public IBancosService BancosService { get; set; } = default!;
 
   protected TransaccionHeaderModel? Header { get; private set; }
   protected EditContext? HeaderEditContext { get; private set; }
@@ -68,6 +72,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected MovimientoTotalsDto Totals { get; private set; } = new();
   protected List<MovimientoModel> Movimientos { get; } = [];
+  protected List<BankMovementDto> BancoMovimientos { get; } = [];
   protected List<AttachmentModel> Attachments { get; } = [];
   protected List<TransaccionCfdiCandidateDto> Comprobantes { get; } = [];
   protected List<LookupInt32Dto> CategoriaOptions { get; } = [];
@@ -93,6 +98,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string HeaderStatus => Totals.Balance == 0m ? "Balanceada" : "Desbalanceada";
   protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
   protected bool IsUploadingAttachment { get; private set; }
+  protected bool IsLoadingBancoMovimientos { get; private set; }
 
   protected bool IsActiveSection(SectionPanel section) => _activeSection == section;
 
@@ -313,6 +319,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
       await ReloadAttachmentsAsync(ct);
       await ReloadComprobantesAsync(ct);
+      await ReloadBancoMovimientosAsync(ct);
     }
     catch (OperationCanceledException)
     {
@@ -848,6 +855,32 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
   }
 
+  private async Task ReloadBancoMovimientosAsync(CancellationToken ct = default)
+  {
+    BancoMovimientos.Clear();
+    IsLoadingBancoMovimientos = true;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var movimientos = await BancosService.GetMovementsByTransactionAsync(Id, ct);
+      BancoMovimientos.AddRange(movimientos);
+    }
+    catch (OperationCanceledException)
+    {
+      // ignored
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron cargar los movimientos bancarios: {ex.Message}");
+    }
+    finally
+    {
+      IsLoadingBancoMovimientos = false;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
   protected async Task OpenComprobanteCfdiAsync(TransaccionCfdiCandidateDto? comprobante)
   {
     if (comprobante?.XmlAttachmentId is null)
@@ -878,6 +911,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected bool IsComprobanteUnlinking(TransaccionCfdiCandidateDto comprobante)
     => comprobante is not null && comprobante.ComprobanteId == _unlinkingComprobanteId;
+
+  protected bool IsBancoMovimientoUnlinking(BankMovementDto movimiento)
+    => movimiento is not null && movimiento.MovimientoId == _unlinkingBancoMovimientoId;
 
   protected async Task UnlinkComprobanteAsync(TransaccionCfdiCandidateDto comprobante)
   {
@@ -931,6 +967,39 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     finally
     {
       _unlinkingComprobanteId = null;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected async Task UnlinkBancoMovimientoAsync(BankMovementDto movimiento)
+  {
+    if (movimiento is null)
+    {
+      return;
+    }
+
+    var confirmed = await ConfirmAsync("¿Estás seguro que deseas desligar este movimiento bancario de la póliza?");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    _unlinkingBancoMovimientoId = movimiento.MovimientoId;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      await BancosService.UnlinkMovementAsync(movimiento.MovimientoId);
+      UiMessages.ShowSuccess("Movimiento bancario desligado correctamente.");
+      await ReloadBancoMovimientosAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo desligar el movimiento bancario: {ex.Message}");
+    }
+    finally
+    {
+      _unlinkingBancoMovimientoId = null;
       await InvokeAsync(StateHasChanged);
     }
   }

@@ -283,6 +283,40 @@ ORDER BY M.Secuencia_Clave desc;";
     return rows.AsList();
   }
 
+  public async Task<IReadOnlyList<BankMovementDto>> GetMovementsByTransactionAsync(
+      int transaccionId,
+      CancellationToken cancellationToken = default)
+  {
+    if (transaccionId <= 0)
+    {
+      return Array.Empty<BankMovementDto>();
+    }
+
+    const string sql = @"
+SELECT 
+    M.Movimiento_ID AS MovimientoId,
+    M.Dia,
+    M.Secuencia_Diaria AS Line,
+    M.Concepto,
+    M.Tipo,
+    M.Cargo,
+    M.Abono,
+    M.Saldo,
+    M.Fecha_Carga AS FechaCarga,
+    M.Nombre_Banco AS NombreBanco,
+    M.Numero_Cuenta AS NumeroCuenta,
+    M.Secuencia_Clave AS SecuenciaClave,
+    M.Transaccion_ID AS Policy
+FROM bancos.Movimientos AS M
+WHERE M.Transaccion_ID = @TransaccionId
+ORDER BY M.Dia DESC, M.Movimiento_ID DESC;";
+
+    using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+    var rows = await connection.QueryAsync<BankMovementDto>(sql, new { TransaccionId = transaccionId }).ConfigureAwait(false);
+    cancellationToken.ThrowIfCancellationRequested();
+    return rows.AsList();
+  }
+
   public async Task<IReadOnlyList<PendingBankTransactionDto>> GetPendingTransactionsAsync(
       string rfc,
       int year,

@@ -18,6 +18,9 @@ public interface IBancosService
       int month,
       string? textFilter,
       CancellationToken cancellationToken = default);
+  Task<IReadOnlyList<BankMovementDto>> GetMovementsByTransactionAsync(
+      int transaccionId,
+      CancellationToken cancellationToken = default);
   Task<IReadOnlyList<PendingBankTransactionDto>> GetPendingTransactionsAsync(
       string rfc,
       int year,

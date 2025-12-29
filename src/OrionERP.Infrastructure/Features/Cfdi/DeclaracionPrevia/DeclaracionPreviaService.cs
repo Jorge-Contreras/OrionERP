@@ -59,11 +59,19 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       new { Year = request.Year, Month = request.IsAnnual ? (object?)DBNull.Value : request.Month, RFC = request.Rfc })).ToList();
 
     var emitidasBase = allCfdiBase
-      .Where(x => x.EsEmitida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante))
+      .Where(x => x.EsEmitida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante) && !IsPpd(x.MetodoPago))
       .ToList();
 
     var recibidasBase = allCfdiBase
-      .Where(x => x.EsRecibida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante))
+      .Where(x => x.EsRecibida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante) && !IsPpd(x.MetodoPago))
+      .ToList();
+
+    var emitidasPpdBase = allCfdiBase
+      .Where(x => x.EsEmitida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante) && IsPpd(x.MetodoPago))
+      .ToList();
+
+    var recibidasPpdBase = allCfdiBase
+      .Where(x => x.EsRecibida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante) && IsPpd(x.MetodoPago))
       .ToList();
 
     var emitidasNominaBase = allCfdiBase
@@ -116,6 +124,8 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       AllCfdiBase = allCfdiBase,
       EmitidasBase = emitidasBase,
       RecibidasBase = recibidasBase,
+      EmitidasPpdBase = emitidasPpdBase,
+      RecibidasPpdBase = recibidasPpdBase,
       EmitidasNominaBase = emitidasNominaBase,
       RecibidasNominaBase = recibidasNominaBase,
       TipoEEmitidasBase = tipoEEmitidasBase,
@@ -125,6 +135,8 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       ComplementosRecibidosBase = complementosRecibidosBase,
       Emitidas = emitidasBase.Select(ToDeclaracionEmitida).ToList(),
       Recibidas = recibidasBase.Select(ToDeclaracionRecibida).ToList(),
+      EmitidasPpd = emitidasPpdBase.Select(ToDeclaracionEmitida).ToList(),
+      RecibidasPpd = recibidasPpdBase.Select(ToDeclaracionRecibida).ToList(),
       EmitidasNomina = emitidasNominaBase.Select(ToDeclaracionEmitida).ToList(),
       RecibidasNomina = recibidasNominaBase.Select(ToDeclaracionRecibida).ToList(),
       TipoEEmitidas = tipoEEmitidasBase.Select(ToDeclaracionEmitida).ToList(),
@@ -132,8 +144,10 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       ComplementosEmitidos = complementosEmitidosBase.Select(ToComplementoEmitido).ToList(),
       ComplementosRecibidos = complementosRecibidosBase.Select(ToComplementoRecibido).ToList(),
       EmitidasTotals = ComputeDeclaracionTotales(emitidasBase),
+      EmitidasPpdTotals = ComputeDeclaracionTotales(emitidasPpdBase),
       EmitidasNominaTotals = ComputeDeclaracionTotales(emitidasNominaBase),
       RecibidasTotals = ComputeDeclaracionTotales(recibidasBase),
+      RecibidasPpdTotals = ComputeDeclaracionTotales(recibidasPpdBase),
       RecibidasNominaTotals = ComputeDeclaracionTotales(recibidasNominaBase),
       TipoEEmitidasTotals = ComputeDeclaracionTotales(tipoEEmitidasBase),
       TipoERecibidasTotals = ComputeDeclaracionTotales(tipoERecibidasBase),
@@ -292,6 +306,7 @@ WHERE Comprobante_Id = @Comprobante_Id;";
   private static bool IsNomina(string? tipoDeComprobante) => string.Equals(tipoDeComprobante, "N", StringComparison.OrdinalIgnoreCase);
 
   private static bool IsTipoE(string? tipoDeComprobante) => string.Equals(tipoDeComprobante, "E", StringComparison.OrdinalIgnoreCase);
+  private static bool IsPpd(string? metodoPago) => string.Equals(metodoPago, "PPD", StringComparison.OrdinalIgnoreCase);
 
   private static string GetSqlDate(DateTime dt) => dt.ToString("yyyy-MM-dd HH:mm:ss");
 

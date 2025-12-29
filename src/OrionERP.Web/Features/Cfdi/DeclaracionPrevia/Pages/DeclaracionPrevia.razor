@@ -90,6 +90,12 @@
         <button class="nav-link" id="nomina-recibidas-tab" data-bs-toggle="tab" data-bs-target="#nomina-recibidas" type="button" role="tab" aria-controls="nomina-recibidas" aria-selected="false">NOMINA RECIBIDAS</button>
     </li>
     <li class="nav-item" role="presentation">
+        <button class="nav-link" id="emitidas-ppd-tab" data-bs-toggle="tab" data-bs-target="#emitidas-ppd" type="button" role="tab" aria-controls="emitidas-ppd" aria-selected="false">EMITIDAS PPD</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="recibidas-ppd-tab" data-bs-toggle="tab" data-bs-target="#recibidas-ppd" type="button" role="tab" aria-controls="recibidas-ppd" aria-selected="false">RECIBIDAS PPD</button>
+    </li>
+    <li class="nav-item" role="presentation">
         <button class="nav-link" id="otros-tab" data-bs-toggle="tab" data-bs-target="#otros" type="button" role="tab" aria-controls="otros" aria-selected="false">OTROS</button>
     </li>
 </ul>
@@ -421,6 +427,148 @@
                        CounterpartyHeader="Emisor"
                        CounterpartySelector="@(item => item.EMISOR)"
                        NoDataMessage="No se encontraron CFDIs de nómina recibidos.">
+            </CFDITable>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="emitidas-ppd" role="tabpanel" aria-labelledby="emitidas-ppd-tab">
+        <div class="mb-2 filter-bar">
+            <button class="btn btn-sm btn-outline-primary" @onclick="ToggleEmitidaSelected">
+                Excluir / Incluir
+            </button>
+            <button class="btn btn-sm btn-warning" @onclick="CancelSelectedEmitidaCfdi">
+                Cancelar CFDI
+            </button>
+            <button class="btn btn-sm btn-secondary" @onclick="ExportExcelEmitidasPpd">
+                Exportar Emitidas PPD a Excel
+            </button>
+        </div>
+        <div class="table-responsive table-scroll">
+            <CFDITable Items="emitidasPpd"
+                       Totals="emitidasPpdTotals"
+                       PageSize="50"
+                       OnRowClick="SelectEmitidaAsync"
+                       RowClassResolver="GetEmitidaRowClass"
+                       CounterpartyHeader="Receptor"
+                       CounterpartySelector="@(item => item.RECEPTOR)">
+                <DetailsTemplate Context="item">
+                    @if (selectedEmitida?.Comprobante_Id == item.Comprobante_Id && emitidasComplementos?.Count > 0)
+                    {
+                        <div class="table-responsive table-scroll mb-2">
+                            <table class="table table-sm table-bordered table-striped align-middle compact-table mb-0">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Pago Id</th>
+                                        <th>Folio</th>
+                                        <th>Fecha Pago</th>
+                                        <th>Forma Pago</th>
+                                        <th>Moneda Pago</th>
+                                        <th class="num">Monto Pago</th>
+                                        <th class="num">Parcialidad</th>
+                                        <th>Moneda DR</th>
+                                        <th class="num">Saldo Anterior</th>
+                                        <th class="num">Importe Pagado</th>
+                                        <th class="num">Saldo Insoluto</th>
+                                        <th class="num">Tot P Traslados</th>
+                                        <th class="num">Tot P Retenciones</th>
+                                        <th class="num">Tot DR Traslados</th>
+                                        <th class="num">Tot DR Retenciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var complemento in emitidasComplementos)
+                                    {
+                                        <tr>
+                                            <td>@complemento.Pago_Id</td>
+                                            <td>@complemento.Folio</td>
+                                            <td>@complemento.FechaPago.ToString("yyyy-MM-dd")</td>
+                                            <td>@complemento.FormaDePagoP</td>
+                                            <td>@complemento.MonedaP</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.MontoPago)</td>
+                                            <td class="num">@complemento.NumParcialidad</td>
+                                            <td>@complemento.MonedaDR</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoAnt)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.ImpPagado)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoInsoluto)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Traslados)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Retenciones)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Traslados)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Retenciones)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </DetailsTemplate>
+            </CFDITable>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="recibidas-ppd" role="tabpanel" aria-labelledby="recibidas-ppd-tab">
+        <div class="mb-2 filter-bar">
+            <button class="btn btn-sm btn-outline-primary ms-3" @onclick="ToggleRecibidaSelected">Excluir / Incluir</button>
+            <button class="btn btn-sm btn-outline-primary ms-1" @onclick="ExcludePagosYDevoluciones">Excluir Pagos/Dev</button>
+            <button class="btn btn-sm btn-secondary ms-1" @onclick="ExportExcelRecibidasPpd">Exportar Recibidas PPD a Excel</button>
+            <button class="btn btn-sm btn-info ms-1" @onclick="GenerateDIOT">Generar DIOT</button>
+        </div>
+        <div class="table-scroll">
+            <CFDITable Items="recibidasPpd"
+                       Totals="recibidasPpdTotals"
+                       PageSize="50"
+                       OnRowClick="SelectRecibidaAsync"
+                       RowClassResolver="GetRecibidaRowClass"
+                       CounterpartyHeader="Emisor"
+                       CounterpartySelector="@(item => item.EMISOR)">
+               
+                <DetailsTemplate Context="item">
+                    @if (selectedRecibida?.Comprobante_Id == item.Comprobante_Id && recibidasComplementos?.Count > 0)
+                    {
+                        <div class="table-responsive table-scroll mb-2">
+                            <table class="table table-sm table-bordered table-striped align-middle compact-table mb-0">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Pago Id</th>
+                                        <th>Folio</th>
+                                        <th>Fecha Pago</th>
+                                        <th>Forma Pago</th>
+                                        <th>Moneda Pago</th>
+                                        <th class="num">Monto Pago</th>
+                                        <th class="num">Parcialidad</th>
+                                        <th>Moneda DR</th>
+                                        <th class="num">Saldo Anterior</th>
+                                        <th class="num">Importe Pagado</th>
+                                        <th class="num">Saldo Insoluto</th>
+                                        <th class="num">Tot P Traslados</th>
+                                        <th class="num">Tot P Retenciones</th>
+                                        <th class="num">Tot DR Traslados</th>
+                                        <th class="num">Tot DR Retenciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var complemento in recibidasComplementos)
+                                    {
+                                        <tr>
+                                            <td>@complemento.Pago_Id</td>
+                                            <td>@complemento.Folio</td>
+                                            <td>@complemento.FechaPago.ToString("yyyy-MM-dd")</td>
+                                            <td>@complemento.FormaDePagoP</td>
+                                            <td>@complemento.MonedaP</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.MontoPago)</td>
+                                            <td class="num">@complemento.NumParcialidad</td>
+                                            <td>@complemento.MonedaDR</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoAnt)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.ImpPagado)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoInsoluto)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Traslados)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Retenciones)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Traslados)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Retenciones)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </DetailsTemplate>
             </CFDITable>
         </div>
     </div>

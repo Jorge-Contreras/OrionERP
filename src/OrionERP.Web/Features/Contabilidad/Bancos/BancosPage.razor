@@ -7,6 +7,43 @@
 
 <h1 class="mb-4">Bancos – Cuentas y Movimientos</h1>
 
+<style>
+  .bancos-layout .section-card {
+    border-color: var(--bs-border-color);
+    box-shadow: var(--bs-box-shadow-sm);
+  }
+
+  .bancos-layout .section-card.accounts-section {
+    background-color: rgba(var(--bs-primary-rgb), 0.04);
+    border-left: 4px solid rgba(var(--bs-primary-rgb), 0.45);
+  }
+
+  .bancos-layout .section-card.process-section {
+    background-color: rgba(var(--bs-success-rgb), 0.05);
+    border-left: 4px solid rgba(var(--bs-success-rgb), 0.45);
+  }
+
+  .bancos-layout .section-card.filters-section {
+    background-color: rgba(var(--bs-info-rgb), 0.06);
+    border-left: 4px solid rgba(var(--bs-info-rgb), 0.45);
+  }
+
+  .bancos-layout .section-card.pending-section {
+    background-color: rgba(var(--bs-warning-rgb), 0.08);
+    border-left: 4px solid rgba(var(--bs-warning-rgb), 0.5);
+  }
+
+  .bancos-layout .section-card.actions-section {
+    background-color: rgba(var(--bs-secondary-rgb), 0.06);
+    border-left: 4px solid rgba(var(--bs-secondary-rgb), 0.45);
+  }
+
+  .bancos-layout .section-card.movements-section {
+    background-color: rgba(var(--bs-dark-rgb), 0.04);
+    border-left: 4px solid rgba(var(--bs-dark-rgb), 0.35);
+  }
+</style>
+
 @if (!string.IsNullOrEmpty(ErrorMessage))
 {
   <div class="alert alert-danger" role="alert">
@@ -22,7 +59,7 @@ else if (IsInitializing)
 }
 else
 {
-  <div class="d-flex flex-column gap-4">
+  <div class="d-flex flex-column gap-4 bancos-layout">
     @if (IsAccountModalVisible && AccountDraft is not null && AccountEditContext is not null)
     {
       <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.35);" role="dialog" aria-modal="true">
@@ -115,7 +152,7 @@ else
       </div>
     }
 
-    <section aria-labelledby="accounts-heading" class="card">
+    <section aria-labelledby="accounts-heading" class="card section-card accounts-section">
       <div class="card-body">
         <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
           <h2 id="accounts-heading" class="h5 mb-0">Cuentas bancarias</h2>
@@ -191,7 +228,7 @@ else
       </div>
     </section>
 
-    <section aria-labelledby="process-heading" class="card">
+    <section aria-labelledby="process-heading" class="card section-card process-section">
       <div class="card-body d-flex flex-column gap-3">
         <div class="d-flex flex-wrap align-items-center gap-2">
           <h2 id="process-heading" class="h5 mb-0 flex-grow-1">Procesar archivo de banco</h2>
@@ -232,7 +269,7 @@ else
       </div>
     </section>
 
-    <section aria-labelledby="filters-heading" class="card">
+    <section aria-labelledby="filters-heading" class="card section-card filters-section">
       <div class="card-body">
         <div class="d-flex flex-column flex-lg-row align-items-lg-end gap-3">
           <div>
@@ -266,7 +303,7 @@ else
       </div>
     </section>
 
-    <section aria-labelledby="pending-heading" class="card">
+    <section aria-labelledby="pending-heading" class="card section-card pending-section">
       <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-3">
           <h2 id="pending-heading" class="h5 mb-0">Transacciones pendientes (Forma de pago "03")</h2>
@@ -317,7 +354,7 @@ else
       </div>
     </section>
 
-    <section aria-label="Acciones de conciliación" class="card">
+    <section aria-label="Acciones de conciliación" class="card section-card actions-section">
       <div class="card-body py-2">
         <div class="d-flex flex-wrap align-items-center gap-2">
           <div class="form-check mb-0">
@@ -336,7 +373,7 @@ else
       </div>
     </section>
 
-    <section aria-labelledby="movements-heading" class="card">
+    <section aria-labelledby="movements-heading" class="card section-card movements-section">
       <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-3">
           <h2 id="movements-heading" class="h5 mb-0">Movimientos</h2>

@@ -1,13 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
 using OrionERP.Application.Common;
-using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using OrionERP.Application.Features.Cfdi.ContabilidadRegistros;
 using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Application.Features.Cfdi.HtmlCFDI;
 using OrionERP.Application.Features.Rfcs.Contracts;
 using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Infrastructure.Common;
-using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
+using OrionERP.Infrastructure.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Infrastructure.Features.Cfdi.ContabilidadRegistros;
 using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Dapper;
 using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Services;
@@ -20,6 +20,8 @@ using Sat.MassiveDownload;
 using Sat.MassiveDownload.Core;
 using ContabITransaccionService = OrionERP.Application.Features.Contabilidad.Transacciones.ITransaccionService;
 using ContabTransaccionService = OrionERP.Infrastructure.Features.Contabilidad.Transacciones.Services.TransaccionService;
+using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
+using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 
 namespace OrionERP.Web.Configuration;
 
@@ -36,7 +38,6 @@ public static class ServiceRegistration
 
     services.AddScoped<IComprobanteQueryService, ComprobanteQueryService>();
     services.AddScoped<ISatXmlInboxService, SatXmlInboxService>();
-    services.AddScoped<IConciliacionService, ConciliacionService>();
     services.AddScoped<ContabITransaccionService, ContabTransaccionService>();
     services.AddScoped<CfdiReadableParser>();
     services.AddScoped<ITransactionAttachmentRepository, TransactionAttachmentRepository>();
@@ -60,6 +61,7 @@ public static class ServiceRegistration
 
     services.AddScoped<ICuentasContablesRepository, CuentasContablesRepository>();
     services.AddScoped<IContabilidadRegistrosService, ContabilidadRegistrosService>();
+    services.AddHttpClient<IDeclaracionPreviaService, DeclaracionPreviaService>();
     services.AddScoped<IBancosService, BancosService>();
     services.AddScoped<IReportesFinancierosService, ReportesFinancierosService>();
 

@@ -14,8 +14,14 @@ public interface ITransaccionService
   Task<TransaccionAttachmentContent?> GetAttachmentContentAsync(int attachmentId, CancellationToken ct = default);
   Task<TransaccionAttachmentDto> AddAttachmentAsync(TransaccionAttachmentCreateRequest request, CancellationToken ct = default);
   Task DeleteAttachmentAsync(int attachmentId, CancellationToken ct = default);
+  Task<int> GetComprobanteIdByXmlAttachmentAsync(int attachmentId, CancellationToken ct = default);
+  Task<bool> IsComprobanteLinkedToTransaccionAsync(int transaccionId, int comprobanteId, CancellationToken ct = default);
+  Task MoveAttachmentToTransaccionAsync(int attachmentId, int transaccionId, CancellationToken ct = default);
+  Task<TransaccionCommandResult> LinkCfdiReplacingPlaceholderAndRelinkAttachmentAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default);
+  Task<TransaccionCommandResult> InsertTransaccionComprobanteAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionComprobanteDto>> GetComprobantesAsync(int transaccionId, CancellationToken ct = default);
   Task ToggleComprobanteAsync(int transaccionId, int comprobanteId, bool vincular, CancellationToken ct = default);
+  Task<TransaccionCommandResult> UnlinkComprobanteAsync(TransaccionComprobanteUnlinkRequest request, CancellationToken ct = default);
   Task<TransaccionGuardarCerrarResult> GuardarYCerrarAsync(TransaccionGuardarCerrarRequest request, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionListItem>> GetCandidatesAsync(
       DateTime fechaXml,
@@ -45,5 +51,7 @@ public interface ITransaccionService
   Task<TransaccionCommandResult> DeleteTransaccionAsync(int transaccionId, CancellationToken ct = default);
   Task<TransaccionCreateResult> CreateTransaccionAsync(TransaccionCreateRequest request, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesListAsync(TransaccionFilter filter, CancellationToken ct = default);
+  Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesByUuidAsync(string uuid, CancellationToken ct = default);
+  Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesByComprobanteIdAsync(int comprobanteId, CancellationToken ct = default);
   Task<TransaccionCommandResult> GuardarMovimientosAsync(TransaccionMovimientosUpdateRequest request, CancellationToken ct = default);
 }

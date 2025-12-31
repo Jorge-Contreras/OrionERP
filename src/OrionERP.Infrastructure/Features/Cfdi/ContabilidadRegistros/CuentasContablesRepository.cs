@@ -29,13 +29,13 @@ public sealed class CuentasContablesRepository : ICuentasContablesRepository
     const string sql = @"
 SELECT TOP (@take)
        id       AS Id,
-       RazonSocial,
+       RFC AS Rfc,
        Nivel1,
        Nivel2,
        Nivel3,
        Descripcion
 FROM dbo.CuentasContables
-WHERE RazonSocial = @rfc
+WHERE RFC = @rfc
   AND Nivel2 = '00'
   AND Nivel3 = '00'
   AND (@hasTerm = 0 OR Nivel1 = @exact OR Descripcion LIKE @like)
@@ -71,13 +71,13 @@ ORDER BY Nivel1;";
     const string sql = @"
 SELECT TOP (@take)
        id       AS Id,
-       RazonSocial,
+       RFC AS Rfc,
        Nivel1,
        Nivel2,
        Nivel3,
        Descripcion
 FROM dbo.CuentasContables
-WHERE RazonSocial = @rfc
+WHERE RFC = @rfc
   AND Nivel1 = @nivel1
   AND Nivel3 = '00'
   AND (@hasTerm = 0 OR Nivel2 = @exact OR Descripcion LIKE @like)
@@ -116,13 +116,13 @@ ORDER BY Nivel2;";
     const string sql = @"
 SELECT TOP (@take)
        id       AS Id,
-       RazonSocial,
+       RFC AS Rfc,
        Nivel1,
        Nivel2,
        Nivel3,
        Descripcion
 FROM dbo.CuentasContables
-WHERE RazonSocial = @rfc
+WHERE RFC = @rfc
   AND Nivel1 = @nivel1
   AND Nivel2 = @nivel2
   AND (@hasTerm = 0 OR Nivel3 = @exact OR Descripcion LIKE @like)
@@ -147,7 +147,7 @@ ORDER BY Nivel3;";
   {
     const string sql = @"
 SELECT id         AS Id,
-       RazonSocial,
+       RFC AS Rfc,
        Nivel1,
        Nivel2,
        Nivel3,
@@ -180,13 +180,13 @@ WHERE id = @id;";
       const string checkSql = @"
 SELECT COUNT(*)
 FROM dbo.CuentasContables
-WHERE RazonSocial = @rfc
+WHERE RFC = @rfc
   AND Nivel1 = @nivel1
   AND Nivel2 = @nivel2
   AND Nivel3 = @nivel3;";
 
       const string insertSql = @"
-INSERT INTO dbo.CuentasContables (RazonSocial, Nivel1, Nivel2, Nivel3, Descripcion)
+INSERT INTO dbo.CuentasContables (RFC, Nivel1, Nivel2, Nivel3, Descripcion)
 VALUES (@rfc, @nivel1, @nivel2, @nivel3, @descripcion);
 SELECT CAST(SCOPE_IDENTITY() as int);";
 

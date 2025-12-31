@@ -1,52 +1,106 @@
-
-@using OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
+@using Microsoft.JSInterop
+@using OrionERP.Application.Features.Cfdi.DeclaracionPrevia
+@using OrionERP.Web.Services
+@using OrionERP.Web.State
 @inject IConfiguration Configuration
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject IDeclaracionPreviaService DeclaracionService
+@inject IUserRfcState RfcState
+@inject IUiMessageService UiMessages
 
 <td>
     <button class="btn btn-sm btn-outline-info"
             @onclick:stopPropagation="true"
-            @onclick="() => OpenDetails()">
-        CFDI
+            @onclick="OpenDetails">
+        CFDI-@Item.Comprobante_Id
     </button>
 </td>
 <td>
     <button class="btn btn-sm @(IsPlaceholderPoliza ? "btn-outline-danger" : "btn-outline-success")"
-            title="@(IsPlaceholderPoliza ? "Crear Póliza" : "Ir a Transacción")"
+            title="@(IsPlaceholderPoliza ? "Buscar Póliza" : "Ir a Transacción")"
             @onclick:stopPropagation="true"
-            @onclick="() => HandlePolizaClick()">
-        @(IsPlaceholderPoliza ? "Crear" : ItemPoliza)
+            @onclick="HandlePolizaClick">
+        @(IsPlaceholderPoliza ? "Buscar" : ItemPoliza)
     </button>
 </td>
 
 @code {
-    [Parameter]
-    public object? Item { get; set; }
 
     [Parameter]
-    public EventCallback<object> OnOpenDetails { get; set; }
+    public IDeclaracionComprobanteItem Item { get; set; } = default!;
 
-    [Parameter]
-    public EventCallback<object> OnHandlePolizaClick { get; set; }
+    private int? PlaceholderTransaccionId => _placeholderTransaccionId ??= ParsePlaceholder(Configuration["SatXml:PlaceholderTransaccionId"]);
+    private int? _placeholderTransaccionId;
 
-    private string? _placeholderTransaccionId => Configuration["SatXml:PlaceholderTransaccionId"];
+    private string? ItemPoliza => Item.Poliza;
 
-    private string? ItemPoliza => Item switch
-    {
-        DeclaracionPrevia.DeclaracionCfdiBase baseCfdi => baseCfdi.Poliza,
-        // DeclaracionPrevia.DeclaracionEmitida emitida => emitida.Poliza,
-        // DeclaracionPrevia.DeclaracionRecibida recibida => recibida.Poliza,
-        _ => null
-    };
-
-    private bool IsPlaceholderPoliza => ItemPoliza == _placeholderTransaccionId?.ToString();
+    private bool IsPlaceholderPoliza => PlaceholderTransaccionId.HasValue && ItemPoliza == PlaceholderTransaccionId.Value.ToString();
 
     private async Task OpenDetails()
     {
-        await OnOpenDetails.InvokeAsync(Item);
+        if (Item.XML_Attachment_ID is null)
+        {
+            return;
+        }
+
+        var url = $"/cfdi/html-cfdi/{Item.XML_Attachment_ID}";
+
+        try
+        {
+            await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+        }
+        catch
+        {
+            Nav.NavigateTo(url);
+        }
     }
 
     private async Task HandlePolizaClick()
     {
-        await OnHandlePolizaClick.InvokeAsync(Item);
+        if (IsPlaceholderPoliza)
+        {
+            var url = $"/cfdi/LigarCFDI_Poliza/{Item.Comprobante_Id}";
+
+            try
+            {
+                await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+            }
+            catch
+            {
+                Nav.NavigateTo(url);
+            }
+        }
+        else
+        {
+            await OpenLinkedTransaction();
+        }
+    }
+
+    private async Task OpenLinkedTransaction()
+    {
+        long? transId = await DeclaracionService.GetLinkedTransactionIdAsync(Item.Comprobante_Id);
+
+        if (!transId.HasValue)
+        {
+            UiMessages.ShowWarning("No se encontró una Transacción vinculada a este CFDI.");
+            return;
+        }
+
+        var url = $"/Contabilidad/transacciones/{transId.Value}";
+
+        try
+        {
+            await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+        }
+        catch
+        {
+            Nav.NavigateTo(url);
+        }
+    }
+
+    private static int? ParsePlaceholder(string? placeholderSetting)
+    {
+        return int.TryParse(placeholderSetting, out var parsedPlaceholder) ? parsedPlaceholder : null;
     }
 }

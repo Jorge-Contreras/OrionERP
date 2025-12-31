@@ -1,18 +1,29 @@
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Dapper;
-using Microsoft.Data.SqlClient;
 
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
   public partial class DeclaracionPrevia
   {
     // Row selection:
-    private async Task SelectEmitidaAsync(DeclaracionEmitida item) => await SelectCfdiAsync(item);
+    private async Task SelectEmitidaAsync(DeclaracionCfdiBase item)
+    {
+      if (item is DeclaracionEmitida emitida)
+      {
+        await SelectCfdiAsync(emitida);
+      }
+    }
 
-    private async Task SelectRecibidaAsync(DeclaracionRecibida item) => await SelectCfdiAsync(item);
+    private async Task SelectRecibidaAsync(DeclaracionCfdiBase item)
+    {
+      if (item is DeclaracionRecibida recibida)
+      {
+        await SelectCfdiAsync(recibida);
+      }
+    }
 
     private async Task SelectCfdiAsync(DeclaracionCfdiBase? item)
     {
@@ -62,6 +73,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
 
       return emitidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
+        ?? emitidasPpd?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
         ?? emitidasNomina?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
         ?? tipoEEmitidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId);
     }
@@ -74,6 +86,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
 
       return recibidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
+        ?? recibidasPpd?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
         ?? recibidasNomina?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId)
         ?? tipoERecibidas?.FirstOrDefault(x => x.Comprobante_Id == comprobanteId);
     }
@@ -88,12 +101,8 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       try
       {
-        var selectedId = selectedEmitida.Comprobante_Id;
         var wasExcluded = selectedEmitida.D == "✓";
-        using var conn = new SqlConnection(connectionString);
-        string sql = "UPDATE Comprobante SET Incluir_En_Declaracion = CASE WHEN Incluir_En_Declaracion = 1 THEN 0 ELSE 1 END WHERE Comprobante_Id = @Id";
-        await conn.ExecuteAsync(sql, new { Id = selectedEmitida.Comprobante_Id });
-        // Refresh data (or at least refresh that one item):
+        await DeclaracionService.ToggleInclusionAsync(selectedEmitida.Comprobante_Id);
         await LoadAllData();
         statusMessage = $"Factura recibida marcada como {(wasExcluded ? "EXCLUIDA" : "INCLUIDA")} en la declaración.";
       }
@@ -113,11 +122,8 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       try
       {
-        var selectedId = selectedRecibida.Comprobante_Id;
         var wasExcluded = selectedRecibida.D == "✓";
-        using var conn = new SqlConnection(connectionString);
-        string sql = "UPDATE Comprobante SET Incluir_En_Declaracion = CASE WHEN Incluir_En_Declaracion = 1 THEN 0 ELSE 1 END WHERE Comprobante_Id = @Id";
-        await conn.ExecuteAsync(sql, new { Id = selectedRecibida.Comprobante_Id });
+        await DeclaracionService.ToggleInclusionAsync(selectedRecibida.Comprobante_Id);
         await LoadAllData();
         statusMessage = $"Factura recibida marcada como {(wasExcluded ? "EXCLUIDA" : "INCLUIDA")} en la declaración.";
       }
@@ -132,17 +138,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     {
       try
       {
-        using var conn = new SqlConnection(connectionString);
-        string sql = @"
-                    UPDATE C
-                    SET Incluir_En_Declaracion = 0
-                    FROM Comprobante C
-                    JOIN Receptor R ON C.Comprobante_ID = R.Comprobante_ID
-                    WHERE C.Incluir_En_Declaracion = 1
-                      AND (R.UsoCFDI = 'G02' OR R.UsoCFDI = 'CP01')
-                      AND R.RFC = @RFC
-                      AND (YEAR(C.Fecha) = @Year AND (@Month IS NULL OR MONTH(C.Fecha) = @Month))";
-        int affected = await conn.ExecuteAsync(sql, new { RFC = selectedRfc, Year = selectedYear, Month = isAnnual ? (object)DBNull.Value : selectedMonth });
+        int affected = await DeclaracionService.ExcludePagosYDevolucionesAsync(selectedRfc ?? string.Empty, selectedYear, isAnnual ? null : selectedMonth);
         await LoadAllData();
         if (affected > 0)
         {
@@ -176,10 +172,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
       try
       {
-        using var conn = new SqlConnection(connectionString);
-        var resultados = (await conn.QueryAsync<PagoComplementoResumen>(
-          "EXEC cfdi.Complemento_Resumen_By_UUID @UUID_DoctoRelacionado",
-          new { UUID_DoctoRelacionado = uuid })).AsList();
+        var resultados = (await DeclaracionService.GetComplementosAsync(uuid)).ToList();
 
         if (isEmitida)
         {
@@ -196,16 +189,20 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
     }
 
-    private string GetEmitidaRowClass(DeclaracionEmitida item)
+    private string GetEmitidaRowClass(DeclaracionCfdiBase item)
     {
+      if (item is not DeclaracionEmitida emitida)
+      {
+        return string.Empty;
+      }
       var classes = new List<string>();
 
-      if (selectedEmitida?.Comprobante_Id == item.Comprobante_Id)
+      if (selectedEmitida?.Comprobante_Id == emitida.Comprobante_Id)
       {
         classes.Add("table-active");
       }
 
-      if (string.Equals(item.MetodoPago, "PPD", StringComparison.OrdinalIgnoreCase))
+      if (string.Equals(emitida.MetodoPago, "PPD", StringComparison.OrdinalIgnoreCase))
       {
         classes.Add("highlight-table-row");
       }
@@ -213,16 +210,20 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       return string.Join(" ", classes);
     }
 
-    private string GetRecibidaRowClass(DeclaracionRecibida item)
+    private string GetRecibidaRowClass(DeclaracionCfdiBase item)
     {
+      if (item is not DeclaracionRecibida recibida)
+      {
+        return string.Empty;
+      }
       var classes = new List<string>();
 
-      if (selectedRecibida?.Comprobante_Id == item.Comprobante_Id)
+      if (selectedRecibida?.Comprobante_Id == recibida.Comprobante_Id)
       {
         classes.Add("table-active");
       }
 
-      if (string.Equals(item.MetodoPago, "PPD", StringComparison.OrdinalIgnoreCase))
+      if (string.Equals(recibida.MetodoPago, "PPD", StringComparison.OrdinalIgnoreCase))
       {
         classes.Add("highlight-table-row");
       }

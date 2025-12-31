@@ -1,3 +1,5 @@
+#nullable enable
+#pragma warning disable CS8765
 using Microsoft.Extensions.Logging.Abstractions;
 using OrionERP.Application.Common;
 using OrionERP.Infrastructure.Common;
@@ -252,4 +254,5 @@ public class DbStoredProcServiceTests
     }
   }
 }
+#pragma warning restore CS8765
 

@@ -74,6 +74,7 @@ else if (Header is not null)
           <div class="col-12 col-sm-6 col-lg-2">
             <label class="form-label">ID</label>
             <input class="form-control" value="@Header.Id" readonly />
+                        <a href="/Contabilidad/Transacciones/@Header.Id" target="_blank" rel="noopener">@Header.Id</a>
           </div>
           <div class="col-12 col-sm-6 col-lg-2">
             <label class="form-label">Fecha</label>
@@ -133,6 +134,7 @@ else if (Header is not null)
                             <thead class="table-light">
                                 <tr>
                                     <th scope="col">Comprobante ID</th>
+                                    <th scope="col">XML Attachment ID</th>
                                     <th scope="col">Fecha</th>
                                     <th scope="col">Tipo</th>
                                     <th scope="col">Serie</th>
@@ -154,6 +156,7 @@ else if (Header is not null)
                                 {
                                     <tr>
                                         <td>@linked.ComprobanteId</td>
+                                        <td>@linked.XmlAttachmentId</td>
                                         <td>@linked.Fecha.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
                                         <td>@linked.Tipo</td>
                                         <td>@linked.Serie</td>
@@ -232,6 +235,7 @@ else if (Header is not null)
               <thead class="table-light">
                 <tr>
                   <th scope="col">Comprobante ID</th>
+                  <th scope="col">XML Attachment ID</th>
                   <th scope="col">Fecha</th>
                   <th scope="col">Tipo</th>
                   <th scope="col">Serie</th>
@@ -255,6 +259,7 @@ else if (Header is not null)
                   var rowClass = isSelected ? "table-primary" : string.Empty;
                   <tr class="@rowClass" aria-selected="@(isSelected ? "true" : "false")" @onclick="() => SelectCandidate(candidate)">
                     <td>@candidate.ComprobanteId</td>
+                    <td>@candidate.XmlAttachmentId</td>
                     <td>@candidate.Fecha.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
                     <td>@candidate.Tipo</td>
                     <td>@candidate.Serie</td>

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Web.Services;
 using System;
 using System.Collections.Generic;
@@ -9,9 +10,6 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
   public partial class DeclaracionPrevia
   {
     [Inject] private IUiMessageService UiMessages { get; set; } = default!;
-
-    // UI State
-    private string? connectionString;
 
     // Filter state
     private List<string>? disponiblesRFCs;
@@ -26,21 +24,32 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private List<DeclaracionCfdiBase>? allCfdiBase;
     private List<DeclaracionCfdiBase>? emitidasBase;
     private List<DeclaracionCfdiBase>? recibidasBase;
+    private List<DeclaracionCfdiBase>? emitidasPpdBase;
+    private List<DeclaracionCfdiBase>? recibidasPpdBase;
     private List<DeclaracionCfdiBase>? emitidasNominaBase;
     private List<DeclaracionCfdiBase>? recibidasNominaBase;
     private List<DeclaracionCfdiBase>? tipoEEmitidasBase;
     private List<DeclaracionCfdiBase>? tipoERecibidasBase;
+    private List<DeclaracionComplementoBase>? complementosBase;
+    private List<DeclaracionComplementoBase>? complementosEmitidosBase;
+    private List<DeclaracionComplementoBase>? complementosRecibidosBase;
     private List<DeclaracionEmitida>? emitidas;
+    private List<DeclaracionEmitida>? emitidasPpd;
     private List<DeclaracionEmitida>? emitidasNomina;
     private List<DeclaracionRecibida>? recibidas;
+    private List<DeclaracionRecibida>? recibidasPpd;
     private List<DeclaracionRecibida>? recibidasNomina;
     private List<DeclaracionEmitida>? tipoEEmitidas;
     private List<DeclaracionRecibida>? tipoERecibidas;
+    private List<DeclaracionComplementoEmitido>? complementosEmitidos;
+    private List<DeclaracionComplementoRecibido>? complementosRecibidos;
     private List<DesfaseItem>? desfase;
     private List<PolizaNoConsolidada>? polizasNoConsolidadas;
     private DeclaracionTotales? emitidasTotals;
+    private DeclaracionTotales? emitidasPpdTotals;
     private DeclaracionTotales? emitidasNominaTotals;
     private DeclaracionTotales? recibidasTotals;
+    private DeclaracionTotales? recibidasPpdTotals;
     private DeclaracionTotales? recibidasNominaTotals;
     private DeclaracionTotales? tipoEEmitidasTotals;
     private DeclaracionTotales? tipoERecibidasTotals;
@@ -56,29 +65,6 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private DeclaracionRecibida? selectedRecibida;
     private string? statusMessage;
     private string? errorMessage;
-
-    // Sorting state
-    private Dictionary<string, string>? emitidasSortableFields;
-    private Dictionary<string, string>? recibidasSortableFields;
-    private string? emitidasSortColumn;
-    private string? emitidasSortOrder;
-    private string? recibidasSortColumn;
-    private string? recibidasSortOrder;
-
-    // Pagination state (simple implementation)
-    private int pageSize = 50;
-    private int emitidasCurrentPage = 1;
-    private int emitidasPageCount = 1;
-    private IEnumerable<DeclaracionEmitida> emitidasPage => emitidas?.Skip((emitidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionEmitida>();
-    private int recibidasCurrentPage = 1;
-    private int recibidasPageCount = 1;
-    private IEnumerable<DeclaracionRecibida> recibidasPage => recibidas?.Skip((recibidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionRecibida>();
-    private int tipoEEmitidasCurrentPage = 1;
-    private int tipoEEmitidasPageCount = 1;
-    private IEnumerable<DeclaracionEmitida> tipoEEmitidasPage => tipoEEmitidas?.Skip((tipoEEmitidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionEmitida>();
-    private int tipoERecibidasCurrentPage = 1;
-    private int tipoERecibidasPageCount = 1;
-    private IEnumerable<DeclaracionRecibida> tipoERecibidasPage => tipoERecibidas?.Skip((tipoERecibidasCurrentPage - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<DeclaracionRecibida>();
 
     private void ClearErrorMessage()
     {

@@ -16,6 +16,8 @@ using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.JSInterop;
+using Microsoft.Extensions.Configuration;
+using OrionERP.Application.Features.Contabilidad.Bancos;
 
 namespace OrionERP.Web.Features.Contabilidad.Transacciones;
 
@@ -25,6 +27,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   {
     Movimientos,
     Comprobantes,
+    Banco,
     Attachments,
     Resumen
   }
@@ -35,15 +38,20 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private int? _attachmentDownloadingId;
   private int? _attachmentDeletingId;
   private int? _movimientoDeletingId;
+  private long? _unlinkingComprobanteId;
+  private long? _unlinkingBancoMovimientoId;
   private readonly List<LookupInt32Dto> _allProyectoOptions = [];
   private readonly List<LookupInt32Dto> _allCompraOptions = [];
   private CuentaContablePicker? CuentaPicker;
   private int _attachmentInputKey;
-  private SectionPanel? _expandedSection = SectionPanel.Movimientos;
+  private SectionPanel _activeSection = SectionPanel.Movimientos;
 
   private bool _isDisposed;
+  private string _montoInput = string.Empty;
 
   private static readonly CultureInfo CurrencyCulture = new("es-MX");
+  private static readonly CultureInfo CurrencyInputCulture = new("en-US");
+  private static readonly NumberStyles CurrencyNumberStyles = NumberStyles.AllowThousands | NumberStyles.AllowDecimalPoint;
 
   private const long AttachmentMaxFileSize = TransaccionAttachmentCreateRequest.MaxFileSizeBytes;
 
@@ -55,6 +63,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
   [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
   [Inject] public NavigationManager NavManager { get; set; } = default!;
+  [Inject] public IConfiguration Configuration { get; set; } = default!;
+  [Inject] public IBancosService BancosService { get; set; } = default!;
 
   protected TransaccionHeaderModel? Header { get; private set; }
   protected EditContext? HeaderEditContext { get; private set; }
@@ -65,6 +75,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected MovimientoTotalsDto Totals { get; private set; } = new();
   protected List<MovimientoModel> Movimientos { get; } = [];
+  protected List<BankMovementDto> BancoMovimientos { get; } = [];
   protected List<AttachmentModel> Attachments { get; } = [];
   protected List<TransaccionCfdiCandidateDto> Comprobantes { get; } = [];
   protected List<LookupInt32Dto> CategoriaOptions { get; } = [];
@@ -90,17 +101,36 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string HeaderStatus => Totals.Balance == 0m ? "Balanceada" : "Desbalanceada";
   protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
   protected bool IsUploadingAttachment { get; private set; }
+  protected bool IsLoadingBancoMovimientos { get; private set; }
 
-  protected bool IsSectionExpanded(SectionPanel section) => _expandedSection == section;
+  protected bool IsActiveSection(SectionPanel section) => _activeSection == section;
 
-  protected string GetSectionToggleIcon(SectionPanel section) => IsSectionExpanded(section) ? "oi-chevron-bottom" : "oi-chevron-right";
+  protected string GetTabButtonClass(SectionPanel section) => $"nav-link {(IsActiveSection(section) ? "active" : string.Empty)}";
 
   protected static string FormatCurrency(decimal value)
     => value.ToString("C2", CurrencyCulture);
 
-  protected void ToggleSection(SectionPanel section)
+  protected string MontoInput
   {
-    _expandedSection = _expandedSection == section ? (SectionPanel?)null : section;
+    get => _montoInput;
+    set
+    {
+      _montoInput = value;
+
+      if (Header is null)
+        return;
+
+      if (TryParseMonto(value, out var parsed))
+      {
+        Header.Monto = parsed;
+        HeaderEditContext?.NotifyFieldChanged(new FieldIdentifier(Header, nameof(Header.Monto)));
+      }
+    }
+  }
+
+  protected void ActivateSection(SectionPanel section)
+  {
+    _activeSection = section;
   }
 
   protected override void OnInitialized()
@@ -300,6 +330,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         ComprobanteId = headerDto.ComprobanteId,
         ComprobanteMonto = headerDto.ComprobanteMonto
       };
+      UpdateMontoInputFromHeader();
       await LoadLookupDataAsync(ct);
       _headerOriginal = Header.Clone();
       HeaderEditContext = new EditContext(Header);
@@ -310,6 +341,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
       await ReloadAttachmentsAsync(ct);
       await ReloadComprobantesAsync(ct);
+      await ReloadBancoMovimientosAsync(ct);
     }
     catch (OperationCanceledException)
     {
@@ -334,6 +366,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
 
     Header.CopyFrom(_headerOriginal);
+    UpdateMontoInputFromHeader();
     HeaderEditContext = new EditContext(Header);
     StateHasChanged();
   }
@@ -355,6 +388,12 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     if (string.IsNullOrWhiteSpace(Header.TipoPoliza) || string.IsNullOrWhiteSpace(Header.FormaPago))
     {
       UiMessages.ShowError("Selecciona un tipo de póliza y una forma de pago.");
+      return;
+    }
+
+    if (Totals.Balance != 0m)
+    {
+      UiMessages.ShowWarning("Los Cargos y los Abonos no coinciden, verifique los movimientos Contables");
       return;
     }
 
@@ -406,6 +445,35 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       IsSavingHeader = false;
     }
   }
+
+  protected void OnMontoBlur()
+  {
+    if (Header is null)
+      return;
+
+    if (TryParseMonto(MontoInput, out var parsed))
+    {
+      Header.Monto = parsed;
+      _montoInput = FormatMonto(parsed);
+    }
+    else
+    {
+      _montoInput = FormatMonto(Header.Monto);
+    }
+
+    HeaderEditContext?.NotifyFieldChanged(new FieldIdentifier(Header, nameof(Header.Monto)));
+  }
+
+  private void UpdateMontoInputFromHeader()
+  {
+    _montoInput = FormatMonto(Header?.Monto ?? 0m);
+  }
+
+  private static string FormatMonto(decimal value)
+    => value.ToString("N2", CurrencyInputCulture);
+
+  private static bool TryParseMonto(string? value, out decimal result)
+    => decimal.TryParse(value, CurrencyNumberStyles, CurrencyInputCulture, out result);
 
   protected async Task ApplyCategoriaPlantillaAsync()
   {
@@ -589,6 +657,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
           _movimientoTarget.CopyFrom(MovimientoDraft);
       }
 
+      UpdateTotalsFromMovimientos();
+
       UiMessages.ShowSuccess("Movimiento guardado.");
       CloseMovimientoModal();
       await InvokeAsync(StateHasChanged);
@@ -746,6 +816,23 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     };
   }
 
+  private void UpdateTotalsFromMovimientos()
+  {
+    var totalDebe = Movimientos.Sum(m => m.Debe);
+    var totalHaber = Movimientos.Sum(m => m.Haber);
+
+    Totals = new MovimientoTotalsDto
+    {
+      Debe = totalDebe,
+      Haber = totalHaber
+    };
+
+    if (Header is not null)
+    {
+      Header.Status = HeaderStatus;
+    }
+  }
+
   private async Task ReloadMovimientosAsync(CancellationToken ct = default)
   {
     Movimientos.Clear();
@@ -820,6 +907,51 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
   }
 
+  private async Task ReloadBancoMovimientosAsync(CancellationToken ct = default)
+  {
+    BancoMovimientos.Clear();
+    IsLoadingBancoMovimientos = true;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var movimientos = await BancosService.GetMovementsByTransactionAsync(Id, ct);
+      BancoMovimientos.AddRange(movimientos);
+    }
+    catch (OperationCanceledException)
+    {
+      // ignored
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron cargar los movimientos bancarios: {ex.Message}");
+    }
+    finally
+    {
+      IsLoadingBancoMovimientos = false;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected async Task OpenComprobanteCfdiAsync(TransaccionCfdiCandidateDto? comprobante)
+  {
+    if (comprobante?.XmlAttachmentId is null)
+    {
+      return;
+    }
+
+    var url = $"/cfdi/html-cfdi/{comprobante.XmlAttachmentId}";
+
+    try
+    {
+      await JsRuntime.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+    }
+    catch
+    {
+      NavManager.NavigateTo(url);
+    }
+  }
+
   protected bool IsAttachmentDownloading(AttachmentModel attachment)
     => attachment.Id == _attachmentDownloadingId;
 
@@ -828,6 +960,101 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected bool IsMovimientoDeleting(MovimientoModel movimiento)
     => movimiento is not null && movimiento.Id == _movimientoDeletingId;
+
+  protected bool IsComprobanteUnlinking(TransaccionCfdiCandidateDto comprobante)
+    => comprobante is not null && comprobante.ComprobanteId == _unlinkingComprobanteId;
+
+  protected bool IsBancoMovimientoUnlinking(BankMovementDto movimiento)
+    => movimiento is not null && movimiento.MovimientoId == _unlinkingBancoMovimientoId;
+
+  protected async Task UnlinkComprobanteAsync(TransaccionCfdiCandidateDto comprobante)
+  {
+    if (Header is null)
+    {
+      return;
+    }
+
+    var confirmed = await ConfirmAsync("¿Estás seguro que deseas desligar este comprobante de esta póliza?");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    var placeholderTransaccionId = GetPlaceholderTransaccionId();
+    if (!placeholderTransaccionId.HasValue)
+    {
+      UiMessages.ShowError("No se pudo determinar la póliza temporal configurada.");
+      return;
+    }
+
+    _unlinkingComprobanteId = comprobante.ComprobanteId;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var request = new TransaccionComprobanteUnlinkRequest
+      {
+        CurrentTransaccionId = Header.Id,
+        TempTransaccionId = placeholderTransaccionId.Value,
+        ComprobanteId = comprobante.ComprobanteId
+      };
+
+      var result = await TransaccionService.UnlinkComprobanteAsync(request);
+      if (!result.Success)
+      {
+        UiMessages.ShowWarning(result.Message ?? "No se encontró el vínculo de este comprobante con la póliza actual.");
+      }
+      else
+      {
+        UiMessages.ShowSuccess(result.Message ?? "Comprobante desligado correctamente.");
+      }
+
+      await ReloadComprobantesAsync();
+      await ReloadAttachmentsAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo desligar el comprobante: {ex.Message}");
+    }
+    finally
+    {
+      _unlinkingComprobanteId = null;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected async Task UnlinkBancoMovimientoAsync(BankMovementDto movimiento)
+  {
+    if (movimiento is null)
+    {
+      return;
+    }
+
+    var confirmed = await ConfirmAsync("¿Estás seguro que deseas desligar este movimiento bancario de la póliza?");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    _unlinkingBancoMovimientoId = movimiento.MovimientoId;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      await BancosService.UnlinkMovementAsync(movimiento.MovimientoId);
+      UiMessages.ShowSuccess("Movimiento bancario desligado correctamente.");
+      await ReloadBancoMovimientosAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo desligar el movimiento bancario: {ex.Message}");
+    }
+    finally
+    {
+      _unlinkingBancoMovimientoId = null;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
 
   protected async Task DownloadAttachmentAsync(AttachmentModel attachment)
   {
@@ -866,40 +1093,126 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected async Task DeleteAttachmentAsync(AttachmentModel attachment)
   {
-    if (attachment is null)
+    if (attachment is null || Header is null)
       return;
 
-    bool confirm;
+    var extension = (attachment.Extension ?? string.Empty).Trim().ToLowerInvariant();
+    var isXml = extension == "xml";
+
+    if (!isXml)
+    {
+      var confirmed = await ConfirmAsync("¿Estás seguro que deseas borrar este archivo adjunto?");
+      if (!confirmed)
+        return;
+
+      await ExecuteAttachmentMutationAsync(
+          attachment.Id,
+          () => TransaccionService.DeleteAttachmentAsync(attachment.Id),
+          "Archivo adjunto eliminado.");
+      return;
+    }
+
+    int comprobanteId;
     try
     {
-      confirm = await JsRuntime.InvokeAsync<bool>("confirm", $"¿Deseas eliminar el adjunto '{attachment.Nombre}'?");
+      comprobanteId = await TransaccionService.GetComprobanteIdByXmlAttachmentAsync(attachment.Id);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo validar el XML: {ex.Message}");
+      return;
+    }
+
+    if (comprobanteId <= 0)
+    {
+      var confirmed = await ConfirmAsync("Este XML no está ligado a ningún comprobante. ¿Deseas borrarlo?");
+      if (!confirmed)
+        return;
+
+      await ExecuteAttachmentMutationAsync(
+          attachment.Id,
+          () => TransaccionService.DeleteAttachmentAsync(attachment.Id),
+          "Archivo adjunto eliminado.");
+      return;
+    }
+
+    bool isLinkedToCurrent;
+    try
+    {
+      isLinkedToCurrent = await TransaccionService.IsComprobanteLinkedToTransaccionAsync(Header.Id, comprobanteId);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo validar el vínculo del comprobante: {ex.Message}");
+      return;
+    }
+
+    if (isLinkedToCurrent)
+    {
+      UiMessages.ShowWarning("Este XML está ligado a esta Póliza y no puede ser borrado.");
+      return;
+    }
+
+    var placeholderTransaccionId = GetPlaceholderTransaccionId();
+    if (!placeholderTransaccionId.HasValue)
+    {
+      UiMessages.ShowError("No se pudo determinar la póliza temporal configurada.");
+      return;
+    }
+
+    var moveConfirmMessage =
+      $"Este XML está ligado a un comprobante, pero no a esta Póliza.\n" +
+      $"No se borrará; se moverá a la póliza temporal (TranID = {placeholderTransaccionId}).\n" +
+      "¿Deseas continuar?";
+
+    var moveConfirmed = await ConfirmAsync(moveConfirmMessage);
+    if (!moveConfirmed)
+      return;
+
+    await ExecuteAttachmentMutationAsync(
+        attachment.Id,
+        () => TransaccionService.MoveAttachmentToTransaccionAsync(attachment.Id, placeholderTransaccionId.Value),
+        "XML movido a la póliza temporal.");
+  }
+
+  private async Task<bool> ConfirmAsync(string message)
+  {
+    try
+    {
+      return await JsRuntime.InvokeAsync<bool>("confirm", message);
     }
     catch
     {
-      confirm = true;
+      return true;
     }
+  }
 
-    if (!confirm)
-      return;
-
-    _attachmentDeletingId = attachment.Id;
+  private async Task ExecuteAttachmentMutationAsync(int attachmentId, Func<Task> mutation, string successMessage)
+  {
+    _attachmentDeletingId = attachmentId;
     await InvokeAsync(StateHasChanged);
 
     try
     {
-      await TransaccionService.DeleteAttachmentAsync(attachment.Id);
+      await mutation();
       await ReloadAttachmentsAsync();
-      UiMessages.ShowSuccess("Archivo adjunto eliminado.");
+      UiMessages.ShowSuccess(successMessage);
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo eliminar el archivo adjunto: {ex.Message}");
+      UiMessages.ShowError($"No se pudo actualizar el archivo adjunto: {ex.Message}");
     }
     finally
     {
       _attachmentDeletingId = null;
       await InvokeAsync(StateHasChanged);
     }
+  }
+
+  private int? GetPlaceholderTransaccionId()
+  {
+    var placeholder = Configuration["SatXml:PlaceholderTransaccionId"];
+    return int.TryParse(placeholder, out var parsed) ? parsed : null;
   }
 
   protected async Task DeleteMovimientoAsync(MovimientoModel movimiento)

@@ -3,10 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Dapper;
-using Microsoft.Data.SqlClient;
-using OfficeOpenXml;
 using Microsoft.JSInterop;
+using OfficeOpenXml;
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
@@ -23,9 +22,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       try
       {
-        using var conn = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
-        var lines = (await conn.QueryAsync<string>("EXEC cfdi.GenerateDIOTTXT @Year, @Month, @receptor",
-                        new { Year = selectedYear, Month = selectedMonth, receptor = selectedRfc })).ToList();
+        var lines = (await DeclaracionService.GenerateDiotAsync(selectedRfc ?? string.Empty, selectedYear, selectedMonth)).ToList();
         if (lines == null || lines.Count == 0)
         {
           SetErrorMessage("No se obtuvieron datos para generar la DIOT.");
@@ -49,7 +46,11 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
     private async Task ExportExcelEmitidas() => await ExportExcel(includeEmitidas: true);
 
+    private async Task ExportExcelEmitidasPpd() => await ExportExcel(includeEmitidasPpd: true);
+
     private async Task ExportExcelRecibidas() => await ExportExcel(includeRecibidas: true);
+
+    private async Task ExportExcelRecibidasPpd() => await ExportExcel(includeRecibidasPpd: true);
 
     private async Task ExportExcelNominaEmitida() => await ExportExcel(includeNominaEmitida: true);
 
@@ -59,9 +60,15 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 
     private async Task ExportExcelTipoERecibidas() => await ExportExcel(includeTipoERecibidas: true);
 
+    private async Task ExportExcelComplementosEmitidos() => await ExportExcelComplementos(includeComplementosEmitidos: true);
+
+    private async Task ExportExcelComplementosRecibidos() => await ExportExcelComplementos(includeComplementosRecibidos: true);
+
     private async Task ExportExcel(
       bool includeEmitidas = false,
+      bool includeEmitidasPpd = false,
       bool includeRecibidas = false,
+      bool includeRecibidasPpd = false,
       bool includeNominaEmitida = false,
       bool includeNominaRecibida = false,
       bool includeTipoEEmitidas = false,
@@ -77,9 +84,19 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
           includedSheets.Add("Emitidas");
         }
 
+        if (includeEmitidasPpd && AddWorksheet(package, "Emitidas PPD", emitidasPpdBase))
+        {
+          includedSheets.Add("EmitidasPPD");
+        }
+
         if (includeRecibidas && AddWorksheet(package, "Recibidas", recibidasBase))
         {
           includedSheets.Add("Recibidas");
+        }
+
+        if (includeRecibidasPpd && AddWorksheet(package, "Recibidas PPD", recibidasPpdBase))
+        {
+          includedSheets.Add("RecibidasPPD");
         }
 
         if (includeNominaEmitida && AddWorksheet(package, "Nómina Emitida", emitidasNominaBase))
@@ -119,6 +136,43 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       catch (Exception ex)
       {
         SetErrorMessage("Error al exportar a Excel: " + ex.Message);
+      }
+    }
+
+    private async Task ExportExcelComplementos(bool includeComplementosEmitidos = false, bool includeComplementosRecibidos = false)
+    {
+      try
+      {
+        using var package = new OfficeOpenXml.ExcelPackage();
+        var includedSheets = new List<string>();
+
+        if (includeComplementosEmitidos && AddComplementosWorksheet(package, "Complementos Emitidos", complementosEmitidosBase))
+        {
+          includedSheets.Add("ComplementosEmitidos");
+        }
+
+        if (includeComplementosRecibidos && AddComplementosWorksheet(package, "Complementos Recibidos", complementosRecibidosBase))
+        {
+          includedSheets.Add("ComplementosRecibidos");
+        }
+
+        if (includedSheets.Count == 0)
+        {
+          SetErrorMessage("No hay datos para exportar.");
+          return;
+        }
+
+        byte[] fileBytes = package.GetAsByteArray();
+        string fileName = "DeclaracionPrevia_Complementos";
+        fileName += $"_{string.Join("_", includedSheets)}_{selectedYear}{(isAnnual ? string.Empty : "_" + selectedMonth.ToString("D2"))}.xlsx";
+        string base64 = Convert.ToBase64String(fileBytes);
+        string dataUrl = $"data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{base64}";
+        await JS.InvokeVoidAsync("triggerFileDownload", fileName, dataUrl);
+        statusMessage = $"Archivo Excel '{fileName}' generado y descargado.";
+      }
+      catch (Exception ex)
+      {
+        SetErrorMessage("Error al exportar complementos a Excel: " + ex.Message);
       }
     }
 
@@ -206,6 +260,87 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       worksheet.Column(3).Style.Numberformat.Format = "yyyy-mm-dd";
       worksheet.Column(26).Style.Numberformat.Format = "yyyy-mm-dd";
 
+      worksheet.Cells[1, 1, 1, headers.Length].Style.Font.Bold = true;
+      worksheet.Cells.AutoFitColumns();
+
+      return true;
+    }
+
+    private static bool IsIncludedComplemento(DeclaracionComplementoBase item) =>
+      !string.Equals(item.D?.Trim(), "X", StringComparison.OrdinalIgnoreCase);
+
+    private bool AddComplementosWorksheet(OfficeOpenXml.ExcelPackage package, string sheetName, IEnumerable<DeclaracionComplementoBase>? items)
+    {
+      var includedItems = items?
+        .Where(IsIncludedComplemento)
+        .ToList();
+
+      if (includedItems == null || includedItems.Count == 0)
+      {
+        return false;
+      }
+
+      var worksheet = package.Workbook.Worksheets.Add(sheetName);
+      string[] headers =
+      {
+        "Comprobante_ID", "Poliza", "Folio", "Incluido", "Polizas", "FechaPago", "Mes", "Año",
+        "NumParcialidad", "ImpSaldoAnt", "ImpPagado", "ImpSaldoInsoluto", "Comp_Actos16", "Comp_IVA",
+        "MontoPago", "ComprobanteUUID", "EmisorRfc", "ReceptorRfc", "Pago_Id", "FormaDePagoP", "MonedaP",
+        "DoctoRelacionado_Id", "UUID_DoctoRelacionado", "MonedaDR", "XML_Attachment_ID", "EsEmitida", "EsRecibida"
+      };
+
+      for (int j = 0; j < headers.Length; j++)
+      {
+        worksheet.Cells[1, j + 1].Value = headers[j];
+      }
+
+      int row = 2;
+      foreach (var item in includedItems)
+      {
+        worksheet.Cells[row, 1].Value = item.Comprobante_Id;
+        worksheet.Cells[row, 2].Value = item.Poliza;
+        worksheet.Cells[row, 3].Value = item.Folio;
+        worksheet.Cells[row, 4].Value = item.D;
+        worksheet.Cells[row, 5].Value = item.Polizas;
+        worksheet.Cells[row, 6].Value = item.FechaPago;
+        worksheet.Cells[row, 7].Value = item.MES_GLOBAL;
+        worksheet.Cells[row, 8].Value = item.ANIO_GLOBAL;
+        worksheet.Cells[row, 9].Value = item.NumParcialidad;
+        worksheet.Cells[row, 10].Value = item.ImpSaldoAnt;
+        worksheet.Cells[row, 11].Value = item.ImpPagado;
+        worksheet.Cells[row, 12].Value = item.ImpSaldoInsoluto;
+        worksheet.Cells[row, 13].Value = item.Comp_Actos16;
+        worksheet.Cells[row, 14].Value = item.Comp_IVA;
+        worksheet.Cells[row, 15].Value = item.MontoPago;
+        worksheet.Cells[row, 16].Value = item.ComprobanteUUID;
+        worksheet.Cells[row, 17].Value = item.EmisorRfc;
+        worksheet.Cells[row, 18].Value = item.ReceptorRfc;
+        worksheet.Cells[row, 19].Value = item.Pago_Id;
+        worksheet.Cells[row, 20].Value = item.FormaDePagoP;
+        worksheet.Cells[row, 21].Value = item.MonedaP;
+        worksheet.Cells[row, 22].Value = item.DoctoRelacionado_Id;
+        worksheet.Cells[row, 23].Value = item.UUID_DoctoRelacionado;
+        worksheet.Cells[row, 24].Value = item.MonedaDR;
+        worksheet.Cells[row, 25].Value = item.XML_Attachment_ID;
+        worksheet.Cells[row, 26].Value = item.EsEmitida;
+        worksheet.Cells[row, 27].Value = item.EsRecibida;
+        row++;
+      }
+
+      worksheet.Cells[row, 1].Value = "Totals:";
+      worksheet.Cells[row, 10].Formula = $"SUM(J2:J{row - 1})";
+      worksheet.Cells[row, 11].Formula = $"SUM(K2:K{row - 1})";
+      worksheet.Cells[row, 12].Formula = $"SUM(L2:L{row - 1})";
+      worksheet.Cells[row, 13].Formula = $"SUM(M2:M{row - 1})";
+      worksheet.Cells[row, 14].Formula = $"SUM(N2:N{row - 1})";
+      worksheet.Cells[row, 15].Formula = $"SUM(O2:O{row - 1})";
+
+      for (int col = 10; col <= 15; col++)
+      {
+        worksheet.Column(col).Style.Numberformat.Format = "#,##0.000000";
+      }
+
+      worksheet.Column(6).Style.Numberformat.Format = "yyyy-mm-dd";
       worksheet.Cells[1, 1, 1, headers.Length].Style.Font.Bold = true;
       worksheet.Cells.AutoFitColumns();
 

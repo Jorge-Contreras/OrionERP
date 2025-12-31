@@ -72,6 +72,12 @@
         <button class="nav-link" id="recibidas-tab" data-bs-toggle="tab" data-bs-target="#recibidas" type="button" role="tab" aria-controls="recibidas" aria-selected="false">RECIBIDAS</button>
     </li>
     <li class="nav-item" role="presentation">
+        <button class="nav-link" id="complementos-emitidos-tab" data-bs-toggle="tab" data-bs-target="#complementos-emitidos" type="button" role="tab" aria-controls="complementos-emitidos" aria-selected="false">COMPLEMENTOS EMITIDOS</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="complementos-recibidos-tab" data-bs-toggle="tab" data-bs-target="#complementos-recibidos" type="button" role="tab" aria-controls="complementos-recibidos" aria-selected="false">COMPLEMENTOS RECIBIDOS</button>
+    </li>
+    <li class="nav-item" role="presentation">
         <button class="nav-link" id="tipo-e-emitidas-tab" data-bs-toggle="tab" data-bs-target="#tipo-e-emitidas" type="button" role="tab" aria-controls="tipo-e-emitidas" aria-selected="false">TIPO E EMITIDAS</button>
     </li>
     <li class="nav-item" role="presentation">
@@ -84,34 +90,18 @@
         <button class="nav-link" id="nomina-recibidas-tab" data-bs-toggle="tab" data-bs-target="#nomina-recibidas" type="button" role="tab" aria-controls="nomina-recibidas" aria-selected="false">NOMINA RECIBIDAS</button>
     </li>
     <li class="nav-item" role="presentation">
+        <button class="nav-link" id="emitidas-ppd-tab" data-bs-toggle="tab" data-bs-target="#emitidas-ppd" type="button" role="tab" aria-controls="emitidas-ppd" aria-selected="false">EMITIDAS PPD</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="recibidas-ppd-tab" data-bs-toggle="tab" data-bs-target="#recibidas-ppd" type="button" role="tab" aria-controls="recibidas-ppd" aria-selected="false">RECIBIDAS PPD</button>
+    </li>
+    <li class="nav-item" role="presentation">
         <button class="nav-link" id="otros-tab" data-bs-toggle="tab" data-bs-target="#otros" type="button" role="tab" aria-controls="otros" aria-selected="false">OTROS</button>
     </li>
 </ul>
 <div class="tab-content" id="declaracionTabContent">
     <div class="tab-pane fade show active" id="emitidas" role="tabpanel" aria-labelledby="emitidas-tab">
         <div class="mb-2 filter-bar">
-            <div class="filter-pair">
-                <label for="emitSortCol">Ordenar por:</label>
-                <select id="emitSortCol"
-                        @bind="emitidasSortColumn"
-                        @bind:after="OnEmitidasSortsChangedAsync"
-                        class="form-select inline-select">
-                    @if (emitidasSortableFields != null)
-                    {
-                        @foreach (var field in emitidasSortableFields)
-                        {
-                            <option value="@field.Value">@field.Key</option>
-                        }
-                    }
-                </select>
-            </div>
-            <select id="emitSortDir"
-                    @bind="emitidasSortOrder"
-                    @bind:after="OnEmitidasSortsChangedAsync"
-                    class="form-select inline-select">
-                <option value="ASC">ASC</option>
-                <option value="DESC">DESC</option>
-            </select>
             <button class="btn btn-sm btn-outline-primary" @onclick="ToggleEmitidaSelected">
                 Excluir / Incluir
             </button>
@@ -123,17 +113,13 @@
             </button>
         </div>
         <div class="table-responsive table-scroll">
-            <CFDITable Items="emitidasPage"
+            <CFDITable Items="emitidas"
                        Totals="emitidasTotals"
-                       OnRowClick="@(item => SelectEmitidaAsync(ToDeclaracionEmitida(item)))"
-                       OnOpenDetails="@(item => OpenEmitidaDetails(ToDeclaracionEmitida(item)))"
-                       OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
-                       RowClassResolver="@(item => GetEmitidaRowClass(ToDeclaracionEmitida(item)))"
+                       PageSize="50"
+                       OnRowClick="SelectEmitidaAsync"
+                       RowClassResolver="GetEmitidaRowClass"
                        CounterpartyHeader="Receptor"
-                       CounterpartySelector="@(item => item.RECEPTOR)"
-                       CurrentSortColumn="emitidasSortColumn"
-                       CurrentSortOrder="emitidasSortOrder"
-                       OnSort="SortEmitidasByColumn">
+                       CounterpartySelector="@(item => item.RECEPTOR)">
                 <DetailsTemplate Context="item">
                     @if (selectedEmitida?.Comprobante_Id == item.Comprobante_Id && emitidasComplementos?.Count > 0)
                     {
@@ -186,72 +172,47 @@
                 </DetailsTemplate>
             </CFDITable>
         </div>
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <small>Mostrando página @emitidasCurrentPage de @emitidasPageCount</small>
-            <div class="btn-group" role="group" aria-label="Paginación facturas emitidas">
-                <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousEmitidasPage" disabled="@(emitidasCurrentPage <= 1)">Anterior</button>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="NextEmitidasPage" disabled="@(emitidasCurrentPage >= emitidasPageCount)">Siguiente</button>
-            </div>
+    </div>
+    <div class="tab-pane fade" id="complementos-emitidos" role="tabpanel" aria-labelledby="complementos-emitidos-tab">
+        <div class="mb-2 filter-bar">
+            <button class="btn btn-sm btn-secondary" @onclick="ExportExcelComplementosEmitidos">
+                Exportar Complementos Emitidos a Excel
+            </button>
+        </div>
+        <div class="table-responsive table-scroll">
+            <ComplementosTable Items="complementosEmitidosBase"
+                               PageSize="50">
+            </ComplementosTable>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="complementos-recibidos" role="tabpanel" aria-labelledby="complementos-recibidos-tab">
+        <div class="mb-2 filter-bar">
+            <button class="btn btn-sm btn-secondary" @onclick="ExportExcelComplementosRecibidos">
+                Exportar Complementos Recibidos a Excel
+            </button>
+        </div>
+        <div class="table-responsive table-scroll">
+            <ComplementosTable Items="complementosRecibidosBase"
+                               PageSize="50">
+            </ComplementosTable>
         </div>
     </div>
     <div class="tab-pane fade" id="recibidas" role="tabpanel" aria-labelledby="recibidas-tab">
         <div class="mb-2 filter-bar">
-            <div class="filter-pair">
-                <label for="recibSortCol">Ordenar por:</label>
-                <select id="recibSortCol"
-                        @bind="recibidasSortColumn"
-                        @bind:after="OnRecibidasSortChangedAsync"
-                        class="form-select inline-select">
-                    @if (recibidasSortableFields != null)
-                    {
-                        @foreach (var field in recibidasSortableFields)
-                        {
-                            <option value="@field.Value">@field.Key</option>
-                        }
-                    }
-                </select>
-            </div>
-            <select @bind="recibidasSortOrder" @bind:after="OnRecibidasSortChangedAsync" class="form-select inline-select">
-                <option value="ASC">ASC</option>
-                <option value="DESC">DESC</option>
-            </select>
             <button class="btn btn-sm btn-outline-primary ms-3" @onclick="ToggleRecibidaSelected">Excluir / Incluir</button>
             <button class="btn btn-sm btn-outline-primary ms-1" @onclick="ExcludePagosYDevoluciones">Excluir Pagos/Dev</button>
             <button class="btn btn-sm btn-secondary ms-1" @onclick="ExportExcelRecibidas">Exportar Recibidas a Excel</button>
             <button class="btn btn-sm btn-info ms-1" @onclick="GenerateDIOT">Generar DIOT</button>
         </div>
         <div class="table-scroll">
-            <CFDITable Items="recibidasPage"
+            <CFDITable Items="recibidas"
                        Totals="recibidasTotals"
-                       OnRowClick="@(item => SelectRecibidaAsync(ToDeclaracionRecibida(item)))"
-                       OnOpenDetails="@(item => OpenEmitidaDetails(ToDeclaracionEmitida(item)))"
-                       OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
-                       RowClassResolver="@(item => GetRecibidaRowClass(ToDeclaracionRecibida(item)))"
+                       PageSize="50"
+                       OnRowClick="SelectRecibidaAsync"
+                       RowClassResolver="GetRecibidaRowClass"
                        CounterpartyHeader="Emisor"
-                       CounterpartySelector="@(item => item.EMISOR)"
-                       ShowXmlAttachment="false"
-                       AdditionalColumnsCount="1"
-                       CurrentSortColumn="recibidasSortColumn"
-                       CurrentSortOrder="recibidasSortOrder"
-                       OnSort="SortRecibidasByColumn">
-                <ExtraHeaderColumns Context="_">
-                    <th>Acciones</th>
-                </ExtraHeaderColumns>
-                <ExtraColumns Context="item">
-                    <td>
-                        <button class="btn btn-sm btn-outline-info"
-                                @onclick:stopPropagation="true"
-                                @onclick="() => OpenRecibidaDetails(ToDeclaracionRecibida(item))">
-                            Ver
-                        </button>
-                        <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
-                                title="@(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
-                                @onclick:stopPropagation="true"
-                                @onclick="() => HandlePolizaClick(item)">
-                            @(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : "Tx")
-                        </button>
-                    </td>
-                </ExtraColumns>
+                       CounterpartySelector="@(item => item.EMISOR)">
+               
                 <DetailsTemplate Context="item">
                     @if (selectedRecibida?.Comprobante_Id == item.Comprobante_Id && recibidasComplementos?.Count > 0)
                     {
@@ -303,13 +264,6 @@
                     }
                 </DetailsTemplate>
             </CFDITable>
-        </div>
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <small>Mostrando página @recibidasCurrentPage de @recibidasPageCount</small>
-            <div class="btn-group" role="group" aria-label="Paginación facturas recibidas">
-                <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousRecibidasPage" disabled="@(recibidasCurrentPage <= 1)">Anterior</button>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="NextRecibidasPage" disabled="@(recibidasCurrentPage >= recibidasPageCount)">Siguiente</button>
-            </div>
         </div>
     </div>
     <div class="tab-pane fade" id="tipo-e-emitidas" role="tabpanel" aria-labelledby="tipo-e-emitidas-tab">
@@ -319,17 +273,13 @@
             </button>
         </div>
         <div class="table-responsive table-scroll">
-            <CFDITable Items="tipoEEmitidasPage"
+            <CFDITable Items="tipoEEmitidas"
                        Totals="tipoEEmitidasTotals"
-                       OnRowClick="@(item => SelectEmitidaAsync(ToDeclaracionEmitida(item)))"
-                       OnOpenDetails="@(item => OpenEmitidaDetails(ToDeclaracionEmitida(item)))"
-                       OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
-                       RowClassResolver="@(item => GetEmitidaRowClass(ToDeclaracionEmitida(item)))"
+                       PageSize="50"
+                       OnRowClick="SelectEmitidaAsync"
+                       RowClassResolver="GetEmitidaRowClass"
                        CounterpartyHeader="Receptor"
-                       CounterpartySelector="@(item => item.RECEPTOR)"
-                       CurrentSortColumn="emitidasSortColumn"
-                       CurrentSortOrder="emitidasSortOrder"
-                       OnSort="SortEmitidasByColumn">
+                       CounterpartySelector="@(item => item.RECEPTOR)">
                 <DetailsTemplate Context="item">
                     @if (selectedEmitida?.Comprobante_Id == item.Comprobante_Id && emitidasComplementos?.Count > 0)
                     {
@@ -382,13 +332,6 @@
                 </DetailsTemplate>
             </CFDITable>
         </div>
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <small>Mostrando página @tipoEEmitidasCurrentPage de @tipoEEmitidasPageCount</small>
-            <div class="btn-group" role="group" aria-label="Paginación facturas tipo E emitidas">
-                <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousTipoEEmitidasPage" disabled="@(tipoEEmitidasCurrentPage <= 1)">Anterior</button>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="NextTipoEEmitidasPage" disabled="@(tipoEEmitidasCurrentPage >= tipoEEmitidasPageCount)">Siguiente</button>
-            </div>
-        </div>
     </div>
     <div class="tab-pane fade" id="tipo-e-recibidas" role="tabpanel" aria-labelledby="tipo-e-recibidas-tab">
         <div class="mb-2 filter-bar">
@@ -397,37 +340,15 @@
             </button>
         </div>
         <div class="table-scroll">
-            <CFDITable Items="tipoERecibidasPage"
+            <CFDITable Items="tipoERecibidas"
                        Totals="tipoERecibidasTotals"
-                       OnRowClick="@(item => SelectRecibidaAsync(ToDeclaracionRecibida(item)))"
-                       OnOpenDetails="@(item => OpenEmitidaDetails(ToDeclaracionEmitida(item)))"
-                       OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
-                       RowClassResolver="@(item => GetRecibidaRowClass(ToDeclaracionRecibida(item)))"
+                       PageSize="50"
+                       OnRowClick="SelectRecibidaAsync"
+                       RowClassResolver="GetRecibidaRowClass"
                        CounterpartyHeader="Emisor"
                        CounterpartySelector="@(item => item.EMISOR)"
-                       ShowXmlAttachment="false"
-                       AdditionalColumnsCount="1"
-                       CurrentSortColumn="recibidasSortColumn"
-                       CurrentSortOrder="recibidasSortOrder"
-                       OnSort="SortRecibidasByColumn">
-                <ExtraHeaderColumns Context="_">
-                    <th>Acciones</th>
-                </ExtraHeaderColumns>
-                <ExtraColumns Context="item">
-                    <td>
-                        <button class="btn btn-sm btn-outline-info"
-                                @onclick:stopPropagation="true"
-                                @onclick="() => OpenRecibidaDetails(ToDeclaracionRecibida(item))">
-                            Ver
-                        </button>
-                        <button class="btn btn-sm @(item.Poliza == _placeholderTransaccionId.ToString() ? "btn-outline-danger" : "btn-outline-success")"
-                                title="@(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear Póliza" : "Ir a Transacción")"
-                                @onclick:stopPropagation="true"
-                                @onclick="() => HandlePolizaClick(item)">
-                            @(item.Poliza == _placeholderTransaccionId.ToString() ? "Crear" : "Tx")
-                        </button>
-                    </td>
-                </ExtraColumns>
+                       >
+               
                 <DetailsTemplate Context="item">
                     @if (selectedRecibida?.Comprobante_Id == item.Comprobante_Id && recibidasComplementos?.Count > 0)
                     {
@@ -479,13 +400,6 @@
                     }
                 </DetailsTemplate>
             </CFDITable>
-        </div>
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <small>Mostrando página @tipoERecibidasCurrentPage de @tipoERecibidasPageCount</small>
-            <div class="btn-group" role="group" aria-label="Paginación facturas tipo E recibidas">
-                <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousTipoERecibidasPage" disabled="@(tipoERecibidasCurrentPage <= 1)">Anterior</button>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="NextTipoERecibidasPage" disabled="@(tipoERecibidasCurrentPage >= tipoERecibidasPageCount)">Siguiente</button>
-            </div>
         </div>
     </div>
     <div class="tab-pane fade" id="nomina-emitidas" role="tabpanel" aria-labelledby="nomina-emitidas-tab">
@@ -496,8 +410,6 @@
         <div class="table-responsive table-scroll">
             <CFDITable Items="emitidasNomina"
                        Totals="emitidasNominaTotals"
-                       OnOpenDetails="@(item => OpenEmitidaDetails(ToDeclaracionEmitida(item)))"
-                       OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
                        CounterpartyHeader="Receptor"
                        CounterpartySelector="@(item => item.RECEPTOR)"
                        NoDataMessage="No se encontraron CFDIs de nómina emitidos.">
@@ -512,12 +424,151 @@
         <div class="table-responsive table-scroll">
             <CFDITable Items="recibidasNomina"
                        Totals="recibidasNominaTotals"
-                       OnOpenDetails="@(item => OpenEmitidaDetails(ToDeclaracionEmitida(item)))"
-                       OnHandlePolizaClick="@(item => HandlePolizaClick(item))"
                        CounterpartyHeader="Emisor"
                        CounterpartySelector="@(item => item.EMISOR)"
-                       ShowXmlAttachment="false"
                        NoDataMessage="No se encontraron CFDIs de nómina recibidos.">
+            </CFDITable>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="emitidas-ppd" role="tabpanel" aria-labelledby="emitidas-ppd-tab">
+        <div class="mb-2 filter-bar">
+            <button class="btn btn-sm btn-outline-primary" @onclick="ToggleEmitidaSelected">
+                Excluir / Incluir
+            </button>
+            <button class="btn btn-sm btn-warning" @onclick="CancelSelectedEmitidaCfdi">
+                Cancelar CFDI
+            </button>
+            <button class="btn btn-sm btn-secondary" @onclick="ExportExcelEmitidasPpd">
+                Exportar Emitidas PPD a Excel
+            </button>
+        </div>
+        <div class="table-responsive table-scroll">
+            <CFDITable Items="emitidasPpd"
+                       Totals="emitidasPpdTotals"
+                       PageSize="50"
+                       OnRowClick="SelectEmitidaAsync"
+                       RowClassResolver="GetEmitidaRowClass"
+                       CounterpartyHeader="Receptor"
+                       CounterpartySelector="@(item => item.RECEPTOR)">
+                <DetailsTemplate Context="item">
+                    @if (selectedEmitida?.Comprobante_Id == item.Comprobante_Id && emitidasComplementos?.Count > 0)
+                    {
+                        <div class="table-responsive table-scroll mb-2">
+                            <table class="table table-sm table-bordered table-striped align-middle compact-table mb-0">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Pago Id</th>
+                                        <th>Folio</th>
+                                        <th>Fecha Pago</th>
+                                        <th>Forma Pago</th>
+                                        <th>Moneda Pago</th>
+                                        <th class="num">Monto Pago</th>
+                                        <th class="num">Parcialidad</th>
+                                        <th>Moneda DR</th>
+                                        <th class="num">Saldo Anterior</th>
+                                        <th class="num">Importe Pagado</th>
+                                        <th class="num">Saldo Insoluto</th>
+                                        <th class="num">Tot P Traslados</th>
+                                        <th class="num">Tot P Retenciones</th>
+                                        <th class="num">Tot DR Traslados</th>
+                                        <th class="num">Tot DR Retenciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var complemento in emitidasComplementos)
+                                    {
+                                        <tr>
+                                            <td>@complemento.Pago_Id</td>
+                                            <td>@complemento.Folio</td>
+                                            <td>@complemento.FechaPago.ToString("yyyy-MM-dd")</td>
+                                            <td>@complemento.FormaDePagoP</td>
+                                            <td>@complemento.MonedaP</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.MontoPago)</td>
+                                            <td class="num">@complemento.NumParcialidad</td>
+                                            <td>@complemento.MonedaDR</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoAnt)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.ImpPagado)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoInsoluto)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Traslados)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Retenciones)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Traslados)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Retenciones)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </DetailsTemplate>
+            </CFDITable>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="recibidas-ppd" role="tabpanel" aria-labelledby="recibidas-ppd-tab">
+        <div class="mb-2 filter-bar">
+            <button class="btn btn-sm btn-outline-primary ms-3" @onclick="ToggleRecibidaSelected">Excluir / Incluir</button>
+            <button class="btn btn-sm btn-outline-primary ms-1" @onclick="ExcludePagosYDevoluciones">Excluir Pagos/Dev</button>
+            <button class="btn btn-sm btn-secondary ms-1" @onclick="ExportExcelRecibidasPpd">Exportar Recibidas PPD a Excel</button>
+            <button class="btn btn-sm btn-info ms-1" @onclick="GenerateDIOT">Generar DIOT</button>
+        </div>
+        <div class="table-scroll">
+            <CFDITable Items="recibidasPpd"
+                       Totals="recibidasPpdTotals"
+                       PageSize="50"
+                       OnRowClick="SelectRecibidaAsync"
+                       RowClassResolver="GetRecibidaRowClass"
+                       CounterpartyHeader="Emisor"
+                       CounterpartySelector="@(item => item.EMISOR)">
+               
+                <DetailsTemplate Context="item">
+                    @if (selectedRecibida?.Comprobante_Id == item.Comprobante_Id && recibidasComplementos?.Count > 0)
+                    {
+                        <div class="table-responsive table-scroll mb-2">
+                            <table class="table table-sm table-bordered table-striped align-middle compact-table mb-0">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Pago Id</th>
+                                        <th>Folio</th>
+                                        <th>Fecha Pago</th>
+                                        <th>Forma Pago</th>
+                                        <th>Moneda Pago</th>
+                                        <th class="num">Monto Pago</th>
+                                        <th class="num">Parcialidad</th>
+                                        <th>Moneda DR</th>
+                                        <th class="num">Saldo Anterior</th>
+                                        <th class="num">Importe Pagado</th>
+                                        <th class="num">Saldo Insoluto</th>
+                                        <th class="num">Tot P Traslados</th>
+                                        <th class="num">Tot P Retenciones</th>
+                                        <th class="num">Tot DR Traslados</th>
+                                        <th class="num">Tot DR Retenciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var complemento in recibidasComplementos)
+                                    {
+                                        <tr>
+                                            <td>@complemento.Pago_Id</td>
+                                            <td>@complemento.Folio</td>
+                                            <td>@complemento.FechaPago.ToString("yyyy-MM-dd")</td>
+                                            <td>@complemento.FormaDePagoP</td>
+                                            <td>@complemento.MonedaP</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.MontoPago)</td>
+                                            <td class="num">@complemento.NumParcialidad</td>
+                                            <td>@complemento.MonedaDR</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoAnt)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.ImpPagado)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.ImpSaldoInsoluto)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Traslados)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_P_Retenciones)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Traslados)</td>
+                                            <td class="num">@string.Format("{0:N6}", complemento.Tot_DR_Retenciones)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </DetailsTemplate>
             </CFDITable>
         </div>
     </div>
@@ -637,4 +688,3 @@
 {
     <div class="alert alert-danger">@errorMessage</div>
 }
-

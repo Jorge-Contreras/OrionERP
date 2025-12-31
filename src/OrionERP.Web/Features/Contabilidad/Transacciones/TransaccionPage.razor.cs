@@ -47,8 +47,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private SectionPanel _activeSection = SectionPanel.Movimientos;
 
   private bool _isDisposed;
+  private string _montoInput = string.Empty;
 
   private static readonly CultureInfo CurrencyCulture = new("es-MX");
+  private static readonly CultureInfo CurrencyInputCulture = new("en-US");
+  private static readonly NumberStyles CurrencyNumberStyles = NumberStyles.AllowThousands | NumberStyles.AllowDecimalPoint;
 
   private const long AttachmentMaxFileSize = TransaccionAttachmentCreateRequest.MaxFileSizeBytes;
 
@@ -106,6 +109,24 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected static string FormatCurrency(decimal value)
     => value.ToString("C2", CurrencyCulture);
+
+  protected string MontoInput
+  {
+    get => _montoInput;
+    set
+    {
+      _montoInput = value;
+
+      if (Header is null)
+        return;
+
+      if (TryParseMonto(value, out var parsed))
+      {
+        Header.Monto = parsed;
+        HeaderEditContext?.NotifyFieldChanged(new FieldIdentifier(Header, nameof(Header.Monto)));
+      }
+    }
+  }
 
   protected void ActivateSection(SectionPanel section)
   {
@@ -309,6 +330,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         ComprobanteId = headerDto.ComprobanteId,
         ComprobanteMonto = headerDto.ComprobanteMonto
       };
+      UpdateMontoInputFromHeader();
       await LoadLookupDataAsync(ct);
       _headerOriginal = Header.Clone();
       HeaderEditContext = new EditContext(Header);
@@ -344,6 +366,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
 
     Header.CopyFrom(_headerOriginal);
+    UpdateMontoInputFromHeader();
     HeaderEditContext = new EditContext(Header);
     StateHasChanged();
   }
@@ -422,6 +445,35 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       IsSavingHeader = false;
     }
   }
+
+  protected void OnMontoBlur()
+  {
+    if (Header is null)
+      return;
+
+    if (TryParseMonto(MontoInput, out var parsed))
+    {
+      Header.Monto = parsed;
+      _montoInput = FormatMonto(parsed);
+    }
+    else
+    {
+      _montoInput = FormatMonto(Header.Monto);
+    }
+
+    HeaderEditContext?.NotifyFieldChanged(new FieldIdentifier(Header, nameof(Header.Monto)));
+  }
+
+  private void UpdateMontoInputFromHeader()
+  {
+    _montoInput = FormatMonto(Header?.Monto ?? 0m);
+  }
+
+  private static string FormatMonto(decimal value)
+    => value.ToString("N2", CurrencyInputCulture);
+
+  private static bool TryParseMonto(string? value, out decimal result)
+    => decimal.TryParse(value, CurrencyNumberStyles, CurrencyInputCulture, out result);
 
   protected async Task ApplyCategoriaPlantillaAsync()
   {

@@ -76,10 +76,7 @@
           <tr>
             <th>Id</th>
             <th>Poliza</th>
-                        <th>Ver Poliza</th>
             <th>Fecha</th>
-            <th>Cuenta</th>
-            <th>Nombre_Cuenta</th>
             <th>Concepto</th>
             <th>Debe</th>
             <th>Haber</th>
@@ -93,13 +90,10 @@
           {
             <tr>
               <td>@row.Id</td>
-                            <td>@row.Poliza</td>
               <td>
-              <button class="btn btn-link btn-sm" type="button" @onclick="() => GoToPoliza(row.Poliza)">Ver póliza</button>
+                <button class="btn btn-link btn-sm p-0" type="button" @onclick="() => GoToPoliza(row.Poliza)">@row.Poliza</button>
               </td>
               <td>@row.Fecha</td>
-              <td>@row.Cuenta</td>
-              <td>@row.Nombre_Cuenta</td>
               <td>@row.Concepto</td>
               <td>@row.Debe</td>
               <td>@row.Haber</td>

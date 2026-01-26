@@ -85,7 +85,7 @@
             <th>Haber</th>
             <th>Balance</th>
             <th>Revisado</th>
-            <th></th>
+            <th>Orden</th>
           </tr>
         </thead>
         <tbody>
@@ -106,7 +106,20 @@
               <td>@row.Balance</td>
               
               <td>@row.Revisado</td>
-              
+              <td>
+                <div class="d-inline-flex flex-column gap-1">
+                  <button class="btn btn-outline-secondary btn-sm py-0" type="button"
+                          disabled="@(!CanMoveUp(row.Poliza) || isLoading)"
+                          @onclick="() => MoveUpAsync(row)">
+                    Up
+                  </button>
+                  <button class="btn btn-outline-secondary btn-sm py-0" type="button"
+                          disabled="@(!CanMoveDown(row.Poliza) || isLoading)"
+                          @onclick="() => MoveDownAsync(row)">
+                    Down
+                  </button>
+                </div>
+              </td>
             </tr>
           }
         </tbody>
@@ -127,6 +140,7 @@
   private DateTime startDate = new DateTime(DateTime.Today.Year, 1, 1);
   private DateTime endDate = DateTime.Today;
   private readonly List<RegistrosContablesRow> registros = new();
+  private readonly List<int> transaccionOrder = new();
   private bool hasSearched;
   private bool isLoading;
   private string? errorMessage;
@@ -212,6 +226,7 @@
 
     accountSelection = null;
     registros.Clear();
+    transaccionOrder.Clear();
     hasSearched = false;
     errorMessage = null;
 
@@ -291,10 +306,12 @@
       var items = await RegistrosService.GetRegistrosAsync(startDate, endDate, selectedRfc!, accountSelection.Nivel1!, accountSelection.Nivel2!, nivel3);
       registros.Clear();
       registros.AddRange(items);
+      UpdateTransaccionOrder();
     }
     catch (Exception ex)
     {
       registros.Clear();
+      transaccionOrder.Clear();
       ReportError("No se pudo cargar información", ex);
     }
     finally
@@ -305,6 +322,73 @@
 
   private void GoToPoliza(int poliza)
     => Navigation.NavigateTo($"/contabilidad/transacciones/{poliza}");
+
+  private void UpdateTransaccionOrder()
+  {
+    transaccionOrder.Clear();
+    var seen = new HashSet<int>();
+    foreach (var row in registros)
+    {
+      if (seen.Add(row.Poliza))
+      {
+        transaccionOrder.Add(row.Poliza);
+      }
+    }
+  }
+
+  private bool CanMoveUp(int transaccionId)
+  {
+    var index = transaccionOrder.IndexOf(transaccionId);
+    return index > 0;
+  }
+
+  private bool CanMoveDown(int transaccionId)
+  {
+    var index = transaccionOrder.IndexOf(transaccionId);
+    return index >= 0 && index < transaccionOrder.Count - 1;
+  }
+
+  private async Task MoveUpAsync(RegistrosContablesRow row)
+  {
+    await MoveAsync(row, -1);
+  }
+
+  private async Task MoveDownAsync(RegistrosContablesRow row)
+  {
+    await MoveAsync(row, 1);
+  }
+
+  private async Task MoveAsync(RegistrosContablesRow row, int direction)
+  {
+    if (transaccionOrder.Count == 0)
+    {
+      return;
+    }
+
+    var anchorId = row.Poliza;
+    var anchorIndex = transaccionOrder.IndexOf(anchorId);
+    var targetIndex = anchorIndex + direction;
+    if (anchorIndex < 0 || targetIndex < 0 || targetIndex >= transaccionOrder.Count)
+    {
+      return;
+    }
+
+    var targetId = transaccionOrder[targetIndex];
+
+    isLoading = true;
+    errorMessage = null;
+
+    try
+    {
+      await RegistrosService.ReorderTransaccionAsync(anchorId, targetId, transaccionOrder);
+      await BuscarAsync();
+    }
+    catch (Exception ex)
+    {
+      ReportError("No se pudo reordenar la transacción", ex);
+      isLoading = false;
+    }
+  }
 
   private void ReportError(string message, Exception exception)
   {

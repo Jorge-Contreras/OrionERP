@@ -9,4 +9,9 @@ public interface IContabilidadRegistrosService
       string nivel1,
       string nivel2,
       string nivel3);
+
+  Task ReorderTransaccionAsync(
+      int anchorTransaccionId,
+      int targetTransaccionId,
+      IReadOnlyList<int> orderedTransaccionIds);
 }

@@ -101,18 +101,22 @@
               
               <td>@row.Revisado</td>
               <td>
-                <div class="d-inline-flex flex-column gap-1">
-                  <button class="btn btn-outline-secondary btn-sm py-0" type="button"
-                          disabled="@(!CanMoveUp(row.Poliza) || isLoading)"
-                          @onclick="() => MoveUpAsync(row)">
-                    Up
-                  </button>
-                  <button class="btn btn-outline-secondary btn-sm py-0" type="button"
-                          disabled="@(!CanMoveDown(row.Poliza) || isLoading)"
-                          @onclick="() => MoveDownAsync(row)">
-                    Down
-                  </button>
-                </div>
+                                <div class="d-inline-flex gap-1">
+                                    <button class="btn btn-outline-secondary btn-sm py-0" type="button"
+                                            disabled="@(!CanMoveUp(row.Poliza) || isLoading)"
+                                            @onclick="() => MoveUpAsync(row)"
+                                            title="Subir">
+                                        <i class="bi bi-arrow-up"></i>
+                                    </button>
+
+                                    <button class="btn btn-outline-secondary btn-sm py-0" type="button"
+                                            disabled="@(!CanMoveDown(row.Poliza) || isLoading)"
+                                            @onclick="() => MoveDownAsync(row)"
+                                            title="Bajar">
+                                        <i class="bi bi-arrow-down"></i>
+                                    </button>
+                                </div>
+
               </td>
             </tr>
           }

@@ -464,6 +464,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     HeaderEditContext?.NotifyFieldChanged(new FieldIdentifier(Header, nameof(Header.Monto)));
   }
 
+  protected void OnMontoInput(ChangeEventArgs args)
+  {
+    MontoInput = args.Value?.ToString() ?? string.Empty;
+  }
+
   private void UpdateMontoInputFromHeader()
   {
     _montoInput = FormatMonto(Header?.Monto ?? 0m);

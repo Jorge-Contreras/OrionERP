@@ -114,7 +114,7 @@ else if (Header is not null)
               <div class="row g-3 align-items-end">
                 <div class="col-12 col-md-4 col-xl-3">
                   <label class="form-label">Monto</label>
-                  <InputText class="form-control" inputmode="decimal" step="0.01" @bind-Value="MontoInput" @bind-Value:event="oninput" @onblur="OnMontoBlur" />
+                  <input class="form-control" inputmode="decimal" step="0.01" value="@MontoInput" @oninput="OnMontoInput" @onblur="OnMontoBlur" />
                   <ValidationMessage For="() => Header.Monto" />
                 </div>
                 <div class="col-12 col-md-4 col-xl-3">

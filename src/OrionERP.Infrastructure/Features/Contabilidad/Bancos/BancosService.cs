@@ -337,7 +337,7 @@ SELECT
     CAST(ISNULL(t.Monto, 0) AS decimal(19,2)) AS Monto
 FROM dbo.Transacciones AS t
 WHERE t.RFC = @Rfc
-  AND t.Forma_Pago = '03'
+  AND t.Forma_Pago IN ('03', '28', '04')
   AND YEAR(t.Fecha) = @Year
   AND MONTH(t.Fecha) = @Month
   AND NOT EXISTS (

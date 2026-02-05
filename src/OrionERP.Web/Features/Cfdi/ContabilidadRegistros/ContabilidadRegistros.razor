@@ -19,7 +19,7 @@
 }
 
 <div class="card p-3 mb-3">
-  <div class="row g-3 align-items-end">
+  <div class="row g-3 align-items-end mb-3">
     <div class="col-md-4">
       <label class="form-label">RFC (Razón Social)</label>
             <RfcPicker @bind-SelectedRfc="selectedRfc" @bind-SelectedRfc:after="OnRfcChangedAsync" />
@@ -51,13 +51,15 @@
     </div>
   </div>
 
-  <CuentaContablePicker
-    @ref="accountPicker"
-    @bind-SelectedRfc="selectedRfc"
-    @bind-SelectedRfc:after="OnAccountPickerRfcChangedAsync"
-    @bind-Selection="accountSelection"
-    SearchRequested="OnAccountPickerSearchRequestedAsync"
-    ErrorChanged="OnAccountPickerErrorChangedAsync" />
+  <div class="mt-3">
+    <CuentaContablePicker
+      @ref="accountPicker"
+      @bind-SelectedRfc="selectedRfc"
+      @bind-SelectedRfc:after="OnAccountPickerRfcChangedAsync"
+      @bind-Selection="accountSelection"
+      SearchRequested="OnAccountPickerSearchRequestedAsync"
+      ErrorChanged="OnAccountPickerErrorChangedAsync" />
+  </div>
 
   <div class="mt-3 d-flex flex-wrap align-items-center gap-2">
     @if (HasAccountSelection)

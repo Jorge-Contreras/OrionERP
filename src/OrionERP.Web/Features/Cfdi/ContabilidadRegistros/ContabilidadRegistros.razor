@@ -3,6 +3,7 @@
 @using OrionERP.Application.Features.Cfdi.ContabilidadRegistros
 @using OrionERP.Web.Shared
 @using OrionERP.Web.State
+@using System.Globalization
 @inject IContabilidadRegistrosService RegistrosService
 @inject NavigationManager Navigation
 @inject IUserRfcState RfcState
@@ -24,12 +25,29 @@
             <RfcPicker @bind-SelectedRfc="selectedRfc" @bind-SelectedRfc:after="OnRfcChangedAsync" />
     </div>
     <div class="col-md-3">
-      <label class="form-label">Fecha inicio</label>
-      <input class="form-control" type="date" @bind="startDate" />
+      <label class="form-label">Ejercicio</label>
+      <select class="form-select" @bind="selectedYear">
+        @for (var year = 1990; year <= 2050; year++)
+        {
+          <option value="@year">@year</option>
+        }
+      </select>
     </div>
     <div class="col-md-3">
-      <label class="form-label">Fecha fin</label>
-      <input class="form-control" type="date" @bind="endDate" />
+      <label class="form-label">Mes</label>
+      <select class="form-select" @bind="selectedMonth">
+        @for (var month = 1; month <= 12; month++)
+        {
+          <option value="@month">@CultureInfo.GetCultureInfo("es-MX").DateTimeFormat.GetMonthName(month)</option>
+        }
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label d-block">Filtro</label>
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="mostrarTodo" @bind="mostrarTodo" />
+        <label class="form-check-label" for="mostrarTodo">Mostrar todo</label>
+      </div>
     </div>
   </div>
 
@@ -135,8 +153,9 @@
   private CuentaContableSelection? accountSelection;
   private string? selectedRfc;
   private string? lastComponentRfc;
-  private DateTime startDate = new DateTime(DateTime.Today.Year, 1, 1);
-  private DateTime endDate = DateTime.Today;
+  private int selectedYear = DateTime.Today.Year;
+  private int selectedMonth = DateTime.Today.Month;
+  private bool mostrarTodo;
   private readonly List<RegistrosContablesRow> registros = new();
   private readonly List<int> transaccionOrder = new();
   private bool hasSearched;
@@ -301,6 +320,8 @@
     try
     {
       var nivel3 = string.IsNullOrWhiteSpace(accountSelection.Nivel3) ? "00" : accountSelection.Nivel3!;
+      var startDate = GetStartDate();
+      var endDate = GetEndDate();
       var items = await RegistrosService.GetRegistrosAsync(startDate, endDate, selectedRfc!, accountSelection.Nivel1!, accountSelection.Nivel2!, nivel3);
       registros.Clear();
       registros.AddRange(items);
@@ -392,5 +413,22 @@
   {
     errorMessage = message;
     Console.Error.WriteLine($"[ContabilidadRegistros] {message}: {exception}");
+  }
+
+  private DateTime GetStartDate()
+  {
+    if (mostrarTodo)
+    {
+      return new DateTime(1990, 1, 1, 0, 0, 0);
+    }
+
+    var currentYear = DateTime.Today.Year;
+    return new DateTime(currentYear, 1, 1, 0, 0, 0);
+  }
+
+  private DateTime GetEndDate()
+  {
+    var lastDay = DateTime.DaysInMonth(selectedYear, selectedMonth);
+    return new DateTime(selectedYear, selectedMonth, lastDay, 23, 59, 59);
   }
 }

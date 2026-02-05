@@ -194,6 +194,13 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
                 query.Add("nivel3", row.Nivel3);
             }
 
+            query.Add("anio", Anio.ToString(CultureInfo.InvariantCulture));
+
+            if (Mes.HasValue)
+            {
+                query.Add("mes", Mes.Value.ToString(CultureInfo.InvariantCulture));
+            }
+
             query.Add("rfc", CurrentRfc);
 
             Navigation.NavigateTo($"/cfdi/registros-contables{query.ToQueryString()}");

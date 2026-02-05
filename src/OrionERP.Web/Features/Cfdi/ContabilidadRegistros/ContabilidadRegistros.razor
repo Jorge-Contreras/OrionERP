@@ -178,6 +178,12 @@
   [Parameter, SupplyParameterFromQuery(Name = "rfc")]
   public string? QueryRfc { get; set; }
 
+  [Parameter, SupplyParameterFromQuery(Name = "anio")]
+  public int? QueryAnio { get; set; }
+
+  [Parameter, SupplyParameterFromQuery(Name = "mes")]
+  public int? QueryMes { get; set; }
+
   private bool HasAccountSelection => accountSelection?.HasNivel2 ?? false;
   private bool HasCompleteAccount => accountSelection?.HasNivel3 ?? false;
   private bool CanBuscar => HasAccountSelection && !string.IsNullOrWhiteSpace(selectedRfc);
@@ -214,15 +220,25 @@
       }
     }
 
-    var currentQueryKey = $"{QueryNivel1}|{QueryNivel2}|{QueryNivel3}|{QueryRfc}";
+    if (QueryAnio is >= 1990 and <= 2050)
+    {
+      selectedYear = QueryAnio.Value;
+    }
+
+    if (QueryMes is >= 1 and <= 12)
+    {
+      selectedMonth = QueryMes.Value;
+    }
+
+    var currentQueryKey = $"{QueryNivel1}|{QueryNivel2}|{QueryNivel3}|{QueryRfc}|{selectedYear}|{selectedMonth}";
 
     if (!string.IsNullOrWhiteSpace(QueryNivel1) && !string.Equals(currentQueryKey, lastQueryKey, StringComparison.Ordinal))
     {
       accountSelection = new CuentaContableSelection
       {
         Nivel1 = QueryNivel1,
-        Nivel2 = string.IsNullOrWhiteSpace(QueryNivel2) ? null : QueryNivel2,
-        Nivel3 = string.IsNullOrWhiteSpace(QueryNivel3) ? null : QueryNivel3,
+        Nivel2 = string.IsNullOrWhiteSpace(QueryNivel2) ? null : NormalizeTwoDigits(QueryNivel2),
+        Nivel3 = string.IsNullOrWhiteSpace(QueryNivel3) ? null : NormalizeTwoDigits(QueryNivel3),
         Rfc = selectedRfc
       };
 
@@ -233,6 +249,17 @@
         await BuscarAsync();
       }
     }
+  }
+
+  private static string NormalizeTwoDigits(string value)
+  {
+    var trimmed = value?.Trim() ?? string.Empty;
+    if (trimmed.Length == 1 && char.IsDigit(trimmed[0]))
+    {
+      return trimmed.PadLeft(2, '0');
+    }
+
+    return trimmed;
   }
 
   private async Task OnRfcChangedAsync()

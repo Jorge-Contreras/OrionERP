@@ -83,7 +83,7 @@ else
                     {
                         <span>@(Filter.SortAsc ? "▲" : "▼")</span>
                     }
-                    <InputNumber class="form-control" @bind-Value="Filter.Id" @bind-Value:event="oninput" @onkeyup="OnFilterKeyDown" />
+                    <input type="number" class="form-control" @bind-value="Filter.Id" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
                 </th>
                 <th>
                     <a href="#" @onclick='() => Sort("Fecha")'>Fecha</a>
@@ -106,7 +106,7 @@ else
                     {
                         <span>@(Filter.SortAsc ? "▲" : "▼")</span>
                     }
-                    <InputNumber class="form-control" @bind-Value="Filter.Monto" @bind-Value:event="oninput" @onkeyup="OnFilterKeyDown" />
+                    <input type="number" class="form-control" @bind-value="Filter.Monto" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
                 </th>
                 <th>
                     <a href="#" @onclick='() => Sort("TipoPoliza")'>Tipo de Póliza</a>

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Web.State;
 
@@ -38,7 +39,7 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
             Filter = new TransaccionFilter();
             Filter.Month ??= DateTime.Now.Month;
             Filter.Year ??= DateTime.Now.Year;
-      await LoadTransacciones();
+            await LoadTransacciones();
         }
 
         protected async Task Sort(string columnName)
@@ -55,14 +56,28 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
             await LoadTransacciones();
         }
 
+        protected async Task ApplySort(bool sortAsc)
+        {
+            Filter.SortAsc = sortAsc;
+            await LoadTransacciones();
+        }
+
+        protected async Task OnFilterKeyDown(KeyboardEventArgs args)
+        {
+            if (args.Key == "Enter")
+            {
+                await Search();
+            }
+        }
+
         private async Task LoadTransacciones()
         {
             IsLoading = true;
             StateHasChanged();
 
             Filter.Rfc = RfcState.CurrentRfc;
-           
-      var result = await TransaccionService.GetTransaccionesListAsync(Filter);
+
+            var result = await TransaccionService.GetTransaccionesListAsync(Filter);
             Transacciones = result.ToList();
 
             IsLoading = false;

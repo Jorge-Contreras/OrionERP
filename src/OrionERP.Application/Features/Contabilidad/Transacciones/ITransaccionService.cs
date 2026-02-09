@@ -41,6 +41,14 @@ public interface ITransaccionService
       int attachmentId,
       int transaccionId,
       CancellationToken ct = default);
+  Task<TransaccionCommandResult> RegenerarPolizaDesdeComprobanteEnTransaccionAsync(
+      int transaccionId,
+      long comprobanteId,
+      CancellationToken ct = default);
+  Task<TransaccionCommandResult> RegenerarPolizaDesdeComplementoEnTransaccionAsync(
+      int transaccionId,
+      long comprobanteId,
+      CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> GetCategoriasAsync(string rfc, CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> GetActividadesAsync(string rfc, CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> GetComprasAsync(string rfc, CancellationToken ct = default);

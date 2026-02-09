@@ -962,6 +962,74 @@ WHERE ID = @TransaccionId;";
     }
   }
 
+  public async Task<TransaccionCommandResult> RegenerarPolizaDesdeComprobanteEnTransaccionAsync(
+      int transaccionId,
+      long comprobanteId,
+      CancellationToken ct = default)
+  {
+    using var conn = new SqlConnection(_cs);
+
+    try
+    {
+      await conn.ExecuteAsync(
+          new CommandDefinition(
+              "[contabilidad].[Regenerar_Poliza_Desde_Comprobante_En_Transaccion]",
+              new
+              {
+                Comprobante_Id = comprobanteId,
+                Transaccion_ID = transaccionId
+              },
+              commandType: CommandType.StoredProcedure,
+              cancellationToken: ct));
+
+      return TransaccionCommandResult.Ok("Movimientos regenerados correctamente.");
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(
+          ex,
+          "Failed to regenerate poliza movements from comprobante {ComprobanteId} for transaccion {TransaccionId}",
+          comprobanteId,
+          transaccionId);
+
+      return TransaccionCommandResult.Fail("No se pudieron regenerar los movimientos desde el comprobante.");
+    }
+  }
+
+  public async Task<TransaccionCommandResult> RegenerarPolizaDesdeComplementoEnTransaccionAsync(
+      int transaccionId,
+      long comprobanteId,
+      CancellationToken ct = default)
+  {
+    using var conn = new SqlConnection(_cs);
+
+    try
+    {
+      await conn.ExecuteAsync(
+          new CommandDefinition(
+              "[contabilidad].[Regenerar_Poliza_Desde_Complemento_En_Transaccion]",
+              new
+              {
+                Comprobante_Id = comprobanteId,
+                Transaccion_ID = transaccionId
+              },
+              commandType: CommandType.StoredProcedure,
+              cancellationToken: ct));
+
+      return TransaccionCommandResult.Ok("Movimientos regenerados correctamente.");
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(
+          ex,
+          "Failed to regenerate poliza movements from complemento {ComprobanteId} for transaccion {TransaccionId}",
+          comprobanteId,
+          transaccionId);
+
+      return TransaccionCommandResult.Fail("No se pudieron regenerar los movimientos desde el complemento.");
+    }
+  }
+
   public async Task DeleteMovimientoAsync(int transaccionId, int movimientoId, CancellationToken ct = default)
   {
     const string sql = @"DELETE FROM dbo.Registro_Contable

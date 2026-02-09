@@ -9,7 +9,7 @@
     <div class="col-md-3">
         <div class="form-group">
             <label for="year">Año</label>
-            <select id="year" class="form-control" @bind-Value="Filter.Year" @bind-Value:after="OnFilterSelectionChanged">
+            <select id="year" class="form-control" @bind="Filter.Year" @bind:after="OnFilterSelectionChanged">
                 <option value="">Todos</option>
                 @for (var year = 2035; year >= 2000; year--)
                 {
@@ -21,7 +21,7 @@
     <div class="col-md-3">
         <div class="form-group">
             <label for="month">Mes</label>
-            <select id="month" class="form-control" @bind-Value="Filter.Month" @bind-Value:after="OnFilterSelectionChanged">
+            <select id="month" class="form-control" @bind="Filter.Month" @bind:after="OnFilterSelectionChanged">
                 <option value="">Todos</option>
                 <option value="1">Enero</option>
                 <option value="2">Febrero</option>
@@ -45,7 +45,7 @@
         <div class="form-group">
             <label for="sortBy">Ordenar por</label>
             <div class="input-group">
-                <select id="sortBy" class="form-control" @bind-Value="Filter.SortBy" @bind-Value:after="OnFilterSelectionChanged">
+                <select id="sortBy" class="form-control" @bind="Filter.SortBy" @bind:after="OnFilterSelectionChanged">
                     <option value="">Sin ordenar</option>
                     <option value="Id">ID</option>
                     <option value="Fecha">Fecha</option>

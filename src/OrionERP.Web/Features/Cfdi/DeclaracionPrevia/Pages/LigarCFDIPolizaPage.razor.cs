@@ -124,7 +124,7 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      InlineError = "No se pudieron cargar las pólizas ligadas.";
+      InlineError = $"No se pudieron cargar las pólizas ligadas. {ex.Message}";
       UiMessages.ShowError(InlineError);
     }
     finally
@@ -147,7 +147,7 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      InlineError = "No se pudieron cargar las transacciones.";
+      InlineError = $"No se pudieron cargar las transacciones. {ex.Message}";
       UiMessages.ShowError(InlineError);
     }
     finally

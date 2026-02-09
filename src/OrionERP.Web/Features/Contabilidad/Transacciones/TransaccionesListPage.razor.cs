@@ -70,6 +70,11 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
             }
         }
 
+        protected async Task OnFilterSelectionChanged()
+        {
+            await Search();
+        }
+
         private async Task LoadTransacciones()
         {
             IsLoading = true;

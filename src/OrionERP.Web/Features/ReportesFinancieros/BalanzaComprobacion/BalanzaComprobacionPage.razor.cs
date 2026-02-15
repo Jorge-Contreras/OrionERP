@@ -172,7 +172,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
             await JS.InvokeVoidAsync("orionPrintBalanza");
         }
 
-        private void GoToContabilidadRegistros(BalanzaComprobacionRow row)
+        private async Task GoToContabilidadRegistros(BalanzaComprobacionRow row)
         {
             if (string.IsNullOrWhiteSpace(CurrentRfc))
             {
@@ -203,7 +203,8 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
 
             query.Add("rfc", CurrentRfc);
 
-            Navigation.NavigateTo($"/cfdi/registros-contables{query.ToQueryString()}");
+            var registrosContablesUrl = $"/cfdi/registros-contables{query.ToQueryString()}";
+            await JS.InvokeVoidAsync("open", registrosContablesUrl, "_blank");
         }
 
         public void Dispose()

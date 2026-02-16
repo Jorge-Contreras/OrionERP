@@ -270,12 +270,6 @@
       return;
     }
 
-    if (HasAccountSelection
-        && string.Equals(accountSelection?.Rfc, selectedRfc, StringComparison.OrdinalIgnoreCase))
-    {
-      return;
-    }
-
     if (!string.IsNullOrWhiteSpace(QueryNivel1)
         && !string.IsNullOrWhiteSpace(QueryRfc)
         && string.Equals(selectedRfc, QueryRfc, StringComparison.OrdinalIgnoreCase))

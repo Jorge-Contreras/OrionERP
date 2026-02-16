@@ -55,6 +55,7 @@
     <CuentaContablePicker
       @ref="accountPicker"
       @bind-SelectedRfc="selectedRfc"
+      @bind-SelectedRfc:after="OnAccountPickerRfcChangedAsync"
       @bind-Selection="accountSelection"
       SearchRequested="OnAccountPickerSearchRequestedAsync"
       ErrorChanged="OnAccountPickerErrorChangedAsync" />
@@ -154,6 +155,7 @@
   private CuentaContableSelection? accountSelection;
   private string? selectedRfc;
   private string? lastSelectedRfc;
+  private string? lastComponentRfc;
   private int selectedYear = DateTime.Today.Year;
   private int selectedMonth = DateTime.Today.Month;
   private bool mostrarTodo;
@@ -162,6 +164,7 @@
   private bool hasSearched;
   private bool isLoading;
   private string? errorMessage;
+  private bool suppressRfcChange;
   private string? lastQueryKey;
 
   [Parameter, SupplyParameterFromQuery(Name = "nivel1")]
@@ -283,10 +286,10 @@
 
   private async Task OnRfcChangedAsync()
   {
-    if (!string.IsNullOrWhiteSpace(RfcState.CurrentRfc)
-        && !string.Equals(selectedRfc, RfcState.CurrentRfc, StringComparison.OrdinalIgnoreCase))
+    if (suppressRfcChange)
     {
-      selectedRfc = RfcState.CurrentRfc;
+      suppressRfcChange = false;
+      lastSelectedRfc = selectedRfc;
       return;
     }
 
@@ -317,6 +320,27 @@
     errorMessage = null;
 
     await InvokeAsync(StateHasChanged);
+  }
+
+  private async Task OnAccountPickerRfcChangedAsync()
+  {
+    if (string.IsNullOrWhiteSpace(selectedRfc))
+    {
+      return;
+    }
+
+    if (string.Equals(lastComponentRfc, selectedRfc, StringComparison.OrdinalIgnoreCase))
+    {
+      return;
+    }
+
+    lastComponentRfc = selectedRfc;
+    suppressRfcChange = true;
+    if (!RfcState.TrySet(selectedRfc))
+    {
+      suppressRfcChange = false;
+      await InvokeAsync(StateHasChanged);
+    }
   }
 
   private Task OnAccountPickerErrorChangedAsync(string? message)

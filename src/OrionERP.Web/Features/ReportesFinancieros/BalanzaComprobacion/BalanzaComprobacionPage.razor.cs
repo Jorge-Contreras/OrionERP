@@ -169,7 +169,11 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
 
         private async Task PrintAsync()
         {
-            await JS.InvokeVoidAsync("orionPrintBalanza");
+            await JS.InvokeVoidAsync(
+                "orionPrintReport",
+                "balanza-comprobacion-print-root",
+                "Balanza de Comprobación",
+                string.IsNullOrWhiteSpace(CurrentRfc) ? PeriodoDescripcion : $"RFC: {CurrentRfc}  Periodo: {PeriodoDescripcion}");
         }
 
         private async Task GoToContabilidadRegistros(BalanzaComprobacionRow row)

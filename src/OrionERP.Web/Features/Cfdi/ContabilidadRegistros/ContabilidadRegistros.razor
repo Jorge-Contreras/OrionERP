@@ -8,6 +8,7 @@
 @inject NavigationManager Navigation
 @inject IUserRfcState RfcState
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
+@implements IDisposable
 
 <h3>Contabilidad &mdash; Registros</h3>
 
@@ -165,6 +166,8 @@
   private string? errorMessage;
   private bool suppressRfcChange;
   private string? lastQueryKey;
+  private bool isApplyingQueryFilters;
+  private CancellationTokenSource? queryApplyCts;
 
   [Parameter, SupplyParameterFromQuery(Name = "nivel1")]
   public string? QueryNivel1 { get; set; }
@@ -232,8 +235,22 @@
 
     var currentQueryKey = $"{QueryNivel1}|{QueryNivel2}|{QueryNivel3}|{QueryRfc}|{selectedYear}|{selectedMonth}";
 
-    if (!string.IsNullOrWhiteSpace(QueryNivel1) && !string.Equals(currentQueryKey, lastQueryKey, StringComparison.Ordinal))
+    if (string.IsNullOrWhiteSpace(QueryNivel1) || string.Equals(currentQueryKey, lastQueryKey, StringComparison.Ordinal))
     {
+      return;
+    }
+
+    queryApplyCts?.Cancel();
+    queryApplyCts?.Dispose();
+    queryApplyCts = new CancellationTokenSource();
+    var token = queryApplyCts.Token;
+
+    isApplyingQueryFilters = true;
+
+    try
+    {
+      await Task.Delay(TimeSpan.FromSeconds(2), token);
+
       accountSelection = new CuentaContableSelection
       {
         Nivel1 = QueryNivel1,
@@ -248,6 +265,14 @@
       {
         await BuscarAsync();
       }
+    }
+    catch (OperationCanceledException)
+    {
+      // A new parameter set arrived; only the newest one should apply.
+    }
+    finally
+    {
+      isApplyingQueryFilters = false;
     }
   }
 
@@ -267,6 +292,11 @@
     if (suppressRfcChange)
     {
       suppressRfcChange = false;
+      return;
+    }
+
+    if (isApplyingQueryFilters)
+    {
       return;
     }
 
@@ -459,5 +489,11 @@
   {
     var lastDay = DateTime.DaysInMonth(selectedYear, selectedMonth);
     return new DateTime(selectedYear, selectedMonth, lastDay, 23, 59, 59);
+  }
+
+  public void Dispose()
+  {
+    queryApplyCts?.Cancel();
+    queryApplyCts?.Dispose();
   }
 }

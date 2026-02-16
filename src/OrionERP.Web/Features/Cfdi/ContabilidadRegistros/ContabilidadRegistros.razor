@@ -207,7 +207,7 @@
       selectedRfc = RfcState.CurrentRfc;
     }
 
-    if (string.IsNullOrWhiteSpace(selectedRfc) && !string.IsNullOrWhiteSpace(QueryRfc))
+    if (!string.IsNullOrWhiteSpace(QueryRfc) && !string.Equals(selectedRfc, QueryRfc, StringComparison.OrdinalIgnoreCase))
     {
       selectedRfc = QueryRfc;
     }
@@ -267,6 +267,13 @@
     if (suppressRfcChange)
     {
       suppressRfcChange = false;
+      return;
+    }
+
+    if (!string.IsNullOrWhiteSpace(QueryNivel1)
+        && !string.IsNullOrWhiteSpace(QueryRfc)
+        && string.Equals(selectedRfc, QueryRfc, StringComparison.OrdinalIgnoreCase))
+    {
       return;
     }
 

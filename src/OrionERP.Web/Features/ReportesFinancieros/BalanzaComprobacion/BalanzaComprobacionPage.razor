@@ -26,7 +26,8 @@
                         <div class="col-12 col-md-2">
                             <label class="form-label small text-muted">AÑO</label>
                             <select class="form-select"
-                                    @bind="Anio">
+                                    value="@Anio"
+                                    @onchange="OnAnioChanged">
                                 @{
                                     var current = DateTime.Now.Year;
                                     for (int y = current - 5; y <= current + 1; y++)
@@ -77,9 +78,9 @@
 
                 <div class="d-flex gap-2">
                     <button class="btn btn-primary"
-                            @onclick="BuscarAsync"
+                            @onclick="RefreshAsync"
                             disabled="@IsLoading">
-                        Buscar / Generar
+                        Refrescar
                     </button>
 
                     <button class="btn btn-outline-secondary"
@@ -144,7 +145,10 @@
                             <tbody>
                                 @foreach (var row in OrderedRows)
                                 {
-                                    <tr class="@GetRowClass(row)" @onclick="() => GoToContabilidadRegistros(row)" style="cursor: pointer;">
+                                    <tr class="@GetRowClass(row)"
+                                        @onclick="() => SelectRow(row)"
+                                        @ondblclick="() => GoToContabilidadRegistros(row)"
+                                        style="cursor: pointer;">
                                         <td class="@GetIndentClass(row)">
                                             @GetCuentaDescripcion(row)
                                         </td>
@@ -201,6 +205,10 @@
 
     .level-3 td {
         font-weight: 400;
+    }
+
+    .balanza-table tr.balanza-row-selected td {
+        background: #dbeafe;
     }
 
     .balanza-table th, .balanza-table td {

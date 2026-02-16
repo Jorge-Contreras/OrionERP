@@ -53,17 +53,33 @@
         }
     }
 
-    private async void OnExternalChange()
+    private void OnExternalChange()
+    {
+        _ = InvokeAsync(NotifyExternalChangeAsync);
+    }
+
+    private async Task NotifyExternalChangeAsync()
     {
         // RFC changed from somewhere else (another component, login, etc.)
         var value = RfcState.CurrentRfc;
+
+        // Avoid re-notifying the parent when it already has this value.
+        if (string.Equals(value, SelectedRfc, StringComparison.OrdinalIgnoreCase))
+        {
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
         try
         {
             await OnRfcChanged.InvokeAsync(value);
             await SelectedRfcChanged.InvokeAsync(value);
             await InvokeAsync(StateHasChanged);
         }
-        catch { /* swallow */ }
+        catch
+        {
+            // no-op: avoid surfacing non-critical sync errors from parent callbacks
+        }
     }
 
     public void Dispose()

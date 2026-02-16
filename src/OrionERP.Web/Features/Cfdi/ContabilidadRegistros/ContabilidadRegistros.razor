@@ -205,25 +205,23 @@
 
   protected override async Task OnParametersSetAsync()
   {
-    if (!TryGetStableRfc(out var stableRfc))
+    if (string.IsNullOrWhiteSpace(selectedRfc))
     {
-      return;
+      selectedRfc = RfcState.CurrentRfc;
     }
 
-    selectedRfc = stableRfc;
-    lastSelectedRfc = stableRfc;
-
-    if (!string.IsNullOrWhiteSpace(QueryRfc)
-        && !string.Equals(QueryRfc, stableRfc, StringComparison.OrdinalIgnoreCase))
+    if (!string.IsNullOrWhiteSpace(QueryRfc) && !string.Equals(selectedRfc, QueryRfc, StringComparison.OrdinalIgnoreCase))
     {
-      registros.Clear();
-      transaccionOrder.Clear();
-      hasSearched = false;
-      errorMessage = $"El RFC proporcionado en la URL ({QueryRfc}) no coincide con el RFC actual ({stableRfc}).";
-      return;
+      selectedRfc = QueryRfc;
     }
 
-    errorMessage = null;
+    if (!string.IsNullOrWhiteSpace(QueryRfc) && !string.Equals(QueryRfc, RfcState.CurrentRfc, StringComparison.OrdinalIgnoreCase))
+    {
+      if (RfcState.TrySet(QueryRfc))
+      {
+        selectedRfc = RfcState.CurrentRfc;
+      }
+    }
 
     if (QueryAnio is >= 1990 and <= 2050)
     {
@@ -265,23 +263,6 @@
     }
 
     return trimmed;
-  }
-
-  private bool TryGetStableRfc(out string? stableRfc)
-  {
-    stableRfc = RfcState.CurrentRfc;
-    if (string.IsNullOrWhiteSpace(stableRfc))
-    {
-      return false;
-    }
-
-    if (RfcState.AllowedRfcs.Count > 0
-        && !RfcState.AllowedRfcs.Contains(stableRfc, StringComparer.OrdinalIgnoreCase))
-    {
-      return false;
-    }
-
-    return true;
   }
 
   private async Task OnRfcChangedAsync()

@@ -28,7 +28,7 @@
     <div class="col-md-3">
       <label class="form-label">Ejercicio</label>
       <select class="form-select" @bind="selectedYear" @bind:after="OnBuscarClickedAsync">
-        @for (var year = 1990; year <= 2050; year++)
+        @for (var year = MinYear; year <= MaxYear; year++)
         {
           <option value="@year">@year</option>
         }
@@ -37,7 +37,7 @@
     <div class="col-md-3">
       <label class="form-label">Mes</label>
       <select class="form-select" @bind="selectedMonth" @bind:after="OnBuscarClickedAsync">
-        @for (var month = 1; month <= 12; month++)
+        @for (var month = MinMonth; month <= MaxMonth; month++)
         {
           <option value="@month">@CultureInfo.GetCultureInfo("es-MX").DateTimeFormat.GetMonthName(month)</option>
         }
@@ -152,6 +152,12 @@
 </div>
 
 @code {
+  private const int MinYear = 1990;
+  private const int MaxYear = 2050;
+  private const int MinMonth = 1;
+  private const int MaxMonth = 12;
+  private static readonly DateTime GlobalStartDate = new(MinYear, 1, 1, 0, 0, 0);
+
   private CuentaContablePicker? accountPicker;
   private CuentaContableSelection? accountSelection;
   private string? selectedRfc;
@@ -193,12 +199,7 @@
 
   protected override Task OnInitializedAsync()
   {
-    selectedRfc = RfcState.CurrentRfc;
-    if (string.IsNullOrWhiteSpace(selectedRfc))
-    {
-      RfcState.ResetToDefault();
-      selectedRfc = RfcState.CurrentRfc;
-    }
+    SyncSelectedRfcWithState();
 
     return Task.CompletedTask;
   }
@@ -223,17 +224,17 @@
       }
     }
 
-    if (QueryAnio is >= 1990 and <= 2050)
+    if (QueryAnio is >= MinYear and <= MaxYear)
     {
       selectedYear = QueryAnio.Value;
     }
 
-    if (QueryMes is >= 1 and <= 12)
+    if (QueryMes is >= MinMonth and <= MaxMonth)
     {
       selectedMonth = QueryMes.Value;
     }
 
-    var currentQueryKey = $"{QueryNivel1}|{QueryNivel2}|{QueryNivel3}|{QueryRfc}|{selectedYear}|{selectedMonth}";
+    var currentQueryKey = BuildQueryKey();
 
     if (string.IsNullOrWhiteSpace(QueryNivel1) || string.Equals(currentQueryKey, lastQueryKey, StringComparison.Ordinal))
     {
@@ -251,13 +252,7 @@
     {
       await Task.Delay(TimeSpan.FromSeconds(1), token);
 
-      accountSelection = new CuentaContableSelection
-      {
-        Nivel1 = QueryNivel1,
-        Nivel2 = string.IsNullOrWhiteSpace(QueryNivel2) ? null : NormalizeTwoDigits(QueryNivel2),
-        Nivel3 = string.IsNullOrWhiteSpace(QueryNivel3) ? null : NormalizeTwoDigits(QueryNivel3),
-        Rfc = selectedRfc
-      };
+      accountSelection = CreateSelectionFromQuery();
 
       lastQueryKey = currentQueryKey;
 
@@ -287,6 +282,37 @@
     return trimmed;
   }
 
+  private void SyncSelectedRfcWithState()
+  {
+    selectedRfc = RfcState.CurrentRfc;
+    if (string.IsNullOrWhiteSpace(selectedRfc))
+    {
+      RfcState.ResetToDefault();
+      selectedRfc = RfcState.CurrentRfc;
+    }
+  }
+
+  private string BuildQueryKey()
+    => $"{QueryNivel1}|{QueryNivel2}|{QueryNivel3}|{QueryRfc}|{selectedYear}|{selectedMonth}";
+
+  private CuentaContableSelection CreateSelectionFromQuery()
+    => new()
+    {
+      Nivel1 = QueryNivel1,
+      Nivel2 = string.IsNullOrWhiteSpace(QueryNivel2) ? null : NormalizeTwoDigits(QueryNivel2),
+      Nivel3 = string.IsNullOrWhiteSpace(QueryNivel3) ? null : NormalizeTwoDigits(QueryNivel3),
+      Rfc = selectedRfc
+    };
+
+  private void ResetSearchState()
+  {
+    accountSelection = null;
+    registros.Clear();
+    transaccionOrder.Clear();
+    hasSearched = false;
+    errorMessage = null;
+  }
+
   private async Task OnRfcChangedAsync()
   {
     if (suppressRfcChange)
@@ -300,11 +326,7 @@
       return;
     }
 
-    accountSelection = null;
-    registros.Clear();
-    transaccionOrder.Clear();
-    hasSearched = false;
-    errorMessage = null;
+    ResetSearchState();
 
     await InvokeAsync(StateHasChanged);
   }
@@ -478,10 +500,9 @@
   {
     if (mostrarTodo)
     {
-      return new DateTime(1990, 1, 1, 0, 0, 0);
+      return GlobalStartDate;
     }
 
-   
     return new DateTime(selectedYear, 1, 1, 0, 0, 0);
   }
 

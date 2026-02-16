@@ -154,6 +154,7 @@
   private CuentaContablePicker? accountPicker;
   private CuentaContableSelection? accountSelection;
   private string? selectedRfc;
+  private string? lastSelectedRfc;
   private string? lastComponentRfc;
   private int selectedYear = DateTime.Today.Year;
   private int selectedMonth = DateTime.Today.Month;
@@ -196,6 +197,8 @@
       RfcState.ResetToDefault();
       selectedRfc = RfcState.CurrentRfc;
     }
+
+    lastSelectedRfc = selectedRfc;
 
     return Task.CompletedTask;
   }
@@ -267,8 +270,16 @@
     if (suppressRfcChange)
     {
       suppressRfcChange = false;
+      lastSelectedRfc = selectedRfc;
       return;
     }
+
+    if (string.Equals(lastSelectedRfc, selectedRfc, StringComparison.OrdinalIgnoreCase))
+    {
+      return;
+    }
+
+    lastSelectedRfc = selectedRfc;
 
     if (HasAccountSelection
         && string.Equals(accountSelection?.Rfc, selectedRfc, StringComparison.OrdinalIgnoreCase))

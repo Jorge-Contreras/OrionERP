@@ -1,0 +1,129 @@
+@page "/ReportesFinancieros/EstadoPerdidasGanancias"
+@page "/reportes-financieros/estado-perdidas-ganancias"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Administrador")]
+
+<PageTitle>Estado de Pérdidas y Ganancias</PageTitle>
+
+<div class="estado-pg-page">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="m-0">Estado de Pérdidas y Ganancias</h1>
+    </div>
+
+    <div class="card mb-3 no-print">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+                <div class="flex-grow-1">
+                    <h6 class="mb-1">Filtros</h6>
+                    <div class="text-muted small mb-3">
+                        Seleccione el año y mes para actualizar el reporte automáticamente.
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-12 col-md-2">
+                            <label class="form-label small text-muted">AÑO</label>
+                            <select class="form-select" @bind="Anio">
+                                @{
+                                    var current = DateTime.Now.Year;
+                                    for (int y = current - 5; y <= current + 1; y++)
+                                    {
+                                        <option value="@y">@y</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+
+                        <div class="col-12 col-md-4">
+                            <label class="form-label small text-muted">MES</label>
+                            <select class="form-select" value="@MesSelectValue" @onchange="OnMesChanged">
+                                <option value="">Anual</option>
+                                <option value="1">01 - enero</option>
+                                <option value="2">02 - febrero</option>
+                                <option value="3">03 - marzo</option>
+                                <option value="4">04 - abril</option>
+                                <option value="5">05 - mayo</option>
+                                <option value="6">06 - junio</option>
+                                <option value="7">07 - julio</option>
+                                <option value="8">08 - agosto</option>
+                                <option value="9">09 - septiembre</option>
+                                <option value="10">10 - octubre</option>
+                                <option value="11">11 - noviembre</option>
+                                <option value="12">12 - diciembre</option>
+                            </select>
+                        </div>
+
+                        <div class="col-12 col-md-4">
+                            <label class="form-label small text-muted">RFC</label>
+                            <input class="form-control" value="@CurrentRfc" readonly />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary" @onclick="PrintAsync" disabled="@(!Resultados.Any())">
+                        Imprimir
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="estado-perdidas-ganancias-print-root" class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div>
+                    <h6 class="mb-0">Estado de Perdidas y Ganancias @CurrentRfc</h6>
+                    @if (StartDate != default && EndDate != default)
+                    {
+                        <div class="small text-muted">Del @StartDate.ToString("dd/MM/yyyy") al @EndDate.ToString("dd/MM/yyyy")</div>
+                    }
+                </div>
+            </div>
+
+            @if (IsLoading)
+            {
+                <div class="text-muted">Cargando...</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+            {
+                <div class="alert alert-danger">@ErrorMessage</div>
+            }
+            else if (!Resultados.Any())
+            {
+                <div class="text-muted">No hay datos para los filtros seleccionados.</div>
+            }
+            else
+            {
+                <div id="estado-perdidas-ganancias-print">
+                    <div class="table-responsive">
+                        <table id="estado-perdidas-ganancias-table" class="table table-sm table-bordered align-middle estado-pg-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-end" style="width: 70px;">ID</th>
+                                    <th>DESCRIPCIÓN</th>
+                                    <th class="text-end">PRIMERO</th>
+                                    <th class="text-end">SEGUNDO</th>
+                                    <th class="text-end">TERCERO</th>
+                                    <th class="text-end">CUARTO</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in Resultados.OrderBy(r => r.ID))
+                                {
+                                    <tr class="@(row.DESCRIPCION.Contains("(=)") ? "fw-bold" : string.Empty)">
+                                        <td class="text-end">@row.ID</td>
+                                        <td>@row.DESCRIPCION</td>
+                                        <td class="text-end">@FormatMonto(row.PRIMERO)</td>
+                                        <td class="text-end">@FormatMonto(row.SEGUNDO)</td>
+                                        <td class="text-end">@FormatMonto(row.TERCERO)</td>
+                                        <td class="text-end">@FormatMonto(row.CUARTO)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>

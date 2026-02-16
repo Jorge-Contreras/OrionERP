@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using OrionERP.Application.Features.ReportesFinancieros.Models;
@@ -12,6 +13,12 @@ namespace OrionERP.Application.Features.ReportesFinancieros
             int anio,
             int? mes,
             string? rfc);
+
+        Task<IReadOnlyList<EstadoPerdidasGananciasRow>> GetEstadoPerdidasGananciasAsync(
+            DateTime startDate,
+            DateTime endDate,
+            string? rfc);
+
     }
 
     public class HojaTrabajoLongRowDto

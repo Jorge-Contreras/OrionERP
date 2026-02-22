@@ -42,6 +42,11 @@
     background-color: rgba(var(--bs-dark-rgb), 0.04);
     border-left: 4px solid rgba(var(--bs-dark-rgb), 0.35);
   }
+
+  .bancos-layout .movement-has-issues {
+    --bs-table-bg: rgba(var(--bs-danger-rgb), 0.14);
+    --bs-table-accent-bg: rgba(var(--bs-danger-rgb), 0.14);
+  }
 </style>
 
 @if (!string.IsNullOrEmpty(ErrorMessage))
@@ -416,14 +421,19 @@ else
                   <th scope="col" class="text-end">Abono</th>
                   <th scope="col" class="text-end">Saldo</th>
                   <th scope="col">Fecha de carga</th>
-                                    <th scope="col">Ligar</th>
+                  <th scope="col">Issues</th>
+                  <th scope="col">Ligar</th>
                 </tr>
               </thead>
               <tbody>
                 @foreach (var movement in VisibleMovements)
                 {
                   var isSelected = movement.MovimientoId == SelectedMovimientoId;
-                  var rowClass = isSelected ? "table-primary" : string.Empty;
+                  var rowClass = isSelected
+                    ? "table-primary"
+                    : string.Equals(movement.Issues, "OK", StringComparison.OrdinalIgnoreCase)
+                      ? string.Empty
+                      : "movement-has-issues";
                   <tr class="@rowClass" style="cursor: pointer;" aria-selected="@(isSelected ? "true" : "false")" @onclick="@(() => OnMovementSelected(movement.MovimientoId))">
                                         <td>
                                             @if (movement.Policy.HasValue && movement.Policy.Value > 0)
@@ -444,6 +454,7 @@ else
                     <td class="text-end">@FormatCurrency(movement.Abono)</td>
                     <td class="text-end">@FormatCurrency(movement.Saldo)</td>
                     <td>@movement.FechaCarga.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
+                    <td class="text-wrap">@movement.Issues</td>
                                         <td>
                                             @if (movement.Policy.HasValue && movement.Policy.Value > 0)
                                             {

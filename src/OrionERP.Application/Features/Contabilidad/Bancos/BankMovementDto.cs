@@ -17,4 +17,5 @@ public sealed record BankMovementDto
   public string NumeroCuenta { get; init; } = string.Empty;
   public long SecuenciaClave { get; init; }
   public int? Policy { get; init; }
+  public string Issues { get; init; } = "OK";
 }

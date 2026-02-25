@@ -47,6 +47,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private SectionPanel _activeSection = SectionPanel.Movimientos;
 
   private bool _isDisposed;
+  private int? _loadedTransaccionId;
   private string _montoInput = string.Empty;
 
   private static readonly CultureInfo CurrencyCulture = new("es-MX");
@@ -168,7 +169,12 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected override async Task OnParametersSetAsync()
   {
-   
+    if (_loadedTransaccionId == Id)
+    {
+      return;
+    }
+
+    _loadedTransaccionId = Id;
     await PerformLoadAsync();
   }
 
@@ -432,6 +438,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       }
 
       await GuardarMovimientosAsync();
+      await ReloadMovimientosAsync();
 
       _headerOriginal = Header.Clone();
       UiMessages.ShowSuccess(result.Message ?? "Datos de la transacción guardados.");

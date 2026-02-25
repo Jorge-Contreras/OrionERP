@@ -399,6 +399,10 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
     }
 
+    var movimientosSnapshot = Movimientos
+      .Select(m => m.Clone())
+      .ToList();
+
     IsSavingHeader = true;
     try
     {
@@ -433,7 +437,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         Header.Status = HeaderStatus;
       }
 
-      await GuardarMovimientosAsync();
+      await GuardarMovimientosAsync(movimientosSnapshot);
+
+      Movimientos.Clear();
+      Movimientos.AddRange(movimientosSnapshot.Select(m => m.Clone()));
+      UpdateTotalsFromMovimientos();
 
       _headerOriginal = Header.Clone();
       UiMessages.ShowSuccess(result.Message ?? "Datos de la transacción guardados.");
@@ -671,14 +679,16 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       await InvokeAsync(StateHasChanged);
   }
 
-  private async Task GuardarMovimientosAsync()
+  private async Task GuardarMovimientosAsync(IReadOnlyList<MovimientoModel>? movimientos = null)
   {
       if (Header is null) return;
+
+      var movimientosToSave = movimientos ?? Movimientos;
 
       var request = new TransaccionMovimientosUpdateRequest
       {
           TransaccionId = Header.Id,
-          Movimientos = Movimientos.Select(m => new TransaccionMovimientoUpdateItem
+          Movimientos = movimientosToSave.Select(m => new TransaccionMovimientoUpdateItem
           {
               Id = m.Id,
               CuentaId = m.CuentaId,

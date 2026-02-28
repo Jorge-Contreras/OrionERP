@@ -30,6 +30,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private List<DeclaracionCfdiBase>? recibidasNominaBase;
     private List<DeclaracionCfdiBase>? tipoEEmitidasBase;
     private List<DeclaracionCfdiBase>? tipoERecibidasBase;
+    private List<DeclaracionCfdiBase>? canceladasOmitidasBase;
     private List<DeclaracionComplementoBase>? complementosBase;
     private List<DeclaracionComplementoBase>? complementosEmitidosBase;
     private List<DeclaracionComplementoBase>? complementosRecibidosBase;
@@ -41,6 +42,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private List<DeclaracionRecibida>? recibidasNomina;
     private List<DeclaracionEmitida>? tipoEEmitidas;
     private List<DeclaracionRecibida>? tipoERecibidas;
+    private List<DeclaracionEmitida>? canceladasOmitidas;
     private List<DeclaracionComplementoEmitido>? complementosEmitidos;
     private List<DeclaracionComplementoRecibido>? complementosRecibidos;
     private List<DesfaseItem>? desfase;
@@ -53,6 +55,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     private DeclaracionTotales? recibidasNominaTotals;
     private DeclaracionTotales? tipoEEmitidasTotals;
     private DeclaracionTotales? tipoERecibidasTotals;
+    private DeclaracionTotales? canceladasOmitidasTotals;
     private DesfaseTotales? desfaseTotals;
     private string? impuestosSummary;
     private string? bancosCajaSummary;

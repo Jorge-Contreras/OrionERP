@@ -38,6 +38,7 @@ public class DeclaracionPreviaData
   public IReadOnlyList<DeclaracionCfdiBase> RecibidasNominaBase { get; init; } = Array.Empty<DeclaracionCfdiBase>();
   public IReadOnlyList<DeclaracionCfdiBase> TipoEEmitidasBase { get; init; } = Array.Empty<DeclaracionCfdiBase>();
   public IReadOnlyList<DeclaracionCfdiBase> TipoERecibidasBase { get; init; } = Array.Empty<DeclaracionCfdiBase>();
+  public IReadOnlyList<DeclaracionCfdiBase> CanceladasOmitidasBase { get; init; } = Array.Empty<DeclaracionCfdiBase>();
   public IReadOnlyList<DeclaracionComplementoBase> ComplementosBase { get; init; } = Array.Empty<DeclaracionComplementoBase>();
   public IReadOnlyList<DeclaracionComplementoBase> ComplementosEmitidosBase { get; init; } = Array.Empty<DeclaracionComplementoBase>();
   public IReadOnlyList<DeclaracionComplementoBase> ComplementosRecibidosBase { get; init; } = Array.Empty<DeclaracionComplementoBase>();
@@ -49,6 +50,7 @@ public class DeclaracionPreviaData
   public IReadOnlyList<DeclaracionRecibida> RecibidasNomina { get; init; } = Array.Empty<DeclaracionRecibida>();
   public IReadOnlyList<DeclaracionEmitida> TipoEEmitidas { get; init; } = Array.Empty<DeclaracionEmitida>();
   public IReadOnlyList<DeclaracionRecibida> TipoERecibidas { get; init; } = Array.Empty<DeclaracionRecibida>();
+  public IReadOnlyList<DeclaracionEmitida> CanceladasOmitidas { get; init; } = Array.Empty<DeclaracionEmitida>();
   public IReadOnlyList<DeclaracionComplementoEmitido> ComplementosEmitidos { get; init; } = Array.Empty<DeclaracionComplementoEmitido>();
   public IReadOnlyList<DeclaracionComplementoRecibido> ComplementosRecibidos { get; init; } = Array.Empty<DeclaracionComplementoRecibido>();
   public IReadOnlyList<DesfaseItem> Desfase { get; init; } = Array.Empty<DesfaseItem>();
@@ -61,6 +63,7 @@ public class DeclaracionPreviaData
   public DeclaracionTotales? RecibidasNominaTotals { get; init; }
   public DeclaracionTotales? TipoEEmitidasTotals { get; init; }
   public DeclaracionTotales? TipoERecibidasTotals { get; init; }
+  public DeclaracionTotales? CanceladasOmitidasTotals { get; init; }
   public DesfaseTotales? DesfaseTotals { get; init; }
   public string? ImpuestosSummary { get; init; }
   public string? BancosCajaSummary { get; init; }

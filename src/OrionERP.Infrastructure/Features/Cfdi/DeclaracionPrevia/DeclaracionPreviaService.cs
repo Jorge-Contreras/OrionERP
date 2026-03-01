@@ -90,6 +90,10 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       .Where(x => x.EsRecibida && IsTipoE(x.TipoDeComprobante))
       .ToList();
 
+    var canceladasOmitidasBase = (await conn.QueryAsync<DeclaracionCfdiBase>(
+      "EXEC cfdi.Declaracion_Canceladas_Omitidas @Year, @Month, @RFC_Emisor",
+      new { Year = request.Year, Month = request.IsAnnual ? (object?)DBNull.Value : request.Month, RFC_Emisor = request.Rfc })).ToList();
+
     var complementosBase = (await conn.QueryAsync<DeclaracionComplementoBase>(
       "EXEC cfdi.Declaracion_Complementos_Base @Year, @Month, @RFC",
       new { Year = request.Year, Month = request.IsAnnual ? (object?)DBNull.Value : request.Month, RFC = request.Rfc })).ToList();
@@ -130,6 +134,7 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       RecibidasNominaBase = recibidasNominaBase,
       TipoEEmitidasBase = tipoEEmitidasBase,
       TipoERecibidasBase = tipoERecibidasBase,
+      CanceladasOmitidasBase = canceladasOmitidasBase,
       ComplementosBase = complementosBase,
       ComplementosEmitidosBase = complementosEmitidosBase,
       ComplementosRecibidosBase = complementosRecibidosBase,
@@ -141,6 +146,7 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       RecibidasNomina = recibidasNominaBase.Select(ToDeclaracionRecibida).ToList(),
       TipoEEmitidas = tipoEEmitidasBase.Select(ToDeclaracionEmitida).ToList(),
       TipoERecibidas = tipoERecibidasBase.Select(ToDeclaracionRecibida).ToList(),
+      CanceladasOmitidas = canceladasOmitidasBase.Select(ToDeclaracionEmitida).ToList(),
       ComplementosEmitidos = complementosEmitidosBase.Select(ToComplementoEmitido).ToList(),
       ComplementosRecibidos = complementosRecibidosBase.Select(ToComplementoRecibido).ToList(),
       EmitidasTotals = ComputeDeclaracionTotales(emitidasBase),
@@ -151,6 +157,7 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       RecibidasNominaTotals = ComputeDeclaracionTotales(recibidasNominaBase),
       TipoEEmitidasTotals = ComputeDeclaracionTotales(tipoEEmitidasBase),
       TipoERecibidasTotals = ComputeDeclaracionTotales(tipoERecibidasBase),
+      CanceladasOmitidasTotals = ComputeDeclaracionTotales(canceladasOmitidasBase),
       Desfase = desfase,
       DesfaseTotals = desfaseTotals,
       PolizasNoConsolidadas = polizasNoConsolidadas,

@@ -96,6 +96,9 @@
         <button class="nav-link" id="recibidas-ppd-tab" data-bs-toggle="tab" data-bs-target="#recibidas-ppd" type="button" role="tab" aria-controls="recibidas-ppd" aria-selected="false">RECIBIDAS PPD</button>
     </li>
     <li class="nav-item" role="presentation">
+        <button class="nav-link" id="canceladas-omitidas-tab" data-bs-toggle="tab" data-bs-target="#canceladas-omitidas" type="button" role="tab" aria-controls="canceladas-omitidas" aria-selected="false">CANCELADAS / OMITIDAS</button>
+    </li>
+    <li class="nav-item" role="presentation">
         <button class="nav-link" id="otros-tab" data-bs-toggle="tab" data-bs-target="#otros" type="button" role="tab" aria-controls="otros" aria-selected="false">OTROS</button>
     </li>
 </ul>
@@ -569,6 +572,16 @@
                         </div>
                     }
                 </DetailsTemplate>
+            </CFDITable>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="canceladas-omitidas" role="tabpanel" aria-labelledby="canceladas-omitidas-tab">
+        <div class="table-responsive table-scroll">
+            <CFDITable Items="canceladasOmitidas"
+                       Totals="canceladasOmitidasTotals"
+                       PageSize="50"
+                       CounterpartyHeader="Receptor"
+                       CounterpartySelector="@(item => item.RECEPTOR)">
             </CFDITable>
         </div>
     </div>

@@ -79,15 +79,9 @@
 
     private async Task OpenLinkedTransaction()
     {
-        long? transId = await DeclaracionService.GetLinkedTransactionIdAsync(Item.Comprobante_Id);
+       
 
-        if (!transId.HasValue)
-        {
-            UiMessages.ShowWarning("No se encontró una Transacción vinculada a este CFDI.");
-            return;
-        }
-
-        var url = $"/Contabilidad/transacciones/{transId.Value}";
+        var url = $"/Contabilidad/transacciones/{Item.Poliza}";
 
         try
         {

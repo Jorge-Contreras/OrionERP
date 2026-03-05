@@ -300,6 +300,41 @@ WHERE Comprobante_Id = @Comprobante_Id;";
       new { Comprobante_Id = comprobanteId });
   }
 
+  public async Task<Pago20ResumenDetalleDto?> GetPago20ResumenByDoctoRelacionadoIdAsync(int doctoRelacionadoId)
+  {
+    const string sql = @"
+SELECT TOP (1)
+    Comprobante_Id,
+    ComprobanteUUID,
+    EmisorRfc,
+    ReceptorRfc,
+    Pago_Id,
+    FechaPago,
+    FormaDePagoP,
+    MonedaP,
+    MontoPago,
+    DoctoRelacionado_Id,
+    UUID_DoctoRelacionado,
+    Folio,
+    NumParcialidad,
+    MonedaDR,
+    ImpSaldoAnt,
+    ImpPagado,
+    ImpSaldoInsoluto,
+    Poliza,
+    Polizas,
+    Comp_Actos16,
+    Comp_IVA,
+    XML_Attachment_ID
+FROM cfdi.vw_Pagos20_Resumen
+WHERE DoctoRelacionado_Id = @DoctoRelacionado_Id;";
+
+    using var conn = new SqlConnection(_connectionString);
+    return await conn.QueryFirstOrDefaultAsync<Pago20ResumenDetalleDto>(
+      sql,
+      new { DoctoRelacionado_Id = doctoRelacionadoId });
+  }
+
   private static DeclaracionEmitida ToDeclaracionEmitida(DeclaracionCfdiBase item) => new(item);
 
   private static DeclaracionRecibida ToDeclaracionRecibida(DeclaracionCfdiBase item) => new(item);

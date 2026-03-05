@@ -765,48 +765,74 @@ WHERE Transaccion_ID = @TransaccionId
 
     try
     {
-      const string sqlUpdateLink = @"UPDATE dbo.Transaccion_Comprobante
+      var isComplemento = string.Equals(request.Tipo, "COMP", StringComparison.OrdinalIgnoreCase);
+      var updated = 0;
+
+      if (isComplemento)
+      {
+        const string sqlDeleteDoctoRelacionado = @"DELETE FROM dbo.Transaccion_DoctoRelacionado
+WHERE Transaccion_ID = @CurrentTransaccionId
+  AND DoctoRelacionado_ID = @ComprobanteId;";
+
+        updated = await conn.ExecuteAsync(
+            new CommandDefinition(
+                sqlDeleteDoctoRelacionado,
+                new
+                {
+                  request.CurrentTransaccionId,
+                  request.ComprobanteId
+                },
+                tx,
+                cancellationToken: ct));
+      }
+      else
+      {
+        const string sqlUpdateLink = @"UPDATE dbo.Transaccion_Comprobante
 SET Transaccion_ID = @TempTransaccionId
 WHERE Transaccion_ID = @CurrentTransaccionId
   AND Comprobante_ID = @ComprobanteId;";
 
-      var updated = await conn.ExecuteAsync(
-          new CommandDefinition(
-              sqlUpdateLink,
-              new
-              {
-                request.TempTransaccionId,
-                request.CurrentTransaccionId,
-                request.ComprobanteId
-              },
-              tx,
-              cancellationToken: ct));
+        updated = await conn.ExecuteAsync(
+            new CommandDefinition(
+                sqlUpdateLink,
+                new
+                {
+                  request.TempTransaccionId,
+                  request.CurrentTransaccionId,
+                  request.ComprobanteId
+                },
+                tx,
+                cancellationToken: ct));
+
+        if (updated > 0)
+        {
+          const string sqlAttachment = @"SELECT XML_Attachment_ID
+FROM cfdi.comprobante
+WHERE Comprobante_ID = @ComprobanteId;";
+
+          var attachmentId = await conn.ExecuteScalarAsync<int?>(
+              new CommandDefinition(sqlAttachment, new { request.ComprobanteId }, tx, cancellationToken: ct));
+
+          if (attachmentId.HasValue && attachmentId.Value > 0)
+          {
+            const string sqlMoveAttachment = @"UPDATE dbo.TRANSACTION_ATTACHMENT
+SET TranID = @TempTransaccionId
+WHERE ID = @AttachmentId;";
+
+            await conn.ExecuteAsync(
+                new CommandDefinition(
+                    sqlMoveAttachment,
+                    new { AttachmentId = attachmentId.Value, request.TempTransaccionId },
+                    tx,
+                    cancellationToken: ct));
+          }
+        }
+      }
 
       if (updated == 0)
       {
         await tx!.RollbackAsync(ct);
         return TransaccionCommandResult.Fail("No se encontró el vínculo de este comprobante con la póliza actual.");
-      }
-
-      const string sqlAttachment = @"SELECT XML_Attachment_ID
-FROM cfdi.comprobante
-WHERE Comprobante_ID = @ComprobanteId;";
-
-      var attachmentId = await conn.ExecuteScalarAsync<int?>(
-          new CommandDefinition(sqlAttachment, new { request.ComprobanteId }, tx, cancellationToken: ct));
-
-      if (attachmentId.HasValue && attachmentId.Value > 0)
-      {
-        const string sqlMoveAttachment = @"UPDATE dbo.TRANSACTION_ATTACHMENT
-SET TranID = @TempTransaccionId
-WHERE ID = @AttachmentId;";
-
-        await conn.ExecuteAsync(
-            new CommandDefinition(
-                sqlMoveAttachment,
-                new { AttachmentId = attachmentId.Value, request.TempTransaccionId },
-                tx,
-                cancellationToken: ct));
       }
 
       await tx!.CommitAsync(ct);

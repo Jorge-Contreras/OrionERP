@@ -1101,7 +1101,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       {
         CurrentTransaccionId = Header.Id,
         TempTransaccionId = placeholderTransaccionId.Value,
-        ComprobanteId = comprobante.ComprobanteId
+        ComprobanteId = comprobante.ComprobanteId,
+        Tipo = comprobante.Tipo
       };
 
       var result = await TransaccionService.UnlinkComprobanteAsync(request);

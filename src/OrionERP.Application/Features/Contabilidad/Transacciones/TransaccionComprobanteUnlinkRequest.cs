@@ -5,4 +5,5 @@ public sealed class TransaccionComprobanteUnlinkRequest
   public int CurrentTransaccionId { get; set; }
   public int TempTransaccionId { get; set; }
   public long ComprobanteId { get; set; }
+  public string? Tipo { get; set; }
 }

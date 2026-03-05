@@ -14,6 +14,7 @@ public interface IDeclaracionPreviaService
   Task<IReadOnlyList<string>> GenerateDiotAsync(string rfc, int year, int month);
   Task<long?> GetLinkedTransactionIdAsync(int comprobanteId);
   Task<ComprobanteDetalleDto?> GetComprobanteDetalleAsync(int comprobanteId);
+  Task<Pago20ResumenDetalleDto?> GetPago20ResumenByDoctoRelacionadoIdAsync(int doctoRelacionadoId);
 }
 
 public record DeclaracionPreviaRequest(string Rfc, int Year, int? Month, bool IsAnnual)

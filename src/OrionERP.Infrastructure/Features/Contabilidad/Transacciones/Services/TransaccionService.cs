@@ -1314,6 +1314,54 @@ ORDER BY T.Fecha;";
     return rows.AsList();
   }
 
+  public async Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesByDoctoRelacionadoIdAsync(int doctoRelacionadoId, CancellationToken ct = default)
+  {
+    const string sql = @"SELECT
+    T.ID                            AS Id,
+    T.Fecha                         AS Fecha,
+    T.Concepto                      AS Concepto,
+    CAST(T.Monto AS decimal(18,4))  AS Monto,
+    CAST(TD.Monto AS decimal(18,4)) AS MontoAsignado,
+    T.Tipo_Poliza                   AS TipoPoliza,
+    T.Forma_Pago                    AS FormaPago
+FROM cfdi.Pagos20_DoctoRelacionado AS DR
+JOIN dbo.Transaccion_DoctoRelacionado AS TD
+  ON TD.DoctoRelacionado_Id = DR.DoctoRelacionado_Id
+JOIN dbo.Transacciones AS T
+  ON T.ID = TD.Transaccion_ID
+WHERE DR.DoctoRelacionado_Id = @DoctoRelacionadoId
+ORDER BY T.Fecha;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<TransaccionListItemDto>(
+      new CommandDefinition(sql, new { DoctoRelacionadoId = doctoRelacionadoId }, cancellationToken: ct));
+
+    return rows.AsList();
+  }
+
+  public async Task<TransaccionCommandResult> InsertTransaccionDoctoRelacionadoAsync(int transaccionId, int doctoRelacionadoId, decimal monto, CancellationToken ct = default)
+  {
+    const string sql = @"INSERT INTO dbo.Transaccion_DoctoRelacionado (Transaccion_ID, DoctoRelacionado_ID, Monto)
+VALUES (@TransaccionId, @DoctoRelacionadoId, @Monto);";
+
+    try
+    {
+      using var conn = new SqlConnection(_cs);
+      await conn.ExecuteAsync(
+        new CommandDefinition(sql, new { TransaccionId = transaccionId, DoctoRelacionadoId = doctoRelacionadoId, Monto = monto }, cancellationToken: ct));
+      return TransaccionCommandResult.Ok("Transacción ligada correctamente.");
+    }
+    catch (SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
+    {
+      return TransaccionCommandResult.Fail("Ya existe un vínculo entre esta transacción y el complemento.");
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Error al ligar transacción {TransaccionId} con docto relacionado {DoctoRelacionadoId}", transaccionId, doctoRelacionadoId);
+      return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
+    }
+  }
+
   public async Task<TransaccionCommandResult> GuardarMovimientosAsync(TransaccionMovimientosUpdateRequest request, CancellationToken ct = default)
   {
       if (request is null)

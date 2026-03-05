@@ -13,10 +13,10 @@ using OrionERP.Web.State;
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages;
 
 [Authorize(Roles = "Administrador,SatOperator")]
-public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
+public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
 {
   [Parameter]
-  public int Comprobante_Id { get; set; }
+  public int DoctoRelacionado_Id { get; set; }
 
   [Inject]
   public IDeclaracionPreviaService DeclaracionPreviaService { get; set; } = default!;
@@ -33,15 +33,11 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
   [Inject]
   public IJSRuntime Js { get; set; } = default!;
 
-  [Inject]
-  public NavigationManager Nav { get; set; } = default!;
-
-  protected ComprobanteDetalleDto? Comprobante { get; set; }
+  protected Pago20ResumenDetalleDto? DoctoRelacionado { get; set; }
   protected bool IsLoading { get; set; }
   protected bool IsPolizasLoading { get; set; }
   protected bool IsTransaccionesLoading { get; set; }
   protected bool IsLinking { get; set; }
-  protected bool IsCreatingPoliza { get; set; }
   protected List<TransaccionListItemDto> Polizas { get; } = new();
   protected List<TransaccionListItemDto> Transacciones { get; set; } = new();
   protected TransaccionFilter Filter { get; set; } = new();
@@ -49,8 +45,7 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
   protected string? InlineError { get; set; }
   private bool _disposed;
 
-  protected bool CanLigar => Comprobante is not null && SelectedTransaccion is not null;
-  protected bool CanCreatePoliza => Comprobante is not null;
+  protected bool CanLigar => DoctoRelacionado is not null && SelectedTransaccion is not null;
 
   protected override async Task OnInitializedAsync()
   {
@@ -77,13 +72,14 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
   {
     IsLoading = true;
     InlineError = null;
-    Comprobante = null;
+    DoctoRelacionado = null;
+
     try
     {
-      Comprobante = await DeclaracionPreviaService.GetComprobanteDetalleAsync(Comprobante_Id);
-      if (Comprobante is not null)
+      DoctoRelacionado = await DeclaracionPreviaService.GetPago20ResumenByDoctoRelacionadoIdAsync(DoctoRelacionado_Id);
+      if (DoctoRelacionado is not null)
       {
-        Filter.Monto = Comprobante.Total;
+        Filter.Monto = DoctoRelacionado.ImpPagado != 0 ? DoctoRelacionado.ImpPagado : DoctoRelacionado.MontoPago;
         await LoadPolizasAsync();
         await LoadTransaccionesAsync();
       }
@@ -100,7 +96,7 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
 
   private async Task LoadPolizasAsync()
   {
-    if (Comprobante is null)
+    if (DoctoRelacionado is null)
     {
       return;
     }
@@ -110,17 +106,8 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
 
     try
     {
-      if (!string.IsNullOrWhiteSpace(Comprobante.FOLIO_FISCAL))
-      {
-        var polizasByUuid = await TransaccionService.GetTransaccionesByUuidAsync(Comprobante.FOLIO_FISCAL);
-        Polizas.AddRange(polizasByUuid);
-      }
-
-      if (Polizas.Count == 0)
-      {
-        var polizasById = await TransaccionService.GetTransaccionesByComprobanteIdAsync(Comprobante.Comprobante_Id);
-        Polizas.AddRange(polizasById);
-      }
+      var linkedPolizas = await TransaccionService.GetTransaccionesByDoctoRelacionadoIdAsync(DoctoRelacionado.DoctoRelacionado_Id);
+      Polizas.AddRange(linkedPolizas);
     }
     catch (Exception ex)
     {
@@ -156,10 +143,7 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
     }
   }
 
-  protected async Task BuscarAsync()
-  {
-    await LoadTransaccionesAsync();
-  }
+  protected async Task BuscarAsync() => await LoadTransaccionesAsync();
 
   protected async Task LimpiarFiltrosAsync()
   {
@@ -198,13 +182,13 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
 
   protected async Task LigarAsync()
   {
-    if (!CanLigar || SelectedTransaccion is null || Comprobante is null)
+    if (!CanLigar || SelectedTransaccion is null || DoctoRelacionado is null)
     {
       return;
     }
 
     InlineError = null;
-    var confirm = await Js.InvokeAsync<bool>("confirm", "¿Deseas ligar la transacción seleccionada a este CFDI?");
+    var confirm = await Js.InvokeAsync<bool>("confirm", "¿Deseas ligar la transacción seleccionada a este complemento de pago?");
     if (!confirm)
     {
       return;
@@ -213,10 +197,11 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
     IsLinking = true;
     try
     {
-      var result = await TransaccionService.LinkCfdiReplacingPlaceholderAndRelinkAttachmentAsync(
+      var monto = DoctoRelacionado.ImpPagado != 0 ? DoctoRelacionado.ImpPagado : SelectedTransaccion.Monto;
+      var result = await TransaccionService.InsertTransaccionDoctoRelacionadoAsync(
         SelectedTransaccion.Id,
-        Comprobante.Comprobante_Id,
-        SelectedTransaccion.Monto);
+        DoctoRelacionado.DoctoRelacionado_Id,
+        monto);
 
       if (!result.Success)
       {
@@ -242,63 +227,16 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
     }
   }
 
-  protected async Task CrearPolizaConComprobanteAsync()
-  {
-    if (!CanCreatePoliza || Comprobante is null)
-    {
-      return;
-    }
-
-    InlineError = null;
-    IsCreatingPoliza = true;
-
-    try
-    {
-      await DeclaracionPreviaService.GenerarPolizaDesdeComprobanteAsync(Comprobante.Comprobante_Id, RfcState.CurrentRfc ?? string.Empty);
-      await OpenLinkedTransactionAsync();
-      await LoadPolizasAsync();
-    }
-    catch (Exception ex)
-    {
-      InlineError = $"Error al crear la póliza: {ex.Message}";
-      UiMessages.ShowError(InlineError);
-    }
-    finally
-    {
-      IsCreatingPoliza = false;
-    }
-  }
-
-  private async Task OpenLinkedTransactionAsync()
-  {
-    var transId = await DeclaracionPreviaService.GetLinkedTransactionIdAsync(Comprobante_Id);
-
-    if (!transId.HasValue)
-    {
-      UiMessages.ShowWarning("No se encontró una Transacción vinculada a este CFDI.");
-      return;
-    }
-
-    var url = $"/Contabilidad/transacciones/{transId.Value}";
-
-    try
-    {
-      await Js.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
-    }
-    catch
-    {
-      Nav.NavigateTo(url);
-    }
-  }
-
   private void ResetFilters()
   {
+    var monto = DoctoRelacionado?.ImpPagado != 0 ? DoctoRelacionado?.ImpPagado : DoctoRelacionado?.MontoPago;
+
     Filter = new TransaccionFilter
     {
       Rfc = RfcState.CurrentRfc,
       Year = DateTime.Now.Year,
       Month = DateTime.Now.Month,
-      Monto = Comprobante?.Total
+      Monto = monto
     };
   }
 

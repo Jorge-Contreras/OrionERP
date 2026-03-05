@@ -2,6 +2,7 @@ using Dapper;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.ReportesFinancieros;
 using OrionERP.Application.Features.ReportesFinancieros.Models;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -30,6 +31,25 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
 
             var result = await connection.QueryAsync<BalanzaComprobacionRow>(
                 "reporteFinanciero.Rpt_BalanzaComprobacion",
+                parameters,
+                commandType: CommandType.StoredProcedure,
+                commandTimeout: 30);
+
+            return result.AsList();
+        }
+
+        public async Task<IReadOnlyList<EstadoPerdidasGananciasRow>> GetEstadoPerdidasGananciasAsync(
+            DateTime startDate,
+            DateTime endDate,
+            string? rfc)
+        {
+            using var connection = _connectionFactory.Create();
+            connection.Open();
+
+            var parameters = new { startDate, endDate, RFC = rfc };
+
+            var result = await connection.QueryAsync<EstadoPerdidasGananciasRow>(
+                "reporteFinanciero.ESTADO_PERDIDAS_GANANCIAS",
                 parameters,
                 commandType: CommandType.StoredProcedure,
                 commandTimeout: 30);

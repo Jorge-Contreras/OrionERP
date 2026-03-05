@@ -1,10 +1,8 @@
-window.orionPrintBalanza = () => {
-  const root =
-    document.getElementById("balanza-comprobacion-print-root") ||
-    document.getElementById("balanza-comprobacion-table");
+window.orionPrintReport = (rootId, title, subtitle = "") => {
+  const root = document.getElementById(rootId);
 
   if (!root) {
-    console.warn("No se encontró el contenido de Balanza para imprimir.");
+    console.warn(`No se encontró el contenido para imprimir: ${rootId}`);
     return;
   }
 
@@ -29,6 +27,22 @@ window.orionPrintBalanza = () => {
         color: #111;
       }
 
+      .print-header {
+        margin-bottom: 12px;
+      }
+
+      .print-title {
+        font-size: 18px;
+        font-weight: 700;
+        margin: 0;
+      }
+
+      .print-subtitle {
+        font-size: 12px;
+        color: #555;
+        margin: 4px 0 0;
+      }
+
       table {
         width: 100%;
         border-collapse: collapse;
@@ -48,17 +62,18 @@ window.orionPrintBalanza = () => {
         page-break-inside: avoid;
       }
 
-      /* Base cell padding */
+      .table-responsive {
+        overflow: visible !important;
+      }
+
       .balanza-table td {
         padding-right: .5rem;
       }
 
-      /* Indentación */
       .balanza-table td.balanza-indent-1 { padding-left: .25rem; }
       .balanza-table td.balanza-indent-2 { padding-left: 1.25rem; }
       .balanza-table td.balanza-indent-3 { padding-left: 2.25rem; }
 
-      /* Peso visual por jerarquía */
       .level-1 td {
         font-weight: 700;
         background: #f8f9fa;
@@ -78,20 +93,14 @@ window.orionPrintBalanza = () => {
         white-space: nowrap;
       }
 
+      .text-end {
+        text-align: right;
+      }
+
       @media print {
         .no-print { display: none !important; }
-
-        .table-responsive {
-          overflow: visible !important;
-        }
-
-        table {
-          width: 100% !important;
-        }
-
-        th, td {
-          font-size: 11px;
-        }
+        table { width: 100% !important; }
+        th, td { font-size: 11px; }
       }
     </style>
   `;
@@ -101,13 +110,15 @@ window.orionPrintBalanza = () => {
     <html>
       <head>
         <meta charset="utf-8" />
-        <title>Balanza de Comprobación</title>
+        <title>${title ?? "Reporte"}</title>
         ${styles}
       </head>
       <body>
-        <div id="balanza-print">
-          ${root.outerHTML}
+        <div class="print-header">
+          <p class="print-title">${title ?? ""}</p>
+          ${subtitle ? `<p class="print-subtitle">${subtitle}</p>` : ""}
         </div>
+        ${root.outerHTML}
       </body>
     </html>
   `;
@@ -117,13 +128,27 @@ window.orionPrintBalanza = () => {
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
     } finally {
-      // Cleanup shortly after opening the print dialog
       setTimeout(() => {
         if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
       }, 200);
     }
   };
 
-  // Use srcdoc for reliable load
   iframe.srcdoc = html;
+};
+
+window.orionPrintBalanza = () => {
+  const root =
+    document.getElementById("balanza-comprobacion-print-root") ||
+    document.getElementById("balanza-comprobacion-table");
+
+  if (!root) {
+    console.warn("No se encontró el contenido de Balanza para imprimir.");
+    return;
+  }
+
+  window.orionPrintReport(
+    root.id,
+    "Balanza de Comprobación"
+  );
 };

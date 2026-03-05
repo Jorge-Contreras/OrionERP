@@ -31,6 +31,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
         public bool IsLoading { get; private set; }
         public string? ErrorMessage { get; private set; }
         public List<BalanzaComprobacionRow> Resultados { get; private set; } = new();
+        private string? SelectedRowId { get; set; }
 
         private string MesSelectValue => Mes?.ToString() ?? string.Empty;
         private bool EsAnual => string.Equals(Resultados.FirstOrDefault()?.ModoReporte, "ANUAL", StringComparison.OrdinalIgnoreCase);
@@ -57,11 +58,20 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
             await InvokeAsync(StateHasChanged);
         }
 
-        private Task OnMesChanged(ChangeEventArgs e)
+        private async Task OnAnioChanged(ChangeEventArgs e)
+        {
+            if (int.TryParse(e.Value?.ToString(), out var anio))
+            {
+                Anio = anio;
+                await LoadDataAsync();
+            }
+        }
+
+        private async Task OnMesChanged(ChangeEventArgs e)
         {
             var value = e.Value?.ToString();
             Mes = int.TryParse(value, out var mes) ? mes : null;
-            return Task.CompletedTask;
+            await LoadDataAsync();
         }
 
         private async Task OnRfcChangedFromPicker(string? rfc)
@@ -70,7 +80,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
             await LoadDataAsync();
         }
 
-        private async Task BuscarAsync()
+        private async Task RefreshAsync()
         {
             await LoadDataAsync();
         }
@@ -92,6 +102,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
             {
                 var rows = await ReportesService.GetBalanzaComprobacionAsync(Anio, Mes, CurrentRfc);
                 Resultados = rows.ToList();
+                SelectedRowId = null;
             }
             catch (Exception ex)
             {
@@ -149,13 +160,28 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
             return row.Nivel1Descripcion ?? string.Empty;
         }
 
-        private string GetRowClass(BalanzaComprobacionRow row) => row.NivelJerarquia switch
+        private string GetRowClass(BalanzaComprobacionRow row)
         {
-            1 => "level-1",
-            2 => "level-2",
-            3 => "level-3",
-            _ => string.Empty
-        };
+            var levelClass = row.NivelJerarquia switch
+            {
+                1 => "level-1",
+                2 => "level-2",
+                3 => "level-3",
+                _ => string.Empty
+            };
+
+            return SelectedRowId == GetRowId(row)
+                ? $"{levelClass} balanza-row-selected".Trim()
+                : levelClass;
+        }
+
+        private void SelectRow(BalanzaComprobacionRow row)
+        {
+            SelectedRowId = GetRowId(row);
+        }
+
+        private static string GetRowId(BalanzaComprobacionRow row)
+            => $"{row.Nivel1}|{row.Nivel2}|{row.Nivel3}|{row.NivelJerarquia}";
 
         private string GetIndentClass(BalanzaComprobacionRow row) => row.NivelJerarquia switch
         {
@@ -169,10 +195,14 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
 
         private async Task PrintAsync()
         {
-            await JS.InvokeVoidAsync("orionPrintBalanza");
+            await JS.InvokeVoidAsync(
+                "orionPrintReport",
+                "balanza-comprobacion-print-root",
+                "Balanza de Comprobación",
+                string.IsNullOrWhiteSpace(CurrentRfc) ? PeriodoDescripcion : $"RFC: {CurrentRfc}  Periodo: {PeriodoDescripcion}");
         }
 
-        private void GoToContabilidadRegistros(BalanzaComprobacionRow row)
+        private async Task GoToContabilidadRegistros(BalanzaComprobacionRow row)
         {
             if (string.IsNullOrWhiteSpace(CurrentRfc))
             {
@@ -194,9 +224,17 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
                 query.Add("nivel3", row.Nivel3);
             }
 
+            query.Add("anio", Anio.ToString(CultureInfo.InvariantCulture));
+
+            if (Mes.HasValue)
+            {
+                query.Add("mes", Mes.Value.ToString(CultureInfo.InvariantCulture));
+            }
+
             query.Add("rfc", CurrentRfc);
 
-            Navigation.NavigateTo($"/cfdi/registros-contables{query.ToQueryString()}");
+            var registrosContablesUrl = $"/cfdi/registros-contables{query.ToQueryString()}";
+            await JS.InvokeVoidAsync("open", registrosContablesUrl, "_blank");
         }
 
         public void Dispose()

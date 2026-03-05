@@ -245,28 +245,12 @@ ORDER BY Year DESC;";
     }
 
     const string sql = @"
-SELECT 
-    M.Movimiento_ID AS MovimientoId,
-    M.Dia,
-    M.Secuencia_Diaria AS Line,
-    M.Concepto,
-    M.Tipo,
-    M.Cargo,
-    M.Abono,
-    M.Saldo,
-    M.Fecha_Carga AS FechaCarga,
-    M.Nombre_Banco AS NombreBanco,
-    M.Numero_Cuenta AS NumeroCuenta,
-    M.Secuencia_Clave AS SecuenciaClave,
-    M.Transaccion_ID AS Policy
-FROM bancos.Movimientos AS M
-LEFT JOIN dbo.Transacciones AS T ON M.Transaccion_ID = T.ID
-WHERE M.RFC = @Rfc
-  AND (@AccountId IS NULL OR M.Cuenta_Banco_ID = @AccountId)
-  AND YEAR(M.Dia) = @Year
-  AND MONTH(M.Dia) = @Month
-  AND (@TextFilter IS NULL OR M.Concepto LIKE '%' + @TextFilter + '%')
-ORDER BY M.Secuencia_Clave desc;";
+EXEC bancos.sp_Movimientos_Bancarios
+  @RFC = @Rfc,
+  @AccountId = @AccountId,
+  @Year = @Year,
+  @Month = @Month,
+  @TextFilter = @TextFilter;";
 
     var parameters = new
     {
@@ -337,7 +321,7 @@ SELECT
     CAST(ISNULL(t.Monto, 0) AS decimal(19,2)) AS Monto
 FROM dbo.Transacciones AS t
 WHERE t.RFC = @Rfc
-  AND t.Forma_Pago = '03'
+  AND t.Forma_Pago IN ('03', '28', '04')
   AND YEAR(t.Fecha) = @Year
   AND MONTH(t.Fecha) = @Month
   AND NOT EXISTS (

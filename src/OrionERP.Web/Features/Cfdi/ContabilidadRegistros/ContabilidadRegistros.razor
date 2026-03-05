@@ -3,10 +3,12 @@
 @using OrionERP.Application.Features.Cfdi.ContabilidadRegistros
 @using OrionERP.Web.Shared
 @using OrionERP.Web.State
+@using System.Globalization
 @inject IContabilidadRegistrosService RegistrosService
 @inject NavigationManager Navigation
 @inject IUserRfcState RfcState
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
+@implements IDisposable
 
 <h3>Contabilidad &mdash; Registros</h3>
 
@@ -18,28 +20,47 @@
 }
 
 <div class="card p-3 mb-3">
-  <div class="row g-3 align-items-end">
+  <div class="row g-3 align-items-end mb-3">
     <div class="col-md-4">
       <label class="form-label">RFC (Razón Social)</label>
             <RfcPicker @bind-SelectedRfc="selectedRfc" @bind-SelectedRfc:after="OnRfcChangedAsync" />
     </div>
     <div class="col-md-3">
-      <label class="form-label">Fecha inicio</label>
-      <input class="form-control" type="date" @bind="startDate" />
+      <label class="form-label">Ejercicio</label>
+      <select class="form-select" @bind="selectedYear" @bind:after="OnBuscarClickedAsync">
+        @for (var year = MinYear; year <= MaxYear; year++)
+        {
+          <option value="@year">@year</option>
+        }
+      </select>
     </div>
     <div class="col-md-3">
-      <label class="form-label">Fecha fin</label>
-      <input class="form-control" type="date" @bind="endDate" />
+      <label class="form-label">Mes</label>
+      <select class="form-select" @bind="selectedMonth" @bind:after="OnBuscarClickedAsync">
+        @for (var month = MinMonth; month <= MaxMonth; month++)
+        {
+          <option value="@month">@CultureInfo.GetCultureInfo("es-MX").DateTimeFormat.GetMonthName(month)</option>
+        }
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label d-block">Filtro</label>
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="mostrarTodo" @bind="mostrarTodo" @bind:after="OnBuscarClickedAsync" />
+        <label class="form-check-label" for="mostrarTodo">Mostrar todo</label>
+      </div>
     </div>
   </div>
 
-  <CuentaContablePicker
-    @ref="accountPicker"
-    @bind-SelectedRfc="selectedRfc"
-    @bind-SelectedRfc:after="OnAccountPickerRfcChangedAsync"
-    @bind-Selection="accountSelection"
-    SearchRequested="OnAccountPickerSearchRequestedAsync"
-    ErrorChanged="OnAccountPickerErrorChangedAsync" />
+  <div class="mt-3">
+    <CuentaContablePicker
+      @ref="accountPicker"
+      @bind-SelectedRfc="selectedRfc"
+      @bind-SelectedRfc:after="OnAccountPickerRfcChangedAsync"
+      @bind-Selection="accountSelection"
+      SearchRequested="OnAccountPickerSearchRequestedAsync"
+      ErrorChanged="OnAccountPickerErrorChangedAsync" />
+  </div>
 
   <div class="mt-3 d-flex flex-wrap align-items-center gap-2">
     @if (HasAccountSelection)
@@ -76,16 +97,13 @@
           <tr>
             <th>Id</th>
             <th>Poliza</th>
-                        <th>Ver Poliza</th>
             <th>Fecha</th>
-            <th>Cuenta</th>
-            <th>Nombre_Cuenta</th>
             <th>Concepto</th>
             <th>Debe</th>
             <th>Haber</th>
             <th>Balance</th>
             <th>Revisado</th>
-            <th></th>
+            <th>Orden</th>
           </tr>
         </thead>
         <tbody>
@@ -93,20 +111,34 @@
           {
             <tr>
               <td>@row.Id</td>
-                            <td>@row.Poliza</td>
               <td>
-              <button class="btn btn-link btn-sm" type="button" @onclick="() => GoToPoliza(row.Poliza)">Ver póliza</button>
+                <button class="btn btn-link btn-sm p-0" type="button" @onclick="() => GoToPoliza(row.Poliza)">@row.Poliza</button>
               </td>
               <td>@row.Fecha</td>
-              <td>@row.Cuenta</td>
-              <td>@row.Nombre_Cuenta</td>
               <td>@row.Concepto</td>
               <td>@row.Debe</td>
               <td>@row.Haber</td>
               <td>@row.Balance</td>
               
               <td>@row.Revisado</td>
-              
+              <td>
+                                <div class="d-inline-flex gap-1">
+                                    <button class="btn btn-outline-secondary btn-sm py-0" type="button"
+                                            disabled="@(!CanMoveUp(row.Poliza) || isLoading)"
+                                            @onclick="() => MoveUpAsync(row)"
+                                            title="Subir">
+                                        <i class="bi bi-arrow-up"></i>
+                                    </button>
+
+                                    <button class="btn btn-outline-secondary btn-sm py-0" type="button"
+                                            disabled="@(!CanMoveDown(row.Poliza) || isLoading)"
+                                            @onclick="() => MoveDownAsync(row)"
+                                            title="Bajar">
+                                        <i class="bi bi-arrow-down"></i>
+                                    </button>
+                                </div>
+
+              </td>
             </tr>
           }
         </tbody>
@@ -120,18 +152,28 @@
 </div>
 
 @code {
+  private const int MinYear = 1990;
+  private const int MaxYear = 2050;
+  private const int MinMonth = 1;
+  private const int MaxMonth = 12;
+  private static readonly DateTime GlobalStartDate = new(MinYear, 1, 1, 0, 0, 0);
+
   private CuentaContablePicker? accountPicker;
   private CuentaContableSelection? accountSelection;
   private string? selectedRfc;
   private string? lastComponentRfc;
-  private DateTime startDate = new DateTime(DateTime.Today.Year, 1, 1);
-  private DateTime endDate = DateTime.Today;
+  private int selectedYear = DateTime.Today.Year;
+  private int selectedMonth = DateTime.Today.Month;
+  private bool mostrarTodo;
   private readonly List<RegistrosContablesRow> registros = new();
+  private readonly List<int> transaccionOrder = new();
   private bool hasSearched;
   private bool isLoading;
   private string? errorMessage;
   private bool suppressRfcChange;
   private string? lastQueryKey;
+  private bool isApplyingQueryFilters;
+  private CancellationTokenSource? queryApplyCts;
 
   [Parameter, SupplyParameterFromQuery(Name = "nivel1")]
   public string? QueryNivel1 { get; set; }
@@ -145,18 +187,19 @@
   [Parameter, SupplyParameterFromQuery(Name = "rfc")]
   public string? QueryRfc { get; set; }
 
+  [Parameter, SupplyParameterFromQuery(Name = "anio")]
+  public int? QueryAnio { get; set; }
+
+  [Parameter, SupplyParameterFromQuery(Name = "mes")]
+  public int? QueryMes { get; set; }
+
   private bool HasAccountSelection => accountSelection?.HasNivel2 ?? false;
   private bool HasCompleteAccount => accountSelection?.HasNivel3 ?? false;
   private bool CanBuscar => HasAccountSelection && !string.IsNullOrWhiteSpace(selectedRfc);
 
   protected override Task OnInitializedAsync()
   {
-    selectedRfc = RfcState.CurrentRfc;
-    if (string.IsNullOrWhiteSpace(selectedRfc))
-    {
-      RfcState.ResetToDefault();
-      selectedRfc = RfcState.CurrentRfc;
-    }
+    SyncSelectedRfcWithState();
 
     return Task.CompletedTask;
   }
@@ -181,17 +224,35 @@
       }
     }
 
-    var currentQueryKey = $"{QueryNivel1}|{QueryNivel2}|{QueryNivel3}|{QueryRfc}";
-
-    if (!string.IsNullOrWhiteSpace(QueryNivel1) && !string.Equals(currentQueryKey, lastQueryKey, StringComparison.Ordinal))
+    if (QueryAnio is >= MinYear and <= MaxYear)
     {
-      accountSelection = new CuentaContableSelection
-      {
-        Nivel1 = QueryNivel1,
-        Nivel2 = string.IsNullOrWhiteSpace(QueryNivel2) ? null : QueryNivel2,
-        Nivel3 = string.IsNullOrWhiteSpace(QueryNivel3) ? null : QueryNivel3,
-        Rfc = selectedRfc
-      };
+      selectedYear = QueryAnio.Value;
+    }
+
+    if (QueryMes is >= MinMonth and <= MaxMonth)
+    {
+      selectedMonth = QueryMes.Value;
+    }
+
+    var currentQueryKey = BuildQueryKey();
+
+    if (string.IsNullOrWhiteSpace(QueryNivel1) || string.Equals(currentQueryKey, lastQueryKey, StringComparison.Ordinal))
+    {
+      return;
+    }
+
+    queryApplyCts?.Cancel();
+    queryApplyCts?.Dispose();
+    queryApplyCts = new CancellationTokenSource();
+    var token = queryApplyCts.Token;
+
+    isApplyingQueryFilters = true;
+
+    try
+    {
+      await Task.Delay(TimeSpan.FromSeconds(1), token);
+
+      accountSelection = CreateSelectionFromQuery();
 
       lastQueryKey = currentQueryKey;
 
@@ -200,6 +261,56 @@
         await BuscarAsync();
       }
     }
+    catch (OperationCanceledException)
+    {
+      // A new parameter set arrived; only the newest one should apply.
+    }
+    finally
+    {
+      isApplyingQueryFilters = false;
+    }
+  }
+
+  private static string NormalizeTwoDigits(string value)
+  {
+    var trimmed = value?.Trim() ?? string.Empty;
+    if (trimmed.Length == 1 && char.IsDigit(trimmed[0]))
+    {
+      return trimmed.PadLeft(2, '0');
+    }
+
+    return trimmed;
+  }
+
+  private void SyncSelectedRfcWithState()
+  {
+    selectedRfc = RfcState.CurrentRfc;
+    if (string.IsNullOrWhiteSpace(selectedRfc))
+    {
+      RfcState.ResetToDefault();
+      selectedRfc = RfcState.CurrentRfc;
+    }
+  }
+
+  private string BuildQueryKey()
+    => $"{QueryNivel1}|{QueryNivel2}|{QueryNivel3}|{QueryRfc}|{selectedYear}|{selectedMonth}";
+
+  private CuentaContableSelection CreateSelectionFromQuery()
+    => new()
+    {
+      Nivel1 = QueryNivel1,
+      Nivel2 = string.IsNullOrWhiteSpace(QueryNivel2) ? null : NormalizeTwoDigits(QueryNivel2),
+      Nivel3 = string.IsNullOrWhiteSpace(QueryNivel3) ? null : NormalizeTwoDigits(QueryNivel3),
+      Rfc = selectedRfc
+    };
+
+  private void ResetSearchState()
+  {
+    accountSelection = null;
+    registros.Clear();
+    transaccionOrder.Clear();
+    hasSearched = false;
+    errorMessage = null;
   }
 
   private async Task OnRfcChangedAsync()
@@ -210,10 +321,12 @@
       return;
     }
 
-    accountSelection = null;
-    registros.Clear();
-    hasSearched = false;
-    errorMessage = null;
+    if (isApplyingQueryFilters)
+    {
+      return;
+    }
+
+    ResetSearchState();
 
     await InvokeAsync(StateHasChanged);
   }
@@ -288,13 +401,17 @@
     try
     {
       var nivel3 = string.IsNullOrWhiteSpace(accountSelection.Nivel3) ? "00" : accountSelection.Nivel3!;
+      var startDate = GetStartDate();
+      var endDate = GetEndDate();
       var items = await RegistrosService.GetRegistrosAsync(startDate, endDate, selectedRfc!, accountSelection.Nivel1!, accountSelection.Nivel2!, nivel3);
       registros.Clear();
       registros.AddRange(items);
+      UpdateTransaccionOrder();
     }
     catch (Exception ex)
     {
       registros.Clear();
+      transaccionOrder.Clear();
       ReportError("No se pudo cargar información", ex);
     }
     finally
@@ -306,9 +423,98 @@
   private void GoToPoliza(int poliza)
     => Navigation.NavigateTo($"/contabilidad/transacciones/{poliza}");
 
+  private void UpdateTransaccionOrder()
+  {
+    transaccionOrder.Clear();
+    var seen = new HashSet<int>();
+    foreach (var row in registros)
+    {
+      if (seen.Add(row.Poliza))
+      {
+        transaccionOrder.Add(row.Poliza);
+      }
+    }
+  }
+
+  private bool CanMoveUp(int transaccionId)
+  {
+    var index = transaccionOrder.IndexOf(transaccionId);
+    return index > 0;
+  }
+
+  private bool CanMoveDown(int transaccionId)
+  {
+    var index = transaccionOrder.IndexOf(transaccionId);
+    return index >= 0 && index < transaccionOrder.Count - 1;
+  }
+
+  private async Task MoveUpAsync(RegistrosContablesRow row)
+  {
+    await MoveAsync(row, -1);
+  }
+
+  private async Task MoveDownAsync(RegistrosContablesRow row)
+  {
+    await MoveAsync(row, 1);
+  }
+
+  private async Task MoveAsync(RegistrosContablesRow row, int direction)
+  {
+    if (transaccionOrder.Count == 0)
+    {
+      return;
+    }
+
+    var anchorId = row.Poliza;
+    var anchorIndex = transaccionOrder.IndexOf(anchorId);
+    var targetIndex = anchorIndex + direction;
+    if (anchorIndex < 0 || targetIndex < 0 || targetIndex >= transaccionOrder.Count)
+    {
+      return;
+    }
+
+    var targetId = transaccionOrder[targetIndex];
+
+    isLoading = true;
+    errorMessage = null;
+
+    try
+    {
+      await RegistrosService.ReorderTransaccionAsync(anchorId, targetId, transaccionOrder);
+      await BuscarAsync();
+    }
+    catch (Exception ex)
+    {
+      ReportError("No se pudo reordenar la transacción", ex);
+      isLoading = false;
+    }
+  }
+
   private void ReportError(string message, Exception exception)
   {
     errorMessage = message;
     Console.Error.WriteLine($"[ContabilidadRegistros] {message}: {exception}");
+  }
+
+  private DateTime GetStartDate()
+  {
+    if (mostrarTodo)
+    {
+      return GlobalStartDate;
+    }
+
+    return new DateTime(selectedYear, 1, 1, 0, 0, 0);
+  }
+
+  private DateTime GetEndDate()
+  {
+    var lastDay = DateTime.DaysInMonth(selectedYear, selectedMonth);
+    return new DateTime(selectedYear, selectedMonth, lastDay, 23, 59, 59);
+  }
+
+  public void Dispose()
+  {
+    queryApplyCts?.Cancel();
+    queryApplyCts?.Dispose();
   }
 }

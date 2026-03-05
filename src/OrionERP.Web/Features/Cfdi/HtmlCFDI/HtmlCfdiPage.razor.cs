@@ -72,7 +72,7 @@ public partial class HtmlCfdiPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError("No se pudieron cargar las pólizas relacionadas.");
+      UiMessages.ShowError($"No se pudieron cargar las pólizas relacionadas. {ex.Message}");
     }
     finally
     {

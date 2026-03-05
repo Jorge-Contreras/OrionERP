@@ -41,6 +41,14 @@ public interface ITransaccionService
       int attachmentId,
       int transaccionId,
       CancellationToken ct = default);
+  Task<TransaccionCommandResult> RegenerarPolizaDesdeComprobanteEnTransaccionAsync(
+      int transaccionId,
+      long comprobanteId,
+      CancellationToken ct = default);
+  Task<TransaccionCommandResult> RegenerarPolizaDesdeComplementoEnTransaccionAsync(
+      int transaccionId,
+      long comprobanteId,
+      CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> GetCategoriasAsync(string rfc, CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> GetActividadesAsync(string rfc, CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> GetComprasAsync(string rfc, CancellationToken ct = default);
@@ -53,5 +61,7 @@ public interface ITransaccionService
   Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesListAsync(TransaccionFilter filter, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesByUuidAsync(string uuid, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesByComprobanteIdAsync(int comprobanteId, CancellationToken ct = default);
+  Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesByDoctoRelacionadoIdAsync(int doctoRelacionadoId, CancellationToken ct = default);
+  Task<TransaccionCommandResult> InsertTransaccionDoctoRelacionadoAsync(int transaccionId, int doctoRelacionadoId, decimal monto, CancellationToken ct = default);
   Task<TransaccionCommandResult> GuardarMovimientosAsync(TransaccionMovimientosUpdateRequest request, CancellationToken ct = default);
 }

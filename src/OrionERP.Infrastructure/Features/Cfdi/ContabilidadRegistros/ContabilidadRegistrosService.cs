@@ -8,6 +8,7 @@ namespace OrionERP.Infrastructure.Features.Cfdi.ContabilidadRegistros;
 
 public sealed class ContabilidadRegistrosService : IContabilidadRegistrosService
 {
+  private const int FechaNormalizationStepMs = 10;
   private readonly string _connectionString;
 
   public ContabilidadRegistrosService(IConfiguration configuration)
@@ -51,6 +52,101 @@ public sealed class ContabilidadRegistrosService : IContabilidadRegistrosService
         commandType: CommandType.StoredProcedure);
   }
 
+  public async Task ReorderTransaccionAsync(
+    int anchorTransaccionId,
+    int targetTransaccionId,
+    IReadOnlyList<int> orderedTransaccionIds)
+  {
+    if (anchorTransaccionId <= 0 || targetTransaccionId <= 0)
+    {
+      throw new ArgumentException("Transacción inválida para reordenar.");
+    }
+
+    if (orderedTransaccionIds is null || orderedTransaccionIds.Count == 0)
+    {
+      throw new ArgumentException("No se proporcionó el orden de transacciones.");
+    }
+
+    using var connection = new SqlConnection(_connectionString);
+    await connection.OpenAsync();
+    using var transaction = connection.BeginTransaction();
+
+    try
+    {
+      var fechaRows = (await connection.QueryAsync<TransaccionFechaRow>(
+          @"SELECT ID, Fecha
+            FROM dbo.Transacciones WITH (UPDLOCK, HOLDLOCK)
+            WHERE ID IN @Ids",
+          new { Ids = new[] { anchorTransaccionId, targetTransaccionId } },
+          transaction))
+        .ToList();
+
+      var anchorRow = fechaRows.FirstOrDefault(row => row.Id == anchorTransaccionId)
+        ?? throw new InvalidOperationException("No se encontró la transacción origen.");
+      var targetRow = fechaRows.FirstOrDefault(row => row.Id == targetTransaccionId)
+        ?? throw new InvalidOperationException("No se encontró la transacción destino.");
+
+      var anchorFecha = anchorRow.Fecha;
+      var targetFecha = targetRow.Fecha;
+
+      if (anchorFecha == targetFecha)
+      {
+        var orderedDistinctIds = GetOrderedDistinctIds(orderedTransaccionIds);
+        var tieIds = (await connection.QueryAsync<int>(
+            @"SELECT ID
+              FROM dbo.Transacciones WITH (UPDLOCK, HOLDLOCK)
+              WHERE ID IN @Ids AND Fecha = @Fecha",
+            new { Ids = orderedDistinctIds, Fecha = anchorFecha },
+            transaction))
+          .ToHashSet();
+
+        var orderedTieIds = orderedDistinctIds.Where(id => tieIds.Contains(id)).ToList();
+        if (orderedTieIds.Count < 2)
+        {
+          throw new InvalidOperationException("No se pudo determinar el grupo de empate para reordenar.");
+        }
+
+        var baseFecha = anchorFecha;
+        for (var index = 0; index < orderedTieIds.Count; index++)
+        {
+          var id = orderedTieIds[index];
+          var normalizedFecha = baseFecha.AddMilliseconds(FechaNormalizationStepMs * index);
+
+          await connection.ExecuteAsync(
+              "UPDATE dbo.Transacciones SET Fecha = @Fecha WHERE ID = @Id",
+              new { Fecha = normalizedFecha, Id = id },
+              transaction);
+
+          if (id == anchorTransaccionId)
+          {
+            anchorFecha = normalizedFecha;
+          }
+
+          if (id == targetTransaccionId)
+          {
+            targetFecha = normalizedFecha;
+          }
+        }
+      }
+
+      await connection.ExecuteAsync(
+          "UPDATE dbo.Transacciones SET Fecha = @Fecha WHERE ID = @Id",
+          new { Fecha = targetFecha, Id = anchorTransaccionId },
+          transaction);
+
+      await connection.ExecuteAsync(
+          "UPDATE dbo.Transacciones SET Fecha = @Fecha WHERE ID = @Id",
+          new { Fecha = anchorFecha, Id = targetTransaccionId },
+          transaction);
+
+      transaction.Commit();
+    }
+    catch (Exception ex)
+    {
+      transaction.Rollback();
+      throw new InvalidOperationException("No se pudo reordenar la transacción.", ex);
+    }
+  }
 
   private static string NormalizeTwoDigits(string value)
   {
@@ -61,5 +157,27 @@ public sealed class ContabilidadRegistrosService : IContabilidadRegistrosService
     }
 
     return trimmed;
+  }
+
+  private static List<int> GetOrderedDistinctIds(IReadOnlyList<int> orderedIds)
+  {
+    var seen = new HashSet<int>();
+    var orderedDistinct = new List<int>(orderedIds.Count);
+
+    foreach (var id in orderedIds)
+    {
+      if (seen.Add(id))
+      {
+        orderedDistinct.Add(id);
+      }
+    }
+
+    return orderedDistinct;
+  }
+
+  private sealed record TransaccionFechaRow
+  {
+    public int Id { get; init; }
+    public DateTime Fecha { get; init; }
   }
 }

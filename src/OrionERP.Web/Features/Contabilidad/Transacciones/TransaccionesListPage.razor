@@ -9,7 +9,7 @@
     <div class="col-md-3">
         <div class="form-group">
             <label for="year">Año</label>
-            <select id="year" class="form-control" @bind="Filter.Year">
+            <select id="year" class="form-control" @bind="Filter.Year" @bind:after="OnFilterSelectionChanged">
                 <option value="">Todos</option>
                 @for (var year = 2035; year >= 2000; year--)
                 {
@@ -21,7 +21,7 @@
     <div class="col-md-3">
         <div class="form-group">
             <label for="month">Mes</label>
-            <select id="month" class="form-control" @bind="Filter.Month">
+            <select id="month" class="form-control" @bind="Filter.Month" @bind:after="OnFilterSelectionChanged">
                 <option value="">Todos</option>
                 <option value="1">Enero</option>
                 <option value="2">Febrero</option>
@@ -41,7 +41,27 @@
 </div>
 
 <div class="row mt-3">
-    <div class="col-md-12 text-right">
+    <div class="col-md-6">
+        <div class="form-group">
+            <label for="sortBy">Ordenar por</label>
+            <div class="input-group">
+                <select id="sortBy" class="form-control" @bind="Filter.SortBy" @bind:after="OnFilterSelectionChanged">
+                    <option value="">Sin ordenar</option>
+                    <option value="Id">ID</option>
+                    <option value="Fecha">Fecha</option>
+                    <option value="Concepto">Concepto</option>
+                    <option value="Monto">Monto</option>
+                    <option value="TipoPoliza">Tipo de Póliza</option>
+                    <option value="FormaPago">Forma de Pago</option>
+                </select>
+                <div class="input-group-append">
+                    <button class="btn btn-outline-secondary" type="button" @onclick="() => ApplySort(true)" disabled="@IsLoading">Asc</button>
+                    <button class="btn btn-outline-secondary" type="button" @onclick="() => ApplySort(false)" disabled="@IsLoading">Desc</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 text-right">
         <button class="btn btn-primary" @onclick="Search" disabled="@IsLoading">Buscar</button>
         <button class="btn btn-secondary" @onclick="ClearFilters" disabled="@IsLoading">Limpiar</button>
         <a href="/contabilidad/transacciones/new" class="btn btn-success">Nueva Transacción</a>
@@ -63,7 +83,7 @@ else
                     {
                         <span>@(Filter.SortAsc ? "▲" : "▼")</span>
                     }
-                    <InputNumber class="form-control" @bind-Value="Filter.Id" />
+                    <input type="number" class="form-control" @bind-value="Filter.Id" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
                 </th>
                 <th>
                     <a href="#" @onclick='() => Sort("Fecha")'>Fecha</a>
@@ -78,7 +98,7 @@ else
                     {
                         <span>@(Filter.SortAsc ? "▲" : "▼")</span>
                     }
-                    <InputText class="form-control" @bind-Value="Filter.Concepto" />
+                    <input type="text" class="form-control" @bind-value="Filter.Concepto" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
                 </th>
                 <th>
                     <a href="#" @onclick='() => Sort("Monto")'>Monto</a>
@@ -86,7 +106,7 @@ else
                     {
                         <span>@(Filter.SortAsc ? "▲" : "▼")</span>
                     }
-                    <InputNumber class="form-control" @bind-Value="Filter.Monto" />
+                    <input type="number" class="form-control" @bind-value="Filter.Monto" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
                 </th>
                 <th>
                     <a href="#" @onclick='() => Sort("TipoPoliza")'>Tipo de Póliza</a>
@@ -94,7 +114,7 @@ else
                     {
                         <span>@(Filter.SortAsc ? "▲" : "▼")</span>
                     }
-                    <InputText class="form-control" @bind-Value="Filter.TipoPoliza" />
+                    <input type="text" class="form-control" @bind-value="Filter.TipoPoliza" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
                 </th>
                 <th>
                     <a href="#" @onclick='() => Sort("FormaPago")'>Forma de Pago</a>
@@ -102,7 +122,7 @@ else
                     {
                         <span>@(Filter.SortAsc ? "▲" : "▼")</span>
                     }
-                    <InputText class="form-control" @bind-Value="Filter.FormaPago" />
+                    <input type="text" class="form-control" @bind-value="Filter.FormaPago" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
                 </th>
                 <th></th>
             </tr>

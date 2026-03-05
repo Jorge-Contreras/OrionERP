@@ -65,6 +65,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         recibidasNominaBase = data.RecibidasNominaBase.ToList();
         tipoEEmitidasBase = data.TipoEEmitidasBase.ToList();
         tipoERecibidasBase = data.TipoERecibidasBase.ToList();
+        canceladasOmitidasBase = data.CanceladasOmitidasBase.ToList();
         complementosBase = data.ComplementosBase.ToList();
         complementosEmitidosBase = data.ComplementosEmitidosBase.ToList();
         complementosRecibidosBase = data.ComplementosRecibidosBase.ToList();
@@ -83,6 +84,8 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         tipoEEmitidasTotals = data.TipoEEmitidasTotals;
         tipoERecibidas = data.TipoERecibidas.ToList();
         tipoERecibidasTotals = data.TipoERecibidasTotals;
+        canceladasOmitidas = data.CanceladasOmitidas.ToList();
+        canceladasOmitidasTotals = data.CanceladasOmitidasTotals;
         complementosEmitidos = data.ComplementosEmitidos.ToList();
         complementosRecibidos = data.ComplementosRecibidos.ToList();
         emitidasPpdTotals = data.EmitidasPpdTotals;

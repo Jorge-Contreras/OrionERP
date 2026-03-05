@@ -114,7 +114,7 @@ else if (Header is not null)
               <div class="row g-3 align-items-end">
                 <div class="col-12 col-md-4 col-xl-3">
                   <label class="form-label">Monto</label>
-                  <InputText class="form-control" inputmode="decimal" step="0.01" @bind-Value="MontoInput" @bind-Value:event="oninput" @onblur="OnMontoBlur" />
+                  <input class="form-control" inputmode="decimal" step="0.01" value="@MontoInput" @oninput="OnMontoInput" @onblur="OnMontoBlur" />
                   <ValidationMessage For="() => Header.Monto" />
                 </div>
                 <div class="col-12 col-md-4 col-xl-3">
@@ -351,11 +351,23 @@ else if (Header is not null)
         {
           <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
             <h5 class="mb-0">Comprobantes vinculados</h5>
-            <a class="btn btn-sm btn-outline-success ms-auto"
-               href="/Contabilidad/LigarTransacciones/@Header.Id"
-               target="_blank" rel="noopener">
-              Ligar Comprobante
-            </a>
+            <div class="ms-auto d-flex gap-2 flex-wrap">
+              <button type="button"
+                      class="btn btn-sm btn-outline-warning"
+                      disabled="@(!CanRegenerarMovimientos())"
+                      @onclick="RegenerarMovimientosDesdeComprobanteAsync">
+                @if (IsRegeneratingMovimientos)
+                {
+                  <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                }
+                Crear Movimientos con CFDI
+              </button>
+              <a class="btn btn-sm btn-outline-success"
+                 href="/Contabilidad/LigarTransacciones/@Header.Id"
+                 target="_blank" rel="noopener">
+                Ligar Comprobante
+              </a>
+            </div>
           </div>
 
           @if (Comprobantes.Count == 0)
@@ -390,7 +402,8 @@ else if (Header is not null)
                 <tbody>
                   @foreach (var comprobante in Comprobantes)
                   {
-                    <tr>
+                    <tr class="@(IsComprobanteSelected(comprobante) ? "table-active" : string.Empty)"
+                        @onclick="() => SelectComprobante(comprobante)">
                       <td>@comprobante.ComprobanteId</td>
                       <td>
                         <button type="button"
@@ -418,7 +431,8 @@ else if (Header is not null)
                         <button type="button"
                                 class="btn btn-sm btn-outline-warning"
                                 disabled="@IsComprobanteUnlinking(comprobante)"
-                                @onclick="() => UnlinkComprobanteAsync(comprobante)">
+                                @onclick="() => UnlinkComprobanteAsync(comprobante)"
+                                @onclick:stopPropagation="true">
                           @if (IsComprobanteUnlinking(comprobante))
                           {
                             <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>

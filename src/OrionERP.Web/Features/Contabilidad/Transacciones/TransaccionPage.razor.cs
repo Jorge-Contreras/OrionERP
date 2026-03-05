@@ -40,6 +40,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private int? _movimientoDeletingId;
   private long? _unlinkingComprobanteId;
   private long? _unlinkingBancoMovimientoId;
+  private long? _selectedComprobanteId;
   private readonly List<LookupInt32Dto> _allProyectoOptions = [];
   private readonly List<LookupInt32Dto> _allCompraOptions = [];
   private CuentaContablePicker? CuentaPicker;
@@ -102,6 +103,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
   protected bool IsUploadingAttachment { get; private set; }
   protected bool IsLoadingBancoMovimientos { get; private set; }
+  protected bool IsRegeneratingMovimientos { get; private set; }
 
   protected bool IsActiveSection(SectionPanel section) => _activeSection == section;
 
@@ -397,6 +399,10 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
     }
 
+    var movimientosSnapshot = Movimientos
+      .Select(m => m.Clone())
+      .ToList();
+
     IsSavingHeader = true;
     try
     {
@@ -431,7 +437,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         Header.Status = HeaderStatus;
       }
 
-      await GuardarMovimientosAsync();
+      await GuardarMovimientosAsync(movimientosSnapshot);
+
+      Movimientos.Clear();
+      Movimientos.AddRange(movimientosSnapshot.Select(m => m.Clone()));
+      UpdateTotalsFromMovimientos();
 
       _headerOriginal = Header.Clone();
       UiMessages.ShowSuccess(result.Message ?? "Datos de la transacción guardados.");
@@ -462,6 +472,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
 
     HeaderEditContext?.NotifyFieldChanged(new FieldIdentifier(Header, nameof(Header.Monto)));
+  }
+
+  protected void OnMontoInput(ChangeEventArgs args)
+  {
+    MontoInput = args.Value?.ToString() ?? string.Empty;
   }
 
   private void UpdateMontoInputFromHeader()
@@ -664,14 +679,16 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       await InvokeAsync(StateHasChanged);
   }
 
-  private async Task GuardarMovimientosAsync()
+  private async Task GuardarMovimientosAsync(IReadOnlyList<MovimientoModel>? movimientos = null)
   {
       if (Header is null) return;
+
+      var movimientosToSave = movimientos ?? Movimientos;
 
       var request = new TransaccionMovimientosUpdateRequest
       {
           TransaccionId = Header.Id,
-          Movimientos = Movimientos.Select(m => new TransaccionMovimientoUpdateItem
+          Movimientos = movimientosToSave.Select(m => new TransaccionMovimientoUpdateItem
           {
               Id = m.Id,
               CuentaId = m.CuentaId,
@@ -967,6 +984,94 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected bool IsBancoMovimientoUnlinking(BankMovementDto movimiento)
     => movimiento is not null && movimiento.MovimientoId == _unlinkingBancoMovimientoId;
 
+  protected bool IsComprobanteSelected(TransaccionCfdiCandidateDto comprobante)
+    => comprobante is not null && comprobante.ComprobanteId == _selectedComprobanteId;
+
+  protected void SelectComprobante(TransaccionCfdiCandidateDto comprobante)
+  {
+    _selectedComprobanteId = comprobante.ComprobanteId;
+  }
+
+  protected bool CanRegenerarMovimientos()
+    => !IsRegeneratingMovimientos && Comprobantes.Count > 0;
+
+  protected async Task RegenerarMovimientosDesdeComprobanteAsync()
+  {
+    if (Header is null)
+    {
+      return;
+    }
+
+    if (Comprobantes.Count == 0)
+    {
+      UiMessages.ShowWarning("No hay comprobantes vinculados para regenerar los movimientos.");
+      return;
+    }
+
+    var confirmed = await ConfirmAsync("Estas Seguro que deseas crear los movimientos contables desde este CFDI?, Todos los Movimientos existentes seran borrados...");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    var comprobante = Comprobantes.FirstOrDefault(item => item.ComprobanteId == _selectedComprobanteId);
+    if (comprobante is null)
+    {
+      UiMessages.ShowWarning("Selecciona un comprobante antes de regenerar los movimientos.");
+      return;
+    }
+
+    var tipo = comprobante.Tipo?.Trim();
+    if (string.IsNullOrWhiteSpace(tipo))
+    {
+      UiMessages.ShowWarning("No se pudo determinar el tipo del comprobante.");
+      return;
+    }
+
+    IsRegeneratingMovimientos = true;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      TransaccionCommandResult result;
+      if (string.Equals(tipo, "CFDI", StringComparison.OrdinalIgnoreCase))
+      {
+        result = await TransaccionService.RegenerarPolizaDesdeComprobanteEnTransaccionAsync(
+            Header.Id,
+            comprobante.ComprobanteId);
+      }
+      else if (string.Equals(tipo, "COMP", StringComparison.OrdinalIgnoreCase))
+      {
+        result = await TransaccionService.RegenerarPolizaDesdeComplementoEnTransaccionAsync(
+            Header.Id,
+            comprobante.ComprobanteId);
+      }
+      else
+      {
+        UiMessages.ShowWarning($"Tipo de comprobante no soportado: {comprobante.Tipo}.");
+        return;
+      }
+
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message ?? "No se pudieron regenerar los movimientos.");
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message ?? "Movimientos regenerados correctamente.");
+      await PerformLoadAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron regenerar los movimientos: {ex.Message}");
+    }
+    finally
+    {
+      IsRegeneratingMovimientos = false;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
   protected async Task UnlinkComprobanteAsync(TransaccionCfdiCandidateDto comprobante)
   {
     if (Header is null)
@@ -996,7 +1101,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       {
         CurrentTransaccionId = Header.Id,
         TempTransaccionId = placeholderTransaccionId.Value,
-        ComprobanteId = comprobante.ComprobanteId
+        ComprobanteId = comprobante.ComprobanteId,
+        Tipo = comprobante.Tipo
       };
 
       var result = await TransaccionService.UnlinkComprobanteAsync(request);

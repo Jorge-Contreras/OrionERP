@@ -90,6 +90,10 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       .Where(x => x.EsRecibida && IsTipoE(x.TipoDeComprobante))
       .ToList();
 
+    var canceladasOmitidasBase = (await conn.QueryAsync<DeclaracionCfdiBase>(
+      "EXEC cfdi.Declaracion_Canceladas_Omitidas @Year, @Month, @RFC_Emisor",
+      new { Year = request.Year, Month = request.IsAnnual ? (object?)DBNull.Value : request.Month, RFC_Emisor = request.Rfc })).ToList();
+
     var complementosBase = (await conn.QueryAsync<DeclaracionComplementoBase>(
       "EXEC cfdi.Declaracion_Complementos_Base @Year, @Month, @RFC",
       new { Year = request.Year, Month = request.IsAnnual ? (object?)DBNull.Value : request.Month, RFC = request.Rfc })).ToList();
@@ -130,6 +134,7 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       RecibidasNominaBase = recibidasNominaBase,
       TipoEEmitidasBase = tipoEEmitidasBase,
       TipoERecibidasBase = tipoERecibidasBase,
+      CanceladasOmitidasBase = canceladasOmitidasBase,
       ComplementosBase = complementosBase,
       ComplementosEmitidosBase = complementosEmitidosBase,
       ComplementosRecibidosBase = complementosRecibidosBase,
@@ -141,6 +146,7 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       RecibidasNomina = recibidasNominaBase.Select(ToDeclaracionRecibida).ToList(),
       TipoEEmitidas = tipoEEmitidasBase.Select(ToDeclaracionEmitida).ToList(),
       TipoERecibidas = tipoERecibidasBase.Select(ToDeclaracionRecibida).ToList(),
+      CanceladasOmitidas = canceladasOmitidasBase.Select(ToDeclaracionEmitida).ToList(),
       ComplementosEmitidos = complementosEmitidosBase.Select(ToComplementoEmitido).ToList(),
       ComplementosRecibidos = complementosRecibidosBase.Select(ToComplementoRecibido).ToList(),
       EmitidasTotals = ComputeDeclaracionTotales(emitidasBase),
@@ -151,6 +157,7 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       RecibidasNominaTotals = ComputeDeclaracionTotales(recibidasNominaBase),
       TipoEEmitidasTotals = ComputeDeclaracionTotales(tipoEEmitidasBase),
       TipoERecibidasTotals = ComputeDeclaracionTotales(tipoERecibidasBase),
+      CanceladasOmitidasTotals = ComputeDeclaracionTotales(canceladasOmitidasBase),
       Desfase = desfase,
       DesfaseTotals = desfaseTotals,
       PolizasNoConsolidadas = polizasNoConsolidadas,
@@ -291,6 +298,41 @@ WHERE Comprobante_Id = @Comprobante_Id;";
     return await conn.QueryFirstOrDefaultAsync<ComprobanteDetalleDto>(
       sql,
       new { Comprobante_Id = comprobanteId });
+  }
+
+  public async Task<Pago20ResumenDetalleDto?> GetPago20ResumenByDoctoRelacionadoIdAsync(int doctoRelacionadoId)
+  {
+    const string sql = @"
+SELECT TOP (1)
+    Comprobante_Id,
+    ComprobanteUUID,
+    EmisorRfc,
+    ReceptorRfc,
+    Pago_Id,
+    FechaPago,
+    FormaDePagoP,
+    MonedaP,
+    MontoPago,
+    DoctoRelacionado_Id,
+    UUID_DoctoRelacionado,
+    Folio,
+    NumParcialidad,
+    MonedaDR,
+    ImpSaldoAnt,
+    ImpPagado,
+    ImpSaldoInsoluto,
+    Poliza,
+    Polizas,
+    Comp_Actos16,
+    Comp_IVA,
+    XML_Attachment_ID
+FROM cfdi.vw_Pagos20_Resumen
+WHERE DoctoRelacionado_Id = @DoctoRelacionado_Id;";
+
+    using var conn = new SqlConnection(_connectionString);
+    return await conn.QueryFirstOrDefaultAsync<Pago20ResumenDetalleDto>(
+      sql,
+      new { DoctoRelacionado_Id = doctoRelacionadoId });
   }
 
   private static DeclaracionEmitida ToDeclaracionEmitida(DeclaracionCfdiBase item) => new(item);

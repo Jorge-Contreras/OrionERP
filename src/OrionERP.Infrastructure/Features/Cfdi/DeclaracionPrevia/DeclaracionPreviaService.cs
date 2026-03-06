@@ -123,6 +123,10 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       "EXEC dbo.Reporte_Bancos_Caja @Year, @Month, @RFC",
       new { Year = request.Year, Month = request.IsAnnual ? (object?)DBNull.Value : request.Month, RFC = request.Rfc });
 
+    const int startYear = 2020;
+    var currentYear = DateTime.UtcNow.Year;
+    var yearCount = Math.Max(1, currentYear - startYear + 1);
+
     return new DeclaracionPreviaData
     {
       AllCfdiBase = allCfdiBase,
@@ -163,7 +167,7 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       PolizasNoConsolidadas = polizasNoConsolidadas,
       ImpuestosSummary = impuestosSummary,
       BancosCajaSummary = bancosCajaSummary,
-      DisponibleYears = Enumerable.Range(2020, 7).ToList(),
+      DisponibleYears = Enumerable.Range(startYear, yearCount).ToList(),
       DisponibleMonths = new List<(int, string)>
       {
         (1, "ENERO"),(2, "FEBRERO"),(3, "MARZO"),(4, "ABRIL"),(5, "MAYO"),(6, "JUNIO"),

@@ -3,6 +3,33 @@
 
 <PageTitle>Lista de Transacciones</PageTitle>
 
+<style>
+  .transacciones-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
+  }
+
+  .transacciones-table {
+    min-width: 920px;
+  }
+
+  .transacciones-sort-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+  }
+
+  .transacciones-sort-button:hover {
+    text-decoration: underline;
+  }
+</style>
+
 <h3>Lista de Transacciones</h3>
 
 <div class="row">
@@ -41,27 +68,7 @@
 </div>
 
 <div class="row mt-3">
-    <div class="col-md-6">
-        <div class="form-group">
-            <label for="sortBy">Ordenar por</label>
-            <div class="input-group">
-                <select id="sortBy" class="form-control" @bind="Filter.SortBy" @bind:after="OnFilterSelectionChanged">
-                    <option value="">Sin ordenar</option>
-                    <option value="Id">ID</option>
-                    <option value="Fecha">Fecha</option>
-                    <option value="Concepto">Concepto</option>
-                    <option value="Monto">Monto</option>
-                    <option value="TipoPoliza">Tipo de Póliza</option>
-                    <option value="FormaPago">Forma de Pago</option>
-                </select>
-                <div class="input-group-append">
-                    <button class="btn btn-outline-secondary" type="button" @onclick="() => ApplySort(true)" disabled="@IsLoading">Asc</button>
-                    <button class="btn btn-outline-secondary" type="button" @onclick="() => ApplySort(false)" disabled="@IsLoading">Desc</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6 text-right">
+    <div class="col-12 d-flex flex-wrap gap-2 justify-content-md-end">
         <button class="btn btn-primary" @onclick="Search" disabled="@IsLoading">Buscar</button>
         <button class="btn btn-secondary" @onclick="ClearFilters" disabled="@IsLoading">Limpiar</button>
         <a href="/contabilidad/transacciones/new" class="btn btn-success">Nueva Transacción</a>
@@ -74,74 +81,88 @@
 }
 else
 {
-    <table class="table table-striped mt-4">
-        <thead>
-            <tr>
-                <th>
-                    <a href="#" @onclick='() => Sort("Id")'>ID</a>
-                    @if (Filter.SortBy == "Id")
-                    {
-                        <span>@(Filter.SortAsc ? "▲" : "▼")</span>
-                    }
-                    <input type="number" class="form-control" @bind-value="Filter.Id" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
-                </th>
-                <th>
-                    <a href="#" @onclick='() => Sort("Fecha")'>Fecha</a>
-                    @if (Filter.SortBy == "Fecha")
-                    {
-                        <span>@(Filter.SortAsc ? "▲" : "▼")</span>
-                    }
-                </th>
-                <th>
-                    <a href="#" @onclick='() => Sort("Concepto")'>Concepto</a>
-                    @if (Filter.SortBy == "Concepto")
-                    {
-                        <span>@(Filter.SortAsc ? "▲" : "▼")</span>
-                    }
-                    <input type="text" class="form-control" @bind-value="Filter.Concepto" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
-                </th>
-                <th>
-                    <a href="#" @onclick='() => Sort("Monto")'>Monto</a>
-                    @if (Filter.SortBy == "Monto")
-                    {
-                        <span>@(Filter.SortAsc ? "▲" : "▼")</span>
-                    }
-                    <input type="number" class="form-control" @bind-value="Filter.Monto" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
-                </th>
-                <th>
-                    <a href="#" @onclick='() => Sort("TipoPoliza")'>Tipo de Póliza</a>
-                    @if (Filter.SortBy == "TipoPoliza")
-                    {
-                        <span>@(Filter.SortAsc ? "▲" : "▼")</span>
-                    }
-                    <input type="text" class="form-control" @bind-value="Filter.TipoPoliza" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
-                </th>
-                <th>
-                    <a href="#" @onclick='() => Sort("FormaPago")'>Forma de Pago</a>
-                    @if (Filter.SortBy == "FormaPago")
-                    {
-                        <span>@(Filter.SortAsc ? "▲" : "▼")</span>
-                    }
-                    <input type="text" class="form-control" @bind-value="Filter.FormaPago" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
-                </th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var transaccion in Transacciones)
-            {
+    <div class="transacciones-table-wrapper mt-4">
+        <table class="table table-striped transacciones-table mb-0">
+            <thead>
                 <tr>
-                    <td>@transaccion.Id</td>
-                    <td>@transaccion.Fecha.ToShortDateString()</td>
-                    <td>@transaccion.Concepto</td>
-                    <td>@transaccion.Monto</td>
-                    <td>@transaccion.TipoPoliza</td>
-                    <td>@transaccion.FormaPago</td>
-                    <td>
-                        <a href="/contabilidad/transacciones/@transaccion.Id" class="btn btn-sm btn-primary">Ver/Editar</a>
-                    </td>
+                    <th>
+                        <button type="button" class="transacciones-sort-button" @onclick='() => Sort("Id")'>
+                            ID
+                        </button>
+                        @if (Filter.SortBy == "Id")
+                        {
+                            <span>@(Filter.SortAsc ? "▲" : "▼")</span>
+                        }
+                        <input type="number" class="form-control" @bind-value="Filter.Id" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
+                    </th>
+                    <th>
+                        <button type="button" class="transacciones-sort-button" @onclick='() => Sort("Fecha")'>
+                            Fecha
+                        </button>
+                        @if (Filter.SortBy == "Fecha")
+                        {
+                            <span>@(Filter.SortAsc ? "▲" : "▼")</span>
+                        }
+                    </th>
+                    <th>
+                        <button type="button" class="transacciones-sort-button" @onclick='() => Sort("Concepto")'>
+                            Concepto
+                        </button>
+                        @if (Filter.SortBy == "Concepto")
+                        {
+                            <span>@(Filter.SortAsc ? "▲" : "▼")</span>
+                        }
+                        <input type="text" class="form-control" @bind-value="Filter.Concepto" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
+                    </th>
+                    <th>
+                        <button type="button" class="transacciones-sort-button" @onclick='() => Sort("Monto")'>
+                            Monto
+                        </button>
+                        @if (Filter.SortBy == "Monto")
+                        {
+                            <span>@(Filter.SortAsc ? "▲" : "▼")</span>
+                        }
+                        <input type="number" class="form-control" @bind-value="Filter.Monto" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
+                    </th>
+                    <th>
+                        <button type="button" class="transacciones-sort-button" @onclick='() => Sort("TipoPoliza")'>
+                            Tipo de Póliza
+                        </button>
+                        @if (Filter.SortBy == "TipoPoliza")
+                        {
+                            <span>@(Filter.SortAsc ? "▲" : "▼")</span>
+                        }
+                        <input type="text" class="form-control" @bind-value="Filter.TipoPoliza" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
+                    </th>
+                    <th>
+                        <button type="button" class="transacciones-sort-button" @onclick='() => Sort("FormaPago")'>
+                            Forma de Pago
+                        </button>
+                        @if (Filter.SortBy == "FormaPago")
+                        {
+                            <span>@(Filter.SortAsc ? "▲" : "▼")</span>
+                        }
+                        <input type="text" class="form-control" @bind-value="Filter.FormaPago" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
+                    </th>
+                    <th></th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var transaccion in Transacciones)
+                {
+                    <tr>
+                        <td>@transaccion.Id</td>
+                        <td>@transaccion.Fecha.ToShortDateString()</td>
+                        <td>@transaccion.Concepto</td>
+                        <td>@transaccion.Monto</td>
+                        <td>@transaccion.TipoPoliza</td>
+                        <td>@transaccion.FormaPago</td>
+                        <td>
+                            <a href="/contabilidad/transacciones/@transaccion.Id" class="btn btn-sm btn-primary">Ver/Editar</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 }

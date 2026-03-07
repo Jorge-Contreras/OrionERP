@@ -22,6 +22,8 @@ using ContabITransaccionService = OrionERP.Application.Features.Contabilidad.Tra
 using ContabTransaccionService = OrionERP.Infrastructure.Features.Contabilidad.Transacciones.Services.TransaccionService;
 using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+using ReservacionesIListaReservacionesService = OrionERP.Application.Features.Reservaciones.ListaReservaciones.IListaReservacionesService;
+using ReservacionesListaReservacionesService = OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Services.ListaReservacionesService;
 
 namespace OrionERP.Web.Configuration;
 
@@ -42,6 +44,7 @@ public static class ServiceRegistration
     services.AddScoped<CfdiReadableParser>();
     services.AddScoped<ITransactionAttachmentRepository, TransactionAttachmentRepository>();
     services.AddScoped<IHtmlCfdiService, HtmlCfdiService>();
+    services.AddScoped<ReservacionesIListaReservacionesService, ReservacionesListaReservacionesService>();
 
     services.AddScoped<ISatMetadataIngestService, SatMetadataIngestService>();
 
@@ -69,6 +72,7 @@ public static class ServiceRegistration
     services.AddScoped<CfdiReadableParser>();
     services.AddScoped<ITransactionAttachmentRepository, TransactionAttachmentRepository>();
     services.AddScoped<IHtmlCfdiService, HtmlCfdiService>();
+    services.AddScoped<ReservacionesIListaReservacionesService, ReservacionesListaReservacionesService>();
 
     return services;
   }

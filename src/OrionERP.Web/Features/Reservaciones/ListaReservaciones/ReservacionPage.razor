@@ -1,0 +1,78 @@
+@page "/reservaciones/{ReservationId:int}"
+@attribute [Authorize(Roles = "Administrador,SatOperator")]
+
+<PageTitle>Reservación</PageTitle>
+
+<h3>Reservación #@ReservationId</h3>
+
+@if (IsLoading)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+{
+    <div class="alert alert-danger">@ErrorMessage</div>
+}
+else if (Detail is null)
+{
+    <div class="alert alert-warning">No se encontró la reservación.</div>
+}
+else
+{
+    <div class="row g-3 mb-3">
+        <div class="col-md-3"><strong>Cliente:</strong> @Detail.Cliente</div>
+        <div class="col-md-2"><strong>Check-in:</strong> @FormatDate(Detail.CheckIn)</div>
+        <div class="col-md-2"><strong>Check-out:</strong> @FormatDate(Detail.CheckOut)</div>
+        <div class="col-md-2"><strong>Status:</strong> @Detail.Status</div>
+        <div class="col-md-3"><strong>Total:</strong> @Detail.TotalPrice.ToString("C")</div>
+        <div class="col-md-3"><strong>Pagado:</strong> @Detail.Pagado.ToString("C")</div>
+        <div class="col-md-3"><strong>Adeudo:</strong> @Detail.PorPagar.ToString("C")</div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">Notas</div>
+        <div class="card-body">
+            <textarea class="form-control" rows="4" @bind="Notes"></textarea>
+            <div class="mt-2 d-flex gap-2">
+                <button class="btn btn-primary btn-sm" @onclick="GuardarNotasAsync" disabled="@IsSavingNotes">Guardar notas</button>
+                <a class="btn btn-outline-secondary btn-sm" href="/reservaciones/lista">Volver a lista</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">Transacciones de pago</div>
+        <div class="card-body">
+            @if (Detail.Pagos.Count == 0)
+            {
+                <p class="text-muted mb-0">No hay transacciones ligadas.</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Fecha</th>
+                                <th>Concepto</th>
+                                <th>Monto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var pago in Detail.Pagos)
+                            {
+                                <tr>
+                                    <td>@pago.TransaccionId</td>
+                                    <td>@pago.Fecha.ToShortDateString()</td>
+                                    <td>@pago.Concepto</td>
+                                    <td>@pago.Monto.ToString("C")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}

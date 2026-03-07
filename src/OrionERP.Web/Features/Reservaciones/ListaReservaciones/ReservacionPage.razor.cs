@@ -144,9 +144,10 @@ public partial class ReservacionPage : ComponentBase
         return;
       }
 
+      var clienteNombreActual = NormalizeClienteNombre(Detail.ClienteId.HasValue ? Detail.Cliente : null);
       ClienteId = Detail.ClienteId;
-      ClienteSearchText = Detail.ClienteId.HasValue ? Detail.Cliente : string.Empty;
-      SelectedClienteNombre = Detail.ClienteId.HasValue ? Detail.Cliente : string.Empty;
+      ClienteSearchText = clienteNombreActual;
+      SelectedClienteNombre = clienteNombreActual;
       ShowClienteResults = false;
       Status = Detail.Status;
       CheckIn = Detail.CheckIn?.Date;
@@ -282,6 +283,12 @@ public partial class ReservacionPage : ComponentBase
     IsSaving = true;
     try
     {
+      var clienteReady = await EnsureClienteReadyForSaveAsync();
+      if (!clienteReady)
+      {
+        return false;
+      }
+
       var saveResult = await ReservacionesService.SaveReservationAsync(new ReservacionUpdateRequest
       {
         Id = Detail.Id,
@@ -336,16 +343,17 @@ public partial class ReservacionPage : ComponentBase
   protected void OnClienteInputChanged(ChangeEventArgs args)
   {
     ClienteSearchText = args.Value?.ToString() ?? string.Empty;
-    if (!string.Equals(ClienteSearchText, SelectedClienteNombre, StringComparison.Ordinal))
+    if (!string.Equals(NormalizeClienteNombre(ClienteSearchText), NormalizeClienteNombre(SelectedClienteNombre), StringComparison.OrdinalIgnoreCase))
     {
       ClienteId = null;
+      SelectedClienteNombre = string.Empty;
     }
     ShowClienteResults = false;
   }
 
   protected async Task OnClienteInputKeyDownAsync(KeyboardEventArgs args)
   {
-    if (!string.Equals(args.Key, "Enter", StringComparison.Ordinal))
+    if (!IsClienteSearchTriggerKey(args))
     {
       return;
     }
@@ -356,11 +364,7 @@ public partial class ReservacionPage : ComponentBase
 
   protected async Task SelectClienteAsync(ClienteOptionDto cliente)
   {
-    ClienteId = cliente.Id;
-    SelectedClienteNombre = cliente.Nombre;
-    ClienteSearchText = cliente.Nombre;
-    ShowClienteResults = false;
-    Clientes = await LoadClientesAsync(cliente.Nombre);
+    await ApplyClienteSelectionAsync(cliente);
 
     if (Detail is null)
       return;
@@ -902,6 +906,54 @@ public partial class ReservacionPage : ComponentBase
     TotalSuiteInput = TotalSuites;
   }
 
+  private async Task<bool> EnsureClienteReadyForSaveAsync()
+  {
+    var clienteNombre = NormalizeClienteNombre(ClienteSearchText);
+    var resolvedCliente = await ReservacionesService.ResolveClienteAsync(ClienteId, clienteNombre);
+
+    if (resolvedCliente is not null)
+    {
+      await ApplyClienteSelectionAsync(resolvedCliente, reloadMatches: false);
+      return true;
+    }
+
+    if (string.IsNullOrWhiteSpace(clienteNombre))
+    {
+      UiMessages.ShowWarning("Captura o selecciona un cliente antes de guardar.");
+      return false;
+    }
+
+    var confirm = await Js.InvokeAsync<bool>(
+      "confirm",
+      $"No existe el cliente '{clienteNombre}'. ¿Deseas crearlo para guardar la reservación?");
+
+    if (!confirm)
+    {
+      UiMessages.ShowWarning("Selecciona un cliente válido antes de guardar.");
+      return false;
+    }
+
+    var createdCliente = await ReservacionesService.CreateClienteAsync(clienteNombre);
+    await ApplyClienteSelectionAsync(createdCliente, reloadMatches: false);
+    UiMessages.ShowSuccess($"Cliente {createdCliente.Nombre} creado.");
+    return true;
+  }
+
+  private async Task ApplyClienteSelectionAsync(ClienteOptionDto cliente, bool reloadMatches = true)
+  {
+    var clienteNombre = NormalizeClienteNombre(cliente.Nombre);
+
+    ClienteId = cliente.Id;
+    SelectedClienteNombre = clienteNombre;
+    ClienteSearchText = clienteNombre;
+    ShowClienteResults = false;
+
+    if (reloadMatches)
+    {
+      Clientes = await LoadClientesAsync(clienteNombre);
+    }
+  }
+
   private async Task<List<ClienteOptionDto>> LoadClientesAsync(string? searchText)
   {
     var clientes = (await ReservacionesService.GetClientesAsync(searchText)).ToList();
@@ -927,6 +979,27 @@ public partial class ReservacionPage : ComponentBase
       .Select(g => g.First())
       .OrderBy(c => c.Nombre)
       .ToList();
+  }
+
+  private static bool IsClienteSearchTriggerKey(KeyboardEventArgs args)
+    => string.Equals(args.Key, "Enter", StringComparison.Ordinal)
+      || string.Equals(args.Key, "NumpadEnter", StringComparison.Ordinal)
+      || string.Equals(args.Key, " ", StringComparison.Ordinal)
+      || string.Equals(args.Key, "Space", StringComparison.Ordinal)
+      || string.Equals(args.Key, "Spacebar", StringComparison.Ordinal)
+      || string.Equals(args.Code, "Space", StringComparison.Ordinal);
+
+  private static string NormalizeClienteNombre(string? clienteNombre)
+  {
+    if (string.IsNullOrWhiteSpace(clienteNombre))
+    {
+      return string.Empty;
+    }
+
+    var normalized = clienteNombre.Trim();
+    return string.Equals(normalized, "(Sin cliente)", StringComparison.OrdinalIgnoreCase)
+      ? string.Empty
+      : normalized;
   }
 
   private void EnsureValidDateRange()

@@ -319,6 +319,99 @@ ORDER BY c.Nombre;";
     return rows.AsList();
   }
 
+  public async Task<ClienteOptionDto?> ResolveClienteAsync(int? clienteId, string? clienteNombre, CancellationToken ct = default)
+  {
+    var normalizedName = NormalizeClienteNombre(clienteNombre);
+
+    await using var conn = new SqlConnection(_cs);
+
+    if (clienteId.HasValue && clienteId.Value > 0)
+    {
+      const string byIdSql = @"
+SELECT TOP (1)
+    c.ID AS Id,
+    c.Nombre AS Nombre
+FROM dbo.Clientes c
+WHERE c.ID = @ClienteId;";
+
+      var clientePorId = await conn.QueryFirstOrDefaultAsync<ClienteOptionDto>(
+        new CommandDefinition(byIdSql, new { ClienteId = clienteId.Value }, cancellationToken: ct));
+
+      if (clientePorId is not null)
+      {
+        return clientePorId;
+      }
+    }
+
+    if (string.IsNullOrWhiteSpace(normalizedName))
+    {
+      return null;
+    }
+
+    const string byNameSql = @"
+SELECT TOP (1)
+    c.ID AS Id,
+    c.Nombre AS Nombre
+FROM dbo.Clientes c
+WHERE UPPER(LTRIM(RTRIM(c.Nombre))) = UPPER(@Nombre)
+ORDER BY c.ID;";
+
+    return await conn.QueryFirstOrDefaultAsync<ClienteOptionDto>(
+      new CommandDefinition(byNameSql, new { Nombre = normalizedName }, cancellationToken: ct));
+  }
+
+  public async Task<ClienteOptionDto> CreateClienteAsync(string clienteNombre, CancellationToken ct = default)
+  {
+    var normalizedName = NormalizeClienteNombre(clienteNombre);
+    if (string.IsNullOrWhiteSpace(normalizedName))
+      throw new ArgumentException("Cliente nombre is required.", nameof(clienteNombre));
+
+    const string byNameSql = @"
+SELECT TOP (1)
+    c.ID AS Id,
+    c.Nombre AS Nombre
+FROM dbo.Clientes c
+WHERE UPPER(LTRIM(RTRIM(c.Nombre))) = UPPER(@Nombre)
+ORDER BY c.ID;";
+
+    const string insertSql = @"
+INSERT INTO dbo.Clientes (Nombre)
+VALUES (@Nombre);
+SELECT CAST(SCOPE_IDENTITY() AS int);";
+
+    await using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct) as SqlTransaction;
+
+    try
+    {
+      var existing = await conn.QueryFirstOrDefaultAsync<ClienteOptionDto>(
+        new CommandDefinition(byNameSql, new { Nombre = normalizedName }, tx, cancellationToken: ct));
+
+      if (existing is not null)
+      {
+        await tx!.CommitAsync(ct);
+        return existing;
+      }
+
+      var clienteId = await conn.ExecuteScalarAsync<int>(
+        new CommandDefinition(insertSql, new { Nombre = normalizedName }, tx, cancellationToken: ct));
+
+      await tx!.CommitAsync(ct);
+
+      return new ClienteOptionDto
+      {
+        Id = clienteId,
+        Nombre = normalizedName
+      };
+    }
+    catch
+    {
+      try { await tx!.RollbackAsync(ct); } catch { /* ignore */ }
+      throw;
+    }
+  }
+
   public async Task<IReadOnlyList<RoomOptionDto>> GetRoomsForExtrasAsync(CancellationToken ct = default)
   {
     const string sql = @"
@@ -581,6 +674,13 @@ WHERE ra.ID = @AttachmentId;";
   {
     if (request is null)
       throw new ArgumentNullException(nameof(request));
+
+    if (!request.ClienteId.HasValue || request.ClienteId.Value <= 0)
+      return ReservacionCommandResult.Fail("Selecciona un cliente válido antes de guardar la reservación.");
+
+    var cliente = await ResolveClienteAsync(request.ClienteId, null, ct);
+    if (cliente is null)
+      return ReservacionCommandResult.Fail("El cliente seleccionado ya no existe. Selecciona o crea un cliente antes de guardar.");
 
     const string sql = @"
 UPDATE dbo.RESERVATION
@@ -1000,6 +1100,9 @@ VALUES
 
   private static string ToStringSafe(object? value)
     => value is null || value is DBNull ? string.Empty : value.ToString() ?? string.Empty;
+
+  private static string? NormalizeClienteNombre(string? clienteNombre)
+    => string.IsNullOrWhiteSpace(clienteNombre) ? null : clienteNombre.Trim();
 
   private static string ResolveContentType(string? extension)
   {

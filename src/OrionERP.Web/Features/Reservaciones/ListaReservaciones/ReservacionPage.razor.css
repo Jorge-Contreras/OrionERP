@@ -1,0 +1,48 @@
+.reservacion-section {
+  border-color: rgba(0, 0, 0, 0.08);
+  overflow: visible;
+}
+
+.reservacion-section .card-header {
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+.reservacion-section-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.reservacion-section .card-body {
+  background-color: transparent;
+}
+
+.reservacion-section-datos .card-header,
+.reservacion-section-datos .card-body {
+  background-color: #eef6ff;
+}
+
+.reservacion-section-totales .card-header,
+.reservacion-section-totales .card-body {
+  background-color: #fff4e5;
+}
+
+.reservacion-section-suites .card-header,
+.reservacion-section-suites .card-body {
+  background-color: #edf9f1;
+}
+
+.reservacion-section-extras .card-header,
+.reservacion-section-extras .card-body {
+  background-color: #f7efff;
+}
+
+.reservacion-section-pagos .card-header,
+.reservacion-section-pagos .card-body {
+  background-color: #fff1f1;
+}
+
+.reservacion-section-archivos .card-header,
+.reservacion-section-archivos .card-body {
+  background-color: #eef7f6;
+}

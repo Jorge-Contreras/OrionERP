@@ -1,13 +1,11 @@
 @page "/reservaciones/{ReservationId:int}"
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
-<PageTitle>Reservación</PageTitle>
-
-<h3>Reservación #@ReservationId</h3>
+<PageTitle>RESERVATION</PageTitle>
 
 @if (IsLoading)
 {
-    <p><em>Cargando...</em></p>
+    <p><em>Cargando reservación...</em></p>
 }
 else if (!string.IsNullOrWhiteSpace(ErrorMessage))
 {
@@ -19,60 +17,338 @@ else if (Detail is null)
 }
 else
 {
-    <div class="row g-3 mb-3">
-        <div class="col-md-3"><strong>Cliente:</strong> @Detail.Cliente</div>
-        <div class="col-md-2"><strong>Check-in:</strong> @FormatDate(Detail.CheckIn)</div>
-        <div class="col-md-2"><strong>Check-out:</strong> @FormatDate(Detail.CheckOut)</div>
-        <div class="col-md-2"><strong>Status:</strong> @Detail.Status</div>
-        <div class="col-md-3"><strong>Total:</strong> @Detail.TotalPrice.ToString("C")</div>
-        <div class="col-md-3"><strong>Pagado:</strong> @Detail.Pagado.ToString("C")</div>
-        <div class="col-md-3"><strong>Adeudo:</strong> @Detail.PorPagar.ToString("C")</div>
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <h3 class="mb-0">RESERVACION #@ReservationId</h3>
+        <button class="btn btn-primary btn-sm ms-auto" @onclick="GuardarAsync" disabled="@IsSaving">
+            GUARDAR
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="CerrarAsync">CERRAR</button>
+        <button class="btn btn-outline-success btn-sm" @onclick="AbrirPdfAsync">PDF</button>
+        <button class="btn btn-outline-info btn-sm" @onclick="CrearPolizaAsync">Crear Póliza</button>
     </div>
 
-    <div class="card mb-3">
-        <div class="card-header">Notas</div>
-        <div class="card-body">
-            <textarea class="form-control" rows="4" @bind="Notes"></textarea>
-            <div class="mt-2 d-flex gap-2">
-                <button class="btn btn-primary btn-sm" @onclick="GuardarNotasAsync" disabled="@IsSavingNotes">Guardar notas</button>
-                <a class="btn btn-outline-secondary btn-sm" href="/reservaciones/lista">Volver a lista</a>
+    <div class="row g-3 mb-3">
+        <div class="col-lg-8">
+            <div class="card reservacion-section reservacion-section-datos">
+                <div class="card-header reservacion-section-title">Datos de la Reservación</div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label">CLIENTE</label>
+                            <input class="form-control"
+                                   placeholder="Cliente"
+                                   value="@ClienteSearchText"
+                                   @oninput="OnClienteInputChanged"
+                                   @onkeydown="OnClienteInputKeyDownAsync" />
+                            @if (ShowClienteResults)
+                            {
+                                <div class="list-group position-absolute w-100 shadow-sm" style="z-index: 1000;">
+                                    @if (Clientes.Count == 0)
+                                    {
+                                        <div class="list-group-item text-muted small">Sin resultados.</div>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var cliente in Clientes)
+                                        {
+                                            <button type="button"
+                                                    class="list-group-item list-group-item-action"
+                                                    @onclick="() => SelectClienteAsync(cliente)">
+                                                @cliente.Nombre
+                                            </button>
+                                        }
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">STATUS</label>
+                            <select class="form-select" value="@Status" @onchange="OnStatusChangedAsync">
+                                @foreach (var item in StatusOptions)
+                                {
+                                    <option value="@item">@item</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">CHECKIN</label>
+                            <input class="form-control" type="date" value="@CheckInText" @onchange="OnCheckInChangedAsync" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">CHECKOUT</label>
+                            <input class="form-control" type="date" value="@CheckOutText" @onchange="OnCheckOutChangedAsync" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">#Noches</label>
+                            <input class="form-control text-center fw-bold" value="@NumNoches" readonly />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">RECOMENDACION</label>
+                            <input class="form-control" @bind="RecommenedBy" />
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" checked="@Taxable" @onchange="ToggleTaxableAsync" id="taxableCheck" />
+                                <label class="form-check-label" for="taxableCheck">FACTURABLE</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">NOTAS</label>
+                            <textarea class="form-control" rows="2" @bind="Notes"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card reservacion-section reservacion-section-totales">
+                <div class="card-header reservacion-section-title">Totales</div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between"><span>Total por Suites</span><strong>@FormatCurrency(TotalSuites)</strong></div>
+                    <div class="d-flex justify-content-between"><span>Total por Extras</span><strong>@FormatCurrency(TotalExtras)</strong></div>
+                    <div class="d-flex justify-content-between"><span>Subtotal</span><strong>@FormatCurrency(SubTotal)</strong></div>
+                    <div class="d-flex justify-content-between"><span>IVA</span><strong>@FormatCurrency(Tax)</strong></div>
+                    <div class="d-flex justify-content-between"><span>ISH</span><strong>@FormatCurrency(Ish)</strong></div>
+                    <hr />
+                    <div class="d-flex justify-content-between"><span>Total Reservación</span><strong>@FormatCurrency(TotalReservacion)</strong></div>
+                    <div class="d-flex justify-content-between"><span>Total Pagado</span><strong>@FormatCurrency(TotalPagado)</strong></div>
+                    <div class="d-flex justify-content-between"><span>Por Pagar</span><strong class="@(PorPagar > 0 ? "text-danger" : "text-success")">@FormatCurrency(PorPagar)</strong></div>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="card">
-        <div class="card-header">Transacciones de pago</div>
+    <div class="card mb-3 reservacion-section reservacion-section-suites">
+        <div class="card-header reservacion-section-title d-flex align-items-center gap-2">
+            <span>SUITES</span>
+            <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="OpenSuitePickerAsync">+</button>
+            <button class="btn btn-sm btn-outline-danger" @onclick="EliminarSuitesSeleccionadasAsync">Eliminar</button>
+        </div>
         <div class="card-body">
-            @if (Detail.Pagos.Count == 0)
+            <div class="row g-2 mb-2">
+                <div class="col-md-3"><input class="form-control form-control-sm" type="number" @bind="SuiteActionValueInput" placeholder="@SuiteActionPlaceholder" disabled="@(SelectedSuiteAction == SuiteActionCleaning)" /></div>
+                <div class="col-md-3">
+                    <select class="form-select form-select-sm" @bind="SelectedSuiteAction">
+                        @foreach (var action in SuiteActionOptions)
+                        {
+                            <option value="@action.Value">@action.Label</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2"><button class="btn btn-sm btn-outline-secondary w-100" @onclick="ApplySuiteActionAsync">Aplicar</button></div>
+                <div class="col-md-6 text-muted small d-flex align-items-center">Tecla P/I/D/L/T en Access replicada con acciones rápidas.</div>
+            </div>
+
+            @if (ShowSuitePicker)
             {
-                <p class="text-muted mb-0">No hay transacciones ligadas.</p>
-            }
-            else
-            {
-                <div class="table-responsive">
-                    <table class="table table-sm table-striped mb-0">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Fecha</th>
-                                <th>Concepto</th>
-                                <th>Monto</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var pago in Detail.Pagos)
-                            {
+                <div class="border rounded p-2 mb-3">
+                    <div class="d-flex align-items-center mb-2">
+                        <strong>Suites Disponibles</strong>
+                        <button class="btn btn-sm btn-success ms-auto me-2" @onclick="AddSuitesSeleccionadasAsync">Agregar Seleccionadas</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="CancelSuitePicker">Cerrar</button>
+                    </div>
+                    <div class="table-responsive" style="max-height:220px;">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="table-light">
                                 <tr>
-                                    <td>@pago.TransaccionId</td>
-                                    <td>@pago.Fecha.ToShortDateString()</td>
-                                    <td>@pago.Concepto</td>
-                                    <td>@pago.Monto.ToString("C")</td>
+                                    <th></th>
+                                    <th>Día</th>
+                                    <th>Suite</th>
+                                    <th>Fecha</th>
+                                    <th>Disponible</th>
+                                    <th>Bloqueado por</th>
+                                    <th>Precio</th>
                                 </tr>
-                            }
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in SuitesDisponibles)
+                                {
+                                    <tr class="@(row.IsLocked ? "table-danger" : string.Empty)">
+                                        <td>
+                                            <input type="checkbox"
+                                                   checked="@SelectedSuiteDisponibleIds.Contains(row.Id)"
+                                                   @onchange="(e) => ToggleSuiteDisponibleSelection(row.Id, e.Value is bool v && v)" />
+                                        </td>
+                                        <td>@row.Dia</td>
+                                        <td>@row.Suite</td>
+                                        <td>@row.RoomDate.ToShortDateString()</td>
+                                        <td>@(row.IsLocked ? "X" : "✔")</td>
+                                        <td>@row.LockedBy</td>
+                                        <td>@FormatCurrency(row.Precio)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             }
+
+            <div class="table-responsive">
+                <table class="table table-sm table-striped table-bordered mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th></th>
+                            <th>Fecha</th>
+                            <th>Suite</th>
+                            <th>Precio</th>
+                            <th>Limpieza</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var suite in Suites)
+                        {
+                            <tr>
+                                <td>
+                                    <input type="checkbox"
+                                           checked="@SelectedSuiteIds.Contains(suite.Id)"
+                                           @onchange="(e) => ToggleSuiteSelection(suite.Id, e.Value is bool v && v)" />
+                                </td>
+                                <td>@suite.Fecha.ToShortDateString()</td>
+                                <td>@suite.Suite</td>
+                                <td>@FormatCurrency(suite.Precio)</td>
+                                <td>@(suite.LimpiezaProfunda ? "X" : string.Empty)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3 reservacion-section reservacion-section-extras">
+        <div class="card-header reservacion-section-title d-flex align-items-center">
+            <span>EXTRAS</span>
+            <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="ToggleExtraForm">+</button>
+        </div>
+        <div class="card-body">
+            @if (ShowExtraForm)
+            {
+                <div class="row g-2 mb-3">
+                    <div class="col-md-3">
+                        <select class="form-select form-select-sm" @onchange="OnExtraRoomChanged">
+                            <option value="">Suite</option>
+                            @foreach (var room in Rooms)
+                            {
+                                <option value="@room.Id">@room.RoomName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2"><input class="form-control form-control-sm" type="number" @bind="ExtraPrice" placeholder="Precio" /></div>
+                    <div class="col-md-2"><input class="form-control form-control-sm" type="number" @bind="ExtraDiscount" placeholder="% Desc." /></div>
+                    <div class="col-md-2"><input class="form-control form-control-sm" value="@ExtraTotal" readonly /></div>
+                    <div class="col-md-3"><input class="form-control form-control-sm" @bind="ExtraNotes" placeholder="Notas" /></div>
+                    <div class="col-md-2"><button class="btn btn-sm btn-success w-100" @onclick="AgregarExtraAsync">Agregar</button></div>
+                </div>
+            }
+
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Suite</th>
+                            <th>Descripción</th>
+                            <th>Precio</th>
+                            <th>Desc %</th>
+                            <th>Total</th>
+                            <th>Notas</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var extra in Extras)
+                        {
+                            <tr>
+                                <td>@extra.RoomName</td>
+                                <td>@extra.RoomDescription</td>
+                                <td>@FormatCurrency(extra.Price)</td>
+                                <td>@extra.Discount</td>
+                                <td>@FormatCurrency(extra.DiscountedPrice)</td>
+                                <td>@extra.Notes</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarExtraAsync(extra.Id)">Eliminar</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3 reservacion-section reservacion-section-pagos">
+        <div class="card-header reservacion-section-title">PAGOS</div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-striped table-bordered mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>Fecha</th>
+                            <th>Monto</th>
+                            <th>Concepto</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var pago in Pagos)
+                        {
+                            <tr>
+                                <td>@pago.TransaccionId</td>
+                                <td>@pago.Fecha.ToShortDateString()</td>
+                                <td>@FormatCurrency(pago.Monto)</td>
+                                <td>@pago.Concepto</td>
+                                <td><button class="btn btn-sm btn-outline-primary" @onclick="() => AbrirPagoAsync(pago.TransaccionId)">Abrir</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card reservacion-section reservacion-section-archivos">
+        <div class="card-header reservacion-section-title">ARCHIVOS</div>
+        <div class="card-body">
+            <div class="row g-2 mb-3">
+                <div class="col-md-4">
+                    <input class="form-control form-control-sm" @bind="AttachmentDescription" placeholder="Descripción del archivo" />
+                </div>
+                <div class="col-md-4">
+                    <InputFile @key="_attachmentInputKey" OnChange="OnAttachmentSelectedAsync" />
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-sm btn-outline-primary w-100" @onclick="CargarAttachmentAsync" disabled="@IsUploadingAttachment">Cargar</button>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Ext</th>
+                            <th>Descripción</th>
+                            <th>Tamaño</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var attachment in Attachments)
+                        {
+                            <tr>
+                                <td>@attachment.AttachmentName</td>
+                                <td>@attachment.AttachmentExtension</td>
+                                <td>@attachment.AttachmentDescription</td>
+                                <td>@attachment.Length</td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => DescargarAttachmentAsync(attachment)" disabled="@IsAttachmentDownloading(attachment)">Descargar</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarAttachmentAsync(attachment)" disabled="@IsAttachmentDeleting(attachment)">Eliminar</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 }

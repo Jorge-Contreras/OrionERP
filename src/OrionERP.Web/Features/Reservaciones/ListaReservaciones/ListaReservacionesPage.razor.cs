@@ -80,26 +80,21 @@ public partial class ListaReservacionesPage : ComponentBase
 
   protected async Task NuevaReservacionAsync()
   {
-    var raw = await Js.InvokeAsync<string?>("prompt", "Cliente ID para nueva reservación:", "");
-    if (string.IsNullOrWhiteSpace(raw))
-    {
-      return;
-    }
-
-    if (!int.TryParse(raw, out var clienteId) || clienteId <= 0)
-    {
-      UiMessages.ShowWarning("Cliente ID inválido.");
-      return;
-    }
-
     try
     {
+      var cliente = await ReservacionesService.GetDefaultClienteForNewReservationAsync();
+      if (cliente is null || cliente.Id <= 0)
+      {
+        UiMessages.ShowError("No se encontró un cliente de cotización para crear la reservación.");
+        return;
+      }
+
       var id = await ReservacionesService.CreateReservationAsync(new ListaReservacionCreateRequest
       {
-        ClienteId = clienteId
+        ClienteId = cliente.Id
       });
 
-      UiMessages.ShowSuccess($"Reservación {id} creada.");
+      UiMessages.ShowSuccess($"Reservación {id} creada con cliente {cliente.Nombre}.");
       Nav.NavigateTo($"/reservaciones/{id}");
     }
     catch (Exception ex)
@@ -119,15 +114,26 @@ public partial class ListaReservacionesPage : ComponentBase
       return;
     }
 
-    var result = await ReservacionesService.DeleteEmptyReservationsAsync();
-    if (result.Success)
+    try
     {
-      UiMessages.ShowSuccess(result.Message);
-      await BuscarAsync();
-      return;
+      var result = await ReservacionesService.DeleteEmptyReservationsAsync();
+      if (result.Success)
+      {
+        UiMessages.ShowSuccess(result.Message);
+      }
+      else
+      {
+        UiMessages.ShowError(result.Message);
+      }
     }
-
-    UiMessages.ShowError(result.Message);
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron borrar las reservaciones vacías. {ex.Message}");
+    }
+    finally
+    {
+      await BuscarAsync();
+    }
   }
 
   protected async Task AbrirReciboAsync(int reservationId)

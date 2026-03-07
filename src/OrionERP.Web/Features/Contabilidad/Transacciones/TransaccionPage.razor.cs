@@ -27,6 +27,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   {
     Movimientos,
     Comprobantes,
+    Reservaciones,
     Banco,
     Attachments,
     Resumen
@@ -38,6 +39,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private int? _attachmentDownloadingId;
   private int? _attachmentDeletingId;
   private int? _movimientoDeletingId;
+  private int? _selectedReservacionId;
+  private int? _unlinkingReservacionId;
   private long? _unlinkingComprobanteId;
   private long? _unlinkingBancoMovimientoId;
   private long? _selectedComprobanteId;
@@ -79,6 +82,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected List<BankMovementDto> BancoMovimientos { get; } = [];
   protected List<AttachmentModel> Attachments { get; } = [];
   protected List<TransaccionCfdiCandidateDto> Comprobantes { get; } = [];
+  protected List<TransaccionReservacionLinkDto> ReservacionLinks { get; } = [];
+  protected List<TransaccionReservacionSearchItemDto> ReservacionCandidates { get; } = [];
   protected List<LookupInt32Dto> CategoriaOptions { get; } = [];
   protected List<LookupInt32Dto> ProyectoOptions { get; } = [];
   protected List<LookupInt32Dto> CompraOptions { get; } = [];
@@ -89,6 +94,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected string ProyectoSearchTerm { get; set; } = string.Empty;
   protected string CompraSearchTerm { get; set; } = string.Empty;
+  protected string ReservacionSearchTerm { get; set; } = string.Empty;
+  protected decimal ReservacionAmountInput { get; set; }
 
   protected bool ShowMovimientoModal { get; private set; }
   protected MovimientoModel? MovimientoDraft { get; private set; }
@@ -101,8 +108,35 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected string HeaderStatus => Totals.Balance == 0m ? "Balanceada" : "Desbalanceada";
   protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
+  protected bool HasReservacionSelection => _selectedReservacionId.HasValue;
+  protected int? SelectedReservacionId => _selectedReservacionId;
+  protected string? SelectedReservacionCliente { get; private set; }
+  protected string? SelectedReservacionStatus { get; private set; }
+  protected DateTime? SelectedReservacionCheckIn { get; private set; }
+  protected DateTime? SelectedReservacionCheckOut { get; private set; }
+  protected decimal SelectedReservacionTotal { get; private set; }
+  protected decimal SelectedReservacionPagado { get; private set; }
+  protected decimal SelectedReservacionPorPagar { get; private set; }
+  protected string? SelectedReservacionNotes { get; private set; }
+  protected decimal ReservacionesAsignadasTotal => decimal.Round(ReservacionLinks.Sum(item => item.Amount), 2, MidpointRounding.AwayFromZero);
+  protected decimal ReservacionesPorAsignar => Header is null
+    ? 0m
+    : decimal.Round(Header.Monto - ReservacionesAsignadasTotal, 2, MidpointRounding.AwayFromZero);
+  protected string ReservacionesBalanceCss => decimal.Abs(ReservacionesPorAsignar) <= 0.01m
+    ? "text-bg-success"
+    : ReservacionesPorAsignar > 0m
+      ? "text-bg-warning"
+      : "text-bg-danger";
+  protected string ReservacionActionLabel => SelectedReservacionHasExistingLink
+    ? "Actualizar asignacion"
+    : "Asignar reservacion";
+  protected bool SelectedReservacionHasExistingLink => _selectedReservacionId.HasValue
+    && ReservacionLinks.Any(item => item.ReservationId == _selectedReservacionId.Value);
   protected bool IsUploadingAttachment { get; private set; }
   protected bool IsLoadingBancoMovimientos { get; private set; }
+  protected bool IsLoadingReservacionLinks { get; private set; }
+  protected bool IsSearchingReservaciones { get; private set; }
+  protected bool IsSavingReservacionLink { get; private set; }
   protected bool IsRegeneratingMovimientos { get; private set; }
 
   protected bool IsActiveSection(SectionPanel section) => _activeSection == section;
@@ -165,6 +199,14 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     if (args.Key == "Enter")
     {
       SearchCompraOptions();
+    }
+  }
+
+  protected async Task HandleReservacionSearchKeyDown(KeyboardEventArgs args)
+  {
+    if (args.Key == "Enter")
+    {
+      await SearchReservacionesAsync();
     }
   }
 
@@ -305,6 +347,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         Movimientos.Clear();
         Attachments.Clear();
         Comprobantes.Clear();
+        ReservacionLinks.Clear();
+        ReservacionCandidates.Clear();
+        ClearReservacionSelection();
         Totals = new MovimientoTotalsDto();
         ErrorMessage = "No se encontró la transacción solicitada.";
         return;
@@ -344,6 +389,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       await ReloadAttachmentsAsync(ct);
       await ReloadComprobantesAsync(ct);
       await ReloadBancoMovimientosAsync(ct);
+      await ReloadReservacionLinksAsync(ct);
+      await SearchReservacionesAsync(ct);
     }
     catch (OperationCanceledException)
     {
@@ -924,6 +971,228 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
   }
 
+  private async Task ReloadReservacionLinksAsync(CancellationToken ct = default)
+  {
+    ReservacionLinks.Clear();
+    IsLoadingReservacionLinks = true;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var links = await TransaccionService.GetReservacionLinksAsync(Id, ct);
+      ReservacionLinks.AddRange(links);
+      RefreshReservacionSelection();
+    }
+    catch (OperationCanceledException)
+    {
+      // ignored
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron cargar las reservaciones ligadas: {ex.Message}");
+    }
+    finally
+    {
+      IsLoadingReservacionLinks = false;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected async Task SearchReservacionesAsync(CancellationToken ct = default)
+  {
+    IsSearchingReservaciones = true;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var rows = await TransaccionService.SearchReservacionesAsync(Normalize(ReservacionSearchTerm), ct);
+      ReservacionCandidates.Clear();
+      ReservacionCandidates.AddRange(rows);
+      RefreshReservacionSelection();
+    }
+    catch (OperationCanceledException)
+    {
+      // ignored
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron cargar las reservaciones candidatas: {ex.Message}");
+    }
+    finally
+    {
+      IsSearchingReservaciones = false;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected bool IsReservacionCandidateSelected(TransaccionReservacionSearchItemDto reservacion)
+    => reservacion is not null && reservacion.ReservationId == _selectedReservacionId;
+
+  protected bool IsReservacionLinkSelected(TransaccionReservacionLinkDto reservacion)
+    => reservacion is not null && reservacion.ReservationId == _selectedReservacionId;
+
+  protected bool IsReservacionLinkDeleting(TransaccionReservacionLinkDto reservacion)
+    => reservacion is not null && reservacion.ReservationId == _unlinkingReservacionId;
+
+  protected void SelectReservacionCandidate(TransaccionReservacionSearchItemDto reservacion)
+  {
+    if (reservacion is null)
+    {
+      return;
+    }
+
+    var existingLink = ReservacionLinks.FirstOrDefault(item => item.ReservationId == reservacion.ReservationId);
+    SetReservacionSelection(
+        reservacion.ReservationId,
+        reservacion.Cliente,
+        reservacion.Status,
+        reservacion.CheckIn,
+        reservacion.CheckOut,
+        reservacion.TotalPrice,
+        reservacion.Pagado,
+        reservacion.PorPagar,
+        reservacion.Notes,
+        existingLink?.Amount ?? reservacion.PorPagar);
+  }
+
+  protected void EditReservacionLink(TransaccionReservacionLinkDto reservacion)
+  {
+    if (reservacion is null)
+    {
+      return;
+    }
+
+    SetReservacionSelection(
+        reservacion.ReservationId,
+        reservacion.Cliente,
+        reservacion.Status,
+        reservacion.CheckIn,
+        reservacion.CheckOut,
+        reservacion.TotalPrice,
+        reservacion.Pagado,
+        reservacion.PorPagar,
+        reservacion.Notes,
+        reservacion.Amount);
+  }
+
+  protected void UsePendingReservacionAmount()
+  {
+    if (!HasReservacionSelection)
+    {
+      return;
+    }
+
+    ReservacionAmountInput = SelectedReservacionPorPagar;
+  }
+
+  protected void ClearReservacionSelection()
+  {
+    _selectedReservacionId = null;
+    SelectedReservacionCliente = null;
+    SelectedReservacionStatus = null;
+    SelectedReservacionCheckIn = null;
+    SelectedReservacionCheckOut = null;
+    SelectedReservacionTotal = 0m;
+    SelectedReservacionPagado = 0m;
+    SelectedReservacionPorPagar = 0m;
+    SelectedReservacionNotes = null;
+    ReservacionAmountInput = 0m;
+  }
+
+  protected async Task SaveReservacionLinkAsync()
+  {
+    if (Header is null)
+    {
+      return;
+    }
+
+    if (!_selectedReservacionId.HasValue)
+    {
+      UiMessages.ShowWarning("Selecciona una reservación para asignarla.");
+      return;
+    }
+
+    if (decimal.Abs(ReservacionAmountInput) < 0.01m)
+    {
+      UiMessages.ShowWarning("Ingresa un monto distinto de cero.");
+      return;
+    }
+
+    IsSavingReservacionLink = true;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var result = await TransaccionService.UpsertReservacionLinkAsync(new TransaccionReservacionLinkUpsertRequest
+      {
+        TransaccionId = Header.Id,
+        ReservationId = _selectedReservacionId.Value,
+        Amount = ReservacionAmountInput
+      });
+
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message ?? "No se pudo guardar la asignación de la reservación.");
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message ?? "Asignación guardada correctamente.");
+      await ReloadReservacionLinksAsync();
+      await SearchReservacionesAsync();
+      RefreshReservacionSelection();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo guardar la asignación de la reservación: {ex.Message}");
+    }
+    finally
+    {
+      IsSavingReservacionLink = false;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected async Task DeleteReservacionLinkAsync(TransaccionReservacionLinkDto reservacion)
+  {
+    if (Header is null || reservacion is null)
+    {
+      return;
+    }
+
+    var confirmed = await ConfirmAsync($"¿Estás seguro que deseas desligar la reservación {reservacion.ReservationId} de esta póliza?");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    _unlinkingReservacionId = reservacion.ReservationId;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var result = await TransaccionService.DeleteReservacionLinkAsync(Header.Id, reservacion.ReservationId);
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message ?? "No se pudo eliminar la asignación de la reservación.");
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message ?? "Asignación eliminada correctamente.");
+      await ReloadReservacionLinksAsync();
+      await SearchReservacionesAsync();
+      RefreshReservacionSelection();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo eliminar la asignación de la reservación: {ex.Message}");
+    }
+    finally
+    {
+      _unlinkingReservacionId = null;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
   private async Task ReloadBancoMovimientosAsync(CancellationToken ct = default)
   {
     BancoMovimientos.Clear();
@@ -949,6 +1218,77 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       await InvokeAsync(StateHasChanged);
     }
   }
+
+  private void RefreshReservacionSelection()
+  {
+    if (!_selectedReservacionId.HasValue)
+    {
+      return;
+    }
+
+    var linked = ReservacionLinks.FirstOrDefault(item => item.ReservationId == _selectedReservacionId.Value);
+    if (linked is not null)
+    {
+      SetReservacionSelection(
+          linked.ReservationId,
+          linked.Cliente,
+          linked.Status,
+          linked.CheckIn,
+          linked.CheckOut,
+          linked.TotalPrice,
+          linked.Pagado,
+          linked.PorPagar,
+          linked.Notes,
+          linked.Amount);
+      return;
+    }
+
+    var candidate = ReservacionCandidates.FirstOrDefault(item => item.ReservationId == _selectedReservacionId.Value);
+    if (candidate is not null)
+    {
+      SetReservacionSelection(
+          candidate.ReservationId,
+          candidate.Cliente,
+          candidate.Status,
+          candidate.CheckIn,
+          candidate.CheckOut,
+          candidate.TotalPrice,
+          candidate.Pagado,
+          candidate.PorPagar,
+          candidate.Notes,
+          candidate.PorPagar);
+      return;
+    }
+
+    ClearReservacionSelection();
+  }
+
+  private void SetReservacionSelection(
+      int reservationId,
+      string? cliente,
+      string? status,
+      DateTime? checkIn,
+      DateTime? checkOut,
+      decimal totalPrice,
+      decimal pagado,
+      decimal porPagar,
+      string? notes,
+      decimal amount)
+  {
+    _selectedReservacionId = reservationId;
+    SelectedReservacionCliente = string.IsNullOrWhiteSpace(cliente) ? "(Sin cliente)" : cliente;
+    SelectedReservacionStatus = status;
+    SelectedReservacionCheckIn = checkIn;
+    SelectedReservacionCheckOut = checkOut;
+    SelectedReservacionTotal = totalPrice;
+    SelectedReservacionPagado = pagado;
+    SelectedReservacionPorPagar = porPagar;
+    SelectedReservacionNotes = notes;
+    ReservacionAmountInput = amount;
+  }
+
+  private static string? Normalize(string? value)
+    => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
   protected async Task OpenComprobanteCfdiAsync(TransaccionCfdiCandidateDto? comprobante)
   {

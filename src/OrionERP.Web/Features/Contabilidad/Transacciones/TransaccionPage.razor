@@ -29,6 +29,10 @@
         .transaccion-header .input-group-text {
             font-weight: 600; /* or 500 if you prefer slightly lighter */
         }
+
+    .reservacion-linking-table tbody tr {
+        cursor: pointer;
+    }
 </style>
 
 
@@ -254,6 +258,14 @@ else if (Header is not null)
           </li>
           <li class="nav-item">
             <button type="button"
+                    class="@GetTabButtonClass(SectionPanel.Reservaciones)"
+                    @onclick="() => ActivateSection(SectionPanel.Reservaciones)">
+              Reservaciones
+              <span class="badge text-bg-secondary ms-1">@ReservacionLinks.Count</span>
+            </button>
+          </li>
+          <li class="nav-item">
+            <button type="button"
                     class="@GetTabButtonClass(SectionPanel.Banco)"
                     @onclick="() => ActivateSection(SectionPanel.Banco)">
               Banco
@@ -446,6 +458,264 @@ else if (Header is not null)
               </table>
             </div>
           }
+        }
+        else if (IsActiveSection(SectionPanel.Reservaciones))
+        {
+          <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+            <h5 class="mb-0">Reservaciones vinculadas</h5>
+            <span class="badge text-bg-dark">Monto póliza: @FormatCurrency(Header.Monto)</span>
+            <span class="badge text-bg-dark">Asignado: @FormatCurrency(ReservacionesAsignadasTotal)</span>
+            <span class="badge @ReservacionesBalanceCss">Por asignar: @FormatCurrency(ReservacionesPorAsignar)</span>
+          </div>
+
+          @if (decimal.Abs(ReservacionesPorAsignar) > 0.01m)
+          {
+            <div class="alert alert-warning" role="alert">
+              El total asignado a reservaciones no coincide con el monto de la póliza.
+            </div>
+          }
+
+          <div class="row g-4">
+            <div class="col-12 col-xl-5">
+              <div class="border rounded p-3 h-100">
+                <div class="d-flex flex-wrap gap-2 align-items-end mb-3">
+                  <div class="flex-grow-1">
+                    <label class="form-label">Buscar reservación</label>
+                    <input class="form-control"
+                           placeholder="ID, cliente o notas"
+                           @bind="ReservacionSearchTerm"
+                           @bind:event="oninput"
+                           @onkeydown="HandleReservacionSearchKeyDown" />
+                  </div>
+                  <button type="button"
+                          class="btn btn-outline-secondary"
+                          @onclick="() => SearchReservacionesAsync()"
+                          disabled="@IsSearchingReservaciones">
+                    @if (IsSearchingReservaciones)
+                    {
+                      <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                    }
+                    Buscar
+                  </button>
+                </div>
+
+                <div class="form-text mb-3">
+                  La lista usa `LISTA_DE_RESERVACIONES` y prioriza reservaciones con saldo pendiente. Si buscas por ID exacto, también trae esa reservación.
+                </div>
+
+                @if (IsSearchingReservaciones)
+                {
+                  <div class="orion-loading" role="status" aria-live="polite">
+                    <span class="orion-spinner" aria-hidden="true"></span>
+                    <span class="orion-strong">Buscando reservaciones…</span>
+                  </div>
+                }
+                else if (ReservacionCandidates.Count == 0)
+                {
+                  <div class="alert alert-info mb-0">No se encontraron reservaciones candidatas.</div>
+                }
+                else
+                {
+                  <div class="table-responsive" style="max-height: 460px;">
+                    <table class="table table-sm table-hover align-middle mb-0 reservacion-linking-table">
+                      <thead class="table-light">
+                        <tr>
+                          <th>ID</th>
+                          <th>Cliente</th>
+                          <th>Status</th>
+                          <th class="text-end">Total</th>
+                          <th class="text-end">Pagado</th>
+                          <th class="text-end">Por pagar</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @foreach (var reservacion in ReservacionCandidates)
+                        {
+                          <tr class="@(IsReservacionCandidateSelected(reservacion) ? "table-primary" : string.Empty)"
+                              @onclick="() => SelectReservacionCandidate(reservacion)">
+                            <td>@reservacion.ReservationId</td>
+                            <td class="text-wrap">@reservacion.Cliente</td>
+                            <td>@reservacion.Status</td>
+                            <td class="text-end">@FormatCurrency(reservacion.TotalPrice)</td>
+                            <td class="text-end">@FormatCurrency(reservacion.Pagado)</td>
+                            <td class="text-end @(reservacion.PorPagar > 0 ? "text-danger" : "text-success")">@FormatCurrency(reservacion.PorPagar)</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <div class="col-12 col-xl-7">
+              <div class="border rounded p-3 mb-3">
+                <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+                  <h6 class="mb-0">Asignación</h6>
+                  @if (HasReservacionSelection)
+                  {
+                    <span class="badge text-bg-secondary">Reservación #@SelectedReservacionId</span>
+                  }
+                </div>
+
+                @if (!HasReservacionSelection)
+                {
+                  <p class="text-muted mb-0">Selecciona una reservación de la lista o una asignación existente para editarla.</p>
+                }
+                else
+                {
+                  <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Cliente</label>
+                      <input class="form-control" value="@SelectedReservacionCliente" readonly />
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Check In</label>
+                      <input class="form-control" value="@SelectedReservacionCheckIn?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" readonly />
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Check Out</label>
+                      <input class="form-control" value="@SelectedReservacionCheckOut?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" readonly />
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Status</label>
+                      <input class="form-control" value="@SelectedReservacionStatus" readonly />
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Total</label>
+                      <input class="form-control" value="@FormatCurrency(SelectedReservacionTotal)" readonly />
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Pagado</label>
+                      <input class="form-control" value="@FormatCurrency(SelectedReservacionPagado)" readonly />
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Por pagar</label>
+                      <input class="form-control" value="@FormatCurrency(SelectedReservacionPorPagar)" readonly />
+                    </div>
+                    <div class="col-12 col-lg-4">
+                      <label class="form-label">Monto a asignar</label>
+                      <InputNumber class="form-control" step="0.01" @bind-Value="ReservacionAmountInput" />
+                    </div>
+                    <div class="col-12 col-lg-8 d-flex flex-wrap gap-2 align-items-end">
+                      <button type="button"
+                              class="btn btn-outline-secondary"
+                              @onclick="UsePendingReservacionAmount"
+                              disabled="@IsSavingReservacionLink">
+                        Usar saldo pendiente
+                      </button>
+                      <button type="button"
+                              class="btn btn-primary"
+                              @onclick="SaveReservacionLinkAsync"
+                              disabled="@IsSavingReservacionLink">
+                        @if (IsSavingReservacionLink)
+                        {
+                          <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                        }
+                        @ReservacionActionLabel
+                      </button>
+                      <button type="button"
+                              class="btn btn-outline-secondary"
+                              @onclick="ClearReservacionSelection"
+                              disabled="@IsSavingReservacionLink">
+                        Limpiar seleccion
+                      </button>
+                      <a class="btn btn-outline-primary"
+                         href="/reservaciones/@SelectedReservacionId"
+                         target="_blank" rel="noopener">
+                        Abrir reservacion
+                      </a>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(SelectedReservacionNotes))
+                    {
+                      <div class="col-12">
+                        <label class="form-label">Notas</label>
+                        <textarea class="form-control" rows="2" readonly>@SelectedReservacionNotes</textarea>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+
+              <div class="border rounded p-3">
+                <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+                  <h6 class="mb-0">Asignaciones actuales</h6>
+                  <span class="badge text-bg-secondary">@ReservacionLinks.Count</span>
+                </div>
+
+                @if (IsLoadingReservacionLinks)
+                {
+                  <div class="orion-loading" role="status" aria-live="polite">
+                    <span class="orion-spinner" aria-hidden="true"></span>
+                    <span class="orion-strong">Cargando asignaciones…</span>
+                  </div>
+                }
+                else if (ReservacionLinks.Count == 0)
+                {
+                  <p class="text-muted mb-0">No hay reservaciones ligadas a esta póliza.</p>
+                }
+                else
+                {
+                  <div class="table-responsive" style="max-height: 360px;">
+                    <table class="table table-sm table-hover align-middle mb-0 reservacion-linking-table">
+                      <thead class="table-light">
+                        <tr>
+                          <th>ID</th>
+                          <th>Cliente</th>
+                          <th>Status</th>
+                          <th class="text-end">Asignado</th>
+                          <th class="text-end">Pagado</th>
+                          <th class="text-end">Por pagar</th>
+                          <th class="text-end">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @foreach (var reservacion in ReservacionLinks)
+                        {
+                          <tr class="@(IsReservacionLinkSelected(reservacion) ? "table-primary" : string.Empty)"
+                              @onclick="() => EditReservacionLink(reservacion)">
+                            <td>@reservacion.ReservationId</td>
+                            <td class="text-wrap">@reservacion.Cliente</td>
+                            <td>@reservacion.Status</td>
+                            <td class="text-end">@FormatCurrency(reservacion.Amount)</td>
+                            <td class="text-end">@FormatCurrency(reservacion.Pagado)</td>
+                            <td class="text-end @(reservacion.PorPagar > 0 ? "text-danger" : "text-success")">@FormatCurrency(reservacion.PorPagar)</td>
+                            <td class="text-end">
+                              <div class="d-inline-flex gap-2">
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-primary"
+                                        @onclick="() => EditReservacionLink(reservacion)"
+                                        @onclick:stopPropagation="true">
+                                  Editar
+                                </button>
+                                <a class="btn btn-sm btn-outline-secondary"
+                                   href="/reservaciones/@reservacion.ReservationId"
+                                   target="_blank" rel="noopener"
+                                   @onclick:stopPropagation="true">
+                                  Abrir
+                                </a>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-danger"
+                                        disabled="@IsReservacionLinkDeleting(reservacion)"
+                                        @onclick="() => DeleteReservacionLinkAsync(reservacion)"
+                                        @onclick:stopPropagation="true">
+                                  @if (IsReservacionLinkDeleting(reservacion))
+                                  {
+                                    <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                                  }
+                                  Eliminar
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
         }
         else if (IsActiveSection(SectionPanel.Banco))
         {

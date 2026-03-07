@@ -24,7 +24,7 @@ else
         </button>
         <button class="btn btn-outline-secondary btn-sm" @onclick="CerrarAsync">CERRAR</button>
         <button class="btn btn-outline-success btn-sm" @onclick="AbrirPdfAsync">PDF</button>
-        <button class="btn btn-outline-info btn-sm" @onclick="CrearPolizaAsync">Crear Póliza</button>
+        <button class="btn btn-outline-info btn-sm" @onclick="CrearPolizaAsync" disabled="@(IsSaving || IsWorking || IsCreatingPoliza)">Crear Póliza</button>
     </div>
 
     <div class="row g-3 mb-3">

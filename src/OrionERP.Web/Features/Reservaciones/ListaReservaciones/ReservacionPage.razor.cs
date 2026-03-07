@@ -79,6 +79,7 @@ public partial class ReservacionPage : ComponentBase
   protected bool IsLoading { get; set; }
   protected bool IsSaving { get; set; }
   protected bool IsWorking { get; set; }
+  protected bool IsCreatingPoliza { get; set; }
   protected bool IsUploadingAttachment { get; set; }
   protected string? ErrorMessage { get; set; }
 
@@ -179,47 +180,7 @@ public partial class ReservacionPage : ComponentBase
 
   protected async Task GuardarAsync()
   {
-    if (Detail is null)
-      return;
-
-    EnsureValidDateRange();
-    RecalculateTotals();
-
-    IsSaving = true;
-    try
-    {
-      var saveResult = await ReservacionesService.SaveReservationAsync(new ReservacionUpdateRequest
-      {
-        Id = Detail.Id,
-        ClienteId = ClienteId,
-        CheckIn = CheckIn,
-        CheckOut = CheckOut,
-        Status = Status,
-        RecommenedBy = RecommenedBy,
-        Notes = Notes,
-        Taxable = Taxable,
-        TotalPrice = TotalReservacion
-      });
-
-      if (!saveResult.Success)
-      {
-        UiMessages.ShowError(saveResult.Message);
-        return;
-      }
-
-      await ReservacionesService.SyncSuiteStatusAsync(Detail.Id, Status);
-      await ReservacionesService.SyncSuiteLockedByAsync(Detail.Id, ClienteId);
-      UiMessages.ShowSuccess(saveResult.Message);
-      await LoadAllAsync();
-    }
-    catch (Exception ex)
-    {
-      UiMessages.ShowError($"No se pudo guardar la reservación. {ex.Message}");
-    }
-    finally
-    {
-      IsSaving = false;
-    }
+    await SaveReservationStateAsync(showSuccessMessage: true);
   }
 
   protected async Task CerrarAsync()
@@ -257,13 +218,24 @@ public partial class ReservacionPage : ComponentBase
       return;
     }
 
+    IsCreatingPoliza = true;
     try
     {
+      var saveOk = await SaveReservationStateAsync(showSuccessMessage: false);
+      if (!saveOk || Detail is null)
+      {
+        return;
+      }
+
+      var cliente = string.IsNullOrWhiteSpace(Detail.Cliente)
+        ? "(Sin cliente)"
+        : Detail.Cliente;
+
       var createResult = await TransaccionService.CreateTransaccionAsync(new TransaccionCreateRequest
       {
         Rfc = RfcState.CurrentRfc!,
         Fecha = DateTime.Now,
-        Concepto = $"PAGO POR RESERVACION#{Detail.Id} - {Detail.Cliente}",
+        Concepto = $"PAGO POR RESERVACION#{Detail.Id} - {cliente}",
         CategoriaId = 19,
         Monto = TotalReservacion,
         Cuenta = "ORION HABITAT DE MEXICO",
@@ -278,12 +250,76 @@ public partial class ReservacionPage : ComponentBase
       }
 
       var url = $"/contabilidad/transacciones/{createResult.NewTransaccionId}";
-      await Js.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
-      UiMessages.ShowSuccess(createResult.Message ?? "Póliza creada.");
+      try
+      {
+        await Js.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+      }
+      catch
+      {
+        Nav.NavigateTo(url);
+      }
+
+      UiMessages.ShowSuccess($"Póliza {createResult.NewTransaccionId} creada.");
     }
     catch (Exception ex)
     {
       UiMessages.ShowError($"No se pudo crear la póliza. {ex.Message}");
+    }
+    finally
+    {
+      IsCreatingPoliza = false;
+    }
+  }
+
+  private async Task<bool> SaveReservationStateAsync(bool showSuccessMessage)
+  {
+    if (Detail is null)
+      return false;
+
+    EnsureValidDateRange();
+    RecalculateTotals();
+
+    IsSaving = true;
+    try
+    {
+      var saveResult = await ReservacionesService.SaveReservationAsync(new ReservacionUpdateRequest
+      {
+        Id = Detail.Id,
+        ClienteId = ClienteId,
+        CheckIn = CheckIn,
+        CheckOut = CheckOut,
+        Status = Status,
+        RecommenedBy = RecommenedBy,
+        Notes = Notes,
+        Taxable = Taxable,
+        TotalPrice = TotalReservacion
+      });
+
+      if (!saveResult.Success)
+      {
+        UiMessages.ShowError(saveResult.Message);
+        return false;
+      }
+
+      await ReservacionesService.SyncSuiteStatusAsync(Detail.Id, Status);
+      await ReservacionesService.SyncSuiteLockedByAsync(Detail.Id, ClienteId);
+      await LoadAllAsync();
+
+      if (showSuccessMessage)
+      {
+        UiMessages.ShowSuccess(saveResult.Message);
+      }
+
+      return true;
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo guardar la reservación. {ex.Message}");
+      return false;
+    }
+    finally
+    {
+      IsSaving = false;
     }
   }
 

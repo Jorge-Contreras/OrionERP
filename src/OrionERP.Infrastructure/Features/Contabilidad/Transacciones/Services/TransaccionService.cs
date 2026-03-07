@@ -526,6 +526,249 @@ ORDER BY cd.Fecha DESC;";
     return rows.AsList();
   }
 
+  public async Task<IReadOnlyList<TransaccionReservacionLinkDto>> GetReservacionLinksAsync(int transaccionId, CancellationToken ct = default)
+  {
+    const string sql = @"SELECT
+    rt.ReservationID                                     AS ReservationId,
+    rt.TransaccionID                                     AS TransaccionId,
+    CAST(ISNULL(rt.Amount, 0) AS decimal(18, 2))         AS Amount,
+    ISNULL(c.Nombre, '(Sin cliente)')                    AS Cliente,
+    r.CHECKIN                                            AS CheckIn,
+    r.CHECKOUT                                           AS CheckOut,
+    r.STATUS                                             AS Status,
+    CAST(ISNULL(r.TOTAL_PRICE, 0) AS decimal(18, 2))     AS TotalPrice,
+    CAST(ISNULL(pa.PAGADO, 0) AS decimal(18, 2))         AS Pagado,
+    CAST(ISNULL(r.TOTAL_PRICE, 0) - ISNULL(pa.PAGADO, 0) AS decimal(18, 2)) AS PorPagar,
+    r.NOTES                                              AS Notes
+FROM dbo.Reservation_Transacciones rt
+INNER JOIN dbo.RESERVATION r
+  ON r.ID = rt.ReservationID
+LEFT JOIN dbo.Clientes c
+  ON c.ID = r.CLIENTE_ID
+OUTER APPLY
+(
+  SELECT SUM(rt2.Amount) AS PAGADO
+  FROM dbo.Reservation_Transacciones rt2
+  WHERE rt2.ReservationID = r.ID
+) pa
+WHERE rt.TransaccionID = @TransaccionId
+ORDER BY rt.ReservationID DESC;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<TransaccionReservacionLinkDto>(
+        new CommandDefinition(sql, new { TransaccionId = transaccionId }, cancellationToken: ct));
+    return rows.AsList();
+  }
+
+  public async Task<IReadOnlyList<TransaccionReservacionSearchItemDto>> SearchReservacionesAsync(string? search, CancellationToken ct = default)
+  {
+    var normalizedSearch = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+    var reservationId = int.TryParse(normalizedSearch, out var parsedReservationId)
+        ? parsedReservationId
+        : (int?)null;
+
+    const string sql = @"SELECT TOP (100)
+    lr.ID                                                 AS ReservationId,
+    ISNULL(lr.Nombre, '(Sin cliente)')                    AS Cliente,
+    lr.CHECKIN                                            AS CheckIn,
+    lr.CHECKOUT                                           AS CheckOut,
+    lr.STATUS                                             AS Status,
+    CAST(ISNULL(lr.TOTAL_PRICE, 0) AS decimal(18, 2))     AS TotalPrice,
+    CAST(ISNULL(lr.PAGADO, 0) AS decimal(18, 2))          AS Pagado,
+    CAST(ISNULL(lr.POR_PAGAR, 0) AS decimal(18, 2))       AS PorPagar,
+    lr.NOTES                                              AS Notes
+FROM dbo.LISTA_DE_RESERVACIONES lr
+WHERE
+(
+  @ReservationId IS NOT NULL
+  AND lr.ID = @ReservationId
+)
+OR
+(
+  ABS(CONVERT(decimal(18, 2), ISNULL(lr.POR_PAGAR, 0))) > 2
+  AND
+  (
+    @Search IS NULL
+    OR lr.Nombre LIKE @SearchLike
+    OR lr.NOTES LIKE @SearchLike
+  )
+)
+ORDER BY
+  CASE WHEN @ReservationId IS NOT NULL AND lr.ID = @ReservationId THEN 0 ELSE 1 END,
+  lr.ID DESC;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<TransaccionReservacionSearchItemDto>(
+        new CommandDefinition(
+            sql,
+            new
+            {
+              Search = normalizedSearch,
+              SearchLike = normalizedSearch is null ? null : $"%{normalizedSearch}%",
+              ReservationId = reservationId
+            },
+            cancellationToken: ct));
+
+    return rows.AsList();
+  }
+
+  public async Task<TransaccionCommandResult> UpsertReservacionLinkAsync(TransaccionReservacionLinkUpsertRequest request, CancellationToken ct = default)
+  {
+    if (request is null)
+      throw new ArgumentNullException(nameof(request));
+
+    if (request.TransaccionId <= 0 || request.ReservationId <= 0)
+      return TransaccionCommandResult.Fail("Selecciona una póliza y una reservación válidas.");
+
+    if (decimal.Abs(request.Amount) < 0.01m)
+      return TransaccionCommandResult.Fail("Ingresa un monto distinto de cero.");
+
+    await using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+
+    try
+    {
+      const string existsReservationSql = @"SELECT TOP (1) 1
+FROM dbo.RESERVATION
+WHERE ID = @ReservationId;";
+
+      var reservationExists = await conn.ExecuteScalarAsync<int?>(
+          new CommandDefinition(
+              existsReservationSql,
+              new { request.ReservationId },
+              tx,
+              cancellationToken: ct));
+
+      if (!reservationExists.HasValue)
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("La reservación seleccionada no existe.");
+      }
+
+      const string existsTransaccionSql = @"SELECT TOP (1) 1
+FROM dbo.Transacciones
+WHERE ID = @TransaccionId;";
+
+      var transaccionExists = await conn.ExecuteScalarAsync<int?>(
+          new CommandDefinition(
+              existsTransaccionSql,
+              new { request.TransaccionId },
+              tx,
+              cancellationToken: ct));
+
+      if (!transaccionExists.HasValue)
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("La póliza seleccionada no existe.");
+      }
+
+      const string existsLinkSql = @"SELECT TOP (1) 1
+FROM dbo.Reservation_Transacciones
+WHERE ReservationID = @ReservationId
+  AND TransaccionID = @TransaccionId;";
+
+      var linkExists = await conn.ExecuteScalarAsync<int?>(
+          new CommandDefinition(
+              existsLinkSql,
+              new
+              {
+                request.ReservationId,
+                request.TransaccionId
+              },
+              tx,
+              cancellationToken: ct));
+
+      if (linkExists.HasValue)
+      {
+        const string updateSql = @"UPDATE dbo.Reservation_Transacciones
+SET Amount = @Amount
+WHERE ReservationID = @ReservationId
+  AND TransaccionID = @TransaccionId;";
+
+        await conn.ExecuteAsync(
+            new CommandDefinition(
+                updateSql,
+                new
+                {
+                  request.Amount,
+                  request.ReservationId,
+                  request.TransaccionId
+                },
+                tx,
+                cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        return TransaccionCommandResult.Ok("Asignación de reservación actualizada.");
+      }
+
+      const string insertSql = @"INSERT INTO dbo.Reservation_Transacciones
+(ReservationID, TransaccionID, Amount)
+VALUES (@ReservationId, @TransaccionId, @Amount);";
+
+      await conn.ExecuteAsync(
+          new CommandDefinition(
+              insertSql,
+              new
+              {
+                request.ReservationId,
+                request.TransaccionId,
+                request.Amount
+              },
+              tx,
+              cancellationToken: ct));
+
+      await tx.CommitAsync(ct);
+      return TransaccionCommandResult.Ok("Reservación ligada correctamente.");
+    }
+    catch (Exception ex)
+    {
+      await tx.RollbackAsync(ct);
+      _logger.LogError(
+          ex,
+          "Error al guardar vínculo entre transacción {TransaccionId} y reservación {ReservationId}",
+          request.TransaccionId,
+          request.ReservationId);
+
+      return TransaccionCommandResult.Fail("No se pudo guardar la asignación de la reservación.");
+    }
+  }
+
+  public async Task<TransaccionCommandResult> DeleteReservacionLinkAsync(int transaccionId, int reservationId, CancellationToken ct = default)
+  {
+    const string sql = @"DELETE FROM dbo.Reservation_Transacciones
+WHERE TransaccionID = @TransaccionId
+  AND ReservationID = @ReservationId;";
+
+    try
+    {
+      using var conn = new SqlConnection(_cs);
+      var affectedRows = await conn.ExecuteAsync(
+          new CommandDefinition(
+              sql,
+              new
+              {
+                TransaccionId = transaccionId,
+                ReservationId = reservationId
+              },
+              cancellationToken: ct));
+
+      return affectedRows > 0
+          ? TransaccionCommandResult.Ok("Asignación eliminada correctamente.")
+          : TransaccionCommandResult.Fail("No se encontró la asignación a eliminar.");
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(
+          ex,
+          "Error al eliminar vínculo entre transacción {TransaccionId} y reservación {ReservationId}",
+          transaccionId,
+          reservationId);
+
+      return TransaccionCommandResult.Fail("No se pudo eliminar la asignación de la reservación.");
+    }
+  }
+
   public async Task<TransaccionCommandResult> LinkCfdiReplacingPlaceholderAndRelinkAttachmentAsync(
       int transaccionId,
       int comprobanteId,

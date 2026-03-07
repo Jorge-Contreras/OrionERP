@@ -175,6 +175,29 @@ SELECT CAST(SCOPE_IDENTITY() AS int);";
         cancellationToken: ct));
   }
 
+  public async Task<ClienteOptionDto?> GetDefaultClienteForNewReservationAsync(CancellationToken ct = default)
+  {
+    const string sql = @"
+SELECT TOP (1)
+    c.ID AS Id,
+    c.Nombre AS Nombre
+FROM dbo.Clientes c
+WHERE c.Nombre LIKE '%COTIZAC%'
+ORDER BY
+    CASE
+      WHEN UPPER(LTRIM(RTRIM(c.Nombre))) = 'COTIZACION' THEN 0
+      WHEN UPPER(LTRIM(RTRIM(c.Nombre))) = 'CLIENTE COTIZACION' THEN 1
+      WHEN UPPER(c.Nombre) LIKE 'COTIZACION%' THEN 2
+      ELSE 3
+    END,
+    LEN(LTRIM(RTRIM(c.Nombre))),
+    c.ID;";
+
+    await using var conn = new SqlConnection(_cs);
+    return await conn.QueryFirstOrDefaultAsync<ClienteOptionDto>(
+      new CommandDefinition(sql, cancellationToken: ct));
+  }
+
   public async Task<ReservacionCommandResult> UpdateNotesAsync(int reservationId, string? notes, CancellationToken ct = default)
   {
     const string sql = @"

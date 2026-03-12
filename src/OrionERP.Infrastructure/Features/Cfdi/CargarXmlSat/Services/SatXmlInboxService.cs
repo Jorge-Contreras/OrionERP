@@ -81,12 +81,10 @@ namespace OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services
     }
 
     private readonly string _cs;
-    private readonly IConfiguration _cfg;
     private readonly ILogger<SatXmlInboxService> _logger;
 
     public SatXmlInboxService(IConfiguration cfg, ILogger<SatXmlInboxService> logger)
     {
-      _cfg = cfg;
       _logger = logger;
       _cs = cfg.GetConnectionString("OrionDb")
             ?? throw new InvalidOperationException("Missing ConnectionStrings:OrionDb");
@@ -99,33 +97,11 @@ namespace OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services
       => (Path.GetFileNameWithoutExtension(fileName) ?? string.Empty).Trim();
 
     /// <summary>
-    /// Returns the configured placeholder ID (defaults to 5505), validating it exists.
-    /// </summary>
-    public async Task<int> EnsureInboxTransaccionAsync(CancellationToken ct = default)
-    {
-      var idStr = _cfg["SatXml:PlaceholderTransaccionId"];
-      if (!int.TryParse(idStr, out var id)) id = 5505;
-
-      const string sql = "SELECT 1 FROM dbo.Transacciones WHERE ID = @ID;";
-      using var conn = new SqlConnection(_cs);
-      await conn.OpenAsync(ct);
-
-      var exists = await conn.ExecuteScalarAsync<int?>(
-        new CommandDefinition(sql, new { ID = id }, cancellationToken: ct));
-
-      if (!exists.HasValue)
-        throw new InvalidOperationException(
-          $"Configured placeholder Transacciones.ID={id} not found. Create it or change SatXml:PlaceholderTransaccionId.");
-
-      return id;
-    }
-
-    /// <summary>
-    /// Resolve by UUID: returns Comprobante_Id, "best" Transaccion_Id (prefers non-placeholder), and Comprobante.XML_Attachment_ID.
-    /// This is fast in your DB because you have UX_TFD_UUID on cfdi.TimbreFiscalDigital(UUID).
+    /// Resolve by UUID: returns Comprobante_Id, a preferred linked Transaccion_Id when one exists,
+    /// and Comprobante.XML_Attachment_ID.
     /// </summary>
     private static async Task<(bool found, int comprobanteId, int? transaccionId, int? xmlAttachmentId)> TryResolveExistingLinkedAsync(
-      SqlConnection conn, SqlTransaction tx, string uuid, int placeholderTranId, CancellationToken ct)
+      SqlConnection conn, SqlTransaction tx, string uuid, CancellationToken ct)
     {
       const string sql = @"
 SELECT TOP (1)
@@ -139,15 +115,11 @@ LEFT JOIN dbo.Transaccion_Comprobante tc
   ON tc.Comprobante_ID = t.Comprobante_Id
 WHERE t.UUID = @Uuid
 ORDER BY
-  CASE
-    WHEN tc.Transaccion_ID IS NULL THEN 2
-    WHEN tc.Transaccion_ID = @PlaceholderTranId THEN 1
-    ELSE 0
-  END,
+  CASE WHEN tc.Transaccion_ID IS NULL THEN 1 ELSE 0 END,
   tc.ID DESC;";
 
       var row = await conn.QueryFirstOrDefaultAsync<(int ComprobanteId, int? TransaccionId, int? XmlAttachmentId)>(
-        new CommandDefinition(sql, new { Uuid = uuid, PlaceholderTranId = placeholderTranId }, tx, cancellationToken: ct));
+        new CommandDefinition(sql, new { Uuid = uuid }, tx, cancellationToken: ct));
 
       return row.ComprobanteId == 0
         ? (false, 0, null, null)
@@ -155,7 +127,7 @@ ORDER BY
     }
 
     private static async Task<int> InsertXmlAttachmentAsync(
-      SqlConnection conn, SqlTransaction tx, int tranId, string fileName, byte[] bytes, string description, CancellationToken ct)
+      SqlConnection conn, SqlTransaction tx, int? tranId, string fileName, byte[] bytes, string description, CancellationToken ct)
     {
       const string insertSql = @"
 INSERT INTO dbo.TRANSACTION_ATTACHMENT
@@ -181,7 +153,7 @@ SELECT CAST(SCOPE_IDENTITY() as int);";
     /// Updates an existing attachment row by ID (fast PK seek). Returns true if updated; false if the row does not exist.
     /// </summary>
     private static async Task<bool> UpdateXmlAttachmentByIdAsync(
-      SqlConnection conn, SqlTransaction tx, int attachmentId, int tranId, string fileName, byte[] bytes, string description, CancellationToken ct)
+      SqlConnection conn, SqlTransaction tx, int attachmentId, int? tranId, string fileName, byte[] bytes, string description, CancellationToken ct)
     {
       const string sql = @"
 UPDATE dbo.TRANSACTION_ATTACHMENT
@@ -210,7 +182,7 @@ WHERE ID = @ID;";
       return rows > 0;
     }
 
-    private static Task CallProcesarXmlAsync(SqlConnection conn, SqlTransaction tx, int transaccionId, int attachmentId, CancellationToken ct)
+    private static Task CallProcesarXmlAsync(SqlConnection conn, SqlTransaction tx, int? transaccionId, int attachmentId, CancellationToken ct)
     {
       const string sp = "cfdi.PROCESAR_SAT_XML_V2";
       return conn.ExecuteAsync(
@@ -243,28 +215,24 @@ WHERE ID = @ID;";
         ? NormalizeUuid(uuidFromXml)
         : (IsUuidLike(UuidFromFileName(safeName)) ? NormalizeUuid(UuidFromFileName(safeName)) : string.Empty);
 
-      var placeholderId = await EnsureInboxTransaccionAsync(ct);
-
       using var conn = new SqlConnection(_cs);
       await conn.OpenAsync(ct);
       using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
 
       try
       {
-        // Branch A: UUID exists AND is already linked to a non-placeholder Transacción
         if (!string.IsNullOrWhiteSpace(uuidCandidate))
         {
           var (found, comprobanteId, transaccionId, xmlAttachmentId) =
-            await TryResolveExistingLinkedAsync(conn, tx, uuidCandidate, placeholderId, ct);
+            await TryResolveExistingLinkedAsync(conn, tx, uuidCandidate, ct);
 
-          if (found && transaccionId.HasValue && transaccionId.Value != placeholderId)
+          if (found)
           {
-            var targetTranId = transaccionId.Value;
+            var targetTranId = transaccionId;
 
             int attachmentId;
             bool createdNew;
 
-            // Use XML_Attachment_ID only (no name search). If missing, create a new attachment and fix the pointer.
             if (xmlAttachmentId.HasValue)
             {
               var updated = await UpdateXmlAttachmentByIdAsync(
@@ -279,7 +247,6 @@ WHERE ID = @ID;";
               }
               else
               {
-                // Pointer is stale/broken: insert new and update Comprobante.XML_Attachment_ID
                 attachmentId = await InsertXmlAttachmentAsync(
                   conn, tx, targetTranId, safeName, bytes,
                   "SAT XML upload (reprocess / XML_Attachment_ID was broken)",
@@ -304,7 +271,6 @@ WHERE ID = @ID;";
 
               createdNew = true;
 
-              // Set pointer now so future processing is deterministic
               await conn.ExecuteAsync(
                 new CommandDefinition(
                   "UPDATE cfdi.Comprobante SET XML_Attachment_ID = @AttachmentID WHERE Comprobante_Id = @ComprobanteID;",
@@ -316,22 +282,24 @@ WHERE ID = @ID;";
             await CallProcesarXmlAsync(conn, tx, targetTranId, attachmentId, ct);
             await tx.CommitAsync(ct);
 
+            var targetLabel = targetTranId.HasValue
+              ? $"TranID={targetTranId.Value}"
+              : "sin póliza asignada";
             var msg = createdNew
-              ? $"Reprocesado (TranID={targetTranId}). Se agregó el XML como adjunto (AttachmentID={attachmentId})."
-              : $"Reprocesado (TranID={targetTranId}). Se reutilizó XML_Attachment_ID (AttachmentID={attachmentId}).";
+              ? $"Reprocesado ({targetLabel}). Se agregó el XML como adjunto (AttachmentID={attachmentId})."
+              : $"Reprocesado ({targetLabel}). Se reutilizó XML_Attachment_ID (AttachmentID={attachmentId}).";
 
             return new SatXmlProcessResult(safeName, attachmentId, true, msg);
           }
         }
 
-        // Branch B: placeholder (no UUID, UUID not found, or not linked to a non-placeholder transacción)
-        var placeholderAttachmentId = await InsertXmlAttachmentAsync(
-          conn, tx, placeholderId, safeName, bytes, "SAT XML upload", ct);
+        var newAttachmentId = await InsertXmlAttachmentAsync(
+          conn, tx, tranId: null, safeName, bytes, "SAT XML upload", ct);
 
-        await CallProcesarXmlAsync(conn, tx, placeholderId, placeholderAttachmentId, ct);
+        await CallProcesarXmlAsync(conn, tx, transaccionId: null, newAttachmentId, ct);
         await tx.CommitAsync(ct);
 
-        return new SatXmlProcessResult(safeName, placeholderAttachmentId, true, null);
+        return new SatXmlProcessResult(safeName, newAttachmentId, true, "Procesado sin póliza asignada.");
       }
       catch (Exception ex)
       {

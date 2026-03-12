@@ -1,0 +1,211 @@
+@page "/reservaciones/calendario"
+@attribute [Authorize(Roles = "Administrador,SatOperator")]
+
+<PageTitle>Calendario de Reservaciones</PageTitle>
+
+<div class="calendar-page-shell">
+    <div class="calendar-page-header">
+        <div>
+            <h3 class="mb-1">Calendario de Reservaciones</h3>
+            <p class="text-muted mb-0">Primer borrador del calendario robusto para Blazor usando un feed normalizado por recurso y por día.</p>
+        </div>
+        <button class="btn btn-outline-primary" @onclick="LoadCalendarAsync" disabled="@IsLoading">
+            @(IsLoading ? "Cargando..." : "Actualizar")
+        </button>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Inicio</label>
+                    <input class="form-control" type="date" value="@StartDateText" @onchange="OnStartDateChanged" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Fin exclusivo</label>
+                    <input class="form-control" type="date" value="@EndDateText" @onchange="OnEndDateChanged" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Tipo de espacio</label>
+                    <select class="form-select" value="@Filter.RoomType" @onchange="OnRoomTypeChanged">
+                        @foreach (var option in RoomTypeOptions)
+                        {
+                            <option value="@option.Value">@option.Label</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <div class="d-grid">
+                        <button class="btn btn-primary" @onclick="LoadCalendarAsync" disabled="@IsLoading">Aplicar filtro</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="alert alert-danger">@ErrorMessage</div>
+    }
+    else if (Timeline is not null)
+    {
+        <div class="calendar-stats mb-3">
+            <span class="@GetSummaryChipCssClass("resources")">Recursos: @Timeline.Resources.Count</span>
+            <span class="@GetSummaryChipCssClass("reserved")">Reservadas: @ReservedCellCount</span>
+            <span class="@GetSummaryChipCssClass("soft_hold")">Soft holds: @SoftHoldCellCount</span>
+            <span class="@GetSummaryChipCssClass("blocked")">Bloqueadas: @BlockedCellCount</span>
+            <span class="@GetSummaryChipCssClass("orphan")">Huérfanas: @OrphanCellCount</span>
+            <span class="@GetSummaryChipCssClass("events")">Eventos: @Timeline.Events.Count</span>
+        </div>
+
+        @if (Timeline.Resources.Count == 0 || VisibleDates.Count == 0)
+        {
+            <div class="alert alert-warning">No hay recursos o fechas para mostrar con el filtro actual.</div>
+        }
+        else
+        {
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="calendar-grid-wrap">
+                        <table class="table table-bordered table-sm mb-0 calendar-grid-table">
+                            <thead>
+                                <tr>
+                                    <th class="calendar-sticky-col calendar-room-col">Espacio</th>
+                                    @foreach (var day in VisibleDates)
+                                    {
+                                        <th class="calendar-day-col">
+                                            <div class="calendar-day-header">@day.ToString("ddd", HeaderCulture)</div>
+                                            <div class="calendar-day-number">@day.ToString("dd MMM", HeaderCulture)</div>
+                                        </th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var resource in Timeline.Resources)
+                                {
+                                    <tr>
+                                        <th class="calendar-sticky-col calendar-room-col">
+                                            <div class="fw-semibold">@resource.RoomName</div>
+                                            <div class="text-muted small">@resource.RoomType</div>
+                                            <div class="text-muted small">Base: @FormatCurrency(resource.BasePrice)</div>
+                                        </th>
+                                        @foreach (var day in VisibleDates)
+                                        {
+                                            var cell = GetCell(resource.RoomId, day);
+                                            <td class="@GetCellCssClass(cell)" title="@GetCellTooltip(cell)">
+                                                @if (cell is null)
+                                                {
+                                                    <div class="calendar-cell-empty">Sin fila</div>
+                                                }
+                                                else if (cell.ReservationId.HasValue)
+                                                {
+                                                    <a class="calendar-cell-link" href="@GetReservationHref(cell.ReservationId.Value)">
+                                                        <div class="calendar-cell-top">
+                                                            <span class="calendar-state-label">@GetStateLabel(cell.StateCode)</span>
+                                                            <span class="calendar-reservation-id">#@cell.ReservationId</span>
+                                                        </div>
+                                                        @if (!string.IsNullOrWhiteSpace(cell.LockedBy))
+                                                        {
+                                                            <div class="calendar-cell-line">@cell.LockedBy</div>
+                                                        }
+                                                        <div class="calendar-cell-line">@FormatCurrency(cell.Price)</div>
+                                                        <div class="calendar-cell-flags">
+                                                            @if (cell.IsArrival)
+                                                            {
+                                                                <span class="badge text-bg-light">IN</span>
+                                                            }
+                                                            @if (cell.IsDeparture)
+                                                            {
+                                                                <span class="badge text-bg-light">OUT</span>
+                                                            }
+                                                            @if (cell.HasDeepCleaning)
+                                                            {
+                                                                <span class="badge text-bg-info">Limpieza</span>
+                                                            }
+                                                            @if (cell.HasExtras)
+                                                            {
+                                                                <span class="badge text-bg-dark">Extras</span>
+                                                            }
+                                                        </div>
+                                                    </a>
+                                                }
+                                                else
+                                                {
+                                                    <div class="calendar-cell-top">
+                                                        <span class="calendar-state-label">@GetStateLabel(cell.StateCode)</span>
+                                                        @if (cell.ReservationId.HasValue)
+                                                        {
+                                                            <span class="calendar-reservation-id">#@cell.ReservationId</span>
+                                                        }
+                                                    </div>
+                                                    @if (!string.IsNullOrWhiteSpace(cell.LockedBy))
+                                                    {
+                                                        <div class="calendar-cell-line">@cell.LockedBy</div>
+                                                    }
+                                                    <div class="calendar-cell-line">@FormatCurrency(cell.Price)</div>
+                                                    <div class="calendar-cell-flags">
+                                                        @if (cell.IsArrival)
+                                                        {
+                                                            <span class="badge text-bg-light">IN</span>
+                                                        }
+                                                        @if (cell.IsDeparture)
+                                                        {
+                                                            <span class="badge text-bg-light">OUT</span>
+                                                        }
+                                                        @if (cell.HasDeepCleaning)
+                                                        {
+                                                            <span class="badge text-bg-info">Limpieza</span>
+                                                        }
+                                                        @if (cell.HasExtras)
+                                                        {
+                                                            <span class="badge text-bg-dark">Extras</span>
+                                                        }
+                                                    </div>
+                                                }
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-header">Bloques detectados</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Espacio</th>
+                                    <th>Tipo</th>
+                                    <th>Inicio</th>
+                                    <th>Fin exclusivo</th>
+                                    <th>Reservación</th>
+                                    <th>Detalle</th>
+                                    <th>Calidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in Timeline.Events)
+                                {
+                                    <tr>
+                                        <td>@item.RoomName</td>
+                                        <td>@GetStateLabel(item.EventType)</td>
+                                        <td>@item.StartDate.ToString("yyyy-MM-dd")</td>
+                                        <td>@item.EndDateExclusive.ToString("yyyy-MM-dd")</td>
+                                        <td>@(item.ReservationId.HasValue ? $"#{item.ReservationId}" : "-")</td>
+                                        <td>@(item.Subtitle ?? item.LockDescription ?? "-")</td>
+                                        <td>@(item.DataQualityFlag ?? "-")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>

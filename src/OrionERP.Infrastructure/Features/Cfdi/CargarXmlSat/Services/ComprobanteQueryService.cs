@@ -19,13 +19,44 @@ public sealed class ComprobanteQueryService : IComprobanteQueryService
          ?? throw new System.InvalidOperationException("Missing ConnectionStrings:OrionDb");
   }
 
-  // “Pending” area: all invoices tied to the placeholder transacción.
-  public Task<IReadOnlyList<ComprobanteListItem>> GetRecentFromPlaceholderAsync(
+  // "Pending" area: invoices with no link in Transaccion_Comprobante.
+  public async Task<IReadOnlyList<ComprobanteListItem>> GetUnassignedAsync(
       string rfc,
-      int placeholderTransaccionId = 5505,
       int top = 100,
       CancellationToken ct = default)
-      => GetByTransaccionAsync(placeholderTransaccionId, rfc, top, ct);
+  {
+    const string sql = @"
+SELECT TOP (@Top)
+    c.Comprobante_Id             AS ComprobanteId,
+    c.Fecha                      AS Fecha,
+    t.UUID                       AS Uuid,
+    e.Nombre                     AS EmisorNombre,
+    r.Nombre                     AS ReceptorNombre,
+    CAST(c.Total AS decimal(18,4)) AS Total,
+    CAST(NULL AS int)            AS TransaccionId
+FROM cfdi.Comprobante c
+LEFT JOIN cfdi.Emisor e               ON e.Comprobante_ID = c.Comprobante_Id
+LEFT JOIN cfdi.Receptor r             ON r.Comprobante_ID = c.Comprobante_Id
+LEFT JOIN cfdi.TimbreFiscalDigital t  ON t.Comprobante_ID = c.Comprobante_Id
+WHERE r.RFC = @Rfc
+  AND NOT EXISTS
+  (
+    SELECT 1
+    FROM dbo.Transaccion_Comprobante tc
+    WHERE tc.Comprobante_ID = c.Comprobante_Id
+  )
+ORDER BY c.Comprobante_Id DESC;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<ComprobanteListItem>(
+        new CommandDefinition(
+            sql,
+            new { Top = top, Rfc = rfc },
+            commandType: CommandType.Text,
+            cancellationToken: ct));
+
+    return rows.AsList();
+  }
 
   public async Task<IReadOnlyList<ComprobanteListItem>> GetByTransaccionAsync(
       int transaccionId,

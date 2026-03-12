@@ -23,7 +23,9 @@ else
             GUARDAR
         </button>
         <button class="btn btn-outline-secondary btn-sm" @onclick="CerrarAsync">CERRAR</button>
-        <button class="btn btn-outline-success btn-sm" @onclick="AbrirPdfAsync">PDF</button>
+        <button class="btn btn-outline-success btn-sm" @onclick="AbrirPdfAsync" disabled="@(IsGeneratingPdf || IsLoading)">
+            @(IsGeneratingPdf ? "Generando PDF..." : "PDF")
+        </button>
         <button class="btn btn-outline-info btn-sm" @onclick="CrearPolizaAsync" disabled="@(IsSaving || IsWorking || IsCreatingPoliza)">Crear Póliza</button>
     </div>
 
@@ -225,7 +227,7 @@ else
             {
                 <div class="row g-2 mb-3">
                     <div class="col-md-3">
-                        <select class="form-select form-select-sm" @onchange="OnExtraRoomChanged">
+                        <select class="form-select form-select-sm" value="@ExtraRoomId" @onchange="OnExtraRoomChanged">
                             <option value="">Suite</option>
                             @foreach (var room in Rooms)
                             {
@@ -237,7 +239,10 @@ else
                     <div class="col-md-2"><input class="form-control form-control-sm" type="number" @bind="ExtraDiscount" placeholder="% Desc." /></div>
                     <div class="col-md-2"><input class="form-control form-control-sm" value="@ExtraTotal" readonly /></div>
                     <div class="col-md-3"><input class="form-control form-control-sm" @bind="ExtraNotes" placeholder="Notas" /></div>
-                    <div class="col-md-2"><button class="btn btn-sm btn-success w-100" @onclick="AgregarExtraAsync">Agregar</button></div>
+                    <div class="col-md-2 d-flex gap-2">
+                        <button class="btn btn-sm btn-success flex-fill" @onclick="GuardarExtraAsync">@(IsEditingExtra ? "Guardar" : "Agregar")</button>
+                        <button class="btn btn-sm btn-outline-secondary flex-fill" @onclick="CancelExtraEdit">Cancelar</button>
+                    </div>
                 </div>
             }
 
@@ -265,7 +270,10 @@ else
                                 <td>@FormatCurrency(extra.DiscountedPrice)</td>
                                 <td>@extra.Notes</td>
                                 <td>
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarExtraAsync(extra.Id)">Eliminar</button>
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <button class="btn btn-outline-primary" @onclick="() => EditExtra(extra)">Editar</button>
+                                        <button class="btn btn-outline-danger" @onclick="() => EliminarExtraAsync(extra.Id)">Eliminar</button>
+                                    </div>
                                 </td>
                             </tr>
                         }

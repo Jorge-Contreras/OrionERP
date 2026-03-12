@@ -2,7 +2,6 @@
 @using OrionERP.Application.Features.Cfdi.DeclaracionPrevia
 @using OrionERP.Web.Services
 @using OrionERP.Web.State
-@inject IConfiguration Configuration
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject IDeclaracionPreviaService DeclaracionService
@@ -17,11 +16,11 @@
     </button>
 </td>
 <td>
-    <button class="btn btn-sm @(IsPlaceholderPoliza ? "btn-outline-danger" : "btn-outline-success")"
-            title="@(IsPlaceholderPoliza ? "Buscar Póliza" : "Ir a Transacción")"
+    <button class="btn btn-sm @(IsUnassignedPoliza ? "btn-outline-danger" : "btn-outline-success")"
+            title="@(IsUnassignedPoliza ? "Buscar Póliza" : "Ir a Transacción")"
             @onclick:stopPropagation="true"
             @onclick="HandlePolizaClick">
-        @(IsPlaceholderPoliza ? "Buscar" : ItemPoliza)
+        @(IsUnassignedPoliza ? "Buscar" : ItemPoliza)
     </button>
 </td>
 
@@ -30,12 +29,9 @@
     [Parameter]
     public IDeclaracionComprobanteItem Item { get; set; } = default!;
 
-    private int? PlaceholderTransaccionId => _placeholderTransaccionId ??= ParsePlaceholder(Configuration["SatXml:PlaceholderTransaccionId"]);
-    private int? _placeholderTransaccionId;
-
     private string? ItemPoliza => Item.Poliza;
 
-    private bool IsPlaceholderPoliza => PlaceholderTransaccionId.HasValue && ItemPoliza == PlaceholderTransaccionId.Value.ToString();
+    private bool IsUnassignedPoliza => string.IsNullOrWhiteSpace(ItemPoliza);
 
     private async Task OpenDetails()
     {
@@ -58,7 +54,7 @@
 
     private async Task HandlePolizaClick()
     {
-        if (IsPlaceholderPoliza)
+        if (IsUnassignedPoliza)
         {
             var url = $"/cfdi/LigarCFDI_Poliza/{Item.Comprobante_Id}";
 
@@ -79,7 +75,10 @@
 
     private async Task OpenLinkedTransaction()
     {
-       
+        if (string.IsNullOrWhiteSpace(ItemPoliza))
+        {
+            return;
+        }
 
         var url = $"/Contabilidad/transacciones/{Item.Poliza}";
 
@@ -91,10 +90,5 @@
         {
             Nav.NavigateTo(url);
         }
-    }
-
-    private static int? ParsePlaceholder(string? placeholderSetting)
-    {
-        return int.TryParse(placeholderSetting, out var parsedPlaceholder) ? parsedPlaceholder : null;
     }
 }

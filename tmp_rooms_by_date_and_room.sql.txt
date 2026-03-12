@@ -1,0 +1,112 @@
+CREATE PROCEDURE [dbo].[ROOMS_BY_DATE_AND_ROOM]
+
+    @INITIAL_DATE DATE,
+
+    @FINAL_DATE DATE,
+
+    @ROOM VARCHAR(50)
+
+AS
+
+BEGIN
+
+    -- Using a subquery to calculate TOTAL_ORDENES separately to avoid row multiplication
+
+    SELECT 
+
+        RC.id, 
+
+        RC.ROOM_DATE, 
+
+        RC.ROOM, 
+
+        RC.IS_LOCKED, 
+
+        RC.LOCKED_BY, 
+
+        RC.LOCK_DESCRIPTION, 
+
+        RC.NOTES, 
+
+        RC.PRECIO,
+
+        RC.VENCIMIENTO_BLOQUEO,
+
+        RC.STATUS,
+
+        -- Subquery to correctly calculate TOTAL_ORDENES
+
+        (
+
+            SELECT ISNULL(SUM(AC.Presupuesto), 0)
+
+            FROM Actividad_RoomCalendar AS AR
+
+            INNER JOIN actividad AS AC ON AR.Actividad_ID = AC.id
+
+            WHERE AR.RoomCalendar_ID = RC.id
+
+        ) AS TOTAL_ORDENES,
+
+        COUNT(RD.ID) AS RESERVATION_COUNT,  -- Count of related Reservation_Detail.ID
+
+        CASE 
+
+            WHEN COUNT(RD.ID) > 0 THEN '!EXTRAS!'  -- Show '!EXTRAS!' if count is 1 or more
+
+            ELSE ''  -- Show blank text if count is 0
+
+        END AS EXTRAS_INDICATOR, -- New column for showing extras information
+
+		CASE 
+
+        WHEN RC.LIMPIEZA_PROFUNDA = 1 THEN N'?'
+
+        ELSE 'X'
+
+    END AS LIMP
+
+    FROM 
+
+        ROOM_CALENDAR AS RC
+
+    LEFT JOIN 
+
+        RESERVATION_DETAIL AS RD ON CAST(RC.LOCK_DESCRIPTION AS VARCHAR(50)) = CAST(RD.RESERVATION_ID AS VARCHAR(50))  -- Join based on Lock_Description and Reservation_Detail.ID
+
+    WHERE 
+
+        RC.ROOM_DATE BETWEEN @INITIAL_DATE AND @FINAL_DATE
+
+        AND (@ROOM = '*' OR RC.ROOM LIKE @ROOM)  -- Keeping the LIKE condition for filtering
+
+    GROUP BY 
+
+        RC.id, 
+
+        RC.ROOM_DATE, 
+
+        RC.ROOM, 
+
+        RC.IS_LOCKED, 
+
+        RC.LOCKED_BY, 
+
+        RC.LOCK_DESCRIPTION, 
+
+        RC.NOTES, 
+
+        RC.PRECIO, 
+
+        RC.VENCIMIENTO_BLOQUEO,
+
+        RC.STATUS,
+
+		RC.LIMPIEZA_PROFUNDA
+
+    ORDER BY 
+
+        RC.ROOM_DATE
+
+END
+

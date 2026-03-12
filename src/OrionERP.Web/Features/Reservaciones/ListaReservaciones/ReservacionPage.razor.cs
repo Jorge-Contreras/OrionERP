@@ -19,6 +19,17 @@ namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 [Authorize(Roles = "Administrador,SatOperator")]
 public partial class ReservacionPage : ComponentBase
 {
+  private sealed record ReservationFormState(
+    int? ClienteId,
+    string ClienteSearchText,
+    string SelectedClienteNombre,
+    string? Status,
+    DateTime? CheckIn,
+    DateTime? CheckOut,
+    bool Taxable,
+    string? RecommenedBy,
+    string? Notes);
+
   [Parameter] public int ReservationId { get; set; }
 
   [Inject] public IListaReservacionesService ReservacionesService { get; set; } = default!;
@@ -27,6 +38,7 @@ public partial class ReservacionPage : ComponentBase
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
   [Inject] public IJSRuntime Js { get; set; } = default!;
   [Inject] public NavigationManager Nav { get; set; } = default!;
+  [Inject] public IReservacionPdfService ReservacionPdfService { get; set; } = default!;
 
   protected ReservacionDetailDto? Detail { get; set; }
   protected List<ClienteOptionDto> Clientes { get; set; } = new();
@@ -68,6 +80,7 @@ public partial class ReservacionPage : ComponentBase
   protected decimal SuiteActionValueInput { get; set; }
   protected string SelectedSuiteAction { get; set; } = SuiteActionPrice;
 
+  protected int? EditingExtraId { get; set; }
   protected int? ExtraRoomId { get; set; }
   protected decimal ExtraPrice { get; set; }
   protected decimal ExtraDiscount { get; set; }
@@ -80,6 +93,7 @@ public partial class ReservacionPage : ComponentBase
   protected bool IsSaving { get; set; }
   protected bool IsWorking { get; set; }
   protected bool IsCreatingPoliza { get; set; }
+  protected bool IsGeneratingPdf { get; set; }
   protected bool IsUploadingAttachment { get; set; }
   protected string? ErrorMessage { get; set; }
 
@@ -109,6 +123,8 @@ public partial class ReservacionPage : ComponentBase
   protected decimal ExtraTotal
     => decimal.Round(ExtraPrice - ExtraDiscountAmount, 2, MidpointRounding.ToEven);
 
+  protected bool IsEditingExtra => EditingExtraId.HasValue;
+
   protected string CheckInText
     => CheckIn?.ToString("yyyy-MM-dd") ?? string.Empty;
 
@@ -131,10 +147,11 @@ public partial class ReservacionPage : ComponentBase
     await LoadAllAsync();
   }
 
-  protected async Task LoadAllAsync()
+  protected async Task LoadAllAsync(bool preserveFormState = false)
   {
     IsLoading = true;
     ErrorMessage = null;
+    var formState = preserveFormState ? CaptureFormState() : null;
 
     try
     {
@@ -144,17 +161,14 @@ public partial class ReservacionPage : ComponentBase
         return;
       }
 
-      var clienteNombreActual = NormalizeClienteNombre(Detail.ClienteId.HasValue ? Detail.Cliente : null);
-      ClienteId = Detail.ClienteId;
-      ClienteSearchText = clienteNombreActual;
-      SelectedClienteNombre = clienteNombreActual;
-      ShowClienteResults = false;
-      Status = Detail.Status;
-      CheckIn = Detail.CheckIn?.Date;
-      CheckOut = Detail.CheckOut?.Date;
-      Taxable = Detail.Taxable;
-      RecommenedBy = Detail.RecommenedBy;
-      Notes = Detail.Notes;
+      if (formState is null)
+      {
+        ApplyDetailToForm();
+      }
+      else
+      {
+        RestoreFormState(formState);
+      }
 
       Clientes = await LoadClientesAsync(ClienteSearchText);
       Rooms = (await ReservacionesService.GetRoomsForExtrasAsync()).ToList();
@@ -166,6 +180,7 @@ public partial class ReservacionPage : ComponentBase
 
       SelectedSuiteIds.Clear();
       SelectedSuiteDisponibleIds.Clear();
+      EnsureValidDateRange();
       RecalculateTotals();
     }
     catch (Exception ex)
@@ -197,14 +212,32 @@ public partial class ReservacionPage : ComponentBase
 
   protected async Task AbrirPdfAsync()
   {
-    var url = $"/reservaciones/recibo/{ReservationId}";
+    if (Detail is null || IsGeneratingPdf)
+    {
+      return;
+    }
+
+    EnsureValidDateRange();
+    RecalculateTotals();
+
+    IsGeneratingPdf = true;
+
     try
     {
-      await Js.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+      var document = BuildPdfDocument();
+      var pdfBytes = ReservacionPdfService.Generate(document);
+      var fileName = $"reservacion-{ReservationId.ToString("D6", CultureInfo.InvariantCulture)}.pdf";
+      var dataUrl = $"data:application/pdf;base64,{Convert.ToBase64String(pdfBytes)}";
+
+      await Js.InvokeVoidAsync("triggerFileDownload", fileName, dataUrl);
     }
-    catch
+    catch (Exception ex)
     {
-      Nav.NavigateTo(url);
+      UiMessages.ShowError($"No se pudo generar el PDF. {ex.Message}");
+    }
+    finally
+    {
+      IsGeneratingPdf = false;
     }
   }
 
@@ -501,7 +534,7 @@ public partial class ReservacionPage : ComponentBase
 
       UiMessages.ShowSuccess(result.Message);
       ShowSuitePicker = false;
-      await LoadAllAsync();
+      await LoadAllAsync(preserveFormState: true);
     }
     catch (Exception ex)
     {
@@ -539,7 +572,7 @@ public partial class ReservacionPage : ComponentBase
 
       UiMessages.ShowSuccess(result.Message);
       SelectedSuiteIds.Clear();
-      await LoadAllAsync();
+      await LoadAllAsync(preserveFormState: true);
     }
     catch (Exception ex)
     {
@@ -563,7 +596,7 @@ public partial class ReservacionPage : ComponentBase
     if (result.Success)
     {
       UiMessages.ShowSuccess(result.Message);
-      await LoadAllAsync();
+      await LoadAllAsync(preserveFormState: true);
     }
     else
     {
@@ -583,7 +616,7 @@ public partial class ReservacionPage : ComponentBase
     if (result.Success)
     {
       UiMessages.ShowSuccess(result.Message);
-      await LoadAllAsync();
+      await LoadAllAsync(preserveFormState: true);
     }
     else
     {
@@ -603,7 +636,7 @@ public partial class ReservacionPage : ComponentBase
     if (result.Success)
     {
       UiMessages.ShowSuccess(result.Message);
-      await LoadAllAsync();
+      await LoadAllAsync(preserveFormState: true);
     }
     else
     {
@@ -626,7 +659,7 @@ public partial class ReservacionPage : ComponentBase
     if (result.Success)
     {
       UiMessages.ShowSuccess(result.Message);
-      await LoadAllAsync();
+      await LoadAllAsync(preserveFormState: true);
     }
     else
     {
@@ -640,7 +673,7 @@ public partial class ReservacionPage : ComponentBase
     if (result.Success)
     {
       UiMessages.ShowSuccess(result.Message);
-      await LoadAllAsync();
+      await LoadAllAsync(preserveFormState: true);
     }
     else
     {
@@ -680,14 +713,23 @@ public partial class ReservacionPage : ComponentBase
 
   protected void ToggleExtraForm()
   {
-    ShowExtraForm = !ShowExtraForm;
-    if (!ShowExtraForm)
+    if (ShowExtraForm && !IsEditingExtra)
     {
-      ExtraRoomId = null;
-      ExtraPrice = 0m;
-      ExtraDiscount = 0m;
-      ExtraNotes = null;
+      ResetExtraEditor();
+      return;
     }
+
+    StartNewExtra();
+  }
+
+  protected void EditExtra(ReservacionExtraDto extra)
+  {
+    EditingExtraId = extra.Id;
+    ExtraRoomId = extra.RoomId;
+    ExtraPrice = extra.Price;
+    ExtraDiscount = extra.Discount;
+    ExtraNotes = extra.Notes;
+    ShowExtraForm = true;
   }
 
   protected void OnExtraRoomChanged(ChangeEventArgs args)
@@ -706,7 +748,7 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected async Task AgregarExtraAsync()
+  protected async Task GuardarExtraAsync()
   {
     if (!ExtraRoomId.HasValue)
     {
@@ -714,21 +756,38 @@ public partial class ReservacionPage : ComponentBase
       return;
     }
 
-    var result = await ReservacionesService.AddExtraAsync(new ReservacionExtraCreateRequest
+    ReservacionCommandResult result;
+    if (IsEditingExtra)
     {
-      ReservationId = ReservationId,
-      RoomId = ExtraRoomId.Value,
-      Price = ExtraPrice,
-      Discount = ExtraDiscount,
-      DiscountedPrice = ExtraTotal,
-      Notes = ExtraNotes
-    });
+      result = await ReservacionesService.UpdateExtraAsync(new ReservacionExtraUpdateRequest
+      {
+        Id = EditingExtraId!.Value,
+        ReservationId = ReservationId,
+        RoomId = ExtraRoomId.Value,
+        Price = ExtraPrice,
+        Discount = ExtraDiscount,
+        DiscountedPrice = ExtraTotal,
+        Notes = ExtraNotes
+      });
+    }
+    else
+    {
+      result = await ReservacionesService.AddExtraAsync(new ReservacionExtraCreateRequest
+      {
+        ReservationId = ReservationId,
+        RoomId = ExtraRoomId.Value,
+        Price = ExtraPrice,
+        Discount = ExtraDiscount,
+        DiscountedPrice = ExtraTotal,
+        Notes = ExtraNotes
+      });
+    }
 
     if (result.Success)
     {
       UiMessages.ShowSuccess(result.Message);
-      ToggleExtraForm();
-      await LoadAllAsync();
+      ResetExtraEditor();
+      await LoadAllAsync(preserveFormState: true);
     }
     else
     {
@@ -747,13 +806,23 @@ public partial class ReservacionPage : ComponentBase
     var result = await ReservacionesService.DeleteExtraAsync(extraId);
     if (result.Success)
     {
+      if (EditingExtraId == extraId)
+      {
+        ResetExtraEditor();
+      }
+
       UiMessages.ShowSuccess(result.Message);
-      await LoadAllAsync();
+      await LoadAllAsync(preserveFormState: true);
     }
     else
     {
       UiMessages.ShowError(result.Message);
     }
+  }
+
+  protected void CancelExtraEdit()
+  {
+    ResetExtraEditor();
   }
 
   protected async Task AbrirPagoAsync(int transaccionId)
@@ -1002,11 +1071,128 @@ public partial class ReservacionPage : ComponentBase
       : normalized;
   }
 
+  private void StartNewExtra()
+  {
+    EditingExtraId = null;
+    ExtraRoomId = null;
+    ExtraPrice = 0m;
+    ExtraDiscount = 0m;
+    ExtraNotes = null;
+    ShowExtraForm = true;
+  }
+
+  private void ResetExtraEditor()
+  {
+    EditingExtraId = null;
+    ExtraRoomId = null;
+    ExtraPrice = 0m;
+    ExtraDiscount = 0m;
+    ExtraNotes = null;
+    ShowExtraForm = false;
+  }
+
+  private ReservationFormState CaptureFormState()
+    => new(
+      ClienteId,
+      ClienteSearchText,
+      SelectedClienteNombre,
+      Status,
+      CheckIn,
+      CheckOut,
+      Taxable,
+      RecommenedBy,
+      Notes);
+
+  private void RestoreFormState(ReservationFormState formState)
+  {
+    ClienteId = formState.ClienteId;
+    ClienteSearchText = formState.ClienteSearchText;
+    SelectedClienteNombre = formState.SelectedClienteNombre;
+    ShowClienteResults = false;
+    Status = formState.Status;
+    CheckIn = formState.CheckIn?.Date;
+    CheckOut = formState.CheckOut?.Date;
+    Taxable = formState.Taxable;
+    RecommenedBy = formState.RecommenedBy;
+    Notes = formState.Notes;
+  }
+
+  private void ApplyDetailToForm()
+  {
+    if (Detail is null)
+    {
+      return;
+    }
+
+    var clienteNombreActual = NormalizeClienteNombre(Detail.ClienteId.HasValue ? Detail.Cliente : null);
+    ClienteId = Detail.ClienteId;
+    ClienteSearchText = clienteNombreActual;
+    SelectedClienteNombre = clienteNombreActual;
+    ShowClienteResults = false;
+    Status = Detail.Status;
+    CheckIn = Detail.CheckIn?.Date;
+    CheckOut = Detail.CheckOut?.Date;
+    Taxable = Detail.Taxable;
+    RecommenedBy = Detail.RecommenedBy;
+    Notes = Detail.Notes;
+  }
+
   private void EnsureValidDateRange()
   {
     if (CheckIn.HasValue && CheckOut.HasValue && CheckIn.Value.Date >= CheckOut.Value.Date)
     {
       CheckOut = CheckIn.Value.Date.AddDays(1);
     }
+  }
+
+  private ReservacionPdfDocumentModel BuildPdfDocument()
+  {
+    var cliente = NormalizeClienteNombre(ClienteSearchText);
+
+    return new ReservacionPdfDocumentModel(
+      ReservationId,
+      string.IsNullOrWhiteSpace(cliente) ? Detail?.Cliente ?? string.Empty : cliente,
+      Status ?? Detail?.Status ?? string.Empty,
+      FormatDate(CheckIn ?? Detail?.CheckIn),
+      FormatDate(CheckOut ?? Detail?.CheckOut),
+      NumNoches.ToString(CultureInfo.CurrentCulture),
+      RecommenedBy ?? Detail?.RecommenedBy ?? string.Empty,
+      Taxable ? "Si" : "No",
+      Notes ?? Detail?.Notes ?? string.Empty,
+      DateTime.Now.ToString("f", CultureInfo.CurrentCulture),
+      FormatCurrency(TotalSuites),
+      FormatCurrency(TotalExtras),
+      FormatCurrency(SubTotal),
+      FormatCurrency(Tax),
+      FormatCurrency(Ish),
+      FormatCurrency(TotalReservacion),
+      FormatCurrency(TotalPagado),
+      FormatCurrency(PorPagar),
+      Suites.Select(suite => new ReservacionPdfSuiteRow(
+          suite.Fecha.ToShortDateString(),
+          suite.Suite,
+          FormatCurrency(suite.Precio),
+          suite.LimpiezaProfunda ? "Si" : "No"))
+        .ToList(),
+      Extras.Select(extra => new ReservacionPdfExtraRow(
+          extra.RoomName,
+          extra.RoomDescription,
+          FormatCurrency(extra.Price),
+          extra.Discount.ToString(CultureInfo.CurrentCulture),
+          FormatCurrency(extra.DiscountedPrice),
+          extra.Notes ?? string.Empty))
+        .ToList(),
+      Pagos.Select(pago => new ReservacionPdfPagoRow(
+          pago.TransaccionId.ToString(CultureInfo.CurrentCulture),
+          pago.Fecha.ToShortDateString(),
+          FormatCurrency(pago.Monto),
+          pago.Concepto))
+        .ToList(),
+      Attachments.Select(attachment => new ReservacionPdfAttachmentRow(
+          attachment.AttachmentName,
+          attachment.AttachmentExtension,
+          attachment.AttachmentDescription ?? string.Empty,
+          attachment.Length.ToString("N0", CultureInfo.CurrentCulture)))
+        .ToList());
   }
 }

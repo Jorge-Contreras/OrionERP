@@ -1,0 +1,153 @@
+.calendar-page-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.calendar-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 1rem;
+}
+
+.calendar-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.calendar-stat-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1f2937;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.calendar-stat-chip-neutral {
+  background: #f8f9fa;
+}
+
+.calendar-stat-chip-dark {
+  background: #212529;
+  color: #fff;
+  border-color: #212529;
+}
+
+.calendar-grid-wrap {
+  overflow: auto;
+  max-width: 100%;
+}
+
+.calendar-grid-table {
+  min-width: 1200px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.calendar-grid-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #f8f9fa;
+}
+
+.calendar-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+}
+
+.calendar-room-col {
+  min-width: 180px;
+  max-width: 180px;
+}
+
+.calendar-day-col {
+  min-width: 116px;
+  text-align: center;
+}
+
+.calendar-day-header {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: #6c757d;
+}
+
+.calendar-day-number {
+  font-weight: 600;
+}
+
+.calendar-cell {
+  min-width: 116px;
+  vertical-align: top;
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+
+.calendar-cell-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  min-height: 100%;
+}
+
+.calendar-cell-link:hover {
+  color: inherit;
+  text-decoration: none;
+}
+
+.calendar-cell-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.calendar-state-label,
+.calendar-reservation-id {
+  font-weight: 600;
+}
+
+.calendar-cell-line {
+  margin-bottom: 0.25rem;
+  word-break: break-word;
+}
+
+.calendar-cell-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.calendar-cell-empty {
+  color: #6c757d;
+}
+
+.calendar-cell-available {
+  background: #f3fff5;
+}
+
+.calendar-cell-reserved {
+  background: #ffe5d4;
+}
+
+.calendar-cell-soft-hold {
+  background: #fff3bf;
+}
+
+.calendar-cell-blocked {
+  background: #dceafe;
+}
+
+.calendar-cell-orphan {
+  background: #ffd6d6;
+}
+
+.calendar-cell-missing {
+  background: #f1f3f5;
+}

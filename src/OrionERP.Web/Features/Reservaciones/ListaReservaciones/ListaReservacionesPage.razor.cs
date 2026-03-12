@@ -14,6 +14,9 @@ namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 [Authorize(Roles = "Administrador,SatOperator")]
 public partial class ListaReservacionesPage : ComponentBase
 {
+  private const int PageSize = 100;
+  private const int QueryTake = PageSize + 1;
+
   [Inject] public IListaReservacionesService ReservacionesService { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
   [Inject] public IJSRuntime Js { get; set; } = default!;
@@ -22,11 +25,14 @@ public partial class ListaReservacionesPage : ComponentBase
   protected ListaReservacionFilter Filter { get; set; } = new();
   protected List<ListaReservacionItemDto> Reservaciones { get; set; } = new();
   protected bool IsLoading { get; set; }
+  protected bool IsLoadingMore { get; set; }
+  protected bool HasMoreReservaciones { get; set; }
   protected string? ErrorMessage { get; set; }
 
   private DateTime? _checkInFrom;
   private DateTime? _checkInTo;
-  protected bool IsBusyDanger => IsLoading;
+  protected bool IsBusy => IsLoading || IsLoadingMore;
+  protected bool IsBusyDanger => IsBusy;
 
   protected string CheckInFromText
   {
@@ -49,14 +55,14 @@ public partial class ListaReservacionesPage : ComponentBase
   {
     IsLoading = true;
     ErrorMessage = null;
+    HasMoreReservaciones = false;
     StateHasChanged();
 
     try
     {
-      Filter.CheckInFrom = _checkInFrom;
-      Filter.CheckInTo = _checkInTo;
-      var rows = await ReservacionesService.GetListaAsync(Filter);
-      Reservaciones = rows.ToList();
+      var page = await GetReservacionesPageAsync(0);
+      Reservaciones = page.Items;
+      HasMoreReservaciones = page.HasMore;
     }
     catch (Exception ex)
     {
@@ -76,6 +82,35 @@ public partial class ListaReservacionesPage : ComponentBase
     _checkInFrom = null;
     _checkInTo = null;
     await BuscarAsync();
+  }
+
+  protected async Task CargarMasAsync()
+  {
+    if (IsBusy || !HasMoreReservaciones)
+    {
+      return;
+    }
+
+    IsLoadingMore = true;
+    ErrorMessage = null;
+    StateHasChanged();
+
+    try
+    {
+      var page = await GetReservacionesPageAsync(Reservaciones.Count);
+      Reservaciones.AddRange(page.Items);
+      HasMoreReservaciones = page.HasMore;
+    }
+    catch (Exception ex)
+    {
+      ErrorMessage = ex.Message;
+      UiMessages.ShowError($"No se pudieron cargar más reservaciones. {ex.Message}");
+    }
+    finally
+    {
+      IsLoadingMore = false;
+      StateHasChanged();
+    }
   }
 
   protected async Task NuevaReservacionAsync()
@@ -169,6 +204,31 @@ public partial class ListaReservacionesPage : ComponentBase
   {
     _checkInTo = ParseDate(args.Value?.ToString());
   }
+
+  private async Task<(List<ListaReservacionItemDto> Items, bool HasMore)> GetReservacionesPageAsync(int skip)
+  {
+    var rows = (await ReservacionesService.GetListaAsync(CreateQueryFilter(skip, QueryTake))).ToList();
+    var hasMore = rows.Count > PageSize;
+    if (hasMore)
+    {
+      rows = rows.Take(PageSize).ToList();
+    }
+
+    return (rows, hasMore);
+  }
+
+  private ListaReservacionFilter CreateQueryFilter(int skip, int take)
+    => new()
+    {
+      Id = Filter.Id,
+      Cliente = Filter.Cliente,
+      Status = Filter.Status,
+      CheckInFrom = _checkInFrom,
+      CheckInTo = _checkInTo,
+      IncluirCanceladas = Filter.IncluirCanceladas,
+      Skip = skip,
+      Take = take
+    };
 
   private static DateTime? ParseDate(string? value)
   {

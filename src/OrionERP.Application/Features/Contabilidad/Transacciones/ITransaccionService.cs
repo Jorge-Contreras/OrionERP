@@ -16,8 +16,8 @@ public interface ITransaccionService
   Task DeleteAttachmentAsync(int attachmentId, CancellationToken ct = default);
   Task<int> GetComprobanteIdByXmlAttachmentAsync(int attachmentId, CancellationToken ct = default);
   Task<bool> IsComprobanteLinkedToTransaccionAsync(int transaccionId, int comprobanteId, CancellationToken ct = default);
-  Task MoveAttachmentToTransaccionAsync(int attachmentId, int transaccionId, CancellationToken ct = default);
-  Task<TransaccionCommandResult> LinkCfdiReplacingPlaceholderAndRelinkAttachmentAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default);
+  Task SetAttachmentTransaccionAsync(int attachmentId, int? transaccionId, CancellationToken ct = default);
+  Task<TransaccionCommandResult> LinkCfdiAndRelinkAttachmentAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default);
   Task<TransaccionCommandResult> InsertTransaccionComprobanteAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionComprobanteDto>> GetComprobantesAsync(int transaccionId, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionReservacionLinkDto>> GetReservacionLinksAsync(int transaccionId, CancellationToken ct = default);
@@ -40,6 +40,9 @@ public interface ITransaccionService
   Task<TransaccionCommandResult> ApplyCategoriaPlantillaAsync(
       int transaccionId,
       int categoriaId,
+      CancellationToken ct = default);
+  Task<TransaccionCommandResult> TimbrarCfdiPublicoAsync(
+      TransaccionTimbrarPublicoRequest request,
       CancellationToken ct = default);
   Task<TransaccionCommandResult> ProcessSatXmlAsync(
       int attachmentId,

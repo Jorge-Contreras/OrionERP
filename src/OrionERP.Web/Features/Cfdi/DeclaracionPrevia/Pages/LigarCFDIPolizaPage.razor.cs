@@ -213,7 +213,7 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
     IsLinking = true;
     try
     {
-      var result = await TransaccionService.LinkCfdiReplacingPlaceholderAndRelinkAttachmentAsync(
+      var result = await TransaccionService.LinkCfdiAndRelinkAttachmentAsync(
         SelectedTransaccion.Id,
         Comprobante.Comprobante_Id,
         SelectedTransaccion.Monto);

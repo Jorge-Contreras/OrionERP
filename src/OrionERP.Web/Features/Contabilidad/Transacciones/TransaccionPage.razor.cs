@@ -16,7 +16,6 @@ using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.JSInterop;
-using Microsoft.Extensions.Configuration;
 using OrionERP.Application.Features.Contabilidad.Bancos;
 
 namespace OrionERP.Web.Features.Contabilidad.Transacciones;
@@ -67,7 +66,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
   [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
   [Inject] public NavigationManager NavManager { get; set; } = default!;
-  [Inject] public IConfiguration Configuration { get; set; } = default!;
   [Inject] public IBancosService BancosService { get; set; } = default!;
 
   protected TransaccionHeaderModel? Header { get; private set; }
@@ -91,11 +89,15 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected List<LookupInt32Dto> NominaOptions { get; } = [];
   protected List<FormaPagoLookupDto> FormaPagoOptions { get; } = [];
   protected IReadOnlyList<string> TipoPolizaOptions { get; } = new[] { "INGRESO", "EGRESO", "DIARIO" };
+  protected IReadOnlyList<PublicoMonthOption> PublicoMonthOptions { get; } = CreatePublicoMonthOptions();
+  protected IReadOnlyList<int> PublicoYearOptions { get; } = CreatePublicoYearOptions();
 
   protected string ProyectoSearchTerm { get; set; } = string.Empty;
   protected string CompraSearchTerm { get; set; } = string.Empty;
   protected string ReservacionSearchTerm { get; set; } = string.Empty;
   protected decimal ReservacionAmountInput { get; set; }
+  protected string SelectedPublicoMonthCode { get; set; } = DateTime.Today.Month.ToString("00", CultureInfo.InvariantCulture);
+  protected int SelectedPublicoYear { get; set; } = DateTime.Today.Year;
 
   protected bool ShowMovimientoModal { get; private set; }
   protected MovimientoModel? MovimientoDraft { get; private set; }
@@ -122,6 +124,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected decimal ReservacionesPorAsignar => Header is null
     ? 0m
     : decimal.Round(Header.Monto - ReservacionesAsignadasTotal, 2, MidpointRounding.AwayFromZero);
+  protected bool HasReservacionesAsignadas => decimal.Abs(ReservacionesAsignadasTotal) > 0.01m;
+  protected bool CanSaveHeaderWithReservaciones => !HasReservacionesAsignadas || decimal.Abs(ReservacionesPorAsignar) <= 0.01m;
   protected string ReservacionesBalanceCss => decimal.Abs(ReservacionesPorAsignar) <= 0.01m
     ? "text-bg-success"
     : ReservacionesPorAsignar > 0m
@@ -138,6 +142,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected bool IsSearchingReservaciones { get; private set; }
   protected bool IsSavingReservacionLink { get; private set; }
   protected bool IsRegeneratingMovimientos { get; private set; }
+  protected bool IsTimbrandoPublico { get; private set; }
 
   protected bool IsActiveSection(SectionPanel section) => _activeSection == section;
 
@@ -446,6 +451,13 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
     }
 
+    if (!CanSaveHeaderWithReservaciones)
+    {
+      ActivateSection(SectionPanel.Reservaciones);
+      UiMessages.ShowWarning("Si hay monto asignado a reservaciones, el total asignado debe dejar 'Por asignar' en 0.");
+      return;
+    }
+
     var movimientosSnapshot = Movimientos
       .Select(m => m.Clone())
       .ToList();
@@ -584,6 +596,80 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     finally
     {
       IsApplyingPlantilla = false;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected async Task TimbrarCfdiPublicoAsync()
+  {
+    if (Header is null)
+    {
+      return;
+    }
+
+    if (Header.Monto <= 0m)
+    {
+      UiMessages.ShowWarning("El monto de la póliza debe ser mayor que cero para timbrar un CFDI público.");
+      return;
+    }
+
+    var selectedMonth = PublicoMonthOptions.FirstOrDefault(item => item.Code == SelectedPublicoMonthCode);
+    if (selectedMonth is null)
+    {
+      UiMessages.ShowWarning("Selecciona un mes global válido.");
+      return;
+    }
+
+    if (!PublicoYearOptions.Contains(SelectedPublicoYear))
+    {
+      UiMessages.ShowWarning("Selecciona un año global válido.");
+      return;
+    }
+
+    var confirmationMessage =
+      "¿Estas seguro que deseas timbrar una factura al Público en General con la siguiente información?" +
+      $"\n\nMonto = {FormatCurrency(Header.Monto)}" +
+      $"\nMes Global = {selectedMonth.Name}" +
+      $"\nAño Global = {SelectedPublicoYear}" +
+      $"\nFolio = {Header.Id}";
+
+    var confirmed = await ConfirmAsync(confirmationMessage);
+    if (!confirmed)
+    {
+      return;
+    }
+
+    IsTimbrandoPublico = true;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var result = await TransaccionService.TimbrarCfdiPublicoAsync(
+          new TransaccionTimbrarPublicoRequest
+          {
+            TransaccionId = Header.Id,
+            Monto = Header.Monto,
+            GlobalMes = selectedMonth.Code,
+            GlobalAnio = SelectedPublicoYear
+          });
+
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message ?? "No se pudo timbrar el CFDI público.");
+        return;
+      }
+
+      await ReloadComprobantesAsync();
+      await ReloadAttachmentsAsync();
+      UiMessages.ShowSuccess(result.Message ?? "La factura al público en general se generó correctamente.");
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo timbrar el CFDI público: {ex.Message}");
+    }
+    finally
+    {
+      IsTimbrandoPublico = false;
       await InvokeAsync(StateHasChanged);
     }
   }
@@ -1290,6 +1376,31 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private static string? Normalize(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+  private static IReadOnlyList<PublicoMonthOption> CreatePublicoMonthOptions()
+    => new[]
+    {
+      new PublicoMonthOption("01", "ENERO"),
+      new PublicoMonthOption("02", "FEBRERO"),
+      new PublicoMonthOption("03", "MARZO"),
+      new PublicoMonthOption("04", "ABRIL"),
+      new PublicoMonthOption("05", "MAYO"),
+      new PublicoMonthOption("06", "JUNIO"),
+      new PublicoMonthOption("07", "JULIO"),
+      new PublicoMonthOption("08", "AGOSTO"),
+      new PublicoMonthOption("09", "SEPTIEMBRE"),
+      new PublicoMonthOption("10", "OCTUBRE"),
+      new PublicoMonthOption("11", "NOVIEMBRE"),
+      new PublicoMonthOption("12", "DICIEMBRE")
+    };
+
+  private static IReadOnlyList<int> CreatePublicoYearOptions()
+  {
+    const int startYear = 2020;
+    var currentYear = DateTime.Today.Year;
+    var yearCount = Math.Max(1, currentYear - startYear + 1);
+    return Enumerable.Range(startYear, yearCount).ToArray();
+  }
+
   protected async Task OpenComprobanteCfdiAsync(TransaccionCfdiCandidateDto? comprobante)
   {
     if (comprobante?.XmlAttachmentId is null)
@@ -1425,13 +1536,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
     }
 
-    var placeholderTransaccionId = GetPlaceholderTransaccionId();
-    if (!placeholderTransaccionId.HasValue)
-    {
-      UiMessages.ShowError("No se pudo determinar la póliza temporal configurada.");
-      return;
-    }
-
     _unlinkingComprobanteId = comprobante.ComprobanteId;
     await InvokeAsync(StateHasChanged);
 
@@ -1440,7 +1544,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       var request = new TransaccionComprobanteUnlinkRequest
       {
         CurrentTransaccionId = Header.Id,
-        TempTransaccionId = placeholderTransaccionId.Value,
         ComprobanteId = comprobante.ComprobanteId,
         Tipo = comprobante.Tipo
       };
@@ -1599,16 +1702,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
     }
 
-    var placeholderTransaccionId = GetPlaceholderTransaccionId();
-    if (!placeholderTransaccionId.HasValue)
-    {
-      UiMessages.ShowError("No se pudo determinar la póliza temporal configurada.");
-      return;
-    }
-
     var moveConfirmMessage =
       $"Este XML está ligado a un comprobante, pero no a esta Póliza.\n" +
-      $"No se borrará; se moverá a la póliza temporal (TranID = {placeholderTransaccionId}).\n" +
+      "No se borrará; quedará sin póliza asignada hasta que se vuelva a ligar.\n" +
       "¿Deseas continuar?";
 
     var moveConfirmed = await ConfirmAsync(moveConfirmMessage);
@@ -1617,8 +1713,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     await ExecuteAttachmentMutationAsync(
         attachment.Id,
-        () => TransaccionService.MoveAttachmentToTransaccionAsync(attachment.Id, placeholderTransaccionId.Value),
-        "XML movido a la póliza temporal.");
+        () => TransaccionService.SetAttachmentTransaccionAsync(attachment.Id, null),
+        "XML retirado de la póliza actual.");
   }
 
   private async Task<bool> ConfirmAsync(string message)
@@ -1653,12 +1749,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       _attachmentDeletingId = null;
       await InvokeAsync(StateHasChanged);
     }
-  }
-
-  private int? GetPlaceholderTransaccionId()
-  {
-    var placeholder = Configuration["SatXml:PlaceholderTransaccionId"];
-    return int.TryParse(placeholder, out var parsed) ? parsed : null;
   }
 
   protected async Task DeleteMovimientoAsync(MovimientoModel movimiento)
@@ -1985,6 +2075,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     public long TamanoBytes { get; set; }
     public string TamanoHumano => FormatSize(TamanoBytes);
   }
+
+  protected sealed record class PublicoMonthOption(string Code, string Name);
 
   private static string FormatSize(long bytes)
   {

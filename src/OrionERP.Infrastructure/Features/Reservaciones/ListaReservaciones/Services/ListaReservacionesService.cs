@@ -31,6 +31,8 @@ public sealed class ListaReservacionesService : IListaReservacionesService
       CancellationToken ct = default)
   {
     filter ??= new ListaReservacionFilter();
+    var skip = Math.Max(filter.Skip, 0);
+    var take = Math.Max(filter.Take, 0);
 
     var p = new DynamicParameters();
     string sql;
@@ -68,7 +70,10 @@ WHERE 1=1");
         "r.CHECKIN");
 
       includeCanceladasSql.Append(@"
-ORDER BY r.CHECKIN DESC, r.ID DESC;");
+ORDER BY r.CHECKIN DESC, r.ID DESC");
+
+      AppendListaPagination(includeCanceladasSql, p, skip, take);
+      includeCanceladasSql.Append(';');
 
       sql = includeCanceladasSql.ToString();
     }
@@ -98,7 +103,10 @@ WHERE 1=1");
         "lr.CHECKIN");
 
       viewSql.Append(@"
-ORDER BY lr.CHECKIN DESC, lr.ID DESC;");
+ORDER BY lr.CHECKIN DESC, lr.ID DESC");
+
+      AppendListaPagination(viewSql, p, skip, take);
+      viewSql.Append(';');
 
       sql = viewSql.ToString();
     }
@@ -148,6 +156,24 @@ ORDER BY lr.CHECKIN DESC, lr.ID DESC;");
       sql.Append($" AND {checkInColumn} < @CheckInTo");
       parameters.Add("@CheckInTo", filter.CheckInTo.Value.Date.AddDays(1), DbType.Date);
     }
+  }
+
+  private static void AppendListaPagination(
+    StringBuilder sql,
+    DynamicParameters parameters,
+    int skip,
+    int take)
+  {
+    if (take <= 0)
+    {
+      return;
+    }
+
+    sql.Append(@"
+OFFSET @Skip ROWS
+FETCH NEXT @Take ROWS ONLY");
+    parameters.Add("@Skip", skip, DbType.Int32);
+    parameters.Add("@Take", take, DbType.Int32);
   }
 
   public async Task<int> CreateReservationAsync(ListaReservacionCreateRequest request, CancellationToken ct = default)
@@ -224,29 +250,54 @@ WHERE ID = @ReservationId;";
   public async Task<ReservacionCommandResult> DeleteEmptyReservationsAsync(CancellationToken ct = default)
   {
     const string sql = @"
+SET NOCOUNT ON;
+
+;WITH ReferencedReservations AS (
+    SELECT DISTINCT refs.ReservationId
+    FROM (
+        SELECT parsed.ReservationId
+        FROM (
+            SELECT TRY_CONVERT(int, rc.LOCK_DESCRIPTION) AS ReservationId
+            FROM dbo.ROOM_CALENDAR AS rc
+            WHERE rc.LOCK_DESCRIPTION IS NOT NULL
+        ) AS parsed
+        WHERE parsed.ReservationId IS NOT NULL
+
+        UNION ALL
+
+        SELECT rd.RESERVATION_ID
+        FROM dbo.RESERVATION_DETAIL AS rd
+        WHERE rd.RESERVATION_ID IS NOT NULL
+
+        UNION ALL
+
+        SELECT rt.ReservationID
+        FROM dbo.Reservation_Transacciones AS rt
+        WHERE rt.ReservationID IS NOT NULL
+    ) AS refs
+)
 DELETE r
 FROM dbo.RESERVATION AS r
-WHERE NOT EXISTS (
-        SELECT 1
-        FROM dbo.ROOM_CALENDAR AS rc
-        WHERE TRY_CAST(rc.LOCK_DESCRIPTION AS int) = r.ID
-      )
-  AND NOT EXISTS (
-        SELECT 1
-        FROM dbo.RESERVATION_DETAIL AS rd
-        WHERE rd.RESERVATION_ID = r.ID
-      )
-  AND NOT EXISTS (
-        SELECT 1
-        FROM dbo.Reservation_Transacciones AS rt
-        WHERE rt.ReservationID = r.ID
-      );
+LEFT JOIN ReferencedReservations AS refs
+  ON refs.ReservationId = r.ID
+WHERE refs.ReservationId IS NULL;
+
 SELECT @@ROWCOUNT;";
 
     try
     {
       await using var conn = new SqlConnection(_cs);
-      var deleted = await conn.ExecuteScalarAsync<int>(new CommandDefinition(sql, cancellationToken: ct));
+      await conn.OpenAsync(ct);
+
+      await using var cmd = conn.CreateCommand();
+      cmd.CommandText = sql;
+      cmd.CommandType = CommandType.Text;
+
+      var result = await cmd.ExecuteScalarAsync(ct);
+      var deleted = result is null || result is DBNull
+        ? 0
+        : Convert.ToInt32(result, CultureInfo.InvariantCulture);
+
       return ReservacionCommandResult.Ok($"Se eliminaron {deleted} reservaciones vacías.");
     }
     catch (Exception ex)
@@ -426,6 +477,43 @@ ORDER BY r.ROOM_NAME;";
     await using var conn = new SqlConnection(_cs);
     var rows = await conn.QueryAsync<RoomOptionDto>(new CommandDefinition(sql, cancellationToken: ct));
     return rows.AsList();
+  }
+
+  public async Task<RoomCalendarTimelineDto> GetCalendarTimelineAsync(RoomCalendarTimelineFilter filter, CancellationToken ct = default)
+  {
+    if (filter is null)
+      throw new ArgumentNullException(nameof(filter));
+
+    var startDate = filter.StartDate.Date;
+    var endDateExclusive = filter.EndDateExclusive.Date;
+    if (endDateExclusive <= startDate)
+      throw new ArgumentException("EndDateExclusive must be after StartDate.", nameof(filter));
+
+    await using var conn = new SqlConnection(_cs);
+    using var multi = await conn.QueryMultipleAsync(
+      new CommandDefinition(
+        "dbo.Calendar_GetRoomTimeline",
+        new
+        {
+          StartDate = startDate,
+          EndDateExclusive = endDateExclusive,
+          RoomType = string.IsNullOrWhiteSpace(filter.RoomType) ? null : filter.RoomType.Trim()
+        },
+        commandType: CommandType.StoredProcedure,
+        cancellationToken: ct));
+
+    var resources = (await multi.ReadAsync<RoomCalendarResourceDto>()).AsList();
+    var dayCells = (await multi.ReadAsync<RoomCalendarDayCellDto>()).AsList();
+    var events = (await multi.ReadAsync<RoomCalendarEventDto>()).AsList();
+
+    return new RoomCalendarTimelineDto
+    {
+      StartDate = startDate,
+      EndDateExclusive = endDateExclusive,
+      Resources = resources,
+      DayCells = dayCells,
+      Events = events
+    };
   }
 
   public async Task<IReadOnlyList<ReservacionSuiteDto>> GetSuitesByReservationAsync(int reservationId, CancellationToken ct = default)
@@ -961,6 +1049,46 @@ VALUES
     return affected > 0
       ? ReservacionCommandResult.Ok("Extra agregado.")
       : ReservacionCommandResult.Fail("No se pudo agregar el extra.");
+  }
+
+  public async Task<ReservacionCommandResult> UpdateExtraAsync(ReservacionExtraUpdateRequest request, CancellationToken ct = default)
+  {
+    if (request is null)
+      throw new ArgumentNullException(nameof(request));
+
+    if (request.Id <= 0 || request.ReservationId <= 0 || request.RoomId <= 0)
+      return ReservacionCommandResult.Fail("Selecciona un extra y una suite válidos.");
+
+    const string sql = @"
+UPDATE dbo.RESERVATION_DETAIL
+SET
+    ROOM_ID = @RoomId,
+    PRICE = @Price,
+    DISCOUNTED_PRICE = @DiscountedPrice,
+    DISCOUNT = @Discount,
+    NOTES = @Notes
+WHERE ID = @Id
+  AND RESERVATION_ID = @ReservationId;";
+
+    await using var conn = new SqlConnection(_cs);
+    var affected = await conn.ExecuteAsync(
+      new CommandDefinition(
+        sql,
+        new
+        {
+          request.Id,
+          request.ReservationId,
+          request.RoomId,
+          request.Price,
+          request.DiscountedPrice,
+          request.Discount,
+          Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim()
+        },
+        cancellationToken: ct));
+
+    return affected > 0
+      ? ReservacionCommandResult.Ok("Extra actualizado.")
+      : ReservacionCommandResult.Fail("No se encontró el extra seleccionado.");
   }
 
   public async Task<ReservacionCommandResult> DeleteExtraAsync(int reservationDetailId, CancellationToken ct = default)

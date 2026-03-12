@@ -382,6 +382,50 @@ else if (Header is not null)
             </div>
           </div>
 
+          <div class="border rounded p-3 mb-3 bg-light">
+            <div class="d-flex flex-column flex-xl-row align-items-xl-end gap-3">
+              <div class="flex-grow-1">
+                <div class="fw-semibold">CFDI público en general</div>
+                <div class="text-muted small">
+                  Usa el monto actual de la póliza y genera el XML/PDF en Facturama para ligarlo automáticamente a esta transacción.
+                </div>
+              </div>
+
+              <div class="row g-2 align-items-end m-0">
+                <div class="col-12 col-sm-auto">
+                  <label class="form-label form-label-sm mb-1">Mes global</label>
+                  <InputSelect class="form-select form-select-sm" @bind-Value="SelectedPublicoMonthCode">
+                    @foreach (var month in PublicoMonthOptions)
+                    {
+                      <option value="@month.Code">@month.Name</option>
+                    }
+                  </InputSelect>
+                </div>
+                <div class="col-12 col-sm-auto">
+                  <label class="form-label form-label-sm mb-1">Año global</label>
+                  <InputSelect class="form-select form-select-sm" @bind-Value="SelectedPublicoYear">
+                    @foreach (var year in PublicoYearOptions)
+                    {
+                      <option value="@year">@year</option>
+                    }
+                  </InputSelect>
+                </div>
+                <div class="col-12 col-sm-auto">
+                  <button type="button"
+                          class="btn btn-sm btn-outline-primary"
+                          disabled="@IsTimbrandoPublico"
+                          @onclick="TimbrarCfdiPublicoAsync">
+                    @if (IsTimbrandoPublico)
+                    {
+                      <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                    }
+                    CFDI Público
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           @if (Comprobantes.Count == 0)
           {
             <p class="text-muted mb-0">No hay comprobantes vinculados.</p>
@@ -468,10 +512,10 @@ else if (Header is not null)
             <span class="badge @ReservacionesBalanceCss">Por asignar: @FormatCurrency(ReservacionesPorAsignar)</span>
           </div>
 
-          @if (decimal.Abs(ReservacionesPorAsignar) > 0.01m)
+          @if (HasReservacionesAsignadas && decimal.Abs(ReservacionesPorAsignar) > 0.01m)
           {
             <div class="alert alert-warning" role="alert">
-              El total asignado a reservaciones no coincide con el monto de la póliza.
+              Hay reservaciones asignadas, pero el total todavía no cuadra con el monto de la póliza.
             </div>
           }
 

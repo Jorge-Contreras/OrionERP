@@ -10,4 +10,6 @@ public sealed class ListaReservacionFilter
   public DateTime? CheckInFrom { get; set; }
   public DateTime? CheckInTo { get; set; }
   public bool IncluirCanceladas { get; set; }
+  public int Skip { get; set; }
+  public int Take { get; set; }
 }

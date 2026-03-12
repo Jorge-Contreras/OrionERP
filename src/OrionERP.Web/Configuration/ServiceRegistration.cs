@@ -3,11 +3,13 @@ using OrionERP.Application.Common;
 using OrionERP.Application.Features.Cfdi.ContabilidadRegistros;
 using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
 using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
+using OrionERP.Application.Features.Cfdi.Facturama;
 using OrionERP.Application.Features.Cfdi.HtmlCFDI;
 using OrionERP.Application.Features.Rfcs.Contracts;
 using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Infrastructure.Common;
 using OrionERP.Infrastructure.Features.Cfdi.DeclaracionPrevia;
+using OrionERP.Infrastructure.Features.Cfdi.Facturama;
 using OrionERP.Infrastructure.Features.Cfdi.ContabilidadRegistros;
 using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Dapper;
 using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Services;
@@ -16,6 +18,7 @@ using OrionERP.Infrastructure.Features.Rfcs.Dapper;
 using OrionERP.Infrastructure.Features.Contabilidad.Bancos;
 using OrionERP.Application.Features.ReportesFinancieros;
 using OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper;
+using OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 using Sat.MassiveDownload;
 using Sat.MassiveDownload.Core;
 using ContabITransaccionService = OrionERP.Application.Features.Contabilidad.Transacciones.ITransaccionService;
@@ -41,10 +44,12 @@ public static class ServiceRegistration
     services.AddScoped<IComprobanteQueryService, ComprobanteQueryService>();
     services.AddScoped<ISatXmlInboxService, SatXmlInboxService>();
     services.AddScoped<ContabITransaccionService, ContabTransaccionService>();
+    services.AddHttpClient<IFacturamaApiClient, FacturamaApiClient>();
     services.AddScoped<CfdiReadableParser>();
     services.AddScoped<ITransactionAttachmentRepository, TransactionAttachmentRepository>();
     services.AddScoped<IHtmlCfdiService, HtmlCfdiService>();
     services.AddScoped<ReservacionesIListaReservacionesService, ReservacionesListaReservacionesService>();
+    services.AddScoped<IReservacionPdfService, ReservacionPdfService>();
 
     services.AddScoped<ISatMetadataIngestService, SatMetadataIngestService>();
 
@@ -64,15 +69,17 @@ public static class ServiceRegistration
 
     services.AddScoped<ICuentasContablesRepository, CuentasContablesRepository>();
     services.AddScoped<IContabilidadRegistrosService, ContabilidadRegistrosService>();
-    services.AddHttpClient<IDeclaracionPreviaService, DeclaracionPreviaService>();
+    services.AddScoped<IDeclaracionPreviaService, DeclaracionPreviaService>();
     services.AddScoped<IBancosService, BancosService>();
     services.AddScoped<IReportesFinancierosService, ReportesFinancierosService>();
 
     services.AddScoped<ContabITransaccionService, ContabTransaccionService>();
+    services.AddHttpClient<IFacturamaApiClient, FacturamaApiClient>();
     services.AddScoped<CfdiReadableParser>();
     services.AddScoped<ITransactionAttachmentRepository, TransactionAttachmentRepository>();
     services.AddScoped<IHtmlCfdiService, HtmlCfdiService>();
     services.AddScoped<ReservacionesIListaReservacionesService, ReservacionesListaReservacionesService>();
+    services.AddScoped<IReservacionPdfService, ReservacionPdfService>();
 
     return services;
   }

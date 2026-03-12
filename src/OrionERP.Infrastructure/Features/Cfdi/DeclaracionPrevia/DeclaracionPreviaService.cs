@@ -1,12 +1,9 @@
 using System.Data;
-using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Security.Claims;
-using System.Text;
-using System.Text.Json;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
+using OrionERP.Application.Features.Cfdi.Facturama;
 using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 
 namespace OrionERP.Infrastructure.Features.Cfdi.DeclaracionPrevia;
@@ -14,13 +11,11 @@ namespace OrionERP.Infrastructure.Features.Cfdi.DeclaracionPrevia;
 public class DeclaracionPreviaService : IDeclaracionPreviaService
 {
   private readonly string _connectionString;
-  private readonly HttpClient _httpClient;
-  private readonly IConfiguration _configuration;
+  private readonly IFacturamaApiClient _facturamaApiClient;
 
-  public DeclaracionPreviaService(IConfiguration configuration, HttpClient httpClient)
+  public DeclaracionPreviaService(IConfiguration configuration, IFacturamaApiClient facturamaApiClient)
   {
-    _configuration = configuration;
-    _httpClient = httpClient;
+    _facturamaApiClient = facturamaApiClient ?? throw new ArgumentNullException(nameof(facturamaApiClient));
     _connectionString = configuration.GetConnectionString("OrionDb")
       ?? throw new InvalidOperationException("Missing connection string 'OrionDb'.");
   }
@@ -224,35 +219,13 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
 
   public async Task CancelEmitidaAsync(string uuid, int comprobanteId)
   {
-    string facturamaUser = _configuration["Facturama:User"] ?? "jorgecontreras82";
-    string facturamaPassword = _configuration["Facturama:Password"] ?? "Orion2020";
-    string authHeader = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{facturamaUser}:{facturamaPassword}"));
-
-    _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authHeader);
-    _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-    string queryUrl = $"https://api.facturama.mx/cfdi?type=issued&uuid={uuid}";
-    var getResp = await _httpClient.GetAsync(queryUrl);
-    getResp.EnsureSuccessStatusCode();
-
-    string getBody = await getResp.Content.ReadAsStringAsync();
-    string? cfdiId = null;
-    using (var jdoc = JsonDocument.Parse(getBody))
-    {
-      if (jdoc.RootElement.ValueKind == JsonValueKind.Array && jdoc.RootElement.GetArrayLength() > 0)
-      {
-        cfdiId = jdoc.RootElement[0].GetProperty("Id").GetString();
-      }
-    }
-
-    if (string.IsNullOrEmpty(cfdiId))
+    var cfdiId = await _facturamaApiClient.FindIssuedCfdiIdByUuidAsync(uuid);
+    if (string.IsNullOrWhiteSpace(cfdiId))
     {
       throw new InvalidOperationException("No se encontró el CFDI en Facturama para ese UUID.");
     }
 
-    string cancelUrl = $"https://api.facturama.mx/cfdi/{cfdiId}?type=issued&motive=02";
-    var deleteResp = await _httpClient.DeleteAsync(cancelUrl);
-    deleteResp.EnsureSuccessStatusCode();
+    await _facturamaApiClient.CancelIssuedCfdiAsync(cfdiId);
 
     using var conn = new SqlConnection(_connectionString);
     await conn.ExecuteAsync("UPDATE Comprobante SET Incluir_En_Declaracion = 0 WHERE Comprobante_Id = @Id", new { Id = comprobanteId });
@@ -271,7 +244,11 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
   {
     using var conn = new SqlConnection(_connectionString);
     return await conn.ExecuteScalarAsync<long?>(
-      "SELECT TOP 1 Transaccion_ID FROM Transaccion_Comprobante WHERE Comprobante_ID = @Cid",
+      @"SELECT TOP (1) tc.Transaccion_ID
+FROM dbo.Transaccion_Comprobante tc
+JOIN dbo.Transacciones t ON t.ID = tc.Transaccion_ID
+WHERE tc.Comprobante_ID = @Cid
+ORDER BY t.Fecha, t.ID",
       new { Cid = comprobanteId });
   }
 

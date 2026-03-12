@@ -18,6 +18,7 @@ public interface IListaReservacionesService
   Task<ClienteOptionDto?> ResolveClienteAsync(int? clienteId, string? clienteNombre, CancellationToken ct = default);
   Task<ClienteOptionDto> CreateClienteAsync(string clienteNombre, CancellationToken ct = default);
   Task<IReadOnlyList<RoomOptionDto>> GetRoomsForExtrasAsync(CancellationToken ct = default);
+  Task<RoomCalendarTimelineDto> GetCalendarTimelineAsync(RoomCalendarTimelineFilter filter, CancellationToken ct = default);
   Task<IReadOnlyList<ReservacionSuiteDto>> GetSuitesByReservationAsync(int reservationId, CancellationToken ct = default);
   Task<IReadOnlyList<SuiteDisponibleDto>> GetSuitesDisponiblesAsync(DateTime checkIn, DateTime checkOut, CancellationToken ct = default);
   Task<IReadOnlyList<ReservacionExtraDto>> GetExtrasAsync(int reservationId, CancellationToken ct = default);
@@ -47,5 +48,6 @@ public interface IListaReservacionesService
   Task<ReservacionCommandResult> DistributeSuitesTotalAsync(int reservationId, decimal totalAmount, CancellationToken ct = default);
 
   Task<ReservacionCommandResult> AddExtraAsync(ReservacionExtraCreateRequest request, CancellationToken ct = default);
+  Task<ReservacionCommandResult> UpdateExtraAsync(ReservacionExtraUpdateRequest request, CancellationToken ct = default);
   Task<ReservacionCommandResult> DeleteExtraAsync(int reservationDetailId, CancellationToken ct = default);
 }

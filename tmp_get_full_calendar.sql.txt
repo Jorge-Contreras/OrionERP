@@ -1,0 +1,124 @@
+
+
+CREATE   PROCEDURE [dbo].[GET_FULL_CALENDAR]
+
+    @StartDate DATE,
+
+    @EndDate   DATE
+
+AS
+
+BEGIN
+
+    SET NOCOUNT ON;
+
+
+
+    DECLARE @Columns NVARCHAR(MAX), 
+
+            @SQL     NVARCHAR(MAX);
+
+
+
+    -- Generate the list of rooms as columns (deterministic order)
+
+    SELECT @Columns =
+
+        STRING_AGG(QUOTENAME(ROOM), ', ') WITHIN GROUP (ORDER BY ROOM)
+
+    FROM (
+
+        SELECT DISTINCT ROOM
+
+        FROM dbo.ROOM_CALENDAR
+
+        WHERE ROOM_DATE BETWEEN @StartDate AND @EndDate
+
+    ) AS Rooms;
+
+
+
+    -- If no rooms exist in the requested range, return an empty result set
+
+    IF @Columns IS NULL OR LEN(@Columns) = 0
+
+    BEGIN
+
+        SELECT CAST(NULL AS DATE) AS ROOM_DATE
+
+        WHERE 1 = 0;
+
+        RETURN;
+
+    END;
+
+
+
+    -- Construct the dynamic SQL for pivoting the table
+
+    SET @SQL = N'
+
+    SELECT
+
+        ROOM_DATE,
+
+        ' + @Columns + N'
+
+    FROM
+
+    (
+
+        SELECT
+
+            ROOM_DATE,
+
+            ROOM,
+
+            -- Force true NULLs ('' / whitespace / literal ''NULL'' become NULL)
+
+            NULLIF(
+
+                NULLIF(LTRIM(RTRIM(CAST(LOCK_DESCRIPTION AS NVARCHAR(4000)))), N''''),
+
+                N''NULL''
+
+            ) AS LOCK_DESCRIPTION_CLEAN
+
+        FROM dbo.ROOM_CALENDAR
+
+        WHERE
+
+            ROOM_DATE BETWEEN @StartDate AND @EndDate
+
+            AND (LOCKED_BY IS NULL OR LOCKED_BY <> N''COTIZACIÓN'')
+
+    ) AS SourceTable
+
+    PIVOT
+
+    (
+
+        MAX(LOCK_DESCRIPTION_CLEAN)
+
+        FOR ROOM IN (' + @Columns + N')
+
+    ) AS PivotTable
+
+    ORDER BY ROOM_DATE;';
+
+
+
+    -- Execute the dynamic SQL
+
+    EXEC sp_executesql
+
+        @SQL,
+
+        N'@StartDate DATE, @EndDate DATE',
+
+        @StartDate = @StartDate,
+
+        @EndDate   = @EndDate;
+
+END;
+

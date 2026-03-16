@@ -22,6 +22,7 @@ using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
 using OrionERP.Web.Configuration;
 using OrionERP.Web.Data;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
+using OrionERP.Web.Features.Reservaciones.OpenClaw;
 using OrionERP.Web.Identity;
 using OrionERP.Web.State;
 using OrionERP.Web.Services;
@@ -156,6 +157,7 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddRazorPages();      // Identity UI depends on Razor Pages
 builder.Services.AddServerSideBlazor();
+builder.Services.Configure<OpenClawApiOptions>(builder.Configuration.GetSection(OpenClawApiOptions.SectionName));
 
 builder.Services.AddSingleton<WeatherForecastService>();
 builder.Services.AddCfdiCargarXmlSat();
@@ -196,6 +198,7 @@ app.UseAuthorization();
 
 app.MapRazorPages();
 app.MapBlazorHub();
+app.MapOpenClawReservationsApi();
 app.MapFallbackToPage("/_Host");
 
 app.MapGet("/auth/logout", async (HttpContext ctx) =>

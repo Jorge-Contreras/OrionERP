@@ -39,6 +39,7 @@ public partial class ReservacionPage : ComponentBase
   [Inject] public IJSRuntime Js { get; set; } = default!;
   [Inject] public NavigationManager Nav { get; set; } = default!;
   [Inject] public IReservacionPdfService ReservacionPdfService { get; set; } = default!;
+  [Inject] public IReservacionPdfDocumentFactory ReservacionPdfDocumentFactory { get; set; } = default!;
 
   protected ReservacionDetailDto? Detail { get; set; }
   protected List<ClienteOptionDto> Clientes { get; set; } = new();
@@ -947,30 +948,23 @@ public partial class ReservacionPage : ComponentBase
 
   protected void RecalculateTotals()
   {
-    TotalSuites = decimal.Round(Suites.Sum(s => s.Precio), 2, MidpointRounding.ToEven);
-    TotalExtras = decimal.Round(Extras.Sum(e => e.DiscountedPrice), 2, MidpointRounding.ToEven);
-    SubTotal = decimal.Round(TotalSuites + TotalExtras, 2, MidpointRounding.ToEven);
+    var totals = ReservacionTotalsCalculator.Calculate(
+      CheckIn,
+      CheckOut,
+      Taxable,
+      Suites.Sum(s => s.Precio),
+      Extras.Sum(e => e.DiscountedPrice),
+      Pagos.Sum(p => p.Monto));
 
-    Tax = 0m;
-    Ish = 0m;
-    if (Taxable)
-    {
-      Tax = decimal.Round(SubTotal * 0.16m, 2, MidpointRounding.ToEven);
-      if (CheckIn.HasValue && CheckIn.Value.Year < 2025)
-      {
-        Ish = decimal.Round(SubTotal * 0.02m, 2, MidpointRounding.ToEven);
-      }
-    }
-
-    TotalReservacion = decimal.Round(SubTotal + Tax + Ish, 2, MidpointRounding.ToEven);
-    TotalPagado = decimal.Round(Pagos.Sum(p => p.Monto), 2, MidpointRounding.ToEven);
-    PorPagar = decimal.Round(TotalReservacion - TotalPagado, 2, MidpointRounding.ToEven);
-
-    NumNoches = 0;
-    if (CheckIn.HasValue && CheckOut.HasValue && CheckOut.Value.Date >= CheckIn.Value.Date)
-    {
-      NumNoches = (int)(CheckOut.Value.Date - CheckIn.Value.Date).TotalDays;
-    }
+    TotalSuites = totals.TotalSuites;
+    TotalExtras = totals.TotalExtras;
+    SubTotal = totals.SubTotal;
+    Tax = totals.Tax;
+    Ish = totals.Ish;
+    TotalReservacion = totals.TotalReservacion;
+    TotalPagado = totals.TotalPagado;
+    PorPagar = totals.PorPagar;
+    NumNoches = totals.NumNoches;
 
     TotalSuiteInput = TotalSuites;
   }
@@ -1149,50 +1143,26 @@ public partial class ReservacionPage : ComponentBase
   {
     var cliente = NormalizeClienteNombre(ClienteSearchText);
 
-    return new ReservacionPdfDocumentModel(
+    return ReservacionPdfDocumentFactory.CreateFromSnapshot(new ReservacionPdfSnapshot(
       ReservationId,
       string.IsNullOrWhiteSpace(cliente) ? Detail?.Cliente ?? string.Empty : cliente,
       Status ?? Detail?.Status ?? string.Empty,
-      FormatDate(CheckIn ?? Detail?.CheckIn),
-      FormatDate(CheckOut ?? Detail?.CheckOut),
-      NumNoches.ToString(CultureInfo.CurrentCulture),
-      RecommenedBy ?? Detail?.RecommenedBy ?? string.Empty,
-      Taxable ? "Si" : "No",
-      Notes ?? Detail?.Notes ?? string.Empty,
-      DateTime.Now.ToString("f", CultureInfo.CurrentCulture),
-      FormatCurrency(TotalSuites),
-      FormatCurrency(TotalExtras),
-      FormatCurrency(SubTotal),
-      FormatCurrency(Tax),
-      FormatCurrency(Ish),
-      FormatCurrency(TotalReservacion),
-      FormatCurrency(TotalPagado),
-      FormatCurrency(PorPagar),
-      Suites.Select(suite => new ReservacionPdfSuiteRow(
-          suite.Fecha.ToShortDateString(),
-          suite.Suite,
-          FormatCurrency(suite.Precio),
-          suite.LimpiezaProfunda ? "Si" : "No"))
-        .ToList(),
-      Extras.Select(extra => new ReservacionPdfExtraRow(
-          extra.RoomName,
-          extra.RoomDescription,
-          FormatCurrency(extra.Price),
-          extra.Discount.ToString(CultureInfo.CurrentCulture),
-          FormatCurrency(extra.DiscountedPrice),
-          extra.Notes ?? string.Empty))
-        .ToList(),
-      Pagos.Select(pago => new ReservacionPdfPagoRow(
-          pago.TransaccionId.ToString(CultureInfo.CurrentCulture),
-          pago.Fecha.ToShortDateString(),
-          FormatCurrency(pago.Monto),
-          pago.Concepto))
-        .ToList(),
-      Attachments.Select(attachment => new ReservacionPdfAttachmentRow(
-          attachment.AttachmentName,
-          attachment.AttachmentExtension,
-          attachment.AttachmentDescription ?? string.Empty,
-          attachment.Length.ToString("N0", CultureInfo.CurrentCulture)))
-        .ToList());
+      CheckIn ?? Detail?.CheckIn,
+      CheckOut ?? Detail?.CheckOut,
+      RecommenedBy ?? Detail?.RecommenedBy,
+      Taxable,
+      Notes ?? Detail?.Notes,
+      TotalSuites,
+      TotalExtras,
+      SubTotal,
+      Tax,
+      Ish,
+      TotalReservacion,
+      TotalPagado,
+      PorPagar,
+      Suites,
+      Extras,
+      Pagos,
+      Attachments));
   }
 }

@@ -57,6 +57,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private static readonly NumberStyles CurrencyNumberStyles = NumberStyles.AllowThousands | NumberStyles.AllowDecimalPoint;
 
   private const long AttachmentMaxFileSize = TransaccionAttachmentCreateRequest.MaxFileSizeBytes;
+  private const int ProyectoDescriptionMaxLength = 20;
 
   [Parameter] public int Id { get; set; }
 
@@ -98,6 +99,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected decimal ReservacionAmountInput { get; set; }
   protected string SelectedPublicoMonthCode { get; set; } = DateTime.Today.Month.ToString("00", CultureInfo.InvariantCulture);
   protected int SelectedPublicoYear { get; set; } = DateTime.Today.Year;
+  protected bool ShowProyectoResults { get; private set; }
 
   protected bool ShowMovimientoModal { get; private set; }
   protected MovimientoModel? MovimientoDraft { get; private set; }
@@ -181,22 +183,64 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     RfcState.Changed += OnRfcStateChanged;
   }
 
-  protected void SearchProyectoOptions()
-  {
-    ApplyLookupFilter(ProyectoSearchTerm, _allProyectoOptions, ProyectoOptions, Header?.ProyectoId);
-  }
-
   protected void SearchCompraOptions()
   {
     ApplyLookupFilter(CompraSearchTerm, _allCompraOptions, CompraOptions, Header?.CompraId);
   }
 
+  protected void OnProyectoSearchInput(ChangeEventArgs args)
+  {
+    ProyectoSearchTerm = args.Value?.ToString() ?? string.Empty;
+
+    if (string.IsNullOrWhiteSpace(ProyectoSearchTerm))
+    {
+      SetProyectoSelection(null);
+      ProyectoOptions.Clear();
+      ShowProyectoResults = false;
+      return;
+    }
+
+    RefreshProyectoOptions();
+    ShowProyectoResults = true;
+  }
+
   protected void HandleProyectoSearchKeyDown(KeyboardEventArgs args)
   {
-    if (args.Key == "Enter")
+    if (args.Key == "Escape")
     {
-      SearchProyectoOptions();
+      ShowProyectoResults = false;
+      SyncProyectoSearchTermWithSelection();
+      return;
     }
+
+    if (args.Key != "Enter")
+    {
+      return;
+    }
+
+    if (TryFindExactProyectoMatch(ProyectoSearchTerm, out var exactMatch))
+    {
+      SelectProyecto(exactMatch);
+      return;
+    }
+
+    RefreshProyectoOptions();
+    ShowProyectoResults = true;
+
+    if (ProyectoOptions.Count == 1)
+    {
+      SelectProyecto(ProyectoOptions[0]);
+    }
+  }
+
+  protected async Task OnProyectoSearchBlurAsync()
+  {
+    await Task.Yield();
+
+    ShowProyectoResults = false;
+    SyncProyectoSearchTermWithSelection();
+
+    await InvokeAsync(StateHasChanged);
   }
 
   protected void HandleCompraSearchKeyDown(KeyboardEventArgs args)
@@ -233,6 +277,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     FormaPagoOptions.Clear();
     ProyectoSearchTerm = string.Empty;
     CompraSearchTerm = string.Empty;
+    ShowProyectoResults = false;
 
     var currentRfc = RfcState.CurrentRfc;
     if (string.IsNullOrWhiteSpace(currentRfc))
@@ -246,7 +291,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
       var actividades = await TransaccionService.GetActividadesAsync(currentRfc, ct);
       _allProyectoOptions.AddRange(actividades);
-      EnsureSelectedProyectoOption();
+      SyncProyectoSearchTermWithSelection();
 
       var compras = await TransaccionService.GetComprasAsync(currentRfc, ct);
       _allCompraOptions.AddRange(compras);
@@ -298,14 +343,123 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
   }
 
-  private void EnsureSelectedProyectoOption()
-  {
-    EnsureSelectedOption(Header?.ProyectoId, _allProyectoOptions, ProyectoOptions);
-  }
-
   private void EnsureSelectedCompraOption()
   {
     EnsureSelectedOption(Header?.CompraId, _allCompraOptions, CompraOptions);
+  }
+
+  private void RefreshProyectoOptions()
+  {
+    ProyectoOptions.Clear();
+
+    var trimmed = ProyectoSearchTerm.Trim();
+    if (string.IsNullOrWhiteSpace(trimmed))
+    {
+      return;
+    }
+
+    var isNumericSearch = int.TryParse(trimmed, out var numericSearch);
+    var matches = _allProyectoOptions
+      .Where(option =>
+        (isNumericSearch && option.Id.ToString(CultureInfo.InvariantCulture).Contains(trimmed, StringComparison.OrdinalIgnoreCase)) ||
+        (!string.IsNullOrWhiteSpace(option.Description) && option.Description.Contains(trimmed, StringComparison.OrdinalIgnoreCase)))
+      .OrderBy(option => isNumericSearch && option.Id == numericSearch ? 0 : 1)
+      .ThenBy(option => option.Description)
+      .ThenBy(option => option.Id)
+      .Take(25);
+
+    ProyectoOptions.AddRange(matches);
+  }
+
+  private bool TryFindExactProyectoMatch(string? searchTerm, out LookupInt32Dto proyecto)
+  {
+    proyecto = default!;
+
+    if (!int.TryParse(searchTerm?.Trim(), out var proyectoId))
+    {
+      return false;
+    }
+
+    var match = _allProyectoOptions.FirstOrDefault(option => option.Id == proyectoId);
+    if (match is null)
+    {
+      return false;
+    }
+
+    proyecto = match;
+    return true;
+  }
+
+  protected string GetProyectoOptionDisplay(LookupInt32Dto proyecto)
+    => FormatProyectoDisplay(proyecto, truncateDescription: false);
+
+  protected void SelectProyecto(LookupInt32Dto proyecto)
+  {
+    SetProyectoSelection(proyecto);
+    ProyectoOptions.Clear();
+    ShowProyectoResults = false;
+  }
+
+  private void SetProyectoSelection(LookupInt32Dto? proyecto)
+  {
+    if (Header is null)
+    {
+      ProyectoSearchTerm = proyecto is null
+        ? string.Empty
+        : FormatProyectoDisplay(proyecto, truncateDescription: true);
+      return;
+    }
+
+    Header.ProyectoId = proyecto?.Id;
+    ProyectoSearchTerm = proyecto is null
+      ? string.Empty
+      : FormatProyectoDisplay(proyecto, truncateDescription: true);
+
+    HeaderEditContext?.NotifyFieldChanged(new FieldIdentifier(Header, nameof(Header.ProyectoId)));
+  }
+
+  private void SyncProyectoSearchTermWithSelection()
+  {
+    var proyecto = FindProyectoById(Header?.ProyectoId);
+    ProyectoSearchTerm = proyecto is null
+      ? Header?.ProyectoId?.ToString(CultureInfo.InvariantCulture) ?? string.Empty
+      : FormatProyectoDisplay(proyecto, truncateDescription: true);
+  }
+
+  private LookupInt32Dto? FindProyectoById(int? proyectoId)
+  {
+    if (proyectoId is null)
+    {
+      return null;
+    }
+
+    return _allProyectoOptions.FirstOrDefault(option => option.Id == proyectoId.Value);
+  }
+
+  private static string FormatProyectoDisplay(LookupInt32Dto proyecto, bool truncateDescription)
+  {
+    var description = proyecto.Description?.Trim();
+    if (string.IsNullOrWhiteSpace(description))
+    {
+      return proyecto.Id.ToString(CultureInfo.InvariantCulture);
+    }
+
+    var formattedDescription = truncateDescription
+      ? TruncateProyectoDescription(description)
+      : description;
+
+    return $"{proyecto.Id} - {formattedDescription}";
+  }
+
+  private static string TruncateProyectoDescription(string description)
+  {
+    if (description.Length <= ProyectoDescriptionMaxLength)
+    {
+      return description;
+    }
+
+    const string ellipsis = "...";
+    return $"{description[..(ProyectoDescriptionMaxLength - ellipsis.Length)]}{ellipsis}";
   }
 
   private static void EnsureSelectedOption(int? selectedId, List<LookupInt32Dto> source, List<LookupInt32Dto> target)
@@ -388,7 +542,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       HeaderEditContext = new EditContext(Header);
 
       await ReloadMovimientosAsync(ct);
-      EnsureSelectedProyectoOption();
+      SyncProyectoSearchTermWithSelection();
       EnsureSelectedCompraOption();
 
       await ReloadAttachmentsAsync(ct);
@@ -421,6 +575,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     Header.CopyFrom(_headerOriginal);
     UpdateMontoInputFromHeader();
+    ShowProyectoResults = false;
+    SyncProyectoSearchTermWithSelection();
     HeaderEditContext = new EditContext(Header);
     StateHasChanged();
   }

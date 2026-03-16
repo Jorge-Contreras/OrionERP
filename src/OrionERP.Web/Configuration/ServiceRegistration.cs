@@ -17,7 +17,9 @@ using OrionERP.Infrastructure.Features.Cfdi.HtmlCFDI;
 using OrionERP.Infrastructure.Features.Rfcs.Dapper;
 using OrionERP.Infrastructure.Features.Contabilidad.Bancos;
 using OrionERP.Application.Features.ReportesFinancieros;
+using OrionERP.Application.Features.Reservaciones.OpenClaw;
 using OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper;
+using OrionERP.Web.Features.Reservaciones.OpenClaw;
 using OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 using Sat.MassiveDownload;
 using Sat.MassiveDownload.Core;
@@ -25,6 +27,7 @@ using ContabITransaccionService = OrionERP.Application.Features.Contabilidad.Tra
 using ContabTransaccionService = OrionERP.Infrastructure.Features.Contabilidad.Transacciones.Services.TransaccionService;
 using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+using ReservacionesIOpenClawReservationsService = OrionERP.Application.Features.Reservaciones.OpenClaw.IOpenClawReservationsService;
 using ReservacionesIListaReservacionesService = OrionERP.Application.Features.Reservaciones.ListaReservaciones.IListaReservacionesService;
 using ReservacionesListaReservacionesService = OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Services.ListaReservacionesService;
 
@@ -50,6 +53,9 @@ public static class ServiceRegistration
     services.AddScoped<IHtmlCfdiService, HtmlCfdiService>();
     services.AddScoped<ReservacionesIListaReservacionesService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionPdfService, ReservacionPdfService>();
+    services.AddScoped<ReservacionesIOpenClawReservationsService, ReservacionesListaReservacionesService>();
+    services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
+    services.AddSingleton<IOpenClawReservationPdfTokenService, OpenClawReservationPdfTokenService>();
 
     services.AddScoped<ISatMetadataIngestService, SatMetadataIngestService>();
 
@@ -80,6 +86,9 @@ public static class ServiceRegistration
     services.AddScoped<IHtmlCfdiService, HtmlCfdiService>();
     services.AddScoped<ReservacionesIListaReservacionesService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionPdfService, ReservacionPdfService>();
+    services.AddScoped<ReservacionesIOpenClawReservationsService, ReservacionesListaReservacionesService>();
+    services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
+    services.AddSingleton<IOpenClawReservationPdfTokenService, OpenClawReservationPdfTokenService>();
 
     return services;
   }

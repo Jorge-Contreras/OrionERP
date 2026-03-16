@@ -10,11 +10,12 @@ using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using OrionERP.Application.Features.Reservaciones.OpenClaw;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
 namespace OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Services;
 
-public sealed class ListaReservacionesService : IListaReservacionesService
+public sealed class ListaReservacionesService : IListaReservacionesService, IOpenClawReservationsService
 {
   private readonly string _cs;
   private readonly ILogger<ListaReservacionesService> _logger;
@@ -201,6 +202,223 @@ SELECT CAST(SCOPE_IDENTITY() AS int);";
         cancellationToken: ct));
   }
 
+  public async Task<OpenClawReservationCreateResult> CreateReservationAsync(OpenClawReservationCreateRequest request, CancellationToken ct = default)
+  {
+    if (request is null)
+      throw new ArgumentNullException(nameof(request));
+
+    var clientName = RequireValue(request.ClientName, "El nombre del cliente es obligatorio.");
+    var status = string.IsNullOrWhiteSpace(request.Status) ? "NUEVA" : request.Status.Trim();
+    var recommendedBy = TrimOrNull(request.RecommendedBy);
+    var reservationNotes = TrimOrNull(request.ReservationNotes);
+    var taxable = request.Taxable ?? true;
+    var checkIn = request.CheckIn.ToDateTime(TimeOnly.MinValue);
+    var checkOut = request.CheckOut.ToDateTime(TimeOnly.MinValue);
+
+    if (checkOut <= checkIn)
+      throw new OpenClawReservationValidationException("CHECKOUT debe ser posterior a CHECKIN.");
+
+    var requestedSuites = NormalizeRequestedSuites(request.SuiteNames);
+    if (requestedSuites.Count == 0)
+      throw new OpenClawReservationValidationException("Debes indicar al menos una suite para crear la reservación.");
+
+    if (request.GeneralDiscountPercent is < 0 or > 100)
+      throw new OpenClawReservationValidationException("El descuento general debe estar entre 0 y 100.");
+
+    var requestedExtras = AggregateExtraRequests(request.Extras);
+
+    await using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct) as SqlTransaction;
+
+    try
+    {
+      var rooms = (await conn.QueryAsync<OpenClawRoomCatalogRow>(
+        new CommandDefinition(
+          """
+SELECT
+    r.ID AS Id,
+    r.ROOM_NAME AS RoomName,
+    r.ROOM_TYPE AS RoomType,
+    CAST(ISNULL(r.BASE_PRICE, 0) AS decimal(18,2)) AS BasePrice
+FROM dbo.ROOM r;
+""",
+          transaction: tx,
+          cancellationToken: ct))).AsList();
+
+      var resolvedSuites = ResolveRequestedRooms(requestedSuites, rooms, requireSuiteType: true);
+      var resolvedExtras = ResolveRequestedExtras(requestedExtras, rooms);
+
+      var calendarRows = (await conn.QueryAsync<OpenClawRoomCalendarRow>(
+        new CommandDefinition(
+          """
+SELECT
+    rc.ID AS Id,
+    rc.ROOM AS Room,
+    rc.ROOM_DATE AS RoomDate,
+    CAST(ISNULL(rc.IS_LOCKED, 0) AS bit) AS IsLocked,
+    ISNULL(rc.LOCKED_BY, '') AS LockedBy,
+    CAST(ISNULL(rc.PRECIO, 0) AS decimal(18,2)) AS Precio
+FROM dbo.ROOM_CALENDAR rc WITH (UPDLOCK, HOLDLOCK)
+WHERE rc.ROOM IN @Rooms
+  AND rc.ROOM_DATE >= @CheckIn
+  AND rc.ROOM_DATE < @CheckOut
+ORDER BY rc.ROOM, rc.ROOM_DATE;
+""",
+          new
+          {
+            Rooms = resolvedSuites.Select(item => item.RoomName).ToArray(),
+            CheckIn = checkIn.Date,
+            CheckOut = checkOut.Date
+          },
+          tx,
+          cancellationToken: ct))).AsList();
+
+      ValidateCalendarRows(calendarRows, resolvedSuites.Select(item => item.RoomName).ToArray(), checkIn, checkOut);
+
+      var cliente = await ResolveOrCreateClienteAsync(conn, tx, clientName, ct);
+      var suiteSubtotal = decimal.Round(calendarRows.Sum(row => row.Precio), 2, MidpointRounding.ToEven);
+
+      var createdExtras = resolvedExtras
+        .Select(item => OpenClawReservationLineFactory.CreateExtra(item.RoomName, item.Quantity, item.UnitPrice, item.Notes))
+        .ToList();
+
+      if (request.GeneralDiscountPercent is > 0)
+      {
+        createdExtras.Add(OpenClawReservationLineFactory.CreateDiscount("DESCUENTO", suiteSubtotal, request.GeneralDiscountPercent.Value));
+      }
+
+      const string insertReservationSql = """
+INSERT INTO dbo.RESERVATION
+(CLIENTE_ID, CHECKIN, CHECKOUT, STATUS, RECOMMENED_BY, NOTES, TAXABLE, TOTAL_PRICE)
+VALUES
+(@ClienteId, @CheckIn, @CheckOut, @Status, @RecommenedBy, @Notes, @Taxable, @TotalPrice);
+SELECT CAST(SCOPE_IDENTITY() AS int);
+""";
+
+      var reservationId = await conn.ExecuteScalarAsync<int>(
+        new CommandDefinition(
+          insertReservationSql,
+          new
+          {
+            ClienteId = cliente.Id,
+            CheckIn = checkIn.Date,
+            CheckOut = checkOut.Date,
+            Status = status,
+            RecommenedBy = recommendedBy,
+            Notes = reservationNotes,
+            Taxable = taxable,
+            TotalPrice = 0m
+          },
+          tx,
+          cancellationToken: ct));
+
+      var lockAffected = await conn.ExecuteAsync(
+        new CommandDefinition(
+          """
+UPDATE dbo.ROOM_CALENDAR
+SET
+    IS_LOCKED = 1,
+    LOCKED_BY = @LockedBy,
+    LOCK_DESCRIPTION = @ReservationId,
+    STATUS = @Status
+WHERE ID IN @Ids;
+""",
+          new
+          {
+            LockedBy = cliente.Nombre,
+            ReservationId = reservationId.ToString(CultureInfo.InvariantCulture),
+            Status = status,
+            Ids = calendarRows.Select(row => row.Id).ToArray()
+          },
+          tx,
+          cancellationToken: ct));
+
+      if (lockAffected != calendarRows.Count)
+        throw new OpenClawReservationConflictException("No se pudieron bloquear todas las suites solicitadas.");
+
+      if (createdExtras.Count > 0)
+      {
+        var extraParameters = createdExtras
+          .Select(item =>
+          {
+            var room = ResolveRequestedRoom(item.CatalogName, rooms, requireSuiteType: false);
+            return new
+            {
+              ReservationId = reservationId,
+              RoomId = room.Id,
+              Price = item.LinePrice,
+              DiscountedPrice = item.LinePrice,
+              Discount = 0m,
+              Notes = TrimOrNull(item.Notes)
+            };
+          })
+          .ToArray();
+
+        await conn.ExecuteAsync(
+          new CommandDefinition(
+            """
+INSERT INTO dbo.RESERVATION_DETAIL
+(RESERVATION_ID, ROOM_ID, PRICE, DISCOUNTED_PRICE, DISCOUNT, NOTES)
+VALUES
+(@ReservationId, @RoomId, @Price, @DiscountedPrice, @Discount, @Notes);
+""",
+            extraParameters,
+            tx,
+            cancellationToken: ct));
+      }
+
+      var extrasSubtotal = decimal.Round(createdExtras.Sum(item => item.LinePrice), 2, MidpointRounding.ToEven);
+      var totals = ReservacionTotalsCalculator.Calculate(checkIn, checkOut, taxable, suiteSubtotal, extrasSubtotal, 0m);
+
+      var totalAffected = await conn.ExecuteAsync(
+        new CommandDefinition(
+          """
+UPDATE dbo.RESERVATION
+SET TOTAL_PRICE = @TotalPrice
+WHERE ID = @ReservationId;
+""",
+          new
+          {
+            ReservationId = reservationId,
+            TotalPrice = totals.TotalReservacion
+          },
+          tx,
+          cancellationToken: ct));
+
+      if (totalAffected != 1)
+        throw new OpenClawReservationConflictException("No se pudo finalizar la reservación creada.");
+
+      await tx!.CommitAsync(ct);
+
+      return new OpenClawReservationCreateResult
+      {
+        ReservationId = reservationId,
+        ClientName = cliente.Nombre,
+        CheckIn = request.CheckIn,
+        CheckOut = request.CheckOut,
+        Status = status,
+        Taxable = taxable,
+        SuiteNames = resolvedSuites.Select(item => item.RoomName).ToArray(),
+        Extras = createdExtras,
+        SuiteSubtotal = totals.TotalSuites,
+        ExtrasSubtotal = totals.TotalExtras,
+        TotalPrice = totals.TotalReservacion
+      };
+    }
+    catch (Exception ex) when (ex is not OpenClawReservationValidationException && ex is not OpenClawReservationConflictException)
+    {
+      try { await tx!.RollbackAsync(ct); } catch { /* ignore */ }
+      _logger.LogError(ex, "Error creating reservation from OpenClaw request.");
+      throw;
+    }
+    catch
+    {
+      try { await tx!.RollbackAsync(ct); } catch { /* ignore */ }
+      throw;
+    }
+  }
+
   public async Task<ClienteOptionDto?> GetDefaultClienteForNewReservationAsync(CancellationToken ct = default)
   {
     const string sql = @"
@@ -306,6 +524,9 @@ SELECT @@ROWCOUNT;";
       return ReservacionCommandResult.Fail("No se pudieron eliminar las reservaciones vacías.");
     }
   }
+
+  public Task<ReservacionDetailDto?> GetReservationDetailAsync(int reservationId, CancellationToken ct = default)
+    => GetReservacionDetailAsync(reservationId, ct);
 
   public async Task<ReservacionDetailDto?> GetReservacionDetailAsync(int reservationId, CancellationToken ct = default)
   {
@@ -1103,51 +1324,227 @@ WHERE ID = @Id
       : ReservacionCommandResult.Fail("No se encontró el extra seleccionado.");
   }
 
+  private static void ValidateCalendarRows(
+    IReadOnlyList<OpenClawRoomCalendarRow> rows,
+    IReadOnlyCollection<string> requestedRooms,
+    DateTime checkIn,
+    DateTime checkOut)
+  {
+    var expectedNights = (checkOut.Date - checkIn.Date).Days;
+    var expectedRows = requestedRooms.Count * expectedNights;
+
+    if (rows.Count != expectedRows)
+    {
+      throw new OpenClawReservationConflictException("No se encontraron todas las noches requeridas para las suites solicitadas.");
+    }
+
+    var lockedRows = rows
+      .Where(row => row.IsLocked)
+      .Select(row => $"{row.Room} ({row.RoomDate:yyyy-MM-dd})")
+      .Distinct()
+      .ToArray();
+
+    if (lockedRows.Length > 0)
+    {
+      throw new OpenClawReservationConflictException(
+        $"Las suites ya no están disponibles para todas las fechas solicitadas: {string.Join(", ", lockedRows)}.");
+    }
+  }
+
+  private static IReadOnlyList<string> NormalizeRequestedSuites(IReadOnlyList<string>? suiteNames)
+  {
+    if (suiteNames is null || suiteNames.Count == 0)
+    {
+      return Array.Empty<string>();
+    }
+
+    var normalized = new List<string>(suiteNames.Count);
+    var seen = new HashSet<string>(StringComparer.Ordinal);
+
+    foreach (var suiteName in suiteNames)
+    {
+      var value = RequireValue(suiteName, "Cada suite debe tener un nombre válido.");
+      var key = OpenClawReservationNaming.NormalizeLookupKey(value);
+      if (!seen.Add(key))
+      {
+        throw new OpenClawReservationValidationException($"La suite '{value}' está repetida en la solicitud.");
+      }
+
+      normalized.Add(value);
+    }
+
+    return normalized;
+  }
+
+  private static IReadOnlyList<OpenClawRequestedExtra> AggregateExtraRequests(IReadOnlyList<OpenClawReservationExtraRequest>? extras)
+  {
+    if (extras is null || extras.Count == 0)
+    {
+      return Array.Empty<OpenClawRequestedExtra>();
+    }
+
+    var aggregated = new Dictionary<string, OpenClawRequestedExtra>(StringComparer.Ordinal);
+
+    foreach (var extra in extras)
+    {
+      var catalogName = RequireValue(extra.CatalogName, "Cada extra debe indicar un catálogo válido.");
+      if (extra.Quantity <= 0)
+      {
+        throw new OpenClawReservationValidationException($"La cantidad del extra '{catalogName}' debe ser mayor a cero.");
+      }
+
+      var key = OpenClawReservationNaming.NormalizeLookupKey(catalogName);
+      if (!aggregated.TryGetValue(key, out var current))
+      {
+        aggregated[key] = new OpenClawRequestedExtra(catalogName, extra.Quantity, TrimOrNull(extra.Notes));
+        continue;
+      }
+
+      var mergedNotes = string.Join("; ", new[] { current.Notes, TrimOrNull(extra.Notes) }.Where(note => !string.IsNullOrWhiteSpace(note)));
+      aggregated[key] = current with
+      {
+        Quantity = current.Quantity + extra.Quantity,
+        Notes = string.IsNullOrWhiteSpace(mergedNotes) ? null : mergedNotes
+      };
+    }
+
+    return aggregated.Values.ToArray();
+  }
+
+  private static IReadOnlyList<OpenClawResolvedRoom> ResolveRequestedRooms(
+    IReadOnlyList<string> requestedNames,
+    IReadOnlyList<OpenClawRoomCatalogRow> rooms,
+    bool requireSuiteType)
+  {
+    return requestedNames
+      .Select(name => ResolveRequestedRoom(name, rooms, requireSuiteType))
+      .ToArray();
+  }
+
+  private static IReadOnlyList<OpenClawResolvedExtra> ResolveRequestedExtras(
+    IReadOnlyList<OpenClawRequestedExtra> requestedExtras,
+    IReadOnlyList<OpenClawRoomCatalogRow> rooms)
+  {
+    return requestedExtras
+      .Select(extra =>
+      {
+        var room = ResolveRequestedRoom(extra.CatalogName, rooms, requireSuiteType: false);
+        return new OpenClawResolvedExtra(room.Id, room.RoomName, room.BasePrice, extra.Quantity, extra.Notes);
+      })
+      .ToArray();
+  }
+
+  private static async Task<ClienteOptionDto> ResolveOrCreateClienteAsync(
+    SqlConnection conn,
+    SqlTransaction? tx,
+    string clientName,
+    CancellationToken ct)
+  {
+    const string selectSql = """
+SELECT TOP (1)
+    c.ID AS Id,
+    c.Nombre AS Nombre
+FROM dbo.Clientes c
+WHERE UPPER(LTRIM(RTRIM(c.Nombre))) = UPPER(@Nombre)
+ORDER BY c.ID;
+""";
+
+    const string insertSql = """
+INSERT INTO dbo.Clientes (Nombre)
+VALUES (@Nombre);
+SELECT CAST(SCOPE_IDENTITY() AS int);
+""";
+
+    var existing = await conn.QueryFirstOrDefaultAsync<ClienteOptionDto>(
+      new CommandDefinition(
+        selectSql,
+        new { Nombre = clientName },
+        tx,
+        cancellationToken: ct));
+
+    if (existing is not null)
+    {
+      return existing;
+    }
+
+    var clienteId = await conn.ExecuteScalarAsync<int>(
+      new CommandDefinition(
+        insertSql,
+        new { Nombre = clientName },
+        tx,
+        cancellationToken: ct));
+
+    return new ClienteOptionDto
+    {
+      Id = clienteId,
+      Nombre = clientName
+    };
+  }
+
+  private static OpenClawResolvedRoom ResolveRequestedRoom(
+    string requestedName,
+    IReadOnlyList<OpenClawRoomCatalogRow> rooms,
+    bool requireSuiteType)
+  {
+    var requestedKey = OpenClawReservationNaming.NormalizeLookupKey(requestedName);
+    var matches = rooms
+      .Where(room => OpenClawReservationNaming.NormalizeLookupKey(room.RoomName) == requestedKey)
+      .ToArray();
+
+    if (requireSuiteType)
+    {
+      matches = matches.Where(room => IsSuiteRoom(room.RoomType)).ToArray();
+    }
+
+    if (matches.Length == 0)
+    {
+      var kind = requireSuiteType ? "suite" : "catálogo";
+      throw new OpenClawReservationValidationException($"No se encontró la {kind} '{requestedName}'.");
+    }
+
+    var resolved = matches[0];
+    return new OpenClawResolvedRoom(resolved.Id, resolved.RoomName, resolved.BasePrice);
+  }
+
+  private static bool IsSuiteRoom(string? roomType)
+    => string.Equals(OpenClawReservationNaming.NormalizeLookupKey(roomType), "SUITE", StringComparison.Ordinal);
+
+  private static string RequireValue(string? value, string errorMessage)
+  {
+    if (string.IsNullOrWhiteSpace(value))
+    {
+      throw new OpenClawReservationValidationException(errorMessage);
+    }
+
+    return value.Trim();
+  }
+
+  private static string? TrimOrNull(string? value)
+    => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
   private static void ApplyCalculatedTotals(
       ReservacionDetailDto detail,
       IReadOnlyList<ReservacionSuiteDto> suites,
       IReadOnlyList<ReservacionExtraDto> extras,
       IReadOnlyList<ReservacionPagoDto> pagos)
   {
-    var totalSuites = decimal.Round(suites.Sum(s => s.Precio), 2, MidpointRounding.ToEven);
-    var totalExtras = decimal.Round(extras.Sum(e => e.DiscountedPrice), 2, MidpointRounding.ToEven);
-    var subtotal = decimal.Round(totalSuites + totalExtras, 2, MidpointRounding.ToEven);
+    var totals = ReservacionTotalsCalculator.Calculate(
+      detail.CheckIn,
+      detail.CheckOut,
+      detail.Taxable,
+      suites.Sum(s => s.Precio),
+      extras.Sum(e => e.DiscountedPrice),
+      pagos.Sum(p => p.Monto));
 
-    var tax = 0m;
-    var ish = 0m;
-    if (detail.Taxable)
-    {
-      tax = decimal.Round(subtotal * 0.16m, 2, MidpointRounding.ToEven);
-      if (detail.CheckIn.HasValue && detail.CheckIn.Value.Year < 2025)
-      {
-        ish = decimal.Round(subtotal * 0.02m, 2, MidpointRounding.ToEven);
-      }
-    }
-
-    var totalReservacion = decimal.Round(subtotal + tax + ish, 2, MidpointRounding.ToEven);
-    var pagado = decimal.Round(pagos.Sum(p => p.Monto), 2, MidpointRounding.ToEven);
-    var porPagar = decimal.Round(totalReservacion - pagado, 2, MidpointRounding.ToEven);
-
-    var numNoches = 0;
-    if (detail.CheckIn.HasValue && detail.CheckOut.HasValue)
-    {
-      var inDate = detail.CheckIn.Value.Date;
-      var outDate = detail.CheckOut.Value.Date;
-      if (outDate >= inDate)
-      {
-        numNoches = (int)(outDate - inDate).TotalDays;
-      }
-    }
-
-    detail.TotalSuites = totalSuites;
-    detail.TotalExtras = totalExtras;
-    detail.SubTotal = subtotal;
-    detail.Tax = tax;
-    detail.Ish = ish;
-    detail.TotalPrice = totalReservacion;
-    detail.Pagado = pagado;
-    detail.PorPagar = porPagar;
-    detail.NumNoches = numNoches;
+    detail.TotalSuites = totals.TotalSuites;
+    detail.TotalExtras = totals.TotalExtras;
+    detail.SubTotal = totals.SubTotal;
+    detail.Tax = totals.Tax;
+    detail.Ish = totals.Ish;
+    detail.TotalPrice = totals.TotalReservacion;
+    detail.Pagado = totals.TotalPagado;
+    detail.PorPagar = totals.PorPagar;
+    detail.NumNoches = totals.NumNoches;
   }
 
   private static object? GetValue(IDictionary<string, object> row, string name)
@@ -1249,5 +1646,27 @@ WHERE ID = @Id
       "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       _ => "application/octet-stream"
     };
+  }
+
+  private sealed record OpenClawRequestedExtra(string CatalogName, int Quantity, string? Notes);
+  private sealed record OpenClawResolvedRoom(int Id, string RoomName, decimal BasePrice);
+  private sealed record OpenClawResolvedExtra(int RoomId, string RoomName, decimal UnitPrice, int Quantity, string? Notes);
+
+  private sealed class OpenClawRoomCatalogRow
+  {
+    public int Id { get; set; }
+    public string RoomName { get; set; } = string.Empty;
+    public string? RoomType { get; set; }
+    public decimal BasePrice { get; set; }
+  }
+
+  private sealed class OpenClawRoomCalendarRow
+  {
+    public int Id { get; set; }
+    public string Room { get; set; } = string.Empty;
+    public DateTime RoomDate { get; set; }
+    public bool IsLocked { get; set; }
+    public string LockedBy { get; set; } = string.Empty;
+    public decimal Precio { get; set; }
   }
 }

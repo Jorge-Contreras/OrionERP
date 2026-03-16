@@ -33,6 +33,12 @@
     .reservacion-linking-table tbody tr {
         cursor: pointer;
     }
+
+    .transaccion-lookup-results {
+        max-height: 18rem;
+        overflow-y: auto;
+        z-index: 1000;
+    }
 </style>
 
 
@@ -136,18 +142,36 @@ else if (Header is not null)
               <div class="row g-4">
                 <div class="col-12 col-xl-6">
                   <label class="form-label">Proyecto</label>
-                  <div class="input-group mb-2">
-                    <InputText class="form-control" @bind-Value="ProyectoSearchTerm" placeholder="Buscar por ID o descripción"
-                               @onkeydown="HandleProyectoSearchKeyDown" />
-                    <button class="btn btn-outline-secondary" type="button" @onclick="SearchProyectoOptions">Buscar</button>
-                  </div>
-                  <InputSelect class="form-select" @bind-Value="Header.ProyectoId">
-                    <option value="">Sin proyecto</option>
-                    @foreach (var proyecto in ProyectoOptions)
+                  <div class="position-relative">
+                    <input class="form-control"
+                           value="@ProyectoSearchTerm"
+                           placeholder="Buscar por ID o descripción"
+                           @oninput="OnProyectoSearchInput"
+                           @onkeydown="HandleProyectoSearchKeyDown"
+                           @onblur="OnProyectoSearchBlurAsync" />
+
+                    @if (ShowProyectoResults)
                     {
-                      <option value="@proyecto.Id">@proyecto.Display</option>
+                      <div class="list-group position-absolute w-100 shadow-sm transaccion-lookup-results">
+                        @if (ProyectoOptions.Count == 0)
+                        {
+                          <div class="list-group-item text-muted small">Sin resultados.</div>
+                        }
+                        else
+                        {
+                          @foreach (var proyecto in ProyectoOptions)
+                          {
+                            <button type="button"
+                                    class="list-group-item list-group-item-action"
+                                    @onmousedown="() => SelectProyecto(proyecto)"
+                                    @onmousedown:preventDefault="true">
+                              @GetProyectoOptionDisplay(proyecto)
+                            </button>
+                          }
+                        }
+                      </div>
                     }
-                  </InputSelect>
+                  </div>
                 </div>
                 <div class="col-12 col-xl-6">
                   <label class="form-label">Compra</label>

@@ -3,49 +3,9 @@
 @using OrionERP.Web.Shared
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
-<style>
-    .transaccion-header {
-        background-color: #FFD966;
-    }
-
-        /* Tighten vertical space between rows */
-        .transaccion-header .row.g-3,
-        .transaccion-header .row.g-4,
-        .transaccion-header .row.gy-4 {
-            --bs-gutter-y: 0.25rem;
-        }
-
-        /* Labels: normal black, small bottom margin */
-        .transaccion-header .form-label,
-        .transaccion-header .form-check-label {
-            color: #000;
-            margin-bottom: 0.15rem;
-        }
-
-        /* Make text inside controls bold */
-        .transaccion-header .form-control,
-        .transaccion-header .form-select,
-        .transaccion-header .form-control-plaintext,
-        .transaccion-header .input-group-text {
-            font-weight: 600; /* or 500 if you prefer slightly lighter */
-        }
-
-    .reservacion-linking-table tbody tr {
-        cursor: pointer;
-    }
-
-    .transaccion-lookup-results {
-        max-height: 18rem;
-        overflow-y: auto;
-        z-index: 1000;
-    }
-</style>
-
-
-
 <PageTitle>Transacción @Header?.DisplayFolio ?? Id.ToString(CultureInfo.InvariantCulture)</PageTitle>
 
-@if (IsLoading || Header is null || HeaderEditContext is null)
+@if (IsLoading)
 {
   <div class="orion-loading" role="status" aria-live="polite">
     <span class="orion-spinner" aria-hidden="true"></span>
@@ -58,7 +18,11 @@ else if (!string.IsNullOrEmpty(ErrorMessage))
     <strong>Error:</strong> @ErrorMessage
   </div>
 }
-else if (Header is not null)
+else if (Header is null || HeaderEditContext is null)
+{
+  <div class="alert alert-warning" role="alert">No se encontró la transacción solicitada.</div>
+}
+else
 {
   <div class="d-flex flex-column gap-3">
     <div class="card shadow-sm">
@@ -176,7 +140,10 @@ else if (Header is not null)
                 <div class="col-12 col-xl-6">
                   <label class="form-label">Compra</label>
                   <div class="input-group mb-2">
-                    <InputText class="form-control" @bind-Value="CompraSearchTerm" placeholder="Buscar por ID o descripción"
+                    <InputText class="form-control"
+                               @bind-Value="CompraSearchTerm"
+                               @bind-Value:event="oninput"
+                               placeholder="Buscar por ID o descripción"
                                @onkeydown="HandleCompraSearchKeyDown" />
                     <button class="btn btn-outline-secondary" type="button" @onclick="SearchCompraOptions">Buscar</button>
                   </div>
@@ -352,7 +319,7 @@ else if (Header is not null)
                   {
                     <tr class="@GetMovimientoRowClass(movimiento.item)" @onclick="() => OpenMovimientoModal(movimiento.item)">
                       <td>@(movimiento.index + 1)</td>
-                      <td>@movimiento.item.Nivel1.@movimiento.item.Nivel2.@movimiento.item.Nivel3</td>
+                      <td>@FormatCuentaCodigo(movimiento.item)</td>
                       <td>@movimiento.item.NombreCuenta</td>
                       <td>@movimiento.item.Concepto</td>
                       <td class="text-end">@movimiento.item.Debe.ToString("N2") </td>
@@ -962,11 +929,6 @@ else if (Header is not null)
       </div>
     </div>
   </div>
-  
-}
-else
-{
-  <div class="alert alert-warning" role="alert">No se encontró la transacción solicitada.</div>
 }
 
 @if (ShowMovimientoModal && MovimientoDraft is not null)

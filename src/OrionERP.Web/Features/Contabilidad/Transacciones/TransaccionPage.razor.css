@@ -1,0 +1,32 @@
+.transaccion-header {
+  background-color: #ffd966;
+}
+
+.transaccion-header .row.g-3,
+.transaccion-header .row.g-4,
+.transaccion-header .row.gy-4 {
+  --bs-gutter-y: 0.25rem;
+}
+
+.transaccion-header .form-label,
+.transaccion-header .form-check-label {
+  color: #000;
+  margin-bottom: 0.15rem;
+}
+
+.transaccion-header .form-control,
+.transaccion-header .form-select,
+.transaccion-header .form-control-plaintext,
+.transaccion-header .input-group-text {
+  font-weight: 600;
+}
+
+.reservacion-linking-table tbody tr {
+  cursor: pointer;
+}
+
+.transaccion-lookup-results {
+  max-height: 18rem;
+  overflow-y: auto;
+  z-index: 1000;
+}

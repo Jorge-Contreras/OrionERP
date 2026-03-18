@@ -171,6 +171,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     SelectedAccountId = accountId;
     LastProcessResult = null;
     SelectedMovimientoId = null;
+    await LoadPendingTransactionsAsync();
     await LoadMovementsAsync();
     await InvokeAsync(StateHasChanged);
   }
@@ -819,6 +820,7 @@ public partial class BancosPage : ComponentBase, IDisposable
       PendingTransactions.Clear();
       var rows = await BancosService.GetPendingTransactionsAsync(
           _currentRfc,
+          SelectedAccountId,
           SelectedYear,
           SelectedMonth,
           localCts.Token);

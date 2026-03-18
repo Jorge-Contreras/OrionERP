@@ -56,7 +56,9 @@
     {
         if (IsUnassignedPoliza)
         {
-            var url = $"/cfdi/LigarCFDI_Poliza/{Item.Comprobante_Id}";
+            var url = Item is DeclaracionComplementoBase complemento && complemento.DoctoRelacionado_Id.HasValue
+                ? $"/cfdi/LigarComplemento_Poliza/{complemento.DoctoRelacionado_Id.Value}"
+                : $"/cfdi/LigarCFDI_Poliza/{Item.Comprobante_Id}";
 
             try
             {

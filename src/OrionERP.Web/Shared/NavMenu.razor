@@ -10,7 +10,7 @@
 </div>
 
 <div class="@NavMenuCssClass navmenu-body">
-    <nav class="px-2" aria-label="Primary">
+    <nav class="px-2 nav-shell" aria-label="Primary">
         <ul class="nav flex-column gap-1" @onclick:stopPropagation>
             <li class="nav-section">General</li>
 
@@ -60,13 +60,13 @@
                 </NavLink>
             </li>
             <li class="nav-item">
-                <NavLink class="nav-link" href="/cfdi/registros-contables" title="Cargar XML">
+                <NavLink class="nav-link" href="/contabilidad/registros-contables" title="Registros contables">
                     <span class="oi oi-folder" aria-hidden="true"></span>
                     <span class="label">Registros Contables</span>
                 </NavLink>
             </li>
             <li class="nav-item">
-                <NavLink class="nav-link" href="/contabilidad/transacciones/list" title="Cargar XML">
+                <NavLink class="nav-link" href="/contabilidad/transacciones/list" title="Pólizas">
                     <span class="oi oi-layers" aria-hidden="true"></span>
                     <span class="label">Polizas</span>
                 </NavLink>
@@ -106,6 +106,20 @@
                 </NavLink>
             </li>
         </ul>
+
+        <AuthorizeView Roles="Administrador">
+            <ul class="nav flex-column gap-1 nav-admin" @onclick:stopPropagation>
+                <li class="nav-divider" role="separator" aria-hidden="true"></li>
+                <li class="nav-section">Administración</li>
+
+                <li class="nav-item">
+                    <NavLink class="nav-link" href="/admin/seguridad" title="Portal de seguridad">
+                        <span class="oi oi-lock-locked" aria-hidden="true"></span>
+                        <span class="label">Portal de Seguridad</span>
+                    </NavLink>
+                </li>
+            </ul>
+        </AuthorizeView>
     </nav>
 </div>
 

@@ -1,7 +1,8 @@
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.JSInterop;
+using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Web.Services;
 using OrionERP.Web.Shared;
@@ -12,11 +13,8 @@ using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.JSInterop;
-using OrionERP.Application.Features.Contabilidad.Bancos;
 
 namespace OrionERP.Web.Features.Contabilidad.Transacciones;
 
@@ -57,6 +55,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private static readonly NumberStyles CurrencyNumberStyles = NumberStyles.AllowThousands | NumberStyles.AllowDecimalPoint;
 
   private const long AttachmentMaxFileSize = TransaccionAttachmentCreateRequest.MaxFileSizeBytes;
+  private const decimal IvaRate = 0.16m;
+  private const decimal SubtotalDivisor = 1m + IvaRate;
   private const int ProyectoDescriptionMaxLength = 20;
 
   [Parameter] public int Id { get; set; }
@@ -64,7 +64,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   [Inject] public ITransaccionService TransaccionService { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
   [Inject] public IUserRfcState RfcState { get; set; } = default!;
-  [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
   [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
   [Inject] public NavigationManager NavManager { get; set; } = default!;
   [Inject] public IBancosService BancosService { get; set; } = default!;
@@ -178,8 +177,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected override void OnInitialized()
   {
-
-
     RfcState.Changed += OnRfcStateChanged;
   }
 
@@ -187,6 +184,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   {
     ApplyLookupFilter(CompraSearchTerm, _allCompraOptions, CompraOptions, Header?.CompraId);
   }
+
+  private string? ResolveLookupRfc()
+    => Normalize(Header?.Rfc) ?? Normalize(RfcState.CurrentRfc);
 
   protected void OnProyectoSearchInput(ChangeEventArgs args)
   {
@@ -267,6 +267,35 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   private async Task LoadLookupDataAsync(CancellationToken ct)
   {
+    ResetLookupData();
+
+    var currentRfc = ResolveLookupRfc();
+    var formasPagoTask = TransaccionService.GetFormasPagoAsync(ct);
+
+    if (!string.IsNullOrWhiteSpace(currentRfc))
+    {
+      var categoriasTask = TransaccionService.GetCategoriasAsync(currentRfc, ct);
+      var actividadesTask = TransaccionService.GetActividadesAsync(currentRfc, ct);
+      var comprasTask = TransaccionService.GetComprasAsync(currentRfc, ct);
+      var serviciosTask = TransaccionService.GetServiciosAsync(currentRfc, ct);
+      var nominasTask = TransaccionService.GetNominasAsync(currentRfc, ct);
+
+      await Task.WhenAll(formasPagoTask, categoriasTask, actividadesTask, comprasTask, serviciosTask, nominasTask);
+
+      CategoriaOptions.AddRange(await categoriasTask);
+      _allProyectoOptions.AddRange(await actividadesTask);
+      _allCompraOptions.AddRange(await comprasTask);
+      ServicioOptions.AddRange(await serviciosTask);
+      NominaOptions.AddRange(await nominasTask);
+    }
+
+    FormaPagoOptions.AddRange(await formasPagoTask);
+    SyncProyectoSearchTermWithSelection();
+    EnsureSelectedCompraOption();
+  }
+
+  private void ResetLookupData()
+  {
     CategoriaOptions.Clear();
     _allProyectoOptions.Clear();
     ProyectoOptions.Clear();
@@ -278,34 +307,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     ProyectoSearchTerm = string.Empty;
     CompraSearchTerm = string.Empty;
     ShowProyectoResults = false;
-
-    var currentRfc = RfcState.CurrentRfc;
-    if (string.IsNullOrWhiteSpace(currentRfc))
-    {
-      currentRfc = Header?.Rfc;
-    }
-    if (!string.IsNullOrWhiteSpace(currentRfc))
-    {
-      var categorias = await TransaccionService.GetCategoriasAsync(currentRfc, ct);
-      CategoriaOptions.AddRange(categorias);
-
-      var actividades = await TransaccionService.GetActividadesAsync(currentRfc, ct);
-      _allProyectoOptions.AddRange(actividades);
-      SyncProyectoSearchTermWithSelection();
-
-      var compras = await TransaccionService.GetComprasAsync(currentRfc, ct);
-      _allCompraOptions.AddRange(compras);
-      EnsureSelectedCompraOption();
-
-      var servicios = await TransaccionService.GetServiciosAsync(currentRfc, ct);
-      ServicioOptions.AddRange(servicios);
-
-      var nominas = await TransaccionService.GetNominasAsync(currentRfc, ct);
-      NominaOptions.AddRange(nominas);
-    }
-
-    var formasPago = await TransaccionService.GetFormasPagoAsync(ct);
-    FormaPagoOptions.AddRange(formasPago);
   }
 
   private void ApplyLookupFilter(string? searchTerm, List<LookupInt32Dto> source, List<LookupInt32Dto> target, int? selectedId)
@@ -483,6 +484,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   private async Task PerformLoadAsync()
   {
+    if (_isDisposed)
+    {
+      return;
+    }
+
     _loadCts?.Cancel();
     _loadCts?.Dispose();
     _loadCts = new CancellationTokenSource();
@@ -501,50 +507,17 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       var headerDto = await TransaccionService.GetHeaderAsync(Id, ct);
       if (headerDto is null)
       {
-        Header = null;
-        _headerOriginal = null;
-        Movimientos.Clear();
-        Attachments.Clear();
-        Comprobantes.Clear();
-        ReservacionLinks.Clear();
-        ReservacionCandidates.Clear();
-        ClearReservacionSelection();
-        Totals = new MovimientoTotalsDto();
-        ErrorMessage = "No se encontró la transacción solicitada.";
+        ResetLoadedState();
         return;
       }
 
-      Header = new TransaccionHeaderModel
-      {
-        Id = headerDto.Id,
-        Folio = headerDto.Id.ToString("0000", CultureInfo.InvariantCulture),
-        Rfc = headerDto.Rfc,
-        Fecha = headerDto.Fecha,
-        Cuenta = headerDto.Cuenta,
-        Concepto = headerDto.Concepto,
-        Monto = headerDto.Monto,
-        CategoriaId = headerDto.Categoria,
-        Facturado = headerDto.Facturado ?? false,
-        Referencia = headerDto.Referencia,
-        Memo = headerDto.Memo,
-        ProyectoId = headerDto.ProyectoId,
-        CompraId = headerDto.CompraId,
-        ServicioId = headerDto.ServicioId,
-        NominaId = headerDto.NominaId,
-        TipoPoliza = headerDto.TipoPoliza,
-        FormaPago = headerDto.FormaPago,
-        ComprobanteId = headerDto.ComprobanteId,
-        ComprobanteMonto = headerDto.ComprobanteMonto
-      };
+      Header = CreateHeaderModel(headerDto);
       UpdateMontoInputFromHeader();
       await LoadLookupDataAsync(ct);
       _headerOriginal = Header.Clone();
       HeaderEditContext = new EditContext(Header);
 
       await ReloadMovimientosAsync(ct);
-      SyncProyectoSearchTermWithSelection();
-      EnsureSelectedCompraOption();
-
       await ReloadAttachmentsAsync(ct);
       await ReloadComprobantesAsync(ct);
       await ReloadBancoMovimientosAsync(ct);
@@ -564,6 +537,47 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       IsLoading = false;
     }
   }
+
+  private void ResetLoadedState()
+  {
+    Header = null;
+    HeaderEditContext = null;
+    _headerOriginal = null;
+    _selectedComprobanteId = null;
+    Movimientos.Clear();
+    BancoMovimientos.Clear();
+    Attachments.Clear();
+    Comprobantes.Clear();
+    ReservacionLinks.Clear();
+    ReservacionCandidates.Clear();
+    Totals = new MovimientoTotalsDto();
+    ClearReservacionSelection();
+    CloseMovimientoModal();
+  }
+
+  private static TransaccionHeaderModel CreateHeaderModel(TransaccionHeaderDto headerDto)
+    => new()
+    {
+      Id = headerDto.Id,
+      Folio = headerDto.Id.ToString("0000", CultureInfo.InvariantCulture),
+      Rfc = headerDto.Rfc,
+      Fecha = headerDto.Fecha,
+      Cuenta = headerDto.Cuenta,
+      Concepto = headerDto.Concepto,
+      Monto = headerDto.Monto,
+      CategoriaId = headerDto.Categoria,
+      Facturado = headerDto.Facturado ?? false,
+      Referencia = headerDto.Referencia,
+      Memo = headerDto.Memo,
+      ProyectoId = headerDto.ProyectoId,
+      CompraId = headerDto.CompraId,
+      ServicioId = headerDto.ServicioId,
+      NominaId = headerDto.NominaId,
+      TipoPoliza = headerDto.TipoPoliza,
+      FormaPago = headerDto.FormaPago,
+      ComprobanteId = headerDto.ComprobanteId,
+      ComprobanteMonto = headerDto.ComprobanteMonto
+    };
 
   protected string GetMovimientoRowClass(MovimientoModel movimiento)
     => _movimientoTarget == movimiento ? "table-active" : string.Empty;
@@ -639,27 +653,24 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         FormaPago = Header.FormaPago!.Trim()
       };
 
-      var result = await TransaccionService.GuardarYCerrarAsync(request);
-      if (!result.Success)
+      var headerResult = await TransaccionService.GuardarYCerrarAsync(request);
+      if (!headerResult.Success)
       {
-        UiMessages.ShowError(result.Message ?? "No se pudo guardar la transacción.");
+        UiMessages.ShowError(headerResult.Message ?? "No se pudo guardar la transacción.");
         return;
       }
 
-      if (result.Totals is not null)
+      var movimientosResult = await GuardarMovimientosAsync(movimientosSnapshot);
+      await ReloadMovimientosAsync();
+      _headerOriginal = Header.Clone();
+
+      if (!movimientosResult.Success)
       {
-        Totals = result.Totals;
-        Header.Status = HeaderStatus;
+        UiMessages.ShowWarning($"La póliza se guardó, pero los movimientos no pudieron sincronizarse: {movimientosResult.Message}");
+        return;
       }
 
-      await GuardarMovimientosAsync(movimientosSnapshot);
-
-      Movimientos.Clear();
-      Movimientos.AddRange(movimientosSnapshot.Select(m => m.Clone()));
-      UpdateTotalsFromMovimientos();
-
-      _headerOriginal = Header.Clone();
-      UiMessages.ShowSuccess(result.Message ?? "Datos de la transacción guardados.");
+      UiMessages.ShowSuccess(headerResult.Message ?? "Datos de la transacción guardados.");
     }
     catch (Exception ex)
     {
@@ -716,16 +727,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
     }
 
-    bool confirm;
-    try
-    {
-      confirm = await JsRuntime.InvokeAsync<bool>("confirm", "¿Estas seguro que deseas aplicar esta plantilla a la poliza?");
-    }
-    catch
-    {
-      confirm = true;
-    }
-
+    var confirm = await ConfirmAsync("¿Estás seguro que deseas aplicar esta plantilla a la póliza?");
     if (!confirm)
       return;
 
@@ -945,57 +947,56 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected async Task SaveMovimientoAsync()
   {
-      if (MovimientoDraft is null || MovimientoEditContext is null || Header is null)
-          return;
+    if (MovimientoDraft is null || MovimientoEditContext is null || Header is null)
+      return;
 
-      if (!MovimientoEditContext.Validate())
-          return;
+    if (!MovimientoEditContext.Validate())
+      return;
 
-      if (_movimientoTarget is null)
-      {
-          MovimientoDraft.Id = Movimientos.Count == 0 ? 1 : Movimientos.Max(m => m.Id) + 1;
-          Movimientos.Add(MovimientoDraft.Clone());
-      }
-      else
-      {
-          _movimientoTarget.CopyFrom(MovimientoDraft);
-      }
+    if (_movimientoTarget is null)
+    {
+      MovimientoDraft.Id = Movimientos.Count == 0 ? 1 : Movimientos.Max(m => m.Id) + 1;
+      Movimientos.Add(MovimientoDraft.Clone());
+    }
+    else
+    {
+      _movimientoTarget.CopyFrom(MovimientoDraft);
+    }
 
-      UpdateTotalsFromMovimientos();
+    UpdateTotalsFromMovimientos();
 
-      UiMessages.ShowSuccess("Movimiento guardado.");
-      CloseMovimientoModal();
-      await InvokeAsync(StateHasChanged);
+    UiMessages.ShowSuccess("Movimiento guardado.");
+    CloseMovimientoModal();
+    await InvokeAsync(StateHasChanged);
   }
 
-  private async Task GuardarMovimientosAsync(IReadOnlyList<MovimientoModel>? movimientos = null)
+  private async Task<TransaccionCommandResult> GuardarMovimientosAsync(IReadOnlyList<MovimientoModel>? movimientos = null)
   {
-      if (Header is null) return;
+    if (Header is null)
+    {
+      return TransaccionCommandResult.Fail("No se encontró la transacción actual.");
+    }
 
-      var movimientosToSave = movimientos ?? Movimientos;
+    var movimientosToSave = movimientos ?? Movimientos;
 
-      var request = new TransaccionMovimientosUpdateRequest
+    var request = new TransaccionMovimientosUpdateRequest
+    {
+      TransaccionId = Header.Id,
+      Movimientos = movimientosToSave.Select(m => new TransaccionMovimientoUpdateItem
       {
-          TransaccionId = Header.Id,
-          Movimientos = movimientosToSave.Select(m => new TransaccionMovimientoUpdateItem
-          {
-              Id = m.Id,
-              CuentaId = m.CuentaId,
-              Nivel1 = m.Nivel1,
-              Nivel2 = m.Nivel2,
-              Nivel3 = m.Nivel3,
-              NombreCuenta = m.NombreCuenta,
-              Concepto = m.Concepto,
-              Debe = m.Debe,
-              Haber = m.Haber
-          }).ToList()
-      };
+        Id = m.Id,
+        CuentaId = m.CuentaId,
+        Nivel1 = m.Nivel1,
+        Nivel2 = m.Nivel2,
+        Nivel3 = m.Nivel3,
+        NombreCuenta = m.NombreCuenta,
+        Concepto = m.Concepto,
+        Debe = m.Debe,
+        Haber = m.Haber
+      }).ToList()
+    };
 
-      var result = await TransaccionService.GuardarMovimientosAsync(request);
-      if (!result.Success)
-      {
-          UiMessages.ShowError(result.Message ?? "No se pudieron guardar los movimientos.");
-      }
+    return await TransaccionService.GuardarMovimientosAsync(request);
   }
 
   protected void CopyMontoToDebe()
@@ -1082,6 +1083,21 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected static string FormatNivelValue(string? value)
     => string.IsNullOrWhiteSpace(value) ? "-" : value;
 
+  protected static string FormatCuentaCodigo(MovimientoModel movimiento)
+  {
+    if (movimiento is null)
+    {
+      return "-";
+    }
+
+    var segments = new[] { movimiento.Nivel1, movimiento.Nivel2, movimiento.Nivel3 }
+      .Where(segment => !string.IsNullOrWhiteSpace(segment))
+      .Select(segment => segment!.Trim())
+      .ToArray();
+
+    return segments.Length == 0 ? "-" : string.Join('.', segments);
+  }
+
   private void NotifyMovimientoFieldChanged(string propertyName)
   {
     if (MovimientoDraft is null || MovimientoEditContext is null)
@@ -1092,13 +1108,16 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   private static decimal CalculateSubtotal(decimal amount)
     => amount == 0m
-       ? 0m
-       : decimal.Round(amount / 1.16m, 2, MidpointRounding.AwayFromZero);
+      ? 0m
+      : RoundCurrencyAmount(amount / SubtotalDivisor);
 
   private static decimal CalculateIva(decimal amount)
     => amount == 0m
-       ? 0m
-       : decimal.Round(amount * 0.16m, 2, MidpointRounding.AwayFromZero);
+      ? 0m
+      : RoundCurrencyAmount(amount - CalculateSubtotal(amount));
+
+  private static decimal RoundCurrencyAmount(decimal amount)
+    => decimal.Round(amount, 2, MidpointRounding.AwayFromZero);
 
   private CuentaContableSelection? CreateCuentaSelectionFromMovimiento(MovimientoModel movimiento)
   {
@@ -1133,48 +1152,56 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       Haber = totalHaber
     };
 
-    if (Header is not null)
-    {
-      Header.Status = HeaderStatus;
-    }
+    UpdateHeaderStatus();
   }
 
   private async Task ReloadMovimientosAsync(CancellationToken ct = default)
   {
     Movimientos.Clear();
     var movimientosDto = await TransaccionService.GetMovimientosAsync(Id, ct);
-    Movimientos.AddRange(movimientosDto.Select(m => new MovimientoModel
-    {
-      Id = m.Id,
-      Nivel1 = m.Nivel1,
-      Nivel2 = m.Nivel2,
-      Nivel3 = m.Nivel3,
-      NombreCuenta = m.NombreCuenta,
-      Descripcion = m.NombreCuenta,
-      Concepto = m.Concepto,
-      Debe = m.Debe,
-      Haber = m.Haber
-    }));
+    Movimientos.AddRange(movimientosDto.Select(MapMovimiento));
 
     Totals = await TransaccionService.GetMovimientoTotalsAsync(Id, ct);
-    if (Header is not null)
-    {
-      Header.Status = HeaderStatus;
-    }
+    UpdateHeaderStatus();
   }
 
   private async Task ReloadAttachmentsAsync(CancellationToken ct = default)
   {
     Attachments.Clear();
     var attachmentsDto = await TransaccionService.GetAttachmentsAsync(Id, ct);
-    Attachments.AddRange(attachmentsDto.Select(a => new AttachmentModel
-    {
-      Id = a.Id,
-      Nombre = string.IsNullOrWhiteSpace(a.AttachmentName) ? $"Adjunto {a.Id}" : a.AttachmentName!,
-      Extension = string.IsNullOrWhiteSpace(a.AttachmentExtension) ? "-" : a.AttachmentExtension!,
-      TamanoBytes = a.Length ?? 0
-    }));
+    Attachments.AddRange(attachmentsDto.Select(MapAttachment));
   }
+
+  private void UpdateHeaderStatus()
+  {
+    if (Header is not null)
+    {
+      Header.Status = HeaderStatus;
+    }
+  }
+
+  private static MovimientoModel MapMovimiento(TransaccionMovimientoDto movimiento)
+    => new()
+    {
+      Id = movimiento.Id,
+      Nivel1 = movimiento.Nivel1,
+      Nivel2 = movimiento.Nivel2,
+      Nivel3 = movimiento.Nivel3,
+      NombreCuenta = movimiento.NombreCuenta,
+      Descripcion = movimiento.NombreCuenta,
+      Concepto = movimiento.Concepto,
+      Debe = movimiento.Debe,
+      Haber = movimiento.Haber
+    };
+
+  private static AttachmentModel MapAttachment(TransaccionAttachmentDto attachment)
+    => new()
+    {
+      Id = attachment.Id,
+      Nombre = string.IsNullOrWhiteSpace(attachment.AttachmentName) ? $"Adjunto {attachment.Id}" : attachment.AttachmentName!,
+      Extension = string.IsNullOrWhiteSpace(attachment.AttachmentExtension) ? "-" : attachment.AttachmentExtension!,
+      TamanoBytes = attachment.Length ?? 0
+    };
 
   private async Task ReloadComprobantesAsync(CancellationToken ct = default)
   {
@@ -1912,16 +1939,10 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     if (movimiento is null || Header is null)
       return;
 
-    bool confirm;
-    try
-    {
-      confirm = await JsRuntime.InvokeAsync<bool>("confirm", $"¿Deseas eliminar el movimiento '{movimiento.NombreCuenta}'?");
-    }
-    catch
-    {
-      confirm = true;
-    }
-
+    var movementName = string.IsNullOrWhiteSpace(movimiento.NombreCuenta)
+      ? movimiento.Concepto ?? "seleccionado"
+      : movimiento.NombreCuenta;
+    var confirm = await ConfirmAsync($"¿Deseas eliminar el movimiento '{movementName}'?");
     if (!confirm)
       return;
 
@@ -1949,32 +1970,28 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   {
     if (Header is null || args.FileCount == 0)
     {
-      _attachmentInputKey++;
-      await InvokeAsync(StateHasChanged);
+      await ResetAttachmentInputAsync();
       return;
     }
 
     var file = args.File;
     if (file is null)
     {
-      _attachmentInputKey++;
-      await InvokeAsync(StateHasChanged);
+      await ResetAttachmentInputAsync();
       return;
     }
 
     if (file.Size == 0)
     {
       UiMessages.ShowError("El archivo seleccionado está vacío.");
-      _attachmentInputKey++;
-      await InvokeAsync(StateHasChanged);
+      await ResetAttachmentInputAsync();
       return;
     }
 
     if (file.Size > AttachmentMaxFileSize)
     {
       UiMessages.ShowError("El archivo excede el tamaño máximo permitido (5 MB).");
-      _attachmentInputKey++;
-      await InvokeAsync(StateHasChanged);
+      await ResetAttachmentInputAsync();
       return;
     }
 
@@ -2018,9 +2035,14 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     finally
     {
       IsUploadingAttachment = false;
-      _attachmentInputKey++;
-      await InvokeAsync(StateHasChanged);
+      await ResetAttachmentInputAsync();
     }
+  }
+
+  private async Task ResetAttachmentInputAsync()
+  {
+    _attachmentInputKey++;
+    await InvokeAsync(StateHasChanged);
   }
 
   protected async Task DeleteTransaccionAsync()
@@ -2074,16 +2096,25 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     GC.SuppressFinalize(this);
   }
 
-  private async void OnRfcStateChanged()
+  private void OnRfcStateChanged()
   {
     if (_isDisposed)
-      return;
-
-    await InvokeAsync(async () =>
     {
-      await PerformLoadAsync();
-      StateHasChanged();
-    });
+      return;
+    }
+
+    _ = InvokeAsync(HandleRfcStateChangedAsync);
+  }
+
+  private async Task HandleRfcStateChangedAsync()
+  {
+    if (_isDisposed)
+    {
+      return;
+    }
+
+    await PerformLoadAsync();
+    StateHasChanged();
   }
 
   protected sealed class TransaccionHeaderModel

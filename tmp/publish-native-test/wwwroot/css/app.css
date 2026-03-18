@@ -1,0 +1,5 @@
+/* app.css — central entry point for shared styles. Import utilities and
+   component-level styles; keep only page-specific layout tweaks here. */
+
+@import 'utilities.css';
+@import 'tables.css';

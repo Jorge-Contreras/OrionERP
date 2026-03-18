@@ -1,0 +1,135 @@
+/* tables.css — table-specific styling built on shared utilities. Keep
+   component rules for data grids here; rely on utilities.css for tokens. */
+
+/* Compact, readable table tuned for numbers — DENSE */
+.compact-table {
+  table-layout: auto; /* size columns by intrinsic content */
+  white-space: nowrap; /* prevent wrapping so width = longest cell */
+  font-family: var(--orion-font-family, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif);
+  font-size: 12.5px; /* compact but readable */
+  line-height: 1.18; /* tighter line-height to reduce row height */
+  color: var(--orion-color-text);
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+  /* Keep cells very tight (min row height) */
+  .compact-table th,
+  .compact-table td {
+    padding: 4px 8px;
+    vertical-align: middle; /* avoid extra height from baseline alignment */
+    background-color: var(--orion-color-surface);
+  }
+
+  .compact-table thead th {
+    background: linear-gradient(180deg, rgba(15, 45, 78, 0.08) 0%, rgba(15, 45, 78, 0.02) 100%);
+    color: var(--orion-color-primary);
+    font-weight: 600;
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--orion-color-border-strong);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  .compact-table tbody td {
+    border-bottom: 1px solid rgba(15, 45, 78, 0.06);
+  }
+
+  /* Right-align numbers and make them line up better */
+  .compact-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums; /* monospaced digits for columns of numbers */
+  }
+
+  /* Make any controls inside cells compact too (so they don't stretch rows) */
+  .compact-table .btn {
+    padding: 2px 6px;
+    line-height: 1.1;
+    font-size: 11.5px;
+    border-radius: 6px;
+  }
+
+  .compact-table .form-control,
+  .compact-table .form-select,
+  .compact-table input,
+  .compact-table select {
+    padding: 2px 6px;
+    line-height: 1.1;
+    font-size: 12px;
+    height: auto; /* prevent Bootstrap from imposing a taller height */
+  }
+
+/* Ensure horizontal scroll on all sizes */
+.table-scroll {
+  overflow-x: auto;
+  width: 100%;
+}
+
+/* Selected row: visible, no layout shift */
+.compact-table tbody tr.table-active td,
+.compact-table tbody tr.selected td {
+  background: linear-gradient(90deg, rgba(31, 138, 174, 0.18) 0%, rgba(214, 236, 245, 0.32) 100%) !important;
+  color: var(--orion-color-primary);
+  transition: background-color .15s ease, color .15s ease;
+}
+
+  /* Left accent bar without adding a column */
+  .compact-table tbody tr.table-active td:first-child,
+  .compact-table tbody tr.selected td:first-child {
+    box-shadow: inset 4px 0 0 0 var(--orion-color-accent);
+    font-weight: 600;
+  }
+
+
+/* Keep striped hover, but make non-selected rows subtle */
+.compact-table tbody tr:hover:not(.table-active):not(.selected) {
+  background-color: rgba(15, 45, 78, 0.06);
+}
+
+/* Ensure buttons are still neat inside selection */
+.compact-table tbody tr.table-active .btn,
+.compact-table tbody tr.selected .btn {
+  background-clip: padding-box; /* avoids weird borders on yellow bg */
+  color: var(--orion-color-primary);
+}
+
+/* Optional: stronger contrast for users who prefer more contrast */
+@media (prefers-contrast: more) {
+  .compact-table tbody tr.table-active,
+  .compact-table tbody tr.selected {
+    background: linear-gradient(90deg, rgba(31, 138, 174, 0.35) 0%, rgba(13, 70, 96, 0.45) 100%) !important;
+    color: #0b2036;
+  }
+}
+
+
+/* Totals row: strong, readable emphasis */
+.compact-table tfoot.totals td {
+  background: var(--totals-bg, rgba(245, 196, 83, 0.15)) !important;
+  color: var(--totals-text, var(--orion-color-primary));
+  font-weight: 700 !important; /* all cells bold */
+  border-top: 2px solid var(--totals-border, rgba(245, 196, 83, 0.65));
+}
+
+  /* Left accent without adding a new column */
+  .compact-table tfoot.totals td:first-child {
+    box-shadow: inset 4px 0 0 0 var(--totals-accent, var(--orion-color-highlight));
+  }
+
+/* Sticky column helper */
+.sticky-col {
+  position: sticky;
+  left: 0;
+  background-color: inherit;
+  z-index: 1;
+  box-shadow: 6px 0 12px rgba(15, 45, 78, 0.08);
+}
+
+.sticky-col + .sticky-col {
+  box-shadow: none;
+}
+
+

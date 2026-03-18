@@ -1,0 +1,605 @@
+@page "/admin/seguridad"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Administrador")]
+
+<PageTitle>Portal de Seguridad</PageTitle>
+
+<div class="identity-admin-page">
+    <section class="identity-hero card">
+        <div class="identity-hero__content">
+            <p class="identity-hero__eyebrow">OrionERP · ASP.NET Identity</p>
+            <h1>Portal de administración de acceso</h1>
+            <p class="identity-hero__summary">
+                Controla usuarios, roles, claims y asignaciones sobre <code>[auth].[AspNetUsers]</code>,
+                <code>[auth].[AspNetRoles]</code>, <code>[auth].[AspNetRoleClaims]</code> y tablas relacionadas
+                desde una sola vista operativa.
+            </p>
+        </div>
+        <div class="identity-hero__actions">
+            <button class="btn btn-light identity-hero__button" @onclick="RefreshAsync" disabled="@IsRefreshing">
+                @(IsRefreshing ? "Actualizando..." : "Actualizar")
+            </button>
+            <div class="identity-hero__meta">
+                <span class="identity-hero__badge">Solo Administrador</span>
+                <span class="identity-hero__timestamp">
+                    @(LastRefreshedAt is null ? "Sin sincronizar" : $"Actualizado {LastRefreshedAt.Value.LocalDateTime:dd/MM/yyyy HH:mm}")
+                </span>
+            </div>
+        </div>
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(LoadError))
+    {
+        <div class="alert alert-danger identity-inline-alert" role="alert">
+            <strong>Error al cargar el portal:</strong> @LoadError
+        </div>
+    }
+
+    @if (Snapshot is null)
+    {
+        <section class="identity-loading card">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p>Cargando seguridad, roles y claims...</p>
+        </section>
+    }
+    else
+    {
+        <section class="identity-metrics">
+            <article class="metric-card">
+                <span class="metric-card__label">Usuarios</span>
+                <strong class="metric-card__value">@Snapshot.Metrics.UserCount</strong>
+                <span class="metric-card__detail">@Snapshot.Metrics.LockedUserCount bloqueados actualmente</span>
+            </article>
+            <article class="metric-card">
+                <span class="metric-card__label">Roles</span>
+                <strong class="metric-card__value">@Snapshot.Metrics.RoleCount</strong>
+                <span class="metric-card__detail">@Snapshot.Metrics.UserRoleCount asignaciones activas</span>
+            </article>
+            <article class="metric-card">
+                <span class="metric-card__label">Role Claims</span>
+                <strong class="metric-card__value">@Snapshot.Metrics.RoleClaimCount</strong>
+                <span class="metric-card__detail">Permisos estructurados por rol</span>
+            </article>
+            <article class="metric-card">
+                <span class="metric-card__label">User Claims</span>
+                <strong class="metric-card__value">@Snapshot.Metrics.UserClaimCount</strong>
+                <span class="metric-card__detail">Excepciones y accesos por usuario</span>
+            </article>
+            <article class="metric-card">
+                <span class="metric-card__label">Logins externos</span>
+                <strong class="metric-card__value">@Snapshot.Metrics.LoginCount</strong>
+                <span class="metric-card__detail">Proveedores enlazados</span>
+            </article>
+            <article class="metric-card">
+                <span class="metric-card__label">Tokens</span>
+                <strong class="metric-card__value">@Snapshot.Metrics.TokenCount</strong>
+                <span class="metric-card__detail">Mostrados con valor oculto</span>
+            </article>
+        </section>
+
+        <section class="identity-shell card">
+            <header class="identity-shell__header">
+                <div class="identity-tabbar" role="tablist" aria-label="Modo de administración">
+                    <button type="button"
+                            class="identity-tab @(ActiveTab == IdentityAdminTab.Users ? "active" : null)"
+                            @onclick="() => SetActiveTabAsync(IdentityAdminTab.Users)">
+                        Usuarios
+                        <span class="identity-tab__count">@Snapshot.Users.Count</span>
+                    </button>
+                    <button type="button"
+                            class="identity-tab @(ActiveTab == IdentityAdminTab.Roles ? "active" : null)"
+                            @onclick="() => SetActiveTabAsync(IdentityAdminTab.Roles)">
+                        Roles
+                        <span class="identity-tab__count">@Snapshot.Roles.Count</span>
+                    </button>
+                </div>
+                <div class="identity-shell__hint">
+                    @if (ActiveTab == IdentityAdminTab.Users)
+                    {
+                        <span>CRUD de <code>AspNetUsers</code>, <code>AspNetUserClaims</code> y <code>AspNetUserRoles</code>.</span>
+                    }
+                    else
+                    {
+                        <span>CRUD de <code>AspNetRoles</code> y <code>AspNetRoleClaims</code>.</span>
+                    }
+                </div>
+            </header>
+
+            <div class="identity-shell__grid">
+                <aside class="browser-pane">
+                    @if (ActiveTab == IdentityAdminTab.Users)
+                    {
+                        <div class="browser-pane__toolbar">
+                            <label class="browser-pane__search">
+                                <span class="visually-hidden">Buscar usuarios</span>
+                                <input class="form-control" type="search" placeholder="Buscar por usuario, correo o rol" @bind="UserSearch" @bind:event="oninput" />
+                            </label>
+                            <button type="button" class="btn btn-primary" @onclick="CreateNewUser">Nuevo usuario</button>
+                        </div>
+
+                        <div class="browser-pane__list" role="list" aria-label="Usuarios">
+                            @if (!FilteredUsers.Any())
+                            {
+                                <div class="browser-pane__empty">
+                                    No hay usuarios que coincidan con el filtro actual.
+                                </div>
+                            }
+                            else
+                            {
+                                @foreach (var user in FilteredUsers)
+                                {
+                                    <button type="button"
+                                            class="browser-item @(string.Equals(user.Id, SelectedUserId, StringComparison.OrdinalIgnoreCase) && !UserForm.IsNew ? "active" : null)"
+                                            @onclick="() => SelectUserAsync(user.Id)">
+                                        <div class="browser-item__title-row">
+                                            <strong>@user.UserName</strong>
+                                            @if (user.IsLocked)
+                                            {
+                                                <span class="state-pill danger">Bloqueado</span>
+                                            }
+                                        </div>
+                                        <div class="browser-item__meta">@(string.IsNullOrWhiteSpace(user.Email) ? "Sin correo" : user.Email)</div>
+                                        <div class="browser-item__meta">Claims: @user.ClaimCount · Logins: @user.LoginCount · Tokens: @user.TokenCount</div>
+                                        <div class="tag-strip">
+                                            @if (user.Roles.Count == 0)
+                                            {
+                                                <span class="tag neutral">Sin roles</span>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var roleName in user.Roles)
+                                                {
+                                                    <span class="tag">@roleName</span>
+                                                }
+                                            }
+                                        </div>
+                                    </button>
+                                }
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="browser-pane__toolbar">
+                            <label class="browser-pane__search">
+                                <span class="visually-hidden">Buscar roles</span>
+                                <input class="form-control" type="search" placeholder="Buscar roles" @bind="RoleSearch" @bind:event="oninput" />
+                            </label>
+                            <button type="button" class="btn btn-primary" @onclick="CreateNewRole">Nuevo rol</button>
+                        </div>
+
+                        <div class="browser-pane__list" role="list" aria-label="Roles">
+                            @if (!FilteredRoles.Any())
+                            {
+                                <div class="browser-pane__empty">
+                                    No hay roles que coincidan con el filtro actual.
+                                </div>
+                            }
+                            else
+                            {
+                                @foreach (var role in FilteredRoles)
+                                {
+                                    <button type="button"
+                                            class="browser-item @(string.Equals(role.Id, SelectedRoleId, StringComparison.OrdinalIgnoreCase) && !RoleForm.IsNew ? "active" : null)"
+                                            @onclick="() => SelectRoleAsync(role.Id)">
+                                        <div class="browser-item__title-row">
+                                            <strong>@role.Name</strong>
+                                            @if (string.Equals(role.Name, "Administrador", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <span class="state-pill info">Protegido</span>
+                                            }
+                                        </div>
+                                        <div class="browser-item__meta">@role.UserCount usuarios asignados</div>
+                                        <div class="browser-item__meta">@role.ClaimCount claims de rol</div>
+                                    </button>
+                                }
+                            }
+                        </div>
+                    }
+                </aside>
+
+                <div class="editor-pane">
+                    @if (ActiveTab == IdentityAdminTab.Users)
+                    {
+                        <section class="editor-shell">
+                            <header class="editor-shell__header">
+                                <div>
+                                    <p class="editor-shell__eyebrow">Usuarios y membresias</p>
+                                    <h2>@UserForm.DisplayName</h2>
+                                    <p class="editor-shell__summary">
+                                        Edita los datos base del usuario, sus claims individuales y su membresia a roles del esquema de autenticación.
+                                    </p>
+                                </div>
+                                <div class="editor-shell__actions">
+                                    <button class="btn btn-primary" @onclick="SaveUserAsync" disabled="@IsUserBusy">
+                                        @(IsSavingUser ? "Guardando..." : "Guardar usuario")
+                                    </button>
+                                    <button class="btn btn-outline-danger" @onclick="DeleteUserAsync" disabled="@(!CanDeleteSelectedUser)">
+                                        @(IsDeletingUser ? "Eliminando..." : "Eliminar usuario")
+                                    </button>
+                                </div>
+                            </header>
+
+                            <div class="editor-grid">
+                                <section class="panel-card">
+                                    <div class="panel-card__header">
+                                        <h3>Cuenta</h3>
+                                        <span class="panel-card__badge">@((UserForm.IsNew ? "Nuevo registro" : "Registro existente"))</span>
+                                    </div>
+
+                                    <div class="field-grid">
+                                        <label class="field">
+                                            <span>Usuario</span>
+                                            <input class="form-control" type="text" @bind="UserForm.UserName" />
+                                        </label>
+                                        <label class="field">
+                                            <span>Correo</span>
+                                            <input class="form-control" type="email" @bind="UserForm.Email" />
+                                        </label>
+                                        <label class="field">
+                                            <span>Teléfono</span>
+                                            <input class="form-control" type="tel" @bind="UserForm.PhoneNumber" />
+                                        </label>
+                                        <label class="field">
+                                            <span>EmployeeId</span>
+                                            <input class="form-control" type="number" @bind="UserForm.EmployeeIdInput" />
+                                        </label>
+                                        @if (UserForm.IsNew)
+                                        {
+                                            <label class="field field-span-2">
+                                                <span>Contraseña inicial</span>
+                                                <input class="form-control" type="password" @bind="UserForm.NewPassword" placeholder="Obligatoria al crear" />
+                                                <small class="field-help">Mínimo 8 caracteres, al menos 1 dígito y 1 minúscula.</small>
+                                            </label>
+                                        }
+                                    </div>
+                                </section>
+
+                                <section class="panel-card">
+                                    <div class="panel-card__header">
+                                        <h3>Seguridad</h3>
+                                        <span class="panel-card__badge">Estado y control</span>
+                                    </div>
+
+                                    <div class="toggle-list">
+                                        <label class="toggle">
+                                            <input type="checkbox" @bind="UserForm.EmailConfirmed" />
+                                            <span>Correo confirmado</span>
+                                        </label>
+                                        <label class="toggle">
+                                            <input type="checkbox" @bind="UserForm.PhoneNumberConfirmed" />
+                                            <span>Teléfono confirmado</span>
+                                        </label>
+                                        <label class="toggle">
+                                            <input type="checkbox" @bind="UserForm.TwoFactorEnabled" />
+                                            <span>Two-factor habilitado</span>
+                                        </label>
+                                        <label class="toggle">
+                                            <input type="checkbox" @bind="UserForm.LockoutEnabled" />
+                                            <span>Permitir lockout</span>
+                                        </label>
+                                    </div>
+
+                                    <label class="field">
+                                        <span>Bloqueado hasta</span>
+                                        <input class="form-control"
+                                               type="datetime-local"
+                                               value="@UserForm.LockoutEndInput"
+                                               @onchange="args => UserForm.LockoutEndInput = args.Value?.ToString() ?? string.Empty"
+                                               disabled="@(!UserForm.LockoutEnabled)" />
+                                    </label>
+
+                                    <div class="security-stats">
+                                        <div>
+                                            <span>Intentos fallidos</span>
+                                            <strong>@UserForm.AccessFailedCount</strong>
+                                        </div>
+                                        <div>
+                                            <span>Estado</span>
+                                            <strong>@(string.IsNullOrWhiteSpace(UserForm.LockoutEndInput) ? "Activo" : "Con ventana de bloqueo")</strong>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                @if (!UserForm.IsNew)
+                                {
+                                    <section class="panel-card">
+                                        <div class="panel-card__header">
+                                            <h3>Reset manual de contraseña</h3>
+                                            <span class="panel-card__badge">Administrador</span>
+                                        </div>
+
+                                        <p class="password-reset__hint">
+                                            Define una contraseña temporal para este usuario sin mezclar el cambio con la edición del perfil.
+                                        </p>
+
+                                        <div class="field-grid">
+                                            <label class="field">
+                                                <span>Nueva contraseña temporal</span>
+                                                <input class="form-control" type="password" @bind="UserForm.PasswordResetInput" />
+                                            </label>
+                                            <label class="field">
+                                                <span>Confirmar contraseña</span>
+                                                <input class="form-control" type="password" @bind="UserForm.PasswordResetConfirmInput" />
+                                            </label>
+                                        </div>
+
+                                        <div class="password-reset__policy">
+                                            <strong>Política actual:</strong> mínimo 8 caracteres, al menos 1 dígito y 1 minúscula.
+                                        </div>
+
+                                        <div class="password-reset__actions">
+                                            <button type="button"
+                                                    class="btn btn-outline-secondary"
+                                                    @onclick="GenerateTemporaryPasswordForSelectedUser"
+                                                    disabled="@IsUserBusy">
+                                                Generar temporal
+                                            </button>
+                                            <button type="button"
+                                                    class="btn btn-warning"
+                                                    @onclick="ResetUserPasswordAsync"
+                                                    disabled="@IsUserBusy">
+                                                @(IsResettingPassword ? "Restableciendo..." : "Restablecer contraseña")
+                                            </button>
+                                        </div>
+                                    </section>
+                                }
+
+                                <section class="panel-card panel-span-2">
+                                    <div class="panel-card__header">
+                                        <h3>Roles asignados</h3>
+                                        <span class="panel-card__badge">@UserForm.AssignedRoles.Count seleccionados</span>
+                                    </div>
+
+                                    <div class="selection-grid">
+                                        @if (Snapshot.Roles.Count == 0)
+                                        {
+                                            <div class="browser-pane__empty">No existen roles disponibles todavía.</div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var role in Snapshot.Roles)
+                                            {
+                                                <label class="selection-chip @((UserForm.AssignedRoles.Contains(role.Name) ? "selected" : null))">
+                                                    <input type="checkbox"
+                                                           checked="@UserForm.AssignedRoles.Contains(role.Name)"
+                                                           @onchange="args => ToggleUserRole(role.Name, args)" />
+                                                    <span>@role.Name</span>
+                                                    <small>@role.ClaimCount claims</small>
+                                                </label>
+                                            }
+                                        }
+                                    </div>
+                                </section>
+
+                                <section class="panel-card panel-span-2">
+                                    <div class="panel-card__header">
+                                        <h3>Claims del usuario</h3>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AddUserClaim">Agregar claim</button>
+                                    </div>
+
+                                    @if (UserForm.Claims.Count == 0)
+                                    {
+                                        <div class="browser-pane__empty">Este usuario no tiene claims directos.</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="claim-list">
+                                            @foreach (var claim in UserForm.Claims)
+                                            {
+                                                <div class="claim-row" @key="claim.Key">
+                                                    <label class="field">
+                                                        <span>ClaimType</span>
+                                                        <input class="form-control" type="text" @bind="claim.ClaimType" />
+                                                    </label>
+                                                    <label class="field">
+                                                        <span>ClaimValue</span>
+                                                        <input class="form-control" type="text" @bind="claim.ClaimValue" />
+                                                    </label>
+                                                    <button type="button" class="btn btn-outline-danger claim-row__delete" @onclick="@(() => RemoveUserClaim(claim.Key))">
+                                                        Quitar
+                                                    </button>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </section>
+
+                                <section class="panel-card panel-span-2">
+                                    <div class="panel-card__header">
+                                        <h3>Diagnóstico de autenticación</h3>
+                                        <span class="panel-card__badge">Lectura operativa</span>
+                                    </div>
+
+                                    <div class="diagnostic-grid">
+                                        <div class="diagnostic-card">
+                                            <h4>External logins</h4>
+                                            @if (UserForm.Logins.Count == 0)
+                                            {
+                                                <p class="browser-pane__empty">Sin logins externos asociados.</p>
+                                            }
+                                            else
+                                            {
+                                                <table class="table table-sm align-middle">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Provider</th>
+                                                            <th>Display</th>
+                                                            <th>Key</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var login in UserForm.Logins)
+                                                        {
+                                                            <tr>
+                                                                <td>@login.LoginProvider</td>
+                                                                <td>@(string.IsNullOrWhiteSpace(login.ProviderDisplayName) ? "N/A" : login.ProviderDisplayName)</td>
+                                                                <td><code>@login.ProviderKey</code></td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            }
+                                        </div>
+
+                                        <div class="diagnostic-card">
+                                            <h4>User tokens</h4>
+                                            @if (UserForm.Tokens.Count == 0)
+                                            {
+                                                <p class="browser-pane__empty">Sin tokens registrados.</p>
+                                            }
+                                            else
+                                            {
+                                                <table class="table table-sm align-middle">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Provider</th>
+                                                            <th>Name</th>
+                                                            <th>Valor</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var token in UserForm.Tokens)
+                                                        {
+                                                            <tr>
+                                                                <td>@token.LoginProvider</td>
+                                                                <td>@token.Name</td>
+                                                                <td>
+                                                                    @if (token.HasValue)
+                                                                    {
+                                                                        <span>@token.ValuePreview</span>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span class="text-muted">Vacío</span>
+                                                                    }
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            }
+                                        </div>
+                                    </div>
+                                </section>
+                            </div>
+                        </section>
+                    }
+                    else
+                    {
+                        <section class="editor-shell">
+                            <header class="editor-shell__header">
+                                <div>
+                                    <p class="editor-shell__eyebrow">Roles y policy claims</p>
+                                    <h2>@RoleForm.DisplayName</h2>
+                                    <p class="editor-shell__summary">
+                                        Gestiona la definición del rol y los claims que heredan todos los usuarios asignados.
+                                    </p>
+                                </div>
+                                <div class="editor-shell__actions">
+                                    <button class="btn btn-primary" @onclick="SaveRoleAsync" disabled="@IsRoleBusy">
+                                        @(IsSavingRole ? "Guardando..." : "Guardar rol")
+                                    </button>
+                                    <button class="btn btn-outline-danger" @onclick="DeleteRoleAsync" disabled="@(!CanDeleteSelectedRole)">
+                                        @(IsDeletingRole ? "Eliminando..." : "Eliminar rol")
+                                    </button>
+                                </div>
+                            </header>
+
+                            <div class="editor-grid">
+                                <section class="panel-card">
+                                    <div class="panel-card__header">
+                                        <h3>Definición</h3>
+                                        <span class="panel-card__badge">@((RoleForm.IsNew ? "Nuevo rol" : "Rol existente"))</span>
+                                    </div>
+
+                                    <label class="field">
+                                        <span>Nombre del rol</span>
+                                        <input class="form-control" type="text" @bind="RoleForm.Name" />
+                                    </label>
+                                </section>
+
+                                <section class="panel-card">
+                                    <div class="panel-card__header">
+                                        <h3>Impacto</h3>
+                                        <span class="panel-card__badge">Resumen</span>
+                                    </div>
+
+                                    <div class="security-stats">
+                                        <div>
+                                            <span>Usuarios asignados</span>
+                                            <strong>@RoleForm.Users.Count</strong>
+                                        </div>
+                                        <div>
+                                            <span>Claims configurados</span>
+                                            <strong>@RoleForm.Claims.Count</strong>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <section class="panel-card panel-span-2">
+                                    <div class="panel-card__header">
+                                        <h3>Claims del rol</h3>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AddRoleClaim">Agregar claim</button>
+                                    </div>
+
+                                    @if (RoleForm.Claims.Count == 0)
+                                    {
+                                        <div class="browser-pane__empty">Este rol no tiene claims configurados.</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="claim-list">
+                                            @foreach (var claim in RoleForm.Claims)
+                                            {
+                                                <div class="claim-row" @key="claim.Key">
+                                                    <label class="field">
+                                                        <span>ClaimType</span>
+                                                        <input class="form-control" type="text" @bind="claim.ClaimType" />
+                                                    </label>
+                                                    <label class="field">
+                                                        <span>ClaimValue</span>
+                                                        <input class="form-control" type="text" @bind="claim.ClaimValue" />
+                                                    </label>
+                                                    <button type="button" class="btn btn-outline-danger claim-row__delete" @onclick="@(() => RemoveRoleClaim(claim.Key))">
+                                                        Quitar
+                                                    </button>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </section>
+
+                                <section class="panel-card panel-span-2">
+                                    <div class="panel-card__header">
+                                        <h3>Usuarios asignados</h3>
+                                        <span class="panel-card__badge">Referencia rápida</span>
+                                    </div>
+
+                                    @if (RoleForm.Users.Count == 0)
+                                    {
+                                        <div class="browser-pane__empty">No hay usuarios asignados a este rol.</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="role-user-grid">
+                                            @foreach (var user in RoleForm.Users)
+                                            {
+                                                <button type="button" class="role-user-card" @onclick="() => SelectUserAsync(user.Id)">
+                                                    <strong>@user.UserName</strong>
+                                                    <span>@(string.IsNullOrWhiteSpace(user.Email) ? "Sin correo" : user.Email)</span>
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                </section>
+                            </div>
+                        </section>
+                    }
+                </div>
+            </div>
+        </section>
+    }
+</div>

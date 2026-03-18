@@ -37,6 +37,17 @@
   max-width: 280px;
 }
 
+.nav-shell {
+  min-height: calc(100vh - 5.75rem);
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-admin {
+  margin-top: auto;
+  padding-top: .5rem;
+}
+
 /* ---- Section headings & divider ---- */
 .nav-section {
   margin: .75rem .25rem .25rem;
@@ -205,5 +216,4 @@
   transform: scale(1.02);
   transition: transform .15s ease;
 }
-
 

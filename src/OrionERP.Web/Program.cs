@@ -47,9 +47,10 @@ builder.Configuration
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true);
 
-// (Optional) In Development you can enable User Secrets by uncommenting the next two lines
-// if (builder.Environment.IsDevelopment())
-//     builder.Configuration.AddUserSecrets<Program>(optional: true);
+if (builder.Environment.IsDevelopment())
+{
+  builder.Configuration.AddUserSecrets<Program>(optional: true);
+}
 
 // Only allow platform env vars if needed; these WILL NOT include ConnectionStrings__*
 // Remove these two lines if you want to block env vars entirely.
@@ -158,6 +159,7 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddRazorPages();      // Identity UI depends on Razor Pages
 builder.Services.AddServerSideBlazor();
 builder.Services.Configure<OpenClawApiOptions>(builder.Configuration.GetSection(OpenClawApiOptions.SectionName));
+builder.Services.Configure<GraphMailOptions>(builder.Configuration.GetSection(GraphMailOptions.SectionName));
 
 builder.Services.AddSingleton<WeatherForecastService>();
 builder.Services.AddCfdiCargarXmlSat();

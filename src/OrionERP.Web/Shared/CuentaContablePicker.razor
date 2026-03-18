@@ -1,6 +1,6 @@
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Web
-@using OrionERP.Application.Features.Cfdi.ContabilidadRegistros
+@using OrionERP.Application.Features.Contabilidad.ContabilidadRegistros
 @using OrionERP.Web.State
 
 <div class="row g-3 align-items-end">
@@ -23,7 +23,6 @@
             <thead>
               <tr>
                 <th>Id</th>
-                <th>RFC</th>
                 <th>Nivel1</th>
                 <th>Descripción</th>
               </tr>
@@ -591,7 +590,7 @@
     return trimmed;
   }
 
-  private void ShowCreateNivel3Modal()
+    private void ShowCreateNivel3Modal()
     {
         isEditingNivel3 = false;
         nivel3Model = new CuentasContablesDto();
@@ -601,7 +600,7 @@
     private void ShowEditNivel3Modal(CuentasContablesDto item)
     {
         isEditingNivel3 = true;
-        nivel3Model = item;
+        nivel3Model = item with { };
         showNivel3Modal = true;
     }
 
@@ -612,35 +611,42 @@
 
     private async Task SaveNivel3()
     {
-        if (isEditingNivel3)
+        try
         {
-            await CuentasRepository.UpdateNivel3DescripcionAsync(nivel3Model.Id, nivel3Model.Descripcion);
-        }
-        else
-        {
-          if (string.IsNullOrWhiteSpace(RfcState.CurrentRfc)
-              || string.IsNullOrWhiteSpace(currentSelection.Nivel1)
-              || string.IsNullOrWhiteSpace(currentSelection.Nivel2))
-          {
-              await NotifyErrorAsync("Selecciona una cuenta de nivel 1 y nivel 2 antes de crear un nivel 3.");
-              return;
-          }
-
-          var newId = await CuentasRepository.CreateNivel3Async(
-              RfcState.CurrentRfc,
-              currentSelection.Nivel1!,
-              currentSelection.Nivel2!,
-              nivel3Model.Nivel3,
-              nivel3Model.Descripcion);
-
-            if (newId == -1)
+            if (isEditingNivel3)
             {
-                await NotifyErrorAsync("El Nivel 3 ya existe.");
-                return;
+                await CuentasRepository.UpdateNivel3DescripcionAsync(nivel3Model.Id, nivel3Model.Descripcion);
             }
-        }
+            else
+            {
+              if (string.IsNullOrWhiteSpace(currentRfc)
+                  || string.IsNullOrWhiteSpace(currentSelection.Nivel1)
+                  || string.IsNullOrWhiteSpace(currentSelection.Nivel2))
+              {
+                  await NotifyErrorAsync("Selecciona una cuenta de nivel 1 y nivel 2 antes de crear un nivel 3.");
+                  return;
+              }
 
-        CloseNivel3Modal();
-        await SearchNivel3Async(loadDefaults: true);
+              var newId = await CuentasRepository.CreateNivel3Async(
+                  currentRfc,
+                  currentSelection.Nivel1!,
+                  currentSelection.Nivel2!,
+                  nivel3Model.Nivel3,
+                  nivel3Model.Descripcion);
+
+                if (newId == -1)
+                {
+                    await NotifyErrorAsync("El Nivel 3 ya existe.");
+                    return;
+                }
+            }
+
+            CloseNivel3Modal();
+            await SearchNivel3Async(loadDefaults: true);
+        }
+        catch (Exception ex)
+        {
+            await NotifyErrorAsync("No se pudo guardar el nivel 3.", ex);
+        }
     }
 }

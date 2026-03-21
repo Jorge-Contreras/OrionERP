@@ -38,8 +38,7 @@
     <div class="filter-pair">
         <label class="fw-bold">Periodo:</label>
         <select @bind="selectedMonth" @bind:after="OnFiltersChangedAsync"
-                class="form-select inline-select"
-                style="@((isAnnual ? "opacity:0.5;" : ""))"
+                class="form-select inline-select @(isAnnual ? "declaracion-filter-disabled" : null)"
                 disabled="@isAnnual">
             @if (disponibleMonths != null)
             {

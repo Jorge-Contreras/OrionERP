@@ -1,0 +1,125 @@
+[
+  {
+    "viewport": "desktop",
+    "slug": "home",
+    "screenshot": "desktop-home.png",
+    "url": "/",
+    "title": "OrionERP.Web",
+    "heading": "¡Bienvenido a OrionERP!",
+    "hasHorizontalOverflow": false,
+    "docWidth": 1440,
+    "viewportWidth": 1440,
+    "activeAlerts": []
+  },
+  {
+    "viewport": "desktop",
+    "slug": "hoja-trabajo",
+    "screenshot": "desktop-hoja-trabajo.png",
+    "url": "/ReportesFinancieros/HojaTrabajo",
+    "title": "Hoja de Trabajo IVA / ISR",
+    "heading": "Hoja de Trabajo IVA / ISR",
+    "hasHorizontalOverflow": false,
+    "docWidth": 1440,
+    "viewportWidth": 1440,
+    "activeAlerts": []
+  },
+  {
+    "viewport": "desktop",
+    "slug": "balanza",
+    "screenshot": "desktop-balanza.png",
+    "url": "/ReportesFinancieros/BalanzaComprobacion",
+    "title": "Balanza de Comprobación",
+    "heading": "Balanza de Comprobación",
+    "hasHorizontalOverflow": false,
+    "docWidth": 1440,
+    "viewportWidth": 1440,
+    "activeAlerts": []
+  },
+  {
+    "viewport": "desktop",
+    "slug": "estado-pg",
+    "screenshot": "desktop-estado-pg.png",
+    "url": "/ReportesFinancieros/EstadoPerdidasGanancias",
+    "title": "Estado de Pérdidas y Ganancias",
+    "heading": "Estado de Pérdidas y Ganancias",
+    "hasHorizontalOverflow": false,
+    "docWidth": 1440,
+    "viewportWidth": 1440,
+    "activeAlerts": []
+  },
+  {
+    "viewport": "desktop",
+    "slug": "bancos",
+    "screenshot": "desktop-bancos.png",
+    "url": "/contabilidad/Bancos",
+    "title": "Bancos – Cuentas y Movimientos",
+    "heading": "Bancos – Cuentas y Movimientos",
+    "hasHorizontalOverflow": false,
+    "docWidth": 1440,
+    "viewportWidth": 1440,
+    "activeAlerts": [
+      "No hay transacciones pendientes por ligar.",
+      "No hay movimientos para los filtros seleccionados."
+    ]
+  },
+  {
+    "viewport": "desktop",
+    "slug": "reservaciones-lista",
+    "screenshot": "desktop-reservaciones-lista.png",
+    "url": "/reservaciones/lista",
+    "title": "Lista de Reservaciones",
+    "heading": null,
+    "hasHorizontalOverflow": false,
+    "docWidth": 1440,
+    "viewportWidth": 1440,
+    "activeAlerts": []
+  },
+  {
+    "viewport": "mobile",
+    "slug": "home",
+    "screenshot": "mobile-home.png",
+    "url": "/",
+    "title": "OrionERP.Web",
+    "heading": "¡Bienvenido a OrionERP!",
+    "hasHorizontalOverflow": false,
+    "docWidth": 390,
+    "viewportWidth": 390,
+    "activeAlerts": []
+  },
+  {
+    "viewport": "mobile",
+    "slug": "hoja-trabajo",
+    "screenshot": "mobile-hoja-trabajo.png",
+    "url": "/ReportesFinancieros/HojaTrabajo",
+    "title": "Hoja de Trabajo IVA / ISR",
+    "heading": "Hoja de Trabajo IVA / ISR",
+    "hasHorizontalOverflow": false,
+    "docWidth": 390,
+    "viewportWidth": 390,
+    "activeAlerts": []
+  },
+  {
+    "viewport": "mobile",
+    "slug": "balanza",
+    "screenshot": "mobile-balanza.png",
+    "url": "/ReportesFinancieros/BalanzaComprobacion",
+    "title": "Balanza de Comprobación",
+    "heading": "Balanza de Comprobación",
+    "hasHorizontalOverflow": false,
+    "docWidth": 390,
+    "viewportWidth": 390,
+    "activeAlerts": []
+  },
+  {
+    "viewport": "mobile",
+    "slug": "reservaciones-lista",
+    "screenshot": "mobile-reservaciones-lista.png",
+    "url": "/reservaciones/lista",
+    "title": "Lista de Reservaciones",
+    "heading": null,
+    "hasHorizontalOverflow": false,
+    "docWidth": 390,
+    "viewportWidth": 390,
+    "activeAlerts": []
+  }
+]

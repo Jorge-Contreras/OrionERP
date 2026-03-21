@@ -1,22 +1,21 @@
-
 @inherits LayoutComponentBase
 @using OrionERP.Web.Services
 @inject IUiMessageService MessageService
 
 <PageTitle>OrionERP.Web</PageTitle>
 
-<div class="page">
-    <div class="sidebar">
+<div class="page app-shell">
+    <div class="sidebar app-shell__sidebar">
         <NavMenu />
     </div>
 
-    <main>
-        <div class="top-row px-4 align-items-center d-flex justify-content-between">
+    <main class="app-shell__main">
+        <div class="top-row app-shell__topbar">
             <SecurityHeader />
         </div>
 
         <NotificationBanner />
-        <article>
+        <article class="app-shell__content">
             <ErrorBoundary>
                 <ChildContent>
                     @Body

@@ -6,19 +6,17 @@
 
 <PageTitle>Balanza de Comprobación</PageTitle>
 
-<div class="balanza-page">
-
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="m-0">Balanza de Comprobación</h1>
+<div class="report-page balanza-page">
+    <div class="report-page__header">
+        <h1 class="report-page__title">Balanza de Comprobación</h1>
     </div>
 
-    <!-- FILTROS -->
-    <div class="card mb-3 no-print">
+    <div class="card report-panel report-panel--filters no-print">
         <div class="card-body">
-            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+            <div class="report-toolbar">
                 <div class="flex-grow-1">
-                    <h6 class="mb-1">Filtros</h6>
-                    <div class="text-muted small mb-3">
+                    <h2 class="report-panel__title">Filtros</h2>
+                    <div class="report-panel__subtitle mb-3">
                         Configure el periodo y RFC para generar la balanza.
                     </div>
 
@@ -61,14 +59,6 @@
 
                         <div class="col-12 col-md-4">
                             <label class="form-label small text-muted">RFC</label>
-
-                            <!-- Si ya tienes un picker reutilizable, úsalo aquí -->
-                            <!-- Ejemplo esperado por el code-behind -->
-                            <!--
-                            <RfcPicker SelectedRfc="CurrentRfc"
-                                       SelectedRfcChanged="OnRfcChangedFromPicker" />
-                            -->
-                            <!-- Fallback simple -->
                             <input class="form-control"
                                    value="@CurrentRfc"
                                    @onchange="async e => await OnRfcChangedFromPicker(e.Value?.ToString())" />
@@ -76,7 +66,7 @@
                     </div>
                 </div>
 
-                <div class="d-flex gap-2">
+                <div class="report-toolbar__actions">
                     <button class="btn btn-primary"
                             @onclick="RefreshAsync"
                             disabled="@IsLoading">
@@ -93,22 +83,18 @@
         </div>
     </div>
 
-    <!-- RESULTADOS -->
-    <div id="balanza-comprobacion-print-root" class="card">
+    <div id="balanza-comprobacion-print-root" class="card report-panel report-panel--results">
         <div class="card-body">
-
-            <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="report-toolbar">
                 <div>
-                    <h6 class="mb-0">Resultados</h6>
+                    <h2 class="report-panel__title">Resultados</h2>
                     @if (!string.IsNullOrWhiteSpace(CurrentRfc) && !string.IsNullOrWhiteSpace(PeriodoDescripcion))
                     {
-                        <div class="small text-muted">
+                        <div class="report-context">
                             RFC: @CurrentRfc &nbsp;&nbsp; Periodo: @PeriodoDescripcion
                         </div>
                     }
                 </div>
-
-                
             </div>
 
             @if (IsLoading)
@@ -125,14 +111,12 @@
             }
             else
             {
-                <!-- ESTA ES LA ZONA QUE VAMOS A IMPRIMIR -->
                 <div id="balanza-print">
-
-                    <div class="table-responsive">
-                        <table id="balanza-comprobacion-table" class="table table-sm table-bordered align-middle balanza-table">
+                    <div class="table-responsive report-table-shell">
+                        <table id="balanza-comprobacion-table" class="table table-sm table-bordered align-middle compact-table report-table balanza-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="min-width: 340px;">CUENTA</th>
+                                    <th class="balanza-table__account-col">CUENTA</th>
                                     <th class="text-end">DEBE ANT.</th>
                                     <th class="text-end">HABER ANT.</th>
                                     <th class="text-end">SALDO INICIAL</th>
@@ -145,10 +129,9 @@
                             <tbody>
                                 @foreach (var row in OrderedRows)
                                 {
-                                    <tr class="@GetRowClass(row)"
+                                    <tr class="@($"{GetRowClass(row)} report-table__row-clickable".Trim())"
                                         @onclick="() => SelectRow(row)"
-                                        @ondblclick="() => GoToContabilidadRegistros(row)"
-                                        style="cursor: pointer;">
+                                        @ondblclick="() => GoToContabilidadRegistros(row)">
                                         <td class="@GetIndentClass(row)">
                                             @GetCuentaDescripcion(row)
                                         </td>
@@ -164,94 +147,8 @@
                             </tbody>
                         </table>
                     </div>
-
                 </div>
             }
         </div>
     </div>
 </div>
-
-
-
-<style>
-    /* Base cell padding, optional */
-    .balanza-table td {
-        padding-right: .5rem; /* keep nice right padding */
-    }
-
-        /* Stronger selectors than Bootstrap */
-        .balanza-table td.balanza-indent-1 {
-            padding-left: .25rem;
-        }
-
-        .balanza-table td.balanza-indent-2 {
-            padding-left: 1.25rem;
-        }
-
-        .balanza-table td.balanza-indent-3 {
-            padding-left: 2.25rem;
-        }
-
-    /* Peso visual por jerarquía */
-    .level-1 td {
-        font-weight: 700;
-        background: #f8f9fa;
-    }
-
-    .level-2 td {
-        font-weight: 600;
-        background: #fcfcfd;
-    }
-
-    .level-3 td {
-        font-weight: 400;
-    }
-
-    .balanza-table tr.balanza-row-selected td {
-        background: #dbeafe;
-    }
-
-    .balanza-table th, .balanza-table td {
-        white-space: nowrap;
-    }
-
-    /* Impresión */
-    @@media print {
-        .no-print
-
-    {
-        display: none !important;
-    }
-
-    /* Oculta TODO excepto el contenedor de impresión */
-    body * {
-        visibility: hidden !important;
-    }
-
-    #balanza-print, #balanza-print * {
-        visibility: visible !important;
-    }
-
-    #balanza-print {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-    }
-
-    /* Evita recortes por responsive wrapper */
-    .table-responsive {
-        overflow: visible !important;
-    }
-
-    table {
-        width: 100% !important;
-    }
-
-    th, td {
-        font-size: 11px;
-    }
-
-       
-    }
-   </style>

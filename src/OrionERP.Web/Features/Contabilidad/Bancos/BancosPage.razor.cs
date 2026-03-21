@@ -742,16 +742,19 @@ public partial class BancosPage : ComponentBase, IDisposable
 
   private async Task LoadMovementsAsync()
   {
-    if (string.IsNullOrWhiteSpace(_currentRfc))
-    {
-      Movements.Clear();
-      SelectedMovimientoId = null;
-      return;
-    }
-
     var previousCts = _movementsCts;
     previousCts?.Cancel();
     previousCts?.Dispose();
+
+    if (string.IsNullOrWhiteSpace(_currentRfc) || !SelectedAccountId.HasValue)
+    {
+      _movementsCts = null;
+      Movements.Clear();
+      SelectedMovimientoId = null;
+      IsLoadingMovements = false;
+      await InvokeAsync(StateHasChanged);
+      return;
+    }
 
     _movementsCts = new CancellationTokenSource();
     var localCts = _movementsCts;

@@ -2,72 +2,83 @@
 @using OrionERP.Application.Features.Cfdi.HtmlCFDI
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
-<h3>CFDI en HTML</h3>
-
-<div class="mb-2">
-    <button class="btn btn-link p-0" type="button" @onclick="TogglePolizas" aria-expanded="@(!IsPolizasCollapsed)" aria-controls="polizasSection">
-        <strong>POLIZAS</strong>
-        <span class="ml-2">@(!IsPolizasCollapsed ? "▲" : "▼")</span>
-    </button>
-</div>
-
-@if (!IsPolizasCollapsed)
-{
-    <div id="polizasSection" class="mb-3">
-        @if (IsPolizasLoading)
-        {
-            <div class="alert alert-info">Cargando pólizas...</div>
-        }
-        else if (Polizas.Count == 0)
-        {
-            <div class="alert alert-secondary">No hay pólizas vinculadas a este CFDI.</div>
-        }
-        else
-        {
-            <table class="table table-striped mt-2">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Fecha</th>
-                        <th>Concepto</th>
-                        <th>Monto</th>
-                        <th>Monto Asignado</th>
-                        <th>Tipo de Póliza</th>
-                        <th>Forma de Pago</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var poliza in Polizas)
-                    {
-                        <tr>
-                            <td>@poliza.Id</td>
-                            <td>@poliza.Fecha.ToShortDateString()</td>
-                            <td>@poliza.Concepto</td>
-                            <td>@poliza.Monto</td>
-                            <td>@poliza.MontoAsignado</td>
-                            <td>@poliza.TipoPoliza</td>
-                            <td>@poliza.FormaPago</td>
-                            <td>
-                                <a href="/contabilidad/transacciones/@poliza.Id" class="btn btn-sm btn-primary">Ver/Editar</a>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td colspan="3"></td>
-                        <td><strong>Total:</strong></td>
-                        <td>@TotalMontoAsignado</td>
-                        <td colspan="2"></td>
-                    </tr>
-                </tfoot>
-            </table>
-        }
+<div class="cfdi-page">
+    <div class="cfdi-page-heading">
+        <h3 class="cfdi-page-title">CFDI en HTML</h3>
+        <div class="cfdi-meta">Adjunto #@Id</div>
     </div>
-}
 
-<div class="mb-3 text-muted">Adjunto #@Id</div>
+    <section class="card cfdi-card">
+        <div class="card-header">
+            <button class="btn btn-link p-0 cfdi-section-toggle"
+                    type="button"
+                    @onclick="TogglePolizas"
+                    aria-expanded="@(!IsPolizasCollapsed)"
+                    aria-controls="polizasSection">
+                <span class="cfdi-section-title">Pólizas vinculadas</span>
+                <span class="cfdi-toggle-icon">@(!IsPolizasCollapsed ? "▲" : "▼")</span>
+            </button>
+        </div>
+
+        @if (!IsPolizasCollapsed)
+        {
+            <div id="polizasSection" class="card-body">
+                @if (IsPolizasLoading)
+                {
+                    <div class="alert alert-info mb-0">Cargando pólizas...</div>
+                }
+                else if (Polizas.Count == 0)
+                {
+                    <div class="alert alert-secondary mb-0">No hay pólizas vinculadas a este CFDI.</div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-striped cfdi-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Fecha</th>
+                                    <th>Concepto</th>
+                                    <th>Monto</th>
+                                    <th>Monto Asignado</th>
+                                    <th>Tipo de Póliza</th>
+                                    <th>Forma de Pago</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var poliza in Polizas)
+                                {
+                                    <tr>
+                                        <td>@poliza.Id</td>
+                                        <td>@poliza.Fecha.ToShortDateString()</td>
+                                        <td>@poliza.Concepto</td>
+                                        <td>@poliza.Monto</td>
+                                        <td>@poliza.MontoAsignado</td>
+                                        <td>@poliza.TipoPoliza</td>
+                                        <td>@poliza.FormaPago</td>
+                                        <td>
+                                            <a href="/contabilidad/transacciones/@poliza.Id" class="btn btn-sm btn-primary">Ver/Editar</a>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="3"></td>
+                                    <td><strong>Total:</strong></td>
+                                    <td>@TotalMontoAsignado</td>
+                                    <td colspan="2"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+    </section>
+</div>
 
 @if (IsLoading)
 {

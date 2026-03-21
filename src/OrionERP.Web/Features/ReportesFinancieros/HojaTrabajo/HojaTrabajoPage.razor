@@ -4,35 +4,48 @@
 
 <PageTitle>Hoja de Trabajo IVA / ISR</PageTitle>
 
-<h1 class="mb-4">Hoja de Trabajo IVA / ISR</h1>
+<div class="report-page hoja-trabajo-page">
+    <div class="report-page__header">
+        <h1 class="report-page__title">Hoja de Trabajo IVA / ISR</h1>
+    </div>
 
-<div class="d-flex flex-column gap-4">
-    <section aria-labelledby="filtros-heading" class="card">
+    <section aria-labelledby="filtros-heading" class="card report-panel report-panel--filters">
         <div class="card-body">
-            <h2 id="filtros-heading" class="h5">Filtros</h2>
-            <div class="d-flex flex-row flex-wrap align-items-center gap-3">
+            <div class="report-panel__header">
                 <div>
+                    <h2 id="filtros-heading" class="report-panel__title">Filtros</h2>
+                    <p class="report-panel__subtitle">Selecciona el año de trabajo y confirma el RFC activo antes de exportar.</p>
+                </div>
+            </div>
+
+            <div class="d-flex flex-row flex-wrap gap-3 report-filter-row">
+                <div class="report-filter-field">
                     <label class="form-label" for="anio-selector">Año</label>
-                    <select id="anio-selector" class="form-select" style="width: 120px;" @bind="Anio">
+                    <select id="anio-selector" class="form-select report-filter-select--year" @bind="Anio">
                         @for (var year = 2040; year >= 1990; year--)
                         {
                             <option value="@year">@year</option>
                         }
                     </select>
                 </div>
-                <div>
+
+                <div class="report-filter-field hoja-trabajo-page__rfc-field">
                     <label class="form-label">RFC actual</label>
-                    <input type="text" class="form-control" value="@CurrentRfc" readOnly style="font-weight: 600;" />
+                    <input type="text" class="form-control report-field--readonly" value="@CurrentRfc" readOnly />
                 </div>
             </div>
         </div>
     </section>
 
-    <section aria-labelledby="hoja-trabajo-heading" class="card">
+    <section aria-labelledby="hoja-trabajo-heading" class="card report-panel report-panel--results">
         <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h2 id="hoja-trabajo-heading" class="h5 mb-0">Hoja de trabajo IVA / ISR</h2>
-                <div class="btn-group" role="group" aria-label="Exportar a Excel">
+            <div class="report-toolbar">
+                <div>
+                    <h2 id="hoja-trabajo-heading" class="report-panel__title">Hoja de trabajo IVA / ISR</h2>
+                    <p class="report-panel__subtitle">Cada pestaña conserva su propia selección para facilitar la revisión mensual.</p>
+                </div>
+
+                <div class="btn-group report-toolbar__actions" role="group" aria-label="Exportar a Excel">
                     <button class="btn btn-outline-primary btn-sm" @onclick='() => ExportToExcel(JS, HojaTrabajoCfdi, "CFDIs")' disabled="@(IsExporting || IsLoading || HojaTrabajoCfdi.Count == 0)">
                         <i class="bi bi-file-excel"></i> Exportar CFDIs
                     </button>
@@ -100,8 +113,8 @@
                         }
                         else
                         {
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered">
+                            <div class="table-responsive report-table-shell">
+                                <table class="table table-sm table-bordered compact-table report-table hoja-trabajo-table">
                                     <thead class="table-light">
                                         <tr>
                                             <th>Descripción</th>
@@ -122,7 +135,7 @@
                                     <tbody>
                                         @foreach (var row in HojaTrabajoCfdi)
                                         {
-                                            <tr class="@GetRowClass(row, HojaTrabajoCfdi, HojaTrabajoTab.Cfdi)" @onclick="() => SelectRow(row, HojaTrabajoTab.Cfdi)" style="cursor: pointer;">
+                                            <tr class="report-table__row-clickable @GetRowClass(row, HojaTrabajoCfdi, HojaTrabajoTab.Cfdi)" @onclick="() => SelectRow(row, HojaTrabajoTab.Cfdi)">
                                                 <td>@row.Descripcion</td>
                                                 @for (var i = 0; i < 12; i++)
                                                 {
@@ -135,6 +148,7 @@
                             </div>
                         }
                     </div>
+
                     <div class="tab-pane fade @(ActiveTab == HojaTrabajoTab.Complementos ? "show active" : string.Empty)">
                         @if (HojaTrabajoComplementos.Count == 0)
                         {
@@ -142,8 +156,8 @@
                         }
                         else
                         {
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered">
+                            <div class="table-responsive report-table-shell">
+                                <table class="table table-sm table-bordered compact-table report-table hoja-trabajo-table">
                                     <thead class="table-light">
                                         <tr>
                                             <th>Descripción</th>
@@ -164,7 +178,7 @@
                                     <tbody>
                                         @foreach (var row in HojaTrabajoComplementos)
                                         {
-                                            <tr class="@GetRowClass(row, HojaTrabajoComplementos, HojaTrabajoTab.Complementos)" @onclick="() => SelectRow(row, HojaTrabajoTab.Complementos)" style="cursor: pointer;">
+                                            <tr class="report-table__row-clickable @GetRowClass(row, HojaTrabajoComplementos, HojaTrabajoTab.Complementos)" @onclick="() => SelectRow(row, HojaTrabajoTab.Complementos)">
                                                 <td>@row.Descripcion</td>
                                                 @for (var i = 0; i < 12; i++)
                                                 {
@@ -177,6 +191,7 @@
                             </div>
                         }
                     </div>
+
                     <div class="tab-pane fade @(ActiveTab == HojaTrabajoTab.TipoE ? "show active" : string.Empty)">
                         @if (HojaTrabajoTipoE.Count == 0)
                         {
@@ -184,8 +199,8 @@
                         }
                         else
                         {
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered">
+                            <div class="table-responsive report-table-shell">
+                                <table class="table table-sm table-bordered compact-table report-table hoja-trabajo-table">
                                     <thead class="table-light">
                                         <tr>
                                             <th>Descripción</th>
@@ -206,7 +221,7 @@
                                     <tbody>
                                         @foreach (var row in HojaTrabajoTipoE)
                                         {
-                                            <tr class="@GetRowClass(row, HojaTrabajoTipoE, HojaTrabajoTab.TipoE)" @onclick="() => SelectRow(row, HojaTrabajoTab.TipoE)" style="cursor: pointer;">
+                                            <tr class="report-table__row-clickable @GetRowClass(row, HojaTrabajoTipoE, HojaTrabajoTab.TipoE)" @onclick="() => SelectRow(row, HojaTrabajoTab.TipoE)">
                                                 <td>@row.Descripcion</td>
                                                 @for (var i = 0; i < 12; i++)
                                                 {
@@ -219,6 +234,7 @@
                             </div>
                         }
                     </div>
+
                     <div class="tab-pane fade @(ActiveTab == HojaTrabajoTab.TipoN ? "show active" : string.Empty)">
                         @if (HojaTrabajoTipoN.Count == 0)
                         {
@@ -226,8 +242,8 @@
                         }
                         else
                         {
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered">
+                            <div class="table-responsive report-table-shell">
+                                <table class="table table-sm table-bordered compact-table report-table hoja-trabajo-table">
                                     <thead class="table-light">
                                         <tr>
                                             <th>Descripción</th>
@@ -248,7 +264,7 @@
                                     <tbody>
                                         @foreach (var row in HojaTrabajoTipoN)
                                         {
-                                            <tr class="@GetRowClass(row, HojaTrabajoTipoN, HojaTrabajoTab.TipoN)" @onclick="() => SelectRow(row, HojaTrabajoTab.TipoN)" style="cursor: pointer;">
+                                            <tr class="report-table__row-clickable @GetRowClass(row, HojaTrabajoTipoN, HojaTrabajoTab.TipoN)" @onclick="() => SelectRow(row, HojaTrabajoTab.TipoN)">
                                                 <td>@row.Descripcion</td>
                                                 @for (var i = 0; i < 12; i++)
                                                 {
@@ -261,6 +277,7 @@
                             </div>
                         }
                     </div>
+
                     <div class="tab-pane fade @(ActiveTab == HojaTrabajoTab.Contabilidad ? "show active" : string.Empty)">
                         @if (HojaTrabajoContabilidad.Count == 0)
                         {
@@ -268,8 +285,8 @@
                         }
                         else
                         {
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered">
+                            <div class="table-responsive report-table-shell">
+                                <table class="table table-sm table-bordered compact-table report-table hoja-trabajo-table">
                                     <thead class="table-light">
                                         <tr>
                                             <th>Descripción</th>
@@ -290,7 +307,7 @@
                                     <tbody>
                                         @foreach (var row in HojaTrabajoContabilidad)
                                         {
-                                            <tr class="@GetRowClass(row, HojaTrabajoContabilidad, HojaTrabajoTab.Contabilidad)" @onclick="() => SelectRow(row, HojaTrabajoTab.Contabilidad)" style="cursor: pointer;">
+                                            <tr class="report-table__row-clickable @GetRowClass(row, HojaTrabajoContabilidad, HojaTrabajoTab.Contabilidad)" @onclick="() => SelectRow(row, HojaTrabajoTab.Contabilidad)">
                                                 <td>@row.Descripcion</td>
                                                 @for (var i = 0; i < 12; i++)
                                                 {
@@ -303,6 +320,7 @@
                             </div>
                         }
                     </div>
+
                     <div class="tab-pane fade @(ActiveTab == HojaTrabajoTab.Acumulados ? "show active" : string.Empty)">
                         @if (HojaTrabajoAcumulados.Count == 0)
                         {
@@ -310,8 +328,8 @@
                         }
                         else
                         {
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered">
+                            <div class="table-responsive report-table-shell">
+                                <table class="table table-sm table-bordered compact-table report-table hoja-trabajo-table">
                                     <thead class="table-light">
                                         <tr>
                                             <th>Descripción</th>
@@ -332,7 +350,7 @@
                                     <tbody>
                                         @foreach (var row in HojaTrabajoAcumulados)
                                         {
-                                            <tr class="@GetRowClass(row, HojaTrabajoAcumulados, HojaTrabajoTab.Acumulados)" @onclick="() => SelectRow(row, HojaTrabajoTab.Acumulados)" style="cursor: pointer;">
+                                            <tr class="report-table__row-clickable @GetRowClass(row, HojaTrabajoAcumulados, HojaTrabajoTab.Acumulados)" @onclick="() => SelectRow(row, HojaTrabajoTab.Acumulados)">
                                                 <td>@row.Descripcion</td>
                                                 @for (var i = 0; i < 12; i++)
                                                 {

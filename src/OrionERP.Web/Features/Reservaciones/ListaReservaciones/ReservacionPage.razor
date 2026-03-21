@@ -17,17 +17,18 @@ else if (Detail is null)
 }
 else
 {
-    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <h3 class="mb-0">RESERVACION #@ReservationId</h3>
-        <button class="btn btn-primary btn-sm ms-auto" @onclick="GuardarAsync" disabled="@IsSaving">
-            GUARDAR
-        </button>
-        <button class="btn btn-outline-secondary btn-sm" @onclick="CerrarAsync">CERRAR</button>
-        <button class="btn btn-outline-success btn-sm" @onclick="AbrirPdfAsync" disabled="@(IsGeneratingPdf || IsLoading)">
-            @(IsGeneratingPdf ? "Generando PDF..." : "PDF")
-        </button>
-        <button class="btn btn-outline-info btn-sm" @onclick="CrearPolizaAsync" disabled="@(IsSaving || IsWorking || IsCreatingPoliza)">Crear Póliza</button>
-    </div>
+    <div class="reservacion-page-shell">
+        <div class="reservacion-page-header d-flex flex-wrap align-items-center gap-2 mb-3">
+            <h3 class="mb-0 reservacion-page-title">RESERVACION #@ReservationId</h3>
+            <button class="btn btn-primary btn-sm ms-auto" @onclick="GuardarAsync" disabled="@IsSaving">
+                GUARDAR
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="CerrarAsync">CERRAR</button>
+            <button class="btn btn-outline-success btn-sm" @onclick="AbrirPdfAsync" disabled="@(IsGeneratingPdf || IsLoading)">
+                @(IsGeneratingPdf ? "Generando PDF..." : "PDF")
+            </button>
+            <button class="btn btn-outline-info btn-sm" @onclick="CrearPolizaAsync" disabled="@(IsSaving || IsWorking || IsCreatingPoliza)">Crear Póliza</button>
+        </div>
 
     <div class="row g-3 mb-3">
         <div class="col-lg-8">
@@ -35,7 +36,7 @@ else
                 <div class="card-header reservacion-section-title">Datos de la Reservación</div>
                 <div class="card-body">
                     <div class="row g-2">
-                        <div class="col-md-4">
+                        <div class="col-md-4 reservacion-lookup">
                             <label class="form-label">CLIENTE</label>
                             <input class="form-control"
                                    placeholder="Cliente"
@@ -44,7 +45,7 @@ else
                                    @onkeydown="OnClienteInputKeyDownAsync" />
                             @if (ShowClienteResults)
                             {
-                                <div class="list-group position-absolute w-100 shadow-sm" style="z-index: 1000;">
+                                <div class="list-group position-absolute w-100 shadow-sm reservacion-lookup-results">
                                     @if (Clientes.Count == 0)
                                     {
                                         <div class="list-group-item text-muted small">Sin resultados.</div>
@@ -143,13 +144,13 @@ else
 
             @if (ShowSuitePicker)
             {
-                <div class="border rounded p-2 mb-3">
-                    <div class="d-flex align-items-center mb-2">
+                <div class="reservacion-picker-panel mb-3">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <strong>Suites Disponibles</strong>
-                        <button class="btn btn-sm btn-success ms-auto me-2" @onclick="AddSuitesSeleccionadasAsync">Agregar Seleccionadas</button>
+                        <button class="btn btn-sm btn-success ms-auto" @onclick="AddSuitesSeleccionadasAsync">Agregar Seleccionadas</button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="CancelSuitePicker">Cerrar</button>
                     </div>
-                    <div class="table-responsive" style="max-height:220px;">
+                    <div class="table-responsive reservacion-table-wrap reservacion-table-wrap--available">
                         <table class="table table-sm table-bordered mb-0">
                             <thead class="table-light">
                                 <tr>
@@ -185,7 +186,7 @@ else
                 </div>
             }
 
-            <div class="table-responsive">
+            <div class="table-responsive reservacion-table-wrap">
                 <table class="table table-sm table-striped table-bordered mb-0">
                     <thead class="table-light">
                         <tr>
@@ -246,7 +247,7 @@ else
                 </div>
             }
 
-            <div class="table-responsive">
+            <div class="table-responsive reservacion-table-wrap">
                 <table class="table table-sm table-bordered mb-0">
                     <thead class="table-light">
                         <tr>
@@ -286,7 +287,7 @@ else
     <div class="card mb-3 reservacion-section reservacion-section-pagos">
         <div class="card-header reservacion-section-title">PAGOS</div>
         <div class="card-body">
-            <div class="table-responsive">
+            <div class="table-responsive reservacion-table-wrap">
                 <table class="table table-sm table-striped table-bordered mb-0">
                     <thead class="table-light">
                         <tr>
@@ -329,7 +330,7 @@ else
                 </div>
             </div>
 
-            <div class="table-responsive">
+            <div class="table-responsive reservacion-table-wrap">
                 <table class="table table-sm table-bordered mb-0">
                     <thead class="table-light">
                         <tr>
@@ -358,5 +359,6 @@ else
                 </table>
             </div>
         </div>
+    </div>
     </div>
 }

@@ -3,116 +3,124 @@
 
 <PageTitle>Lista de Reservaciones</PageTitle>
 
-<h3>Lista de Reservaciones</h3>
+<div class="reservaciones-list-page">
+    <h1 class="reservaciones-list-title">Lista de Reservaciones</h1>
 
-@if (!string.IsNullOrWhiteSpace(ErrorMessage))
-{
-    <div class="alert alert-danger">@ErrorMessage</div>
-}
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="alert alert-danger">@ErrorMessage</div>
+    }
 
-<div class="row g-2 mb-3">
-    <div class="col-md-1">
-        <label class="form-label">ID</label>
-        <input class="form-control" type="number" @bind="Filter.Id" />
-    </div>
-    <div class="col-md-3">
-        <label class="form-label">Cliente</label>
-        <input class="form-control" @bind="Filter.Cliente" />
-    </div>
-    <div class="col-md-2">
-        <label class="form-label">Status</label>
-        <input class="form-control" @bind="Filter.Status" />
-    </div>
-    <div class="col-md-2">
-        <label class="form-label">Check-in desde</label>
-        <input class="form-control" type="date" value="@CheckInFromText" @onchange="SetCheckInFrom" />
-    </div>
-    <div class="col-md-2">
-        <label class="form-label">Check-in hasta</label>
-        <input class="form-control" type="date" value="@CheckInToText" @onchange="SetCheckInTo" />
-    </div>
-    <div class="col-md-2 d-flex align-items-end">
-        <div class="form-check">
-            <input id="canceladas" class="form-check-input" type="checkbox" @bind="Filter.IncluirCanceladas" />
-            <label class="form-check-label" for="canceladas">Incluir canceladas</label>
+    <div class="reservaciones-list-panel">
+        <div class="row g-2 mb-0">
+            <div class="col-md-1">
+                <label class="form-label">ID</label>
+                <input class="form-control" type="number" @bind="Filter.Id" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Cliente</label>
+                <input class="form-control" @bind="Filter.Cliente" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Status</label>
+                <input class="form-control" @bind="Filter.Status" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Check-in desde</label>
+                <input class="form-control" type="date" value="@CheckInFromText" @onchange="SetCheckInFrom" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Check-in hasta</label>
+                <input class="form-control" type="date" value="@CheckInToText" @onchange="SetCheckInTo" />
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <div class="form-check">
+                    <input id="canceladas" class="form-check-input" type="checkbox" @bind="Filter.IncluirCanceladas" />
+                    <label class="form-check-label" for="canceladas">Incluir canceladas</label>
+                </div>
+            </div>
         </div>
     </div>
-</div>
 
-<div class="d-flex flex-wrap gap-2 mb-3">
-    <button class="btn btn-primary" @onclick="BuscarAsync" disabled="@IsBusy">Buscar</button>
-    <button class="btn btn-secondary" @onclick="LimpiarAsync" disabled="@IsBusy">Limpiar</button>
-    <button class="btn btn-success" @onclick="NuevaReservacionAsync" disabled="@IsBusy">Nueva Reservación</button>
-    <button class="btn btn-outline-danger" @onclick="BorrarVaciasAsync" disabled="@IsBusyDanger">BORRAR RESERVACIONES VACÍAS</button>
-</div>
-
-@if (IsLoading && Reservaciones.Count == 0)
-{
-    <p><em>Cargando...</em></p>
-}
-else
-{
-    <div class="table-responsive">
-        <table class="table table-sm table-striped table-bordered align-middle">
-            <thead class="table-light">
-                <tr>
-                    <th>ID</th>
-                    <th>Cliente</th>
-                    <th>Check-in</th>
-                    <th>Check-out</th>
-                    <th>Status</th>
-                    <th>Total</th>
-                    <th>Pagado</th>
-                    <th>Adeudo</th>
-                    <th>Notas</th>
-                    <th>Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                @if (Reservaciones.Count == 0)
-                {
-                    <tr>
-                        <td colspan="10" class="text-center text-muted">Sin reservaciones para mostrar.</td>
-                    </tr>
-                }
-                else
-                {
-                    @foreach (var row in Reservaciones)
-                    {
-                        <tr>
-                            <td>@row.Id</td>
-                            <td>@row.Cliente</td>
-                            <td>@FormatDate(row.CheckIn)</td>
-                            <td>@FormatDate(row.CheckOut)</td>
-                            <td>@row.Status</td>
-                            <td>@row.TotalPrice.ToString("C")</td>
-                            <td>@row.Pagado.ToString("C")</td>
-                            <td class="@(row.PorPagar > 0 ? "text-danger fw-bold" : "text-success")">@row.PorPagar.ToString("C")</td>
-                            <td title="@row.Notes">@Short(row.Notes, 50)</td>
-                            <td>
-                                <div class="btn-group btn-group-sm" role="group">
-                                    <a class="btn btn-outline-primary" href="@($"/reservaciones/{row.Id}")">Detalles...</a>
-                                    <button class="btn btn-outline-secondary" @onclick="() => AbrirReciboAsync(row.Id)">PDF..</button>
-                                </div>
-                            </td>
-                        </tr>
-                    }
-                }
-            </tbody>
-        </table>
+    <div class="d-flex flex-wrap gap-2 reservaciones-list-actions">
+        <button class="btn btn-primary" @onclick="BuscarAsync" disabled="@IsBusy">Buscar</button>
+        <button class="btn btn-secondary" @onclick="LimpiarAsync" disabled="@IsBusy">Limpiar</button>
+        <button class="btn btn-success" @onclick="NuevaReservacionAsync" disabled="@IsBusy">Nueva Reservación</button>
+        <button class="btn btn-outline-danger" @onclick="BorrarVaciasAsync" disabled="@IsBusyDanger">BORRAR RESERVACIONES VACÍAS</button>
     </div>
 
-    @if (Reservaciones.Count > 0)
+    @if (IsLoading && Reservaciones.Count == 0)
     {
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
-            <span class="text-muted small">Mostrando @Reservaciones.Count reservaciones ordenadas por check-in.</span>
-
-            @if (HasMoreReservaciones)
-            {
-                <button class="btn btn-outline-primary" @onclick="CargarMasAsync" disabled="@IsBusy">
-                    @(IsLoadingMore ? "Cargando..." : "Cargar 100 más")
-                </button>
-            }
+        <div class="reservaciones-list-results">
+            <div class="p-3 text-muted"><em>Cargando...</em></div>
         </div>
     }
-}
+    else
+    {
+        <div class="reservaciones-list-results">
+            <div class="table-responsive reservaciones-list-table-wrap">
+                <table class="table table-sm table-striped table-bordered align-middle mb-0 reservaciones-list-table reservaciones-responsive-table">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>Cliente</th>
+                            <th>Check-in</th>
+                            <th>Check-out</th>
+                            <th>Status</th>
+                            <th>Total</th>
+                            <th>Pagado</th>
+                            <th>Adeudo</th>
+                            <th>Notas</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Reservaciones.Count == 0)
+                        {
+                            <tr class="reservaciones-list-empty-row">
+                                <td colspan="10" class="text-center text-muted">Sin reservaciones para mostrar.</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var row in Reservaciones)
+                            {
+                                <tr class="reservaciones-list-row">
+                                    <td data-label="ID">@row.Id</td>
+                                    <td data-label="Cliente">@row.Cliente</td>
+                                    <td data-label="Check-in">@FormatDate(row.CheckIn)</td>
+                                    <td data-label="Check-out">@FormatDate(row.CheckOut)</td>
+                                    <td data-label="Status">@row.Status</td>
+                                    <td data-label="Total">@row.TotalPrice.ToString("C")</td>
+                                    <td data-label="Pagado">@row.Pagado.ToString("C")</td>
+                                    <td data-label="Adeudo" class="@(row.PorPagar > 0 ? "text-danger fw-bold" : "text-success")">@row.PorPagar.ToString("C")</td>
+                                    <td data-label="Notas" title="@row.Notes">@Short(row.Notes, 50)</td>
+                                    <td data-label="Acciones" class="reservaciones-list-cell-actions">
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <a class="btn btn-outline-primary" href="@($"/reservaciones/{row.Id}")">Detalles...</a>
+                                            <button class="btn btn-outline-secondary" @onclick="() => AbrirReciboAsync(row.Id)">PDF..</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        @if (Reservaciones.Count > 0)
+        {
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 reservaciones-list-footer">
+                <span class="text-muted small">Mostrando @Reservaciones.Count reservaciones ordenadas por check-in.</span>
+
+                @if (HasMoreReservaciones)
+                {
+                    <button class="btn btn-outline-primary" @onclick="CargarMasAsync" disabled="@IsBusy">
+                        @(IsLoadingMore ? "Cargando..." : "Cargar 100 más")
+                    </button>
+                }
+            </div>
+        }
+    }
+</div>

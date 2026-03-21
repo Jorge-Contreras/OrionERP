@@ -1,0 +1,67 @@
+.hoja-trabajo-page__rfc-field {
+    min-width: min(18rem, 100%);
+}
+
+.hoja-trabajo-page .report-toolbar__actions.btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.hoja-trabajo-page .report-toolbar__actions.btn-group > .btn {
+    border-radius: 8px !important;
+}
+
+.hoja-trabajo-page .nav-tabs {
+    gap: 0.4rem;
+    border-bottom: 0;
+}
+
+.hoja-trabajo-page .nav-tabs .nav-link {
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: rgba(15, 45, 78, 0.05);
+    color: var(--orion-color-primary);
+    font-weight: 600;
+    padding: 0.55rem 0.85rem;
+}
+
+.hoja-trabajo-page .nav-tabs .nav-link:hover,
+.hoja-trabajo-page .nav-tabs .nav-link:focus {
+    border-color: rgba(31, 138, 174, 0.28);
+    background: rgba(31, 138, 174, 0.1);
+    color: var(--orion-color-primary);
+}
+
+.hoja-trabajo-page .nav-tabs .nav-link.active {
+    background: linear-gradient(135deg, var(--orion-color-accent) 0%, #156a87 100%);
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(21, 106, 135, 0.2);
+}
+
+.hoja-trabajo-page .hoja-trabajo-table td:first-child {
+    color: var(--orion-color-primary);
+    font-weight: 600;
+}
+
+.hoja-trabajo-page .negative-number {
+    color: var(--orion-color-danger);
+    font-weight: 600;
+}
+
+.hoja-trabajo-page .section-0 td,
+.hoja-trabajo-page .section-2 td,
+.hoja-trabajo-page .section-4 td {
+    background-color: rgba(15, 45, 78, 0.02);
+}
+
+@media (max-width: 768px) {
+    .hoja-trabajo-page .report-toolbar__actions.btn-group {
+        width: 100%;
+    }
+
+    .hoja-trabajo-page .report-toolbar__actions.btn-group > .btn {
+        flex: 1 1 14rem;
+    }
+}

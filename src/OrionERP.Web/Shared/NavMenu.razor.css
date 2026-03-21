@@ -1,14 +1,18 @@
-/* ===== NavMenu.razor.css (clean, solid, no gradients) ===== */
-
 .navbar-toggler {
   background-color: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
-.top-row {
-  height: 3.5rem;
+.navmenu-topbar {
+  min-height: 4rem;
+  padding: .5rem .75rem;
   background: transparent;
-  padding-inline: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+}
+
+.navmenu-topbar .container-fluid {
+  padding: 0;
+  gap: .75rem;
 }
 
 .navbar-brand {
@@ -18,7 +22,6 @@
   text-transform: uppercase;
 }
 
-/* Icon sizing */
 .oi {
   width: 1.25rem;
   font-size: 1rem;
@@ -26,19 +29,15 @@
   top: -2px;
 }
 
-/* ---- Sidebar container ---- */
 .navmenu-body {
-  background: #0f172a !important; /* solid dark slate */
-  color: rgba(255, 255, 255, 0.92);
-  min-height: 100vh;
+  background: transparent;
+  color: inherit;
+  min-height: calc(100vh - 4.5rem);
   padding: .5rem .75rem 1rem;
-  border-right: 1px solid rgba(255,255,255,.06);
-  min-width: 240px;
-  max-width: 280px;
 }
 
 .nav-shell {
-  min-height: calc(100vh - 5.75rem);
+  min-height: calc(100vh - 4.5rem);
   display: flex;
   flex-direction: column;
 }
@@ -48,7 +47,6 @@
   padding-top: .5rem;
 }
 
-/* ---- Section headings & divider ---- */
 .nav-section {
   margin: .75rem .25rem .25rem;
   font-size: .72rem;
@@ -64,56 +62,94 @@
   border-radius: 999px;
 }
 
-/* ---- Items ---- */
 .nav-item {
   font-size: 0.95rem;
   padding: .1rem 0;
 }
 
-  /* Base link style (kill gradients, make text visible) */
-  .nav-item ::deep a,
-  .navmenu-body .nav-link {
-    display: flex;
-    align-items: center;
-    gap: .6rem;
-    padding: .55rem .6rem;
-    border-radius: .5rem;
-    color: rgba(255, 255, 255, 0.92) !important;
-    background: transparent !important;
-    background-image: none !important;
-    text-decoration: none;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    transition: background-color .15s ease, color .15s ease;
-  }
+.nav-item ::deep a,
+.navmenu-body .nav-link {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .55rem .6rem;
+  border-radius: .5rem;
+  color: rgba(255, 255, 255, 0.92) !important;
+  background: transparent !important;
+  background-image: none !important;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color .15s ease, color .15s ease;
+}
 
-    .navmenu-body .nav-link .oi {
-      opacity: .9;
-    }
+.navmenu-body .nav-link .oi {
+  opacity: .9;
+}
 
-    /* Hover & active (subtle, no pills) */
-    .nav-item ::deep a:hover,
-    .navmenu-body .nav-link:hover {
-      background: rgba(255, 255, 255, .08) !important;
-      color: #fff !important;
-    }
+.nav-item ::deep a:hover,
+.navmenu-body .nav-link:hover {
+  background: rgba(255, 255, 255, .08) !important;
+  color: #fff !important;
+}
 
-    .nav-item ::deep a.active,
-    .navmenu-body .nav-link.active {
-      background: rgba(255, 255, 255, .14) !important;
-      color: #fff !important;
-      box-shadow: inset 3px 0 0 #1fa0d7; /* slim accent bar */
-    }
+.nav-item ::deep a.active,
+.navmenu-body .nav-link.active {
+  background: rgba(255, 255, 255, .14) !important;
+  color: #fff !important;
+  box-shadow: inset 3px 0 0 #1fa0d7;
+}
 
-    /* Focus-visible accessibility */
-    .nav-item ::deep a:focus-visible,
-    .navmenu-body .nav-link:focus-visible {
-      outline: 2px solid #1fa0d7;
-      outline-offset: 2px;
-    }
+.nav-item ::deep a:focus-visible,
+.navmenu-body .nav-link:focus-visible {
+  outline: 2px solid #1fa0d7;
+  outline-offset: 2px;
+}
 
-/* Hide hamburger on wide screens and never collapse the menu */
+.navmenu-body .nav,
+.navmenu-body .nav ul,
+.navmenu-body ul {
+  list-style: none !important;
+  margin: 0;
+  padding-left: 0;
+}
+
+.navmenu-body li,
+.navmenu-body .nav-section {
+  list-style: none !important;
+}
+
+.navmenu-body li::marker,
+.navmenu-body .nav-section::marker {
+  content: none;
+}
+
+.navmenu-topbar .navbar-brand.brand-logo {
+  display: block;
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0;
+}
+
+.navmenu-topbar .navbar-brand.brand-logo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 72px;
+  object-fit: contain;
+  border-radius: .25rem;
+}
+
+.navmenu-topbar .navbar-toggler {
+  margin-left: .5rem;
+}
+
+.navmenu-topbar .navbar-brand.brand-logo:hover img {
+  transform: scale(1.02);
+  transition: transform .15s ease;
+}
+
 @media (min-width: 641px) {
   .navbar-toggler {
     display: none;
@@ -123,97 +159,3 @@
     display: block !important;
   }
 }
-
-/* === Fix: make the top navbar row visible inside the sidebar === */
-.sidebar .top-row {
-  background: #0f172a !important; /* solid dark */
-  color: rgba(255,255,255,.92);
-  border-bottom: 1px solid rgba(255,255,255,.06);
-  position: sticky; /* keep it visible when scrolling */
-  top: 0;
-  z-index: 2;
-}
-
-  /* Brand color on dark background */
-  .sidebar .top-row .navbar-brand {
-    color: #fff !important;
-  }
-
-  /* Make the hamburger visible on dark */
-  .sidebar .top-row .navbar-toggler {
-    border-color: rgba(255,255,255,.35);
-    background-color: rgba(255,255,255,.08);
-  }
-
-  /* Explicit white hamburger icon (works even if Bootstrap vars change) */
-  .sidebar .top-row .navbar-dark .navbar-toggler-icon,
-  .sidebar .top-row .navbar-toggler-icon {
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255,255,255,0.9)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
-  }
-
-/* Optional: if you also want a solid header when not wrapped by .sidebar */
-.top-row {
-  background: #0f172a !important;
-  color: rgba(255,255,255,.92);
-  border-bottom: 1px solid rgba(255,255,255,.06);
-}
-
-
-/* Remove bullets and indentation in the sidebar nav */
-.navmenu-body .nav,
-.navmenu-body .nav ul,
-.navmenu-body ul {
-  list-style: none !important;
-  margin: 0;
-  padding-left: 0;
-}
-
-/* Ensure no markers on any li or section rows */
-.navmenu-body li,
-.navmenu-body .nav-section {
-  list-style: none !important;
-}
-
-  .navmenu-body li::marker,
-  .navmenu-body .nav-section::marker {
-    content: none;
-  }
-
-/* --- Sidebar brand logo: fill width, keep aspect ratio --- */
-.sidebar .top-row {
-  /* let the row adapt to the logo height instead of a fixed 3.5rem */
-  height: auto !important;
-  padding: .5rem .75rem; /* comfy padding */
-}
-
-  .sidebar .top-row .container-fluid {
-    padding: 0; /* remove extra side padding so the logo truly spans the sidebar */
-  }
-
-.sidebar .navbar-brand.brand-logo {
-  display: block;
-  flex: 1 1 auto; /* occupy available width, keep toggler at the right */
-  margin: 0;
-  padding: 0;
-}
-
-  .sidebar .navbar-brand.brand-logo img {
-    display: block;
-    width: 100%; /* fit to sidebar width */
-    height: auto; /* keep aspect ratio */
-    max-height: 72px; /* cap height so it doesn’t get too tall; adjust if you like */
-    object-fit: contain;
-    border-radius: .25rem; /* soft corners to match your UI */
-  }
-
-/* Keep the toggler visible and aligned on the right */
-.sidebar .top-row .navbar-toggler {
-  margin-left: .5rem;
-}
-
-/* Optional: tiny “zoom” feel on hover without shifting layout */
-.sidebar .navbar-brand.brand-logo:hover img {
-  transform: scale(1.02);
-  transition: transform .15s ease;
-}
-

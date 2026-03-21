@@ -1,102 +1,62 @@
-.page {
+.app-shell {
     position: relative;
     display: flex;
     flex-direction: column;
 }
 
-main {
+.app-shell__main {
     flex: 1;
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
     background: transparent;
+    min-width: 0;
 }
 
-.sidebar {
-    background: linear-gradient(180deg, rgba(15, 45, 78, 0.98) 0%, rgba(15, 45, 78, 0.8) 55%, rgba(28, 68, 111, 0.92) 100%);
-    color: var(--orion-color-surface);
-    box-shadow: 8px 0 18px rgba(10, 25, 43, 0.35);
+.app-shell__sidebar {
+    background: var(--orion-color-primary);
+    color: rgba(255, 255, 255, 0.92);
+    box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.15);
 }
 
-.top-row {
-    background: rgba(255, 255, 255, 0.75);
-    backdrop-filter: blur(14px);
-    border-bottom: 1px solid rgba(15, 45, 78, 0.08);
-    justify-content: flex-end;
-    height: 3.5rem;
+.app-shell__topbar {
     display: flex;
     align-items: center;
-    padding-right: 1.5rem;
+    min-height: 4rem;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.78);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid rgba(15, 45, 78, 0.08);
 }
 
-    .top-row ::deep a,
-    .top-row .btn-link {
-        white-space: nowrap;
-        margin-left: 1.5rem;
-        font-weight: 500;
-        color: var(--orion-color-primary);
-    }
-
-    .top-row ::deep a:hover,
-    .top-row ::deep a:focus,
-    .top-row .btn-link:hover,
-    .top-row .btn-link:focus {
-        color: var(--orion-color-accent);
-    }
-
-    .top-row a:first-child {
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-@media (max-width: 640.98px) {
-    .top-row:not(.auth) {
-        display: none;
-    }
-
-    .top-row.auth {
-        justify-content: space-between;
-    }
-
-    .top-row a, .top-row .btn-link {
-        margin-left: 0;
-    }
+.app-shell__content {
+    min-width: 0;
+    padding: 0 1rem 2rem;
 }
 
 @media (min-width: 641px) {
-    .page {
+    .app-shell {
         flex-direction: row;
     }
 
-    .sidebar {
+    .app-shell__sidebar {
         width: 260px;
         height: 100vh;
         position: sticky;
         top: 0;
+        flex-shrink: 0;
     }
 
-    .top-row {
+    .app-shell__topbar {
         position: sticky;
         top: 0;
         z-index: 10;
+        padding-left: 2rem;
+        padding-right: 1.5rem;
     }
 
-    .top-row,
-    article {
-        padding-left: 2rem !important;
-        padding-right: 1.5rem !important;
+    .app-shell__content {
+        padding-left: 2rem;
+        padding-right: 1.5rem;
     }
-
-  /* --- Sidebar: solid background, no gradient --- */
-  .sidebar {
-    background: var(--orion-color-primary) !important; /* solid */
-    color: rgba(255, 255, 255, 0.92);
-    box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.15);
-  }
-
-  /* Optional: remove the global page gradient too */
-  .page {
-    background: var(--orion-color-bg) !important;
-  }
-
 }

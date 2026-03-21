@@ -1,0 +1,137 @@
+.reservaciones-list-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.reservaciones-list-title {
+  margin: 0;
+}
+
+.reservaciones-list-panel,
+.reservaciones-list-results {
+  border: 1px solid rgba(15, 45, 78, 0.08);
+  border-radius: 1rem;
+  background: var(--orion-color-surface);
+  box-shadow: 0 12px 28px rgba(15, 45, 78, 0.08);
+}
+
+.reservaciones-list-panel {
+  padding: 1rem;
+  background: linear-gradient(180deg, rgba(31, 138, 174, 0.08) 0%, rgba(255, 255, 255, 0.98) 100%);
+}
+
+.reservaciones-list-actions {
+  gap: 0.75rem;
+}
+
+.reservaciones-list-results {
+  overflow: hidden;
+}
+
+.reservaciones-list-table-wrap {
+  max-height: 70vh;
+}
+
+.reservaciones-list-table {
+  margin-bottom: 0;
+}
+
+.reservaciones-list-cell-actions .btn-group {
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.reservaciones-list-footer {
+  padding-top: 0.25rem;
+}
+
+@media (max-width: 767.98px) {
+  .reservaciones-list-panel {
+    padding: 0.9rem;
+  }
+
+  .reservaciones-list-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .reservaciones-list-actions > .btn {
+    width: 100%;
+  }
+
+  .reservaciones-list-actions > .btn:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .reservaciones-list-table-wrap {
+    max-height: none;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.78);
+  }
+
+  .reservaciones-responsive-table thead {
+    display: none;
+  }
+
+  .reservaciones-responsive-table,
+  .reservaciones-responsive-table tbody,
+  .reservaciones-responsive-table tr,
+  .reservaciones-responsive-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .reservaciones-responsive-table tbody {
+    display: grid;
+    gap: 0.9rem;
+  }
+
+  .reservaciones-responsive-table tbody tr {
+    border: 1px solid rgba(15, 45, 78, 0.08);
+    border-radius: 0.9rem;
+    padding: 0.8rem;
+    background: #fff;
+    box-shadow: 0 8px 18px rgba(15, 45, 78, 0.08);
+  }
+
+  .reservaciones-responsive-table tbody td {
+    border: 0;
+    padding: 0.35rem 0;
+    display: grid;
+    grid-template-columns: minmax(0, 7.25rem) minmax(0, 1fr);
+    gap: 0.55rem;
+    align-items: start;
+    text-align: left !important;
+  }
+
+  .reservaciones-responsive-table tbody td::before {
+    content: attr(data-label);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--orion-color-text-muted);
+  }
+
+  .reservaciones-list-cell-actions .btn-group {
+    display: flex;
+    width: 100%;
+  }
+
+  .reservaciones-list-cell-actions .btn-group > .btn {
+    flex: 1 1 8.5rem;
+    border-radius: 0.65rem !important;
+  }
+
+  .reservaciones-list-empty-row td {
+    display: block;
+    text-align: center !important;
+    padding: 0.5rem 0;
+  }
+
+  .reservaciones-list-empty-row td::before {
+    content: none;
+  }
+}

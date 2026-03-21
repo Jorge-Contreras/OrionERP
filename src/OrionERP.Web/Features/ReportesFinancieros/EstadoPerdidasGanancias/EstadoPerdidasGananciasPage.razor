@@ -5,17 +5,17 @@
 
 <PageTitle>Estado de Pérdidas y Ganancias</PageTitle>
 
-<div class="estado-pg-page">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="m-0">Estado de Pérdidas y Ganancias</h1>
+<div class="report-page estado-pg-page">
+    <div class="report-page__header">
+        <h1 class="report-page__title">Estado de Pérdidas y Ganancias</h1>
     </div>
 
-    <div class="card mb-3 no-print">
+    <div class="card report-panel report-panel--filters no-print">
         <div class="card-body">
-            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+            <div class="report-toolbar">
                 <div class="flex-grow-1">
-                    <h6 class="mb-1">Filtros</h6>
-                    <div class="text-muted small mb-3">
+                    <h2 class="report-panel__title">Filtros</h2>
+                    <div class="report-panel__subtitle mb-3">
                         Seleccione el año y mes para actualizar el reporte automáticamente.
                     </div>
 
@@ -59,7 +59,7 @@
                     </div>
                 </div>
 
-                <div class="d-flex gap-2">
+                <div class="report-toolbar__actions">
                     <button class="btn btn-outline-secondary" @onclick="PrintAsync" disabled="@(!Resultados.Any())">
                         Imprimir
                     </button>
@@ -68,14 +68,14 @@
         </div>
     </div>
 
-    <div id="estado-perdidas-ganancias-print-root" class="card">
+    <div id="estado-perdidas-ganancias-print-root" class="card report-panel report-panel--results">
         <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="report-toolbar">
                 <div>
-                    <h6 class="mb-0">Estado de Perdidas y Ganancias @CurrentRfc</h6>
+                    <h2 class="report-panel__title">Estado de Perdidas y Ganancias @CurrentRfc</h2>
                     @if (StartDate != default && EndDate != default)
                     {
-                        <div class="small text-muted">Del @StartDate.ToString("dd/MM/yyyy") al @EndDate.ToString("dd/MM/yyyy")</div>
+                        <div class="report-context">Del @StartDate.ToString("dd/MM/yyyy") al @EndDate.ToString("dd/MM/yyyy")</div>
                     }
                 </div>
             </div>
@@ -95,11 +95,11 @@
             else
             {
                 <div id="estado-perdidas-ganancias-print">
-                    <div class="table-responsive">
-                        <table id="estado-perdidas-ganancias-table" class="table table-sm table-bordered align-middle estado-pg-table">
+                    <div class="table-responsive report-table-shell">
+                        <table id="estado-perdidas-ganancias-table" class="table table-sm table-bordered align-middle compact-table report-table estado-pg-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th class="text-end" style="width: 70px;">ID</th>
+                                    <th class="text-end estado-pg-table__id-col">ID</th>
                                     <th>DESCRIPCIÓN</th>
                                     <th class="text-end">PRIMERO</th>
                                     <th class="text-end">SEGUNDO</th>
@@ -110,7 +110,7 @@
                             <tbody>
                                 @foreach (var row in Resultados.OrderBy(r => r.ID))
                                 {
-                                    <tr class="@(row.DESCRIPCION.Contains("(=)") ? "fw-bold" : string.Empty)">
+                                    <tr class="@(row.DESCRIPCION.Contains("(=)") ? "estado-pg-table__summary-row" : string.Empty)">
                                         <td class="text-end">@row.ID</td>
                                         <td>@row.DESCRIPCION</td>
                                         <td class="text-end">@FormatMonto(row.PRIMERO)</td>

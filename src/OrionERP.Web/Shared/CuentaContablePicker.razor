@@ -3,171 +3,241 @@
 @using OrionERP.Application.Features.Contabilidad.ContabilidadRegistros
 @using OrionERP.Web.State
 
-<div class="row g-3 align-items-end">
-  <div class="col-md-2">
-    <label class="form-label">Cuenta #</label>
-    <input class="form-control" type="number" min="1" @bind="directAccountId" @bind:event="oninput"
-           @onkeydown="OnDirectAccountKeyDown" />
+<div class="d-flex flex-column gap-3">
+  <div class="input-group">
+    <input class="form-control"
+           placeholder="Busca por id, c&oacute;digo Nivel1 o descripci&oacute;n"
+           @bind-value="searchTerm"
+           @bind-value:event="oninput"
+           @onkeydown="OnSearchKeyDown"
+           disabled="@string.IsNullOrWhiteSpace(currentRfc)" />
+    <button class="btn btn-outline-primary"
+            type="button"
+            @onclick="() => SearchAccountsAsync()"
+            disabled="@(!CanSearchMain)">
+      Buscar
+    </button>
+    <button class="btn btn-outline-secondary"
+            type="button"
+            @onclick="ShowCreateNivel3Modal"
+            disabled="@(!CanOpenCreateModal)">
+      Crear Nivel 3
+    </button>
   </div>
-</div>
 
-<div class="mt-3">
-  <div class="row g-3">
-    <div class="col-md-4">
-      <label class="form-label">Buscar Nivel 1</label>
-      <input class="form-control" placeholder="Ej. 102 o BANCOS" @bind="nivel1Term" @onkeyup="OnNivel1KeyDown" />
-      @if (nivel1Results.Any())
-      {
-        <div class="table-responsive mt-2" style="max-height: 320px; overflow-y: auto;">
-          <table class="table table-sm table-hover mb-0">
-            <thead>
-              <tr>
-                <th>Id</th>
-                <th>Nivel1</th>
-                <th>Descripción</th>
-              </tr>
-            </thead>
-            <tbody>
-              @foreach (var item in nivel1Results)
-              {
-                <tr role="button" @onclick="() => SelectNivel1Async(item)">
-                  <td>@item.Id</td>
-                  @* <td>@item.Rfc</td> *@
-                  <td>@item.Nivel1</td>
-                  <td>@item.Descripcion</td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      }
-    </div>
-    <div class="col-md-4">
-      <label class="form-label">Buscar Nivel 2</label>
-      <input class="form-control" placeholder="Ej. 01 o descripción" @bind="nivel2Term" @onkeyup="OnNivel2KeyDown" disabled="@(!CanSearchNivel2)" />
-      @if (nivel2Results.Any())
-      {
-        <div class="table-responsive mt-2">
-          <table class="table table-sm table-hover mb-0">
-            <thead>
-              <tr>
-                <th>Id</th>
-                <th>Nivel2</th>
-                <th>Descripción</th>
-              </tr>
-            </thead>
-            <tbody>
-              @foreach (var item in nivel2Results)
-              {
-                <tr role="button" @onclick="() => SelectNivel2Async(item)">
-                  <td>@item.Id</td>
-                  <td>@item.Nivel2</td>
-                  <td>@item.Descripcion</td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      }
-    </div>
-        <div class="col-md-4">
-            <label class="form-label">Buscar Nivel 3</label>
+  @if (string.IsNullOrWhiteSpace(currentRfc))
+  {
+    <div class="text-muted small">Selecciona un RFC antes de buscar cuentas contables.</div>
+  }
+  else
+  {
+    <div class="text-muted small">Presiona Enter para buscar. Los encabezados solo muestran contexto; la selecci&oacute;n final siempre es un Nivel 3.</div>
+  }
 
-            <div class="input-group">
-                <input class="form-control"
-                       placeholder="Ej. 02 o descripción"
-                       @bind-value="nivel3Term"
-                       @bind-value:event="oninput"
-                       @onkeydown="OnNivel3KeyDown"
-                       disabled="@(!CanSearchNivel3)" />
-
-                @if (CanSearchNivel3)
-                {
-                    <button class="btn btn-outline-primary"
-                            type="button"
-                            @onclick="ShowCreateNivel3Modal">
-                        Crear Nuevo
-                    </button>
-                }
-            </div>
-
-            @if (nivel3Results.Any())
+  @if (showSearchResults)
+  {
+    if (searchDisplayRows.Any())
+    {
+      <div class="table-responsive border rounded" style="max-height: 420px; overflow-y: auto;">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-light" style="position: sticky; top: 0;">
+            <tr>
+              <th>Id</th>
+              <th>Nivel 1</th>
+              <th>Nivel 2</th>
+              <th>Nivel 3</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach (var row in searchDisplayRows)
             {
-                <div class="table-responsive mt-2" style="max-height: 320px; overflow-y: auto;">
-                    <table class="table table-sm table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>Id</th>
-                                <th>Nivel3</th>
-                                <th>Descripción</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var item in nivel3Results)
-                            {
-                                <tr role="button" @onclick="() => SelectNivel3(item)">
-                                    <td>@item.Id</td>
-                                    <td>@item.Nivel3</td>
-                                    <td>@item.Descripcion</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-secondary"
-                                                type="button"
-                                                @onclick="() => ShowEditNivel3Modal(item)"
-                                                @onclick:stopPropagation="true">
-                                            <i class="oi oi-pencil"></i>
-                                        </button>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
+              <tr class="@GetSearchRowClass(row)"
+                  style="@GetSearchRowStyle(row)"
+                  @onclick="() => OnDisplayRowClickedAsync(row)">
+                <td>@(row.DisplayId?.ToString() ?? string.Empty)</td>
+                <td>
+                  @if (row.IsNivel1Header)
+                  {
+                    <span class="badge text-bg-secondary me-2">Nivel 1</span>
+                  }
+                  @row.Nivel1Descripcion
+                </td>
+                <td>
+                  @if (row.IsNivel2Header)
+                  {
+                    <span class="badge text-bg-secondary me-2">Nivel 2</span>
+                  }
+                  @row.Nivel2Descripcion
+                </td>
+                <td>@row.Nivel3Descripcion</td>
+                <td class="text-end">
+                  @if (row.IsSelectable && row.Account is not null)
+                  {
+                    <button class="btn btn-sm btn-outline-secondary"
+                            type="button"
+                            title="Editar Nivel 3"
+                            @onclick="() => ShowEditNivel3Modal(row.Account)"
+                            @onclick:stopPropagation="true">
+                      <i class="oi oi-pencil"></i>
+                    </button>
+                  }
+                </td>
+              </tr>
             }
-        </div>
-
-  </div>
+          </tbody>
+        </table>
+      </div>
+    }
+    else if (hasExecutedSearch)
+    {
+      <div class="alert alert-warning mb-0" role="alert">
+        No se encontraron cuentas con ese criterio.
+      </div>
+    }
+  }
 </div>
+
 @if (showNivel3Modal)
 {
-    <div class="modal fade show" tabindex="-1" style="display: block;" role="dialog">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">@(isEditingNivel3 ? "Editar" : "Crear") Nivel 3</h5>
-                    <button type="button" class="btn-close" @onclick="CloseNivel3Modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Nivel 1</label>
-                        <input class="form-control" disabled @bind="currentSelection.Nivel1" />
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Nivel 2</label>
-                        <input class="form-control" disabled @bind="currentSelection.Nivel2" />
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Nivel 3</label>
-                        <input class="form-control" @bind="nivel3Model.Nivel3" disabled="@isEditingNivel3" />
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Descripción</label>
-                        <input class="form-control" @bind="nivel3Model.Descripcion" />
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseNivel3Modal">Cancelar</button>
-                    <button type="button" class="btn btn-primary" @onclick="SaveNivel3">Guardar</button>
-                </div>
-            </div>
+  <div class="modal fade show" tabindex="-1" style="display: block;" role="dialog" aria-modal="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">@(isEditingNivel3 ? "Editar Nivel 3" : "Crear Nivel 3")</h5>
+          <button type="button" class="btn-close" @onclick="CloseNivel3Modal"></button>
         </div>
+        <div class="modal-body d-flex flex-column gap-3">
+          @if (!isEditingNivel3)
+          {
+            <div class="row g-3">
+              <div class="col-lg-6">
+                <label class="form-label">Buscar Nivel 1</label>
+                <div class="input-group">
+                  <input class="form-control"
+                         placeholder="Ej. 102 o BANCOS"
+                         @bind-value="createNivel1Term"
+                         @bind-value:event="oninput"
+                         @onkeydown="OnCreateNivel1KeyDown" />
+                  <button class="btn btn-outline-primary"
+                          type="button"
+                          @onclick="() => SearchCreateNivel1Async()"
+                          disabled="@string.IsNullOrWhiteSpace(createNivel1Term)">
+                    Buscar
+                  </button>
+                </div>
+
+                @if (createNivel1Results.Any())
+                {
+                  <div class="table-responsive mt-2 border rounded" style="max-height: 220px; overflow-y: auto;">
+                    <table class="table table-sm table-hover mb-0">
+                      <thead class="table-light">
+                        <tr>
+                          <th>Id</th>
+                          <th>Nivel 1</th>
+                          <th>Descripci&oacute;n</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @foreach (var item in createNivel1Results)
+                        {
+                          <tr role="button" style="cursor: pointer;" @onclick="() => SelectCreateNivel1Async(item)">
+                            <td>@item.Id</td>
+                            <td>@item.Nivel1</td>
+                            <td>@item.Descripcion</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              </div>
+
+              <div class="col-lg-6">
+                <label class="form-label">Buscar Nivel 2</label>
+                <div class="input-group">
+                  <input class="form-control"
+                         placeholder="Ej. 01 o descripci&oacute;n"
+                         @bind-value="createNivel2Term"
+                         @bind-value:event="oninput"
+                         @onkeydown="OnCreateNivel2KeyDown"
+                         disabled="@(!CanSearchCreateNivel2)" />
+                  <button class="btn btn-outline-primary"
+                          type="button"
+                          @onclick="() => SearchCreateNivel2Async()"
+                          disabled="@(!CanSearchCreateNivel2 || string.IsNullOrWhiteSpace(createNivel2Term))">
+                    Buscar
+                  </button>
+                </div>
+
+                @if (createNivel2Results.Any())
+                {
+                  <div class="table-responsive mt-2 border rounded" style="max-height: 220px; overflow-y: auto;">
+                    <table class="table table-sm table-hover mb-0">
+                      <thead class="table-light">
+                        <tr>
+                          <th>Id</th>
+                          <th>Nivel 2</th>
+                          <th>Descripci&oacute;n</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @foreach (var item in createNivel2Results)
+                        {
+                          <tr role="button" style="cursor: pointer;" @onclick="() => SelectCreateNivel2Async(item)">
+                            <td>@item.Id</td>
+                            <td>@item.Nivel2</td>
+                            <td>@item.Descripcion</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2">
+              <span class="badge text-bg-secondary">Nivel 1: @FormatSelectionValue(createSelection.Nivel1)</span>
+              <span class="badge text-bg-secondary">Nivel 2: @FormatSelectionValue(createSelection.Nivel2)</span>
+            </div>
+          }
+
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Nivel 1</label>
+              <input class="form-control" value="@(isEditingNivel3 ? nivel3Model.Nivel1 : createSelection.Nivel1)" readonly />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Nivel 2</label>
+              <input class="form-control" value="@(isEditingNivel3 ? NormalizeTwoDigits(nivel3Model.Nivel2) : createSelection.Nivel2)" readonly />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Nivel 3</label>
+              <input class="form-control"
+                     @bind="nivel3Model.Nivel3"
+                     disabled="@isEditingNivel3" />
+            </div>
+            <div class="col-12">
+              <label class="form-label">Descripci&oacute;n</label>
+              <input class="form-control" @bind="nivel3Model.Descripcion" />
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @onclick="CloseNivel3Modal">Cancelar</button>
+          <button type="button" class="btn btn-primary" @onclick="SaveNivel3Async">Guardar</button>
+        </div>
+      </div>
     </div>
-    <div class="modal-backdrop fade show"></div>
+  </div>
+  <div class="modal-backdrop fade show"></div>
 }
 
 @code {
   [Inject] public ICuentasContablesRepository CuentasRepository { get; set; } = default!;
   [Inject] public IUserRfcState RfcState { get; set; } = default!;
+
   [Parameter] public string? SelectedRfc { get; set; }
   [Parameter] public EventCallback<string?> SelectedRfcChanged { get; set; }
   [Parameter] public CuentaContableSelection? Selection { get; set; }
@@ -177,30 +247,34 @@
 
   private string? currentRfc;
   private string? lastLoadedRfc;
-    private CuentaContableSelection currentSelection = new();
-  private int? directAccountId;
-  private string nivel1Term = string.Empty;
-  private string nivel2Term = string.Empty;
-  private string nivel3Term = string.Empty;
-  private readonly List<CuentasContablesDto> nivel1Results = new();
-  private readonly List<CuentasContablesDto> nivel2Results = new();
-  private readonly List<CuentasContablesDto> nivel3Results = new();
-  private bool showNivel3Modal = false;
-  private bool isEditingNivel3 = false;
+  private CuentaContableSelection currentSelection = new();
+  private string searchTerm = string.Empty;
+  private readonly List<CuentasContablesDto> searchResults = new();
+  private readonly List<CuentaContableDisplayRow> searchDisplayRows = new();
+  private bool showSearchResults;
+  private bool hasExecutedSearch;
+
+  private bool showNivel3Modal;
+  private bool isEditingNivel3;
   private CuentasContablesDto nivel3Model = new();
-  private bool CanSearchNivel2 => currentSelection?.HasNivel1 == true && !string.IsNullOrWhiteSpace(currentRfc);
-  private bool CanSearchNivel3 => currentSelection?.HasNivel2 == true && !string.IsNullOrWhiteSpace(currentRfc);
-  private bool CanBuscar => currentSelection?.HasNivel2 == true && !string.IsNullOrWhiteSpace(currentRfc);
+  private CuentaContableSelection createSelection = new();
+  private string createNivel1Term = string.Empty;
+  private string createNivel2Term = string.Empty;
+  private readonly List<CuentasContablesDto> createNivel1Results = new();
+  private readonly List<CuentasContablesDto> createNivel2Results = new();
 
-  public bool RequiresDirectAccountResolution => directAccountId.HasValue && !(currentSelection?.HasNivel3 ?? false);
+  private bool CanSearchMain => !string.IsNullOrWhiteSpace(currentRfc) && !string.IsNullOrWhiteSpace(searchTerm);
+  private bool CanOpenCreateModal => !string.IsNullOrWhiteSpace(currentRfc);
+  private bool CanSearchCreateNivel2 => !string.IsNullOrWhiteSpace(currentRfc) && createSelection.HasNivel1;
 
-  protected override async Task OnParametersSetAsync()
+  public bool RequiresDirectAccountResolution => false;
+
+  protected override Task OnParametersSetAsync()
+  {
+    if (!EqualsReference(currentSelection, Selection))
     {
-      if (!EqualsReference(currentSelection, Selection))
-      {
-        currentSelection = Selection ?? new CuentaContableSelection();
-        SyncSelectionState();
-      }
+      currentSelection = Selection ?? new CuentaContableSelection();
+    }
 
     if (!string.Equals(currentRfc, SelectedRfc, StringComparison.OrdinalIgnoreCase))
     {
@@ -210,292 +284,34 @@
     if (!string.Equals(lastLoadedRfc, currentRfc, StringComparison.OrdinalIgnoreCase))
     {
       lastLoadedRfc = currentRfc;
-      nivel1Results.Clear();
-      nivel2Results.Clear();
-      nivel3Results.Clear();
-
-      var shouldLoadDefaults = !(currentSelection?.HasNivel1 ?? false);
-
-      if (shouldLoadDefaults && !string.IsNullOrWhiteSpace(currentRfc))
+      ResetSearchResults();
+      ResetCreateWorkflow();
+      if (showNivel3Modal && !isEditingNivel3)
       {
-        await SearchNivel1Async(loadDefaults: true);
+        nivel3Model = new CuentasContablesDto();
       }
     }
+
+    return Task.CompletedTask;
   }
 
-  public Task<bool> TryResolveDirectAccountAsync() => ResolveDirectAccountAsync();
-
-  private static bool EqualsReference(CuentaContableSelection? left, CuentaContableSelection? right)
-    => ReferenceEquals(left, right) || (left is null && right is null);
-
-  private void SyncSelectionState()
+  public async Task<bool> TryResolveDirectAccountAsync()
   {
-    nivel1Results.Clear();
-    nivel2Results.Clear();
-    nivel3Results.Clear();
-
-    if (currentSelection is null)
+    if (currentSelection.HasNivel3)
     {
-      nivel1Term = string.Empty;
-      nivel2Term = string.Empty;
-      nivel3Term = string.Empty;
-      directAccountId = null;
-      return;
+      return true;
     }
 
-    nivel1Term = currentSelection.Nivel1 ?? string.Empty;
-    nivel2Term = currentSelection.Nivel2 ?? string.Empty;
-    nivel3Term = currentSelection.Nivel3 ?? string.Empty;
-    directAccountId = currentSelection.Id;
-  }
-
-  private async Task OnDirectAccountKeyDown(KeyboardEventArgs args)
-  {
-    if (args.Key != "Enter")
-    {
-      return;
-    }
-
-    var resolved = await ResolveDirectAccountAsync();
-    if (resolved && CanBuscar)
-    {
-      await SearchRequested.InvokeAsync();
-    }
-  }
-
-  private async Task OnNivel1KeyDown(KeyboardEventArgs args)
-  {
-    if (args.Key != "Enter")
-    {
-      return;
-    }
-
-    if (CanBuscar && Nivel1TermMatchesSelection())
-    {
-      await SearchRequested.InvokeAsync();
-    }
-    else
-    {
-      await SearchNivel1Async(loadDefaults: string.IsNullOrWhiteSpace(nivel1Term));
-    }
-  }
-
-  private async Task OnNivel2KeyDown(KeyboardEventArgs args)
-  {
-    if (args.Key != "Enter")
-    {
-      return;
-    }
-
-    if (!CanSearchNivel2)
-    {
-      await SearchNivel1Async(loadDefaults: string.IsNullOrWhiteSpace(nivel1Term));
-      return;
-    }
-
-    if (CanBuscar && Nivel2TermMatchesSelection())
-    {
-      await SearchRequested.InvokeAsync();
-    }
-    else
-    {
-      await SearchNivel2Async(loadDefaults: string.IsNullOrWhiteSpace(nivel2Term));
-    }
-  }
-
-    private async Task OnNivel3KeyDown(KeyboardEventArgs args)
-    {
-        // Some keyboards/browsers can report NumpadEnter via Code, so this is a safe add.
-        var isEnter = args.Key == "Enter" || args.Code == "NumpadEnter";
-        if (!isEnter)
-            return;
-
-        if (!CanSearchNivel3)
-        {
-            if (!CanSearchNivel2)
-                await SearchNivel1Async(loadDefaults: string.IsNullOrWhiteSpace(nivel1Term));
-            else
-                await SearchNivel2Async(loadDefaults: string.IsNullOrWhiteSpace(nivel2Term));
-
-            return;
-        }
-
-        if (CanBuscar && Nivel3TermMatchesSelection())
-            await SearchRequested.InvokeAsync();
-        else
-            await SearchNivel3Async(loadDefaults: string.IsNullOrWhiteSpace(nivel3Term));
-    }
-
-
-  private async Task SearchNivel1Async(bool loadDefaults = false)
-  {
-    nivel1Results.Clear();
-    nivel2Results.Clear();
-    nivel3Results.Clear();
-
-    if (string.IsNullOrWhiteSpace(currentRfc))
-    {
-      return;
-    }
-
-    var term = loadDefaults ? string.Empty : (nivel1Term?.Trim() ?? string.Empty);
-    if (!loadDefaults && string.IsNullOrWhiteSpace(term))
-    {
-      return;
-    }
-
-    try
-    {
-      var results = await CuentasRepository.SearchNivel1Async(currentRfc, term, loadDefaults ? 25 : 200);
-      nivel1Results.AddRange(results);
-    }
-    catch (Exception ex)
-    {
-      await NotifyErrorAsync("No se pudo buscar cuentas de nivel 1", ex);
-    }
-  }
-
-  private async Task SearchNivel2Async(bool loadDefaults = false)
-  {
-    nivel2Results.Clear();
-    nivel3Results.Clear();
-
-    if (!CanSearchNivel2 || string.IsNullOrWhiteSpace(currentSelection?.Nivel1))
-    {
-      return;
-    }
-
-    var term = loadDefaults ? string.Empty : (nivel2Term?.Trim() ?? string.Empty);
-    if (!loadDefaults && string.IsNullOrWhiteSpace(term))
-    {
-      return;
-    }
-
-    try
-    {
-      var results = await CuentasRepository.SearchNivel2Async(currentRfc!, currentSelection!.Nivel1!, term);
-      nivel2Results.AddRange(results);
-    }
-    catch (Exception ex)
-    {
-      await NotifyErrorAsync("No se pudo buscar cuentas de nivel 2", ex);
-    }
-  }
-
-  private async Task SearchNivel3Async(bool loadDefaults = false)
-  {
-    nivel3Results.Clear();
-
-    if (!CanSearchNivel3 || string.IsNullOrWhiteSpace(currentSelection?.Nivel1) || string.IsNullOrWhiteSpace(currentSelection?.Nivel2))
-    {
-      return;
-    }
-
-    var term = loadDefaults ? string.Empty : (nivel3Term?.Trim() ?? string.Empty);
-    if (!loadDefaults && string.IsNullOrWhiteSpace(term))
-    {
-      return;
-    }
-
-    try
-    {
-      var results = await CuentasRepository.SearchNivel3Async(currentRfc!, currentSelection!.Nivel1!, currentSelection!.Nivel2!, term);
-      nivel3Results.AddRange(results);
-    }
-    catch (Exception ex)
-    {
-      await NotifyErrorAsync("No se pudo buscar cuentas de nivel 3", ex);
-    }
-  }
-
-  private async Task SelectNivel1Async(CuentasContablesDto dto)
-  {
-    await SetRfcAsync(dto.Rfc);
-
-    currentSelection = new CuentaContableSelection
-    {
-      Id = dto.Id,
-      Rfc = dto.Rfc,
-      Nivel1 = dto.Nivel1,
-      Nivel2 = null,
-      Nivel3 = null,
-      Descripcion = dto.Descripcion
-    };
-
-    await SelectionChanged.InvokeAsync(currentSelection);
-
-    directAccountId = dto.Id;
-    nivel1Term = dto.Nivel1;
-    nivel2Term = string.Empty;
-    nivel3Term = string.Empty;
-    nivel1Results.Clear();
-    nivel2Results.Clear();
-    nivel3Results.Clear();
-
-    if (CanSearchNivel2)
-    {
-      await SearchNivel2Async(loadDefaults: true);
-    }
-  }
-
-  private async Task SelectNivel2Async(CuentasContablesDto dto)
-  {
-    currentSelection = new CuentaContableSelection
-    {
-      Id = dto.Id,
-      Rfc = dto.Rfc,
-      Nivel1 = dto.Nivel1,
-      Nivel2 = NormalizeTwoDigits(dto.Nivel2),
-      Nivel3 = null,
-      Descripcion = dto.Descripcion
-    };
-
-    await SelectionChanged.InvokeAsync(currentSelection);
-
-    directAccountId = dto.Id;
-    nivel2Term = currentSelection.Nivel2 ?? string.Empty;
-    nivel3Term = string.Empty;
-    nivel2Results.Clear();
-    nivel3Results.Clear();
-
-    if (CanSearchNivel3)
-    {
-      await SearchNivel3Async(loadDefaults: true);
-    }
-  }
-
-  private async Task SelectNivel3(CuentasContablesDto dto)
-  {
-    currentSelection = new CuentaContableSelection
-    {
-      Id = dto.Id,
-      Rfc = dto.Rfc,
-      Nivel1 = dto.Nivel1,
-      Nivel2 = NormalizeTwoDigits(dto.Nivel2),
-      Nivel3 = NormalizeTwoDigits(dto.Nivel3),
-      Descripcion = dto.Descripcion
-    };
-
-    await SelectionChanged.InvokeAsync(currentSelection);
-
-    directAccountId = dto.Id;
-    nivel3Term = currentSelection.Nivel3 ?? string.Empty;
-    nivel3Results.Clear();
-  }
-
-  private async Task<bool> ResolveDirectAccountAsync()
-  {
-    if (directAccountId is null)
+    if (string.IsNullOrWhiteSpace(searchTerm) || !int.TryParse(searchTerm.Trim(), out var id) || id <= 0)
     {
       return false;
     }
 
     try
     {
-      var account = await CuentasRepository.GetByIdAsync(directAccountId.Value);
-      if (account is null)
+      var account = await CuentasRepository.GetByIdAsync(id);
+      if (account is null || NormalizeTwoDigits(account.Nivel2) == "00")
       {
-        await NotifyErrorAsync("No se encontró la cuenta contable.");
         return false;
       }
 
@@ -504,9 +320,114 @@
     }
     catch (Exception ex)
     {
-      await NotifyErrorAsync("No se pudo resolver la cuenta contable", ex);
+      await NotifyErrorAsync("No se pudo resolver la cuenta contable.", ex);
       return false;
     }
+  }
+
+  private async Task OnSearchKeyDown(KeyboardEventArgs args)
+  {
+    if (!IsEnterKey(args))
+    {
+      return;
+    }
+
+    await SearchAccountsAsync();
+  }
+
+  private async Task SearchAccountsAsync(bool autoSelectSingle = true)
+  {
+    ResetSearchResults();
+
+    if (string.IsNullOrWhiteSpace(currentRfc))
+    {
+      await NotifyErrorAsync("Selecciona un RFC antes de buscar cuentas contables.");
+      return;
+    }
+
+    var term = searchTerm?.Trim() ?? string.Empty;
+    if (string.IsNullOrWhiteSpace(term))
+    {
+      return;
+    }
+
+    try
+    {
+      var results = (await CuentasRepository.SearchUnifiedAsync(currentRfc, term, 250)).ToList();
+
+      searchResults.AddRange(results);
+      RebuildDisplayRows();
+      hasExecutedSearch = true;
+      showSearchResults = true;
+      await ClearErrorAsync();
+
+      if (!autoSelectSingle)
+      {
+        return;
+      }
+
+      var selectableRows = searchDisplayRows.Where(row => row.IsSelectable).ToList();
+      if (selectableRows.Count == 1 && selectableRows[0].Account is not null)
+      {
+        await SelectSearchResultAsync(selectableRows[0].Account!);
+      }
+    }
+    catch (Exception ex)
+    {
+      await NotifyErrorAsync("No se pudo buscar cuentas contables.", ex);
+    }
+  }
+
+  private void RebuildDisplayRows()
+  {
+    searchDisplayRows.Clear();
+
+    foreach (var nivel1Group in searchResults
+                 .OrderBy(item => item.Nivel1, StringComparer.OrdinalIgnoreCase)
+                 .ThenBy(item => NormalizeTwoDigits(item.Nivel2), StringComparer.OrdinalIgnoreCase)
+                 .ThenBy(item => NormalizeTwoDigits(item.Nivel3), StringComparer.OrdinalIgnoreCase)
+                 .GroupBy(item => item.Nivel1, StringComparer.OrdinalIgnoreCase))
+    {
+      var nivel1Header = nivel1Group.FirstOrDefault(IsNivel1HeaderAccount) ?? nivel1Group.First();
+      searchDisplayRows.Add(CuentaContableDisplayRow.CreateNivel1Header(nivel1Header));
+
+      foreach (var nivel2Group in nivel1Group
+                   .GroupBy(item => NormalizeTwoDigits(item.Nivel2), StringComparer.OrdinalIgnoreCase))
+      {
+        var nivel3Header = nivel2Group.FirstOrDefault(IsNivel3HeaderAccount);
+        if (nivel3Header is null)
+        {
+          searchDisplayRows.Add(CuentaContableDisplayRow.CreateNivel2Header(nivel2Group.First()));
+        }
+        else
+        {
+          searchDisplayRows.Add(CuentaContableDisplayRow.CreateSelectableAccount(nivel3Header));
+        }
+
+        foreach (var account in nivel2Group
+                     .Where(account => !IsNivel3HeaderAccount(account))
+                     .OrderBy(item => NormalizeTwoDigits(item.Nivel3), StringComparer.OrdinalIgnoreCase))
+        {
+          searchDisplayRows.Add(CuentaContableDisplayRow.CreateSelectableAccount(account));
+        }
+      }
+    }
+  }
+
+  private async Task OnDisplayRowClickedAsync(CuentaContableDisplayRow row)
+  {
+    if (!row.IsSelectable || row.Account is null)
+    {
+      return;
+    }
+
+    await SelectSearchResultAsync(row.Account);
+  }
+
+  private async Task SelectSearchResultAsync(CuentasContablesDto account)
+  {
+    await ApplyAccountAsync(account);
+    ResetSearchResults();
   }
 
   private async Task ApplyAccountAsync(CuentasContablesDto account)
@@ -524,13 +445,7 @@
     };
 
     await SelectionChanged.InvokeAsync(currentSelection);
-
-    nivel1Term = currentSelection.Nivel1 ?? string.Empty;
-    nivel2Term = currentSelection.Nivel2 ?? string.Empty;
-    nivel3Term = currentSelection.Nivel3 ?? string.Empty;
-    nivel1Results.Clear();
-    nivel2Results.Clear();
-    nivel3Results.Clear();
+    await ClearErrorAsync();
   }
 
   private async Task SetRfcAsync(string rfc)
@@ -550,23 +465,216 @@
     }
   }
 
-  private bool Nivel1TermMatchesSelection()
-    => !string.IsNullOrWhiteSpace(currentSelection?.Nivel1)
-       && string.Equals((nivel1Term ?? string.Empty).Trim(), currentSelection!.Nivel1!.Trim(), StringComparison.OrdinalIgnoreCase);
+  private async Task OnCreateNivel1KeyDown(KeyboardEventArgs args)
+  {
+    if (!IsEnterKey(args))
+    {
+      return;
+    }
 
-  private bool Nivel2TermMatchesSelection()
-    => !string.IsNullOrWhiteSpace(currentSelection?.Nivel2)
-       && string.Equals(NormalizeTwoDigits(nivel2Term), currentSelection!.Nivel2!, StringComparison.OrdinalIgnoreCase);
+    await SearchCreateNivel1Async();
+  }
 
-  private bool Nivel3TermMatchesSelection()
-    => !string.IsNullOrWhiteSpace(currentSelection?.Nivel3)
-       && string.Equals(NormalizeTwoDigits(nivel3Term), currentSelection!.Nivel3!, StringComparison.OrdinalIgnoreCase);
+  private async Task OnCreateNivel2KeyDown(KeyboardEventArgs args)
+  {
+    if (!IsEnterKey(args))
+    {
+      return;
+    }
+
+    await SearchCreateNivel2Async();
+  }
+
+  private async Task SearchCreateNivel1Async(bool loadDefaults = false)
+  {
+    createNivel1Results.Clear();
+    createNivel2Results.Clear();
+    createSelection = new CuentaContableSelection { Rfc = currentRfc };
+
+    if (string.IsNullOrWhiteSpace(currentRfc))
+    {
+      return;
+    }
+
+    var term = loadDefaults ? string.Empty : (createNivel1Term?.Trim() ?? string.Empty);
+    if (!loadDefaults && string.IsNullOrWhiteSpace(term))
+    {
+      return;
+    }
+
+    try
+    {
+      var results = await CuentasRepository.SearchNivel1Async(currentRfc, term, loadDefaults ? 25 : 200);
+      createNivel1Results.AddRange(results);
+      await ClearErrorAsync();
+    }
+    catch (Exception ex)
+    {
+      await NotifyErrorAsync("No se pudo buscar cuentas de nivel 1.", ex);
+    }
+  }
+
+  private async Task SearchCreateNivel2Async(bool loadDefaults = false)
+  {
+    createNivel2Results.Clear();
+
+    if (!CanSearchCreateNivel2 || string.IsNullOrWhiteSpace(currentRfc) || string.IsNullOrWhiteSpace(createSelection.Nivel1))
+    {
+      return;
+    }
+
+    var term = loadDefaults ? string.Empty : (createNivel2Term?.Trim() ?? string.Empty);
+    if (!loadDefaults && string.IsNullOrWhiteSpace(term))
+    {
+      return;
+    }
+
+    try
+    {
+      var results = await CuentasRepository.SearchNivel2Async(currentRfc, createSelection.Nivel1!, term);
+      createNivel2Results.AddRange(results);
+      await ClearErrorAsync();
+    }
+    catch (Exception ex)
+    {
+      await NotifyErrorAsync("No se pudo buscar cuentas de nivel 2.", ex);
+    }
+  }
+
+  private async Task SelectCreateNivel1Async(CuentasContablesDto dto)
+  {
+    createSelection = new CuentaContableSelection
+    {
+      Rfc = dto.Rfc,
+      Nivel1 = dto.Nivel1
+    };
+
+    createNivel1Term = dto.Nivel1;
+    createNivel2Term = string.Empty;
+    createNivel1Results.Clear();
+    createNivel2Results.Clear();
+    await SearchCreateNivel2Async(loadDefaults: true);
+  }
+
+  private Task SelectCreateNivel2Async(CuentasContablesDto dto)
+  {
+    createSelection = new CuentaContableSelection
+    {
+      Rfc = dto.Rfc,
+      Nivel1 = dto.Nivel1,
+      Nivel2 = NormalizeTwoDigits(dto.Nivel2)
+    };
+
+    createNivel2Term = createSelection.Nivel2 ?? string.Empty;
+    createNivel2Results.Clear();
+    return Task.CompletedTask;
+  }
+
+  private void ShowCreateNivel3Modal()
+  {
+    isEditingNivel3 = false;
+    nivel3Model = new CuentasContablesDto();
+    ResetCreateWorkflow();
+    showNivel3Modal = true;
+  }
+
+  private void ShowEditNivel3Modal(CuentasContablesDto item)
+  {
+    isEditingNivel3 = true;
+    nivel3Model = item with { };
+    showNivel3Modal = true;
+  }
+
+  private void CloseNivel3Modal()
+  {
+    showNivel3Modal = false;
+    isEditingNivel3 = false;
+    nivel3Model = new CuentasContablesDto();
+    ResetCreateWorkflow();
+  }
+
+  private async Task SaveNivel3Async()
+  {
+    try
+    {
+      if (isEditingNivel3)
+      {
+        if (nivel3Model.Id <= 0)
+        {
+          await NotifyErrorAsync("No se pudo identificar el Nivel 3 que se intenta editar.");
+          return;
+        }
+
+        await CuentasRepository.UpdateNivel3DescripcionAsync(nivel3Model.Id, nivel3Model.Descripcion);
+        await ClearErrorAsync();
+
+        if (currentSelection.Id == nivel3Model.Id)
+        {
+          currentSelection = new CuentaContableSelection
+          {
+            Id = currentSelection.Id,
+            Rfc = currentSelection.Rfc,
+            Nivel1 = currentSelection.Nivel1,
+            Nivel2 = currentSelection.Nivel2,
+            Nivel3 = currentSelection.Nivel3,
+            Descripcion = nivel3Model.Descripcion
+          };
+
+          await SelectionChanged.InvokeAsync(currentSelection);
+        }
+
+        if (showSearchResults)
+        {
+          await SearchAccountsAsync(autoSelectSingle: false);
+        }
+      }
+      else
+      {
+        if (string.IsNullOrWhiteSpace(currentRfc) || !createSelection.HasNivel2)
+        {
+          await NotifyErrorAsync("Selecciona un Nivel 1 y un Nivel 2 antes de crear un Nivel 3.");
+          return;
+        }
+
+        if (string.IsNullOrWhiteSpace(nivel3Model.Nivel3))
+        {
+          await NotifyErrorAsync("Captura el codigo del Nivel 3.");
+          return;
+        }
+
+        var newId = await CuentasRepository.CreateNivel3Async(
+            currentRfc,
+            createSelection.Nivel1!,
+            createSelection.Nivel2!,
+            nivel3Model.Nivel3,
+            nivel3Model.Descripcion);
+
+        if (newId == -1)
+        {
+          await NotifyErrorAsync("El Nivel 3 ya existe.");
+          return;
+        }
+
+        var createdAccount = await CuentasRepository.GetByIdAsync(newId);
+        if (createdAccount is not null)
+        {
+          await ApplyAccountAsync(createdAccount);
+        }
+      }
+
+      CloseNivel3Modal();
+    }
+    catch (Exception ex)
+    {
+      await NotifyErrorAsync("No se pudo guardar el Nivel 3.", ex);
+    }
+  }
 
   private async Task NotifyErrorAsync(string message, Exception? exception = null)
   {
     if (exception is not null)
     {
-      Console.Error.WriteLine($"[CuentaContablePicker] {message}: {exception}");
+      Console.Error.WriteLine($"[CuentaContablePicker] {message} {exception}");
     }
     else
     {
@@ -579,7 +687,38 @@
     }
   }
 
-  private static string NormalizeTwoDigits(string value)
+  private async Task ClearErrorAsync()
+  {
+    if (ErrorChanged.HasDelegate)
+    {
+      await ErrorChanged.InvokeAsync(null);
+    }
+  }
+
+  private void ResetSearchResults()
+  {
+    searchResults.Clear();
+    searchDisplayRows.Clear();
+    showSearchResults = false;
+    hasExecutedSearch = false;
+  }
+
+  private void ResetCreateWorkflow()
+  {
+    createSelection = new CuentaContableSelection { Rfc = currentRfc };
+    createNivel1Term = string.Empty;
+    createNivel2Term = string.Empty;
+    createNivel1Results.Clear();
+    createNivel2Results.Clear();
+  }
+
+  private static bool EqualsReference(CuentaContableSelection? left, CuentaContableSelection? right)
+    => ReferenceEquals(left, right) || (left is null && right is null);
+
+  private static bool IsEnterKey(KeyboardEventArgs args)
+    => args.Key == "Enter" || args.Code == "NumpadEnter";
+
+  private static string NormalizeTwoDigits(string? value)
   {
     var trimmed = value?.Trim() ?? string.Empty;
     if (trimmed.Length == 1 && char.IsDigit(trimmed[0]))
@@ -590,63 +729,79 @@
     return trimmed;
   }
 
-    private void ShowCreateNivel3Modal()
+  private static bool IsNivel1HeaderAccount(CuentasContablesDto account)
+    => NormalizeTwoDigits(account.Nivel2) == "00" && NormalizeTwoDigits(account.Nivel3) == "00";
+
+  private static bool IsNivel3HeaderAccount(CuentasContablesDto account)
+    => NormalizeTwoDigits(account.Nivel2) != "00" && NormalizeTwoDigits(account.Nivel3) == "00";
+
+  private static string GetSearchRowClass(CuentaContableDisplayRow row)
+  {
+    if (row.IsNivel1Header)
     {
-        isEditingNivel3 = false;
-        nivel3Model = new CuentasContablesDto();
-        showNivel3Modal = true;
+      return "table-secondary fw-semibold";
     }
 
-    private void ShowEditNivel3Modal(CuentasContablesDto item)
+    if (row.IsNivel2Header)
     {
-        isEditingNivel3 = true;
-        nivel3Model = item with { };
-        showNivel3Modal = true;
+      return "table-light";
     }
 
-    private void CloseNivel3Modal()
-    {
-        showNivel3Modal = false;
-    }
+    return string.Empty;
+  }
 
-    private async Task SaveNivel3()
-    {
-        try
-        {
-            if (isEditingNivel3)
-            {
-                await CuentasRepository.UpdateNivel3DescripcionAsync(nivel3Model.Id, nivel3Model.Descripcion);
-            }
-            else
-            {
-              if (string.IsNullOrWhiteSpace(currentRfc)
-                  || string.IsNullOrWhiteSpace(currentSelection.Nivel1)
-                  || string.IsNullOrWhiteSpace(currentSelection.Nivel2))
-              {
-                  await NotifyErrorAsync("Selecciona una cuenta de nivel 1 y nivel 2 antes de crear un nivel 3.");
-                  return;
-              }
+  private static string? GetSearchRowStyle(CuentaContableDisplayRow row)
+    => row.IsSelectable ? "cursor: pointer;" : null;
 
-              var newId = await CuentasRepository.CreateNivel3Async(
-                  currentRfc,
-                  currentSelection.Nivel1!,
-                  currentSelection.Nivel2!,
-                  nivel3Model.Nivel3,
-                  nivel3Model.Descripcion);
+  private static string FormatSelectionValue(string? value)
+    => string.IsNullOrWhiteSpace(value) ? "Sin seleccionar" : value;
 
-                if (newId == -1)
-                {
-                    await NotifyErrorAsync("El Nivel 3 ya existe.");
-                    return;
-                }
-            }
+  private sealed class CuentaContableDisplayRow
+  {
+    public int? DisplayId { get; init; }
+    public string Nivel1Descripcion { get; init; } = string.Empty;
+    public string Nivel2Descripcion { get; init; } = string.Empty;
+    public string Nivel3Descripcion { get; init; } = string.Empty;
+    public bool IsNivel1Header { get; init; }
+    public bool IsNivel2Header { get; init; }
+    public bool IsSelectable { get; init; }
+    public CuentasContablesDto? Account { get; init; }
 
-            CloseNivel3Modal();
-            await SearchNivel3Async(loadDefaults: true);
-        }
-        catch (Exception ex)
-        {
-            await NotifyErrorAsync("No se pudo guardar el nivel 3.", ex);
-        }
-    }
+    public static CuentaContableDisplayRow CreateNivel1Header(CuentasContablesDto account)
+      => new()
+      {
+        DisplayId = account.Nivel1Id,
+        Nivel1Descripcion = GetNivel1Descripcion(account),
+        IsNivel1Header = true
+      };
+
+    public static CuentaContableDisplayRow CreateNivel2Header(CuentasContablesDto account)
+      => new()
+      {
+        DisplayId = account.Nivel2Id,
+        Nivel1Descripcion = GetNivel1Descripcion(account),
+        Nivel2Descripcion = GetNivel2Descripcion(account),
+        IsNivel2Header = true
+      };
+
+    public static CuentaContableDisplayRow CreateSelectableAccount(CuentasContablesDto account)
+      => new()
+      {
+        DisplayId = account.Id,
+        Nivel1Descripcion = GetNivel1Descripcion(account),
+        Nivel2Descripcion = GetNivel2Descripcion(account),
+        Nivel3Descripcion = GetNivel3Descripcion(account),
+        IsSelectable = true,
+        Account = account
+      };
+
+    private static string GetNivel1Descripcion(CuentasContablesDto account)
+      => string.IsNullOrWhiteSpace(account.Nivel1Descripcion) ? account.Nivel1 : account.Nivel1Descripcion!;
+
+    private static string GetNivel2Descripcion(CuentasContablesDto account)
+      => string.IsNullOrWhiteSpace(account.Nivel2Descripcion) ? NormalizeTwoDigits(account.Nivel2) : account.Nivel2Descripcion!;
+
+    private static string GetNivel3Descripcion(CuentasContablesDto account)
+      => string.IsNullOrWhiteSpace(account.Nivel3Descripcion) ? account.Descripcion : account.Nivel3Descripcion!;
+  }
 }

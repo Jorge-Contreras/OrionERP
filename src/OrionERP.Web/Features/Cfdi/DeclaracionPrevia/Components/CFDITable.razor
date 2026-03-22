@@ -141,7 +141,7 @@
                             <td class="num">@FormatCurrency(item.IVA_RETENIDO)</td>
                             <td class="num">@FormatCurrency(item.ISR_RETENIDO)</td>
                             <td class="num">@FormatCurrency(item.IEPS_RETENIDO)</td>
-                            <td class="num">@FormatCurrency(item.Total)</td>
+                            <td class="@GetTotalPolizasCellClass(item)">@FormatCurrency(item.Total)</td>
                             <td>@item.FOLIO_FISCAL</td>
                             <td>@item.FormaPago</td>
                             <td>@item.TipoDeComprobante</td>
@@ -150,7 +150,7 @@
                             <td>@(item.FechaCancelacion.HasValue ? item.FechaCancelacion.Value.ToString("yyyy-MM-dd") : string.Empty)</td>
                             <td>@item.Estatus</td>
                             <td>@item.fechastransacciones</td>
-                            <td class="num">@FormatInteger(item.SumaPolizas)</td>
+                            <td class="@GetTotalPolizasCellClass(item)">@FormatTwoDecimals(item.SumaPolizas)</td>
                             <td class="num">@item.XML_Attachment_ID</td>
                         </tr>
                         if (DetailsTemplate is not null)
@@ -212,7 +212,7 @@
 
 @code {
     private const int BaseColumnCount = 28;
-    private const decimal TotalPolizasTolerance = 2m;
+    private const decimal TotalPolizasTolerance = 0.99m;
     private static readonly IReadOnlyList<string?> BaseColumnWidths = new List<string?>
     {
         "8rem", // Acciones
@@ -408,7 +408,12 @@
 
     private static string FormatCurrency(decimal value) => string.Format("{0:N2}", value);
 
-    private static string FormatInteger(int? value) => value.HasValue ? value.Value.ToString("N0") : string.Empty;
+    private static string FormatTwoDecimals(int? value) => value.HasValue ? value.Value.ToString("N2") : string.Empty;
+
+    private string GetTotalPolizasCellClass(DeclaracionCfdiBase item) =>
+        HasTotalPolizasDifference(item)
+            ? "num table-danger fw-semibold"
+            : "num";
 
     private void ApplyFiltersAndSorting(bool resetPage = true)
     {

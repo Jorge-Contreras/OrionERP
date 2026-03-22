@@ -1,6 +1,9 @@
 # Build output
 bin/
 obj/
+artifacts/
+**/artifacts/
+output/
 
 # User-specific files
 *.user
@@ -12,6 +15,7 @@ obj/
 .vs/
 .vscode/
 .idea/
+.codex-temp/
 
 # OS junk
 .DS_Store
@@ -21,6 +25,8 @@ Thumbs.db
 *.log
 *.tmp
 *.cache
+/tmp/publish-*/
+/tmp/pdfs/output/
 
 # Dotnet tools
 *.nupkg

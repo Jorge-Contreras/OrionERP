@@ -408,7 +408,7 @@
 
     private static string FormatCurrency(decimal value) => string.Format("{0:N2}", value);
 
-    private static string FormatTwoDecimals(int? value) => value.HasValue ? value.Value.ToString("N2") : string.Empty;
+    private static string FormatTwoDecimals(decimal? value) => value.HasValue ? value.Value.ToString("N2") : string.Empty;
 
     private string GetTotalPolizasCellClass(DeclaracionCfdiBase item) =>
         HasTotalPolizasDifference(item)

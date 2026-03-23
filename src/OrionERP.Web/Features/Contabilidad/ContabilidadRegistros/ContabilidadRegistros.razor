@@ -1,11 +1,13 @@
 @page "/contabilidad/registros-contables"
 @page "/cfdi/registros-contables"
 @using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
 @using OrionERP.Application.Features.Contabilidad.ContabilidadRegistros
 @using OrionERP.Web.Shared
 @using OrionERP.Web.State
 @using System.Globalization
 @inject IContabilidadRegistrosService RegistrosService
+@inject IJSRuntime JS
 @inject IUserRfcState RfcState
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 @implements IDisposable
@@ -57,8 +59,8 @@
       @ref="accountPicker"
       @bind-SelectedRfc="selectedRfc"
       @bind-SelectedRfc:after="OnAccountPickerRfcChangedAsync"
-      @bind-Selection="accountSelection"
-      SearchRequested="OnAccountPickerSearchRequestedAsync"
+      Selection="accountSelection"
+      SelectionChanged="OnAccountSelectionChangedAsync"
       ErrorChanged="OnAccountPickerErrorChangedAsync" />
   </div>
 
@@ -76,8 +78,15 @@
         <span class="badge text-bg-info text-wrap">@accountSelection!.Descripcion</span>
       }
     }
-        <a href="/contabilidad/transacciones/new" class="btn btn-success ms-auto">Nueva Transacción</a>
-    <button class="btn btn-primary" @onclick="OnBuscarClickedAsync" disabled="@(!CanBuscar)">Buscar</button>
+    <div class="ms-auto d-flex flex-wrap gap-2">
+      <a href="/contabilidad/transacciones/new" class="btn btn-success">Nueva Transacción</a>
+      <button class="btn btn-outline-success"
+              type="button"
+              @onclick="ExportarExcelAsync"
+              disabled="@(isLoading || isExporting || registros.Count == 0)">
+        <i class="bi bi-file-excel"></i> Exportar a Excel
+      </button>
+    </div>
   </div>
 </div>
 
@@ -172,6 +181,7 @@
   private readonly List<int> transaccionOrder = new();
   private bool hasSearched;
   private bool isLoading;
+  private bool isExporting;
   private string? errorMessage;
   private bool suppressRfcChange;
   private string? lastQueryKey;
@@ -360,10 +370,16 @@
     return Task.CompletedTask;
   }
 
-  private async Task OnAccountPickerSearchRequestedAsync()
+  private async Task OnAccountSelectionChangedAsync(CuentaContableSelection? selection)
   {
+    accountSelection = selection;
+
     if (!CanBuscar)
     {
+      registros.Clear();
+      transaccionOrder.Clear();
+      hasSearched = false;
+      errorMessage = null;
       return;
     }
 
@@ -420,6 +436,95 @@
     {
       isLoading = false;
     }
+  }
+
+  private async Task ExportarExcelAsync()
+  {
+    if (isExporting || registros.Count == 0)
+    {
+      return;
+    }
+
+    isExporting = true;
+    errorMessage = null;
+
+    try
+    {
+      using var package = new OfficeOpenXml.ExcelPackage();
+      var worksheet = package.Workbook.Worksheets.Add("Registros");
+      var headers = new[]
+      {
+        "Id",
+        "Poliza",
+        "Fecha",
+        "Concepto",
+        "Debe",
+        "Haber",
+        "Balance",
+        "Revisado"
+      };
+
+      for (var column = 0; column < headers.Length; column++)
+      {
+        worksheet.Cells[1, column + 1].Value = headers[column];
+      }
+
+      worksheet.Cells[1, 1, 1, headers.Length].Style.Font.Bold = true;
+
+      for (var index = 0; index < registros.Count; index++)
+      {
+        var row = registros[index];
+        var excelRow = index + 2;
+
+        worksheet.Cells[excelRow, 1].Value = row.Id;
+        worksheet.Cells[excelRow, 2].Value = row.Poliza;
+        worksheet.Cells[excelRow, 3].Value = row.Fecha;
+        worksheet.Cells[excelRow, 4].Value = row.Concepto;
+        worksheet.Cells[excelRow, 5].Value = row.Debe;
+        worksheet.Cells[excelRow, 6].Value = row.Haber;
+        worksheet.Cells[excelRow, 7].Value = row.Balance;
+        worksheet.Cells[excelRow, 8].Value = row.Revisado;
+      }
+
+      if (worksheet.Dimension is not null)
+      {
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+      }
+
+      var fileBytes = await package.GetAsByteArrayAsync();
+      var fileName = BuildExcelFileName();
+      var base64 = Convert.ToBase64String(fileBytes);
+      var dataUrl = $"data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{base64}";
+
+      await JS.InvokeVoidAsync("triggerFileDownload", fileName, dataUrl);
+    }
+    catch (Exception ex)
+    {
+      ReportError("No se pudo exportar a Excel", ex);
+    }
+    finally
+    {
+      isExporting = false;
+    }
+  }
+
+  private string BuildExcelFileName()
+  {
+    var nivel3 = string.IsNullOrWhiteSpace(accountSelection?.Nivel3) ? "00" : accountSelection.Nivel3!;
+    return string.Create(
+      CultureInfo.InvariantCulture,
+      $"RegistrosContables_{SanitizeFileSegment(selectedRfc)}_{selectedYear:0000}_{selectedMonth:00}_{SanitizeFileSegment(accountSelection?.Nivel1)}_{SanitizeFileSegment(accountSelection?.Nivel2)}_{SanitizeFileSegment(nivel3)}.xlsx");
+  }
+
+  private static string SanitizeFileSegment(string? value)
+  {
+    var sanitized = string.IsNullOrWhiteSpace(value) ? "NA" : value.Trim();
+    foreach (var invalidChar in System.IO.Path.GetInvalidFileNameChars())
+    {
+      sanitized = sanitized.Replace(invalidChar, '_');
+    }
+
+    return sanitized;
   }
 
   private static string GetPolizaUrl(int poliza)

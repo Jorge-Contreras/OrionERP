@@ -40,7 +40,7 @@ public class DeclaracionCfdiBase : IDeclaracionComprobanteItem
   public string? Estatus { get; set; }
   public string? fechastransacciones { get; set; }
   public string? Poliza { get; set; }
-  public int? SumaPolizas { get; set; }
+  public decimal? SumaPolizas { get; set; }
   public int? XML_Attachment_ID { get; set; }
   public bool EsEmitida { get; set; }
   public bool EsRecibida { get; set; }

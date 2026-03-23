@@ -216,7 +216,7 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
       var result = await TransaccionService.LinkCfdiAndRelinkAttachmentAsync(
         SelectedTransaccion.Id,
         Comprobante.Comprobante_Id,
-        SelectedTransaccion.Monto);
+        Comprobante.Total);
 
       if (!result.Success)
       {

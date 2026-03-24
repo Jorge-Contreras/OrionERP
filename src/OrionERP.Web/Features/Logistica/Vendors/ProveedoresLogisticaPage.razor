@@ -1,0 +1,208 @@
+@page "/logistica/proveedores"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Administrador")]
+
+<PageTitle>Logística · Proveedores</PageTitle>
+
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h1 class="h3 mb-1">Socios de negocio y proveedores</h1>
+            <p class="text-muted mb-0">Maestro compartido tipo business partner con roles y perfil de proveedor para logística.</p>
+        </div>
+        <button type="button" class="btn btn-outline-primary" @onclick="NuevoRegistro">
+            Nuevo socio
+        </button>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-12 col-xl-5">
+            <section class="card shadow-sm">
+                <div class="card-body">
+                    <div class="row g-2 align-items-end mb-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Buscar</label>
+                            <input class="form-control" type="search" placeholder="Nombre, RFC, correo o teléfono" @bind="Filter.SearchText" @bind:event="oninput" />
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" type="checkbox" @bind="Filter.VendorOnly" />
+                                <label class="form-check-label">Solo vendors</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 mb-3">
+                        <button type="button" class="btn btn-primary" @onclick="BuscarAsync" disabled="@IsBusy">
+                            @(IsBusy ? "Buscando..." : "Buscar")
+                        </button>
+                        <label class="form-check d-flex align-items-center gap-2 mb-0">
+                            <input class="form-check-input" type="checkbox" @bind="Filter.IncludeInactive" />
+                            <span class="form-check-label">Incluir inactivos</span>
+                        </label>
+                    </div>
+
+                    <div class="table-responsive" style="max-height: 70vh;">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Socio</th>
+                                    <th>Rol</th>
+                                    <th class="text-end">Materiales</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Partners.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-4">No hay registros para el filtro actual.</td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var item in Partners)
+                                    {
+                                        <tr class="@(item.Id == SelectedPartnerId ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarAsync(item.Id)">
+                                            <td>
+                                                <div class="fw-semibold">@item.DisplayName</div>
+                                                <small class="text-muted">@(string.IsNullOrWhiteSpace(item.Rfc) ? "Sin RFC" : item.Rfc)</small>
+                                            </td>
+                                            <td>
+                                                <div>@item.PrimaryRole</div>
+                                                <small class="text-muted">@(item.HasVendorProfile ? "Perfil vendor activo" : "Sin perfil vendor")</small>
+                                            </td>
+                                            <td class="text-end">
+                                                <div>@item.MaterialCount</div>
+                                                <small class="text-muted">@(item.IsActive ? "Activo" : "Inactivo")</small>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="col-12 col-xl-7">
+            <section class="card shadow-sm">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <h2 class="h5 mb-1">@(Editor.Id.HasValue ? "Editar socio" : "Nuevo socio")</h2>
+                        <div class="text-muted">Legacy proveedor: @(Editor.LegacyProveedorId?.ToString() ?? "N/A")</div>
+                    </div>
+
+                    <EditForm Model="Editor" OnValidSubmit="GuardarAsync">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <label class="form-label">Nombre / razón social</label>
+                                <InputText class="form-control" @bind-Value="Editor.DisplayName" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">RFC</label>
+                                <InputText class="form-control" @bind-Value="Editor.Rfc" />
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label">Correo</label>
+                                <InputText class="form-control" @bind-Value="Editor.Email" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Teléfono</label>
+                                <InputText class="form-control" @bind-Value="Editor.Phone" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Giro / línea</label>
+                                <InputText class="form-control" @bind-Value="Editor.BusinessLine" />
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">Calle</label>
+                                <InputText class="form-control" @bind-Value="Editor.Street" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Colonia</label>
+                                <InputText class="form-control" @bind-Value="Editor.Neighborhood" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">CP</label>
+                                <InputText class="form-control" @bind-Value="Editor.PostalCode" />
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label">Ciudad</label>
+                                <InputText class="form-control" @bind-Value="Editor.City" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Estado</label>
+                                <InputText class="form-control" @bind-Value="Editor.State" />
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check mt-4">
+                                    <InputCheckbox class="form-check-input" @bind-Value="Editor.IsActive" />
+                                    <label class="form-check-label">Activo</label>
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">Roles</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach (var role in Catalog.Roles)
+                                    {
+                                        <label class="form-check">
+                                            <input class="form-check-input"
+                                                   type="checkbox"
+                                                   checked="@SelectedRoles.Contains(role.Code ?? role.Name)"
+                                                   @onchange="args => ToggleRole(role.Code ?? role.Name, args.Value is bool value && value)" />
+                                            <span class="form-check-label">@role.Name</span>
+                                        </label>
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">Notas</label>
+                                <InputTextArea class="form-control" rows="3" @bind-Value="Editor.Notes" />
+                            </div>
+
+                            <div class="col-12">
+                                <hr />
+                                <h3 class="h6">Perfil vendor logística</h3>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label">Condiciones de pago</label>
+                                <InputText class="form-control" @bind-Value="VendorProfile.PaymentTerms" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Lead time (días)</label>
+                                <InputNumber class="form-control" @bind-Value="VendorProfile.DefaultLeadTimeDays" />
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check mt-4">
+                                    <InputCheckbox class="form-check-input" @bind-Value="VendorProfile.IsApproved" />
+                                    <label class="form-check-label">Aprobado</label>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Notas vendor</label>
+                                <InputTextArea class="form-control" rows="2" @bind-Value="VendorProfile.Notes" />
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary" disabled="@IsSaving">
+                                @(IsSaving ? "Guardando..." : "Guardar socio")
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" @onclick="NuevoRegistro" disabled="@IsSaving">Limpiar</button>
+                        </div>
+                    </EditForm>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>

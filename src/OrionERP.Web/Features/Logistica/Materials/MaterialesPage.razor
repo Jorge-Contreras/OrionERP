@@ -1,0 +1,285 @@
+@page "/logistica/materiales"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@attribute [Authorize(Roles = "Administrador")]
+
+<PageTitle>Logística · Materiales</PageTitle>
+
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h1 class="h3 mb-1">Materiales</h1>
+            <p class="text-muted mb-0">CRUD del maestro de materiales con código interno, imagen primaria y relación con proveedor.</p>
+        </div>
+        <button type="button" class="btn btn-outline-primary" @onclick="NuevoMaterial">
+            Nuevo material
+        </button>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-12 col-xl-5">
+            <section class="card shadow-sm">
+                <div class="card-body">
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Buscar</label>
+                            <input class="form-control" type="search" placeholder="Código, descripción o barras" @bind="Filter.SearchText" @bind:event="oninput" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Proveedor</label>
+                            <select class="form-select" @bind="Filter.VendorId">
+                                <option value="">Todos</option>
+                                @foreach (var option in Catalog.Vendors)
+                                {
+                                    <option value="@option.Id">@option.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Categoría</label>
+                            <select class="form-select" @bind="Filter.CategoryId">
+                                <option value="">Todas</option>
+                                @foreach (var option in Catalog.Categories)
+                                {
+                                    <option value="@option.Id">@option.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Clase</label>
+                            <select class="form-select" @bind="Filter.MaterialClass">
+                                <option value="">Todas</option>
+                                @foreach (var option in Catalog.MaterialClasses)
+                                {
+                                    <option value="@option">@option</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Estado</label>
+                            <select class="form-select" @bind="Filter.Status">
+                                <option value="">Todos</option>
+                                @foreach (var option in Catalog.Statuses)
+                                {
+                                    <option value="@option">@option</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 mb-3">
+                        <button type="button" class="btn btn-primary" @onclick="BuscarAsync" disabled="@IsBusy">
+                            @(IsBusy ? "Buscando..." : "Buscar")
+                        </button>
+                        <label class="form-check d-flex align-items-center gap-2 mb-0">
+                            <input class="form-check-input" type="checkbox" @bind="HasImageOnly" />
+                            <span class="form-check-label">Solo con imagen</span>
+                        </label>
+                    </div>
+
+                    <div class="table-responsive" style="max-height: 70vh;">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Código</th>
+                                    <th>Material</th>
+                                    <th>Clase</th>
+                                    <th class="text-end">Existencia</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Materials.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-4">No hay materiales para el filtro actual.</td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var item in Materials)
+                                    {
+                                        <tr class="@(item.Id == SelectedMaterialId ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarMaterialAsync(item.Id)">
+                                            <td>
+                                                <div class="fw-semibold">@item.MaterialCode</div>
+                                                <small class="text-muted">@item.Status</small>
+                                            </td>
+                                            <td>
+                                                <div class="fw-semibold">@item.Description</div>
+                                                <small class="text-muted">@(string.IsNullOrWhiteSpace(item.VendorName) ? "Sin proveedor" : item.VendorName)</small>
+                                            </td>
+                                            <td>
+                                                <div>@item.MaterialClass</div>
+                                                <small class="text-muted">@(string.IsNullOrWhiteSpace(item.CategoryName) ? "Sin categoría" : item.CategoryName)</small>
+                                            </td>
+                                            <td class="text-end">
+                                                <div>@item.TotalQuantity.ToString("N2")</div>
+                                                <small class="text-muted">@item.LocationCount ubicaciones</small>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="col-12 col-xl-7">
+            <section class="card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                        <div>
+                            <h2 class="h5 mb-1">@(Editor.Id.HasValue ? "Editar material" : "Nuevo material")</h2>
+                            <div class="text-muted">Código interno: <span class="fw-semibold">@(CurrentMaterialCode ?? "Se asignará al guardar")</span></div>
+                        </div>
+                        @if (ImagePreviewDataUrl is not null)
+                        {
+                            <img src="@ImagePreviewDataUrl" alt="Vista previa del material" class="img-thumbnail" style="max-width: 160px; max-height: 160px;" />
+                        }
+                    </div>
+
+                    <EditForm Model="Editor" OnValidSubmit="GuardarAsync">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <label class="form-label">Descripción</label>
+                                <InputText class="form-control" @bind-Value="Editor.Description" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Clase</label>
+                                <InputSelect class="form-select" @bind-Value="Editor.MaterialClass">
+                                    @foreach (var option in Catalog.MaterialClasses)
+                                    {
+                                        <option value="@option">@option</option>
+                                    }
+                                </InputSelect>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label">Categoría</label>
+                                <InputSelect class="form-select" @bind-Value="Editor.CategoryId">
+                                    <option value="">Sin categoría</option>
+                                    @foreach (var option in Catalog.Categories)
+                                    {
+                                        <option value="@option.Id">@option.Name</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Unidad base</label>
+                                <InputSelect class="form-select" @bind-Value="Editor.BaseUnitId">
+                                    @foreach (var option in Catalog.Units)
+                                    {
+                                        <option value="@option.Id">@option.Name</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Unidad compra</label>
+                                <InputSelect class="form-select" @bind-Value="Editor.PurchaseUnitId">
+                                    <option value="">Sin unidad</option>
+                                    @foreach (var option in Catalog.Units)
+                                    {
+                                        <option value="@option.Id">@option.Name</option>
+                                    }
+                                </InputSelect>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label">Cantidad por compra</label>
+                                <InputNumber class="form-control" @bind-Value="Editor.PurchaseQuantity" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Proveedor</label>
+                                <InputSelect class="form-select" @bind-Value="Editor.BusinessPartnerId">
+                                    <option value="">Sin proveedor</option>
+                                    @foreach (var option in Catalog.Vendors)
+                                    {
+                                        <option value="@option.Id">@option.Name</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Precio</label>
+                                <InputNumber class="form-control" @bind-Value="Editor.Price" />
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label">Marca</label>
+                                <InputText class="form-control" @bind-Value="Editor.Brand" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Modelo</label>
+                                <InputText class="form-control" @bind-Value="Editor.Model" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Estado</label>
+                                <InputSelect class="form-select" @bind-Value="Editor.Status">
+                                    @foreach (var option in Catalog.Statuses)
+                                    {
+                                        <option value="@option">@option</option>
+                                    }
+                                </InputSelect>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label">Código de barras</label>
+                                <InputText class="form-control" @bind-Value="Editor.Barcode" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Código proveedor</label>
+                                <InputText class="form-control" @bind-Value="Editor.VendorCode" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Liga de compra</label>
+                                <InputText class="form-control" @bind-Value="Editor.PurchaseLink" />
+                            </div>
+
+                            <div class="col-md-4">
+                                <div class="form-check mt-4">
+                                    <InputCheckbox class="form-check-input" @bind-Value="Editor.IsPerishable" />
+                                    <label class="form-check-label">Perecedero</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Días de caducidad</label>
+                                <InputNumber class="form-control" @bind-Value="Editor.ShelfLifeDays" />
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check mt-4">
+                                    <InputCheckbox class="form-check-input" @bind-Value="Editor.RequiresRefrigeration" />
+                                    <label class="form-check-label">Requiere refrigeración</label>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">Imagen primaria</label>
+                                <InputFile OnChange="OnImageSelectedAsync" Accept=".jpg,.jpeg,.png,.gif,.webp,.bmp" />
+                                @if (!string.IsNullOrWhiteSpace(SelectedImageFileName))
+                                {
+                                    <div class="form-text">@SelectedImageFileName</div>
+                                }
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-check mt-4">
+                                    <InputCheckbox class="form-check-input" @bind-Value="Editor.IsActive" />
+                                    <label class="form-check-label">Activo</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary" disabled="@IsSaving">
+                                @(IsSaving ? "Guardando..." : "Guardar material")
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" @onclick="NuevoMaterial" disabled="@IsSaving">Limpiar</button>
+                        </div>
+                    </EditForm>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>

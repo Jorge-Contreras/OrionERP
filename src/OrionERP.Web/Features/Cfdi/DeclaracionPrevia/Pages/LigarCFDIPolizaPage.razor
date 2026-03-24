@@ -122,22 +122,40 @@ else
               <th>Monto Asignado</th>
               <th>Tipo de Póliza</th>
               <th>Forma de Pago</th>
-              <th></th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             @foreach (var poliza in Polizas)
             {
+              var editor = GetLinkedMontoEditor(poliza);
               <tr>
                 <td>@poliza.Id</td>
                 <td>@poliza.Fecha.ToShortDateString()</td>
                 <td>@poliza.Concepto</td>
-                <td>@poliza.Monto</td>
-                <td>@poliza.MontoAsignado</td>
+                <td>@poliza.Monto.ToString("C")</td>
+                <td style="min-width: 13rem;">
+                  <InputNumber class="form-control form-control-sm"
+                               TValue="decimal"
+                               min="0.01"
+                               max="@GetMaxAllowedMonto(poliza)"
+                               step="0.01"
+                               @bind-Value="editor.Monto"
+                               disabled="@IsSavingLinkedMonto(poliza)" />
+                  <div class="form-text">Máximo: @GetMaxAllowedMonto(poliza).ToString("C")</div>
+                </td>
                 <td>@poliza.TipoPoliza</td>
                 <td>@poliza.FormaPago</td>
                 <td>
-                  <a href="/contabilidad/transacciones/@poliza.Id" class="btn btn-sm btn-primary">Ver/Editar</a>
+                  <div class="d-flex gap-2">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary"
+                            disabled="@IsSavingLinkedMonto(poliza)"
+                            @onclick="() => GuardarMontoLigadoAsync(poliza)">
+                      @(IsSavingLinkedMonto(poliza) ? "Guardando..." : "Guardar monto")
+                    </button>
+                    <a href="/contabilidad/transacciones/@poliza.Id" class="btn btn-sm btn-primary">Ver/Editar</a>
+                  </div>
                 </td>
               </tr>
             }
@@ -155,17 +173,53 @@ else
     </div>
   </div>
 
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <button class="btn btn-secondary"
-            disabled="@(!CanCreatePoliza || IsCreatingPoliza)"
-            @onclick="CrearPolizaConComprobanteAsync">
-      @(IsCreatingPoliza ? "Creando póliza..." : "Crear Póliza con Comprobante")
-    </button>
-    <button class="btn btn-primary"
-            disabled="@(!CanLigar || IsLinking)"
-            @onclick="LigarAsync">
-      @(IsLinking ? "Ligando..." : "Ligar")
-    </button>
+  <div class="card shadow-sm mb-3">
+    <div class="card-body ligar-cfdi-actions-card">
+      <div class="row g-4 align-items-end ligar-cfdi-actions-grid">
+        <div class="col-12 col-lg-4 ligar-cfdi-actions-amount">
+          <label class="form-label fw-bold">Monto a ligar</label>
+          <InputNumber class="form-control"
+                       min="0.01"
+                       max="@GetMaxAllowedMonto(SelectedTransaccion)"
+                       step="0.01"
+                       @bind-Value="LinkMonto"
+                       disabled="@(SelectedTransaccion is null || IsLinking)" />
+          @if (SelectedTransaccion is null)
+          {
+            <div class="form-text">Selecciona una transacción para definir el monto a asignar.</div>
+          }
+          else
+          {
+            <div class="form-text">
+              Sugerido: @GetSuggestedMonto(SelectedTransaccion).ToString("C").
+              Máximo permitido: @GetMaxAllowedMonto(SelectedTransaccion).ToString("C").
+            </div>
+          }
+        </div>
+        <div class="col-12 col-lg-8">
+          <div class="row g-3 align-items-end ligar-cfdi-actions-buttons">
+            
+            <div class="col-12 col-md-4 ligar-cfdi-actions-slot ligar-cfdi-actions-slot-center">
+              <button class="btn btn-primary btn-lg w-100 ligar-cfdi-primary-button"
+                      disabled="@(!CanLigar || IsLinking)"
+                      @onclick="LigarAsync">
+                @(IsLinking ? "Ligando..." : "Ligar")
+              </button>
+            </div>
+                        <div class="col-12 col-md-4 ligar-cfdi-actions-slot ligar-cfdi-actions-slot-start">
+                            <button class="btn btn-secondary w-100"
+                                    disabled="@(!CanCreatePoliza || IsCreatingPoliza)"
+                                    @onclick="CrearPolizaConComprobanteAsync">
+                                @(IsCreatingPoliza ? "Creando póliza..." : "Crear Póliza con Comprobante")
+                            </button>
+                        </div>
+            <div class="col-12 col-md-4 ligar-cfdi-actions-slot ligar-cfdi-actions-slot-end">
+              
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="card shadow-sm">
@@ -173,7 +227,7 @@ else
       <h5 class="mb-0">Transacciones</h5>
     </div>
     <div class="card-body">
-      <EditForm Model="Filter">
+      <EditForm Model="Filter" OnSubmit="HandleFilterSubmitAsync">
         <div class="row">
           <div class="col-md-3">
             <div class="form-group">
@@ -211,7 +265,7 @@ else
 
         <div class="row mt-3">
           <div class="col-md-12 text-right">
-            <button type="button" class="btn btn-primary" @onclick="BuscarAsync" disabled="@IsTransaccionesLoading">Buscar</button>
+            <button type="submit" class="btn btn-primary" disabled="@IsTransaccionesLoading">Buscar</button>
             <button type="button" class="btn btn-secondary" @onclick="LimpiarFiltrosAsync" disabled="@IsTransaccionesLoading">Limpiar</button>
             <a href="/contabilidad/transacciones/new" class="btn btn-success">Nueva Transacción</a>
           </div>

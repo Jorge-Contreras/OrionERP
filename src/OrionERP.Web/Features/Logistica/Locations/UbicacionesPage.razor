@@ -1,0 +1,398 @@
+@page "/logistica/ubicaciones"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@attribute [Authorize(Roles = "Administrador")]
+
+<PageTitle>Logística · Ubicaciones e inventario</PageTitle>
+
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h1 class="h3 mb-1">Ubicaciones e inventario</h1>
+            <p class="text-muted mb-0">Jerarquía room-location, existencias por material y evidencias por ubicación.</p>
+        </div>
+        <button type="button" class="btn btn-outline-primary" @onclick="NuevaUbicacion">
+            Nueva ubicación
+        </button>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-12 col-xxl-4">
+            <section class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Drill-down de ubicaciones</h2>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Buscar ubicación</label>
+                            <input class="form-control" type="search" @bind="LocationFilter.SearchText" @bind:event="oninput" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Room</label>
+                            <select class="form-select" @bind="LocationFilter.RoomId">
+                                <option value="">Todos</option>
+                                @foreach (var room in RoomOptions)
+                                {
+                                    <option value="@room.Id">@room.Name</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 mb-3">
+                        <button class="btn btn-primary" type="button" @onclick="BuscarUbicacionesAsync" disabled="@IsLoadingLocations">
+                            @(IsLoadingLocations ? "Cargando..." : "Buscar")
+                        </button>
+                        <label class="form-check d-flex align-items-center gap-2 mb-0">
+                            <input class="form-check-input" type="checkbox" @bind="LocationFilter.IncludeInactive" />
+                            <span class="form-check-label">Incluir inactivas</span>
+                        </label>
+                    </div>
+
+                    <div class="mb-3">
+                        @foreach (var roomNode in LocationTree)
+                        {
+                            <details class="mb-2" open>
+                                <summary class="fw-semibold">@roomNode.LocationName</summary>
+                                @if (roomNode.Children.Count == 0)
+                                {
+                                    <div class="small text-muted ms-3">Sin ubicaciones hijas.</div>
+                                }
+                                else
+                                {
+                                    <ul class="list-group list-group-flush ms-3 mt-2">
+                                        @foreach (var child in roomNode.Children)
+                                        {
+                                            <li class="list-group-item px-0 py-1 border-0">
+                                                <button type="button"
+                                                        class="btn btn-link text-start p-0 @(child.Id == SelectedLocationId ? "fw-bold text-primary" : "text-decoration-none")"
+                                                        @onclick="() => SeleccionarUbicacionAsync(child.Id)">
+                                                    @child.LocationCode · @child.LocationName
+                                                </button>
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+                            </details>
+                        }
+                    </div>
+
+                    <div class="table-responsive" style="max-height: 40vh;">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Ubicación</th>
+                                    <th>Tipo</th>
+                                    <th class="text-end">Materiales</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Locations.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-3">Sin ubicaciones para el filtro actual.</td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var item in Locations)
+                                    {
+                                        <tr class="@(item.Id == SelectedLocationId ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarUbicacionAsync(item.Id)">
+                                            <td>
+                                                <div class="fw-semibold">@item.LocationName</div>
+                                                <small class="text-muted">@item.LocationCode</small>
+                                            </td>
+                                            <td>
+                                                <div>@item.LocationType</div>
+                                                <small class="text-muted">@(string.IsNullOrWhiteSpace(item.RoomName) ? "Sin room" : item.RoomName)</small>
+                                            </td>
+                                            <td class="text-end">
+                                                <div>@item.MaterialCount</div>
+                                                <small class="text-muted">@(item.IsActive ? "Activa" : "Inactiva")</small>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card shadow-sm">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Editor de ubicación</h2>
+                    <EditForm Model="LocationEditor" OnValidSubmit="GuardarUbicacionAsync">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Código</label>
+                                <InputText class="form-control" @bind-Value="LocationEditor.LocationCode" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Tipo</label>
+                                <InputSelect class="form-select" @bind-Value="LocationEditor.LocationType">
+                                    @foreach (var type in LocationTypes)
+                                    {
+                                        <option value="@type">@type</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Nombre</label>
+                                <InputText class="form-control" @bind-Value="LocationEditor.LocationName" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Ubicación padre</label>
+                                <InputSelect class="form-select" @bind-Value="LocationEditor.ParentLocationId">
+                                    <option value="">Sin padre</option>
+                                    @foreach (var option in LocationOptions)
+                                    {
+                                        <option value="@option.Id">@option.Name</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Room</label>
+                                <InputSelect class="form-select" @bind-Value="LocationEditor.RoomId">
+                                    <option value="">Sin room</option>
+                                    @foreach (var option in RoomOptions)
+                                    {
+                                        <option value="@option.Id">@option.Name</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Descripción</label>
+                                <InputTextArea class="form-control" rows="3" @bind-Value="LocationEditor.Description" />
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check mt-2">
+                                    <InputCheckbox class="form-check-input" @bind-Value="LocationEditor.IsInventoryEnabled" />
+                                    <label class="form-check-label">Habilitada para inventario</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check mt-2">
+                                    <InputCheckbox class="form-check-input" @bind-Value="LocationEditor.IsActive" />
+                                    <label class="form-check-label">Activa</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary" disabled="@IsSavingLocation">
+                                @(IsSavingLocation ? "Guardando..." : "Guardar ubicación")
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" @onclick="NuevaUbicacion" disabled="@IsSavingLocation">Limpiar</button>
+                        </div>
+                    </EditForm>
+                </div>
+            </section>
+        </div>
+
+        <div class="col-12 col-xxl-8">
+            <section class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <div>
+                            <h2 class="h5 mb-1">Inventario por ubicación</h2>
+                            <div class="text-muted">Selecciona una ubicación o filtra por room/material.</div>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-5">
+                            <label class="form-label">Buscar material</label>
+                            <input class="form-control" type="search" placeholder="Código, material, barras o ubicación" @bind="StockFilter.SearchText" @bind:event="oninput" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Room</label>
+                            <select class="form-select" @bind="StockFilter.RoomId">
+                                <option value="">Todos</option>
+                                @foreach (var room in RoomOptions)
+                                {
+                                    <option value="@room.Id">@room.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Ubicación</label>
+                            <select class="form-select" @bind="StockFilter.LocationId">
+                                <option value="">Todas</option>
+                                @foreach (var option in InventoryLocationOptions)
+                                {
+                                    <option value="@option.Id">@option.Name</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-3 mb-3">
+                        <label class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="StockFilter.LowStockOnly" />
+                            <span class="form-check-label">Solo bajo mínimo</span>
+                        </label>
+                        <label class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="StockFilter.CountDueOnly" />
+                            <span class="form-check-label">Conteo vencido</span>
+                        </label>
+                        <label class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="StockFilter.IncludeZeroBalances" />
+                            <span class="form-check-label">Incluir ceros</span>
+                        </label>
+                        <button class="btn btn-primary ms-auto" type="button" @onclick="BuscarStockAsync" disabled="@IsLoadingStock">
+                            @(IsLoadingStock ? "Cargando..." : "Actualizar inventario")
+                        </button>
+                    </div>
+
+                    <div class="table-responsive" style="max-height: 40vh;">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Material</th>
+                                    <th>Ubicación</th>
+                                    <th class="text-end">Cantidad</th>
+                                    <th class="text-end">Alertas</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (StockRows.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-3">No hay inventario para el filtro actual.</td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var item in StockRows)
+                                    {
+                                        <tr class="@(SelectedStock?.StockBalanceId == item.StockBalanceId ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarStockAsync(item)">
+                                            <td>
+                                                <div class="fw-semibold">@item.MaterialCode</div>
+                                                <small class="text-muted">@item.MaterialDescription</small>
+                                            </td>
+                                            <td>
+                                                <div>@item.LocationName</div>
+                                                <small class="text-muted">@(string.IsNullOrWhiteSpace(item.RoomName) ? item.LocationType : item.RoomName)</small>
+                                            </td>
+                                            <td class="text-end">@item.Quantity.ToString("N2")</td>
+                                            <td class="text-end">
+                                                @if (item.IsLowStock)
+                                                {
+                                                    <span class="badge text-bg-danger me-1">Bajo mínimo</span>
+                                                }
+                                                @if (item.IsCountDue)
+                                                {
+                                                    <span class="badge text-bg-warning">Conteo</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            @if (SelectedStock is not null)
+            {
+                <section class="card shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                            <div>
+                                <h2 class="h5 mb-1">@SelectedStock.MaterialCode · @SelectedStock.MaterialDescription</h2>
+                                <div class="text-muted">@SelectedStock.LocationName · @SelectedStock.Quantity.ToString("N2") @SelectedStock.BaseUnitName</div>
+                            </div>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-12 col-xl-6">
+                                <h3 class="h6">Historial de movimientos</h3>
+                                <div class="table-responsive" style="max-height: 28vh;">
+                                    <table class="table table-sm">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Fecha</th>
+                                                <th>Tipo</th>
+                                                <th class="text-end">Delta</th>
+                                                <th class="text-end">Final</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @if (SelectedStockTransactions.Count == 0)
+                                            {
+                                                <tr>
+                                                    <td colspan="4" class="text-center text-muted py-3">Sin movimientos.</td>
+                                                </tr>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var movement in SelectedStockTransactions)
+                                                {
+                                                    <tr>
+                                                        <td>@movement.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                                        <td>@movement.TransactionType</td>
+                                                        <td class="text-end">@movement.QuantityDelta.ToString("N2")</td>
+                                                        <td class="text-end">@movement.QuantityAfter.ToString("N2")</td>
+                                                    </tr>
+                                                }
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="col-12 col-xl-6">
+                                <h3 class="h6">Adjuntos por ubicación/material</h3>
+                                <div class="d-flex flex-column gap-2 mb-3">
+                                    <InputFile OnChange="OnAttachmentSelectedAsync" />
+                                    <input class="form-control" type="text" placeholder="Descripción del adjunto" @bind="PendingAttachmentDescription" />
+                                    <button class="btn btn-outline-primary" type="button" @onclick="GuardarAdjuntoAsync" disabled="@(!HasPendingAttachment || IsSavingAttachment)">
+                                        @(IsSavingAttachment ? "Guardando..." : "Guardar adjunto")
+                                    </button>
+                                </div>
+
+                                <div class="table-responsive" style="max-height: 28vh;">
+                                    <table class="table table-sm">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Archivo</th>
+                                                <th>Descripción</th>
+                                                <th></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @if (SelectedStockAttachments.Count == 0)
+                                            {
+                                                <tr>
+                                                    <td colspan="3" class="text-center text-muted py-3">Sin adjuntos.</td>
+                                                </tr>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var attachment in SelectedStockAttachments)
+                                                {
+                                                    <tr>
+                                                        <td>@attachment.FileName</td>
+                                                        <td>@attachment.Description</td>
+                                                        <td class="text-end">
+                                                            <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="() => DescargarAdjuntoAsync(attachment)">
+                                                                Descargar
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            }
+        </div>
+    </div>
+</div>

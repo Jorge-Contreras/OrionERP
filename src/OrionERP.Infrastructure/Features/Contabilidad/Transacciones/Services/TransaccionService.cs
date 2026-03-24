@@ -846,6 +846,48 @@ VALUES (@TransaccionId, @ComprobanteId, @Monto);";
     }
   }
 
+  public async Task<TransaccionCommandResult> UpdateComprobanteMontoAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default)
+  {
+    if (monto <= 0m)
+    {
+      return TransaccionCommandResult.Fail("El monto asignado debe ser mayor que cero.");
+    }
+
+    const string sql = @"UPDATE dbo.Transaccion_Comprobante
+SET Monto = @Monto
+WHERE Transaccion_ID = @TransaccionId
+  AND Comprobante_ID = @ComprobanteId;";
+
+    try
+    {
+      await using var conn = new SqlConnection(_cs);
+      var affected = await conn.ExecuteAsync(
+          new CommandDefinition(
+              sql,
+              new
+              {
+                TransaccionId = transaccionId,
+                ComprobanteId = comprobanteId,
+                Monto = monto
+              },
+              cancellationToken: ct));
+
+      return affected > 0
+          ? TransaccionCommandResult.Ok("Monto asignado actualizado correctamente.")
+          : TransaccionCommandResult.Fail("No se encontró el vínculo CFDI-póliza a actualizar.");
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(
+          ex,
+          "Error al actualizar monto del comprobante {ComprobanteId} en la transacción {TransaccionId}",
+          comprobanteId,
+          transaccionId);
+
+      return TransaccionCommandResult.Fail("No se pudo actualizar el monto asignado.");
+    }
+  }
+
   public async Task ToggleComprobanteAsync(int transaccionId, int comprobanteId, bool vincular, CancellationToken ct = default)
   {
     using var conn = new SqlConnection(_cs);

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
@@ -42,14 +43,17 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
   protected bool IsTransaccionesLoading { get; set; }
   protected bool IsLinking { get; set; }
   protected bool IsCreatingPoliza { get; set; }
+  protected decimal LinkMonto { get; set; }
   protected List<TransaccionListItemDto> Polizas { get; } = new();
   protected List<TransaccionListItemDto> Transacciones { get; set; } = new();
   protected TransaccionFilter Filter { get; set; } = new();
   protected TransaccionListItemDto? SelectedTransaccion { get; set; }
   protected string? InlineError { get; set; }
+  private readonly Dictionary<int, LinkedMontoEditor> _linkedMontoEditors = new();
+  private int? _savingLinkedMontoTransaccionId;
   private bool _disposed;
 
-  protected bool CanLigar => Comprobante is not null && SelectedTransaccion is not null;
+  protected bool CanLigar => Comprobante is not null && SelectedTransaccion is not null && LinkMonto > 0m;
   protected bool CanCreatePoliza => Comprobante is not null;
 
   protected override async Task OnInitializedAsync()
@@ -121,6 +125,8 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
         var polizasById = await TransaccionService.GetTransaccionesByComprobanteIdAsync(Comprobante.Comprobante_Id);
         Polizas.AddRange(polizasById);
       }
+
+      SyncLinkedMontoInputs();
     }
     catch (Exception ex)
     {
@@ -138,6 +144,7 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
     IsTransaccionesLoading = true;
     InlineError = null;
     SelectedTransaccion = null;
+    LinkMonto = 0m;
 
     try
     {
@@ -160,6 +167,9 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
   {
     await LoadTransaccionesAsync();
   }
+
+  protected Task HandleFilterSubmitAsync(EditContext _)
+    => BuscarAsync();
 
   protected async Task LimpiarFiltrosAsync()
   {
@@ -193,8 +203,14 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
     }
 
     SelectedTransaccion = item;
+    LinkMonto = GetSuggestedMonto(item);
     InlineError = null;
   }
+
+
+  
+
+
 
   protected async Task LigarAsync()
   {
@@ -210,13 +226,28 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
       return;
     }
 
+    var maxMonto = GetMaxAllowedMonto(SelectedTransaccion);
+    if (LinkMonto <= 0m)
+    {
+      InlineError = "El monto a ligar debe ser mayor que cero.";
+      UiMessages.ShowError(InlineError);
+      return;
+    }
+
+    if (maxMonto > 0m && LinkMonto > maxMonto)
+    {
+      InlineError = $"El monto a ligar no puede exceder {maxMonto:C}.";
+      UiMessages.ShowError(InlineError);
+      return;
+    }
+
     IsLinking = true;
     try
     {
       var result = await TransaccionService.LinkCfdiAndRelinkAttachmentAsync(
         SelectedTransaccion.Id,
         Comprobante.Comprobante_Id,
-        Comprobante.Total);
+        LinkMonto);
 
       if (!result.Success)
       {
@@ -228,6 +259,7 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
       UiMessages.ShowSuccess(result.Message);
       ResetFilters();
       SelectedTransaccion = null;
+      LinkMonto = 0m;
       await LoadPolizasAsync();
       await LoadTransaccionesAsync();
     }
@@ -300,6 +332,106 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
       Month = DateTime.Now.Month,
       Monto = Comprobante?.Total
     };
+  }
+
+  protected decimal GetSuggestedMonto(TransaccionListItemDto? transaccion)
+    => GetMaxAllowedMonto(transaccion);
+
+  protected decimal GetMaxAllowedMonto(TransaccionListItemDto? transaccion)
+  {
+    if (Comprobante is null || transaccion is null)
+    {
+      return 0m;
+    }
+
+    return decimal.Min(Comprobante.Total, decimal.Abs(transaccion.Monto));
+  }
+
+  protected LinkedMontoEditor GetLinkedMontoEditor(TransaccionListItemDto poliza)
+  {
+    if (_linkedMontoEditors.TryGetValue(poliza.Id, out var editor))
+    {
+      return editor;
+    }
+
+    editor = new LinkedMontoEditor { Monto = poliza.MontoAsignado };
+    _linkedMontoEditors[poliza.Id] = editor;
+    return editor;
+  }
+
+  protected bool IsSavingLinkedMonto(TransaccionListItemDto poliza)
+    => _savingLinkedMontoTransaccionId == poliza.Id;
+
+  protected async Task GuardarMontoLigadoAsync(TransaccionListItemDto poliza)
+  {
+    if (Comprobante is null)
+    {
+      return;
+    }
+
+    var monto = GetLinkedMontoEditor(poliza).Monto;
+    if (monto <= 0m)
+    {
+      InlineError = "El monto asignado debe ser mayor que cero.";
+      UiMessages.ShowError(InlineError);
+      return;
+    }
+
+    var maxMonto = GetMaxAllowedMonto(poliza);
+    if (maxMonto > 0m && monto > maxMonto)
+    {
+      InlineError = $"El monto asignado para la póliza {poliza.Id} no puede exceder {maxMonto:C}.";
+      UiMessages.ShowError(InlineError);
+      return;
+    }
+
+    InlineError = null;
+    _savingLinkedMontoTransaccionId = poliza.Id;
+
+    try
+    {
+      var result = await TransaccionService.UpdateComprobanteMontoAsync(
+        poliza.Id,
+        Comprobante.Comprobante_Id,
+        monto);
+
+      if (!result.Success)
+      {
+        InlineError = result.Message;
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      await LoadPolizasAsync();
+    }
+    catch (Exception ex)
+    {
+      InlineError = $"No se pudo actualizar el monto ligado: {ex.Message}";
+      UiMessages.ShowError(InlineError);
+    }
+    finally
+    {
+      _savingLinkedMontoTransaccionId = null;
+    }
+  }
+
+  private void SyncLinkedMontoInputs()
+  {
+    _linkedMontoEditors.Clear();
+
+    foreach (var poliza in Polizas)
+    {
+      _linkedMontoEditors[poliza.Id] = new LinkedMontoEditor
+      {
+        Monto = poliza.MontoAsignado
+      };
+    }
+  }
+
+  protected sealed class LinkedMontoEditor
+  {
+    public decimal Monto { get; set; }
   }
 
   public void Dispose()

@@ -19,6 +19,7 @@ public interface ITransaccionService
   Task SetAttachmentTransaccionAsync(int attachmentId, int? transaccionId, CancellationToken ct = default);
   Task<TransaccionCommandResult> LinkCfdiAndRelinkAttachmentAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default);
   Task<TransaccionCommandResult> InsertTransaccionComprobanteAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default);
+  Task<TransaccionCommandResult> UpdateComprobanteMontoAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionComprobanteDto>> GetComprobantesAsync(int transaccionId, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionReservacionLinkDto>> GetReservacionLinksAsync(int transaccionId, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionReservacionSearchItemDto>> SearchReservacionesAsync(string? search, CancellationToken ct = default);

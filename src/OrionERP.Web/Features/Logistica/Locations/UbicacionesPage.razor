@@ -247,10 +247,11 @@
                     </div>
 
                     <div class="table-responsive" style="max-height: 40vh;">
-                        <table class="table table-sm table-hover align-middle">
+                        <table class="table table-sm table-hover align-middle ubicaciones-stock-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Material</th>
+                                    <th class="ubicaciones-stock-image-col">Foto</th>
+                                    <th class="ubicaciones-material-col">Material</th>
                                     <th>Ubicación</th>
                                     <th class="text-end">Cantidad</th>
                                     <th class="text-end">Alertas</th>
@@ -260,17 +261,37 @@
                                 @if (StockRows.Count == 0)
                                 {
                                     <tr>
-                                        <td colspan="4" class="text-center text-muted py-3">No hay inventario para el filtro actual.</td>
+                                        <td colspan="5" class="text-center text-muted py-3">No hay inventario para el filtro actual.</td>
                                     </tr>
                                 }
                                 else
                                 {
                                     @foreach (var item in StockRows)
                                     {
+                                        var thumbnailDataUrl = GetMaterialThumbnailDataUrl(item.MaterialId);
+                                        var materialTitle = string.IsNullOrWhiteSpace(item.MaterialDescription) ? item.MaterialCode : item.MaterialDescription;
+                                        var showMaterialCode = !string.IsNullOrWhiteSpace(item.MaterialCode) && !string.Equals(item.MaterialCode, materialTitle, StringComparison.OrdinalIgnoreCase);
                                         <tr class="@(SelectedStock?.StockBalanceId == item.StockBalanceId ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarStockAsync(item)">
-                                            <td>
-                                                <div class="fw-semibold">@item.MaterialCode</div>
-                                                <small class="text-muted">@item.MaterialDescription</small>
+                                            <td class="ubicaciones-stock-image-col">
+                                                @if (thumbnailDataUrl is not null)
+                                                {
+                                                    <button class="ubicaciones-line-image-button" type="button" title="Ver imagen" aria-label="Ver imagen del material" @onclick="() => AbrirImagenMaterialAsync(item)" @onclick:stopPropagation="true">
+                                                        <img src="@thumbnailDataUrl" alt="Imagen de @materialTitle" class="ubicaciones-line-image" />
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <div class="ubicaciones-line-image-placeholder">Sin foto</div>
+                                                }
+                                            </td>
+                                            <td class="ubicaciones-material-col">
+                                                <div class="ubicaciones-cell-stack">
+                                                    <div class="ubicaciones-cell-primary">@materialTitle</div>
+                                                    @if (showMaterialCode)
+                                                    {
+                                                        <div class="ubicaciones-cell-secondary">@item.MaterialCode</div>
+                                                    }
+                                                </div>
                                             </td>
                                             <td>
                                                 <div>@item.LocationName</div>
@@ -396,3 +417,39 @@
         </div>
     </div>
 </div>
+
+@if (ShowMaterialImageModal)
+{
+    <div class="modal fade show d-block ubicaciones-image-modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(string.IsNullOrWhiteSpace(MaterialImageModalTitle) ? "Imagen del material" : MaterialImageModalTitle)</h5>
+                    <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CloseMaterialImageModal"></button>
+                </div>
+                <div class="modal-body text-center">
+                    @if (MaterialImageModalDataUrl is not null)
+                    {
+                        <img src="@MaterialImageModalDataUrl" alt="Vista ampliada del material" class="ubicaciones-image-modal-preview" />
+                    }
+                    else if (IsLoadingMaterialImage)
+                    {
+                        <div class="py-5 text-muted">Cargando imagen...</div>
+                    }
+                    else
+                    {
+                        <div class="py-5 text-muted">Sin imagen disponible.</div>
+                    }
+
+                    @if (IsLoadingMaterialImage && MaterialImageModalDataUrl is not null)
+                    {
+                        <div class="small text-muted mt-3">Cargando la imagen completa...</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" type="button" @onclick="CloseMaterialImageModal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}

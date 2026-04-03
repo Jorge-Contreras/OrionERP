@@ -1,0 +1,106 @@
+.ubicaciones-stock-table .ubicaciones-material-col {
+  min-width: 18rem;
+}
+
+.ubicaciones-stock-image-col {
+  width: 4.75rem;
+  min-width: 4.75rem;
+}
+
+.ubicaciones-cell-stack {
+  min-width: 0;
+}
+
+.ubicaciones-cell-primary {
+  color: var(--orion-color-primary);
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ubicaciones-cell-secondary {
+  margin-top: 0.2rem;
+  color: var(--orion-color-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ubicaciones-line-image-button {
+  width: 3.25rem;
+  height: 3.25rem;
+  padding: 0;
+  border: 1px solid rgba(15, 45, 78, 0.12);
+  border-radius: 0.85rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(229, 239, 247, 0.95) 100%);
+  box-shadow: 0 8px 18px rgba(15, 45, 78, 0.08);
+  overflow: hidden;
+}
+
+.ubicaciones-line-image-button:hover,
+.ubicaciones-line-image-button:focus-visible {
+  border-color: rgba(31, 138, 174, 0.45);
+  box-shadow: 0 10px 24px rgba(31, 138, 174, 0.18);
+}
+
+.ubicaciones-line-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.ubicaciones-line-image-placeholder {
+  width: 3.25rem;
+  min-height: 3.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  border: 1px dashed rgba(15, 45, 78, 0.18);
+  border-radius: 0.85rem;
+  background: rgba(248, 250, 252, 0.96);
+  color: var(--orion-color-text-muted);
+  font-size: 0.67rem;
+  font-weight: 600;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.ubicaciones-image-modal-backdrop {
+  background-color: rgba(15, 45, 78, 0.45);
+}
+
+.ubicaciones-image-modal-preview {
+  max-width: 100%;
+  max-height: min(72vh, 48rem);
+  border-radius: 1rem;
+  box-shadow: 0 18px 42px rgba(15, 45, 78, 0.16);
+  object-fit: contain;
+}
+
+@media (max-width: 767.98px) {
+  .ubicaciones-stock-table .ubicaciones-material-col {
+    min-width: 12rem;
+  }
+
+  .ubicaciones-stock-image-col {
+    width: 4rem;
+    min-width: 4rem;
+  }
+
+  .ubicaciones-cell-primary {
+    font-size: 0.92rem;
+  }
+
+  .ubicaciones-line-image-button,
+  .ubicaciones-line-image-placeholder {
+    width: 2.85rem;
+    min-height: 2.85rem;
+    border-radius: 0.7rem;
+  }
+}

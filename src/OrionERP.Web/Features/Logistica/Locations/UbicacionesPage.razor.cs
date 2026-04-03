@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Logistica.Locations;
+using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Logistica.Stock;
 using OrionERP.Web.Services;
@@ -14,6 +15,7 @@ public partial class UbicacionesPage : ComponentBase
   protected static readonly string[] LocationTypes = ["Room", "Storage", "Disposal", "Service"];
 
   [Inject] private ILocationService LocationService { get; set; } = default!;
+  [Inject] private IMaterialService MaterialService { get; set; } = default!;
   [Inject] private IStockService StockService { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private IJSRuntime Js { get; set; } = default!;
@@ -28,6 +30,7 @@ public partial class UbicacionesPage : ComponentBase
   protected List<StockListItemDto> StockRows { get; set; } = [];
   protected List<StockTransactionDto> SelectedStockTransactions { get; set; } = [];
   protected List<LocationMaterialAttachmentDto> SelectedStockAttachments { get; set; } = [];
+  protected Dictionary<int, string> MaterialThumbnailDataUrls { get; set; } = [];
   protected LocationUpsertRequest LocationEditor { get; set; } = CreateLocationEditor();
   protected StockListItemDto? SelectedStock { get; set; }
   protected int? SelectedLocationId { get; set; }
@@ -35,11 +38,15 @@ public partial class UbicacionesPage : ComponentBase
   protected bool IsLoadingStock { get; set; }
   protected bool IsSavingLocation { get; set; }
   protected bool IsSavingAttachment { get; set; }
+  protected bool ShowMaterialImageModal { get; set; }
+  protected bool IsLoadingMaterialImage { get; set; }
 
   protected byte[]? PendingAttachmentBytes { get; set; }
   protected string? PendingAttachmentName { get; set; }
   protected string? PendingAttachmentContentType { get; set; }
   protected string? PendingAttachmentDescription { get; set; }
+  protected string? MaterialImageModalTitle { get; set; }
+  protected string? MaterialImageModalDataUrl { get; set; }
 
   protected bool HasPendingAttachment => PendingAttachmentBytes is { Length: > 0 };
 
@@ -72,12 +79,15 @@ public partial class UbicacionesPage : ComponentBase
   protected async Task BuscarStockAsync()
   {
     IsLoadingStock = true;
+    CloseMaterialImageModal();
     try
     {
       StockRows = (await StockService.GetStockAsync(StockFilter)).ToList();
+      await CargarMiniaturasMaterialesAsync();
     }
     catch (Exception ex)
     {
+      MaterialThumbnailDataUrls = [];
       UiMessages.ShowError($"No se pudo cargar el inventario. {ex.Message}");
     }
     finally
@@ -253,11 +263,98 @@ public partial class UbicacionesPage : ComponentBase
     }
   }
 
+  protected async Task AbrirImagenMaterialAsync(StockListItemDto item)
+  {
+    if (SelectedStock?.StockBalanceId != item.StockBalanceId)
+    {
+      await SeleccionarStockAsync(item);
+    }
+
+    ShowMaterialImageModal = true;
+    IsLoadingMaterialImage = true;
+    MaterialImageModalTitle = string.IsNullOrWhiteSpace(item.MaterialDescription)
+      ? item.MaterialCode
+      : string.IsNullOrWhiteSpace(item.MaterialCode)
+        ? item.MaterialDescription
+        : $"{item.MaterialDescription} · {item.MaterialCode}";
+    MaterialImageModalDataUrl = TryGetMaterialThumbnailDataUrl(item.MaterialId, out var thumbnailDataUrl)
+      ? thumbnailDataUrl
+      : null;
+
+    try
+    {
+      var image = await MaterialService.GetMaterialImageAsync(item.MaterialId);
+      if (image is null)
+      {
+        if (MaterialImageModalDataUrl is null)
+        {
+          UiMessages.ShowWarning("El material seleccionado no tiene imagen disponible.");
+        }
+
+        return;
+      }
+
+      MaterialImageModalDataUrl = BuildDataUrl(image.ContentType, image.Bytes);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo cargar la imagen del material. {ex.Message}");
+    }
+    finally
+    {
+      IsLoadingMaterialImage = false;
+    }
+  }
+
+  protected void CloseMaterialImageModal()
+  {
+    ShowMaterialImageModal = false;
+    IsLoadingMaterialImage = false;
+    MaterialImageModalTitle = null;
+    MaterialImageModalDataUrl = null;
+  }
+
   private async Task LoadLookupsAsync()
   {
     RoomOptions = (await LocationService.GetRoomLookupAsync()).ToList();
     LocationOptions = (await LocationService.GetLocationLookupAsync()).ToList();
     InventoryLocationOptions = (await LocationService.GetLocationLookupAsync(inventoryOnly: true)).ToList();
+  }
+
+  private async Task CargarMiniaturasMaterialesAsync()
+  {
+    if (StockRows.Count == 0)
+    {
+      MaterialThumbnailDataUrls = [];
+      return;
+    }
+
+    try
+    {
+      var thumbnails = await MaterialService.GetMaterialThumbnailsAsync(StockRows.Select(item => item.MaterialId).Distinct());
+      MaterialThumbnailDataUrls = thumbnails
+        .Where(thumbnail => thumbnail.Bytes.Length > 0)
+        .ToDictionary(
+          thumbnail => thumbnail.Id,
+          thumbnail => BuildDataUrl(thumbnail.ContentType, thumbnail.Bytes));
+    }
+    catch (Exception ex)
+    {
+      MaterialThumbnailDataUrls = [];
+      UiMessages.ShowWarning($"No se pudieron cargar las miniaturas de los materiales. {ex.Message}");
+    }
+  }
+
+  private bool TryGetMaterialThumbnailDataUrl(int materialId, out string dataUrl)
+    => MaterialThumbnailDataUrls.TryGetValue(materialId, out dataUrl!);
+
+  protected string? GetMaterialThumbnailDataUrl(int materialId)
+    => TryGetMaterialThumbnailDataUrl(materialId, out var dataUrl) ? dataUrl : null;
+
+  private static string BuildDataUrl(string? contentType, byte[] bytes)
+  {
+    var safeContentType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType;
+    return FormattableString.Invariant($"data:{safeContentType};base64,{Convert.ToBase64String(bytes)}");
   }
 
   private static LocationUpsertRequest CreateLocationEditor()

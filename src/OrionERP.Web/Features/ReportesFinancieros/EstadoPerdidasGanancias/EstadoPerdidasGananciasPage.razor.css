@@ -1,0 +1,9 @@
+.estado-pg-page .estado-pg-table__id-col {
+    width: 70px;
+    min-width: 70px;
+}
+
+.estado-pg-page .estado-pg-table__summary-row td {
+    font-weight: 700;
+    background: rgba(15, 45, 78, 0.04);
+}

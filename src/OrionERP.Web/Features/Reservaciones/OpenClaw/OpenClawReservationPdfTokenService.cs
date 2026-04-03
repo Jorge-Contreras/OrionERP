@@ -1,0 +1,55 @@
+using System;
+using System.Globalization;
+using System.Text;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Options;
+
+namespace OrionERP.Web.Features.Reservaciones.OpenClaw;
+
+public sealed class OpenClawReservationPdfTokenService : IOpenClawReservationPdfTokenService
+{
+  private readonly ITimeLimitedDataProtector _protector;
+  private readonly OpenClawApiOptions _options;
+
+  public OpenClawReservationPdfTokenService(IDataProtectionProvider dataProtectionProvider, IOptions<OpenClawApiOptions> options)
+  {
+    _protector = dataProtectionProvider
+      .CreateProtector("OrionERP.OpenClaw.Reservaciones.Pdf")
+      .ToTimeLimitedDataProtector();
+    _options = options.Value;
+  }
+
+  public string CreateToken(int reservationId)
+  {
+    var lifetime = TimeSpan.FromMinutes(Math.Max(_options.PdfTokenLifetimeMinutes, 1));
+    var protectedValue = _protector.Protect(reservationId.ToString(CultureInfo.InvariantCulture), lifetime);
+    return WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(protectedValue));
+  }
+
+  public bool TryValidate(int reservationId, string? token, out string? errorMessage)
+  {
+    errorMessage = "Token inválido o expirado.";
+    if (string.IsNullOrWhiteSpace(token))
+    {
+      return false;
+    }
+
+    try
+    {
+      var protectedValue = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(token));
+      var payload = _protector.Unprotect(protectedValue);
+      if (!string.Equals(payload, reservationId.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal))
+      {
+        return false;
+      }
+
+      errorMessage = null;
+      return true;
+    }
+    catch
+    {
+      return false;
+    }
+  }
+}

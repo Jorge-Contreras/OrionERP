@@ -19,9 +19,11 @@ using OrionERP.Application.Common;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using OrionERP.Infrastructure.Auth;
 using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
+using OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 using OrionERP.Web.Configuration;
 using OrionERP.Web.Data;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
+using OrionERP.Web.Features.Reservaciones.OpenClaw;
 using OrionERP.Web.Identity;
 using OrionERP.Web.State;
 using OrionERP.Web.Services;
@@ -46,24 +48,52 @@ builder.Configuration
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true);
 
-// (Optional) In Development you can enable User Secrets by uncommenting the next two lines
-// if (builder.Environment.IsDevelopment())
-//     builder.Configuration.AddUserSecrets<Program>(optional: true);
+if (builder.Environment.IsDevelopment())
+{
+  builder.Configuration.AddUserSecrets<Program>(optional: true);
+}
 
-// Only allow platform env vars if needed; these WILL NOT include ConnectionStrings__*
-// Remove these two lines if you want to block env vars entirely.
-// (They’re safe to keep; they don’t affect your connection strings.)
+// Allow explicit machine-level overrides only via ASPNETCORE_* / DOTNET_*.
+// Examples:
+// - ASPNETCORE_ConnectionStrings__OrionDb
+// - ASPNETCORE_OpenClawApi__ApiKey
+// - ASPNETCORE_GraphMail__ClientSecret
 builder.Configuration
     .AddEnvironmentVariables(prefix: "ASPNETCORE_")
     .AddEnvironmentVariables(prefix: "DOTNET_");
 
 // -------------------------------------------------------------------------------
 
-// Resolve and validate the connection string strictly from JSON
+// Resolve and validate the connection string from the configured sources.
 var conn = builder.Configuration.GetConnectionString("OrionDb");
-Console.WriteLine($"[BOOT] ENV={builder.Environment.EnvironmentName}  OrionDb='{conn}'");
+
+string connSummary;
 if (string.IsNullOrWhiteSpace(conn))
-  throw new InvalidOperationException("Missing/empty ConnectionStrings:OrionDb");
+{
+  connSummary = "<missing>";
+}
+else
+{
+  try
+  {
+    var builderSummary = new SqlConnectionStringBuilder(conn);
+    var authSummary = string.IsNullOrWhiteSpace(builderSummary.UserID)
+        ? "IntegratedSecurity"
+        : $"SqlAuth:{builderSummary.UserID}";
+    connSummary = $"Server={builderSummary.DataSource};Database={builderSummary.InitialCatalog};Auth={authSummary}";
+  }
+  catch
+  {
+    connSummary = "<present>";
+  }
+}
+
+Console.WriteLine($"[BOOT] ENV={builder.Environment.EnvironmentName}  OrionDb={connSummary}");
+if (string.IsNullOrWhiteSpace(conn))
+  throw new InvalidOperationException(
+      "Missing/empty ConnectionStrings:OrionDb. In Development, set it with User Secrets, " +
+      "a local appsettings.Development.json, or ConnectionStrings__OrionDb. In Production, " +
+      "use ASPNETCORE_ConnectionStrings__OrionDb.");
 
 builder.Services.AddDbContext<OrionIdentityDbContext>(opt =>
     opt.UseSqlServer(conn,
@@ -156,6 +186,9 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddRazorPages();      // Identity UI depends on Razor Pages
 builder.Services.AddServerSideBlazor();
+builder.Services.Configure<OpenClawApiOptions>(builder.Configuration.GetSection(OpenClawApiOptions.SectionName));
+builder.Services.Configure<GraphMailOptions>(builder.Configuration.GetSection(GraphMailOptions.SectionName));
+builder.Services.Configure<BonhomiaGraphCalendarSyncOptions>(builder.Configuration.GetSection(BonhomiaGraphCalendarSyncOptions.SectionName));
 
 builder.Services.AddSingleton<WeatherForecastService>();
 builder.Services.AddCfdiCargarXmlSat();
@@ -172,14 +205,17 @@ if (OperatingSystem.IsWindows() && WindowsServiceHelpers.IsWindowsService())
 
 var app = builder.Build();
 
-// Debug endpoint to inspect configuration sources/values
-app.MapGet("/__config", (IConfiguration cfg, IHostEnvironment env) =>
+if (app.Environment.IsDevelopment())
 {
-  var root = (IConfigurationRoot)cfg;
-  return Results.Text(
-      $"ENV={env.EnvironmentName}\n\n" +
-      root.GetDebugView());
-});
+  // Debug endpoint to inspect configuration sources/values during local development only.
+  app.MapGet("/__config", (IConfiguration cfg, IHostEnvironment env) =>
+  {
+    var root = (IConfigurationRoot)cfg;
+    return Results.Text(
+        $"ENV={env.EnvironmentName}\n\n" +
+        root.GetDebugView());
+  });
+}
 
 if (!app.Environment.IsDevelopment())
 {
@@ -196,6 +232,7 @@ app.UseAuthorization();
 
 app.MapRazorPages();
 app.MapBlazorHub();
+app.MapOpenClawReservationsApi();
 app.MapFallbackToPage("/_Host");
 
 app.MapGet("/auth/logout", async (HttpContext ctx) =>

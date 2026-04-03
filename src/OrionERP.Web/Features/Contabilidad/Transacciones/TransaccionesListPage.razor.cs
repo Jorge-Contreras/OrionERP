@@ -56,12 +56,6 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
             await LoadTransacciones();
         }
 
-        protected async Task ApplySort(bool sortAsc)
-        {
-            Filter.SortAsc = sortAsc;
-            await LoadTransacciones();
-        }
-
         protected async Task OnFilterKeyDown(KeyboardEventArgs args)
         {
             if (args.Key == "Enter")

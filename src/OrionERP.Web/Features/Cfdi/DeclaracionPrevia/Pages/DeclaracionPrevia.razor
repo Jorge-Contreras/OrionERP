@@ -1,7 +1,6 @@
 <!-- UNIQUE_COMMENT_FOR_DEBUGGING -->
 @page "/cfdi/declaracion-previa"
 @using OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Components
-@inject IConfiguration Configuration
 @inject IJSRuntime JS
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
@@ -39,8 +38,7 @@
     <div class="filter-pair">
         <label class="fw-bold">Periodo:</label>
         <select @bind="selectedMonth" @bind:after="OnFiltersChangedAsync"
-                class="form-select inline-select"
-                style="@((isAnnual ? "opacity:0.5;" : ""))"
+                class="form-select inline-select @(isAnnual ? "declaracion-filter-disabled" : null)"
                 disabled="@isAnnual">
             @if (disponibleMonths != null)
             {

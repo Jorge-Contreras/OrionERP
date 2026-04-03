@@ -2,9 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
-using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
@@ -68,7 +66,6 @@ public partial class BancosPage : ComponentBase, IDisposable
   private bool _showOnlyUnlinkedMovements;
   protected string? TextFilter { get; private set; }
   protected ProcessBbvaResult? LastProcessResult { get; private set; }
-  protected int FileInputKey { get; private set; }
   protected EditContext? AccountEditContext { get; private set; }
   protected BankAccountInputModel? AccountDraft { get; private set; }
   protected string AccountModalTitle { get; private set; } = string.Empty;
@@ -171,6 +168,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     SelectedAccountId = accountId;
     LastProcessResult = null;
     SelectedMovimientoId = null;
+    await LoadPendingTransactionsAsync();
     await LoadMovementsAsync();
     await InvokeAsync(StateHasChanged);
   }
@@ -548,7 +546,47 @@ public partial class BancosPage : ComponentBase, IDisposable
     });
   }
 
-  protected async Task OnFileSelectedAsync(InputFileChangeEventArgs args)
+  protected async Task OpenBankFilePickerAsync()
+  {
+    if (IsProcessingFile)
+    {
+      return;
+    }
+
+    if (!SelectedAccountId.HasValue)
+    {
+      UiMessages.ShowWarning("Selecciona primero una cuenta bancaria.");
+      return;
+    }
+
+    try
+    {
+      var pickedFile = await JsRuntime.InvokeAsync<SelectedBankFile?>("pickBankFile");
+
+      if (pickedFile is null)
+      {
+        return;
+      }
+
+      if (pickedFile.Size <= 0 || string.IsNullOrWhiteSpace(pickedFile.Content))
+      {
+        UiMessages.ShowError("El archivo está vacío o no se pudo leer.");
+        return;
+      }
+
+      await ProcessSelectedBankFileAsync(pickedFile.Content);
+    }
+    catch (JSException ex)
+    {
+      var baseMessage = ex.GetBaseException().Message;
+      UiMessages.ShowError(
+        string.IsNullOrWhiteSpace(baseMessage)
+          ? "No se pudo abrir el selector de archivos."
+          : $"No se pudo abrir el selector de archivos: {baseMessage}");
+    }
+  }
+
+  private async Task ProcessSelectedBankFileAsync(string content)
   {
     try
     {
@@ -558,21 +596,8 @@ public partial class BancosPage : ComponentBase, IDisposable
         return;
       }
 
-      if (args.File is null)
-      {
-        return;
-      }
-
-      if (args.File.Size == 0)
-      {
-        UiMessages.ShowError("El archivo está vacío o no se pudo leer.");
-        return;
-      }
-
       IsProcessingFile = true;
       await InvokeAsync(StateHasChanged);
-
-      var content = await ReadFileAsTextAsync(args.File);
 
       if (string.IsNullOrWhiteSpace(content))
       {
@@ -601,14 +626,17 @@ public partial class BancosPage : ComponentBase, IDisposable
     {
       // Ignore cancellation
     }
-    catch (Exception)
+    catch (Exception ex)
     {
-      UiMessages.ShowError("Ocurrió un error al procesar el archivo.");
+      var baseMessage = ex.GetBaseException().Message;
+      UiMessages.ShowError(
+        string.IsNullOrWhiteSpace(baseMessage)
+          ? "Ocurrio un error al procesar el archivo."
+          : $"No se pudo procesar el archivo: {baseMessage}");
     }
     finally
     {
       IsProcessingFile = false;
-      FileInputKey++;
       await InvokeAsync(StateHasChanged);
     }
   }
@@ -741,16 +769,19 @@ public partial class BancosPage : ComponentBase, IDisposable
 
   private async Task LoadMovementsAsync()
   {
-    if (string.IsNullOrWhiteSpace(_currentRfc))
-    {
-      Movements.Clear();
-      SelectedMovimientoId = null;
-      return;
-    }
-
     var previousCts = _movementsCts;
     previousCts?.Cancel();
     previousCts?.Dispose();
+
+    if (string.IsNullOrWhiteSpace(_currentRfc) || !SelectedAccountId.HasValue)
+    {
+      _movementsCts = null;
+      Movements.Clear();
+      SelectedMovimientoId = null;
+      IsLoadingMovements = false;
+      await InvokeAsync(StateHasChanged);
+      return;
+    }
 
     _movementsCts = new CancellationTokenSource();
     var localCts = _movementsCts;
@@ -819,6 +850,7 @@ public partial class BancosPage : ComponentBase, IDisposable
       PendingTransactions.Clear();
       var rows = await BancosService.GetPendingTransactionsAsync(
           _currentRfc,
+          SelectedAccountId,
           SelectedYear,
           SelectedMonth,
           localCts.Token);
@@ -848,13 +880,6 @@ public partial class BancosPage : ComponentBase, IDisposable
         await InvokeAsync(StateHasChanged);
       }
     }
-  }
-
-  private static async Task<string> ReadFileAsTextAsync(IBrowserFile file)
-  {
-    await using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
-    using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-    return await reader.ReadToEndAsync();
   }
 
   protected sealed class BankAccountInputModel
@@ -943,5 +968,14 @@ public partial class BancosPage : ComponentBase, IDisposable
 
     private static int? NormalizeCuenta(int? value)
       => value.HasValue && value.Value > 0 ? value : null;
+  }
+
+  protected sealed class SelectedBankFile
+  {
+    public string Name { get; init; } = string.Empty;
+
+    public long Size { get; init; }
+
+    public string Content { get; init; } = string.Empty;
   }
 }

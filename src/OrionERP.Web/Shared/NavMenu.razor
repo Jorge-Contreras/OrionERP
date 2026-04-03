@@ -1,104 +1,450 @@
-<div class="top-row ps-3 navbar navbar-dark">
+@using System.Linq
+@implements IDisposable
+@inject NavigationManager Navigation
+
+@{
+    var visibleSections = VisibleSections;
+    var quickAccessItems = HasSearch ? Array.Empty<NavEntryDefinition>() : GetQuickAccessItems(visibleSections);
+    var visibleItemCount = visibleSections.Sum(section => section.Items.Count);
+}
+
+<div class="navmenu-topbar navbar navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand brand-logo" href="/">
-            <img src="/Images/OrionERP_Logo.png" alt="OrionERP logo">
+            <img src="/Images/OrionERP_Logo.svg" alt="OrionERP logo">
+            <span class="brand-logo__tag">Centro de operacion</span>
         </a>
-        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
+
+        <button title="Navigation menu"
+                class="navbar-toggler"
+                type="button"
+                aria-label="Toggle navigation"
+                aria-controls="primary-nav"
+                aria-expanded="@(!collapseNavMenu)"
+                @onclick="ToggleNavMenu">
             <span class="navbar-toggler-icon"></span>
         </button>
     </div>
 </div>
 
-<div class="@NavMenuCssClass navmenu-body">
-    <nav class="px-2" aria-label="Primary">
-        <ul class="nav flex-column gap-1" @onclick:stopPropagation>
-            <li class="nav-section">General</li>
+@if (!collapseNavMenu)
+{
+    <button type="button" class="navmenu-backdrop" aria-label="Cerrar navegacion" @onclick="CloseNavMenu"></button>
+}
 
-            <li class="nav-item">
-                <NavLink class="nav-link" href="/" Match="NavLinkMatch.All" title="Home">
-                    <span class="oi oi-home" aria-hidden="true"></span>
-                    <span class="label">Home</span>
-                </NavLink>
-            </li>
-            
-            <li class="nav-item">
-                <NavLink class="nav-link" href="/cfdi/register" Match="NavLinkMatch.All" title="Registrar RFC">
-                    <span class="oi oi-plus" aria-hidden="true"></span>
-                    <span class="label">Registrar RFC</span>
-                </NavLink>
-            </li>
+<div id="primary-nav" class="@NavMenuCssClass navmenu-body">
+    <nav class="nav-shell" aria-label="Primary">
+        <section class="nav-search" aria-label="Buscar navegacion">
+            <div class="nav-panel__heading">
+                <div>
+                    <div class="nav-panel__eyebrow">Buscar</div>
+                    <h3>Encuentra una pagina rapido</h3>
+                </div>
 
-            <li class="nav-divider" role="separator" aria-hidden="true"></li>
-            <li class="nav-section">CFDI</li>
+                <span class="nav-panel__meta">@visibleItemCount</span>
+            </div>
 
-            <li class="nav-item">
-                <NavLink class="nav-link" href="/cfdi/declaracion-previa" title="Declaración previa">
-                    <span class="oi oi-document" aria-hidden="true"></span>
-                    <span class="label">CFDIs</span>
-                </NavLink>
-            </li>
-            <li class="nav-item">
-                <NavLink class="nav-link" href="/cfdi/descarga-masiva" title="Descarga masiva SAT">
-                    <span class="oi oi-cloud-download" aria-hidden="true"></span>
-                    <span class="label">Descarga masiva SAT</span>
-                </NavLink>
-            </li>
-            <li class="nav-item">
-                <NavLink class="nav-link" href="/cfdi/cargar-XML-SAT" title="Cargar XML">
-                    <span class="oi oi-cloud-upload" aria-hidden="true"></span>
-                    <span class="label">Cargar XML</span>
-                </NavLink>
-            </li>
-            
-            <li class="nav-divider" role="separator" aria-hidden="true"></li>
-            <li class="nav-section">Contabilidad</li>
+            <label class="nav-search__label" for="nav-search-input">Buscar</label>
 
-            <li class="nav-item">
-                <NavLink class="nav-link" href="/contabilidad/Bancos" title="Transacción">
-                    <span class="oi oi-bold" aria-hidden="true"></span>
-                    <span class="label">Bancos</span>
-                </NavLink>
-            </li>
-            <li class="nav-item">
-                <NavLink class="nav-link" href="/cfdi/registros-contables" title="Cargar XML">
-                    <span class="oi oi-folder" aria-hidden="true"></span>
-                    <span class="label">Registros Contables</span>
-                </NavLink>
-            </li>
-            <li class="nav-item">
-                <NavLink class="nav-link" href="/contabilidad/transacciones/list" title="Cargar XML">
-                    <span class="oi oi-layers" aria-hidden="true"></span>
-                    <span class="label">Polizas</span>
-                </NavLink>
-            </li>
+            <div class="nav-search__control">
+                <span class="oi oi-magnifying-glass" aria-hidden="true"></span>
+                <input id="nav-search-input"
+                       type="search"
+                       @bind="searchText"
+                       @bind:event="oninput"
+                       placeholder="Modulo, pagina o tarea"
+                       autocomplete="off" />
 
-            <li class="nav-divider" role="separator" aria-hidden="true"></li>
-            <li class="nav-section">Reportes Financieros</li>
+                @if (HasSearch)
+                {
+                    <button type="button" class="nav-search__clear" @onclick="ClearSearch">Limpiar</button>
+                }
+            </div>
 
-            <li class="nav-item">
-                <NavLink class="nav-link" href="/ReportesFinancieros/HojaTrabajo" title="Hoja de Trabajo">
-                    <span class="oi oi-spreadsheet" aria-hidden="true"></span>
-                    <span class="label">Hoja de Trabajo</span>
-                </NavLink>
-            </li>
-            <li class="nav-item">
-                <NavLink class="nav-link" href="/ReportesFinancieros/BalanzaComprobacion" title="Balanza de Comprobación">
-                    <span class="oi oi-clipboard" aria-hidden="true"></span>
-                    <span class="label">Balanza de Comprobación</span>
-                </NavLink>
-            </li>
-            <li class="nav-item">
-                <NavLink class="nav-link" href="/ReportesFinancieros/EstadoPerdidasGanancias" title="Estado de Pérdidas y Ganancias">
-                    <span class="oi oi-graph" aria-hidden="true"></span>
-                    <span class="label">Estado de Pérdidas y Ganancias</span>
-                </NavLink>
-            </li>
-        </ul>
+            @if (HasSearch)
+            {
+                <p class="nav-search__summary">@visibleItemCount resultado@(visibleItemCount == 1 ? string.Empty : "s")</p>
+            }
+        </section>
+
+        @if (quickAccessItems.Length > 0)
+        {
+            <section class="nav-panel nav-quick" aria-label="Accesos rapidos">
+                <div class="nav-panel__heading">
+                    <div>
+                        <div class="nav-panel__eyebrow">Accesos rapidos</div>
+                        <h3>Lo mas usado</h3>
+                    </div>
+
+                    <span class="nav-panel__meta">ERP flow</span>
+                </div>
+
+                <div class="nav-quick__grid">
+                    @foreach (var item in quickAccessItems)
+                    {
+                        <NavLink class="nav-quick__item"
+                                 href="@item.Href"
+                                 Match="@item.Match"
+                                 title="@item.Title"
+                                 @onclick="CloseNavMenu">
+                            <span class="nav-quick__icon">
+                                <span class="oi @item.Icon" aria-hidden="true"></span>
+                            </span>
+
+                            <span class="nav-quick__body">
+                                <span class="nav-quick__label">@item.Label</span>
+                                <span class="nav-quick__description">@item.Description</span>
+                            </span>
+                        </NavLink>
+                    }
+                </div>
+            </section>
+        }
+
+        @if (visibleSections.Count == 0)
+        {
+            <section class="nav-empty" aria-live="polite">
+                <span class="oi oi-magnifying-glass nav-empty__icon" aria-hidden="true"></span>
+                <h3>Sin coincidencias</h3>
+                <p>Prueba con SAT, polizas, bancos, reservaciones o seguridad.</p>
+                <button type="button" class="btn btn-link btn-sm nav-empty__action" @onclick="ClearSearch">Limpiar busqueda</button>
+            </section>
+        }
+        else
+        {
+            @for (var index = 0; index < visibleSections.Count; index++)
+            {
+                var module = visibleSections[index];
+
+                <section class="@GetSectionCssClass(module)" style="--cluster-index:@index;">
+                    <header class="nav-cluster__header">
+                        <div class="nav-cluster__icon">
+                            <span class="oi @module.Definition.Icon" aria-hidden="true"></span>
+                        </div>
+
+                        <div class="nav-cluster__copy">
+                            <div class="nav-cluster__eyebrow">@module.Definition.Kicker</div>
+                            <h3>@module.Definition.Title</h3>
+                            <p>@module.Definition.Description</p>
+                        </div>
+
+                        <span class="nav-cluster__count">@module.Items.Count</span>
+                    </header>
+
+                    <ul class="nav-cluster__list">
+                        @foreach (var item in module.Items)
+                        {
+                            <li class="nav-item">
+                                <NavLink class="nav-link nav-link--rich"
+                                         href="@item.Href"
+                                         Match="@item.Match"
+                                         title="@item.Title"
+                                         @onclick="CloseNavMenu">
+                                    <span class="nav-link__icon">
+                                        <span class="oi @item.Icon" aria-hidden="true"></span>
+                                    </span>
+
+                                    <span class="nav-link__content">
+                                        <span class="label">@item.Label</span>
+                                        <span class="description">@item.Description</span>
+                                    </span>
+
+                                    @if (!string.IsNullOrWhiteSpace(item.Badge))
+                                    {
+                                        <span class="nav-link__badge">@item.Badge</span>
+                                    }
+                                </NavLink>
+                            </li>
+                        }
+                    </ul>
+                </section>
+            }
+        }
+
+        <AuthorizeView Roles="Administrador">
+            <section class="nav-cluster nav-cluster--admin">
+                <header class="nav-cluster__header">
+                    <div class="nav-cluster__icon">
+                        <span class="oi oi-lock-locked" aria-hidden="true"></span>
+                    </div>
+
+                    <div class="nav-cluster__copy">
+                        <div class="nav-cluster__eyebrow">Administracion</div>
+                        <h3>Control y seguridad</h3>
+                        <p>Gestiona accesos, roles y mantenimiento del portal.</p>
+                    </div>
+                </header>
+
+                <ul class="nav-cluster__list">
+                    <li class="nav-item">
+                        <NavLink class="nav-link nav-link--rich"
+                                 href="/admin/seguridad"
+                                 title="Portal de seguridad"
+                                 @onclick="CloseNavMenu">
+                            <span class="nav-link__icon">
+                                <span class="oi oi-lock-locked" aria-hidden="true"></span>
+                            </span>
+
+                            <span class="nav-link__content">
+                                <span class="label">Portal de Seguridad</span>
+                                <span class="description">Usuarios, permisos y configuracion administrativa.</span>
+                            </span>
+
+                            <span class="nav-link__badge">Admin</span>
+                        </NavLink>
+                    </li>
+                </ul>
+            </section>
+        </AuthorizeView>
     </nav>
 </div>
 
 @code {
+    private static readonly IReadOnlyList<NavSectionDefinition> Sections = new List<NavSectionDefinition>
+    {
+        new(
+            "Fiscal y SAT",
+            "CFDI",
+            "Procesos de captura, validacion y abastecimiento de comprobantes fiscales.",
+            "oi-document",
+            new List<NavEntryDefinition>
+            {
+                new("/cfdi/register", "Registrar RFC", "Alta rapida para nuevos emisores o receptores.", "oi-plus", "Registrar RFC", NavLinkMatch.Prefix, true, "Alta", "rfc", "registro", "cliente", "proveedor"),
+                new("/cfdi/declaracion-previa", "CFDIs", "Revision previa y amarre antes de contabilizar.", "oi-document", "Declaracion previa", NavLinkMatch.Prefix, true, "Fiscal", "cfdi", "xml", "facturas", "declaracion"),
+                new("/cfdi/descarga-masiva", "Descarga masiva SAT", "Trae XML directo del SAT para conciliacion y control.", "oi-cloud-download", "Descarga masiva SAT", NavLinkMatch.Prefix, true, "SAT", "sat", "descarga", "xml", "masiva"),
+                new("/cfdi/cargar-XML-SAT", "Cargar XML", "Incorpora archivos manuales o recibidos por terceros.", "oi-cloud-upload", "Cargar XML", NavLinkMatch.Prefix, false, "XML", "cargar", "subir", "xml")
+            }),
+        new(
+            "Finanzas",
+            "Contabilidad",
+            "Movimientos bancarios, registros y polizas para una lectura mas operativa.",
+            "oi-graph",
+            new List<NavEntryDefinition>
+            {
+                new("/contabilidad/Bancos", "Bancos", "Consulta movimientos, saldos y control de tesoreria.", "oi-bold", "Bancos", NavLinkMatch.Prefix, true, "Cash", "bancos", "tesoreria", "movimientos"),
+                new("/contabilidad/registros-contables", "Registros Contables", "Administra asientos, auxiliares y capturas contables.", "oi-folder", "Registros contables", NavLinkMatch.Prefix, false, "Ledger", "registros", "contables", "asientos"),
+                new("/contabilidad/transacciones/list", "Polizas", "Seguimiento de polizas para cierre, ajustes y auditoria.", "oi-layers", "Polizas", NavLinkMatch.Prefix, true, "Cierre", "polizas", "transacciones", "contabilidad")
+            }),
+        new(
+            "Operacion",
+            "Reservaciones",
+            "Hospedaje",
+            "oi-calendar",
+            new List<NavEntryDefinition>
+            {
+                new("/reservaciones/lista", "Reserv", "Gestion de bookings, cambios y seguimiento operativo.", "oi-calendar", "Reservaciones", NavLinkMatch.Prefix, true, "Agenda", "reservaciones", "booking", "agenda"),
+                new("/reservaciones/calendario", "Calendario", "Vista visual para planeacion, huecos y conflictos.", "oi-grid-three-up", "Calendario de reservaciones", NavLinkMatch.Prefix, false, "Vista", "calendario", "ocupacion", "programacion")
+            }),
+        new(
+            "Inventario",
+            "Logistica",
+            "c",
+            "oi-box",
+            new List<NavEntryDefinition>
+            {
+                new("/logistica/materiales", "Materiales", "Catalogo base para insumos, productos y control de existencias.", "oi-box", "Materiales", NavLinkMatch.Prefix, true, "Stock", "materiales", "inventario", "productos"),
+                new("/logistica/proveedores", "Proveedores", "Relacion comercial y abastecimiento por proveedor.", "oi-briefcase", "Proveedores", NavLinkMatch.Prefix, false, "Supply", "proveedores", "compras", "abasto"),
+                new("/logistica/ubicaciones", "Ubicaciones", "Existencia por almacen, rack, sucursal o punto de consumo.", "oi-map-marker", "Ubicaciones e inventario", NavLinkMatch.Prefix, false, "Mapa", "ubicaciones", "almacen", "inventario"),
+                new("/logistica/conteos", "Conteos", "Conteos fisicos, ajustes y validacion de diferencias.", "oi-task", "Conteos fisicos", NavLinkMatch.Prefix, false, "Conteo", "conteos", "inventario", "fisico")
+            }),
+        new(
+            "Analitica",
+            "Reportes",
+            "Lectura financiera para revision, balance y rentabilidad.",
+            "oi-spreadsheet",
+            new List<NavEntryDefinition>
+            {
+                new("/ReportesFinancieros/HojaTrabajo", "Hoja de Trabajo", "Prepara ajustes y revision previa al cierre.", "oi-spreadsheet", "Hoja de Trabajo", NavLinkMatch.Prefix, false, "Work", "hoja de trabajo", "revision", "cierre"),
+                new("/ReportesFinancieros/BalanzaComprobacion", "Balanza de Comp", "Saldo y movimientos por cuenta para analisis contable.", "oi-clipboard", "Balanza de Comprobacion", NavLinkMatch.Prefix, true, "Balance", "balanza", "comprobacion", "saldos"),
+                new("/ReportesFinancieros/EstadoPerdidasGanancias", "Perdidas y Ganancias", "Rentabilidad y desempeno financiero del negocio.", "oi-graph", "Estado de Perdidas y Ganancias", NavLinkMatch.Prefix, false, "P&L", "perdidas", "ganancias", "estado financiero")
+            })
+    };
+
     private bool collapseNavMenu = true;
+    private string searchText = string.Empty;
+
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
-    private void ToggleNavMenu() => collapseNavMenu = !collapseNavMenu;
+    private bool HasSearch => !string.IsNullOrWhiteSpace(searchText);
+
+    private IReadOnlyList<VisibleNavSection> VisibleSections => BuildVisibleSections(Sections, searchText);
+
+    private NavEntryDefinition? CurrentEntry
+    {
+        get
+        {
+            var currentPath = NormalizePath(Navigation.ToBaseRelativePath(Navigation.Uri));
+
+            return Sections
+                .SelectMany(section => section.Items)
+                .OrderByDescending(item => NormalizePath(item.Href).Length)
+                .FirstOrDefault(item => IsCurrentRoute(currentPath, item));
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += HandleLocationChanged;
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= HandleLocationChanged;
+    }
+
+    private static IReadOnlyList<VisibleNavSection> BuildVisibleSections(IReadOnlyList<NavSectionDefinition> source, string filter)
+    {
+        var query = filter.Trim();
+        var sections = new List<VisibleNavSection>();
+
+        foreach (var section in source)
+        {
+            IReadOnlyList<NavEntryDefinition> items = string.IsNullOrWhiteSpace(query)
+                ? section.Items
+                : section.Items.Where(item => MatchesFilter(item, query)).ToList();
+
+            if (items.Count > 0)
+            {
+                sections.Add(new VisibleNavSection(section, items));
+            }
+        }
+
+        return sections;
+    }
+
+    private static bool MatchesFilter(NavEntryDefinition item, string filter)
+    {
+        return item.Label.Contains(filter, StringComparison.OrdinalIgnoreCase)
+            || item.Description.Contains(filter, StringComparison.OrdinalIgnoreCase)
+            || item.Title.Contains(filter, StringComparison.OrdinalIgnoreCase)
+            || item.Badge?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true
+            || item.Keywords.Any(keyword => keyword.Contains(filter, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static NavEntryDefinition[] GetQuickAccessItems(IReadOnlyList<VisibleNavSection> sections)
+    {
+        return sections
+            .SelectMany(section => section.Items)
+            .Where(item => item.IsQuickAccess)
+            .Take(8)
+            .ToArray();
+    }
+
+    private static string NormalizePath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return string.Empty;
+        }
+
+        return path.Trim().Trim('/').ToLowerInvariant();
+    }
+
+    private static bool IsCurrentRoute(string currentPath, NavEntryDefinition item)
+    {
+        var targetPath = NormalizePath(item.Href);
+
+        if (item.Match == NavLinkMatch.All)
+        {
+            return currentPath == targetPath;
+        }
+
+        if (string.IsNullOrEmpty(targetPath))
+        {
+            return string.IsNullOrEmpty(currentPath);
+        }
+
+        return currentPath == targetPath || currentPath.StartsWith($"{targetPath}/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string GetSectionCssClass(VisibleNavSection section)
+    {
+        var isActive = CurrentEntry is not null && section.Definition.Items.Contains(CurrentEntry);
+        return isActive ? "nav-cluster nav-cluster--active" : "nav-cluster";
+    }
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+
+    private void CloseNavMenu()
+    {
+        collapseNavMenu = true;
+    }
+
+    private void ClearSearch()
+    {
+        searchText = string.Empty;
+    }
+
+    private void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args)
+    {
+        collapseNavMenu = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private sealed class VisibleNavSection
+    {
+        public VisibleNavSection(NavSectionDefinition definition, IReadOnlyList<NavEntryDefinition> items)
+        {
+            Definition = definition;
+            Items = items;
+        }
+
+        public NavSectionDefinition Definition { get; }
+        public IReadOnlyList<NavEntryDefinition> Items { get; }
+    }
+
+    private sealed class NavSectionDefinition
+    {
+        public NavSectionDefinition(string title, string kicker, string description, string icon, IReadOnlyList<NavEntryDefinition> items)
+        {
+            Title = title;
+            Kicker = kicker;
+            Description = description;
+            Icon = icon;
+            Items = items;
+        }
+
+        public string Title { get; }
+        public string Kicker { get; }
+        public string Description { get; }
+        public string Icon { get; }
+        public IReadOnlyList<NavEntryDefinition> Items { get; }
+    }
+
+    private sealed class NavEntryDefinition
+    {
+        public NavEntryDefinition(
+            string href,
+            string label,
+            string description,
+            string icon,
+            string title,
+            NavLinkMatch match,
+            bool isQuickAccess,
+            string? badge,
+            params string[] keywords)
+        {
+            Href = href;
+            Label = label;
+            Description = description;
+            Icon = icon;
+            Title = title;
+            Match = match;
+            IsQuickAccess = isQuickAccess;
+            Badge = badge;
+            Keywords = keywords ?? Array.Empty<string>();
+        }
+
+        public string Href { get; }
+        public string Label { get; }
+        public string Description { get; }
+        public string Icon { get; }
+        public string Title { get; }
+        public NavLinkMatch Match { get; }
+        public bool IsQuickAccess { get; }
+        public string? Badge { get; }
+        public IReadOnlyList<string> Keywords { get; }
+    }
 }

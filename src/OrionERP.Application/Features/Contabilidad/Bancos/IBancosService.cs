@@ -23,6 +23,7 @@ public interface IBancosService
       CancellationToken cancellationToken = default);
   Task<IReadOnlyList<PendingBankTransactionDto>> GetPendingTransactionsAsync(
       string rfc,
+      int? accountId,
       int year,
       int month,
       CancellationToken cancellationToken = default);

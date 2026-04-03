@@ -1,0 +1,59 @@
+.ligar-cfdi-actions-card {
+  background: linear-gradient(180deg, rgba(15, 45, 78, 0.02), rgba(15, 45, 78, 0.05));
+}
+
+.ligar-cfdi-actions-amount {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.ligar-cfdi-actions-amount .form-control,
+.ligar-cfdi-actions-amount .form-text {
+  max-width: 100%;
+}
+
+.ligar-cfdi-actions-buttons {
+  min-height: 100%;
+}
+
+.ligar-cfdi-actions-slot {
+  display: flex;
+  align-items: flex-end;
+}
+
+.ligar-cfdi-actions-slot .btn {
+  min-height: 2.9rem;
+  white-space: normal;
+}
+
+.ligar-cfdi-actions-slot-center {
+  justify-content: center;
+}
+
+.ligar-cfdi-actions-slot-end {
+  justify-content: flex-end;
+}
+
+.ligar-cfdi-primary-button {
+  font-weight: 700;
+  box-shadow: 0 0.5rem 1.15rem rgba(13, 110, 253, 0.18);
+}
+
+.ligar-cfdi-extra-button {
+  min-width: 14rem;
+  width: auto;
+}
+
+@media (max-width: 991.98px) {
+  .ligar-cfdi-actions-slot,
+  .ligar-cfdi-actions-slot-center,
+  .ligar-cfdi-actions-slot-end {
+    justify-content: stretch;
+  }
+
+  .ligar-cfdi-extra-button {
+    min-width: 0;
+    width: 100%;
+  }
+}

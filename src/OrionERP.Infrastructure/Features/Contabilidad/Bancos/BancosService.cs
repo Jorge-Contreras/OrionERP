@@ -303,6 +303,7 @@ ORDER BY M.Dia DESC, M.Movimiento_ID DESC;";
 
   public async Task<IReadOnlyList<PendingBankTransactionDto>> GetPendingTransactionsAsync(
       string rfc,
+      int? accountId,
       int year,
       int month,
       CancellationToken cancellationToken = default)
@@ -313,6 +314,19 @@ ORDER BY M.Dia DESC, M.Movimiento_ID DESC;";
     }
 
     const string sql = @"
+WITH CuentasBancoFiltradas AS (
+    SELECT DISTINCT
+        cb.Cuenta_Banco_ID,
+        cc.Nivel1,
+        cc.Nivel2,
+        cc.Nivel3
+    FROM bancos.Cuentas_Banco AS cb
+    INNER JOIN dbo.CuentasContables AS cc
+        ON cc.id = cb.Cuenta_Contable_ID
+       AND cc.RFC = cb.RFC
+    WHERE cb.RFC = @Rfc
+      AND (@AccountId IS NULL OR cb.Cuenta_Banco_ID = @AccountId)
+)
 SELECT
     t.ID AS TransaccionId,
     t.Fecha,
@@ -321,19 +335,32 @@ SELECT
     CAST(ISNULL(t.Monto, 0) AS decimal(19,2)) AS Monto
 FROM dbo.Transacciones AS t
 WHERE t.RFC = @Rfc
-  AND t.Forma_Pago IN ('03', '28', '04')
   AND YEAR(t.Fecha) = @Year
   AND MONTH(t.Fecha) = @Month
-  AND NOT EXISTS (
+  AND EXISTS (
       SELECT 1
-      FROM bancos.Movimientos AS m
-      WHERE m.Transaccion_ID = t.ID
+      FROM CuentasBancoFiltradas AS cbf
+      WHERE EXISTS (
+          SELECT 1
+          FROM dbo.Registro_Contable AS rc
+          WHERE rc.TransaccionID = t.ID
+            AND rc.Nivel1 = cbf.Nivel1
+            AND rc.Nivel2 = cbf.Nivel2
+            AND rc.Nivel3 = cbf.Nivel3
+      )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM bancos.Movimientos AS m
+          WHERE m.Transaccion_ID = t.ID
+            AND m.Cuenta_Banco_ID = cbf.Cuenta_Banco_ID
+      )
   )
 ORDER BY t.Fecha DESC, t.ID DESC;";
 
     var parameters = new
     {
       Rfc = rfc,
+      AccountId = accountId,
       Year = year,
       Month = month
     };

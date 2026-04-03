@@ -197,7 +197,7 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
     IsLinking = true;
     try
     {
-      var monto = DoctoRelacionado.ImpPagado != 0 ? DoctoRelacionado.ImpPagado : SelectedTransaccion.Monto;
+      var monto = SelectedTransaccion.Monto;
       var result = await TransaccionService.InsertTransaccionDoctoRelacionadoAsync(
         SelectedTransaccion.Id,
         DoctoRelacionado.DoctoRelacionado_Id,

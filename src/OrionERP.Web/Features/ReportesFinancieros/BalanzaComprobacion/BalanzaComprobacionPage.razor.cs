@@ -233,8 +233,8 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
 
             query.Add("rfc", CurrentRfc);
 
-            var registrosContablesUrl = $"/cfdi/registros-contables{query.ToQueryString()}";
-            await JS.InvokeVoidAsync("open", registrosContablesUrl, "_blank");
+            var registrosContablesUrl = $"/contabilidad/registros-contables{query.ToQueryString()}";
+            await JS.InvokeVoidAsync("open", registrosContablesUrl, "_blank", "noopener,noreferrer");
         }
 
         public void Dispose()

@@ -1,22 +1,33 @@
-
 @inherits LayoutComponentBase
 @using OrionERP.Web.Services
 @inject IUiMessageService MessageService
 
 <PageTitle>OrionERP.Web</PageTitle>
 
-<div class="page">
-    <div class="sidebar">
+<div class="@AppShellCssClass">
+    <div id="layout-nav-sidebar" class="sidebar app-shell__sidebar">
         <NavMenu />
     </div>
 
-    <main>
-        <div class="top-row px-4 align-items-center d-flex justify-content-between">
-            <SecurityHeader />
+    <main class="app-shell__main">
+        <div class="top-row app-shell__topbar">
+            <button type="button"
+                    class="app-shell__nav-toggle"
+                    aria-controls="layout-nav-sidebar"
+                    aria-expanded="@_isDesktopNavVisible"
+                    aria-label="@(_isDesktopNavVisible ? "Ocultar menu de navegacion" : "Mostrar menu de navegacion")"
+                    @onclick="ToggleDesktopNavMenu">
+                <span class="oi @(_isDesktopNavVisible ? "oi-chevron-left" : "oi-menu")" aria-hidden="true"></span>
+                <span>@(_isDesktopNavVisible ? "Ocultar menu" : "Mostrar menu")</span>
+            </button>
+
+            <div class="app-shell__topbar-header">
+                <SecurityHeader />
+            </div>
         </div>
 
         <NotificationBanner />
-        <article>
+        <article class="app-shell__content">
             <ErrorBoundary>
                 <ChildContent>
                     @Body
@@ -34,6 +45,9 @@
 
 @code {
     [CascadingParameter] private ErrorBoundary? _errorBoundary { get; set; }
+    private bool _isDesktopNavVisible = true;
+
+    private string AppShellCssClass => _isDesktopNavVisible ? "page app-shell" : "page app-shell app-shell--nav-hidden";
 
     private void HandleError(Exception exception)
     {
@@ -44,5 +58,10 @@
     {
         MessageService.Clear();
         _errorBoundary?.Recover();
+    }
+
+    private void ToggleDesktopNavMenu()
+    {
+        _isDesktopNavVisible = !_isDesktopNavVisible;
     }
 }

@@ -1,0 +1,332 @@
+@page "/logistica/conteos"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@attribute [Authorize(Roles = "Administrador")]
+
+<PageTitle>Logística · Conteos físicos</PageTitle>
+
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h1 class="h3 mb-1">Conteos físicos</h1>
+            <p class="text-muted mb-0">Sesiones de conteo con captura por línea, evidencia y contabilización aprobada.</p>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-12 col-xxl-4">
+            <section class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Nueva sesión</h2>
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Ubicación</label>
+                            <select class="form-select" @bind="SessionCreateRequest.LocationId">
+                                <option value="0">Selecciona una ubicación</option>
+                                @foreach (var option in LocationOptions)
+                                {
+                                    <option value="@option.Id">@option.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notas</label>
+                            <InputTextArea class="form-control" rows="3" @bind-Value="SessionCreateRequest.Notes" />
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary mt-3" type="button" @onclick="CrearSesionAsync" disabled="@IsCreatingSession">
+                        @(IsCreatingSession ? "Creando..." : "Crear sesión")
+                    </button>
+                </div>
+            </section>
+
+            <section class="card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="h5 mb-0">Sesiones</h2>
+                        <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="CargarSesionesAsync" disabled="@IsLoadingSessions">
+                            @(IsLoadingSessions ? "Actualizando..." : "Actualizar")
+                        </button>
+                    </div>
+
+                    <div class="table-responsive" style="max-height: 70vh;">
+                        <table class="table table-sm table-hover align-middle conteos-sessions-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Sesión</th>
+                                    <th class="conteos-location-col">Ubicación</th>
+                                    <th class="text-end conteos-count-col">Líneas</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Sessions.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-3">Aún no hay sesiones.</td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var item in Sessions)
+                                    {
+                                        <tr class="@(SelectedSession?.Id == item.Id ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarSesionAsync(item.Id)">
+                                            <td>
+                                                <div class="fw-semibold">@item.SessionCode</div>
+                                                <small class="text-muted">@item.Status</small>
+                                            </td>
+                                            <td class="conteos-location-col">
+                                                <div class="conteos-cell-stack">
+                                                    <div class="conteos-cell-primary">@item.LocationName</div>
+                                                    <div class="conteos-cell-secondary">@(string.IsNullOrWhiteSpace(item.RoomName) ? "Sin room" : item.RoomName)</div>
+                                                </div>
+                                            </td>
+                                            <td class="text-end conteos-count-col">
+                                                <div>@item.LineCount</div>
+                                                <small class="text-muted">@item.VarianceLineCount variaciones</small>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="col-12 col-xxl-8">
+            @if (SelectedSession is null)
+            {
+                <section class="card shadow-sm">
+                    <div class="card-body text-center text-muted py-5">
+                        Selecciona una sesión para capturar líneas, adjuntar evidencia y contabilizar.
+                    </div>
+                </section>
+            }
+            else
+            {
+                <section class="card shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                            <div>
+                                <h2 class="h4 mb-1">@SelectedSession.SessionCode</h2>
+                                <div class="conteos-session-location">@SelectedSession.LocationName</div>
+                                <div class="text-muted">@SelectedSession.Status</div>
+                                @if (!string.IsNullOrWhiteSpace(SelectedSession.RoomName))
+                                {
+                                    <div class="conteos-session-room text-muted">@SelectedSession.RoomName</div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(SelectedSession.Notes))
+                                {
+                                    <div class="small text-muted mt-1">@SelectedSession.Notes</div>
+                                }
+                            </div>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button class="btn btn-outline-primary" type="button" @onclick="EnviarSesionAsync" disabled="@(!CanSubmit || IsMutatingSession)">Enviar</button>
+                                <button class="btn btn-outline-success" type="button" @onclick="AprobarSesionAsync" disabled="@(!CanApprove || IsMutatingSession)">Aprobar</button>
+                                <button class="btn btn-success" type="button" @onclick="ContabilizarSesionAsync" disabled="@(!CanPost || IsMutatingSession)">Contabilizar</button>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive" style="max-height: 36vh;">
+                            <table class="table table-sm table-hover align-middle conteos-lines-table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="conteos-line-image-col">Foto</th>
+                                        <th class="conteos-material-col">Material</th>
+                                        <th class="text-end conteos-quantity-col">Esperado</th>
+                                        <th class="text-end conteos-quantity-col">Contado</th>
+                                        <th class="text-end conteos-quantity-col">Varianza</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var line in SelectedSession.Lines)
+                                    {
+                                        var thumbnailDataUrl = GetMaterialThumbnailDataUrl(line.MaterialId);
+                                        var materialTitle = string.IsNullOrWhiteSpace(line.MaterialDescription) ? line.MaterialCode : line.MaterialDescription;
+                                        var showMaterialCode = !string.IsNullOrWhiteSpace(line.MaterialCode) && !string.Equals(line.MaterialCode, materialTitle, StringComparison.OrdinalIgnoreCase);
+                                        <tr class="@(SelectedLine?.Id == line.Id ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarLinea(line)">
+                                            <td class="conteos-line-image-col">
+                                                @if (thumbnailDataUrl is not null)
+                                                {
+                                                    <button class="conteos-line-image-button" type="button" title="Ver imagen" aria-label="Ver imagen del material" @onclick="() => AbrirImagenMaterialAsync(line)" @onclick:stopPropagation="true">
+                                                        <img src="@thumbnailDataUrl" alt="Imagen de @materialTitle" class="conteos-line-image" />
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <div class="conteos-line-image-placeholder">Sin foto</div>
+                                                }
+                                            </td>
+                                            <td class="conteos-material-col">
+                                                <div class="conteos-cell-stack">
+                                                    <div class="conteos-cell-primary">@materialTitle</div>
+                                                    @if (showMaterialCode)
+                                                    {
+                                                        <div class="conteos-cell-secondary">@line.MaterialCode</div>
+                                                    }
+                                                </div>
+                                            </td>
+                                            <td class="text-end conteos-quantity-col">@line.ExpectedQuantity.ToString("N2")</td>
+                                            <td class="text-end conteos-quantity-col">@((line.CountedQuantity ?? 0).ToString("N2"))</td>
+                                            <td class="text-end conteos-quantity-col">
+                                                @if (line.VarianceQuantity.HasValue && line.VarianceQuantity.Value != 0)
+                                                {
+                                                    <span class="badge text-bg-warning">@line.VarianceQuantity.Value.ToString("N2")</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">0.00</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                @if (SelectedLine is not null)
+                {
+                    <section class="card shadow-sm">
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-12 col-xl-6">
+                                    <h3 class="h5 mb-3">Captura de línea</h3>
+                                    @{
+                                        var selectedMaterialTitle = string.IsNullOrWhiteSpace(SelectedLine.MaterialDescription) ? SelectedLine.MaterialCode : SelectedLine.MaterialDescription;
+                                        var showSelectedMaterialCode = !string.IsNullOrWhiteSpace(SelectedLine.MaterialCode) && !string.Equals(SelectedLine.MaterialCode, selectedMaterialTitle, StringComparison.OrdinalIgnoreCase);
+                                    }
+                                    <div class="conteos-selected-line-summary mb-3">
+                                        <div class="conteos-selected-line-title">@selectedMaterialTitle</div>
+                                        @if (showSelectedMaterialCode)
+                                        {
+                                            <div class="conteos-selected-line-subtitle">@SelectedLine.MaterialCode</div>
+                                        }
+                                    </div>
+                                    <div class="row g-3">
+                                        <div class="col-md-4">
+                                            <label class="form-label">Esperado</label>
+                                            <input class="form-control" type="text" value="@SelectedLine.ExpectedQuantity.ToString("N2")" disabled />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">Contado</label>
+                                            <InputNumber class="form-control" @bind-Value="LineCapture.CountedQuantity" />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">Varianza</label>
+                                            <input class="form-control" type="text" value="@CurrentVarianceText" disabled />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-check mt-2">
+                                                <InputCheckbox class="form-check-input" @bind-Value="LineCapture.IsMissing" />
+                                                <label class="form-check-label">Faltante</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-check mt-2">
+                                                <InputCheckbox class="form-check-input" @bind-Value="LineCapture.IsDamaged" />
+                                                <label class="form-check-label">Dañado</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label">Notas</label>
+                                            <InputTextArea class="form-control" rows="3" @bind-Value="LineCapture.Notes" />
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label">Evidencia</label>
+                                            <InputFile OnChange="OnLineAttachmentSelectedAsync" />
+                                            @if (!string.IsNullOrWhiteSpace(PendingLineAttachmentName))
+                                            {
+                                                <div class="form-text">@PendingLineAttachmentName</div>
+                                            }
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-primary mt-3" type="button" @onclick="GuardarLineaAsync" disabled="@(!CanCaptureLine || IsSavingLine)">
+                                        @(IsSavingLine ? "Guardando..." : "Guardar línea")
+                                    </button>
+                                </div>
+
+                                <div class="col-12 col-xl-6">
+                                    <h3 class="h5 mb-3">Evidencias capturadas</h3>
+                                    <div class="table-responsive" style="max-height: 30vh;">
+                                        <table class="table table-sm">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Archivo</th>
+                                                    <th>Descripción</th>
+                                                    <th></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @if (SelectedLine.Attachments.Count == 0)
+                                                {
+                                                    <tr>
+                                                        <td colspan="3" class="text-center text-muted py-3">Sin evidencia.</td>
+                                                    </tr>
+                                                }
+                                                else
+                                                {
+                                                    @foreach (var attachment in SelectedLine.Attachments)
+                                                    {
+                                                        <tr>
+                                                            <td>@attachment.FileName</td>
+                                                            <td>@attachment.Description</td>
+                                                            <td class="text-end">
+                                                                <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="() => DescargarEvidenciaAsync(attachment.Id)">
+                                                                    Descargar
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@if (ShowMaterialImageModal)
+{
+    <div class="modal fade show d-block conteos-image-modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(string.IsNullOrWhiteSpace(MaterialImageModalTitle) ? "Imagen del material" : MaterialImageModalTitle)</h5>
+                    <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CloseMaterialImageModal"></button>
+                </div>
+                <div class="modal-body text-center">
+                    @if (MaterialImageModalDataUrl is not null)
+                    {
+                        <img src="@MaterialImageModalDataUrl" alt="Vista ampliada del material" class="conteos-image-modal-preview" />
+                    }
+                    else if (IsLoadingMaterialImage)
+                    {
+                        <div class="py-5 text-muted">Cargando imagen...</div>
+                    }
+                    else
+                    {
+                        <div class="py-5 text-muted">Sin imagen disponible.</div>
+                    }
+
+                    @if (IsLoadingMaterialImage && MaterialImageModalDataUrl is not null)
+                    {
+                        <div class="small text-muted mt-3">Cargando la imagen completa...</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" type="button" @onclick="CloseMaterialImageModal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}

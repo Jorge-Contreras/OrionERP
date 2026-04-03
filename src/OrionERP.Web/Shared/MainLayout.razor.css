@@ -1,102 +1,117 @@
-.page {
+.app-shell {
     position: relative;
     display: flex;
     flex-direction: column;
+    min-height: 100vh;
 }
 
-main {
+.app-shell__main {
     flex: 1;
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
-    background: transparent;
+    min-width: 0;
+    background:
+        radial-gradient(circle at top right, rgba(31, 138, 174, 0.08), transparent 28%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.18) 100%);
 }
 
-.sidebar {
-    background: linear-gradient(180deg, rgba(15, 45, 78, 0.98) 0%, rgba(15, 45, 78, 0.8) 55%, rgba(28, 68, 111, 0.92) 100%);
-    color: var(--orion-color-surface);
-    box-shadow: 8px 0 18px rgba(10, 25, 43, 0.35);
+.app-shell__sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    color: rgba(255, 255, 255, 0.94);
+    background:
+        radial-gradient(circle at top left, rgba(245, 196, 83, 0.16), transparent 26%),
+        linear-gradient(180deg, #173d67 0%, #102c4d 42%, #0b213a 100%);
+    box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.06), 0 12px 28px rgba(9, 24, 42, 0.16);
 }
 
-.top-row {
-    background: rgba(255, 255, 255, 0.75);
-    backdrop-filter: blur(14px);
-    border-bottom: 1px solid rgba(15, 45, 78, 0.08);
-    justify-content: flex-end;
-    height: 3.5rem;
+.app-shell__topbar {
     display: flex;
     align-items: center;
-    padding-right: 1.5rem;
+    gap: 0.85rem;
+    min-height: 4.25rem;
+    padding: 0.85rem 1rem;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(15, 45, 78, 0.08);
 }
 
-    .top-row ::deep a,
-    .top-row .btn-link {
-        white-space: nowrap;
-        margin-left: 1.5rem;
-        font-weight: 500;
-        color: var(--orion-color-primary);
-    }
+.app-shell__topbar-header {
+    flex: 1 1 auto;
+    min-width: 0;
+}
 
-    .top-row ::deep a:hover,
-    .top-row ::deep a:focus,
-    .top-row .btn-link:hover,
-    .top-row .btn-link:focus {
-        color: var(--orion-color-accent);
-    }
+.app-shell__nav-toggle {
+    display: none;
+    align-items: center;
+    gap: 0.55rem;
+    min-height: 2.75rem;
+    padding: 0.65rem 0.95rem;
+    border: 1px solid rgba(15, 45, 78, 0.12);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.88);
+    color: #173d67;
+    font-size: 0.88rem;
+    font-weight: 700;
+    box-shadow: 0 10px 22px rgba(8, 23, 39, 0.08);
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
 
-    .top-row a:first-child {
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
+.app-shell__nav-toggle:hover,
+.app-shell__nav-toggle:focus-visible {
+    border-color: rgba(23, 61, 103, 0.24);
+    box-shadow: 0 14px 24px rgba(8, 23, 39, 0.12);
+    transform: translateY(-1px);
+}
 
-@media (max-width: 640.98px) {
-    .top-row:not(.auth) {
-        display: none;
-    }
+.app-shell__nav-toggle:focus-visible {
+    outline: 2px solid rgba(31, 138, 174, 0.4);
+    outline-offset: 2px;
+}
 
-    .top-row.auth {
-        justify-content: space-between;
-    }
-
-    .top-row a, .top-row .btn-link {
-        margin-left: 0;
-    }
+.app-shell__content {
+    min-width: 0;
+    padding: 0 1rem 2rem;
 }
 
 @media (min-width: 641px) {
-    .page {
+    .app-shell {
         flex-direction: row;
+        align-items: stretch;
     }
 
-    .sidebar {
-        width: 260px;
+    .app-shell__sidebar {
+        width: 340px;
         height: 100vh;
-        position: sticky;
-        top: 0;
+        flex-shrink: 0;
     }
 
-    .top-row {
+    .app-shell--nav-hidden .app-shell__sidebar {
+        display: none;
+    }
+
+    .app-shell__main {
+        min-height: 100vh;
+    }
+
+    .app-shell__nav-toggle {
+        display: inline-flex;
+        flex-shrink: 0;
+    }
+
+    .app-shell__topbar {
         position: sticky;
         top: 0;
         z-index: 10;
+        padding-left: 2rem;
+        padding-right: 1.75rem;
     }
 
-    .top-row,
-    article {
-        padding-left: 2rem !important;
-        padding-right: 1.5rem !important;
+    .app-shell__content {
+        padding-left: 2rem;
+        padding-right: 1.75rem;
+        padding-bottom: 2.25rem;
     }
-
-  /* --- Sidebar: solid background, no gradient --- */
-  .sidebar {
-    background: var(--orion-color-primary) !important; /* solid */
-    color: rgba(255, 255, 255, 0.92);
-    box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.15);
-  }
-
-  /* Optional: remove the global page gradient too */
-  .page {
-    background: var(--orion-color-bg) !important;
-  }
-
 }

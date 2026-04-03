@@ -1,0 +1,38 @@
+.balanza-page .balanza-table__account-col {
+    min-width: 340px;
+}
+
+.balanza-page .balanza-table td {
+    padding-right: 0.5rem;
+    
+}
+
+.balanza-page .balanza-table td.balanza-indent-1 {
+    padding-left: 0.25rem;
+}
+
+.balanza-page .balanza-table td.balanza-indent-2 {
+    padding-left: 1.25rem;
+}
+
+.balanza-page .balanza-table td.balanza-indent-3 {
+    padding-left: 2.25rem;
+}
+
+.balanza-page .level-1 td {
+    font-weight: 700;
+    background: #f8f9fa;
+}
+
+.balanza-page .level-2 td {
+    font-weight: 600;
+    background: #fcfcfd;
+}
+
+.balanza-page .level-3 td {
+    font-weight: 400;
+}
+
+.balanza-page .balanza-row-selected td {
+    background: #dbeafe;
+}

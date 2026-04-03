@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,26 +10,34 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Cfdi.Facturama;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 
 namespace OrionERP.Infrastructure.Features.Contabilidad.Transacciones.Services;
 
 public sealed class TransaccionService : ITransaccionService
 {
+  private const int DefaultPublicoTemplateComprobanteId = 21539;
+  private const string DefaultPublicoResetMes = "01";
+  private const int DefaultPublicoResetAnio = 1982;
+
   private readonly IConfiguration _cfg;
   private readonly string _cs;
   private readonly IDbStoredProcService _storedProcService;
+  private readonly IFacturamaApiClient _facturamaApiClient;
   private readonly ILogger<TransaccionService> _logger;
 
   public TransaccionService(
       IConfiguration cfg,
       IDbStoredProcService storedProcService,
+      IFacturamaApiClient facturamaApiClient,
       ILogger<TransaccionService> logger)
   {
     _cfg = cfg ?? throw new ArgumentNullException(nameof(cfg));
     _cs = _cfg.GetConnectionString("OrionDb")
          ?? throw new InvalidOperationException("Missing connection string: OrionDb");
     _storedProcService = storedProcService ?? throw new ArgumentNullException(nameof(storedProcService));
+    _facturamaApiClient = facturamaApiClient ?? throw new ArgumentNullException(nameof(facturamaApiClient));
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
   }
 
@@ -270,6 +279,79 @@ ORDER BY a.Descripcion ASC;";
     return rows.AsList();
   }
 
+  public async Task<IReadOnlyList<LookupInt32Dto>> SearchActividadesAsync(
+      string rfc,
+      string? search,
+      int top = 25,
+      CancellationToken ct = default)
+  {
+    if (string.IsNullOrWhiteSpace(rfc) || string.IsNullOrWhiteSpace(search))
+    {
+      return Array.Empty<LookupInt32Dto>();
+    }
+
+    var normalizedSearch = search.Trim();
+    var searchLike = $"%{normalizedSearch}%";
+    var actividadId = int.TryParse(normalizedSearch, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedActividadId)
+        ? parsedActividadId
+        : (int?)null;
+
+    const string sql = @"SELECT TOP (@Top)
+    a.ID          AS Id,
+    a.Descripcion AS Description
+FROM dbo.Actividad a
+WHERE a.RFC = @Rfc
+  AND (
+    CONVERT(varchar(20), a.ID) LIKE @SearchLike
+    OR a.Descripcion LIKE @SearchLike
+  )
+ORDER BY
+  CASE WHEN @ActividadId IS NOT NULL AND a.ID = @ActividadId THEN 0 ELSE 1 END,
+  a.Descripcion ASC,
+  a.ID ASC;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<LookupInt32Dto>(
+        new CommandDefinition(
+            sql,
+            new
+            {
+              Rfc = rfc,
+              SearchLike = searchLike,
+              ActividadId = actividadId,
+              Top = top <= 0 ? 25 : top
+            },
+            cancellationToken: ct));
+
+    return rows.AsList();
+  }
+
+  public async Task<LookupInt32Dto?> GetActividadByIdAsync(string rfc, int actividadId, CancellationToken ct = default)
+  {
+    if (string.IsNullOrWhiteSpace(rfc) || actividadId <= 0)
+    {
+      return null;
+    }
+
+    const string sql = @"SELECT TOP (1)
+    a.ID          AS Id,
+    a.Descripcion AS Description
+FROM dbo.Actividad a
+WHERE a.RFC = @Rfc
+  AND a.ID = @ActividadId;";
+
+    using var conn = new SqlConnection(_cs);
+    return await conn.QueryFirstOrDefaultAsync<LookupInt32Dto>(
+        new CommandDefinition(
+            sql,
+            new
+            {
+              Rfc = rfc,
+              ActividadId = actividadId
+            },
+            cancellationToken: ct));
+  }
+
   public async Task<IReadOnlyList<LookupInt32Dto>> GetComprasAsync(string rfc, CancellationToken ct = default)
   {
     const string sql = @"SELECT
@@ -475,7 +557,7 @@ WHERE Transaccion_ID = @TransaccionId
     return exists.HasValue;
   }
 
-  public async Task MoveAttachmentToTransaccionAsync(int attachmentId, int transaccionId, CancellationToken ct = default)
+  public async Task SetAttachmentTransaccionAsync(int attachmentId, int? transaccionId, CancellationToken ct = default)
   {
     const string sql = @"UPDATE dbo.TRANSACTION_ATTACHMENT
 SET TranID = @TransaccionId
@@ -526,18 +608,102 @@ ORDER BY cd.Fecha DESC;";
     return rows.AsList();
   }
 
-  public async Task<TransaccionCommandResult> LinkCfdiReplacingPlaceholderAndRelinkAttachmentAsync(
-      int transaccionId,
-      int comprobanteId,
-      decimal monto,
-      CancellationToken ct = default)
+  public async Task<IReadOnlyList<TransaccionReservacionLinkDto>> GetReservacionLinksAsync(int transaccionId, CancellationToken ct = default)
   {
-    var placeholderId = 0;
-    var placeholderValue = _cfg["SatXml:PlaceholderTransaccionId"];
-    if (int.TryParse(placeholderValue, out var parsed) && parsed > 0)
-    {
-      placeholderId = parsed;
-    }
+    const string sql = @"SELECT
+    rt.ReservationID                                     AS ReservationId,
+    rt.TransaccionID                                     AS TransaccionId,
+    CAST(ISNULL(rt.Amount, 0) AS decimal(18, 2))         AS Amount,
+    ISNULL(c.Nombre, '(Sin cliente)')                    AS Cliente,
+    r.CHECKIN                                            AS CheckIn,
+    r.CHECKOUT                                           AS CheckOut,
+    r.STATUS                                             AS Status,
+    CAST(ISNULL(r.TOTAL_PRICE, 0) AS decimal(18, 2))     AS TotalPrice,
+    CAST(ISNULL(pa.PAGADO, 0) AS decimal(18, 2))         AS Pagado,
+    CAST(ISNULL(r.TOTAL_PRICE, 0) - ISNULL(pa.PAGADO, 0) AS decimal(18, 2)) AS PorPagar,
+    r.NOTES                                              AS Notes
+FROM dbo.Reservation_Transacciones rt
+INNER JOIN dbo.RESERVATION r
+  ON r.ID = rt.ReservationID
+LEFT JOIN dbo.Clientes c
+  ON c.ID = r.CLIENTE_ID
+OUTER APPLY
+(
+  SELECT SUM(rt2.Amount) AS PAGADO
+  FROM dbo.Reservation_Transacciones rt2
+  WHERE rt2.ReservationID = r.ID
+) pa
+WHERE rt.TransaccionID = @TransaccionId
+ORDER BY rt.ReservationID DESC;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<TransaccionReservacionLinkDto>(
+        new CommandDefinition(sql, new { TransaccionId = transaccionId }, cancellationToken: ct));
+    return rows.AsList();
+  }
+
+  public async Task<IReadOnlyList<TransaccionReservacionSearchItemDto>> SearchReservacionesAsync(string? search, CancellationToken ct = default)
+  {
+    var normalizedSearch = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+    var reservationId = int.TryParse(normalizedSearch, out var parsedReservationId)
+        ? parsedReservationId
+        : (int?)null;
+
+    const string sql = @"SELECT TOP (100)
+    lr.ID                                                 AS ReservationId,
+    ISNULL(lr.Nombre, '(Sin cliente)')                    AS Cliente,
+    lr.CHECKIN                                            AS CheckIn,
+    lr.CHECKOUT                                           AS CheckOut,
+    lr.STATUS                                             AS Status,
+    CAST(ISNULL(lr.TOTAL_PRICE, 0) AS decimal(18, 2))     AS TotalPrice,
+    CAST(ISNULL(lr.PAGADO, 0) AS decimal(18, 2))          AS Pagado,
+    CAST(ISNULL(lr.POR_PAGAR, 0) AS decimal(18, 2))       AS PorPagar,
+    lr.NOTES                                              AS Notes
+FROM dbo.LISTA_DE_RESERVACIONES lr
+WHERE
+(
+  @ReservationId IS NOT NULL
+  AND lr.ID = @ReservationId
+)
+OR
+(
+  ABS(CONVERT(decimal(18, 2), ISNULL(lr.POR_PAGAR, 0))) > 2
+  AND
+  (
+    @Search IS NULL
+    OR lr.Nombre LIKE @SearchLike
+    OR lr.NOTES LIKE @SearchLike
+  )
+)
+ORDER BY
+  CASE WHEN @ReservationId IS NOT NULL AND lr.ID = @ReservationId THEN 0 ELSE 1 END,
+  lr.ID DESC;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<TransaccionReservacionSearchItemDto>(
+        new CommandDefinition(
+            sql,
+            new
+            {
+              Search = normalizedSearch,
+              SearchLike = normalizedSearch is null ? null : $"%{normalizedSearch}%",
+              ReservationId = reservationId
+            },
+            cancellationToken: ct));
+
+    return rows.AsList();
+  }
+
+  public async Task<TransaccionCommandResult> UpsertReservacionLinkAsync(TransaccionReservacionLinkUpsertRequest request, CancellationToken ct = default)
+  {
+    if (request is null)
+      throw new ArgumentNullException(nameof(request));
+
+    if (request.TransaccionId <= 0 || request.ReservationId <= 0)
+      return TransaccionCommandResult.Fail("Selecciona una póliza y una reservación válidas.");
+
+    if (decimal.Abs(request.Amount) < 0.01m)
+      return TransaccionCommandResult.Fail("Ingresa un monto distinto de cero.");
 
     await using var conn = new SqlConnection(_cs);
     await conn.OpenAsync(ct);
@@ -545,83 +711,160 @@ ORDER BY cd.Fecha DESC;";
 
     try
     {
-      var hasPlaceholder = false;
+      const string existsReservationSql = @"SELECT TOP (1) 1
+FROM dbo.RESERVATION
+WHERE ID = @ReservationId;";
 
-      if (placeholderId > 0)
-      {
-        const string sqlPlaceholderExists = @"SELECT COUNT(1)
-FROM dbo.Transaccion_Comprobante
-WHERE Comprobante_ID = @ComprobanteId
-  AND Transaccion_ID = @PlaceholderId;";
-
-        var placeholderCount = await conn.ExecuteScalarAsync<int>(
-            new CommandDefinition(
-                sqlPlaceholderExists,
-                new { ComprobanteId = comprobanteId, PlaceholderId = placeholderId },
-                tx,
-                cancellationToken: ct));
-
-        hasPlaceholder = placeholderCount > 0;
-      }
-
-      if (hasPlaceholder)
-      {
-        const string sqlUpdate = @"UPDATE dbo.Transaccion_Comprobante
-SET Transaccion_ID = @TransaccionId,
-    Monto = @Monto
-WHERE Comprobante_ID = @ComprobanteId
-  AND Transaccion_ID = @PlaceholderId;";
-
-        await conn.ExecuteAsync(
-            new CommandDefinition(
-                sqlUpdate,
-                new
-                {
-                  TransaccionId = transaccionId,
-                  ComprobanteId = comprobanteId,
-                  PlaceholderId = placeholderId,
-                  Monto = monto
-                },
-                tx,
-                cancellationToken: ct));
-      }
-      else
-      {
-        const string sqlInsert = @"INSERT INTO dbo.Transaccion_Comprobante (Transaccion_ID, Comprobante_ID, Monto)
-VALUES (@TransaccionId, @ComprobanteId, @Monto);";
-
-        await conn.ExecuteAsync(
-            new CommandDefinition(
-                sqlInsert,
-                new { TransaccionId = transaccionId, ComprobanteId = comprobanteId, Monto = monto },
-                tx,
-                cancellationToken: ct));
-      }
-
-      const string sqlAttachmentId = @"SELECT XML_Attachment_ID
-FROM cfdi.Comprobante
-WHERE Comprobante_ID = @ComprobanteId;";
-
-      var attachmentId = await conn.ExecuteScalarAsync<int?>(
+      var reservationExists = await conn.ExecuteScalarAsync<int?>(
           new CommandDefinition(
-              sqlAttachmentId,
-              new { ComprobanteId = comprobanteId },
+              existsReservationSql,
+              new { request.ReservationId },
               tx,
               cancellationToken: ct));
 
-      if (attachmentId.HasValue && attachmentId.Value > 0)
+      if (!reservationExists.HasValue)
       {
-        const string sqlUpdateAttachment = @"UPDATE dbo.TRANSACTION_ATTACHMENT
-SET TranID = @TransaccionId
-WHERE ID = @AttachmentId;";
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("La reservación seleccionada no existe.");
+      }
+
+      const string existsTransaccionSql = @"SELECT TOP (1) 1
+FROM dbo.Transacciones
+WHERE ID = @TransaccionId;";
+
+      var transaccionExists = await conn.ExecuteScalarAsync<int?>(
+          new CommandDefinition(
+              existsTransaccionSql,
+              new { request.TransaccionId },
+              tx,
+              cancellationToken: ct));
+
+      if (!transaccionExists.HasValue)
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("La póliza seleccionada no existe.");
+      }
+
+      const string existsLinkSql = @"SELECT TOP (1) 1
+FROM dbo.Reservation_Transacciones
+WHERE ReservationID = @ReservationId
+  AND TransaccionID = @TransaccionId;";
+
+      var linkExists = await conn.ExecuteScalarAsync<int?>(
+          new CommandDefinition(
+              existsLinkSql,
+              new
+              {
+                request.ReservationId,
+                request.TransaccionId
+              },
+              tx,
+              cancellationToken: ct));
+
+      if (linkExists.HasValue)
+      {
+        const string updateSql = @"UPDATE dbo.Reservation_Transacciones
+SET Amount = @Amount
+WHERE ReservationID = @ReservationId
+  AND TransaccionID = @TransaccionId;";
 
         await conn.ExecuteAsync(
             new CommandDefinition(
-                sqlUpdateAttachment,
-                new { TransaccionId = transaccionId, AttachmentId = attachmentId.Value },
+                updateSql,
+                new
+                {
+                  request.Amount,
+                  request.ReservationId,
+                  request.TransaccionId
+                },
                 tx,
                 cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        return TransaccionCommandResult.Ok("Asignación de reservación actualizada.");
       }
+
+      const string insertSql = @"INSERT INTO dbo.Reservation_Transacciones
+(ReservationID, TransaccionID, Amount)
+VALUES (@ReservationId, @TransaccionId, @Amount);";
+
+      await conn.ExecuteAsync(
+          new CommandDefinition(
+              insertSql,
+              new
+              {
+                request.ReservationId,
+                request.TransaccionId,
+                request.Amount
+              },
+              tx,
+              cancellationToken: ct));
+
+      await tx.CommitAsync(ct);
+      return TransaccionCommandResult.Ok("Reservación ligada correctamente.");
+    }
+    catch (Exception ex)
+    {
+      await tx.RollbackAsync(ct);
+      _logger.LogError(
+          ex,
+          "Error al guardar vínculo entre transacción {TransaccionId} y reservación {ReservationId}",
+          request.TransaccionId,
+          request.ReservationId);
+
+      return TransaccionCommandResult.Fail("No se pudo guardar la asignación de la reservación.");
+    }
+  }
+
+  public async Task<TransaccionCommandResult> DeleteReservacionLinkAsync(int transaccionId, int reservationId, CancellationToken ct = default)
+  {
+    const string sql = @"DELETE FROM dbo.Reservation_Transacciones
+WHERE TransaccionID = @TransaccionId
+  AND ReservationID = @ReservationId;";
+
+    try
+    {
+      using var conn = new SqlConnection(_cs);
+      var affectedRows = await conn.ExecuteAsync(
+          new CommandDefinition(
+              sql,
+              new
+              {
+                TransaccionId = transaccionId,
+                ReservationId = reservationId
+              },
+              cancellationToken: ct));
+
+      return affectedRows > 0
+          ? TransaccionCommandResult.Ok("Asignación eliminada correctamente.")
+          : TransaccionCommandResult.Fail("No se encontró la asignación a eliminar.");
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(
+          ex,
+          "Error al eliminar vínculo entre transacción {TransaccionId} y reservación {ReservationId}",
+          transaccionId,
+          reservationId);
+
+      return TransaccionCommandResult.Fail("No se pudo eliminar la asignación de la reservación.");
+    }
+  }
+
+  public async Task<TransaccionCommandResult> LinkCfdiAndRelinkAttachmentAsync(
+      int transaccionId,
+      int comprobanteId,
+      decimal monto,
+      CancellationToken ct = default)
+  {
+    await using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+
+    try
+    {
+      await UpsertTransaccionComprobanteAsync(conn, tx, transaccionId, comprobanteId, monto, ct);
+      await ReassignXmlAttachmentAsync(conn, tx, comprobanteId, transaccionId, ct);
 
       await tx.CommitAsync(ct);
       return TransaccionCommandResult.Ok("Transacción ligada correctamente.");
@@ -636,24 +879,33 @@ WHERE ID = @AttachmentId;";
       await tx.RollbackAsync(ct);
       _logger.LogError(
           ex,
-          "Error al ligar transacción {TransaccionId} con comprobante {ComprobanteId} reemplazando placeholder {PlaceholderId}",
+          "Error al ligar transacción {TransaccionId} con comprobante {ComprobanteId}",
           transaccionId,
-          comprobanteId,
-          placeholderId);
+          comprobanteId);
       return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
     }
   }
 
   public async Task<TransaccionCommandResult> InsertTransaccionComprobanteAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default)
   {
-    const string sql = @"INSERT INTO dbo.Transaccion_Comprobante (Transaccion_ID, Comprobante_ID, Monto)
-VALUES (@TransaccionId, @ComprobanteId, @Monto);";
-
     try
     {
-      using var conn = new SqlConnection(_cs);
+      await using var conn = new SqlConnection(_cs);
+      await conn.OpenAsync(ct);
+      await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+
+      const string sql = @"INSERT INTO dbo.Transaccion_Comprobante (Transaccion_ID, Comprobante_ID, Monto)
+VALUES (@TransaccionId, @ComprobanteId, @Monto);";
+
       await conn.ExecuteAsync(
-        new CommandDefinition(sql, new { TransaccionId = transaccionId, ComprobanteId = comprobanteId, Monto = monto }, cancellationToken: ct));
+          new CommandDefinition(
+              sql,
+              new { TransaccionId = transaccionId, ComprobanteId = comprobanteId, Monto = monto },
+              tx,
+              cancellationToken: ct));
+
+      await ReassignXmlAttachmentAsync(conn, tx, comprobanteId, transaccionId, ct);
+      await tx.CommitAsync(ct);
       return TransaccionCommandResult.Ok("Transacción ligada correctamente.");
     }
     catch (SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
@@ -664,6 +916,48 @@ VALUES (@TransaccionId, @ComprobanteId, @Monto);";
     {
       _logger.LogError(ex, "Error al ligar transacción {TransaccionId} con comprobante {ComprobanteId}", transaccionId, comprobanteId);
       return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
+    }
+  }
+
+  public async Task<TransaccionCommandResult> UpdateComprobanteMontoAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default)
+  {
+    if (monto <= 0m)
+    {
+      return TransaccionCommandResult.Fail("El monto asignado debe ser mayor que cero.");
+    }
+
+    const string sql = @"UPDATE dbo.Transaccion_Comprobante
+SET Monto = @Monto
+WHERE Transaccion_ID = @TransaccionId
+  AND Comprobante_ID = @ComprobanteId;";
+
+    try
+    {
+      await using var conn = new SqlConnection(_cs);
+      var affected = await conn.ExecuteAsync(
+          new CommandDefinition(
+              sql,
+              new
+              {
+                TransaccionId = transaccionId,
+                ComprobanteId = comprobanteId,
+                Monto = monto
+              },
+              cancellationToken: ct));
+
+      return affected > 0
+          ? TransaccionCommandResult.Ok("Monto asignado actualizado correctamente.")
+          : TransaccionCommandResult.Fail("No se encontró el vínculo CFDI-póliza a actualizar.");
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(
+          ex,
+          "Error al actualizar monto del comprobante {ComprobanteId} en la transacción {TransaccionId}",
+          comprobanteId,
+          transaccionId);
+
+      return TransaccionCommandResult.Fail("No se pudo actualizar el monto asignado.");
     }
   }
 
@@ -690,47 +984,8 @@ WHERE c.Comprobante_Id = @ComprobanteId;";
           throw new InvalidOperationException("Comprobante no encontrado.");
         }
 
-        const string sqlExists = @"SELECT Transaccion_ID
-FROM dbo.Transaccion_Comprobante
-WHERE Comprobante_ID = @ComprobanteId;";
-
-        var existingTransaccion = await conn.ExecuteScalarAsync<int?>(
-            new CommandDefinition(sqlExists, new { ComprobanteId = comprobanteId }, tx, cancellationToken: ct));
-
-        if (existingTransaccion.HasValue)
-        {
-          const string sqlUpdate = @"UPDATE dbo.Transaccion_Comprobante
-SET Transaccion_ID = @TransaccionId,
-    Monto = @Monto
-WHERE Comprobante_ID = @ComprobanteId;";
-
-          await conn.ExecuteAsync(
-              new CommandDefinition(sqlUpdate,
-                  new
-                  {
-                    TransaccionId = transaccionId,
-                    ComprobanteId = comprobanteId,
-                    Monto = total.Value
-                  },
-                  tx,
-                  cancellationToken: ct));
-        }
-        else
-        {
-          const string sqlInsert = @"INSERT INTO dbo.Transaccion_Comprobante (Transaccion_ID, Comprobante_ID, Monto)
-VALUES (@TransaccionId, @ComprobanteId, @Monto);";
-
-          await conn.ExecuteAsync(
-              new CommandDefinition(sqlInsert,
-                  new
-                  {
-                    TransaccionId = transaccionId,
-                    ComprobanteId = comprobanteId,
-                    Monto = total.Value
-                  },
-                  tx,
-                  cancellationToken: ct));
-        }
+        await UpsertTransaccionComprobanteAsync(conn, tx, transaccionId, comprobanteId, total.Value, ct);
+        await ReassignXmlAttachmentAsync(conn, tx, comprobanteId, transaccionId, ct);
       }
       else
       {
@@ -738,11 +993,17 @@ VALUES (@TransaccionId, @ComprobanteId, @Monto);";
 WHERE Transaccion_ID = @TransaccionId
   AND Comprobante_ID = @ComprobanteId;";
 
-        await conn.ExecuteAsync(
+        var deleted = await conn.ExecuteAsync(
             new CommandDefinition(sqlDelete,
                 new { TransaccionId = transaccionId, ComprobanteId = comprobanteId },
                 tx,
                 cancellationToken: ct));
+
+        if (deleted > 0)
+        {
+          var nextTransaccionId = await GetPreferredLinkedTransaccionIdAsync(conn, tx, comprobanteId, ct);
+          await ReassignXmlAttachmentAsync(conn, tx, comprobanteId, nextTransaccionId, ct);
+        }
       }
 
       await tx!.CommitAsync(ct);
@@ -787,17 +1048,15 @@ WHERE Transaccion_ID = @CurrentTransaccionId
       }
       else
       {
-        const string sqlUpdateLink = @"UPDATE dbo.Transaccion_Comprobante
-SET Transaccion_ID = @TempTransaccionId
+        const string sqlDeleteLink = @"DELETE FROM dbo.Transaccion_Comprobante
 WHERE Transaccion_ID = @CurrentTransaccionId
   AND Comprobante_ID = @ComprobanteId;";
 
         updated = await conn.ExecuteAsync(
             new CommandDefinition(
-                sqlUpdateLink,
+                sqlDeleteLink,
                 new
                 {
-                  request.TempTransaccionId,
                   request.CurrentTransaccionId,
                   request.ComprobanteId
                 },
@@ -806,26 +1065,8 @@ WHERE Transaccion_ID = @CurrentTransaccionId
 
         if (updated > 0)
         {
-          const string sqlAttachment = @"SELECT XML_Attachment_ID
-FROM cfdi.comprobante
-WHERE Comprobante_ID = @ComprobanteId;";
-
-          var attachmentId = await conn.ExecuteScalarAsync<int?>(
-              new CommandDefinition(sqlAttachment, new { request.ComprobanteId }, tx, cancellationToken: ct));
-
-          if (attachmentId.HasValue && attachmentId.Value > 0)
-          {
-            const string sqlMoveAttachment = @"UPDATE dbo.TRANSACTION_ATTACHMENT
-SET TranID = @TempTransaccionId
-WHERE ID = @AttachmentId;";
-
-            await conn.ExecuteAsync(
-                new CommandDefinition(
-                    sqlMoveAttachment,
-                    new { AttachmentId = attachmentId.Value, request.TempTransaccionId },
-                    tx,
-                    cancellationToken: ct));
-          }
+          var nextTransaccionId = await GetPreferredLinkedTransaccionIdAsync(conn, tx, request.ComprobanteId, ct);
+          await ReassignXmlAttachmentAsync(conn, tx, request.ComprobanteId, nextTransaccionId, ct);
         }
       }
 
@@ -956,12 +1197,6 @@ WHERE ID = @TransaccionId;";
       int transaccionId,
       CancellationToken ct = default)
   {
-    var parameters = new Dictionary<string, object?>
-    {
-      ["@AttachmentID"] = attachmentId,
-      ["@TransaccionID"] = transaccionId
-    };
-
     try
     {
       _logger.LogInformation(
@@ -969,10 +1204,9 @@ WHERE ID = @TransaccionId;";
           attachmentId,
           transaccionId);
 
-      await _storedProcService.ExecuteAsync(
-          "dbo.PROCESAR_SAT_XML",
-          parameters,
-          ct);
+      using var conn = new SqlConnection(_cs);
+      await conn.OpenAsync(ct);
+      await ProcessSatXmlV2Async(conn, transaction: null, transaccionId, attachmentId, ct);
 
       return TransaccionCommandResult.Ok("El XML del SAT se procesó correctamente para la transacción seleccionada.");
     }
@@ -985,6 +1219,145 @@ WHERE ID = @TransaccionId;";
           transaccionId);
 
       return TransaccionCommandResult.Fail("No se pudo procesar el XML del SAT. Verifica el adjunto y vuelve a intentar.");
+    }
+  }
+
+  public async Task<TransaccionCommandResult> TimbrarCfdiPublicoAsync(
+      TransaccionTimbrarPublicoRequest request,
+      CancellationToken ct = default)
+  {
+    if (request is null)
+      throw new ArgumentNullException(nameof(request));
+
+    if (request.TransaccionId <= 0)
+      return TransaccionCommandResult.Fail("La póliza seleccionada no es válida.");
+
+    if (request.Monto <= 0m)
+      return TransaccionCommandResult.Fail("El monto para el CFDI público debe ser mayor que cero.");
+
+    var mes = NormalizeGlobalMonth(request.GlobalMes);
+    if (mes is null)
+      return TransaccionCommandResult.Fail("El mes global seleccionado no es válido.");
+
+    if (request.GlobalAnio < 2000 || request.GlobalAnio > 2100)
+      return TransaccionCommandResult.Fail("El año global seleccionado no es válido.");
+
+    var templateComprobanteId = GetPublicoTemplateComprobanteId();
+    var templatePrepared = false;
+    string? facturamaCfdiId = null;
+
+    try
+    {
+      string jsonPayload;
+      await using (var conn = new SqlConnection(_cs))
+      {
+        await conn.OpenAsync(ct);
+        await conn.ExecuteAsync(
+            new CommandDefinition(
+                "dbo.Create_CFDI_Publico",
+                new
+                {
+                  Monto = request.Monto,
+                  GlobalMes = mes,
+                  GlobalAnio = request.GlobalAnio.ToString("0000", CultureInfo.InvariantCulture),
+                  Folio = request.TransaccionId.ToString(CultureInfo.InvariantCulture)
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: ct));
+
+        templatePrepared = true;
+
+        jsonPayload = await conn.QueryFirstOrDefaultAsync<string>(
+            new CommandDefinition(
+                "dbo.GetComprobanteJson",
+                new { Comprobante_ID = templateComprobanteId },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: ct)) ?? string.Empty;
+      }
+
+      if (string.IsNullOrWhiteSpace(jsonPayload))
+        return TransaccionCommandResult.Fail("No se pudo generar el JSON del CFDI público.");
+
+      facturamaCfdiId = await _facturamaApiClient.CreateIssuedCfdiAsync(jsonPayload, ct);
+
+      var xmlDocument = await _facturamaApiClient.DownloadIssuedDocumentAsync(
+          facturamaCfdiId,
+          FacturamaIssuedDocumentType.Xml,
+          ct);
+      var pdfDocument = await _facturamaApiClient.DownloadIssuedDocumentAsync(
+          facturamaCfdiId,
+          FacturamaIssuedDocumentType.Pdf,
+          ct);
+
+      await using var writeConn = new SqlConnection(_cs);
+      await writeConn.OpenAsync(ct);
+      await using var tx = (SqlTransaction)await writeConn.BeginTransactionAsync(ct);
+
+      try
+      {
+        var xmlAttachmentId = await InsertAttachmentAsync(
+            writeConn,
+            tx,
+            request.TransaccionId,
+            facturamaCfdiId,
+            xmlDocument.Extension,
+            $"XML POLIZA {request.TransaccionId}",
+            xmlDocument.Bytes,
+            ct);
+
+        await ProcessSatXmlV2Async(writeConn, tx, request.TransaccionId, xmlAttachmentId, ct);
+
+        await InsertAttachmentAsync(
+            writeConn,
+            tx,
+            request.TransaccionId,
+            facturamaCfdiId,
+            pdfDocument.Extension,
+            $"PDF POLIZA {request.TransaccionId}",
+            pdfDocument.Bytes,
+            ct);
+
+        await tx.CommitAsync(ct);
+      }
+      catch
+      {
+        await tx.RollbackAsync(ct);
+        throw;
+      }
+
+      return TransaccionCommandResult.Ok("La factura al público en general se generó, timbró y procesó correctamente.");
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(
+          ex,
+          "Failed to stamp public CFDI for transaction {TransaccionId}",
+          request.TransaccionId);
+
+      if (!string.IsNullOrWhiteSpace(facturamaCfdiId))
+      {
+        return TransaccionCommandResult.Fail(
+            $"El CFDI se timbró en Facturama ({facturamaCfdiId}), pero no se pudo completar el registro local: {ex.Message}");
+      }
+
+      return TransaccionCommandResult.Fail($"No se pudo generar el CFDI público: {ex.Message}");
+    }
+    finally
+    {
+      if (templatePrepared)
+      {
+        try
+        {
+          await ResetPublicoTemplateAsync(templateComprobanteId, ct);
+        }
+        catch (Exception ex)
+        {
+          _logger.LogWarning(
+              ex,
+              "Failed to reset public CFDI template comprobante {TemplateComprobanteId}",
+              templateComprobanteId);
+        }
+      }
     }
   }
 
@@ -1428,6 +1801,160 @@ VALUES (@TransaccionId, @DoctoRelacionadoId, @Monto);";
     public int? XML_Attachment_ID { get; set; }
   }
 
+  private async Task<int> InsertAttachmentAsync(
+      SqlConnection conn,
+      SqlTransaction? transaction,
+      int transaccionId,
+      string fileName,
+      string extension,
+      string description,
+      byte[] content,
+      CancellationToken ct)
+  {
+    const string sql = @"
+INSERT INTO dbo.TRANSACTION_ATTACHMENT
+(TranID, Attachment, AttachmentName, AttachmentExtension, AttachmentDescription)
+VALUES (@TranID, @Attachment, @AttachmentName, @AttachmentExtension, @AttachmentDescription);
+SELECT CAST(SCOPE_IDENTITY() AS int);";
+
+    return await conn.ExecuteScalarAsync<int>(
+        new CommandDefinition(
+            sql,
+            new
+            {
+              TranID = transaccionId,
+              Attachment = content,
+              AttachmentName = fileName,
+              AttachmentExtension = extension,
+              AttachmentDescription = description
+            },
+            transaction,
+            cancellationToken: ct));
+  }
+
+  private static async Task<int?> ProcessSatXmlV2Async(
+      SqlConnection conn,
+      SqlTransaction? transaction,
+      int transaccionId,
+      int attachmentId,
+      CancellationToken ct)
+  {
+    return await conn.QueryFirstOrDefaultAsync<int?>(
+        new CommandDefinition(
+            "cfdi.PROCESAR_SAT_XML_V2",
+            new { TransaccionID = transaccionId, AttachmentID = attachmentId },
+            transaction,
+            commandType: CommandType.StoredProcedure,
+            cancellationToken: ct));
+  }
+
+  private static async Task UpsertTransaccionComprobanteAsync(
+      SqlConnection conn,
+      SqlTransaction? transaction,
+      int transaccionId,
+      long comprobanteId,
+      decimal monto,
+      CancellationToken ct)
+  {
+    const string sql = @"IF EXISTS (
+    SELECT 1
+    FROM dbo.Transaccion_Comprobante
+    WHERE Transaccion_ID = @TransaccionId
+      AND Comprobante_ID = @ComprobanteId
+)
+BEGIN
+    UPDATE dbo.Transaccion_Comprobante
+    SET Monto = @Monto
+    WHERE Transaccion_ID = @TransaccionId
+      AND Comprobante_ID = @ComprobanteId;
+END
+ELSE
+BEGIN
+    INSERT INTO dbo.Transaccion_Comprobante (Transaccion_ID, Comprobante_ID, Monto)
+    VALUES (@TransaccionId, @ComprobanteId, @Monto);
+END;";
+
+    await conn.ExecuteAsync(
+        new CommandDefinition(
+            sql,
+            new
+            {
+              TransaccionId = transaccionId,
+              ComprobanteId = comprobanteId,
+              Monto = monto
+            },
+            transaction,
+            cancellationToken: ct));
+  }
+
+  private static async Task<int?> GetXmlAttachmentIdAsync(
+      SqlConnection conn,
+      SqlTransaction? transaction,
+      long comprobanteId,
+      CancellationToken ct)
+  {
+    const string sql = @"SELECT XML_Attachment_ID
+FROM cfdi.Comprobante
+WHERE Comprobante_ID = @ComprobanteId;";
+
+    return await conn.ExecuteScalarAsync<int?>(
+        new CommandDefinition(
+            sql,
+            new { ComprobanteId = comprobanteId },
+            transaction,
+            cancellationToken: ct));
+  }
+
+  private static async Task<int?> GetPreferredLinkedTransaccionIdAsync(
+      SqlConnection conn,
+      SqlTransaction? transaction,
+      long comprobanteId,
+      CancellationToken ct)
+  {
+    const string sql = @"SELECT TOP (1) tc.Transaccion_ID
+FROM dbo.Transaccion_Comprobante tc
+INNER JOIN dbo.Transacciones t
+        ON t.ID = tc.Transaccion_ID
+WHERE tc.Comprobante_ID = @ComprobanteId
+ORDER BY t.Fecha, t.ID;";
+
+    return await conn.ExecuteScalarAsync<int?>(
+        new CommandDefinition(
+            sql,
+            new { ComprobanteId = comprobanteId },
+            transaction,
+            cancellationToken: ct));
+  }
+
+  private static async Task ReassignXmlAttachmentAsync(
+      SqlConnection conn,
+      SqlTransaction? transaction,
+      long comprobanteId,
+      int? transaccionId,
+      CancellationToken ct)
+  {
+    var attachmentId = await GetXmlAttachmentIdAsync(conn, transaction, comprobanteId, ct);
+    if (!attachmentId.HasValue || attachmentId.Value <= 0)
+    {
+      return;
+    }
+
+    const string sql = @"UPDATE dbo.TRANSACTION_ATTACHMENT
+SET TranID = @TransaccionId
+WHERE ID = @AttachmentId;";
+
+    await conn.ExecuteAsync(
+        new CommandDefinition(
+            sql,
+            new
+            {
+              AttachmentId = attachmentId.Value,
+              TransaccionId = transaccionId
+            },
+            transaction,
+            cancellationToken: ct));
+  }
+
   private async Task<int> ExecuteInsertAsync(string sql, object parameters, CancellationToken ct)
   {
     using var conn = new SqlConnection(_cs);
@@ -1469,5 +1996,58 @@ WHERE rc.TransaccionID = @TransaccionId;";
       "txt" => "text/plain",
       _ => "application/octet-stream"
     };
+  }
+
+  private int GetPublicoTemplateComprobanteId()
+  {
+    var configured = _cfg["Facturama:PublicoTemplateComprobanteId"];
+    return int.TryParse(configured, out var templateId) && templateId > 0
+        ? templateId
+        : DefaultPublicoTemplateComprobanteId;
+  }
+
+  private async Task ResetPublicoTemplateAsync(int templateComprobanteId, CancellationToken ct)
+  {
+    var resetMes = _cfg["Facturama:PublicoTemplateResetMes"];
+    if (string.IsNullOrWhiteSpace(resetMes))
+    {
+      resetMes = DefaultPublicoResetMes;
+    }
+
+    var configuredResetAnio = _cfg["Facturama:PublicoTemplateResetAnio"];
+    var resetAnio = int.TryParse(configuredResetAnio, out var parsedResetAnio)
+        ? parsedResetAnio
+        : DefaultPublicoResetAnio;
+
+    const string sql = @"UPDATE cfdi.InformacionGlobal
+SET Meses = @Meses,
+    Anio = @Anio
+WHERE Comprobante_ID = @ComprobanteId;";
+
+    using var conn = new SqlConnection(_cs);
+    await conn.ExecuteAsync(
+        new CommandDefinition(
+            sql,
+            new
+            {
+              ComprobanteId = templateComprobanteId,
+              Meses = resetMes,
+              Anio = resetAnio
+            },
+            cancellationToken: ct));
+  }
+
+  private static string? NormalizeGlobalMonth(string? value)
+  {
+    if (string.IsNullOrWhiteSpace(value))
+    {
+      return null;
+    }
+
+    return int.TryParse(value.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var month) &&
+           month >= 1 &&
+           month <= 12
+        ? month.ToString("00", CultureInfo.InvariantCulture)
+        : null;
   }
 }

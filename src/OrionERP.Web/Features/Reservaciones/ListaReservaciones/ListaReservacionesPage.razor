@@ -47,6 +47,9 @@
         <button class="btn btn-secondary" @onclick="LimpiarAsync" disabled="@IsBusy">Limpiar</button>
         <button class="btn btn-success" @onclick="NuevaReservacionAsync" disabled="@IsBusy">Nueva Reservación</button>
         <button class="btn btn-outline-danger" @onclick="BorrarVaciasAsync" disabled="@IsBusyDanger">BORRAR RESERVACIONES VACÍAS</button>
+        <button class="btn btn-outline-primary" @onclick="SyncConAirbnbAsync" disabled="@IsBusy">
+            @(IsSyncingAirbnb ? "Sincronizando..." : "Sync Con Airbnb")
+        </button>
     </div>
 
     @if (IsLoading && Reservaciones.Count == 0)

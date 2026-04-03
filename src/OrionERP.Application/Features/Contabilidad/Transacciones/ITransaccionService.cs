@@ -59,6 +59,8 @@ public interface ITransaccionService
       CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> GetCategoriasAsync(string rfc, CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> GetActividadesAsync(string rfc, CancellationToken ct = default);
+  Task<IReadOnlyList<LookupInt32Dto>> SearchActividadesAsync(string rfc, string? search, int top = 25, CancellationToken ct = default);
+  Task<LookupInt32Dto?> GetActividadByIdAsync(string rfc, int actividadId, CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> GetComprasAsync(string rfc, CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> GetServiciosAsync(string rfc, CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> GetNominasAsync(string rfc, CancellationToken ct = default);

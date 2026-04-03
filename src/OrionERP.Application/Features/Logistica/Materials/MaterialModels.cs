@@ -110,6 +110,8 @@ public sealed class MaterialUpsertRequest
   public byte[]? PrimaryImageBytes { get; set; }
   public string? PrimaryImageFileName { get; set; }
   public string? PrimaryImageContentType { get; set; }
+  public byte[]? PrimaryImageThumbnailBytes { get; set; }
+  public string? PrimaryImageThumbnailContentType { get; set; }
 }
 
 public sealed class MaterialCatalogDto

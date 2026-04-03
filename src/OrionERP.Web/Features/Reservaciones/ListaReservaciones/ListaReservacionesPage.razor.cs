@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
+using OrionERP.Application.Features.Reservaciones.CalendarSync;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Web.Services;
 
@@ -18,6 +19,7 @@ public partial class ListaReservacionesPage : ComponentBase
   private const int QueryTake = PageSize + 1;
 
   [Inject] public IListaReservacionesService ReservacionesService { get; set; } = default!;
+  [Inject] public IBonhomiaRoomCalendarSyncService BonhomiaRoomCalendarSyncService { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
   [Inject] public IJSRuntime Js { get; set; } = default!;
   [Inject] public NavigationManager Nav { get; set; } = default!;
@@ -26,12 +28,13 @@ public partial class ListaReservacionesPage : ComponentBase
   protected List<ListaReservacionItemDto> Reservaciones { get; set; } = new();
   protected bool IsLoading { get; set; }
   protected bool IsLoadingMore { get; set; }
+  protected bool IsSyncingAirbnb { get; set; }
   protected bool HasMoreReservaciones { get; set; }
   protected string? ErrorMessage { get; set; }
 
   private DateTime? _checkInFrom;
   private DateTime? _checkInTo;
-  protected bool IsBusy => IsLoading || IsLoadingMore;
+  protected bool IsBusy => IsLoading || IsLoadingMore || IsSyncingAirbnb;
   protected bool IsBusyDanger => IsBusy;
 
   protected string CheckInFromText
@@ -171,6 +174,49 @@ public partial class ListaReservacionesPage : ComponentBase
     }
   }
 
+  protected async Task SyncConAirbnbAsync()
+  {
+    if (IsBusy)
+    {
+      return;
+    }
+
+    IsSyncingAirbnb = true;
+    ErrorMessage = null;
+    StateHasChanged();
+
+    try
+    {
+      var today = DateTime.Today;
+      var endDateExclusive = new DateTime(today.Year + 1, 1, 1);
+      var result = await BonhomiaRoomCalendarSyncService.SyncAsync(today, endDateExclusive);
+      var summary = BuildSyncSummary(result);
+
+      if (result.ErrorCount >= result.Rooms.Count && result.Rooms.Count > 0)
+      {
+        UiMessages.ShowError(summary);
+      }
+      else if (result.ErrorCount > 0)
+      {
+        UiMessages.ShowWarning(summary);
+      }
+      else
+      {
+        UiMessages.ShowSuccess(summary);
+      }
+    }
+    catch (Exception ex)
+    {
+      ErrorMessage = ex.Message;
+      UiMessages.ShowError($"No se pudo sincronizar Outlook/Airbnb. {ex.Message}");
+    }
+    finally
+    {
+      IsSyncingAirbnb = false;
+      StateHasChanged();
+    }
+  }
+
   protected async Task AbrirReciboAsync(int reservationId)
   {
     var url = $"/reservaciones/recibo/{reservationId}";
@@ -236,5 +282,28 @@ public partial class ListaReservacionesPage : ComponentBase
       return null;
 
     return DateTime.TryParse(value, out var parsed) ? parsed.Date : null;
+  }
+
+  private static string BuildSyncSummary(BonhomiaRoomCalendarSyncResult result)
+  {
+    var summary = $"Sync Outlook/Airbnb: {result.CreatedCount} creados, {result.UpdatedCount} actualizados, {result.DeletedCount} borrados, {result.SkippedCount} sin cambios.";
+    if (result.RecoveredMappingCount > 0)
+    {
+      summary += $" {result.RecoveredMappingCount} mapeos recuperados.";
+    }
+
+    if (result.ErrorCount <= 0)
+    {
+      return summary;
+    }
+
+    var errorRooms = result.Rooms
+      .Where(item => !string.IsNullOrWhiteSpace(item.ErrorMessage))
+      .Select(item => item.RoomName)
+      .ToArray();
+
+    return errorRooms.Length > 0
+      ? $"{summary} Con errores en: {string.Join(", ", errorRooms)}."
+      : $"{summary} Se detectaron {result.ErrorCount} errores.";
   }
 }

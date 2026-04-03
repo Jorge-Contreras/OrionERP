@@ -8,6 +8,8 @@ namespace OrionERP.Web.Features.Logistica.Materials;
 
 public partial class MaterialesPage : ComponentBase
 {
+  private const int ThumbnailMaxPixels = 240;
+
   [Inject] private IMaterialService MaterialService { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
 
@@ -154,6 +156,9 @@ public partial class MaterialesPage : ComponentBase
     Editor.PrimaryImageBytes = ms.ToArray();
     Editor.PrimaryImageFileName = file.Name;
     Editor.PrimaryImageContentType = file.ContentType;
+    var thumbnail = await BuildThumbnailAsync(file);
+    Editor.PrimaryImageThumbnailBytes = thumbnail.Bytes ?? Editor.PrimaryImageBytes;
+    Editor.PrimaryImageThumbnailContentType = thumbnail.ContentType ?? Editor.PrimaryImageContentType;
     SelectedImageFileName = file.Name;
     ImagePreviewDataUrl = BuildDataUrl(Editor.PrimaryImageContentType, Editor.PrimaryImageBytes);
   }
@@ -188,5 +193,21 @@ public partial class MaterialesPage : ComponentBase
   {
     var safeContentType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType;
     return FormattableString.Invariant($"data:{safeContentType};base64,{Convert.ToBase64String(bytes)}");
+  }
+
+  private static async Task<(byte[]? Bytes, string? ContentType)> BuildThumbnailAsync(IBrowserFile file)
+  {
+    try
+    {
+      var thumbnailFile = await file.RequestImageFileAsync("image/jpeg", ThumbnailMaxPixels, ThumbnailMaxPixels);
+      await using var thumbnailStream = thumbnailFile.OpenReadStream(long.MaxValue);
+      using var ms = new MemoryStream();
+      await thumbnailStream.CopyToAsync(ms);
+      return (ms.ToArray(), thumbnailFile.ContentType);
+    }
+    catch
+    {
+      return (null, null);
+    }
   }
 }

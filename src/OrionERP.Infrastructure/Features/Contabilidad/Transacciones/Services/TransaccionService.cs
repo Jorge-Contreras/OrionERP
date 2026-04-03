@@ -279,6 +279,79 @@ ORDER BY a.Descripcion ASC;";
     return rows.AsList();
   }
 
+  public async Task<IReadOnlyList<LookupInt32Dto>> SearchActividadesAsync(
+      string rfc,
+      string? search,
+      int top = 25,
+      CancellationToken ct = default)
+  {
+    if (string.IsNullOrWhiteSpace(rfc) || string.IsNullOrWhiteSpace(search))
+    {
+      return Array.Empty<LookupInt32Dto>();
+    }
+
+    var normalizedSearch = search.Trim();
+    var searchLike = $"%{normalizedSearch}%";
+    var actividadId = int.TryParse(normalizedSearch, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedActividadId)
+        ? parsedActividadId
+        : (int?)null;
+
+    const string sql = @"SELECT TOP (@Top)
+    a.ID          AS Id,
+    a.Descripcion AS Description
+FROM dbo.Actividad a
+WHERE a.RFC = @Rfc
+  AND (
+    CONVERT(varchar(20), a.ID) LIKE @SearchLike
+    OR a.Descripcion LIKE @SearchLike
+  )
+ORDER BY
+  CASE WHEN @ActividadId IS NOT NULL AND a.ID = @ActividadId THEN 0 ELSE 1 END,
+  a.Descripcion ASC,
+  a.ID ASC;";
+
+    using var conn = new SqlConnection(_cs);
+    var rows = await conn.QueryAsync<LookupInt32Dto>(
+        new CommandDefinition(
+            sql,
+            new
+            {
+              Rfc = rfc,
+              SearchLike = searchLike,
+              ActividadId = actividadId,
+              Top = top <= 0 ? 25 : top
+            },
+            cancellationToken: ct));
+
+    return rows.AsList();
+  }
+
+  public async Task<LookupInt32Dto?> GetActividadByIdAsync(string rfc, int actividadId, CancellationToken ct = default)
+  {
+    if (string.IsNullOrWhiteSpace(rfc) || actividadId <= 0)
+    {
+      return null;
+    }
+
+    const string sql = @"SELECT TOP (1)
+    a.ID          AS Id,
+    a.Descripcion AS Description
+FROM dbo.Actividad a
+WHERE a.RFC = @Rfc
+  AND a.ID = @ActividadId;";
+
+    using var conn = new SqlConnection(_cs);
+    return await conn.QueryFirstOrDefaultAsync<LookupInt32Dto>(
+        new CommandDefinition(
+            sql,
+            new
+            {
+              Rfc = rfc,
+              ActividadId = actividadId
+            },
+            cancellationToken: ct));
+  }
+
   public async Task<IReadOnlyList<LookupInt32Dto>> GetComprasAsync(string rfc, CancellationToken ct = default)
   {
     const string sql = @"SELECT

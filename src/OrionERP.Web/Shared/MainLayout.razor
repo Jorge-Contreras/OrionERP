@@ -4,14 +4,26 @@
 
 <PageTitle>OrionERP.Web</PageTitle>
 
-<div class="page app-shell">
-    <div class="sidebar app-shell__sidebar">
+<div class="@AppShellCssClass">
+    <div id="layout-nav-sidebar" class="sidebar app-shell__sidebar">
         <NavMenu />
     </div>
 
     <main class="app-shell__main">
         <div class="top-row app-shell__topbar">
-            <SecurityHeader />
+            <button type="button"
+                    class="app-shell__nav-toggle"
+                    aria-controls="layout-nav-sidebar"
+                    aria-expanded="@_isDesktopNavVisible"
+                    aria-label="@(_isDesktopNavVisible ? "Ocultar menu de navegacion" : "Mostrar menu de navegacion")"
+                    @onclick="ToggleDesktopNavMenu">
+                <span class="oi @(_isDesktopNavVisible ? "oi-chevron-left" : "oi-menu")" aria-hidden="true"></span>
+                <span>@(_isDesktopNavVisible ? "Ocultar menu" : "Mostrar menu")</span>
+            </button>
+
+            <div class="app-shell__topbar-header">
+                <SecurityHeader />
+            </div>
         </div>
 
         <NotificationBanner />
@@ -33,6 +45,9 @@
 
 @code {
     [CascadingParameter] private ErrorBoundary? _errorBoundary { get; set; }
+    private bool _isDesktopNavVisible = true;
+
+    private string AppShellCssClass => _isDesktopNavVisible ? "page app-shell" : "page app-shell app-shell--nav-hidden";
 
     private void HandleError(Exception exception)
     {
@@ -43,5 +58,10 @@
     {
         MessageService.Clear();
         _errorBoundary?.Recover();
+    }
+
+    private void ToggleDesktopNavMenu()
+    {
+        _isDesktopNavVisible = !_isDesktopNavVisible;
     }
 }

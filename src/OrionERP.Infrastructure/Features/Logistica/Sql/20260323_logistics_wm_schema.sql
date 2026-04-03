@@ -174,6 +174,8 @@ BEGIN
         PrimaryImage varbinary(max) NULL,
         PrimaryImageFileName varchar(200) NULL,
         PrimaryImageContentType varchar(100) NULL,
+        PrimaryImageThumbnail varbinary(max) NULL,
+        PrimaryImageThumbnailContentType varchar(100) NULL,
         PurchaseLink varchar(max) NULL,
         MaterialClass varchar(50) NOT NULL CONSTRAINT DF_Material_Class DEFAULT ('Consumable'),
         IsActive bit NOT NULL CONSTRAINT DF_Material_IsActive DEFAULT (1),

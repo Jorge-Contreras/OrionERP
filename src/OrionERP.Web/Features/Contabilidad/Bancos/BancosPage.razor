@@ -203,10 +203,12 @@ else
                          @bind-Value="InitialBalance"
                          step="0.01" />
           </div>
-          <label class="btn btn-primary mb-0">
+          <button type="button"
+                  class="btn btn-primary mb-0"
+                  @onclick="OpenBankFilePickerAsync"
+                  disabled="@(IsProcessingFile)">
             @(IsProcessingFile ? "Procesando…" : "Procesar archivo de banco")
-            <InputFile @key="FileInputKey" class="d-none" accept=".txt,.xml" OnChange="OnFileSelectedAsync" disabled="@(IsProcessingFile)" />
-          </label>
+          </button>
         </div>
 
         @if (LastProcessResult is not null)

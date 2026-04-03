@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Logistica.Locations;
+using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.PhysicalCounts;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Web.Services;
@@ -13,6 +14,7 @@ namespace OrionERP.Web.Features.Logistica.PhysicalCounts;
 public partial class ConteosFisicosPage : ComponentBase
 {
   [Inject] private IPhysicalCountService PhysicalCountService { get; set; } = default!;
+  [Inject] private IMaterialService MaterialService { get; set; } = default!;
   [Inject] private ILocationService LocationService { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private IJSRuntime Js { get; set; } = default!;
@@ -24,14 +26,19 @@ public partial class ConteosFisicosPage : ComponentBase
   protected PhysicalCountSessionDetailDto? SelectedSession { get; set; }
   protected PhysicalCountLineDto? SelectedLine { get; set; }
   protected PhysicalCountLineCaptureRequest LineCapture { get; set; } = new();
+  protected Dictionary<int, string> MaterialThumbnailDataUrls { get; set; } = [];
   protected string CurrentUserName { get; set; } = "OrionERP";
   protected bool IsLoadingSessions { get; set; }
   protected bool IsCreatingSession { get; set; }
   protected bool IsSavingLine { get; set; }
   protected bool IsMutatingSession { get; set; }
+  protected bool ShowMaterialImageModal { get; set; }
+  protected bool IsLoadingMaterialImage { get; set; }
   protected byte[]? PendingLineAttachmentBytes { get; set; }
   protected string? PendingLineAttachmentName { get; set; }
   protected string? PendingLineAttachmentContentType { get; set; }
+  protected string? MaterialImageModalTitle { get; set; }
+  protected string? MaterialImageModalDataUrl { get; set; }
 
   protected bool CanSubmit => SelectedSession is not null && string.Equals(SelectedSession.Status, "Draft", StringComparison.OrdinalIgnoreCase);
   protected bool CanApprove => SelectedSession is not null && string.Equals(SelectedSession.Status, "Submitted", StringComparison.OrdinalIgnoreCase);
@@ -108,6 +115,16 @@ public partial class ConteosFisicosPage : ComponentBase
     try
     {
       SelectedSession = await PhysicalCountService.GetSessionAsync(sessionId);
+      MaterialThumbnailDataUrls = [];
+      CloseMaterialImageModal();
+
+      if (SelectedSession is null)
+      {
+        SelectedLine = null;
+        return;
+      }
+
+      await CargarMiniaturasMaterialesAsync();
       SelectedLine = null;
       if (SelectedSession?.Lines.Count > 0)
       {
@@ -229,6 +246,57 @@ public partial class ConteosFisicosPage : ComponentBase
     }
   }
 
+  protected async Task AbrirImagenMaterialAsync(PhysicalCountLineDto line)
+  {
+    if (SelectedLine?.Id != line.Id)
+    {
+      SeleccionarLinea(line);
+    }
+
+    ShowMaterialImageModal = true;
+    IsLoadingMaterialImage = true;
+    MaterialImageModalTitle = string.IsNullOrWhiteSpace(line.MaterialDescription)
+      ? line.MaterialCode
+      : string.IsNullOrWhiteSpace(line.MaterialCode)
+        ? line.MaterialDescription
+        : $"{line.MaterialDescription} · {line.MaterialCode}";
+    MaterialImageModalDataUrl = TryGetMaterialThumbnailDataUrl(line.MaterialId, out var thumbnailDataUrl)
+      ? thumbnailDataUrl
+      : null;
+
+    try
+    {
+      var image = await MaterialService.GetMaterialImageAsync(line.MaterialId);
+      if (image is null)
+      {
+        if (MaterialImageModalDataUrl is null)
+        {
+          UiMessages.ShowWarning("El material seleccionado no tiene imagen disponible.");
+        }
+
+        return;
+      }
+
+      MaterialImageModalDataUrl = BuildDataUrl(image.ContentType, image.Bytes);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo cargar la imagen del material. {ex.Message}");
+    }
+    finally
+    {
+      IsLoadingMaterialImage = false;
+    }
+  }
+
+  protected void CloseMaterialImageModal()
+  {
+    ShowMaterialImageModal = false;
+    IsLoadingMaterialImage = false;
+    MaterialImageModalTitle = null;
+    MaterialImageModalDataUrl = null;
+  }
+
   private async Task EjecutarSesionAsync(Func<Task<LogisticsCommandResult>> operation)
   {
     if (SelectedSession is null)
@@ -268,5 +336,41 @@ public partial class ConteosFisicosPage : ComponentBase
       { Length: > 0 } name => name,
       _ => "Administrador"
     };
+  }
+
+  private async Task CargarMiniaturasMaterialesAsync()
+  {
+    if (SelectedSession?.Lines.Count is not > 0)
+    {
+      MaterialThumbnailDataUrls = [];
+      return;
+    }
+
+    try
+    {
+      var thumbnails = await MaterialService.GetMaterialThumbnailsAsync(SelectedSession.Lines.Select(line => line.MaterialId));
+      MaterialThumbnailDataUrls = thumbnails
+        .Where(thumbnail => thumbnail.Bytes.Length > 0)
+        .ToDictionary(
+          thumbnail => thumbnail.Id,
+          thumbnail => BuildDataUrl(thumbnail.ContentType, thumbnail.Bytes));
+    }
+    catch (Exception ex)
+    {
+      MaterialThumbnailDataUrls = [];
+      UiMessages.ShowWarning($"No se pudieron cargar las miniaturas de los materiales. {ex.Message}");
+    }
+  }
+
+  private bool TryGetMaterialThumbnailDataUrl(int materialId, out string dataUrl)
+    => MaterialThumbnailDataUrls.TryGetValue(materialId, out dataUrl!);
+
+  protected string? GetMaterialThumbnailDataUrl(int materialId)
+    => TryGetMaterialThumbnailDataUrl(materialId, out var dataUrl) ? dataUrl : null;
+
+  private static string BuildDataUrl(string? contentType, byte[] bytes)
+  {
+    var safeContentType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType;
+    return FormattableString.Invariant($"data:{safeContentType};base64,{Convert.ToBase64String(bytes)}");
   }
 }

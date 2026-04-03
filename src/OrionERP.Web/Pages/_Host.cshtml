@@ -17,5 +17,107 @@
         link.click();
         document.body.removeChild(link);
     };
-</script>
 
+    window.pickBankFile = async () => {
+        const readFileAsText = (file) => new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve({
+                name: file.name ?? "",
+                size: file.size ?? 0,
+                content: typeof reader.result === "string" ? reader.result : ""
+            });
+            reader.onerror = () => reject(reader.error ?? new Error("No se pudo leer el archivo."));
+            reader.readAsText(file);
+        });
+
+        const pickerOptions = {
+            multiple: false,
+            excludeAcceptAllOption: false,
+            types: [
+                {
+                    description: "Archivos de banco",
+                    accept: {
+                        "text/csv": [".csv"],
+                        "application/xml": [".xml"],
+                        "text/xml": [".xml"],
+                        "text/txt": [".txt"],
+                        "application/json": [".json"]
+                    }
+                }
+            ]
+        };
+
+        if (window.showOpenFilePicker) {
+            try {
+                const [handle] = await window.showOpenFilePicker(pickerOptions);
+                if (!handle) {
+                    return null;
+                }
+
+                const file = await handle.getFile();
+                return await readFileAsText(file);
+            } catch (error) {
+                if (error && error.name === "AbortError") {
+                    return null;
+                }
+
+                throw error;
+            }
+        }
+
+        return await new Promise((resolve, reject) => {
+            const input = document.createElement("input");
+            input.type = "file";
+            input.accept = ".csv,.txt,.xml,.json,*/*";
+            input.style.display = "none";
+            let settled = false;
+
+            const cleanup = () => {
+                input.removeEventListener("change", onChange);
+                window.removeEventListener("focus", onWindowFocus);
+                if (document.body.contains(input)) {
+                    document.body.removeChild(input);
+                }
+            };
+
+            const finish = (callback) => {
+                if (settled) {
+                    return;
+                }
+
+                settled = true;
+                callback();
+                cleanup();
+            };
+
+            const onChange = async () => {
+                try {
+                    const file = input.files && input.files.length > 0 ? input.files[0] : null;
+                    if (!file) {
+                        finish(() => resolve(null));
+                        return;
+                    }
+
+                    const result = await readFileAsText(file);
+                    finish(() => resolve(result));
+                } catch (error) {
+                    finish(() => reject(error));
+                }
+            };
+
+            const onWindowFocus = () => {
+                window.setTimeout(() => {
+                    const hasSelection = input.files && input.files.length > 0;
+                    if (!settled && !hasSelection) {
+                        finish(() => resolve(null));
+                    }
+                }, 300);
+            };
+
+            input.addEventListener("change", onChange, { once: true });
+            window.addEventListener("focus", onWindowFocus, { once: true });
+            document.body.appendChild(input);
+            input.click();
+        });
+    };
+</script>

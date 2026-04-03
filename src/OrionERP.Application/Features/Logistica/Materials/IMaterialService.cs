@@ -10,5 +10,7 @@ public interface IMaterialService
   Task<MaterialDetailDto?> GetMaterialAsync(int materialId, CancellationToken ct = default);
   Task<MaterialCatalogDto> GetCatalogAsync(CancellationToken ct = default);
   Task<LogisticsBinaryContent?> GetMaterialImageAsync(int materialId, CancellationToken ct = default);
+  Task<LogisticsBinaryContent?> GetMaterialThumbnailAsync(int materialId, CancellationToken ct = default);
+  Task<IReadOnlyList<LogisticsBinaryContent>> GetMaterialThumbnailsAsync(IEnumerable<int> materialIds, CancellationToken ct = default);
   Task<LogisticsCommandResult> SaveMaterialAsync(MaterialUpsertRequest request, CancellationToken ct = default);
 }

@@ -41,11 +41,12 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private long? _unlinkingComprobanteId;
   private long? _unlinkingBancoMovimientoId;
   private long? _selectedComprobanteId;
-  private readonly List<LookupInt32Dto> _allProyectoOptions = [];
   private readonly List<LookupInt32Dto> _allCompraOptions = [];
   private CuentaContablePicker? CuentaPicker;
   private int _attachmentInputKey;
   private SectionPanel _activeSection = SectionPanel.Movimientos;
+  private LookupInt32Dto? _selectedProyectoOption;
+  private CancellationTokenSource? _proyectoSearchCts;
 
   private bool _isDisposed;
   private string _montoInput = string.Empty;
@@ -188,7 +189,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private string? ResolveLookupRfc()
     => Normalize(Header?.Rfc) ?? Normalize(RfcState.CurrentRfc);
 
-  protected void OnProyectoSearchInput(ChangeEventArgs args)
+  protected async Task OnProyectoSearchInputAsync(ChangeEventArgs args)
   {
     ProyectoSearchTerm = args.Value?.ToString() ?? string.Empty;
 
@@ -200,11 +201,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
     }
 
-    RefreshProyectoOptions();
+    await SearchProyectoOptionsAsync();
     ShowProyectoResults = true;
   }
 
-  protected void HandleProyectoSearchKeyDown(KeyboardEventArgs args)
+  protected async Task HandleProyectoSearchKeyDownAsync(KeyboardEventArgs args)
   {
     if (args.Key == "Escape")
     {
@@ -218,13 +219,25 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
     }
 
-    if (TryFindExactProyectoMatch(ProyectoSearchTerm, out var exactMatch))
+    await SearchProyectoOptionsAsync();
+
+    if (int.TryParse(ProyectoSearchTerm?.Trim(), out var proyectoId))
     {
-      SelectProyecto(exactMatch);
-      return;
+      var exactMatch = ProyectoOptions.FirstOrDefault(option => option.Id == proyectoId);
+      if (exactMatch is not null)
+      {
+        SelectProyecto(exactMatch);
+        return;
+      }
+
+      var exactProyecto = await LoadProyectoByIdAsync(proyectoId);
+      if (exactProyecto is not null)
+      {
+        SelectProyecto(exactProyecto);
+        return;
+      }
     }
 
-    RefreshProyectoOptions();
     ShowProyectoResults = true;
 
     if (ProyectoOptions.Count == 1)
@@ -275,21 +288,20 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     if (!string.IsNullOrWhiteSpace(currentRfc))
     {
       var categoriasTask = TransaccionService.GetCategoriasAsync(currentRfc, ct);
-      var actividadesTask = TransaccionService.GetActividadesAsync(currentRfc, ct);
       var comprasTask = TransaccionService.GetComprasAsync(currentRfc, ct);
       var serviciosTask = TransaccionService.GetServiciosAsync(currentRfc, ct);
       var nominasTask = TransaccionService.GetNominasAsync(currentRfc, ct);
 
-      await Task.WhenAll(formasPagoTask, categoriasTask, actividadesTask, comprasTask, serviciosTask, nominasTask);
+      await Task.WhenAll(formasPagoTask, categoriasTask, comprasTask, serviciosTask, nominasTask);
 
       CategoriaOptions.AddRange(await categoriasTask);
-      _allProyectoOptions.AddRange(await actividadesTask);
       _allCompraOptions.AddRange(await comprasTask);
       ServicioOptions.AddRange(await serviciosTask);
       NominaOptions.AddRange(await nominasTask);
     }
 
     FormaPagoOptions.AddRange(await formasPagoTask);
+    await EnsureSelectedProyectoLoadedAsync(ct);
     SyncProyectoSearchTermWithSelection();
     EnsureSelectedCompraOption();
   }
@@ -297,13 +309,14 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private void ResetLookupData()
   {
     CategoriaOptions.Clear();
-    _allProyectoOptions.Clear();
     ProyectoOptions.Clear();
     _allCompraOptions.Clear();
     CompraOptions.Clear();
     ServicioOptions.Clear();
     NominaOptions.Clear();
     FormaPagoOptions.Clear();
+    CancelProyectoSearch();
+    _selectedProyectoOption = null;
     ProyectoSearchTerm = string.Empty;
     CompraSearchTerm = string.Empty;
     ShowProyectoResults = false;
@@ -349,46 +362,76 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     EnsureSelectedOption(Header?.CompraId, _allCompraOptions, CompraOptions);
   }
 
-  private void RefreshProyectoOptions()
+  private async Task SearchProyectoOptionsAsync(CancellationToken ct = default)
   {
     ProyectoOptions.Clear();
 
     var trimmed = ProyectoSearchTerm.Trim();
-    if (string.IsNullOrWhiteSpace(trimmed))
+    var currentRfc = ResolveLookupRfc();
+    if (string.IsNullOrWhiteSpace(trimmed) || string.IsNullOrWhiteSpace(currentRfc))
     {
       return;
     }
 
-    var isNumericSearch = int.TryParse(trimmed, out var numericSearch);
-    var matches = _allProyectoOptions
-      .Where(option =>
-        (isNumericSearch && option.Id.ToString(CultureInfo.InvariantCulture).Contains(trimmed, StringComparison.OrdinalIgnoreCase)) ||
-        (!string.IsNullOrWhiteSpace(option.Description) && option.Description.Contains(trimmed, StringComparison.OrdinalIgnoreCase)))
-      .OrderBy(option => isNumericSearch && option.Id == numericSearch ? 0 : 1)
-      .ThenBy(option => option.Description)
-      .ThenBy(option => option.Id)
-      .Take(25);
+    CancelProyectoSearch();
+    _proyectoSearchCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
-    ProyectoOptions.AddRange(matches);
+    try
+    {
+      var matches = await TransaccionService.SearchActividadesAsync(currentRfc, trimmed, 25, _proyectoSearchCts.Token);
+      ProyectoOptions.AddRange(matches);
+      EnsureSelectedProyectoOption();
+    }
+    catch (OperationCanceledException)
+    {
+      // ignored
+    }
   }
 
-  private bool TryFindExactProyectoMatch(string? searchTerm, out LookupInt32Dto proyecto)
+  private async Task EnsureSelectedProyectoLoadedAsync(CancellationToken ct = default)
   {
-    proyecto = default!;
+    _selectedProyectoOption = null;
 
-    if (!int.TryParse(searchTerm?.Trim(), out var proyectoId))
+    var proyectoId = Header?.ProyectoId;
+    var currentRfc = ResolveLookupRfc();
+    if (proyectoId is null || proyectoId <= 0 || string.IsNullOrWhiteSpace(currentRfc))
     {
-      return false;
+      return;
     }
 
-    var match = _allProyectoOptions.FirstOrDefault(option => option.Id == proyectoId);
-    if (match is null)
+    _selectedProyectoOption = await TransaccionService.GetActividadByIdAsync(currentRfc, proyectoId.Value, ct);
+  }
+
+  private async Task<LookupInt32Dto?> LoadProyectoByIdAsync(int proyectoId, CancellationToken ct = default)
+  {
+    var currentRfc = ResolveLookupRfc();
+    if (proyectoId <= 0 || string.IsNullOrWhiteSpace(currentRfc))
     {
-      return false;
+      return null;
     }
 
-    proyecto = match;
-    return true;
+    return await TransaccionService.GetActividadByIdAsync(currentRfc, proyectoId, ct);
+  }
+
+  private void EnsureSelectedProyectoOption()
+  {
+    var proyectoId = Header?.ProyectoId;
+    if (proyectoId is null || _selectedProyectoOption is null || _selectedProyectoOption.Id != proyectoId.Value)
+    {
+      return;
+    }
+
+    if (ProyectoOptions.All(option => option.Id != proyectoId.Value))
+    {
+      ProyectoOptions.Insert(0, _selectedProyectoOption);
+    }
+  }
+
+  private void CancelProyectoSearch()
+  {
+    _proyectoSearchCts?.Cancel();
+    _proyectoSearchCts?.Dispose();
+    _proyectoSearchCts = null;
   }
 
   protected string GetProyectoOptionDisplay(LookupInt32Dto proyecto)
@@ -403,6 +446,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   private void SetProyectoSelection(LookupInt32Dto? proyecto)
   {
+    _selectedProyectoOption = proyecto;
+
     if (Header is null)
     {
       ProyectoSearchTerm = proyecto is null
@@ -421,20 +466,20 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   private void SyncProyectoSearchTermWithSelection()
   {
-    var proyecto = FindProyectoById(Header?.ProyectoId);
-    ProyectoSearchTerm = proyecto is null
-      ? Header?.ProyectoId?.ToString(CultureInfo.InvariantCulture) ?? string.Empty
-      : FormatProyectoDisplay(proyecto, truncateDescription: true);
-  }
-
-  private LookupInt32Dto? FindProyectoById(int? proyectoId)
-  {
+    var proyectoId = Header?.ProyectoId;
     if (proyectoId is null)
     {
-      return null;
+      ProyectoSearchTerm = string.Empty;
+      return;
     }
 
-    return _allProyectoOptions.FirstOrDefault(option => option.Id == proyectoId.Value);
+    if (_selectedProyectoOption is not null && _selectedProyectoOption.Id == proyectoId.Value)
+    {
+      ProyectoSearchTerm = FormatProyectoDisplay(_selectedProyectoOption, truncateDescription: true);
+      return;
+    }
+
+    ProyectoSearchTerm = proyectoId.Value.ToString(CultureInfo.InvariantCulture);
   }
 
   private static string FormatProyectoDisplay(LookupInt32Dto proyecto, bool truncateDescription)
@@ -540,9 +585,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   private void ResetLoadedState()
   {
+    CancelProyectoSearch();
     Header = null;
     HeaderEditContext = null;
     _headerOriginal = null;
+    _selectedProyectoOption = null;
     _selectedComprobanteId = null;
     Movimientos.Clear();
     BancoMovimientos.Clear();
@@ -582,7 +629,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string GetMovimientoRowClass(MovimientoModel movimiento)
     => _movimientoTarget == movimiento ? "table-active" : string.Empty;
 
-  protected void ResetHeader()
+  protected async Task ResetHeaderAsync()
   {
     if (_headerOriginal is null || Header is null)
       return;
@@ -590,6 +637,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     Header.CopyFrom(_headerOriginal);
     UpdateMontoInputFromHeader();
     ShowProyectoResults = false;
+    await EnsureSelectedProyectoLoadedAsync();
     SyncProyectoSearchTermWithSelection();
     HeaderEditContext = new EditContext(Header);
     StateHasChanged();
@@ -2093,6 +2141,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     RfcState.Changed -= OnRfcStateChanged;
     _loadCts?.Cancel();
     _loadCts?.Dispose();
+    CancelProyectoSearch();
     GC.SuppressFinalize(this);
   }
 

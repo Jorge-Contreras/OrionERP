@@ -110,8 +110,8 @@ else
                     <input class="form-control"
                            value="@ProyectoSearchTerm"
                            placeholder="Buscar por ID o descripción"
-                           @oninput="OnProyectoSearchInput"
-                           @onkeydown="HandleProyectoSearchKeyDown"
+                           @oninput="OnProyectoSearchInputAsync"
+                           @onkeydown="HandleProyectoSearchKeyDownAsync"
                            @onblur="OnProyectoSearchBlurAsync" />
 
                     @if (ShowProyectoResults)
@@ -209,7 +209,7 @@ else
 
 
             <div class="d-flex flex-wrap gap-2 justify-content-end ms-lg-auto">
-              <button type="button" class="btn btn-outline-secondary" @onclick="ResetHeader" disabled="@IsSavingHeader">
+              <button type="button" class="btn btn-outline-secondary" @onclick="ResetHeaderAsync" disabled="@IsSavingHeader">
                 Deshacer
               </button>
               <button type="submit" class="btn btn-primary" disabled="@IsSavingHeader">

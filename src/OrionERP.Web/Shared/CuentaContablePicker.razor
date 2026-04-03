@@ -201,6 +201,45 @@
               <span class="badge text-bg-secondary">Nivel 1: @FormatSelectionValue(createSelection.Nivel1)</span>
               <span class="badge text-bg-secondary">Nivel 2: @FormatSelectionValue(createSelection.Nivel2)</span>
             </div>
+
+            @if (createSelection.HasNivel2)
+            {
+              <div class="d-flex flex-column gap-2">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                  <label class="form-label mb-0">Niveles 3 existentes</label>
+                  <span class="text-muted small">Siguiente sugerido: @FormatSelectionValue(NormalizeTwoDigits(nivel3Model.Nivel3))</span>
+                </div>
+
+                @if (createNivel3Results.Any())
+                {
+                  <div class="table-responsive border rounded" style="max-height: 220px; overflow-y: auto;">
+                    <table class="table table-sm table-hover mb-0">
+                      <thead class="table-light">
+                        <tr>
+                          <th>Id</th>
+                          <th>Nivel 3</th>
+                          <th>Descripci&oacute;n</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @foreach (var item in createNivel3Results)
+                        {
+                          <tr>
+                            <td>@item.Id</td>
+                            <td>@NormalizeTwoDigits(item.Nivel3)</td>
+                            <td>@item.Descripcion</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                }
+                else
+                {
+                  <div class="text-muted small">No hay Niveles 3 registrados para esta combinaci&oacute;n. Se sugiri&oacute; 01.</div>
+                }
+              </div>
+            }
           }
 
           <div class="row g-3">
@@ -262,6 +301,7 @@
   private string createNivel2Term = string.Empty;
   private readonly List<CuentasContablesDto> createNivel1Results = new();
   private readonly List<CuentasContablesDto> createNivel2Results = new();
+  private readonly List<CuentasContablesDto> createNivel3Results = new();
 
   private bool CanSearchMain => !string.IsNullOrWhiteSpace(currentRfc) && !string.IsNullOrWhiteSpace(searchTerm);
   private bool CanOpenCreateModal => !string.IsNullOrWhiteSpace(currentRfc);
@@ -310,7 +350,7 @@
     try
     {
       var account = await CuentasRepository.GetByIdAsync(id);
-      if (account is null || NormalizeTwoDigits(account.Nivel2) == "00")
+      if (account is null || !IsSelectableNivel3Account(account))
       {
         return false;
       }
@@ -394,19 +434,15 @@
       foreach (var nivel2Group in nivel1Group
                    .GroupBy(item => NormalizeTwoDigits(item.Nivel2), StringComparer.OrdinalIgnoreCase))
       {
-        var nivel3Header = nivel2Group.FirstOrDefault(IsNivel3HeaderAccount);
-        if (nivel3Header is null)
+        if (!string.Equals(nivel2Group.Key, "00", StringComparison.OrdinalIgnoreCase))
         {
           searchDisplayRows.Add(CuentaContableDisplayRow.CreateNivel2Header(nivel2Group.First()));
         }
-        else
-        {
-          searchDisplayRows.Add(CuentaContableDisplayRow.CreateSelectableAccount(nivel3Header));
-        }
 
         foreach (var account in nivel2Group
-                     .Where(account => !IsNivel3HeaderAccount(account))
-                     .OrderBy(item => NormalizeTwoDigits(item.Nivel3), StringComparer.OrdinalIgnoreCase))
+                     .Where(IsSelectableNivel3Account)
+                     .OrderBy(item => GetNivelSequenceNumber(item.Nivel3))
+                     .ThenBy(item => NormalizeTwoDigits(item.Nivel3), StringComparer.OrdinalIgnoreCase))
         {
           searchDisplayRows.Add(CuentaContableDisplayRow.CreateSelectableAccount(account));
         }
@@ -489,7 +525,9 @@
   {
     createNivel1Results.Clear();
     createNivel2Results.Clear();
+    createNivel3Results.Clear();
     createSelection = new CuentaContableSelection { Rfc = currentRfc };
+    nivel3Model = new CuentasContablesDto();
 
     if (string.IsNullOrWhiteSpace(currentRfc))
     {
@@ -517,6 +555,7 @@
   private async Task SearchCreateNivel2Async(bool loadDefaults = false)
   {
     createNivel2Results.Clear();
+    createNivel3Results.Clear();
 
     if (!CanSearchCreateNivel2 || string.IsNullOrWhiteSpace(currentRfc) || string.IsNullOrWhiteSpace(createSelection.Nivel1))
     {
@@ -553,10 +592,12 @@
     createNivel2Term = string.Empty;
     createNivel1Results.Clear();
     createNivel2Results.Clear();
+    createNivel3Results.Clear();
+    nivel3Model = new CuentasContablesDto();
     await SearchCreateNivel2Async(loadDefaults: true);
   }
 
-  private Task SelectCreateNivel2Async(CuentasContablesDto dto)
+  private async Task SelectCreateNivel2Async(CuentasContablesDto dto)
   {
     createSelection = new CuentaContableSelection
     {
@@ -567,7 +608,8 @@
 
     createNivel2Term = createSelection.Nivel2 ?? string.Empty;
     createNivel2Results.Clear();
-    return Task.CompletedTask;
+    nivel3Model = new CuentasContablesDto();
+    await LoadCreateNivel3Async();
   }
 
   private void ShowCreateNivel3Modal()
@@ -636,6 +678,7 @@
           return;
         }
 
+        nivel3Model.Nivel3 = NormalizeTwoDigits(nivel3Model.Nivel3);
         if (string.IsNullOrWhiteSpace(nivel3Model.Nivel3))
         {
           await NotifyErrorAsync("Captura el codigo del Nivel 3.");
@@ -710,6 +753,7 @@
     createNivel2Term = string.Empty;
     createNivel1Results.Clear();
     createNivel2Results.Clear();
+    createNivel3Results.Clear();
   }
 
   private static bool EqualsReference(CuentaContableSelection? left, CuentaContableSelection? right)
@@ -734,6 +778,67 @@
 
   private static bool IsNivel3HeaderAccount(CuentasContablesDto account)
     => NormalizeTwoDigits(account.Nivel2) != "00" && NormalizeTwoDigits(account.Nivel3) == "00";
+
+  private static bool IsSelectableNivel3Account(CuentasContablesDto account)
+    => NormalizeTwoDigits(account.Nivel3) != "00";
+
+  private static int GetNivelSequenceNumber(string? value)
+    => int.TryParse(NormalizeTwoDigits(value), out var parsed) && parsed > 0 ? parsed : int.MaxValue;
+
+  private async Task LoadCreateNivel3Async()
+  {
+    createNivel3Results.Clear();
+
+    if (string.IsNullOrWhiteSpace(currentRfc) || !createSelection.HasNivel2)
+    {
+      nivel3Model = new CuentasContablesDto();
+      return;
+    }
+
+    try
+    {
+      var results = (await CuentasRepository.SearchNivel3Async(
+              currentRfc,
+              createSelection.Nivel1!,
+              createSelection.Nivel2!,
+              string.Empty,
+              500))
+          .Where(IsSelectableNivel3Account)
+          .OrderBy(item => GetNivelSequenceNumber(item.Nivel3))
+          .ThenBy(item => NormalizeTwoDigits(item.Nivel3), StringComparer.OrdinalIgnoreCase)
+          .ToList();
+
+      createNivel3Results.AddRange(results);
+      nivel3Model = new CuentasContablesDto
+      {
+        Nivel3 = GetNextAvailableNivel3(results)
+      };
+
+      await ClearErrorAsync();
+    }
+    catch (Exception ex)
+    {
+      nivel3Model = new CuentasContablesDto();
+      await NotifyErrorAsync("No se pudieron cargar los Niveles 3 existentes.", ex);
+    }
+  }
+
+  private static string GetNextAvailableNivel3(IEnumerable<CuentasContablesDto> accounts)
+  {
+    var used = accounts
+        .Select(item => GetNivelSequenceNumber(item.Nivel3))
+        .Where(value => value != int.MaxValue)
+        .Distinct()
+        .ToHashSet();
+
+    var next = 1;
+    while (used.Contains(next))
+    {
+      next++;
+    }
+
+    return next.ToString("00");
+  }
 
   private static string GetSearchRowClass(CuentaContableDisplayRow row)
   {
@@ -799,7 +904,14 @@
       => string.IsNullOrWhiteSpace(account.Nivel1Descripcion) ? account.Nivel1 : account.Nivel1Descripcion!;
 
     private static string GetNivel2Descripcion(CuentasContablesDto account)
-      => string.IsNullOrWhiteSpace(account.Nivel2Descripcion) ? NormalizeTwoDigits(account.Nivel2) : account.Nivel2Descripcion!;
+    {
+      if (NormalizeTwoDigits(account.Nivel2) == "00")
+      {
+        return string.Empty;
+      }
+
+      return string.IsNullOrWhiteSpace(account.Nivel2Descripcion) ? NormalizeTwoDigits(account.Nivel2) : account.Nivel2Descripcion!;
+    }
 
     private static string GetNivel3Descripcion(CuentasContablesDto account)
       => string.IsNullOrWhiteSpace(account.Nivel3Descripcion) ? account.Descripcion : account.Nivel3Descripcion!;

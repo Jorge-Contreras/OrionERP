@@ -52,11 +52,11 @@ LEFT JOIN dbo.CuentasContables AS nivel2
  AND nivel2.Nivel2 = account.Nivel2
  AND nivel2.Nivel3 = '00'
 WHERE account.RFC = @rfc
-  AND account.Nivel2 <> '00'
+  AND account.Nivel3 <> '00'
   AND (
     (@isNumeric = 1 AND (
       account.Nivel1 LIKE @nivel1Prefix
-      OR (@hasExactId = 1 AND (account.id = @exactId OR nivel1.id = @exactId))
+      OR (@hasExactId = 1 AND (account.id = @exactId OR nivel1.id = @exactId OR nivel2.id = @exactId))
     ))
     OR
     (@isNumeric = 0 AND (
@@ -192,6 +192,7 @@ FROM dbo.CuentasContables
 WHERE RFC = @rfc
   AND Nivel1 = @nivel1
   AND Nivel2 = @nivel2
+  AND Nivel3 <> '00'
   AND (@hasTerm = 0 OR Nivel3 = @exact OR Descripcion LIKE @like)
 ORDER BY Nivel3;";
 

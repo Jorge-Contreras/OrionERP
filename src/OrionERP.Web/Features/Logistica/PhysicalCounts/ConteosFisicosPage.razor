@@ -51,12 +51,12 @@
                     </div>
 
                     <div class="table-responsive" style="max-height: 70vh;">
-                        <table class="table table-sm table-hover align-middle">
+                        <table class="table table-sm table-hover align-middle conteos-sessions-table">
                             <thead class="table-light">
                                 <tr>
                                     <th>Sesión</th>
-                                    <th>Ubicación</th>
-                                    <th class="text-end">Líneas</th>
+                                    <th class="conteos-location-col">Ubicación</th>
+                                    <th class="text-end conteos-count-col">Líneas</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -75,11 +75,13 @@
                                                 <div class="fw-semibold">@item.SessionCode</div>
                                                 <small class="text-muted">@item.Status</small>
                                             </td>
-                                            <td>
-                                                <div>@item.LocationName</div>
-                                                <small class="text-muted">@(string.IsNullOrWhiteSpace(item.RoomName) ? "Sin room" : item.RoomName)</small>
+                                            <td class="conteos-location-col">
+                                                <div class="conteos-cell-stack">
+                                                    <div class="conteos-cell-primary">@item.LocationName</div>
+                                                    <div class="conteos-cell-secondary">@(string.IsNullOrWhiteSpace(item.RoomName) ? "Sin room" : item.RoomName)</div>
+                                                </div>
                                             </td>
-                                            <td class="text-end">
+                                            <td class="text-end conteos-count-col">
                                                 <div>@item.LineCount</div>
                                                 <small class="text-muted">@item.VarianceLineCount variaciones</small>
                                             </td>
@@ -109,7 +111,12 @@
                         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
                             <div>
                                 <h2 class="h4 mb-1">@SelectedSession.SessionCode</h2>
-                                <div class="text-muted">@SelectedSession.LocationName · @SelectedSession.Status</div>
+                                <div class="conteos-session-location">@SelectedSession.LocationName</div>
+                                <div class="text-muted">@SelectedSession.Status</div>
+                                @if (!string.IsNullOrWhiteSpace(SelectedSession.RoomName))
+                                {
+                                    <div class="conteos-session-room text-muted">@SelectedSession.RoomName</div>
+                                }
                                 @if (!string.IsNullOrWhiteSpace(SelectedSession.Notes))
                                 {
                                     <div class="small text-muted mt-1">@SelectedSession.Notes</div>
@@ -123,26 +130,47 @@
                         </div>
 
                         <div class="table-responsive" style="max-height: 36vh;">
-                            <table class="table table-sm table-hover align-middle">
+                            <table class="table table-sm table-hover align-middle conteos-lines-table">
                                 <thead class="table-light">
                                     <tr>
-                                        <th>Material</th>
-                                        <th class="text-end">Esperado</th>
-                                        <th class="text-end">Contado</th>
-                                        <th class="text-end">Varianza</th>
+                                        <th class="conteos-line-image-col">Foto</th>
+                                        <th class="conteos-material-col">Material</th>
+                                        <th class="text-end conteos-quantity-col">Esperado</th>
+                                        <th class="text-end conteos-quantity-col">Contado</th>
+                                        <th class="text-end conteos-quantity-col">Varianza</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @foreach (var line in SelectedSession.Lines)
                                     {
+                                        var thumbnailDataUrl = GetMaterialThumbnailDataUrl(line.MaterialId);
+                                        var materialTitle = string.IsNullOrWhiteSpace(line.MaterialDescription) ? line.MaterialCode : line.MaterialDescription;
+                                        var showMaterialCode = !string.IsNullOrWhiteSpace(line.MaterialCode) && !string.Equals(line.MaterialCode, materialTitle, StringComparison.OrdinalIgnoreCase);
                                         <tr class="@(SelectedLine?.Id == line.Id ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarLinea(line)">
-                                            <td>
-                                                <div class="fw-semibold">@line.MaterialCode</div>
-                                                <small class="text-muted">@line.MaterialDescription</small>
+                                            <td class="conteos-line-image-col">
+                                                @if (thumbnailDataUrl is not null)
+                                                {
+                                                    <button class="conteos-line-image-button" type="button" title="Ver imagen" aria-label="Ver imagen del material" @onclick="() => AbrirImagenMaterialAsync(line)" @onclick:stopPropagation="true">
+                                                        <img src="@thumbnailDataUrl" alt="Imagen de @materialTitle" class="conteos-line-image" />
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <div class="conteos-line-image-placeholder">Sin foto</div>
+                                                }
                                             </td>
-                                            <td class="text-end">@line.ExpectedQuantity.ToString("N2")</td>
-                                            <td class="text-end">@((line.CountedQuantity ?? 0).ToString("N2"))</td>
-                                            <td class="text-end">
+                                            <td class="conteos-material-col">
+                                                <div class="conteos-cell-stack">
+                                                    <div class="conteos-cell-primary">@materialTitle</div>
+                                                    @if (showMaterialCode)
+                                                    {
+                                                        <div class="conteos-cell-secondary">@line.MaterialCode</div>
+                                                    }
+                                                </div>
+                                            </td>
+                                            <td class="text-end conteos-quantity-col">@line.ExpectedQuantity.ToString("N2")</td>
+                                            <td class="text-end conteos-quantity-col">@((line.CountedQuantity ?? 0).ToString("N2"))</td>
+                                            <td class="text-end conteos-quantity-col">
                                                 @if (line.VarianceQuantity.HasValue && line.VarianceQuantity.Value != 0)
                                                 {
                                                     <span class="badge text-bg-warning">@line.VarianceQuantity.Value.ToString("N2")</span>
@@ -167,7 +195,17 @@
                             <div class="row g-3">
                                 <div class="col-12 col-xl-6">
                                     <h3 class="h5 mb-3">Captura de línea</h3>
-                                    <div class="mb-2 text-muted">@SelectedLine.MaterialCode · @SelectedLine.MaterialDescription</div>
+                                    @{
+                                        var selectedMaterialTitle = string.IsNullOrWhiteSpace(SelectedLine.MaterialDescription) ? SelectedLine.MaterialCode : SelectedLine.MaterialDescription;
+                                        var showSelectedMaterialCode = !string.IsNullOrWhiteSpace(SelectedLine.MaterialCode) && !string.Equals(SelectedLine.MaterialCode, selectedMaterialTitle, StringComparison.OrdinalIgnoreCase);
+                                    }
+                                    <div class="conteos-selected-line-summary mb-3">
+                                        <div class="conteos-selected-line-title">@selectedMaterialTitle</div>
+                                        @if (showSelectedMaterialCode)
+                                        {
+                                            <div class="conteos-selected-line-subtitle">@SelectedLine.MaterialCode</div>
+                                        }
+                                    </div>
                                     <div class="row g-3">
                                         <div class="col-md-4">
                                             <label class="form-label">Esperado</label>
@@ -256,3 +294,39 @@
         </div>
     </div>
 </div>
+
+@if (ShowMaterialImageModal)
+{
+    <div class="modal fade show d-block conteos-image-modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(string.IsNullOrWhiteSpace(MaterialImageModalTitle) ? "Imagen del material" : MaterialImageModalTitle)</h5>
+                    <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CloseMaterialImageModal"></button>
+                </div>
+                <div class="modal-body text-center">
+                    @if (MaterialImageModalDataUrl is not null)
+                    {
+                        <img src="@MaterialImageModalDataUrl" alt="Vista ampliada del material" class="conteos-image-modal-preview" />
+                    }
+                    else if (IsLoadingMaterialImage)
+                    {
+                        <div class="py-5 text-muted">Cargando imagen...</div>
+                    }
+                    else
+                    {
+                        <div class="py-5 text-muted">Sin imagen disponible.</div>
+                    }
+
+                    @if (IsLoadingMaterialImage && MaterialImageModalDataUrl is not null)
+                    {
+                        <div class="small text-muted mt-3">Cargando la imagen completa...</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" type="button" @onclick="CloseMaterialImageModal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}

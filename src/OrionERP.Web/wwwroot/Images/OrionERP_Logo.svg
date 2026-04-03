@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 260" role="img" aria-labelledby="orionTitle orionDesc">
+  <title id="orionTitle">OrionERP logo</title>
+  <desc id="orionDesc">A futuristic abstract logo with an orbital data lattice and the OrionERP wordmark.</desc>
+
+  <defs>
+    <linearGradient id="wordmarkGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f4fbff"/>
+      <stop offset="58%" stop-color="#b2efff"/>
+      <stop offset="100%" stop-color="#6fd7ff"/>
+    </linearGradient>
+
+    <linearGradient id="circuitGradient" x1="16%" y1="14%" x2="84%" y2="88%">
+      <stop offset="0%" stop-color="#5de0ff"/>
+      <stop offset="42%" stop-color="#b7f5ff"/>
+      <stop offset="100%" stop-color="#1f8aae"/>
+    </linearGradient>
+
+    <linearGradient id="orbitGradient" x1="10%" y1="22%" x2="94%" y2="82%">
+      <stop offset="0%" stop-color="#f5c453"/>
+      <stop offset="38%" stop-color="#7be4ff"/>
+      <stop offset="100%" stop-color="#1f8aae"/>
+    </linearGradient>
+
+    <radialGradient id="coreGlow" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#6ee2ff" stop-opacity="0.95"/>
+      <stop offset="58%" stop-color="#1f8aae" stop-opacity="0.26"/>
+      <stop offset="100%" stop-color="#1f8aae" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="sparkGlow" cx="50%" cy="50%" r="65%">
+      <stop offset="0%" stop-color="#fff4ce" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#f5c453" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="wordmarkGlow" x="-10%" y="-40%" width="120%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feColorMatrix in="blur" type="matrix"
+                     values="1 0 0 0 0
+                             0 1 0 0 0
+                             0 0 1 0 0
+                             0 0 0 0.28 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <g transform="translate(30 24)">
+    <circle cx="104" cy="104" r="90" fill="url(#coreGlow)" opacity="0.95"/>
+
+    <g stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <path d="M104 14L194 104L104 194L14 104Z"
+            stroke="url(#circuitGradient)"
+            stroke-width="10"/>
+      <path d="M104 42L166 104L104 166L42 104Z"
+            stroke="#d6f8ff"
+            stroke-opacity="0.8"
+            stroke-width="4"/>
+
+      <path d="M36 104H172" stroke="#d7f7ff" stroke-opacity="0.62" stroke-width="5"/>
+      <path d="M58 76H150" stroke="#8fe9ff" stroke-opacity="0.55" stroke-width="3"/>
+      <path d="M58 132H150" stroke="#8fe9ff" stroke-opacity="0.55" stroke-width="3"/>
+      <path d="M104 40V168" stroke="url(#orbitGradient)" stroke-width="5"/>
+
+      <path d="M36 158C48 184 76 198 106 198C150 198 184 169 194 126"
+            stroke="url(#orbitGradient)"
+            stroke-width="8"/>
+      <path d="M174 50C156 24 126 10 94 10C52 10 22 34 14 70"
+            stroke="url(#orbitGradient)"
+            stroke-width="8"/>
+    </g>
+
+    <g fill="#dff8ff">
+      <circle cx="36" cy="104" r="7"/>
+      <circle cx="104" cy="40" r="7"/>
+      <circle cx="172" cy="104" r="7"/>
+      <circle cx="104" cy="168" r="7"/>
+      <circle cx="104" cy="104" r="9" fill="#fff4ce"/>
+    </g>
+
+    <circle cx="104" cy="104" r="22" fill="none" stroke="#dff8ff" stroke-opacity="0.72" stroke-width="2.5"/>
+
+    <g transform="translate(168 10)">
+      <circle cx="18" cy="18" r="22" fill="url(#sparkGlow)" opacity="0.9"/>
+      <path d="M18 0L23.5 12.5L36 18L23.5 23.5L18 36L12.5 23.5L0 18L12.5 12.5Z"
+            fill="#f5c453"
+            filter="url(#softGlow)"/>
+    </g>
+  </g>
+
+  <g transform="translate(268 74)" filter="url(#wordmarkGlow)">
+    <text x="0" y="80"
+          fill="url(#wordmarkGradient)"
+          font-family="Segoe UI, Arial, sans-serif"
+          font-size="84"
+          font-weight="700"
+          letter-spacing="0.5">Orion<tspan fill="#fff4ce">ERP</tspan></text>
+
+    <text x="4" y="122"
+          fill="#9ac7d8"
+          font-family="Segoe UI, Arial, sans-serif"
+          font-size="18"
+          font-weight="700"
+          letter-spacing="5.4">EXCELENCIA EN DATOS</text>
+  </g>
+</svg>

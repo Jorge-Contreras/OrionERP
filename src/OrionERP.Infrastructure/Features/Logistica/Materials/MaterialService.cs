@@ -214,6 +214,81 @@ public sealed class MaterialService : IMaterialService
     return row;
   }
 
+  public async Task<LogisticsBinaryContent?> GetMaterialThumbnailAsync(int materialId, CancellationToken ct = default)
+  {
+    const string sql =
+      """
+      SELECT
+          m.Id,
+          CASE
+              WHEN m.PrimaryImageThumbnail IS NOT NULL THEN CONCAT(m.MaterialCode, '-thumbnail.bin')
+              ELSE COALESCE(m.PrimaryImageFileName, CONCAT(m.MaterialCode, '.bin'))
+          END AS FileName,
+          CASE
+              WHEN m.PrimaryImageThumbnail IS NOT NULL THEN COALESCE(m.PrimaryImageThumbnailContentType, 'image/jpeg')
+              ELSE m.PrimaryImageContentType
+          END AS ContentType,
+          COALESCE(m.PrimaryImageThumbnail, m.PrimaryImage) AS Bytes
+      FROM logistica.Material m
+      WHERE m.Id = @MaterialId
+        AND COALESCE(m.PrimaryImageThumbnail, m.PrimaryImage) IS NOT NULL;
+      """;
+
+    using var conn = CreateConnection();
+    var row = await conn.QueryFirstOrDefaultAsync<LogisticsBinaryContent>(
+      new CommandDefinition(sql, new { MaterialId = materialId }, cancellationToken: ct));
+
+    if (row is null)
+    {
+      return null;
+    }
+
+    row.ContentType = LogisticsContentTypes.Normalize(row.ContentType, row.FileName, row.Bytes);
+    return row;
+  }
+
+  public async Task<IReadOnlyList<LogisticsBinaryContent>> GetMaterialThumbnailsAsync(IEnumerable<int> materialIds, CancellationToken ct = default)
+  {
+    var ids = materialIds?
+      .Where(id => id > 0)
+      .Distinct()
+      .ToArray() ?? [];
+
+    if (ids.Length == 0)
+    {
+      return Array.Empty<LogisticsBinaryContent>();
+    }
+
+    const string sql =
+      """
+      SELECT
+          m.Id,
+          CASE
+              WHEN m.PrimaryImageThumbnail IS NOT NULL THEN CONCAT(m.MaterialCode, '-thumbnail.bin')
+              ELSE COALESCE(m.PrimaryImageFileName, CONCAT(m.MaterialCode, '.bin'))
+          END AS FileName,
+          CASE
+              WHEN m.PrimaryImageThumbnail IS NOT NULL THEN COALESCE(m.PrimaryImageThumbnailContentType, 'image/jpeg')
+              ELSE m.PrimaryImageContentType
+          END AS ContentType,
+          COALESCE(m.PrimaryImageThumbnail, m.PrimaryImage) AS Bytes
+      FROM logistica.Material m
+      WHERE m.Id IN @MaterialIds
+        AND COALESCE(m.PrimaryImageThumbnail, m.PrimaryImage) IS NOT NULL;
+      """;
+
+    using var conn = CreateConnection();
+    var rows = (await conn.QueryAsync<LogisticsBinaryContent>(
+      new CommandDefinition(sql, new { MaterialIds = ids }, cancellationToken: ct))).AsList();
+
+    foreach (var row in rows)
+    {
+      row.ContentType = LogisticsContentTypes.Normalize(row.ContentType, row.FileName, row.Bytes);
+    }
+
+    return rows;
+  }
+
   public async Task<LogisticsCommandResult> SaveMaterialAsync(MaterialUpsertRequest request, CancellationToken ct = default)
   {
     if (request is null)
@@ -239,6 +314,12 @@ public sealed class MaterialService : IMaterialService
         request.PrimaryImageContentType,
         request.PrimaryImageFileName,
         request.PrimaryImageBytes);
+      var thumbnailContentType = hasNewImage && request.PrimaryImageThumbnailBytes is { Length: > 0 }
+        ? LogisticsContentTypes.Normalize(
+          request.PrimaryImageThumbnailContentType,
+          fileName: null,
+          bytes: request.PrimaryImageThumbnailBytes)
+        : null;
 
       if (request.Id.HasValue && request.Id.Value > 0)
       {
@@ -272,7 +353,9 @@ public sealed class MaterialService : IMaterialService
             """
             , PrimaryImage = @PrimaryImage,
               PrimaryImageFileName = @PrimaryImageFileName,
-              PrimaryImageContentType = @PrimaryImageContentType
+              PrimaryImageContentType = @PrimaryImageContentType,
+              PrimaryImageThumbnail = @PrimaryImageThumbnail,
+              PrimaryImageThumbnailContentType = @PrimaryImageThumbnailContentType
             """);
         }
 
@@ -304,7 +387,9 @@ public sealed class MaterialService : IMaterialService
               request.IsActive,
               PrimaryImage = request.PrimaryImageBytes,
               PrimaryImageFileName = NullIfWhiteSpace(request.PrimaryImageFileName),
-              PrimaryImageContentType = imageContentType
+              PrimaryImageContentType = imageContentType,
+              PrimaryImageThumbnail = hasNewImage ? request.PrimaryImageThumbnailBytes : null,
+              PrimaryImageThumbnailContentType = thumbnailContentType
             },
             tx,
             cancellationToken: ct));
@@ -338,6 +423,8 @@ public sealed class MaterialService : IMaterialService
               PrimaryImage,
               PrimaryImageFileName,
               PrimaryImageContentType,
+              PrimaryImageThumbnail,
+              PrimaryImageThumbnailContentType,
               PurchaseLink,
               MaterialClass,
               IsActive
@@ -365,6 +452,8 @@ public sealed class MaterialService : IMaterialService
               @PrimaryImage,
               @PrimaryImageFileName,
               @PrimaryImageContentType,
+              @PrimaryImageThumbnail,
+              @PrimaryImageThumbnailContentType,
               @PurchaseLink,
               @MaterialClass,
               @IsActive
@@ -396,6 +485,8 @@ public sealed class MaterialService : IMaterialService
               PrimaryImage = request.PrimaryImageBytes,
               PrimaryImageFileName = NullIfWhiteSpace(request.PrimaryImageFileName),
               PrimaryImageContentType = hasNewImage ? imageContentType : null,
+              PrimaryImageThumbnail = hasNewImage ? request.PrimaryImageThumbnailBytes : null,
+              PrimaryImageThumbnailContentType = thumbnailContentType,
               PurchaseLink = NullIfWhiteSpace(request.PurchaseLink),
               request.MaterialClass,
               request.IsActive

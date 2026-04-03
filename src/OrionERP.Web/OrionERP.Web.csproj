@@ -45,6 +45,9 @@
     <Content Update="wwwroot\Images\OrionERP_Logo.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+    <Content Update="wwwroot\Images\OrionERP_Logo.svg">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <Content Update="wwwroot\Images\BonhomiaSuitesLetterheadLogo.svg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>

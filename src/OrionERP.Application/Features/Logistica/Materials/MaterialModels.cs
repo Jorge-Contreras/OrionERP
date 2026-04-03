@@ -11,6 +11,8 @@ public sealed class MaterialFilter
   public string? MaterialClass { get; set; }
   public string? Status { get; set; }
   public bool? HasImage { get; set; }
+  public int Skip { get; set; }
+  public int Take { get; set; }
 }
 
 public sealed class MaterialListItemDto

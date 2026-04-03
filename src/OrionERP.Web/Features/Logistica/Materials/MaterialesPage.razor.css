@@ -1,40 +1,13 @@
-.ubicaciones-stock-table .ubicaciones-material-col {
-  min-width: 18rem;
+.materiales-table .materiales-description-col {
+  min-width: 16rem;
 }
 
-.ubicaciones-stock-image-col {
+.materiales-image-col {
   width: 4.75rem;
   min-width: 4.75rem;
 }
 
-.ubicaciones-threshold-col {
-  min-width: 7rem;
-}
-
-.ubicaciones-cell-stack {
-  min-width: 0;
-}
-
-.ubicaciones-cell-primary {
-  color: var(--orion-color-primary);
-  font-size: 0.98rem;
-  font-weight: 600;
-  line-height: 1.25;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.ubicaciones-cell-secondary {
-  margin-top: 0.2rem;
-  color: var(--orion-color-text-muted);
-  font-size: 0.78rem;
-  line-height: 1.2;
-  letter-spacing: 0.02em;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.ubicaciones-line-image-button {
+.materiales-line-image-button {
   width: 3.25rem;
   height: 3.25rem;
   padding: 0;
@@ -45,20 +18,20 @@
   overflow: hidden;
 }
 
-.ubicaciones-line-image-button:hover,
-.ubicaciones-line-image-button:focus-visible {
+.materiales-line-image-button:hover,
+.materiales-line-image-button:focus-visible {
   border-color: rgba(31, 138, 174, 0.45);
   box-shadow: 0 10px 24px rgba(31, 138, 174, 0.18);
 }
 
-.ubicaciones-line-image {
+.materiales-line-image {
   width: 100%;
   height: 100%;
   display: block;
   object-fit: cover;
 }
 
-.ubicaciones-line-image-placeholder {
+.materiales-line-image-placeholder {
   width: 3.25rem;
   min-height: 3.25rem;
   display: inline-flex;
@@ -75,11 +48,16 @@
   text-align: center;
 }
 
-.ubicaciones-image-modal-backdrop {
+.materiales-editor-preview {
+  max-width: 160px;
+  max-height: 160px;
+}
+
+.materiales-image-modal-backdrop {
   background-color: rgba(15, 45, 78, 0.45);
 }
 
-.ubicaciones-image-modal-preview {
+.materiales-image-modal-preview {
   max-width: 100%;
   max-height: min(72vh, 48rem);
   border-radius: 1rem;
@@ -88,27 +66,24 @@
 }
 
 @media (max-width: 767.98px) {
-  .ubicaciones-stock-table .ubicaciones-material-col {
+  .materiales-table .materiales-description-col {
     min-width: 12rem;
   }
 
-  .ubicaciones-stock-image-col {
+  .materiales-image-col {
     width: 4rem;
     min-width: 4rem;
   }
 
-  .ubicaciones-threshold-col {
-    min-width: 6rem;
-  }
-
-  .ubicaciones-cell-primary {
-    font-size: 0.92rem;
-  }
-
-  .ubicaciones-line-image-button,
-  .ubicaciones-line-image-placeholder {
+  .materiales-line-image-button,
+  .materiales-line-image-placeholder {
     width: 2.85rem;
     min-height: 2.85rem;
     border-radius: 0.7rem;
+  }
+
+  .materiales-editor-preview {
+    max-width: 128px;
+    max-height: 128px;
   }
 }

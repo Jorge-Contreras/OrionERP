@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using System.Text;
 using Dapper;
 using Microsoft.Data.SqlClient;
@@ -24,6 +25,8 @@ public sealed class MaterialService : IMaterialService
   public async Task<IReadOnlyList<MaterialListItemDto>> GetMaterialsAsync(MaterialFilter filter, CancellationToken ct = default)
   {
     filter ??= new MaterialFilter();
+    var skip = Math.Max(filter.Skip, 0);
+    var take = Math.Max(filter.Take, 0);
 
     var sql = new StringBuilder(
       """
@@ -98,7 +101,19 @@ public sealed class MaterialService : IMaterialService
       sql.AppendLine(filter.HasImage.Value ? " AND m.PrimaryImage IS NOT NULL" : " AND m.PrimaryImage IS NULL");
     }
 
-    sql.AppendLine("ORDER BY m.MaterialCode, m.[Description], m.Id;");
+    sql.AppendLine("ORDER BY m.MaterialCode, m.[Description], m.Id");
+
+    if (take > 0)
+    {
+      sql.AppendLine("OFFSET @Skip ROWS");
+      sql.AppendLine("FETCH NEXT @Take ROWS ONLY;");
+      parameters.Add("@Skip", skip, DbType.Int32);
+      parameters.Add("@Take", take, DbType.Int32);
+    }
+    else
+    {
+      sql.AppendLine(";");
+    }
 
     using var conn = CreateConnection();
     var rows = await conn.QueryAsync<MaterialListItemDto>(
@@ -304,7 +319,7 @@ public sealed class MaterialService : IMaterialService
 
     using var conn = CreateConnection();
     await conn.OpenAsync(ct);
-    using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+    using var tx = await conn.BeginTransactionAsync(ct);
 
     try
     {
@@ -521,9 +536,9 @@ public sealed class MaterialService : IMaterialService
     }
   }
 
-  private SqlConnection CreateConnection()
-    => _connectionFactory.Create() as SqlConnection
-      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una SqlConnection.");
+  private DbConnection CreateConnection()
+    => _connectionFactory.Create() as DbConnection
+      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
 
   private static string? NullIfWhiteSpace(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

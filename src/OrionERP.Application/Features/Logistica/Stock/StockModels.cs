@@ -11,6 +11,8 @@ public sealed class StockFilter
   public bool LowStockOnly { get; set; }
   public bool CountDueOnly { get; set; }
   public bool IncludeZeroBalances { get; set; } = true;
+  public int Skip { get; set; }
+  public int Take { get; set; }
 }
 
 public sealed class StockListItemDto
@@ -36,6 +38,28 @@ public sealed class StockListItemDto
   public DateTime? LastCountedAt { get; set; }
   public int? CountFrequencyDays { get; set; }
   public int AttachmentCount { get; set; }
+}
+
+public sealed class StockThresholdUpdateRequest : IValidatableObject
+{
+  [Range(1, int.MaxValue, ErrorMessage = "Selecciona un registro de inventario válido.")]
+  public int StockBalanceId { get; set; }
+
+  [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "El mínimo no puede ser negativo.")]
+  public decimal? MinQuantity { get; set; }
+
+  [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "El máximo no puede ser negativo.")]
+  public decimal? MaxQuantity { get; set; }
+
+  public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+  {
+    if (MinQuantity.HasValue && MaxQuantity.HasValue && MinQuantity.Value > MaxQuantity.Value)
+    {
+      yield return new ValidationResult(
+        "El mínimo no puede ser mayor que el máximo.",
+        [nameof(MinQuantity), nameof(MaxQuantity)]);
+    }
+  }
 }
 
 public sealed class StockTransactionDto

@@ -1,7 +1,8 @@
 using System.Data;
+using System.Data.Common;
+using System.ComponentModel.DataAnnotations;
 using System.Text;
 using Dapper;
-using Microsoft.Data.SqlClient;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Logistica.Stock;
@@ -21,6 +22,8 @@ public sealed class StockService : IStockService
   public async Task<IReadOnlyList<StockListItemDto>> GetStockAsync(StockFilter filter, CancellationToken ct = default)
   {
     filter ??= new StockFilter();
+    var skip = Math.Max(filter.Skip, 0);
+    var take = Math.Max(filter.Take, 0);
 
     var sql = new StringBuilder(
       """
@@ -128,13 +131,64 @@ public sealed class StockService : IStockService
         """);
     }
 
-    sql.AppendLine("ORDER BY room.ROOM_NAME, l.LocationName, m.MaterialCode, m.[Description], sb.Id;");
+    sql.AppendLine("ORDER BY room.ROOM_NAME, l.LocationName, m.MaterialCode, m.[Description], sb.Id");
+
+    if (take > 0)
+    {
+      sql.AppendLine("OFFSET @Skip ROWS");
+      sql.AppendLine("FETCH NEXT @Take ROWS ONLY;");
+      parameters.Add("@Skip", skip, DbType.Int32);
+      parameters.Add("@Take", take, DbType.Int32);
+    }
+    else
+    {
+      sql.AppendLine(";");
+    }
 
     using var conn = CreateConnection();
     var rows = await conn.QueryAsync<StockListItemDto>(
       new CommandDefinition(sql.ToString(), parameters, cancellationToken: ct));
 
     return rows.AsList();
+  }
+
+  public async Task<LogisticsCommandResult> SaveStockThresholdsAsync(StockThresholdUpdateRequest request, CancellationToken ct = default)
+  {
+    if (request is null)
+    {
+      throw new ArgumentNullException(nameof(request));
+    }
+
+    var validationResults = new List<ValidationResult>();
+    if (!Validator.TryValidateObject(request, new ValidationContext(request), validationResults, validateAllProperties: true))
+    {
+      return LogisticsCommandResult.Fail(validationResults[0].ErrorMessage ?? "Los parámetros de inventario no son válidos.");
+    }
+
+    const string sql =
+      """
+      UPDATE logistica.StockBalance
+      SET MinQuantity = @MinQuantity,
+          MaxQuantity = @MaxQuantity,
+          UpdatedAt = SYSUTCDATETIME()
+      WHERE Id = @StockBalanceId;
+      """;
+
+    using var conn = CreateConnection();
+    var affected = await conn.ExecuteAsync(
+      new CommandDefinition(
+        sql,
+        new
+        {
+          request.StockBalanceId,
+          request.MinQuantity,
+          request.MaxQuantity
+        },
+        cancellationToken: ct));
+
+    return affected == 0
+      ? LogisticsCommandResult.Fail("El registro de inventario ya no existe.")
+      : LogisticsCommandResult.Ok("Parámetros de inventario guardados correctamente.", request.StockBalanceId);
   }
 
   public async Task<IReadOnlyList<StockTransactionDto>> GetStockTransactionsAsync(int stockBalanceId, CancellationToken ct = default)
@@ -274,9 +328,9 @@ public sealed class StockService : IStockService
     return LogisticsCommandResult.Ok("Adjunto de inventario guardado correctamente.", id);
   }
 
-  private SqlConnection CreateConnection()
-    => _connectionFactory.Create() as SqlConnection
-      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una SqlConnection.");
+  private DbConnection CreateConnection()
+    => _connectionFactory.Create() as DbConnection
+      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
 
   private static string? NullIfWhiteSpace(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

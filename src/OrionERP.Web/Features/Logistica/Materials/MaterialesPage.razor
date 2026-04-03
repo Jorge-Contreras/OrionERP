@@ -68,7 +68,7 @@
                     </div>
 
                     <div class="d-flex gap-2 mb-3">
-                        <button type="button" class="btn btn-primary" @onclick="BuscarAsync" disabled="@IsBusy">
+                        <button type="button" class="btn btn-primary" @onclick="BuscarAsync" disabled="@IsListBusy">
                             @(IsBusy ? "Buscando..." : "Buscar")
                         </button>
                         <label class="form-check d-flex align-items-center gap-2 mb-0">
@@ -78,32 +78,59 @@
                     </div>
 
                     <div class="table-responsive" style="max-height: 70vh;">
-                        <table class="table table-sm table-hover align-middle">
+                        <table class="table table-sm table-hover align-middle materiales-table">
                             <thead class="table-light">
                                 <tr>
+                                    <th class="materiales-image-col">Foto</th>
                                     <th>Código</th>
-                                    <th>Material</th>
+                                    <th class="materiales-description-col">Material</th>
                                     <th>Clase</th>
                                     <th class="text-end">Existencia</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @if (Materials.Count == 0)
+                                @if (!HasExecutedSearch)
                                 {
                                     <tr>
-                                        <td colspan="4" class="text-center text-muted py-4">No hay materiales para el filtro actual.</td>
+                                        <td colspan="5" class="text-center text-muted py-4">Usa los filtros y presiona Buscar para cargar materiales.</td>
+                                    </tr>
+                                }
+                                else if (IsBusy && Materials.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted py-4">Cargando materiales...</td>
+                                    </tr>
+                                }
+                                else if (Materials.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted py-4">No hay materiales para el filtro actual.</td>
                                     </tr>
                                 }
                                 else
                                 {
                                     @foreach (var item in Materials)
                                     {
+                                        var thumbnailDataUrl = GetMaterialThumbnailDataUrl(item.Id);
+                                        var materialTitle = string.IsNullOrWhiteSpace(item.Description) ? item.MaterialCode : item.Description;
                                         <tr class="@(item.Id == SelectedMaterialId ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarMaterialAsync(item.Id)">
+                                            <td class="materiales-image-col">
+                                                @if (thumbnailDataUrl is not null)
+                                                {
+                                                    <button class="materiales-line-image-button" type="button" title="Ver imagen" aria-label="Ver imagen del material" @onclick="() => AbrirImagenMaterialAsync(item)" @onclick:stopPropagation="true">
+                                                        <img src="@thumbnailDataUrl" alt="Imagen de @materialTitle" class="materiales-line-image" />
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <div class="materiales-line-image-placeholder">Sin foto</div>
+                                                }
+                                            </td>
                                             <td>
                                                 <div class="fw-semibold">@item.MaterialCode</div>
                                                 <small class="text-muted">@item.Status</small>
                                             </td>
-                                            <td>
+                                            <td class="materiales-description-col">
                                                 <div class="fw-semibold">@item.Description</div>
                                                 <small class="text-muted">@(string.IsNullOrWhiteSpace(item.VendorName) ? "Sin proveedor" : item.VendorName)</small>
                                             </td>
@@ -121,6 +148,20 @@
                             </tbody>
                         </table>
                     </div>
+
+                    @if (HasExecutedSearch && Materials.Count > 0)
+                    {
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+                            <span class="text-muted small">Mostrando @Materials.Count materiales.</span>
+
+                            @if (HasMoreMaterials)
+                            {
+                                <button class="btn btn-outline-primary" type="button" @onclick="CargarMasAsync" disabled="@IsListBusy">
+                                    @(IsLoadingMore ? "Cargando..." : $"Cargar {PageSize} más")
+                                </button>
+                            }
+                        </div>
+                    }
                 </div>
             </section>
         </div>
@@ -135,7 +176,7 @@
                         </div>
                         @if (ImagePreviewDataUrl is not null)
                         {
-                            <img src="@ImagePreviewDataUrl" alt="Vista previa del material" class="img-thumbnail" style="max-width: 160px; max-height: 160px;" />
+                            <img src="@ImagePreviewDataUrl" alt="Vista previa del material" class="img-thumbnail materiales-editor-preview" />
                         }
                     </div>
 
@@ -283,3 +324,39 @@
         </div>
     </div>
 </div>
+
+@if (ShowMaterialImageModal)
+{
+    <div class="modal fade show d-block materiales-image-modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(string.IsNullOrWhiteSpace(MaterialImageModalTitle) ? "Imagen del material" : MaterialImageModalTitle)</h5>
+                    <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CloseMaterialImageModal"></button>
+                </div>
+                <div class="modal-body text-center">
+                    @if (MaterialImageModalDataUrl is not null)
+                    {
+                        <img src="@MaterialImageModalDataUrl" alt="Vista ampliada del material" class="materiales-image-modal-preview" />
+                    }
+                    else if (IsLoadingMaterialImage)
+                    {
+                        <div class="py-5 text-muted">Cargando imagen...</div>
+                    }
+                    else
+                    {
+                        <div class="py-5 text-muted">Sin imagen disponible.</div>
+                    }
+
+                    @if (IsLoadingMaterialImage && MaterialImageModalDataUrl is not null)
+                    {
+                        <div class="small text-muted mt-3">Cargando la imagen completa...</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" type="button" @onclick="CloseMaterialImageModal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}

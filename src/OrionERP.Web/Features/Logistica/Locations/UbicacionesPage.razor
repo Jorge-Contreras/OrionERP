@@ -241,7 +241,7 @@
                             <input class="form-check-input" type="checkbox" @bind="StockFilter.IncludeZeroBalances" />
                             <span class="form-check-label">Incluir ceros</span>
                         </label>
-                        <button class="btn btn-primary ms-auto" type="button" @onclick="BuscarStockAsync" disabled="@IsLoadingStock">
+                        <button class="btn btn-primary ms-auto" type="button" @onclick="BuscarStockAsync" disabled="@IsStockBusy">
                             @(IsLoadingStock ? "Cargando..." : "Actualizar inventario")
                         </button>
                     </div>
@@ -254,14 +254,28 @@
                                     <th class="ubicaciones-material-col">Material</th>
                                     <th>Ubicación</th>
                                     <th class="text-end">Cantidad</th>
+                                    <th class="text-end ubicaciones-threshold-col">Mín.</th>
+                                    <th class="text-end ubicaciones-threshold-col">Máx.</th>
                                     <th class="text-end">Alertas</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @if (StockRows.Count == 0)
+                                @if (!HasExecutedStockSearch)
                                 {
                                     <tr>
-                                        <td colspan="5" class="text-center text-muted py-3">No hay inventario para el filtro actual.</td>
+                                        <td colspan="7" class="text-center text-muted py-3">Selecciona una ubicación o presiona Actualizar inventario.</td>
+                                    </tr>
+                                }
+                                else if (IsLoadingStock && StockRows.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted py-3">Cargando inventario...</td>
+                                    </tr>
+                                }
+                                else if (StockRows.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted py-3">No hay inventario para el filtro actual.</td>
                                     </tr>
                                 }
                                 else
@@ -298,6 +312,8 @@
                                                 <small class="text-muted">@(string.IsNullOrWhiteSpace(item.RoomName) ? item.LocationType : item.RoomName)</small>
                                             </td>
                                             <td class="text-end">@item.Quantity.ToString("N2")</td>
+                                            <td class="text-end ubicaciones-threshold-col">@FormatThresholdQuantity(item.MinQuantity)</td>
+                                            <td class="text-end ubicaciones-threshold-col">@FormatThresholdQuantity(item.MaxQuantity)</td>
                                             <td class="text-end">
                                                 @if (item.IsLowStock)
                                                 {
@@ -314,6 +330,20 @@
                             </tbody>
                         </table>
                     </div>
+
+                    @if (HasExecutedStockSearch && StockRows.Count > 0)
+                    {
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+                            <span class="text-muted small">Mostrando @StockRows.Count registros de inventario.</span>
+
+                            @if (HasMoreStockRows)
+                            {
+                                <button class="btn btn-outline-primary" type="button" @onclick="CargarMasStockAsync" disabled="@IsStockBusy">
+                                    @(IsLoadingMoreStock ? "Cargando..." : $"Cargar {PageSize} más")
+                                </button>
+                            }
+                        </div>
+                    }
                 </div>
             </section>
 
@@ -329,6 +359,54 @@
                         </div>
 
                         <div class="row g-3">
+                            <div class="col-12">
+                                <section class="border rounded-3 p-3 bg-body-tertiary">
+                                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                                        <div>
+                                            <h3 class="h6 mb-1">Parámetros de inventario</h3>
+                                            <div class="text-muted small">Define el mínimo y máximo para esta combinación de ubicación y material.</div>
+                                        </div>
+                                        <div class="text-muted small">Cantidad actual: @SelectedStock.Quantity.ToString("N2") @SelectedStock.BaseUnitName</div>
+                                    </div>
+
+                                    <EditForm Model="ThresholdEditor" OnValidSubmit="GuardarThresholdsAsync">
+                                        <DataAnnotationsValidator />
+                                        <ValidationSummary />
+
+                                        <div class="row g-3 align-items-end">
+                                            <div class="col-md-3">
+                                                <label class="form-label">Cantidad actual</label>
+                                                <input class="form-control" type="text" value="@SelectedStock.Quantity.ToString("N2")" disabled />
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label">Mínimo</label>
+                                                <InputNumber class="form-control" @bind-Value="ThresholdEditor.MinQuantity" />
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label">Máximo</label>
+                                                <InputNumber class="form-control" @bind-Value="ThresholdEditor.MaxQuantity" />
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label">Estado actual</label>
+                                                <input class="form-control" type="text" value="@GetThresholdStatusText()" disabled />
+                                            </div>
+                                            <div class="col-12">
+                                                <div class="form-text">Deja un campo vacío para quitar ese límite.</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="d-flex gap-2 mt-3">
+                                            <button class="btn btn-primary" type="submit" disabled="@IsSavingThresholds">
+                                                @(IsSavingThresholds ? "Guardando..." : "Guardar parámetros")
+                                            </button>
+                                            <button class="btn btn-outline-secondary" type="button" @onclick="RestablecerThresholdEditor" disabled="@IsSavingThresholds">
+                                                Restablecer
+                                            </button>
+                                        </div>
+                                    </EditForm>
+                                </section>
+                            </div>
+
                             <div class="col-12 col-xl-6">
                                 <h3 class="h6">Historial de movimientos</h3>
                                 <div class="table-responsive" style="max-height: 28vh;">

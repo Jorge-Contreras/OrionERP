@@ -12,6 +12,9 @@ namespace OrionERP.Web.Features.Logistica.Locations;
 
 public partial class UbicacionesPage : ComponentBase
 {
+  private const int PageSize = 50;
+  private const int QueryTake = PageSize + 1;
+
   protected static readonly string[] LocationTypes = ["Room", "Storage", "Disposal", "Service"];
 
   [Inject] private ILocationService LocationService { get; set; } = default!;
@@ -32,11 +35,16 @@ public partial class UbicacionesPage : ComponentBase
   protected List<LocationMaterialAttachmentDto> SelectedStockAttachments { get; set; } = [];
   protected Dictionary<int, string> MaterialThumbnailDataUrls { get; set; } = [];
   protected LocationUpsertRequest LocationEditor { get; set; } = CreateLocationEditor();
+  protected StockThresholdUpdateRequest ThresholdEditor { get; set; } = CreateThresholdEditor();
   protected StockListItemDto? SelectedStock { get; set; }
   protected int? SelectedLocationId { get; set; }
+  protected bool HasExecutedStockSearch { get; set; }
+  protected bool HasMoreStockRows { get; set; }
   protected bool IsLoadingLocations { get; set; }
   protected bool IsLoadingStock { get; set; }
+  protected bool IsLoadingMoreStock { get; set; }
   protected bool IsSavingLocation { get; set; }
+  protected bool IsSavingThresholds { get; set; }
   protected bool IsSavingAttachment { get; set; }
   protected bool ShowMaterialImageModal { get; set; }
   protected bool IsLoadingMaterialImage { get; set; }
@@ -49,12 +57,12 @@ public partial class UbicacionesPage : ComponentBase
   protected string? MaterialImageModalDataUrl { get; set; }
 
   protected bool HasPendingAttachment => PendingAttachmentBytes is { Length: > 0 };
+  protected bool IsStockBusy => IsLoadingStock || IsLoadingMoreStock;
 
   protected override async Task OnInitializedAsync()
   {
     await LoadLookupsAsync();
     await BuscarUbicacionesAsync();
-    await BuscarStockAsync();
   }
 
   protected async Task BuscarUbicacionesAsync()
@@ -78,12 +86,19 @@ public partial class UbicacionesPage : ComponentBase
 
   protected async Task BuscarStockAsync()
   {
+    HasExecutedStockSearch = true;
     IsLoadingStock = true;
     CloseMaterialImageModal();
+    ResetStockSelection();
+    StockRows = [];
+    MaterialThumbnailDataUrls = [];
+    HasMoreStockRows = false;
     try
     {
-      StockRows = (await StockService.GetStockAsync(StockFilter)).ToList();
-      await CargarMiniaturasMaterialesAsync();
+      var page = await GetStockPageAsync(0);
+      StockRows = page.Items;
+      HasMoreStockRows = page.HasMore;
+      await CargarMiniaturasMaterialesAsync(page.Items, append: false);
     }
     catch (Exception ex)
     {
@@ -93,6 +108,32 @@ public partial class UbicacionesPage : ComponentBase
     finally
     {
       IsLoadingStock = false;
+      StateHasChanged();
+    }
+  }
+
+  protected async Task CargarMasStockAsync()
+  {
+    if (IsStockBusy || !HasMoreStockRows)
+    {
+      return;
+    }
+
+    IsLoadingMoreStock = true;
+    try
+    {
+      var page = await GetStockPageAsync(StockRows.Count);
+      StockRows.AddRange(page.Items);
+      HasMoreStockRows = page.HasMore;
+      await CargarMiniaturasMaterialesAsync(page.Items, append: true);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron cargar más registros de inventario. {ex.Message}");
+    }
+    finally
+    {
+      IsLoadingMoreStock = false;
       StateHasChanged();
     }
   }
@@ -171,6 +212,7 @@ public partial class UbicacionesPage : ComponentBase
   protected async Task SeleccionarStockAsync(StockListItemDto item)
   {
     SelectedStock = item;
+    ThresholdEditor = CreateThresholdEditor(item);
     PendingAttachmentBytes = null;
     PendingAttachmentName = null;
     PendingAttachmentContentType = null;
@@ -185,6 +227,42 @@ public partial class UbicacionesPage : ComponentBase
     {
       UiMessages.ShowError($"No se pudo cargar el detalle de inventario. {ex.Message}");
     }
+  }
+
+  protected async Task GuardarThresholdsAsync()
+  {
+    if (SelectedStock is null)
+    {
+      return;
+    }
+
+    IsSavingThresholds = true;
+    try
+    {
+      ThresholdEditor.StockBalanceId = SelectedStock.StockBalanceId;
+      var result = await StockService.SaveStockThresholdsAsync(ThresholdEditor);
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      ApplyThresholdsToSelection(ThresholdEditor.MinQuantity, ThresholdEditor.MaxQuantity);
+      UiMessages.ShowSuccess(result.Message);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron guardar los parámetros de inventario. {ex.Message}");
+    }
+    finally
+    {
+      IsSavingThresholds = false;
+    }
+  }
+
+  protected void RestablecerThresholdEditor()
+  {
+    ThresholdEditor = SelectedStock is null ? CreateThresholdEditor() : CreateThresholdEditor(SelectedStock);
   }
 
   protected async Task OnAttachmentSelectedAsync(InputFileChangeEventArgs args)
@@ -321,28 +399,125 @@ public partial class UbicacionesPage : ComponentBase
     InventoryLocationOptions = (await LocationService.GetLocationLookupAsync(inventoryOnly: true)).ToList();
   }
 
-  private async Task CargarMiniaturasMaterialesAsync()
+  private async Task<(List<StockListItemDto> Items, bool HasMore)> GetStockPageAsync(int skip)
   {
-    if (StockRows.Count == 0)
+    var rows = (await StockService.GetStockAsync(CreateQueryFilter(skip, QueryTake))).ToList();
+    var hasMore = rows.Count > PageSize;
+    if (hasMore)
+    {
+      rows = rows.Take(PageSize).ToList();
+    }
+
+    return (rows, hasMore);
+  }
+
+  private async Task CargarMiniaturasMaterialesAsync(IEnumerable<StockListItemDto> stockRows, bool append)
+  {
+    if (!append)
     {
       MaterialThumbnailDataUrls = [];
+    }
+
+    var materialIds = stockRows
+      .Select(item => item.MaterialId)
+      .Distinct()
+      .Where(materialId => !append || !MaterialThumbnailDataUrls.ContainsKey(materialId))
+      .ToList();
+
+    if (materialIds.Count == 0)
+    {
       return;
     }
 
     try
     {
-      var thumbnails = await MaterialService.GetMaterialThumbnailsAsync(StockRows.Select(item => item.MaterialId).Distinct());
-      MaterialThumbnailDataUrls = thumbnails
+      var thumbnails = await MaterialService.GetMaterialThumbnailsAsync(materialIds);
+      var thumbnailDataUrls = thumbnails
         .Where(thumbnail => thumbnail.Bytes.Length > 0)
         .ToDictionary(
           thumbnail => thumbnail.Id,
           thumbnail => BuildDataUrl(thumbnail.ContentType, thumbnail.Bytes));
+
+      if (append)
+      {
+        foreach (var item in thumbnailDataUrls)
+        {
+          MaterialThumbnailDataUrls[item.Key] = item.Value;
+        }
+      }
+      else
+      {
+        MaterialThumbnailDataUrls = thumbnailDataUrls;
+      }
     }
     catch (Exception ex)
     {
-      MaterialThumbnailDataUrls = [];
+      if (!append)
+      {
+        MaterialThumbnailDataUrls = [];
+      }
+
       UiMessages.ShowWarning($"No se pudieron cargar las miniaturas de los materiales. {ex.Message}");
     }
+  }
+
+  private StockFilter CreateQueryFilter(int skip, int take)
+    => new()
+    {
+      SearchText = StockFilter.SearchText,
+      RoomId = StockFilter.RoomId,
+      LocationId = StockFilter.LocationId,
+      LowStockOnly = StockFilter.LowStockOnly,
+      CountDueOnly = StockFilter.CountDueOnly,
+      IncludeZeroBalances = StockFilter.IncludeZeroBalances,
+      Skip = skip,
+      Take = take
+    };
+
+  private void ApplyThresholdsToSelection(decimal? minQuantity, decimal? maxQuantity)
+  {
+    if (SelectedStock is null)
+    {
+      ThresholdEditor = CreateThresholdEditor();
+      return;
+    }
+
+    var isLowStock = minQuantity.HasValue && SelectedStock.Quantity <= minQuantity.Value;
+    UpdateThresholds(SelectedStock, minQuantity, maxQuantity, isLowStock);
+
+    var stockRow = StockRows.FirstOrDefault(item => item.StockBalanceId == SelectedStock.StockBalanceId);
+    if (stockRow is not null && !ReferenceEquals(stockRow, SelectedStock))
+    {
+      UpdateThresholds(stockRow, minQuantity, maxQuantity, isLowStock);
+    }
+
+    if (StockFilter.LowStockOnly && !isLowStock)
+    {
+      StockRows.RemoveAll(item => item.StockBalanceId == SelectedStock.StockBalanceId);
+      ResetStockSelection();
+      return;
+    }
+
+    ThresholdEditor = CreateThresholdEditor(SelectedStock);
+  }
+
+  private void ResetStockSelection()
+  {
+    SelectedStock = null;
+    SelectedStockTransactions = [];
+    SelectedStockAttachments = [];
+    ThresholdEditor = CreateThresholdEditor();
+    PendingAttachmentBytes = null;
+    PendingAttachmentName = null;
+    PendingAttachmentContentType = null;
+    PendingAttachmentDescription = null;
+  }
+
+  private static void UpdateThresholds(StockListItemDto stock, decimal? minQuantity, decimal? maxQuantity, bool isLowStock)
+  {
+    stock.MinQuantity = minQuantity;
+    stock.MaxQuantity = maxQuantity;
+    stock.IsLowStock = isLowStock;
   }
 
   private bool TryGetMaterialThumbnailDataUrl(int materialId, out string dataUrl)
@@ -351,11 +526,44 @@ public partial class UbicacionesPage : ComponentBase
   protected string? GetMaterialThumbnailDataUrl(int materialId)
     => TryGetMaterialThumbnailDataUrl(materialId, out var dataUrl) ? dataUrl : null;
 
+  protected static string FormatThresholdQuantity(decimal? quantity)
+    => quantity.HasValue ? quantity.Value.ToString("N2") : "No definido";
+
+  protected string GetThresholdStatusText()
+  {
+    if (SelectedStock is null)
+    {
+      return string.Empty;
+    }
+
+    if (ThresholdEditor.MinQuantity.HasValue && SelectedStock.Quantity <= ThresholdEditor.MinQuantity.Value)
+    {
+      return "Bajo mínimo";
+    }
+
+    if (ThresholdEditor.MaxQuantity.HasValue && SelectedStock.Quantity > ThresholdEditor.MaxQuantity.Value)
+    {
+      return "Sobre máximo";
+    }
+
+    return ThresholdEditor.MinQuantity.HasValue || ThresholdEditor.MaxQuantity.HasValue
+      ? "Dentro de parámetro"
+      : "Sin parámetros";
+  }
+
   private static string BuildDataUrl(string? contentType, byte[] bytes)
   {
     var safeContentType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType;
     return FormattableString.Invariant($"data:{safeContentType};base64,{Convert.ToBase64String(bytes)}");
   }
+
+  private static StockThresholdUpdateRequest CreateThresholdEditor(StockListItemDto? item = null)
+    => new()
+    {
+      StockBalanceId = item?.StockBalanceId ?? 0,
+      MinQuantity = item?.MinQuantity,
+      MaxQuantity = item?.MaxQuantity
+    };
 
   private static LocationUpsertRequest CreateLocationEditor()
     => new()

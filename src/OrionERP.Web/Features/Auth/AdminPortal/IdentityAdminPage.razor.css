@@ -452,6 +452,19 @@
     margin-top: 1rem;
 }
 
+.role-members__toolbar {
+    margin-bottom: 1rem;
+}
+
+.role-members__notice {
+    margin-bottom: 1rem;
+    padding: 0.8rem 0.9rem;
+    border-radius: 0.9rem;
+    background: rgba(15, 118, 110, 0.08);
+    color: var(--id-accent-strong);
+    font-size: 0.92rem;
+}
+
 .selection-grid,
 .claim-list,
 .role-user-grid {
@@ -484,6 +497,14 @@
 
 .selection-chip small {
     color: var(--id-muted);
+}
+
+.selection-chip__title {
+    font-weight: 700;
+}
+
+.role-member-chip {
+    gap: 0.35rem;
 }
 
 .claim-row {

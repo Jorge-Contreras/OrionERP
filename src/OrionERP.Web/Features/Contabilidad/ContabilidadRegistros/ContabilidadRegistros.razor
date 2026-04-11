@@ -178,7 +178,7 @@
   private int selectedMonth = DateTime.Today.Month;
   private bool mostrarTodo;
   private readonly List<RegistrosContablesRow> registros = new();
-  private readonly List<int> transaccionOrder = new();
+  private readonly List<TransaccionOrderEntry> transaccionOrder = new();
   private bool hasSearched;
   private bool isLoading;
   private bool isExporting;
@@ -538,21 +538,19 @@
     {
       if (seen.Add(row.Poliza))
       {
-        transaccionOrder.Add(row.Poliza);
+        transaccionOrder.Add(new TransaccionOrderEntry(row.Poliza, row.FechaOrden, row.OrdenBalance));
       }
     }
   }
 
   private bool CanMoveUp(int transaccionId)
   {
-    var index = transaccionOrder.IndexOf(transaccionId);
-    return index > 0;
+    return CanSwapWithNeighbor(transaccionId, -1);
   }
 
   private bool CanMoveDown(int transaccionId)
   {
-    var index = transaccionOrder.IndexOf(transaccionId);
-    return index >= 0 && index < transaccionOrder.Count - 1;
+    return CanSwapWithNeighbor(transaccionId, 1);
   }
 
   private async Task MoveUpAsync(RegistrosContablesRow row)
@@ -573,21 +571,26 @@
     }
 
     var anchorId = row.Poliza;
-    var anchorIndex = transaccionOrder.IndexOf(anchorId);
+    var anchorIndex = transaccionOrder.FindIndex(entry => entry.Poliza == anchorId);
     var targetIndex = anchorIndex + direction;
     if (anchorIndex < 0 || targetIndex < 0 || targetIndex >= transaccionOrder.Count)
     {
       return;
     }
 
-    var targetId = transaccionOrder[targetIndex];
+    if (transaccionOrder[anchorIndex].FechaOrden != transaccionOrder[targetIndex].FechaOrden)
+    {
+      return;
+    }
+
+    var targetId = transaccionOrder[targetIndex].Poliza;
 
     isLoading = true;
     errorMessage = null;
 
     try
     {
-      await RegistrosService.ReorderTransaccionAsync(anchorId, targetId, transaccionOrder);
+      await RegistrosService.ReorderTransaccionAsync(anchorId, targetId);
       await BuscarAsync();
     }
     catch (Exception ex)
@@ -601,6 +604,18 @@
   {
     errorMessage = message;
     Console.Error.WriteLine($"[ContabilidadRegistros] {message}: {exception}");
+  }
+
+  private bool CanSwapWithNeighbor(int transaccionId, int direction)
+  {
+    var index = transaccionOrder.FindIndex(entry => entry.Poliza == transaccionId);
+    var neighborIndex = index + direction;
+    if (index < 0 || neighborIndex < 0 || neighborIndex >= transaccionOrder.Count)
+    {
+      return false;
+    }
+
+    return transaccionOrder[index].FechaOrden == transaccionOrder[neighborIndex].FechaOrden;
   }
 
   private DateTime GetStartDate()
@@ -624,4 +639,6 @@
     queryApplyCts?.Cancel();
     queryApplyCts?.Dispose();
   }
+
+  private sealed record TransaccionOrderEntry(int Poliza, DateTime FechaOrden, long OrdenBalance);
 }

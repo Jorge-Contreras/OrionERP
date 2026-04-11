@@ -99,7 +99,7 @@ WHERE t.Fecha > DATEADD(DAY, -@DaysBack, @FechaXml)
   AND ABS(CONVERT(decimal(18,4), t.Monto)) = @MontoAbs
   AND t.RFC = @Rfc
 GROUP BY t.ID, t.Concepto, t.Fecha, t.Monto, t.Cuenta, c.Comprobante_Id
-ORDER BY t.Fecha;";
+ORDER BY t.Fecha, t.OrdenBalance, t.ID;";
 
     using var conn = new SqlConnection(_cs);
     var rows = await conn.QueryAsync<TransaccionListItem>(
@@ -1100,6 +1100,21 @@ WHERE Transaccion_ID = @CurrentTransaccionId
 
     try
     {
+      var existingFecha = await conn.ExecuteScalarAsync<DateTime?>(
+          new CommandDefinition(
+              "SELECT Fecha FROM dbo.Transacciones WHERE ID = @TransaccionId;",
+              new { request.TransaccionId },
+              tx,
+              cancellationToken: ct));
+
+      if (!existingFecha.HasValue)
+      {
+        await tx!.RollbackAsync(ct);
+        return TransaccionGuardarCerrarResult.Fail("Transacción no encontrada.");
+      }
+
+      var effectiveFecha = PreserveTimeOfDay(request.Fecha, existingFecha.Value);
+
       const string sqlUpdate = @"UPDATE dbo.Transacciones
 SET Concepto = @Concepto,
     Fecha = @Fecha,
@@ -1122,7 +1137,7 @@ WHERE ID = @TransaccionId;";
               {
                 request.TransaccionId,
                 request.Concepto,
-                request.Fecha,
+                Fecha = effectiveFecha,
                 request.Cuenta,
                 request.Monto,
                 request.Categoria,
@@ -1617,16 +1632,20 @@ WHERE ID = @MovimientoId
 
           if (columnMap.TryGetValue(filter.SortBy, out var dbColumn))
           {
-            _ = sqlBuilder.OrderBy($"{dbColumn} {(filter.SortAsc ? "ASC" : "DESC")}");
+            var orderClause = string.Equals(filter.SortBy, "Fecha", StringComparison.OrdinalIgnoreCase)
+              ? BuildFechaOrderClause("t", descending: !filter.SortAsc)
+              : $"{dbColumn} {(filter.SortAsc ? "ASC" : "DESC")}, {BuildFechaOrderClause("t", descending: true)}";
+
+            _ = sqlBuilder.OrderBy(orderClause);
           }
           else
           {
-            _ = sqlBuilder.OrderBy("t.Fecha DESC");
+            _ = sqlBuilder.OrderBy(BuildFechaOrderClause("t", descending: true));
           }
       }
       else
       {
-        _ = sqlBuilder.OrderBy("t.Fecha DESC");
+        _ = sqlBuilder.OrderBy(BuildFechaOrderClause("t", descending: true));
       }
 
       using var conn = new SqlConnection(_cs);
@@ -1655,7 +1674,7 @@ JOIN dbo.Transaccion_Comprobante AS TC
 JOIN dbo.Transacciones AS T
   ON T.ID = TC.Transaccion_ID
 WHERE TFD.UUID = @Uuid
-ORDER BY T.Fecha;";
+ORDER BY T.Fecha, T.OrdenBalance, T.ID;";
 
     using var conn = new SqlConnection(_cs);
     var rows = await conn.QueryAsync<TransaccionListItemDto>(
@@ -1678,7 +1697,7 @@ FROM dbo.Transaccion_Comprobante AS TC
 JOIN dbo.Transacciones AS T
   ON T.ID = TC.Transaccion_ID
 WHERE TC.Comprobante_ID = @ComprobanteId
-ORDER BY T.Fecha;";
+ORDER BY T.Fecha, T.OrdenBalance, T.ID;";
 
     using var conn = new SqlConnection(_cs);
     var rows = await conn.QueryAsync<TransaccionListItemDto>(
@@ -1703,7 +1722,7 @@ JOIN dbo.Transaccion_DoctoRelacionado AS TD
 JOIN dbo.Transacciones AS T
   ON T.ID = TD.Transaccion_ID
 WHERE DR.DoctoRelacionado_Id = @DoctoRelacionadoId
-ORDER BY T.Fecha;";
+ORDER BY T.Fecha, T.OrdenBalance, T.ID;";
 
     using var conn = new SqlConnection(_cs);
     var rows = await conn.QueryAsync<TransaccionListItemDto>(
@@ -1916,7 +1935,7 @@ FROM dbo.Transaccion_Comprobante tc
 INNER JOIN dbo.Transacciones t
         ON t.ID = tc.Transaccion_ID
 WHERE tc.Comprobante_ID = @ComprobanteId
-ORDER BY t.Fecha, t.ID;";
+ORDER BY t.Fecha, t.OrdenBalance, t.ID;";
 
     return await conn.ExecuteScalarAsync<int?>(
         new CommandDefinition(
@@ -1978,6 +1997,22 @@ WHERE rc.TransaccionID = @TransaccionId;";
         new CommandDefinition(sql, new { TransaccionId = transaccionId }, transaction, cancellationToken: ct));
 
     return totals ?? new MovimientoTotalsDto();
+  }
+
+  private static string BuildFechaOrderClause(string tableAlias, bool descending)
+  {
+    var direction = descending ? "DESC" : "ASC";
+    return $"{tableAlias}.Fecha {direction}, {tableAlias}.OrdenBalance {direction}, {tableAlias}.ID {direction}";
+  }
+
+  private static DateTime PreserveTimeOfDay(DateTime requestedDate, DateTime existingDate)
+  {
+    if (requestedDate.TimeOfDay != TimeSpan.Zero)
+    {
+      return requestedDate;
+    }
+
+    return requestedDate.Date.Add(existingDate.TimeOfDay);
   }
 
   private static string ResolveContentType(string? extension)

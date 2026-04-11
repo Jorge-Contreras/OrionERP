@@ -478,6 +478,7 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
         public async Task<IdentityAdminCommandResult> SaveRoleAsync(IdentityRoleUpsertRequest request, CancellationToken cancellationToken = default)
         {
             var normalizedRoleName = NormalizeRequired(request.Name);
+            var desiredUserIds = NormalizeEntityIds(request.UserIds);
             if (string.IsNullOrWhiteSpace(normalizedRoleName))
             {
                 return Failure("El nombre del rol es obligatorio.");
@@ -495,6 +496,19 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
                 return Failure("No se encontró el rol solicitado.");
             }
 
+            var isAdministratorRole = string.Equals(role.NormalizedName, AdministratorRoleNormalizedName, StringComparison.OrdinalIgnoreCase)
+                || RoleNameComparer.Equals(role.Name, AdministratorRoleName);
+
+            if (isAdministratorRole)
+            {
+                if (!RoleNameComparer.Equals(normalizedRoleName, AdministratorRoleName))
+                {
+                    return Failure("El rol Administrador está protegido y no se puede renombrar.");
+                }
+
+                normalizedRoleName = AdministratorRoleName;
+            }
+
             if (!isNewRole)
             {
                 role.Name = normalizedRoleName;
@@ -510,6 +524,12 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
             }
 
             await SyncRoleClaimsAsync(role.Id, NormalizeClaims(request.Claims), cancellationToken);
+            var syncRoleUsersFailure = await SyncRoleUsersAsync(role, desiredUserIds, request.ActorUserId, cancellationToken);
+            if (syncRoleUsersFailure is not null)
+            {
+                return syncRoleUsersFailure;
+            }
+
             await transaction.CommitAsync(cancellationToken);
 
             return new IdentityAdminCommandResult(
@@ -713,6 +733,114 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
             return changed;
         }
 
+        private async Task<IdentityAdminCommandResult?> SyncRoleUsersAsync(
+            IdentityRole role,
+            IReadOnlyList<string> desiredUserIds,
+            string? actorUserId,
+            CancellationToken cancellationToken)
+        {
+            var roleName = NormalizeRequired(role.Name);
+            if (string.IsNullOrWhiteSpace(roleName))
+            {
+                return Failure("El rol solicitado no tiene un nombre válido.");
+            }
+
+            var currentUserIds = await _db.Set<IdentityUserRole<string>>()
+                .AsNoTracking()
+                .Where(link => link.RoleId == role.Id)
+                .Select(link => link.UserId)
+                .Distinct()
+                .ToArrayAsync(cancellationToken);
+
+            var currentUserIdSet = currentUserIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var desiredUserIdSet = desiredUserIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var referencedUserIds = currentUserIds
+                .Concat(desiredUserIds)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            var usersById = referencedUserIds.Length == 0
+                ? new Dictionary<string, ApplicationUser>(StringComparer.OrdinalIgnoreCase)
+                : await _userManager.Users
+                    .Where(user => referencedUserIds.Contains(user.Id))
+                    .ToDictionaryAsync(user => user.Id, StringComparer.OrdinalIgnoreCase, cancellationToken);
+
+            var unknownUserIds = desiredUserIds
+                .Where(userId => !usersById.ContainsKey(userId))
+                .ToArray();
+
+            if (unknownUserIds.Length > 0)
+            {
+                return Failure($"No se encontraron los usuarios solicitados: {string.Join(", ", unknownUserIds)}.");
+            }
+
+            if (RoleNameComparer.Equals(roleName, AdministratorRoleName))
+            {
+                var normalizedActorUserId = NormalizeOptional(actorUserId);
+                if (!string.IsNullOrWhiteSpace(normalizedActorUserId)
+                    && currentUserIdSet.Contains(normalizedActorUserId)
+                    && !desiredUserIdSet.Contains(normalizedActorUserId))
+                {
+                    return Failure("No puedes quitarte a ti mismo el rol Administrador desde este portal.");
+                }
+
+                if (desiredUserIdSet.Count == 0)
+                {
+                    return Failure("No es posible quitar el rol Administrador al último administrador activo.");
+                }
+            }
+
+            var userIdsToRemove = currentUserIds
+                .Where(userId => !desiredUserIdSet.Contains(userId))
+                .ToArray();
+
+            foreach (var userId in userIdsToRemove)
+            {
+                if (!usersById.TryGetValue(userId, out var user))
+                {
+                    continue;
+                }
+
+                var identityResult = await _userManager.RemoveFromRoleAsync(user, roleName);
+                if (!identityResult.Succeeded)
+                {
+                    return FromIdentityResult(identityResult, "No se pudieron actualizar algunas asignaciones de rol.");
+                }
+
+                identityResult = await _userManager.UpdateSecurityStampAsync(user);
+                if (!identityResult.Succeeded)
+                {
+                    return FromIdentityResult(identityResult, "No se pudo refrescar la sesión de seguridad de algunos usuarios.");
+                }
+            }
+
+            var userIdsToAdd = desiredUserIds
+                .Where(userId => !currentUserIdSet.Contains(userId))
+                .ToArray();
+
+            foreach (var userId in userIdsToAdd)
+            {
+                if (!usersById.TryGetValue(userId, out var user))
+                {
+                    continue;
+                }
+
+                var identityResult = await _userManager.AddToRoleAsync(user, roleName);
+                if (!identityResult.Succeeded)
+                {
+                    return FromIdentityResult(identityResult, "No se pudieron actualizar algunas asignaciones de rol.");
+                }
+
+                identityResult = await _userManager.UpdateSecurityStampAsync(user);
+                if (!identityResult.Succeeded)
+                {
+                    return FromIdentityResult(identityResult, "No se pudo refrescar la sesión de seguridad de algunos usuarios.");
+                }
+            }
+
+            return null;
+        }
+
         private static IReadOnlyList<ClaimSignature> NormalizeClaims(IReadOnlyList<IdentityClaimInput> claims)
         {
             return claims
@@ -730,6 +858,15 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
                 .Select(NormalizeRequired)
                 .Where(roleName => !string.IsNullOrWhiteSpace(roleName))
                 .Distinct(RoleNameComparer)
+                .ToArray();
+        }
+
+        private static string[] NormalizeEntityIds(IReadOnlyList<string> entityIds)
+        {
+            return entityIds
+                .Select(NormalizeRequired)
+                .Where(entityId => !string.IsNullOrWhiteSpace(entityId))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
         }
 

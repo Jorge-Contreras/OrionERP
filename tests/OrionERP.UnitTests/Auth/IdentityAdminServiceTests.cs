@@ -196,6 +196,126 @@ public class IdentityAdminServiceTests
         Assert.Equal(1, userSummary.TokenCount);
     }
 
+    [Fact]
+    public async Task SaveRoleAsync_UpdatesAssignedUsersAndSecurityStamps()
+    {
+        using var provider = CreateServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+        var service = scope.ServiceProvider.GetRequiredService<IIdentityAdminService>();
+
+        var firstUser = new ApplicationUser
+        {
+            UserName = "role-first@orionerp.local",
+            Email = "role-first@orionerp.local"
+        };
+
+        var secondUser = new ApplicationUser
+        {
+            UserName = "role-second@orionerp.local",
+            Email = "role-second@orionerp.local"
+        };
+
+        await userManager.CreateAsync(firstUser, "secret1");
+        await userManager.CreateAsync(secondUser, "secret1");
+
+        var role = new IdentityRole("Operador");
+        await roleManager.CreateAsync(role);
+        await userManager.AddToRoleAsync(firstUser, role.Name!);
+
+        var firstStampBefore = (await userManager.FindByIdAsync(firstUser.Id))!.SecurityStamp;
+        var secondStampBefore = (await userManager.FindByIdAsync(secondUser.Id))!.SecurityStamp;
+
+        var result = await service.SaveRoleAsync(new IdentityRoleUpsertRequest(
+            role.Id,
+            null,
+            "Operador",
+            [secondUser.Id],
+            Array.Empty<IdentityClaimInput>()));
+
+        Assert.True(result.Succeeded);
+
+        var refreshedFirstUser = await userManager.FindByIdAsync(firstUser.Id);
+        var refreshedSecondUser = await userManager.FindByIdAsync(secondUser.Id);
+
+        Assert.NotNull(refreshedFirstUser);
+        Assert.NotNull(refreshedSecondUser);
+        Assert.False(await userManager.IsInRoleAsync(refreshedFirstUser!, "Operador"));
+        Assert.True(await userManager.IsInRoleAsync(refreshedSecondUser!, "Operador"));
+        Assert.NotEqual(firstStampBefore, refreshedFirstUser!.SecurityStamp);
+        Assert.NotEqual(secondStampBefore, refreshedSecondUser!.SecurityStamp);
+    }
+
+    [Fact]
+    public async Task SaveRoleAsync_RejectsRemovingCurrentUserFromAdministradorRole()
+    {
+        using var provider = CreateServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+        var service = scope.ServiceProvider.GetRequiredService<IIdentityAdminService>();
+
+        var admin = new ApplicationUser
+        {
+            UserName = "role-admin@orionerp.local",
+            Email = "role-admin@orionerp.local"
+        };
+
+        var backupAdmin = new ApplicationUser
+        {
+            UserName = "role-backup-admin@orionerp.local",
+            Email = "role-backup-admin@orionerp.local"
+        };
+
+        await userManager.CreateAsync(admin, "secret1");
+        await userManager.CreateAsync(backupAdmin, "secret1");
+        await roleManager.CreateAsync(new IdentityRole("Administrador"));
+
+        var administratorRole = await roleManager.FindByNameAsync("Administrador");
+        Assert.NotNull(administratorRole);
+
+        await userManager.AddToRoleAsync(admin, "Administrador");
+        await userManager.AddToRoleAsync(backupAdmin, "Administrador");
+
+        var result = await service.SaveRoleAsync(new IdentityRoleUpsertRequest(
+            administratorRole!.Id,
+            admin.Id,
+            "Administrador",
+            [backupAdmin.Id],
+            Array.Empty<IdentityClaimInput>()));
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("quitarte a ti mismo", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SaveRoleAsync_RejectsRenamingAdministradorRole()
+    {
+        using var provider = CreateServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+        var service = scope.ServiceProvider.GetRequiredService<IIdentityAdminService>();
+
+        await roleManager.CreateAsync(new IdentityRole("Administrador"));
+        var administratorRole = await roleManager.FindByNameAsync("Administrador");
+
+        Assert.NotNull(administratorRole);
+
+        var result = await service.SaveRoleAsync(new IdentityRoleUpsertRequest(
+            administratorRole!.Id,
+            null,
+            "SecurityAdmin",
+            Array.Empty<string>(),
+            Array.Empty<IdentityClaimInput>()));
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("no se puede renombrar", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static ServiceProvider CreateServiceProvider()
     {
         var services = new ServiceCollection();

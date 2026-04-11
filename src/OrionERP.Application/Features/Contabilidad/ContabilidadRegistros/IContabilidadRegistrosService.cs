@@ -12,6 +12,5 @@ public interface IContabilidadRegistrosService
 
   Task ReorderTransaccionAsync(
       int anchorTransaccionId,
-      int targetTransaccionId,
-      IReadOnlyList<int> orderedTransaccionIds);
+      int targetTransaccionId);
 }

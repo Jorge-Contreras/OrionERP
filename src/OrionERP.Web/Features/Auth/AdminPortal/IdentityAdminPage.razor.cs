@@ -37,6 +37,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
         private string? SelectedRoleId { get; set; }
         private string UserSearch { get; set; } = string.Empty;
         private string RoleSearch { get; set; } = string.Empty;
+        private string RoleMemberSearch { get; set; } = string.Empty;
         private string CurrentUserId { get; set; } = string.Empty;
         private bool IsRefreshing { get; set; }
         private bool IsSavingUser { get; set; }
@@ -68,8 +69,26 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
         private bool CanDeleteSelectedRole =>
             !RoleForm.IsNew &&
             !IsRoleBusy &&
-            !string.Equals(RoleForm.Name, AdministratorRoleName, StringComparison.OrdinalIgnoreCase) &&
-            RoleForm.Users.Count == 0;
+            !IsProtectedSelectedRole &&
+            RoleForm.Users.Count == 0 &&
+            RoleForm.AssignedUserIds.Count == 0;
+
+        private bool IsProtectedSelectedRole =>
+            !RoleForm.IsNew &&
+            string.Equals(RoleForm.Name, AdministratorRoleName, StringComparison.OrdinalIgnoreCase);
+
+        private IEnumerable<IdentityUserSummary> FilteredRoleUsers =>
+            (Snapshot?.Users ?? Array.Empty<IdentityUserSummary>())
+            .Where(user => MatchesUserFilter(user, RoleMemberSearch))
+            .OrderByDescending(user => RoleForm.AssignedUserIds.Contains(user.Id))
+            .ThenBy(user => user.UserName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(user => user.Email ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+
+        private IEnumerable<IdentityUserSummary> SelectedRoleUsers =>
+            (Snapshot?.Users ?? Array.Empty<IdentityUserSummary>())
+            .Where(user => RoleForm.AssignedUserIds.Contains(user.Id))
+            .OrderBy(user => user.UserName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(user => user.Email ?? string.Empty, StringComparer.OrdinalIgnoreCase);
 
         protected override async Task OnInitializedAsync()
         {
@@ -127,6 +146,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
         {
             ActiveTab = IdentityAdminTab.Roles;
             SelectedRoleId = null;
+            RoleMemberSearch = string.Empty;
             RoleForm = CreateEmptyRoleModel();
         }
 
@@ -391,6 +411,17 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
 
         private void AddRoleClaim() => RoleForm.Claims.Add(new ClaimRowModel());
 
+        private void ToggleRoleUser(string userId, ChangeEventArgs args)
+        {
+            if (GetCheckboxValue(args))
+            {
+                RoleForm.AssignedUserIds.Add(userId);
+                return;
+            }
+
+            RoleForm.AssignedUserIds.Remove(userId);
+        }
+
         private void RemoveRoleClaim(Guid claimKey)
         {
             var existingClaim = RoleForm.Claims.FirstOrDefault(claim => claim.Key == claimKey);
@@ -540,7 +571,9 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
         {
             return new IdentityRoleUpsertRequest(
                 RoleForm.Id,
+                CurrentUserId,
                 RoleForm.Name.Trim(),
+                RoleForm.AssignedUserIds.OrderBy(userId => userId, StringComparer.OrdinalIgnoreCase).ToArray(),
                 RoleForm.Claims
                     .Where(claim => !string.IsNullOrWhiteSpace(claim.ClaimType) && !string.IsNullOrWhiteSpace(claim.ClaimValue))
                     .Select(claim => new IdentityClaimInput(claim.ClaimType.Trim(), claim.ClaimValue.Trim()))
@@ -588,6 +621,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
             {
                 Id = editor.Id,
                 Name = editor.Name,
+                AssignedUserIds = new HashSet<string>(editor.Users.Select(user => user.Id), StringComparer.OrdinalIgnoreCase),
                 Claims = editor.Claims
                     .Select(claim => new ClaimRowModel
                     {
@@ -726,6 +760,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
         {
             public string? Id { get; set; }
             public string Name { get; set; } = string.Empty;
+            public HashSet<string> AssignedUserIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
             public List<ClaimRowModel> Claims { get; set; } = new();
             public List<IdentityUserReference> Users { get; set; } = new();
             public bool IsNew => string.IsNullOrWhiteSpace(Id);

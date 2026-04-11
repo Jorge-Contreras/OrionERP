@@ -1,7 +1,9 @@
+using System.Globalization;
 using System.IO;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Logistica.Locations;
 using OrionERP.Application.Features.Logistica.Materials;
@@ -13,6 +15,13 @@ namespace OrionERP.Web.Features.Logistica.PhysicalCounts;
 
 public partial class ConteosFisicosPage : ComponentBase
 {
+  private static readonly CultureInfo QuantityInputCulture = CultureInfo.GetCultureInfo("es-MX");
+  private static readonly NumberStyles QuantityInputNumberStyles = NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowThousands;
+
+  private string _countedQuantityInput = string.Empty;
+  private ElementReference CountedQuantityInputRef;
+  private bool _focusCountedQuantityInputPending;
+
   [Inject] private IPhysicalCountService PhysicalCountService { get; set; } = default!;
   [Inject] private IMaterialService MaterialService { get; set; } = default!;
   [Inject] private ILocationService LocationService { get; set; } = default!;
@@ -44,6 +53,22 @@ public partial class ConteosFisicosPage : ComponentBase
   protected bool CanApprove => SelectedSession is not null && string.Equals(SelectedSession.Status, "Submitted", StringComparison.OrdinalIgnoreCase);
   protected bool CanPost => SelectedSession is not null && string.Equals(SelectedSession.Status, "Approved", StringComparison.OrdinalIgnoreCase);
   protected bool CanCaptureLine => SelectedSession is not null && SelectedLine is not null && string.Equals(SelectedSession.Status, "Draft", StringComparison.OrdinalIgnoreCase);
+  protected string SelectedSessionStatusBadgeClass => GetSessionStatusBadgeClass(SelectedSession?.Status);
+  protected string SelectedSessionStatusLabel => GetSessionStatusLabel(SelectedSession?.Status);
+  protected string CountedQuantityInput
+  {
+    get => _countedQuantityInput;
+    set
+    {
+      _countedQuantityInput = value;
+
+      if (TryParseCountedQuantity(value, out var parsedQuantity))
+      {
+        LineCapture.CountedQuantity = parsedQuantity;
+      }
+    }
+  }
+
   protected string CurrentVarianceText => SelectedLine is null
     ? "0.00"
     : (LineCapture.CountedQuantity - SelectedLine.ExpectedQuantity).ToString("N2");
@@ -121,11 +146,13 @@ public partial class ConteosFisicosPage : ComponentBase
       if (SelectedSession is null)
       {
         SelectedLine = null;
+        _countedQuantityInput = string.Empty;
         return;
       }
 
       await CargarMiniaturasMaterialesAsync();
       SelectedLine = null;
+      _countedQuantityInput = string.Empty;
       if (SelectedSession?.Lines.Count > 0)
       {
         SeleccionarLinea(SelectedSession.Lines[0]);
@@ -154,7 +181,57 @@ public partial class ConteosFisicosPage : ComponentBase
     PendingLineAttachmentBytes = null;
     PendingLineAttachmentName = null;
     PendingLineAttachmentContentType = null;
+    UpdateCountedQuantityInputFromCapture();
+    QueueCountedQuantityFocus();
   }
+
+  protected bool IsLineCapturedByCurrentUser(PhysicalCountLineDto line)
+  {
+    if (string.IsNullOrWhiteSpace(CurrentUserName) || !line.CapturedAt.HasValue || string.IsNullOrWhiteSpace(line.CapturedBy))
+    {
+      return false;
+    }
+
+    return string.Equals(line.CapturedBy.Trim(), CurrentUserName.Trim(), StringComparison.OrdinalIgnoreCase);
+  }
+
+  protected string GetLineRowClass(PhysicalCountLineDto line)
+  {
+    var isSelected = SelectedLine?.Id == line.Id;
+    var capturedByCurrentUser = IsLineCapturedByCurrentUser(line);
+
+    if (isSelected && capturedByCurrentUser)
+    {
+      return "table-primary conteos-line-row-captured";
+    }
+
+    if (isSelected)
+    {
+      return "table-primary";
+    }
+
+    return capturedByCurrentUser ? "conteos-line-row-captured" : string.Empty;
+  }
+
+  protected string GetSessionRowClass(PhysicalCountSessionSummaryDto session)
+  {
+    var isSelected = SelectedSession?.Id == session.Id;
+    var selectionClass = isSelected ? "table-primary" : string.Empty;
+    return $"{selectionClass} conteos-session-row {GetSessionStatusClass(session.Status)}".Trim();
+  }
+
+  protected string GetSessionStatusBadgeClass(string? status)
+    => $"conteos-session-status-badge {GetSessionStatusClass(status)}";
+
+  protected static string GetSessionStatusLabel(string? status)
+    => NormalizeSessionStatus(status) switch
+    {
+      "draft" => "Borrador",
+      "submitted" => "Enviada",
+      "approved" => "Aprobada",
+      "posted" => "Contabilizada",
+      _ => string.IsNullOrWhiteSpace(status) ? "Sin estatus" : status.Trim()
+    };
 
   protected async Task OnLineAttachmentSelectedAsync(InputFileChangeEventArgs args)
   {
@@ -179,9 +256,17 @@ public partial class ConteosFisicosPage : ComponentBase
       return;
     }
 
+    if (!TryParseCountedQuantity(CountedQuantityInput, out var countedQuantity))
+    {
+      UiMessages.ShowWarning("Captura una cantidad válida en el campo contado.");
+      QueueCountedQuantityFocus();
+      return;
+    }
+
     IsSavingLine = true;
     try
     {
+      LineCapture.CountedQuantity = countedQuantity;
       LineCapture.CapturedBy = CurrentUserName;
       LineCapture.AttachmentBytes = PendingLineAttachmentBytes;
       LineCapture.AttachmentFileName = PendingLineAttachmentName;
@@ -214,6 +299,52 @@ public partial class ConteosFisicosPage : ComponentBase
     finally
     {
       IsSavingLine = false;
+    }
+  }
+
+  protected void OnCountedQuantityInput(ChangeEventArgs args)
+  {
+    CountedQuantityInput = args.Value?.ToString() ?? string.Empty;
+  }
+
+  protected void OnCountedQuantityBlur()
+  {
+    if (TryParseCountedQuantity(CountedQuantityInput, out var parsedQuantity))
+    {
+      LineCapture.CountedQuantity = parsedQuantity;
+      _countedQuantityInput = FormatCountedQuantity(parsedQuantity);
+      return;
+    }
+
+    UpdateCountedQuantityInputFromCapture();
+  }
+
+  protected async Task SelectCountedQuantityAsync()
+  {
+    _ = await TryFocusCountedQuantityInputAsync(scrollIntoViewOnMobile: false);
+  }
+
+  protected async Task HandleCountedQuantityKeyDownAsync(KeyboardEventArgs args)
+  {
+    if (!string.Equals(args.Key, "Enter", StringComparison.Ordinal) || !CanCaptureLine || IsSavingLine)
+    {
+      return;
+    }
+
+    await GuardarLineaAsync();
+  }
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (!_focusCountedQuantityInputPending || !CanCaptureLine)
+    {
+      return;
+    }
+
+    _focusCountedQuantityInputPending = false;
+    if (!await TryFocusCountedQuantityInputAsync(scrollIntoViewOnMobile: true))
+    {
+      _focusCountedQuantityInputPending = true;
     }
   }
 
@@ -367,6 +498,69 @@ public partial class ConteosFisicosPage : ComponentBase
 
   protected string? GetMaterialThumbnailDataUrl(int materialId)
     => TryGetMaterialThumbnailDataUrl(materialId, out var dataUrl) ? dataUrl : null;
+
+  private void QueueCountedQuantityFocus()
+  {
+    _focusCountedQuantityInputPending = CanCaptureLine;
+  }
+
+  private static string GetSessionStatusClass(string? status)
+    => NormalizeSessionStatus(status) switch
+    {
+      "draft" => "conteos-session-status-draft",
+      "submitted" => "conteos-session-status-submitted",
+      "approved" => "conteos-session-status-approved",
+      "posted" => "conteos-session-status-posted",
+      _ => "conteos-session-status-unknown"
+    };
+
+  private void UpdateCountedQuantityInputFromCapture()
+  {
+    _countedQuantityInput = FormatCountedQuantity(LineCapture.CountedQuantity);
+  }
+
+  private static string NormalizeSessionStatus(string? status)
+    => string.IsNullOrWhiteSpace(status) ? string.Empty : status.Trim().ToLowerInvariant();
+
+  private async Task<bool> TryFocusCountedQuantityInputAsync(bool scrollIntoViewOnMobile)
+  {
+    try
+    {
+      await Js.InvokeVoidAsync("focusAndSelectTextInput", CountedQuantityInputRef, scrollIntoViewOnMobile);
+      return true;
+    }
+    catch (InvalidOperationException)
+    {
+      return false;
+    }
+    catch (JSDisconnectedException)
+    {
+      return false;
+    }
+  }
+
+  private static string FormatCountedQuantity(decimal quantity)
+    => quantity.ToString("0.####", QuantityInputCulture);
+
+  private static bool TryParseCountedQuantity(string? value, out decimal result)
+  {
+    var trimmedValue = value?.Trim();
+    if (string.IsNullOrWhiteSpace(trimmedValue))
+    {
+      result = default;
+      return false;
+    }
+
+    if (decimal.TryParse(trimmedValue, QuantityInputNumberStyles, QuantityInputCulture, out result) ||
+        decimal.TryParse(trimmedValue, QuantityInputNumberStyles, CultureInfo.InvariantCulture, out result) ||
+        decimal.TryParse(trimmedValue, QuantityInputNumberStyles, CultureInfo.CurrentCulture, out result))
+    {
+      return true;
+    }
+
+    var normalizedValue = trimmedValue.Replace(',', '.');
+    return decimal.TryParse(normalizedValue, QuantityInputNumberStyles, CultureInfo.InvariantCulture, out result);
+  }
 
   private static string BuildDataUrl(string? contentType, byte[] bytes)
   {

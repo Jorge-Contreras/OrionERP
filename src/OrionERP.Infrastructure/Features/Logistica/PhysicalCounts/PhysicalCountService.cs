@@ -117,12 +117,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
             SELECT COUNT(*)
             FROM logistica.PhysicalCountAttachment attachment
             WHERE attachment.PhysicalCountLineId = line.Id
-          ) AS AttachmentCount,
-          CAST(CASE
-              WHEN (ISNULL(line.VarianceQuantity, 0) <> 0 OR line.IsMissing = 1 OR line.IsDamaged = 1)
-              THEN 1
-              ELSE 0
-          END AS bit) AS RequiresEvidence
+          ) AS AttachmentCount
       FROM logistica.PhysicalCountLine line
       JOIN logistica.Material m
         ON m.Id = line.MaterialId
@@ -461,33 +456,6 @@ public sealed class PhysicalCountService : IPhysicalCountService
       {
         await tx.RollbackAsync(ct);
         return LogisticsCommandResult.Fail("Todas las líneas deben capturar cantidad contada antes de enviar el conteo.");
-      }
-
-      var missingEvidence = await conn.ExecuteScalarAsync<int>(
-        new CommandDefinition(
-          """
-          SELECT COUNT(*)
-          FROM logistica.PhysicalCountLine line
-          WHERE line.SessionId = @SessionId
-            AND (
-                ISNULL(line.VarianceQuantity, 0) <> 0
-                OR line.IsMissing = 1
-                OR line.IsDamaged = 1
-            )
-            AND NOT EXISTS (
-                SELECT 1
-                FROM logistica.PhysicalCountAttachment attachment
-                WHERE attachment.PhysicalCountLineId = line.Id
-            );
-          """,
-          new { SessionId = sessionId },
-          tx,
-          cancellationToken: ct));
-
-      if (missingEvidence > 0)
-      {
-        await tx.RollbackAsync(ct);
-        return LogisticsCommandResult.Fail("Las variaciones, faltantes o daños requieren al menos una evidencia adjunta.");
       }
 
       await conn.ExecuteAsync(

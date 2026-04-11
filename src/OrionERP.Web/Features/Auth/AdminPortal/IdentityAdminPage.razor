@@ -517,7 +517,7 @@
 
                                     <label class="field">
                                         <span>Nombre del rol</span>
-                                        <input class="form-control" type="text" @bind="RoleForm.Name" />
+                                        <input class="form-control" type="text" @bind="RoleForm.Name" disabled="@IsProtectedSelectedRole" />
                                     </label>
                                 </section>
 
@@ -530,12 +530,62 @@
                                     <div class="security-stats">
                                         <div>
                                             <span>Usuarios asignados</span>
-                                            <strong>@RoleForm.Users.Count</strong>
+                                            <strong>@RoleForm.AssignedUserIds.Count</strong>
                                         </div>
                                         <div>
                                             <span>Claims configurados</span>
                                             <strong>@RoleForm.Claims.Count</strong>
                                         </div>
+                                    </div>
+                                </section>
+
+                                <section class="panel-card panel-span-2">
+                                    <div class="panel-card__header">
+                                        <h3>Membresías del rol</h3>
+                                        <span class="panel-card__badge">@RoleForm.AssignedUserIds.Count seleccionados</span>
+                                    </div>
+
+                                    <p class="password-reset__hint">
+                                        Selecciona los usuarios que deben heredar este rol. Los cambios sobre <code>AspNetUserRoles</code> se aplican al guardar.
+                                    </p>
+
+                                    @if (IsProtectedSelectedRole)
+                                    {
+                                        <div class="role-members__notice">
+                                            El rol Administrador no puede quedar sin responsables y no puedes quitarte este rol desde aquí.
+                                        </div>
+                                    }
+
+                                    <div class="role-members__toolbar">
+                                        <label class="browser-pane__search">
+                                            <span class="visually-hidden">Buscar usuarios para el rol</span>
+                                            <input class="form-control" type="search" placeholder="Buscar usuarios para este rol" @bind="RoleMemberSearch" @bind:event="oninput" />
+                                        </label>
+                                    </div>
+
+                                    <div class="selection-grid role-members__grid">
+                                        @if (Snapshot.Users.Count == 0)
+                                        {
+                                            <div class="browser-pane__empty">No existen usuarios disponibles todavía.</div>
+                                        }
+                                        else if (!FilteredRoleUsers.Any())
+                                        {
+                                            <div class="browser-pane__empty">No hay usuarios que coincidan con el filtro actual.</div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var user in FilteredRoleUsers)
+                                            {
+                                                <label class="selection-chip role-member-chip @((RoleForm.AssignedUserIds.Contains(user.Id) ? "selected" : null))">
+                                                    <input type="checkbox"
+                                                           checked="@RoleForm.AssignedUserIds.Contains(user.Id)"
+                                                           @onchange="args => ToggleRoleUser(user.Id, args)" />
+                                                    <span class="selection-chip__title">@user.UserName</span>
+                                                    <small>@(string.IsNullOrWhiteSpace(user.Email) ? "Sin correo" : user.Email)</small>
+                                                    <small>@(user.Roles.Count == 0 ? "Sin otros roles" : string.Join(" · ", user.Roles))</small>
+                                                </label>
+                                            }
+                                        }
                                     </div>
                                 </section>
 
@@ -574,18 +624,18 @@
 
                                 <section class="panel-card panel-span-2">
                                     <div class="panel-card__header">
-                                        <h3>Usuarios asignados</h3>
-                                        <span class="panel-card__badge">Referencia rápida</span>
+                                        <h3>Usuarios seleccionados</h3>
+                                        <span class="panel-card__badge">Navegación rápida</span>
                                     </div>
 
-                                    @if (RoleForm.Users.Count == 0)
+                                    @if (!SelectedRoleUsers.Any())
                                     {
-                                        <div class="browser-pane__empty">No hay usuarios asignados a este rol.</div>
+                                        <div class="browser-pane__empty">No hay usuarios seleccionados para este rol.</div>
                                     }
                                     else
                                     {
                                         <div class="role-user-grid">
-                                            @foreach (var user in RoleForm.Users)
+                                            @foreach (var user in SelectedRoleUsers)
                                             {
                                                 <button type="button" class="role-user-card" @onclick="() => SelectUserAsync(user.Id)">
                                                     <strong>@user.UserName</strong>

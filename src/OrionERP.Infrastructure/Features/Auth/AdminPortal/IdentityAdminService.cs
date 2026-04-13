@@ -36,46 +36,91 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
                 .AsNoTracking()
                 .OrderBy(u => u.UserName ?? u.Email ?? string.Empty)
                 .ThenBy(u => u.Id)
+                .Select(user => new
+                {
+                    user.Id,
+                    user.UserName,
+                    user.Email,
+                    user.EmployeeId,
+                    user.EmailConfirmed,
+                    user.LockoutEnabled,
+                    user.LockoutEnd,
+                    user.TwoFactorEnabled,
+                    user.AccessFailedCount
+                })
                 .ToListAsync(cancellationToken);
 
             var roles = await _roleManager.Roles
                 .AsNoTracking()
                 .OrderBy(r => r.Name ?? string.Empty)
                 .ThenBy(r => r.Id)
+                .Select(role => new
+                {
+                    role.Id,
+                    role.Name
+                })
                 .ToListAsync(cancellationToken);
 
-            var userRoles = await _db.Set<IdentityUserRole<string>>()
+            var userRoles = await (
+                from link in _db.Set<IdentityUserRole<string>>().AsNoTracking()
+                join role in _roleManager.Roles.AsNoTracking() on link.RoleId equals role.Id
+                select new
+                {
+                    link.UserId,
+                    link.RoleId,
+                    RoleName = role.Name
+                })
+                .ToListAsync(cancellationToken);
+
+            var claimCountByUserId = await _db.Set<IdentityUserClaim<string>>()
                 .AsNoTracking()
-                .ToListAsync(cancellationToken);
+                .GroupBy(claim => claim.UserId)
+                .Select(group => new
+                {
+                    UserId = group.Key,
+                    Count = group.Count()
+                })
+                .ToDictionaryAsync(item => item.UserId, item => item.Count, StringComparer.OrdinalIgnoreCase, cancellationToken);
 
-            var userClaims = await _db.Set<IdentityUserClaim<string>>()
+            var claimCountByRoleId = await _db.Set<IdentityRoleClaim<string>>()
                 .AsNoTracking()
-                .ToListAsync(cancellationToken);
+                .GroupBy(claim => claim.RoleId)
+                .Select(group => new
+                {
+                    RoleId = group.Key,
+                    Count = group.Count()
+                })
+                .ToDictionaryAsync(item => item.RoleId, item => item.Count, StringComparer.OrdinalIgnoreCase, cancellationToken);
 
-            var roleClaims = await _db.Set<IdentityRoleClaim<string>>()
+            var loginCountByUserId = await _db.Set<IdentityUserLogin<string>>()
                 .AsNoTracking()
-                .ToListAsync(cancellationToken);
+                .GroupBy(login => login.UserId)
+                .Select(group => new
+                {
+                    UserId = group.Key,
+                    Count = group.Count()
+                })
+                .ToDictionaryAsync(item => item.UserId, item => item.Count, StringComparer.OrdinalIgnoreCase, cancellationToken);
 
-            var userLogins = await _db.Set<IdentityUserLogin<string>>()
+            var tokenCountByUserId = await _db.Set<IdentityUserToken<string>>()
                 .AsNoTracking()
-                .ToListAsync(cancellationToken);
-
-            var userTokens = await _db.Set<IdentityUserToken<string>>()
-                .AsNoTracking()
-                .ToListAsync(cancellationToken);
-
-            var roleNameById = roles.ToDictionary(
-                role => role.Id,
-                role => role.Name ?? string.Empty,
-                StringComparer.OrdinalIgnoreCase);
+                .GroupBy(token => token.UserId)
+                .Select(group => new
+                {
+                    UserId = group.Key,
+                    Count = group.Count()
+                })
+                .ToDictionaryAsync(item => item.UserId, item => item.Count, StringComparer.OrdinalIgnoreCase, cancellationToken);
 
             var rolesByUserId = userRoles
                 .GroupBy(link => link.UserId, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(
                     group => group.Key,
                     group => (IReadOnlyList<string>)group
-                        .Select(link => roleNameById.TryGetValue(link.RoleId, out var roleName) ? roleName : string.Empty)
+                        .Select(link => link.RoleName)
                         .Where(roleName => !string.IsNullOrWhiteSpace(roleName))
+                        .Select(roleName => roleName!)
+                        .Distinct(RoleNameComparer)
                         .OrderBy(roleName => roleName, RoleNameComparer)
                         .ToArray(),
                     StringComparer.OrdinalIgnoreCase);
@@ -87,32 +132,16 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
                     group => group.Select(link => link.UserId).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
                     StringComparer.OrdinalIgnoreCase);
 
-            var claimCountByUserId = userClaims
-                .GroupBy(claim => claim.UserId, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
-
-            var claimCountByRoleId = roleClaims
-                .GroupBy(claim => claim.RoleId, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
-
-            var loginCountByUserId = userLogins
-                .GroupBy(login => login.UserId, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
-
-            var tokenCountByUserId = userTokens
-                .GroupBy(token => token.UserId, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
-
             var now = DateTimeOffset.UtcNow;
 
             var metrics = new IdentityAdminMetrics(
                 UserCount: users.Count,
                 RoleCount: roles.Count,
-                RoleClaimCount: roleClaims.Count,
-                UserClaimCount: userClaims.Count,
+                RoleClaimCount: claimCountByRoleId.Values.Sum(),
+                UserClaimCount: claimCountByUserId.Values.Sum(),
                 UserRoleCount: userRoles.Count,
-                LoginCount: userLogins.Count,
-                TokenCount: userTokens.Count,
+                LoginCount: loginCountByUserId.Values.Sum(),
+                TokenCount: tokenCountByUserId.Values.Sum(),
                 LockedUserCount: users.Count(user => user.LockoutEnabled && user.LockoutEnd.HasValue && user.LockoutEnd.Value > now));
 
             var userSummaries = users

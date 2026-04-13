@@ -207,7 +207,7 @@
 
     private int RemainingColumns => Math.Max(0, EffectiveColumnCount - 15);
 
-    private readonly List<DeclaracionComplementoBase> _originalItems = new();
+    private IReadOnlyList<DeclaracionComplementoBase> _originalItems = Array.Empty<DeclaracionComplementoBase>();
     private List<DeclaracionComplementoBase> _filteredItems = new();
     private IReadOnlyList<DeclaracionComplementoBase> _pagedItems = Array.Empty<DeclaracionComplementoBase>();
     private int _currentPage = 1;
@@ -258,11 +258,12 @@
 
     protected override void OnParametersSet()
     {
-        _originalItems.Clear();
-        if (Items is not null)
+        _originalItems = Items switch
         {
-            _originalItems.AddRange(Items);
-        }
+            null => Array.Empty<DeclaracionComplementoBase>(),
+            IReadOnlyList<DeclaracionComplementoBase> readOnlyItems => readOnlyItems,
+            _ => Items.ToList()
+        };
         _currentPage = 1;
         ApplyFiltersAndSorting();
     }

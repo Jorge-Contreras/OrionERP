@@ -194,12 +194,20 @@ WHERE ID = @ID;";
           cancellationToken: ct));
     }
 
+    public async Task<SatXmlProcessResult> SaveAndProcessAsync(byte[] xmlBytes, string fileName, CancellationToken ct = default)
+    {
+      if (xmlBytes is null) throw new ArgumentNullException(nameof(xmlBytes));
+      if (xmlBytes.Length == 0) throw new ArgumentException("XML payload is required.", nameof(xmlBytes));
+      if (string.IsNullOrWhiteSpace(fileName)) throw new ArgumentException("fileName is required.", nameof(fileName));
+
+      return await SaveAndProcessCoreAsync(xmlBytes, fileName, ct);
+    }
+
     public async Task<SatXmlProcessResult> SaveAndProcessAsync(Stream xmlStream, string fileName, CancellationToken ct = default)
     {
       if (xmlStream is null) throw new ArgumentNullException(nameof(xmlStream));
       if (string.IsNullOrWhiteSpace(fileName)) throw new ArgumentException("fileName is required.", nameof(fileName));
 
-      // Read bytes up-front
       byte[] bytes;
       using (var ms = new MemoryStream())
       {
@@ -207,6 +215,11 @@ WHERE ID = @ID;";
         bytes = ms.ToArray();
       }
 
+      return await SaveAndProcessCoreAsync(bytes, fileName, ct);
+    }
+
+    private async Task<SatXmlProcessResult> SaveAndProcessCoreAsync(byte[] bytes, string fileName, CancellationToken ct)
+    {
       var safeName = SafeFileName(fileName);
 
       // Prefer UUID extracted from XML; only fallback to filename if it looks like a UUID.

@@ -24,16 +24,16 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = auth.User;
 
-        disponiblesRFCs = (await DeclaracionService.GetAvailableRfcsAsync(user)).ToList();
+        disponiblesRFCs = await DeclaracionService.GetAvailableRfcsAsync(user);
       }
       catch
       {
-        disponiblesRFCs = new List<string>(); // if fails, fallback
+        disponiblesRFCs = Array.Empty<string>(); // if fails, fallback
       }
       if (disponiblesRFCs == null || disponiblesRFCs.Count == 0)
       {
         // If none found, just use a default from config or known value
-        disponiblesRFCs = new List<string> { "" };
+        disponiblesRFCs = new[] { string.Empty };
       }
       selectedRfc = RfcState.CurrentRfc ;
       selectedYear = DateTime.Now.Year;
@@ -54,45 +54,45 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         var request = new DeclaracionPreviaRequest(selectedRfc ?? string.Empty, selectedYear, isAnnual ? null : selectedMonth, isAnnual);
         var data = await DeclaracionService.GetDeclaracionAsync(request);
 
-        disponibleYears = data.DisponibleYears.ToList();
-        disponibleMonths = data.DisponibleMonths.ToList();
-        allCfdiBase = data.AllCfdiBase.ToList();
-        emitidasBase = data.EmitidasBase.ToList();
-        recibidasBase = data.RecibidasBase.ToList();
-        emitidasPpdBase = data.EmitidasPpdBase.ToList();
-        recibidasPpdBase = data.RecibidasPpdBase.ToList();
-        emitidasNominaBase = data.EmitidasNominaBase.ToList();
-        recibidasNominaBase = data.RecibidasNominaBase.ToList();
-        tipoEEmitidasBase = data.TipoEEmitidasBase.ToList();
-        tipoERecibidasBase = data.TipoERecibidasBase.ToList();
-        canceladasOmitidasBase = data.CanceladasOmitidasBase.ToList();
-        complementosBase = data.ComplementosBase.ToList();
-        complementosEmitidosBase = data.ComplementosEmitidosBase.ToList();
-        complementosRecibidosBase = data.ComplementosRecibidosBase.ToList();
+        disponibleYears = data.DisponibleYears;
+        disponibleMonths = data.DisponibleMonths;
+        allCfdiBase = data.AllCfdiBase;
+        emitidasBase = data.EmitidasBase;
+        recibidasBase = data.RecibidasBase;
+        emitidasPpdBase = data.EmitidasPpdBase;
+        recibidasPpdBase = data.RecibidasPpdBase;
+        emitidasNominaBase = data.EmitidasNominaBase;
+        recibidasNominaBase = data.RecibidasNominaBase;
+        tipoEEmitidasBase = data.TipoEEmitidasBase;
+        tipoERecibidasBase = data.TipoERecibidasBase;
+        canceladasOmitidasBase = data.CanceladasOmitidasBase;
+        complementosBase = data.ComplementosBase;
+        complementosEmitidosBase = data.ComplementosEmitidosBase;
+        complementosRecibidosBase = data.ComplementosRecibidosBase;
 
-        emitidas = data.Emitidas.ToList();
-        emitidasPpd = data.EmitidasPpd.ToList();
+        emitidas = data.Emitidas;
+        emitidasPpd = data.EmitidasPpd;
         emitidasTotals = data.EmitidasTotals;
-        emitidasNomina = data.EmitidasNomina.ToList();
+        emitidasNomina = data.EmitidasNomina;
         emitidasNominaTotals = data.EmitidasNominaTotals;
-        recibidas = data.Recibidas.ToList();
-        recibidasPpd = data.RecibidasPpd.ToList();
+        recibidas = data.Recibidas;
+        recibidasPpd = data.RecibidasPpd;
         recibidasTotals = data.RecibidasTotals;
-        recibidasNomina = data.RecibidasNomina.ToList();
+        recibidasNomina = data.RecibidasNomina;
         recibidasNominaTotals = data.RecibidasNominaTotals;
-        tipoEEmitidas = data.TipoEEmitidas.ToList();
+        tipoEEmitidas = data.TipoEEmitidas;
         tipoEEmitidasTotals = data.TipoEEmitidasTotals;
-        tipoERecibidas = data.TipoERecibidas.ToList();
+        tipoERecibidas = data.TipoERecibidas;
         tipoERecibidasTotals = data.TipoERecibidasTotals;
-        canceladasOmitidas = data.CanceladasOmitidas.ToList();
+        canceladasOmitidas = data.CanceladasOmitidas;
         canceladasOmitidasTotals = data.CanceladasOmitidasTotals;
-        complementosEmitidos = data.ComplementosEmitidos.ToList();
-        complementosRecibidos = data.ComplementosRecibidos.ToList();
+        complementosEmitidos = data.ComplementosEmitidos;
+        complementosRecibidos = data.ComplementosRecibidos;
         emitidasPpdTotals = data.EmitidasPpdTotals;
-        desfase = data.Desfase.ToList();
+        desfase = data.Desfase;
         recibidasPpdTotals = data.RecibidasPpdTotals;
         desfaseTotals = data.DesfaseTotals;
-        polizasNoConsolidadas = data.PolizasNoConsolidadas.ToList();
+        polizasNoConsolidadas = data.PolizasNoConsolidadas;
         impuestosSummary = data.ImpuestosSummary;
         bancosCajaSummary = data.BancosCajaSummary;
 

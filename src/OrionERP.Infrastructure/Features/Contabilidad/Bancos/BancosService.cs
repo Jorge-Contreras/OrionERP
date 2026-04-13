@@ -313,6 +313,8 @@ ORDER BY M.Dia DESC, M.Movimiento_ID DESC;";
       return Array.Empty<PendingBankTransactionDto>();
     }
 
+    var (startDate, endDate) = BuildMonthRange(year, month);
+
     const string sql = @"
 WITH CuentasBancoFiltradas AS (
     SELECT DISTINCT
@@ -335,8 +337,8 @@ SELECT
     CAST(ISNULL(t.Monto, 0) AS decimal(19,2)) AS Monto
 FROM dbo.Transacciones AS t
 WHERE t.RFC = @Rfc
-  AND YEAR(t.Fecha) = @Year
-  AND MONTH(t.Fecha) = @Month
+  AND t.Fecha >= @StartDate
+  AND t.Fecha < @EndDate
   AND EXISTS (
       SELECT 1
       FROM CuentasBancoFiltradas AS cbf
@@ -361,8 +363,8 @@ ORDER BY t.Fecha DESC, t.ID DESC;";
     {
       Rfc = rfc,
       AccountId = accountId,
-      Year = year,
-      Month = month
+      StartDate = startDate,
+      EndDate = endDate
     };
 
     using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
@@ -428,6 +430,8 @@ ORDER BY t.Fecha DESC, t.ID DESC;";
       return 0;
     }
 
+    var (startDate, endDate) = BuildMonthRange(year, month);
+
     const string selectSql = @"
 SELECT
     M.Movimiento_ID AS MovimientoId,
@@ -439,8 +443,8 @@ SELECT
     M.Cuenta_Banco_ID AS CuentaBancoId
 FROM bancos.Movimientos AS M
 WHERE M.RFC = @Rfc
-  AND YEAR(M.Dia) = @Year
-  AND MONTH(M.Dia) = @Month
+  AND M.Dia >= @StartDate
+  AND M.Dia < @EndDate
   AND (@AccountId IS NULL OR M.Cuenta_Banco_ID = @AccountId)
   AND M.Transaccion_ID IS NULL
 ORDER BY M.Dia, M.Movimiento_ID;";
@@ -448,8 +452,8 @@ ORDER BY M.Dia, M.Movimiento_ID;";
     var parameters = new
     {
       Rfc = rfc,
-      Year = year,
-      Month = month,
+      StartDate = startDate,
+      EndDate = endDate,
       AccountId = accountId
     };
 
@@ -585,6 +589,12 @@ WHERE Movimiento_ID = @MovimientoId;";
         .ConfigureAwait(false);
     cancellationToken.ThrowIfCancellationRequested();
     return account;
+  }
+
+  private static (DateTime StartDate, DateTime EndDate) BuildMonthRange(int year, int month)
+  {
+    var startDate = new DateTime(year, month, 1);
+    return (startDate, startDate.AddMonths(1));
   }
 
   private sealed record AutoPolicyCandidate

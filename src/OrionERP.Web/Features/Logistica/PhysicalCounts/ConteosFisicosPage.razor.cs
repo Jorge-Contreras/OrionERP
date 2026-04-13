@@ -19,6 +19,7 @@ public partial class ConteosFisicosPage : ComponentBase
   private static readonly NumberStyles QuantityInputNumberStyles = NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowThousands;
 
   private string _countedQuantityInput = string.Empty;
+  private ElementReference MobileCountedQuantityInputRef;
   private ElementReference CountedQuantityInputRef;
   private bool _focusCountedQuantityInputPending;
 
@@ -195,9 +196,12 @@ public partial class ConteosFisicosPage : ComponentBase
     return string.Equals(line.CapturedBy.Trim(), CurrentUserName.Trim(), StringComparison.OrdinalIgnoreCase);
   }
 
+  protected bool IsSelectedLine(PhysicalCountLineDto line)
+    => SelectedLine?.Id == line.Id;
+
   protected string GetLineRowClass(PhysicalCountLineDto line)
   {
-    var isSelected = SelectedLine?.Id == line.Id;
+    var isSelected = IsSelectedLine(line);
     var capturedByCurrentUser = IsLineCapturedByCurrentUser(line);
 
     if (isSelected && capturedByCurrentUser)
@@ -249,7 +253,13 @@ public partial class ConteosFisicosPage : ComponentBase
     PendingLineAttachmentContentType = file.ContentType;
   }
 
+  protected Task GuardarLineaMovilAsync()
+    => GuardarLineaAsync(advanceToNextUncountedLine: true);
+
   protected async Task GuardarLineaAsync()
+    => await GuardarLineaAsync(advanceToNextUncountedLine: false);
+
+  protected async Task GuardarLineaAsync(bool advanceToNextUncountedLine)
   {
     if (!CanCaptureLine || SelectedLine is null || SelectedSession is null)
     {
@@ -283,12 +293,16 @@ public partial class ConteosFisicosPage : ComponentBase
 
       UiMessages.ShowSuccess(result.Message);
       await SeleccionarSesionAsync(SelectedSession.Id);
-      if (SelectedSession is not null && SelectedLine is not null)
+      if (SelectedSession is not null)
       {
-        var refreshedLine = SelectedSession.Lines.FirstOrDefault(line => line.Id == LineCapture.LineId);
-        if (refreshedLine is not null)
+        var preferredLine = advanceToNextUncountedLine
+          ? FindNextUncountedLine(SelectedSession.Lines, LineCapture.LineId)
+          : null;
+        preferredLine ??= SelectedSession.Lines.FirstOrDefault(line => line.Id == LineCapture.LineId);
+        preferredLine ??= SelectedSession.Lines.FirstOrDefault();
+        if (preferredLine is not null)
         {
-          SeleccionarLinea(refreshedLine);
+          SeleccionarLinea(preferredLine);
         }
       }
     }
@@ -332,6 +346,16 @@ public partial class ConteosFisicosPage : ComponentBase
     }
 
     await GuardarLineaAsync();
+  }
+
+  protected async Task HandleMobileCountedQuantityKeyDownAsync(KeyboardEventArgs args)
+  {
+    if (!string.Equals(args.Key, "Enter", StringComparison.Ordinal) || !CanCaptureLine || IsSavingLine)
+    {
+      return;
+    }
+
+    await GuardarLineaMovilAsync();
   }
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -504,6 +528,40 @@ public partial class ConteosFisicosPage : ComponentBase
     _focusCountedQuantityInputPending = CanCaptureLine;
   }
 
+  private static PhysicalCountLineDto? FindNextUncountedLine(IReadOnlyList<PhysicalCountLineDto> lines, int currentLineId)
+  {
+    if (lines.Count == 0)
+    {
+      return null;
+    }
+
+    var currentIndex = -1;
+    for (var index = 0; index < lines.Count; index++)
+    {
+      if (lines[index].Id == currentLineId)
+      {
+        currentIndex = index;
+        break;
+      }
+    }
+
+    if (currentIndex < 0)
+    {
+      return lines.FirstOrDefault(line => line.CountedQuantity is null);
+    }
+
+    for (var offset = 1; offset < lines.Count; offset++)
+    {
+      var candidate = lines[(currentIndex + offset) % lines.Count];
+      if (candidate.CountedQuantity is null)
+      {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
   private static string GetSessionStatusClass(string? status)
     => NormalizeSessionStatus(status) switch
     {
@@ -526,8 +584,11 @@ public partial class ConteosFisicosPage : ComponentBase
   {
     try
     {
-      await Js.InvokeVoidAsync("focusAndSelectTextInput", CountedQuantityInputRef, scrollIntoViewOnMobile);
-      return true;
+      return await Js.InvokeAsync<bool>(
+        "focusAndSelectVisibleTextInput",
+        MobileCountedQuantityInputRef,
+        CountedQuantityInputRef,
+        scrollIntoViewOnMobile);
     }
     catch (InvalidOperationException)
     {

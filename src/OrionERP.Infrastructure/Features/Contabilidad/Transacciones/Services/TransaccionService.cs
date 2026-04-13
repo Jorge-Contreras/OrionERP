@@ -1589,13 +1589,21 @@ WHERE ID = @MovimientoId
       {
           sqlBuilder.Where("t.ID = @Id", new { filter.Id });
       }
-      if (filter.Year.HasValue)
+      if (TryBuildFechaRange(filter.Year, filter.Month, out var fechaInicio, out var fechaFin))
       {
-          sqlBuilder.Where("YEAR(t.Fecha) = @Year", new { filter.Year });
+          sqlBuilder.Where("t.Fecha >= @FechaInicio AND t.Fecha < @FechaFin", new { FechaInicio = fechaInicio, FechaFin = fechaFin });
       }
-      if (filter.Month.HasValue)
+      else
       {
-          sqlBuilder.Where("MONTH(t.Fecha) = @Month", new { filter.Month });
+          if (filter.Year.HasValue)
+          {
+              sqlBuilder.Where("YEAR(t.Fecha) = @Year", new { filter.Year });
+          }
+
+          if (filter.Month.HasValue)
+          {
+              sqlBuilder.Where("MONTH(t.Fecha) = @Month", new { filter.Month });
+          }
       }
       if (!string.IsNullOrWhiteSpace(filter.Concepto))
       {
@@ -2013,6 +2021,33 @@ WHERE rc.TransaccionID = @TransaccionId;";
     }
 
     return requestedDate.Date.Add(existingDate.TimeOfDay);
+  }
+
+  private static bool TryBuildFechaRange(int? year, int? month, out DateTime fechaInicio, out DateTime fechaFin)
+  {
+    fechaInicio = default;
+    fechaFin = default;
+
+    if (!year.HasValue)
+    {
+      return false;
+    }
+
+    if (month.HasValue)
+    {
+      if (month.Value is < 1 or > 12)
+      {
+        return false;
+      }
+
+      fechaInicio = new DateTime(year.Value, month.Value, 1);
+      fechaFin = fechaInicio.AddMonths(1);
+      return true;
+    }
+
+    fechaInicio = new DateTime(year.Value, 1, 1);
+    fechaFin = fechaInicio.AddYears(1);
+    return true;
   }
 
   private static string ResolveContentType(string? extension)

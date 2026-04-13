@@ -149,6 +149,8 @@
                                         var materialTitle = string.IsNullOrWhiteSpace(line.MaterialDescription) ? line.MaterialCode : line.MaterialDescription;
                                         var showMaterialCode = !string.IsNullOrWhiteSpace(line.MaterialCode) && !string.Equals(line.MaterialCode, materialTitle, StringComparison.OrdinalIgnoreCase);
                                         var capturedByCurrentUser = IsLineCapturedByCurrentUser(line);
+                                        var isSelectedLine = IsSelectedLine(line);
+                                        var showInlineCountEditor = isSelectedLine && CanCaptureLine;
                                         <tr class="@GetLineRowClass(line)" style="cursor: pointer;" @onclick="() => SeleccionarLinea(line)">
                                             <td data-label="Foto" class="conteos-line-image-col">
                                                 @if (thumbnailDataUrl is not null)
@@ -178,7 +180,39 @@
                                                 </div>
                                             </td>
                                             <td data-label="Esperado" class="text-end conteos-quantity-col">@line.ExpectedQuantity.ToString("N2")</td>
-                                            <td data-label="Contado" class="text-end conteos-quantity-col">@((line.CountedQuantity ?? 0).ToString("N2"))</td>
+                                            <td data-label="Contado" class="text-end conteos-quantity-col">
+                                                @if (showInlineCountEditor)
+                                                {
+                                                    <div class="conteos-inline-count-editor d-md-none" @onclick:stopPropagation="true">
+                                                        <input class="form-control conteos-counted-input conteos-inline-counted-input"
+                                                               type="text"
+                                                               inputmode="decimal"
+                                                               enterkeyhint="done"
+                                                               autocomplete="off"
+                                                               spellcheck="false"
+                                                               value="@CountedQuantityInput"
+                                                               @oninput="OnCountedQuantityInput"
+                                                               @onblur="OnCountedQuantityBlur"
+                                                               @onfocus="() => SelectCountedQuantityAsync()"
+                                                               @onclick="() => SelectCountedQuantityAsync()"
+                                                               @onkeydown="HandleMobileCountedQuantityKeyDownAsync"
+                                                               @onclick:stopPropagation="true"
+                                                               @ref="MobileCountedQuantityInputRef" />
+                                                        <button class="btn btn-primary conteos-inline-save-button"
+                                                                type="button"
+                                                                @onclick="GuardarLineaMovilAsync"
+                                                                @onclick:stopPropagation="true"
+                                                                disabled="@(!CanCaptureLine || IsSavingLine)">
+                                                            @(IsSavingLine ? "Guardando..." : "Guardar")
+                                                        </button>
+                                                    </div>
+                                                    <div class="d-none d-md-block">@((line.CountedQuantity ?? 0).ToString("N2"))</div>
+                                                }
+                                                else
+                                                {
+                                                    @((line.CountedQuantity ?? 0).ToString("N2"))
+                                                }
+                                            </td>
                                             <td data-label="Varianza" class="text-end conteos-quantity-col">
                                                 @if (line.VarianceQuantity.HasValue && line.VarianceQuantity.Value != 0)
                                                 {
@@ -220,7 +254,7 @@
                                             <label class="form-label">Esperado</label>
                                             <input class="form-control" type="text" value="@SelectedLine.ExpectedQuantity.ToString("N2")" disabled />
                                         </div>
-                                        <div class="col-6 col-md-4">
+                                        <div class="d-none d-md-block col-md-4">
                                             <label class="form-label">Contado</label>
                                             <input class="form-control form-control-lg conteos-counted-input"
                                                    type="text"
@@ -265,7 +299,10 @@
                                             }
                                         </div>
                                     </div>
-                                    <button class="btn btn-primary mt-3 conteos-save-button" type="button" @onclick="GuardarLineaAsync" disabled="@(!CanCaptureLine || IsSavingLine)">
+                                    <button class="btn btn-primary mt-3 conteos-save-button d-md-none" type="button" @onclick="GuardarLineaMovilAsync" disabled="@(!CanCaptureLine || IsSavingLine)">
+                                        @(IsSavingLine ? "Guardando..." : "Guardar línea")
+                                    </button>
+                                    <button class="btn btn-primary mt-3 conteos-save-button d-none d-md-inline-block" type="button" @onclick="GuardarLineaAsync" disabled="@(!CanCaptureLine || IsSavingLine)">
                                         @(IsSavingLine ? "Guardando..." : "Guardar línea")
                                     </button>
                                 </div>

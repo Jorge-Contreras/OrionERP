@@ -213,6 +213,22 @@
   box-shadow: 0 0 0 0.25rem rgba(31, 138, 174, 0.14);
 }
 
+.conteos-inline-count-editor {
+  width: min(100%, 11rem);
+  margin-left: auto;
+}
+
+.conteos-inline-counted-input {
+  min-height: calc(3rem + 2px);
+  font-size: 1.15rem;
+  text-align: right;
+}
+
+.conteos-inline-save-button {
+  width: 100%;
+  min-height: 2.6rem;
+}
+
 .conteos-toggle-card {
   min-height: 3.25rem;
   display: flex;
@@ -429,6 +445,16 @@
     width: 3rem;
     min-height: 3rem;
     border-radius: 0.7rem;
+  }
+
+  .conteos-inline-count-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .conteos-inline-counted-input {
+    font-size: 1.35rem;
   }
 
   .conteos-counted-input {

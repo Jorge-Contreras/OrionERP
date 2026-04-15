@@ -235,18 +235,12 @@ public sealed class MaterialService : IMaterialService
       """
       SELECT
           m.Id,
-          CASE
-              WHEN m.PrimaryImageThumbnail IS NOT NULL THEN CONCAT(m.MaterialCode, '-thumbnail.bin')
-              ELSE COALESCE(m.PrimaryImageFileName, CONCAT(m.MaterialCode, '.bin'))
-          END AS FileName,
-          CASE
-              WHEN m.PrimaryImageThumbnail IS NOT NULL THEN COALESCE(m.PrimaryImageThumbnailContentType, 'image/jpeg')
-              ELSE m.PrimaryImageContentType
-          END AS ContentType,
-          COALESCE(m.PrimaryImageThumbnail, m.PrimaryImage) AS Bytes
+          COALESCE(NULLIF(m.PrimaryImageFileName, ''), CONCAT(m.MaterialCode, '-thumbnail.jpg')) AS FileName,
+          COALESCE(m.PrimaryImageThumbnailContentType, 'image/jpeg') AS ContentType,
+          m.PrimaryImageThumbnail AS Bytes
       FROM logistica.Material m
       WHERE m.Id = @MaterialId
-        AND COALESCE(m.PrimaryImageThumbnail, m.PrimaryImage) IS NOT NULL;
+        AND m.PrimaryImageThumbnail IS NOT NULL;
       """;
 
     using var conn = CreateConnection();
@@ -278,18 +272,12 @@ public sealed class MaterialService : IMaterialService
       """
       SELECT
           m.Id,
-          CASE
-              WHEN m.PrimaryImageThumbnail IS NOT NULL THEN CONCAT(m.MaterialCode, '-thumbnail.bin')
-              ELSE COALESCE(m.PrimaryImageFileName, CONCAT(m.MaterialCode, '.bin'))
-          END AS FileName,
-          CASE
-              WHEN m.PrimaryImageThumbnail IS NOT NULL THEN COALESCE(m.PrimaryImageThumbnailContentType, 'image/jpeg')
-              ELSE m.PrimaryImageContentType
-          END AS ContentType,
-          COALESCE(m.PrimaryImageThumbnail, m.PrimaryImage) AS Bytes
+          COALESCE(NULLIF(m.PrimaryImageFileName, ''), CONCAT(m.MaterialCode, '-thumbnail.jpg')) AS FileName,
+          COALESCE(m.PrimaryImageThumbnailContentType, 'image/jpeg') AS ContentType,
+          m.PrimaryImageThumbnail AS Bytes
       FROM logistica.Material m
       WHERE m.Id IN @MaterialIds
-        AND COALESCE(m.PrimaryImageThumbnail, m.PrimaryImage) IS NOT NULL;
+        AND m.PrimaryImageThumbnail IS NOT NULL;
       """;
 
     using var conn = CreateConnection();

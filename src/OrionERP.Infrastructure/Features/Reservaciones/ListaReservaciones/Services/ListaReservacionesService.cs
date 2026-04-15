@@ -530,7 +530,7 @@ SELECT @@ROWCOUNT;";
 
   public async Task<ReservacionDetailDto?> GetReservacionDetailAsync(int reservationId, CancellationToken ct = default)
   {
-    const string summarySql = @"
+    const string detailSql = @"
 SELECT TOP (1)
     r.ID AS Id,
     r.CLIENTE_ID AS ClienteId,
@@ -545,20 +545,70 @@ SELECT TOP (1)
 FROM dbo.RESERVATION r
 LEFT JOIN dbo.Clientes c
   ON c.ID = r.CLIENTE_ID
-WHERE r.ID = @ReservationId;";
+WHERE r.ID = @ReservationId;
+
+SELECT
+    rc.ID AS Id,
+    rc.ROOM_DATE AS Fecha,
+    ISNULL(rc.ROOM, '') AS Suite,
+    CAST(ISNULL(rc.PRECIO, 0) AS decimal(18,2)) AS Precio,
+    rc.LOCK_DESCRIPTION AS LockDescription,
+    CAST(ISNULL(rc.LIMPIEZA_PROFUNDA, 0) AS bit) AS LimpiezaProfunda
+FROM dbo.ROOM_CALENDAR rc
+WHERE TRY_CAST(rc.LOCK_DESCRIPTION AS int) = @ReservationId
+ORDER BY rc.ROOM_DATE, rc.ROOM;
+
+SELECT
+    rd.ID AS Id,
+    rd.ROOM_ID AS RoomId,
+    ISNULL(r.ROOM_NAME, '') AS RoomName,
+    ISNULL(r.ROOM_DESCRIPTION, '') AS RoomDescription,
+    CAST(ISNULL(rd.PRICE, 0) AS decimal(18,2)) AS Price,
+    rd.NOTES AS Notes,
+    CAST(ISNULL(rd.DISCOUNT, 0) AS decimal(18,2)) AS Discount,
+    CAST(ISNULL(rd.DISCOUNTED_PRICE, 0) AS decimal(18,2)) AS DiscountedPrice
+FROM dbo.RESERVATION_DETAIL rd
+LEFT JOIN dbo.ROOM r
+  ON r.ID = rd.ROOM_ID
+WHERE rd.RESERVATION_ID = @ReservationId
+ORDER BY rd.ID;
+
+SELECT
+    rt.TransaccionID AS TransaccionId,
+    t.Fecha AS Fecha,
+    ISNULL(t.Concepto, '') AS Concepto,
+    CAST(ISNULL(rt.Amount, ISNULL(t.Monto, 0)) AS decimal(18,2)) AS Monto
+FROM dbo.Reservation_Transacciones rt
+LEFT JOIN dbo.Transacciones t
+  ON t.ID = rt.TransaccionID
+WHERE rt.ReservationID = @ReservationId
+ORDER BY t.Fecha DESC, rt.TransaccionID DESC;
+
+SELECT
+    ra.ID AS Id,
+    ra.ReservationID AS ReservationId,
+    ISNULL(ra.AttachmentName, CONCAT('Archivo ', ra.ID)) AS AttachmentName,
+    ISNULL(ra.AttachmentExtension, '') AS AttachmentExtension,
+    ra.AttachmentDescription AS AttachmentDescription,
+    CAST(DATALENGTH(ra.Attachment) AS bigint) AS Length
+FROM dbo.RESERVATION_ATTACHMENT ra
+WHERE ra.ReservationID = @ReservationId
+ORDER BY ra.ID DESC;";
 
     await using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    using var multi = await conn.QueryMultipleAsync(
+      new CommandDefinition(detailSql, new { ReservationId = reservationId }, cancellationToken: ct));
 
-    var detail = await conn.QueryFirstOrDefaultAsync<ReservacionDetailDto>(
-      new CommandDefinition(summarySql, new { ReservationId = reservationId }, cancellationToken: ct));
+    var detail = await multi.ReadFirstOrDefaultAsync<ReservacionDetailDto>();
 
     if (detail is null)
       return null;
 
-    var suites = await GetSuitesByReservationAsync(reservationId, ct);
-    var extras = await GetExtrasAsync(reservationId, ct);
-    var pagos = await GetPagosAsync(reservationId, ct);
-    var attachments = await GetAttachmentsAsync(reservationId, ct);
+    var suites = (await multi.ReadAsync<ReservacionSuiteDto>()).AsList();
+    var extras = (await multi.ReadAsync<ReservacionExtraDto>()).AsList();
+    var pagos = (await multi.ReadAsync<ReservacionPagoDto>()).AsList();
+    var attachments = (await multi.ReadAsync<ReservacionAttachmentDto>()).AsList();
 
     ApplyCalculatedTotals(detail, suites, extras, pagos);
     detail.Suites = suites;

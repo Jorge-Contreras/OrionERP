@@ -44,11 +44,11 @@ public partial class ReservacionPage : ComponentBase
   protected ReservacionDetailDto? Detail { get; set; }
   protected List<ClienteOptionDto> Clientes { get; set; } = new();
   protected List<RoomOptionDto> Rooms { get; set; } = new();
-  protected List<ReservacionSuiteDto> Suites { get; set; } = new();
+  protected IReadOnlyList<ReservacionSuiteDto> Suites { get; set; } = Array.Empty<ReservacionSuiteDto>();
   protected List<SuiteDisponibleDto> SuitesDisponibles { get; set; } = new();
-  protected List<ReservacionExtraDto> Extras { get; set; } = new();
-  protected List<ReservacionPagoDto> Pagos { get; set; } = new();
-  protected List<ReservacionAttachmentDto> Attachments { get; set; } = new();
+  protected IReadOnlyList<ReservacionExtraDto> Extras { get; set; } = Array.Empty<ReservacionExtraDto>();
+  protected IReadOnlyList<ReservacionPagoDto> Pagos { get; set; } = Array.Empty<ReservacionPagoDto>();
+  protected IReadOnlyList<ReservacionAttachmentDto> Attachments { get; set; } = Array.Empty<ReservacionAttachmentDto>();
 
   protected HashSet<int> SelectedSuiteIds { get; set; } = new();
   protected HashSet<int> SelectedSuiteDisponibleIds { get; set; } = new();
@@ -174,10 +174,10 @@ public partial class ReservacionPage : ComponentBase
       Clientes = await LoadClientesAsync(ClienteSearchText);
       Rooms = (await ReservacionesService.GetRoomsForExtrasAsync()).ToList();
 
-      Suites = Detail.Suites.ToList();
-      Extras = Detail.Extras.ToList();
-      Pagos = Detail.Pagos.ToList();
-      Attachments = Detail.Attachments.ToList();
+      Suites = Detail.Suites;
+      Extras = Detail.Extras;
+      Pagos = Detail.Pagos;
+      Attachments = Detail.Attachments;
 
       SelectedSuiteIds.Clear();
       SelectedSuiteDisponibleIds.Clear();
@@ -455,7 +455,7 @@ public partial class ReservacionPage : ComponentBase
     if (Detail is null)
       return;
 
-    Suites = (await ReservacionesService.GetSuitesByReservationAsync(Detail.Id)).ToList();
+    Suites = await ReservacionesService.GetSuitesByReservationAsync(Detail.Id);
     RecalculateTotals();
   }
 
@@ -943,7 +943,7 @@ public partial class ReservacionPage : ComponentBase
 
   protected async Task RefreshAttachmentsAsync()
   {
-    Attachments = (await ReservacionesService.GetAttachmentsAsync(ReservationId)).ToList();
+    Attachments = await ReservacionesService.GetAttachmentsAsync(ReservationId);
   }
 
   protected void RecalculateTotals()

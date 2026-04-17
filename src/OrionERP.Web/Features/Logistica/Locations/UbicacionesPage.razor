@@ -9,184 +9,235 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
             <h1 class="h3 mb-1">Ubicaciones e inventario</h1>
-            <p class="text-muted mb-0">Jerarquía room-location, existencias por material y evidencias por ubicación.</p>
+            <p class="text-muted mb-0">Selecciona una suite, elige la ubicación correcta y sincroniza inventario, miniaturas y parámetros en una sola vista.</p>
         </div>
-        <button type="button" class="btn btn-outline-primary" @onclick="NuevaUbicacion">
+        <button type="button" class="btn btn-outline-primary" @onclick="NuevaUbicacion" disabled="@(!SelectedRoomId.HasValue)">
             Nueva ubicación
         </button>
     </div>
 
     <div class="row g-3">
         <div class="col-12 col-xxl-4">
-            <section class="card shadow-sm mb-3">
+            <section class="card shadow-sm mb-3 ubicaciones-selector-card">
                 <div class="card-body">
-                    <h2 class="h5 mb-3">Drill-down de ubicaciones</h2>
-                    <div class="row g-2 mb-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Buscar ubicación</label>
-                            <input class="form-control" type="search" @bind="LocationFilter.SearchText" @bind:event="oninput" />
+                    <div class="ubicaciones-panel-header mb-3">
+                        <div>
+                            <div class="ubicaciones-step-chip">Paso 1</div>
+                            <h2 class="h5 mb-1">Suite y ubicación</h2>
+                            <p class="text-muted mb-0">Primero elige una suite y luego una ubicación. Esa selección actualizará el inventario y el editor.</p>
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Room</label>
-                            <select class="form-select" @bind="LocationFilter.RoomId">
-                                <option value="">Todos</option>
-                                @foreach (var room in RoomOptions)
-                                {
-                                    <option value="@room.Id">@room.Name</option>
-                                }
-                            </select>
-                        </div>
-                    </div>
-                    <div class="d-flex gap-2 mb-3">
-                        <button class="btn btn-primary" type="button" @onclick="BuscarUbicacionesAsync" disabled="@IsLoadingLocations">
-                            @(IsLoadingLocations ? "Cargando..." : "Buscar")
-                        </button>
-                        <label class="form-check d-flex align-items-center gap-2 mb-0">
-                            <input class="form-check-input" type="checkbox" @bind="LocationFilter.IncludeInactive" />
-                            <span class="form-check-label">Incluir inactivas</span>
-                        </label>
                     </div>
 
                     <div class="mb-3">
-                        @foreach (var roomNode in LocationTree)
-                        {
-                            <details class="mb-2" open>
-                                <summary class="fw-semibold">@roomNode.LocationName</summary>
-                                @if (roomNode.Children.Count == 0)
-                                {
-                                    <div class="small text-muted ms-3">Sin ubicaciones hijas.</div>
-                                }
-                                else
-                                {
-                                    <ul class="list-group list-group-flush ms-3 mt-2">
-                                        @foreach (var child in roomNode.Children)
-                                        {
-                                            <li class="list-group-item px-0 py-1 border-0">
-                                                <button type="button"
-                                                        class="btn btn-link text-start p-0 @(child.Id == SelectedLocationId ? "fw-bold text-primary" : "text-decoration-none")"
-                                                        @onclick="() => SeleccionarUbicacionAsync(child.Id)">
-                                                    @child.LocationCode · @child.LocationName
-                                                </button>
-                                            </li>
-                                        }
-                                    </ul>
-                                }
-                            </details>
-                        }
+                        <label class="form-label">Suite</label>
+                        <select class="form-select form-select-lg" value="@SelectedRoomId" @onchange="OnRoomChangedAsync">
+                            <option value="">Selecciona una suite</option>
+                            @foreach (var room in RoomOptions)
+                            {
+                                <option value="@room.Id">@room.Name</option>
+                            }
+                        </select>
+                        <div class="form-text">Suites obtenidas con el filtro SQL <code>ROOM_TYPE = 'SUITE'</code>.</div>
                     </div>
 
-                    <div class="table-responsive" style="max-height: 40vh;">
-                        <table class="table table-sm table-hover align-middle">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Ubicación</th>
-                                    <th>Tipo</th>
-                                    <th class="text-end">Materiales</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @if (Locations.Count == 0)
+                    <div class="ubicaciones-room-summary mb-3">
+                        <div class="ubicaciones-room-summary-item">
+                            <span class="ubicaciones-summary-label">Suite</span>
+                            <strong>@SelectedRoomName</strong>
+                        </div>
+                        <div class="ubicaciones-room-summary-item">
+                            <span class="ubicaciones-summary-label">Ubicaciones</span>
+                            <strong>@Locations.Count</strong>
+                        </div>
+                        <div class="ubicaciones-room-summary-item">
+                            <span class="ubicaciones-summary-label">Con inventario</span>
+                            <strong>@InventoryEnabledLocationCount</strong>
+                        </div>
+                        <div class="ubicaciones-room-summary-item">
+                            <span class="ubicaciones-summary-label">Activas</span>
+                            <strong>@ActiveLocationCount</strong>
+                        </div>
+                    </div>
+
+                    @if (IsLoadingLocations)
+                    {
+                        <div class="ubicaciones-empty-state">Cargando ubicaciones de la suite seleccionada...</div>
+                    }
+                    else if (!SelectedRoomId.HasValue)
+                    {
+                        <div class="ubicaciones-empty-state">Selecciona una suite para mostrar todas las ubicaciones relacionadas y elegir con cuál vas a trabajar.</div>
+                    }
+                    else if (Locations.Count == 0)
+                    {
+                        <div class="ubicaciones-empty-state">No se encontraron ubicaciones asociadas a esta suite.</div>
+                    }
+                    else
+                    {
+                        <div class="ubicaciones-selector-toolbar mb-3">
+                            <div class="ubicaciones-collapsed-summary">
+                                @if (SelectedLocationId.HasValue)
                                 {
-                                    <tr>
-                                        <td colspan="3" class="text-center text-muted py-3">Sin ubicaciones para el filtro actual.</td>
-                                    </tr>
+                                    <span class="ubicaciones-summary-label">Ubicación seleccionada</span>
+                                    <strong>@SelectedLocationSummary</strong>
                                 }
                                 else
                                 {
-                                    @foreach (var item in Locations)
-                                    {
-                                        <tr class="@(item.Id == SelectedLocationId ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarUbicacionAsync(item.Id)">
-                                            <td>
-                                                <div class="fw-semibold">@item.LocationName</div>
-                                                <small class="text-muted">@item.LocationCode</small>
-                                            </td>
-                                            <td>
-                                                <div>@item.LocationType</div>
-                                                <small class="text-muted">@(string.IsNullOrWhiteSpace(item.RoomName) ? "Sin room" : item.RoomName)</small>
-                                            </td>
-                                            <td class="text-end">
-                                                <div>@item.MaterialCount</div>
-                                                <small class="text-muted">@(item.IsActive ? "Activa" : "Inactiva")</small>
-                                            </td>
-                                        </tr>
-                                    }
+                                    <span class="ubicaciones-summary-label">Siguiente paso</span>
+                                    <strong>Elige una ubicación para abrir el editor y el inventario.</strong>
                                 }
-                            </tbody>
-                        </table>
-                    </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ubicaciones-collapse-toggle" @onclick="ToggleLocationList">
+                                @LocationListToggleLabel
+                            </button>
+                        </div>
+
+                        @if (IsLocationListCollapsed)
+                        {
+                            <div class="ubicaciones-collapsed-hint">
+                                La lista está contraída para que el editor quede más cerca, especialmente en móvil.
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive ubicaciones-location-table-wrap">
+                                <table class="table table-hover align-middle ubicaciones-location-table mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th class="ubicaciones-location-name-col">Ubicación</th>
+                                            <th>Código</th>
+                                            <th>Tipo</th>
+                                            <th>Inventario</th>
+                                            <th class="text-end">Materiales</th>
+                                            <th class="text-end">Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var item in Locations)
+                                        {
+                                            <tr class="@GetLocationRowClass(item)" @onclick="() => SeleccionarUbicacionAsync(item.Id)">
+                                                <td class="ubicaciones-location-name-col">
+                                                    <div class="ubicaciones-location-name">@item.LocationName</div>
+                                                    @if (!string.IsNullOrWhiteSpace(item.ParentLocationName))
+                                                    {
+                                                        <div class="ubicaciones-location-parent">Depende de @item.ParentLocationName</div>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <span class="ubicaciones-location-code-text">@(string.IsNullOrWhiteSpace(item.LocationCode) ? $"LOC-{item.Id}" : item.LocationCode)</span>
+                                                </td>
+                                                <td>
+                                                    <span class="badge @GetLocationInventoryBadgeClass(item) ubicaciones-location-type">@item.LocationType</span>
+                                                </td>
+                                                <td>
+                                                    <span class="ubicaciones-location-flag">@(item.IsInventoryEnabled ? "Habilitado" : "Solo referencia")</span>
+                                                </td>
+                                                <td class="text-end">
+                                                    <span class="ubicaciones-location-metric">@item.MaterialCount</span>
+                                                </td>
+                                                <td class="text-end">
+                                                    <span class="badge @(item.IsActive ? "text-bg-light" : "text-bg-secondary") ubicaciones-location-state">@(item.IsActive ? "Activa" : "Inactiva")</span>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    }
                 </div>
             </section>
 
-            <section class="card shadow-sm">
+            <section class="card shadow-sm ubicaciones-editor-card">
                 <div class="card-body">
-                    <h2 class="h5 mb-3">Editor de ubicación</h2>
-                    <EditForm Model="LocationEditor" OnValidSubmit="GuardarUbicacionAsync">
-                        <DataAnnotationsValidator />
-                        <ValidationSummary />
+                    <div class="ubicaciones-panel-header mb-3">
+                        <div>
+                            <div class="ubicaciones-step-chip">Paso 2</div>
+                            <h2 class="h5 mb-1">Editor de ubicación</h2>
+                            <p class="text-muted mb-0">Modifica la ubicación seleccionada o prepara una nueva dentro de la suite activa.</p>
+                        </div>
+                    </div>
 
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Código</label>
-                                <InputText class="form-control" @bind-Value="LocationEditor.LocationCode" />
+                    @if (!SelectedRoomId.HasValue)
+                    {
+                        <div class="ubicaciones-empty-state">Selecciona una suite para habilitar el editor de ubicación.</div>
+                    }
+                    else
+                    {
+                        <div class="ubicaciones-editor-summary mb-3">
+                            <div class="ubicaciones-editor-summary-item">
+                                <span class="ubicaciones-summary-label">Suite</span>
+                                <strong>@SelectedRoomName</strong>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Tipo</label>
-                                <InputSelect class="form-select" @bind-Value="LocationEditor.LocationType">
-                                    @foreach (var type in LocationTypes)
-                                    {
-                                        <option value="@type">@type</option>
-                                    }
-                                </InputSelect>
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label">Nombre</label>
-                                <InputText class="form-control" @bind-Value="LocationEditor.LocationName" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Ubicación padre</label>
-                                <InputSelect class="form-select" @bind-Value="LocationEditor.ParentLocationId">
-                                    <option value="">Sin padre</option>
-                                    @foreach (var option in LocationOptions)
-                                    {
-                                        <option value="@option.Id">@option.Name</option>
-                                    }
-                                </InputSelect>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Room</label>
-                                <InputSelect class="form-select" @bind-Value="LocationEditor.RoomId">
-                                    <option value="">Sin room</option>
-                                    @foreach (var option in RoomOptions)
-                                    {
-                                        <option value="@option.Id">@option.Name</option>
-                                    }
-                                </InputSelect>
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label">Descripción</label>
-                                <InputTextArea class="form-control" rows="3" @bind-Value="LocationEditor.Description" />
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-check mt-2">
-                                    <InputCheckbox class="form-check-input" @bind-Value="LocationEditor.IsInventoryEnabled" />
-                                    <label class="form-check-label">Habilitada para inventario</label>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-check mt-2">
-                                    <InputCheckbox class="form-check-input" @bind-Value="LocationEditor.IsActive" />
-                                    <label class="form-check-label">Activa</label>
-                                </div>
+                            <div class="ubicaciones-editor-summary-item">
+                                <span class="ubicaciones-summary-label">Modo</span>
+                                <strong>@(SelectedLocationId.HasValue ? "Editar ubicación" : "Nueva ubicación")</strong>
                             </div>
                         </div>
 
-                        <div class="d-flex gap-2 mt-4">
-                            <button type="submit" class="btn btn-primary" disabled="@IsSavingLocation">
-                                @(IsSavingLocation ? "Guardando..." : "Guardar ubicación")
-                            </button>
-                            <button type="button" class="btn btn-outline-secondary" @onclick="NuevaUbicacion" disabled="@IsSavingLocation">Limpiar</button>
-                        </div>
-                    </EditForm>
+                        <EditForm Model="LocationEditor" OnValidSubmit="GuardarUbicacionAsync">
+                            <DataAnnotationsValidator />
+                            <ValidationSummary />
+
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Código</label>
+                                    <InputText class="form-control" @bind-Value="LocationEditor.LocationCode" />
+                                    <div class="form-text">Si está vacío en una alta nueva, el sistema genera el código.</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Tipo</label>
+                                    <InputSelect class="form-select" @bind-Value="LocationEditor.LocationType">
+                                        @foreach (var type in LocationTypes)
+                                        {
+                                            <option value="@type">@type</option>
+                                        }
+                                    </InputSelect>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Nombre</label>
+                                    <InputText class="form-control" @bind-Value="LocationEditor.LocationName" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Suite seleccionada</label>
+                                    <input class="form-control" type="text" value="@SelectedRoomName" disabled />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Ubicación padre</label>
+                                    <InputSelect class="form-select" @bind-Value="LocationEditor.ParentLocationId">
+                                        <option value="">Sin padre</option>
+                                        @foreach (var option in ParentLocationOptions)
+                                        {
+                                            <option value="@option.Id">@(string.IsNullOrWhiteSpace(option.LocationCode) ? option.LocationName : $"{option.LocationCode} · {option.LocationName}")</option>
+                                        }
+                                    </InputSelect>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Descripción</label>
+                                    <InputTextArea class="form-control" rows="3" @bind-Value="LocationEditor.Description" />
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check mt-2">
+                                        <InputCheckbox class="form-check-input" @bind-Value="LocationEditor.IsInventoryEnabled" />
+                                        <label class="form-check-label">Habilitada para inventario</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check mt-2">
+                                        <InputCheckbox class="form-check-input" @bind-Value="LocationEditor.IsActive" />
+                                        <label class="form-check-label">Activa</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex flex-wrap gap-2 mt-4">
+                                <button type="submit" class="btn btn-primary" disabled="@IsSavingLocation">
+                                    @(IsSavingLocation ? "Guardando..." : "Guardar ubicación")
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" @onclick="RestablecerUbicacionAsync" disabled="@IsSavingLocation">Restablecer</button>
+                                <button type="button" class="btn btn-outline-primary" @onclick="NuevaUbicacion" disabled="@IsSavingLocation">Nueva ubicación</button>
+                            </div>
+                        </EditForm>
+                    }
                 </div>
             </section>
         </div>
@@ -197,51 +248,44 @@
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                         <div>
                             <h2 class="h5 mb-1">Inventario por ubicación</h2>
-                            <div class="text-muted">Selecciona una ubicación o filtra por room/material.</div>
+                            <div class="text-muted">La ubicación seleccionada controla esta vista y carga miniaturas, cantidades y alertas.</div>
+                        </div>
+                        <div class="ubicaciones-context-pills">
+                            <span class="ubicaciones-context-pill">Suite: @SelectedRoomName</span>
+                            <span class="ubicaciones-context-pill @(SelectedLocationId.HasValue ? "is-active" : null)">Ubicación: @SelectedLocationSummary</span>
                         </div>
                     </div>
 
                     <div class="row g-2 mb-3">
-                        <div class="col-md-5">
+                        <div class="col-lg-7">
                             <label class="form-label">Buscar material</label>
-                            <input class="form-control" type="search" placeholder="Código, material, barras o ubicación" @bind="StockFilter.SearchText" @bind:event="oninput" />
+                            <input class="form-control" type="search" placeholder="Código, material, barras o ubicación" @bind="StockFilter.SearchText" @bind:event="oninput" disabled="@(!SelectedLocationId.HasValue)" />
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Room</label>
-                            <select class="form-select" @bind="StockFilter.RoomId">
-                                <option value="">Todos</option>
-                                @foreach (var room in RoomOptions)
-                                {
-                                    <option value="@room.Id">@room.Name</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Ubicación</label>
-                            <select class="form-select" @bind="StockFilter.LocationId">
-                                <option value="">Todas</option>
-                                @foreach (var option in InventoryLocationOptions)
-                                {
-                                    <option value="@option.Id">@option.Name</option>
-                                }
-                            </select>
+                        <div class="col-lg-5">
+                            <label class="form-label">Ubicación activa</label>
+                            <input class="form-control" type="text" value="@SelectedLocationSummary" disabled />
                         </div>
                     </div>
 
+                    @if (!SelectedLocationId.HasValue)
+                    {
+                        <div class="ubicaciones-empty-state mb-3">Selecciona una ubicación en el panel izquierdo para cargar su inventario con miniaturas y alertas.</div>
+                    }
+
                     <div class="d-flex flex-wrap gap-3 mb-3">
                         <label class="form-check">
-                            <input class="form-check-input" type="checkbox" @bind="StockFilter.LowStockOnly" />
+                            <input class="form-check-input" type="checkbox" @bind="StockFilter.LowStockOnly" disabled="@(!SelectedLocationId.HasValue)" />
                             <span class="form-check-label">Solo bajo mínimo</span>
                         </label>
                         <label class="form-check">
-                            <input class="form-check-input" type="checkbox" @bind="StockFilter.CountDueOnly" />
+                            <input class="form-check-input" type="checkbox" @bind="StockFilter.CountDueOnly" disabled="@(!SelectedLocationId.HasValue)" />
                             <span class="form-check-label">Conteo vencido</span>
                         </label>
                         <label class="form-check">
-                            <input class="form-check-input" type="checkbox" @bind="StockFilter.IncludeZeroBalances" />
+                            <input class="form-check-input" type="checkbox" @bind="StockFilter.IncludeZeroBalances" disabled="@(!SelectedLocationId.HasValue)" />
                             <span class="form-check-label">Incluir ceros</span>
                         </label>
-                        <button class="btn btn-primary ms-auto" type="button" @onclick="BuscarStockAsync" disabled="@IsStockBusy">
+                        <button class="btn btn-primary ms-auto" type="button" @onclick="BuscarStockAsync" disabled="@(IsStockBusy || !SelectedLocationId.HasValue)">
                             @(IsLoadingStock ? "Cargando..." : "Actualizar inventario")
                         </button>
                     </div>
@@ -263,7 +307,7 @@
                                 @if (!HasExecutedStockSearch)
                                 {
                                     <tr>
-                                        <td colspan="7" class="text-center text-muted py-3">Selecciona una ubicación o presiona Actualizar inventario.</td>
+                                        <td colspan="7" class="text-center text-muted py-3">Selecciona una ubicación para cargar su inventario.</td>
                                     </tr>
                                 }
                                 else if (IsLoadingStock && StockRows.Count == 0)

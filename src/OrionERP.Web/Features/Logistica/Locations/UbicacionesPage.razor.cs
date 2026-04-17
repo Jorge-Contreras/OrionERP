@@ -14,6 +14,7 @@ public partial class UbicacionesPage : ComponentBase
 {
   private const int PageSize = 50;
   private const int QueryTake = PageSize + 1;
+  private const string SuiteRoomType = "SUITE";
 
   protected static readonly string[] LocationTypes = ["Room", "Storage", "Disposal", "Service"];
 
@@ -23,12 +24,8 @@ public partial class UbicacionesPage : ComponentBase
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private IJSRuntime Js { get; set; } = default!;
 
-  protected LocationFilter LocationFilter { get; set; } = new();
   protected StockFilter StockFilter { get; set; } = new() { IncludeZeroBalances = true };
   protected List<LookupOptionDto> RoomOptions { get; set; } = [];
-  protected List<LookupOptionDto> LocationOptions { get; set; } = [];
-  protected List<LookupOptionDto> InventoryLocationOptions { get; set; } = [];
-  protected List<LocationTreeNodeDto> LocationTree { get; set; } = [];
   protected List<LocationListItemDto> Locations { get; set; } = [];
   protected List<StockListItemDto> StockRows { get; set; } = [];
   protected List<StockTransactionDto> SelectedStockTransactions { get; set; } = [];
@@ -37,7 +34,9 @@ public partial class UbicacionesPage : ComponentBase
   protected LocationUpsertRequest LocationEditor { get; set; } = CreateLocationEditor();
   protected StockThresholdUpdateRequest ThresholdEditor { get; set; } = CreateThresholdEditor();
   protected StockListItemDto? SelectedStock { get; set; }
+  protected int? SelectedRoomId { get; set; }
   protected int? SelectedLocationId { get; set; }
+  protected bool IsLocationListCollapsed { get; set; }
   protected bool HasExecutedStockSearch { get; set; }
   protected bool HasMoreStockRows { get; set; }
   protected bool IsLoadingLocations { get; set; }
@@ -58,34 +57,58 @@ public partial class UbicacionesPage : ComponentBase
 
   protected bool HasPendingAttachment => PendingAttachmentBytes is { Length: > 0 };
   protected bool IsStockBusy => IsLoadingStock || IsLoadingMoreStock;
+  protected LookupOptionDto? SelectedRoom => RoomOptions.FirstOrDefault(room => room.Id == SelectedRoomId);
+  protected string SelectedRoomName => SelectedRoom?.Name ?? "Selecciona una suite";
+  protected int InventoryEnabledLocationCount => Locations.Count(item => item.IsInventoryEnabled);
+  protected int ActiveLocationCount => Locations.Count(item => item.IsActive);
+  protected string LocationListToggleLabel => IsLocationListCollapsed ? "Mostrar ubicaciones" : "Ocultar ubicaciones";
+  protected IReadOnlyList<LocationListItemDto> ParentLocationOptions => Locations
+    .Where(item => item.Id != LocationEditor.Id)
+    .OrderBy(item => item.LocationName, StringComparer.OrdinalIgnoreCase)
+    .ThenBy(item => item.Id)
+    .ToList();
+  protected string SelectedLocationSummary
+  {
+    get
+    {
+      if (SelectedLocationId.HasValue)
+      {
+        var selectedLocation = Locations.FirstOrDefault(item => item.Id == SelectedLocationId.Value);
+        if (selectedLocation is not null)
+        {
+          return string.IsNullOrWhiteSpace(selectedLocation.LocationCode)
+            ? selectedLocation.LocationName
+            : $"{selectedLocation.LocationCode} · {selectedLocation.LocationName}";
+        }
+      }
+
+      return string.IsNullOrWhiteSpace(LocationEditor.LocationName)
+        ? "Selecciona una ubicación"
+        : LocationEditor.LocationName;
+    }
+  }
 
   protected override async Task OnInitializedAsync()
   {
     await LoadLookupsAsync();
-    await BuscarUbicacionesAsync();
   }
 
-  protected async Task BuscarUbicacionesAsync()
+  protected async Task OnRoomChangedAsync(ChangeEventArgs args)
   {
-    IsLoadingLocations = true;
-    try
-    {
-      LocationTree = (await LocationService.GetLocationTreeAsync()).ToList();
-      Locations = (await LocationService.GetLocationsAsync(LocationFilter)).ToList();
-    }
-    catch (Exception ex)
-    {
-      UiMessages.ShowError($"No se pudieron cargar las ubicaciones. {ex.Message}");
-    }
-    finally
-    {
-      IsLoadingLocations = false;
-      StateHasChanged();
-    }
+    SelectedRoomId = int.TryParse(args.Value?.ToString(), out var roomId) ? roomId : null;
+    IsLocationListCollapsed = false;
+    await LoadLocationsForSelectedRoomAsync();
   }
 
   protected async Task BuscarStockAsync()
   {
+    if (!SelectedLocationId.HasValue || !StockFilter.LocationId.HasValue)
+    {
+      ClearStockResults();
+      StateHasChanged();
+      return;
+    }
+
     HasExecutedStockSearch = true;
     IsLoadingStock = true;
     CloseMaterialImageModal();
@@ -149,6 +172,11 @@ public partial class UbicacionesPage : ComponentBase
         return;
       }
 
+      if (detail.RoomId.HasValue && detail.RoomId != SelectedRoomId)
+      {
+        SelectedRoomId = detail.RoomId;
+      }
+
       SelectedLocationId = detail.Id;
       LocationEditor = new LocationUpsertRequest
       {
@@ -163,7 +191,9 @@ public partial class UbicacionesPage : ComponentBase
         IsActive = detail.IsActive
       };
 
+      StockFilter.RoomId = detail.RoomId ?? SelectedRoomId;
       StockFilter.LocationId = detail.Id;
+      IsLocationListCollapsed = true;
       await BuscarStockAsync();
     }
     catch (Exception ex)
@@ -174,15 +204,29 @@ public partial class UbicacionesPage : ComponentBase
 
   protected void NuevaUbicacion()
   {
-    SelectedLocationId = null;
-    LocationEditor = CreateLocationEditor();
+    if (!SelectedRoomId.HasValue)
+    {
+      UiMessages.ShowWarning("Selecciona una suite antes de crear una ubicación.");
+      return;
+    }
+
+    ClearSelectedLocationContext();
+    LocationEditor = CreateLocationEditor(SelectedRoomId);
+    IsLocationListCollapsed = true;
   }
 
   protected async Task GuardarUbicacionAsync()
   {
+    if (!SelectedRoomId.HasValue)
+    {
+      UiMessages.ShowWarning("Selecciona una suite antes de guardar la ubicación.");
+      return;
+    }
+
     IsSavingLocation = true;
     try
     {
+      LocationEditor.RoomId = SelectedRoomId;
       var result = await LocationService.SaveLocationAsync(LocationEditor);
       if (!result.Success)
       {
@@ -191,13 +235,7 @@ public partial class UbicacionesPage : ComponentBase
       }
 
       UiMessages.ShowSuccess(result.Message);
-      await LoadLookupsAsync();
-      await BuscarUbicacionesAsync();
-
-      if (result.EntityId.HasValue)
-      {
-        await SeleccionarUbicacionAsync(result.EntityId.Value);
-      }
+      await LoadLocationsForSelectedRoomAsync(result.EntityId);
     }
     catch (Exception ex)
     {
@@ -207,6 +245,27 @@ public partial class UbicacionesPage : ComponentBase
     {
       IsSavingLocation = false;
     }
+  }
+
+  protected async Task RestablecerUbicacionAsync()
+  {
+    if (SelectedLocationId.HasValue)
+    {
+      await SeleccionarUbicacionAsync(SelectedLocationId.Value);
+      return;
+    }
+
+    LocationEditor = CreateLocationEditor(SelectedRoomId);
+  }
+
+  protected void ToggleLocationList()
+  {
+    if (Locations.Count == 0)
+    {
+      return;
+    }
+
+    IsLocationListCollapsed = !IsLocationListCollapsed;
   }
 
   protected async Task SeleccionarStockAsync(StockListItemDto item)
@@ -394,9 +453,45 @@ public partial class UbicacionesPage : ComponentBase
 
   private async Task LoadLookupsAsync()
   {
-    RoomOptions = (await LocationService.GetRoomLookupAsync()).ToList();
-    LocationOptions = (await LocationService.GetLocationLookupAsync()).ToList();
-    InventoryLocationOptions = (await LocationService.GetLocationLookupAsync(inventoryOnly: true)).ToList();
+    RoomOptions = (await LocationService.GetRoomLookupAsync(roomType: SuiteRoomType)).ToList();
+  }
+
+  private async Task LoadLocationsForSelectedRoomAsync(int? preferredLocationId = null)
+  {
+    IsLoadingLocations = true;
+    try
+    {
+      StockFilter.RoomId = SelectedRoomId;
+      ClearSelectedLocationContext();
+      LocationEditor = CreateLocationEditor(SelectedRoomId);
+      Locations = [];
+      IsLocationListCollapsed = false;
+
+      if (!SelectedRoomId.HasValue)
+      {
+        return;
+      }
+
+      Locations = (await LocationService.GetLocationsAsync(new LocationFilter
+      {
+        RoomId = SelectedRoomId,
+        IncludeInactive = true
+      })).ToList();
+
+      if (preferredLocationId.HasValue && Locations.Any(item => item.Id == preferredLocationId.Value))
+      {
+        await SeleccionarUbicacionAsync(preferredLocationId.Value);
+      }
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron cargar las ubicaciones. {ex.Message}");
+    }
+    finally
+    {
+      IsLoadingLocations = false;
+      StateHasChanged();
+    }
   }
 
   private async Task<(List<StockListItemDto> Items, bool HasMore)> GetStockPageAsync(int skip)
@@ -513,6 +608,23 @@ public partial class UbicacionesPage : ComponentBase
     PendingAttachmentDescription = null;
   }
 
+  private void ClearSelectedLocationContext()
+  {
+    SelectedLocationId = null;
+    StockFilter.LocationId = null;
+    ClearStockResults();
+  }
+
+  private void ClearStockResults()
+  {
+    CloseMaterialImageModal();
+    HasExecutedStockSearch = false;
+    HasMoreStockRows = false;
+    StockRows = [];
+    MaterialThumbnailDataUrls = [];
+    ResetStockSelection();
+  }
+
   private static void UpdateThresholds(StockListItemDto stock, decimal? minQuantity, decimal? maxQuantity, bool isLowStock)
   {
     stock.MinQuantity = minQuantity;
@@ -551,6 +663,25 @@ public partial class UbicacionesPage : ComponentBase
       : "Sin parámetros";
   }
 
+  protected string GetLocationRowClass(LocationListItemDto item)
+  {
+    var classes = new List<string> { "ubicaciones-location-row" };
+    if (item.Id == SelectedLocationId)
+    {
+      classes.Add("is-selected");
+    }
+
+    if (!item.IsActive)
+    {
+      classes.Add("is-inactive");
+    }
+
+    return string.Join(' ', classes);
+  }
+
+  protected static string GetLocationInventoryBadgeClass(LocationListItemDto item)
+    => item.IsInventoryEnabled ? "text-bg-success" : "text-bg-secondary";
+
   private static string BuildDataUrl(string? contentType, byte[] bytes)
   {
     var safeContentType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType;
@@ -565,10 +696,11 @@ public partial class UbicacionesPage : ComponentBase
       MaxQuantity = item?.MaxQuantity
     };
 
-  private static LocationUpsertRequest CreateLocationEditor()
+  private static LocationUpsertRequest CreateLocationEditor(int? roomId = null)
     => new()
     {
       LocationType = "Storage",
+      RoomId = roomId,
       IsInventoryEnabled = true,
       IsActive = true
     };

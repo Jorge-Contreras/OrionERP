@@ -10,6 +10,6 @@ public interface ILocationService
   Task<LocationDetailDto?> GetLocationAsync(int locationId, CancellationToken ct = default);
   Task<IReadOnlyList<LocationTreeNodeDto>> GetLocationTreeAsync(CancellationToken ct = default);
   Task<IReadOnlyList<LookupOptionDto>> GetLocationLookupAsync(bool inventoryOnly = false, CancellationToken ct = default);
-  Task<IReadOnlyList<LookupOptionDto>> GetRoomLookupAsync(CancellationToken ct = default);
+  Task<IReadOnlyList<LookupOptionDto>> GetRoomLookupAsync(string? roomType = null, CancellationToken ct = default);
   Task<LogisticsCommandResult> SaveLocationAsync(LocationUpsertRequest request, CancellationToken ct = default);
 }

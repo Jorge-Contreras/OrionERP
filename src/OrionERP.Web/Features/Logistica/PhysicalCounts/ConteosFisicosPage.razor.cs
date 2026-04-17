@@ -199,6 +199,19 @@ public partial class ConteosFisicosPage : ComponentBase
   protected bool IsSelectedLine(PhysicalCountLineDto line)
     => SelectedLine?.Id == line.Id;
 
+  protected static string GetCountUnitLabel(string? unitName)
+    => string.IsNullOrWhiteSpace(unitName) ? "sin unidad configurada" : unitName.Trim();
+
+  protected static string GetCountUnitBadgeClass(string? unitName)
+    => string.IsNullOrWhiteSpace(unitName)
+      ? "conteos-unit-badge conteos-unit-badge-missing"
+      : "conteos-unit-badge";
+
+  protected static string GetQuantityFieldLabel(string label, string? unitName)
+    => string.IsNullOrWhiteSpace(unitName)
+      ? label
+      : $"{label} ({unitName.Trim()})";
+
   protected string GetLineRowClass(PhysicalCountLineDto line)
   {
     var isSelected = IsSelectedLine(line);

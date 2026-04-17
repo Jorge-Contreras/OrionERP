@@ -15,27 +15,47 @@
         <div class="row g-2 mb-0">
             <div class="col-md-1">
                 <label class="form-label">ID</label>
-                <input class="form-control" type="number" @bind="Filter.Id" />
+                <input class="form-control"
+                       type="number"
+                       @bind="Filter.Id"
+                       @bind:event="oninput"
+                       @bind:after="OnFilterInputChangedAsync" />
             </div>
             <div class="col-md-3">
                 <label class="form-label">Cliente</label>
-                <input class="form-control" @bind="Filter.Cliente" />
+                <input class="form-control"
+                       @bind="Filter.Cliente"
+                       @bind:event="oninput"
+                       @bind:after="OnFilterInputChangedAsync" />
             </div>
             <div class="col-md-2">
                 <label class="form-label">Status</label>
-                <input class="form-control" @bind="Filter.Status" />
+                <input class="form-control"
+                       @bind="Filter.Status"
+                       @bind:event="oninput"
+                       @bind:after="OnFilterInputChangedAsync" />
             </div>
             <div class="col-md-2">
                 <label class="form-label">Check-in desde</label>
-                <input class="form-control" type="date" value="@CheckInFromText" @onchange="SetCheckInFrom" />
+                <input class="form-control"
+                       type="date"
+                       value="@CheckInFromText"
+                       @onchange="OnCheckInFromChangedAsync" />
             </div>
             <div class="col-md-2">
                 <label class="form-label">Check-in hasta</label>
-                <input class="form-control" type="date" value="@CheckInToText" @onchange="SetCheckInTo" />
+                <input class="form-control"
+                       type="date"
+                       value="@CheckInToText"
+                       @onchange="OnCheckInToChangedAsync" />
             </div>
             <div class="col-md-2 d-flex align-items-end">
                 <div class="form-check">
-                    <input id="canceladas" class="form-check-input" type="checkbox" @bind="Filter.IncluirCanceladas" />
+                    <input id="canceladas"
+                           class="form-check-input"
+                           type="checkbox"
+                           @bind="Filter.IncluirCanceladas"
+                           @bind:after="OnFilterChangedAsync" />
                     <label class="form-check-label" for="canceladas">Incluir canceladas</label>
                 </div>
             </div>
@@ -43,7 +63,6 @@
     </div>
 
     <div class="d-flex flex-wrap gap-2 reservaciones-list-actions">
-        <button class="btn btn-primary" @onclick="BuscarAsync" disabled="@IsBusy">Buscar</button>
         <button class="btn btn-secondary" @onclick="LimpiarAsync" disabled="@IsBusy">Limpiar</button>
         <button class="btn btn-success" @onclick="NuevaReservacionAsync" disabled="@IsBusy">Nueva Reservación</button>
         <button class="btn btn-outline-danger" @onclick="BorrarVaciasAsync" disabled="@IsBusyDanger">BORRAR RESERVACIONES VACÍAS</button>

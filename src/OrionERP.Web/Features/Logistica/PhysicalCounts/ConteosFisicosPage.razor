@@ -131,6 +131,10 @@
                             </div>
                         </div>
 
+                        <div class="conteos-lines-tip">
+                            Revisa la unidad de conteo de cada material antes de capturar.
+                        </div>
+
                         <div class="table-responsive conteos-lines-scroll">
                             <table class="table table-sm table-hover align-middle conteos-lines-table">
                                 <thead class="table-light">
@@ -148,6 +152,7 @@
                                         var thumbnailDataUrl = GetMaterialThumbnailDataUrl(line.MaterialId);
                                         var materialTitle = string.IsNullOrWhiteSpace(line.MaterialDescription) ? line.MaterialCode : line.MaterialDescription;
                                         var showMaterialCode = !string.IsNullOrWhiteSpace(line.MaterialCode) && !string.Equals(line.MaterialCode, materialTitle, StringComparison.OrdinalIgnoreCase);
+                                        var lineUnitLabel = GetCountUnitLabel(line.BaseUnitName);
                                         var capturedByCurrentUser = IsLineCapturedByCurrentUser(line);
                                         var isSelectedLine = IsSelectedLine(line);
                                         var showInlineCountEditor = isSelectedLine && CanCaptureLine;
@@ -171,6 +176,9 @@
                                                     {
                                                         <div class="conteos-cell-secondary">@line.MaterialCode</div>
                                                     }
+                                                    <div class="conteos-line-unit">
+                                                        <span class="@GetCountUnitBadgeClass(line.BaseUnitName)">Contar en @lineUnitLabel</span>
+                                                    </div>
                                                     @if (capturedByCurrentUser)
                                                     {
                                                         <div class="conteos-line-user-indicator">
@@ -179,8 +187,8 @@
                                                     }
                                                 </div>
                                             </td>
-                                            <td data-label="Esperado" class="text-end conteos-quantity-col">@line.ExpectedQuantity.ToString("N2")</td>
-                                            <td data-label="Contado" class="text-end conteos-quantity-col">
+                                            <td data-label="@(GetQuantityFieldLabel("Esperado", line.BaseUnitName))" class="text-end conteos-quantity-col">@line.ExpectedQuantity.ToString("N2")</td>
+                                            <td data-label="@(GetQuantityFieldLabel("Contado", line.BaseUnitName))" class="text-end conteos-quantity-col">
                                                 @if (showInlineCountEditor)
                                                 {
                                                     <div class="conteos-inline-count-editor d-md-none" @onclick:stopPropagation="true">
@@ -190,6 +198,8 @@
                                                                enterkeyhint="done"
                                                                autocomplete="off"
                                                                spellcheck="false"
+                                                               aria-label="@(GetQuantityFieldLabel("Contado", line.BaseUnitName))"
+                                                               title="@($"Captura la cantidad en {lineUnitLabel}")"
                                                                value="@CountedQuantityInput"
                                                                @oninput="OnCountedQuantityInput"
                                                                @onblur="OnCountedQuantityBlur"
@@ -213,7 +223,7 @@
                                                     @((line.CountedQuantity ?? 0).ToString("N2"))
                                                 }
                                             </td>
-                                            <td data-label="Varianza" class="text-end conteos-quantity-col">
+                                            <td data-label="@(GetQuantityFieldLabel("Varianza", line.BaseUnitName))" class="text-end conteos-quantity-col">
                                                 @if (line.VarianceQuantity.HasValue && line.VarianceQuantity.Value != 0)
                                                 {
                                                     <span class="badge text-bg-warning">@line.VarianceQuantity.Value.ToString("N2")</span>
@@ -241,6 +251,7 @@
                                     @{
                                         var selectedMaterialTitle = string.IsNullOrWhiteSpace(SelectedLine.MaterialDescription) ? SelectedLine.MaterialCode : SelectedLine.MaterialDescription;
                                         var showSelectedMaterialCode = !string.IsNullOrWhiteSpace(SelectedLine.MaterialCode) && !string.Equals(SelectedLine.MaterialCode, selectedMaterialTitle, StringComparison.OrdinalIgnoreCase);
+                                        var selectedLineUnitLabel = GetCountUnitLabel(SelectedLine.BaseUnitName);
                                     }
                                     <div class="conteos-selected-line-summary mb-3">
                                         <div class="conteos-selected-line-title">@selectedMaterialTitle</div>
@@ -248,20 +259,25 @@
                                         {
                                             <div class="conteos-selected-line-subtitle">@SelectedLine.MaterialCode</div>
                                         }
+                                        <div class="conteos-selected-line-unit">
+                                            <span class="@GetCountUnitBadgeClass(SelectedLine.BaseUnitName)">Contar en @selectedLineUnitLabel</span>
+                                        </div>
                                     </div>
                                     <div class="row g-3 conteos-capture-form">
                                         <div class="col-6 col-md-4">
-                                            <label class="form-label">Esperado</label>
+                                            <label class="form-label">@GetQuantityFieldLabel("Esperado", SelectedLine.BaseUnitName)</label>
                                             <input class="form-control" type="text" value="@SelectedLine.ExpectedQuantity.ToString("N2")" disabled />
                                         </div>
                                         <div class="d-none d-md-block col-md-4">
-                                            <label class="form-label">Contado</label>
+                                            <label class="form-label">@GetQuantityFieldLabel("Contado", SelectedLine.BaseUnitName)</label>
                                             <input class="form-control form-control-lg conteos-counted-input"
                                                    type="text"
                                                    inputmode="decimal"
                                                    enterkeyhint="done"
                                                    autocomplete="off"
                                                    spellcheck="false"
+                                                   aria-label="@(GetQuantityFieldLabel("Contado", SelectedLine.BaseUnitName))"
+                                                   title="@($"Captura la cantidad en {selectedLineUnitLabel}")"
                                                    value="@CountedQuantityInput"
                                                    @oninput="OnCountedQuantityInput"
                                                    @onblur="OnCountedQuantityBlur"
@@ -271,7 +287,7 @@
                                                    @ref="CountedQuantityInputRef" />
                                         </div>
                                         <div class="col-12 col-md-4">
-                                            <label class="form-label">Varianza</label>
+                                            <label class="form-label">@GetQuantityFieldLabel("Varianza", SelectedLine.BaseUnitName)</label>
                                             <input class="form-control" type="text" value="@CurrentVarianceText" disabled />
                                         </div>
                                         <div class="col-md-6">

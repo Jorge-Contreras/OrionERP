@@ -24,9 +24,12 @@ internal sealed class FakeQueryConnectionFactory : IDbConnectionFactory
 internal sealed class FakeQueryDbConnection : DbConnection
 {
   private ConnectionState _state = ConnectionState.Closed;
+  private readonly List<FakeQueryCommandLog> _executedCommands = [];
 
   public string? LastCommandText { get; private set; }
   public IReadOnlyList<FakeQueryParameter> LastParameters { get; private set; } = [];
+  public IReadOnlyList<FakeQueryCommandLog> ExecutedCommands => _executedCommands;
+  public FakeQueryDbTransaction? LastTransaction { get; private set; }
   public Func<string, IReadOnlyList<FakeQueryParameter>, DataTable>? ReaderResultFactory { get; set; }
   public Func<string, IReadOnlyList<FakeQueryParameter>, int>? NonQueryResultFactory { get; set; }
   public Func<string, IReadOnlyList<FakeQueryParameter>, object?>? ScalarResultFactory { get; set; }
@@ -48,30 +51,74 @@ internal sealed class FakeQueryDbConnection : DbConnection
   }
 
   protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel)
-    => throw new NotSupportedException();
+  {
+    LastTransaction = new FakeQueryDbTransaction(this, isolationLevel);
+    return LastTransaction;
+  }
 
   protected override DbCommand CreateDbCommand() => new FakeQueryDbCommand(this);
 
   internal DbDataReader ExecuteReader(string commandText, IReadOnlyList<FakeQueryParameter> parameters)
   {
-    LastCommandText = commandText;
-    LastParameters = parameters.ToList();
+    RecordCommand(commandText, parameters);
     var table = ReaderResultFactory?.Invoke(commandText, parameters) ?? new DataTable();
     return table.CreateDataReader();
   }
 
   internal int ExecuteNonQuery(string commandText, IReadOnlyList<FakeQueryParameter> parameters)
   {
-    LastCommandText = commandText;
-    LastParameters = parameters.ToList();
+    RecordCommand(commandText, parameters);
     return NonQueryResultFactory?.Invoke(commandText, parameters) ?? 0;
   }
 
   internal object? ExecuteScalar(string commandText, IReadOnlyList<FakeQueryParameter> parameters)
   {
-    LastCommandText = commandText;
-    LastParameters = parameters.ToList();
+    RecordCommand(commandText, parameters);
     return ScalarResultFactory?.Invoke(commandText, parameters);
+  }
+
+  private void RecordCommand(string commandText, IReadOnlyList<FakeQueryParameter> parameters)
+  {
+    var snapshot = parameters.ToList();
+    LastCommandText = commandText;
+    LastParameters = snapshot;
+    _executedCommands.Add(new FakeQueryCommandLog(commandText, snapshot));
+  }
+}
+
+internal sealed class FakeQueryDbTransaction : DbTransaction
+{
+  private readonly FakeQueryDbConnection _connection;
+
+  public FakeQueryDbTransaction(FakeQueryDbConnection connection, IsolationLevel isolationLevel)
+  {
+    _connection = connection;
+    IsolationLevel = isolationLevel;
+  }
+
+  public bool WasCommitted { get; private set; }
+  public bool WasRolledBack { get; private set; }
+
+  public override IsolationLevel IsolationLevel { get; }
+
+  protected override DbConnection DbConnection => _connection;
+
+  public override void Commit()
+    => WasCommitted = true;
+
+  public override Task CommitAsync(CancellationToken cancellationToken = default)
+  {
+    WasCommitted = true;
+    return Task.CompletedTask;
+  }
+
+  public override void Rollback()
+    => WasRolledBack = true;
+
+  public override Task RollbackAsync(CancellationToken cancellationToken = default)
+  {
+    WasRolledBack = true;
+    return Task.CompletedTask;
   }
 }
 
@@ -219,4 +266,5 @@ internal sealed class FakeQueryDbParameter : DbParameter
 }
 
 internal sealed record FakeQueryParameter(string Name, object? Value);
+internal sealed record FakeQueryCommandLog(string CommandText, IReadOnlyList<FakeQueryParameter> Parameters);
 #pragma warning restore CS8765

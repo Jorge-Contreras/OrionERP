@@ -61,6 +61,29 @@ public class StockServicePagingTests
     Assert.DoesNotContain(connection.LastParameters, parameter => HasParameterName(parameter, "@Take"));
   }
 
+  [Fact]
+  public async Task GetStockAsync_ExcludesRemovedRows_UnlessRequested()
+  {
+    var connection = new FakeQueryDbConnection();
+    var service = new StockService(new FakeQueryConnectionFactory(connection));
+
+    await service.GetStockAsync(new StockFilter
+    {
+      IncludeRemoved = false
+    });
+
+    Assert.NotNull(connection.LastCommandText);
+    Assert.Contains("ISNULL(sb.IsRemoved, 0) = 0", connection.LastCommandText!, StringComparison.Ordinal);
+
+    await service.GetStockAsync(new StockFilter
+    {
+      IncludeRemoved = true
+    });
+
+    Assert.NotNull(connection.LastCommandText);
+    Assert.DoesNotContain("AND ISNULL(sb.IsRemoved, 0) = 0", connection.LastCommandText!, StringComparison.Ordinal);
+  }
+
   private static void AssertParameter(IReadOnlyList<FakeQueryParameter> parameters, string name, object expectedValue)
   {
     var parameter = Assert.Single(parameters, parameter => HasParameterName(parameter, name));

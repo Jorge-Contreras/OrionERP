@@ -278,7 +278,8 @@ public sealed class PhysicalCountService : IPhysicalCountService
               sb.Quantity
           FROM logistica.StockBalance sb
           JOIN LocationScope scope
-            ON scope.Id = sb.LocationId;
+            ON scope.Id = sb.LocationId
+          WHERE ISNULL(sb.IsRemoved, 0) = 0;
           """,
           new { SessionId = sessionId, request.LocationId },
           tx,

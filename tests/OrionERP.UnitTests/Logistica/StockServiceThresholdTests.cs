@@ -1,6 +1,7 @@
 using OrionERP.Application.Features.Logistica.Stock;
 using OrionERP.Infrastructure.Features.Logistica.Stock;
 using OrionERP.UnitTests.Common;
+using System.Data;
 
 namespace OrionERP.UnitTests.Logistica;
 
@@ -11,6 +12,7 @@ public class StockServiceThresholdTests
   {
     var connection = new FakeQueryDbConnection
     {
+      ReaderResultFactory = (_, _) => CreateStockBalanceStateTable(id: 41, locationId: 5, materialId: 9, quantity: 0m, isRemoved: false),
       NonQueryResultFactory = (_, _) => 1
     };
     var service = new StockService(new FakeQueryConnectionFactory(connection));
@@ -56,6 +58,7 @@ public class StockServiceThresholdTests
   {
     var connection = new FakeQueryDbConnection
     {
+      ReaderResultFactory = (_, _) => CreateEmptyStockBalanceStateTable(),
       NonQueryResultFactory = (_, _) => 0
     };
     var service = new StockService(new FakeQueryConnectionFactory(connection));
@@ -72,6 +75,27 @@ public class StockServiceThresholdTests
     Assert.NotNull(connection.LastCommandText);
   }
 
+  [Fact]
+  public async Task SaveStockThresholdsAsync_Fails_WhenStockBalanceIsRemoved()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (_, _) => CreateStockBalanceStateTable(id: 41, locationId: 5, materialId: 9, quantity: 0m, isRemoved: true)
+    };
+    var service = new StockService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.SaveStockThresholdsAsync(new StockThresholdUpdateRequest
+    {
+      StockBalanceId = 41,
+      MinQuantity = 1m,
+      MaxQuantity = 3m
+    });
+
+    Assert.False(result.Success);
+    Assert.Equal("Reactiva el material antes de modificar sus parámetros.", result.Message);
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("UPDATE logistica.StockBalance", StringComparison.Ordinal));
+  }
+
   private static void AssertParameter(IReadOnlyList<FakeQueryParameter> parameters, string name, object expectedValue)
   {
     var parameter = Assert.Single(parameters, parameter => HasParameterName(parameter, name));
@@ -80,4 +104,22 @@ public class StockServiceThresholdTests
 
   private static bool HasParameterName(FakeQueryParameter parameter, string expectedName)
     => string.Equals(parameter.Name.TrimStart('@'), expectedName.TrimStart('@'), StringComparison.OrdinalIgnoreCase);
+
+  private static DataTable CreateStockBalanceStateTable(int id, int locationId, int materialId, decimal quantity, bool isRemoved)
+  {
+    var table = CreateEmptyStockBalanceStateTable();
+    table.Rows.Add(id, locationId, materialId, quantity, isRemoved);
+    return table;
+  }
+
+  private static DataTable CreateEmptyStockBalanceStateTable()
+  {
+    var table = new DataTable();
+    table.Columns.Add("Id", typeof(int));
+    table.Columns.Add("LocationId", typeof(int));
+    table.Columns.Add("MaterialId", typeof(int));
+    table.Columns.Add("Quantity", typeof(decimal));
+    table.Columns.Add("IsRemoved", typeof(bool));
+    return table;
+  }
 }

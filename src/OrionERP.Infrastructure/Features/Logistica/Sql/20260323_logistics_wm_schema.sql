@@ -269,11 +269,35 @@ BEGIN
         CountFrequencyDays int NULL,
         LastPurchaseDate date NULL,
         Notes varchar(max) NULL,
+        IsRemoved bit NOT NULL CONSTRAINT DF_StockBalance_IsRemoved DEFAULT (0),
+        RemovedAt datetime2(0) NULL,
+        RemovedBy varchar(256) NULL,
         CreatedAt datetime2(0) NOT NULL CONSTRAINT DF_StockBalance_CreatedAt DEFAULT (SYSUTCDATETIME()),
         UpdatedAt datetime2(0) NOT NULL CONSTRAINT DF_StockBalance_UpdatedAt DEFAULT (SYSUTCDATETIME()),
         CONSTRAINT FK_StockBalance_Location FOREIGN KEY (LocationId) REFERENCES logistica.Location (Id),
         CONSTRAINT FK_StockBalance_Material FOREIGN KEY (MaterialId) REFERENCES logistica.Material (Id)
     );
+END;
+GO
+
+IF COL_LENGTH('logistica.StockBalance', 'IsRemoved') IS NULL
+BEGIN
+    ALTER TABLE logistica.StockBalance
+        ADD IsRemoved bit NOT NULL CONSTRAINT DF_StockBalance_IsRemoved DEFAULT (0) WITH VALUES;
+END;
+GO
+
+IF COL_LENGTH('logistica.StockBalance', 'RemovedAt') IS NULL
+BEGIN
+    ALTER TABLE logistica.StockBalance
+        ADD RemovedAt datetime2(0) NULL;
+END;
+GO
+
+IF COL_LENGTH('logistica.StockBalance', 'RemovedBy') IS NULL
+BEGIN
+    ALTER TABLE logistica.StockBalance
+        ADD RemovedBy varchar(256) NULL;
 END;
 GO
 
@@ -321,11 +345,35 @@ BEGIN
         ContentType varchar(100) NULL,
         [Description] varchar(500) NULL,
         Attachment varbinary(max) NOT NULL,
+        IsDeleted bit NOT NULL CONSTRAINT DF_LocationMaterialAttachment_IsDeleted DEFAULT (0),
+        DeletedAt datetime2(0) NULL,
+        DeletedBy varchar(256) NULL,
         CreatedAt datetime2(0) NOT NULL CONSTRAINT DF_LocationMaterialAttachment_CreatedAt DEFAULT (SYSUTCDATETIME()),
         CreatedBy varchar(256) NULL,
         CONSTRAINT FK_LocationMaterialAttachment_Location FOREIGN KEY (LocationId) REFERENCES logistica.Location (Id),
         CONSTRAINT FK_LocationMaterialAttachment_Material FOREIGN KEY (MaterialId) REFERENCES logistica.Material (Id)
     );
+END;
+GO
+
+IF COL_LENGTH('logistica.LocationMaterialAttachment', 'IsDeleted') IS NULL
+BEGIN
+    ALTER TABLE logistica.LocationMaterialAttachment
+        ADD IsDeleted bit NOT NULL CONSTRAINT DF_LocationMaterialAttachment_IsDeleted DEFAULT (0) WITH VALUES;
+END;
+GO
+
+IF COL_LENGTH('logistica.LocationMaterialAttachment', 'DeletedAt') IS NULL
+BEGIN
+    ALTER TABLE logistica.LocationMaterialAttachment
+        ADD DeletedAt datetime2(0) NULL;
+END;
+GO
+
+IF COL_LENGTH('logistica.LocationMaterialAttachment', 'DeletedBy') IS NULL
+BEGIN
+    ALTER TABLE logistica.LocationMaterialAttachment
+        ADD DeletedBy varchar(256) NULL;
 END;
 GO
 

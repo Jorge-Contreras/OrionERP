@@ -285,6 +285,10 @@
                             <input class="form-check-input" type="checkbox" @bind="StockFilter.IncludeZeroBalances" disabled="@(!SelectedLocationId.HasValue)" />
                             <span class="form-check-label">Incluir ceros</span>
                         </label>
+                        <label class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="StockFilter.IncludeRemoved" disabled="@(!SelectedLocationId.HasValue)" />
+                            <span class="form-check-label">Mostrar eliminados</span>
+                        </label>
                         <button class="btn btn-primary ms-auto" type="button" @onclick="BuscarStockAsync" disabled="@(IsStockBusy || !SelectedLocationId.HasValue)">
                             @(IsLoadingStock ? "Cargando..." : "Actualizar inventario")
                         </button>
@@ -329,7 +333,7 @@
                                         var thumbnailDataUrl = GetMaterialThumbnailDataUrl(item.MaterialId);
                                         var materialTitle = string.IsNullOrWhiteSpace(item.MaterialDescription) ? item.MaterialCode : item.MaterialDescription;
                                         var showMaterialCode = !string.IsNullOrWhiteSpace(item.MaterialCode) && !string.Equals(item.MaterialCode, materialTitle, StringComparison.OrdinalIgnoreCase);
-                                        <tr class="@(SelectedStock?.StockBalanceId == item.StockBalanceId ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarStockAsync(item)">
+                                        <tr class="@GetStockRowClass(item)" style="cursor: pointer;" @onclick="() => SeleccionarStockAsync(item)">
                                             <td class="ubicaciones-stock-image-col">
                                                 @if (thumbnailDataUrl is not null)
                                                 {
@@ -359,6 +363,10 @@
                                             <td class="text-end ubicaciones-threshold-col">@FormatThresholdQuantity(item.MinQuantity)</td>
                                             <td class="text-end ubicaciones-threshold-col">@FormatThresholdQuantity(item.MaxQuantity)</td>
                                             <td class="text-end">
+                                                @if (item.IsRemoved)
+                                                {
+                                                    <span class="badge text-bg-secondary me-1">Eliminado</span>
+                                                }
                                                 @if (item.IsLowStock)
                                                 {
                                                     <span class="badge text-bg-danger me-1">Bajo mínimo</span>
@@ -399,6 +407,28 @@
                             <div>
                                 <h2 class="h5 mb-1">@SelectedStock.MaterialCode · @SelectedStock.MaterialDescription</h2>
                                 <div class="text-muted">@SelectedStock.LocationName · @SelectedStock.Quantity.ToString("N2") @SelectedStock.BaseUnitName</div>
+                                @if (SelectedStock.IsRemoved)
+                                {
+                                    <div class="small text-muted mt-1">@GetSelectedStockRemovalSummary()</div>
+                                }
+                            </div>
+                            <div class="d-flex flex-column align-items-start align-items-sm-end gap-2">
+                                @if (SelectedStock.IsRemoved)
+                                {
+                                    <button class="btn btn-outline-success" type="button" @onclick="ReactivarMaterialAsync" disabled="@IsMutatingStock">
+                                        @(IsMutatingStock ? "Reactivando..." : "Reactivar material")
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-outline-danger" type="button" @onclick="QuitarMaterialAsync" disabled="@(IsMutatingStock || SelectedStock.Quantity != 0)">
+                                        @(IsMutatingStock ? "Quitando..." : "Quitar material")
+                                    </button>
+                                    @if (SelectedStock.Quantity != 0)
+                                    {
+                                        <div class="small text-muted">La cantidad debe estar en 0 para quitarlo.</div>
+                                    }
+                                }
                             </div>
                         </div>
 
@@ -424,26 +454,30 @@
                                             </div>
                                             <div class="col-md-3">
                                                 <label class="form-label">Mínimo</label>
-                                                <InputNumber class="form-control" @bind-Value="ThresholdEditor.MinQuantity" />
+                                                <InputNumber class="form-control" @bind-Value="ThresholdEditor.MinQuantity" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)" />
                                             </div>
                                             <div class="col-md-3">
                                                 <label class="form-label">Máximo</label>
-                                                <InputNumber class="form-control" @bind-Value="ThresholdEditor.MaxQuantity" />
+                                                <InputNumber class="form-control" @bind-Value="ThresholdEditor.MaxQuantity" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)" />
                                             </div>
                                             <div class="col-md-3">
                                                 <label class="form-label">Estado actual</label>
                                                 <input class="form-control" type="text" value="@GetThresholdStatusText()" disabled />
                                             </div>
                                             <div class="col-12">
-                                                <div class="form-text">Deja un campo vacío para quitar ese límite.</div>
+                                                <div class="form-text">
+                                                    @(SelectedStock.IsRemoved
+                                                        ? "Este material está eliminado. Reactívalo para cambiar mínimos o máximos."
+                                                        : "Deja un campo vacío para quitar ese límite.")
+                                                </div>
                                             </div>
                                         </div>
 
                                         <div class="d-flex gap-2 mt-3">
-                                            <button class="btn btn-primary" type="submit" disabled="@IsSavingThresholds">
+                                            <button class="btn btn-primary" type="submit" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)">
                                                 @(IsSavingThresholds ? "Guardando..." : "Guardar parámetros")
                                             </button>
-                                            <button class="btn btn-outline-secondary" type="button" @onclick="RestablecerThresholdEditor" disabled="@IsSavingThresholds">
+                                            <button class="btn btn-outline-secondary" type="button" @onclick="RestablecerThresholdEditor" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)">
                                                 Restablecer
                                             </button>
                                         </div>
@@ -490,11 +524,15 @@
                             <div class="col-12 col-xl-6">
                                 <h3 class="h6">Adjuntos por ubicación/material</h3>
                                 <div class="d-flex flex-column gap-2 mb-3">
-                                    <InputFile OnChange="OnAttachmentSelectedAsync" />
-                                    <input class="form-control" type="text" placeholder="Descripción del adjunto" @bind="PendingAttachmentDescription" />
-                                    <button class="btn btn-outline-primary" type="button" @onclick="GuardarAdjuntoAsync" disabled="@(!HasPendingAttachment || IsSavingAttachment)">
+                                    <InputFile OnChange="OnAttachmentSelectedAsync" disabled="@(!CanEditSelectedStock || IsSavingAttachment || IsMutatingStock)" />
+                                    <input class="form-control" type="text" placeholder="Descripción del adjunto" @bind="PendingAttachmentDescription" disabled="@(!CanEditSelectedStock || IsSavingAttachment || IsMutatingStock)" />
+                                    <button class="btn btn-outline-primary" type="button" @onclick="GuardarAdjuntoAsync" disabled="@(!CanEditSelectedStock || !HasPendingAttachment || IsSavingAttachment || IsMutatingStock)">
                                         @(IsSavingAttachment ? "Guardando..." : "Guardar adjunto")
                                     </button>
+                                    @if (SelectedStock.IsRemoved)
+                                    {
+                                        <div class="form-text">Los adjuntos están archivados mientras el material siga eliminado, pero aún puedes descargarlos.</div>
+                                    }
                                 </div>
 
                                 <div class="table-responsive" style="max-height: 28vh;">
@@ -510,7 +548,7 @@
                                             @if (SelectedStockAttachments.Count == 0)
                                             {
                                                 <tr>
-                                                    <td colspan="3" class="text-center text-muted py-3">Sin adjuntos.</td>
+                                                    <td colspan="3" class="text-center text-muted py-3">@(SelectedStock.IsRemoved ? "Sin adjuntos archivados." : "Sin adjuntos.")</td>
                                                 </tr>
                                             }
                                             else
@@ -518,8 +556,20 @@
                                                 @foreach (var attachment in SelectedStockAttachments)
                                                 {
                                                     <tr>
-                                                        <td>@attachment.FileName</td>
-                                                        <td>@attachment.Description</td>
+                                                        <td>
+                                                            <div>@attachment.FileName</div>
+                                                            @if (attachment.IsDeleted)
+                                                            {
+                                                                <div class="small text-muted">@GetAttachmentArchiveSummary(attachment)</div>
+                                                            }
+                                                        </td>
+                                                        <td>
+                                                            @if (attachment.IsDeleted)
+                                                            {
+                                                                <span class="badge text-bg-secondary me-1">Archivado</span>
+                                                            }
+                                                            @(string.IsNullOrWhiteSpace(attachment.Description) ? "-" : attachment.Description)
+                                                        </td>
                                                         <td class="text-end">
                                                             <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="() => DescargarAdjuntoAsync(attachment)">
                                                                 Descargar

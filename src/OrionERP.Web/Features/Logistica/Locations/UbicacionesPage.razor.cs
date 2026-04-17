@@ -1,5 +1,6 @@
 using System.IO;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Logistica.Locations;
@@ -22,6 +23,7 @@ public partial class UbicacionesPage : ComponentBase
   [Inject] private IMaterialService MaterialService { get; set; } = default!;
   [Inject] private IStockService StockService { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
+  [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
   [Inject] private IJSRuntime Js { get; set; } = default!;
 
   protected StockFilter StockFilter { get; set; } = new() { IncludeZeroBalances = true };
@@ -45,8 +47,10 @@ public partial class UbicacionesPage : ComponentBase
   protected bool IsSavingLocation { get; set; }
   protected bool IsSavingThresholds { get; set; }
   protected bool IsSavingAttachment { get; set; }
+  protected bool IsMutatingStock { get; set; }
   protected bool ShowMaterialImageModal { get; set; }
   protected bool IsLoadingMaterialImage { get; set; }
+  protected string CurrentUserName { get; set; } = "Administrador";
 
   protected byte[]? PendingAttachmentBytes { get; set; }
   protected string? PendingAttachmentName { get; set; }
@@ -57,6 +61,7 @@ public partial class UbicacionesPage : ComponentBase
 
   protected bool HasPendingAttachment => PendingAttachmentBytes is { Length: > 0 };
   protected bool IsStockBusy => IsLoadingStock || IsLoadingMoreStock;
+  protected bool CanEditSelectedStock => SelectedStock is { IsRemoved: false };
   protected LookupOptionDto? SelectedRoom => RoomOptions.FirstOrDefault(room => room.Id == SelectedRoomId);
   protected string SelectedRoomName => SelectedRoom?.Name ?? "Selecciona una suite";
   protected int InventoryEnabledLocationCount => Locations.Count(item => item.IsInventoryEnabled);
@@ -90,6 +95,7 @@ public partial class UbicacionesPage : ComponentBase
 
   protected override async Task OnInitializedAsync()
   {
+    CurrentUserName = await ResolveCurrentUserAsync();
     await LoadLookupsAsync();
   }
 
@@ -280,7 +286,7 @@ public partial class UbicacionesPage : ComponentBase
     try
     {
       SelectedStockTransactions = (await StockService.GetStockTransactionsAsync(item.StockBalanceId)).ToList();
-      SelectedStockAttachments = (await StockService.GetLocationMaterialAttachmentsAsync(item.LocationId, item.MaterialId)).ToList();
+      SelectedStockAttachments = (await StockService.GetLocationMaterialAttachmentsAsync(item.LocationId, item.MaterialId, includeDeleted: item.IsRemoved)).ToList();
     }
     catch (Exception ex)
     {
@@ -292,6 +298,12 @@ public partial class UbicacionesPage : ComponentBase
   {
     if (SelectedStock is null)
     {
+      return;
+    }
+
+    if (SelectedStock.IsRemoved)
+    {
+      UiMessages.ShowWarning("Reactiva el material antes de modificar sus parámetros.");
       return;
     }
 
@@ -347,6 +359,12 @@ public partial class UbicacionesPage : ComponentBase
       return;
     }
 
+    if (SelectedStock.IsRemoved)
+    {
+      UiMessages.ShowWarning("Reactiva el material antes de guardar adjuntos.");
+      return;
+    }
+
     IsSavingAttachment = true;
     try
     {
@@ -377,6 +395,102 @@ public partial class UbicacionesPage : ComponentBase
     finally
     {
       IsSavingAttachment = false;
+    }
+  }
+
+  protected async Task QuitarMaterialAsync()
+  {
+    if (SelectedStock is null || IsMutatingStock)
+    {
+      return;
+    }
+
+    if (SelectedStock.IsRemoved)
+    {
+      UiMessages.ShowWarning("El material ya está eliminado de esta ubicación.");
+      return;
+    }
+
+    if (SelectedStock.Quantity != 0)
+    {
+      UiMessages.ShowWarning("Solo puedes quitar materiales con cantidad 0. Ajusta el inventario antes de eliminarlo.");
+      return;
+    }
+
+    var confirmed = await ConfirmAsync("¿Estás seguro que deseas quitar este material de la ubicación? Sus adjuntos se archivarán y podrás reactivarlo después.");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    IsMutatingStock = true;
+    var stockBalanceId = SelectedStock.StockBalanceId;
+
+    try
+    {
+      var result = await StockService.RemoveLocationMaterialAsync(stockBalanceId, CurrentUserName);
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      await RefrescarStockAsync(StockFilter.IncludeRemoved ? stockBalanceId : null);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo quitar el material. {ex.Message}");
+    }
+    finally
+    {
+      IsMutatingStock = false;
+      StateHasChanged();
+    }
+  }
+
+  protected async Task ReactivarMaterialAsync()
+  {
+    if (SelectedStock is null || IsMutatingStock)
+    {
+      return;
+    }
+
+    if (!SelectedStock.IsRemoved)
+    {
+      UiMessages.ShowWarning("El material ya está activo en esta ubicación.");
+      return;
+    }
+
+    var confirmed = await ConfirmAsync("¿Deseas reactivar este material y restaurar sus adjuntos archivados?");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    IsMutatingStock = true;
+    var stockBalanceId = SelectedStock.StockBalanceId;
+
+    try
+    {
+      var result = await StockService.ReactivateLocationMaterialAsync(stockBalanceId, CurrentUserName);
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      await RefrescarStockAsync(stockBalanceId);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo reactivar el material. {ex.Message}");
+    }
+    finally
+    {
+      IsMutatingStock = false;
+      StateHasChanged();
     }
   }
 
@@ -565,6 +679,7 @@ public partial class UbicacionesPage : ComponentBase
       LowStockOnly = StockFilter.LowStockOnly,
       CountDueOnly = StockFilter.CountDueOnly,
       IncludeZeroBalances = StockFilter.IncludeZeroBalances,
+      IncludeRemoved = StockFilter.IncludeRemoved,
       Skip = skip,
       Take = take
     };
@@ -648,6 +763,11 @@ public partial class UbicacionesPage : ComponentBase
       return string.Empty;
     }
 
+    if (SelectedStock.IsRemoved)
+    {
+      return "Eliminado";
+    }
+
     if (ThresholdEditor.MinQuantity.HasValue && SelectedStock.Quantity <= ThresholdEditor.MinQuantity.Value)
     {
       return "Bajo mínimo";
@@ -679,6 +799,54 @@ public partial class UbicacionesPage : ComponentBase
     return string.Join(' ', classes);
   }
 
+  protected string GetStockRowClass(StockListItemDto item)
+  {
+    var classes = new List<string>();
+    if (SelectedStock?.StockBalanceId == item.StockBalanceId)
+    {
+      classes.Add("table-primary");
+    }
+
+    if (item.IsRemoved)
+    {
+      classes.Add("table-secondary");
+    }
+
+    return string.Join(' ', classes);
+  }
+
+  protected string GetSelectedStockRemovalSummary()
+  {
+    if (SelectedStock is not { IsRemoved: true })
+    {
+      return string.Empty;
+    }
+
+    var removedAtText = SelectedStock.RemovedAt.HasValue
+      ? SelectedStock.RemovedAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+      : "sin fecha registrada";
+
+    return string.IsNullOrWhiteSpace(SelectedStock.RemovedBy)
+      ? $"Eliminado el {removedAtText}."
+      : $"Eliminado por {SelectedStock.RemovedBy} el {removedAtText}.";
+  }
+
+  protected string GetAttachmentArchiveSummary(LocationMaterialAttachmentDto attachment)
+  {
+    if (!attachment.IsDeleted)
+    {
+      return string.Empty;
+    }
+
+    var deletedAtText = attachment.DeletedAt.HasValue
+      ? attachment.DeletedAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+      : "sin fecha registrada";
+
+    return string.IsNullOrWhiteSpace(attachment.DeletedBy)
+      ? $"Archivado el {deletedAtText}."
+      : $"Archivado por {attachment.DeletedBy} el {deletedAtText}.";
+  }
+
   protected static string GetLocationInventoryBadgeClass(LocationListItemDto item)
     => item.IsInventoryEnabled ? "text-bg-success" : "text-bg-secondary";
 
@@ -686,6 +854,44 @@ public partial class UbicacionesPage : ComponentBase
   {
     var safeContentType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType;
     return FormattableString.Invariant($"data:{safeContentType};base64,{Convert.ToBase64String(bytes)}");
+  }
+
+  private async Task RefrescarStockAsync(int? stockBalanceIdToReselect = null)
+  {
+    await BuscarStockAsync();
+
+    if (!stockBalanceIdToReselect.HasValue)
+    {
+      return;
+    }
+
+    var refreshedRow = StockRows.FirstOrDefault(item => item.StockBalanceId == stockBalanceIdToReselect.Value);
+    if (refreshedRow is not null)
+    {
+      await SeleccionarStockAsync(refreshedRow);
+    }
+  }
+
+  private async Task<bool> ConfirmAsync(string message)
+  {
+    try
+    {
+      return await Js.InvokeAsync<bool>("confirm", message);
+    }
+    catch
+    {
+      return true;
+    }
+  }
+
+  private async Task<string> ResolveCurrentUserAsync()
+  {
+    var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+    return authState.User.Identity?.Name?.Trim() switch
+    {
+      { Length: > 0 } name => name,
+      _ => "Administrador"
+    };
   }
 
   private static StockThresholdUpdateRequest CreateThresholdEditor(StockListItemDto? item = null)

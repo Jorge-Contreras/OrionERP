@@ -36,6 +36,7 @@ public sealed class MaterialService : IMaterialService
               SUM(sb.Quantity) AS TotalQuantity,
               COUNT(*) AS LocationCount
           FROM logistica.StockBalance sb
+          WHERE ISNULL(sb.IsRemoved, 0) = 0
           GROUP BY sb.MaterialId
       )
       SELECT

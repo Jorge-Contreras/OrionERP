@@ -33,6 +33,7 @@ public sealed class StockService : IStockService
               a.MaterialId,
               COUNT(*) AS AttachmentCount
           FROM logistica.LocationMaterialAttachment a
+          WHERE ISNULL(a.IsDeleted, 0) = 0
           GROUP BY a.LocationId, a.MaterialId
       )
       SELECT
@@ -61,7 +62,10 @@ public sealed class StockService : IStockService
           END AS bit) AS IsCountDue,
           sb.LastCountedAt,
           sb.CountFrequencyDays,
-          ISNULL(ac.AttachmentCount, 0) AS AttachmentCount
+          ISNULL(ac.AttachmentCount, 0) AS AttachmentCount,
+          CAST(ISNULL(sb.IsRemoved, 0) AS bit) AS IsRemoved,
+          sb.RemovedAt,
+          sb.RemovedBy
       FROM logistica.StockBalance sb
       JOIN logistica.Location l
         ON l.Id = sb.LocationId
@@ -83,7 +87,12 @@ public sealed class StockService : IStockService
 
     if (!filter.IncludeZeroBalances)
     {
-      sql.AppendLine(" AND sb.Quantity <> 0");
+      sql.AppendLine(" AND (sb.Quantity <> 0 OR ISNULL(sb.IsRemoved, 0) = 1)");
+    }
+
+    if (!filter.IncludeRemoved)
+    {
+      sql.AppendLine(" AND ISNULL(sb.IsRemoved, 0) = 0");
     }
 
     if (filter.RoomId.HasValue)
@@ -131,7 +140,7 @@ public sealed class StockService : IStockService
         """);
     }
 
-    sql.AppendLine("ORDER BY room.ROOM_NAME, l.LocationName, m.MaterialCode, m.[Description], sb.Id");
+    sql.AppendLine("ORDER BY ISNULL(sb.IsRemoved, 0), room.ROOM_NAME, l.LocationName, m.MaterialCode, m.[Description], sb.Id");
 
     if (take > 0)
     {
@@ -165,16 +174,28 @@ public sealed class StockService : IStockService
       return LogisticsCommandResult.Fail(validationResults[0].ErrorMessage ?? "Los parámetros de inventario no son válidos.");
     }
 
+    using var conn = CreateConnection();
+    var stockBalance = await GetStockBalanceStateAsync(conn, request.StockBalanceId, tx: null, ct);
+    if (stockBalance is null)
+    {
+      return LogisticsCommandResult.Fail("El registro de inventario ya no existe.");
+    }
+
+    if (stockBalance.IsRemoved)
+    {
+      return LogisticsCommandResult.Fail("Reactiva el material antes de modificar sus parámetros.");
+    }
+
     const string sql =
       """
       UPDATE logistica.StockBalance
       SET MinQuantity = @MinQuantity,
           MaxQuantity = @MaxQuantity,
           UpdatedAt = SYSUTCDATETIME()
-      WHERE Id = @StockBalanceId;
+      WHERE Id = @StockBalanceId
+        AND ISNULL(IsRemoved, 0) = 0;
       """;
 
-    using var conn = CreateConnection();
     var affected = await conn.ExecuteAsync(
       new CommandDefinition(
         sql,
@@ -217,7 +238,7 @@ public sealed class StockService : IStockService
     return rows.AsList();
   }
 
-  public async Task<IReadOnlyList<LocationMaterialAttachmentDto>> GetLocationMaterialAttachmentsAsync(int locationId, int materialId, CancellationToken ct = default)
+  public async Task<IReadOnlyList<LocationMaterialAttachmentDto>> GetLocationMaterialAttachmentsAsync(int locationId, int materialId, bool includeDeleted = false, CancellationToken ct = default)
   {
     const string sql =
       """
@@ -228,16 +249,28 @@ public sealed class StockService : IStockService
           a.[Description],
           DATALENGTH(a.Attachment) AS [Length],
           a.CreatedAt,
-          a.CreatedBy
+          a.CreatedBy,
+          CAST(ISNULL(a.IsDeleted, 0) AS bit) AS IsDeleted,
+          a.DeletedAt,
+          a.DeletedBy
       FROM logistica.LocationMaterialAttachment a
       WHERE a.LocationId = @LocationId
         AND a.MaterialId = @MaterialId
-      ORDER BY a.CreatedAt DESC, a.Id DESC;
+        AND (@IncludeDeleted = 1 OR ISNULL(a.IsDeleted, 0) = 0)
+      ORDER BY ISNULL(a.IsDeleted, 0), a.CreatedAt DESC, a.Id DESC;
       """;
 
     using var conn = CreateConnection();
     var rows = await conn.QueryAsync<LocationMaterialAttachmentDto>(
-      new CommandDefinition(sql, new { LocationId = locationId, MaterialId = materialId }, cancellationToken: ct));
+      new CommandDefinition(
+        sql,
+        new
+        {
+          LocationId = locationId,
+          MaterialId = materialId,
+          IncludeDeleted = includeDeleted
+        },
+        cancellationToken: ct));
 
     return rows.AsList();
   }
@@ -280,6 +313,18 @@ public sealed class StockService : IStockService
       return LogisticsCommandResult.Fail("Debes adjuntar un archivo para guardar evidencia.");
     }
 
+    using var conn = CreateConnection();
+    var stockBalance = await GetStockBalanceStateAsync(conn, request.LocationId, request.MaterialId, tx: null, ct);
+    if (stockBalance is null)
+    {
+      return LogisticsCommandResult.Fail("No existe un registro de inventario para ese material en la ubicación seleccionada.");
+    }
+
+    if (stockBalance.IsRemoved)
+    {
+      return LogisticsCommandResult.Fail("Reactiva el material antes de guardar adjuntos.");
+    }
+
     const string sql =
       """
       INSERT INTO logistica.LocationMaterialAttachment
@@ -308,7 +353,6 @@ public sealed class StockService : IStockService
       SELECT CAST(SCOPE_IDENTITY() AS int);
       """;
 
-    using var conn = CreateConnection();
     var id = await conn.ExecuteScalarAsync<int>(
       new CommandDefinition(
         sql,
@@ -328,10 +372,309 @@ public sealed class StockService : IStockService
     return LogisticsCommandResult.Ok("Adjunto de inventario guardado correctamente.", id);
   }
 
+  public async Task<LogisticsCommandResult> RemoveLocationMaterialAsync(int stockBalanceId, string? removedBy, CancellationToken ct = default)
+  {
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(ct);
+
+    try
+    {
+      var stockBalance = await GetStockBalanceStateAsync(conn, stockBalanceId, tx, ct);
+      if (stockBalance is null)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("El registro de inventario ya no existe.");
+      }
+
+      if (stockBalance.IsRemoved)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("El material ya está eliminado de esta ubicación.");
+      }
+
+      if (stockBalance.Quantity != 0)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("Solo puedes quitar materiales con cantidad 0. Ajusta el inventario antes de eliminarlo.");
+      }
+
+      var actor = NormalizeActor(removedBy);
+
+      var affected = await conn.ExecuteAsync(
+        new CommandDefinition(
+          """
+          UPDATE logistica.StockBalance
+          SET IsRemoved = 1,
+              RemovedAt = SYSUTCDATETIME(),
+              RemovedBy = @RemovedBy,
+              UpdatedAt = SYSUTCDATETIME()
+          WHERE Id = @StockBalanceId
+            AND ISNULL(IsRemoved, 0) = 0;
+          """,
+          new
+          {
+            StockBalanceId = stockBalance.Id,
+            RemovedBy = actor
+          },
+          tx,
+          cancellationToken: ct));
+
+      if (affected == 0)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("No se pudo eliminar el material porque cambió mientras se procesaba la solicitud.");
+      }
+
+      await conn.ExecuteAsync(
+        new CommandDefinition(
+          """
+          UPDATE logistica.LocationMaterialAttachment
+          SET IsDeleted = 1,
+              DeletedAt = SYSUTCDATETIME(),
+              DeletedBy = @DeletedBy
+          WHERE LocationId = @LocationId
+            AND MaterialId = @MaterialId
+            AND ISNULL(IsDeleted, 0) = 0;
+          """,
+          new
+          {
+            stockBalance.LocationId,
+            stockBalance.MaterialId,
+            DeletedBy = actor
+          },
+          tx,
+          cancellationToken: ct));
+
+      await InsertStockAuditAsync(
+        conn,
+        tx,
+        stockBalance,
+        transactionType: "Removed",
+        performedBy: actor,
+        notes: "Material eliminado de la ubicación.",
+        ct);
+
+      await tx.CommitAsync(ct);
+      return LogisticsCommandResult.Ok("Material eliminado de la ubicación correctamente.", stockBalance.Id);
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
+  public async Task<LogisticsCommandResult> ReactivateLocationMaterialAsync(int stockBalanceId, string? reactivatedBy, CancellationToken ct = default)
+  {
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(ct);
+
+    try
+    {
+      var stockBalance = await GetStockBalanceStateAsync(conn, stockBalanceId, tx, ct);
+      if (stockBalance is null)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("El registro de inventario ya no existe.");
+      }
+
+      if (!stockBalance.IsRemoved)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("El material ya está activo en esta ubicación.");
+      }
+
+      var actor = NormalizeActor(reactivatedBy);
+
+      var affected = await conn.ExecuteAsync(
+        new CommandDefinition(
+          """
+          UPDATE logistica.StockBalance
+          SET IsRemoved = 0,
+              RemovedAt = NULL,
+              RemovedBy = NULL,
+              UpdatedAt = SYSUTCDATETIME()
+          WHERE Id = @StockBalanceId
+            AND ISNULL(IsRemoved, 0) = 1;
+          """,
+          new { StockBalanceId = stockBalance.Id },
+          tx,
+          cancellationToken: ct));
+
+      if (affected == 0)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("No se pudo reactivar el material porque cambió mientras se procesaba la solicitud.");
+      }
+
+      await conn.ExecuteAsync(
+        new CommandDefinition(
+          """
+          UPDATE logistica.LocationMaterialAttachment
+          SET IsDeleted = 0,
+              DeletedAt = NULL,
+              DeletedBy = NULL
+          WHERE LocationId = @LocationId
+            AND MaterialId = @MaterialId
+            AND ISNULL(IsDeleted, 0) = 1;
+          """,
+          new
+          {
+            stockBalance.LocationId,
+            stockBalance.MaterialId
+          },
+          tx,
+          cancellationToken: ct));
+
+      await InsertStockAuditAsync(
+        conn,
+        tx,
+        stockBalance,
+        transactionType: "Reactivated",
+        performedBy: actor,
+        notes: "Material reactivado en la ubicación.",
+        ct);
+
+      await tx.CommitAsync(ct);
+      return LogisticsCommandResult.Ok("Material reactivado correctamente.", stockBalance.Id);
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
   private DbConnection CreateConnection()
     => _connectionFactory.Create() as DbConnection
       ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
 
+  private static async Task InsertStockAuditAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    StockBalanceStateRow stockBalance,
+    string transactionType,
+    string performedBy,
+    string notes,
+    CancellationToken ct)
+  {
+    await conn.ExecuteAsync(
+      new CommandDefinition(
+        """
+        INSERT INTO logistica.StockTransaction
+        (
+            StockBalanceId,
+            LocationId,
+            MaterialId,
+            TransactionType,
+            QuantityDelta,
+            QuantityAfter,
+            ReferenceType,
+            ReferenceId,
+            Notes,
+            PerformedBy,
+            OccurredAt
+        )
+        VALUES
+        (
+            @StockBalanceId,
+            @LocationId,
+            @MaterialId,
+            @TransactionType,
+            0,
+            @QuantityAfter,
+            'StockBalance',
+            @ReferenceId,
+            @Notes,
+            @PerformedBy,
+            SYSUTCDATETIME()
+        );
+        """,
+        new
+        {
+          StockBalanceId = stockBalance.Id,
+          stockBalance.LocationId,
+          stockBalance.MaterialId,
+          TransactionType = transactionType,
+          QuantityAfter = stockBalance.Quantity,
+          ReferenceId = stockBalance.Id,
+          Notes = notes,
+          PerformedBy = performedBy
+        },
+        tx,
+        cancellationToken: ct));
+  }
+
+  private static string NormalizeActor(string? actor)
+    => NullIfWhiteSpace(actor) ?? "OrionERP";
+
+  private static async Task<StockBalanceStateRow?> GetStockBalanceStateAsync(
+    DbConnection conn,
+    int stockBalanceId,
+    DbTransaction? tx,
+    CancellationToken ct)
+  {
+    const string sql =
+      """
+      SELECT
+          sb.Id,
+          sb.LocationId,
+          sb.MaterialId,
+          CAST(sb.Quantity AS decimal(18,4)) AS Quantity,
+          CAST(ISNULL(sb.IsRemoved, 0) AS bit) AS IsRemoved
+      FROM logistica.StockBalance sb
+      WHERE sb.Id = @StockBalanceId;
+      """;
+
+    return await conn.QueryFirstOrDefaultAsync<StockBalanceStateRow>(
+      new CommandDefinition(sql, new { StockBalanceId = stockBalanceId }, tx, cancellationToken: ct));
+  }
+
+  private static async Task<StockBalanceStateRow?> GetStockBalanceStateAsync(
+    DbConnection conn,
+    int locationId,
+    int materialId,
+    DbTransaction? tx,
+    CancellationToken ct)
+  {
+    const string sql =
+      """
+      SELECT
+          TOP (1)
+          sb.Id,
+          sb.LocationId,
+          sb.MaterialId,
+          CAST(sb.Quantity AS decimal(18,4)) AS Quantity,
+          CAST(ISNULL(sb.IsRemoved, 0) AS bit) AS IsRemoved
+      FROM logistica.StockBalance sb
+      WHERE sb.LocationId = @LocationId
+        AND sb.MaterialId = @MaterialId
+      ORDER BY sb.Id;
+      """;
+
+    return await conn.QueryFirstOrDefaultAsync<StockBalanceStateRow>(
+      new CommandDefinition(
+        sql,
+        new
+        {
+          LocationId = locationId,
+          MaterialId = materialId
+        },
+        tx,
+        cancellationToken: ct));
+  }
+
   private static string? NullIfWhiteSpace(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+  private sealed class StockBalanceStateRow
+  {
+    public int Id { get; set; }
+    public int LocationId { get; set; }
+    public int MaterialId { get; set; }
+    public decimal Quantity { get; set; }
+    public bool IsRemoved { get; set; }
+  }
 }

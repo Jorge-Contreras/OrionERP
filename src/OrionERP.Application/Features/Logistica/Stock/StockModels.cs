@@ -11,6 +11,7 @@ public sealed class StockFilter
   public bool LowStockOnly { get; set; }
   public bool CountDueOnly { get; set; }
   public bool IncludeZeroBalances { get; set; } = true;
+  public bool IncludeRemoved { get; set; }
   public int Skip { get; set; }
   public int Take { get; set; }
 }
@@ -38,6 +39,9 @@ public sealed class StockListItemDto
   public DateTime? LastCountedAt { get; set; }
   public int? CountFrequencyDays { get; set; }
   public int AttachmentCount { get; set; }
+  public bool IsRemoved { get; set; }
+  public DateTime? RemovedAt { get; set; }
+  public string? RemovedBy { get; set; }
 }
 
 public sealed class StockThresholdUpdateRequest : IValidatableObject
@@ -84,6 +88,9 @@ public sealed class LocationMaterialAttachmentDto
   public long Length { get; set; }
   public DateTime CreatedAt { get; set; }
   public string? CreatedBy { get; set; }
+  public bool IsDeleted { get; set; }
+  public DateTime? DeletedAt { get; set; }
+  public string? DeletedBy { get; set; }
 }
 
 public sealed class LocationMaterialAttachmentCreateRequest

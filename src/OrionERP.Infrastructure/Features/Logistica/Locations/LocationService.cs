@@ -32,6 +32,7 @@ public sealed class LocationService : ILocationService
       MaterialCounts AS (
           SELECT LocationId, COUNT(*) AS MaterialCount
           FROM logistica.StockBalance
+          WHERE ISNULL(IsRemoved, 0) = 0
           GROUP BY LocationId
       )
       SELECT

@@ -12,6 +12,7 @@ namespace OrionERP.Infrastructure.Features.Logistica.Purchasing;
 
 public sealed class PurchaseOrderService : IPurchaseOrderService
 {
+  private const string SuiteRoomType = "SUITE";
   private readonly IDbConnectionFactory _connectionFactory;
 
   public PurchaseOrderService(IDbConnectionFactory connectionFactory)
@@ -207,6 +208,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           poLine.MaterialCodeSnapshot AS MaterialCode,
           poLine.MaterialDescriptionSnapshot AS MaterialDescription,
           poLine.BaseUnitNameSnapshot AS BaseUnitName,
+          CAST(poLine.PurchaseQuantitySnapshot AS decimal(18,4)) AS PurchaseQuantity,
+          poLine.PurchaseUnitNameSnapshot AS PurchaseUnitName,
           receiptLine.LocationId,
           location.LocationName,
           CAST(receiptLine.Quantity AS decimal(18,4)) AS Quantity,
@@ -223,6 +226,16 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         ON location.Id = receiptLine.LocationId
       WHERE receipt.PurchaseOrderId = @PurchaseOrderId
       ORDER BY receipt.ReceiptDate DESC, receipt.Id DESC, poLine.MaterialCodeSnapshot, location.LocationName, receiptLine.Id DESC;
+
+      SELECT
+          room.ID AS Id,
+          room.ROOM_NAME AS Name,
+          room.ROOM_TYPE AS Code
+      FROM logistica.PurchaseOrderRoomScope scope
+      JOIN dbo.ROOM room
+        ON room.ID = scope.RoomId
+      WHERE scope.PurchaseOrderId = @PurchaseOrderId
+      ORDER BY room.ROOM_NAME, room.ID;
       """;
 
     using var conn = CreateConnection();
@@ -238,6 +251,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     var lines = (await multi.ReadAsync<PurchaseOrderLineDto>()).AsList();
     var allocations = (await multi.ReadAsync<PurchaseOrderAllocationDto>()).AsList();
     var history = (await multi.ReadAsync<PurchaseReceiptLineHistoryDto>()).AsList();
+    var roomScope = (await multi.ReadAsync<LookupOptionDto>()).AsList();
 
     var allocationsByLineId = allocations
       .GroupBy(allocation => allocation.PurchaseOrderLineId)
@@ -252,6 +266,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
 
     detail.Lines = lines;
     detail.ReceiptHistory = history;
+    detail.RoomScope = roomScope;
     return detail;
   }
 
@@ -279,15 +294,27 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       WHERE l.IsActive = 1
         AND l.IsInventoryEnabled = 1
       ORDER BY l.LocationName, l.Id;
+
+      SELECT
+          room.ID AS Id,
+          room.ROOM_NAME AS Name,
+          room.ROOM_TYPE AS Code
+      FROM dbo.ROOM room
+      WHERE room.ROOM_TYPE = @RoomType
+      ORDER BY room.ROOM_NAME, room.ID;
       """;
 
     using var conn = CreateConnection();
-    using var multi = await conn.QueryMultipleAsync(new CommandDefinition(sql, cancellationToken: ct));
+    using var multi = await conn.QueryMultipleAsync(new CommandDefinition(
+      sql,
+      new { RoomType = SuiteRoomType },
+      cancellationToken: ct));
 
     return new PurchaseOrderCatalogDto
     {
       Vendors = (await multi.ReadAsync<LookupOptionDto>()).AsList(),
       Locations = (await multi.ReadAsync<LookupOptionDto>()).AsList(),
+      Rooms = (await multi.ReadAsync<LookupOptionDto>()).AsList(),
       Statuses = PurchaseOrderStatuses.All
     };
   }
@@ -313,7 +340,13 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       return LogisticsCommandResult.Fail("El proveedor seleccionado no existe o no está activo.");
     }
 
-    var existingDraftId = await GetExistingVendorDraftAsync(conn, request.BusinessPartnerId, ct);
+    var roomScope = await NormalizeAutoPurchaseRoomScopeAsync(conn, request.RoomIds, ct);
+    if (!roomScope.Success)
+    {
+      return LogisticsCommandResult.Fail(roomScope.ErrorMessage ?? "La selección de suites no es válida.");
+    }
+
+    var existingDraftId = await GetExistingVendorDraftAsync(conn, request.BusinessPartnerId, roomScope.RoomIds, ct);
     if (existingDraftId.HasValue)
     {
       return LogisticsCommandResult.Ok(
@@ -321,7 +354,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         existingDraftId.Value);
     }
 
-    var candidateRows = (await LoadAutoReplenishmentRowsAsync(conn, request.BusinessPartnerId, ct))
+    var candidateRows = (await LoadAutoReplenishmentRowsAsync(conn, request.BusinessPartnerId, roomScope.RoomIds, ct))
       .Where(row => row.ProjectedQuantity <= row.MinQuantity && row.RawNeedQuantity > 0m)
       .ToList();
     if (candidateRows.Count == 0)
@@ -331,11 +364,26 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
 
     var defaultLeadTimeDays = await GetVendorDefaultLeadTimeDaysAsync(conn, request.BusinessPartnerId, ct);
     var draftRequest = BuildAutoDraftRequest(request, candidateRows, defaultLeadTimeDays);
-    var result = await SaveDraftAsync(draftRequest, savedBy, ct);
+    await using var tx = await conn.BeginTransactionAsync(ct);
 
-    return !result.Success
-      ? result
-      : LogisticsCommandResult.Ok("Borrador Auto PO generado correctamente.", result.EntityId);
+    try
+    {
+      var result = await SaveDraftCoreAsync(conn, tx, draftRequest, savedBy, ct, roomScope.RoomIds);
+      if (!result.Success)
+      {
+        await tx.RollbackAsync(ct);
+        return result;
+      }
+
+      await tx.CommitAsync(ct);
+
+      return LogisticsCommandResult.Ok("Borrador Auto PO generado correctamente.", result.EntityId);
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
   }
 
   public async Task<LogisticsCommandResult> SaveDraftAsync(PurchaseOrderUpsertRequest request, string? savedBy, CancellationToken ct = default)
@@ -357,279 +405,15 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
 
     try
     {
-      if (!await VendorExistsAsync(conn, tx, request.BusinessPartnerId, ct))
+      var result = await SaveDraftCoreAsync(conn, tx, request, savedBy, ct);
+      if (!result.Success)
       {
         await tx.RollbackAsync(ct);
-        return LogisticsCommandResult.Fail("El proveedor seleccionado no existe o no está activo.");
-      }
-
-      var materialRows = await LoadMaterialRowsAsync(
-        conn,
-        tx,
-        request.BusinessPartnerId,
-        request.Lines.Select(line => line.MaterialId),
-        ct);
-
-      if (materialRows.Count != request.Lines.Count)
-      {
-        await tx.RollbackAsync(ct);
-        return LogisticsCommandResult.Fail("Todos los materiales deben existir, estar activos y pertenecer al proveedor seleccionado.");
-      }
-
-      var locationIds = request.Lines
-        .SelectMany(line => line.Allocations)
-        .Select(allocation => allocation.LocationId)
-        .Distinct()
-        .ToArray();
-
-      var locationRows = await LoadLocationRowsAsync(conn, tx, locationIds, ct);
-      if (locationRows.Count != locationIds.Length)
-      {
-        await tx.RollbackAsync(ct);
-        return LogisticsCommandResult.Fail("Todas las ubicaciones deben existir, estar activas y habilitadas para inventario.");
-      }
-
-      foreach (var lineRequest in request.Lines)
-      {
-        var material = materialRows[lineRequest.MaterialId];
-        var totalQuantity = lineRequest.Allocations.Sum(allocation => allocation.PlannedQuantity);
-        var purchaseQuantity = NormalizePurchaseQuantity(lineRequest.PurchaseQuantitySnapshot, material.PurchaseQuantity);
-
-        foreach (var allocationRequest in lineRequest.Allocations)
-        {
-          if (!IsWholePurchaseMultiple(allocationRequest.PlannedQuantity, purchaseQuantity))
-          {
-            await tx.RollbackAsync(ct);
-            return LogisticsCommandResult.Fail(
-              BuildPurchaseAllocationMultipleValidationMessage(
-                material,
-                locationRows[allocationRequest.LocationId],
-                purchaseQuantity));
-          }
-        }
-
-        if (!IsWholePurchaseMultiple(totalQuantity, purchaseQuantity))
-        {
-          await tx.RollbackAsync(ct);
-          return LogisticsCommandResult.Fail(BuildPurchaseMultipleValidationMessage(material, purchaseQuantity));
-        }
-      }
-
-      var actor = NormalizeActor(savedBy);
-      var purchaseOrderId = request.Id ?? 0;
-
-      if (request.Id.HasValue && request.Id.Value > 0)
-      {
-        var existing = await GetPurchaseOrderStateAsync(conn, tx, request.Id.Value, ct);
-        if (existing is null)
-        {
-          await tx.RollbackAsync(ct);
-          return LogisticsCommandResult.Fail("La orden de compra ya no existe.");
-        }
-
-        if (!string.Equals(existing.Status, PurchaseOrderStatuses.Draft, StringComparison.OrdinalIgnoreCase))
-        {
-          await tx.RollbackAsync(ct);
-          return LogisticsCommandResult.Fail("Solo las órdenes en borrador se pueden editar.");
-        }
-
-        await conn.ExecuteAsync(
-          new CommandDefinition(
-            """
-            UPDATE logistica.PurchaseOrder
-            SET BusinessPartnerId = @BusinessPartnerId,
-                OrderDate = @OrderDate,
-                ExpectedDate = @ExpectedDate,
-                Notes = @Notes,
-                UpdatedAt = SYSUTCDATETIME(),
-                UpdatedBy = @UpdatedBy
-            WHERE Id = @Id;
-            """,
-            new
-            {
-              Id = request.Id.Value,
-              request.BusinessPartnerId,
-              OrderDate = request.OrderDate.Date,
-              ExpectedDate = request.ExpectedDate?.Date,
-              Notes = NullIfWhiteSpace(request.Notes),
-              UpdatedBy = actor
-            },
-            tx,
-            cancellationToken: ct));
-
-        await conn.ExecuteAsync(
-          new CommandDefinition(
-            """
-            DELETE allocation
-            FROM logistica.PurchaseOrderLineAllocation allocation
-            JOIN logistica.PurchaseOrderLine line
-              ON line.Id = allocation.PurchaseOrderLineId
-            WHERE line.PurchaseOrderId = @PurchaseOrderId;
-
-            DELETE FROM logistica.PurchaseOrderLine
-            WHERE PurchaseOrderId = @PurchaseOrderId;
-            """,
-            new { PurchaseOrderId = request.Id.Value },
-            tx,
-            cancellationToken: ct));
-
-        purchaseOrderId = request.Id.Value;
-      }
-      else
-      {
-        purchaseOrderId = await conn.ExecuteScalarAsync<int>(
-          new CommandDefinition(
-            """
-            INSERT INTO logistica.PurchaseOrder
-            (
-                PurchaseOrderCode,
-                BusinessPartnerId,
-                [Status],
-                OrderDate,
-                ExpectedDate,
-                Notes,
-                CreatedAt,
-                CreatedBy,
-                UpdatedAt,
-                UpdatedBy
-            )
-            VALUES
-            (
-                CONCAT('TMP-', LEFT(REPLACE(CONVERT(varchar(36), NEWID()), '-', ''), 20)),
-                @BusinessPartnerId,
-                @Status,
-                @OrderDate,
-                @ExpectedDate,
-                @Notes,
-                SYSUTCDATETIME(),
-                @CreatedBy,
-                SYSUTCDATETIME(),
-                @UpdatedBy
-            );
-
-            SELECT CAST(SCOPE_IDENTITY() AS int);
-            """,
-            new
-            {
-              request.BusinessPartnerId,
-              Status = PurchaseOrderStatuses.Draft,
-              OrderDate = request.OrderDate.Date,
-              ExpectedDate = request.ExpectedDate?.Date,
-              Notes = NullIfWhiteSpace(request.Notes),
-              CreatedBy = actor,
-              UpdatedBy = actor
-            },
-            tx,
-            cancellationToken: ct));
-
-        await conn.ExecuteAsync(
-          new CommandDefinition(
-            """
-            UPDATE logistica.PurchaseOrder
-            SET PurchaseOrderCode = CONCAT('PO-', RIGHT(REPLICATE('0', 6) + CAST(@PurchaseOrderId AS varchar(20)), 6))
-            WHERE Id = @PurchaseOrderId;
-            """,
-            new { PurchaseOrderId = purchaseOrderId },
-            tx,
-            cancellationToken: ct));
-      }
-
-      foreach (var lineRequest in request.Lines)
-      {
-        var material = materialRows[lineRequest.MaterialId];
-        var orderedQuantity = lineRequest.Allocations.Sum(allocation => allocation.PlannedQuantity);
-
-        var lineId = await conn.ExecuteScalarAsync<int>(
-          new CommandDefinition(
-            """
-            INSERT INTO logistica.PurchaseOrderLine
-            (
-                PurchaseOrderId,
-                MaterialId,
-                MaterialCodeSnapshot,
-                MaterialDescriptionSnapshot,
-                VendorCodeSnapshot,
-                BaseUnitNameSnapshot,
-                PurchaseQuantitySnapshot,
-                PurchaseUnitNameSnapshot,
-                UnitPrice,
-                OrderedQuantity,
-                ReceivedQuantity,
-                CreatedAt,
-                UpdatedAt
-            )
-            VALUES
-            (
-                @PurchaseOrderId,
-                @MaterialId,
-                @MaterialCodeSnapshot,
-                @MaterialDescriptionSnapshot,
-                @VendorCodeSnapshot,
-                @BaseUnitNameSnapshot,
-                @PurchaseQuantitySnapshot,
-                @PurchaseUnitNameSnapshot,
-                @UnitPrice,
-                @OrderedQuantity,
-                0,
-                SYSUTCDATETIME(),
-                SYSUTCDATETIME()
-            );
-
-            SELECT CAST(SCOPE_IDENTITY() AS int);
-            """,
-            new
-            {
-              PurchaseOrderId = purchaseOrderId,
-              lineRequest.MaterialId,
-              MaterialCodeSnapshot = material.MaterialCode,
-              MaterialDescriptionSnapshot = material.Description,
-              VendorCodeSnapshot = NullIfWhiteSpace(material.VendorCode),
-              BaseUnitNameSnapshot = NullIfWhiteSpace(material.BaseUnitName),
-              PurchaseQuantitySnapshot = NormalizePurchaseQuantity(lineRequest.PurchaseQuantitySnapshot, material.PurchaseQuantity),
-              PurchaseUnitNameSnapshot = ResolvePurchaseUnitName(lineRequest.PurchaseUnitNameSnapshot, material.PurchaseUnitName),
-              lineRequest.UnitPrice,
-              OrderedQuantity = orderedQuantity
-            },
-            tx,
-            cancellationToken: ct));
-
-        foreach (var allocationRequest in lineRequest.Allocations)
-        {
-          await conn.ExecuteAsync(
-            new CommandDefinition(
-              """
-              INSERT INTO logistica.PurchaseOrderLineAllocation
-              (
-                  PurchaseOrderLineId,
-                  LocationId,
-                  PlannedQuantity,
-                  ReceivedQuantity,
-                  CreatedAt,
-                  UpdatedAt
-              )
-              VALUES
-              (
-                  @PurchaseOrderLineId,
-                  @LocationId,
-                  @PlannedQuantity,
-                  0,
-                  SYSUTCDATETIME(),
-                  SYSUTCDATETIME()
-              );
-              """,
-              new
-              {
-                PurchaseOrderLineId = lineId,
-                allocationRequest.LocationId,
-                allocationRequest.PlannedQuantity
-              },
-              tx,
-              cancellationToken: ct));
-        }
+        return result;
       }
 
       await tx.CommitAsync(ct);
-      return LogisticsCommandResult.Ok("Orden de compra guardada correctamente.", purchaseOrderId);
+      return result;
     }
     catch
     {
@@ -1157,6 +941,312 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     }
   }
 
+  private static async Task<LogisticsCommandResult> SaveDraftCoreAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    PurchaseOrderUpsertRequest request,
+    string? savedBy,
+    CancellationToken ct,
+    IReadOnlyCollection<int>? roomScopeIds = null)
+  {
+    if (!await VendorExistsAsync(conn, tx, request.BusinessPartnerId, ct))
+    {
+      return LogisticsCommandResult.Fail("El proveedor seleccionado no existe o no está activo.");
+    }
+
+    var materialRows = await LoadMaterialRowsAsync(
+      conn,
+      tx,
+      request.BusinessPartnerId,
+      request.Lines.Select(line => line.MaterialId),
+      ct);
+
+    if (materialRows.Count != request.Lines.Count)
+    {
+      return LogisticsCommandResult.Fail("Todos los materiales deben existir, estar activos y pertenecer al proveedor seleccionado.");
+    }
+
+    var locationIds = request.Lines
+      .SelectMany(line => line.Allocations)
+      .Select(allocation => allocation.LocationId)
+      .Distinct()
+      .ToArray();
+
+    var locationRows = await LoadLocationRowsAsync(conn, tx, locationIds, ct);
+    if (locationRows.Count != locationIds.Length)
+    {
+      return LogisticsCommandResult.Fail("Todas las ubicaciones deben existir, estar activas y habilitadas para inventario.");
+    }
+
+    foreach (var lineRequest in request.Lines)
+    {
+      var material = materialRows[lineRequest.MaterialId];
+      var totalQuantity = lineRequest.Allocations.Sum(allocation => allocation.PlannedQuantity);
+      var purchaseQuantity = NormalizePurchaseQuantity(lineRequest.PurchaseQuantitySnapshot, material.PurchaseQuantity);
+      var purchaseUnitName = ResolvePurchaseUnitName(lineRequest.PurchaseUnitNameSnapshot, material.PurchaseUnitName);
+
+      foreach (var allocationRequest in lineRequest.Allocations)
+      {
+        if (!IsWholePurchaseMultiple(allocationRequest.PlannedQuantity, purchaseQuantity, purchaseUnitName))
+        {
+          return LogisticsCommandResult.Fail(
+            BuildPurchaseAllocationMultipleValidationMessage(
+              material,
+              locationRows[allocationRequest.LocationId],
+              purchaseQuantity));
+        }
+      }
+
+      if (!IsWholePurchaseMultiple(totalQuantity, purchaseQuantity, purchaseUnitName))
+      {
+        return LogisticsCommandResult.Fail(BuildPurchaseMultipleValidationMessage(material, purchaseQuantity));
+      }
+    }
+
+    var actor = NormalizeActor(savedBy);
+    var purchaseOrderId = request.Id ?? 0;
+
+    if (request.Id.HasValue && request.Id.Value > 0)
+    {
+      var existing = await GetPurchaseOrderStateAsync(conn, tx, request.Id.Value, ct);
+      if (existing is null)
+      {
+        return LogisticsCommandResult.Fail("La orden de compra ya no existe.");
+      }
+
+      if (!string.Equals(existing.Status, PurchaseOrderStatuses.Draft, StringComparison.OrdinalIgnoreCase))
+      {
+        return LogisticsCommandResult.Fail("Solo las órdenes en borrador se pueden editar.");
+      }
+
+      await conn.ExecuteAsync(
+        new CommandDefinition(
+          """
+          UPDATE logistica.PurchaseOrder
+          SET BusinessPartnerId = @BusinessPartnerId,
+              OrderDate = @OrderDate,
+              ExpectedDate = @ExpectedDate,
+              Notes = @Notes,
+              UpdatedAt = SYSUTCDATETIME(),
+              UpdatedBy = @UpdatedBy
+          WHERE Id = @Id;
+          """,
+          new
+          {
+            Id = request.Id.Value,
+            request.BusinessPartnerId,
+            OrderDate = request.OrderDate.Date,
+            ExpectedDate = request.ExpectedDate?.Date,
+            Notes = NullIfWhiteSpace(request.Notes),
+            UpdatedBy = actor
+          },
+          tx,
+          cancellationToken: ct));
+
+      await conn.ExecuteAsync(
+        new CommandDefinition(
+          """
+          DELETE allocation
+          FROM logistica.PurchaseOrderLineAllocation allocation
+          JOIN logistica.PurchaseOrderLine line
+            ON line.Id = allocation.PurchaseOrderLineId
+          WHERE line.PurchaseOrderId = @PurchaseOrderId;
+
+          DELETE FROM logistica.PurchaseOrderLine
+          WHERE PurchaseOrderId = @PurchaseOrderId;
+          """,
+          new { PurchaseOrderId = request.Id.Value },
+          tx,
+          cancellationToken: ct));
+
+      purchaseOrderId = request.Id.Value;
+    }
+    else
+    {
+      purchaseOrderId = await conn.ExecuteScalarAsync<int>(
+        new CommandDefinition(
+          """
+          INSERT INTO logistica.PurchaseOrder
+          (
+              PurchaseOrderCode,
+              BusinessPartnerId,
+              [Status],
+              OrderDate,
+              ExpectedDate,
+              Notes,
+              CreatedAt,
+              CreatedBy,
+              UpdatedAt,
+              UpdatedBy
+          )
+          VALUES
+          (
+              CONCAT('TMP-', LEFT(REPLACE(CONVERT(varchar(36), NEWID()), '-', ''), 20)),
+              @BusinessPartnerId,
+              @Status,
+              @OrderDate,
+              @ExpectedDate,
+              @Notes,
+              SYSUTCDATETIME(),
+              @CreatedBy,
+              SYSUTCDATETIME(),
+              @UpdatedBy
+          );
+
+          SELECT CAST(SCOPE_IDENTITY() AS int);
+          """,
+          new
+          {
+            request.BusinessPartnerId,
+            Status = PurchaseOrderStatuses.Draft,
+            OrderDate = request.OrderDate.Date,
+            ExpectedDate = request.ExpectedDate?.Date,
+            Notes = NullIfWhiteSpace(request.Notes),
+            CreatedBy = actor,
+            UpdatedBy = actor
+          },
+          tx,
+          cancellationToken: ct));
+
+      await conn.ExecuteAsync(
+        new CommandDefinition(
+          """
+          UPDATE logistica.PurchaseOrder
+          SET PurchaseOrderCode = CONCAT('PO-', RIGHT(REPLICATE('0', 6) + CAST(@PurchaseOrderId AS varchar(20)), 6))
+          WHERE Id = @PurchaseOrderId;
+          """,
+          new { PurchaseOrderId = purchaseOrderId },
+          tx,
+          cancellationToken: ct));
+
+      if (roomScopeIds is { Count: > 0 })
+      {
+        foreach (var roomId in roomScopeIds)
+        {
+          await conn.ExecuteAsync(
+            new CommandDefinition(
+              """
+              INSERT INTO logistica.PurchaseOrderRoomScope
+              (
+                  PurchaseOrderId,
+                  RoomId,
+                  CreatedAt
+              )
+              VALUES
+              (
+                  @PurchaseOrderId,
+                  @RoomId,
+                  SYSUTCDATETIME()
+              );
+              """,
+              new
+              {
+                PurchaseOrderId = purchaseOrderId,
+                RoomId = roomId
+              },
+              tx,
+              cancellationToken: ct));
+        }
+      }
+    }
+
+    foreach (var lineRequest in request.Lines)
+    {
+      var material = materialRows[lineRequest.MaterialId];
+      var orderedQuantity = lineRequest.Allocations.Sum(allocation => allocation.PlannedQuantity);
+
+      var lineId = await conn.ExecuteScalarAsync<int>(
+        new CommandDefinition(
+          """
+          INSERT INTO logistica.PurchaseOrderLine
+          (
+              PurchaseOrderId,
+              MaterialId,
+              MaterialCodeSnapshot,
+              MaterialDescriptionSnapshot,
+              VendorCodeSnapshot,
+              BaseUnitNameSnapshot,
+              PurchaseQuantitySnapshot,
+              PurchaseUnitNameSnapshot,
+              UnitPrice,
+              OrderedQuantity,
+              ReceivedQuantity,
+              CreatedAt,
+              UpdatedAt
+          )
+          VALUES
+          (
+              @PurchaseOrderId,
+              @MaterialId,
+              @MaterialCodeSnapshot,
+              @MaterialDescriptionSnapshot,
+              @VendorCodeSnapshot,
+              @BaseUnitNameSnapshot,
+              @PurchaseQuantitySnapshot,
+              @PurchaseUnitNameSnapshot,
+              @UnitPrice,
+              @OrderedQuantity,
+              0,
+              SYSUTCDATETIME(),
+              SYSUTCDATETIME()
+          );
+
+          SELECT CAST(SCOPE_IDENTITY() AS int);
+          """,
+          new
+          {
+            PurchaseOrderId = purchaseOrderId,
+            lineRequest.MaterialId,
+            MaterialCodeSnapshot = material.MaterialCode,
+            MaterialDescriptionSnapshot = material.Description,
+            VendorCodeSnapshot = NullIfWhiteSpace(material.VendorCode),
+            BaseUnitNameSnapshot = NullIfWhiteSpace(material.BaseUnitName),
+            PurchaseQuantitySnapshot = NormalizePurchaseQuantity(lineRequest.PurchaseQuantitySnapshot, material.PurchaseQuantity),
+            PurchaseUnitNameSnapshot = ResolvePurchaseUnitName(lineRequest.PurchaseUnitNameSnapshot, material.PurchaseUnitName),
+            lineRequest.UnitPrice,
+            OrderedQuantity = orderedQuantity
+          },
+          tx,
+          cancellationToken: ct));
+
+      foreach (var allocationRequest in lineRequest.Allocations)
+      {
+        await conn.ExecuteAsync(
+          new CommandDefinition(
+            """
+            INSERT INTO logistica.PurchaseOrderLineAllocation
+            (
+                PurchaseOrderLineId,
+                LocationId,
+                PlannedQuantity,
+                ReceivedQuantity,
+                CreatedAt,
+                UpdatedAt
+            )
+            VALUES
+            (
+                @PurchaseOrderLineId,
+                @LocationId,
+                @PlannedQuantity,
+                0,
+                SYSUTCDATETIME(),
+                SYSUTCDATETIME()
+            );
+            """,
+            new
+            {
+              PurchaseOrderLineId = lineId,
+              allocationRequest.LocationId,
+              allocationRequest.PlannedQuantity
+            },
+            tx,
+            cancellationToken: ct));
+      }
+    }
+
+    return LogisticsCommandResult.Ok("Orden de compra guardada correctamente.", purchaseOrderId);
+  }
+
   private DbConnection CreateConnection()
     => _connectionFactory.Create() as DbConnection
       ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
@@ -1256,6 +1346,32 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
   private static string? NullIfWhiteSpace(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+  private static async Task<NormalizedRoomScopeResult> NormalizeAutoPurchaseRoomScopeAsync(
+    DbConnection conn,
+    IEnumerable<int>? requestedRoomIds,
+    CancellationToken ct)
+  {
+    var suiteRooms = await LoadSuiteRoomsAsync(conn, ct);
+    var normalizedRoomIds = NormalizeRoomIds(requestedRoomIds);
+    if (normalizedRoomIds.Length == 0)
+    {
+      return NormalizedRoomScopeResult.Ok([]);
+    }
+
+    var suiteRoomIds = suiteRooms.Select(room => room.Id).ToHashSet();
+    if (normalizedRoomIds.Any(roomId => !suiteRoomIds.Contains(roomId)))
+    {
+      return NormalizedRoomScopeResult.Fail("Las suites seleccionadas no existen o ya no están disponibles para Auto PO.");
+    }
+
+    if (suiteRooms.Count > 0 && normalizedRoomIds.Length == suiteRooms.Count)
+    {
+      return NormalizedRoomScopeResult.Ok([]);
+    }
+
+    return NormalizedRoomScopeResult.Ok(normalizedRoomIds);
+  }
+
   private static string BuildReceiptAuditNote(string materialDescription, string locationName, string? receiptNotes)
   {
     var note = $"Recepción de compra para {materialDescription} en {locationName}.";
@@ -1285,8 +1401,36 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         cancellationToken: ct));
   }
 
-  private static async Task<int?> GetExistingVendorDraftAsync(DbConnection conn, int businessPartnerId, CancellationToken ct)
+  private static async Task<int?> GetExistingVendorDraftAsync(
+    DbConnection conn,
+    int businessPartnerId,
+    IReadOnlyCollection<int> roomIds,
+    CancellationToken ct)
   {
+    if (roomIds.Count == 0)
+    {
+      return await conn.QueryFirstOrDefaultAsync<int?>(
+        new CommandDefinition(
+          """
+          SELECT TOP (1) po.Id
+          FROM logistica.PurchaseOrder po
+          WHERE po.BusinessPartnerId = @BusinessPartnerId
+            AND po.[Status] = @Status
+            AND NOT EXISTS (
+                SELECT 1
+                FROM logistica.PurchaseOrderRoomScope scope
+                WHERE scope.PurchaseOrderId = po.Id
+            )
+          ORDER BY ISNULL(po.UpdatedAt, po.CreatedAt) DESC, po.Id DESC;
+          """,
+          new
+          {
+            BusinessPartnerId = businessPartnerId,
+            Status = PurchaseOrderStatuses.Draft
+          },
+          cancellationToken: ct));
+    }
+
     return await conn.QueryFirstOrDefaultAsync<int?>(
       new CommandDefinition(
         """
@@ -1294,12 +1438,26 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         FROM logistica.PurchaseOrder po
         WHERE po.BusinessPartnerId = @BusinessPartnerId
           AND po.[Status] = @Status
+          AND NOT EXISTS (
+              SELECT 1
+              FROM logistica.PurchaseOrderRoomScope scope
+              WHERE scope.PurchaseOrderId = po.Id
+                AND scope.RoomId NOT IN @RoomIds
+          )
+          AND (
+              SELECT COUNT(*)
+              FROM logistica.PurchaseOrderRoomScope scope
+              WHERE scope.PurchaseOrderId = po.Id
+                AND scope.RoomId IN @RoomIds
+          ) = @RoomCount
         ORDER BY ISNULL(po.UpdatedAt, po.CreatedAt) DESC, po.Id DESC;
         """,
         new
         {
           BusinessPartnerId = businessPartnerId,
-          Status = PurchaseOrderStatuses.Draft
+          Status = PurchaseOrderStatuses.Draft,
+          RoomIds = roomIds,
+          RoomCount = roomIds.Count
         },
         cancellationToken: ct));
   }
@@ -1330,12 +1488,13 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       {
         var first = group.First();
         var packSize = NormalizePurchaseQuantity(first.PurchaseQuantity);
+        var purchaseUnitName = ResolvePurchaseUnitName(first.PurchaseUnitName, fallbackValue: null);
         var allocations = group
           .OrderBy(item => item.LocationId)
           .Select(item => new PurchaseOrderAllocationUpsertRequest
           {
             LocationId = item.LocationId,
-            PlannedQuantity = packSize > 1m
+            PlannedQuantity = RequiresWholePurchaseMultiple(packSize, purchaseUnitName)
               ? RoundUpToPurchaseMultiple(item.RawNeedQuantity, packSize)
               : item.RawNeedQuantity
           })
@@ -1346,7 +1505,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           MaterialId = first.MaterialId,
           UnitPrice = first.UnitPrice,
           PurchaseQuantitySnapshot = packSize,
-          PurchaseUnitNameSnapshot = ResolvePurchaseUnitName(first.PurchaseUnitName, fallbackValue: null),
+          PurchaseUnitNameSnapshot = purchaseUnitName,
           Allocations = allocations
         };
       })
@@ -1366,75 +1525,105 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
   private static async Task<IReadOnlyList<AutoPurchaseCandidateRow>> LoadAutoReplenishmentRowsAsync(
     DbConnection conn,
     int businessPartnerId,
+    IReadOnlyCollection<int> roomIds,
     CancellationToken ct)
   {
+    var sql = new StringBuilder(
+      """
+      WITH OpenPurchaseAllocations AS (
+          SELECT
+              line.MaterialId,
+              allocation.LocationId,
+              CAST(ISNULL(SUM(allocation.PlannedQuantity - allocation.ReceivedQuantity), 0) AS decimal(18,4)) AS RemainingOpenQuantity
+          FROM logistica.PurchaseOrder po
+          JOIN logistica.PurchaseOrderLine line
+            ON line.PurchaseOrderId = po.Id
+          JOIN logistica.PurchaseOrderLineAllocation allocation
+            ON allocation.PurchaseOrderLineId = line.Id
+          WHERE po.BusinessPartnerId = @BusinessPartnerId
+            AND po.[Status] IN @ProjectedStatuses
+          GROUP BY line.MaterialId, allocation.LocationId
+      )
+      SELECT
+          sb.MaterialId,
+          m.MaterialCode,
+          m.[Description] AS MaterialDescription,
+          m.VendorCode,
+          baseU.UnitName AS BaseUnitName,
+          purchaseU.UnitName AS PurchaseUnitName,
+          CAST(CASE
+              WHEN m.PurchaseQuantity IS NULL OR m.PurchaseQuantity <= 0 THEN 1
+              ELSE m.PurchaseQuantity
+          END AS decimal(18,4)) AS PurchaseQuantity,
+          CAST(m.Price AS decimal(18,4)) AS UnitPrice,
+          sb.LocationId,
+          location.LocationName,
+          location.LocationCode,
+          CAST(sb.Quantity AS decimal(18,4)) AS CurrentQuantity,
+          CAST(sb.MinQuantity AS decimal(18,4)) AS MinQuantity,
+          CAST(sb.MaxQuantity AS decimal(18,4)) AS MaxQuantity,
+          CAST(ISNULL(openAlloc.RemainingOpenQuantity, 0) AS decimal(18,4)) AS RemainingOpenQuantity,
+          CAST(sb.Quantity + ISNULL(openAlloc.RemainingOpenQuantity, 0) AS decimal(18,4)) AS ProjectedQuantity,
+          CAST(sb.MaxQuantity - (sb.Quantity + ISNULL(openAlloc.RemainingOpenQuantity, 0)) AS decimal(18,4)) AS RawNeedQuantity
+      FROM logistica.StockBalance sb
+      JOIN logistica.Material m
+        ON m.Id = sb.MaterialId
+      JOIN logistica.Location location
+        ON location.Id = sb.LocationId
+      LEFT JOIN logistica.UnitOfMeasure baseU
+        ON baseU.Id = m.BaseUnitId
+      LEFT JOIN logistica.UnitOfMeasure purchaseU
+        ON purchaseU.Id = m.PurchaseUnitId
+      LEFT JOIN OpenPurchaseAllocations openAlloc
+        ON openAlloc.MaterialId = sb.MaterialId
+       AND openAlloc.LocationId = sb.LocationId
+      WHERE m.BusinessPartnerId = @BusinessPartnerId
+        AND m.IsActive = 1
+        AND location.IsActive = 1
+        AND location.IsInventoryEnabled = 1
+        AND ISNULL(sb.IsRemoved, 0) = 0
+        AND sb.MinQuantity IS NOT NULL
+        AND sb.MaxQuantity IS NOT NULL
+      """);
+
+    var parameters = new DynamicParameters();
+    parameters.Add("@BusinessPartnerId", businessPartnerId, DbType.Int32);
+    parameters.Add("@ProjectedStatuses", PurchaseOrderStatuses.Open);
+
+    if (roomIds.Count > 0)
+    {
+      sql.AppendLine("  AND location.RoomId IN @RoomIds");
+      parameters.Add("@RoomIds", roomIds);
+    }
+
+    sql.AppendLine("ORDER BY m.MaterialCode, m.[Description], sb.LocationId;");
+
     var rows = await conn.QueryAsync<AutoPurchaseCandidateRow>(
       new CommandDefinition(
-        """
-        WITH OpenPurchaseAllocations AS (
-            SELECT
-                line.MaterialId,
-                allocation.LocationId,
-                CAST(ISNULL(SUM(allocation.PlannedQuantity - allocation.ReceivedQuantity), 0) AS decimal(18,4)) AS RemainingOpenQuantity
-            FROM logistica.PurchaseOrder po
-            JOIN logistica.PurchaseOrderLine line
-              ON line.PurchaseOrderId = po.Id
-            JOIN logistica.PurchaseOrderLineAllocation allocation
-              ON allocation.PurchaseOrderLineId = line.Id
-            WHERE po.BusinessPartnerId = @BusinessPartnerId
-              AND po.[Status] IN @ProjectedStatuses
-            GROUP BY line.MaterialId, allocation.LocationId
-        )
-        SELECT
-            sb.MaterialId,
-            m.MaterialCode,
-            m.[Description] AS MaterialDescription,
-            m.VendorCode,
-            baseU.UnitName AS BaseUnitName,
-            purchaseU.UnitName AS PurchaseUnitName,
-            CAST(CASE
-                WHEN m.PurchaseQuantity IS NULL OR m.PurchaseQuantity <= 0 THEN 1
-                ELSE m.PurchaseQuantity
-            END AS decimal(18,4)) AS PurchaseQuantity,
-            CAST(m.Price AS decimal(18,4)) AS UnitPrice,
-            sb.LocationId,
-            location.LocationName,
-            location.LocationCode,
-            CAST(sb.Quantity AS decimal(18,4)) AS CurrentQuantity,
-            CAST(sb.MinQuantity AS decimal(18,4)) AS MinQuantity,
-            CAST(sb.MaxQuantity AS decimal(18,4)) AS MaxQuantity,
-            CAST(ISNULL(openAlloc.RemainingOpenQuantity, 0) AS decimal(18,4)) AS RemainingOpenQuantity,
-            CAST(sb.Quantity + ISNULL(openAlloc.RemainingOpenQuantity, 0) AS decimal(18,4)) AS ProjectedQuantity,
-            CAST(sb.MaxQuantity - (sb.Quantity + ISNULL(openAlloc.RemainingOpenQuantity, 0)) AS decimal(18,4)) AS RawNeedQuantity
-        FROM logistica.StockBalance sb
-        JOIN logistica.Material m
-          ON m.Id = sb.MaterialId
-        JOIN logistica.Location location
-          ON location.Id = sb.LocationId
-        LEFT JOIN logistica.UnitOfMeasure baseU
-          ON baseU.Id = m.BaseUnitId
-        LEFT JOIN logistica.UnitOfMeasure purchaseU
-          ON purchaseU.Id = m.PurchaseUnitId
-        LEFT JOIN OpenPurchaseAllocations openAlloc
-          ON openAlloc.MaterialId = sb.MaterialId
-         AND openAlloc.LocationId = sb.LocationId
-        WHERE m.BusinessPartnerId = @BusinessPartnerId
-          AND m.IsActive = 1
-          AND location.IsActive = 1
-          AND location.IsInventoryEnabled = 1
-          AND ISNULL(sb.IsRemoved, 0) = 0
-          AND sb.MinQuantity IS NOT NULL
-          AND sb.MaxQuantity IS NOT NULL
-        ORDER BY m.MaterialCode, m.[Description], sb.LocationId;
-        """,
-        new
-        {
-          BusinessPartnerId = businessPartnerId,
-          ProjectedStatuses = PurchaseOrderStatuses.Open
-        },
+        sql.ToString(),
+        parameters,
         cancellationToken: ct));
 
     return rows.AsList();
+  }
+
+  private static async Task<IReadOnlyList<LookupOptionDto>> LoadSuiteRoomsAsync(DbConnection conn, CancellationToken ct)
+  {
+    var rooms = await conn.QueryAsync<LookupOptionDto>(
+      new CommandDefinition(
+        """
+        SELECT
+            room.ID AS Id,
+            room.ROOM_NAME AS Name,
+            room.ROOM_TYPE AS Code
+        FROM dbo.ROOM room
+        WHERE room.ROOM_TYPE = @RoomType
+        ORDER BY room.ROOM_NAME, room.ID;
+        """,
+        new { RoomType = SuiteRoomType },
+        cancellationToken: ct));
+
+    return rooms.AsList();
   }
 
   private static async Task<Dictionary<int, MaterialRow>> LoadMaterialRowsAsync(
@@ -1687,6 +1876,14 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     return 1m;
   }
 
+  private static int[] NormalizeRoomIds(IEnumerable<int>? roomIds)
+    => roomIds?
+      .Where(roomId => roomId > 0)
+      .Distinct()
+      .OrderBy(roomId => roomId)
+      .ToArray()
+      ?? [];
+
   private static decimal RoundUpToPurchaseMultiple(decimal quantity, decimal purchaseQuantity)
   {
     var normalizedPurchaseQuantity = NormalizePurchaseQuantity(purchaseQuantity);
@@ -1698,10 +1895,14 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     return decimal.Ceiling(quantity / normalizedPurchaseQuantity) * normalizedPurchaseQuantity;
   }
 
-  private static bool IsWholePurchaseMultiple(decimal quantity, decimal purchaseQuantity)
+  private static bool RequiresWholePurchaseMultiple(decimal purchaseQuantity, string? purchaseUnitName)
+    => NormalizePurchaseQuantity(purchaseQuantity) > 1m
+      || !string.IsNullOrWhiteSpace(purchaseUnitName);
+
+  private static bool IsWholePurchaseMultiple(decimal quantity, decimal purchaseQuantity, string? purchaseUnitName)
   {
     var normalizedPurchaseQuantity = NormalizePurchaseQuantity(purchaseQuantity);
-    if (normalizedPurchaseQuantity <= 1m)
+    if (!RequiresWholePurchaseMultiple(normalizedPurchaseQuantity, purchaseUnitName))
     {
       return true;
     }
@@ -1735,13 +1936,19 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
   private static string BuildPurchaseMultipleRequirementText(MaterialRow material, decimal purchaseQuantity)
   {
     var culture = CultureInfo.CurrentCulture;
-    var purchaseQuantityText = purchaseQuantity.ToString("N2", culture);
+    var normalizedPurchaseQuantity = NormalizePurchaseQuantity(purchaseQuantity);
+    var purchaseQuantityText = normalizedPurchaseQuantity.ToString("N2", culture);
     var purchaseUnitText = string.IsNullOrWhiteSpace(material.PurchaseUnitName)
       ? "unidad de compra"
       : material.PurchaseUnitName.Trim();
     var baseUnitText = string.IsNullOrWhiteSpace(material.BaseUnitName)
       ? "unidad base"
       : material.BaseUnitName.Trim();
+
+    if (normalizedPurchaseQuantity == 1m && RequiresWholePurchaseMultiple(normalizedPurchaseQuantity, material.PurchaseUnitName))
+    {
+      return $"1 {purchaseUnitText}";
+    }
 
     return $"{purchaseQuantityText} {baseUnitText} por {purchaseUnitText}";
   }
@@ -1750,6 +1957,27 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
   {
     public int Id { get; set; }
     public string Status { get; set; } = string.Empty;
+  }
+
+  private sealed class NormalizedRoomScopeResult
+  {
+    public bool Success { get; private set; }
+    public string? ErrorMessage { get; private set; }
+    public IReadOnlyList<int> RoomIds { get; private set; } = Array.Empty<int>();
+
+    public static NormalizedRoomScopeResult Ok(IReadOnlyList<int> roomIds)
+      => new()
+      {
+        Success = true,
+        RoomIds = roomIds
+      };
+
+    public static NormalizedRoomScopeResult Fail(string errorMessage)
+      => new()
+      {
+        Success = false,
+        ErrorMessage = errorMessage
+      };
   }
 
   private sealed class MaterialRow

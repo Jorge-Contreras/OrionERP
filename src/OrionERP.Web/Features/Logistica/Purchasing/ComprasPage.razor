@@ -97,7 +97,7 @@
                                 <tr>
                                     <th>Orden</th>
                                     <th>Proveedor</th>
-                                    <th class="text-end">Cant.</th>
+                                    <th class="text-end">Materiales</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -122,8 +122,8 @@
                                                 <small class="text-muted">@(order.ExpectedDate.HasValue ? $"Esp: {order.ExpectedDate.Value:dd/MM/yyyy}" : "Sin fecha esperada")</small>
                                             </td>
                                             <td class="text-end">
-                                                <div>@order.OrderedQuantity.ToString("N2")</div>
-                                                <small class="text-muted">Pend: @order.RemainingQuantity.ToString("N2")</small>
+                                                <div>@order.LineCount.ToString("N0")</div>
+                                                <small class="text-muted">@order.AllocationCount.ToString("N0") ubicaciones</small>
                                             </td>
                                         </tr>
                                     }
@@ -150,19 +150,42 @@
 
                             <div class="compras-summary-grid">
                                 <div class="compras-summary-card">
-                                    <div class="compras-summary-label">Ordenado</div>
-                                    <div class="compras-summary-value">@CurrentOrderedQuantity.ToString("N2")</div>
+                                    <div class="compras-summary-label">Materiales</div>
+                                    <div class="compras-summary-value">@CurrentMaterialCount.ToString("N0")</div>
                                 </div>
                                 <div class="compras-summary-card">
-                                    <div class="compras-summary-label">Recibido</div>
-                                    <div class="compras-summary-value">@CurrentReceivedQuantity.ToString("N2")</div>
+                                    <div class="compras-summary-label">Ubicaciones</div>
+                                    <div class="compras-summary-value">@CurrentAllocationCount.ToString("N0")</div>
                                 </div>
                                 <div class="compras-summary-card">
-                                    <div class="compras-summary-label">Pendiente</div>
-                                    <div class="compras-summary-value">@CurrentRemainingQuantity.ToString("N2")</div>
+                                    <div class="compras-summary-label">Pendientes</div>
+                                    <div class="compras-summary-value">@CurrentPendingAllocationCount.ToString("N0")</div>
                                 </div>
                             </div>
                         </div>
+
+                        @if (SelectedPurchaseOrder is not null)
+                        {
+                            <div class="compras-room-scope-panel mb-3">
+                                <div class="compras-summary-label">Suites Auto PO</div>
+                                <div class="compras-room-chip-wrap">
+                                    @if (SelectedPurchaseOrderRoomScope.Count == 0)
+                                    {
+                                        <span class="compras-room-chip compras-room-chip-all">Todas las suites</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var room in SelectedPurchaseOrderRoomScope)
+                                        {
+                                            <span class="compras-room-chip">@room.Name</span>
+                                        }
+                                    }
+                                </div>
+                                <div class="small text-muted mt-2">
+                                    Alcance guardado: @SelectedPurchaseOrderRoomScopeSummary
+                                </div>
+                            </div>
+                        }
 
                         <ValidationSummary />
 
@@ -292,7 +315,7 @@
                                     <tr>
                                         <th class="compras-thumb-col">Foto</th>
                                         <th>Material</th>
-                                        <th>Unidad</th>
+                                        <th>Unidad compra</th>
                                         <th class="text-end">Precio</th>
                                         <th class="text-end">Ordenado</th>
                                         <th class="text-end">Recibido</th>
@@ -330,7 +353,7 @@
                                                     <div class="small text-muted">@(string.IsNullOrWhiteSpace(line.VendorCode) ? "Sin código proveedor" : line.VendorCode)</div>
                                                 </td>
                                                 <td>
-                                                    <div>@(string.IsNullOrWhiteSpace(line.BaseUnitName) ? "Sin unidad" : line.BaseUnitName)</div>
+                                                    <div>@GetPurchaseUnitName(line)</div>
                                                     @if (GetPurchasePresentationSummary(line) is { } purchaseSummary)
                                                     {
                                                         <div class="small @(HasInvalidPurchasePackConfiguration(line) ? "text-danger" : "text-muted")">@purchaseSummary</div>
@@ -346,9 +369,9 @@
                                                         @(line.UnitPrice.HasValue ? line.UnitPrice.Value.ToString("C") : "-")
                                                     }
                                                 </td>
-                                                <td class="text-end">@line.OrderedQuantity.ToString("N2")</td>
-                                                <td class="text-end">@line.ReceivedQuantity.ToString("N2")</td>
-                                                <td class="text-end">@line.RemainingQuantity.ToString("N2")</td>
+                                                <td class="text-end">@FormatPurchaseQuantity(line, line.OrderedQuantity)</td>
+                                                <td class="text-end">@FormatPurchaseQuantity(line, line.ReceivedQuantity)</td>
+                                                <td class="text-end">@FormatPurchaseQuantity(line, line.RemainingQuantity)</td>
                                                 <td class="text-end">
                                                     @if (IsDraftMode)
                                                     {
@@ -388,7 +411,7 @@
                                 <div>
                                     <h3 class="h5 mb-1">@selectedMaterialTitle</h3>
                                     <div class="text-muted">@SelectedLine.MaterialCode</div>
-                                    <div class="small text-muted">@(string.IsNullOrWhiteSpace(SelectedLine.BaseUnitName) ? "Sin unidad base" : SelectedLine.BaseUnitName)</div>
+                                    <div class="small text-muted">@GetPurchaseUnitName(SelectedLine)</div>
                                     @if (GetPurchasePresentationSummary(SelectedLine) is { } selectedPurchaseSummary)
                                     {
                                         <div class="small @(HasInvalidPurchasePackConfiguration(SelectedLine) ? "text-danger" : "text-muted")">@selectedPurchaseSummary</div>
@@ -401,13 +424,13 @@
                                 @if (HasInvalidPurchaseAllocationMultiple(SelectedLine))
                                 {
                                     <div class="alert alert-warning py-2">
-                                        Cada ubicación planeada debe quedar en múltiplos exactos de la presentación de compra antes de guardar.
+                                        Cada ubicación planeada debe quedar en unidades completas de compra antes de guardar.
                                     </div>
                                 }
                                 else if (HasInvalidPurchaseMultiple(SelectedLine))
                                 {
                                     <div class="alert alert-warning py-2">
-                                        La cantidad total planeada debe quedar en múltiplos exactos de la presentación de compra antes de guardar.
+                                        La cantidad total planeada debe quedar en unidades completas de compra antes de guardar.
                                     </div>
                                 }
 
@@ -423,14 +446,16 @@
                                         </select>
                                     </div>
                                     <div class="col-md-3">
-                                        <label class="form-label">Cantidad</label>
-                                        <InputNumber class="form-control" @bind-Value="PendingAllocationQuantity" />
-                                        @if (SelectedLine.PurchaseQuantity > 1m)
-                                        {
-                                            <div class="form-text">
-                                                Captura múltiplos de @SelectedLine.PurchaseQuantity.ToString("N2") @(string.IsNullOrWhiteSpace(SelectedLine.BaseUnitName) ? "unidad base" : SelectedLine.BaseUnitName) por ubicación.
-                                            </div>
-                                        }
+                                        <label class="form-label">Cantidad (@GetPurchaseUnitName(SelectedLine))</label>
+                                        <input type="number"
+                                               step="any"
+                                               min="0"
+                                               class="form-control"
+                                               value="@FormatNumberInput(GetPendingAllocationDisplayQuantity())"
+                                               @onchange="UpdatePendingAllocationDisplayQuantity" />
+                                        <div class="form-text">
+                                            Captura cantidades en unidad de compra. El inventario se convierte internamente a unidad base.
+                                        </div>
                                     </div>
                                     <div class="col-md-2">
                                         <button type="button" class="btn btn-outline-primary w-100" @onclick="AgregarAsignacion">
@@ -481,7 +506,12 @@
                                                     <td class="text-end">
                                                         @if (IsDraftMode)
                                                         {
-                                                            <InputNumber class="form-control form-control-sm compras-inline-number" @bind-Value="allocation.PlannedQuantity" />
+                                                            <input type="number"
+                                                                   step="any"
+                                                                   min="0"
+                                                                   class="form-control form-control-sm compras-inline-number"
+                                                                   value="@FormatNumberInput(GetAllocationDisplayQuantity(SelectedLine, allocation))"
+                                                                   @onchange="args => UpdateAllocationDisplayQuantity(SelectedLine, allocation, args)" />
                                                             @if (GetPurchaseAllocationValidationMessage(SelectedLine, allocation) is { } allocationValidationMessage)
                                                             {
                                                                 <div class="small text-danger mt-1 text-start">@allocationValidationMessage</div>
@@ -489,11 +519,11 @@
                                                         }
                                                         else
                                                         {
-                                                            @allocation.PlannedQuantity.ToString("N2")
+                                                            @FormatPurchaseQuantity(SelectedLine, allocation.PlannedQuantity)
                                                         }
                                                     </td>
-                                                    <td class="text-end">@allocation.ReceivedQuantity.ToString("N2")</td>
-                                                    <td class="text-end">@allocation.RemainingQuantity.ToString("N2")</td>
+                                                    <td class="text-end">@FormatPurchaseQuantity(SelectedLine, allocation.ReceivedQuantity)</td>
+                                                    <td class="text-end">@FormatPurchaseQuantity(SelectedLine, allocation.RemainingQuantity)</td>
                                                     <td class="text-end">
                                                         @if (IsDraftMode)
                                                         {
@@ -519,7 +549,7 @@
                             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                                 <div>
                                     <h3 class="h5 mb-1">Recepción</h3>
-                                    <p class="text-muted mb-0">Recibe cantidades por ubicación para actualizar inventario y registrar auditoría.</p>
+                                    <p class="text-muted mb-0">Recibe cantidades en unidad de compra por ubicación. El sistema convierte internamente a unidad base para inventario.</p>
                                 </div>
                             </div>
 
@@ -571,11 +601,16 @@
                                                     <div>@item.LocationName</div>
                                                     <small class="text-muted">@(string.IsNullOrWhiteSpace(item.LocationCode) ? "Sin código" : item.LocationCode)</small>
                                                 </td>
-                                                <td class="text-end">@item.PlannedQuantity.ToString("N2")</td>
-                                                <td class="text-end">@item.ReceivedQuantity.ToString("N2")</td>
-                                                <td class="text-end">@item.RemainingQuantity.ToString("N2")</td>
+                                                <td class="text-end">@FormatPurchaseQuantity(item, item.PlannedQuantity)</td>
+                                                <td class="text-end">@FormatPurchaseQuantity(item, item.ReceivedQuantity)</td>
+                                                <td class="text-end">@FormatPurchaseQuantity(item, item.RemainingQuantity)</td>
                                                 <td class="text-end">
-                                                    <InputNumber class="form-control form-control-sm compras-inline-number" @bind-Value="item.ReceiveNowQuantity" />
+                                                    <input type="number"
+                                                           step="any"
+                                                           min="0"
+                                                           class="form-control form-control-sm compras-inline-number"
+                                                           value="@FormatNumberInput(GetReceiveNowDisplayQuantity(item))"
+                                                           @onchange="args => UpdateReceiveNowDisplayQuantity(item, args)" />
                                                 </td>
                                             </tr>
                                         }
@@ -632,7 +667,7 @@
                                                     <small class="text-muted">@item.MaterialCode</small>
                                                 </td>
                                                 <td>@item.LocationName</td>
-                                                <td class="text-end">@item.Quantity.ToString("N2")</td>
+                                                <td class="text-end">@FormatPurchaseQuantity(item, item.Quantity)</td>
                                                 <td>@(string.IsNullOrWhiteSpace(item.Notes) ? "-" : item.Notes)</td>
                                             </tr>
                                         }
@@ -650,7 +685,7 @@
 @if (ShowAutoPoModal)
 {
     <div class="modal fade show d-block compras-modal-backdrop" role="dialog" aria-modal="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable compras-auto-po-dialog">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Generar Auto PO</h5>
@@ -659,7 +694,7 @@
                 <div class="modal-body">
                     <p class="text-muted">
                         Genera un borrador con materiales del proveedor seleccionado usando mínimos y máximos por ubicación.
-                        El sistema calcula en unidad base y redondea a la presentación de compra.
+                        El sistema calcula internamente en unidad base y presenta la orden en unidad de compra.
                     </p>
 
                     <div class="mb-3">
@@ -673,8 +708,68 @@
                         </select>
                     </div>
 
+                    <div class="compras-auto-po-room-panel">
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                            <div>
+                                <label class="form-label mb-1">Suites</label>
+                                <div class="small text-muted">Selecciona una o varias suites para limitar el cálculo a las ubicaciones dentro de esos ROOM.</div>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="LimpiarSeleccionSuitesAutoPo" disabled="@IsCreatingAutoPo">
+                                    Todas las suites
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="SeleccionarTodasLasSuitesAutoPo" disabled="@(IsCreatingAutoPo || AutoPoRoomOptions.Count == 0)">
+                                    Seleccionar todas
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="compras-auto-po-room-summary mb-2">
+                            <span class="compras-room-chip compras-room-chip-summary">@AutoPoRoomSelectionSummary</span>
+                        </div>
+
+                        @if (AutoPoRoomOptions.Count == 0)
+                        {
+                            <div class="alert alert-light border mb-0">No se encontraron suites configuradas con <code>ROOM_TYPE = 'SUITE'</code>.</div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive compras-auto-po-room-table-wrap">
+                                <table class="table table-sm table-hover align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="compras-auto-po-room-check-col"></th>
+                                            <th>Suite</th>
+                                            <th>Tipo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var room in AutoPoRoomOptions)
+                                        {
+                                            <tr>
+                                                <td class="compras-auto-po-room-check-col">
+                                                    <input type="checkbox"
+                                                           class="form-check-input"
+                                                           checked="@IsAutoPoRoomSelected(room.Id)"
+                                                           @onchange="(e) => ToggleAutoPoRoomSelection(room.Id, e.Value is bool selected && selected)"
+                                                           disabled="@IsCreatingAutoPo" />
+                                                </td>
+                                                <td>@room.Name</td>
+                                                <td><span class="badge text-bg-light">@room.Code</span></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+
+                        <div class="form-text mt-2">
+                            Si no seleccionas suites, Auto PO usará todas las ubicaciones activas habilitadas para inventario.
+                        </div>
+                    </div>
+
                     <div class="small text-muted">
-                        Si el proveedor ya tiene un borrador abierto, se abrirá ese documento en lugar de crear uno nuevo.
+                        Si el proveedor ya tiene un borrador abierto con el mismo alcance de suites, se abrirá ese documento en lugar de crear uno nuevo.
                     </div>
                 </div>
                 <div class="modal-footer">

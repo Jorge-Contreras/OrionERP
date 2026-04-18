@@ -45,21 +45,21 @@ public sealed class PurchaseOrderPdfDocumentFactory : IPurchaseOrderPdfDocumentF
       Safe(detail.Notes),
       DateTime.Now.ToString("f", culture),
       Safe(detail.CreatedBy),
-      FormatQuantity(detail.OrderedQuantity, culture),
-      FormatQuantity(detail.ReceivedQuantity, culture),
-      FormatQuantity(detail.RemainingQuantity, culture),
+      detail.Lines.Count.ToString("N0", culture),
+      detail.Lines.Sum(line => line.Allocations.Count).ToString("N0", culture),
+      detail.Lines.Sum(line => line.Allocations.Count(allocation => allocation.RemainingQuantity > 0m)).ToString("N0", culture),
       detail.Lines.Select(line => new PurchaseOrderPdfLineRow(
           GetThumbnail(line.MaterialId),
           GetFallback(line),
           Safe(line.MaterialCode),
           Safe(line.MaterialDescription),
           Safe(line.VendorCode),
-          Safe(line.BaseUnitName),
+          PurchaseQuantityDisplay.GetPrimaryUnitName(line.BaseUnitName, line.PurchaseUnitName),
           BuildPurchasePresentation(line, culture),
           line.UnitPrice.HasValue ? line.UnitPrice.Value.ToString("C", culture) : "-",
-          FormatQuantity(line.OrderedQuantity, culture),
-          FormatQuantity(line.ReceivedQuantity, culture),
-          FormatQuantity(line.RemainingQuantity, culture)))
+          FormatPurchaseQuantity(line.OrderedQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture),
+          FormatPurchaseQuantity(line.ReceivedQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture),
+          FormatPurchaseQuantity(line.RemainingQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture)))
         .ToList(),
       detail.Lines
         .SelectMany(line => line.Allocations.Select(allocation => new PurchaseOrderPdfAllocationRow(
@@ -70,9 +70,9 @@ public sealed class PurchaseOrderPdfDocumentFactory : IPurchaseOrderPdfDocumentF
           string.IsNullOrWhiteSpace(allocation.LocationCode)
             ? Safe(allocation.LocationName)
             : $"{allocation.LocationCode} · {Safe(allocation.LocationName)}",
-          FormatQuantity(allocation.PlannedQuantity, culture),
-          FormatQuantity(allocation.ReceivedQuantity, culture),
-          FormatQuantity(allocation.RemainingQuantity, culture))))
+          FormatPurchaseQuantity(allocation.PlannedQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture),
+          FormatPurchaseQuantity(allocation.ReceivedQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture),
+          FormatPurchaseQuantity(allocation.RemainingQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture))))
         .ToList());
   }
 
@@ -82,18 +82,21 @@ public sealed class PurchaseOrderPdfDocumentFactory : IPurchaseOrderPdfDocumentF
   private static string FormatQuantity(decimal value, CultureInfo culture)
     => value.ToString("N2", culture);
 
-  private static string BuildPurchasePresentation(PurchaseOrderLineDto line, CultureInfo culture)
-  {
-    if (line.PurchaseQuantity <= 1m
-        || string.IsNullOrWhiteSpace(line.PurchaseUnitName)
-        || string.IsNullOrWhiteSpace(line.BaseUnitName))
-    {
-      return string.Empty;
-    }
+  private static string FormatPurchaseQuantity(
+    decimal value,
+    decimal purchaseQuantity,
+    string? baseUnitName,
+    string? purchaseUnitName,
+    CultureInfo culture)
+    => PurchaseQuantityDisplay.FormatQuantity(value, purchaseQuantity, baseUnitName, purchaseUnitName, culture);
 
-    var orderedPurchaseUnits = line.OrderedQuantity / line.PurchaseQuantity;
-    return $"{FormatQuantity(orderedPurchaseUnits, culture)} {Safe(line.PurchaseUnitName)} x {FormatQuantity(line.PurchaseQuantity, culture)} {Safe(line.BaseUnitName)} = {FormatQuantity(line.OrderedQuantity, culture)} {Safe(line.BaseUnitName)}";
-  }
+  private static string BuildPurchasePresentation(PurchaseOrderLineDto line, CultureInfo culture)
+    => PurchaseQuantityDisplay.BuildPresentationSummary(
+      line.BaseUnitName,
+      line.PurchaseQuantity,
+      line.PurchaseUnitName,
+      culture)
+      ?? string.Empty;
 
   private static string Safe(string? value)
     => string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();

@@ -33,6 +33,7 @@ public partial class ComprasPage : ComponentBase
   protected List<MaterialListItemDto> MaterialSearchResults { get; set; } = [];
   protected List<ReceiveAllocationInput> ReceiveItems { get; set; } = [];
   protected Dictionary<int, string> MaterialThumbnailDataUrls { get; set; } = [];
+  protected HashSet<int> AutoPoSelectedRoomIds { get; set; } = [];
   protected string MaterialSearchText { get; set; } = string.Empty;
   protected string? ReceiptNotes { get; set; }
   protected DateTime ReceiptDate { get; set; } = DateTime.Today;
@@ -77,16 +78,40 @@ public partial class ComprasPage : ComponentBase
   protected decimal CurrentOrderedQuantity => Lines.Sum(line => line.OrderedQuantity);
   protected decimal CurrentReceivedQuantity => Lines.Sum(line => line.ReceivedQuantity);
   protected decimal CurrentRemainingQuantity => Lines.Sum(line => line.RemainingQuantity);
+  protected int CurrentMaterialCount => Lines.Count;
+  protected int CurrentAllocationCount => Lines.Sum(line => line.Allocations.Count);
+  protected int CurrentPendingAllocationCount => Lines.Sum(line => line.Allocations.Count(allocation => allocation.RemainingQuantity > 0m));
   protected IReadOnlyList<LookupOptionDto> VendorOptions => Catalog.Vendors;
   protected IReadOnlyList<LookupOptionDto> LocationOptions => Catalog.Locations;
+  protected IReadOnlyList<LookupOptionDto> AutoPoRoomOptions => Catalog.Rooms;
   protected IReadOnlyList<string> StatusOptions => Catalog.Statuses;
   protected IReadOnlyList<PurchaseReceiptLineHistoryDto> ReceiptHistory => SelectedPurchaseOrder?.ReceiptHistory ?? Array.Empty<PurchaseReceiptLineHistoryDto>();
+  protected IReadOnlyList<LookupOptionDto> SelectedPurchaseOrderRoomScope => SelectedPurchaseOrder?.RoomScope ?? Array.Empty<LookupOptionDto>();
+  protected IReadOnlyList<LookupOptionDto> AutoPoSelectedRooms => AutoPoRoomOptions
+    .Where(room => AutoPoSelectedRoomIds.Contains(room.Id))
+    .OrderBy(room => room.Name, StringComparer.OrdinalIgnoreCase)
+    .ThenBy(room => room.Id)
+    .ToList();
+  protected string AutoPoRoomSelectionSummary
+    => AutoPoSelectedRooms.Count switch
+    {
+      0 => "Todas las suites",
+      1 => AutoPoSelectedRooms[0].Name,
+      _ => $"{AutoPoSelectedRooms.Count} suites seleccionadas"
+    };
+  protected string SelectedPurchaseOrderRoomScopeSummary
+    => SelectedPurchaseOrderRoomScope.Count switch
+    {
+      0 => "Todas las suites",
+      1 => SelectedPurchaseOrderRoomScope[0].Name,
+      _ => $"{SelectedPurchaseOrderRoomScope.Count} suites"
+    };
 
   protected override async Task OnInitializedAsync()
   {
     CurrentUserName = await ResolveCurrentUserAsync();
     Catalog = await PurchaseOrderService.GetCatalogAsync();
-    AutoPoRequest = CreateAutoPoRequest();
+    ResetAutoPoRequest();
     await LoadOrdersAsync();
     NuevaOrden();
   }
@@ -100,7 +125,7 @@ public partial class ComprasPage : ComponentBase
   {
     SelectedPurchaseOrder = null;
     Editor = CreateEditor();
-    AutoPoRequest = CreateAutoPoRequest(GetPreferredVendorId());
+    ResetAutoPoRequest(GetPreferredVendorId());
     Lines = [];
     SelectedLine = null;
     MaterialSearchText = string.Empty;
@@ -179,6 +204,8 @@ public partial class ComprasPage : ComponentBase
             MaterialCode = line.MaterialCode,
             MaterialDescription = line.MaterialDescription,
             BaseUnitName = line.BaseUnitName,
+            PurchaseQuantity = NormalizePurchaseQuantity(line.PurchaseQuantity),
+            PurchaseUnitName = line.PurchaseUnitName,
             LocationId = allocation.LocationId,
             LocationName = allocation.LocationName,
             LocationCode = allocation.LocationCode,
@@ -196,9 +223,9 @@ public partial class ComprasPage : ComponentBase
       MaterialSearchText = string.Empty;
       HasExecutedMaterialSearch = false;
       PendingAllocationLocationId = 0;
-      PendingAllocationQuantity = 1m;
+      PendingAllocationQuantity = GetDefaultPendingAllocationBaseQuantity(SelectedLine);
       await RefreshThumbnailsAsync();
-      AutoPoRequest = CreateAutoPoRequest(Editor.BusinessPartnerId);
+      ResetAutoPoRequest(Editor.BusinessPartnerId);
     }
     catch (Exception ex)
     {
@@ -272,7 +299,7 @@ public partial class ComprasPage : ComponentBase
         MaterialCode = item.MaterialCode,
         MaterialDescription = item.Description,
         VendorCode = detail.VendorCode,
-        BaseUnitName = item.BaseUnitName,
+        BaseUnitName = detail.BaseUnitName ?? item.BaseUnitName,
         PurchaseQuantity = NormalizePurchaseQuantity(detail.PurchaseQuantity),
         PurchaseUnitName = detail.PurchaseUnitName,
         UnitPrice = detail.Price,
@@ -286,7 +313,7 @@ public partial class ComprasPage : ComponentBase
         .ToList();
       SelectedLine = Lines.FirstOrDefault(current => current.MaterialId == item.Id);
       PendingAllocationLocationId = 0;
-      PendingAllocationQuantity = 1m;
+      PendingAllocationQuantity = GetDefaultPendingAllocationBaseQuantity(SelectedLine);
       await RefreshThumbnailsAsync();
     }
     catch (Exception ex)
@@ -299,12 +326,12 @@ public partial class ComprasPage : ComponentBase
   {
     SelectedLine = line;
     PendingAllocationLocationId = 0;
-    PendingAllocationQuantity = 1m;
+    PendingAllocationQuantity = GetDefaultPendingAllocationBaseQuantity(line);
   }
 
   protected void AbrirAutoPoModal()
   {
-    AutoPoRequest = CreateAutoPoRequest(GetPreferredVendorId());
+    ResetAutoPoRequest(GetPreferredVendorId());
     ShowAutoPoModal = true;
   }
 
@@ -319,6 +346,13 @@ public partial class ComprasPage : ComponentBase
     {
       UiMessages.ShowWarning("Selecciona un proveedor para generar el Auto PO.");
       return;
+    }
+
+    var normalizedRoomIds = GetNormalizedAutoPoRoomIds();
+    AutoPoRequest.RoomIds = normalizedRoomIds.ToList();
+    if (normalizedRoomIds.Count == 0)
+    {
+      AutoPoSelectedRoomIds.Clear();
     }
 
     IsCreatingAutoPo = true;
@@ -382,6 +416,7 @@ public partial class ComprasPage : ComponentBase
     if (ReferenceEquals(SelectedLine, line))
     {
       SelectedLine = Lines.FirstOrDefault();
+      PendingAllocationQuantity = GetDefaultPendingAllocationBaseQuantity(SelectedLine);
     }
 
     await RefreshThumbnailsAsync();
@@ -435,7 +470,7 @@ public partial class ComprasPage : ComponentBase
       .ToList();
 
     PendingAllocationLocationId = 0;
-    PendingAllocationQuantity = 1m;
+    PendingAllocationQuantity = GetDefaultPendingAllocationBaseQuantity(SelectedLine);
   }
 
   protected void QuitarAsignacion(EditablePurchaseAllocation allocation)
@@ -703,31 +738,144 @@ public partial class ComprasPage : ComponentBase
         ? "Sin foto"
         : description.Trim();
 
-  protected string? GetPurchasePresentationSummary(EditablePurchaseLine line)
-  {
-    if (line.PurchaseQuantity <= 1m
-        || string.IsNullOrWhiteSpace(line.PurchaseUnitName)
-        || string.IsNullOrWhiteSpace(line.BaseUnitName))
-    {
-      return null;
-    }
+  protected string GetPurchaseUnitName(EditablePurchaseLine line)
+    => PurchaseQuantityDisplay.GetPrimaryUnitName(line.BaseUnitName, line.PurchaseUnitName);
 
-    var orderedPurchaseUnits = line.OrderedQuantity / line.PurchaseQuantity;
-    return $"{FormatQuantity(orderedPurchaseUnits)} {line.PurchaseUnitName} x {FormatQuantity(line.PurchaseQuantity)} {line.BaseUnitName} = {FormatQuantity(line.OrderedQuantity)} {line.BaseUnitName}";
+  protected string GetPurchaseUnitName(ReceiveAllocationInput item)
+    => PurchaseQuantityDisplay.GetPrimaryUnitName(item.BaseUnitName, item.PurchaseUnitName);
+
+  protected string GetPurchaseUnitName(PurchaseReceiptLineHistoryDto item)
+    => PurchaseQuantityDisplay.GetPrimaryUnitName(item.BaseUnitName, item.PurchaseUnitName);
+
+  protected string? GetPurchasePresentationSummary(EditablePurchaseLine line)
+    => PurchaseQuantityDisplay.BuildPresentationSummary(
+      line.BaseUnitName,
+      line.PurchaseQuantity,
+      line.PurchaseUnitName,
+      CultureInfo.CurrentCulture);
+
+  protected string FormatPurchaseQuantity(EditablePurchaseLine line, decimal quantity)
+    => PurchaseQuantityDisplay.FormatQuantity(
+      quantity,
+      line.PurchaseQuantity,
+      line.BaseUnitName,
+      line.PurchaseUnitName,
+      CultureInfo.CurrentCulture);
+
+  protected string FormatPurchaseQuantity(ReceiveAllocationInput item, decimal quantity)
+    => PurchaseQuantityDisplay.FormatQuantity(
+      quantity,
+      item.PurchaseQuantity,
+      item.BaseUnitName,
+      item.PurchaseUnitName,
+      CultureInfo.CurrentCulture);
+
+  protected string FormatPurchaseQuantity(PurchaseReceiptLineHistoryDto item, decimal quantity)
+    => PurchaseQuantityDisplay.FormatQuantity(
+      quantity,
+      item.PurchaseQuantity,
+      item.BaseUnitName,
+      item.PurchaseUnitName,
+      CultureInfo.CurrentCulture);
+
+  protected decimal GetPendingAllocationDisplayQuantity()
+    => SelectedLine is null
+      ? PendingAllocationQuantity
+      : PurchaseQuantityDisplay.ToDisplayQuantity(
+        PendingAllocationQuantity,
+        SelectedLine.PurchaseQuantity,
+        SelectedLine.PurchaseUnitName);
+
+  protected void SetPendingAllocationDisplayQuantity(decimal quantity)
+  {
+    PendingAllocationQuantity = SelectedLine is null
+      ? quantity
+      : PurchaseQuantityDisplay.ToBaseQuantity(
+        quantity,
+        SelectedLine.PurchaseQuantity,
+        SelectedLine.PurchaseUnitName);
   }
 
+  protected decimal GetAllocationDisplayQuantity(EditablePurchaseLine line, EditablePurchaseAllocation allocation)
+    => PurchaseQuantityDisplay.ToDisplayQuantity(
+      allocation.PlannedQuantity,
+      line.PurchaseQuantity,
+      line.PurchaseUnitName);
+
+  protected void SetAllocationDisplayQuantity(EditablePurchaseLine line, EditablePurchaseAllocation allocation, decimal quantity)
+    => allocation.PlannedQuantity = PurchaseQuantityDisplay.ToBaseQuantity(
+      quantity,
+      line.PurchaseQuantity,
+      line.PurchaseUnitName);
+
+  protected decimal GetReceiveNowDisplayQuantity(ReceiveAllocationInput item)
+    => PurchaseQuantityDisplay.ToDisplayQuantity(
+      item.ReceiveNowQuantity,
+      item.PurchaseQuantity,
+      item.PurchaseUnitName);
+
+  protected void SetReceiveNowDisplayQuantity(ReceiveAllocationInput item, decimal quantity)
+    => item.ReceiveNowQuantity = PurchaseQuantityDisplay.ToBaseQuantity(
+      quantity,
+      item.PurchaseQuantity,
+      item.PurchaseUnitName);
+
+  protected string FormatNumberInput(decimal value)
+    => value.ToString(CultureInfo.InvariantCulture);
+
+  protected void UpdatePendingAllocationDisplayQuantity(ChangeEventArgs args)
+    => SetPendingAllocationDisplayQuantity(ParseNumberInput(args, GetPendingAllocationDisplayQuantity()));
+
+  protected void UpdateAllocationDisplayQuantity(EditablePurchaseLine line, EditablePurchaseAllocation allocation, ChangeEventArgs args)
+    => SetAllocationDisplayQuantity(
+      line,
+      allocation,
+      ParseNumberInput(args, GetAllocationDisplayQuantity(line, allocation)));
+
+  protected void UpdateReceiveNowDisplayQuantity(ReceiveAllocationInput item, ChangeEventArgs args)
+    => SetReceiveNowDisplayQuantity(item, ParseNumberInput(args, GetReceiveNowDisplayQuantity(item)));
+
   protected bool HasInvalidPurchaseMultiple(EditablePurchaseLine line)
-    => line.PurchaseQuantity > 1m && !IsWholePurchaseMultiple(line.OrderedQuantity, line.PurchaseQuantity);
+    => RequiresWholePurchaseMultiple(line.PurchaseQuantity, line.PurchaseUnitName)
+      && !IsWholePurchaseMultiple(line.OrderedQuantity, line.PurchaseQuantity, line.PurchaseUnitName);
 
   protected bool HasInvalidPurchaseAllocationMultiple(EditablePurchaseLine line)
-    => line.PurchaseQuantity > 1m
-      && line.Allocations.Any(allocation => !IsWholePurchaseMultiple(allocation.PlannedQuantity, line.PurchaseQuantity));
+    => RequiresWholePurchaseMultiple(line.PurchaseQuantity, line.PurchaseUnitName)
+      && line.Allocations.Any(allocation => !IsWholePurchaseMultiple(allocation.PlannedQuantity, line.PurchaseQuantity, line.PurchaseUnitName));
 
   protected bool HasInvalidPurchaseAllocationMultiple(EditablePurchaseLine line, EditablePurchaseAllocation allocation)
-    => line.PurchaseQuantity > 1m && !IsWholePurchaseMultiple(allocation.PlannedQuantity, line.PurchaseQuantity);
+    => RequiresWholePurchaseMultiple(line.PurchaseQuantity, line.PurchaseUnitName)
+      && !IsWholePurchaseMultiple(allocation.PlannedQuantity, line.PurchaseQuantity, line.PurchaseUnitName);
 
   protected bool HasInvalidPurchasePackConfiguration(EditablePurchaseLine line)
     => HasInvalidPurchaseMultiple(line) || HasInvalidPurchaseAllocationMultiple(line);
+
+  protected bool IsAutoPoRoomSelected(int roomId)
+    => AutoPoSelectedRoomIds.Contains(roomId);
+
+  protected void ToggleAutoPoRoomSelection(int roomId, bool isSelected)
+  {
+    if (isSelected)
+    {
+      AutoPoSelectedRoomIds.Add(roomId);
+    }
+    else
+    {
+      AutoPoSelectedRoomIds.Remove(roomId);
+    }
+  }
+
+  protected void SeleccionarTodasLasSuitesAutoPo()
+  {
+    AutoPoSelectedRoomIds = AutoPoRoomOptions
+      .Select(room => room.Id)
+      .ToHashSet();
+  }
+
+  protected void LimpiarSeleccionSuitesAutoPo()
+  {
+    AutoPoSelectedRoomIds.Clear();
+  }
 
   protected string? GetPurchaseAllocationValidationMessage(EditablePurchaseLine line, EditablePurchaseAllocation allocation)
   {
@@ -736,9 +884,6 @@ public partial class ComprasPage : ComponentBase
       return null;
     }
 
-    var baseUnitName = string.IsNullOrWhiteSpace(line.BaseUnitName)
-      ? "unidad base"
-      : line.BaseUnitName.Trim();
     var purchaseUnitName = string.IsNullOrWhiteSpace(line.PurchaseUnitName)
       ? "unidad de compra"
       : line.PurchaseUnitName.Trim();
@@ -746,7 +891,7 @@ public partial class ComprasPage : ComponentBase
       ? allocation.LocationName
       : allocation.LocationCode;
 
-    return $"{locationLabel}: usa múltiplos de {FormatQuantity(line.PurchaseQuantity)} {baseUnitName} por {purchaseUnitName}.";
+    return $"{locationLabel}: ajusta la cantidad a unidades completas de compra en {purchaseUnitName}.";
   }
 
   private async Task LoadOrdersAsync()
@@ -833,13 +978,71 @@ public partial class ComprasPage : ComponentBase
       ? Editor.BusinessPartnerId
       : Filter.VendorId;
 
+  private void ResetAutoPoRequest(int? businessPartnerId = null)
+  {
+    AutoPoRequest = CreateAutoPoRequest(businessPartnerId);
+    AutoPoSelectedRoomIds = [];
+  }
+
+  private static decimal GetDefaultPendingAllocationBaseQuantity(EditablePurchaseLine? line)
+    => line is null
+      ? 1m
+      : PurchaseQuantityDisplay.ToBaseQuantity(
+        1m,
+        line.PurchaseQuantity,
+        line.PurchaseUnitName);
+
+  private static decimal ParseNumberInput(ChangeEventArgs args, decimal fallbackValue)
+  {
+    if (args.Value is decimal decimalValue)
+    {
+      return decimalValue;
+    }
+
+    var text = Convert.ToString(args.Value, CultureInfo.InvariantCulture);
+    if (string.IsNullOrWhiteSpace(text))
+    {
+      return 0m;
+    }
+
+    if (decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var invariantValue))
+    {
+      return invariantValue;
+    }
+
+    return decimal.TryParse(text, NumberStyles.Number, CultureInfo.CurrentCulture, out var currentCultureValue)
+      ? currentCultureValue
+      : fallbackValue;
+  }
+
+  private IReadOnlyList<int> GetNormalizedAutoPoRoomIds()
+  {
+    var normalized = AutoPoSelectedRoomIds
+      .Where(roomId => AutoPoRoomOptions.Any(room => room.Id == roomId))
+      .OrderBy(roomId => roomId)
+      .ToList();
+
+    if (normalized.Count == 0)
+    {
+      return normalized;
+    }
+
+    return AutoPoRoomOptions.Count > 0 && normalized.Count == AutoPoRoomOptions.Count
+      ? []
+      : normalized;
+  }
+
   private static decimal NormalizePurchaseQuantity(decimal value)
     => value > 0m ? value : 1m;
 
-  private static bool IsWholePurchaseMultiple(decimal quantity, decimal purchaseQuantity)
+  private static bool RequiresWholePurchaseMultiple(decimal purchaseQuantity, string? purchaseUnitName)
+    => NormalizePurchaseQuantity(purchaseQuantity) > 1m
+      || !string.IsNullOrWhiteSpace(purchaseUnitName);
+
+  private static bool IsWholePurchaseMultiple(decimal quantity, decimal purchaseQuantity, string? purchaseUnitName)
   {
     var normalizedPurchaseQuantity = NormalizePurchaseQuantity(purchaseQuantity);
-    if (normalizedPurchaseQuantity <= 1m)
+    if (!RequiresWholePurchaseMultiple(normalizedPurchaseQuantity, purchaseUnitName))
     {
       return true;
     }
@@ -857,12 +1060,21 @@ public partial class ComprasPage : ComponentBase
       OrderDate = DateTime.Today
     };
 
-  private static AutoPurchaseOrderCreateRequest CreateAutoPoRequest(int? businessPartnerId = null)
+  private static AutoPurchaseOrderCreateRequest CreateAutoPoRequest(int? businessPartnerId = null, IEnumerable<int>? roomIds = null)
     => new()
     {
       BusinessPartnerId = businessPartnerId.GetValueOrDefault(),
-      OrderDate = DateTime.Today
+      OrderDate = DateTime.Today,
+      RoomIds = NormalizeRoomIds(roomIds)
     };
+
+  private static List<int> NormalizeRoomIds(IEnumerable<int>? roomIds)
+    => roomIds?
+      .Where(roomId => roomId > 0)
+      .Distinct()
+      .OrderBy(roomId => roomId)
+      .ToList()
+      ?? [];
 
   protected sealed class EditablePurchaseLine
   {
@@ -900,6 +1112,8 @@ public partial class ComprasPage : ComponentBase
     public string MaterialCode { get; set; } = string.Empty;
     public string MaterialDescription { get; set; } = string.Empty;
     public string? BaseUnitName { get; set; }
+    public decimal PurchaseQuantity { get; set; } = 1m;
+    public string? PurchaseUnitName { get; set; }
     public int LocationId { get; set; }
     public string LocationName { get; set; } = string.Empty;
     public string? LocationCode { get; set; }

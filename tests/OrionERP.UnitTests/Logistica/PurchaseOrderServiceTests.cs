@@ -216,6 +216,103 @@ public class PurchaseOrderServiceTests
   }
 
   [Fact]
+  public async Task CreateAutoDraftAsync_RoundsUpToWholePurchaseUnit_WhenPurchaseQuantityIsOne()
+  {
+    var nextLineId = 351;
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("SELECT TOP (1) po.Id", StringComparison.Ordinal))
+        {
+          return CreateExistingDraftTable();
+        }
+
+        if (commandText.Contains("WITH OpenPurchaseAllocations", StringComparison.Ordinal))
+        {
+          return CreateAutoPurchaseCandidateTable(
+            new AutoCandidateTestRow(
+              MaterialId: 97,
+              MaterialCode: "MAT-000097",
+              MaterialDescription: "Servilletas",
+              PurchaseQuantity: 1m,
+              UnitPrice: 10m,
+              LocationId: 20,
+              LocationName: "LONDON-GABINETE-SALA",
+              RawNeedQuantity: 1.5m,
+              CurrentQuantity: 0.5m,
+              MinQuantity: 1m,
+              MaxQuantity: 2m,
+              RemainingOpenQuantity: 0m,
+              ProjectedQuantity: 0.5m,
+              LocationCode: "LOC-001137"));
+        }
+
+        if (commandText.Contains("FROM logistica.VendorProfile vp", StringComparison.Ordinal))
+        {
+          return CreateNullableIntTable("DefaultLeadTimeDays", null);
+        }
+
+        if (commandText.Contains("FROM logistica.Material m", StringComparison.Ordinal))
+        {
+          return CreateMaterialRowsTable(
+            new MaterialTestRow(97, "MAT-000097", "Servilletas", "SV-001", "Paquete", "Paquete", 1m, 10m));
+        }
+
+        if (commandText.Contains("FROM logistica.Location l", StringComparison.Ordinal))
+        {
+          return CreateLocationRowsTable(new LocationTestRow(20, "LONDON-GABINETE-SALA", "LOC-001137"));
+        }
+
+        return new DataTable();
+      },
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
+        {
+          return true;
+        }
+
+        if (commandText.Contains("INSERT INTO logistica.PurchaseOrderLine", StringComparison.Ordinal))
+        {
+          return nextLineId++;
+        }
+
+        if (commandText.Contains("INSERT INTO logistica.PurchaseOrder", StringComparison.Ordinal))
+        {
+          return 95;
+        }
+
+        return null;
+      },
+      NonQueryResultFactory = (_, _) => 1
+    };
+
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CreateAutoDraftAsync(new AutoPurchaseOrderCreateRequest
+    {
+      BusinessPartnerId = 7,
+      OrderDate = new DateTime(2026, 4, 17)
+    }, "Ana");
+
+    Assert.True(result.Success);
+    Assert.Equal(95, result.EntityId);
+
+    var allocationInsert = Assert.Single(connection.ExecutedCommands,
+      command => command.CommandText.Contains("INSERT INTO logistica.PurchaseOrderLineAllocation", StringComparison.Ordinal));
+    AssertParameter(allocationInsert.Parameters, "@LocationId", 20);
+    AssertParameter(allocationInsert.Parameters, "@PlannedQuantity", 2m);
+
+    var lineInsert = Assert.Single(connection.ExecutedCommands,
+      command => command.CommandText.Contains("INSERT INTO logistica.PurchaseOrderLine", StringComparison.Ordinal)
+        && !command.CommandText.Contains("PurchaseOrderLineAllocation", StringComparison.Ordinal));
+    AssertParameter(lineInsert.Parameters, "@PurchaseQuantitySnapshot", 1m);
+    AssertParameter(lineInsert.Parameters, "@PurchaseUnitNameSnapshot", "Paquete");
+    AssertParameter(lineInsert.Parameters, "@OrderedQuantity", 2m);
+  }
+
+  [Fact]
   public async Task CreateAutoDraftAsync_DoesNotSplitPurchasePackAcrossLocations()
   {
     var nextLineId = 401;
@@ -428,6 +525,484 @@ public class PurchaseOrderServiceTests
   }
 
   [Fact]
+  public async Task CreateAutoDraftAsync_LeavesRoomScopeUnfiltered_WhenNoRoomsSelected()
+  {
+    var nextLineId = 511;
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.ROOM room", StringComparison.Ordinal))
+        {
+          return CreateRoomLookupTable(
+            new RoomLookupTestRow(10, "ALFA", "SUITE"),
+            new RoomLookupTestRow(20, "BETA", "SUITE"));
+        }
+
+        if (commandText.Contains("SELECT TOP (1) po.Id", StringComparison.Ordinal))
+        {
+          return CreateExistingDraftTable();
+        }
+
+        if (commandText.Contains("WITH OpenPurchaseAllocations", StringComparison.Ordinal))
+        {
+          return CreateAutoPurchaseCandidateTable(
+            new AutoCandidateTestRow(
+              MaterialId: 81,
+              MaterialCode: "MAT-000081",
+              MaterialDescription: "Agua",
+              PurchaseQuantity: 12m,
+              UnitPrice: 84m,
+              LocationId: 3,
+              LocationName: "Minibar ALFA",
+              RawNeedQuantity: 12m,
+              CurrentQuantity: 0m,
+              MinQuantity: 2m,
+              MaxQuantity: 12m,
+              RemainingOpenQuantity: 0m,
+              ProjectedQuantity: 0m));
+        }
+
+        if (commandText.Contains("FROM logistica.VendorProfile vp", StringComparison.Ordinal))
+        {
+          return CreateNullableIntTable("DefaultLeadTimeDays", null);
+        }
+
+        if (commandText.Contains("FROM logistica.Material m", StringComparison.Ordinal))
+        {
+          return CreateMaterialRowsTable(
+            new MaterialTestRow(81, "MAT-000081", "Agua", "AG-12", "Pieza", "Caja", 12m, 84m));
+        }
+
+        if (commandText.Contains("FROM logistica.Location l", StringComparison.Ordinal))
+        {
+          return CreateLocationRowsTable(new LocationTestRow(3, "Minibar ALFA", "LOC-000003"));
+        }
+
+        return new DataTable();
+      },
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
+        {
+          return true;
+        }
+
+        if (commandText.Contains("INSERT INTO logistica.PurchaseOrderLine", StringComparison.Ordinal))
+        {
+          return nextLineId++;
+        }
+
+        if (commandText.Contains("INSERT INTO logistica.PurchaseOrder", StringComparison.Ordinal))
+        {
+          return 181;
+        }
+
+        return null;
+      },
+      NonQueryResultFactory = (_, _) => 1
+    };
+
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CreateAutoDraftAsync(new AutoPurchaseOrderCreateRequest
+    {
+      BusinessPartnerId = 7,
+      OrderDate = new DateTime(2026, 4, 18),
+      RoomIds = []
+    }, "Ana");
+
+    Assert.True(result.Success);
+    Assert.Equal(181, result.EntityId);
+
+    var candidateQuery = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("WITH OpenPurchaseAllocations", StringComparison.Ordinal));
+    Assert.DoesNotContain("location.RoomId IN", candidateQuery.CommandText, StringComparison.OrdinalIgnoreCase);
+  }
+
+  [Fact]
+  public async Task CreateAutoDraftAsync_AppliesRoomFilter_WhenRoomsSelected()
+  {
+    var nextLineId = 611;
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.ROOM room", StringComparison.Ordinal))
+        {
+          return CreateRoomLookupTable(
+            new RoomLookupTestRow(10, "ALFA", "SUITE"),
+            new RoomLookupTestRow(20, "BETA", "SUITE"),
+            new RoomLookupTestRow(30, "GAMMA", "SUITE"));
+        }
+
+        if (commandText.Contains("SELECT TOP (1) po.Id", StringComparison.Ordinal))
+        {
+          return CreateExistingDraftTable();
+        }
+
+        if (commandText.Contains("WITH OpenPurchaseAllocations", StringComparison.Ordinal))
+        {
+          return CreateAutoPurchaseCandidateTable(
+            new AutoCandidateTestRow(
+              MaterialId: 91,
+              MaterialCode: "MAT-000091",
+              MaterialDescription: "Amenidades",
+              PurchaseQuantity: 6m,
+              UnitPrice: 150m,
+              LocationId: 7,
+              LocationName: "Closet BETA",
+              RawNeedQuantity: 6m,
+              CurrentQuantity: 0m,
+              MinQuantity: 1m,
+              MaxQuantity: 6m,
+              RemainingOpenQuantity: 0m,
+              ProjectedQuantity: 0m));
+        }
+
+        if (commandText.Contains("FROM logistica.VendorProfile vp", StringComparison.Ordinal))
+        {
+          return CreateNullableIntTable("DefaultLeadTimeDays", 2);
+        }
+
+        if (commandText.Contains("FROM logistica.Material m", StringComparison.Ordinal))
+        {
+          return CreateMaterialRowsTable(
+            new MaterialTestRow(91, "MAT-000091", "Amenidades", "AM-06", "Pieza", "Caja", 6m, 150m));
+        }
+
+        if (commandText.Contains("FROM logistica.Location l", StringComparison.Ordinal))
+        {
+          return CreateLocationRowsTable(new LocationTestRow(7, "Closet BETA", "LOC-000007"));
+        }
+
+        return new DataTable();
+      },
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
+        {
+          return true;
+        }
+
+        if (commandText.Contains("INSERT INTO logistica.PurchaseOrderLine", StringComparison.Ordinal))
+        {
+          return nextLineId++;
+        }
+
+        if (commandText.Contains("INSERT INTO logistica.PurchaseOrder", StringComparison.Ordinal))
+        {
+          return 191;
+        }
+
+        return null;
+      },
+      NonQueryResultFactory = (_, _) => 1
+    };
+
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CreateAutoDraftAsync(new AutoPurchaseOrderCreateRequest
+    {
+      BusinessPartnerId = 7,
+      OrderDate = new DateTime(2026, 4, 18),
+      RoomIds = [20, 10]
+    }, "Ana");
+
+    Assert.True(result.Success);
+    Assert.Equal(191, result.EntityId);
+
+    var candidateQuery = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("WITH OpenPurchaseAllocations", StringComparison.Ordinal));
+    Assert.Contains("location.RoomId IN", candidateQuery.CommandText, StringComparison.OrdinalIgnoreCase);
+    AssertParameterValues(candidateQuery.Parameters, "@RoomIds", 10, 20);
+  }
+
+  [Fact]
+  public async Task CreateAutoDraftAsync_Fails_WhenRoomIdsAreInvalid()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.ROOM room", StringComparison.Ordinal))
+        {
+          return CreateRoomLookupTable(new RoomLookupTestRow(10, "ALFA", "SUITE"));
+        }
+
+        return new DataTable();
+      },
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
+        {
+          return true;
+        }
+
+        return null;
+      }
+    };
+
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CreateAutoDraftAsync(new AutoPurchaseOrderCreateRequest
+    {
+      BusinessPartnerId = 7,
+      OrderDate = new DateTime(2026, 4, 18),
+      RoomIds = [99]
+    }, "Ana");
+
+    Assert.False(result.Success);
+    Assert.Equal("Las suites seleccionadas no existen o ya no están disponibles para Auto PO.", result.Message);
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("WITH OpenPurchaseAllocations", StringComparison.Ordinal));
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO logistica.PurchaseOrder", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public async Task CreateAutoDraftAsync_ReusesExistingDraft_WhenVendorAndRoomScopeMatch()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, parameters) =>
+      {
+        if (commandText.Contains("FROM dbo.ROOM room", StringComparison.Ordinal))
+        {
+          return CreateRoomLookupTable(
+            new RoomLookupTestRow(10, "ALFA", "SUITE"),
+            new RoomLookupTestRow(20, "BETA", "SUITE"),
+            new RoomLookupTestRow(30, "GAMMA", "SUITE"));
+        }
+
+        if (commandText.Contains("SELECT TOP (1) po.Id", StringComparison.Ordinal))
+        {
+          return MatchesParameterValues(parameters, "@RoomIds", 10, 20)
+            ? CreateExistingDraftTable(290)
+            : CreateExistingDraftTable();
+        }
+
+        return new DataTable();
+      },
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
+        {
+          return true;
+        }
+
+        return null;
+      }
+    };
+
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CreateAutoDraftAsync(new AutoPurchaseOrderCreateRequest
+    {
+      BusinessPartnerId = 7,
+      OrderDate = new DateTime(2026, 4, 18),
+      RoomIds = [20, 10]
+    }, "Ana");
+
+    Assert.True(result.Success);
+    Assert.Equal(290, result.EntityId);
+    Assert.Equal("El proveedor ya tiene un borrador abierto. Se abrirá ese documento para revisión.", result.Message);
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO logistica.PurchaseOrder", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public async Task CreateAutoDraftAsync_CreatesNewDraft_WhenVendorDraftHasDifferentRoomScope()
+  {
+    var nextLineId = 711;
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, parameters) =>
+      {
+        if (commandText.Contains("FROM dbo.ROOM room", StringComparison.Ordinal))
+        {
+          return CreateRoomLookupTable(
+            new RoomLookupTestRow(10, "ALFA", "SUITE"),
+            new RoomLookupTestRow(20, "BETA", "SUITE"),
+            new RoomLookupTestRow(30, "GAMMA", "SUITE"));
+        }
+
+        if (commandText.Contains("SELECT TOP (1) po.Id", StringComparison.Ordinal))
+        {
+          return MatchesParameterValues(parameters, "@RoomIds", 10, 20)
+            ? CreateExistingDraftTable(390)
+            : CreateExistingDraftTable();
+        }
+
+        if (commandText.Contains("WITH OpenPurchaseAllocations", StringComparison.Ordinal))
+        {
+          return CreateAutoPurchaseCandidateTable(
+            new AutoCandidateTestRow(
+              MaterialId: 101,
+              MaterialCode: "MAT-000101",
+              MaterialDescription: "Toallas",
+              PurchaseQuantity: 8m,
+              UnitPrice: 220m,
+              LocationId: 9,
+              LocationName: "Laundry GAMMA",
+              RawNeedQuantity: 8m,
+              CurrentQuantity: 0m,
+              MinQuantity: 2m,
+              MaxQuantity: 8m,
+              RemainingOpenQuantity: 0m,
+              ProjectedQuantity: 0m));
+        }
+
+        if (commandText.Contains("FROM logistica.VendorProfile vp", StringComparison.Ordinal))
+        {
+          return CreateNullableIntTable("DefaultLeadTimeDays", null);
+        }
+
+        if (commandText.Contains("FROM logistica.Material m", StringComparison.Ordinal))
+        {
+          return CreateMaterialRowsTable(
+            new MaterialTestRow(101, "MAT-000101", "Toallas", "TO-08", "Pieza", "Caja", 8m, 220m));
+        }
+
+        if (commandText.Contains("FROM logistica.Location l", StringComparison.Ordinal))
+        {
+          return CreateLocationRowsTable(new LocationTestRow(9, "Laundry GAMMA", "LOC-000009"));
+        }
+
+        return new DataTable();
+      },
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
+        {
+          return true;
+        }
+
+        if (commandText.Contains("INSERT INTO logistica.PurchaseOrderLine", StringComparison.Ordinal))
+        {
+          return nextLineId++;
+        }
+
+        if (commandText.Contains("INSERT INTO logistica.PurchaseOrder", StringComparison.Ordinal))
+        {
+          return 391;
+        }
+
+        return null;
+      },
+      NonQueryResultFactory = (_, _) => 1
+    };
+
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CreateAutoDraftAsync(new AutoPurchaseOrderCreateRequest
+    {
+      BusinessPartnerId = 7,
+      OrderDate = new DateTime(2026, 4, 18),
+      RoomIds = [20, 30]
+    }, "Ana");
+
+    Assert.True(result.Success);
+    Assert.Equal(391, result.EntityId);
+
+    var draftLookup = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("SELECT TOP (1) po.Id", StringComparison.Ordinal));
+    AssertParameterValues(draftLookup.Parameters, "@RoomIds", 20, 30);
+  }
+
+  [Fact]
+  public async Task CreateAutoDraftAsync_NormalizesAllRoomsSelection_ToUnscopedBehavior()
+  {
+    var nextLineId = 811;
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.ROOM room", StringComparison.Ordinal))
+        {
+          return CreateRoomLookupTable(
+            new RoomLookupTestRow(10, "ALFA", "SUITE"),
+            new RoomLookupTestRow(20, "BETA", "SUITE"));
+        }
+
+        if (commandText.Contains("SELECT TOP (1) po.Id", StringComparison.Ordinal))
+        {
+          return CreateExistingDraftTable();
+        }
+
+        if (commandText.Contains("WITH OpenPurchaseAllocations", StringComparison.Ordinal))
+        {
+          return CreateAutoPurchaseCandidateTable(
+            new AutoCandidateTestRow(
+              MaterialId: 111,
+              MaterialCode: "MAT-000111",
+              MaterialDescription: "Café",
+              PurchaseQuantity: 4m,
+              UnitPrice: 96m,
+              LocationId: 5,
+              LocationName: "Kitchen ALFA",
+              RawNeedQuantity: 4m,
+              CurrentQuantity: 0m,
+              MinQuantity: 1m,
+              MaxQuantity: 4m,
+              RemainingOpenQuantity: 0m,
+              ProjectedQuantity: 0m));
+        }
+
+        if (commandText.Contains("FROM logistica.VendorProfile vp", StringComparison.Ordinal))
+        {
+          return CreateNullableIntTable("DefaultLeadTimeDays", null);
+        }
+
+        if (commandText.Contains("FROM logistica.Material m", StringComparison.Ordinal))
+        {
+          return CreateMaterialRowsTable(
+            new MaterialTestRow(111, "MAT-000111", "Café", "CF-04", "Pieza", "Caja", 4m, 96m));
+        }
+
+        if (commandText.Contains("FROM logistica.Location l", StringComparison.Ordinal))
+        {
+          return CreateLocationRowsTable(new LocationTestRow(5, "Kitchen ALFA", "LOC-000005"));
+        }
+
+        return new DataTable();
+      },
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
+        {
+          return true;
+        }
+
+        if (commandText.Contains("INSERT INTO logistica.PurchaseOrderLine", StringComparison.Ordinal))
+        {
+          return nextLineId++;
+        }
+
+        if (commandText.Contains("INSERT INTO logistica.PurchaseOrder", StringComparison.Ordinal))
+        {
+          return 491;
+        }
+
+        return null;
+      },
+      NonQueryResultFactory = (_, _) => 1
+    };
+
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CreateAutoDraftAsync(new AutoPurchaseOrderCreateRequest
+    {
+      BusinessPartnerId = 7,
+      OrderDate = new DateTime(2026, 4, 18),
+      RoomIds = [10, 20]
+    }, "Ana");
+
+    Assert.True(result.Success);
+    Assert.Equal(491, result.EntityId);
+
+    var draftLookup = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("SELECT TOP (1) po.Id", StringComparison.Ordinal));
+    Assert.DoesNotContain("scope.RoomId NOT IN", draftLookup.CommandText, StringComparison.OrdinalIgnoreCase);
+
+    var candidateQuery = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("WITH OpenPurchaseAllocations", StringComparison.Ordinal));
+    Assert.DoesNotContain("location.RoomId IN", candidateQuery.CommandText, StringComparison.OrdinalIgnoreCase);
+  }
+
+  [Fact]
   public async Task SaveDraftAsync_Fails_WhenMaterialIsRepeated()
   {
     var service = new PurchaseOrderService(new FakeQueryConnectionFactory(new FakeQueryDbConnection()));
@@ -486,6 +1061,64 @@ public class PurchaseOrderServiceTests
 
     Assert.False(result.Success);
     Assert.Equal("No puedes repetir la misma ubicación dentro del mismo material.", result.Message);
+  }
+
+  [Fact]
+  public async Task SaveDraftAsync_Fails_WhenPurchaseUnitRequiresWholeUnits_AtQuantityOne()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM logistica.Material m", StringComparison.Ordinal))
+        {
+          return CreateMaterialRowsTable(
+            new MaterialTestRow(97, "MAT-005097", "PAPEL TOALLA", "PT-001", "Paquete", "Paquete", 1m, 48m));
+        }
+
+        if (commandText.Contains("FROM logistica.Location l", StringComparison.Ordinal))
+        {
+          return CreateLocationRowsTable(new LocationTestRow(20, "LONDON-GABINETE-SALA", "LOC-001137"));
+        }
+
+        return new DataTable();
+      },
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
+        {
+          return true;
+        }
+
+        return null;
+      }
+    };
+
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.SaveDraftAsync(new PurchaseOrderUpsertRequest
+    {
+      BusinessPartnerId = 7,
+      OrderDate = new DateTime(2026, 4, 17),
+      Lines =
+      [
+        new PurchaseOrderLineUpsertRequest
+        {
+          MaterialId = 97,
+          PurchaseQuantitySnapshot = 1m,
+          PurchaseUnitNameSnapshot = "Paquete",
+          Allocations =
+          [
+            new PurchaseOrderAllocationUpsertRequest { LocationId = 20, PlannedQuantity = 1.5m }
+          ]
+        }
+      ]
+    }, "Ana");
+
+    Assert.False(result.Success);
+    Assert.Contains("cantidad planeada", result.Message, StringComparison.OrdinalIgnoreCase);
+    Assert.Contains("1 Paquete", result.Message, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO logistica.PurchaseOrder", StringComparison.Ordinal));
   }
 
   [Fact]
@@ -754,8 +1387,35 @@ public class PurchaseOrderServiceTests
     Assert.Equal(expectedValue, parameter.Value);
   }
 
+  private static void AssertParameterValues(IReadOnlyList<FakeQueryParameter> parameters, string name, params object[] expectedValues)
+  {
+    var values = parameters
+      .Where(parameter => HasParameterPrefix(parameter, name))
+      .Select(parameter => parameter.Value)
+      .ToArray();
+
+    Assert.Equal(expectedValues, values);
+  }
+
   private static bool HasParameterName(FakeQueryParameter parameter, string expectedName)
     => string.Equals(parameter.Name.TrimStart('@'), expectedName.TrimStart('@'), StringComparison.OrdinalIgnoreCase);
+
+  private static bool HasParameterPrefix(FakeQueryParameter parameter, string expectedName)
+  {
+    var actual = parameter.Name.TrimStart('@');
+    var expected = expectedName.TrimStart('@');
+    return actual.StartsWith(expected, StringComparison.OrdinalIgnoreCase);
+  }
+
+  private static bool MatchesParameterValues(IReadOnlyList<FakeQueryParameter> parameters, string name, params object[] expectedValues)
+  {
+    var values = parameters
+      .Where(parameter => HasParameterPrefix(parameter, name))
+      .Select(parameter => parameter.Value)
+      .ToArray();
+
+    return values.SequenceEqual(expectedValues);
+  }
 
   private static DataTable CreatePurchaseOrderStateTable(string status)
   {
@@ -820,6 +1480,21 @@ public class PurchaseOrderServiceTests
     if (value.HasValue)
     {
       table.Rows.Add(value.Value);
+    }
+
+    return table;
+  }
+
+  private static DataTable CreateRoomLookupTable(params RoomLookupTestRow[] rows)
+  {
+    var table = new DataTable();
+    table.Columns.Add("Id", typeof(int));
+    table.Columns.Add("Name", typeof(string));
+    table.Columns.Add("Code", typeof(string));
+
+    foreach (var row in rows)
+    {
+      table.Rows.Add(row.Id, row.Name, row.Code);
     }
 
     return table;
@@ -944,4 +1619,5 @@ public class PurchaseOrderServiceTests
     decimal? Price);
 
   private sealed record LocationTestRow(int Id, string LocationName, string LocationCode);
+  private sealed record RoomLookupTestRow(int Id, string Name, string Code);
 }

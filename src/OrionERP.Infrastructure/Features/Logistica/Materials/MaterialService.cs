@@ -369,6 +369,7 @@ public sealed class MaterialService : IMaterialService
             """);
         }
 
+        sql.AppendLine();
         sql.AppendLine("WHERE Id = @Id;");
 
         await conn.ExecuteAsync(

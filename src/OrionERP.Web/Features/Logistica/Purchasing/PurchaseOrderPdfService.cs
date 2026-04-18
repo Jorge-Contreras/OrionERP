@@ -99,7 +99,7 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
       column.Item().Element(SectionCard).Column(section =>
       {
         section.Spacing(10);
-        section.Item().Element(SectionTitle).Text("Proveedor y Totales")
+        section.Item().Element(SectionTitle).Text("Proveedor y Resumen")
           .FontSize(12)
           .SemiBold()
           .FontColor(BrandPrimaryDark);
@@ -111,9 +111,9 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
             new FieldEntry("RFC", model.VendorRfc),
             new FieldEntry("Fecha esperada", model.ExpectedDate),
             new FieldEntry("Capturado por", model.CreatedBy),
-            new FieldEntry("Ordenado", model.OrderedQuantity, true),
-            new FieldEntry("Recibido", model.ReceivedQuantity),
-            new FieldEntry("Pendiente", model.RemainingQuantity, true)
+            new FieldEntry("Materiales", model.MaterialCount, true),
+            new FieldEntry("Ubicaciones", model.AllocationCount),
+            new FieldEntry("Ubic. pendientes", model.PendingAllocationCount, true)
           ]));
 
         section.Item().Element(FieldBlock).Column(field =>
@@ -221,7 +221,7 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
         header.Cell().Element(TableHeaderCell).Text("Codigo").SemiBold();
         header.Cell().Element(TableHeaderCell).Text("Material").SemiBold();
         header.Cell().Element(TableHeaderCell).Text("Cod. proveedor").SemiBold();
-        header.Cell().Element(TableHeaderCell).Text("Unidad").SemiBold();
+        header.Cell().Element(TableHeaderCell).Text("Unidad compra").SemiBold();
         header.Cell().Element(TableHeaderCell).Text("Precio").SemiBold();
         header.Cell().Element(TableHeaderCell).Text("Ordenado").SemiBold();
         header.Cell().Element(TableHeaderCell).Text("Recibido / Pendiente").SemiBold();

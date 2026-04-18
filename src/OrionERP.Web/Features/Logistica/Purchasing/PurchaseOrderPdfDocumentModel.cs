@@ -10,9 +10,9 @@ public sealed record PurchaseOrderPdfDocumentModel(
   string Notes,
   string GeneratedAt,
   string CreatedBy,
-  string OrderedQuantity,
-  string ReceivedQuantity,
-  string RemainingQuantity,
+  string MaterialCount,
+  string AllocationCount,
+  string PendingAllocationCount,
   IReadOnlyList<PurchaseOrderPdfLineRow> Lines,
   IReadOnlyList<PurchaseOrderPdfAllocationRow> Allocations);
 

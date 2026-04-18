@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.FileProviders;
+using System.Globalization;
 using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Purchasing;
 using OrionERP.Application.Features.Logistica.Shared;
@@ -111,11 +112,31 @@ public class PurchaseOrderWebSupportTests
     Assert.NotNull(model.Lines[0].ThumbnailBytes);
     Assert.Single(model.Allocations);
     Assert.NotNull(model.Allocations[0].ThumbnailBytes);
+    Assert.Equal("1", model.MaterialCount);
+    Assert.Equal("1", model.AllocationCount);
+    Assert.Equal("1", model.PendingAllocationCount);
+    Assert.Equal("Paquete", model.Lines[0].UnitName);
+    Assert.Equal(PurchaseQuantityDisplay.FormatQuantity(48m, 24m, "Pieza", "Paquete", CultureInfo.CurrentCulture), model.Lines[0].OrderedQuantity);
+    Assert.Equal(PurchaseQuantityDisplay.FormatQuantity(48m, 24m, "Pieza", "Paquete", CultureInfo.CurrentCulture), model.Allocations[0].PlannedQuantity);
 
     var pdfBytes = pdfService.Generate(model);
 
     Assert.NotEmpty(pdfBytes);
     Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(pdfBytes, 0, 4), StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void PurchaseQuantityDisplay_FormatsPurchaseUnitsAndInternalSummary()
+  {
+    var culture = CultureInfo.GetCultureInfo("en-US");
+
+    var formatted = PurchaseQuantityDisplay.FormatQuantity(3m, 3m, "Pieza", "Paquete", culture);
+    var summary = PurchaseQuantityDisplay.BuildPresentationSummary("Pieza", 3m, "Paquete", culture);
+    var baseQuantity = PurchaseQuantityDisplay.ToBaseQuantity(2m, 3m, "Paquete");
+
+    Assert.Equal("1.00 Paquete", formatted);
+    Assert.Equal("Internamente: 1 Paquete = 3.00 Pieza", summary);
+    Assert.Equal(6m, baseQuantity);
   }
 
   private sealed class FakeMaterialService : IMaterialService

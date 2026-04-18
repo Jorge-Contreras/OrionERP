@@ -81,6 +81,58 @@
   text-align: right;
 }
 
+.compras-room-scope-panel,
+.compras-auto-po-room-panel {
+  padding: 0.9rem 1rem;
+  border: 1px solid #d7e2e0;
+  border-radius: 0.85rem;
+  background: linear-gradient(180deg, #fbfdfc 0%, #f3f8f6 100%);
+}
+
+.compras-room-chip-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+}
+
+.compras-room-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid #c9d8d6;
+  background: #ffffff;
+  color: #083f49;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.compras-room-chip-all,
+.compras-room-chip-summary {
+  background: #eef5f3;
+}
+
+.compras-auto-po-dialog {
+  max-width: 56rem;
+}
+
+.compras-auto-po-room-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.compras-auto-po-room-table-wrap {
+  max-height: 18rem;
+  border: 1px solid #d7e2e0;
+  border-radius: 0.75rem;
+}
+
+.compras-auto-po-room-check-col {
+  width: 3rem;
+}
+
 .compras-modal-backdrop {
   background: rgba(8, 63, 73, 0.35);
 }
@@ -89,6 +141,10 @@
   .compras-summary-grid {
     width: 100%;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .compras-auto-po-dialog {
+    max-width: calc(100vw - 1.5rem);
   }
 }
 
@@ -102,6 +158,15 @@
   .compras-material-search-scroll,
   .compras-receive-scroll,
   .compras-history-scroll {
+    max-height: none;
+  }
+
+  .compras-room-scope-panel,
+  .compras-auto-po-room-panel {
+    padding: 0.85rem;
+  }
+
+  .compras-auto-po-room-table-wrap {
     max-height: none;
   }
 }

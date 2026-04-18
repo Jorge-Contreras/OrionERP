@@ -80,6 +80,7 @@ public sealed class PurchaseOrderDetailDto
   public string? CompletedBy { get; set; }
   public DateTime? CancelledAt { get; set; }
   public string? CancelledBy { get; set; }
+  public IReadOnlyList<LookupOptionDto> RoomScope { get; set; } = Array.Empty<LookupOptionDto>();
   public IReadOnlyList<PurchaseOrderLineDto> Lines { get; set; } = Array.Empty<PurchaseOrderLineDto>();
   public IReadOnlyList<PurchaseReceiptLineHistoryDto> ReceiptHistory { get; set; } = Array.Empty<PurchaseReceiptLineHistoryDto>();
 }
@@ -123,6 +124,8 @@ public sealed class PurchaseReceiptLineHistoryDto
   public string MaterialCode { get; set; } = string.Empty;
   public string MaterialDescription { get; set; } = string.Empty;
   public string? BaseUnitName { get; set; }
+  public decimal PurchaseQuantity { get; set; } = 1m;
+  public string? PurchaseUnitName { get; set; }
   public int LocationId { get; set; }
   public string LocationName { get; set; } = string.Empty;
   public decimal Quantity { get; set; }
@@ -155,6 +158,8 @@ public sealed class AutoPurchaseOrderCreateRequest
 
   [Required]
   public DateTime OrderDate { get; set; } = DateTime.Today;
+
+  public List<int> RoomIds { get; set; } = [];
 }
 
 public sealed class PurchaseOrderLineUpsertRequest
@@ -214,5 +219,6 @@ public sealed class PurchaseOrderCatalogDto
 {
   public IReadOnlyList<LookupOptionDto> Vendors { get; set; } = Array.Empty<LookupOptionDto>();
   public IReadOnlyList<LookupOptionDto> Locations { get; set; } = Array.Empty<LookupOptionDto>();
+  public IReadOnlyList<LookupOptionDto> Rooms { get; set; } = Array.Empty<LookupOptionDto>();
   public IReadOnlyList<string> Statuses { get; set; } = Array.Empty<string>();
 }

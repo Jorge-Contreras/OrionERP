@@ -92,6 +92,8 @@ public sealed class PurchaseOrderLineDto
   public string MaterialDescription { get; set; } = string.Empty;
   public string? VendorCode { get; set; }
   public string? BaseUnitName { get; set; }
+  public decimal PurchaseQuantity { get; set; } = 1m;
+  public string? PurchaseUnitName { get; set; }
   public decimal? UnitPrice { get; set; }
   public decimal OrderedQuantity { get; set; }
   public decimal ReceivedQuantity { get; set; }
@@ -146,6 +148,15 @@ public sealed class PurchaseOrderUpsertRequest
   public List<PurchaseOrderLineUpsertRequest> Lines { get; set; } = [];
 }
 
+public sealed class AutoPurchaseOrderCreateRequest
+{
+  [Range(1, int.MaxValue, ErrorMessage = "Selecciona un proveedor válido.")]
+  public int BusinessPartnerId { get; set; }
+
+  [Required]
+  public DateTime OrderDate { get; set; } = DateTime.Today;
+}
+
 public sealed class PurchaseOrderLineUpsertRequest
 {
   public int? Id { get; set; }
@@ -155,6 +166,12 @@ public sealed class PurchaseOrderLineUpsertRequest
 
   [Range(typeof(decimal), "0", "999999999", ErrorMessage = "El precio unitario no puede ser negativo.")]
   public decimal? UnitPrice { get; set; }
+
+  [Range(typeof(decimal), "0.0001", "999999999", ErrorMessage = "La cantidad por compra debe ser mayor a 0.")]
+  public decimal PurchaseQuantitySnapshot { get; set; } = 1m;
+
+  [StringLength(50)]
+  public string? PurchaseUnitNameSnapshot { get; set; }
 
   public List<PurchaseOrderAllocationUpsertRequest> Allocations { get; set; } = [];
 }

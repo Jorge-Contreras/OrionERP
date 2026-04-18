@@ -16,6 +16,9 @@
             <button type="button" class="btn btn-outline-secondary" @onclick="NuevaOrden" disabled="@IsMutating">
                 Nueva orden
             </button>
+            <button type="button" class="btn btn-outline-success" @onclick="AbrirAutoPoModal" disabled="@IsMutating">
+                @(IsCreatingAutoPo ? "Generando Auto PO..." : "Auto PO")
+            </button>
             <button type="button" class="btn btn-primary" @onclick="GuardarBorradorAsync" disabled="@(!IsDraftMode || IsMutating)">
                 @(IsSavingDraft ? "Guardando..." : "Guardar borrador")
             </button>
@@ -326,7 +329,13 @@
                                                     <div class="small text-muted">@line.MaterialCode</div>
                                                     <div class="small text-muted">@(string.IsNullOrWhiteSpace(line.VendorCode) ? "Sin código proveedor" : line.VendorCode)</div>
                                                 </td>
-                                                <td>@(string.IsNullOrWhiteSpace(line.BaseUnitName) ? "Sin unidad" : line.BaseUnitName)</td>
+                                                <td>
+                                                    <div>@(string.IsNullOrWhiteSpace(line.BaseUnitName) ? "Sin unidad" : line.BaseUnitName)</div>
+                                                    @if (GetPurchasePresentationSummary(line) is { } purchaseSummary)
+                                                    {
+                                                        <div class="small @(HasInvalidPurchasePackConfiguration(line) ? "text-danger" : "text-muted")">@purchaseSummary</div>
+                                                    }
+                                                </td>
                                                 <td class="text-end">
                                                     @if (IsDraftMode)
                                                     {
@@ -380,11 +389,28 @@
                                     <h3 class="h5 mb-1">@selectedMaterialTitle</h3>
                                     <div class="text-muted">@SelectedLine.MaterialCode</div>
                                     <div class="small text-muted">@(string.IsNullOrWhiteSpace(SelectedLine.BaseUnitName) ? "Sin unidad base" : SelectedLine.BaseUnitName)</div>
+                                    @if (GetPurchasePresentationSummary(SelectedLine) is { } selectedPurchaseSummary)
+                                    {
+                                        <div class="small @(HasInvalidPurchasePackConfiguration(SelectedLine) ? "text-danger" : "text-muted")">@selectedPurchaseSummary</div>
+                                    }
                                 </div>
                             </div>
 
                             @if (IsDraftMode)
                             {
+                                @if (HasInvalidPurchaseAllocationMultiple(SelectedLine))
+                                {
+                                    <div class="alert alert-warning py-2">
+                                        Cada ubicación planeada debe quedar en múltiplos exactos de la presentación de compra antes de guardar.
+                                    </div>
+                                }
+                                else if (HasInvalidPurchaseMultiple(SelectedLine))
+                                {
+                                    <div class="alert alert-warning py-2">
+                                        La cantidad total planeada debe quedar en múltiplos exactos de la presentación de compra antes de guardar.
+                                    </div>
+                                }
+
                                 <div class="row g-3 align-items-end mb-3">
                                     <div class="col-md-7">
                                         <label class="form-label">Agregar ubicación</label>
@@ -399,6 +425,12 @@
                                     <div class="col-md-3">
                                         <label class="form-label">Cantidad</label>
                                         <InputNumber class="form-control" @bind-Value="PendingAllocationQuantity" />
+                                        @if (SelectedLine.PurchaseQuantity > 1m)
+                                        {
+                                            <div class="form-text">
+                                                Captura múltiplos de @SelectedLine.PurchaseQuantity.ToString("N2") @(string.IsNullOrWhiteSpace(SelectedLine.BaseUnitName) ? "unidad base" : SelectedLine.BaseUnitName) por ubicación.
+                                            </div>
+                                        }
                                     </div>
                                     <div class="col-md-2">
                                         <button type="button" class="btn btn-outline-primary w-100" @onclick="AgregarAsignacion">
@@ -450,6 +482,10 @@
                                                         @if (IsDraftMode)
                                                         {
                                                             <InputNumber class="form-control form-control-sm compras-inline-number" @bind-Value="allocation.PlannedQuantity" />
+                                                            @if (GetPurchaseAllocationValidationMessage(SelectedLine, allocation) is { } allocationValidationMessage)
+                                                            {
+                                                                <div class="small text-danger mt-1 text-start">@allocationValidationMessage</div>
+                                                            }
                                                         }
                                                         else
                                                         {
@@ -610,3 +646,46 @@
         </div>
     </div>
 </div>
+
+@if (ShowAutoPoModal)
+{
+    <div class="modal fade show d-block compras-modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Generar Auto PO</h5>
+                    <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CerrarAutoPoModal" disabled="@IsCreatingAutoPo"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted">
+                        Genera un borrador con materiales del proveedor seleccionado usando mínimos y máximos por ubicación.
+                        El sistema calcula en unidad base y redondea a la presentación de compra.
+                    </p>
+
+                    <div class="mb-3">
+                        <label class="form-label">Proveedor</label>
+                        <select class="form-select" @bind="AutoPoRequest.BusinessPartnerId">
+                            <option value="0">Selecciona un proveedor</option>
+                            @foreach (var vendor in VendorOptions)
+                            {
+                                <option value="@vendor.Id">@vendor.Name</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="small text-muted">
+                        Si el proveedor ya tiene un borrador abierto, se abrirá ese documento en lugar de crear uno nuevo.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="CerrarAutoPoModal" disabled="@IsCreatingAutoPo">
+                        Cerrar
+                    </button>
+                    <button type="button" class="btn btn-success" @onclick="CrearAutoPoAsync" disabled="@IsCreatingAutoPo">
+                        @(IsCreatingAutoPo ? "Generando..." : "Generar borrador")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}

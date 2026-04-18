@@ -70,9 +70,9 @@ public class PurchaseOrderWebSupportTests
       OrderDate = new DateTime(2026, 4, 17),
       ExpectedDate = new DateTime(2026, 4, 18),
       Notes = "Reabasto de minibares",
-      OrderedQuantity = 2m,
+      OrderedQuantity = 48m,
       ReceivedQuantity = 0m,
-      RemainingQuantity = 2m,
+      RemainingQuantity = 48m,
       CreatedBy = "Ana",
       Lines =
       [
@@ -84,9 +84,11 @@ public class PurchaseOrderWebSupportTests
           MaterialDescription = "Agua",
           VendorCode = "AA-001",
           BaseUnitName = "Pieza",
-          OrderedQuantity = 2m,
+          PurchaseQuantity = 24m,
+          PurchaseUnitName = "Paquete",
+          OrderedQuantity = 48m,
           ReceivedQuantity = 0m,
-          RemainingQuantity = 2m,
+          RemainingQuantity = 48m,
           Allocations =
           [
             new PurchaseOrderAllocationDto
@@ -96,9 +98,9 @@ public class PurchaseOrderWebSupportTests
               LocationId = 5,
               LocationName = "Minibar 101",
               LocationCode = "LOC-000005",
-              PlannedQuantity = 2m,
+              PlannedQuantity = 48m,
               ReceivedQuantity = 0m,
-              RemainingQuantity = 2m
+              RemainingQuantity = 48m
             }
           ]
         }

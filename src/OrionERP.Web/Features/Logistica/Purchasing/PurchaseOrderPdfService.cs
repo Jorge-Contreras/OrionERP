@@ -235,6 +235,10 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
         {
           column.Spacing(2);
           column.Item().Text(row.MaterialDescription).SemiBold();
+          if (!string.IsNullOrWhiteSpace(row.PurchasePresentation))
+          {
+            column.Item().Text(row.PurchasePresentation).FontSize(8).FontColor(BrandMuted);
+          }
           column.Item().Text($"Pendiente: {row.RemainingQuantity}").FontSize(8).FontColor(BrandMuted);
         });
         table.Cell().Element(TableBodyCell).Text(row.VendorCode);

@@ -81,6 +81,10 @@
   text-align: right;
 }
 
+.compras-modal-backdrop {
+  background: rgba(8, 63, 73, 0.35);
+}
+
 @media (max-width: 991.98px) {
   .compras-summary-grid {
     width: 100%;

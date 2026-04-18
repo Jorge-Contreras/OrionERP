@@ -133,8 +133,10 @@ public sealed class MaterialService : IMaterialService
           m.LegacyMaterialId,
           m.[Description],
           m.BaseUnitId,
+          baseU.UnitName AS BaseUnitName,
           CAST(m.PurchaseQuantity AS decimal(18,4)) AS PurchaseQuantity,
           m.PurchaseUnitId,
+          purchaseU.UnitName AS PurchaseUnitName,
           m.BusinessPartnerId,
           CAST(m.Price AS decimal(18,4)) AS Price,
           m.CreatedDate,
@@ -155,6 +157,10 @@ public sealed class MaterialService : IMaterialService
           m.PrimaryImageFileName,
           m.PrimaryImageContentType
       FROM logistica.Material m
+      LEFT JOIN logistica.UnitOfMeasure baseU
+        ON baseU.Id = m.BaseUnitId
+      LEFT JOIN logistica.UnitOfMeasure purchaseU
+        ON purchaseU.Id = m.PurchaseUnitId
       WHERE m.Id = @MaterialId;
       """;
 

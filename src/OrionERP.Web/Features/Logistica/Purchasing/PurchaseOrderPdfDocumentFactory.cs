@@ -55,6 +55,7 @@ public sealed class PurchaseOrderPdfDocumentFactory : IPurchaseOrderPdfDocumentF
           Safe(line.MaterialDescription),
           Safe(line.VendorCode),
           Safe(line.BaseUnitName),
+          BuildPurchasePresentation(line, culture),
           line.UnitPrice.HasValue ? line.UnitPrice.Value.ToString("C", culture) : "-",
           FormatQuantity(line.OrderedQuantity, culture),
           FormatQuantity(line.ReceivedQuantity, culture),
@@ -80,6 +81,19 @@ public sealed class PurchaseOrderPdfDocumentFactory : IPurchaseOrderPdfDocumentF
 
   private static string FormatQuantity(decimal value, CultureInfo culture)
     => value.ToString("N2", culture);
+
+  private static string BuildPurchasePresentation(PurchaseOrderLineDto line, CultureInfo culture)
+  {
+    if (line.PurchaseQuantity <= 1m
+        || string.IsNullOrWhiteSpace(line.PurchaseUnitName)
+        || string.IsNullOrWhiteSpace(line.BaseUnitName))
+    {
+      return string.Empty;
+    }
+
+    var orderedPurchaseUnits = line.OrderedQuantity / line.PurchaseQuantity;
+    return $"{FormatQuantity(orderedPurchaseUnits, culture)} {Safe(line.PurchaseUnitName)} x {FormatQuantity(line.PurchaseQuantity, culture)} {Safe(line.BaseUnitName)} = {FormatQuantity(line.OrderedQuantity, culture)} {Safe(line.BaseUnitName)}";
+  }
 
   private static string Safe(string? value)
     => string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();

@@ -23,6 +23,7 @@ public sealed record PurchaseOrderPdfLineRow(
   string MaterialDescription,
   string VendorCode,
   string UnitName,
+  string PurchasePresentation,
   string UnitPrice,
   string OrderedQuantity,
   string ReceivedQuantity,

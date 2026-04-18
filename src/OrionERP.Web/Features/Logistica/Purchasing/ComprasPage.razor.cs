@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.JSInterop;
+using System.Globalization;
 using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Purchasing;
 using OrionERP.Application.Features.Logistica.Shared;
@@ -25,6 +26,7 @@ public partial class ComprasPage : ComponentBase
   protected PurchaseOrderCatalogDto Catalog { get; set; } = new();
   protected List<PurchaseOrderListItemDto> Orders { get; set; } = [];
   protected PurchaseOrderUpsertRequest Editor { get; set; } = CreateEditor();
+  protected AutoPurchaseOrderCreateRequest AutoPoRequest { get; set; } = CreateAutoPoRequest();
   protected List<EditablePurchaseLine> Lines { get; set; } = [];
   protected PurchaseOrderDetailDto? SelectedPurchaseOrder { get; set; }
   protected EditablePurchaseLine? SelectedLine { get; set; }
@@ -47,6 +49,8 @@ public partial class ComprasPage : ComponentBase
   protected bool IsCompleting { get; set; }
   protected bool IsCancelling { get; set; }
   protected bool IsPrinting { get; set; }
+  protected bool IsCreatingAutoPo { get; set; }
+  protected bool ShowAutoPoModal { get; set; }
 
   protected bool IsDraftMode => SelectedPurchaseOrder is null || string.Equals(SelectedPurchaseOrder.Status, PurchaseOrderStatuses.Draft, StringComparison.OrdinalIgnoreCase);
   protected bool CanEditVendor => IsDraftMode && Lines.Count == 0;
@@ -66,7 +70,7 @@ public partial class ComprasPage : ComponentBase
         || string.Equals(SelectedPurchaseOrder.Status, PurchaseOrderStatuses.Issued, StringComparison.OrdinalIgnoreCase))
     && !IsMutating;
   protected bool CanPrint => SelectedPurchaseOrder is not null && !IsMutating;
-  protected bool IsMutating => IsSavingDraft || IsIssuing || IsReceiving || IsCompleting || IsCancelling || IsPrinting;
+  protected bool IsMutating => IsSavingDraft || IsIssuing || IsReceiving || IsCompleting || IsCancelling || IsPrinting || IsCreatingAutoPo;
   protected string CurrentOrderCode => SelectedPurchaseOrder?.PurchaseOrderCode ?? "Se asignará al guardar";
   protected string CurrentStatusLabel => GetStatusLabel(SelectedPurchaseOrder?.Status ?? PurchaseOrderStatuses.Draft);
   protected string CurrentStatusBadgeClass => GetStatusBadgeClass(SelectedPurchaseOrder?.Status ?? PurchaseOrderStatuses.Draft);
@@ -82,6 +86,7 @@ public partial class ComprasPage : ComponentBase
   {
     CurrentUserName = await ResolveCurrentUserAsync();
     Catalog = await PurchaseOrderService.GetCatalogAsync();
+    AutoPoRequest = CreateAutoPoRequest();
     await LoadOrdersAsync();
     NuevaOrden();
   }
@@ -95,6 +100,7 @@ public partial class ComprasPage : ComponentBase
   {
     SelectedPurchaseOrder = null;
     Editor = CreateEditor();
+    AutoPoRequest = CreateAutoPoRequest(GetPreferredVendorId());
     Lines = [];
     SelectedLine = null;
     MaterialSearchText = string.Empty;
@@ -106,6 +112,7 @@ public partial class ComprasPage : ComponentBase
     PendingAllocationQuantity = 1m;
     HasExecutedMaterialSearch = false;
     MaterialThumbnailDataUrls = [];
+    ShowAutoPoModal = false;
   }
 
   protected async Task SeleccionarOrdenAsync(int purchaseOrderId)
@@ -139,6 +146,8 @@ public partial class ComprasPage : ComponentBase
           MaterialDescription = line.MaterialDescription,
           VendorCode = line.VendorCode,
           BaseUnitName = line.BaseUnitName,
+          PurchaseQuantity = NormalizePurchaseQuantity(line.PurchaseQuantity),
+          PurchaseUnitName = line.PurchaseUnitName,
           UnitPrice = line.UnitPrice,
           ReceivedQuantity = line.ReceivedQuantity,
           Allocations = line.Allocations
@@ -189,6 +198,7 @@ public partial class ComprasPage : ComponentBase
       PendingAllocationLocationId = 0;
       PendingAllocationQuantity = 1m;
       await RefreshThumbnailsAsync();
+      AutoPoRequest = CreateAutoPoRequest(Editor.BusinessPartnerId);
     }
     catch (Exception ex)
     {
@@ -263,6 +273,8 @@ public partial class ComprasPage : ComponentBase
         MaterialDescription = item.Description,
         VendorCode = detail.VendorCode,
         BaseUnitName = item.BaseUnitName,
+        PurchaseQuantity = NormalizePurchaseQuantity(detail.PurchaseQuantity),
+        PurchaseUnitName = detail.PurchaseUnitName,
         UnitPrice = detail.Price,
         ReceivedQuantity = 0
       };
@@ -288,6 +300,69 @@ public partial class ComprasPage : ComponentBase
     SelectedLine = line;
     PendingAllocationLocationId = 0;
     PendingAllocationQuantity = 1m;
+  }
+
+  protected void AbrirAutoPoModal()
+  {
+    AutoPoRequest = CreateAutoPoRequest(GetPreferredVendorId());
+    ShowAutoPoModal = true;
+  }
+
+  protected void CerrarAutoPoModal()
+  {
+    ShowAutoPoModal = false;
+  }
+
+  protected async Task CrearAutoPoAsync()
+  {
+    if (AutoPoRequest.BusinessPartnerId <= 0)
+    {
+      UiMessages.ShowWarning("Selecciona un proveedor para generar el Auto PO.");
+      return;
+    }
+
+    IsCreatingAutoPo = true;
+    try
+    {
+      var result = await PurchaseOrderService.CreateAutoDraftAsync(AutoPoRequest, CurrentUserName);
+      if (!result.Success)
+      {
+        if (string.Equals(result.Message, "No hay materiales por reordenar para el proveedor seleccionado.", StringComparison.Ordinal))
+        {
+          UiMessages.ShowWarning(result.Message);
+        }
+        else
+        {
+          UiMessages.ShowError(result.Message);
+        }
+
+        return;
+      }
+
+      if (string.Equals(result.Message, "El proveedor ya tiene un borrador abierto. Se abrirá ese documento para revisión.", StringComparison.Ordinal))
+      {
+        UiMessages.ShowInfo(result.Message);
+      }
+      else
+      {
+        UiMessages.ShowSuccess(result.Message);
+      }
+
+      ShowAutoPoModal = false;
+      await LoadOrdersAsync();
+      if (result.EntityId.HasValue)
+      {
+        await SeleccionarOrdenAsync(result.EntityId.Value);
+      }
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo generar el Auto PO. {ex.Message}");
+    }
+    finally
+    {
+      IsCreatingAutoPo = false;
+    }
   }
 
   protected async Task QuitarMaterialAsync(EditablePurchaseLine line)
@@ -628,6 +703,52 @@ public partial class ComprasPage : ComponentBase
         ? "Sin foto"
         : description.Trim();
 
+  protected string? GetPurchasePresentationSummary(EditablePurchaseLine line)
+  {
+    if (line.PurchaseQuantity <= 1m
+        || string.IsNullOrWhiteSpace(line.PurchaseUnitName)
+        || string.IsNullOrWhiteSpace(line.BaseUnitName))
+    {
+      return null;
+    }
+
+    var orderedPurchaseUnits = line.OrderedQuantity / line.PurchaseQuantity;
+    return $"{FormatQuantity(orderedPurchaseUnits)} {line.PurchaseUnitName} x {FormatQuantity(line.PurchaseQuantity)} {line.BaseUnitName} = {FormatQuantity(line.OrderedQuantity)} {line.BaseUnitName}";
+  }
+
+  protected bool HasInvalidPurchaseMultiple(EditablePurchaseLine line)
+    => line.PurchaseQuantity > 1m && !IsWholePurchaseMultiple(line.OrderedQuantity, line.PurchaseQuantity);
+
+  protected bool HasInvalidPurchaseAllocationMultiple(EditablePurchaseLine line)
+    => line.PurchaseQuantity > 1m
+      && line.Allocations.Any(allocation => !IsWholePurchaseMultiple(allocation.PlannedQuantity, line.PurchaseQuantity));
+
+  protected bool HasInvalidPurchaseAllocationMultiple(EditablePurchaseLine line, EditablePurchaseAllocation allocation)
+    => line.PurchaseQuantity > 1m && !IsWholePurchaseMultiple(allocation.PlannedQuantity, line.PurchaseQuantity);
+
+  protected bool HasInvalidPurchasePackConfiguration(EditablePurchaseLine line)
+    => HasInvalidPurchaseMultiple(line) || HasInvalidPurchaseAllocationMultiple(line);
+
+  protected string? GetPurchaseAllocationValidationMessage(EditablePurchaseLine line, EditablePurchaseAllocation allocation)
+  {
+    if (!HasInvalidPurchaseAllocationMultiple(line, allocation))
+    {
+      return null;
+    }
+
+    var baseUnitName = string.IsNullOrWhiteSpace(line.BaseUnitName)
+      ? "unidad base"
+      : line.BaseUnitName.Trim();
+    var purchaseUnitName = string.IsNullOrWhiteSpace(line.PurchaseUnitName)
+      ? "unidad de compra"
+      : line.PurchaseUnitName.Trim();
+    var locationLabel = string.IsNullOrWhiteSpace(allocation.LocationCode)
+      ? allocation.LocationName
+      : allocation.LocationCode;
+
+    return $"{locationLabel}: usa múltiplos de {FormatQuantity(line.PurchaseQuantity)} {baseUnitName} por {purchaseUnitName}.";
+  }
+
   private async Task LoadOrdersAsync()
   {
     IsLoadingOrders = true;
@@ -660,6 +781,8 @@ public partial class ComprasPage : ComponentBase
           Id = line.Id,
           MaterialId = line.MaterialId,
           UnitPrice = line.UnitPrice,
+          PurchaseQuantitySnapshot = NormalizePurchaseQuantity(line.PurchaseQuantity),
+          PurchaseUnitNameSnapshot = line.PurchaseUnitName,
           Allocations = line.Allocations
             .Select(allocation => new PurchaseOrderAllocationUpsertRequest
             {
@@ -705,9 +828,39 @@ public partial class ComprasPage : ComponentBase
   private static string NormalizeStatus(string? status)
     => string.IsNullOrWhiteSpace(status) ? string.Empty : status.Trim();
 
+  private int? GetPreferredVendorId()
+    => Editor.BusinessPartnerId > 0
+      ? Editor.BusinessPartnerId
+      : Filter.VendorId;
+
+  private static decimal NormalizePurchaseQuantity(decimal value)
+    => value > 0m ? value : 1m;
+
+  private static bool IsWholePurchaseMultiple(decimal quantity, decimal purchaseQuantity)
+  {
+    var normalizedPurchaseQuantity = NormalizePurchaseQuantity(purchaseQuantity);
+    if (normalizedPurchaseQuantity <= 1m)
+    {
+      return true;
+    }
+
+    var quotient = quantity / normalizedPurchaseQuantity;
+    return quotient == decimal.Truncate(quotient);
+  }
+
+  private static string FormatQuantity(decimal value)
+    => value.ToString("N2", CultureInfo.CurrentCulture);
+
   private static PurchaseOrderUpsertRequest CreateEditor()
     => new()
     {
+      OrderDate = DateTime.Today
+    };
+
+  private static AutoPurchaseOrderCreateRequest CreateAutoPoRequest(int? businessPartnerId = null)
+    => new()
+    {
+      BusinessPartnerId = businessPartnerId.GetValueOrDefault(),
       OrderDate = DateTime.Today
     };
 
@@ -719,6 +872,8 @@ public partial class ComprasPage : ComponentBase
     public string MaterialDescription { get; set; } = string.Empty;
     public string? VendorCode { get; set; }
     public string? BaseUnitName { get; set; }
+    public decimal PurchaseQuantity { get; set; } = 1m;
+    public string? PurchaseUnitName { get; set; }
     public decimal? UnitPrice { get; set; }
     public decimal ReceivedQuantity { get; set; }
     public List<EditablePurchaseAllocation> Allocations { get; set; } = [];

@@ -39,8 +39,10 @@ public sealed class MaterialDetailDto
   public int? LegacyMaterialId { get; set; }
   public string Description { get; set; } = string.Empty;
   public int BaseUnitId { get; set; }
+  public string? BaseUnitName { get; set; }
   public decimal PurchaseQuantity { get; set; }
   public int? PurchaseUnitId { get; set; }
+  public string? PurchaseUnitName { get; set; }
   public int? BusinessPartnerId { get; set; }
   public decimal? Price { get; set; }
   public DateTime? CreatedDate { get; set; }

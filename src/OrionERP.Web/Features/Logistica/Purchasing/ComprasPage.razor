@@ -1,0 +1,612 @@
+@page "/logistica/compras"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@attribute [Authorize(Roles = "Administrador")]
+
+<PageTitle>Logística · Compras</PageTitle>
+
+<div class="container-fluid py-3 compras-page">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h1 class="h3 mb-1">Compras</h1>
+            <p class="text-muted mb-0">Órdenes de compra por proveedor con planeación por ubicación, recepción parcial, miniaturas de material y PDF con QuestPDF.</p>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-outline-secondary" @onclick="NuevaOrden" disabled="@IsMutating">
+                Nueva orden
+            </button>
+            <button type="button" class="btn btn-primary" @onclick="GuardarBorradorAsync" disabled="@(!IsDraftMode || IsMutating)">
+                @(IsSavingDraft ? "Guardando..." : "Guardar borrador")
+            </button>
+            <button type="button" class="btn btn-outline-primary" @onclick="EmitirOrdenAsync" disabled="@(!CanIssue)">
+                @(IsIssuing ? "Emitiendo..." : "Emitir")
+            </button>
+            <button type="button" class="btn btn-outline-success" @onclick="RegistrarRecepcionAsync" disabled="@(!CanReceive)">
+                @(IsReceiving ? "Recibiendo..." : "Registrar recepción")
+            </button>
+            <button type="button" class="btn btn-outline-warning" @onclick="CerrarPendienteAsync" disabled="@(!CanComplete)">
+                @(IsCompleting ? "Cerrando..." : "Cerrar pendiente")
+            </button>
+            <button type="button" class="btn btn-outline-dark" @onclick="CancelarOrdenAsync" disabled="@(!CanCancel)">
+                @(IsCancelling ? "Cancelando..." : "Cancelar")
+            </button>
+            <button type="button" class="btn btn-outline-info" @onclick="ImprimirOrdenAsync" disabled="@(!CanPrint)">
+                @(IsPrinting ? "Generando PDF..." : "Imprimir PO")
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-12 col-xxl-4">
+            <section class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Filtros</h2>
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Buscar</label>
+                            <input class="form-control" type="search" placeholder="PO, proveedor o nota" @bind="Filter.SearchText" @bind:event="oninput" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Proveedor</label>
+                            <select class="form-select" @bind="Filter.VendorId">
+                                <option value="">Todos</option>
+                                @foreach (var vendor in VendorOptions)
+                                {
+                                    <option value="@vendor.Id">@vendor.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" @bind="Filter.Status">
+                                <option value="">Todos</option>
+                                @foreach (var status in StatusOptions)
+                                {
+                                    <option value="@status">@GetStatusLabel(status)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-check d-flex align-items-center gap-2 mb-0">
+                                <input class="form-check-input" type="checkbox" @bind="Filter.OpenOnly" />
+                                <span class="form-check-label">Solo abiertas</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <button type="button" class="btn btn-primary mt-3" @onclick="BuscarOrdenesAsync" disabled="@IsLoadingOrders">
+                        @(IsLoadingOrders ? "Buscando..." : "Buscar")
+                    </button>
+                </div>
+            </section>
+
+            <section class="card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="h5 mb-0">Órdenes</h2>
+                        <span class="text-muted small">@Orders.Count registros</span>
+                    </div>
+
+                    <div class="table-responsive compras-orders-scroll">
+                        <table class="table table-sm table-hover align-middle compras-orders-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Orden</th>
+                                    <th>Proveedor</th>
+                                    <th class="text-end">Cant.</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Orders.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-3">No hay órdenes para el filtro actual.</td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var order in Orders)
+                                    {
+                                        <tr class="@GetOrderRowClass(order)" style="cursor: pointer;" @onclick="() => SeleccionarOrdenAsync(order.Id)">
+                                            <td>
+                                                <div class="fw-semibold">@order.PurchaseOrderCode</div>
+                                                <div class="small text-muted">@order.OrderDate.ToShortDateString()</div>
+                                                <span class="@GetStatusBadgeClass(order.Status)">@GetStatusLabel(order.Status)</span>
+                                            </td>
+                                            <td>
+                                                <div>@order.VendorName</div>
+                                                <small class="text-muted">@(order.ExpectedDate.HasValue ? $"Esp: {order.ExpectedDate.Value:dd/MM/yyyy}" : "Sin fecha esperada")</small>
+                                            </td>
+                                            <td class="text-end">
+                                                <div>@order.OrderedQuantity.ToString("N2")</div>
+                                                <small class="text-muted">Pend: @order.RemainingQuantity.ToString("N2")</small>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="col-12 col-xxl-8">
+            <EditForm Model="Editor">
+                <DataAnnotationsValidator />
+
+                <section class="card shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                            <div>
+                                <h2 class="h4 mb-1">@CurrentOrderCode</h2>
+                                <div class="text-muted">Status actual</div>
+                                <span class="@CurrentStatusBadgeClass">@CurrentStatusLabel</span>
+                            </div>
+
+                            <div class="compras-summary-grid">
+                                <div class="compras-summary-card">
+                                    <div class="compras-summary-label">Ordenado</div>
+                                    <div class="compras-summary-value">@CurrentOrderedQuantity.ToString("N2")</div>
+                                </div>
+                                <div class="compras-summary-card">
+                                    <div class="compras-summary-label">Recibido</div>
+                                    <div class="compras-summary-value">@CurrentReceivedQuantity.ToString("N2")</div>
+                                </div>
+                                <div class="compras-summary-card">
+                                    <div class="compras-summary-label">Pendiente</div>
+                                    <div class="compras-summary-value">@CurrentRemainingQuantity.ToString("N2")</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <ValidationSummary />
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Proveedor</label>
+                                <InputSelect class="form-select" @bind-Value="Editor.BusinessPartnerId" disabled="@(!CanEditVendor)">
+                                    <option value="0">Selecciona un proveedor</option>
+                                    @foreach (var vendor in VendorOptions)
+                                    {
+                                        <option value="@vendor.Id">@vendor.Name</option>
+                                    }
+                                </InputSelect>
+                                @if (!CanEditVendor)
+                                {
+                                    <div class="form-text">El proveedor se bloquea cuando ya existen materiales en la orden.</div>
+                                }
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Fecha orden</label>
+                                <InputDate class="form-control" @bind-Value="Editor.OrderDate" disabled="@(!IsDraftMode)" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Fecha esperada</label>
+                                <InputDate class="form-control" @bind-Value="Editor.ExpectedDate" disabled="@(!IsDraftMode)" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Notas</label>
+                                <InputTextArea class="form-control" rows="3" @bind-Value="Editor.Notes" disabled="@(!IsDraftMode)" />
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                @if (IsDraftMode)
+                {
+                    <section class="card shadow-sm mb-3">
+                        <div class="card-body">
+                            <h3 class="h5 mb-3">Agregar materiales</h3>
+                            <div class="row g-3 align-items-end">
+                                <div class="col-md-8">
+                                    <label class="form-label">Buscar material</label>
+                                    <InputText class="form-control" @bind-Value="MaterialSearchText" placeholder="Código, descripción o barras" />
+                                </div>
+                                <div class="col-md-4">
+                                    <button type="button" class="btn btn-outline-primary w-100" @onclick="BuscarMaterialesAsync" disabled="@IsSearchingMaterials">
+                                        @(IsSearchingMaterials ? "Buscando..." : "Buscar materiales")
+                                    </button>
+                                </div>
+                            </div>
+
+                            @if (!CanSearchMaterials)
+                            {
+                                <div class="alert alert-light border mt-3 mb-0">
+                                    Selecciona el proveedor primero para buscar únicamente materiales asignados a ese proveedor.
+                                </div>
+                            }
+                            else if (HasExecutedMaterialSearch)
+                            {
+                                <div class="table-responsive mt-3 compras-material-search-scroll">
+                                    <table class="table table-sm table-hover align-middle compras-material-search-table">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th class="compras-thumb-col">Foto</th>
+                                                <th>Material</th>
+                                                <th>Unidad</th>
+                                                <th class="text-end">Existencia</th>
+                                                <th class="text-end"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @if (MaterialSearchResults.Count == 0)
+                                            {
+                                                <tr>
+                                                    <td colspan="5" class="text-center text-muted py-3">No hay materiales disponibles para ese proveedor.</td>
+                                                </tr>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var item in MaterialSearchResults)
+                                                {
+                                                    var thumbnailDataUrl = GetMaterialThumbnailDataUrl(item.Id);
+                                                    var materialTitle = string.IsNullOrWhiteSpace(item.Description) ? item.MaterialCode : item.Description;
+                                                    <tr>
+                                                        <td class="compras-thumb-col">
+                                                            @if (thumbnailDataUrl is not null)
+                                                            {
+                                                                <img src="@thumbnailDataUrl" alt="Imagen de @materialTitle" class="compras-thumb" />
+                                                            }
+                                                            else
+                                                            {
+                                                                <div class="compras-thumb-placeholder">@GetMaterialFallbackText(item.MaterialCode, item.Description)</div>
+                                                            }
+                                                        </td>
+                                                        <td>
+                                                            <div class="fw-semibold">@materialTitle</div>
+                                                            <small class="text-muted">@item.MaterialCode</small>
+                                                        </td>
+                                                        <td>@(string.IsNullOrWhiteSpace(item.BaseUnitName) ? "Sin unidad" : item.BaseUnitName)</td>
+                                                        <td class="text-end">@item.TotalQuantity.ToString("N2")</td>
+                                                        <td class="text-end">
+                                                            <button type="button" class="btn btn-sm btn-primary" @onclick="() => AgregarMaterialAsync(item)">
+                                                                Agregar
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </div>
+                    </section>
+                }
+
+                <section class="card shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h3 class="h5 mb-0">Líneas de la orden</h3>
+                            <span class="text-muted small">@Lines.Count materiales</span>
+                        </div>
+
+                        <div class="table-responsive compras-lines-scroll">
+                            <table class="table table-sm table-hover align-middle compras-lines-table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="compras-thumb-col">Foto</th>
+                                        <th>Material</th>
+                                        <th>Unidad</th>
+                                        <th class="text-end">Precio</th>
+                                        <th class="text-end">Ordenado</th>
+                                        <th class="text-end">Recibido</th>
+                                        <th class="text-end">Pendiente</th>
+                                        <th class="text-end"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (Lines.Count == 0)
+                                    {
+                                        <tr>
+                                            <td colspan="8" class="text-center text-muted py-3">Agrega materiales para construir la orden de compra.</td>
+                                        </tr>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var line in Lines)
+                                        {
+                                            var thumbnailDataUrl = GetMaterialThumbnailDataUrl(line.MaterialId);
+                                            var materialTitle = string.IsNullOrWhiteSpace(line.MaterialDescription) ? line.MaterialCode : line.MaterialDescription;
+                                            <tr class="@(SelectedLine?.MaterialId == line.MaterialId ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarLinea(line)">
+                                                <td class="compras-thumb-col">
+                                                    @if (thumbnailDataUrl is not null)
+                                                    {
+                                                        <img src="@thumbnailDataUrl" alt="Imagen de @materialTitle" class="compras-thumb" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="compras-thumb-placeholder">@GetMaterialFallbackText(line.MaterialCode, line.MaterialDescription)</div>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <div class="fw-semibold">@materialTitle</div>
+                                                    <div class="small text-muted">@line.MaterialCode</div>
+                                                    <div class="small text-muted">@(string.IsNullOrWhiteSpace(line.VendorCode) ? "Sin código proveedor" : line.VendorCode)</div>
+                                                </td>
+                                                <td>@(string.IsNullOrWhiteSpace(line.BaseUnitName) ? "Sin unidad" : line.BaseUnitName)</td>
+                                                <td class="text-end">
+                                                    @if (IsDraftMode)
+                                                    {
+                                                        <InputNumber class="form-control form-control-sm compras-inline-number" @bind-Value="line.UnitPrice" />
+                                                    }
+                                                    else
+                                                    {
+                                                        @(line.UnitPrice.HasValue ? line.UnitPrice.Value.ToString("C") : "-")
+                                                    }
+                                                </td>
+                                                <td class="text-end">@line.OrderedQuantity.ToString("N2")</td>
+                                                <td class="text-end">@line.ReceivedQuantity.ToString("N2")</td>
+                                                <td class="text-end">@line.RemainingQuantity.ToString("N2")</td>
+                                                <td class="text-end">
+                                                    @if (IsDraftMode)
+                                                    {
+                                                        <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => QuitarMaterialAsync(line)" @onclick:stopPropagation="true">
+                                                            Quitar
+                                                        </button>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                @if (SelectedLine is not null)
+                {
+                    <section class="card shadow-sm mb-3">
+                        <div class="card-body">
+                            <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+                                @{
+                                    var selectedThumbnail = GetMaterialThumbnailDataUrl(SelectedLine.MaterialId);
+                                    var selectedMaterialTitle = string.IsNullOrWhiteSpace(SelectedLine.MaterialDescription) ? SelectedLine.MaterialCode : SelectedLine.MaterialDescription;
+                                }
+
+                                @if (selectedThumbnail is not null)
+                                {
+                                    <img src="@selectedThumbnail" alt="Imagen de @selectedMaterialTitle" class="compras-selected-thumb" />
+                                }
+                                else
+                                {
+                                    <div class="compras-thumb-placeholder compras-selected-thumb-placeholder">@GetMaterialFallbackText(SelectedLine.MaterialCode, SelectedLine.MaterialDescription)</div>
+                                }
+
+                                <div>
+                                    <h3 class="h5 mb-1">@selectedMaterialTitle</h3>
+                                    <div class="text-muted">@SelectedLine.MaterialCode</div>
+                                    <div class="small text-muted">@(string.IsNullOrWhiteSpace(SelectedLine.BaseUnitName) ? "Sin unidad base" : SelectedLine.BaseUnitName)</div>
+                                </div>
+                            </div>
+
+                            @if (IsDraftMode)
+                            {
+                                <div class="row g-3 align-items-end mb-3">
+                                    <div class="col-md-7">
+                                        <label class="form-label">Agregar ubicación</label>
+                                        <select class="form-select" @bind="PendingAllocationLocationId">
+                                            <option value="0">Selecciona una ubicación</option>
+                                            @foreach (var location in LocationOptions.Where(location => SelectedLine.Allocations.All(allocation => allocation.LocationId != location.Id)))
+                                            {
+                                                <option value="@location.Id">@location.Name</option>
+                                            }
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Cantidad</label>
+                                        <InputNumber class="form-control" @bind-Value="PendingAllocationQuantity" />
+                                    </div>
+                                    <div class="col-md-2">
+                                        <button type="button" class="btn btn-outline-primary w-100" @onclick="AgregarAsignacion">
+                                            Agregar
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle compras-allocations-table">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="compras-thumb-col">Foto</th>
+                                            <th>Ubicación</th>
+                                            <th class="text-end">Planeado</th>
+                                            <th class="text-end">Recibido</th>
+                                            <th class="text-end">Pendiente</th>
+                                            <th class="text-end"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @if (SelectedLine.Allocations.Count == 0)
+                                        {
+                                            <tr>
+                                                <td colspan="6" class="text-center text-muted py-3">Aún no hay ubicaciones planeadas para este material.</td>
+                                            </tr>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var allocation in SelectedLine.Allocations)
+                                            {
+                                                <tr>
+                                                    <td class="compras-thumb-col">
+                                                        @if (selectedThumbnail is not null)
+                                                        {
+                                                            <img src="@selectedThumbnail" alt="Imagen de @selectedMaterialTitle" class="compras-thumb" />
+                                                        }
+                                                        else
+                                                        {
+                                                            <div class="compras-thumb-placeholder">@GetMaterialFallbackText(SelectedLine.MaterialCode, SelectedLine.MaterialDescription)</div>
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        <div>@allocation.LocationName</div>
+                                                        <small class="text-muted">@(string.IsNullOrWhiteSpace(allocation.LocationCode) ? "Sin código" : allocation.LocationCode)</small>
+                                                    </td>
+                                                    <td class="text-end">
+                                                        @if (IsDraftMode)
+                                                        {
+                                                            <InputNumber class="form-control form-control-sm compras-inline-number" @bind-Value="allocation.PlannedQuantity" />
+                                                        }
+                                                        else
+                                                        {
+                                                            @allocation.PlannedQuantity.ToString("N2")
+                                                        }
+                                                    </td>
+                                                    <td class="text-end">@allocation.ReceivedQuantity.ToString("N2")</td>
+                                                    <td class="text-end">@allocation.RemainingQuantity.ToString("N2")</td>
+                                                    <td class="text-end">
+                                                        @if (IsDraftMode)
+                                                        {
+                                                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => QuitarAsignacion(allocation)">
+                                                                Quitar
+                                                            </button>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+                }
+
+                @if (CanReceive)
+                {
+                    <section class="card shadow-sm mb-3">
+                        <div class="card-body">
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                                <div>
+                                    <h3 class="h5 mb-1">Recepción</h3>
+                                    <p class="text-muted mb-0">Recibe cantidades por ubicación para actualizar inventario y registrar auditoría.</p>
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-3">
+                                    <label class="form-label">Fecha recepción</label>
+                                    <InputDate class="form-control" @bind-Value="ReceiptDate" />
+                                </div>
+                                <div class="col-md-9">
+                                    <label class="form-label">Notas recepción</label>
+                                    <InputTextArea class="form-control" rows="2" @bind-Value="ReceiptNotes" />
+                                </div>
+                            </div>
+
+                            <div class="table-responsive compras-receive-scroll">
+                                <table class="table table-sm table-hover align-middle compras-receive-table">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="compras-thumb-col">Foto</th>
+                                            <th>Material</th>
+                                            <th>Ubicación</th>
+                                            <th class="text-end">Planeado</th>
+                                            <th class="text-end">Recibido</th>
+                                            <th class="text-end">Pendiente</th>
+                                            <th class="text-end">Recibir ahora</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var item in ReceiveItems)
+                                        {
+                                            var thumbnailDataUrl = GetMaterialThumbnailDataUrl(item.MaterialId);
+                                            var materialTitle = string.IsNullOrWhiteSpace(item.MaterialDescription) ? item.MaterialCode : item.MaterialDescription;
+                                            <tr>
+                                                <td class="compras-thumb-col">
+                                                    @if (thumbnailDataUrl is not null)
+                                                    {
+                                                        <img src="@thumbnailDataUrl" alt="Imagen de @materialTitle" class="compras-thumb" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="compras-thumb-placeholder">@GetMaterialFallbackText(item.MaterialCode, item.MaterialDescription)</div>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <div class="fw-semibold">@materialTitle</div>
+                                                    <small class="text-muted">@item.MaterialCode</small>
+                                                </td>
+                                                <td>
+                                                    <div>@item.LocationName</div>
+                                                    <small class="text-muted">@(string.IsNullOrWhiteSpace(item.LocationCode) ? "Sin código" : item.LocationCode)</small>
+                                                </td>
+                                                <td class="text-end">@item.PlannedQuantity.ToString("N2")</td>
+                                                <td class="text-end">@item.ReceivedQuantity.ToString("N2")</td>
+                                                <td class="text-end">@item.RemainingQuantity.ToString("N2")</td>
+                                                <td class="text-end">
+                                                    <InputNumber class="form-control form-control-sm compras-inline-number" @bind-Value="item.ReceiveNowQuantity" />
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+                }
+
+                @if (ReceiptHistory.Count > 0)
+                {
+                    <section class="card shadow-sm">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h3 class="h5 mb-0">Historial de recepciones</h3>
+                                <span class="text-muted small">@ReceiptHistory.Count renglones</span>
+                            </div>
+
+                            <div class="table-responsive compras-history-scroll">
+                                <table class="table table-sm table-hover align-middle compras-history-table">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Recepción</th>
+                                            <th class="compras-thumb-col">Foto</th>
+                                            <th>Material</th>
+                                            <th>Ubicación</th>
+                                            <th class="text-end">Cantidad</th>
+                                            <th>Notas</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var item in ReceiptHistory)
+                                        {
+                                            var thumbnailDataUrl = GetMaterialThumbnailDataUrl(item.MaterialId);
+                                            var materialTitle = string.IsNullOrWhiteSpace(item.MaterialDescription) ? item.MaterialCode : item.MaterialDescription;
+                                            <tr>
+                                                <td>
+                                                    <div class="fw-semibold">@item.ReceiptCode</div>
+                                                    <small class="text-muted">@item.ReceiptDate.ToShortDateString()</small>
+                                                </td>
+                                                <td class="compras-thumb-col">
+                                                    @if (thumbnailDataUrl is not null)
+                                                    {
+                                                        <img src="@thumbnailDataUrl" alt="Imagen de @materialTitle" class="compras-thumb" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="compras-thumb-placeholder">@GetMaterialFallbackText(item.MaterialCode, item.MaterialDescription)</div>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <div class="fw-semibold">@materialTitle</div>
+                                                    <small class="text-muted">@item.MaterialCode</small>
+                                                </td>
+                                                <td>@item.LocationName</td>
+                                                <td class="text-end">@item.Quantity.ToString("N2")</td>
+                                                <td>@(string.IsNullOrWhiteSpace(item.Notes) ? "-" : item.Notes)</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+                }
+            </EditForm>
+        </div>
+    </div>
+</div>

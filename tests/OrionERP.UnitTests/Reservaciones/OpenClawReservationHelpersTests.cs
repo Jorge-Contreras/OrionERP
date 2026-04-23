@@ -58,4 +58,26 @@ public class OpenClawReservationHelpersTests
     Assert.Equal(4251.77m, totals.PorPagar);
     Assert.Equal(2, totals.NumNoches);
   }
+
+  [Fact]
+  public void CalculateTotals_UsesPerLineTaxesToAvoidAggregateExtraCents()
+  {
+    var totals = ReservacionTotalsCalculator.Calculate(
+      new DateTime(2026, 3, 18),
+      new DateTime(2026, 3, 20),
+      true,
+      new[] { 1077.59m, 1077.59m, 1077.59m, 1077.59m },
+      Array.Empty<decimal>(),
+      0m);
+
+    Assert.Equal(4310.36m, totals.TotalSuites);
+    Assert.Equal(0m, totals.TotalExtras);
+    Assert.Equal(4310.36m, totals.SubTotal);
+    Assert.Equal(689.64m, totals.Tax);
+    Assert.Equal(0m, totals.Ish);
+    Assert.Equal(5000.00m, totals.TotalReservacion);
+    Assert.Equal(0m, totals.TotalPagado);
+    Assert.Equal(5000.00m, totals.PorPagar);
+    Assert.Equal(2, totals.NumNoches);
+  }
 }

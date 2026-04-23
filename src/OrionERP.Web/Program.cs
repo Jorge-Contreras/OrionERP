@@ -48,11 +48,6 @@ builder.Configuration
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true);
 
-if (builder.Environment.IsDevelopment())
-{
-  builder.Configuration.AddUserSecrets<Program>(optional: true);
-}
-
 // Allow explicit machine-level overrides only via ASPNETCORE_* / DOTNET_*.
 // Examples:
 // - ASPNETCORE_ConnectionStrings__OrionDb
@@ -61,6 +56,13 @@ if (builder.Environment.IsDevelopment())
 builder.Configuration
     .AddEnvironmentVariables(prefix: "ASPNETCORE_")
     .AddEnvironmentVariables(prefix: "DOTNET_");
+
+if (builder.Environment.IsDevelopment())
+{
+  // Load after prefixed env vars so local sandbox secrets can safely override
+  // machine-scoped production settings on shared developer machines.
+  builder.Configuration.AddUserSecrets<Program>(optional: true);
+}
 
 // -------------------------------------------------------------------------------
 

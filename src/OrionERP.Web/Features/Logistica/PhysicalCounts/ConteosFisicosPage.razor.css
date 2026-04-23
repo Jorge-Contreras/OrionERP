@@ -346,6 +346,10 @@
 }
 
 @media (max-width: 767.98px) {
+  .conteos-mobile-list-hidden {
+    display: none;
+  }
+
   .conteos-page {
     padding-bottom: 4.5rem;
   }

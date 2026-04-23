@@ -73,6 +73,9 @@ public sealed class PurchaseOrderPdfDocumentFactory : IPurchaseOrderPdfDocumentF
           FormatPurchaseQuantity(allocation.PlannedQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture),
           FormatPurchaseQuantity(allocation.ReceivedQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture),
           FormatPurchaseQuantity(allocation.RemainingQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture))))
+        .OrderBy(row => row.LocationName, StringComparer.OrdinalIgnoreCase)
+        .ThenBy(row => row.MaterialCode, StringComparer.OrdinalIgnoreCase)
+        .ThenBy(row => row.MaterialDescription, StringComparer.OrdinalIgnoreCase)
         .ToList());
   }
 

@@ -126,6 +126,92 @@ public class PurchaseOrderWebSupportTests
   }
 
   [Fact]
+  public async Task PurchaseOrderPdfFactory_SortsAllocationsByLocationThenMaterial()
+  {
+    var factory = new PurchaseOrderPdfDocumentFactory(new FakeMaterialService());
+
+    var model = await factory.CreateFromDetailAsync(new PurchaseOrderDetailDto
+    {
+      Id = 41,
+      PurchaseOrderCode = "PO-000041",
+      BusinessPartnerId = 8,
+      VendorName = "Proveedor",
+      VendorRfc = "XAXX010101000",
+      Status = PurchaseOrderStatuses.Issued,
+      OrderDate = new DateTime(2026, 4, 20),
+      ExpectedDate = new DateTime(2026, 4, 21),
+      CreatedBy = "Ana",
+      Lines =
+      [
+        new PurchaseOrderLineDto
+        {
+          Id = 30,
+          MaterialId = 30,
+          MaterialCode = "MAT-B",
+          MaterialDescription = "Botella",
+          BaseUnitName = "Pieza",
+          PurchaseQuantity = 1m,
+          PurchaseUnitName = "Pieza",
+          Allocations =
+          [
+            new PurchaseOrderAllocationDto
+            {
+              Id = 100,
+              PurchaseOrderLineId = 30,
+              LocationId = 7,
+              LocationName = "Cocina",
+              LocationCode = "LOC-007",
+              PlannedQuantity = 3m,
+              RemainingQuantity = 3m
+            },
+            new PurchaseOrderAllocationDto
+            {
+              Id = 101,
+              PurchaseOrderLineId = 30,
+              LocationId = 9,
+              LocationName = "Bar",
+              LocationCode = "LOC-009",
+              PlannedQuantity = 1m,
+              RemainingQuantity = 1m
+            }
+          ]
+        },
+        new PurchaseOrderLineDto
+        {
+          Id = 31,
+          MaterialId = 31,
+          MaterialCode = "MAT-A",
+          MaterialDescription = "Agua",
+          BaseUnitName = "Pieza",
+          PurchaseQuantity = 1m,
+          PurchaseUnitName = "Pieza",
+          Allocations =
+          [
+            new PurchaseOrderAllocationDto
+            {
+              Id = 102,
+              PurchaseOrderLineId = 31,
+              LocationId = 7,
+              LocationName = "Cocina",
+              LocationCode = "LOC-007",
+              PlannedQuantity = 2m,
+              RemainingQuantity = 2m
+            }
+          ]
+        }
+      ]
+    });
+
+    Assert.Equal(
+      [
+        ("LOC-007 · Cocina", "MAT-A"),
+        ("LOC-007 · Cocina", "MAT-B"),
+        ("LOC-009 · Bar", "MAT-B")
+      ],
+      model.Allocations.Select(item => (item.LocationName, item.MaterialCode)).ToArray());
+  }
+
+  [Fact]
   public void PurchaseQuantityDisplay_FormatsPurchaseUnitsAndInternalSummary()
   {
     var culture = CultureInfo.GetCultureInfo("en-US");

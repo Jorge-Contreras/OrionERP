@@ -32,18 +32,17 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
         container.Page(page =>
         {
           page.Size(PageSizes.Letter);
-          page.Margin(28);
-          page.DefaultTextStyle(text => text.FontSize(10).FontColor(BrandPrimaryDark));
+          page.Margin(20);
+          page.DefaultTextStyle(text => text.FontSize(9).FontColor(BrandPrimaryDark));
 
-          page.Header().Element(header => ComposeHeader(header, model));
-          page.Content().PaddingTop(12).Element(content => ComposeContent(content, model));
-          page.Footer().PaddingTop(6).Element(ComposeFooter);
+          page.Content().Element(content => ComposeContent(content, model));
+          page.Footer().PaddingTop(6).Element(footer => ComposeFooter(footer, model));
         });
       })
       .GeneratePdf();
   }
 
-  private void ComposeHeader(IContainer container, PurchaseOrderPdfDocumentModel model)
+  private void ComposeDocumentIntro(IContainer container, PurchaseOrderPdfDocumentModel model)
   {
     container.Column(column =>
     {
@@ -51,40 +50,83 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
 
       column.Item().Row(row =>
       {
-        row.ConstantItem(74).Height(74).Svg(_logoSvg);
-        row.RelativeItem().PaddingLeft(12).Column(textColumn =>
+        row.ConstantItem(58).Height(58).Svg(_logoSvg);
+        row.RelativeItem().PaddingLeft(10).Column(textColumn =>
         {
-          textColumn.Spacing(2);
-          textColumn.Item().Text("Bonhomia Suites")
-            .FontSize(25).FontFamily("Tahoma")
-            .Bold()
+          textColumn.Spacing(1);
+          textColumn.Item().Text("Orden de compra")
+            .FontSize(17)
+            .SemiBold()
+            .FontColor(BrandPrimaryDark);
+
+          textColumn.Item().Text(model.PurchaseOrderCode)
+            .FontSize(12)
+            .SemiBold()
             .FontColor(BrandPrimary);
 
-          textColumn.Item().Text("Orden de compra")
-            .FontSize(15)
-            .SemiBold()
-            .FontColor(BrandPrimaryDark);
-
-          textColumn.Item().PaddingTop(4).Text(model.PurchaseOrderCode)
-            .FontSize(13)
-            .SemiBold()
-            .FontColor(BrandPrimaryDark);
+          textColumn.Item().Text("Bonhomia Suites")
+            .FontSize(9)
+            .FontColor(BrandMuted);
         });
 
-        row.ConstantItem(170).AlignRight().Column(meta =>
+        row.ConstantItem(190).AlignRight().Column(meta =>
         {
-          meta.Spacing(2);
+          meta.Spacing(1);
+          meta.Item().AlignRight().Text(model.VendorName)
+            .FontSize(11)
+            .SemiBold()
+            .FontColor(BrandPrimaryDark);
+          meta.Item().AlignRight().Text($"Estado: {model.Status}")
+            .FontSize(8)
+            .FontColor(BrandMuted);
           meta.Item().AlignRight().Text($"Generado: {model.GeneratedAt}")
-            .FontSize(9)
-            .FontColor(BrandMuted);
-          meta.Item().AlignRight().Text($"Status: {model.Status}")
-            .FontSize(9)
-            .FontColor(BrandMuted);
-          meta.Item().AlignRight().Text($"Fecha orden: {model.OrderDate}")
-            .FontSize(9)
+            .FontSize(8)
             .FontColor(BrandMuted);
         });
       });
+
+      column.Item().Element(SummaryBand).Column(summary =>
+      {
+        summary.Spacing(3);
+        summary.Item().Text(text =>
+        {
+          text.Span("Proveedor: ").SemiBold();
+          text.Span(model.VendorName);
+          text.Span("  |  ").FontColor(BrandMuted);
+          text.Span("RFC: ").SemiBold();
+          text.Span(model.VendorRfc);
+          text.Span("  |  ").FontColor(BrandMuted);
+          text.Span("Orden: ").SemiBold();
+          text.Span(model.OrderDate);
+          text.Span("  |  ").FontColor(BrandMuted);
+          text.Span("Entrega: ").SemiBold();
+          text.Span(model.ExpectedDate);
+          text.Span("  |  ").FontColor(BrandMuted);
+          text.Span("Capturo: ").SemiBold();
+          text.Span(model.CreatedBy);
+        });
+
+        summary.Item().DefaultTextStyle(style => style.FontColor(BrandMuted)).Text(text =>
+        {
+          text.Span("Materiales: ").SemiBold();
+          text.Span(model.MaterialCount);
+          text.Span("  |  ").FontColor(BrandMuted);
+          text.Span("Ubicaciones: ").SemiBold();
+          text.Span(model.AllocationCount);
+          text.Span("  |  ").FontColor(BrandMuted);
+          text.Span("Pendientes: ").SemiBold();
+          text.Span(model.PendingAllocationCount);
+        });
+      });
+
+      if (HasRealValue(model.Notes))
+      {
+        column.Item().DefaultTextStyle(style => style.FontSize(8)).Text(text =>
+        {
+          text.Span("Notas: ").SemiBold();
+          text.Span(model.Notes);
+        });
+      }
 
       column.Item().LineHorizontal(1).LineColor(BrandBorder);
     });
@@ -94,52 +136,31 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
   {
     container.Column(column =>
     {
-      column.Spacing(14);
+      column.Spacing(10);
+
+      column.Item().Element(container => ComposeDocumentIntro(container, model));
 
       column.Item().Element(SectionCard).Column(section =>
       {
-        section.Spacing(10);
-        section.Item().Element(SectionTitle).Text("Proveedor y Resumen")
-          .FontSize(12)
-          .SemiBold()
-          .FontColor(BrandPrimaryDark);
-
-        section.Item().Element(container => ComposeFieldPairs(
-          container,
-          [
-            new FieldEntry("Proveedor", model.VendorName),
-            new FieldEntry("RFC", model.VendorRfc),
-            new FieldEntry("Fecha esperada", model.ExpectedDate),
-            new FieldEntry("Capturado por", model.CreatedBy),
-            new FieldEntry("Materiales", model.MaterialCount, true),
-            new FieldEntry("Ubicaciones", model.AllocationCount),
-            new FieldEntry("Ubic. pendientes", model.PendingAllocationCount, true)
-          ]));
-
-        section.Item().Element(FieldBlock).Column(field =>
-        {
-          field.Spacing(2);
-          field.Item().Text("Notas").Bold();
-          field.Item().Text(model.Notes);
-        });
-      });
-
-      column.Item().Element(SectionCard).Column(section =>
-      {
-        section.Spacing(10);
+        section.Spacing(8);
         section.Item().Element(SectionTitle).Text("Materiales")
-          .FontSize(12)
+          .FontSize(11)
           .SemiBold()
           .FontColor(BrandPrimaryDark);
 
         section.Item().Element(container => ComposeLineTable(container, model.Lines));
       });
 
+      if (model.Allocations.Count > 0)
+      {
+        column.Item().PageBreak();
+      }
+
       column.Item().Element(SectionCard).Column(section =>
       {
-        section.Spacing(10);
+        section.Spacing(8);
         section.Item().Element(SectionTitle).Text("Asignaciones por Ubicación")
-          .FontSize(12)
+          .FontSize(11)
           .SemiBold()
           .FontColor(BrandPrimaryDark);
 
@@ -148,48 +169,26 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
     });
   }
 
-  private static void ComposeFooter(IContainer container)
-  {
-    container.Row(row =>
-    {
-      row.RelativeItem().Text("Bonhomia Suites")
-        .FontSize(8)
-        .FontColor(BrandMuted);
-
-      row.ConstantItem(80).AlignRight().Text(text =>
-      {
-        text.DefaultTextStyle(style => style.FontSize(8).FontColor(BrandMuted));
-        text.Span("Pagina ");
-        text.CurrentPageNumber();
-        text.Span(" / ");
-        text.TotalPages();
-      });
-    });
-  }
-
-  private static void ComposeFieldPairs(IContainer container, IReadOnlyList<FieldEntry> fields)
+  private static void ComposeFooter(IContainer container, PurchaseOrderPdfDocumentModel model)
   {
     container.Column(column =>
     {
-      column.Spacing(8);
-
-      foreach (var pair in fields.Chunk(2))
+      column.Item().LineHorizontal(1).LineColor(BrandBorder);
+      column.Item().PaddingTop(4).Row(row =>
       {
-        column.Item().Row(row =>
-        {
-          row.Spacing(8);
-          row.RelativeItem().Element(cell => ComposeFieldBlock(cell, pair[0]));
+        row.RelativeItem().Text($"{model.PurchaseOrderCode}  |  {model.VendorName}")
+          .FontSize(7)
+          .FontColor(BrandMuted);
 
-          if (pair.Length > 1)
-          {
-            row.RelativeItem().Element(cell => ComposeFieldBlock(cell, pair[1]));
-          }
-          else
-          {
-            row.RelativeItem();
-          }
+        row.ConstantItem(90).AlignRight().Text(text =>
+        {
+          text.DefaultTextStyle(style => style.FontSize(7).FontColor(BrandMuted));
+          text.Span("Pagina ");
+          text.CurrentPageNumber();
+          text.Span(" / ");
+          text.TotalPages();
         });
-      }
+      });
     });
   }
 
@@ -205,11 +204,10 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
     {
       table.ColumnsDefinition(columns =>
       {
-        columns.ConstantColumn(56);
-        columns.RelativeColumn(1.2f);
-        columns.RelativeColumn(2.3f);
-        columns.RelativeColumn(1.3f);
-        columns.RelativeColumn(0.9f);
+        columns.ConstantColumn(40);
+        columns.RelativeColumn(3.4f);
+        columns.RelativeColumn(1f);
+        columns.RelativeColumn(1f);
         columns.RelativeColumn(0.9f);
         columns.RelativeColumn(0.9f);
         columns.RelativeColumn(0.9f);
@@ -218,39 +216,37 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
       table.Header(header =>
       {
         header.Cell().Element(TableHeaderCell).Text("Foto").SemiBold();
-        header.Cell().Element(TableHeaderCell).Text("Codigo").SemiBold();
         header.Cell().Element(TableHeaderCell).Text("Material").SemiBold();
-        header.Cell().Element(TableHeaderCell).Text("Cod. proveedor").SemiBold();
-        header.Cell().Element(TableHeaderCell).Text("Unidad compra").SemiBold();
+        header.Cell().Element(TableHeaderCell).Text("Unidad").SemiBold();
         header.Cell().Element(TableHeaderCell).Text("Precio").SemiBold();
-        header.Cell().Element(TableHeaderCell).Text("Ordenado").SemiBold();
-        header.Cell().Element(TableHeaderCell).Text("Recibido / Pendiente").SemiBold();
+        header.Cell().Element(TableHeaderCell).AlignRight().Text("Ordenado").SemiBold();
+        header.Cell().Element(TableHeaderCell).AlignRight().Text("Recibido").SemiBold();
+        header.Cell().Element(TableHeaderCell).AlignRight().Text("Pendiente").SemiBold();
       });
 
       foreach (var row in rows)
       {
+        var materialMeta = BuildMaterialMeta(row.MaterialCode, row.VendorCode);
+
         table.Cell().Element(TableBodyCell).Element(cell => ComposeThumbnailCell(cell, row.ThumbnailBytes, row.ThumbnailFallback));
-        table.Cell().Element(TableBodyCell).Text(row.MaterialCode);
         table.Cell().Element(TableBodyCell).Column(column =>
         {
-          column.Spacing(2);
+          column.Spacing(1);
           column.Item().Text(row.MaterialDescription).SemiBold();
-          if (!string.IsNullOrWhiteSpace(row.PurchasePresentation))
+          if (HasRealValue(materialMeta))
           {
-            column.Item().Text(row.PurchasePresentation).FontSize(8).FontColor(BrandMuted);
+            column.Item().Text(materialMeta).FontSize(7).FontColor(BrandMuted);
           }
-          column.Item().Text($"Pendiente: {row.RemainingQuantity}").FontSize(8).FontColor(BrandMuted);
+          if (HasRealValue(row.PurchasePresentation))
+          {
+            column.Item().Text(row.PurchasePresentation).FontSize(7).FontColor(BrandMuted);
+          }
         });
-        table.Cell().Element(TableBodyCell).Text(row.VendorCode);
         table.Cell().Element(TableBodyCell).Text(row.UnitName);
-        table.Cell().Element(TableBodyCell).Text(row.UnitPrice);
-        table.Cell().Element(TableBodyCell).Text(row.OrderedQuantity);
-        table.Cell().Element(TableBodyCell).Column(column =>
-        {
-          column.Spacing(2);
-          column.Item().Text($"Recibido: {row.ReceivedQuantity}");
-          column.Item().Text($"Pendiente: {row.RemainingQuantity}").FontSize(8).FontColor(BrandMuted);
-        });
+        table.Cell().Element(TableBodyCell).AlignRight().Text(row.UnitPrice);
+        table.Cell().Element(TableBodyCell).AlignRight().Text(row.OrderedQuantity);
+        table.Cell().Element(TableBodyCell).AlignRight().Text(row.ReceivedQuantity);
+        table.Cell().Element(TableBodyCell).AlignRight().Text(row.RemainingQuantity);
       }
     });
   }
@@ -263,39 +259,58 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
       return;
     }
 
+    var groupedRows = rows
+      .OrderBy(row => row.LocationName, StringComparer.OrdinalIgnoreCase)
+      .ThenBy(row => row.MaterialCode, StringComparer.OrdinalIgnoreCase)
+      .ThenBy(row => row.MaterialDescription, StringComparer.OrdinalIgnoreCase)
+      .GroupBy(row => row.LocationName, StringComparer.OrdinalIgnoreCase)
+      .ToList();
+
     container.Table(table =>
     {
       table.ColumnsDefinition(columns =>
       {
-        columns.ConstantColumn(56);
-        columns.RelativeColumn(1.1f);
-        columns.RelativeColumn(2f);
-        columns.RelativeColumn(2f);
-        columns.RelativeColumn(0.9f);
-        columns.RelativeColumn(0.9f);
-        columns.RelativeColumn(0.9f);
+        columns.ConstantColumn(40);
+        columns.RelativeColumn(3.2f);
+        columns.RelativeColumn(1f);
+        columns.RelativeColumn(1f);
+        columns.RelativeColumn(1f);
       });
 
       table.Header(header =>
       {
         header.Cell().Element(TableHeaderCell).Text("Foto").SemiBold();
-        header.Cell().Element(TableHeaderCell).Text("Codigo").SemiBold();
         header.Cell().Element(TableHeaderCell).Text("Material").SemiBold();
-        header.Cell().Element(TableHeaderCell).Text("Ubicacion").SemiBold();
-        header.Cell().Element(TableHeaderCell).Text("Planeado").SemiBold();
-        header.Cell().Element(TableHeaderCell).Text("Recibido").SemiBold();
-        header.Cell().Element(TableHeaderCell).Text("Pendiente").SemiBold();
+        header.Cell().Element(TableHeaderCell).AlignRight().Text("Planeado").SemiBold();
+        header.Cell().Element(TableHeaderCell).AlignRight().Text("Recibido").SemiBold();
+        header.Cell().Element(TableHeaderCell).AlignRight().Text("Pendiente").SemiBold();
       });
 
-      foreach (var row in rows)
+      foreach (var group in groupedRows)
       {
-        table.Cell().Element(TableBodyCell).Element(cell => ComposeThumbnailCell(cell, row.ThumbnailBytes, row.ThumbnailFallback));
-        table.Cell().Element(TableBodyCell).Text(row.MaterialCode);
-        table.Cell().Element(TableBodyCell).Text(row.MaterialDescription);
-        table.Cell().Element(TableBodyCell).Text(row.LocationName);
-        table.Cell().Element(TableBodyCell).Text(row.PlannedQuantity);
-        table.Cell().Element(TableBodyCell).Text(row.ReceivedQuantity);
-        table.Cell().Element(TableBodyCell).Text(row.RemainingQuantity);
+        table.Cell()
+          .ColumnSpan(5)
+          .Element(AllocationLocationCell)
+          .Text(group.Key)
+          .SemiBold()
+          .FontColor(BrandPrimaryDark);
+
+        foreach (var row in group)
+        {
+          table.Cell().Element(TableBodyCell).Element(cell => ComposeThumbnailCell(cell, row.ThumbnailBytes, row.ThumbnailFallback));
+          table.Cell().Element(TableBodyCell).Column(column =>
+          {
+            column.Spacing(1);
+            column.Item().Text(row.MaterialDescription).SemiBold();
+            if (HasRealValue(row.MaterialCode))
+            {
+              column.Item().Text(row.MaterialCode).FontSize(7).FontColor(BrandMuted);
+            }
+          });
+          table.Cell().Element(TableBodyCell).AlignRight().Text(row.PlannedQuantity);
+          table.Cell().Element(TableBodyCell).AlignRight().Text(row.ReceivedQuantity);
+          table.Cell().Element(TableBodyCell).AlignRight().Text(row.RemainingQuantity);
+        }
       }
     });
   }
@@ -305,8 +320,8 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
     if (thumbnailBytes is { Length: > 0 })
     {
       container
-        .Width(44)
-        .Height(44)
+        .Width(32)
+        .Height(32)
         .Border(1)
         .BorderColor(BrandBorder)
         .Padding(2)
@@ -318,8 +333,8 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
     }
 
     container
-      .Width(44)
-      .Height(44)
+      .Width(32)
+      .Height(32)
       .Background(BrandSurface)
       .Border(1)
       .BorderColor(BrandBorder)
@@ -336,50 +351,70 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
     => container
       .Border(1)
       .BorderColor(BrandBorder)
-      .Background(BrandSurface)
-      .Padding(12);
+      .Padding(8);
 
   private static IContainer SectionTitle(IContainer container)
     => container
-      .PaddingBottom(6)
+      .PaddingBottom(4)
       .BorderBottom(1)
       .BorderColor(BrandBorder);
 
-  private static IContainer FieldBlock(IContainer container)
+  private static IContainer SummaryBand(IContainer container)
     => container
-      .Background(Colors.White)
       .Border(1)
       .BorderColor(BrandBorder)
-      .Padding(8);
+      .PaddingHorizontal(8)
+      .PaddingVertical(6)
+      .DefaultTextStyle(style => style.FontSize(8).FontColor(BrandPrimaryDark));
 
   private static IContainer TableHeaderCell(IContainer container)
     => container
-      .Background(BrandPrimary)
-      .PaddingHorizontal(6)
-      .PaddingVertical(5)
-      .DefaultTextStyle(style => style.FontColor(Colors.White).FontSize(9));
+      .PaddingHorizontal(4)
+      .PaddingTop(2)
+      .PaddingBottom(3)
+      .BorderBottom(1)
+      .BorderColor(BrandPrimary)
+      .DefaultTextStyle(style => style.FontColor(BrandPrimaryDark).FontSize(8));
 
   private static IContainer TableBodyCell(IContainer container)
     => container
       .BorderBottom(1)
       .BorderColor(BrandBorder)
-      .PaddingHorizontal(6)
-      .PaddingVertical(5)
-      .DefaultTextStyle(style => style.FontSize(9));
+      .PaddingHorizontal(4)
+      .PaddingVertical(3)
+      .DefaultTextStyle(style => style.FontSize(8));
 
-  private static void ComposeFieldBlock(IContainer container, FieldEntry field)
+  private static IContainer AllocationLocationCell(IContainer container)
+    => container
+      .Background("#EEF6F4")
+      .BorderTop(1)
+      .BorderBottom(1)
+      .BorderLeft(3)
+      .BorderColor(BrandPrimary)
+      .PaddingHorizontal(6)
+      .PaddingTop(4)
+      .PaddingBottom(3)
+      .DefaultTextStyle(style => style.FontSize(9).SemiBold().FontColor(BrandPrimaryDark));
+
+  private static string BuildMaterialMeta(string materialCode, string vendorCode)
   {
-    container.Element(FieldBlock).Column(column =>
+    var parts = new List<string>(2);
+
+    if (HasRealValue(materialCode))
     {
-      column.Spacing(2);
-      column.Item().Text(field.Label).Bold();
-      column.Item().Text(field.Value)
-        .FontSize(field.Emphasize ? 11 : 10)
-        .SemiBold();
-    });
+      parts.Add(materialCode);
+    }
+
+    if (HasRealValue(vendorCode))
+    {
+      parts.Add($"Prov: {vendorCode}");
+    }
+
+    return string.Join("  |  ", parts);
   }
 
-  private sealed record FieldEntry(string Label, string Value, bool Emphasize = false);
+  private static bool HasRealValue(string? value)
+    => !string.IsNullOrWhiteSpace(value) && !string.Equals(value.Trim(), "-", StringComparison.Ordinal);
 
   private const string FallbackLogoSvg = """
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">

@@ -41,7 +41,7 @@ else
                             <input class="form-control"
                                    placeholder="Cliente"
                                    value="@ClienteSearchText"
-                                   @oninput="OnClienteInputChanged"
+                                   @oninput="OnClienteInputChangedAsync"
                                    @onkeydown="OnClienteInputKeyDownAsync" />
                             @if (ShowClienteResults)
                             {

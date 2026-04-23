@@ -22,6 +22,8 @@ public partial class ConteosFisicosPage : ComponentBase
   private ElementReference MobileCountedQuantityInputRef;
   private ElementReference CountedQuantityInputRef;
   private bool _focusCountedQuantityInputPending;
+  private bool _showPostedSessions;
+  private bool _isSessionListVisibleOnMobile = true;
 
   [Inject] private IPhysicalCountService PhysicalCountService { get; set; } = default!;
   [Inject] private IMaterialService MaterialService { get; set; } = default!;
@@ -42,6 +44,7 @@ public partial class ConteosFisicosPage : ComponentBase
   protected bool IsCreatingSession { get; set; }
   protected bool IsSavingLine { get; set; }
   protected bool IsMutatingSession { get; set; }
+  protected bool IsDeletingSession { get; set; }
   protected bool ShowMaterialImageModal { get; set; }
   protected bool IsLoadingMaterialImage { get; set; }
   protected byte[]? PendingLineAttachmentBytes { get; set; }
@@ -50,10 +53,30 @@ public partial class ConteosFisicosPage : ComponentBase
   protected string? MaterialImageModalTitle { get; set; }
   protected string? MaterialImageModalDataUrl { get; set; }
 
-  protected bool CanSubmit => SelectedSession is not null && string.Equals(SelectedSession.Status, "Draft", StringComparison.OrdinalIgnoreCase);
-  protected bool CanApprove => SelectedSession is not null && string.Equals(SelectedSession.Status, "Submitted", StringComparison.OrdinalIgnoreCase);
-  protected bool CanPost => SelectedSession is not null && string.Equals(SelectedSession.Status, "Approved", StringComparison.OrdinalIgnoreCase);
-  protected bool CanCaptureLine => SelectedSession is not null && SelectedLine is not null && string.Equals(SelectedSession.Status, "Draft", StringComparison.OrdinalIgnoreCase);
+  protected bool ShowPostedSessions
+  {
+    get => _showPostedSessions;
+    set
+    {
+      if (_showPostedSessions == value)
+      {
+        return;
+      }
+
+      _showPostedSessions = value;
+      EnsureSelectedSessionVisible();
+    }
+  }
+
+  protected IReadOnlyList<PhysicalCountSessionSummaryDto> VisibleSessions => Sessions
+    .Where(session => ShouldDisplaySession(session.Status))
+    .ToList();
+
+  protected bool CanSubmit => SelectedSession is not null && IsDraftStatus(SelectedSession.Status);
+  protected bool CanDeleteDraft => SelectedSession is not null && IsDraftStatus(SelectedSession.Status);
+  protected bool CanApprove => SelectedSession is not null && IsSubmittedStatus(SelectedSession.Status);
+  protected bool CanPost => SelectedSession is not null && IsApprovedStatus(SelectedSession.Status);
+  protected bool CanCaptureLine => SelectedSession is not null && SelectedLine is not null && IsDraftStatus(SelectedSession.Status);
   protected string SelectedSessionStatusBadgeClass => GetSessionStatusBadgeClass(SelectedSession?.Status);
   protected string SelectedSessionStatusLabel => GetSessionStatusLabel(SelectedSession?.Status);
   protected string CountedQuantityInput
@@ -87,6 +110,7 @@ public partial class ConteosFisicosPage : ComponentBase
     try
     {
       Sessions = (await PhysicalCountService.GetSessionsAsync()).ToList();
+      SyncSelectedSessionAfterRefresh();
     }
     catch (Exception ex)
     {
@@ -123,7 +147,7 @@ public partial class ConteosFisicosPage : ComponentBase
       await CargarSesionesAsync();
       if (result.EntityId.HasValue)
       {
-        await SeleccionarSesionAsync(result.EntityId.Value);
+        await ReselectSessionIfVisibleAsync(result.EntityId.Value);
       }
     }
     catch (Exception ex)
@@ -140,17 +164,17 @@ public partial class ConteosFisicosPage : ComponentBase
   {
     try
     {
-      SelectedSession = await PhysicalCountService.GetSessionAsync(sessionId);
-      MaterialThumbnailDataUrls = [];
-      CloseMaterialImageModal();
-
-      if (SelectedSession is null)
+      var session = await PhysicalCountService.GetSessionAsync(sessionId);
+      if (session is null || !ShouldDisplaySession(session.Status))
       {
-        SelectedLine = null;
-        _countedQuantityInput = string.Empty;
+        ClearSelectedSession();
         return;
       }
 
+      SelectedSession = session;
+      _isSessionListVisibleOnMobile = false;
+      MaterialThumbnailDataUrls = [];
+      CloseMaterialImageModal();
       await CargarMiniaturasMaterialesAsync();
       SelectedLine = null;
       _countedQuantityInput = string.Empty;
@@ -388,6 +412,54 @@ public partial class ConteosFisicosPage : ComponentBase
   protected async Task EnviarSesionAsync() => await EjecutarSesionAsync(
     () => PhysicalCountService.SubmitSessionAsync(SelectedSession!.Id, CurrentUserName));
 
+  protected async Task CancelarSesionAsync()
+  {
+    if (!CanDeleteDraft || SelectedSession is null || IsMutatingSession)
+    {
+      return;
+    }
+
+    var confirmed = await ConfirmAsync($"¿Deseas cancelar y eliminar la sesión {SelectedSession.SessionCode}? Solo las sesiones en borrador se pueden eliminar.");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    var sessionId = SelectedSession.Id;
+    IsDeletingSession = true;
+    IsMutatingSession = true;
+
+    try
+    {
+      var result = await PhysicalCountService.DeleteDraftSessionAsync(sessionId);
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      ClearSelectedSession();
+      await CargarSesionesAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo cancelar la sesión. {ex.Message}");
+    }
+    finally
+    {
+      IsDeletingSession = false;
+      IsMutatingSession = false;
+    }
+  }
+
+  protected async Task MostrarSesionesAsync()
+  {
+    _isSessionListVisibleOnMobile = true;
+    StateHasChanged();
+    await ScrollToTopAsync();
+  }
+
   protected async Task AprobarSesionAsync() => await EjecutarSesionAsync(
     () => PhysicalCountService.ApproveSessionAsync(SelectedSession!.Id, CurrentUserName));
 
@@ -475,6 +547,7 @@ public partial class ConteosFisicosPage : ComponentBase
     IsMutatingSession = true;
     try
     {
+      var sessionId = SelectedSession.Id;
       var result = await operation();
       if (!result.Success)
       {
@@ -484,7 +557,7 @@ public partial class ConteosFisicosPage : ComponentBase
 
       UiMessages.ShowSuccess(result.Message);
       await CargarSesionesAsync();
-      await SeleccionarSesionAsync(SelectedSession.Id);
+      await ReselectSessionIfVisibleAsync(sessionId);
     }
     catch (Exception ex)
     {
@@ -493,6 +566,18 @@ public partial class ConteosFisicosPage : ComponentBase
     finally
     {
       IsMutatingSession = false;
+    }
+  }
+
+  private async Task<bool> ConfirmAsync(string message)
+  {
+    try
+    {
+      return await Js.InvokeAsync<bool>("confirm", message);
+    }
+    catch
+    {
+      return true;
     }
   }
 
@@ -536,9 +621,26 @@ public partial class ConteosFisicosPage : ComponentBase
   protected string? GetMaterialThumbnailDataUrl(int materialId)
     => TryGetMaterialThumbnailDataUrl(materialId, out var dataUrl) ? dataUrl : null;
 
+  protected string GetSessionsSectionClass()
+    => _isSessionListVisibleOnMobile || SelectedSession is null
+      ? "card shadow-sm"
+      : "card shadow-sm conteos-mobile-list-hidden";
+
   private void QueueCountedQuantityFocus()
   {
     _focusCountedQuantityInputPending = CanCaptureLine;
+  }
+
+  private async Task ReselectSessionIfVisibleAsync(int sessionId)
+  {
+    var session = Sessions.FirstOrDefault(item => item.Id == sessionId);
+    if (session is null || !ShouldDisplaySession(session.Status))
+    {
+      ClearSelectedSession();
+      return;
+    }
+
+    await SeleccionarSesionAsync(sessionId);
   }
 
   private static PhysicalCountLineDto? FindNextUncountedLine(IReadOnlyList<PhysicalCountLineDto> lines, int currentLineId)
@@ -590,8 +692,76 @@ public partial class ConteosFisicosPage : ComponentBase
     _countedQuantityInput = FormatCountedQuantity(LineCapture.CountedQuantity);
   }
 
+  private void SyncSelectedSessionAfterRefresh()
+  {
+    if (SelectedSession is null)
+    {
+      return;
+    }
+
+    var session = Sessions.FirstOrDefault(item => item.Id == SelectedSession.Id);
+    if (session is null || !ShouldDisplaySession(session.Status))
+    {
+      ClearSelectedSession();
+    }
+  }
+
+  private void EnsureSelectedSessionVisible()
+  {
+    if (SelectedSession is null || ShouldDisplaySession(SelectedSession.Status))
+    {
+      return;
+    }
+
+    ClearSelectedSession();
+  }
+
   private static string NormalizeSessionStatus(string? status)
     => string.IsNullOrWhiteSpace(status) ? string.Empty : status.Trim().ToLowerInvariant();
+
+  private static bool IsDraftStatus(string? status)
+    => NormalizeSessionStatus(status) == "draft";
+
+  private static bool IsSubmittedStatus(string? status)
+    => NormalizeSessionStatus(status) == "submitted";
+
+  private static bool IsApprovedStatus(string? status)
+    => NormalizeSessionStatus(status) == "approved";
+
+  private static bool IsPostedStatus(string? status)
+    => NormalizeSessionStatus(status) == "posted";
+
+  private bool ShouldDisplaySession(string? status)
+    => ShowPostedSessions || !IsPostedStatus(status);
+
+  private void ClearSelectedSession()
+  {
+    _isSessionListVisibleOnMobile = true;
+    SelectedSession = null;
+    SelectedLine = null;
+    LineCapture = new();
+    MaterialThumbnailDataUrls = [];
+    PendingLineAttachmentBytes = null;
+    PendingLineAttachmentName = null;
+    PendingLineAttachmentContentType = null;
+    _countedQuantityInput = string.Empty;
+    _focusCountedQuantityInputPending = false;
+    CloseMaterialImageModal();
+  }
+
+  private async Task ScrollToTopAsync()
+  {
+    try
+    {
+      await Js.InvokeVoidAsync("scrollTo", 0, 0);
+    }
+    catch (InvalidOperationException)
+    {
+    }
+    catch (JSDisconnectedException)
+    {
+    }
+  }
 
   private async Task<bool> TryFocusCountedQuantityInputAsync(bool scrollIntoViewOnMobile)
   {

@@ -14,7 +14,7 @@ public interface IListaReservacionesService
   Task<ReservacionCommandResult> DeleteEmptyReservationsAsync(CancellationToken ct = default);
   Task<ReservacionDetailDto?> GetReservacionDetailAsync(int reservationId, CancellationToken ct = default);
 
-  Task<IReadOnlyList<ClienteOptionDto>> GetClientesAsync(string? searchText = null, CancellationToken ct = default);
+  Task<IReadOnlyList<ClienteOptionDto>> GetClientesAsync(string? searchText = null, int maxResults = 5, CancellationToken ct = default);
   Task<ClienteOptionDto?> ResolveClienteAsync(int? clienteId, string? clienteNombre, CancellationToken ct = default);
   Task<ClienteOptionDto> CreateClienteAsync(string clienteNombre, CancellationToken ct = default);
   Task<IReadOnlyList<RoomOptionDto>> GetRoomsForExtrasAsync(CancellationToken ct = default);

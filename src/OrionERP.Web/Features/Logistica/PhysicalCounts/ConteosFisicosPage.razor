@@ -41,7 +41,7 @@
                 </div>
             </section>
 
-            <section class="card shadow-sm">
+            <section class="@GetSessionsSectionClass()">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h2 class="h5 mb-0">Sesiones</h2>
@@ -50,7 +50,15 @@
                         </button>
                     </div>
 
+                    <div class="form-check mb-3">
+                        <InputCheckbox id="conteos-mostrar-contabilizadas" class="form-check-input" @bind-Value="ShowPostedSessions" />
+                        <label class="form-check-label" for="conteos-mostrar-contabilizadas">Mostrar contabilizadas</label>
+                    </div>
+
                     <div class="table-responsive conteos-sessions-scroll">
+                        @{
+                            var visibleSessions = VisibleSessions;
+                        }
                         <table class="table table-sm table-hover align-middle conteos-sessions-table">
                             <thead class="table-light">
                                 <tr>
@@ -60,15 +68,15 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @if (Sessions.Count == 0)
+                                @if (visibleSessions.Count == 0)
                                 {
                                     <tr>
-                                        <td colspan="3" class="text-center text-muted py-3">Aún no hay sesiones.</td>
+                                        <td colspan="3" class="text-center text-muted py-3">@(Sessions.Count == 0 ? "Aún no hay sesiones." : "No hay sesiones para el filtro actual.")</td>
                                     </tr>
                                 }
                                 else
                                 {
-                                    @foreach (var item in Sessions)
+                                    @foreach (var item in visibleSessions)
                                     {
                                         <tr class="@GetSessionRowClass(item)" style="cursor: pointer;" @onclick="() => SeleccionarSesionAsync(item.Id)">
                                             <td data-label="Sesión">
@@ -125,6 +133,15 @@
                                 }
                             </div>
                             <div class="d-flex flex-wrap gap-2 conteos-session-actions">
+                                <button class="btn btn-outline-secondary conteos-session-action d-md-none" type="button" @onclick="MostrarSesionesAsync">
+                                    Cambiar sesión
+                                </button>
+                                @if (CanDeleteDraft)
+                                {
+                                    <button class="btn btn-outline-danger conteos-session-action" type="button" @onclick="CancelarSesionAsync" disabled="@IsMutatingSession">
+                                        @(IsDeletingSession ? "Eliminando..." : "Cancelar borrador")
+                                    </button>
+                                }
                                 <button class="btn btn-outline-primary conteos-session-action" type="button" @onclick="EnviarSesionAsync" disabled="@(!CanSubmit || IsMutatingSession)">Enviar</button>
                                 <button class="btn btn-outline-success conteos-session-action" type="button" @onclick="AprobarSesionAsync" disabled="@(!CanApprove || IsMutatingSession)">Aprobar</button>
                                 <button class="btn btn-success conteos-session-action" type="button" @onclick="ContabilizarSesionAsync" disabled="@(!CanPost || IsMutatingSession)">Contabilizar</button>

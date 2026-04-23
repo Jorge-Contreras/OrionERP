@@ -369,7 +369,13 @@ VALUES
       }
 
       var extrasSubtotal = decimal.Round(createdExtras.Sum(item => item.LinePrice), 2, MidpointRounding.ToEven);
-      var totals = ReservacionTotalsCalculator.Calculate(checkIn, checkOut, taxable, suiteSubtotal, extrasSubtotal, 0m);
+      var totals = ReservacionTotalsCalculator.Calculate(
+        checkIn,
+        checkOut,
+        taxable,
+        calendarRows.Select(row => row.Precio),
+        createdExtras.Select(item => item.LinePrice),
+        0m);
 
       var totalAffected = await conn.ExecuteAsync(
         new CommandDefinition(
@@ -618,15 +624,17 @@ ORDER BY ra.ID DESC;";
     return detail;
   }
 
-  public async Task<IReadOnlyList<ClienteOptionDto>> GetClientesAsync(string? searchText = null, CancellationToken ct = default)
+  public async Task<IReadOnlyList<ClienteOptionDto>> GetClientesAsync(string? searchText = null, int maxResults = 5, CancellationToken ct = default)
   {
     const string sql = @"
-SELECT TOP (300)
+SELECT TOP (@MaxResults)
     c.ID AS Id,
     c.Nombre AS Nombre
 FROM dbo.Clientes c
 WHERE (@Search IS NULL OR c.Nombre LIKE @Search)
 ORDER BY c.Nombre;";
+
+    var take = maxResults <= 0 ? 5 : maxResults;
 
     await using var conn = new SqlConnection(_cs);
     var rows = await conn.QueryAsync<ClienteOptionDto>(
@@ -634,6 +642,7 @@ ORDER BY c.Nombre;";
         sql,
         new
         {
+          MaxResults = take,
           Search = string.IsNullOrWhiteSpace(searchText) ? null : $"%{searchText.Trim()}%"
         },
         cancellationToken: ct));
@@ -1582,8 +1591,8 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
       detail.CheckIn,
       detail.CheckOut,
       detail.Taxable,
-      suites.Sum(s => s.Precio),
-      extras.Sum(e => e.DiscountedPrice),
+      suites.Select(s => s.Precio),
+      extras.Select(e => e.DiscountedPrice),
       pagos.Sum(p => p.Monto));
 
     detail.TotalSuites = totals.TotalSuites;

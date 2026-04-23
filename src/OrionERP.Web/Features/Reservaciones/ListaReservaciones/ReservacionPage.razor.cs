@@ -19,6 +19,8 @@ namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 [Authorize(Roles = "Administrador,SatOperator")]
 public partial class ReservacionPage : ComponentBase
 {
+  private const int ClienteSuggestionLimit = 5;
+
   private sealed record ReservationFormState(
     int? ClienteId,
     string ClienteSearchText,
@@ -374,7 +376,7 @@ public partial class ReservacionPage : ComponentBase
     await RefreshSuitesAsync();
   }
 
-  protected void OnClienteInputChanged(ChangeEventArgs args)
+  protected async Task OnClienteInputChangedAsync(ChangeEventArgs args)
   {
     ClienteSearchText = args.Value?.ToString() ?? string.Empty;
     if (!string.Equals(NormalizeClienteNombre(ClienteSearchText), NormalizeClienteNombre(SelectedClienteNombre), StringComparison.OrdinalIgnoreCase))
@@ -382,7 +384,8 @@ public partial class ReservacionPage : ComponentBase
       ClienteId = null;
       SelectedClienteNombre = string.Empty;
     }
-    ShowClienteResults = false;
+
+    await RefreshClienteMatchesAsync(allowEmptySearch: false);
   }
 
   protected async Task OnClienteInputKeyDownAsync(KeyboardEventArgs args)
@@ -392,8 +395,7 @@ public partial class ReservacionPage : ComponentBase
       return;
     }
 
-    Clientes = await LoadClientesAsync(ClienteSearchText);
-    ShowClienteResults = true;
+    await RefreshClienteMatchesAsync(allowEmptySearch: true);
   }
 
   protected async Task SelectClienteAsync(ClienteOptionDto cliente)
@@ -952,8 +954,8 @@ public partial class ReservacionPage : ComponentBase
       CheckIn,
       CheckOut,
       Taxable,
-      Suites.Sum(s => s.Precio),
-      Extras.Sum(e => e.DiscountedPrice),
+      Suites.Select(s => s.Precio),
+      Extras.Select(e => e.DiscountedPrice),
       Pagos.Sum(p => p.Monto));
 
     TotalSuites = totals.TotalSuites;
@@ -1017,9 +1019,23 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
+  private async Task RefreshClienteMatchesAsync(bool allowEmptySearch)
+  {
+    var searchText = NormalizeClienteNombre(ClienteSearchText);
+    if (!allowEmptySearch && string.IsNullOrWhiteSpace(searchText))
+    {
+      ShowClienteResults = false;
+      Clientes.Clear();
+      return;
+    }
+
+    Clientes = await LoadClientesAsync(searchText);
+    ShowClienteResults = allowEmptySearch || !string.IsNullOrWhiteSpace(searchText);
+  }
+
   private async Task<List<ClienteOptionDto>> LoadClientesAsync(string? searchText)
   {
-    var clientes = (await ReservacionesService.GetClientesAsync(searchText)).ToList();
+    var clientes = (await ReservacionesService.GetClientesAsync(searchText, ClienteSuggestionLimit)).ToList();
 
     if (ClienteId.HasValue && clientes.All(c => c.Id != ClienteId.Value))
     {

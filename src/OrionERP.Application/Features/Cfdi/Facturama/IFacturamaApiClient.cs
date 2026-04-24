@@ -13,7 +13,12 @@ public sealed record class FacturamaDocumentContent(string Extension, byte[] Byt
 
 public interface IFacturamaApiClient
 {
+  Task<string> CreateIssuedCfdiAsync(FacturamaIssuedCfdiRequest request, CancellationToken ct = default);
   Task<string> CreateIssuedCfdiAsync(string jsonPayload, CancellationToken ct = default);
+  Task<FacturamaReceiverValidationResult> ValidateReceiverAsync(
+      FacturamaReceiverValidationRequest request,
+      CancellationToken ct = default);
+  Task<FacturamaTaxEntity> GetTaxEntityAsync(CancellationToken ct = default);
   Task<FacturamaDocumentContent> DownloadIssuedDocumentAsync(
       string cfdiId,
       FacturamaIssuedDocumentType documentType,

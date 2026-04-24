@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.Extensions.Configuration;
+using OrionERP.Application.Features.Cfdi.Facturama;
 using OrionERP.Infrastructure.Features.Cfdi.Facturama;
 
 namespace OrionERP.UnitTests.Cfdi;
@@ -65,6 +66,71 @@ public class FacturamaApiClientTests
   }
 
   [Fact]
+  public async Task CreateIssuedCfdiAsync_SerializesTypedPayload()
+  {
+    var handler = new RecordingHttpMessageHandler();
+    var client = CreateClient(
+        handler,
+        new Dictionary<string, string?>
+        {
+          ["Facturama:BaseUrl"] = "https://apisandbox.facturama.mx"
+        });
+
+    await client.CreateIssuedCfdiAsync(new FacturamaIssuedCfdiRequest
+    {
+      Header = new FacturamaIssuedCfdiHeader
+      {
+        Folio = "123",
+        Date = "2026-04-23T18:00",
+        ExpeditionPlace = "90204",
+        PaymentForm = "03",
+        PaymentMethod = "PUE",
+        TaxZipCode = "90204"
+      },
+      Receiver = new FacturamaReceiver
+      {
+        Rfc = "XAXX010101000",
+        Name = "PUBLICO EN GENERAL",
+        CfdiUse = "S01",
+        FiscalRegime = "616",
+        TaxZipCode = "90204"
+      },
+      Items = new[]
+      {
+        new FacturamaIssuedCfdiItem
+        {
+          ProductCode = "80131501",
+          Description = "UNIDAD AL PUBLICO EN GENERAL",
+          Unit = "Unidad de servicio",
+          UnitCode = "E48",
+          UnitPrice = 100m,
+          Quantity = 1m,
+          Subtotal = 100m,
+          Discount = 0m,
+          TaxObject = "02",
+          Taxes = new[]
+          {
+            new FacturamaIssuedCfdiTax
+            {
+              Name = "IVA",
+              Rate = 0.16m,
+              Total = 16m,
+              Base = 100m,
+              IsRetention = false
+            }
+          },
+          Total = 116m
+        }
+      }
+    });
+
+    Assert.Contains("\"Folio\":\"123\"", handler.LastRequestBody, StringComparison.Ordinal);
+    Assert.DoesNotContain("\"Header\"", handler.LastRequestBody, StringComparison.Ordinal);
+    Assert.Contains("\"Receiver\"", handler.LastRequestBody, StringComparison.Ordinal);
+    Assert.Contains("\"Taxes\"", handler.LastRequestBody, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public async Task CreateIssuedCfdiAsync_UsesProductionDefaults_WhenNoSandboxSignalExists()
   {
     var handler = new RecordingHttpMessageHandler();
@@ -118,6 +184,56 @@ public class FacturamaApiClientTests
     Assert.Contains("Facturama:Password", ex.Message, StringComparison.Ordinal);
   }
 
+  [Fact]
+  public async Task ValidateReceiverAsync_CallsValidationEndpoint()
+  {
+    var handler = new RecordingHttpMessageHandler(
+        HttpStatusCode.OK,
+        """{"ExistRfc":true,"MatchName":true,"MatchZipCode":true,"MatchFiscalRegime":true,"IsValid":true}""");
+    var client = CreateClient(
+        handler,
+        new Dictionary<string, string?>
+        {
+          ["Facturama:BaseUrl"] = "https://apisandbox.facturama.mx"
+        });
+
+    var result = await client.ValidateReceiverAsync(new FacturamaReceiverValidationRequest
+    {
+      Rfc = "AAA010101AAA",
+      Name = "CLIENTE DEMO",
+      CfdiUse = "G03",
+      FiscalRegime = "601",
+      TaxZipCode = "90204"
+    });
+
+    Assert.True(result.IsValid);
+    Assert.Equal(new Uri("https://apisandbox.facturama.mx/customers/validate"), handler.LastRequest?.RequestUri);
+    Assert.Equal(HttpMethod.Post, handler.LastRequest?.Method);
+    Assert.Contains("\"ZipCode\":\"90204\"", handler.LastRequestBody, StringComparison.Ordinal);
+    Assert.DoesNotContain("\"TaxZipCode\"", handler.LastRequestBody, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public async Task GetTaxEntityAsync_CallsTaxEntityEndpoint()
+  {
+    var handler = new RecordingHttpMessageHandler(
+        HttpStatusCode.OK,
+        """{"Rfc":"OHM191112Q26","TaxAddress":{"ZipCode":"90204"}}""");
+    var client = CreateClient(
+        handler,
+        new Dictionary<string, string?>
+        {
+          ["Facturama:BaseUrl"] = "https://apisandbox.facturama.mx"
+        });
+
+    var result = await client.GetTaxEntityAsync();
+
+    Assert.Equal("OHM191112Q26", result.Rfc);
+    Assert.Equal("90204", result.TaxAddress?.ZipCode);
+    Assert.Equal(new Uri("https://apisandbox.facturama.mx/api/TaxEntity"), handler.LastRequest?.RequestUri);
+    Assert.Equal(HttpMethod.Get, handler.LastRequest?.Method);
+  }
+
   private static FacturamaApiClient CreateClient(HttpMessageHandler handler, IDictionary<string, string?> values)
   {
     var configuration = new ConfigurationBuilder()
@@ -145,15 +261,19 @@ public class FacturamaApiClientTests
     }
 
     public HttpRequestMessage? LastRequest { get; private set; }
+    public string LastRequestBody { get; private set; } = string.Empty;
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
       LastRequest = request;
+      LastRequestBody = request.Content is null
+        ? string.Empty
+        : await request.Content.ReadAsStringAsync(cancellationToken);
 
-      return Task.FromResult(new HttpResponseMessage(_statusCode)
+      return new HttpResponseMessage(_statusCode)
       {
         Content = new StringContent(_body, Encoding.UTF8, "application/json")
-      });
+      };
     }
   }
 }

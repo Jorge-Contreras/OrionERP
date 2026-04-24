@@ -855,6 +855,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
           {
             TransaccionId = Header.Id,
             Monto = Header.Monto,
+            FormaPago = Header.FormaPago,
             GlobalMes = selectedMonth.Code,
             GlobalAnio = SelectedPublicoYear
           });

@@ -12,25 +12,27 @@ using Microsoft.Extensions.Logging;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Cfdi.Facturama;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
+using OrionERP.Application.Features.Rfcs.Contracts;
+using OrionERP.Infrastructure.Features.Cfdi.Facturama;
 
 namespace OrionERP.Infrastructure.Features.Contabilidad.Transacciones.Services;
 
 public sealed class TransaccionService : ITransaccionService
 {
-  private const int DefaultPublicoTemplateComprobanteId = 21539;
-  private const string DefaultPublicoResetMes = "01";
-  private const int DefaultPublicoResetAnio = 1982;
-
   private readonly IConfiguration _cfg;
   private readonly string _cs;
   private readonly IDbStoredProcService _storedProcService;
   private readonly IFacturamaApiClient _facturamaApiClient;
+  private readonly ISatRfcProfileRepository _satRfcProfileRepository;
+  private readonly ICfdiStampingService _cfdiStampingService;
   private readonly ILogger<TransaccionService> _logger;
 
   public TransaccionService(
       IConfiguration cfg,
       IDbStoredProcService storedProcService,
       IFacturamaApiClient facturamaApiClient,
+      ISatRfcProfileRepository satRfcProfileRepository,
+      ICfdiStampingService cfdiStampingService,
       ILogger<TransaccionService> logger)
   {
     _cfg = cfg ?? throw new ArgumentNullException(nameof(cfg));
@@ -38,6 +40,8 @@ public sealed class TransaccionService : ITransaccionService
          ?? throw new InvalidOperationException("Missing connection string: OrionDb");
     _storedProcService = storedProcService ?? throw new ArgumentNullException(nameof(storedProcService));
     _facturamaApiClient = facturamaApiClient ?? throw new ArgumentNullException(nameof(facturamaApiClient));
+    _satRfcProfileRepository = satRfcProfileRepository ?? throw new ArgumentNullException(nameof(satRfcProfileRepository));
+    _cfdiStampingService = cfdiStampingService ?? throw new ArgumentNullException(nameof(cfdiStampingService));
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
   }
 
@@ -1257,90 +1261,48 @@ WHERE ID = @TransaccionId;";
     if (request.GlobalAnio < 2000 || request.GlobalAnio > 2100)
       return TransaccionCommandResult.Fail("El año global seleccionado no es válido.");
 
-    var templateComprobanteId = GetPublicoTemplateComprobanteId();
-    var templatePrepared = false;
-    string? facturamaCfdiId = null;
-
     try
     {
-      string jsonPayload;
-      await using (var conn = new SqlConnection(_cs))
+      var header = await GetHeaderAsync(request.TransaccionId, ct);
+      if (header is null)
       {
-        await conn.OpenAsync(ct);
-        await conn.ExecuteAsync(
-            new CommandDefinition(
-                "dbo.Create_CFDI_Publico",
-                new
-                {
-                  Monto = request.Monto,
-                  GlobalMes = mes,
-                  GlobalAnio = request.GlobalAnio.ToString("0000", CultureInfo.InvariantCulture),
-                  Folio = request.TransaccionId.ToString(CultureInfo.InvariantCulture)
-                },
-                commandType: CommandType.StoredProcedure,
-                cancellationToken: ct));
-
-        templatePrepared = true;
-
-        jsonPayload = await conn.QueryFirstOrDefaultAsync<string>(
-            new CommandDefinition(
-                "dbo.GetComprobanteJson",
-                new { Comprobante_ID = templateComprobanteId },
-                commandType: CommandType.StoredProcedure,
-                cancellationToken: ct)) ?? string.Empty;
+        return TransaccionCommandResult.Fail("No se encontró la póliza seleccionada.");
       }
 
-      if (string.IsNullOrWhiteSpace(jsonPayload))
-        return TransaccionCommandResult.Fail("No se pudo generar el JSON del CFDI público.");
+      if (string.IsNullOrWhiteSpace(header.Rfc))
+      {
+        return TransaccionCommandResult.Fail("La póliza seleccionada no tiene RFC emisor configurado.");
+      }
 
-      facturamaCfdiId = await _facturamaApiClient.CreateIssuedCfdiAsync(jsonPayload, ct);
+      var expeditionZipCode = await ResolveIssuerTaxZipCodeAsync(header.Rfc, ct);
+      var payload = BuildPublicoPayload(request, mes, expeditionZipCode);
 
-      var xmlDocument = await _facturamaApiClient.DownloadIssuedDocumentAsync(
-          facturamaCfdiId,
-          FacturamaIssuedDocumentType.Xml,
+      await _cfdiStampingService.StampIssuedCfdiAsync(
+          new CfdiStampRequest
+          {
+            TransaccionId = request.TransaccionId,
+            AttachmentLabel = $"POLIZA {request.TransaccionId}",
+            Payload = payload
+          },
           ct);
-      var pdfDocument = await _facturamaApiClient.DownloadIssuedDocumentAsync(
-          facturamaCfdiId,
-          FacturamaIssuedDocumentType.Pdf,
-          ct);
-
-      await using var writeConn = new SqlConnection(_cs);
-      await writeConn.OpenAsync(ct);
-      await using var tx = (SqlTransaction)await writeConn.BeginTransactionAsync(ct);
-
-      try
-      {
-        var xmlAttachmentId = await InsertAttachmentAsync(
-            writeConn,
-            tx,
-            request.TransaccionId,
-            facturamaCfdiId,
-            xmlDocument.Extension,
-            $"XML POLIZA {request.TransaccionId}",
-            xmlDocument.Bytes,
-            ct);
-
-        await ProcessSatXmlV2Async(writeConn, tx, request.TransaccionId, xmlAttachmentId, ct);
-
-        await InsertAttachmentAsync(
-            writeConn,
-            tx,
-            request.TransaccionId,
-            facturamaCfdiId,
-            pdfDocument.Extension,
-            $"PDF POLIZA {request.TransaccionId}",
-            pdfDocument.Bytes,
-            ct);
-
-        await tx.CommitAsync(ct);
-      }
-      catch
-      {
-        await tx.RollbackAsync(ct);
-        throw;
-      }
 
       return TransaccionCommandResult.Ok("La factura al público en general se generó, timbró y procesó correctamente.");
+    }
+    catch (CfdiStampingException ex)
+    {
+      _logger.LogError(
+          ex,
+          "Failed to stamp public CFDI for transaction {TransaccionId}",
+          request.TransaccionId);
+
+      if (!string.IsNullOrWhiteSpace(ex.FacturamaCfdiId))
+      {
+        return TransaccionCommandResult.Fail(
+            $"El CFDI se timbró en Facturama ({ex.FacturamaCfdiId}), pero no se pudo completar el registro local: {ex.InnerException?.Message ?? ex.Message}");
+      }
+
+      return TransaccionCommandResult.Fail(
+          $"No se pudo generar el CFDI público: {ex.InnerException?.Message ?? ex.Message}");
     }
     catch (Exception ex)
     {
@@ -1349,30 +1311,7 @@ WHERE ID = @TransaccionId;";
           "Failed to stamp public CFDI for transaction {TransaccionId}",
           request.TransaccionId);
 
-      if (!string.IsNullOrWhiteSpace(facturamaCfdiId))
-      {
-        return TransaccionCommandResult.Fail(
-            $"El CFDI se timbró en Facturama ({facturamaCfdiId}), pero no se pudo completar el registro local: {ex.Message}");
-      }
-
       return TransaccionCommandResult.Fail($"No se pudo generar el CFDI público: {ex.Message}");
-    }
-    finally
-    {
-      if (templatePrepared)
-      {
-        try
-        {
-          await ResetPublicoTemplateAsync(templateComprobanteId, ct);
-        }
-        catch (Exception ex)
-        {
-          _logger.LogWarning(
-              ex,
-              "Failed to reset public CFDI template comprobante {TemplateComprobanteId}",
-              templateComprobanteId);
-        }
-      }
     }
   }
 
@@ -2068,45 +2007,6 @@ WHERE rc.TransaccionID = @TransaccionId;";
     };
   }
 
-  private int GetPublicoTemplateComprobanteId()
-  {
-    var configured = _cfg["Facturama:PublicoTemplateComprobanteId"];
-    return int.TryParse(configured, out var templateId) && templateId > 0
-        ? templateId
-        : DefaultPublicoTemplateComprobanteId;
-  }
-
-  private async Task ResetPublicoTemplateAsync(int templateComprobanteId, CancellationToken ct)
-  {
-    var resetMes = _cfg["Facturama:PublicoTemplateResetMes"];
-    if (string.IsNullOrWhiteSpace(resetMes))
-    {
-      resetMes = DefaultPublicoResetMes;
-    }
-
-    var configuredResetAnio = _cfg["Facturama:PublicoTemplateResetAnio"];
-    var resetAnio = int.TryParse(configuredResetAnio, out var parsedResetAnio)
-        ? parsedResetAnio
-        : DefaultPublicoResetAnio;
-
-    const string sql = @"UPDATE cfdi.InformacionGlobal
-SET Meses = @Meses,
-    Anio = @Anio
-WHERE Comprobante_ID = @ComprobanteId;";
-
-    using var conn = new SqlConnection(_cs);
-    await conn.ExecuteAsync(
-        new CommandDefinition(
-            sql,
-            new
-            {
-              ComprobanteId = templateComprobanteId,
-              Meses = resetMes,
-              Anio = resetAnio
-            },
-            cancellationToken: ct));
-  }
-
   private static string? NormalizeGlobalMonth(string? value)
   {
     if (string.IsNullOrWhiteSpace(value))
@@ -2120,4 +2020,107 @@ WHERE Comprobante_ID = @ComprobanteId;";
         ? month.ToString("00", CultureInfo.InvariantCulture)
         : null;
   }
+
+  private async Task<string> ResolveIssuerTaxZipCodeAsync(string issuerRfc, CancellationToken ct)
+  {
+    var profile = await _satRfcProfileRepository.GetAsync(issuerRfc);
+    var zipCode = NormalizePostalCode(profile?.CodigoPostal);
+    if (!string.IsNullOrWhiteSpace(zipCode))
+    {
+      return zipCode;
+    }
+
+    var taxEntity = await _facturamaApiClient.GetTaxEntityAsync(ct);
+    zipCode = NormalizePostalCode(taxEntity.IssuedIn?.ZipCode)
+        ?? NormalizePostalCode(taxEntity.TaxAddress?.ZipCode);
+
+    if (!string.IsNullOrWhiteSpace(zipCode))
+    {
+      return zipCode;
+    }
+
+    throw new InvalidOperationException($"No se pudo resolver el codigo postal de expedicion para el RFC {issuerRfc}.");
+  }
+
+  private FacturamaIssuedCfdiRequest BuildPublicoPayload(
+      TransaccionTimbrarPublicoRequest request,
+      string globalMonth,
+      string expeditionZipCode)
+  {
+    var subtotal = RoundCurrency(request.Monto / 1.16m);
+    var tax = RoundCurrency(subtotal * 0.16m);
+    var total = RoundCurrency(subtotal + tax);
+    var receiverName = _cfg["Facturama:PublicoGeneral:ReceiverName"];
+    if (string.IsNullOrWhiteSpace(receiverName))
+    {
+      receiverName = "4537778 - PUBLICO EN GENERAL";
+    }
+
+    var paymentForm = string.IsNullOrWhiteSpace(request.FormaPago)
+        ? "03"
+        : request.FormaPago.Trim();
+
+    return new FacturamaIssuedCfdiRequest
+    {
+      Header = new FacturamaIssuedCfdiHeader
+      {
+        Folio = request.TransaccionId.ToString(CultureInfo.InvariantCulture),
+        Date = DateTime.Now.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture),
+        Currency = "MXN",
+        ExpeditionPlace = expeditionZipCode,
+        CfdiType = "I",
+        PaymentForm = paymentForm,
+        PaymentMethod = "PUE",
+        TaxZipCode = expeditionZipCode
+      },
+      GlobalInformation = new FacturamaGlobalInformation
+      {
+        Periodicity = "01",
+        Months = globalMonth,
+        Year = request.GlobalAnio.ToString("0000", CultureInfo.InvariantCulture)
+      },
+      Receiver = new FacturamaReceiver
+      {
+        Rfc = "XAXX010101000",
+        Name = receiverName,
+        CfdiUse = "S01",
+        FiscalRegime = "616",
+        TaxZipCode = expeditionZipCode
+      },
+      Items = new[]
+      {
+        new FacturamaIssuedCfdiItem
+        {
+          ProductCode = "80131501",
+          IdentificationNumber = "PUB",
+          Description = "UNIDAD AL PUBLICO EN GENERAL",
+          Unit = "Unidad de servicio",
+          UnitCode = "E48",
+          UnitPrice = subtotal,
+          Quantity = 1m,
+          Subtotal = subtotal,
+          Discount = 0m,
+          TaxObject = "02",
+          Taxes = new[]
+          {
+            new FacturamaIssuedCfdiTax
+            {
+              Name = "IVA",
+              Rate = 0.16m,
+              Total = tax,
+              Base = subtotal,
+              IsRetention = false
+            }
+          },
+          Total = total
+        }
+      }
+    };
+  }
+
+  private static decimal RoundCurrency(decimal value)
+    => decimal.Round(value, 2, MidpointRounding.ToEven);
+
+  private static string? NormalizePostalCode(string? value)
+    => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

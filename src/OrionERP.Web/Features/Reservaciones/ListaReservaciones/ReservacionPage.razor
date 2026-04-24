@@ -28,6 +28,11 @@ else
                 @(IsGeneratingPdf ? "Generando PDF..." : "PDF")
             </button>
             <button class="btn btn-outline-info btn-sm" @onclick="CrearPolizaAsync" disabled="@(IsSaving || IsWorking || IsCreatingPoliza)">Crear Póliza</button>
+            <button class="btn btn-outline-primary btn-sm"
+                    @onclick="ToggleCfdiPanelAsync"
+                    disabled="@(IsSaving || IsWorking || IsLoadingCfdiContext || IsCreatingCfdi || HasExistingReservationCfdis)">
+                @(IsLoadingCfdiContext ? "Preparando CFDI..." : HasExistingReservationCfdis ? "CFDI ligado" : ShowCfdiPanel ? "Cerrar CFDI" : "Crear CFDI")
+            </button>
         </div>
 
     <div class="row g-3 mb-3">
@@ -120,6 +125,434 @@ else
             </div>
         </div>
     </div>
+
+    @if (HasExistingReservationCfdis)
+    {
+        <div class="alert alert-info mb-3">
+            Esta reservación ya tiene CFDIs ligados. Se muestran abajo para evitar timbrados duplicados.
+        </div>
+
+        <div class="card mb-3 reservacion-section reservacion-section-cfdi">
+            <div class="card-header reservacion-section-title d-flex align-items-center gap-2">
+                <span>CFDIs ligados</span>
+                <span class="badge text-bg-secondary">@CfdiContext!.ExistingDocuments.Count</span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive reservacion-table-wrap">
+                    <table class="table table-sm table-bordered mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Póliza</th>
+                                <th>Fecha</th>
+                                <th>UUID</th>
+                                <th>Receptor</th>
+                                <th class="text-end">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var document in CfdiContext.ExistingDocuments)
+                            {
+                                <tr>
+                                    <td>@document.TransaccionId</td>
+                                    <td>@document.Fecha.ToShortDateString()</td>
+                                    <td class="text-wrap">@document.Uuid</td>
+                                    <td class="text-wrap">@document.ReceptorNombre (@document.ReceptorRfc)</td>
+                                    <td class="text-end">@FormatCurrency(document.Total)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (ShouldShowCfdiCreationPanel)
+    {
+        <div class="card mb-3 reservacion-section reservacion-section-cfdi">
+            <div class="card-header reservacion-section-title d-flex flex-wrap align-items-center gap-2">
+                <span>CFDI</span>
+                @if (CfdiContext is not null)
+                {
+                    <span class="badge text-bg-secondary">Total @FormatCurrency(CfdiContext.TotalReservacion)</span>
+                    @if (CfdiContext.AutoSelectedTransaccionId.HasValue)
+                    {
+                        <span class="badge text-bg-success">Póliza sugerida @CfdiContext.AutoSelectedTransaccionId</span>
+                    }
+                }
+                <button class="btn btn-sm btn-outline-secondary ms-auto"
+                        @onclick="ReloadCfdiContextAsync"
+                        disabled="@(IsLoadingCfdiContext || IsCreatingCfdi)">
+                    Recargar
+                </button>
+            </div>
+            <div class="card-body">
+                @if (IsLoadingCfdiContext)
+                {
+                    <p class="mb-0 text-muted">Preparando contexto del CFDI…</p>
+                }
+                else if (CfdiContext is null)
+                {
+                    <div class="alert alert-warning mb-0">@CfdiErrorMessage</div>
+                }
+                else
+                {
+                    @if (!string.IsNullOrWhiteSpace(CfdiErrorMessage))
+                    {
+                        <div class="alert alert-danger">@CfdiErrorMessage</div>
+                    }
+
+                    @if (CfdiContext.HasUnsupportedIsh)
+                    {
+                        <div class="alert alert-warning">
+                            Esta reservación incluye ISH. El flujo actual de CFDI no timbra automáticamente reservaciones con ese impuesto.
+                        </div>
+                    }
+
+                    <div class="row g-3">
+                        <div class="col-12 col-xl-4">
+                            <div class="reservacion-cfdi-panel">
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                    <h6 class="mb-0">Receptor</h6>
+                                    @if (CfdiReceiver.BusinessPartnerId.HasValue)
+                                    {
+                                        <span class="badge text-bg-success">Cliente guardado</span>
+                                    }
+                                </div>
+
+                                <div class="reservacion-lookup mb-3">
+                                    <label class="form-label">Buscar RFC o razón social</label>
+                                    <input class="form-control"
+                                           placeholder="RFC, razón social o email"
+                                           value="@CfdiCustomerSearchText"
+                                           @oninput="OnCfdiCustomerInputChangedAsync"
+                                           @onkeydown="OnCfdiCustomerInputKeyDownAsync" />
+                                    @if (ShowCfdiCustomerResults)
+                                    {
+                                        <div class="list-group position-absolute w-100 shadow-sm reservacion-lookup-results">
+                                            @if (IsSearchingCfdiCustomers)
+                                            {
+                                                <div class="list-group-item text-muted small">Buscando…</div>
+                                            }
+                                            else if (CfdiCustomerSuggestions.Count == 0)
+                                            {
+                                                <div class="list-group-item text-muted small">Sin resultados.</div>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var suggestion in CfdiCustomerSuggestions)
+                                                {
+                                                    <button type="button"
+                                                            class="list-group-item list-group-item-action"
+                                                            @onclick="() => SelectCfdiCustomer(suggestion)">
+                                                        <div class="fw-semibold">@suggestion.DisplayName</div>
+                                                        <div class="small text-muted">
+                                                            @suggestion.Rfc | @suggestion.FiscalRegime | @suggestion.CfdiUse
+                                                        </div>
+                                                    </button>
+                                                }
+                                            }
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="row g-2">
+                                    <div class="col-12">
+                                        <label class="form-label">Nombre corto</label>
+                                        <input class="form-control" @bind="CfdiReceiver.DisplayName" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">RFC</label>
+                                        <input class="form-control" @bind="CfdiReceiver.Rfc" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">CP Fiscal</label>
+                                        <input class="form-control" @bind="CfdiReceiver.TaxZipCode" />
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">Razón social</label>
+                                        <input class="form-control" @bind="CfdiReceiver.FiscalName" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Régimen fiscal</label>
+                                        <input class="form-control" @bind="CfdiReceiver.FiscalRegime" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Uso CFDI</label>
+                                        <select class="form-select" @bind="CfdiReceiver.CfdiUse">
+                                            <option value="">Selecciona un uso</option>
+                                            @foreach (var uso in CfdiUsoCfdiOptions)
+                                            {
+                                                <option value="@uso.Id">@($"{uso.Id} - {uso.Display}")</option>
+                                            }
+                                        </select>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">Email</label>
+                                        <input class="form-control" @bind="CfdiReceiver.Email" />
+                                    </div>
+                                </div>
+
+                                <div class="d-flex flex-wrap gap-2 align-items-center mt-3">
+                                    <div class="form-check mb-0">
+                                        <input class="form-check-input" type="checkbox" id="persistCfdiCustomerCheck" @bind="PersistCfdiCustomer" />
+                                        <label class="form-check-label" for="persistCfdiCustomerCheck">Guardar cliente fiscal localmente</label>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-secondary ms-auto"
+                                            @onclick="SaveCfdiCustomerAsync"
+                                            disabled="@IsSavingCfdiCustomer">
+                                        @(IsSavingCfdiCustomer ? "Guardando..." : (CfdiReceiver.BusinessPartnerId.HasValue ? "Actualizar cliente fiscal" : "Guardar cliente fiscal"))
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="reservacion-cfdi-panel mt-3">
+                                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                                    <h6 class="mb-0">Validación Facturama</h6>
+                                    <span class="badge @GetCfdiReceiverValidationStatusBadgeClass()">
+                                        @GetCfdiReceiverValidationStatusLabel()
+                                    </span>
+                                    @if (CfdiReceiverValidation is not null)
+                                    {
+                                        <span class="badge text-bg-secondary">@CfdiReceiverValidation.EnvironmentLabel</span>
+                                    }
+                                    <button class="btn btn-sm btn-outline-primary ms-auto"
+                                            @onclick="ValidateCfdiReceiverAsync"
+                                            disabled="@(!CanValidateCfdiReceiver || IsValidatingCfdiReceiver || IsCreatingCfdi)">
+                                        @(IsValidatingCfdiReceiver ? "Validando..." : "Validar receptor")
+                                    </button>
+                                </div>
+
+                                @if (CfdiReceiverValidation is null)
+                                {
+                                    <div class="small text-muted">
+                                        Valida RFC, razón social, CP fiscal y régimen antes de timbrar.
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="alert @GetCfdiReceiverValidationAlertClass() py-2 px-3 mb-2">
+                                        <div>@CfdiReceiverValidation.Message</div>
+                                        @if (IsCfdiReceiverValidationStale)
+                                        {
+                                            <div class="small mt-1">Hay cambios pendientes en el receptor. Vuelve a validar antes de timbrar.</div>
+                                        }
+                                        else if (CfdiReceiverValidation.IsSandbox && !CfdiReceiverValidation.IsValid)
+                                        {
+                                            <div class="small mt-1">En sandbox la validación es informativa y no bloquea el timbrado.</div>
+                                        }
+                                    </div>
+
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-borderless mb-0">
+                                            <tbody>
+                                                <tr>
+                                                    <td>RFC localizado</td>
+                                                    <td class="text-end">
+                                                        <span class="badge @GetCfdiReceiverFlagBadgeClass(CfdiReceiverValidation.ExistRfc)">
+                                                            @(CfdiReceiverValidation.ExistRfc ? "Sí" : "No")
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Razón social</td>
+                                                    <td class="text-end">
+                                                        <span class="badge @GetCfdiReceiverFlagBadgeClass(CfdiReceiverValidation.MatchName)">
+                                                            @(CfdiReceiverValidation.MatchName ? "Coincide" : "No coincide")
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>CP fiscal</td>
+                                                    <td class="text-end">
+                                                        <span class="badge @GetCfdiReceiverFlagBadgeClass(CfdiReceiverValidation.MatchZipCode)">
+                                                            @(CfdiReceiverValidation.MatchZipCode ? "Coincide" : "No coincide")
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Régimen fiscal</td>
+                                                    <td class="text-end">
+                                                        <span class="badge @GetCfdiReceiverFlagBadgeClass(CfdiReceiverValidation.MatchFiscalRegime)">
+                                                            @(CfdiReceiverValidation.MatchFiscalRegime ? "Coincide" : "No coincide")
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="reservacion-cfdi-panel mt-3">
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                    <h6 class="mb-0">Datos de pago</h6>
+                                </div>
+
+                                <div class="row g-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Forma de pago</label>
+                                        <select class="form-select"
+                                                value="@SelectedCfdiFormaPago"
+                                                @onchange="OnCfdiFormaPagoChanged"
+                                                disabled="@IsCfdiPaymentFormLocked">
+                                            <option value="">Selecciona una forma</option>
+                                            @foreach (var forma in CfdiFormaPagoOptions)
+                                            {
+                                                <option value="@forma.Clave">@forma.Display</option>
+                                            }
+                                        </select>
+                                        @if (IsCfdiPaymentFormLocked)
+                                        {
+                                            <div class="form-text">Con método PPD se usa 99 - Por definir.</div>
+                                        }
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Método de pago</label>
+                                        <select class="form-select"
+                                                value="@SelectedCfdiMetodoPago"
+                                                @onchange="OnCfdiMetodoPagoChanged">
+                                            <option value="">Selecciona un método</option>
+                                            @foreach (var metodo in CfdiMetodoPagoOptions)
+                                            {
+                                                <option value="@metodo.Id">@($"{metodo.Id} - {metodo.Display}")</option>
+                                            }
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="reservacion-cfdi-panel mt-3">
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                    <h6 class="mb-0">Póliza destino</h6>
+                                    @if (CfdiContext.PolizaOptions.Count == 0)
+                                    {
+                                        <span class="badge text-bg-secondary">Se creará una nueva</span>
+                                    }
+                                </div>
+
+                                <label class="form-label">Selecciona destino</label>
+                                <select class="form-select" @bind="SelectedCfdiPolizaOption">
+                                    <option value="@NewCfdiPolizaOption">Crear nueva póliza</option>
+                                    @foreach (var option in CfdiContext.PolizaOptions)
+                                    {
+                                        <option value="@option.TransaccionId">@FormatCfdiPolizaLabel(option)</option>
+                                    }
+                                </select>
+
+                                <div class="form-text mt-2">
+                                    Se reutiliza automáticamente solo cuando existe una póliza ligada que coincide con el total y todavía no tiene CFDI.
+                                </div>
+
+                                @if (CfdiContext.PolizaOptions.Count > 0)
+                                {
+                                    <div class="table-responsive reservacion-table-wrap mt-3">
+                                        <table class="table table-sm table-bordered mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>ID</th>
+                                                    <th>Fecha</th>
+                                                    <th class="text-end">Monto</th>
+                                                    <th>Estatus</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var option in CfdiContext.PolizaOptions)
+                                                {
+                                                    <tr class="@(ResolveSelectedCfdiTransaccionId() == option.TransaccionId ? "table-primary" : string.Empty)">
+                                                        <td>@option.TransaccionId</td>
+                                                        <td>@option.Fecha.ToShortDateString()</td>
+                                                        <td class="text-end">@FormatCurrency(option.Monto)</td>
+                                                        <td>
+                                                            <span class="badge @GetCfdiPolizaStatusClass(option)">
+                                                                @(option.IsEligible ? "Elegible" : option.HasExistingCfdi ? "Con CFDI" : option.MatchesReservationTotal ? "RFC / tipo no coincide" : "Monto distinto")
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-xl-8">
+                            <div class="reservacion-cfdi-panel">
+                                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                                    <h6 class="mb-0">Conceptos del CFDI</h6>
+                                    <span class="badge text-bg-secondary">@CfdiContext.Items.Count conceptos</span>
+                                </div>
+
+                                <div class="table-responsive reservacion-table-wrap">
+                                    <table class="table table-sm table-bordered mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Fecha</th>
+                                                <th>Tipo</th>
+                                                <th>Descripción</th>
+                                                <th>Clave SAT</th>
+                                                <th class="text-end">Subtotal</th>
+                                                @if (HasCfdiDiscounts)
+                                                {
+                                                    <th class="text-end">Descuento</th>
+                                                }
+                                                <th class="text-end">IVA</th>
+                                                <th class="text-end">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var item in CfdiContext.Items)
+                                            {
+                                                <tr>
+                                                    <td>@(item.Fecha?.ToString("yyyy-MM-dd") ?? string.Empty)</td>
+                                                    <td>@item.SourceType</td>
+                                                    <td class="text-wrap">@item.Description</td>
+                                                    <td>@item.ProductCode / @item.UnitCode</td>
+                                                    <td class="text-end">@FormatCurrency(item.Subtotal)</td>
+                                                    @if (HasCfdiDiscounts)
+                                                    {
+                                                        <td class="text-end">@FormatCurrency(item.Discount)</td>
+                                                    }
+                                                    <td class="text-end">@FormatCurrency(item.Tax)</td>
+                                                    <td class="text-end">@FormatCurrency(item.Total)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                        <tfoot class="table-light">
+                                            <tr>
+                                                <th colspan="4" class="text-end">Subtotal reservación</th>
+                                                <th class="text-end">@FormatCurrency(CfdiContext.SubTotal)</th>
+                                                @if (HasCfdiDiscounts)
+                                                {
+                                                    <th class="text-end">@FormatCurrency(CfdiContext.Items.Sum(item => item.Discount))</th>
+                                                }
+                                                <th class="text-end">@FormatCurrency(CfdiContext.Tax)</th>
+                                                <th class="text-end">@FormatCurrency(CfdiContext.TotalReservacion)</th>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="d-flex flex-wrap gap-2 justify-content-end mt-3">
+                                <button class="btn btn-outline-secondary"
+                                        @onclick="ToggleCfdiPanelAsync"
+                                        disabled="@IsCreatingCfdi">
+                                    Cerrar
+                                </button>
+                                <button class="btn btn-primary"
+                                        @onclick="CrearCfdiReservacionAsync"
+                                        disabled="@(!CanCreateReservationCfdi || IsCreatingCfdi || IsValidatingCfdiReceiver)">
+                                    @(IsCreatingCfdi ? "Timbrando CFDI..." : "Crear CFDI")
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
 
     <div class="card mb-3 reservacion-section reservacion-section-suites">
         <div class="card-header reservacion-section-title d-flex align-items-center gap-2">

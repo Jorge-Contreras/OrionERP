@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -16,6 +17,10 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
   private const string SandboxBaseUrl = "https://apisandbox.facturama.mx";
   private const string SandboxUser = "jorgecontreras";
   private const string SandboxPassword = "Orion2020";
+  private static readonly JsonSerializerOptions JsonOptions = new()
+  {
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+  };
 
   private readonly HttpClient _httpClient;
   private readonly Uri _baseUri;
@@ -33,6 +38,14 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
 
     var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{user}:{password}"));
     _authHeader = new AuthenticationHeaderValue("Basic", credentials);
+  }
+
+  public Task<string> CreateIssuedCfdiAsync(FacturamaIssuedCfdiRequest request, CancellationToken ct = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+
+    var payload = JsonSerializer.Serialize(request, JsonOptions);
+    return CreateIssuedCfdiAsync(payload, ct);
   }
 
   public async Task<string> CreateIssuedCfdiAsync(string jsonPayload, CancellationToken ct = default)
@@ -59,6 +72,52 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
       throw new InvalidOperationException("Facturama respondió sin el identificador del CFDI emitido.");
 
     return cfdiId;
+  }
+
+  public async Task<FacturamaReceiverValidationResult> ValidateReceiverAsync(
+      FacturamaReceiverValidationRequest request,
+      CancellationToken ct = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+
+    using var message = new HttpRequestMessage(HttpMethod.Post, BuildUri("customers/validate"))
+    {
+      Content = new StringContent(JsonSerializer.Serialize(request, JsonOptions), Encoding.UTF8, "application/json")
+    };
+
+    message.Headers.Authorization = _authHeader;
+    message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+    using var response = await _httpClient.SendAsync(message, ct);
+    var body = await response.Content.ReadAsStringAsync(ct);
+
+    if (!response.IsSuccessStatusCode)
+      throw BuildHttpError(
+          response.StatusCode,
+          body,
+          $"Facturama ({_baseUri.Host}) no pudo validar el receptor RFC {request.Rfc}.");
+
+    return JsonSerializer.Deserialize<FacturamaReceiverValidationResult>(body, JsonOptions)
+        ?? new FacturamaReceiverValidationResult();
+  }
+
+  public async Task<FacturamaTaxEntity> GetTaxEntityAsync(CancellationToken ct = default)
+  {
+    using var request = new HttpRequestMessage(HttpMethod.Get, BuildUri("api/TaxEntity"));
+    request.Headers.Authorization = _authHeader;
+    request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+    using var response = await _httpClient.SendAsync(request, ct);
+    var body = await response.Content.ReadAsStringAsync(ct);
+
+    if (!response.IsSuccessStatusCode)
+      throw BuildHttpError(
+          response.StatusCode,
+          body,
+          $"Facturama ({_baseUri.Host}) no pudo consultar la entidad fiscal configurada.");
+
+    return JsonSerializer.Deserialize<FacturamaTaxEntity>(body, JsonOptions)
+        ?? throw new InvalidOperationException("Facturama respondió sin datos de la entidad fiscal configurada.");
   }
 
   public async Task<FacturamaDocumentContent> DownloadIssuedDocumentAsync(

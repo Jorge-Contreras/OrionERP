@@ -1,4 +1,5 @@
 using OrionERP.Application.Features.Reservaciones.OpenClaw;
+using OrionERP.Application.Features.Reservaciones.Cfdi;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
 namespace OrionERP.UnitTests.Reservaciones;
@@ -79,5 +80,81 @@ public class OpenClawReservationHelpersTests
     Assert.Equal(0m, totals.TotalPagado);
     Assert.Equal(5000.00m, totals.PorPagar);
     Assert.Equal(2, totals.NumNoches);
+  }
+
+  [Fact]
+  public void CreateItems_BuildsReservationCfdiLinesAndDistributesDiscounts()
+  {
+    var items = ReservationCfdiLineFactory.CreateItems(
+      new[]
+      {
+        new ReservationCfdiSuiteSource
+        {
+          Id = 1,
+          Fecha = new DateTime(2026, 4, 10),
+          RoomName = "SUITE 1",
+          RoomDescription = "SUITE MASTER",
+          Price = 100m
+        },
+        new ReservationCfdiSuiteSource
+        {
+          Id = 2,
+          Fecha = new DateTime(2026, 4, 11),
+          RoomName = "SUITE 2",
+          RoomDescription = "SUITE MASTER",
+          Price = 100m
+        }
+      },
+      new[]
+      {
+        new ReservationCfdiExtraSource
+        {
+          Id = 3,
+          CatalogName = "CAMASTRO",
+          Description = "Camastro Extra Para Suite",
+          Amount = 50m
+        },
+        new ReservationCfdiExtraSource
+        {
+          Id = 4,
+          CatalogName = "DESCUENTO",
+          Description = "DESCUENTO GENERAL",
+          Amount = -25m
+        }
+      },
+      taxable: true);
+
+    Assert.Equal(3, items.Count);
+    Assert.Equal(25m, items.Sum(item => item.Discount));
+    Assert.Equal(261.00m, items.Sum(item => item.Total));
+    Assert.All(items, item => Assert.True(item.Total > 0m));
+    Assert.Contains(items, item => item.SourceType == "Extra" && item.ProductCode == "56101515");
+  }
+
+  [Fact]
+  public void CreateItems_ThrowsWhenDiscountExceedsSubtotal()
+  {
+    Assert.Throws<InvalidOperationException>(() => ReservationCfdiLineFactory.CreateItems(
+      new[]
+      {
+        new ReservationCfdiSuiteSource
+        {
+          Id = 1,
+          Fecha = new DateTime(2026, 4, 10),
+          RoomName = "SUITE 1",
+          Price = 100m
+        }
+      },
+      new[]
+      {
+        new ReservationCfdiExtraSource
+        {
+          Id = 2,
+          CatalogName = "DESCUENTO",
+          Description = "DESCUENTO GENERAL",
+          Amount = -150m
+        }
+      },
+      taxable: true));
   }
 }

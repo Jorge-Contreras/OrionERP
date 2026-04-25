@@ -59,6 +59,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private const decimal IvaRate = 0.16m;
   private const decimal SubtotalDivisor = 1m + IvaRate;
   private const int ProyectoDescriptionMaxLength = 20;
+  private const int HeaderConceptoMaxLength = 500;
 
   [Parameter] public int Id { get; set; }
 
@@ -753,6 +754,15 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     MontoInput = args.Value?.ToString() ?? string.Empty;
   }
 
+  protected void OnHeaderConceptoInput(ChangeEventArgs args)
+  {
+    if (Header is null)
+      return;
+
+    Header.Concepto = args.Value?.ToString();
+    HeaderEditContext?.NotifyFieldChanged(new FieldIdentifier(Header, nameof(Header.Concepto)));
+  }
+
   private void UpdateMontoInputFromHeader()
   {
     _montoInput = FormatMonto(Header?.Monto ?? 0m);
@@ -1125,8 +1135,36 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     if (MovimientoDraft is null || Header is null)
       return;
 
-    MovimientoDraft.Concepto = Header.Concepto;
-    MovimientoEditContext?.NotifyFieldChanged(new FieldIdentifier(MovimientoDraft, nameof(MovimientoDraft.Concepto)));
+    ApplyHeaderConcepto(MovimientoDraft);
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Concepto));
+  }
+
+  protected void OnMovimientoConceptoInput(ChangeEventArgs args)
+  {
+    if (MovimientoDraft is null)
+      return;
+
+    MovimientoDraft.Concepto = args.Value?.ToString();
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Concepto));
+  }
+
+  protected void UpdateAllMovimientosConceptoFromHeader()
+  {
+    if (Header is null)
+      return;
+
+    if (Movimientos.Count == 0)
+    {
+      UiMessages.ShowWarning("No hay movimientos para actualizar.");
+      return;
+    }
+
+    foreach (var movimiento in Movimientos)
+    {
+      ApplyHeaderConcepto(movimiento);
+    }
+
+    UiMessages.ShowSuccess("Se actualizó el concepto de todos los movimientos. Guarda la póliza para persistir los cambios.");
   }
 
   protected static string FormatNivelValue(string? value)
@@ -1153,6 +1191,14 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
 
     MovimientoEditContext.NotifyFieldChanged(new FieldIdentifier(MovimientoDraft, propertyName));
+  }
+
+  private void ApplyHeaderConcepto(MovimientoModel movimiento)
+  {
+    if (Header is null)
+      return;
+
+    movimiento.Concepto = Header.Concepto;
   }
 
   private static decimal CalculateSubtotal(decimal amount)
@@ -1316,6 +1362,87 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
   }
 
+  private static string BuildReservacionPaymentConcepto(IReadOnlyList<TransaccionReservacionLinkDto> reservaciones)
+  {
+    var ordered = reservaciones
+      .OrderBy(item => item.ReservationId)
+      .Select(item => new
+      {
+        item.ReservationId,
+        Cliente = SanitizeReservacionClienteForConcepto(item.Cliente)
+      })
+      .ToList();
+
+    if (ordered.Count == 0)
+    {
+      return string.Empty;
+    }
+
+    if (ordered.Count == 1)
+    {
+      var single = ordered[0];
+      return TrimHeaderConcepto($"Pago de la reservacion#{single.ReservationId} ({single.Cliente})");
+    }
+
+    const string prefix = "Pago de las reservaciones: ";
+    var current = prefix;
+
+    for (var index = 0; index < ordered.Count; index++)
+    {
+      var reservacion = ordered[index];
+      var segment = $"#{reservacion.ReservationId} ({reservacion.Cliente})";
+      var candidate = index == 0
+        ? prefix + segment
+        : current + " + " + segment;
+
+      if (candidate.Length > HeaderConceptoMaxLength)
+      {
+        if (index == 0)
+        {
+          return TrimHeaderConcepto(candidate);
+        }
+
+        var truncated = current + " +...";
+        return truncated.Length <= HeaderConceptoMaxLength
+          ? truncated
+          : TrimHeaderConcepto(current);
+      }
+
+      current = candidate;
+    }
+
+    return current;
+  }
+
+  private static string SanitizeReservacionClienteForConcepto(string? cliente)
+  {
+    if (string.IsNullOrWhiteSpace(cliente))
+    {
+      return "Sin cliente";
+    }
+
+    return string.Join(
+      " ",
+      cliente
+        .Replace('\r', ' ')
+        .Replace('\n', ' ')
+        .Replace('\t', ' ')
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+  }
+
+  private static string TrimHeaderConcepto(string value)
+  {
+    if (string.IsNullOrWhiteSpace(value))
+    {
+      return string.Empty;
+    }
+
+    var trimmed = value.Trim();
+    return trimmed.Length <= HeaderConceptoMaxLength
+      ? trimmed
+      : trimmed[..HeaderConceptoMaxLength];
+  }
+
   protected async Task SearchReservacionesAsync(CancellationToken ct = default)
   {
     IsSearchingReservaciones = true;
@@ -1351,6 +1478,22 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected bool IsReservacionLinkDeleting(TransaccionReservacionLinkDto reservacion)
     => reservacion is not null && reservacion.ReservationId == _unlinkingReservacionId;
+
+  protected void UpdateHeaderConceptoFromReservaciones()
+  {
+    if (Header is null)
+      return;
+
+    if (ReservacionLinks.Count == 0)
+    {
+      UiMessages.ShowWarning("No hay reservaciones ligadas para actualizar el concepto.");
+      return;
+    }
+
+    Header.Concepto = BuildReservacionPaymentConcepto(ReservacionLinks);
+    HeaderEditContext?.NotifyFieldChanged(new FieldIdentifier(Header, nameof(Header.Concepto)));
+    UiMessages.ShowSuccess("Se actualizo el concepto de la poliza. Guarda cambios para persistirlo.");
+  }
 
   protected void SelectReservacionCandidate(TransaccionReservacionSearchItemDto reservacion)
   {
@@ -2169,6 +2312,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected sealed class TransaccionHeaderModel
   {
+    private string? _concepto;
+
     public int Id { get; set; }
     public string? Folio { get; set; }
     public string? Rfc { get; set; }
@@ -2179,7 +2324,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     public string? Cuenta { get; set; }
 
     [Required(ErrorMessage = "Captura un concepto.")]
-    public string? Concepto { get; set; }
+    public string? Concepto
+    {
+      get => _concepto;
+      set => _concepto = NormalizeConceptoValue(value);
+    }
 
     [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Monto inválido.")]
     public decimal Monto { get; set; }
@@ -2258,6 +2407,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected sealed class MovimientoModel
   {
+    private string? _concepto;
+
     public int Id { get; set; }
 
     public int? CuentaId { get; set; }
@@ -2275,7 +2426,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     public string? Descripcion { get; set; }
 
     [Required(ErrorMessage = "El concepto es obligatorio.")]
-    public string? Concepto { get; set; }
+    public string? Concepto
+    {
+      get => _concepto;
+      set => _concepto = NormalizeConceptoValue(value);
+    }
 
     [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Debe inválido.")]
     public decimal Debe { get; set; }
@@ -2325,4 +2480,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     var adjusted = bytes / Math.Pow(1024, magnitude);
     return $"{adjusted:0.##} {units[magnitude]}";
   }
+
+  private static string? NormalizeConceptoValue(string? value)
+    => value is null ? null : value.ToUpperInvariant();
 }

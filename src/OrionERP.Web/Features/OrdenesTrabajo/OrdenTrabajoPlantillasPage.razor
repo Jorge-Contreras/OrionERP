@@ -1,0 +1,196 @@
+@page "/ordenes-trabajo/plantillas"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Administrador,OrdenTrabajoAdmin,OrdenTrabajoSupervisor")]
+
+<PageTitle>Plantillas de ordenes</PageTitle>
+
+<div class="container-fluid py-3 orden-template-page">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <a class="small" href="/ordenes-trabajo">Volver a ordenes</a>
+            <h1 class="h3 mb-1">Plantillas de ordenes de trabajo</h1>
+            <p class="text-muted mb-0">Versiones publicadas, pasos y mapeo de suites para limpieza.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary" type="button" @onclick="SeedLegacyAsync" disabled="@IsMutating">Seed limpieza legacy</button>
+            <button class="btn btn-primary" type="button" @onclick="NewTemplate">Nueva plantilla</button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="alert alert-danger">@ErrorMessage</div>
+    }
+
+    <div class="row g-3">
+        <div class="col-12 col-xl-4">
+            <section class="card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="h5 mb-0">Catalogo</h2>
+                        <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="LoadAsync" disabled="@IsLoading">Actualizar</button>
+                    </div>
+                    <div class="list-group">
+                        @foreach (var template in Templates)
+                        {
+                            <button class="@GetTemplateListClass(template)" type="button" @onclick="() => SelectTemplateAsync(template.Id)">
+                                <div class="d-flex justify-content-between gap-2">
+                                    <strong>@template.Nombre</strong>
+                                    <span class="badge text-bg-light">@template.CategoriaNombre</span>
+                                </div>
+                                <div class="small text-muted">
+                                    Publicada: @(template.PublishedVersionNumber?.ToString() ?? "-") · Pasos: @template.StepCount
+                                </div>
+                            </button>
+                        }
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="col-12 col-xl-8">
+            <section class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Editor</h2>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Nombre</label>
+                            <InputText class="form-control" @bind-Value="Editor.Nombre" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Categoria</label>
+                            <select class="form-select" @bind="Editor.CategoriaCodigo">
+                                @foreach (var category in Categories)
+                                {
+                                    <option value="@category.Codigo">@category.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Activa</label>
+                            <div class="form-check mt-2">
+                                <InputCheckbox class="form-check-input" @bind-Value="Editor.Activa" />
+                                <span class="form-check-label">Disponible</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr />
+
+                    <h3 class="h6 mb-3">Pasos del borrador</h3>
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 5rem;">Orden</th>
+                                    <th>Titulo</th>
+                                    <th>Descripcion</th>
+                                    <th style="width: 10rem;">Foto</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Editor.Steps.Count == 0)
+                                {
+                                    <tr><td colspan="5" class="text-center text-muted py-3">Agrega al menos un paso.</td></tr>
+                                }
+                                else
+                                {
+                                    @for (var index = 0; index < Editor.Steps.Count; index++)
+                                    {
+                                        var step = Editor.Steps[index];
+                                        <tr>
+                                            <td><InputNumber class="form-control form-control-sm" @bind-Value="step.Secuencia" /></td>
+                                            <td><InputText class="form-control form-control-sm" @bind-Value="step.Titulo" /></td>
+                                            <td><InputText class="form-control form-control-sm" @bind-Value="step.Descripcion" /></td>
+                                            <td>
+                                                <select class="form-select form-select-sm" @bind="step.PoliticaFoto">
+                                                    <option value="NO_PERMITIDA">No permitida</option>
+                                                    <option value="OPCIONAL">Opcional</option>
+                                                    <option value="REQUERIDA">Requerida</option>
+                                                </select>
+                                            </td>
+                                            <td class="text-end"><button class="btn btn-sm btn-outline-danger" type="button" @onclick="() => RemoveStep(step)">Quitar</button></td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="row g-2 align-items-end mb-3">
+                        <div class="col-md-2">
+                            <label class="form-label">Orden</label>
+                            <InputNumber class="form-control" @bind-Value="NewStep.Secuencia" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Titulo</label>
+                            <InputText class="form-control" @bind-Value="NewStep.Titulo" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Descripcion</label>
+                            <InputText class="form-control" @bind-Value="NewStep.Descripcion" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Foto</label>
+                            <select class="form-select" @bind="NewStep.PoliticaFoto">
+                                <option value="NO_PERMITIDA">No</option>
+                                <option value="OPCIONAL">Opcional</option>
+                                <option value="REQUERIDA">Req.</option>
+                            </select>
+                        </div>
+                        <div class="col-md-1 d-grid">
+                            <button class="btn btn-outline-primary" type="button" @onclick="AddStep">+</button>
+                        </div>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-primary" type="button" @onclick="SaveDraftAsync" disabled="@IsMutating">Guardar borrador</button>
+                        <button class="btn btn-success" type="button" @onclick="PublishAsync" disabled="@(!Editor.TemplateId.HasValue || IsMutating)">Publicar</button>
+                    </div>
+                </div>
+            </section>
+
+            @if (SelectedTemplate is not null)
+            {
+                <section class="card shadow-sm">
+                    <div class="card-body">
+                        <h2 class="h5 mb-3">Mapeo de suites para limpieza</h2>
+                        @if (SelectedTemplate.CategoriaCodigo != "LIMPIEZA")
+                        {
+                            <div class="alert alert-info mb-0">Solo las plantillas de limpieza se pueden mapear a suites.</div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Suite</th>
+                                            <th>Plantilla actual</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var room in SelectedTemplate.RoomMappings)
+                                        {
+                                            <tr>
+                                                <td>@room.RoomName</td>
+                                                <td>@(room.TemplateName ?? "Sin plantilla")</td>
+                                                <td class="text-end">
+                                                    <button class="btn btn-sm btn-outline-primary" type="button" @onclick="() => MapRoomAsync(room.RoomId)" disabled="@IsMutating">
+                                                        Usar esta plantilla
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </section>
+            }
+        </div>
+    </div>
+</div>

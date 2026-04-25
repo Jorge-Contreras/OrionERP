@@ -476,8 +476,11 @@ FROM (
 ) AS Candidates;
 
 DECLARE @CurrentRow int = 1;
-DECLARE @MaxRow int = @@ROWCOUNT;
+DECLARE @MaxRow int;
 DECLARE @Processed int = 0;
+
+SELECT @MaxRow = COUNT(*)
+FROM @Candidates;
 
 DECLARE @MovimientoId bigint;
 DECLARE @Dia datetime2(7);

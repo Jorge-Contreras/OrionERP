@@ -1,0 +1,15 @@
+.orden-template-page .list-group-item.active {
+  background: var(--orion-color-primary);
+  border-color: var(--orion-color-primary);
+}
+
+.orden-template-page table input,
+.orden-template-page table select {
+  min-width: 6rem;
+}
+
+@media (max-width: 767.98px) {
+  .orden-template-page .table-responsive {
+    font-size: 0.88rem;
+  }
+}

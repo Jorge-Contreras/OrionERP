@@ -236,6 +236,16 @@
                 new("/reservaciones/calendario", "Calendario", "Vista visual para planeacion, huecos y conflictos.", "oi-grid-three-up", "Calendario de reservaciones", NavLinkMatch.Prefix, false, "Vista", "calendario", "ocupacion", "programacion")
             }),
         new(
+            "Operacion",
+            "Ordenes",
+            "Trabajo operativo, limpieza, mantenimiento y evidencia movil.",
+            "oi-task",
+            new List<NavEntryDefinition>
+            {
+                new("/ordenes-trabajo", "Ordenes OT", "Dashboard, asignacion y ejecucion de ordenes de trabajo.", "oi-task", "Ordenes de trabajo", NavLinkMatch.Prefix, true, "OT", "ordenes", "trabajo", "limpieza", "mantenimiento", "actividades"),
+                new("/ordenes-trabajo/plantillas", "Plantillas OT", "Plantillas versionadas, pasos y mapeo por suite.", "oi-list-rich", "Plantillas de ordenes de trabajo", NavLinkMatch.Prefix, false, "Setup", "plantillas", "ruta critica", "pasos", "limpieza")
+            }),
+        new(
             "Inventario",
             "Logistica",
             "c",

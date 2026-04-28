@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.JSInterop;
 using OrionERP.Application.Features.OrdenesTrabajo;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Infrastructure.Auth;
@@ -26,6 +27,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
   [Inject] public UserManager<ApplicationUser> UserManager { get; set; } = default!;
   [Inject] public IUserRfcState RfcState { get; set; } = default!;
   [Inject] public NavigationManager Navigation { get; set; } = default!;
+  [Inject] public IJSRuntime Js { get; set; } = default!;
 
   protected RoomCalendarTimelineFilter Filter { get; set; } = CreateDefaultFilter();
   protected RoomCalendarTimelineDto? Timeline { get; set; }
@@ -39,6 +41,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
   protected bool IsLoading { get; set; }
   protected bool ShowCleaningModal { get; set; }
   protected bool IsCreatingCleaningOrders { get; set; }
+  protected bool IsCreatingReservation { get; set; }
   protected string? ErrorMessage { get; set; }
   protected string CurrentUserName { get; set; } = "OrionERP";
   protected int? CurrentEmployeeId { get; set; }
@@ -266,6 +269,11 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
   protected void OpenCleaningModal()
   {
+    if (IsCreatingReservation)
+    {
+      return;
+    }
+
     if (SelectedRoomCalendarIds.Count == 0)
     {
       UiMessages.ShowWarning("Selecciona una o mas celdas del calendario.");
@@ -280,6 +288,114 @@ public partial class CalendarioReservacionesPage : ComponentBase
     }
 
     ShowCleaningModal = true;
+  }
+
+  protected async Task CreateReservationFromSelectionAsync()
+  {
+    if (IsCreatingReservation || IsCreatingCleaningOrders)
+    {
+      return;
+    }
+
+    if (SelectedRoomCalendarIds.Count == 0)
+    {
+      UiMessages.ShowWarning("Selecciona una o mas celdas del calendario.");
+      return;
+    }
+
+    var selectedCells = GetSelectedCalendarCells();
+    var availableCells = selectedCells.Where(IsAvailableForReservation).ToList();
+    var skippedCount = selectedCells.Count - availableCells.Count;
+
+    if (skippedCount > 0)
+    {
+      var confirm = await Js.InvokeAsync<bool>(
+        "confirm",
+        $"La selección incluye {skippedCount} celda(s) no disponible(s), reservada(s) o bloqueada(s). ¿Deseas crear la reservación solo con las {availableCells.Count} celda(s) disponible(s)?");
+
+      if (!confirm)
+      {
+        return;
+      }
+    }
+
+    if (availableCells.Count == 0)
+    {
+      UiMessages.ShowWarning("No hay celdas disponibles en la selección para crear una reservación.");
+      return;
+    }
+
+    IsCreatingReservation = true;
+    try
+    {
+      var cliente = await ReservacionesService.GetDefaultClienteForNewReservationAsync();
+      if (cliente is null || cliente.Id <= 0)
+      {
+        UiMessages.ShowError("No se encontró un cliente de cotización para crear la reservación.");
+        return;
+      }
+
+      var checkIn = availableCells.Min(cell => cell.RoomDate).Date;
+      var checkOut = availableCells.Max(cell => cell.RoomDate).Date.AddDays(1);
+      var status = "NUEVA";
+      var notes = BuildCalendarReservationNotes(availableCells.Count, skippedCount);
+      var totals = ReservacionTotalsCalculator.Calculate(
+        checkIn,
+        checkOut,
+        taxable: true,
+        suiteLineTotals: availableCells.Select(cell => cell.Price),
+        extraLineTotals: Array.Empty<decimal>(),
+        totalPagado: 0m);
+
+      var reservationId = await ReservacionesService.CreateReservationAsync(new ListaReservacionCreateRequest
+      {
+        ClienteId = cliente.Id,
+        Notes = notes
+      });
+
+      var attachResult = await ReservacionesService.AddSuitesToReservationAsync(
+        reservationId,
+        status,
+        cliente.Nombre,
+        availableCells.Select(cell => cell.RoomCalendarId!.Value).ToArray());
+
+      if (!attachResult.Success)
+      {
+        UiMessages.ShowError(attachResult.Message);
+        return;
+      }
+
+      var saveResult = await ReservacionesService.SaveReservationAsync(new ReservacionUpdateRequest
+      {
+        Id = reservationId,
+        ClienteId = cliente.Id,
+        CheckIn = checkIn,
+        CheckOut = checkOut,
+        Status = status,
+        Notes = notes,
+        Taxable = true,
+        TotalPrice = totals.TotalReservacion
+      });
+
+      if (!saveResult.Success)
+      {
+        UiMessages.ShowError(saveResult.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess($"Reservación {reservationId} creada con {availableCells.Count} celda(s) disponible(s).");
+      SelectedRoomCalendarIds.Clear();
+      await LoadCalendarAsync();
+      Navigation.NavigateTo(GetReservationHref(reservationId));
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo crear la reservación desde el calendario. {ex.Message}");
+    }
+    finally
+    {
+      IsCreatingReservation = false;
+    }
   }
 
   protected void CloseCleaningModal()
@@ -311,6 +427,11 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
   protected async Task CreateCleaningOrdersAsync()
   {
+    if (IsCreatingReservation)
+    {
+      return;
+    }
+
     if (CleaningOwnerEmployeeId <= 0)
     {
       UiMessages.ShowWarning("Selecciona un responsable para las ordenes de limpieza.");
@@ -419,6 +540,35 @@ public partial class CalendarioReservacionesPage : ComponentBase
       ?? new HashSet<int>();
 
     SelectedRoomCalendarIds.IntersectWith(visibleRoomCalendarIds);
+  }
+
+  private List<RoomCalendarDayCellDto> GetSelectedCalendarCells()
+  {
+    if (Timeline is null || SelectedRoomCalendarIds.Count == 0)
+    {
+      return new List<RoomCalendarDayCellDto>();
+    }
+
+    return Timeline.DayCells
+      .Where(item => item.RoomCalendarId.HasValue && SelectedRoomCalendarIds.Contains(item.RoomCalendarId.Value))
+      .ToList();
+  }
+
+  private static bool IsAvailableForReservation(RoomCalendarDayCellDto cell)
+    => cell.RoomCalendarId.HasValue
+      && string.Equals(cell.StateCode, "available", StringComparison.OrdinalIgnoreCase)
+      && !cell.IsLocked
+      && !cell.ReservationId.HasValue;
+
+  private static string BuildCalendarReservationNotes(int usedCellCount, int skippedCellCount)
+  {
+    var notes = $"Creada desde selección de calendario. Celdas usadas: {usedCellCount}.";
+    if (skippedCellCount > 0)
+    {
+      notes += $" Celdas omitidas por no estar disponibles: {skippedCellCount}.";
+    }
+
+    return notes;
   }
 
   private async Task ResolveCurrentUserAsync()

@@ -176,7 +176,43 @@
                                 <h2 class="h5 mb-1">Ruta critica</h2>
                                 <div class="text-muted small">@Order.CompletedStepCount / @Order.StepCount pasos completados</div>
                             </div>
+                            @if (CanEditSteps)
+                            {
+                                <button class="btn btn-sm btn-outline-primary" type="button" @onclick="AddStep" disabled="@IsMutating">Agregar paso</button>
+                            }
                         </div>
+
+                        @if (CanEditSteps)
+                        {
+                            <div class="orden-step-editor mb-3">
+                                @foreach (var step in StepEditor)
+                                {
+                                    <div class="orden-step-editor-row" @key="step">
+                                        <div class="orden-step-editor-sequence">@step.Secuencia.ToString("0.##")</div>
+                                        <div>
+                                            <label class="form-label">Titulo</label>
+                                            <InputText class="form-control" @bind-Value="step.Titulo" />
+                                        </div>
+                                        <div>
+                                            <label class="form-label">Descripcion</label>
+                                            <InputTextArea class="form-control" rows="2" @bind-Value="step.Descripcion" />
+                                        </div>
+                                        <div>
+                                            <label class="form-label">Foto</label>
+                                            <select class="form-select" @bind="step.PoliticaFoto">
+                                                <option value="NO_PERMITIDA">No permitida</option>
+                                                <option value="OPCIONAL">Opcional</option>
+                                                <option value="REQUERIDA">Requerida</option>
+                                            </select>
+                                        </div>
+                                        <div class="orden-step-editor-actions">
+                                            <button class="btn btn-sm btn-outline-danger" type="button" @onclick="() => RemoveStep(step)" disabled="@(IsMutating || StepEditor.Count <= 1)">Quitar</button>
+                                        </div>
+                                    </div>
+                                }
+                                <button class="btn btn-primary" type="button" @onclick="SaveStepsAsync" disabled="@IsMutating">Guardar ruta critica</button>
+                            </div>
+                        }
 
                         <div class="orden-steps">
                             @foreach (var step in Order.Steps)
@@ -210,10 +246,45 @@
 
                                     @if (CanExecute && step.PoliticaFoto != OrdenTrabajoCodes.FotoNoPermitida)
                                     {
-                                        <InputFile class="form-control orden-camera-input"
-                                                   accept="image/*"
-                                                   capture="environment"
-                                                   OnChange="args => OnEvidenceSelectedAsync(step, args)" />
+                                        <div class="orden-evidence-actions">
+                                            <button class="btn btn-sm btn-primary" type="button" @onclick="() => OpenCameraAsync(step)" disabled="@(IsMutating || IsCameraStarting || IsCameraCapturing)">
+                                                <span class="oi oi-camera-slr" aria-hidden="true"></span>
+                                                Tomar foto
+                                            </button>
+                                            <label class="btn btn-sm btn-outline-secondary orden-file-upload">
+                                                <span class="oi oi-cloud-upload" aria-hidden="true"></span>
+                                                Subir archivo
+                                                <InputFile accept="image/*"
+                                                           OnChange="args => OnEvidenceSelectedAsync(step, args)"
+                                                           disabled="@(IsMutating || IsCameraCapturing)" />
+                                            </label>
+                                        </div>
+
+                                        @if (ActiveCameraStepId == step.Id)
+                                        {
+                                            <div class="orden-camera-panel mt-3">
+                                                <video class="orden-camera-preview" @ref="CameraVideoElement" autoplay muted playsinline></video>
+                                                @if (!string.IsNullOrWhiteSpace(CameraError))
+                                                {
+                                                    <div class="alert alert-warning py-2 mb-2">@CameraError</div>
+                                                }
+                                                @if (CameraDevices.Count > 1)
+                                                {
+                                                    <select class="form-select form-select-sm mb-2" value="@SelectedCameraDeviceId" @onchange="ChangeCameraAsync" disabled="@(IsCameraStarting || IsCameraCapturing)">
+                                                        @foreach (var camera in CameraDevices)
+                                                        {
+                                                            <option value="@camera.DeviceId">@camera.Label</option>
+                                                        }
+                                                    </select>
+                                                }
+                                                <div class="d-flex flex-wrap gap-2">
+                                                    <button class="btn btn-sm btn-success" type="button" @onclick="() => CaptureCameraAsync(step)" disabled="@(IsCameraStarting || IsCameraCapturing || !CameraSupported)">
+                                                        @(IsCameraCapturing ? "Guardando..." : "Capturar")
+                                                    </button>
+                                                    <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="CloseCameraAsync" disabled="@IsCameraCapturing">Cancelar</button>
+                                                </div>
+                                            </div>
+                                        }
                                     }
 
                                     @if (step.Evidence.Count > 0)
@@ -222,16 +293,22 @@
                                             @foreach (var evidence in step.Evidence.Where(item => !item.Eliminada))
                                             {
                                                 <div class="orden-evidence">
-                                                    @if (evidence.ThumbnailBytes is { Length: > 0 })
-                                                    {
-                                                        <img src="@BuildThumbnailDataUrl(evidence)" alt="Evidencia @evidence.Id" />
-                                                    }
-                                                    else
-                                                    {
-                                                        <div class="orden-evidence-placeholder">Foto</div>
-                                                    }
+                                                    <button class="orden-evidence-preview-button"
+                                                            type="button"
+                                                            title="Ver foto completa"
+                                                            @onclick="() => OpenEvidencePreviewAsync(evidence)">
+                                                        @if (evidence.ThumbnailBytes is { Length: > 0 })
+                                                        {
+                                                            <img src="@BuildThumbnailDataUrl(evidence)" alt="Evidencia @evidence.Id" />
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="orden-evidence-placeholder">Foto</span>
+                                                        }
+                                                    </button>
                                                     <div class="small">@evidence.CapturadaPor</div>
                                                     <div class="small text-muted">@evidence.CapturadaEn.ToString("yyyy-MM-dd HH:mm")</div>
+                                                    <span class="@GetCaptureSourceBadgeClass(evidence.CaptureSource)">@GetCaptureSourceLabel(evidence.CaptureSource)</span>
                                                     @if (CanRemoveEvidence)
                                                     {
                                                         <button class="btn btn-sm btn-link text-danger p-0" type="button" @onclick="() => RemoveEvidenceAsync(step, evidence.Id)">Quitar</button>
@@ -330,6 +407,49 @@
                         </div>
                     </div>
                 </section>
+            </div>
+        </div>
+    }
+
+    @if (IsEvidencePreviewOpen)
+    {
+        <div class="orden-image-viewer"
+             role="dialog"
+             aria-modal="true"
+             aria-label="@EvidencePreviewTitle"
+             tabindex="-1"
+             @onclick="CloseEvidencePreview"
+             @onkeydown="HandleEvidencePreviewKeyDown">
+            <div class="orden-image-viewer-dialog" @onclick:stopPropagation="true">
+                <div class="orden-image-viewer-toolbar">
+                    <div>
+                        <div class="orden-image-viewer-title">@EvidencePreviewTitle</div>
+                        @if (!string.IsNullOrWhiteSpace(EvidencePreviewSubtitle))
+                        {
+                            <div class="orden-image-viewer-subtitle">@EvidencePreviewSubtitle</div>
+                        }
+                    </div>
+                    <button class="btn btn-sm btn-light orden-image-viewer-close"
+                            type="button"
+                            aria-label="Cerrar foto"
+                            @onclick="CloseEvidencePreview">
+                        <span class="oi oi-x" aria-hidden="true"></span>
+                    </button>
+                </div>
+                <div class="orden-image-viewer-body">
+                    @if (IsEvidencePreviewLoading)
+                    {
+                        <div class="orden-image-viewer-status">Cargando foto...</div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(EvidencePreviewError))
+                    {
+                        <div class="alert alert-warning mb-0">@EvidencePreviewError</div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(EvidencePreviewImageDataUrl))
+                    {
+                        <img src="@EvidencePreviewImageDataUrl" alt="@EvidencePreviewTitle" />
+                    }
+                </div>
             </div>
         </div>
     }

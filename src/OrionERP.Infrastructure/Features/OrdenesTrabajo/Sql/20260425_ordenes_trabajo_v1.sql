@@ -247,6 +247,7 @@ BEGIN
     PasoId int NOT NULL,
     FileName nvarchar(200) NOT NULL,
     ContentType varchar(100) NOT NULL,
+    CaptureSource varchar(20) NOT NULL CONSTRAINT DF_OrdenTrabajoEvidencia_CaptureSource DEFAULT ('UNKNOWN'),
     ImageBytes varbinary(max) NOT NULL,
     ThumbnailBytes varbinary(max) NULL,
     ThumbnailContentType varchar(100) NULL,
@@ -257,10 +258,27 @@ BEGIN
     Eliminada bit NOT NULL CONSTRAINT DF_OrdenTrabajoEvidencia_Eliminada DEFAULT (0),
     EliminadaEn datetime2(0) NULL,
     EliminadaPor nvarchar(256) NULL,
-    CONSTRAINT FK_OrdenTrabajoEvidencia_Paso FOREIGN KEY (PasoId) REFERENCES dbo.OrdenTrabajoPaso (Id) ON DELETE CASCADE
+    CONSTRAINT FK_OrdenTrabajoEvidencia_Paso FOREIGN KEY (PasoId) REFERENCES dbo.OrdenTrabajoPaso (Id) ON DELETE CASCADE,
+    CONSTRAINT CK_OrdenTrabajoEvidencia_CaptureSource CHECK (CaptureSource IN ('CAMERA','FILE','UNKNOWN'))
   );
 
   CREATE INDEX IX_OrdenTrabajoEvidencia_Paso ON dbo.OrdenTrabajoEvidencia (PasoId, Eliminada, CapturadaEn);
+END;
+
+IF COL_LENGTH('dbo.OrdenTrabajoEvidencia', 'CaptureSource') IS NULL
+BEGIN
+  ALTER TABLE dbo.OrdenTrabajoEvidencia
+    ADD CaptureSource varchar(20) NOT NULL
+      CONSTRAINT DF_OrdenTrabajoEvidencia_CaptureSource DEFAULT ('UNKNOWN') WITH VALUES;
+END;
+
+GO
+
+IF OBJECT_ID('dbo.CK_OrdenTrabajoEvidencia_CaptureSource', 'C') IS NULL
+BEGIN
+  ALTER TABLE dbo.OrdenTrabajoEvidencia
+    ADD CONSTRAINT CK_OrdenTrabajoEvidencia_CaptureSource
+      CHECK (CaptureSource IN ('CAMERA','FILE','UNKNOWN'));
 END;
 
 IF OBJECT_ID('dbo.OrdenTrabajoTransaccion', 'U') IS NULL

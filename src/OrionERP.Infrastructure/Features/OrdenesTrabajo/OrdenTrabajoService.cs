@@ -372,6 +372,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
           ev.PasoId,
           ev.FileName,
           ev.ContentType,
+          ev.CaptureSource,
           ev.ThumbnailBytes,
           ev.ThumbnailContentType,
           ev.SizeBytes,
@@ -769,6 +770,140 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
     }
   }
 
+  public async Task<OrdenTrabajoCommandResult> ReplaceWorkOrderStepsAsync(int id, OrdenTrabajoStepsSaveRequest request, CancellationToken ct = default)
+  {
+    if (request is null)
+    {
+      throw new ArgumentNullException(nameof(request));
+    }
+
+    var actor = NormalizeActor(request.SavedBy);
+    var steps = request.Steps
+      .Where(step => !string.IsNullOrWhiteSpace(step.Titulo))
+      .Select((step, index) => new
+      {
+        Secuencia = step.Secuencia > 0 ? step.Secuencia : index + 1,
+        Titulo = Truncate(RequireText(step.Titulo, "Cada paso necesita titulo."), 200),
+        Descripcion = Truncate(RequireText(step.Descripcion, "Cada paso necesita descripcion."), 1000),
+        PoliticaFoto = NormalizePhotoPolicy(step.PoliticaFoto),
+        step.RequiereNotasEnIncidencia,
+        step.RequiereNotasEnNoAplica,
+        step.ProcedimientoId
+      })
+      .OrderBy(step => step.Secuencia)
+      .ToList();
+
+    if (steps.Count == 0)
+    {
+      return OrdenTrabajoCommandResult.Fail("Agrega al menos un paso a la ruta critica.");
+    }
+
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    using var tx = await conn.BeginTransactionAsync(ct);
+
+    try
+    {
+      var status = await GetWorkOrderStatusAsync(conn, tx, id, ct);
+      if (status is null)
+      {
+        await tx.RollbackAsync(ct);
+        return OrdenTrabajoCommandResult.Fail("La orden no existe.");
+      }
+
+      if (!EditableStatuses.Contains(status))
+      {
+        await tx.RollbackAsync(ct);
+        return OrdenTrabajoCommandResult.Fail("La ruta critica solo se puede editar antes de enviar la orden a revision.");
+      }
+
+      if (await HasBeenSubmittedForReviewAsync(conn, tx, id, ct))
+      {
+        await tx.RollbackAsync(ct);
+        return OrdenTrabajoCommandResult.Fail("La ruta critica ya no se puede editar despues de enviarla a revision.");
+      }
+
+      var evidenceCount = await conn.ExecuteScalarAsync<int>(
+        new CommandDefinition(
+          """
+          SELECT COUNT(*)
+          FROM dbo.OrdenTrabajoEvidencia ev
+          JOIN dbo.OrdenTrabajoPaso p ON p.Id = ev.PasoId
+          WHERE p.OrdenTrabajoId = @WorkOrderId
+            AND ev.Eliminada = 0;
+          """,
+          new { WorkOrderId = id },
+          tx,
+          cancellationToken: ct));
+      if (evidenceCount > 0)
+      {
+        await tx.RollbackAsync(ct);
+        return OrdenTrabajoCommandResult.Fail("No se puede reemplazar la ruta critica porque ya tiene evidencia capturada.");
+      }
+
+      await conn.ExecuteAsync(
+        new CommandDefinition(
+          "DELETE FROM dbo.OrdenTrabajoPaso WHERE OrdenTrabajoId = @WorkOrderId;",
+          new { WorkOrderId = id },
+          tx,
+          cancellationToken: ct));
+
+      foreach (var step in steps)
+      {
+        await conn.ExecuteAsync(
+          new CommandDefinition(
+            """
+            INSERT INTO dbo.OrdenTrabajoPaso
+            (
+                OrdenTrabajoId,
+                Secuencia,
+                Titulo,
+                Descripcion,
+                Estado,
+                PoliticaFoto,
+                RequiereNotasEnIncidencia,
+                RequiereNotasEnNoAplica,
+                ProcedimientoId
+            )
+            VALUES
+            (
+                @WorkOrderId,
+                @Secuencia,
+                @Titulo,
+                @Descripcion,
+                'PENDIENTE',
+                @PoliticaFoto,
+                @RequiereNotasEnIncidencia,
+                @RequiereNotasEnNoAplica,
+                @ProcedimientoId
+            );
+            """,
+            new
+            {
+              WorkOrderId = id,
+              step.Secuencia,
+              step.Titulo,
+              step.Descripcion,
+              step.PoliticaFoto,
+              step.RequiereNotasEnIncidencia,
+              step.RequiereNotasEnNoAplica,
+              step.ProcedimientoId
+            },
+            tx,
+            cancellationToken: ct));
+      }
+
+      await AddAuditAsync(conn, tx, id, "RUTA_CRITICA_ACTUALIZADA", $"Ruta critica actualizada con {steps.Count} paso(s).", actor, ct);
+      await tx.CommitAsync(ct);
+      return OrdenTrabajoCommandResult.Ok("Ruta critica actualizada correctamente.");
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
   public async Task<OrdenTrabajoCommandResult> CancelWorkOrderAsync(int id, string reason, string actor, CancellationToken ct = default)
   {
     var safeActor = NormalizeActor(actor);
@@ -999,6 +1134,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
               PasoId,
               FileName,
               ContentType,
+              CaptureSource,
               ImageBytes,
               ThumbnailBytes,
               ThumbnailContentType,
@@ -1011,6 +1147,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
               @StepId,
               @FileName,
               @ContentType,
+              @CaptureSource,
               @ImageBytes,
               @ThumbnailBytes,
               @ThumbnailContentType,
@@ -1026,6 +1163,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
             StepId = stepId,
             FileName = NullIfWhiteSpace(request.FileName) ?? $"evidencia-{workOrderId}-{stepId}.jpg",
             ContentType = NormalizeImageContentType(request.ContentType),
+            CaptureSource = NormalizeCaptureSource(request.CaptureSource),
             request.ImageBytes,
             ThumbnailBytes = request.ThumbnailBytes ?? request.ImageBytes,
             ThumbnailContentType = NormalizeImageContentType(request.ThumbnailContentType ?? request.ContentType),
@@ -1384,17 +1522,17 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
     var p = new DynamicParameters();
     if (!string.IsNullOrWhiteSpace(rfc))
     {
-      sql.Append(" AND tpl.Rfc = @Rfc");
+      sql.AppendLine(" AND tpl.Rfc = @Rfc");
       p.Add("@Rfc", rfc.Trim());
     }
 
     if (!string.IsNullOrWhiteSpace(categoryCode))
     {
-      sql.Append(" AND cat.Codigo = @CategoryCode");
+      sql.AppendLine(" AND cat.Codigo = @CategoryCode");
       p.Add("@CategoryCode", categoryCode.Trim().ToUpperInvariant());
     }
 
-    sql.Append(" ORDER BY cat.Orden, tpl.Nombre;");
+    sql.AppendLine(" ORDER BY cat.Orden, tpl.Nombre;");
 
     try
     {
@@ -2326,6 +2464,21 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
         tx,
         cancellationToken: ct));
 
+  private async Task<bool> HasBeenSubmittedForReviewAsync(DbConnection conn, IDbTransaction tx, int workOrderId, CancellationToken ct)
+    => await conn.ExecuteScalarAsync<bool>(
+      new CommandDefinition(
+        """
+        SELECT CAST(CASE WHEN EXISTS (
+            SELECT 1
+            FROM dbo.OrdenTrabajoAuditoria
+            WHERE OrdenTrabajoId = @WorkOrderId
+              AND Evento = 'ENVIADA_REVISION'
+        ) THEN 1 ELSE 0 END AS bit);
+        """,
+        new { WorkOrderId = workOrderId },
+        tx,
+        cancellationToken: ct));
+
   private async Task<bool> CanActorWorkAsync(DbConnection conn, IDbTransaction tx, int workOrderId, int? actorEmployeeId, CancellationToken ct)
   {
     if (!actorEmployeeId.HasValue)
@@ -2419,35 +2572,36 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
   {
     if (!string.IsNullOrWhiteSpace(filter.Rfc))
     {
-      sql.Append(" AND ot.Rfc = @Rfc");
+      sql.AppendLine(" AND ot.Rfc = @Rfc");
       p.Add("@Rfc", filter.Rfc.Trim());
     }
 
     if (!filter.IncludeClosed)
     {
-      sql.Append(" AND ot.Estado <> 'CERRADA' AND ot.Estado <> 'CANCELADA'");
+      sql.AppendLine(" AND ot.Estado <> 'CERRADA' AND ot.Estado <> 'CANCELADA'");
     }
 
     if (!string.IsNullOrWhiteSpace(filter.Estado))
     {
-      sql.Append(" AND ot.Estado = @Estado");
+      sql.AppendLine(" AND ot.Estado = @Estado");
       p.Add("@Estado", filter.Estado.Trim().ToUpperInvariant());
     }
 
     if (!string.IsNullOrWhiteSpace(filter.CategoriaCodigo))
     {
-      sql.Append(" AND c.Codigo = @CategoriaCodigo");
+      sql.AppendLine(" AND c.Codigo = @CategoriaCodigo");
       p.Add("@CategoriaCodigo", filter.CategoriaCodigo.Trim().ToUpperInvariant());
     }
 
     if (filter.OwnerEmployeeId.HasValue)
     {
-      sql.Append(" AND ot.OwnerEmployeeId = @OwnerEmployeeId");
+      sql.AppendLine(" AND ot.OwnerEmployeeId = @OwnerEmployeeId");
       p.Add("@OwnerEmployeeId", filter.OwnerEmployeeId.Value);
     }
 
     if (filter.ParticipantEmployeeId.HasValue)
     {
+      sql.AppendLine();
       sql.Append(
         """
         AND (
@@ -2465,19 +2619,20 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
     if (filter.ScheduledFrom.HasValue)
     {
-      sql.Append(" AND ot.FechaProgramada >= @ScheduledFrom");
+      sql.AppendLine(" AND ot.FechaProgramada >= @ScheduledFrom");
       p.Add("@ScheduledFrom", filter.ScheduledFrom.Value.Date);
     }
 
     if (filter.ScheduledTo.HasValue)
     {
-      sql.Append(" AND ot.FechaProgramada < @ScheduledToExclusive");
+      sql.AppendLine(" AND ot.FechaProgramada < @ScheduledToExclusive");
       p.Add("@ScheduledToExclusive", filter.ScheduledTo.Value.Date.AddDays(1));
     }
 
     var searchText = NullIfWhiteSpace(filter.SearchText);
     if (searchText is not null)
     {
+      sql.AppendLine();
       sql.Append(
         """
         AND (
@@ -2496,12 +2651,14 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
   {
     if (!string.IsNullOrWhiteSpace(filter.Rfc))
     {
-      where.Append(" AND ot.Rfc = @Rfc");
+      where.AppendLine();
+      where.AppendLine("  AND ot.Rfc = @Rfc");
       p.Add("@Rfc", filter.Rfc.Trim());
     }
 
     if (filter.EmployeeId.HasValue)
     {
+      where.AppendLine();
       where.Append(
         """
         AND (
@@ -2587,6 +2744,14 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
     return normalized is "image/png" or "image/webp" or "image/gif" or "image/bmp"
       ? normalized
       : "image/jpeg";
+  }
+
+  private static string NormalizeCaptureSource(string? captureSource)
+  {
+    var normalized = NormalizeCode(captureSource, OrdenTrabajoCodes.EvidenciaUnknown);
+    return normalized is OrdenTrabajoCodes.EvidenciaCamera or OrdenTrabajoCodes.EvidenciaFile or OrdenTrabajoCodes.EvidenciaUnknown
+      ? normalized
+      : OrdenTrabajoCodes.EvidenciaUnknown;
   }
 
   private static string RequireText(string? value, string message)

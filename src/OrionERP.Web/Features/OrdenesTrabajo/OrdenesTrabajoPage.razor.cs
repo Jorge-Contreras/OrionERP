@@ -9,7 +9,7 @@ using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.OrdenesTrabajo;
 
-public partial class OrdenesTrabajoPage : ComponentBase
+public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
 {
   [Inject] private IOrdenTrabajoService OrdenTrabajoService { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
@@ -32,12 +32,14 @@ public partial class OrdenesTrabajoPage : ComponentBase
   protected bool IsLoading { get; set; }
   protected bool IsCreating { get; set; }
   protected string? ErrorMessage { get; set; }
+  private string? LoadedRfc { get; set; }
 
   protected bool CanCreate => IsPrivilegedUser;
   private string CurrentRfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault() ?? "OHM191112Q26";
 
   protected override async Task OnInitializedAsync()
   {
+    RfcState.Changed += OnRfcStateChanged;
     await ResolveCurrentUserAsync();
     CreateRequest = BuildDefaultCreateRequest();
     await LoadAsync();
@@ -51,10 +53,12 @@ public partial class OrdenesTrabajoPage : ComponentBase
     {
       Categories = (await OrdenTrabajoService.GetCategoriesAsync()).ToList();
       Employees = (await OrdenTrabajoService.GetActiveEmployeeOptionsAsync(CurrentRfc)).ToList();
-      if (CreateRequest.OwnerEmployeeId <= 0 && Employees.Count > 0)
+      if ((CreateRequest.OwnerEmployeeId <= 0 || !Employees.Any(employee => employee.Id == CreateRequest.OwnerEmployeeId)) && Employees.Count > 0)
       {
         CreateRequest.OwnerEmployeeId = Employees[0].Id;
       }
+      CreateHelperIds.IntersectWith(Employees.Select(employee => employee.Id));
+      LoadedRfc = CurrentRfc;
 
       await LoadDashboardAsync();
       await LoadOrdersAsync();
@@ -226,5 +230,27 @@ public partial class OrdenesTrabajoPage : ComponentBase
 
     var appUser = await UserManager.GetUserAsync(user);
     CurrentEmployeeId = appUser?.EmployeeId;
+  }
+
+  private async void OnRfcStateChanged()
+  {
+    if (string.Equals(LoadedRfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
+    {
+      return;
+    }
+
+    try
+    {
+      await InvokeAsync(LoadAsync);
+    }
+    catch
+    {
+      // The page may already be disposing while the shared RFC state changes.
+    }
+  }
+
+  public void Dispose()
+  {
+    RfcState.Changed -= OnRfcStateChanged;
   }
 }

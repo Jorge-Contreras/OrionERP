@@ -181,6 +181,7 @@ public sealed class OrdenTrabajoEvidenceDto
   public int PasoId { get; set; }
   public string FileName { get; set; } = string.Empty;
   public string ContentType { get; set; } = "image/jpeg";
+  public string CaptureSource { get; set; } = OrdenTrabajoCodes.EvidenciaUnknown;
   public byte[]? ThumbnailBytes { get; set; }
   public string? ThumbnailContentType { get; set; }
   public long SizeBytes { get; set; }
@@ -275,6 +276,32 @@ public sealed class OrdenTrabajoUpdateRequest
   public string? UpdatedBy { get; set; }
 }
 
+public sealed class OrdenTrabajoStepsSaveRequest
+{
+  public IReadOnlyList<OrdenTrabajoStepSaveRequest> Steps { get; set; } = Array.Empty<OrdenTrabajoStepSaveRequest>();
+
+  [StringLength(256)]
+  public string? SavedBy { get; set; }
+}
+
+public sealed class OrdenTrabajoStepSaveRequest
+{
+  public decimal Secuencia { get; set; }
+
+  [Required]
+  [StringLength(200)]
+  public string Titulo { get; set; } = string.Empty;
+
+  [Required]
+  [StringLength(1000)]
+  public string Descripcion { get; set; } = string.Empty;
+
+  public string PoliticaFoto { get; set; } = OrdenTrabajoCodes.FotoNoPermitida;
+  public bool RequiereNotasEnIncidencia { get; set; } = true;
+  public bool RequiereNotasEnNoAplica { get; set; } = true;
+  public int? ProcedimientoId { get; set; }
+}
+
 public sealed class OrdenTrabajoCalendarCreateRequest
 {
   [Required]
@@ -335,6 +362,8 @@ public sealed class OrdenTrabajoEvidenceCreateRequest
 
   [StringLength(500)]
   public string? DeviceInfo { get; set; }
+
+  public string CaptureSource { get; set; } = OrdenTrabajoCodes.EvidenciaUnknown;
 
   [StringLength(256)]
   public string? CapturedBy { get; set; }

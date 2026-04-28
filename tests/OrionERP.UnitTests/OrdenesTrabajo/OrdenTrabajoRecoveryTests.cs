@@ -137,6 +137,65 @@ public class OrdenTrabajoRecoveryTests
   }
 
   [Fact]
+  public async Task AddStepEvidenceAsync_StoresCaptureSource()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("OrdenTrabajoParticipante", StringComparison.Ordinal))
+        {
+          return true;
+        }
+
+        if (commandText.Contains("SELECT p.PoliticaFoto", StringComparison.Ordinal))
+        {
+          return OrdenTrabajoCodes.FotoOpcional;
+        }
+
+        if (commandText.Contains("SCOPE_IDENTITY", StringComparison.Ordinal))
+        {
+          return 123;
+        }
+
+        return null;
+      }
+    };
+    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.AddStepEvidenceAsync(
+      42,
+      7,
+      new OrdenTrabajoEvidenceCreateRequest
+      {
+        ImageBytes = [1, 2, 3],
+        ThumbnailBytes = [1],
+        ContentType = "image/jpeg",
+        ThumbnailContentType = "image/jpeg",
+        CaptureSource = OrdenTrabajoCodes.EvidenciaCamera,
+        CapturedBy = "operator-user",
+        ActorEmployeeId = 10
+      });
+
+    Assert.True(result.Success);
+    var insert = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO dbo.OrdenTrabajoEvidencia", StringComparison.Ordinal));
+    Assert.Contains("CaptureSource", insert.CommandText, StringComparison.Ordinal);
+    Assert.Contains(insert.Parameters, parameter => string.Equals(parameter.Name, "CaptureSource", StringComparison.OrdinalIgnoreCase)
+      && string.Equals(parameter.Value?.ToString(), OrdenTrabajoCodes.EvidenciaCamera, StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public void EvidenceCaptureSource_IsSelectedAndMigrated()
+  {
+    var serviceSource = File.ReadAllText(GetRepoFile("src/OrionERP.Infrastructure/Features/OrdenesTrabajo/OrdenTrabajoService.cs"));
+    var sql = File.ReadAllText(GetRepoFile("src/OrionERP.Infrastructure/Features/OrdenesTrabajo/Sql/20260425_ordenes_trabajo_v1.sql"));
+
+    Assert.Contains("ev.CaptureSource", serviceSource, StringComparison.Ordinal);
+    Assert.Contains("CaptureSource varchar(20) NOT NULL", sql, StringComparison.Ordinal);
+    Assert.Contains("CK_OrdenTrabajoEvidencia_CaptureSource", sql, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public void SqlScript_RecreatesDuplicateGuardForCleaningOnly()
   {
     var sql = File.ReadAllText(GetRepoFile("src/OrionERP.Infrastructure/Features/OrdenesTrabajo/Sql/20260425_ordenes_trabajo_v1.sql"));

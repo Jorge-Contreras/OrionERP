@@ -1,5 +1,5 @@
 @page "/reservaciones/calendario"
-@attribute [Authorize(Roles = "Administrador,SatOperator,OrdenTrabajoAdmin,OrdenTrabajoSupervisor")]
+@attribute [Authorize(Roles = "Administrador,SatOperator,OrdenTrabajoOperador")]
 
 <PageTitle>Calendario de Reservaciones</PageTitle>
 
@@ -105,14 +105,17 @@
                                         {
                                             var cell = GetCell(resource.RoomId, day);
                                             var orderBadges = GetCellWorkOrderBadges(cell);
-                                            <td class="@GetCellCompositeCssClass(cell)" title="@GetCellTooltip(cell)" @onclick="() => ToggleCellSelection(cell)">
+                                            <td class="@GetCellCompositeCssClass(cell)"
+                                                title="@GetCellTooltip(cell)"
+                                                @onclick="args => OnCellClick(args, cell)"
+                                                @ondblclick="() => OpenReservationFromCell(cell)">
                                                 @if (cell is null)
                                                 {
                                                     <div class="calendar-cell-empty">Sin fila</div>
                                                 }
                                                 else if (cell.ReservationId.HasValue)
                                                 {
-                                                    <a class="calendar-cell-link" href="@GetReservationHref(cell.ReservationId.Value)" @onclick:stopPropagation="true">
+                                                    <div class="calendar-cell-link">
                                                         <div class="calendar-cell-top">
                                                             <span class="calendar-state-label">@GetStateLabel(cell.StateCode)</span>
                                                             <span class="calendar-reservation-id">#@cell.ReservationId</span>
@@ -140,7 +143,7 @@
                                                                 <span class="badge text-bg-dark">Extras</span>
                                                             }
                                                         </div>
-                                                    </a>
+                                                    </div>
                                                 }
                                                 else
                                                 {
@@ -184,7 +187,8 @@
                                                             <a class="@GetCalendarOrderBadgeClass(badge.Estado)"
                                                                href="@($"/ordenes-trabajo/{badge.WorkOrderId}")"
                                                                title="@($"{badge.Folio} - {OrionERP.Web.Features.OrdenesTrabajo.OrdenesTrabajoPage.GetStatusLabel(badge.Estado)}")"
-                                                               @onclick:stopPropagation="true">
+                                                               @onclick:stopPropagation="true"
+                                                               @ondblclick:stopPropagation="true">
                                                                 @badge.Folio
                                                             </a>
                                                         }

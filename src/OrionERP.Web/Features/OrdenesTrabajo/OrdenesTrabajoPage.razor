@@ -149,7 +149,7 @@
                             <label class="form-label">Buscar</label>
                             <InputText class="form-control" @bind-Value="Filter.SearchText" />
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label class="form-label">Estado</label>
                             <select class="form-select" @bind="Filter.Estado">
                                 <option value="">Todos</option>
@@ -161,13 +161,23 @@
                                 <option value="CANCELADA">Cancelada</option>
                             </select>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label class="form-label">Categoria</label>
                             <select class="form-select" @bind="Filter.CategoriaCodigo">
                                 <option value="">Todas</option>
                                 @foreach (var category in Categories)
                                 {
                                     <option value="@category.Codigo">@category.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Responsable</label>
+                            <select class="form-select" @bind="Filter.OwnerEmployeeId">
+                                <option value="">Todos</option>
+                                @foreach (var employee in Employees)
+                                {
+                                    <option value="@employee.Id">@employee.Name</option>
                                 }
                             </select>
                         </div>

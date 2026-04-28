@@ -33,6 +33,10 @@ public static class OrdenTrabajoCodes
   public const string FotoOpcional = "OPCIONAL";
   public const string FotoRequerida = "REQUERIDA";
 
+  public const string EvidenciaCamera = "CAMERA";
+  public const string EvidenciaFile = "FILE";
+  public const string EvidenciaUnknown = "UNKNOWN";
+
   public static readonly string[] OpenStatuses =
   [
     EstadoBorrador,

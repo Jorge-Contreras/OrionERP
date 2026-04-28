@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Identity;
 using OrionERP.Application.Features.OrdenesTrabajo;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
@@ -15,7 +16,7 @@ using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Reservaciones.Calendario;
 
-[Authorize(Roles = "Administrador,SatOperator,OrdenTrabajoAdmin,OrdenTrabajoSupervisor")]
+
 public partial class CalendarioReservacionesPage : ComponentBase
 {
   [Inject] public IListaReservacionesService ReservacionesService { get; set; } = default!;
@@ -24,6 +25,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
   [Inject] public AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
   [Inject] public UserManager<ApplicationUser> UserManager { get; set; } = default!;
   [Inject] public IUserRfcState RfcState { get; set; } = default!;
+  [Inject] public NavigationManager Navigation { get; set; } = default!;
 
   protected RoomCalendarTimelineFilter Filter { get; set; } = CreateDefaultFilter();
   protected RoomCalendarTimelineDto? Timeline { get; set; }
@@ -188,6 +190,24 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
   protected static string GetReservationHref(int reservationId)
     => $"/reservaciones/{reservationId}";
+
+  protected void OnCellClick(MouseEventArgs args, RoomCalendarDayCellDto? cell)
+  {
+    if (args.Detail > 1)
+    {
+      return;
+    }
+
+    ToggleCellSelection(cell);
+  }
+
+  protected void OpenReservationFromCell(RoomCalendarDayCellDto? cell)
+  {
+    if (cell?.ReservationId is int reservationId)
+    {
+      Navigation.NavigateTo(GetReservationHref(reservationId));
+    }
+  }
 
   protected void ToggleCellSelection(RoomCalendarDayCellDto? cell)
   {

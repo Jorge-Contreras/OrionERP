@@ -107,7 +107,9 @@
                         {
                             @foreach (var row in Reservaciones)
                             {
-                                <tr class="reservaciones-list-row">
+                                <tr class="@GetReservacionRowClass(row.Id)"
+                                    @onclick="() => SelectReservacionRow(row.Id)"
+                                    aria-selected="@(SelectedReservacionId == row.Id)">
                                     <td data-label="ID">@row.Id</td>
                                     <td data-label="Cliente">@row.Cliente</td>
                                     <td data-label="Check-in">@FormatDate(row.CheckIn)</td>

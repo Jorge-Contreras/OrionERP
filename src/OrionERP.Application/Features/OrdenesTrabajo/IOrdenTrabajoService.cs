@@ -11,6 +11,7 @@ public interface IOrdenTrabajoService
   Task<OrdenTrabajoCommandResult> CreateManualAsync(OrdenTrabajoCreateRequest request, CancellationToken ct = default);
   Task<OrdenTrabajoCalendarCreateResult> CreateCleaningFromCalendarAsync(OrdenTrabajoCalendarCreateRequest request, CancellationToken ct = default);
   Task<OrdenTrabajoCommandResult> UpdateWorkOrderAsync(int id, OrdenTrabajoUpdateRequest request, CancellationToken ct = default);
+  Task<OrdenTrabajoCommandResult> ReplaceWorkOrderStepsAsync(int id, OrdenTrabajoStepsSaveRequest request, CancellationToken ct = default);
   Task<OrdenTrabajoCommandResult> CancelWorkOrderAsync(int id, string reason, string actor, CancellationToken ct = default);
   Task<OrdenTrabajoCommandResult> StartWorkOrderAsync(int id, string actor, int? actorEmployeeId = null, CancellationToken ct = default);
   Task<OrdenTrabajoCommandResult> UpdateStepAsync(int workOrderId, int stepId, OrdenTrabajoStepUpdateRequest request, CancellationToken ct = default);

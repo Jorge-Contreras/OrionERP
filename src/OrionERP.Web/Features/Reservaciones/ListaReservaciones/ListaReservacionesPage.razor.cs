@@ -32,6 +32,7 @@ public partial class ListaReservacionesPage : ComponentBase, IDisposable
   protected bool IsLoadingMore { get; set; }
   protected bool IsSyncingAirbnb { get; set; }
   protected bool HasMoreReservaciones { get; set; }
+  protected int? SelectedReservacionId { get; set; }
   protected string? ErrorMessage { get; set; }
 
   private DateTime? _checkInFrom;
@@ -66,6 +67,7 @@ public partial class ListaReservacionesPage : ComponentBase, IDisposable
     IsLoading = true;
     ErrorMessage = null;
     HasMoreReservaciones = false;
+    SelectedReservacionId = null;
     StateHasChanged();
 
     try
@@ -261,6 +263,14 @@ public partial class ListaReservacionesPage : ComponentBase, IDisposable
       Nav.NavigateTo(url);
     }
   }
+
+  protected void SelectReservacionRow(int reservationId)
+    => SelectedReservacionId = reservationId;
+
+  protected string GetReservacionRowClass(int reservationId)
+    => SelectedReservacionId == reservationId
+      ? "reservaciones-list-row reservaciones-list-row-selected"
+      : "reservaciones-list-row";
 
   protected static string FormatDate(DateTime? value)
     => value.HasValue ? value.Value.ToString("d", CultureInfo.CurrentCulture) : string.Empty;

@@ -30,18 +30,61 @@
                         <h2 class="h5 mb-0">Catalogo</h2>
                         <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="LoadAsync" disabled="@IsLoading">Actualizar</button>
                     </div>
+                    <div class="row g-2 align-items-end mb-3">
+                        <div class="col-12">
+                            <label class="form-label">Categoria</label>
+                            <select class="form-select" @bind="SelectedCategoryCode">
+                                <option value="">Todas</option>
+                                @foreach (var category in Categories)
+                                {
+                                    <option value="@category.Codigo">@category.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-6 d-grid">
+                            <button class="btn btn-outline-primary btn-sm" type="button" @onclick="ApplyCategoryFilterAsync" disabled="@IsLoading">Filtrar</button>
+                        </div>
+                        <div class="col-6 d-grid">
+                            <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="ResetCategoryFilterAsync" disabled="@IsLoading">Todas</button>
+                        </div>
+                    </div>
                     <div class="list-group">
-                        @foreach (var template in Templates)
+                        @if (Templates.Count == 0)
                         {
-                            <button class="@GetTemplateListClass(template)" type="button" @onclick="() => SelectTemplateAsync(template.Id)">
-                                <div class="d-flex justify-content-between gap-2">
-                                    <strong>@template.Nombre</strong>
-                                    <span class="badge text-bg-light">@template.CategoriaNombre</span>
-                                </div>
-                                <div class="small text-muted">
-                                    Publicada: @(template.PublishedVersionNumber?.ToString() ?? "-") · Pasos: @template.StepCount
-                                </div>
-                            </button>
+                            <div class="list-group-item text-center text-muted py-3">No hay plantillas para mostrar.</div>
+                        }
+                        else
+                        {
+                            @foreach (var template in Templates)
+                            {
+                                <button class="@GetTemplateListClass(template)" type="button" @onclick="() => SelectTemplateAsync(template.Id)">
+                                    <div class="d-flex justify-content-between gap-2">
+                                        <strong>@template.Nombre</strong>
+                                        <span class="badge text-bg-light">@template.CategoriaNombre</span>
+                                    </div>
+                                    <div class="small text-muted">
+                                        Publicada: @(template.PublishedVersionNumber?.ToString() ?? "-") · Pasos publicados: @template.StepCount
+                                    </div>
+                                    <div class="d-flex flex-wrap gap-1 mt-2">
+                                        @if (template.PublishedVersionId.HasValue)
+                                        {
+                                            <span class="badge text-bg-success">Publicada v@(template.PublishedVersionNumber)</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge text-bg-warning">Sin publicar</span>
+                                        }
+                                        @if (template.DraftVersionCount > 0)
+                                        {
+                                            <span class="badge text-bg-info">@template.DraftVersionCount borrador(es)</span>
+                                        }
+                                        @if (!template.Activa)
+                                        {
+                                            <span class="badge text-bg-secondary">Inactiva</span>
+                                        }
+                                    </div>
+                                </button>
+                            }
                         }
                     </div>
                 </div>
@@ -51,7 +94,39 @@
         <div class="col-12 col-xl-8">
             <section class="card shadow-sm mb-3">
                 <div class="card-body">
-                    <h2 class="h5 mb-3">Editor</h2>
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                        <div>
+                            <h2 class="h5 mb-1">Editor</h2>
+                            @if (SelectedTemplate is not null)
+                            {
+                                <div class="d-flex flex-wrap gap-1">
+                                    <span class="badge text-bg-light">@SelectedTemplate.CategoriaNombre</span>
+                                    @if (SelectedTemplate.PublishedVersionId.HasValue)
+                                    {
+                                        <span class="badge text-bg-success">Publicada v@(SelectedTemplate.PublishedVersionNumber)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge text-bg-warning">Sin version publicada</span>
+                                    }
+                                    @if (SelectedTemplate.DraftVersionId.HasValue)
+                                    {
+                                        <span class="badge text-bg-info">Borrador v@(SelectedTemplate.DraftVersionNumber)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge text-bg-secondary">Sin borrador</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        @if (SelectedTemplate is not null)
+                        {
+                            <button class="btn btn-outline-primary btn-sm" type="button" @onclick="PrepareCreateFromTemplate" disabled="@(!CanCreateFromSelectedTemplate || IsCreating)">
+                                Usar para orden
+                            </button>
+                        }
+                    </div>
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">Nombre</label>
@@ -77,7 +152,15 @@
 
                     <hr />
 
-                    <h3 class="h6 mb-3">Pasos del borrador</h3>
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <h3 class="h6 mb-0">Pasos del borrador actual</h3>
+                        @if (SelectedTemplate is not null)
+                        {
+                            <span class="small text-muted">
+                                @(SelectedTemplate.DraftVersionId.HasValue ? $"Borrador v{SelectedTemplate.DraftVersionNumber}" : "Editando nuevo borrador")
+                            </span>
+                        }
+                    </div>
                     <div class="table-responsive mb-3">
                         <table class="table table-sm align-middle">
                             <thead class="table-light">
@@ -153,6 +236,93 @@
 
             @if (SelectedTemplate is not null)
             {
+                <section class="card shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                            <div>
+                                <h2 class="h5 mb-1">Crear orden desde plantilla</h2>
+                                <div class="small text-muted">
+                                    Se usara la version publicada de @SelectedTemplate.Nombre.
+                                </div>
+                            </div>
+                            @if (!CanCreateFromSelectedTemplate)
+                            {
+                                <span class="badge text-bg-warning">Requiere plantilla activa y publicada</span>
+                            }
+                        </div>
+
+                        @if (!CanCreateFromSelectedTemplate)
+                        {
+                            <div class="alert alert-info mb-0">
+                                Publica la plantilla y mantenla activa para crear ordenes de trabajo reales desde ella.
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="row g-3">
+                                <div class="col-md-8">
+                                    <label class="form-label">Titulo</label>
+                                    <InputText class="form-control" @bind-Value="CreateRequest.Titulo" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Prioridad</label>
+                                    <select class="form-select" @bind="CreateRequest.Prioridad">
+                                        <option value="NORMAL">Normal</option>
+                                        <option value="BAJA">Baja</option>
+                                        <option value="ALTA">Alta</option>
+                                        <option value="URGENTE">Urgente</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Responsable</label>
+                                    <select class="form-select" @bind="CreateRequest.OwnerEmployeeId">
+                                        <option value="0">Selecciona responsable</option>
+                                        @foreach (var employee in Employees)
+                                        {
+                                            <option value="@employee.Id">@employee.Name</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Fecha</label>
+                                    <InputDate class="form-control" @bind-Value="CreateRequest.FechaProgramada" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Vence</label>
+                                    <InputDate class="form-control" @bind-Value="CreateRequest.FechaVencimiento" />
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Ayudantes</label>
+                                    <div class="d-flex flex-wrap gap-3">
+                                        @foreach (var employee in Employees)
+                                        {
+                                            <label class="form-check mb-0">
+                                                <input class="form-check-input" type="checkbox" checked="@CreateHelperIds.Contains(employee.Id)" @onchange="args => ToggleCreateHelper(employee.Id, args)" />
+                                                <span class="form-check-label">@employee.Name</span>
+                                            </label>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Ubicacion</label>
+                                    <InputText class="form-control" @bind-Value="CreateRequest.Ubicacion" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Costo estimado</label>
+                                    <InputNumber class="form-control" @bind-Value="CreateRequest.EstimatedCost" />
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Descripcion</label>
+                                    <InputTextArea class="form-control" rows="2" @bind-Value="CreateRequest.Descripcion" />
+                                </div>
+                            </div>
+                            <button class="btn btn-primary mt-3" type="button" @onclick="CreateFromTemplateAsync" disabled="@IsCreating">
+                                @(IsCreating ? "Creando..." : "Crear orden")
+                            </button>
+                        }
+                    </div>
+                </section>
+
                 <section class="card shadow-sm">
                     <div class="card-body">
                         <h2 class="h5 mb-3">Mapeo de suites para limpieza</h2>

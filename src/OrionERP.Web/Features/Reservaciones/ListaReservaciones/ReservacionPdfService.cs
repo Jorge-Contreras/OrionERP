@@ -98,51 +98,32 @@ public sealed class ReservacionPdfService : IReservacionPdfService
 
       column.Item().Element(SectionCard).Column(section =>
       {
-        section.Spacing(10);
+        section.Spacing(8);
         section.Item().Element(SectionTitle).Text("Datos de la Reservacion")
           .FontSize(12)
           .SemiBold()
           .FontColor(BrandPrimaryDark);
 
-        section.Item().Element(container => ComposeFieldPairs(
-          container,
-          [
-            new FieldEntry("Cliente", model.Cliente),
-            new FieldEntry("Recomendacion", model.Recomendacion),
-            new FieldEntry("Check-in", model.CheckIn),
-            new FieldEntry("Check-out", model.CheckOut),
-            new FieldEntry("Noches", model.NumNoches),
-            new FieldEntry("Facturable", model.Facturable)
-          ]));
+        section.Item().Element(container => ComposeReservationSummary(container, model));
 
-        section.Item().Element(FieldBlock).Column(field =>
+        section.Item().Element(CompactFieldBlock).Column(field =>
         {
-          field.Spacing(2);
-          field.Item().Text("Notas").Bold();
-          field.Item().Text(string.IsNullOrWhiteSpace(model.Notes) ? "Sin notas." : model.Notes);
+          field.Spacing(1);
+          field.Item().Text("Notas").FontSize(8).Bold().FontColor(BrandMuted);
+          field.Item().Text(string.IsNullOrWhiteSpace(model.Notes) ? "Sin notas." : model.Notes)
+            .FontSize(9);
         });
       });
 
       column.Item().Element(SectionCard).Column(section =>
       {
-        section.Spacing(10);
+        section.Spacing(8);
         section.Item().Element(SectionTitle).Text("Totales")
           .FontSize(12)
           .SemiBold()
           .FontColor(BrandPrimaryDark);
 
-        section.Item().Element(container => ComposeFieldPairs(
-          container,
-          [
-            new FieldEntry("Total por Suites", model.TotalSuites),
-            new FieldEntry("Total por Extras", model.TotalExtras),
-            new FieldEntry("Subtotal", model.SubTotal),
-            new FieldEntry("IVA", model.Tax),
-            new FieldEntry("ISH", model.Ish),
-            new FieldEntry("Total Reservacion", model.TotalReservacion, true),
-            new FieldEntry("Total Pagado", model.TotalPagado),
-            new FieldEntry("Por Pagar", model.PorPagar, true)
-          ]));
+        section.Item().Element(container => ComposeTotalsSummary(container, model));
       });
 
       column.Item().Element(SectionCard).Column(section =>
@@ -165,7 +146,8 @@ public sealed class ReservacionPdfService : IReservacionPdfService
             columns.RelativeColumn(1.2f);
             columns.RelativeColumn(1f);
           },
-          "Sin suites registradas."));
+          "Sin suites registradas.",
+          bodyFontSize: 10.5f));
       });
 
       column.Item().Element(SectionCard).Column(section =>
@@ -216,28 +198,6 @@ public sealed class ReservacionPdfService : IReservacionPdfService
           "Sin pagos registrados."));
       });
 
-      column.Item().Element(SectionCard).Column(section =>
-      {
-        section.Spacing(10);
-        section.Item().Element(SectionTitle).Text("Archivos")
-          .FontSize(12)
-          .SemiBold()
-          .FontColor(BrandPrimaryDark);
-
-        section.Item().Element(container => ComposeTable(
-          container,
-          ["Nombre", "Ext", "Descripcion", "Tamano"],
-          model.Archivos,
-          row => [row.Nombre, row.Extension, row.Descripcion, row.Tamano],
-          columns =>
-          {
-            columns.RelativeColumn(2.2f);
-            columns.RelativeColumn(0.8f);
-            columns.RelativeColumn(2f);
-            columns.RelativeColumn(1f);
-          },
-          "Sin archivos adjuntos."));
-      });
     });
   }
 
@@ -292,7 +252,8 @@ public sealed class ReservacionPdfService : IReservacionPdfService
     IReadOnlyList<TRow> rows,
     Func<TRow, IReadOnlyList<string>> mapRow,
     Action<TableColumnsDefinitionDescriptor> defineColumns,
-    string emptyMessage)
+    string emptyMessage,
+    float bodyFontSize = 9)
   {
     if (rows.Count == 0)
     {
@@ -316,9 +277,110 @@ public sealed class ReservacionPdfService : IReservacionPdfService
       {
         foreach (var cellValue in mapRow(row))
         {
-          table.Cell().Element(TableBodyCell).Text(Safe(cellValue));
+          table.Cell().Element(cell => TableBodyCell(cell, bodyFontSize)).Text(Safe(cellValue));
         }
       }
+    });
+  }
+
+  private static void ComposeReservationSummary(IContainer container, ReservacionPdfDocumentModel model)
+  {
+    container.Element(CompactFieldBlock).Column(column =>
+    {
+      column.Spacing(6);
+
+      column.Item().Row(row =>
+      {
+        row.Spacing(10);
+        row.RelativeItem(1.7f).Element(cell => ComposeInlineValue(cell, "Cliente", model.Cliente, 11, true));
+        row.RelativeItem().Element(cell => ComposeInlineValue(cell, "Recomendacion", model.Recomendacion));
+        row.ConstantItem(74).Element(cell => ComposeInlineValue(cell, "Facturable", model.Facturable));
+      });
+
+      column.Item().LineHorizontal(1).LineColor(BrandBorder);
+
+      column.Item().Row(row =>
+      {
+        row.Spacing(10);
+        row.RelativeItem().Element(cell => ComposeInlineValue(cell, "Check-in", model.CheckIn));
+        row.RelativeItem().Element(cell => ComposeInlineValue(cell, "Check-out", model.CheckOut));
+        row.ConstantItem(72).Element(cell => ComposeInlineValue(cell, "Noches", model.NumNoches, 10, true));
+      });
+    });
+  }
+
+  private static void ComposeTotalsSummary(IContainer container, ReservacionPdfDocumentModel model)
+  {
+    container.Row(row =>
+    {
+      row.Spacing(10);
+
+      row.RelativeItem(1.25f).Element(CompactFieldBlock).Column(summary =>
+      {
+        summary.Spacing(5);
+
+        summary.Item().Row(line =>
+        {
+          line.RelativeItem().Text("Suites").FontSize(9).FontColor(BrandMuted);
+          line.ConstantItem(86).AlignRight().Text(model.TotalSuites).FontSize(9.5f).SemiBold();
+        });
+
+        summary.Item().Row(line =>
+        {
+          line.RelativeItem().Text("Extras").FontSize(9).FontColor(BrandMuted);
+          line.ConstantItem(86).AlignRight().Text(model.TotalExtras).FontSize(9.5f).SemiBold();
+        });
+
+        summary.Item().LineHorizontal(1).LineColor(BrandBorder);
+
+        summary.Item().Row(line =>
+        {
+          line.RelativeItem().Text("Subtotal").FontSize(9).FontColor(BrandMuted);
+          line.ConstantItem(86).AlignRight().Text(model.SubTotal).FontSize(9.5f).SemiBold();
+        });
+
+        summary.Item().Row(line =>
+        {
+          line.RelativeItem().Text("IVA / ISH").FontSize(9).FontColor(BrandMuted);
+          line.ConstantItem(86).AlignRight().Text($"{model.Tax} / {model.Ish}").FontSize(9.5f).SemiBold();
+        });
+      });
+
+      row.RelativeItem().Element(CompactFieldBlock).Column(summary =>
+      {
+        summary.Spacing(5);
+
+        summary.Item().Row(line =>
+        {
+          line.RelativeItem().Text("Total Reservacion").FontSize(9).FontColor(BrandMuted);
+          line.ConstantItem(92).AlignRight().Text(model.TotalReservacion).FontSize(10).SemiBold();
+        });
+
+        summary.Item().Row(line =>
+        {
+          line.RelativeItem().Text("Pagado").FontSize(9).FontColor(BrandMuted);
+          line.ConstantItem(92).AlignRight().Text(model.TotalPagado).FontSize(10).SemiBold();
+        });
+
+        summary.Item().Element(container => container
+          .Background(Colors.White)
+          .Border(1.5f)
+          .BorderColor(BrandPrimary)
+          .PaddingHorizontal(8)
+          .PaddingVertical(6))
+          .Row(line =>
+          {
+            line.RelativeItem().Text("Por Pagar")
+              .FontSize(10.5f)
+              .Bold()
+              .FontColor(BrandPrimaryDark);
+
+            line.ConstantItem(104).AlignRight().Text(model.PorPagar)
+              .FontSize(13)
+              .Bold()
+              .FontColor(BrandPrimary);
+          });
+      });
     });
   }
 
@@ -342,6 +404,14 @@ public sealed class ReservacionPdfService : IReservacionPdfService
       .BorderColor(BrandBorder)
       .Padding(8);
 
+  private static IContainer CompactFieldBlock(IContainer container)
+    => container
+      .Background(Colors.White)
+      .Border(1)
+      .BorderColor(BrandBorder)
+      .PaddingHorizontal(8)
+      .PaddingVertical(7);
+
   private static IContainer TableHeaderCell(IContainer container)
     => container
       .Background(BrandPrimary)
@@ -349,13 +419,13 @@ public sealed class ReservacionPdfService : IReservacionPdfService
       .PaddingVertical(5)
       .DefaultTextStyle(style => style.FontColor(Colors.White).FontSize(9));
 
-  private static IContainer TableBodyCell(IContainer container)
+  private static IContainer TableBodyCell(IContainer container, float fontSize = 9)
     => container
       .BorderBottom(1)
       .BorderColor(BrandBorder)
       .PaddingHorizontal(6)
       .PaddingVertical(5)
-      .DefaultTextStyle(style => style.FontSize(9));
+      .DefaultTextStyle(style => style.FontSize(fontSize));
 
   private static string Safe(string? value)
     => string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
@@ -369,6 +439,32 @@ public sealed class ReservacionPdfService : IReservacionPdfService
       column.Item().Text(Safe(field.Value))
         .FontSize(field.Emphasize ? 11 : 10)
         .SemiBold();
+    });
+  }
+
+  private static void ComposeInlineValue(
+    IContainer container,
+    string label,
+    string value,
+    float valueFontSize = 10,
+    bool emphasize = false)
+  {
+    container.Column(column =>
+    {
+      column.Spacing(1);
+      column.Item().Text(label).FontSize(8).Bold().FontColor(BrandMuted);
+      var valueText = column.Item().Text(Safe(value))
+        .FontSize(valueFontSize)
+        .FontColor(BrandPrimaryDark);
+
+      if (emphasize)
+      {
+        valueText.Bold();
+      }
+      else
+      {
+        valueText.SemiBold();
+      }
     });
   }
 

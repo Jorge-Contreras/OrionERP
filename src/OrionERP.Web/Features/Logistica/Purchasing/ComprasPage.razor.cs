@@ -596,6 +596,14 @@ public partial class ComprasPage : ComponentBase
     }
   }
 
+  protected void RecibirTodo()
+  {
+    foreach (var item in ReceiveItems)
+    {
+      item.ReceiveNowQuantity = item.RemainingQuantity;
+    }
+  }
+
   protected async Task CerrarPendienteAsync()
   {
     if (SelectedPurchaseOrder is null)

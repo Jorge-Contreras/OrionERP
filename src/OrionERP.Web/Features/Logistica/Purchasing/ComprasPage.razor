@@ -551,6 +551,9 @@
                                     <h3 class="h5 mb-1">Recepción</h3>
                                     <p class="text-muted mb-0">Recibe cantidades en unidad de compra por ubicación. El sistema convierte internamente a unidad base para inventario.</p>
                                 </div>
+                                <button type="button" class="btn btn-sm btn-outline-success" @onclick="RecibirTodo" disabled="@(!CanReceive)">
+                                    Recibir Todo
+                                </button>
                             </div>
 
                             <div class="row g-3 mb-3">

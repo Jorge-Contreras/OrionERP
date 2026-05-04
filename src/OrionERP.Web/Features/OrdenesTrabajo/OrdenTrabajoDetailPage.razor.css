@@ -118,6 +118,7 @@
   border: 1px solid rgba(15, 45, 78, 0.1);
   border-radius: 0.6rem;
   background: rgba(248, 250, 252, 0.96);
+  min-width: 0;
 }
 
 .orden-evidence-preview-button {
@@ -147,10 +148,67 @@
 
 .orden-evidence-placeholder {
   display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
   align-items: center;
   justify-content: center;
   color: var(--orion-color-text-muted);
   font-weight: 700;
+}
+
+.orden-evidence-placeholder .oi {
+  font-size: 1.7rem;
+}
+
+.orden-evidence-placeholder-pdf {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.orden-evidence-placeholder-word {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.orden-evidence-placeholder-sheet {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.orden-evidence-placeholder-slide {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.orden-evidence-placeholder-image {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.orden-evidence-placeholder-code {
+  background: #f8fafc;
+  color: #475569;
+}
+
+.orden-evidence-placeholder-archive {
+  background: #fefce8;
+  color: #a16207;
+}
+
+.orden-evidence-placeholder-file {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.orden-evidence-file-name {
+  margin-top: 0.45rem;
+  overflow: hidden;
+  color: var(--orion-color-primary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .orden-image-viewer {

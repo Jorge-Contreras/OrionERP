@@ -254,8 +254,7 @@
                                             <label class="btn btn-sm btn-outline-secondary orden-file-upload">
                                                 <span class="oi oi-cloud-upload" aria-hidden="true"></span>
                                                 Subir archivo
-                                                <InputFile accept="image/*"
-                                                           OnChange="args => OnEvidenceSelectedAsync(step, args)"
+                                                <InputFile OnChange="args => OnEvidenceSelectedAsync(step, args)"
                                                            disabled="@(IsMutating || IsCameraCapturing)" />
                                             </label>
                                         </div>
@@ -295,17 +294,22 @@
                                                 <div class="orden-evidence">
                                                     <button class="orden-evidence-preview-button"
                                                             type="button"
-                                                            title="Ver foto completa"
-                                                            @onclick="() => OpenEvidencePreviewAsync(evidence)">
-                                                        @if (evidence.ThumbnailBytes is { Length: > 0 })
+                                                            title="@GetEvidenceActionTitle(evidence)"
+                                                            @onclick="() => OpenEvidenceAsync(evidence)">
+                                                        @if (IsImageEvidence(evidence) && evidence.ThumbnailBytes is { Length: > 0 })
                                                         {
                                                             <img src="@BuildThumbnailDataUrl(evidence)" alt="Evidencia @evidence.Id" />
                                                         }
                                                         else
                                                         {
-                                                            <span class="orden-evidence-placeholder">Foto</span>
+                                                            <span class="@GetEvidencePlaceholderClass(evidence)">
+                                                                <span class="@GetEvidenceIconClass(evidence)" aria-hidden="true"></span>
+                                                                <span>@GetEvidenceTypeLabel(evidence)</span>
+                                                            </span>
                                                         }
                                                     </button>
+                                                    <div class="orden-evidence-file-name" title="@evidence.FileName">@GetEvidenceDisplayName(evidence)</div>
+                                                    <div class="small text-muted">@FormatFileSize(evidence.SizeBytes)</div>
                                                     <div class="small">@evidence.CapturadaPor</div>
                                                     <div class="small text-muted">@evidence.CapturadaEn.ToString("yyyy-MM-dd HH:mm")</div>
                                                     <span class="@GetCaptureSourceBadgeClass(evidence.CaptureSource)">@GetCaptureSourceLabel(evidence.CaptureSource)</span>
@@ -431,7 +435,7 @@
                     </div>
                     <button class="btn btn-sm btn-light orden-image-viewer-close"
                             type="button"
-                            aria-label="Cerrar foto"
+                            aria-label="Cerrar evidencia"
                             @onclick="CloseEvidencePreview">
                         <span class="oi oi-x" aria-hidden="true"></span>
                     </button>
@@ -439,7 +443,7 @@
                 <div class="orden-image-viewer-body">
                     @if (IsEvidencePreviewLoading)
                     {
-                        <div class="orden-image-viewer-status">Cargando foto...</div>
+                        <div class="orden-image-viewer-status">Cargando evidencia...</div>
                     }
                     else if (!string.IsNullOrWhiteSpace(EvidencePreviewError))
                     {

@@ -14,6 +14,7 @@ namespace OrionERP.Web.Features.OrdenesTrabajo;
 public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
 {
   private const long MaxImageBytes = 12 * 1024 * 1024;
+  private const long MaxEvidenceFileBytes = 25 * 1024 * 1024;
   private const int ImageMaxPixels = 1600;
   private const int ThumbnailMaxPixels = 320;
 
@@ -242,18 +243,35 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
     IsMutating = true;
     try
     {
-      var image = await BuildImageBytesAsync(file, ImageMaxPixels);
-      var thumb = await BuildImageBytesAsync(file, ThumbnailMaxPixels);
+      if (file.Size > MaxEvidenceFileBytes)
+      {
+        UiMessages.ShowWarning($"El archivo supera el limite de {FormatFileSize(MaxEvidenceFileBytes)}.");
+        return;
+      }
+
+      var isImage = IsImageFile(file.Name, file.ContentType);
+      var content = isImage
+        ? await BuildImageBytesAsync(file, ImageMaxPixels)
+        : await BuildFileBytesAsync(file, MaxEvidenceFileBytes);
+      var thumbnailBytes = Array.Empty<byte>();
+      string? thumbnailContentType = null;
+      if (isImage)
+      {
+        var thumb = await BuildImageBytesAsync(file, ThumbnailMaxPixels);
+        thumbnailBytes = thumb.Bytes;
+        thumbnailContentType = thumb.ContentType;
+      }
+
       var result = await OrdenTrabajoService.AddStepEvidenceAsync(
         Order.Id,
         step.Id,
         new OrdenTrabajoEvidenceCreateRequest
         {
-          ImageBytes = image.Bytes,
-          ThumbnailBytes = thumb.Bytes,
+          ImageBytes = content.Bytes,
+          ThumbnailBytes = thumbnailBytes.Length == 0 ? null : thumbnailBytes,
           FileName = file.Name,
-          ContentType = image.ContentType,
-          ThumbnailContentType = thumb.ContentType,
+          ContentType = content.ContentType,
+          ThumbnailContentType = thumbnailContentType,
           DeviceInfo = "Blazor InputFile upload",
           CaptureSource = OrdenTrabajoCodes.EvidenciaFile,
           CapturedBy = CurrentUserName,
@@ -380,6 +398,17 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
     await MutateAsync(() => OrdenTrabajoService.RemoveStepEvidenceAsync(Order.Id, step.Id, evidenceId, CurrentUserName, ActorEmployeeIdForExecution));
   }
 
+  protected async Task OpenEvidenceAsync(OrdenTrabajoEvidenceDto evidence)
+  {
+    if (IsImageEvidence(evidence))
+    {
+      await OpenEvidencePreviewAsync(evidence);
+      return;
+    }
+
+    await DownloadEvidenceAsync(evidence);
+  }
+
   protected async Task OpenEvidencePreviewAsync(OrdenTrabajoEvidenceDto evidence)
   {
     IsEvidencePreviewOpen = true;
@@ -394,7 +423,7 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
       var content = await OrdenTrabajoService.GetEvidenceContentAsync(evidence.Id);
       if (content?.Bytes is not { Length: > 0 })
       {
-        EvidencePreviewError = "No se encontro la foto completa.";
+        EvidencePreviewError = "No se encontro la evidencia completa.";
         return;
       }
 
@@ -405,11 +434,37 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
     }
     catch (Exception ex)
     {
-      EvidencePreviewError = $"No se pudo cargar la foto. {ex.Message}";
+      EvidencePreviewError = $"No se pudo cargar la evidencia. {ex.Message}";
     }
     finally
     {
       IsEvidencePreviewLoading = false;
+    }
+  }
+
+  protected async Task DownloadEvidenceAsync(OrdenTrabajoEvidenceDto evidence)
+  {
+    try
+    {
+      var content = await OrdenTrabajoService.GetEvidenceContentAsync(evidence.Id);
+      if (content?.Bytes is not { Length: > 0 })
+      {
+        UiMessages.ShowWarning("No se encontro el archivo solicitado.");
+        return;
+      }
+
+      var fileName = string.IsNullOrWhiteSpace(content.FileName)
+        ? GetEvidenceDisplayName(evidence)
+        : content.FileName;
+      var contentType = string.IsNullOrWhiteSpace(content.ContentType)
+        ? "application/octet-stream"
+        : content.ContentType;
+      var dataUrl = $"data:{contentType};base64,{Convert.ToBase64String(content.Bytes)}";
+      await JSRuntime.InvokeVoidAsync("triggerFileDownload", fileName, dataUrl);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo descargar la evidencia. {ex.Message}");
     }
   }
 
@@ -533,6 +588,67 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
 
   protected static string BuildImageDataUrl(string? contentType, byte[] bytes)
     => $"data:{(string.IsNullOrWhiteSpace(contentType) ? "image/jpeg" : contentType)};base64,{Convert.ToBase64String(bytes)}";
+
+  protected static bool IsImageEvidence(OrdenTrabajoEvidenceDto evidence)
+    => IsImageFile(evidence.FileName, evidence.ContentType)
+      || IsImageFile(evidence.FileName, evidence.ThumbnailContentType);
+
+  protected static string GetEvidenceDisplayName(OrdenTrabajoEvidenceDto evidence)
+    => string.IsNullOrWhiteSpace(evidence.FileName)
+      ? $"evidencia-{evidence.Id}"
+      : evidence.FileName;
+
+  protected static string GetEvidenceActionTitle(OrdenTrabajoEvidenceDto evidence)
+    => IsImageEvidence(evidence) ? "Ver imagen completa" : "Descargar archivo";
+
+  protected static string GetEvidenceIconClass(OrdenTrabajoEvidenceDto evidence)
+    => GetFileExtension(evidence.FileName) switch
+    {
+      ".jpg" or ".jpeg" or ".png" or ".gif" or ".webp" or ".bmp" => "oi oi-image",
+      ".pdf" => "oi oi-document",
+      ".doc" or ".docx" => "oi oi-document",
+      ".xls" or ".xlsx" or ".csv" => "oi oi-spreadsheet",
+      ".ppt" or ".pptx" => "oi oi-project",
+      ".txt" => "oi oi-text",
+      ".xml" or ".json" => "oi oi-code",
+      ".zip" or ".rar" or ".7z" => "oi oi-box",
+      _ => "oi oi-file"
+    };
+
+  protected static string GetEvidenceTypeLabel(OrdenTrabajoEvidenceDto evidence)
+  {
+    var extension = GetFileExtension(evidence.FileName);
+    if (!string.IsNullOrWhiteSpace(extension))
+    {
+      return extension.TrimStart('.').ToUpperInvariant();
+    }
+
+    return IsImageEvidence(evidence) ? "IMG" : "FILE";
+  }
+
+  protected static string GetEvidencePlaceholderClass(OrdenTrabajoEvidenceDto evidence)
+    => $"orden-evidence-placeholder {GetEvidenceColorClass(evidence)}";
+
+  protected static string FormatFileSize(long bytes)
+  {
+    if (bytes <= 0)
+    {
+      return "0 KB";
+    }
+
+    string[] units = ["B", "KB", "MB", "GB"];
+    var size = (double)bytes;
+    var unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.Length - 1)
+    {
+      size /= 1024;
+      unitIndex++;
+    }
+
+    return unitIndex == 0
+      ? $"{size:0} {units[unitIndex]}"
+      : $"{size:0.#} {units[unitIndex]}";
+  }
 
   protected string? GetStepNotes(OrdenTrabajoStepDto step)
     => StepNotes.TryGetValue(step.Id, out var notes) ? notes : step.Notas;
@@ -765,6 +881,76 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
       return (ms.ToArray(), string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType);
     }
   }
+
+  private static async Task<(byte[] Bytes, string ContentType)> BuildFileBytesAsync(IBrowserFile file, long maxAllowedBytes)
+  {
+    await using var stream = file.OpenReadStream(maxAllowedBytes);
+    using var ms = new MemoryStream();
+    await stream.CopyToAsync(ms);
+    return (ms.ToArray(), ResolveBrowserFileContentType(file));
+  }
+
+  private static string ResolveBrowserFileContentType(IBrowserFile file)
+  {
+    var contentType = string.IsNullOrWhiteSpace(file.ContentType)
+      ? null
+      : file.ContentType;
+    if (!string.Equals(contentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase)
+      && contentType is not null)
+    {
+      return contentType;
+    }
+
+    var extensionContentType = ResolveContentTypeFromExtension(GetFileExtension(file.Name));
+    return string.Equals(extensionContentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase)
+      ? contentType ?? extensionContentType
+      : extensionContentType;
+  }
+
+  private static bool IsImageFile(string? fileName, string? contentType)
+    => (!string.IsNullOrWhiteSpace(contentType) && contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+      || GetFileExtension(fileName) is ".jpg" or ".jpeg" or ".png" or ".gif" or ".webp" or ".bmp";
+
+  private static string GetEvidenceColorClass(OrdenTrabajoEvidenceDto evidence)
+    => GetFileExtension(evidence.FileName) switch
+    {
+      ".pdf" => "orden-evidence-placeholder-pdf",
+      ".doc" or ".docx" => "orden-evidence-placeholder-word",
+      ".xls" or ".xlsx" or ".csv" => "orden-evidence-placeholder-sheet",
+      ".ppt" or ".pptx" => "orden-evidence-placeholder-slide",
+      ".jpg" or ".jpeg" or ".png" or ".gif" or ".webp" or ".bmp" => "orden-evidence-placeholder-image",
+      ".xml" or ".json" => "orden-evidence-placeholder-code",
+      ".zip" or ".rar" or ".7z" => "orden-evidence-placeholder-archive",
+      _ => "orden-evidence-placeholder-file"
+    };
+
+  private static string GetFileExtension(string? fileName)
+    => string.IsNullOrWhiteSpace(fileName)
+      ? string.Empty
+      : Path.GetExtension(fileName).ToLowerInvariant();
+
+  private static string ResolveContentTypeFromExtension(string extension)
+    => extension switch
+    {
+      ".pdf" => "application/pdf",
+      ".doc" => "application/msword",
+      ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ".xls" => "application/vnd.ms-excel",
+      ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ".ppt" => "application/vnd.ms-powerpoint",
+      ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      ".csv" => "text/csv",
+      ".txt" => "text/plain",
+      ".xml" => "application/xml",
+      ".json" => "application/json",
+      ".jpg" or ".jpeg" => "image/jpeg",
+      ".png" => "image/png",
+      ".gif" => "image/gif",
+      ".webp" => "image/webp",
+      ".bmp" => "image/bmp",
+      ".zip" => "application/zip",
+      _ => "application/octet-stream"
+    };
 
   private static string? NullIfWhiteSpace(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

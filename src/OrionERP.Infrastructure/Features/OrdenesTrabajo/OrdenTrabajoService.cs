@@ -1085,7 +1085,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
     if (request.ImageBytes.Length == 0)
     {
-      return OrdenTrabajoCommandResult.Fail("Selecciona una imagen para guardar evidencia.");
+      return OrdenTrabajoCommandResult.Fail("Selecciona un archivo para guardar evidencia.");
     }
 
     var safeActor = NormalizeActor(request.CapturedBy);
@@ -1162,12 +1162,14 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
           new
           {
             StepId = stepId,
-            FileName = NullIfWhiteSpace(request.FileName) ?? $"evidencia-{workOrderId}-{stepId}.jpg",
-            ContentType = NormalizeImageContentType(request.ContentType),
+            FileName = NullIfWhiteSpace(request.FileName) ?? BuildDefaultEvidenceFileName(workOrderId, stepId, request.ContentType),
+            ContentType = NormalizeEvidenceContentType(request.ContentType, request.FileName),
             CaptureSource = NormalizeCaptureSource(request.CaptureSource),
             request.ImageBytes,
-            ThumbnailBytes = request.ThumbnailBytes ?? request.ImageBytes,
-            ThumbnailContentType = NormalizeImageContentType(request.ThumbnailContentType ?? request.ContentType),
+            ThumbnailBytes = request.ThumbnailBytes,
+            ThumbnailContentType = request.ThumbnailBytes is { Length: > 0 }
+              ? NormalizeEvidenceContentType(request.ThumbnailContentType ?? request.ContentType, request.FileName)
+              : null,
             SizeBytes = request.ImageBytes.LongLength,
             DeviceInfo = NullIfWhiteSpace(request.DeviceInfo),
             Actor = safeActor
@@ -2745,6 +2747,96 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
     return normalized is "image/png" or "image/webp" or "image/gif" or "image/bmp"
       ? normalized
       : "image/jpeg";
+  }
+
+  private static string NormalizeEvidenceContentType(string? contentType, string? fileName)
+  {
+    var normalized = NullIfWhiteSpace(contentType)?.ToLowerInvariant();
+    var extensionContentType = ResolveContentTypeFromExtension(Path.GetExtension(fileName));
+    if (string.Equals(normalized, "application/octet-stream", StringComparison.OrdinalIgnoreCase)
+      && !string.Equals(extensionContentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase))
+    {
+      return extensionContentType;
+    }
+
+    if (IsSafeContentType(normalized))
+    {
+      return normalized!;
+    }
+
+    return extensionContentType;
+  }
+
+  private static bool IsSafeContentType(string? contentType)
+  {
+    if (contentType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true)
+    {
+      return true;
+    }
+
+    return contentType is "application/pdf"
+      or "application/msword"
+      or "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      or "application/vnd.ms-excel"
+      or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      or "application/vnd.ms-powerpoint"
+      or "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      or "text/plain"
+      or "text/csv"
+      or "application/xml"
+      or "text/xml"
+      or "application/json"
+      or "application/zip"
+      or "application/octet-stream";
+  }
+
+  private static string ResolveContentTypeFromExtension(string? extension)
+    => NullIfWhiteSpace(extension)?.TrimStart('.').ToLowerInvariant() switch
+    {
+      "pdf" => "application/pdf",
+      "doc" => "application/msword",
+      "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "xls" => "application/vnd.ms-excel",
+      "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "ppt" => "application/vnd.ms-powerpoint",
+      "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "csv" => "text/csv",
+      "txt" => "text/plain",
+      "xml" => "application/xml",
+      "json" => "application/json",
+      "jpg" or "jpeg" => "image/jpeg",
+      "png" => "image/png",
+      "gif" => "image/gif",
+      "webp" => "image/webp",
+      "bmp" => "image/bmp",
+      "zip" => "application/zip",
+      _ => "application/octet-stream"
+    };
+
+  private static string BuildDefaultEvidenceFileName(int workOrderId, int stepId, string? contentType)
+  {
+    var extension = NullIfWhiteSpace(contentType)?.ToLowerInvariant() switch
+    {
+      "application/pdf" => "pdf",
+      "application/msword" => "doc",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "docx",
+      "application/vnd.ms-excel" => "xls",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => "xlsx",
+      "application/vnd.ms-powerpoint" => "ppt",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation" => "pptx",
+      "text/plain" => "txt",
+      "text/csv" => "csv",
+      "application/xml" or "text/xml" => "xml",
+      "application/json" => "json",
+      "image/png" => "png",
+      "image/gif" => "gif",
+      "image/webp" => "webp",
+      "image/bmp" => "bmp",
+      "application/zip" => "zip",
+      _ => "bin"
+    };
+
+    return $"evidencia-{workOrderId}-{stepId}.{extension}";
   }
 
   private static string NormalizeCaptureSource(string? captureSource)

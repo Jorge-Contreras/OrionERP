@@ -45,7 +45,7 @@
 
 @code {
     [CascadingParameter] private ErrorBoundary? _errorBoundary { get; set; }
-    private bool _isDesktopNavVisible = true;
+    private bool _isDesktopNavVisible;
 
     private string AppShellCssClass => _isDesktopNavVisible ? "page app-shell" : "page app-shell app-shell--nav-hidden";
 

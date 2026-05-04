@@ -70,3 +70,9 @@
         max-width: none;
     }
 }
+
+@media (max-width: 640.98px) {
+    .security-header--anonymous {
+        justify-content: flex-start;
+    }
+}

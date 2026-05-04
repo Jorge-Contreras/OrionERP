@@ -36,87 +36,125 @@ public sealed class ListaReservacionesService : IListaReservacionesService, IOpe
     var take = Math.Max(filter.Take, 0);
 
     var p = new DynamicParameters();
-    string sql;
-
-    if (filter.IncluirCanceladas)
-    {
-      var includeCanceladasSql = new StringBuilder(@"
+    var sql = new StringBuilder(@"
 SELECT
     r.ID AS Id,
     ISNULL(c.Nombre, '(Sin cliente)') AS Cliente,
     r.CHECKIN AS CheckIn,
     r.CHECKOUT AS CheckOut,
     r.STATUS AS Status,
+    CAST(ISNULL(r.TAXABLE, 0) AS bit) AS Taxable,
     CAST(ISNULL(r.TOTAL_PRICE, 0) AS decimal(18,2)) AS TotalPrice,
-    CAST(ISNULL(pa.PAGADO, 0) AS decimal(18,2)) AS Pagado,
-    CAST(ISNULL(r.TOTAL_PRICE, 0) - ISNULL(pa.PAGADO, 0) AS decimal(18,2)) AS PorPagar,
+    CAST(0 AS decimal(18,2)) AS Pagado,
+    CAST(ISNULL(r.TOTAL_PRICE, 0) AS decimal(18,2)) AS PorPagar,
     r.NOTES AS Notes
 FROM dbo.RESERVATION r
 LEFT JOIN dbo.Clientes c
   ON c.ID = r.CLIENTE_ID
-OUTER APPLY (
-    SELECT SUM(rt.Amount) AS PAGADO
-    FROM dbo.Reservation_Transacciones rt
-    WHERE rt.ReservationID = r.ID
-) pa
 WHERE 1=1");
 
-      AppendListaFilters(
-        includeCanceladasSql,
-        p,
-        filter,
-        "r.ID",
-        "c.Nombre",
-        "r.STATUS",
-        "r.CHECKIN");
+    if (!filter.IncluirCanceladas)
+    {
+      sql.Append(" AND (r.STATUS <> 'Cancelada' OR r.STATUS IS NULL)");
+    }
 
-      includeCanceladasSql.Append(@"
+    AppendListaFilters(
+      sql,
+      p,
+      filter,
+      "r.ID",
+      "c.Nombre",
+      "r.STATUS",
+      "r.CHECKIN");
+
+    sql.Append(@"
 ORDER BY r.CHECKIN DESC, r.ID DESC");
 
-      AppendListaPagination(includeCanceladasSql, p, skip, take);
-      includeCanceladasSql.Append(';');
-
-      sql = includeCanceladasSql.ToString();
-    }
-    else
-    {
-      var viewSql = new StringBuilder(@"
-SELECT
-    lr.ID AS Id,
-    ISNULL(lr.Nombre, '(Sin cliente)') AS Cliente,
-    lr.CHECKIN AS CheckIn,
-    lr.CHECKOUT AS CheckOut,
-    lr.STATUS AS Status,
-    CAST(ISNULL(lr.TOTAL_PRICE, 0) AS decimal(18,2)) AS TotalPrice,
-    CAST(ISNULL(lr.PAGADO, 0) AS decimal(18,2)) AS Pagado,
-    CAST(ISNULL(lr.POR_PAGAR, 0) AS decimal(18,2)) AS PorPagar,
-    lr.NOTES AS Notes
-FROM dbo.LISTA_DE_RESERVACIONES lr
-WHERE 1=1");
-
-      AppendListaFilters(
-        viewSql,
-        p,
-        filter,
-        "lr.ID",
-        "lr.Nombre",
-        "lr.STATUS",
-        "lr.CHECKIN");
-
-      viewSql.Append(@"
-ORDER BY lr.CHECKIN DESC, lr.ID DESC");
-
-      AppendListaPagination(viewSql, p, skip, take);
-      viewSql.Append(';');
-
-      sql = viewSql.ToString();
-    }
+    AppendListaPagination(sql, p, skip, take);
+    sql.Append(';');
 
     await using var conn = new SqlConnection(_cs);
-    var rows = await conn.QueryAsync<ListaReservacionItemDto>(
-      new CommandDefinition(sql, p, cancellationToken: ct));
+    var rows = (await conn.QueryAsync<ListaReservacionListRow>(
+      new CommandDefinition(sql.ToString(), p, cancellationToken: ct))).AsList();
 
-    return rows.AsList();
+    await ApplyCalculatedListTotalsAsync(conn, rows, ct);
+
+    return rows
+      .Select(row => new ListaReservacionItemDto
+      {
+        Id = row.Id,
+        Cliente = row.Cliente,
+        CheckIn = row.CheckIn,
+        CheckOut = row.CheckOut,
+        Status = row.Status,
+        TotalPrice = row.TotalPrice,
+        Pagado = row.Pagado,
+        PorPagar = row.PorPagar,
+        Notes = row.Notes
+      })
+      .ToList();
+  }
+
+  private static async Task ApplyCalculatedListTotalsAsync(
+    SqlConnection conn,
+    IReadOnlyList<ListaReservacionListRow> rows,
+    CancellationToken ct)
+  {
+    if (rows.Count == 0)
+    {
+      return;
+    }
+
+    var reservationIds = rows.Select(row => row.Id).ToArray();
+
+    const string totalsSql = @"
+SELECT
+    TRY_CAST(rc.LOCK_DESCRIPTION AS int) AS ReservationId,
+    CAST(ISNULL(rc.PRECIO, 0) AS decimal(18,2)) AS Amount
+FROM dbo.ROOM_CALENDAR rc
+WHERE TRY_CAST(rc.LOCK_DESCRIPTION AS int) IN @ReservationIds;
+
+SELECT
+    rd.RESERVATION_ID AS ReservationId,
+    CAST(ISNULL(rd.DISCOUNTED_PRICE, 0) AS decimal(18,2)) AS Amount
+FROM dbo.RESERVATION_DETAIL rd
+WHERE rd.RESERVATION_ID IN @ReservationIds;
+
+SELECT
+    rt.ReservationID AS ReservationId,
+    CAST(ISNULL(rt.Amount, ISNULL(t.Monto, 0)) AS decimal(18,2)) AS Amount
+FROM dbo.Reservation_Transacciones rt
+LEFT JOIN dbo.Transacciones t
+  ON t.ID = rt.TransaccionID
+WHERE rt.ReservationID IN @ReservationIds;";
+
+    using var multi = await conn.QueryMultipleAsync(
+      new CommandDefinition(
+        totalsSql,
+        new { ReservationIds = reservationIds },
+        cancellationToken: ct));
+
+    var suitesByReservation = (await multi.ReadAsync<ReservationAmountRow>())
+      .ToLookup(row => row.ReservationId, row => row.Amount);
+    var extrasByReservation = (await multi.ReadAsync<ReservationAmountRow>())
+      .ToLookup(row => row.ReservationId, row => row.Amount);
+    var pagosByReservation = (await multi.ReadAsync<ReservationAmountRow>())
+      .ToLookup(row => row.ReservationId, row => row.Amount);
+
+    foreach (var row in rows)
+    {
+      var totals = ReservacionTotalsCalculator.Calculate(
+        row.CheckIn,
+        row.CheckOut,
+        row.Taxable,
+        suitesByReservation[row.Id],
+        extrasByReservation[row.Id],
+        pagosByReservation[row.Id].Sum());
+
+      row.TotalPrice = totals.TotalReservacion;
+      row.Pagado = totals.TotalPagado;
+      row.PorPagar = totals.PorPagar;
+    }
   }
 
   private static void AppendListaFilters(
@@ -1710,6 +1748,26 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
   private sealed record OpenClawRequestedExtra(string CatalogName, int Quantity, string? Notes);
   private sealed record OpenClawResolvedRoom(int Id, string RoomName, decimal BasePrice);
   private sealed record OpenClawResolvedExtra(int RoomId, string RoomName, decimal UnitPrice, int Quantity, string? Notes);
+
+  private sealed class ListaReservacionListRow
+  {
+    public int Id { get; set; }
+    public string Cliente { get; set; } = string.Empty;
+    public DateTime? CheckIn { get; set; }
+    public DateTime? CheckOut { get; set; }
+    public string? Status { get; set; }
+    public bool Taxable { get; set; }
+    public decimal TotalPrice { get; set; }
+    public decimal Pagado { get; set; }
+    public decimal PorPagar { get; set; }
+    public string? Notes { get; set; }
+  }
+
+  private sealed class ReservationAmountRow
+  {
+    public int ReservationId { get; set; }
+    public decimal Amount { get; set; }
+  }
 
   private sealed class OpenClawRoomCatalogRow
   {

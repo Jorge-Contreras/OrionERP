@@ -4,6 +4,7 @@ obj/
 artifacts/
 **/artifacts/
 output/
+node_modules/
 
 # User-specific files
 *.user
@@ -26,6 +27,10 @@ Thumbs.db
 *.log
 *.tmp
 *.cache
+TestResults/
+test-results/
+coverage/
+playwright-report/
 
 # Repo-local scratch space
 /tmp/*

@@ -88,7 +88,7 @@
                                     <th class="calendar-sticky-col calendar-room-col">Espacio</th>
                                     @foreach (var day in VisibleDates)
                                     {
-                                        <th class="calendar-day-col">
+                                        <th class="@GetDayHeaderCssClass(day)">
                                             <div class="calendar-day-header">@day.ToString("ddd", HeaderCulture)</div>
                                             <div class="calendar-day-number">@day.ToString("dd MMM", HeaderCulture)</div>
                                         </th>
@@ -102,13 +102,12 @@
                                         <th class="calendar-sticky-col calendar-room-col">
                                             <div class="fw-semibold">@resource.RoomName</div>
                                             <div class="text-muted small">@resource.RoomType</div>
-                                            <div class="text-muted small">Base: @FormatCurrency(resource.BasePrice)</div>
                                         </th>
                                         @foreach (var day in VisibleDates)
                                         {
                                             var cell = GetCell(resource.RoomId, day);
                                             var orderBadges = GetCellWorkOrderBadges(cell);
-                                            <td class="@GetCellCompositeCssClass(cell)"
+                                            <td class="@GetCellCompositeCssClass(cell, day)"
                                                 title="@GetCellTooltip(cell)"
                                                 @onclick="args => OnCellClick(args, cell)"
                                                 @ondblclick="() => OpenReservationFromCell(cell)">
@@ -127,7 +126,6 @@
                                                         {
                                                             <div class="calendar-cell-line">@cell.LockedBy</div>
                                                         }
-                                                        <div class="calendar-cell-line">@FormatCurrency(cell.Price)</div>
                                                         <div class="calendar-cell-flags">
                                                             @if (cell.IsArrival)
                                                             {
@@ -161,7 +159,6 @@
                                                     {
                                                         <div class="calendar-cell-line">@cell.LockedBy</div>
                                                     }
-                                                    <div class="calendar-cell-line">@FormatCurrency(cell.Price)</div>
                                                     <div class="calendar-cell-flags">
                                                         @if (cell.IsArrival)
                                                         {

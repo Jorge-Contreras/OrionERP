@@ -165,6 +165,14 @@ public partial class CalendarioReservacionesPage : ComponentBase
     };
   }
 
+  protected static bool IsToday(DateTime day)
+    => day.Date == DateTime.Today;
+
+  protected static string GetDayHeaderCssClass(DateTime day)
+    => IsToday(day)
+      ? "calendar-day-col calendar-day-today"
+      : "calendar-day-col";
+
   protected static string GetCellTooltip(RoomCalendarDayCellDto? cell)
   {
     if (cell is null)
@@ -172,8 +180,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
     var parts = new List<string>
     {
-      $"Estado: {GetStateLabel(cell.StateCode)}",
-      $"Precio: {cell.Price:C2}"
+      $"Estado: {GetStateLabel(cell.StateCode)}"
     };
 
     if (cell.ReservationId.HasValue)
@@ -187,9 +194,6 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
     return string.Join(" | ", parts);
   }
-
-  protected static string FormatCurrency(decimal amount)
-    => amount.ToString("C2", CultureInfo.GetCultureInfo("es-MX"));
 
   protected static string GetReservationHref(int reservationId)
     => $"/reservaciones/{reservationId}";
@@ -250,9 +254,14 @@ public partial class CalendarioReservacionesPage : ComponentBase
       _ => "calendar-wo-badge calendar-wo-badge-open"
     };
 
-  protected string GetCellCompositeCssClass(RoomCalendarDayCellDto? cell)
+  protected string GetCellCompositeCssClass(RoomCalendarDayCellDto? cell, DateTime day)
   {
     var parts = new List<string> { GetCellCssClass(cell) };
+
+    if (IsToday(day))
+    {
+      parts.Add("calendar-day-today");
+    }
 
     if (IsCellSelected(cell))
     {
@@ -525,7 +534,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
       return;
     }
 
-    var badges = await OrdenTrabajoService.GetCalendarBadgesAsync(Filter.StartDate, Filter.EndDateExclusive);
+    var badges = await OrdenTrabajoService.GetCalendarBadgesAsync(Filter.StartDate, Filter.EndDateExclusive.AddDays(1));
     WorkOrderBadgesByRoomCalendar = badges
       .GroupBy(item => item.RoomCalendarId)
       .ToDictionary(group => group.Key, group => group.ToList());

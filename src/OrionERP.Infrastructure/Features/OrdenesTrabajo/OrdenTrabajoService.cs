@@ -587,18 +587,19 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
           continue;
         }
 
+        var cleaningDate = context.RoomDate.Date.AddDays(1);
         var duplicate = await conn.QueryFirstOrDefaultAsync<(int Id, string Folio)>(
           new CommandDefinition(
             """
             SELECT TOP (1) ot.Id, ot.Folio
             FROM dbo.OrdenTrabajo ot
             WHERE ot.RoomId = @RoomId
-              AND ot.FechaProgramada = @RoomDate
+              AND ot.FechaProgramada = @CleaningDate
               AND ot.CategoriaId = @CategoryId
               AND ot.Estado IN ('BORRADOR','ASIGNADA','EN_PROCESO','EN_REVISION','RECHAZADA')
             ORDER BY ot.Id DESC;
             """,
-            new { RoomId = context.RoomId.Value, context.RoomDate, CategoryId = categoryId.Value },
+            new { RoomId = context.RoomId.Value, CleaningDate = cleaningDate, CategoryId = categoryId.Value },
             tx,
             cancellationToken: ct));
 
@@ -634,7 +635,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
           continue;
         }
 
-        var folio = await GenerateFolioAsync(conn, tx, context.RoomDate.Year, ct);
+        var folio = await GenerateFolioAsync(conn, tx, cleaningDate.Year, ct);
         var workOrderId = await InsertWorkOrderAsync(
           conn,
           tx,
@@ -645,13 +646,13 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
             CategoryId = categoryId.Value,
             Estado = OrdenTrabajoCodes.EstadoAsignada,
             Prioridad = OrdenTrabajoCodes.PrioridadNormal,
-            Titulo = $"Limpieza {context.RoomName} {context.RoomDate:yyyy-MM-dd}",
+            Titulo = $"Limpieza {context.RoomName} {cleaningDate:yyyy-MM-dd}",
             Descripcion = $"Orden de limpieza creada desde calendario para {context.RoomName}.",
             OwnerEmployeeId = request.OwnerEmployeeId,
-            FechaProgramada = context.RoomDate.Date,
+            FechaProgramada = cleaningDate,
             HoraInicioProgramada = new TimeSpan(11, 0, 0),
             HoraFinProgramada = new TimeSpan(15, 0, 0),
-            FechaVencimiento = context.RoomDate.Date,
+            FechaVencimiento = cleaningDate,
             RoomId = context.RoomId,
             RoomCalendarId = context.RoomCalendarId,
             ReservationId = context.ReservationId,

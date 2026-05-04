@@ -1,3 +1,4 @@
+using System.Data;
 using OrionERP.Application.Features.OrdenesTrabajo;
 using OrionERP.Infrastructure.Features.OrdenesTrabajo;
 using OrionERP.UnitTests.Common;
@@ -185,6 +186,100 @@ public class OrdenTrabajoRecoveryTests
   }
 
   [Fact]
+  public async Task CreateCleaningFromCalendarAsync_SchedulesOrderForNextDay()
+  {
+    var occupancyDate = new DateTime(2026, 12, 31);
+    var cleaningDate = occupancyDate.AddDays(1);
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.ROOM_CALENDAR rc", StringComparison.Ordinal))
+        {
+          return Table(
+            ["RoomCalendarId", "RoomDate", "RoomName", "RoomId", "ReservationId"],
+            [123, occupancyDate, "Suite 101", 10, 9001]);
+        }
+
+        if (commandText.Contains("SELECT TOP (1) ot.Id", StringComparison.Ordinal))
+        {
+          return Table(["Id", "Folio"]);
+        }
+
+        if (commandText.Contains("FROM dbo.OrdenTrabajoPlantillaRoom map", StringComparison.Ordinal))
+        {
+          return Table(
+            ["TemplateId", "VersionId", "TemplateName"],
+            [7, 8, "Limpieza Suite"]);
+        }
+
+        return new DataTable();
+      },
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("SELECT Id FROM dbo.OrdenTrabajoCategoria", StringComparison.Ordinal))
+        {
+          return 5;
+        }
+
+        if (commandText.Contains("FROM dbo.Capital_Humano", StringComparison.Ordinal))
+        {
+          return true;
+        }
+
+        if (commandText.Contains("OrdenTrabajoFolioAnual", StringComparison.Ordinal))
+        {
+          return "OT-2027-000001";
+        }
+
+        if (commandText.Contains("SCOPE_IDENTITY", StringComparison.Ordinal))
+        {
+          return 77;
+        }
+
+        return null;
+      }
+    };
+    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CreateCleaningFromCalendarAsync(new OrdenTrabajoCalendarCreateRequest
+    {
+      Rfc = "RFC",
+      OwnerEmployeeId = 42,
+      RoomCalendarIds = [123],
+      CreatedBy = "admin"
+    });
+
+    Assert.True(result.Success);
+
+    var duplicateCheck = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("SELECT TOP (1) ot.Id", StringComparison.Ordinal));
+    Assert.Contains(duplicateCheck.Parameters, parameter => string.Equals(parameter.Name, "CleaningDate", StringComparison.OrdinalIgnoreCase)
+      && parameter.Value is DateTime value
+      && value == cleaningDate);
+
+    var folioCommand = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("OrdenTrabajoFolioAnual", StringComparison.Ordinal));
+    Assert.Contains(folioCommand.Parameters, parameter => string.Equals(parameter.Name, "Year", StringComparison.OrdinalIgnoreCase)
+      && Convert.ToInt32(parameter.Value) == cleaningDate.Year);
+
+    var insert = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("INSERT INTO dbo.OrdenTrabajo", StringComparison.Ordinal)
+        && command.CommandText.Contains("FechaProgramada", StringComparison.Ordinal));
+    Assert.Contains(insert.Parameters, parameter => string.Equals(parameter.Name, "FechaProgramada", StringComparison.OrdinalIgnoreCase)
+      && parameter.Value is DateTime value
+      && value == cleaningDate);
+    Assert.Contains(insert.Parameters, parameter => string.Equals(parameter.Name, "FechaVencimiento", StringComparison.OrdinalIgnoreCase)
+      && parameter.Value is DateTime value
+      && value == cleaningDate);
+    Assert.Contains(insert.Parameters, parameter => string.Equals(parameter.Name, "Titulo", StringComparison.OrdinalIgnoreCase)
+      && string.Equals(parameter.Value?.ToString(), "Limpieza Suite 101 2027-01-01", StringComparison.Ordinal));
+  }
+
+  [Fact]
   public void EvidenceCaptureSource_IsSelectedAndMigrated()
   {
     var serviceSource = File.ReadAllText(GetRepoFile("src/OrionERP.Infrastructure/Features/OrdenesTrabajo/OrdenTrabajoService.cs"));
@@ -242,5 +337,22 @@ public class OrdenTrabajoRecoveryTests
     }
 
     return Path.Combine(directory.FullName, relativePath.Replace('/', Path.DirectorySeparatorChar));
+  }
+
+  private static DataTable Table(string[] columns, params object?[][] rows)
+  {
+    var table = new DataTable();
+    for (var i = 0; i < columns.Length; i++)
+    {
+      var columnType = rows.FirstOrDefault(row => row.Length > i && row[i] is not null)?[i]?.GetType() ?? typeof(string);
+      table.Columns.Add(columns[i], columnType);
+    }
+
+    foreach (var row in rows)
+    {
+      table.Rows.Add(row);
+    }
+
+    return table;
   }
 }

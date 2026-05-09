@@ -143,7 +143,7 @@ BEGIN
             rc.Referencia,
             rc.Concepto,
             rc.TransaccionID AS Poliza,
-            ROW_NUMBER() OVER (ORDER BY t.Fecha, t.OrdenBalance, t.ID, rc.id) AS RowNum
+            ROW_NUMBER() OVER (ORDER BY CONVERT(date, t.Fecha), t.OrdenBalance, t.Fecha, t.ID, rc.id) AS RowNum
         FROM dbo.Registro_Contable rc
         INNER JOIN dbo.Transacciones t
             ON t.ID = rc.TransaccionID
@@ -178,6 +178,6 @@ BEGIN
         CASE WHEN CTE.Facturado = 1 THEN NCHAR(10004) ELSE 'X' END AS Revisado,
         CTE.Referencia
     FROM CTE_SortedResults CTE
-    ORDER BY CTE.Fecha DESC, CTE.OrdenBalance DESC, CTE.Poliza DESC, CTE.id DESC;
+    ORDER BY CONVERT(date, CTE.Fecha) DESC, CTE.OrdenBalance DESC, CTE.Fecha DESC, CTE.Poliza DESC, CTE.id DESC;
 END;
 GO

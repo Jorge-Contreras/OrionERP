@@ -16,4 +16,8 @@ public sealed record BankAccountDto
   public int? CuentaContableId { get; init; }
   public int? CuentaContableEgreso { get; init; }
   public int? CuentaContableIngreso { get; init; }
+  public string? CuentaContableNivel1 { get; init; }
+  public string? CuentaContableNivel2 { get; init; }
+  public string? CuentaContableNivel3 { get; init; }
+  public string? CuentaContableDescripcion { get; init; }
 }

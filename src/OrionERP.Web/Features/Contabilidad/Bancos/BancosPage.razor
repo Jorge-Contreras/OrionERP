@@ -324,11 +324,33 @@ else
         <div class="d-flex flex-wrap align-items-center gap-2 bancos-actions-toolbar">
           <div class="form-check mb-0">
             <InputCheckbox id="filter-unlinked-movements" class="form-check-input" @bind-Value="ShowOnlyUnlinkedMovements" />
-            <label class="form-check-label" for="filter-unlinked-movements">Movimientos sin ligar</label>
+            <label class="form-check-label" for="filter-unlinked-movements">Sin póliza</label>
+          </div>
+          <div class="form-check mb-0">
+            <InputCheckbox id="filter-accounting-issues" class="form-check-input" @bind-Value="ShowOnlyAccountingIssues" />
+            <label class="form-check-label" for="filter-accounting-issues">Problemas contables</label>
+          </div>
+          <div class="form-check mb-0">
+            <InputCheckbox id="filter-balance-differences" class="form-check-input" @bind-Value="ShowOnlyBalanceDifferences" />
+            <label class="form-check-label" for="filter-balance-differences">Diferencia banco-contable</label>
           </div>
           <button class="btn btn-outline-danger btn-sm" type="button" @onclick="OnUnlinkClicked" disabled="@(!CanUnlink)">Desligar</button>
           <div class="flex-grow-1"></div>
           <button class="btn btn-primary btn-sm" type="button" @onclick="OnLinkClicked" disabled="@(!CanLink)">Ligar</button>
+          <button class="btn btn-outline-primary btn-sm"
+                  type="button"
+                  @onclick="OnAlignTransactionsToBankOrderClicked"
+                  disabled="@(!CanAlignTransactionsToBankOrder)">
+            @if (IsAligningTransactions)
+            {
+              <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+              <span>Alineando...</span>
+            }
+            else
+            {
+              <span>Alinear pólizas al banco</span>
+            }
+          </button>
           <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="OnAutoPolizasClicked" disabled="@HasPendingTransactions" title="@AutoPolizasTooltip">Crear pólizas auto</button>
           @if (HasPendingTransactions)
           {
@@ -342,15 +364,44 @@ else
       <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-3 bancos-section-toolbar bancos-section-toolbar--between">
           <h2 id="movements-heading" class="h5 mb-0">Movimientos</h2>
-          <div class="text-muted small">
-            @if (SelectedAccountId.HasValue)
-            {
-              <span>Cuenta seleccionada: @SelectedAccountLabel</span>
-            }
-            else
-            {
-              <span>Selecciona una cuenta para ver los movimientos.</span>
-            }
+          <div class="d-flex flex-wrap align-items-center justify-content-end gap-2">
+            <div class="btn-group btn-group-sm" role="group" aria-label="Orden de movimientos">
+              <button type="button"
+                      class="@GetBankNewestOrderButtonClass()"
+                      aria-pressed="@IsBankNewestOrderSelected"
+                      @onclick="SetBankNewestOrder">
+                Banco reciente
+              </button>
+              <button type="button"
+                      class="@GetAccountingOrderButtonClass()"
+                      aria-pressed="@IsAccountingOrderSelected"
+                      @onclick="SetAccountingOrder">
+                Orden contable
+              </button>
+            </div>
+            <div class="text-muted small">
+              @if (SelectedAccountId.HasValue)
+              {
+                <span>Cuenta seleccionada: @SelectedAccountLabel</span>
+                @if (!string.IsNullOrWhiteSpace(GetSelectedAccountDescription()))
+                {
+                  <span class="ms-2">Cuenta contable: @GetSelectedAccountDescription()</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(SelectedAccountLedgerUrl))
+                {
+                  <a class="btn btn-sm btn-outline-primary ms-2"
+                     href="@SelectedAccountLedgerUrl"
+                     target="_blank"
+                     rel="noopener">
+                    Ver libro
+                  </a>
+                }
+              }
+              else
+              {
+                <span>Selecciona una cuenta para ver los movimientos.</span>
+              }
+            </div>
           </div>
         </div>
 
@@ -365,7 +416,7 @@ else
         {
           <div class="alert alert-info mb-0">Selecciona una cuenta para ver los movimientos.</div>
         }
-        else if (Movements.Count == 0)
+        else if (!VisibleMovements.Any())
         {
           <div class="alert alert-info mb-0">No hay movimientos para los filtros seleccionados.</div>
         }
@@ -375,66 +426,179 @@ else
             <table class="table table-sm table-striped table-hover align-middle mb-0 bancos-table bancos-responsive-table bancos-responsive-table--movements">
               <thead class="table-light">
                 <tr>
-                  <th scope="col">Póliza</th>
-                  <th scope="col">ID</th>
                   <th scope="col">Día</th>
-                  <th scope="col">Línea</th>
+                  <th scope="col">Contable #</th>
+                  <th scope="col">Póliza</th>
                   <th scope="col">Concepto</th>
-                  <th scope="col">Tipo</th>
                   <th scope="col" class="text-end">Cargo</th>
                   <th scope="col" class="text-end">Abono</th>
-                  <th scope="col" class="text-end">Saldo</th>
-                  <th scope="col">Fecha de carga</th>
-                  <th scope="col">Issues</th>
-                  <th scope="col">Ligar</th>
+                  <th scope="col" class="text-end bancos-movement-cell--saldo-banco">Saldo banco</th>
+                  <th scope="col" class="bancos-movement-cell--registro-banco">Registro banco</th>
+                  <th scope="col" class="text-end">Saldo contable</th>
+                  <th scope="col" class="text-end">Diferencia</th>
+                  <th scope="col">Estado</th>
+                  <th scope="col">Orden</th>
                 </tr>
               </thead>
               <tbody>
                 @foreach (var movement in VisibleMovements)
                 {
                   var isSelected = movement.MovimientoId == SelectedMovimientoId;
-                  var rowClass = isSelected
-                    ? "table-primary"
-                    : string.Equals(movement.Issues, "OK", StringComparison.OrdinalIgnoreCase)
-                      ? string.Empty
-                      : "movement-has-issues";
+                  var rowClass = GetMovementRowClass(movement, isSelected);
+                  var issueCodes = GetIssueCodes(movement);
+                  var detailRows = GetAccountingDetailRows(movement);
                   <tr class="@($"bancos-clickable-row {rowClass}")" aria-selected="@(isSelected ? "true" : "false")" @onclick="@(() => OnMovementSelected(movement.MovimientoId))">
-                                        <td data-label="Póliza">
-                                            @if (movement.Policy.HasValue && movement.Policy.Value > 0)
-                                            {
-                                                <a href="/Contabilidad/Transacciones/@movement.Policy" target="_blank" rel="noopener">@movement.Policy</a>
-                                            }
-                                            else
-                                            {
-                                                <span class="text-muted">—</span>
-                                            }
-                                        </td>
-                    <td data-label="ID">@movement.MovimientoId</td>
                     <td data-label="Día">@movement.Dia.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
-                    <td data-label="Línea">@movement.Line</td>
+                    <td data-label="Contable #">
+                      @if (movement.AccountingSequence.HasValue)
+                      {
+                        <span class="fw-semibold">@movement.AccountingSequence</span>
+                      }
+                      else
+                      {
+                        <span class="text-muted">-</span>
+                      }
+                    </td>
+                    <td data-label="Póliza">
+                      @if (movement.Policy.HasValue && movement.Policy.Value > 0)
+                      {
+                        <a href="/contabilidad/transacciones/@movement.Policy"
+                           target="_blank"
+                           rel="noopener"
+                           @onclick:stopPropagation="true">@movement.Policy</a>
+                        <div class="small text-muted">@FormatDateTime(movement.PolicyDate)</div>
+                      }
+                      else
+                      {
+                        <span class="text-muted">-</span>
+                      }
+                    </td>
                     <td data-label="Concepto" class="text-wrap">@movement.Concepto</td>
-                    <td data-label="Tipo">@movement.Tipo</td>
                     <td data-label="Cargo" class="text-end">@FormatCurrency(movement.Cargo)</td>
                     <td data-label="Abono" class="text-end">@FormatCurrency(movement.Abono)</td>
-                    <td data-label="Saldo" class="text-end">@FormatCurrency(movement.Saldo)</td>
-                    <td data-label="Fecha de carga">@movement.FechaCarga.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
-                    <td data-label="Issues" class="text-wrap">@movement.Issues</td>
-                                        <td data-label="Ligar" class="bancos-table__actions">
-                                            @if (movement.Policy.HasValue && movement.Policy.Value > 0)
-                                            {
-                                                <a class="btn btn-sm btn-outline-success"
-                                                   href="/Contabilidad/LigarTransacciones/@movement.Policy"
-                                                   target="_blank" rel="noopener">
-                                                    Ligar
-                                                </a>
-                                            }
-                                            else
-                                            {
-                                                <span class="text-muted">—</span>
-                                            }
-                                        </td>
-                    
+                    <td data-label="Saldo banco" class="text-end bancos-movement-cell--saldo-banco">
+                      @FormatCurrency(movement.Saldo)
+                      @if (movement.BalanceOk == false)
+                      {
+                        <div class="small text-warning">Saldo archivo</div>
+                      }
+                    </td>
+                    <td data-label="Registro banco" class="bancos-movement-cell--registro-banco">
+                      @if (movement.BankRegistroLineCount > 0)
+                      {
+                        <div>@FormatCurrency(movement.BankRegistroDebe) / @FormatCurrency(movement.BankRegistroHaber)</div>
+                        <div class="small text-muted">@movement.BankRegistroLineCount línea(s) · @FormatAccountingLevels(movement)</div>
+                      }
+                      else
+                      {
+                        <span class="text-muted">-</span>
+                      }
+                    </td>
+                    <td data-label="Saldo contable" class="text-end">@FormatCurrency(movement.AccountingRunningBalance)</td>
+                    <td data-label="Diferencia" class="text-end @(HasMeaningfulBankAccountingDifference(movement) ? "movement-difference" : string.Empty)">
+                      @FormatCurrency(movement.BankAccountingVariance)
+                    </td>
+                    <td data-label="Estado" class="text-wrap">
+                      <span class="@($"badge {GetAuditBadgeClass(movement)}")">@GetAuditLabel(movement)</span>
+                      @foreach (var issue in issueCodes)
+                      {
+                        <span class="badge text-bg-light border ms-1">@issue</span>
+                      }
+                      @if (HasMeaningfulBankAccountingDifference(movement))
+                      {
+                        <span class="badge text-bg-warning ms-1">SALDO_BANCO_DIFIERE</span>
+                      }
+                    </td>
+                    <td data-label="Orden" class="bancos-table__actions">
+                      <div class="btn-group btn-group-sm" role="group" aria-label="Acciones del movimiento">
+                        @if (movement.Policy.HasValue && movement.Policy.Value > 0)
+                        {
+                          <button class="btn btn-outline-secondary"
+                                  type="button"
+                                  title="Ver registros contables"
+                                  @onclick:stopPropagation="true"
+                                  @onclick="() => ToggleAccountingDetailsAsync(movement)">
+                            @if (IsPolicyDetailLoading(movement))
+                            {
+                              <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                            }
+                            else
+                            {
+                              <i class="@GetDetailToggleIconClass(movement)"></i>
+                            }
+                          </button>
+                          <button class="btn btn-outline-secondary"
+                                  type="button"
+                                  title="Mover antes en orden contable"
+                                  disabled="@(!CanMoveAccountingEarlier(movement))"
+                                  @onclick:stopPropagation="true"
+                                  @onclick="() => MoveAccountingEarlierAsync(movement)">
+                            <i class="bi bi-arrow-up"></i>
+                          </button>
+                          <button class="btn btn-outline-secondary"
+                                  type="button"
+                                  title="Mover después en orden contable"
+                                  disabled="@(!CanMoveAccountingLater(movement))"
+                                  @onclick:stopPropagation="true"
+                                  @onclick="() => MoveAccountingLaterAsync(movement)">
+                            <i class="bi bi-arrow-down"></i>
+                          </button>
+                        }
+                        else
+                        {
+                          <span class="text-muted">-</span>
+                        }
+                      </div>
+                    </td>
                   </tr>
+                  @if (IsPolicyExpanded(movement))
+                  {
+                    <tr class="movement-detail-row">
+                      <td colspan="12">
+                        @if (IsPolicyDetailLoading(movement))
+                        {
+                          <div class="orion-loading py-2" role="status" aria-live="polite">
+                            <span class="orion-spinner" aria-hidden="true"></span>
+                            <span class="orion-strong">Cargando registro contable…</span>
+                          </div>
+                        }
+                        else if (detailRows.Count == 0)
+                        {
+                          <div class="text-muted py-2">La póliza no tiene registros contables.</div>
+                        }
+                        else
+                        {
+                          <div class="bancos-movement-detail">
+                            <table class="table table-sm mb-0 align-middle">
+                              <thead>
+                                <tr>
+                                  <th scope="col">RC ID</th>
+                                  <th scope="col">Cuenta</th>
+                                  <th scope="col">Nombre</th>
+                                  <th scope="col">Concepto</th>
+                                  <th scope="col" class="text-end">Debe</th>
+                                  <th scope="col" class="text-end">Haber</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                @foreach (var detail in detailRows)
+                                {
+                                  <tr>
+                                    <td>@detail.Id</td>
+                                    <td>@($"{detail.Nivel1}.{detail.Nivel2}.{detail.Nivel3}")</td>
+                                    <td>@detail.NombreCuenta</td>
+                                    <td class="text-wrap">@detail.Concepto</td>
+                                    <td class="text-end">@FormatCurrency(detail.Debe)</td>
+                                    <td class="text-end">@FormatCurrency(detail.Haber)</td>
+                                  </tr>
+                                }
+                              </tbody>
+                            </table>
+                          </div>
+                        }
+                      </td>
+                    </tr>
+                  }
                 }
               </tbody>
             </table>

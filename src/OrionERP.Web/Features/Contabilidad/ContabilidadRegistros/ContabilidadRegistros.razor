@@ -578,7 +578,7 @@
       return;
     }
 
-    if (transaccionOrder[anchorIndex].FechaOrden != transaccionOrder[targetIndex].FechaOrden)
+    if (transaccionOrder[anchorIndex].FechaOrden.Date != transaccionOrder[targetIndex].FechaOrden.Date)
     {
       return;
     }
@@ -615,7 +615,7 @@
       return false;
     }
 
-    return transaccionOrder[index].FechaOrden == transaccionOrder[neighborIndex].FechaOrden;
+    return transaccionOrder[index].FechaOrden.Date == transaccionOrder[neighborIndex].FechaOrden.Date;
   }
 
   private DateTime GetStartDate()

@@ -91,6 +91,28 @@
   max-height: 70vh;
 }
 
+@media (min-width: 768px) {
+  .bancos-responsive-table--movements thead th {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    background: #f8f9fa;
+    box-shadow: inset 0 -1px 0 rgba(15, 45, 78, 0.12);
+  }
+
+  .bancos-responsive-table--movements .bancos-movement-cell--saldo-banco {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    white-space: nowrap;
+  }
+
+  .bancos-responsive-table--movements .bancos-movement-cell--registro-banco {
+    min-width: 9.5rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
 .bancos-clickable-row {
   cursor: pointer;
 }
@@ -98,6 +120,26 @@
 .movement-has-issues {
   --bs-table-bg: rgba(214, 69, 80, 0.12);
   --bs-table-accent-bg: rgba(214, 69, 80, 0.12);
+}
+
+.movement-has-soft-issues {
+  --bs-table-bg: rgba(245, 196, 83, 0.14);
+  --bs-table-accent-bg: rgba(245, 196, 83, 0.14);
+}
+
+.movement-difference {
+  color: var(--bs-warning-text-emphasis, #664d03);
+  font-weight: 600;
+}
+
+.movement-detail-row > td {
+  background: rgba(15, 45, 78, 0.035);
+  border-top: 0;
+}
+
+.bancos-movement-detail {
+  border-left: 3px solid var(--orion-color-primary-soft);
+  padding-left: 0.75rem;
 }
 
 .bancos-process-summary {
@@ -188,6 +230,21 @@
   .bancos-responsive-table tbody tr.movement-has-issues {
     background: rgba(214, 69, 80, 0.08);
     border-color: rgba(214, 69, 80, 0.18);
+  }
+
+  .bancos-responsive-table tbody tr.movement-has-soft-issues {
+    background: rgba(245, 196, 83, 0.12);
+    border-color: rgba(245, 196, 83, 0.26);
+  }
+
+  .bancos-responsive-table tbody tr.movement-detail-row {
+    display: block;
+    padding: 0;
+    border-style: dashed;
+  }
+
+  .bancos-responsive-table tbody tr.movement-detail-row td {
+    display: block;
   }
 
   .bancos-responsive-table tbody td {

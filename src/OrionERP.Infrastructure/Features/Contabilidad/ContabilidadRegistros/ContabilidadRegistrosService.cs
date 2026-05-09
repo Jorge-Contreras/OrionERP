@@ -82,9 +82,9 @@ public sealed class ContabilidadRegistrosService : IContabilidadRegistrosService
       var anchorFecha = anchorRow.Fecha;
       var targetFecha = targetRow.Fecha;
 
-      if (anchorFecha != targetFecha)
+      if (anchorFecha.Date != targetFecha.Date)
       {
-        throw new InvalidOperationException("Solo se pueden reordenar transacciones con la misma fecha y hora.");
+        throw new InvalidOperationException("Solo se pueden reordenar transacciones del mismo día.");
       }
 
       await connection.ExecuteAsync(

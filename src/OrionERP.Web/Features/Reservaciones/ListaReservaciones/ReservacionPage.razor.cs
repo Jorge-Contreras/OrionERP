@@ -78,7 +78,6 @@ public partial class ReservacionPage : ComponentBase
 
   protected decimal PrecioSuiteInput { get; set; }
   protected decimal PrecioSuiteConIvaInput { get; set; }
-  protected decimal DescuentoSuiteInput { get; set; }
   protected decimal TotalSuiteInput { get; set; }
   protected decimal SuiteActionValueInput { get; set; }
   protected string SelectedSuiteAction { get; set; } = SuiteActionPrice;
@@ -97,6 +96,7 @@ public partial class ReservacionPage : ComponentBase
   protected bool IsWorking { get; set; }
   protected bool IsCreatingPoliza { get; set; }
   protected bool IsGeneratingPdf { get; set; }
+  protected bool IsDeletingReservation { get; set; }
   protected bool IsUploadingAttachment { get; set; }
   protected string? ErrorMessage { get; set; }
 
@@ -106,7 +106,6 @@ public partial class ReservacionPage : ComponentBase
   private int? _attachmentDeletingId;
   private const string SuiteActionPrice = "price";
   private const string SuiteActionPriceWithIva = "price-with-iva";
-  private const string SuiteActionDiscount = "discount";
   private const string SuiteActionTotal = "total";
   private const string SuiteActionCleaning = "cleaning";
 
@@ -115,7 +114,6 @@ public partial class ReservacionPage : ComponentBase
   {
     (SuiteActionPrice, "Precio"),
     (SuiteActionPriceWithIva, "Precio c/IVA"),
-    (SuiteActionDiscount, "Descuento %"),
     (SuiteActionTotal, "Total"),
     (SuiteActionCleaning, "Limpieza")
   };
@@ -139,7 +137,6 @@ public partial class ReservacionPage : ComponentBase
     {
       SuiteActionPrice => "Precio",
       SuiteActionPriceWithIva => "Precio c/IVA",
-      SuiteActionDiscount => "% Desc.",
       SuiteActionTotal => "Total",
       SuiteActionCleaning => "Sin monto",
       _ => "Valor"
@@ -241,6 +238,49 @@ public partial class ReservacionPage : ComponentBase
     finally
     {
       IsGeneratingPdf = false;
+    }
+  }
+
+  protected async Task BorrarReservacionAsync()
+  {
+    if (Detail is null || IsDeletingReservation)
+      return;
+
+    if (Pagos.Count > 0 || Attachments.Count > 0)
+    {
+      UiMessages.ShowWarning("No se puede borrar la reservación porque tiene pagos o archivos adjuntos.");
+      return;
+    }
+
+    var confirm = await Js.InvokeAsync<bool>(
+      "confirm",
+      "¿Borrar esta reservación? Se quitarán sus suites y extras. Esta acción no se puede deshacer.");
+
+    if (!confirm)
+    {
+      return;
+    }
+
+    IsDeletingReservation = true;
+    try
+    {
+      var result = await ReservacionesService.DeleteReservationAsync(Detail.Id);
+      if (!result.Success)
+      {
+        UiMessages.ShowWarning(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      Nav.NavigateTo("/reservaciones/lista");
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo borrar la reservación. {ex.Message}");
+    }
+    finally
+    {
+      IsDeletingReservation = false;
     }
   }
 
@@ -473,6 +513,11 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
+  protected void SeleccionarTodasSuites()
+  {
+    SelectedSuiteIds = Suites.Select(s => s.Id).ToHashSet();
+  }
+
   protected void ToggleSuiteDisponibleSelection(int id, bool isSelected)
   {
     if (isSelected)
@@ -627,26 +672,6 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected async Task AplicarDescuentoSuiteAsync()
-  {
-    if (SelectedSuiteIds.Count == 0)
-    {
-      UiMessages.ShowWarning("Selecciona al menos una suite.");
-      return;
-    }
-
-    var result = await ReservacionesService.ApplySuitesDiscountAsync(SelectedSuiteIds.ToArray(), DescuentoSuiteInput);
-    if (result.Success)
-    {
-      UiMessages.ShowSuccess(result.Message);
-      await LoadAllAsync(preserveFormState: true);
-    }
-    else
-    {
-      UiMessages.ShowError(result.Message);
-    }
-  }
-
   protected async Task AlternarLimpiezaSuiteAsync()
   {
     if (SelectedSuiteIds.Count == 0)
@@ -672,7 +697,13 @@ public partial class ReservacionPage : ComponentBase
 
   protected async Task DistribuirTotalSuitesAsync()
   {
-    var result = await ReservacionesService.DistributeSuitesTotalAsync(ReservationId, TotalSuiteInput);
+    if (SelectedSuiteIds.Count == 0)
+    {
+      UiMessages.ShowWarning("Selecciona al menos una suite.");
+      return;
+    }
+
+    var result = await ReservacionesService.DistributeSuitesTotalWithIvaAsync(SelectedSuiteIds.ToArray(), TotalSuiteInput);
     if (result.Success)
     {
       UiMessages.ShowSuccess(result.Message);
@@ -688,7 +719,6 @@ public partial class ReservacionPage : ComponentBase
   {
     PrecioSuiteInput = SuiteActionValueInput;
     PrecioSuiteConIvaInput = SuiteActionValueInput;
-    DescuentoSuiteInput = SuiteActionValueInput;
     TotalSuiteInput = SuiteActionValueInput;
 
     switch (SelectedSuiteAction)
@@ -698,9 +728,6 @@ public partial class ReservacionPage : ComponentBase
         break;
       case SuiteActionPriceWithIva:
         await AplicarPrecioConIvaSuiteAsync();
-        break;
-      case SuiteActionDiscount:
-        await AplicarDescuentoSuiteAsync();
         break;
       case SuiteActionTotal:
         await DistribuirTotalSuitesAsync();

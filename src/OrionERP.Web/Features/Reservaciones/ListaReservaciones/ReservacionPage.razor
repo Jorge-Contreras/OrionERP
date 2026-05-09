@@ -33,6 +33,11 @@ else
                     disabled="@(IsSaving || IsWorking || IsLoadingCfdiContext || IsCreatingCfdi || HasExistingReservationCfdis)">
                 @(IsLoadingCfdiContext ? "Preparando CFDI..." : HasExistingReservationCfdis ? "CFDI ligado" : ShowCfdiPanel ? "Cerrar CFDI" : "Crear CFDI")
             </button>
+            <button class="btn btn-outline-danger btn-sm"
+                    @onclick="BorrarReservacionAsync"
+                    disabled="@(IsSaving || IsWorking || IsDeletingReservation || IsCreatingPoliza || IsGeneratingPdf || IsCreatingCfdi)">
+                @(IsDeletingReservation ? "Borrando..." : "Borrar Reservación")
+            </button>
         </div>
 
     <div class="row g-3 mb-3">
@@ -566,12 +571,17 @@ else
         <div class="card-header reservacion-section-title d-flex align-items-center gap-2">
             <span>SUITES</span>
             <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="OpenSuitePickerAsync">+</button>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="SeleccionarTodasSuites" disabled="@(!Suites.Any())">Seleccionar todas</button>
             <button class="btn btn-sm btn-outline-danger" @onclick="EliminarSuitesSeleccionadasAsync">Eliminar</button>
         </div>
         <div class="card-body">
             <div class="row g-2 mb-2">
-                <div class="col-md-3"><input class="form-control form-control-sm" type="number" @bind="SuiteActionValueInput" placeholder="@SuiteActionPlaceholder" disabled="@(SelectedSuiteAction == SuiteActionCleaning)" /></div>
                 <div class="col-md-3">
+                    <label class="form-label">Monto</label>
+                    <input class="form-control form-control-sm" type="number" @bind="SuiteActionValueInput" placeholder="@SuiteActionPlaceholder" disabled="@(SelectedSuiteAction == SuiteActionCleaning)" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Acción</label>
                     <select class="form-select form-select-sm" @bind="SelectedSuiteAction">
                         @foreach (var action in SuiteActionOptions)
                         {
@@ -579,8 +589,8 @@ else
                         }
                     </select>
                 </div>
-                <div class="col-md-2"><button class="btn btn-sm btn-outline-secondary w-100" @onclick="ApplySuiteActionAsync">Aplicar</button></div>
-                <div class="col-md-6 text-muted small d-flex align-items-center">Tecla P/I/D/L/T en Access replicada con acciones rápidas.</div>
+                <div class="col-md-2 d-flex align-items-end"><button class="btn btn-sm btn-outline-secondary w-100" @onclick="ApplySuiteActionAsync">Aplicar</button></div>
+                <div class="col-md-6 text-muted small d-flex align-items-end">Tecla P/I/D/L/T en Access replicada con acciones rápidas.</div>
             </div>
 
             @if (ShowSuitePicker)
@@ -669,6 +679,7 @@ else
             {
                 <div class="row g-2 mb-3">
                     <div class="col-md-3">
+                        <label class="form-label">Suite</label>
                         <select class="form-select form-select-sm" value="@ExtraRoomId" @onchange="OnExtraRoomChanged">
                             <option value="">Suite</option>
                             @foreach (var room in Rooms)
@@ -677,11 +688,23 @@ else
                             }
                         </select>
                     </div>
-                    <div class="col-md-2"><input class="form-control form-control-sm" type="number" @bind="ExtraPrice" placeholder="Precio" /></div>
-                    <div class="col-md-2"><input class="form-control form-control-sm" type="number" @bind="ExtraDiscount" placeholder="% Desc." /></div>
-                    <div class="col-md-2"><input class="form-control form-control-sm" value="@ExtraTotal" readonly /></div>
-                    <div class="col-md-3"><input class="form-control form-control-sm" @bind="ExtraNotes" placeholder="Notas" /></div>
-                    <div class="col-md-2 d-flex gap-2">
+                    <div class="col-md-2">
+                        <label class="form-label">Precio</label>
+                        <input class="form-control form-control-sm" type="number" @bind="ExtraPrice" placeholder="Precio" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Desc %</label>
+                        <input class="form-control form-control-sm" type="number" @bind="ExtraDiscount" placeholder="% Desc." />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Total</label>
+                        <input class="form-control form-control-sm" value="@ExtraTotal" readonly />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Notas</label>
+                        <input class="form-control form-control-sm" @bind="ExtraNotes" placeholder="Notas" />
+                    </div>
+                    <div class="col-md-2 d-flex gap-2 align-items-end">
                         <button class="btn btn-sm btn-success flex-fill" @onclick="GuardarExtraAsync">@(IsEditingExtra ? "Guardar" : "Agregar")</button>
                         <button class="btn btn-sm btn-outline-secondary flex-fill" @onclick="CancelExtraEdit">Cancelar</button>
                     </div>

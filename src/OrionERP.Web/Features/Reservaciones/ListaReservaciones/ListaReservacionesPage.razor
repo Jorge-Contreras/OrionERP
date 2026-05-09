@@ -117,7 +117,7 @@
                                     <td data-label="Status">@row.Status</td>
                                     <td data-label="Total">@row.TotalPrice.ToString("C")</td>
                                     <td data-label="Pagado">@row.Pagado.ToString("C")</td>
-                                    <td data-label="Adeudo" class="@(row.PorPagar > 0 ? "text-danger fw-bold" : "text-success")">@row.PorPagar.ToString("C")</td>
+                                    <td data-label="Adeudo" class="@(Math.Abs(row.PorPagar) > 2 ? "text-danger fw-bold" : "text-success")">@row.PorPagar.ToString("C")</td>
                                     <td data-label="Notas" title="@row.Notes">@Short(row.Notes, 50)</td>
                                     <td data-label="Acciones" class="reservaciones-list-cell-actions">
                                         <div class="btn-group btn-group-sm" role="group">

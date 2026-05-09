@@ -124,6 +124,8 @@
                             else
                             {
                                 <ActionButtons Item="item"
+                                               CanCancelCfdi="@(CanCancelCfdi?.Invoke(item) == true)"
+                                               OnCancelCfdi="OnCancelCfdi"
                                                />
                             }
                             <td>@item.D</td>
@@ -215,7 +217,7 @@
     private const decimal TotalPolizasTolerance = 0.99m;
     private static readonly IReadOnlyList<string?> BaseColumnWidths = new List<string?>
     {
-        "8rem", // Acciones
+        "13rem", // Acciones
         "6rem", // Poliza
         "3rem", // ✔
         "10ch", // Fecha
@@ -256,6 +258,12 @@
 
     [Parameter]
     public EventCallback<DeclaracionCfdiBase> OnRowClick { get; set; }
+
+    [Parameter]
+    public EventCallback<IDeclaracionComprobanteItem> OnCancelCfdi { get; set; }
+
+    [Parameter]
+    public Func<DeclaracionCfdiBase, bool>? CanCancelCfdi { get; set; }
 
     [Parameter]
     public Func<DeclaracionCfdiBase, string?>? RowClassResolver { get; set; }

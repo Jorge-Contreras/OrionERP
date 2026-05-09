@@ -1,11 +1,33 @@
 using System;
 using System.Threading.Tasks;
 using Microsoft.JSInterop;
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
   public partial class DeclaracionPrevia
   {
+    private bool CanCancelCfdi(DeclaracionCfdiBase item)
+    {
+      return item.EsEmitida
+        && !string.IsNullOrWhiteSpace(item.FOLIO_FISCAL)
+        && item.FechaCancelacion is null
+        && !string.Equals(item.Estatus?.Trim(), "Cancelado", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(item.Estatus?.Trim(), "Cancelada", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task CancelCfdiAsync(IDeclaracionComprobanteItem item)
+    {
+      if (item is not DeclaracionCfdiBase cfdi)
+      {
+        statusMessage = "Selecciona una factura emitida a cancelar.";
+        return;
+      }
+
+      await SelectCfdiAsync(cfdi);
+      await CancelSelectedEmitidaCfdi();
+    }
+
     // Cancel selected Emitida CFDI via Facturama API
     private async Task CancelSelectedEmitidaCfdi()
     {

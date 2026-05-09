@@ -147,6 +147,7 @@ else
                                 <th>UUID</th>
                                 <th>Receptor</th>
                                 <th class="text-end">Total</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -158,6 +159,13 @@ else
                                     <td class="text-wrap">@document.Uuid</td>
                                     <td class="text-wrap">@document.ReceptorNombre (@document.ReceptorRfc)</td>
                                     <td class="text-end">@FormatCurrency(document.Total)</td>
+                                    <td class="text-end">
+                                        <button class="btn btn-sm btn-outline-danger"
+                                                @onclick="() => CancelarCfdiReservacionAsync(document)"
+                                                disabled="@IsCancellingReservationCfdi(document)">
+                                            @(IsCancellingReservationCfdi(document) ? "Cancelando..." : "Cancelar CFDI")
+                                        </button>
+                                    </td>
                                 </tr>
                             }
                         </tbody>

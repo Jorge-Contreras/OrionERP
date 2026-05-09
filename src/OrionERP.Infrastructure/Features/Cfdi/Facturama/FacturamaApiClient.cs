@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -307,11 +308,104 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
       return new InvalidOperationException($"{prefix} {baseMessage}");
     }
 
+    var detail = FormatFacturamaErrorBody(body);
     var message = string.IsNullOrWhiteSpace(prefix)
-        ? $"Facturama ({_baseUri.Host}) devolvió {(int)statusCode}: {body}"
-        : $"{prefix} Estatus {(int)statusCode}: {body}";
+        ? $"Facturama ({_baseUri.Host}) devolvió {(int)statusCode}: {detail}"
+        : $"{prefix} Estatus {(int)statusCode}: {detail}";
 
     return new InvalidOperationException(message);
+  }
+
+  private static string FormatFacturamaErrorBody(string body)
+  {
+    if (string.IsNullOrWhiteSpace(body))
+    {
+      return "Facturama no devolvió detalle adicional.";
+    }
+
+    try
+    {
+      using var document = JsonDocument.Parse(body);
+      var root = document.RootElement;
+      if (root.ValueKind != JsonValueKind.Object)
+      {
+        return body;
+      }
+
+      var parts = new List<string>();
+      AddStringProperty(parts, root, "Message");
+      AddStringProperty(parts, root, "ExceptionMessage");
+      AddStringProperty(parts, root, "Error");
+      AddStringProperty(parts, root, "error");
+      AddStringProperty(parts, root, "Description");
+      AddStringProperty(parts, root, "description");
+
+      if (root.TryGetProperty("ModelState", out var modelState) &&
+          modelState.ValueKind == JsonValueKind.Object)
+      {
+        foreach (var property in modelState.EnumerateObject())
+        {
+          var fieldName = NormalizeFacturamaFieldName(property.Name);
+          foreach (var error in EnumerateErrorMessages(property.Value))
+          {
+            parts.Add($"{fieldName}: {error}");
+          }
+        }
+      }
+
+      return parts.Count == 0 ? body : string.Join(" | ", parts);
+    }
+    catch (JsonException)
+    {
+      return body;
+    }
+  }
+
+  private static void AddStringProperty(List<string> parts, JsonElement root, string propertyName)
+  {
+    if (root.TryGetProperty(propertyName, out var property) &&
+        property.ValueKind == JsonValueKind.String)
+    {
+      var value = property.GetString();
+      if (!string.IsNullOrWhiteSpace(value))
+      {
+        parts.Add(value.Trim());
+      }
+    }
+  }
+
+  private static IEnumerable<string> EnumerateErrorMessages(JsonElement element)
+  {
+    if (element.ValueKind == JsonValueKind.Array)
+    {
+      foreach (var item in element.EnumerateArray())
+      {
+        if (item.ValueKind == JsonValueKind.String)
+        {
+          var value = item.GetString();
+          if (!string.IsNullOrWhiteSpace(value))
+          {
+            yield return value.Trim();
+          }
+        }
+      }
+    }
+    else if (element.ValueKind == JsonValueKind.String)
+    {
+      var value = element.GetString();
+      if (!string.IsNullOrWhiteSpace(value))
+      {
+        yield return value.Trim();
+      }
+    }
+  }
+
+  private static string NormalizeFacturamaFieldName(string fieldName)
+  {
+    const string prefix = "cfdiToCreate.";
+    return fieldName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+        ? fieldName[prefix.Length..]
+        : fieldName;
   }
 
   private sealed record FacturamaSettings(string BaseUrl, string User, string Password);

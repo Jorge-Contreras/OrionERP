@@ -497,6 +497,20 @@ else
                           }
                           Desligar
                         </button>
+                        @if (CanCancelComprobante(comprobante))
+                        {
+                          <button type="button"
+                                  class="btn btn-sm btn-outline-danger ms-1"
+                                  disabled="@IsComprobanteCancelling(comprobante)"
+                                  @onclick="() => CancelComprobanteCfdiAsync(comprobante)"
+                                  @onclick:stopPropagation="true">
+                            @if (IsComprobanteCancelling(comprobante))
+                            {
+                              <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                            }
+                            Cancelar CFDI
+                          </button>
+                        }
                       </td>
                     </tr>
                   }

@@ -118,6 +118,8 @@
                        Totals="emitidasTotals"
                        PageSize="50"
                        OnRowClick="SelectEmitidaAsync"
+                       OnCancelCfdi="CancelCfdiAsync"
+                       CanCancelCfdi="CanCancelCfdi"
                        RowClassResolver="GetEmitidaRowClass"
                        CounterpartyHeader="Receptor"
                        CounterpartySelector="@(item => item.RECEPTOR)">
@@ -269,6 +271,9 @@
     </div>
     <div class="tab-pane fade" id="tipo-e-emitidas" role="tabpanel" aria-labelledby="tipo-e-emitidas-tab">
         <div class="mb-2 filter-bar">
+            <button class="btn btn-sm btn-warning" @onclick="CancelSelectedEmitidaCfdi">
+                Cancelar CFDI
+            </button>
             <button class="btn btn-sm btn-secondary" @onclick="ExportExcelTipoEEmitidas">
                 Exportar Tipo E Emitidas a Excel
             </button>
@@ -278,6 +283,8 @@
                        Totals="tipoEEmitidasTotals"
                        PageSize="50"
                        OnRowClick="SelectEmitidaAsync"
+                       OnCancelCfdi="CancelCfdiAsync"
+                       CanCancelCfdi="CanCancelCfdi"
                        RowClassResolver="GetEmitidaRowClass"
                        CounterpartyHeader="Receptor"
                        CounterpartySelector="@(item => item.RECEPTOR)">
@@ -406,11 +413,16 @@
     <div class="tab-pane fade" id="nomina-emitidas" role="tabpanel" aria-labelledby="nomina-emitidas-tab">
         <div class="d-flex align-items-center mb-2">
             <h5 class="mt-3 mb-0">Facturas Emitidas de Nómina</h5>
+            <button class="btn btn-sm btn-warning ms-2" @onclick="CancelSelectedEmitidaCfdi">Cancelar CFDI</button>
             <button class="btn btn-sm btn-secondary ms-2" @onclick="ExportExcelNominaEmitida">Exportar Nómina Emitidas a Excel</button>
         </div>
         <div class="table-responsive table-scroll">
             <CFDITable Items="emitidasNomina"
                        Totals="emitidasNominaTotals"
+                       OnRowClick="SelectEmitidaAsync"
+                       OnCancelCfdi="CancelCfdiAsync"
+                       CanCancelCfdi="CanCancelCfdi"
+                       RowClassResolver="GetEmitidaRowClass"
                        CounterpartyHeader="Receptor"
                        CounterpartySelector="@(item => item.RECEPTOR)"
                        NoDataMessage="No se encontraron CFDIs de nómina emitidos.">
@@ -448,6 +460,8 @@
                        Totals="emitidasPpdTotals"
                        PageSize="50"
                        OnRowClick="SelectEmitidaAsync"
+                       OnCancelCfdi="CancelCfdiAsync"
+                       CanCancelCfdi="CanCancelCfdi"
                        RowClassResolver="GetEmitidaRowClass"
                        CounterpartyHeader="Receptor"
                        CounterpartySelector="@(item => item.RECEPTOR)">

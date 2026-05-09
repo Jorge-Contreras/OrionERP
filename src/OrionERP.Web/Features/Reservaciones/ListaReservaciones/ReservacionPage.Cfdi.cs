@@ -5,6 +5,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.JSInterop;
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Application.Features.Reservaciones.Cfdi;
 
@@ -63,6 +65,7 @@ public partial class ReservacionPage
   ];
 
   [Inject] public IReservationCfdiService ReservationCfdiService { get; set; } = default!;
+  [Inject] public IDeclaracionPreviaService DeclaracionPreviaService { get; set; } = default!;
 
   protected ReservationCfdiContextDto? CfdiContext { get; set; }
   protected List<FormaPagoLookupDto> CfdiFormaPagoOptions { get; } = [];
@@ -82,6 +85,7 @@ public partial class ReservacionPage
   protected bool IsSavingCfdiCustomer { get; set; }
   protected bool IsValidatingCfdiReceiver { get; set; }
   protected bool IsCreatingCfdi { get; set; }
+  protected long? CancellingReservationCfdiId { get; set; }
   protected string? CfdiErrorMessage { get; set; }
 
   protected bool HasCfdiDiscounts => CfdiContext?.Items.Any(item => item.Discount > 0m) == true;
@@ -125,6 +129,9 @@ public partial class ReservacionPage
 
   protected bool IsCreatingNewCfdiPoliza
     => string.Equals(SelectedCfdiPolizaOption, NewCfdiPolizaOption, StringComparison.OrdinalIgnoreCase);
+
+  protected bool IsCancellingReservationCfdi(ReservationCfdiLinkedDocumentDto document)
+    => document is not null && CancellingReservationCfdiId == document.ComprobanteId;
 
   protected async Task ToggleCfdiPanelAsync()
   {
@@ -370,6 +377,49 @@ public partial class ReservacionPage
     finally
     {
       IsCreatingCfdi = false;
+    }
+  }
+
+  protected async Task CancelarCfdiReservacionAsync(ReservationCfdiLinkedDocumentDto document)
+  {
+    if (document is null)
+    {
+      return;
+    }
+
+    if (string.IsNullOrWhiteSpace(document.Uuid))
+    {
+      UiMessages.ShowWarning("El CFDI seleccionado no tiene UUID para solicitar la cancelación.");
+      return;
+    }
+
+    var confirmed = await Js.InvokeAsync<bool>(
+      "confirm",
+      $"¿Seguro que deseas cancelar el CFDI {document.Uuid}?\nEsta acción se enviará a Facturama y no se puede deshacer.");
+
+    if (!confirmed)
+    {
+      return;
+    }
+
+    CancellingReservationCfdiId = document.ComprobanteId;
+    CfdiErrorMessage = null;
+
+    try
+    {
+      await DeclaracionPreviaService.CancelEmitidaAsync(document.Uuid, (int)document.ComprobanteId);
+      UiMessages.ShowSuccess($"Cancelación solicitada para CFDI {document.Uuid}.");
+      await LoadCfdiContextAsync(forceReload: true);
+      await LoadAllAsync();
+    }
+    catch (Exception ex)
+    {
+      CfdiErrorMessage = ex.Message;
+      UiMessages.ShowError($"No se pudo cancelar el CFDI. {ex.Message}");
+    }
+    finally
+    {
+      CancellingReservationCfdiId = null;
     }
   }
 

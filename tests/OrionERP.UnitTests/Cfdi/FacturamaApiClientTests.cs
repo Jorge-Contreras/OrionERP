@@ -185,6 +185,37 @@ public class FacturamaApiClientTests
   }
 
   [Fact]
+  public async Task CreateIssuedCfdiAsync_FlattensFacturamaModelStateErrors()
+  {
+    var handler = new RecordingHttpMessageHandler(
+        HttpStatusCode.BadRequest,
+        """
+        {
+          "Message":"La solicitud no es válida.",
+          "ModelState":{
+            "cfdiToCreate.ExpeditionPlace":["The ExpeditionPlace field is required."],
+            "cfdiToCreate.PaymentForm":["PaymentForm debe existir"],
+            "cfdiToCreate.Items":["Debe de contener conceptos"]
+          }
+        }
+        """);
+    var client = CreateClient(
+        handler,
+        new Dictionary<string, string?>
+        {
+          ["Facturama:BaseUrl"] = "https://apisandbox.facturama.mx"
+        });
+
+    var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => client.CreateIssuedCfdiAsync("""{"test":true}"""));
+
+    Assert.Contains("Facturama (apisandbox.facturama.mx) devolvió 400", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("La solicitud no es válida.", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("ExpeditionPlace: The ExpeditionPlace field is required.", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("PaymentForm: PaymentForm debe existir", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("Items: Debe de contener conceptos", ex.Message, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public async Task ValidateReceiverAsync_CallsValidationEndpoint()
   {
     var handler = new RecordingHttpMessageHandler(

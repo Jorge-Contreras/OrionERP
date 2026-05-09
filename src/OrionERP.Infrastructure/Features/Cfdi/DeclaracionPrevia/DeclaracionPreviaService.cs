@@ -262,7 +262,13 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
     await _facturamaApiClient.CancelIssuedCfdiAsync(cfdiId);
 
     using var conn = new SqlConnection(_connectionString);
-    await conn.ExecuteAsync("UPDATE Comprobante SET Incluir_En_Declaracion = 0 WHERE Comprobante_Id = @Id", new { Id = comprobanteId });
+    await conn.ExecuteAsync("""
+UPDATE Comprobante
+SET Incluir_En_Declaracion = 0,
+    FechaCancelacion = COALESCE(FechaCancelacion, GETDATE()),
+    Estatus = 'Cancelado'
+WHERE Comprobante_Id = @Id
+""", new { Id = comprobanteId });
   }
 
   public async Task<IReadOnlyList<string>> GenerateDiotAsync(string rfc, int year, int month)

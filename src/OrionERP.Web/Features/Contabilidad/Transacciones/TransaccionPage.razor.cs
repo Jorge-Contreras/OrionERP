@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
+using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Web.Services;
@@ -41,6 +42,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private long? _unlinkingComprobanteId;
   private long? _unlinkingBancoMovimientoId;
   private long? _selectedComprobanteId;
+  private long? _cancellingComprobanteId;
   private readonly List<LookupInt32Dto> _allCompraOptions = [];
   private CuentaContablePicker? CuentaPicker;
   private int _attachmentInputKey;
@@ -69,6 +71,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
   [Inject] public NavigationManager NavManager { get; set; } = default!;
   [Inject] public IBancosService BancosService { get; set; } = default!;
+  [Inject] public IDeclaracionPreviaService DeclaracionPreviaService { get; set; } = default!;
 
   protected TransaccionHeaderModel? Header { get; private set; }
   protected EditContext? HeaderEditContext { get; private set; }
@@ -1807,6 +1810,20 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected bool IsComprobanteUnlinking(TransaccionCfdiCandidateDto comprobante)
     => comprobante is not null && comprobante.ComprobanteId == _unlinkingComprobanteId;
 
+  protected bool IsComprobanteCancelling(TransaccionCfdiCandidateDto comprobante)
+    => comprobante is not null && comprobante.ComprobanteId == _cancellingComprobanteId;
+
+  protected bool CanCancelComprobante(TransaccionCfdiCandidateDto comprobante)
+  {
+    if (Header is null || comprobante is null)
+    {
+      return false;
+    }
+
+    return !string.IsNullOrWhiteSpace(comprobante.Uuid)
+      && string.Equals(Header.Rfc?.Trim(), comprobante.EmisorRfc?.Trim(), StringComparison.OrdinalIgnoreCase);
+  }
+
   protected bool IsBancoMovimientoUnlinking(BankMovementDto movimiento)
     => movimiento is not null && movimiento.MovimientoId == _unlinkingBancoMovimientoId;
 
@@ -1943,6 +1960,61 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     finally
     {
       _unlinkingComprobanteId = null;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected async Task CancelComprobanteCfdiAsync(TransaccionCfdiCandidateDto comprobante)
+  {
+    if (Header is null || comprobante is null)
+    {
+      return;
+    }
+
+    if (!CanCancelComprobante(comprobante))
+    {
+      UiMessages.ShowWarning("Solo se pueden cancelar CFDIs emitidos por el RFC actual y con UUID.");
+      return;
+    }
+
+    var confirmed = await ConfirmAsync($"¿Seguro que deseas cancelar el CFDI {comprobante.Uuid}? Esta acción se enviará a Facturama y no se puede deshacer.");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    _cancellingComprobanteId = comprobante.ComprobanteId;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      await DeclaracionPreviaService.CancelEmitidaAsync(comprobante.Uuid!, (int)comprobante.ComprobanteId);
+      var unlinkResult = await TransaccionService.UnlinkComprobanteAsync(new TransaccionComprobanteUnlinkRequest
+      {
+        CurrentTransaccionId = Header.Id,
+        ComprobanteId = comprobante.ComprobanteId,
+        Tipo = comprobante.Tipo
+      });
+
+      if (!unlinkResult.Success)
+      {
+        UiMessages.ShowWarning($"Cancelación solicitada para CFDI {comprobante.Uuid}, pero no se pudo desligar de esta póliza: {unlinkResult.Message}");
+      }
+      else
+      {
+        UiMessages.ShowSuccess($"Cancelación solicitada para CFDI {comprobante.Uuid} y comprobante desligado.");
+      }
+
+      await ReloadComprobantesAsync();
+      await ReloadAttachmentsAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo cancelar el CFDI: {ex.Message}");
+    }
+    finally
+    {
+      _cancellingComprobanteId = null;
       await InvokeAsync(StateHasChanged);
     }
   }

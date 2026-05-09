@@ -411,7 +411,9 @@ WHEN NOT MATCHED THEN
               target.TransaccionId);
         }
 
-        throw;
+        return ReservationCfdiCreateResult.Fail(
+            $"No se pudo timbrar el CFDI en Facturama: {ex.InnerException?.Message ?? ex.Message}",
+            target.TransaccionId);
       }
 
       var successMessage = stampResult.ComprobanteId.HasValue
@@ -721,7 +723,11 @@ SELECT
     CAST(CASE WHEN EXISTS (
         SELECT 1
         FROM dbo.Transaccion_Comprobante tc
+        INNER JOIN cfdi.Comprobante c
+            ON c.Comprobante_Id = tc.Comprobante_ID
         WHERE tc.Transaccion_ID = t.ID
+          AND c.FechaCancelacion IS NULL
+          AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
     ) THEN 1 ELSE 0 END AS bit) AS HasExistingCfdi,
     CAST(CASE WHEN ABS(ISNULL(rt.Amount, ISNULL(t.Monto, 0)) - @ReservationTotal) <= @Tolerance
         THEN 1 ELSE 0 END AS bit) AS MatchesReservationTotal,
@@ -731,7 +737,11 @@ SELECT
                    AND NOT EXISTS (
                        SELECT 1
                        FROM dbo.Transaccion_Comprobante tc
+                       INNER JOIN cfdi.Comprobante c
+                           ON c.Comprobante_Id = tc.Comprobante_ID
                        WHERE tc.Transaccion_ID = t.ID
+                         AND c.FechaCancelacion IS NULL
+                         AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
                    )
         THEN 1 ELSE 0 END AS bit) AS IsEligible
 FROM dbo.Reservation_Transacciones rt
@@ -745,7 +755,11 @@ ORDER BY
               AND NOT EXISTS (
                   SELECT 1
                   FROM dbo.Transaccion_Comprobante tc
+                  INNER JOIN cfdi.Comprobante c
+                      ON c.Comprobante_Id = tc.Comprobante_ID
                   WHERE tc.Transaccion_ID = t.ID
+                    AND c.FechaCancelacion IS NULL
+                    AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
               )
          THEN 0 ELSE 1 END,
     t.Fecha DESC,
@@ -793,6 +807,8 @@ LEFT JOIN cfdi.Receptor r
 LEFT JOIN cfdi.TimbreFiscalDigital tfd
     ON tfd.Comprobante_ID = c.Comprobante_Id
 WHERE rt.ReservationID = @ReservationId
+  AND c.FechaCancelacion IS NULL
+  AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
 ORDER BY c.Fecha DESC, c.Comprobante_Id DESC;
 """;
 
@@ -1064,7 +1080,11 @@ SELECT TOP (1)
     CAST(CASE WHEN EXISTS (
         SELECT 1
         FROM dbo.Transaccion_Comprobante tc
+        INNER JOIN cfdi.Comprobante c
+            ON c.Comprobante_Id = tc.Comprobante_ID
         WHERE tc.Transaccion_ID = t.ID
+          AND c.FechaCancelacion IS NULL
+          AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
     ) THEN 1 ELSE 0 END AS bit) AS HasExistingCfdi
 FROM dbo.Transacciones t
 LEFT JOIN dbo.Reservation_Transacciones rt

@@ -1,7 +1,9 @@
+using System.Globalization;
 using System.IO;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Logistica.Locations;
 using OrionERP.Application.Features.Logistica.Materials;
@@ -13,6 +15,16 @@ namespace OrionERP.Web.Features.Logistica.PhysicalCounts;
 
 public partial class ConteosFisicosPage : ComponentBase
 {
+  private static readonly CultureInfo QuantityInputCulture = CultureInfo.GetCultureInfo("es-MX");
+  private static readonly NumberStyles QuantityInputNumberStyles = NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowThousands;
+
+  private string _countedQuantityInput = string.Empty;
+  private ElementReference MobileCountedQuantityInputRef;
+  private ElementReference CountedQuantityInputRef;
+  private bool _focusCountedQuantityInputPending;
+  private bool _showPostedSessions;
+  private bool _isSessionListVisibleOnMobile = true;
+
   [Inject] private IPhysicalCountService PhysicalCountService { get; set; } = default!;
   [Inject] private IMaterialService MaterialService { get; set; } = default!;
   [Inject] private ILocationService LocationService { get; set; } = default!;
@@ -32,6 +44,7 @@ public partial class ConteosFisicosPage : ComponentBase
   protected bool IsCreatingSession { get; set; }
   protected bool IsSavingLine { get; set; }
   protected bool IsMutatingSession { get; set; }
+  protected bool IsDeletingSession { get; set; }
   protected bool ShowMaterialImageModal { get; set; }
   protected bool IsLoadingMaterialImage { get; set; }
   protected byte[]? PendingLineAttachmentBytes { get; set; }
@@ -40,10 +53,46 @@ public partial class ConteosFisicosPage : ComponentBase
   protected string? MaterialImageModalTitle { get; set; }
   protected string? MaterialImageModalDataUrl { get; set; }
 
-  protected bool CanSubmit => SelectedSession is not null && string.Equals(SelectedSession.Status, "Draft", StringComparison.OrdinalIgnoreCase);
-  protected bool CanApprove => SelectedSession is not null && string.Equals(SelectedSession.Status, "Submitted", StringComparison.OrdinalIgnoreCase);
-  protected bool CanPost => SelectedSession is not null && string.Equals(SelectedSession.Status, "Approved", StringComparison.OrdinalIgnoreCase);
-  protected bool CanCaptureLine => SelectedSession is not null && SelectedLine is not null && string.Equals(SelectedSession.Status, "Draft", StringComparison.OrdinalIgnoreCase);
+  protected bool ShowPostedSessions
+  {
+    get => _showPostedSessions;
+    set
+    {
+      if (_showPostedSessions == value)
+      {
+        return;
+      }
+
+      _showPostedSessions = value;
+      EnsureSelectedSessionVisible();
+    }
+  }
+
+  protected IReadOnlyList<PhysicalCountSessionSummaryDto> VisibleSessions => Sessions
+    .Where(session => ShouldDisplaySession(session.Status))
+    .ToList();
+
+  protected bool CanSubmit => SelectedSession is not null && IsDraftStatus(SelectedSession.Status);
+  protected bool CanDeleteDraft => SelectedSession is not null && IsDraftStatus(SelectedSession.Status);
+  protected bool CanApprove => SelectedSession is not null && IsSubmittedStatus(SelectedSession.Status);
+  protected bool CanPost => SelectedSession is not null && IsApprovedStatus(SelectedSession.Status);
+  protected bool CanCaptureLine => SelectedSession is not null && SelectedLine is not null && IsDraftStatus(SelectedSession.Status);
+  protected string SelectedSessionStatusBadgeClass => GetSessionStatusBadgeClass(SelectedSession?.Status);
+  protected string SelectedSessionStatusLabel => GetSessionStatusLabel(SelectedSession?.Status);
+  protected string CountedQuantityInput
+  {
+    get => _countedQuantityInput;
+    set
+    {
+      _countedQuantityInput = value;
+
+      if (TryParseCountedQuantity(value, out var parsedQuantity))
+      {
+        LineCapture.CountedQuantity = parsedQuantity;
+      }
+    }
+  }
+
   protected string CurrentVarianceText => SelectedLine is null
     ? "0.00"
     : (LineCapture.CountedQuantity - SelectedLine.ExpectedQuantity).ToString("N2");
@@ -61,6 +110,7 @@ public partial class ConteosFisicosPage : ComponentBase
     try
     {
       Sessions = (await PhysicalCountService.GetSessionsAsync()).ToList();
+      SyncSelectedSessionAfterRefresh();
     }
     catch (Exception ex)
     {
@@ -97,7 +147,7 @@ public partial class ConteosFisicosPage : ComponentBase
       await CargarSesionesAsync();
       if (result.EntityId.HasValue)
       {
-        await SeleccionarSesionAsync(result.EntityId.Value);
+        await ReselectSessionIfVisibleAsync(result.EntityId.Value);
       }
     }
     catch (Exception ex)
@@ -114,18 +164,20 @@ public partial class ConteosFisicosPage : ComponentBase
   {
     try
     {
-      SelectedSession = await PhysicalCountService.GetSessionAsync(sessionId);
-      MaterialThumbnailDataUrls = [];
-      CloseMaterialImageModal();
-
-      if (SelectedSession is null)
+      var session = await PhysicalCountService.GetSessionAsync(sessionId);
+      if (session is null || !ShouldDisplaySession(session.Status))
       {
-        SelectedLine = null;
+        ClearSelectedSession();
         return;
       }
 
+      SelectedSession = session;
+      _isSessionListVisibleOnMobile = false;
+      MaterialThumbnailDataUrls = [];
+      CloseMaterialImageModal();
       await CargarMiniaturasMaterialesAsync();
       SelectedLine = null;
+      _countedQuantityInput = string.Empty;
       if (SelectedSession?.Lines.Count > 0)
       {
         SeleccionarLinea(SelectedSession.Lines[0]);
@@ -154,7 +206,73 @@ public partial class ConteosFisicosPage : ComponentBase
     PendingLineAttachmentBytes = null;
     PendingLineAttachmentName = null;
     PendingLineAttachmentContentType = null;
+    UpdateCountedQuantityInputFromCapture();
+    QueueCountedQuantityFocus();
   }
+
+  protected bool IsLineCapturedByCurrentUser(PhysicalCountLineDto line)
+  {
+    if (string.IsNullOrWhiteSpace(CurrentUserName) || !line.CapturedAt.HasValue || string.IsNullOrWhiteSpace(line.CapturedBy))
+    {
+      return false;
+    }
+
+    return string.Equals(line.CapturedBy.Trim(), CurrentUserName.Trim(), StringComparison.OrdinalIgnoreCase);
+  }
+
+  protected bool IsSelectedLine(PhysicalCountLineDto line)
+    => SelectedLine?.Id == line.Id;
+
+  protected static string GetCountUnitLabel(string? unitName)
+    => string.IsNullOrWhiteSpace(unitName) ? "sin unidad configurada" : unitName.Trim();
+
+  protected static string GetCountUnitBadgeClass(string? unitName)
+    => string.IsNullOrWhiteSpace(unitName)
+      ? "conteos-unit-badge conteos-unit-badge-missing"
+      : "conteos-unit-badge";
+
+  protected static string GetQuantityFieldLabel(string label, string? unitName)
+    => string.IsNullOrWhiteSpace(unitName)
+      ? label
+      : $"{label} ({unitName.Trim()})";
+
+  protected string GetLineRowClass(PhysicalCountLineDto line)
+  {
+    var isSelected = IsSelectedLine(line);
+    var capturedByCurrentUser = IsLineCapturedByCurrentUser(line);
+
+    if (isSelected && capturedByCurrentUser)
+    {
+      return "table-primary conteos-line-row-captured";
+    }
+
+    if (isSelected)
+    {
+      return "table-primary";
+    }
+
+    return capturedByCurrentUser ? "conteos-line-row-captured" : string.Empty;
+  }
+
+  protected string GetSessionRowClass(PhysicalCountSessionSummaryDto session)
+  {
+    var isSelected = SelectedSession?.Id == session.Id;
+    var selectionClass = isSelected ? "table-primary" : string.Empty;
+    return $"{selectionClass} conteos-session-row {GetSessionStatusClass(session.Status)}".Trim();
+  }
+
+  protected string GetSessionStatusBadgeClass(string? status)
+    => $"conteos-session-status-badge {GetSessionStatusClass(status)}";
+
+  protected static string GetSessionStatusLabel(string? status)
+    => NormalizeSessionStatus(status) switch
+    {
+      "draft" => "Borrador",
+      "submitted" => "Enviada",
+      "approved" => "Aprobada",
+      "posted" => "Contabilizada",
+      _ => string.IsNullOrWhiteSpace(status) ? "Sin estatus" : status.Trim()
+    };
 
   protected async Task OnLineAttachmentSelectedAsync(InputFileChangeEventArgs args)
   {
@@ -172,16 +290,30 @@ public partial class ConteosFisicosPage : ComponentBase
     PendingLineAttachmentContentType = file.ContentType;
   }
 
+  protected Task GuardarLineaMovilAsync()
+    => GuardarLineaAsync(advanceToNextUncountedLine: true);
+
   protected async Task GuardarLineaAsync()
+    => await GuardarLineaAsync(advanceToNextUncountedLine: false);
+
+  protected async Task GuardarLineaAsync(bool advanceToNextUncountedLine)
   {
     if (!CanCaptureLine || SelectedLine is null || SelectedSession is null)
     {
       return;
     }
 
+    if (!TryParseCountedQuantity(CountedQuantityInput, out var countedQuantity))
+    {
+      UiMessages.ShowWarning("Captura una cantidad válida en el campo contado.");
+      QueueCountedQuantityFocus();
+      return;
+    }
+
     IsSavingLine = true;
     try
     {
+      LineCapture.CountedQuantity = countedQuantity;
       LineCapture.CapturedBy = CurrentUserName;
       LineCapture.AttachmentBytes = PendingLineAttachmentBytes;
       LineCapture.AttachmentFileName = PendingLineAttachmentName;
@@ -198,12 +330,16 @@ public partial class ConteosFisicosPage : ComponentBase
 
       UiMessages.ShowSuccess(result.Message);
       await SeleccionarSesionAsync(SelectedSession.Id);
-      if (SelectedSession is not null && SelectedLine is not null)
+      if (SelectedSession is not null)
       {
-        var refreshedLine = SelectedSession.Lines.FirstOrDefault(line => line.Id == LineCapture.LineId);
-        if (refreshedLine is not null)
+        var preferredLine = advanceToNextUncountedLine
+          ? FindNextUncountedLine(SelectedSession.Lines, LineCapture.LineId)
+          : null;
+        preferredLine ??= SelectedSession.Lines.FirstOrDefault(line => line.Id == LineCapture.LineId);
+        preferredLine ??= SelectedSession.Lines.FirstOrDefault();
+        if (preferredLine is not null)
         {
-          SeleccionarLinea(refreshedLine);
+          SeleccionarLinea(preferredLine);
         }
       }
     }
@@ -217,8 +353,112 @@ public partial class ConteosFisicosPage : ComponentBase
     }
   }
 
+  protected void OnCountedQuantityInput(ChangeEventArgs args)
+  {
+    CountedQuantityInput = args.Value?.ToString() ?? string.Empty;
+  }
+
+  protected void OnCountedQuantityBlur()
+  {
+    if (TryParseCountedQuantity(CountedQuantityInput, out var parsedQuantity))
+    {
+      LineCapture.CountedQuantity = parsedQuantity;
+      _countedQuantityInput = FormatCountedQuantity(parsedQuantity);
+      return;
+    }
+
+    UpdateCountedQuantityInputFromCapture();
+  }
+
+  protected async Task SelectCountedQuantityAsync()
+  {
+    _ = await TryFocusCountedQuantityInputAsync(scrollIntoViewOnMobile: false);
+  }
+
+  protected async Task HandleCountedQuantityKeyDownAsync(KeyboardEventArgs args)
+  {
+    if (!string.Equals(args.Key, "Enter", StringComparison.Ordinal) || !CanCaptureLine || IsSavingLine)
+    {
+      return;
+    }
+
+    await GuardarLineaAsync();
+  }
+
+  protected async Task HandleMobileCountedQuantityKeyDownAsync(KeyboardEventArgs args)
+  {
+    if (!string.Equals(args.Key, "Enter", StringComparison.Ordinal) || !CanCaptureLine || IsSavingLine)
+    {
+      return;
+    }
+
+    await GuardarLineaMovilAsync();
+  }
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (!_focusCountedQuantityInputPending || !CanCaptureLine)
+    {
+      return;
+    }
+
+    _focusCountedQuantityInputPending = false;
+    if (!await TryFocusCountedQuantityInputAsync(scrollIntoViewOnMobile: true))
+    {
+      _focusCountedQuantityInputPending = true;
+    }
+  }
+
   protected async Task EnviarSesionAsync() => await EjecutarSesionAsync(
     () => PhysicalCountService.SubmitSessionAsync(SelectedSession!.Id, CurrentUserName));
+
+  protected async Task CancelarSesionAsync()
+  {
+    if (!CanDeleteDraft || SelectedSession is null || IsMutatingSession)
+    {
+      return;
+    }
+
+    var confirmed = await ConfirmAsync($"¿Deseas cancelar y eliminar la sesión {SelectedSession.SessionCode}? Solo las sesiones en borrador se pueden eliminar.");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    var sessionId = SelectedSession.Id;
+    IsDeletingSession = true;
+    IsMutatingSession = true;
+
+    try
+    {
+      var result = await PhysicalCountService.DeleteDraftSessionAsync(sessionId);
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      ClearSelectedSession();
+      await CargarSesionesAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo cancelar la sesión. {ex.Message}");
+    }
+    finally
+    {
+      IsDeletingSession = false;
+      IsMutatingSession = false;
+    }
+  }
+
+  protected async Task MostrarSesionesAsync()
+  {
+    _isSessionListVisibleOnMobile = true;
+    StateHasChanged();
+    await ScrollToTopAsync();
+  }
 
   protected async Task AprobarSesionAsync() => await EjecutarSesionAsync(
     () => PhysicalCountService.ApproveSessionAsync(SelectedSession!.Id, CurrentUserName));
@@ -307,6 +547,7 @@ public partial class ConteosFisicosPage : ComponentBase
     IsMutatingSession = true;
     try
     {
+      var sessionId = SelectedSession.Id;
       var result = await operation();
       if (!result.Success)
       {
@@ -316,7 +557,7 @@ public partial class ConteosFisicosPage : ComponentBase
 
       UiMessages.ShowSuccess(result.Message);
       await CargarSesionesAsync();
-      await SeleccionarSesionAsync(SelectedSession.Id);
+      await ReselectSessionIfVisibleAsync(sessionId);
     }
     catch (Exception ex)
     {
@@ -325,6 +566,18 @@ public partial class ConteosFisicosPage : ComponentBase
     finally
     {
       IsMutatingSession = false;
+    }
+  }
+
+  private async Task<bool> ConfirmAsync(string message)
+  {
+    try
+    {
+      return await Js.InvokeAsync<bool>("confirm", message);
+    }
+    catch
+    {
+      return true;
     }
   }
 
@@ -367,6 +620,191 @@ public partial class ConteosFisicosPage : ComponentBase
 
   protected string? GetMaterialThumbnailDataUrl(int materialId)
     => TryGetMaterialThumbnailDataUrl(materialId, out var dataUrl) ? dataUrl : null;
+
+  protected string GetSessionsSectionClass()
+    => _isSessionListVisibleOnMobile || SelectedSession is null
+      ? "card shadow-sm"
+      : "card shadow-sm conteos-mobile-list-hidden";
+
+  private void QueueCountedQuantityFocus()
+  {
+    _focusCountedQuantityInputPending = CanCaptureLine;
+  }
+
+  private async Task ReselectSessionIfVisibleAsync(int sessionId)
+  {
+    var session = Sessions.FirstOrDefault(item => item.Id == sessionId);
+    if (session is null || !ShouldDisplaySession(session.Status))
+    {
+      ClearSelectedSession();
+      return;
+    }
+
+    await SeleccionarSesionAsync(sessionId);
+  }
+
+  private static PhysicalCountLineDto? FindNextUncountedLine(IReadOnlyList<PhysicalCountLineDto> lines, int currentLineId)
+  {
+    if (lines.Count == 0)
+    {
+      return null;
+    }
+
+    var currentIndex = -1;
+    for (var index = 0; index < lines.Count; index++)
+    {
+      if (lines[index].Id == currentLineId)
+      {
+        currentIndex = index;
+        break;
+      }
+    }
+
+    if (currentIndex < 0)
+    {
+      return lines.FirstOrDefault(line => line.CountedQuantity is null);
+    }
+
+    for (var offset = 1; offset < lines.Count; offset++)
+    {
+      var candidate = lines[(currentIndex + offset) % lines.Count];
+      if (candidate.CountedQuantity is null)
+      {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
+  private static string GetSessionStatusClass(string? status)
+    => NormalizeSessionStatus(status) switch
+    {
+      "draft" => "conteos-session-status-draft",
+      "submitted" => "conteos-session-status-submitted",
+      "approved" => "conteos-session-status-approved",
+      "posted" => "conteos-session-status-posted",
+      _ => "conteos-session-status-unknown"
+    };
+
+  private void UpdateCountedQuantityInputFromCapture()
+  {
+    _countedQuantityInput = FormatCountedQuantity(LineCapture.CountedQuantity);
+  }
+
+  private void SyncSelectedSessionAfterRefresh()
+  {
+    if (SelectedSession is null)
+    {
+      return;
+    }
+
+    var session = Sessions.FirstOrDefault(item => item.Id == SelectedSession.Id);
+    if (session is null || !ShouldDisplaySession(session.Status))
+    {
+      ClearSelectedSession();
+    }
+  }
+
+  private void EnsureSelectedSessionVisible()
+  {
+    if (SelectedSession is null || ShouldDisplaySession(SelectedSession.Status))
+    {
+      return;
+    }
+
+    ClearSelectedSession();
+  }
+
+  private static string NormalizeSessionStatus(string? status)
+    => string.IsNullOrWhiteSpace(status) ? string.Empty : status.Trim().ToLowerInvariant();
+
+  private static bool IsDraftStatus(string? status)
+    => NormalizeSessionStatus(status) == "draft";
+
+  private static bool IsSubmittedStatus(string? status)
+    => NormalizeSessionStatus(status) == "submitted";
+
+  private static bool IsApprovedStatus(string? status)
+    => NormalizeSessionStatus(status) == "approved";
+
+  private static bool IsPostedStatus(string? status)
+    => NormalizeSessionStatus(status) == "posted";
+
+  private bool ShouldDisplaySession(string? status)
+    => ShowPostedSessions || !IsPostedStatus(status);
+
+  private void ClearSelectedSession()
+  {
+    _isSessionListVisibleOnMobile = true;
+    SelectedSession = null;
+    SelectedLine = null;
+    LineCapture = new();
+    MaterialThumbnailDataUrls = [];
+    PendingLineAttachmentBytes = null;
+    PendingLineAttachmentName = null;
+    PendingLineAttachmentContentType = null;
+    _countedQuantityInput = string.Empty;
+    _focusCountedQuantityInputPending = false;
+    CloseMaterialImageModal();
+  }
+
+  private async Task ScrollToTopAsync()
+  {
+    try
+    {
+      await Js.InvokeVoidAsync("scrollTo", 0, 0);
+    }
+    catch (InvalidOperationException)
+    {
+    }
+    catch (JSDisconnectedException)
+    {
+    }
+  }
+
+  private async Task<bool> TryFocusCountedQuantityInputAsync(bool scrollIntoViewOnMobile)
+  {
+    try
+    {
+      return await Js.InvokeAsync<bool>(
+        "focusAndSelectVisibleTextInput",
+        MobileCountedQuantityInputRef,
+        CountedQuantityInputRef,
+        scrollIntoViewOnMobile);
+    }
+    catch (InvalidOperationException)
+    {
+      return false;
+    }
+    catch (JSDisconnectedException)
+    {
+      return false;
+    }
+  }
+
+  private static string FormatCountedQuantity(decimal quantity)
+    => quantity.ToString("0.####", QuantityInputCulture);
+
+  private static bool TryParseCountedQuantity(string? value, out decimal result)
+  {
+    var trimmedValue = value?.Trim();
+    if (string.IsNullOrWhiteSpace(trimmedValue))
+    {
+      result = default;
+      return false;
+    }
+
+    if (decimal.TryParse(trimmedValue, QuantityInputNumberStyles, QuantityInputCulture, out result) ||
+        decimal.TryParse(trimmedValue, QuantityInputNumberStyles, CultureInfo.InvariantCulture, out result) ||
+        decimal.TryParse(trimmedValue, QuantityInputNumberStyles, CultureInfo.CurrentCulture, out result))
+    {
+      return true;
+    }
+
+    var normalizedValue = trimmedValue.Replace(',', '.');
+    return decimal.TryParse(normalizedValue, QuantityInputNumberStyles, CultureInfo.InvariantCulture, out result);
+  }
 
   private static string BuildDataUrl(string? contentType, byte[] bytes)
   {

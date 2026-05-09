@@ -1,0 +1,249 @@
+@page "/ordenes-trabajo"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Administrador,OrdenTrabajoAdmin,OrdenTrabajoSupervisor,OrdenTrabajoOperador")]
+
+<PageTitle>Ordenes de trabajo</PageTitle>
+
+<div class="container-fluid py-3 ordenes-page">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h1 class="h3 mb-1">Ordenes de trabajo</h1>
+            <p class="text-muted mb-0">Operacion, limpieza, mantenimiento y checklists con ruta critica y evidencia.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary" href="/ordenes-trabajo/plantillas">Plantillas</a>
+            <button class="btn btn-primary" type="button" @onclick="LoadAsync" disabled="@IsLoading">Actualizar</button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="alert alert-danger">@ErrorMessage</div>
+    }
+
+    @if (Dashboard is not null)
+    {
+        <section class="ordenes-kpis mb-3">
+            <div class="ordenes-kpi">
+                <span>Abiertas</span>
+                <strong>@Dashboard.OpenCount</strong>
+            </div>
+            <div class="ordenes-kpi ordenes-kpi-danger">
+                <span>Vencidas</span>
+                <strong>@Dashboard.OverdueCount</strong>
+            </div>
+            <div class="ordenes-kpi ordenes-kpi-review">
+                <span>En revision</span>
+                <strong>@Dashboard.PendingReviewCount</strong>
+            </div>
+            <div class="ordenes-kpi ordenes-kpi-cleaning">
+                <span>Limpieza hoy</span>
+                <strong>@Dashboard.TodayCleaningCount</strong>
+            </div>
+        </section>
+    }
+
+    <div class="row g-3">
+        <div class="col-12 col-xl-4">
+            @if (CanCreate)
+            {
+                <section class="card shadow-sm mb-3">
+                    <div class="card-body">
+                        <h2 class="h5 mb-3">Nueva orden manual</h2>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">Titulo</label>
+                                <InputText class="form-control" @bind-Value="CreateRequest.Titulo" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Categoria</label>
+                                <select class="form-select" @bind="CreateRequest.CategoriaCodigo">
+                                    @foreach (var category in Categories)
+                                    {
+                                        <option value="@category.Codigo">@category.Nombre</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Prioridad</label>
+                                <select class="form-select" @bind="CreateRequest.Prioridad">
+                                    <option value="NORMAL">Normal</option>
+                                    <option value="BAJA">Baja</option>
+                                    <option value="ALTA">Alta</option>
+                                    <option value="URGENTE">Urgente</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Responsable</label>
+                                <select class="form-select" @bind="CreateRequest.OwnerEmployeeId">
+                                    <option value="0">Selecciona responsable</option>
+                                    @foreach (var employee in Employees)
+                                    {
+                                        <option value="@employee.Id">@employee.Name</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Ayudantes</label>
+                                <div class="ordenes-helper-list">
+                                    @foreach (var employee in Employees)
+                                    {
+                                        <label class="form-check">
+                                            <input class="form-check-input" type="checkbox" checked="@CreateHelperIds.Contains(employee.Id)" @onchange="args => ToggleCreateHelper(employee.Id, args)" />
+                                            <span class="form-check-label">@employee.Name</span>
+                                        </label>
+                                    }
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Fecha</label>
+                                <InputDate class="form-control" @bind-Value="CreateRequest.FechaProgramada" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Vence</label>
+                                <InputDate class="form-control" @bind-Value="CreateRequest.FechaVencimiento" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Ubicacion</label>
+                                <InputText class="form-control" @bind-Value="CreateRequest.Ubicacion" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Descripcion</label>
+                                <InputTextArea class="form-control" rows="3" @bind-Value="CreateRequest.Descripcion" />
+                            </div>
+                        </div>
+                        <button class="btn btn-primary mt-3 w-100" type="button" @onclick="CreateManualAsync" disabled="@IsCreating">
+                            @(IsCreating ? "Creando..." : "Crear orden")
+                        </button>
+                    </div>
+                </section>
+            }
+
+            @if (Dashboard?.AssigneeLoads.Count > 0)
+            {
+                <section class="card shadow-sm">
+                    <div class="card-body">
+                        <h2 class="h5 mb-3">Carga de trabajo</h2>
+                        <div class="list-group list-group-flush">
+                            @foreach (var load in Dashboard.AssigneeLoads)
+                            {
+                                <div class="list-group-item px-0 d-flex justify-content-between gap-2">
+                                    <div>
+                                        <div class="fw-semibold">@load.EmployeeName</div>
+                                        <div class="small text-muted">@load.PendingReviewCount en revision · @load.OverdueCount vencidas</div>
+                                    </div>
+                                    <span class="badge text-bg-primary align-self-center">@load.OpenCount</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </section>
+            }
+        </div>
+
+        <div class="col-12 col-xl-8">
+            <section class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label">Buscar</label>
+                            <InputText class="form-control" @bind-Value="Filter.SearchText" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Estado</label>
+                            <select class="form-select" @bind="Filter.Estado">
+                                <option value="">Todos</option>
+                                <option value="ASIGNADA">Asignada</option>
+                                <option value="EN_PROCESO">En proceso</option>
+                                <option value="EN_REVISION">En revision</option>
+                                <option value="RECHAZADA">Rechazada</option>
+                                <option value="CERRADA">Cerrada</option>
+                                <option value="CANCELADA">Cancelada</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Categoria</label>
+                            <select class="form-select" @bind="Filter.CategoriaCodigo">
+                                <option value="">Todas</option>
+                                @foreach (var category in Categories)
+                                {
+                                    <option value="@category.Codigo">@category.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Responsable</label>
+                            <select class="form-select" @bind="Filter.OwnerEmployeeId">
+                                <option value="">Todos</option>
+                                @foreach (var employee in Employees)
+                                {
+                                    <option value="@employee.Id">@employee.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-grid">
+                            <button class="btn btn-outline-primary" type="button" @onclick="LoadOrdersAsync" disabled="@IsLoading">Filtrar</button>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-check">
+                                <InputCheckbox class="form-check-input" @bind-Value="Filter.IncludeClosed" />
+                                <span class="form-check-label">Incluir cerradas/canceladas</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card shadow-sm">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 ordenes-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Orden</th>
+                                <th>Responsable</th>
+                                <th>Programacion</th>
+                                <th>Progreso</th>
+                                <th class="text-end">Costo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (Orders.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted py-4">No hay ordenes para mostrar.</td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var item in Orders)
+                                {
+                                    <tr class="@GetOrderRowClass(item)" @onclick="() => OpenOrder(item.Id)">
+                                        <td data-label="Orden">
+                                            <div class="fw-semibold">@item.Folio</div>
+                                            <div>@item.Titulo</div>
+                                            <div class="small text-muted">@item.CategoriaNombre · @FormatTarget(item)</div>
+                                            <span class="@GetStatusBadgeClass(item.Estado)">@GetStatusLabel(item.Estado)</span>
+                                        </td>
+                                        <td data-label="Responsable">@item.OwnerName</td>
+                                        <td data-label="Programacion">
+                                            <div>@item.FechaProgramada.ToString("yyyy-MM-dd")</div>
+                                            <div class="small text-muted">@FormatWindow(item.HoraInicioProgramada, item.HoraFinProgramada)</div>
+                                        </td>
+                                        <td data-label="Progreso">
+                                            <div>@item.CompletedStepCount / @item.StepCount pasos</div>
+                                            @if (item.IssueStepCount > 0)
+                                            {
+                                                <span class="badge text-bg-warning">@item.IssueStepCount incidencia(s)</span>
+                                            }
+                                        </td>
+                                        <td data-label="Costo" class="text-end">@item.ActualCost.ToString("C2", CurrencyCulture)</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>

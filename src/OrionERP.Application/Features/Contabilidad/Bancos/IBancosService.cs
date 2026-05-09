@@ -38,6 +38,12 @@ public interface IBancosService
       int month,
       int? accountId,
       CancellationToken cancellationToken = default);
+  Task<int> AlignTransactionsToBankMovementsAsync(
+      string rfc,
+      int year,
+      int month,
+      int accountId,
+      CancellationToken cancellationToken = default);
   Task LinkMovementToTransactionAsync(
       long movimientoId,
       int transaccionId,

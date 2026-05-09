@@ -32,6 +32,7 @@ public sealed class LocationService : ILocationService
       MaterialCounts AS (
           SELECT LocationId, COUNT(*) AS MaterialCount
           FROM logistica.StockBalance
+          WHERE ISNULL(IsRemoved, 0) = 0
           GROUP BY LocationId
       )
       SELECT
@@ -188,20 +189,30 @@ public sealed class LocationService : ILocationService
     return rows.AsList();
   }
 
-  public async Task<IReadOnlyList<LookupOptionDto>> GetRoomLookupAsync(CancellationToken ct = default)
+  public async Task<IReadOnlyList<LookupOptionDto>> GetRoomLookupAsync(string? roomType = null, CancellationToken ct = default)
   {
-    const string sql =
+    var sql = new StringBuilder(
       """
       SELECT
           r.ID AS Id,
           r.ROOM_NAME AS Name,
           r.ROOM_TYPE AS Code
       FROM dbo.ROOM r
-      ORDER BY r.ROOM_NAME, r.ID;
-      """;
+      WHERE 1 = 1
+      """);
+
+    var parameters = new DynamicParameters();
+    if (!string.IsNullOrWhiteSpace(roomType))
+    {
+      sql.AppendLine(" AND r.ROOM_TYPE = @RoomType");
+      parameters.Add("@RoomType", roomType.Trim(), DbType.String);
+    }
+
+    sql.AppendLine("ORDER BY r.ROOM_NAME, r.ID;");
 
     using var conn = CreateConnection();
-    var rows = await conn.QueryAsync<LookupOptionDto>(new CommandDefinition(sql, cancellationToken: ct));
+    var rows = await conn.QueryAsync<LookupOptionDto>(
+      new CommandDefinition(sql.ToString(), parameters, cancellationToken: ct));
     return rows.AsList();
   }
 
@@ -231,7 +242,8 @@ public sealed class LocationService : ILocationService
         const string updateSql =
           """
           UPDATE logistica.Location
-          SET LocationName = @LocationName,
+          SET LocationCode = COALESCE(@LocationCode, LocationCode),
+              LocationName = @LocationName,
               LocationType = @LocationType,
               ParentLocationId = @ParentLocationId,
               RoomId = @RoomId,
@@ -248,6 +260,7 @@ public sealed class LocationService : ILocationService
             new
             {
               Id = request.Id.Value,
+              LocationCode = NullIfWhiteSpace(request.LocationCode)?.ToUpperInvariant(),
               LocationName = name,
               request.LocationType,
               request.ParentLocationId,

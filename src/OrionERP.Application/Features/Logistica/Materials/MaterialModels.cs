@@ -11,6 +11,8 @@ public sealed class MaterialFilter
   public string? MaterialClass { get; set; }
   public string? Status { get; set; }
   public bool? HasImage { get; set; }
+  public int Skip { get; set; }
+  public int Take { get; set; }
 }
 
 public sealed class MaterialListItemDto
@@ -37,8 +39,10 @@ public sealed class MaterialDetailDto
   public int? LegacyMaterialId { get; set; }
   public string Description { get; set; } = string.Empty;
   public int BaseUnitId { get; set; }
+  public string? BaseUnitName { get; set; }
   public decimal PurchaseQuantity { get; set; }
   public int? PurchaseUnitId { get; set; }
+  public string? PurchaseUnitName { get; set; }
   public int? BusinessPartnerId { get; set; }
   public decimal? Price { get; set; }
   public DateTime? CreatedDate { get; set; }

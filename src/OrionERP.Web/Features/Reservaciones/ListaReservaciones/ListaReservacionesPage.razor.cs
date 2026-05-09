@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
@@ -13,10 +14,11 @@ using OrionERP.Web.Services;
 namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 
 [Authorize(Roles = "Administrador,SatOperator")]
-public partial class ListaReservacionesPage : ComponentBase
+public partial class ListaReservacionesPage : ComponentBase, IDisposable
 {
   private const int PageSize = 100;
   private const int QueryTake = PageSize + 1;
+  private const int FilterInputDebounceMs = 300;
 
   [Inject] public IListaReservacionesService ReservacionesService { get; set; } = default!;
   [Inject] public IBonhomiaRoomCalendarSyncService BonhomiaRoomCalendarSyncService { get; set; } = default!;
@@ -30,10 +32,13 @@ public partial class ListaReservacionesPage : ComponentBase
   protected bool IsLoadingMore { get; set; }
   protected bool IsSyncingAirbnb { get; set; }
   protected bool HasMoreReservaciones { get; set; }
+  protected int? SelectedReservacionId { get; set; }
   protected string? ErrorMessage { get; set; }
 
   private DateTime? _checkInFrom;
   private DateTime? _checkInTo;
+  private CancellationTokenSource? _filterSearchDebounceCts;
+  private int _searchVersion;
   protected bool IsBusy => IsLoading || IsLoadingMore || IsSyncingAirbnb;
   protected bool IsBusyDanger => IsBusy;
 
@@ -56,31 +61,49 @@ public partial class ListaReservacionesPage : ComponentBase
 
   protected async Task BuscarAsync()
   {
+    CancelPendingFilterSearch();
+
+    var searchVersion = Interlocked.Increment(ref _searchVersion);
     IsLoading = true;
     ErrorMessage = null;
     HasMoreReservaciones = false;
+    SelectedReservacionId = null;
     StateHasChanged();
 
     try
     {
       var page = await GetReservacionesPageAsync(0);
+      if (searchVersion != _searchVersion)
+      {
+        return;
+      }
+
       Reservaciones = page.Items;
       HasMoreReservaciones = page.HasMore;
     }
     catch (Exception ex)
     {
+      if (searchVersion != _searchVersion)
+      {
+        return;
+      }
+
       ErrorMessage = ex.Message;
       UiMessages.ShowError($"No se pudo cargar la lista de reservaciones. {ex.Message}");
     }
     finally
     {
-      IsLoading = false;
-      StateHasChanged();
+      if (searchVersion == _searchVersion)
+      {
+        IsLoading = false;
+        StateHasChanged();
+      }
     }
   }
 
   protected async Task LimpiarAsync()
   {
+    CancelPendingFilterSearch();
     Filter = new ListaReservacionFilter();
     _checkInFrom = null;
     _checkInTo = null;
@@ -94,6 +117,7 @@ public partial class ListaReservacionesPage : ComponentBase
       return;
     }
 
+    var searchVersion = _searchVersion;
     IsLoadingMore = true;
     ErrorMessage = null;
     StateHasChanged();
@@ -101,11 +125,21 @@ public partial class ListaReservacionesPage : ComponentBase
     try
     {
       var page = await GetReservacionesPageAsync(Reservaciones.Count);
+      if (searchVersion != _searchVersion)
+      {
+        return;
+      }
+
       Reservaciones.AddRange(page.Items);
       HasMoreReservaciones = page.HasMore;
     }
     catch (Exception ex)
     {
+      if (searchVersion != _searchVersion)
+      {
+        return;
+      }
+
       ErrorMessage = ex.Message;
       UiMessages.ShowError($"No se pudieron cargar más reservaciones. {ex.Message}");
     }
@@ -230,6 +264,14 @@ public partial class ListaReservacionesPage : ComponentBase
     }
   }
 
+  protected void SelectReservacionRow(int reservationId)
+    => SelectedReservacionId = reservationId;
+
+  protected string GetReservacionRowClass(int reservationId)
+    => SelectedReservacionId == reservationId
+      ? "reservaciones-list-row reservaciones-list-row-selected"
+      : "reservaciones-list-row";
+
   protected static string FormatDate(DateTime? value)
     => value.HasValue ? value.Value.ToString("d", CultureInfo.CurrentCulture) : string.Empty;
 
@@ -241,14 +283,53 @@ public partial class ListaReservacionesPage : ComponentBase
     return value.Length <= max ? value : value[..max] + "...";
   }
 
-  protected void SetCheckInFrom(ChangeEventArgs args)
+  protected Task OnFilterChangedAsync()
+    => BuscarAsync();
+
+  protected async Task OnFilterInputChangedAsync()
   {
-    _checkInFrom = ParseDate(args.Value?.ToString());
+    CancelPendingFilterSearch();
+    _filterSearchDebounceCts = new CancellationTokenSource();
+    var localCts = _filterSearchDebounceCts;
+
+    try
+    {
+      await Task.Delay(TimeSpan.FromMilliseconds(FilterInputDebounceMs), localCts.Token);
+      if (!ReferenceEquals(_filterSearchDebounceCts, localCts) || localCts.IsCancellationRequested)
+      {
+        return;
+      }
+    }
+    catch (TaskCanceledException)
+    {
+      return;
+    }
+    finally
+    {
+      if (ReferenceEquals(_filterSearchDebounceCts, localCts))
+      {
+        _filterSearchDebounceCts = null;
+      }
+    }
+
+    await BuscarAsync();
   }
 
-  protected void SetCheckInTo(ChangeEventArgs args)
+  protected async Task OnCheckInFromChangedAsync(ChangeEventArgs args)
+  {
+    _checkInFrom = ParseDate(args.Value?.ToString());
+    await OnFilterChangedAsync();
+  }
+
+  protected async Task OnCheckInToChangedAsync(ChangeEventArgs args)
   {
     _checkInTo = ParseDate(args.Value?.ToString());
+    await OnFilterChangedAsync();
+  }
+
+  public void Dispose()
+  {
+    CancelPendingFilterSearch();
   }
 
   private async Task<(List<ListaReservacionItemDto> Items, bool HasMore)> GetReservacionesPageAsync(int skip)
@@ -282,6 +363,13 @@ public partial class ListaReservacionesPage : ComponentBase
       return null;
 
     return DateTime.TryParse(value, out var parsed) ? parsed.Date : null;
+  }
+
+  private void CancelPendingFilterSearch()
+  {
+    _filterSearchDebounceCts?.Cancel();
+    _filterSearchDebounceCts?.Dispose();
+    _filterSearchDebounceCts = null;
   }
 
   private static string BuildSyncSummary(BonhomiaRoomCalendarSyncResult result)

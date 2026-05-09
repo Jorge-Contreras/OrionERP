@@ -3,6 +3,8 @@ namespace OrionERP.Application.Features.Contabilidad.ContabilidadRegistros;
 public sealed record RegistrosContablesRow
 {
   public int Id { get; init; }
+  public DateTime FechaOrden { get; init; }
+  public long OrdenBalance { get; init; }
   public string Fecha { get; init; } = string.Empty;
   public string Cuenta { get; init; } = string.Empty;
   public string Nombre_Cuenta { get; init; } = string.Empty;

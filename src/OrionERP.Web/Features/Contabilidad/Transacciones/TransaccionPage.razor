@@ -80,7 +80,9 @@ else
 
             <div class="col-12">
               <label class="form-label">Concepto</label>
-              <InputText class="form-control" @bind-Value="Header.Concepto" />
+              <input class="form-control text-uppercase"
+                     value="@Header.Concepto"
+                     @oninput="OnHeaderConceptoInput" />
               <ValidationMessage For="() => Header.Concepto" />
             </div>
 
@@ -290,9 +292,18 @@ else
             <span class="badge @(Totals.Balance == 0 ? "text-bg-success" : "text-bg-warning")">
               Balance: @Totals.Balance.ToString("N2")
             </span>
-            <button class="btn btn-sm btn-outline-primary ms-auto" type="button" @onclick="() => OpenMovimientoModal(null)">
-              <span class="oi oi-plus me-1" aria-hidden="true"></span>Agregar
-            </button>
+            <div class="d-flex align-items-center gap-2 flex-wrap ms-auto">
+              <button class="btn btn-sm btn-outline-secondary"
+                      type="button"
+                      title="Copiar el concepto de la póliza a todos los movimientos"
+                      disabled="@(Movimientos.Count == 0)"
+                      @onclick="UpdateAllMovimientosConceptoFromHeader">
+                Actualizar Concepto
+              </button>
+              <button class="btn btn-sm btn-outline-primary" type="button" @onclick="() => OpenMovimientoModal(null)">
+                <span class="oi oi-plus me-1" aria-hidden="true"></span>Agregar
+              </button>
+            </div>
           </div>
 
           @if (Movimientos.Count == 0)
@@ -486,6 +497,20 @@ else
                           }
                           Desligar
                         </button>
+                        @if (CanCancelComprobante(comprobante))
+                        {
+                          <button type="button"
+                                  class="btn btn-sm btn-outline-danger ms-1"
+                                  disabled="@IsComprobanteCancelling(comprobante)"
+                                  @onclick="() => CancelComprobanteCfdiAsync(comprobante)"
+                                  @onclick:stopPropagation="true">
+                            @if (IsComprobanteCancelling(comprobante))
+                            {
+                              <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                            }
+                            Cancelar CFDI
+                          </button>
+                        }
                       </td>
                     </tr>
                   }
@@ -501,6 +526,15 @@ else
             <span class="badge text-bg-dark">Monto póliza: @FormatCurrency(Header.Monto)</span>
             <span class="badge text-bg-dark">Asignado: @FormatCurrency(ReservacionesAsignadasTotal)</span>
             <span class="badge @ReservacionesBalanceCss">Por asignar: @FormatCurrency(ReservacionesPorAsignar)</span>
+            <div class="d-flex align-items-center gap-2 flex-wrap ms-auto">
+              <button type="button"
+                      class="btn btn-sm btn-outline-secondary"
+                      title="Generar el concepto de la poliza usando las reservaciones ligadas"
+                      disabled="@(ReservacionLinks.Count == 0)"
+                      @onclick="UpdateHeaderConceptoFromReservaciones">
+                Actualizar Concepto
+              </button>
+            </div>
           </div>
 
           @if (HasReservacionesAsignadas && decimal.Abs(ReservacionesPorAsignar) > 0.01m)
@@ -988,7 +1022,9 @@ else
               <div class="row g-3 align-items-end">
                 <div class="col-lg-8">
                   <label class="form-label text-uppercase">Concepto</label>
-                    <InputText class="form-control" @bind-Value="MovimientoDraft!.Concepto" />
+                    <input class="form-control text-uppercase"
+                           value="@MovimientoDraft!.Concepto"
+                           @oninput="OnMovimientoConceptoInput" />
                     <ValidationMessage For="() => MovimientoDraft!.Concepto" />
                 </div>
                 <div class="col-lg-4 d-flex align-items-end">

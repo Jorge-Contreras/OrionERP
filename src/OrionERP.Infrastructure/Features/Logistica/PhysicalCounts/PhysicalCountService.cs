@@ -1,6 +1,6 @@
 using System.Data;
+using System.Data.Common;
 using Dapper;
-using Microsoft.Data.SqlClient;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Logistica.PhysicalCounts;
 using OrionERP.Application.Features.Logistica.Shared;
@@ -117,12 +117,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
             SELECT COUNT(*)
             FROM logistica.PhysicalCountAttachment attachment
             WHERE attachment.PhysicalCountLineId = line.Id
-          ) AS AttachmentCount,
-          CAST(CASE
-              WHEN (ISNULL(line.VarianceQuantity, 0) <> 0 OR line.IsMissing = 1 OR line.IsDamaged = 1)
-              THEN 1
-              ELSE 0
-          END AS bit) AS RequiresEvidence
+          ) AS AttachmentCount
       FROM logistica.PhysicalCountLine line
       JOIN logistica.Material m
         ON m.Id = line.MaterialId
@@ -183,7 +178,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
 
     using var conn = CreateConnection();
     await conn.OpenAsync(ct);
-    using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+    using var tx = await conn.BeginTransactionAsync(ct);
 
     try
     {
@@ -283,7 +278,8 @@ public sealed class PhysicalCountService : IPhysicalCountService
               sb.Quantity
           FROM logistica.StockBalance sb
           JOIN LocationScope scope
-            ON scope.Id = sb.LocationId;
+            ON scope.Id = sb.LocationId
+          WHERE ISNULL(sb.IsRemoved, 0) = 0;
           """,
           new { SessionId = sessionId, request.LocationId },
           tx,
@@ -321,7 +317,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
 
     using var conn = CreateConnection();
     await conn.OpenAsync(ct);
-    using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+    using var tx = await conn.BeginTransactionAsync(ct);
 
     try
     {
@@ -424,11 +420,81 @@ public sealed class PhysicalCountService : IPhysicalCountService
     }
   }
 
+  public async Task<LogisticsCommandResult> DeleteDraftSessionAsync(int sessionId, CancellationToken ct = default)
+  {
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    using var tx = await conn.BeginTransactionAsync(ct);
+
+    try
+    {
+      var status = await conn.ExecuteScalarAsync<string?>(
+        new CommandDefinition(
+          "SELECT [Status] FROM logistica.PhysicalCountSession WHERE Id = @SessionId;",
+          new { SessionId = sessionId },
+          tx,
+          cancellationToken: ct));
+
+      if (status is null)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("La sesión de conteo no existe.");
+      }
+
+      if (!string.Equals(status, "Draft", StringComparison.OrdinalIgnoreCase))
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("Solo las sesiones en borrador se pueden cancelar o eliminar.");
+      }
+
+      await conn.ExecuteAsync(
+        new CommandDefinition(
+          """
+          DELETE attachment
+          FROM logistica.PhysicalCountAttachment attachment
+          JOIN logistica.PhysicalCountLine line
+            ON line.Id = attachment.PhysicalCountLineId
+          WHERE line.SessionId = @SessionId;
+          """,
+          new { SessionId = sessionId },
+          tx,
+          cancellationToken: ct));
+
+      await conn.ExecuteAsync(
+        new CommandDefinition(
+          "DELETE FROM logistica.PhysicalCountLine WHERE SessionId = @SessionId;",
+          new { SessionId = sessionId },
+          tx,
+          cancellationToken: ct));
+
+      var affected = await conn.ExecuteAsync(
+        new CommandDefinition(
+          "DELETE FROM logistica.PhysicalCountSession WHERE Id = @SessionId;",
+          new { SessionId = sessionId },
+          tx,
+          cancellationToken: ct));
+
+      if (affected == 0)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("La sesión de conteo no existe.");
+      }
+
+      await tx.CommitAsync(ct);
+      return LogisticsCommandResult.Ok("Sesión en borrador eliminada correctamente.", sessionId);
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
   public async Task<LogisticsCommandResult> SubmitSessionAsync(int sessionId, string submittedBy, CancellationToken ct = default)
   {
     using var conn = CreateConnection();
     await conn.OpenAsync(ct);
-    using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+    using var tx = await conn.BeginTransactionAsync(ct);
 
     try
     {
@@ -461,33 +527,6 @@ public sealed class PhysicalCountService : IPhysicalCountService
       {
         await tx.RollbackAsync(ct);
         return LogisticsCommandResult.Fail("Todas las líneas deben capturar cantidad contada antes de enviar el conteo.");
-      }
-
-      var missingEvidence = await conn.ExecuteScalarAsync<int>(
-        new CommandDefinition(
-          """
-          SELECT COUNT(*)
-          FROM logistica.PhysicalCountLine line
-          WHERE line.SessionId = @SessionId
-            AND (
-                ISNULL(line.VarianceQuantity, 0) <> 0
-                OR line.IsMissing = 1
-                OR line.IsDamaged = 1
-            )
-            AND NOT EXISTS (
-                SELECT 1
-                FROM logistica.PhysicalCountAttachment attachment
-                WHERE attachment.PhysicalCountLineId = line.Id
-            );
-          """,
-          new { SessionId = sessionId },
-          tx,
-          cancellationToken: ct));
-
-      if (missingEvidence > 0)
-      {
-        await tx.RollbackAsync(ct);
-        return LogisticsCommandResult.Fail("Las variaciones, faltantes o daños requieren al menos una evidencia adjunta.");
       }
 
       await conn.ExecuteAsync(
@@ -546,7 +585,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
   {
     using var conn = CreateConnection();
     await conn.OpenAsync(ct);
-    using var tx = (SqlTransaction)await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
     try
     {
@@ -718,9 +757,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
     return row;
   }
 
-  private SqlConnection CreateConnection()
-    => _connectionFactory.Create() as SqlConnection
-      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una SqlConnection.");
+  private DbConnection CreateConnection()
+    => _connectionFactory.Create() as DbConnection
+      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
 
   private static string? NullIfWhiteSpace(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

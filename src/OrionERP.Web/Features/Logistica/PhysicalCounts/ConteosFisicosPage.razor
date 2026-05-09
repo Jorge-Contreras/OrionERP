@@ -1,15 +1,15 @@
 @page "/logistica/conteos"
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Forms
-@attribute [Authorize(Roles = "Administrador")]
+@attribute [Authorize(Roles = "Administrador,Conteo")]
 
 <PageTitle>Logística · Conteos físicos</PageTitle>
 
-<div class="container-fluid py-3">
+<div class="container-fluid py-3 conteos-page">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
             <h1 class="h3 mb-1">Conteos físicos</h1>
-            <p class="text-muted mb-0">Sesiones de conteo con captura por línea, evidencia y contabilización aprobada.</p>
+            <p class="text-muted mb-0">Sesiones de conteo con captura por línea, adjuntos opcionales y contabilización aprobada.</p>
         </div>
     </div>
 
@@ -41,7 +41,7 @@
                 </div>
             </section>
 
-            <section class="card shadow-sm">
+            <section class="@GetSessionsSectionClass()">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h2 class="h5 mb-0">Sesiones</h2>
@@ -50,7 +50,15 @@
                         </button>
                     </div>
 
-                    <div class="table-responsive" style="max-height: 70vh;">
+                    <div class="form-check mb-3">
+                        <InputCheckbox id="conteos-mostrar-contabilizadas" class="form-check-input" @bind-Value="ShowPostedSessions" />
+                        <label class="form-check-label" for="conteos-mostrar-contabilizadas">Mostrar contabilizadas</label>
+                    </div>
+
+                    <div class="table-responsive conteos-sessions-scroll">
+                        @{
+                            var visibleSessions = VisibleSessions;
+                        }
                         <table class="table table-sm table-hover align-middle conteos-sessions-table">
                             <thead class="table-light">
                                 <tr>
@@ -60,28 +68,28 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @if (Sessions.Count == 0)
+                                @if (visibleSessions.Count == 0)
                                 {
                                     <tr>
-                                        <td colspan="3" class="text-center text-muted py-3">Aún no hay sesiones.</td>
+                                        <td colspan="3" class="text-center text-muted py-3">@(Sessions.Count == 0 ? "Aún no hay sesiones." : "No hay sesiones para el filtro actual.")</td>
                                     </tr>
                                 }
                                 else
                                 {
-                                    @foreach (var item in Sessions)
+                                    @foreach (var item in visibleSessions)
                                     {
-                                        <tr class="@(SelectedSession?.Id == item.Id ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarSesionAsync(item.Id)">
-                                            <td>
+                                        <tr class="@GetSessionRowClass(item)" style="cursor: pointer;" @onclick="() => SeleccionarSesionAsync(item.Id)">
+                                            <td data-label="Sesión">
                                                 <div class="fw-semibold">@item.SessionCode</div>
-                                                <small class="text-muted">@item.Status</small>
+                                                <span class="@GetSessionStatusBadgeClass(item.Status)">@GetSessionStatusLabel(item.Status)</span>
                                             </td>
-                                            <td class="conteos-location-col">
+                                            <td data-label="Ubicación" class="conteos-location-col">
                                                 <div class="conteos-cell-stack">
                                                     <div class="conteos-cell-primary">@item.LocationName</div>
                                                     <div class="conteos-cell-secondary">@(string.IsNullOrWhiteSpace(item.RoomName) ? "Sin room" : item.RoomName)</div>
                                                 </div>
                                             </td>
-                                            <td class="text-end conteos-count-col">
+                                            <td data-label="Líneas" class="text-end conteos-count-col">
                                                 <div>@item.LineCount</div>
                                                 <small class="text-muted">@item.VarianceLineCount variaciones</small>
                                             </td>
@@ -100,19 +108,21 @@
             {
                 <section class="card shadow-sm">
                     <div class="card-body text-center text-muted py-5">
-                        Selecciona una sesión para capturar líneas, adjuntar evidencia y contabilizar.
+                        Selecciona una sesión para capturar líneas, adjuntar archivos opcionales y contabilizar.
                     </div>
                 </section>
             }
             else
             {
-                <section class="card shadow-sm mb-3">
+                <section class="card shadow-sm mb-3 conteos-session-card">
                     <div class="card-body">
                         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
                             <div>
                                 <h2 class="h4 mb-1">@SelectedSession.SessionCode</h2>
                                 <div class="conteos-session-location">@SelectedSession.LocationName</div>
-                                <div class="text-muted">@SelectedSession.Status</div>
+                                <div class="mt-2">
+                                    <span class="@SelectedSessionStatusBadgeClass">@SelectedSessionStatusLabel</span>
+                                </div>
                                 @if (!string.IsNullOrWhiteSpace(SelectedSession.RoomName))
                                 {
                                     <div class="conteos-session-room text-muted">@SelectedSession.RoomName</div>
@@ -122,14 +132,27 @@
                                     <div class="small text-muted mt-1">@SelectedSession.Notes</div>
                                 }
                             </div>
-                            <div class="d-flex flex-wrap gap-2">
-                                <button class="btn btn-outline-primary" type="button" @onclick="EnviarSesionAsync" disabled="@(!CanSubmit || IsMutatingSession)">Enviar</button>
-                                <button class="btn btn-outline-success" type="button" @onclick="AprobarSesionAsync" disabled="@(!CanApprove || IsMutatingSession)">Aprobar</button>
-                                <button class="btn btn-success" type="button" @onclick="ContabilizarSesionAsync" disabled="@(!CanPost || IsMutatingSession)">Contabilizar</button>
+                            <div class="d-flex flex-wrap gap-2 conteos-session-actions">
+                                <button class="btn btn-outline-secondary conteos-session-action d-md-none" type="button" @onclick="MostrarSesionesAsync">
+                                    Cambiar sesión
+                                </button>
+                                @if (CanDeleteDraft)
+                                {
+                                    <button class="btn btn-outline-danger conteos-session-action" type="button" @onclick="CancelarSesionAsync" disabled="@IsMutatingSession">
+                                        @(IsDeletingSession ? "Eliminando..." : "Cancelar borrador")
+                                    </button>
+                                }
+                                <button class="btn btn-outline-primary conteos-session-action" type="button" @onclick="EnviarSesionAsync" disabled="@(!CanSubmit || IsMutatingSession)">Enviar</button>
+                                <button class="btn btn-outline-success conteos-session-action" type="button" @onclick="AprobarSesionAsync" disabled="@(!CanApprove || IsMutatingSession)">Aprobar</button>
+                                <button class="btn btn-success conteos-session-action" type="button" @onclick="ContabilizarSesionAsync" disabled="@(!CanPost || IsMutatingSession)">Contabilizar</button>
                             </div>
                         </div>
 
-                        <div class="table-responsive" style="max-height: 36vh;">
+                        <div class="conteos-lines-tip">
+                            Revisa la unidad de conteo de cada material antes de capturar.
+                        </div>
+
+                        <div class="table-responsive conteos-lines-scroll">
                             <table class="table table-sm table-hover align-middle conteos-lines-table">
                                 <thead class="table-light">
                                     <tr>
@@ -146,8 +169,12 @@
                                         var thumbnailDataUrl = GetMaterialThumbnailDataUrl(line.MaterialId);
                                         var materialTitle = string.IsNullOrWhiteSpace(line.MaterialDescription) ? line.MaterialCode : line.MaterialDescription;
                                         var showMaterialCode = !string.IsNullOrWhiteSpace(line.MaterialCode) && !string.Equals(line.MaterialCode, materialTitle, StringComparison.OrdinalIgnoreCase);
-                                        <tr class="@(SelectedLine?.Id == line.Id ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarLinea(line)">
-                                            <td class="conteos-line-image-col">
+                                        var lineUnitLabel = GetCountUnitLabel(line.BaseUnitName);
+                                        var capturedByCurrentUser = IsLineCapturedByCurrentUser(line);
+                                        var isSelectedLine = IsSelectedLine(line);
+                                        var showInlineCountEditor = isSelectedLine && CanCaptureLine;
+                                        <tr class="@GetLineRowClass(line)" style="cursor: pointer;" @onclick="() => SeleccionarLinea(line)">
+                                            <td data-label="Foto" class="conteos-line-image-col">
                                                 @if (thumbnailDataUrl is not null)
                                                 {
                                                     <button class="conteos-line-image-button" type="button" title="Ver imagen" aria-label="Ver imagen del material" @onclick="() => AbrirImagenMaterialAsync(line)" @onclick:stopPropagation="true">
@@ -159,18 +186,61 @@
                                                     <div class="conteos-line-image-placeholder">Sin foto</div>
                                                 }
                                             </td>
-                                            <td class="conteos-material-col">
+                                            <td data-label="Material" class="conteos-material-col">
                                                 <div class="conteos-cell-stack">
                                                     <div class="conteos-cell-primary">@materialTitle</div>
                                                     @if (showMaterialCode)
                                                     {
                                                         <div class="conteos-cell-secondary">@line.MaterialCode</div>
                                                     }
+                                                    <div class="conteos-line-unit">
+                                                        <span class="@GetCountUnitBadgeClass(line.BaseUnitName)">Contar en @lineUnitLabel</span>
+                                                    </div>
+                                                    @if (capturedByCurrentUser)
+                                                    {
+                                                        <div class="conteos-line-user-indicator">
+                                                            <span class="conteos-line-user-badge">Capturado por ti</span>
+                                                        </div>
+                                                    }
                                                 </div>
                                             </td>
-                                            <td class="text-end conteos-quantity-col">@line.ExpectedQuantity.ToString("N2")</td>
-                                            <td class="text-end conteos-quantity-col">@((line.CountedQuantity ?? 0).ToString("N2"))</td>
-                                            <td class="text-end conteos-quantity-col">
+                                            <td data-label="@(GetQuantityFieldLabel("Esperado", line.BaseUnitName))" class="text-end conteos-quantity-col">@line.ExpectedQuantity.ToString("N2")</td>
+                                            <td data-label="@(GetQuantityFieldLabel("Contado", line.BaseUnitName))" class="text-end conteos-quantity-col">
+                                                @if (showInlineCountEditor)
+                                                {
+                                                    <div class="conteos-inline-count-editor d-md-none" @onclick:stopPropagation="true">
+                                                        <input class="form-control conteos-counted-input conteos-inline-counted-input"
+                                                               type="text"
+                                                               inputmode="decimal"
+                                                               enterkeyhint="done"
+                                                               autocomplete="off"
+                                                               spellcheck="false"
+                                                               aria-label="@(GetQuantityFieldLabel("Contado", line.BaseUnitName))"
+                                                               title="@($"Captura la cantidad en {lineUnitLabel}")"
+                                                               value="@CountedQuantityInput"
+                                                               @oninput="OnCountedQuantityInput"
+                                                               @onblur="OnCountedQuantityBlur"
+                                                               @onfocus="() => SelectCountedQuantityAsync()"
+                                                               @onclick="() => SelectCountedQuantityAsync()"
+                                                               @onkeydown="HandleMobileCountedQuantityKeyDownAsync"
+                                                               @onclick:stopPropagation="true"
+                                                               @ref="MobileCountedQuantityInputRef" />
+                                                        <button class="btn btn-primary conteos-inline-save-button"
+                                                                type="button"
+                                                                @onclick="GuardarLineaMovilAsync"
+                                                                @onclick:stopPropagation="true"
+                                                                disabled="@(!CanCaptureLine || IsSavingLine)">
+                                                            @(IsSavingLine ? "Guardando..." : "Guardar")
+                                                        </button>
+                                                    </div>
+                                                    <div class="d-none d-md-block">@((line.CountedQuantity ?? 0).ToString("N2"))</div>
+                                                }
+                                                else
+                                                {
+                                                    @((line.CountedQuantity ?? 0).ToString("N2"))
+                                                }
+                                            </td>
+                                            <td data-label="@(GetQuantityFieldLabel("Varianza", line.BaseUnitName))" class="text-end conteos-quantity-col">
                                                 @if (line.VarianceQuantity.HasValue && line.VarianceQuantity.Value != 0)
                                                 {
                                                     <span class="badge text-bg-warning">@line.VarianceQuantity.Value.ToString("N2")</span>
@@ -190,7 +260,7 @@
 
                 @if (SelectedLine is not null)
                 {
-                    <section class="card shadow-sm">
+                    <section class="card shadow-sm conteos-capture-card">
                         <div class="card-body">
                             <div class="row g-3">
                                 <div class="col-12 col-xl-6">
@@ -198,6 +268,7 @@
                                     @{
                                         var selectedMaterialTitle = string.IsNullOrWhiteSpace(SelectedLine.MaterialDescription) ? SelectedLine.MaterialCode : SelectedLine.MaterialDescription;
                                         var showSelectedMaterialCode = !string.IsNullOrWhiteSpace(SelectedLine.MaterialCode) && !string.Equals(SelectedLine.MaterialCode, selectedMaterialTitle, StringComparison.OrdinalIgnoreCase);
+                                        var selectedLineUnitLabel = GetCountUnitLabel(SelectedLine.BaseUnitName);
                                     }
                                     <div class="conteos-selected-line-summary mb-3">
                                         <div class="conteos-selected-line-title">@selectedMaterialTitle</div>
@@ -205,28 +276,45 @@
                                         {
                                             <div class="conteos-selected-line-subtitle">@SelectedLine.MaterialCode</div>
                                         }
+                                        <div class="conteos-selected-line-unit">
+                                            <span class="@GetCountUnitBadgeClass(SelectedLine.BaseUnitName)">Contar en @selectedLineUnitLabel</span>
+                                        </div>
                                     </div>
-                                    <div class="row g-3">
-                                        <div class="col-md-4">
-                                            <label class="form-label">Esperado</label>
+                                    <div class="row g-3 conteos-capture-form">
+                                        <div class="col-6 col-md-4">
+                                            <label class="form-label">@GetQuantityFieldLabel("Esperado", SelectedLine.BaseUnitName)</label>
                                             <input class="form-control" type="text" value="@SelectedLine.ExpectedQuantity.ToString("N2")" disabled />
                                         </div>
-                                        <div class="col-md-4">
-                                            <label class="form-label">Contado</label>
-                                            <InputNumber class="form-control" @bind-Value="LineCapture.CountedQuantity" />
+                                        <div class="d-none d-md-block col-md-4">
+                                            <label class="form-label">@GetQuantityFieldLabel("Contado", SelectedLine.BaseUnitName)</label>
+                                            <input class="form-control form-control-lg conteos-counted-input"
+                                                   type="text"
+                                                   inputmode="decimal"
+                                                   enterkeyhint="done"
+                                                   autocomplete="off"
+                                                   spellcheck="false"
+                                                   aria-label="@(GetQuantityFieldLabel("Contado", SelectedLine.BaseUnitName))"
+                                                   title="@($"Captura la cantidad en {selectedLineUnitLabel}")"
+                                                   value="@CountedQuantityInput"
+                                                   @oninput="OnCountedQuantityInput"
+                                                   @onblur="OnCountedQuantityBlur"
+                                                   @onfocus="() => SelectCountedQuantityAsync()"
+                                                   @onclick="() => SelectCountedQuantityAsync()"
+                                                   @onkeydown="HandleCountedQuantityKeyDownAsync"
+                                                   @ref="CountedQuantityInputRef" />
                                         </div>
-                                        <div class="col-md-4">
-                                            <label class="form-label">Varianza</label>
+                                        <div class="col-12 col-md-4">
+                                            <label class="form-label">@GetQuantityFieldLabel("Varianza", SelectedLine.BaseUnitName)</label>
                                             <input class="form-control" type="text" value="@CurrentVarianceText" disabled />
                                         </div>
                                         <div class="col-md-6">
-                                            <div class="form-check mt-2">
+                                            <div class="form-check mt-2 conteos-toggle-card">
                                                 <InputCheckbox class="form-check-input" @bind-Value="LineCapture.IsMissing" />
                                                 <label class="form-check-label">Faltante</label>
                                             </div>
                                         </div>
                                         <div class="col-md-6">
-                                            <div class="form-check mt-2">
+                                            <div class="form-check mt-2 conteos-toggle-card">
                                                 <InputCheckbox class="form-check-input" @bind-Value="LineCapture.IsDamaged" />
                                                 <label class="form-check-label">Dañado</label>
                                             </div>
@@ -236,22 +324,25 @@
                                             <InputTextArea class="form-control" rows="3" @bind-Value="LineCapture.Notes" />
                                         </div>
                                         <div class="col-12">
-                                            <label class="form-label">Evidencia</label>
-                                            <InputFile OnChange="OnLineAttachmentSelectedAsync" />
+                                            <label class="form-label">Evidencia opcional</label>
+                                            <InputFile class="form-control" OnChange="OnLineAttachmentSelectedAsync" />
                                             @if (!string.IsNullOrWhiteSpace(PendingLineAttachmentName))
                                             {
                                                 <div class="form-text">@PendingLineAttachmentName</div>
                                             }
                                         </div>
                                     </div>
-                                    <button class="btn btn-primary mt-3" type="button" @onclick="GuardarLineaAsync" disabled="@(!CanCaptureLine || IsSavingLine)">
+                                    <button class="btn btn-primary mt-3 conteos-save-button d-md-none" type="button" @onclick="GuardarLineaMovilAsync" disabled="@(!CanCaptureLine || IsSavingLine)">
+                                        @(IsSavingLine ? "Guardando..." : "Guardar línea")
+                                    </button>
+                                    <button class="btn btn-primary mt-3 conteos-save-button d-none d-md-inline-block" type="button" @onclick="GuardarLineaAsync" disabled="@(!CanCaptureLine || IsSavingLine)">
                                         @(IsSavingLine ? "Guardando..." : "Guardar línea")
                                     </button>
                                 </div>
 
                                 <div class="col-12 col-xl-6">
                                     <h3 class="h5 mb-3">Evidencias capturadas</h3>
-                                    <div class="table-responsive" style="max-height: 30vh;">
+                                    <div class="table-responsive conteos-evidence-scroll">
                                         <table class="table table-sm">
                                             <thead class="table-light">
                                                 <tr>

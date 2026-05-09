@@ -1,0 +1,249 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using OrionERP.Application.Features.Reservaciones.OpenClaw;
+
+namespace OrionERP.Application.Features.Reservaciones.Cfdi;
+
+public sealed class ReservationCfdiSuiteSource
+{
+  public int Id { get; set; }
+  public DateTime Fecha { get; set; }
+  public string RoomName { get; set; } = string.Empty;
+  public string? RoomDescription { get; set; }
+  public decimal Price { get; set; }
+}
+
+public sealed class ReservationCfdiExtraSource
+{
+  public int Id { get; set; }
+  public string CatalogName { get; set; } = string.Empty;
+  public string? Description { get; set; }
+  public decimal Amount { get; set; }
+  public string? Notes { get; set; }
+}
+
+public static class ReservationCfdiLineFactory
+{
+  private const decimal IvaRate = 0.16m;
+  private static readonly CultureInfo SpanishMexico = new("es-MX");
+
+  public static IReadOnlyList<ReservationCfdiItemPreviewDto> CreateItems(
+      IEnumerable<ReservationCfdiSuiteSource> suites,
+      IEnumerable<ReservationCfdiExtraSource> extras,
+      bool taxable)
+  {
+    ArgumentNullException.ThrowIfNull(suites);
+    ArgumentNullException.ThrowIfNull(extras);
+
+    var items = new List<ReservationCfdiItemPreviewDto>();
+
+    foreach (var suite in suites.Where(static item => item.Price > 0m))
+    {
+      items.Add(new ReservationCfdiItemPreviewDto
+      {
+        SourceType = "Suite",
+        SourceId = suite.Id,
+        Fecha = suite.Fecha,
+        Description = BuildSuiteDescription(suite),
+        ProductCode = "90111803",
+        UnitCode = "ROM",
+        Unit = "Habitacion",
+        Quantity = 1m,
+        UnitPrice = RoundCurrency(suite.Price),
+        Subtotal = RoundCurrency(suite.Price),
+        TaxObject = taxable ? "02" : "01"
+      });
+    }
+
+    var discountPool = 0m;
+
+    foreach (var extra in extras)
+    {
+      if (extra.Amount < 0m)
+      {
+        discountPool += RoundCurrency(Math.Abs(extra.Amount));
+        continue;
+      }
+
+      if (extra.Amount <= 0m)
+      {
+        continue;
+      }
+
+      var mapping = ResolveExtraMapping(extra);
+
+      items.Add(new ReservationCfdiItemPreviewDto
+      {
+        SourceType = "Extra",
+        SourceId = extra.Id,
+        Description = mapping.Description,
+        ProductCode = mapping.ProductCode,
+        UnitCode = mapping.UnitCode,
+        Unit = mapping.Unit,
+        Quantity = 1m,
+        UnitPrice = RoundCurrency(extra.Amount),
+        Subtotal = RoundCurrency(extra.Amount),
+        TaxObject = taxable ? "02" : "01"
+      });
+    }
+
+    ApplyDiscountPool(items, discountPool);
+    ApplyTaxes(items, taxable);
+
+    return items;
+  }
+
+  private static string BuildSuiteDescription(ReservationCfdiSuiteSource suite)
+  {
+    var baseDescription = string.IsNullOrWhiteSpace(suite.RoomDescription)
+      ? suite.RoomName
+      : suite.RoomDescription.Trim();
+
+    var dateLabel = suite.Fecha.ToString("dd 'DE' MMMM", SpanishMexico).ToUpper(SpanishMexico);
+    return $"{baseDescription} - 1 NOCHE {dateLabel}";
+  }
+
+  private static ReservationExtraSatMapping ResolveExtraMapping(ReservationCfdiExtraSource extra)
+  {
+    var rawDescription = FirstNonEmpty(extra.Description, extra.Notes, extra.CatalogName);
+    var normalized = OpenClawReservationNaming.NormalizeLookupKey($"{extra.CatalogName} {rawDescription}");
+
+    if (normalized.Contains("TRANSPORTE", StringComparison.Ordinal))
+    {
+      return new ReservationExtraSatMapping(
+          "78111802",
+          "E54",
+          "Viaje",
+          "SERVICIO TRANSPORTE DE PASAJEROS");
+    }
+
+    if (normalized.Contains("CAMASTRO", StringComparison.Ordinal))
+    {
+      return new ReservationExtraSatMapping(
+          "56101515",
+          "E48",
+          "Unidad de servicio",
+          "CAMASTRO EXTRA PARA SUITE");
+    }
+
+    if (normalized.Contains("ALIMENTO", StringComparison.Ordinal) ||
+        normalized.Contains("DESAYUNO", StringComparison.Ordinal) ||
+        normalized.Contains("CENA", StringComparison.Ordinal) ||
+        normalized.Contains("COFFEE BREAK", StringComparison.Ordinal) ||
+        normalized.Contains("BEBIDA", StringComparison.Ordinal))
+    {
+      return new ReservationExtraSatMapping(
+          "90101501",
+          "E48",
+          "Unidad de servicio",
+          BuildExtraDescription(rawDescription));
+    }
+
+    if (normalized.Contains("CHECK IN", StringComparison.Ordinal) ||
+        normalized.Contains("CHECKOUT", StringComparison.Ordinal) ||
+        normalized.Contains("CHECK OUT", StringComparison.Ordinal))
+    {
+      return new ReservationExtraSatMapping(
+          "90111803",
+          "E48",
+          "Unidad de servicio",
+          BuildExtraDescription(rawDescription));
+    }
+
+    return new ReservationExtraSatMapping(
+        "90111803",
+        "E48",
+        "Unidad de servicio",
+        BuildExtraDescription(rawDescription));
+  }
+
+  private static string BuildExtraDescription(string description)
+    => description.Trim().ToUpperInvariant();
+
+  private static void ApplyDiscountPool(List<ReservationCfdiItemPreviewDto> items, decimal discountPool)
+  {
+    var remainingDiscount = RoundCurrency(discountPool);
+    if (remainingDiscount <= 0m || items.Count == 0)
+    {
+      return;
+    }
+
+    var totalSubtotal = RoundCurrency(items.Sum(static item => item.Subtotal));
+    if (remainingDiscount > totalSubtotal)
+    {
+      throw new InvalidOperationException("El descuento de la reservacion excede el subtotal facturable.");
+    }
+
+    for (var index = 0; index < items.Count; index++)
+    {
+      var item = items[index];
+      if (remainingDiscount <= 0m)
+      {
+        break;
+      }
+
+      decimal itemDiscount;
+      if (index == items.Count - 1)
+      {
+        itemDiscount = remainingDiscount;
+      }
+      else
+      {
+        var proportionalShare = RoundCurrency((item.Subtotal / totalSubtotal) * discountPool);
+        itemDiscount = Math.Min(item.Subtotal, proportionalShare);
+      }
+
+      item.Discount = RoundCurrency(itemDiscount);
+      remainingDiscount = RoundCurrency(remainingDiscount - item.Discount);
+    }
+
+    if (remainingDiscount > 0m)
+    {
+      var lastItem = items[^1];
+      lastItem.Discount = RoundCurrency(lastItem.Discount + remainingDiscount);
+    }
+
+    foreach (var item in items)
+    {
+      if (item.Discount > item.Subtotal)
+      {
+        throw new InvalidOperationException("El descuento distribuido excede el subtotal de un concepto.");
+      }
+    }
+  }
+
+  private static void ApplyTaxes(List<ReservationCfdiItemPreviewDto> items, bool taxable)
+  {
+    foreach (var item in items)
+    {
+      var taxableBase = RoundCurrency(item.Subtotal - item.Discount);
+      if (taxableBase < 0m)
+      {
+        throw new InvalidOperationException("La base gravable del concepto no puede ser negativa.");
+      }
+
+      item.Tax = taxable ? RoundCurrency(taxableBase * IvaRate) : 0m;
+      item.Total = RoundCurrency(taxableBase + item.Tax);
+    }
+  }
+
+  private static string FirstNonEmpty(params string?[] candidates)
+  {
+    foreach (var candidate in candidates)
+    {
+      if (!string.IsNullOrWhiteSpace(candidate))
+      {
+        return candidate.Trim();
+      }
+    }
+
+    return "SERVICIO ADICIONAL";
+  }
+
+  private static decimal RoundCurrency(decimal value)
+    => decimal.Round(value, 2, MidpointRounding.ToEven);
+
+  private sealed record ReservationExtraSatMapping(string ProductCode, string UnitCode, string Unit, string Description);
+}

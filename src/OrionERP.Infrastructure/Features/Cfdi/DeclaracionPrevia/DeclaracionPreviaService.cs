@@ -10,6 +10,12 @@ namespace OrionERP.Infrastructure.Features.Cfdi.DeclaracionPrevia;
 
 public class DeclaracionPreviaService : IDeclaracionPreviaService
 {
+  private static readonly IReadOnlyList<(int, string)> AvailableMonths =
+  [
+    (1, "ENERO"), (2, "FEBRERO"), (3, "MARZO"), (4, "ABRIL"), (5, "MAYO"), (6, "JUNIO"),
+    (7, "JULIO"), (8, "AGOSTO"), (9, "SEPTIEMBRE"), (10, "OCTUBRE"), (11, "NOVIEMBRE"), (12, "DICIEMBRE")
+  ];
+
   private readonly string _connectionString;
   private readonly IFacturamaApiClient _facturamaApiClient;
 
@@ -51,55 +57,85 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
 
     var allCfdiBase = (await conn.QueryAsync<DeclaracionCfdiBase>(
       "EXEC cfdi.Declaracion_CFDI_Base @Year, @Month, @RFC",
-      new { Year = request.Year, Month = request.IsAnnual ? (object?)DBNull.Value : request.Month, RFC = request.Rfc })).ToList();
+      new { Year = request.Year, Month = request.IsAnnual ? (object?)DBNull.Value : request.Month, RFC = request.Rfc })).AsList();
 
-    var emitidasBase = allCfdiBase
-      .Where(x => x.EsEmitida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante) && !IsPpd(x.MetodoPago))
-      .ToList();
+    var emitidas = new List<DeclaracionEmitida>();
+    var recibidas = new List<DeclaracionRecibida>();
+    var emitidasPpd = new List<DeclaracionEmitida>();
+    var recibidasPpd = new List<DeclaracionRecibida>();
+    var emitidasNomina = new List<DeclaracionEmitida>();
+    var recibidasNomina = new List<DeclaracionRecibida>();
+    var tipoEEmitidas = new List<DeclaracionEmitida>();
+    var tipoERecibidas = new List<DeclaracionRecibida>();
 
-    var recibidasBase = allCfdiBase
-      .Where(x => x.EsRecibida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante) && !IsPpd(x.MetodoPago))
-      .ToList();
+    foreach (var item in allCfdiBase)
+    {
+      if (item.EsEmitida)
+      {
+        if (IsNomina(item.TipoDeComprobante))
+        {
+          emitidasNomina.Add(new DeclaracionEmitida(item));
+        }
+        else if (IsTipoE(item.TipoDeComprobante))
+        {
+          tipoEEmitidas.Add(new DeclaracionEmitida(item));
+        }
+        else if (IsPpd(item.MetodoPago))
+        {
+          emitidasPpd.Add(new DeclaracionEmitida(item));
+        }
+        else
+        {
+          emitidas.Add(new DeclaracionEmitida(item));
+        }
+      }
 
-    var emitidasPpdBase = allCfdiBase
-      .Where(x => x.EsEmitida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante) && IsPpd(x.MetodoPago))
-      .ToList();
+      if (item.EsRecibida)
+      {
+        if (IsNomina(item.TipoDeComprobante))
+        {
+          recibidasNomina.Add(new DeclaracionRecibida(item));
+        }
+        else if (IsTipoE(item.TipoDeComprobante))
+        {
+          tipoERecibidas.Add(new DeclaracionRecibida(item));
+        }
+        else if (IsPpd(item.MetodoPago))
+        {
+          recibidasPpd.Add(new DeclaracionRecibida(item));
+        }
+        else
+        {
+          recibidas.Add(new DeclaracionRecibida(item));
+        }
+      }
+    }
 
-    var recibidasPpdBase = allCfdiBase
-      .Where(x => x.EsRecibida && !IsNomina(x.TipoDeComprobante) && !IsTipoE(x.TipoDeComprobante) && IsPpd(x.MetodoPago))
-      .ToList();
-
-    var emitidasNominaBase = allCfdiBase
-      .Where(x => x.EsEmitida && IsNomina(x.TipoDeComprobante))
-      .ToList();
-
-    var recibidasNominaBase = allCfdiBase
-      .Where(x => x.EsRecibida && IsNomina(x.TipoDeComprobante))
-      .ToList();
-
-    var tipoEEmitidasBase = allCfdiBase
-      .Where(x => x.EsEmitida && IsTipoE(x.TipoDeComprobante))
-      .ToList();
-
-    var tipoERecibidasBase = allCfdiBase
-      .Where(x => x.EsRecibida && IsTipoE(x.TipoDeComprobante))
-      .ToList();
-
-    var canceladasOmitidasBase = (await conn.QueryAsync<DeclaracionCfdiBase>(
+    var canceladasOmitidas = (await conn.QueryAsync<DeclaracionCfdiBase>(
       "EXEC cfdi.Declaracion_Canceladas_Omitidas @Year, @Month, @RFC_Emisor",
-      new { Year = request.Year, Month = request.IsAnnual ? (object?)DBNull.Value : request.Month, RFC_Emisor = request.Rfc })).ToList();
+      new { Year = request.Year, Month = request.IsAnnual ? (object?)DBNull.Value : request.Month, RFC_Emisor = request.Rfc }))
+      .Select(ToDeclaracionEmitida)
+      .ToList();
 
     var complementosBase = (await conn.QueryAsync<DeclaracionComplementoBase>(
       "EXEC cfdi.Declaracion_Complementos_Base @Year, @Month, @RFC",
-      new { Year = request.Year, Month = request.IsAnnual ? (object?)DBNull.Value : request.Month, RFC = request.Rfc })).ToList();
+      new { Year = request.Year, Month = request.IsAnnual ? (object?)DBNull.Value : request.Month, RFC = request.Rfc })).AsList();
 
-    var complementosEmitidosBase = complementosBase
-      .Where(x => x.EsEmitida)
-      .ToList();
+    var complementosEmitidos = new List<DeclaracionComplementoEmitido>();
+    var complementosRecibidos = new List<DeclaracionComplementoRecibido>();
 
-    var complementosRecibidosBase = complementosBase
-      .Where(x => x.EsRecibida)
-      .ToList();
+    foreach (var item in complementosBase)
+    {
+      if (item.EsEmitida)
+      {
+        complementosEmitidos.Add(new DeclaracionComplementoEmitido(item));
+      }
+
+      if (item.EsRecibida)
+      {
+        complementosRecibidos.Add(new DeclaracionComplementoRecibido(item));
+      }
+    }
 
     var desfase = (await conn.QueryAsync<DesfaseItem>(
       "EXEC dbo.Declaracion_Comprobantes_Con_Desfase @RFC, @Anio, @Mes", common)).ToList();
@@ -125,49 +161,45 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
     return new DeclaracionPreviaData
     {
       AllCfdiBase = allCfdiBase,
-      EmitidasBase = emitidasBase,
-      RecibidasBase = recibidasBase,
-      EmitidasPpdBase = emitidasPpdBase,
-      RecibidasPpdBase = recibidasPpdBase,
-      EmitidasNominaBase = emitidasNominaBase,
-      RecibidasNominaBase = recibidasNominaBase,
-      TipoEEmitidasBase = tipoEEmitidasBase,
-      TipoERecibidasBase = tipoERecibidasBase,
-      CanceladasOmitidasBase = canceladasOmitidasBase,
+      EmitidasBase = emitidas,
+      RecibidasBase = recibidas,
+      EmitidasPpdBase = emitidasPpd,
+      RecibidasPpdBase = recibidasPpd,
+      EmitidasNominaBase = emitidasNomina,
+      RecibidasNominaBase = recibidasNomina,
+      TipoEEmitidasBase = tipoEEmitidas,
+      TipoERecibidasBase = tipoERecibidas,
+      CanceladasOmitidasBase = canceladasOmitidas,
       ComplementosBase = complementosBase,
-      ComplementosEmitidosBase = complementosEmitidosBase,
-      ComplementosRecibidosBase = complementosRecibidosBase,
-      Emitidas = emitidasBase.Select(ToDeclaracionEmitida).ToList(),
-      Recibidas = recibidasBase.Select(ToDeclaracionRecibida).ToList(),
-      EmitidasPpd = emitidasPpdBase.Select(ToDeclaracionEmitida).ToList(),
-      RecibidasPpd = recibidasPpdBase.Select(ToDeclaracionRecibida).ToList(),
-      EmitidasNomina = emitidasNominaBase.Select(ToDeclaracionEmitida).ToList(),
-      RecibidasNomina = recibidasNominaBase.Select(ToDeclaracionRecibida).ToList(),
-      TipoEEmitidas = tipoEEmitidasBase.Select(ToDeclaracionEmitida).ToList(),
-      TipoERecibidas = tipoERecibidasBase.Select(ToDeclaracionRecibida).ToList(),
-      CanceladasOmitidas = canceladasOmitidasBase.Select(ToDeclaracionEmitida).ToList(),
-      ComplementosEmitidos = complementosEmitidosBase.Select(ToComplementoEmitido).ToList(),
-      ComplementosRecibidos = complementosRecibidosBase.Select(ToComplementoRecibido).ToList(),
-      EmitidasTotals = ComputeDeclaracionTotales(emitidasBase),
-      EmitidasPpdTotals = ComputeDeclaracionTotales(emitidasPpdBase),
-      EmitidasNominaTotals = ComputeDeclaracionTotales(emitidasNominaBase),
-      RecibidasTotals = ComputeDeclaracionTotales(recibidasBase),
-      RecibidasPpdTotals = ComputeDeclaracionTotales(recibidasPpdBase),
-      RecibidasNominaTotals = ComputeDeclaracionTotales(recibidasNominaBase),
-      TipoEEmitidasTotals = ComputeDeclaracionTotales(tipoEEmitidasBase),
-      TipoERecibidasTotals = ComputeDeclaracionTotales(tipoERecibidasBase),
-      CanceladasOmitidasTotals = ComputeDeclaracionTotales(canceladasOmitidasBase),
+      ComplementosEmitidosBase = complementosEmitidos,
+      ComplementosRecibidosBase = complementosRecibidos,
+      Emitidas = emitidas,
+      Recibidas = recibidas,
+      EmitidasPpd = emitidasPpd,
+      RecibidasPpd = recibidasPpd,
+      EmitidasNomina = emitidasNomina,
+      RecibidasNomina = recibidasNomina,
+      TipoEEmitidas = tipoEEmitidas,
+      TipoERecibidas = tipoERecibidas,
+      CanceladasOmitidas = canceladasOmitidas,
+      ComplementosEmitidos = complementosEmitidos,
+      ComplementosRecibidos = complementosRecibidos,
+      EmitidasTotals = ComputeDeclaracionTotales(emitidas),
+      EmitidasPpdTotals = ComputeDeclaracionTotales(emitidasPpd),
+      EmitidasNominaTotals = ComputeDeclaracionTotales(emitidasNomina),
+      RecibidasTotals = ComputeDeclaracionTotales(recibidas),
+      RecibidasPpdTotals = ComputeDeclaracionTotales(recibidasPpd),
+      RecibidasNominaTotals = ComputeDeclaracionTotales(recibidasNomina),
+      TipoEEmitidasTotals = ComputeDeclaracionTotales(tipoEEmitidas),
+      TipoERecibidasTotals = ComputeDeclaracionTotales(tipoERecibidas),
+      CanceladasOmitidasTotals = ComputeDeclaracionTotales(canceladasOmitidas),
       Desfase = desfase,
       DesfaseTotals = desfaseTotals,
       PolizasNoConsolidadas = polizasNoConsolidadas,
       ImpuestosSummary = impuestosSummary,
       BancosCajaSummary = bancosCajaSummary,
-      DisponibleYears = Enumerable.Range(startYear, yearCount).ToList(),
-      DisponibleMonths = new List<(int, string)>
-      {
-        (1, "ENERO"),(2, "FEBRERO"),(3, "MARZO"),(4, "ABRIL"),(5, "MAYO"),(6, "JUNIO"),
-        (7, "JULIO"),(8, "AGOSTO"),(9, "SEPTIEMBRE"),(10, "OCTUBRE"),(11, "NOVIEMBRE"),(12, "DICIEMBRE")
-      }
+      DisponibleYears = Enumerable.Range(startYear, yearCount).ToArray(),
+      DisponibleMonths = AvailableMonths
     };
   }
 
@@ -180,6 +212,7 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
 
   public async Task<int> ExcludePagosYDevolucionesAsync(string rfc, int year, int? month)
   {
+    var (startDate, endDate) = GetDateRange(year, month);
     const string sql = @"
                     UPDATE C
                     SET Incluir_En_Declaracion = 0
@@ -188,10 +221,11 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
                     WHERE C.Incluir_En_Declaracion = 1
                       AND (R.UsoCFDI = 'G02' OR R.UsoCFDI = 'CP01')
                       AND R.RFC = @RFC
-                      AND (YEAR(C.Fecha) = @Year AND (@Month IS NULL OR MONTH(C.Fecha) = @Month))";
+                      AND C.Fecha >= @StartDate
+                      AND C.Fecha < @EndDate";
 
     using var conn = new SqlConnection(_connectionString);
-    return await conn.ExecuteAsync(sql, new { RFC = rfc, Year = year, Month = month });
+    return await conn.ExecuteAsync(sql, new { RFC = rfc, StartDate = startDate, EndDate = endDate });
   }
 
   public async Task<IReadOnlyList<PagoComplementoResumen>> GetComplementosAsync(Guid uuid)
@@ -228,7 +262,13 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
     await _facturamaApiClient.CancelIssuedCfdiAsync(cfdiId);
 
     using var conn = new SqlConnection(_connectionString);
-    await conn.ExecuteAsync("UPDATE Comprobante SET Incluir_En_Declaracion = 0 WHERE Comprobante_Id = @Id", new { Id = comprobanteId });
+    await conn.ExecuteAsync("""
+UPDATE Comprobante
+SET Incluir_En_Declaracion = 0,
+    FechaCancelacion = COALESCE(FechaCancelacion, GETDATE()),
+    Estatus = 'Cancelado'
+WHERE Comprobante_Id = @Id
+""", new { Id = comprobanteId });
   }
 
   public async Task<IReadOnlyList<string>> GenerateDiotAsync(string rfc, int year, int month)
@@ -332,6 +372,18 @@ WHERE DoctoRelacionado_Id = @DoctoRelacionado_Id;";
   private static bool IsPpd(string? metodoPago) => string.Equals(metodoPago, "PPD", StringComparison.OrdinalIgnoreCase);
 
   private static string GetSqlDate(DateTime dt) => dt.ToString("yyyy-MM-dd HH:mm:ss");
+
+  private static (DateTime StartDate, DateTime EndDate) GetDateRange(int year, int? month)
+  {
+    if (month.HasValue)
+    {
+      var monthStart = new DateTime(year, month.Value, 1);
+      return (monthStart, monthStart.AddMonths(1));
+    }
+
+    var yearStart = new DateTime(year, 1, 1);
+    return (yearStart, yearStart.AddYears(1));
+  }
 
   private static DeclaracionTotales ComputeDeclaracionTotales(IEnumerable<DeclaracionCfdiBase> items)
   {

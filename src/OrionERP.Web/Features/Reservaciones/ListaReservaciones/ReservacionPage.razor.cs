@@ -19,6 +19,8 @@ namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 [Authorize(Roles = "Administrador,SatOperator")]
 public partial class ReservacionPage : ComponentBase
 {
+  private const int ClienteSuggestionLimit = 5;
+
   private sealed record ReservationFormState(
     int? ClienteId,
     string ClienteSearchText,
@@ -44,11 +46,11 @@ public partial class ReservacionPage : ComponentBase
   protected ReservacionDetailDto? Detail { get; set; }
   protected List<ClienteOptionDto> Clientes { get; set; } = new();
   protected List<RoomOptionDto> Rooms { get; set; } = new();
-  protected List<ReservacionSuiteDto> Suites { get; set; } = new();
+  protected IReadOnlyList<ReservacionSuiteDto> Suites { get; set; } = Array.Empty<ReservacionSuiteDto>();
   protected List<SuiteDisponibleDto> SuitesDisponibles { get; set; } = new();
-  protected List<ReservacionExtraDto> Extras { get; set; } = new();
-  protected List<ReservacionPagoDto> Pagos { get; set; } = new();
-  protected List<ReservacionAttachmentDto> Attachments { get; set; } = new();
+  protected IReadOnlyList<ReservacionExtraDto> Extras { get; set; } = Array.Empty<ReservacionExtraDto>();
+  protected IReadOnlyList<ReservacionPagoDto> Pagos { get; set; } = Array.Empty<ReservacionPagoDto>();
+  protected IReadOnlyList<ReservacionAttachmentDto> Attachments { get; set; } = Array.Empty<ReservacionAttachmentDto>();
 
   protected HashSet<int> SelectedSuiteIds { get; set; } = new();
   protected HashSet<int> SelectedSuiteDisponibleIds { get; set; } = new();
@@ -76,7 +78,6 @@ public partial class ReservacionPage : ComponentBase
 
   protected decimal PrecioSuiteInput { get; set; }
   protected decimal PrecioSuiteConIvaInput { get; set; }
-  protected decimal DescuentoSuiteInput { get; set; }
   protected decimal TotalSuiteInput { get; set; }
   protected decimal SuiteActionValueInput { get; set; }
   protected string SelectedSuiteAction { get; set; } = SuiteActionPrice;
@@ -95,6 +96,7 @@ public partial class ReservacionPage : ComponentBase
   protected bool IsWorking { get; set; }
   protected bool IsCreatingPoliza { get; set; }
   protected bool IsGeneratingPdf { get; set; }
+  protected bool IsDeletingReservation { get; set; }
   protected bool IsUploadingAttachment { get; set; }
   protected string? ErrorMessage { get; set; }
 
@@ -104,7 +106,6 @@ public partial class ReservacionPage : ComponentBase
   private int? _attachmentDeletingId;
   private const string SuiteActionPrice = "price";
   private const string SuiteActionPriceWithIva = "price-with-iva";
-  private const string SuiteActionDiscount = "discount";
   private const string SuiteActionTotal = "total";
   private const string SuiteActionCleaning = "cleaning";
 
@@ -113,7 +114,6 @@ public partial class ReservacionPage : ComponentBase
   {
     (SuiteActionPrice, "Precio"),
     (SuiteActionPriceWithIva, "Precio c/IVA"),
-    (SuiteActionDiscount, "Descuento %"),
     (SuiteActionTotal, "Total"),
     (SuiteActionCleaning, "Limpieza")
   };
@@ -137,7 +137,6 @@ public partial class ReservacionPage : ComponentBase
     {
       SuiteActionPrice => "Precio",
       SuiteActionPriceWithIva => "Precio c/IVA",
-      SuiteActionDiscount => "% Desc.",
       SuiteActionTotal => "Total",
       SuiteActionCleaning => "Sin monto",
       _ => "Valor"
@@ -174,10 +173,10 @@ public partial class ReservacionPage : ComponentBase
       Clientes = await LoadClientesAsync(ClienteSearchText);
       Rooms = (await ReservacionesService.GetRoomsForExtrasAsync()).ToList();
 
-      Suites = Detail.Suites.ToList();
-      Extras = Detail.Extras.ToList();
-      Pagos = Detail.Pagos.ToList();
-      Attachments = Detail.Attachments.ToList();
+      Suites = Detail.Suites;
+      Extras = Detail.Extras;
+      Pagos = Detail.Pagos;
+      Attachments = Detail.Attachments;
 
       SelectedSuiteIds.Clear();
       SelectedSuiteDisponibleIds.Clear();
@@ -239,6 +238,49 @@ public partial class ReservacionPage : ComponentBase
     finally
     {
       IsGeneratingPdf = false;
+    }
+  }
+
+  protected async Task BorrarReservacionAsync()
+  {
+    if (Detail is null || IsDeletingReservation)
+      return;
+
+    if (Pagos.Count > 0 || Attachments.Count > 0)
+    {
+      UiMessages.ShowWarning("No se puede borrar la reservación porque tiene pagos o archivos adjuntos.");
+      return;
+    }
+
+    var confirm = await Js.InvokeAsync<bool>(
+      "confirm",
+      "¿Borrar esta reservación? Se quitarán sus suites y extras. Esta acción no se puede deshacer.");
+
+    if (!confirm)
+    {
+      return;
+    }
+
+    IsDeletingReservation = true;
+    try
+    {
+      var result = await ReservacionesService.DeleteReservationAsync(Detail.Id);
+      if (!result.Success)
+      {
+        UiMessages.ShowWarning(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      Nav.NavigateTo("/reservaciones/lista");
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo borrar la reservación. {ex.Message}");
+    }
+    finally
+    {
+      IsDeletingReservation = false;
     }
   }
 
@@ -374,7 +416,7 @@ public partial class ReservacionPage : ComponentBase
     await RefreshSuitesAsync();
   }
 
-  protected void OnClienteInputChanged(ChangeEventArgs args)
+  protected async Task OnClienteInputChangedAsync(ChangeEventArgs args)
   {
     ClienteSearchText = args.Value?.ToString() ?? string.Empty;
     if (!string.Equals(NormalizeClienteNombre(ClienteSearchText), NormalizeClienteNombre(SelectedClienteNombre), StringComparison.OrdinalIgnoreCase))
@@ -382,7 +424,8 @@ public partial class ReservacionPage : ComponentBase
       ClienteId = null;
       SelectedClienteNombre = string.Empty;
     }
-    ShowClienteResults = false;
+
+    await RefreshClienteMatchesAsync(allowEmptySearch: false);
   }
 
   protected async Task OnClienteInputKeyDownAsync(KeyboardEventArgs args)
@@ -392,8 +435,7 @@ public partial class ReservacionPage : ComponentBase
       return;
     }
 
-    Clientes = await LoadClientesAsync(ClienteSearchText);
-    ShowClienteResults = true;
+    await RefreshClienteMatchesAsync(allowEmptySearch: true);
   }
 
   protected async Task SelectClienteAsync(ClienteOptionDto cliente)
@@ -455,7 +497,7 @@ public partial class ReservacionPage : ComponentBase
     if (Detail is null)
       return;
 
-    Suites = (await ReservacionesService.GetSuitesByReservationAsync(Detail.Id)).ToList();
+    Suites = await ReservacionesService.GetSuitesByReservationAsync(Detail.Id);
     RecalculateTotals();
   }
 
@@ -469,6 +511,11 @@ public partial class ReservacionPage : ComponentBase
     {
       SelectedSuiteIds.Remove(id);
     }
+  }
+
+  protected void SeleccionarTodasSuites()
+  {
+    SelectedSuiteIds = Suites.Select(s => s.Id).ToHashSet();
   }
 
   protected void ToggleSuiteDisponibleSelection(int id, bool isSelected)
@@ -625,26 +672,6 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected async Task AplicarDescuentoSuiteAsync()
-  {
-    if (SelectedSuiteIds.Count == 0)
-    {
-      UiMessages.ShowWarning("Selecciona al menos una suite.");
-      return;
-    }
-
-    var result = await ReservacionesService.ApplySuitesDiscountAsync(SelectedSuiteIds.ToArray(), DescuentoSuiteInput);
-    if (result.Success)
-    {
-      UiMessages.ShowSuccess(result.Message);
-      await LoadAllAsync(preserveFormState: true);
-    }
-    else
-    {
-      UiMessages.ShowError(result.Message);
-    }
-  }
-
   protected async Task AlternarLimpiezaSuiteAsync()
   {
     if (SelectedSuiteIds.Count == 0)
@@ -670,7 +697,13 @@ public partial class ReservacionPage : ComponentBase
 
   protected async Task DistribuirTotalSuitesAsync()
   {
-    var result = await ReservacionesService.DistributeSuitesTotalAsync(ReservationId, TotalSuiteInput);
+    if (SelectedSuiteIds.Count == 0)
+    {
+      UiMessages.ShowWarning("Selecciona al menos una suite.");
+      return;
+    }
+
+    var result = await ReservacionesService.DistributeSuitesTotalWithIvaAsync(SelectedSuiteIds.ToArray(), TotalSuiteInput);
     if (result.Success)
     {
       UiMessages.ShowSuccess(result.Message);
@@ -686,7 +719,6 @@ public partial class ReservacionPage : ComponentBase
   {
     PrecioSuiteInput = SuiteActionValueInput;
     PrecioSuiteConIvaInput = SuiteActionValueInput;
-    DescuentoSuiteInput = SuiteActionValueInput;
     TotalSuiteInput = SuiteActionValueInput;
 
     switch (SelectedSuiteAction)
@@ -696,9 +728,6 @@ public partial class ReservacionPage : ComponentBase
         break;
       case SuiteActionPriceWithIva:
         await AplicarPrecioConIvaSuiteAsync();
-        break;
-      case SuiteActionDiscount:
-        await AplicarDescuentoSuiteAsync();
         break;
       case SuiteActionTotal:
         await DistribuirTotalSuitesAsync();
@@ -943,7 +972,7 @@ public partial class ReservacionPage : ComponentBase
 
   protected async Task RefreshAttachmentsAsync()
   {
-    Attachments = (await ReservacionesService.GetAttachmentsAsync(ReservationId)).ToList();
+    Attachments = await ReservacionesService.GetAttachmentsAsync(ReservationId);
   }
 
   protected void RecalculateTotals()
@@ -952,8 +981,8 @@ public partial class ReservacionPage : ComponentBase
       CheckIn,
       CheckOut,
       Taxable,
-      Suites.Sum(s => s.Precio),
-      Extras.Sum(e => e.DiscountedPrice),
+      Suites.Select(s => s.Precio),
+      Extras.Select(e => e.DiscountedPrice),
       Pagos.Sum(p => p.Monto));
 
     TotalSuites = totals.TotalSuites;
@@ -1017,9 +1046,23 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
+  private async Task RefreshClienteMatchesAsync(bool allowEmptySearch)
+  {
+    var searchText = NormalizeClienteNombre(ClienteSearchText);
+    if (!allowEmptySearch && string.IsNullOrWhiteSpace(searchText))
+    {
+      ShowClienteResults = false;
+      Clientes.Clear();
+      return;
+    }
+
+    Clientes = await LoadClientesAsync(searchText);
+    ShowClienteResults = allowEmptySearch || !string.IsNullOrWhiteSpace(searchText);
+  }
+
   private async Task<List<ClienteOptionDto>> LoadClientesAsync(string? searchText)
   {
-    var clientes = (await ReservacionesService.GetClientesAsync(searchText)).ToList();
+    var clientes = (await ReservacionesService.GetClientesAsync(searchText, ClienteSuggestionLimit)).ToList();
 
     if (ClienteId.HasValue && clientes.All(c => c.Id != ClienteId.Value))
     {

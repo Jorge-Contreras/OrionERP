@@ -501,6 +501,9 @@ WHEN MATCHED THEN
         CountFrequencyDays = src.CountFrequencyDays,
         LastPurchaseDate = src.LastPurchaseDate,
         Notes = src.Notes,
+        IsRemoved = 0,
+        RemovedAt = NULL,
+        RemovedBy = NULL,
         UpdatedAt = SYSUTCDATETIME()
 WHEN NOT MATCHED THEN
     INSERT (LocationId, MaterialId, Quantity, LastCountedAt, MaxQuantity, MinQuantity, CountFrequencyDays, LastPurchaseDate, Notes)
@@ -592,7 +595,10 @@ WHEN MATCHED THEN
         FileExtension = src.FileExtension,
         ContentType = src.ContentType,
         [Description] = src.[Description],
-        Attachment = src.Attachment
+        Attachment = src.Attachment,
+        IsDeleted = 0,
+        DeletedAt = NULL,
+        DeletedBy = NULL
 WHEN NOT MATCHED THEN
     INSERT
     (

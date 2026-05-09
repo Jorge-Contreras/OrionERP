@@ -1,0 +1,107 @@
+.ordenes-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.ordenes-kpi {
+  padding: 1rem;
+  border: 1px solid rgba(15, 45, 78, 0.09);
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(15, 45, 78, 0.06);
+}
+
+.ordenes-kpi span {
+  display: block;
+  color: var(--orion-color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ordenes-kpi strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--orion-color-primary);
+  font-size: 1.75rem;
+}
+
+.ordenes-kpi-danger strong {
+  color: #b42318;
+}
+
+.ordenes-kpi-review strong {
+  color: #b45309;
+}
+
+.ordenes-kpi-cleaning strong {
+  color: #0f766e;
+}
+
+.ordenes-helper-list {
+  max-height: 12rem;
+  overflow: auto;
+  padding: 0.75rem;
+  border: 1px solid rgba(15, 45, 78, 0.12);
+  border-radius: 0.5rem;
+}
+
+.ordenes-helper-list .form-check {
+  margin-bottom: 0.35rem;
+}
+
+.ordenes-table tbody tr {
+  cursor: pointer;
+}
+
+.ordenes-row-overdue > td:first-child {
+  box-shadow: inset 0.28rem 0 0 #b42318;
+}
+
+@media (max-width: 767.98px) {
+  .ordenes-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ordenes-table thead {
+    display: none;
+  }
+
+  .ordenes-table tbody,
+  .ordenes-table tr,
+  .ordenes-table td {
+    display: block;
+  }
+
+  .ordenes-table tbody {
+    display: grid;
+    gap: 0.85rem;
+    padding: 0.85rem;
+  }
+
+  .ordenes-table tr {
+    border: 1px solid rgba(15, 45, 78, 0.1);
+    border-radius: 0.75rem;
+    overflow: hidden;
+    box-shadow: 0 8px 20px rgba(15, 45, 78, 0.06);
+  }
+
+  .ordenes-table td {
+    border-top: 1px solid rgba(15, 45, 78, 0.08);
+  }
+
+  .ordenes-table td:first-child {
+    border-top: 0;
+  }
+
+  .ordenes-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.2rem;
+    color: var(--orion-color-text-muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+}

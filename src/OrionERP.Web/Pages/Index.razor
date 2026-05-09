@@ -1,17 +1,379 @@
 @page "/"
+@using System.Globalization
+@using Microsoft.AspNetCore.Identity
+@using OrionERP.Infrastructure.Auth
+@inject IOrdenTrabajoService OrdenTrabajoService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject IUserRfcState RfcState
+@inject NavigationManager Navigation
+@implements IDisposable
 
-<div class="welcome-grid">
-    <section class="hero-wrap">
-        <div class="hero-panel">
-            <div class="hero-panel__eyebrow">Identidad de marca</div>
+<PageTitle>Inicio</PageTitle>
 
-            <img src="Images/OrionERP_Logo.svg"
-                 alt="Logotipo futurista de OrionERP"
-                 class="hero-logo" />
-
-            <p class="hero-copy">
-                Orbitas, nodos y una reticula precisa para representar orden, conexion y claridad dentro del flujo de datos.
-            </p>
+<div class="home-dashboard">
+    <section class="home-dashboard__masthead" aria-labelledby="home-title">
+        <div>
+            <p class="home-dashboard__eyebrow">Dashboard</p>
+            <h1 id="home-title">Mis ordenes activas</h1>
+            <p class="home-dashboard__subtitle">@DashboardSubtitle</p>
         </div>
+
+        <button class="btn btn-primary home-dashboard__refresh" type="button" @onclick="LoadWorkOrdersAsync" disabled="@IsLoading">
+            <span class="oi oi-reload" aria-hidden="true"></span>
+            <span>@(IsLoading ? "Actualizando" : "Actualizar")</span>
+        </button>
     </section>
+
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="alert alert-danger">@ErrorMessage</div>
+    }
+
+    <div class="home-dashboard__layout">
+        <section class="home-panel home-work-orders" aria-labelledby="active-orders-title">
+            <div class="home-panel__header">
+                <div>
+                    <p class="home-panel__kicker">OrdenesTrabajo</p>
+                    <h2 id="active-orders-title">Activas para mi</h2>
+                </div>
+                <span class="home-count" aria-label="@($"{WorkOrders.Count} ordenes activas")">@WorkOrders.Count</span>
+            </div>
+
+            @if (IsLoading)
+            {
+                <div class="home-empty">Cargando ordenes...</div>
+            }
+            else if (!IsAuthenticated)
+            {
+                <div class="home-empty">Inicia sesion para ver tus ordenes activas.</div>
+            }
+            else if (!CurrentEmployeeId.HasValue)
+            {
+                <div class="home-empty">Tu usuario no tiene un EmployeeId ligado en Capital Humano.</div>
+            }
+            else if (WorkOrders.Count == 0)
+            {
+                <div class="home-empty">No tienes ordenes activas asignadas.</div>
+            }
+            else
+            {
+                <div class="home-order-list">
+                    @foreach (var item in WorkOrders)
+                    {
+                        <a class="@GetOrderCardClass(item)" href="@($"/ordenes-trabajo/{item.Id}")">
+                            <div class="home-order-card__main">
+                                <div class="home-order-card__topline">
+                                    <span class="home-order-card__folio">@item.Folio</span>
+                                    <span class="@GetPriorityClass(item.Prioridad)">@GetPriorityLabel(item.Prioridad)</span>
+                                </div>
+
+                                <h3>@item.Titulo</h3>
+
+                                <div class="home-order-card__meta">
+                                    <span class="@GetStatusClass(item.Estado)">@GetStatusLabel(item.Estado)</span>
+                                    <span>@item.CategoriaNombre</span>
+                                    <span>@FormatTarget(item)</span>
+                                </div>
+                            </div>
+
+                            <div class="home-order-card__schedule">
+                                <span>@FormatDate(item)</span>
+                                <small>@FormatWindow(item.HoraInicioProgramada, item.HoraFinProgramada)</small>
+                            </div>
+
+                            <div class="home-order-card__progress" aria-label="@($"{item.CompletedStepCount} de {item.StepCount} pasos completados")">
+                                <div class="home-order-card__progress-text">
+                                    <span>Progreso</span>
+                                    <strong>@item.CompletedStepCount / @item.StepCount</strong>
+                                </div>
+                                <div class="home-progress-track">
+                                    <span style="@($"--progress:{GetProgressPercent(item)}%")"></span>
+                                </div>
+                            </div>
+                        </a>
+                    }
+                </div>
+            }
+
+            <div class="home-panel__footer">
+                <button class="btn btn-outline-primary" type="button" @onclick="OpenOrdenesTrabajo">
+                    <span class="oi oi-list" aria-hidden="true"></span>
+                    <span>Abrir modulo</span>
+                </button>
+            </div>
+        </section>
+
+        <aside class="home-side" aria-label="Resumen de ordenes">
+            <section class="home-panel home-stats">
+                <div class="home-stat">
+                    <span>Vencidas</span>
+                    <strong>@OverdueCount</strong>
+                </div>
+                <div class="home-stat">
+                    <span>Revision</span>
+                    <strong>@ReviewCount</strong>
+                </div>
+                <div class="home-stat">
+                    <span>Hoy</span>
+                    <strong>@TodayCount</strong>
+                </div>
+            </section>
+
+            <section class="home-brand-panel">
+                <img src="Images/OrionERPMainPage.png"
+                     alt="Visual principal de OrionERP"
+                     class="home-brand-panel__image" />
+                <img src="Images/OrionERP_Logo.svg"
+                     alt="OrionERP"
+                     class="home-brand-panel__logo" />
+            </section>
+        </aside>
+    </div>
 </div>
+
+@code {
+    private static readonly HashSet<string> ActiveStatuses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        OrdenTrabajoCodes.EstadoBorrador,
+        OrdenTrabajoCodes.EstadoAsignada,
+        OrdenTrabajoCodes.EstadoEnProceso,
+        OrdenTrabajoCodes.EstadoEnRevision,
+        OrdenTrabajoCodes.EstadoRechazada
+    };
+
+    private static readonly CultureInfo DateCulture = CultureInfo.GetCultureInfo("es-MX");
+    private List<OrdenTrabajoListItemDto> WorkOrders { get; set; } = [];
+    private string CurrentUserName { get; set; } = "OrionERP";
+    private int? CurrentEmployeeId { get; set; }
+    private bool IsAuthenticated { get; set; }
+    private bool IsLoading { get; set; }
+    private string? ErrorMessage { get; set; }
+    private string? LoadedRfc { get; set; }
+
+    private string CurrentRfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault() ?? "OHM191112Q26";
+
+    private string DashboardSubtitle => IsAuthenticated
+        ? $"{CurrentUserName} · {CurrentRfc}"
+        : "Acceso personal";
+
+    private int OverdueCount => WorkOrders.Count(item => item.IsOverdue);
+    private int ReviewCount => WorkOrders.Count(item => string.Equals(item.Estado, OrdenTrabajoCodes.EstadoEnRevision, StringComparison.OrdinalIgnoreCase));
+    private int TodayCount => WorkOrders.Count(item => item.FechaProgramada.Date == DateTime.Today);
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        RfcState.Changed += OnRfcStateChanged;
+        await ResolveCurrentUserAsync();
+        await LoadWorkOrdersAsync();
+    }
+
+    private async Task LoadWorkOrdersAsync()
+        => await LoadWorkOrdersCoreAsync(resolveUser: true);
+
+    private async Task LoadWorkOrdersCoreAsync(bool resolveUser)
+    {
+        ErrorMessage = null;
+        IsLoading = true;
+
+        try
+        {
+            if (resolveUser)
+            {
+                await ResolveCurrentUserAsync();
+            }
+
+            if (!IsAuthenticated || !CurrentEmployeeId.HasValue)
+            {
+                WorkOrders.Clear();
+                LoadedRfc = CurrentRfc;
+                return;
+            }
+
+            var orders = await OrdenTrabajoService.SearchWorkOrdersAsync(new OrdenTrabajoSearchFilter
+            {
+                Rfc = CurrentRfc,
+                ParticipantEmployeeId = CurrentEmployeeId,
+                IncludeClosed = false,
+                Take = 100
+            });
+
+            WorkOrders = orders
+                .Where(item => ActiveStatuses.Contains(item.Estado))
+                .OrderByDescending(item => item.IsOverdue)
+                .ThenBy(item => item.FechaVencimiento ?? item.FechaProgramada)
+                .ThenBy(item => GetPriorityRank(item.Prioridad))
+                .ThenBy(item => item.Folio)
+                .ToList();
+            LoadedRfc = CurrentRfc;
+        }
+        catch (Exception ex)
+        {
+            WorkOrders.Clear();
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task ResolveCurrentUserAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        await ApplyAuthenticationStateAsync(authState);
+    }
+
+    private async Task ApplyAuthenticationStateAsync(AuthenticationState authState)
+    {
+        var principal = authState.User;
+        IsAuthenticated = principal.Identity?.IsAuthenticated == true;
+        CurrentUserName = principal.Identity?.Name?.Trim() switch
+        {
+            { Length: > 0 } name => name,
+            _ => "OrionERP"
+        };
+
+        if (!IsAuthenticated)
+        {
+            CurrentEmployeeId = null;
+            WorkOrders.Clear();
+            return;
+        }
+
+        var appUser = IsAuthenticated
+            ? await UserManager.GetUserAsync(principal)
+            : null;
+        CurrentEmployeeId = appUser?.EmployeeId;
+    }
+
+    private void OpenOrdenesTrabajo()
+        => Navigation.NavigateTo("/ordenes-trabajo");
+
+    private static string FormatDate(OrdenTrabajoListItemDto item)
+    {
+        var targetDate = item.FechaVencimiento ?? item.FechaProgramada;
+        return targetDate.Date == DateTime.Today
+            ? "Hoy"
+            : targetDate.ToString("dd MMM", DateCulture);
+    }
+
+    private static string FormatWindow(TimeSpan? start, TimeSpan? end)
+        => start.HasValue && end.HasValue
+            ? $"{start.Value:hh\\:mm} - {end.Value:hh\\:mm}"
+            : "Sin ventana";
+
+    private static string FormatTarget(OrdenTrabajoListItemDto item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.RoomName))
+        {
+            return item.RoomName;
+        }
+
+        return string.IsNullOrWhiteSpace(item.Ubicacion) ? "Sin ubicacion" : item.Ubicacion;
+    }
+
+    private static int GetProgressPercent(OrdenTrabajoListItemDto item)
+    {
+        if (item.StepCount <= 0)
+        {
+            return 0;
+        }
+
+        return Math.Clamp((int)Math.Round(item.CompletedStepCount * 100m / item.StepCount), 0, 100);
+    }
+
+    private static int GetPriorityRank(string? priority)
+        => priority switch
+        {
+            OrdenTrabajoCodes.PrioridadUrgente => 0,
+            OrdenTrabajoCodes.PrioridadAlta => 1,
+            OrdenTrabajoCodes.PrioridadNormal => 2,
+            OrdenTrabajoCodes.PrioridadBaja => 3,
+            _ => 4
+        };
+
+    private static string GetOrderCardClass(OrdenTrabajoListItemDto item)
+        => item.IsOverdue ? "home-order-card home-order-card--overdue" : "home-order-card";
+
+    private static string GetStatusLabel(string? status)
+        => status switch
+        {
+            OrdenTrabajoCodes.EstadoBorrador => "Borrador",
+            OrdenTrabajoCodes.EstadoAsignada => "Asignada",
+            OrdenTrabajoCodes.EstadoEnProceso => "En proceso",
+            OrdenTrabajoCodes.EstadoEnRevision => "En revision",
+            OrdenTrabajoCodes.EstadoRechazada => "Rechazada",
+            _ => string.IsNullOrWhiteSpace(status) ? "Sin estado" : status
+        };
+
+    private static string GetStatusClass(string? status)
+        => status switch
+        {
+            OrdenTrabajoCodes.EstadoAsignada => "home-status home-status--assigned",
+            OrdenTrabajoCodes.EstadoEnProceso => "home-status home-status--progress",
+            OrdenTrabajoCodes.EstadoEnRevision => "home-status home-status--review",
+            OrdenTrabajoCodes.EstadoRechazada => "home-status home-status--rejected",
+            _ => "home-status"
+        };
+
+    private static string GetPriorityLabel(string? priority)
+        => priority switch
+        {
+            OrdenTrabajoCodes.PrioridadUrgente => "Urgente",
+            OrdenTrabajoCodes.PrioridadAlta => "Alta",
+            OrdenTrabajoCodes.PrioridadBaja => "Baja",
+            _ => "Normal"
+        };
+
+    private static string GetPriorityClass(string? priority)
+        => priority switch
+        {
+            OrdenTrabajoCodes.PrioridadUrgente => "home-priority home-priority--urgent",
+            OrdenTrabajoCodes.PrioridadAlta => "home-priority home-priority--high",
+            OrdenTrabajoCodes.PrioridadBaja => "home-priority home-priority--low",
+            _ => "home-priority"
+        };
+
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> task)
+    {
+        try
+        {
+            var authState = await task;
+            await ApplyAuthenticationStateAsync(authState);
+            await InvokeAsync(async () =>
+            {
+                await LoadWorkOrdersCoreAsync(resolveUser: false);
+                StateHasChanged();
+            });
+        }
+        catch
+        {
+            // The circuit may be tearing down during login/logout navigation.
+        }
+    }
+
+    private async void OnRfcStateChanged()
+    {
+        if (string.Equals(LoadedRfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            await InvokeAsync(LoadWorkOrdersAsync);
+        }
+        catch
+        {
+            // The page can be disposing while the shared RFC state changes.
+        }
+    }
+
+    public void Dispose()
+    {
+        AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+        RfcState.Changed -= OnRfcStateChanged;
+    }
+}

@@ -48,11 +48,6 @@ builder.Configuration
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true);
 
-if (builder.Environment.IsDevelopment())
-{
-  builder.Configuration.AddUserSecrets<Program>(optional: true);
-}
-
 // Allow explicit machine-level overrides only via ASPNETCORE_* / DOTNET_*.
 // Examples:
 // - ASPNETCORE_ConnectionStrings__OrionDb
@@ -62,12 +57,47 @@ builder.Configuration
     .AddEnvironmentVariables(prefix: "ASPNETCORE_")
     .AddEnvironmentVariables(prefix: "DOTNET_");
 
+if (builder.Environment.IsDevelopment())
+{
+  // Load after prefixed env vars so local sandbox secrets can safely override
+  // machine-scoped production settings on shared developer machines.
+  builder.Configuration.AddUserSecrets<Program>(optional: true);
+}
+
 // -------------------------------------------------------------------------------
 
 // Resolve and validate the connection string from the configured sources.
 var conn = builder.Configuration.GetConnectionString("OrionDb");
+var allowProductionDbInDevelopment = builder.Configuration.GetValue<bool>("AllowProductionDbInDevelopment");
+
+if (!string.IsNullOrWhiteSpace(conn))
+{
+  try
+  {
+    var devConnectionBuilder = new SqlConnectionStringBuilder(conn);
+    if (builder.Environment.IsDevelopment() &&
+        string.Equals(devConnectionBuilder.InitialCatalog, "grupocarpio", StringComparison.OrdinalIgnoreCase) &&
+        !allowProductionDbInDevelopment)
+    {
+      devConnectionBuilder.InitialCatalog = "Orion_SandBox";
+      conn = devConnectionBuilder.ConnectionString;
+      Console.WriteLine("[BOOT] Development connection retargeted from 'grupocarpio' to 'Orion_SandBox'.");
+    }
+  }
+  catch
+  {
+    // Leave validation/error reporting to the existing connection-string checks below.
+  }
+}
+
+if (!string.IsNullOrWhiteSpace(conn))
+{
+  // Keep IConfiguration aligned with the effective connection string so Dapper and EF use the same database.
+  builder.Configuration["ConnectionStrings:OrionDb"] = conn;
+}
 
 string connSummary;
+string? connDatabaseName = null;
 if (string.IsNullOrWhiteSpace(conn))
 {
   connSummary = "<missing>";
@@ -77,6 +107,7 @@ else
   try
   {
     var builderSummary = new SqlConnectionStringBuilder(conn);
+    connDatabaseName = builderSummary.InitialCatalog;
     var authSummary = string.IsNullOrWhiteSpace(builderSummary.UserID)
         ? "IntegratedSecurity"
         : $"SqlAuth:{builderSummary.UserID}";
@@ -211,8 +242,25 @@ if (app.Environment.IsDevelopment())
   app.MapGet("/__config", (IConfiguration cfg, IHostEnvironment env) =>
   {
     var root = (IConfigurationRoot)cfg;
+    var effectiveConn = cfg.GetConnectionString("OrionDb");
+    string effectiveConnSummary;
+
+    try
+    {
+      var builderSummary = new SqlConnectionStringBuilder(effectiveConn);
+      var authSummary = string.IsNullOrWhiteSpace(builderSummary.UserID)
+        ? "IntegratedSecurity"
+        : $"SqlAuth:{builderSummary.UserID}";
+      effectiveConnSummary = $"EffectiveOrionDb=Server={builderSummary.DataSource};Database={builderSummary.InitialCatalog};Auth={authSummary}";
+    }
+    catch
+    {
+      effectiveConnSummary = $"EffectiveOrionDb={(string.IsNullOrWhiteSpace(effectiveConn) ? "<missing>" : "<present>")}";
+    }
+
     return Results.Text(
-        $"ENV={env.EnvironmentName}\n\n" +
+        $"ENV={env.EnvironmentName}\n" +
+        $"{effectiveConnSummary}\n\n" +
         root.GetDebugView());
   });
 }

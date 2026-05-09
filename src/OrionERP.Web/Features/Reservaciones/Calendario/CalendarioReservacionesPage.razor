@@ -1,5 +1,5 @@
 @page "/reservaciones/calendario"
-@attribute [Authorize(Roles = "Administrador,SatOperator")]
+@attribute [Authorize(Roles = "Administrador,SatOperator,OrdenTrabajoOperador")]
 
 <PageTitle>Calendario de Reservaciones</PageTitle>
 
@@ -7,11 +7,22 @@
     <div class="calendar-page-header">
         <div>
             <h3 class="mb-1">Calendario de Reservaciones</h3>
-            <p class="text-muted mb-0">Primer borrador del calendario robusto para Blazor usando un feed normalizado por recurso y por día.</p>
+            <p class="text-muted mb-0">Vista operativa para ocupacion, seleccion multiple y ordenes de limpieza.</p>
         </div>
-        <button class="btn btn-outline-primary" @onclick="LoadCalendarAsync" disabled="@IsLoading">
-            @(IsLoading ? "Cargando..." : "Actualizar")
-        </button>
+        <div class="calendar-header-actions">
+            @if (SelectedRoomCalendarIds.Count > 0)
+            {
+                <button class="btn btn-success" @onclick="CreateReservationFromSelectionAsync" disabled="@(IsLoading || IsCreatingReservation || IsCreatingCleaningOrders)">
+                    @(IsCreatingReservation ? "Creando reservación..." : $"Crear Reservación ({SelectedRoomCalendarIds.Count})")
+                </button>
+                <button class="btn btn-primary" @onclick="OpenCleaningModal" disabled="@(IsLoading || IsCreatingReservation || IsCreatingCleaningOrders)">
+                    Asignar Orden de Limpieza (@SelectedRoomCalendarIds.Count)
+                </button>
+            }
+            <button class="btn btn-outline-primary" @onclick="LoadCalendarAsync" disabled="@IsLoading">
+                @(IsLoading ? "Cargando..." : "Actualizar")
+            </button>
+        </div>
     </div>
 
     <div class="card mb-3">
@@ -56,6 +67,10 @@
             <span class="@GetSummaryChipCssClass("blocked")">Bloqueadas: @BlockedCellCount</span>
             <span class="@GetSummaryChipCssClass("orphan")">Huérfanas: @OrphanCellCount</span>
             <span class="@GetSummaryChipCssClass("events")">Eventos: @Timeline.Events.Count</span>
+            @if (SelectedRoomCalendarIds.Count > 0)
+            {
+                <span class="calendar-stat-chip calendar-stat-chip-selected">Seleccionadas: @SelectedRoomCalendarIds.Count</span>
+            }
         </div>
 
         @if (Timeline.Resources.Count == 0 || VisibleDates.Count == 0)
@@ -73,7 +88,7 @@
                                     <th class="calendar-sticky-col calendar-room-col">Espacio</th>
                                     @foreach (var day in VisibleDates)
                                     {
-                                        <th class="calendar-day-col">
+                                        <th class="@GetDayHeaderCssClass(day)">
                                             <div class="calendar-day-header">@day.ToString("ddd", HeaderCulture)</div>
                                             <div class="calendar-day-number">@day.ToString("dd MMM", HeaderCulture)</div>
                                         </th>
@@ -87,19 +102,22 @@
                                         <th class="calendar-sticky-col calendar-room-col">
                                             <div class="fw-semibold">@resource.RoomName</div>
                                             <div class="text-muted small">@resource.RoomType</div>
-                                            <div class="text-muted small">Base: @FormatCurrency(resource.BasePrice)</div>
                                         </th>
                                         @foreach (var day in VisibleDates)
                                         {
                                             var cell = GetCell(resource.RoomId, day);
-                                            <td class="@GetCellCssClass(cell)" title="@GetCellTooltip(cell)">
+                                            var orderBadges = GetCellWorkOrderBadges(cell);
+                                            <td class="@GetCellCompositeCssClass(cell, day)"
+                                                title="@GetCellTooltip(cell)"
+                                                @onclick="args => OnCellClick(args, cell)"
+                                                @ondblclick="() => OpenReservationFromCell(cell)">
                                                 @if (cell is null)
                                                 {
                                                     <div class="calendar-cell-empty">Sin fila</div>
                                                 }
                                                 else if (cell.ReservationId.HasValue)
                                                 {
-                                                    <a class="calendar-cell-link" href="@GetReservationHref(cell.ReservationId.Value)">
+                                                    <div class="calendar-cell-link">
                                                         <div class="calendar-cell-top">
                                                             <span class="calendar-state-label">@GetStateLabel(cell.StateCode)</span>
                                                             <span class="calendar-reservation-id">#@cell.ReservationId</span>
@@ -108,7 +126,6 @@
                                                         {
                                                             <div class="calendar-cell-line">@cell.LockedBy</div>
                                                         }
-                                                        <div class="calendar-cell-line">@FormatCurrency(cell.Price)</div>
                                                         <div class="calendar-cell-flags">
                                                             @if (cell.IsArrival)
                                                             {
@@ -127,7 +144,7 @@
                                                                 <span class="badge text-bg-dark">Extras</span>
                                                             }
                                                         </div>
-                                                    </a>
+                                                    </div>
                                                 }
                                                 else
                                                 {
@@ -142,7 +159,6 @@
                                                     {
                                                         <div class="calendar-cell-line">@cell.LockedBy</div>
                                                     }
-                                                    <div class="calendar-cell-line">@FormatCurrency(cell.Price)</div>
                                                     <div class="calendar-cell-flags">
                                                         @if (cell.IsArrival)
                                                         {
@@ -159,6 +175,22 @@
                                                         @if (cell.HasExtras)
                                                         {
                                                             <span class="badge text-bg-dark">Extras</span>
+                                                        }
+                                                    </div>
+                                                }
+
+                                                @if (orderBadges.Count > 0)
+                                                {
+                                                    <div class="calendar-wo-badges">
+                                                        @foreach (var badge in orderBadges)
+                                                        {
+                                                            <a class="@GetCalendarOrderBadgeClass(badge.Estado)"
+                                                               href="@($"/ordenes-trabajo/{badge.WorkOrderId}")"
+                                                               title="@($"{badge.Folio} - {OrionERP.Web.Features.OrdenesTrabajo.OrdenesTrabajoPage.GetStatusLabel(badge.Estado)}")"
+                                                               @onclick:stopPropagation="true"
+                                                               @ondblclick:stopPropagation="true">
+                                                                @badge.Folio
+                                                            </a>
                                                         }
                                                     </div>
                                                 }
@@ -209,3 +241,53 @@
         }
     }
 </div>
+
+@if (ShowCleaningModal)
+{
+    <div class="calendar-modal-backdrop" @onclick="CloseCleaningModal">
+        <div class="calendar-modal" role="dialog" aria-modal="true" aria-labelledby="cleaning-modal-title" @onclick:stopPropagation="true">
+            <div class="calendar-modal__header">
+                <div>
+                    <h5 id="cleaning-modal-title" class="mb-1">Asignar Orden de Limpieza</h5>
+                    <p class="text-muted mb-0">@SelectedRoomCalendarIds.Count celda@(SelectedRoomCalendarIds.Count == 1 ? string.Empty : "s") seleccionada@(SelectedRoomCalendarIds.Count == 1 ? string.Empty : "s").</p>
+                </div>
+                <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CloseCleaningModal" disabled="@IsCreatingCleaningOrders"></button>
+            </div>
+
+            <div class="calendar-modal__body">
+                <div class="mb-3">
+                    <label class="form-label">Responsable</label>
+                    <select class="form-select" @bind="CleaningOwnerEmployeeId" disabled="@IsCreatingCleaningOrders">
+                        @foreach (var employee in WorkOrderEmployees)
+                        {
+                            <option value="@employee.Id">@employee.Name</option>
+                        }
+                    </select>
+                </div>
+
+                <div>
+                    <label class="form-label">Ayudantes</label>
+                    <div class="calendar-helper-list">
+                        @foreach (var employee in WorkOrderEmployees.Where(item => item.Id != CleaningOwnerEmployeeId))
+                        {
+                            <label class="calendar-helper-item">
+                                <input type="checkbox"
+                                       checked="@CleaningHelperIds.Contains(employee.Id)"
+                                       disabled="@IsCreatingCleaningOrders"
+                                       @onchange="args => ToggleCleaningHelper(employee.Id, args)" />
+                                <span>@employee.Name</span>
+                            </label>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="calendar-modal__footer">
+                <button type="button" class="btn btn-outline-secondary" @onclick="CloseCleaningModal" disabled="@IsCreatingCleaningOrders">Cancelar</button>
+                <button type="button" class="btn btn-primary" @onclick="CreateCleaningOrdersAsync" disabled="@IsCreatingCleaningOrders">
+                    @(IsCreatingCleaningOrders ? "Creando..." : "Crear ordenes")
+                </button>
+            </div>
+        </div>
+    </div>
+}

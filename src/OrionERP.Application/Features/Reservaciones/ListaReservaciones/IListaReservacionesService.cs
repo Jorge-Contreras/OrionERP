@@ -12,9 +12,10 @@ public interface IListaReservacionesService
   Task<ClienteOptionDto?> GetDefaultClienteForNewReservationAsync(CancellationToken ct = default);
   Task<ReservacionCommandResult> UpdateNotesAsync(int reservationId, string? notes, CancellationToken ct = default);
   Task<ReservacionCommandResult> DeleteEmptyReservationsAsync(CancellationToken ct = default);
+  Task<ReservacionCommandResult> DeleteReservationAsync(int reservationId, CancellationToken ct = default);
   Task<ReservacionDetailDto?> GetReservacionDetailAsync(int reservationId, CancellationToken ct = default);
 
-  Task<IReadOnlyList<ClienteOptionDto>> GetClientesAsync(string? searchText = null, CancellationToken ct = default);
+  Task<IReadOnlyList<ClienteOptionDto>> GetClientesAsync(string? searchText = null, int maxResults = 5, CancellationToken ct = default);
   Task<ClienteOptionDto?> ResolveClienteAsync(int? clienteId, string? clienteNombre, CancellationToken ct = default);
   Task<ClienteOptionDto> CreateClienteAsync(string clienteNombre, CancellationToken ct = default);
   Task<IReadOnlyList<RoomOptionDto>> GetRoomsForExtrasAsync(CancellationToken ct = default);
@@ -43,9 +44,8 @@ public interface IListaReservacionesService
   Task<ReservacionCommandResult> DeleteSuitesAsync(IReadOnlyCollection<int> roomCalendarIds, CancellationToken ct = default);
   Task<ReservacionCommandResult> SetSuitesPriceAsync(IReadOnlyCollection<int> roomCalendarIds, decimal price, CancellationToken ct = default);
   Task<ReservacionCommandResult> SetSuitesPriceWithIvaAsync(IReadOnlyCollection<int> roomCalendarIds, decimal priceWithIva, CancellationToken ct = default);
-  Task<ReservacionCommandResult> ApplySuitesDiscountAsync(IReadOnlyCollection<int> roomCalendarIds, decimal discountPercentage, CancellationToken ct = default);
   Task<ReservacionCommandResult> ToggleSuitesLimpiezaAsync(IReadOnlyCollection<int> roomCalendarIds, bool nextState, CancellationToken ct = default);
-  Task<ReservacionCommandResult> DistributeSuitesTotalAsync(int reservationId, decimal totalAmount, CancellationToken ct = default);
+  Task<ReservacionCommandResult> DistributeSuitesTotalWithIvaAsync(IReadOnlyCollection<int> roomCalendarIds, decimal totalWithIva, CancellationToken ct = default);
 
   Task<ReservacionCommandResult> AddExtraAsync(ReservacionExtraCreateRequest request, CancellationToken ct = default);
   Task<ReservacionCommandResult> UpdateExtraAsync(ReservacionExtraUpdateRequest request, CancellationToken ct = default);

@@ -44,9 +44,7 @@ internal static class SatZipIngestion
         // Extract metadata
         var meta = CfdiInfoExtractor.TryExtract(xmlBytes);
 
-        // Call your existing pipeline
-        using var xmlStream = new MemoryStream(xmlBytes, writable: false);
-        var res = await inbox.SaveAndProcessAsync(xmlStream, entry.Name);
+        var res = await inbox.SaveAndProcessAsync(xmlBytes, entry.Name, ct);
 
         items.Add(new App.XmlProcessedItem
         {

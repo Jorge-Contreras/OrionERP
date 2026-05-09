@@ -94,7 +94,9 @@ namespace OrionERP.Application.Features.Auth.AdminPortal
 
     public sealed record IdentityRoleUpsertRequest(
         string? Id,
+        string? ActorUserId,
         string Name,
+        IReadOnlyList<string> UserIds,
         IReadOnlyList<IdentityClaimInput> Claims);
 
     public sealed record IdentityAdminCommandResult(

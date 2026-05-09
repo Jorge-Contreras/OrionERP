@@ -124,6 +124,8 @@
                             else
                             {
                                 <ActionButtons Item="item"
+                                               CanCancelCfdi="@(CanCancelCfdi?.Invoke(item) == true)"
+                                               OnCancelCfdi="OnCancelCfdi"
                                                />
                             }
                             <td>@item.D</td>
@@ -215,7 +217,7 @@
     private const decimal TotalPolizasTolerance = 0.99m;
     private static readonly IReadOnlyList<string?> BaseColumnWidths = new List<string?>
     {
-        "8rem", // Acciones
+        "13rem", // Acciones
         "6rem", // Poliza
         "3rem", // ✔
         "10ch", // Fecha
@@ -258,6 +260,12 @@
     public EventCallback<DeclaracionCfdiBase> OnRowClick { get; set; }
 
     [Parameter]
+    public EventCallback<IDeclaracionComprobanteItem> OnCancelCfdi { get; set; }
+
+    [Parameter]
+    public Func<DeclaracionCfdiBase, bool>? CanCancelCfdi { get; set; }
+
+    [Parameter]
     public Func<DeclaracionCfdiBase, string?>? RowClassResolver { get; set; }
 
     [Parameter]
@@ -279,7 +287,7 @@
 
     private int RemainingColumns => Math.Max(0, EffectiveColumnCount - 18);
 
-    private readonly List<DeclaracionCfdiBase> _originalItems = new();
+    private IReadOnlyList<DeclaracionCfdiBase> _originalItems = Array.Empty<DeclaracionCfdiBase>();
     private List<DeclaracionCfdiBase> _filteredItems = new();
     private IReadOnlyList<DeclaracionCfdiBase> _pagedItems = Array.Empty<DeclaracionCfdiBase>();
     private int _currentPage = 1;
@@ -363,11 +371,12 @@
 
     protected override void OnParametersSet()
     {
-        _originalItems.Clear();
-        if (Items is not null)
+        _originalItems = Items switch
         {
-            _originalItems.AddRange(Items);
-        }
+            null => Array.Empty<DeclaracionCfdiBase>(),
+            IReadOnlyList<DeclaracionCfdiBase> readOnlyItems => readOnlyItems,
+            _ => Items.ToList()
+        };
         _currentPage = 1;
         ApplyFiltersAndSorting();
     }

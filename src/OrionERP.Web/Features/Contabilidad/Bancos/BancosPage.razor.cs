@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Contabilidad.Bancos;
+using OrionERP.Application.Features.Contabilidad.ContabilidadRegistros;
+using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Web.Services;
 using OrionERP.Web.State;
 
@@ -33,14 +35,23 @@ public partial class BancosPage : ComponentBase, IDisposable
   };
 
   private static readonly CultureInfo CurrencyCulture = new("es-MX");
+  private const decimal BankAccountingDifferenceTolerance = 1m;
+  private const string MovementOrderBankNewest = "bank-newest";
+  private const string MovementOrderAccounting = "accounting";
 
   private CancellationTokenSource? _movementsCts;
   private CancellationTokenSource? _pendingTransactionsCts;
   private CancellationTokenSource? _textFilterDebounceCts;
 
   private string? _currentRfc;
+  private readonly Dictionary<int, IReadOnlyList<TransaccionMovimientoDto>> _accountingDetailsByPolicy = new();
+  private readonly HashSet<int> _expandedPolicyIds = new();
+  private readonly HashSet<int> _loadingPolicyDetailIds = new();
+  private readonly HashSet<int> _reorderingPolicyIds = new();
 
   [Inject] public IBancosService BancosService { get; set; } = default!;
+  [Inject] public ITransaccionService TransaccionService { get; set; } = default!;
+  [Inject] public IContabilidadRegistrosService RegistrosService { get; set; } = default!;
   [Inject] public IUserRfcState RfcState { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
   [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
@@ -55,6 +66,7 @@ public partial class BancosPage : ComponentBase, IDisposable
   protected bool IsLoadingMovements { get; private set; }
   protected bool IsLoadingPendingTransactions { get; private set; }
   protected bool IsProcessingFile { get; private set; }
+  protected bool IsAligningTransactions { get; private set; }
 
   protected string? ErrorMessage { get; private set; }
   protected int? SelectedAccountId { get; private set; }
@@ -64,7 +76,10 @@ public partial class BancosPage : ComponentBase, IDisposable
   protected int SelectedYear { get; set; } = DateTime.Today.Year;
   protected decimal? InitialBalance { get; set; } = 0m;
   private bool _showOnlyUnlinkedMovements;
+  private bool _showOnlyAccountingIssues;
+  private bool _showOnlyBalanceDifferences;
   protected string? TextFilter { get; private set; }
+  protected string MovementOrder { get; private set; } = MovementOrderBankNewest;
   protected ProcessBbvaResult? LastProcessResult { get; private set; }
   protected EditContext? AccountEditContext { get; private set; }
   protected BankAccountInputModel? AccountDraft { get; private set; }
@@ -84,11 +99,40 @@ public partial class BancosPage : ComponentBase, IDisposable
 
       _showOnlyUnlinkedMovements = value;
 
-      if (_showOnlyUnlinkedMovements && GetSelectedMovement() is { Policy: not null and > 0 })
+      EnsureSelectedMovementIsVisible();
+
+      _ = InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected bool ShowOnlyAccountingIssues
+  {
+    get => _showOnlyAccountingIssues;
+    set
+    {
+      if (_showOnlyAccountingIssues == value)
       {
-        SelectedMovimientoId = null;
+        return;
       }
 
+      _showOnlyAccountingIssues = value;
+      EnsureSelectedMovementIsVisible();
+      _ = InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected bool ShowOnlyBalanceDifferences
+  {
+    get => _showOnlyBalanceDifferences;
+    set
+    {
+      if (_showOnlyBalanceDifferences == value)
+      {
+        return;
+      }
+
+      _showOnlyBalanceDifferences = value;
+      EnsureSelectedMovementIsVisible();
       _ = InvokeAsync(StateHasChanged);
     }
   }
@@ -98,6 +142,11 @@ public partial class BancosPage : ComponentBase, IDisposable
   protected bool CanLink => SelectedPendingTransactionId.HasValue && SelectedMovimientoId.HasValue;
 
   protected bool CanUnlink => GetSelectedMovement() is { Policy: int policyValue } && policyValue > 0;
+
+  protected bool CanAlignTransactionsToBankOrder
+    => SelectedAccountId.HasValue &&
+       !IsAligningTransactions &&
+       Movements.Any(m => m.Policy is int policy && policy > 0);
 
   protected bool HasPendingTransactions => PendingTransactions.Count > 0;
 
@@ -110,9 +159,38 @@ public partial class BancosPage : ComponentBase, IDisposable
       : "Ninguna";
 
   protected IEnumerable<BankMovementDto> VisibleMovements
-    => ShowOnlyUnlinkedMovements
-      ? Movements.Where(m => m.Policy is null or <= 0)
-      : Movements;
+  {
+    get
+    {
+      IEnumerable<BankMovementDto> movements = Movements;
+
+      if (ShowOnlyUnlinkedMovements)
+      {
+        movements = movements.Where(m => m.Policy is null or <= 0);
+      }
+
+      if (ShowOnlyAccountingIssues)
+      {
+        movements = movements.Where(HasHardAccountingIssue);
+      }
+
+      if (ShowOnlyBalanceDifferences)
+      {
+        movements = movements.Where(HasMeaningfulBankAccountingDifference);
+      }
+
+      return ApplyMovementOrder(movements);
+    }
+  }
+
+  protected string? SelectedAccountLedgerUrl
+    => BuildSelectedAccountLedgerUrl();
+
+  protected bool IsBankNewestOrderSelected
+    => string.Equals(MovementOrder, MovementOrderBankNewest, StringComparison.Ordinal);
+
+  protected bool IsAccountingOrderSelected
+    => string.Equals(MovementOrder, MovementOrderAccounting, StringComparison.Ordinal);
 
   protected override void OnInitialized()
   {
@@ -140,6 +218,105 @@ public partial class BancosPage : ComponentBase, IDisposable
   protected string FormatCurrency(decimal value)
     => value.ToString("C2", CurrencyCulture);
 
+  protected string FormatCurrency(decimal? value)
+    => value.HasValue ? FormatCurrency(value.Value) : "-";
+
+  protected string FormatDateTime(DateTime? value)
+    => value.HasValue ? value.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) : "-";
+
+  protected string FormatAccountingLevels(BankMovementDto movement)
+    => string.IsNullOrWhiteSpace(movement.BankAccountNivel1)
+      ? "-"
+      : $"{movement.BankAccountNivel1}.{movement.BankAccountNivel2}.{movement.BankAccountNivel3}";
+
+  protected string GetAuditBadgeClass(BankMovementDto movement)
+    => string.Equals(movement.AuditSeverity, "Hard", StringComparison.OrdinalIgnoreCase)
+      ? "text-bg-danger"
+      : HasMeaningfulBankAccountingDifference(movement)
+        ? "text-bg-warning"
+        : "text-bg-success";
+
+  protected string GetAuditLabel(BankMovementDto movement)
+    => string.Equals(movement.AuditSeverity, "Hard", StringComparison.OrdinalIgnoreCase)
+      ? "Problema contable"
+      : HasMeaningfulBankAccountingDifference(movement)
+        ? "Diferencia banco"
+        : "OK";
+
+  protected string GetDetailToggleIconClass(BankMovementDto movement)
+    => IsPolicyExpanded(movement) ? "bi bi-chevron-up" : "bi bi-chevron-down";
+
+  protected string GetMovementRowClass(BankMovementDto movement, bool isSelected)
+  {
+    if (isSelected)
+    {
+      return "table-primary";
+    }
+
+    if (HasHardAccountingIssue(movement))
+    {
+      return "movement-has-issues";
+    }
+
+    return HasMeaningfulBankAccountingDifference(movement) ? "movement-has-soft-issues" : string.Empty;
+  }
+
+  protected IReadOnlyList<string> GetIssueCodes(BankMovementDto movement)
+    => string.IsNullOrWhiteSpace(movement.Issues) ||
+       string.Equals(movement.Issues, "OK", StringComparison.OrdinalIgnoreCase)
+      ? Array.Empty<string>()
+      : movement.Issues
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(issue => !string.Equals(issue, "OK", StringComparison.OrdinalIgnoreCase))
+        .ToArray();
+
+  protected bool HasHardAccountingIssue(BankMovementDto movement)
+    => GetIssueCodes(movement).Count > 0;
+
+  protected bool HasMeaningfulBankAccountingDifference(BankMovementDto movement)
+    => movement.BankAccountingVariance.HasValue &&
+       Math.Abs(movement.BankAccountingVariance.Value) > BankAccountingDifferenceTolerance;
+
+  protected bool IsPolicyExpanded(BankMovementDto movement)
+    => movement.Policy is int policy && _expandedPolicyIds.Contains(policy);
+
+  protected bool IsPolicyDetailLoading(BankMovementDto movement)
+    => movement.Policy is int policy && _loadingPolicyDetailIds.Contains(policy);
+
+  protected IReadOnlyList<TransaccionMovimientoDto> GetAccountingDetailRows(BankMovementDto movement)
+    => movement.Policy is int policy && _accountingDetailsByPolicy.TryGetValue(policy, out var rows)
+      ? rows
+      : Array.Empty<TransaccionMovimientoDto>();
+
+  protected bool IsPolicyReordering(BankMovementDto movement)
+    => movement.Policy is int policy && _reorderingPolicyIds.Contains(policy);
+
+  protected bool CanMoveAccountingEarlier(BankMovementDto movement)
+    => CanMoveAccountingOrder(movement, -1);
+
+  protected bool CanMoveAccountingLater(BankMovementDto movement)
+    => CanMoveAccountingOrder(movement, 1);
+
+  protected string? GetSelectedAccountDescription()
+    => Accounts.FirstOrDefault(a => a.CuentaBancoId == SelectedAccountId)?.CuentaContableDescripcion;
+
+  protected void SetBankNewestOrder()
+    => SetMovementOrder(MovementOrderBankNewest);
+
+  protected void SetAccountingOrder()
+    => SetMovementOrder(MovementOrderAccounting);
+
+  protected string GetMovementOrderButtonClass(string order)
+    => string.Equals(MovementOrder, order, StringComparison.Ordinal)
+      ? "btn btn-primary btn-sm"
+      : "btn btn-outline-primary btn-sm";
+
+  protected string GetBankNewestOrderButtonClass()
+    => GetMovementOrderButtonClass(MovementOrderBankNewest);
+
+  protected string GetAccountingOrderButtonClass()
+    => GetMovementOrderButtonClass(MovementOrderAccounting);
+
   protected async Task ReloadMovementsAsync()
   {
     await LoadPendingTransactionsAsync();
@@ -148,12 +325,14 @@ public partial class BancosPage : ComponentBase, IDisposable
 
   protected async Task OnMonthChangedAsync()
   {
+    ClearAccountingDetailState();
     await LoadPendingTransactionsAsync();
     await LoadMovementsAsync();
   }
 
   protected async Task OnYearChangedAsync()
   {
+    ClearAccountingDetailState();
     await LoadPendingTransactionsAsync();
     await LoadMovementsAsync();
   }
@@ -168,6 +347,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     SelectedAccountId = accountId;
     LastProcessResult = null;
     SelectedMovimientoId = null;
+    ClearAccountingDetailState();
     await LoadPendingTransactionsAsync();
     await LoadMovementsAsync();
     await InvokeAsync(StateHasChanged);
@@ -365,6 +545,230 @@ public partial class BancosPage : ComponentBase, IDisposable
       ? Movements.FirstOrDefault(m => m.MovimientoId == SelectedMovimientoId.Value)
       : null;
 
+  protected async Task ToggleAccountingDetailsAsync(BankMovementDto movement)
+  {
+    if (movement.Policy is not int policy || policy <= 0)
+    {
+      return;
+    }
+
+    if (_expandedPolicyIds.Contains(policy))
+    {
+      _expandedPolicyIds.Remove(policy);
+      await InvokeAsync(StateHasChanged);
+      return;
+    }
+
+    _expandedPolicyIds.Add(policy);
+
+    if (_accountingDetailsByPolicy.ContainsKey(policy) || _loadingPolicyDetailIds.Contains(policy))
+    {
+      await InvokeAsync(StateHasChanged);
+      return;
+    }
+
+    _loadingPolicyDetailIds.Add(policy);
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var rows = await TransaccionService.GetMovimientosAsync(policy);
+      _accountingDetailsByPolicy[policy] = rows;
+    }
+    catch (Exception)
+    {
+      UiMessages.ShowError("No se pudieron cargar los registros contables de la póliza.");
+      _expandedPolicyIds.Remove(policy);
+    }
+    finally
+    {
+      _loadingPolicyDetailIds.Remove(policy);
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected async Task MoveAccountingEarlierAsync(BankMovementDto movement)
+    => await MoveAccountingOrderAsync(movement, -1);
+
+  protected async Task MoveAccountingLaterAsync(BankMovementDto movement)
+    => await MoveAccountingOrderAsync(movement, 1);
+
+  private async Task MoveAccountingOrderAsync(BankMovementDto movement, int direction)
+  {
+    if (movement.Policy is not int policy || policy <= 0)
+    {
+      return;
+    }
+
+    var target = GetAccountingNeighbor(movement, direction);
+    if (target?.Policy is not int targetPolicy || targetPolicy <= 0)
+    {
+      return;
+    }
+
+    _reorderingPolicyIds.Add(policy);
+    ErrorMessage = null;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      await RegistrosService.ReorderTransaccionAsync(policy, targetPolicy);
+      MovementOrder = MovementOrderAccounting;
+      UiMessages.ShowSuccess("Orden contable actualizado.");
+      await LoadMovementsAsync();
+    }
+    catch (Exception)
+    {
+      UiMessages.ShowError("No se pudo reordenar la póliza. Solo se permite entre pólizas del mismo día.");
+    }
+    finally
+    {
+      _reorderingPolicyIds.Remove(policy);
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  private bool CanMoveAccountingOrder(BankMovementDto movement, int direction)
+  {
+    if (movement.Policy is not int policy || policy <= 0 || IsPolicyReordering(movement))
+    {
+      return false;
+    }
+
+    return GetAccountingNeighbor(movement, direction) is not null;
+  }
+
+  private BankMovementDto? GetAccountingNeighbor(BankMovementDto movement, int direction)
+  {
+    if (movement.Policy is not int policy || !movement.PolicyDate.HasValue)
+    {
+      return null;
+    }
+
+    var ordered = GetDistinctPoliciesInAccountingOrder();
+    var index = ordered.FindIndex(item => item.Policy == policy);
+    var neighborIndex = index + direction;
+    if (index < 0 || neighborIndex < 0 || neighborIndex >= ordered.Count)
+    {
+      return null;
+    }
+
+    var neighbor = ordered[neighborIndex];
+    return neighbor.PolicyDate.HasValue && movement.PolicyDate.Value.Date == neighbor.PolicyDate.Value.Date ? neighbor : null;
+  }
+
+  private List<BankMovementDto> GetDistinctPoliciesInAccountingOrder()
+  {
+    var seen = new HashSet<int>();
+    var ordered = Movements
+      .Where(m => m.Policy is int policy && policy > 0 && m.PolicyDate.HasValue)
+      .OrderBy(m => m.PolicyDate!.Value.Date)
+      .ThenBy(m => m.OrdenBalance ?? long.MaxValue)
+      .ThenBy(m => m.PolicyDate)
+      .ThenBy(m => m.Policy)
+      .ThenBy(m => m.MovimientoId)
+      .Where(m => seen.Add(m.Policy!.Value))
+      .ToList();
+
+    return ordered;
+  }
+
+  private void EnsureSelectedMovementIsVisible()
+  {
+    if (!SelectedMovimientoId.HasValue)
+    {
+      return;
+    }
+
+    if (!VisibleMovements.Any(m => m.MovimientoId == SelectedMovimientoId.Value))
+    {
+      SelectedMovimientoId = null;
+    }
+  }
+
+  private IEnumerable<BankMovementDto> ApplyMovementOrder(IEnumerable<BankMovementDto> movements)
+  {
+    if (IsAccountingOrderSelected)
+    {
+      return movements
+        .OrderBy(m => m.PolicyDate?.Date ?? m.Dia.Date)
+        .ThenBy(m => m.Policy.HasValue ? 0 : 1)
+        .ThenBy(m => m.OrdenBalance ?? long.MaxValue)
+        .ThenBy(m => m.PolicyDate ?? DateTime.MaxValue)
+        .ThenBy(m => m.Policy ?? int.MaxValue)
+        .ThenBy(m => m.SecuenciaClave)
+        .ThenBy(m => m.MovimientoId)
+        .ToList();
+    }
+
+    return movements
+      .OrderByDescending(m => m.SecuenciaClave)
+      .ThenByDescending(m => m.MovimientoId)
+      .ToList();
+  }
+
+  private void SetMovementOrder(string order)
+  {
+    if (!string.Equals(order, MovementOrderBankNewest, StringComparison.Ordinal) &&
+        !string.Equals(order, MovementOrderAccounting, StringComparison.Ordinal))
+    {
+      return;
+    }
+
+    if (string.Equals(MovementOrder, order, StringComparison.Ordinal))
+    {
+      return;
+    }
+
+    MovementOrder = order;
+    EnsureSelectedMovementIsVisible();
+  }
+
+  private void ClearAccountingDetailState()
+  {
+    _accountingDetailsByPolicy.Clear();
+    _expandedPolicyIds.Clear();
+    _loadingPolicyDetailIds.Clear();
+    _reorderingPolicyIds.Clear();
+  }
+
+  private void PruneAccountingDetailState()
+  {
+    var currentPolicies = Movements
+      .Where(m => m.Policy is int policy && policy > 0)
+      .Select(m => m.Policy!.Value)
+      .ToHashSet();
+
+    _expandedPolicyIds.RemoveWhere(policy => !currentPolicies.Contains(policy));
+    _loadingPolicyDetailIds.RemoveWhere(policy => !currentPolicies.Contains(policy));
+    _reorderingPolicyIds.RemoveWhere(policy => !currentPolicies.Contains(policy));
+
+    foreach (var policy in _accountingDetailsByPolicy.Keys.Where(policy => !currentPolicies.Contains(policy)).ToList())
+    {
+      _accountingDetailsByPolicy.Remove(policy);
+    }
+  }
+
+  private string? BuildSelectedAccountLedgerUrl()
+  {
+    var account = Accounts.FirstOrDefault(a => a.CuentaBancoId == SelectedAccountId);
+    if (account is null ||
+        string.IsNullOrWhiteSpace(_currentRfc) ||
+        string.IsNullOrWhiteSpace(account.CuentaContableNivel1) ||
+        string.IsNullOrWhiteSpace(account.CuentaContableNivel2))
+    {
+      return null;
+    }
+
+    var nivel3 = string.IsNullOrWhiteSpace(account.CuentaContableNivel3)
+      ? "00"
+      : account.CuentaContableNivel3.Trim();
+
+    return string.Create(
+      CultureInfo.InvariantCulture,
+      $"/contabilidad/registros-contables?rfc={Uri.EscapeDataString(_currentRfc)}&anio={SelectedYear:0000}&mes={SelectedMonth:00}&nivel1={Uri.EscapeDataString(account.CuentaContableNivel1.Trim())}&nivel2={Uri.EscapeDataString(account.CuentaContableNivel2.Trim())}&nivel3={Uri.EscapeDataString(nivel3)}");
+  }
+
   protected async Task OnLinkClicked()
   {
     if (!CanLink)
@@ -516,6 +920,79 @@ public partial class BancosPage : ComponentBase, IDisposable
     {
       await LoadPendingTransactionsAsync();
       await LoadMovementsAsync();
+    }
+  }
+
+  protected async Task OnAlignTransactionsToBankOrderClicked()
+  {
+    if (!SelectedAccountId.HasValue)
+    {
+      UiMessages.ShowWarning("Selecciona una cuenta bancaria antes de alinear pólizas.");
+      return;
+    }
+
+    if (string.IsNullOrWhiteSpace(_currentRfc))
+    {
+      UiMessages.ShowWarning("Selecciona un RFC válido antes de continuar.");
+      return;
+    }
+
+    if (!Movements.Any(m => m.Policy is int policy && policy > 0))
+    {
+      UiMessages.ShowInfo("No hay pólizas ligadas para alinear en este periodo.");
+      return;
+    }
+
+    bool confirm;
+    try
+    {
+      confirm = await JsRuntime.InvokeAsync<bool>(
+        "confirm",
+        "Esto ajustará la fecha de las pólizas ligadas al día del movimiento bancario y su OrdenBalance al orden del banco para la cuenta y periodo seleccionados. ¿Deseas continuar?");
+    }
+    catch
+    {
+      confirm = true;
+    }
+
+    if (!confirm)
+    {
+      return;
+    }
+
+    IsAligningTransactions = true;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var aligned = await BancosService.AlignTransactionsToBankMovementsAsync(
+        _currentRfc,
+        SelectedYear,
+        SelectedMonth,
+        SelectedAccountId.Value);
+
+      MovementOrder = MovementOrderAccounting;
+
+      if (aligned == 0)
+      {
+        UiMessages.ShowInfo("Las pólizas ligadas ya estaban alineadas al banco.");
+      }
+      else
+      {
+        UiMessages.ShowSuccess($"Se alinearon {aligned} póliza(s) al orden bancario.");
+      }
+
+      await LoadPendingTransactionsAsync();
+      await LoadMovementsAsync();
+    }
+    catch (Exception)
+    {
+      UiMessages.ShowError("No se pudieron alinear las pólizas al orden bancario.");
+    }
+    finally
+    {
+      IsAligningTransactions = false;
+      await InvokeAsync(StateHasChanged);
     }
   }
 
@@ -690,6 +1167,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     SelectedMovimientoId = null;
     LastProcessResult = null;
     ErrorMessage = null;
+    ClearAccountingDetailState();
 
     _movementsCts?.Cancel();
     _pendingTransactionsCts?.Cancel();
@@ -801,6 +1279,7 @@ public partial class BancosPage : ComponentBase, IDisposable
           localCts.Token);
 
       Movements.AddRange(rows);
+      PruneAccountingDetailState();
       if (!Movements.Any(m => m.MovimientoId == SelectedMovimientoId))
       {
         SelectedMovimientoId = null;

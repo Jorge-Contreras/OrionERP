@@ -4,6 +4,7 @@ obj/
 artifacts/
 **/artifacts/
 output/
+node_modules/
 
 # User-specific files
 *.user
@@ -16,6 +17,7 @@ output/
 .vscode/
 .idea/
 .codex-temp/
+CodexOutputs/
 
 # OS junk
 .DS_Store
@@ -25,8 +27,26 @@ Thumbs.db
 *.log
 *.tmp
 *.cache
+TestResults/
+test-results/
+coverage/
+playwright-report/
+
+# Repo-local scratch space
+/tmp/*
+!/tmp/Test-GraphMailboxAccess.ps1
+!/tmp/dbdefs/
+!/tmp/dbdefs/**
+!/tmp/pdfs/
+!/tmp/pdfs/PdfGen/
+!/tmp/pdfs/PdfGen/**
+/tmp/pdfs/PdfGen/bin/
+/tmp/pdfs/PdfGen/obj/
+/tmp/build-alt/
+/tmp/codex-build/
 /tmp/publish-*/
 /tmp/pdfs/output/
+/tmp/pdfs/ReservacionPdfPreview/
 
 # Dotnet tools
 *.nupkg

@@ -18,6 +18,68 @@
         document.body.removeChild(link);
     };
 
+    const focusAndSelectTextInputCore = (element, scrollIntoViewOnMobile = false) => {
+        const isMobileViewport = window.matchMedia("(max-width: 767.98px)").matches;
+        const selectValue = () => {
+            if (typeof element.select === "function") {
+                element.select();
+                return;
+            }
+
+            if (typeof element.setSelectionRange === "function") {
+                const value = typeof element.value === "string" ? element.value : "";
+                element.setSelectionRange(0, value.length);
+            }
+        };
+
+        window.requestAnimationFrame(() => {
+            if (scrollIntoViewOnMobile && isMobileViewport && typeof element.scrollIntoView === "function") {
+                element.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                    inline: "nearest"
+                });
+            }
+
+            if (typeof element.focus === "function") {
+                try {
+                    element.focus({ preventScroll: true });
+                } catch {
+                    element.focus();
+                }
+            }
+
+            window.setTimeout(selectValue, isMobileViewport ? 120 : 0);
+        });
+    };
+
+    const isVisibleFocusableElement = (element) => {
+        if (!element || typeof element.getClientRects !== "function") {
+            return false;
+        }
+
+        const style = window.getComputedStyle(element);
+        return style.display !== "none" && style.visibility !== "hidden" && element.getClientRects().length > 0;
+    };
+
+    window.focusAndSelectTextInput = (element, scrollIntoViewOnMobile = false) => {
+        if (!element) {
+            return;
+        }
+
+        focusAndSelectTextInputCore(element, scrollIntoViewOnMobile);
+    };
+
+    window.focusAndSelectVisibleTextInput = (primaryElement, secondaryElement, scrollIntoViewOnMobile = false) => {
+        const target = [primaryElement, secondaryElement].find(isVisibleFocusableElement);
+        if (!target) {
+            return false;
+        }
+
+        focusAndSelectTextInputCore(target, scrollIntoViewOnMobile);
+        return true;
+    };
+
     window.pickBankFile = async () => {
         const readFileAsText = (file) => new Promise((resolve, reject) => {
             const reader = new FileReader();

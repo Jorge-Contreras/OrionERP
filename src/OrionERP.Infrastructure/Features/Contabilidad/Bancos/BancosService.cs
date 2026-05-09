@@ -17,19 +17,26 @@ public sealed class BancosService : IBancosService
 
   private const string AccountSelectSql = @"
 SELECT
-    Cuenta_Banco_ID AS CuentaBancoId,
-    Nombre_Banco AS NombreBanco,
-    Numero_Cuenta AS NumeroCuenta,
-    Tipo_Cuenta AS TipoCuenta,
-    Nombre_Titular AS NombreTitular,
-    CLABE_Cuenta AS ClabeCuenta,
-    RFC,
-    Activo,
-    Fecha_Alta AS FechaAlta,
-    Cuenta_Contable_ID AS CuentaContableId,
-    Cuenta_Contable_Egreso AS CuentaContableEgreso,
-    Cuenta_Contable_Ingreso AS CuentaContableIngreso
-FROM bancos.Cuentas_Banco
+    cb.Cuenta_Banco_ID AS CuentaBancoId,
+    cb.Nombre_Banco AS NombreBanco,
+    cb.Numero_Cuenta AS NumeroCuenta,
+    cb.Tipo_Cuenta AS TipoCuenta,
+    cb.Nombre_Titular AS NombreTitular,
+    cb.CLABE_Cuenta AS ClabeCuenta,
+    cb.RFC,
+    cb.Activo,
+    cb.Fecha_Alta AS FechaAlta,
+    cb.Cuenta_Contable_ID AS CuentaContableId,
+    cb.Cuenta_Contable_Egreso AS CuentaContableEgreso,
+    cb.Cuenta_Contable_Ingreso AS CuentaContableIngreso,
+    cc.Nivel1 AS CuentaContableNivel1,
+    cc.Nivel2 AS CuentaContableNivel2,
+    cc.Nivel3 AS CuentaContableNivel3,
+    cc.Descripcion AS CuentaContableDescripcion
+FROM bancos.Cuentas_Banco AS cb
+LEFT JOIN dbo.CuentasContables AS cc
+    ON cc.id = cb.Cuenta_Contable_ID
+   AND cc.RFC = cb.RFC
 ";
 
   public BancosService(IDbConnectionFactory connectionFactory)
@@ -46,7 +53,7 @@ FROM bancos.Cuentas_Banco
       return Array.Empty<BankAccountDto>();
     }
 
-    var sql = AccountSelectSql + "WHERE RFC = @Rfc\nORDER BY Fecha_Alta DESC;";
+    var sql = AccountSelectSql + "WHERE cb.RFC = @Rfc\nORDER BY cb.Fecha_Alta DESC;";
 
     using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
     var rows = await connection.QueryAsync<BankAccountDto>(sql, new { Rfc = rfc }).ConfigureAwait(false);
@@ -313,6 +320,8 @@ ORDER BY M.Dia DESC, M.Movimiento_ID DESC;";
       return Array.Empty<PendingBankTransactionDto>();
     }
 
+    var (startDate, endDate) = BuildMonthRange(year, month);
+
     const string sql = @"
 WITH CuentasBancoFiltradas AS (
     SELECT DISTINCT
@@ -335,8 +344,8 @@ SELECT
     CAST(ISNULL(t.Monto, 0) AS decimal(19,2)) AS Monto
 FROM dbo.Transacciones AS t
 WHERE t.RFC = @Rfc
-  AND YEAR(t.Fecha) = @Year
-  AND MONTH(t.Fecha) = @Month
+  AND t.Fecha >= @StartDate
+  AND t.Fecha < @EndDate
   AND EXISTS (
       SELECT 1
       FROM CuentasBancoFiltradas AS cbf
@@ -361,8 +370,8 @@ ORDER BY t.Fecha DESC, t.ID DESC;";
     {
       Rfc = rfc,
       AccountId = accountId,
-      Year = year,
-      Month = month
+      StartDate = startDate,
+      EndDate = endDate
     };
 
     using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
@@ -428,77 +437,226 @@ ORDER BY t.Fecha DESC, t.ID DESC;";
       return 0;
     }
 
-    const string selectSql = @"
+    var (startDate, endDate) = BuildMonthRange(year, month);
+
+    const string batchSql = @"
+SET NOCOUNT ON;
+
+DECLARE @Candidates TABLE
+(
+    RowNumber int NOT NULL PRIMARY KEY,
+    MovimientoId bigint NOT NULL,
+    Dia datetime2(7) NOT NULL,
+    Concepto nvarchar(max) NULL,
+    Tipo varchar(10) NULL,
+    Cargo decimal(18,2) NOT NULL,
+    Abono decimal(18,2) NOT NULL,
+    CuentaBancoId int NOT NULL
+);
+
+INSERT INTO @Candidates (RowNumber, MovimientoId, Dia, Concepto, Tipo, Cargo, Abono, CuentaBancoId)
 SELECT
-    M.Movimiento_ID AS MovimientoId,
-    M.Dia,
-    M.Concepto,
-    M.Tipo,
-    M.Cargo,
-    M.Abono,
-    M.Cuenta_Banco_ID AS CuentaBancoId
-FROM bancos.Movimientos AS M
-WHERE M.RFC = @Rfc
-  AND YEAR(M.Dia) = @Year
-  AND MONTH(M.Dia) = @Month
-  AND (@AccountId IS NULL OR M.Cuenta_Banco_ID = @AccountId)
-  AND M.Transaccion_ID IS NULL
-ORDER BY M.Dia, M.Movimiento_ID;";
+    Candidates.RowNumber,
+    Candidates.MovimientoId,
+    Candidates.Dia,
+    Candidates.Concepto,
+    Candidates.Tipo,
+    Candidates.Cargo,
+    Candidates.Abono,
+    Candidates.CuentaBancoId
+FROM (
+    SELECT
+        ROW_NUMBER() OVER (ORDER BY M.Dia, M.Movimiento_ID) AS RowNumber,
+        M.Movimiento_ID AS MovimientoId,
+        M.Dia,
+        M.Concepto,
+        M.Tipo,
+        M.Cargo,
+        M.Abono,
+        M.Cuenta_Banco_ID AS CuentaBancoId
+    FROM bancos.Movimientos AS M
+    WHERE M.RFC = @Rfc
+      AND M.Dia >= @StartDate
+      AND M.Dia < @EndDate
+      AND (@AccountId IS NULL OR M.Cuenta_Banco_ID = @AccountId)
+      AND M.Transaccion_ID IS NULL
+) AS Candidates;
+
+DECLARE @CurrentRow int = 1;
+DECLARE @MaxRow int;
+DECLARE @Processed int = 0;
+
+SELECT @MaxRow = COUNT(*)
+FROM @Candidates;
+
+DECLARE @MovimientoId bigint;
+DECLARE @Dia datetime2(7);
+DECLARE @Concepto nvarchar(max);
+DECLARE @Tipo varchar(10);
+DECLARE @Cargo decimal(18,2);
+DECLARE @Abono decimal(18,2);
+DECLARE @CuentaBancoId int;
+DECLARE @Monto decimal(18,2);
+DECLARE @TransaccionId int;
+
+WHILE @CurrentRow <= @MaxRow
+BEGIN
+    SELECT
+        @MovimientoId = MovimientoId,
+        @Dia = Dia,
+        @Concepto = Concepto,
+        @Tipo = Tipo,
+        @Cargo = Cargo,
+        @Abono = Abono,
+        @CuentaBancoId = CuentaBancoId
+    FROM @Candidates
+    WHERE RowNumber = @CurrentRow;
+
+    SET @Monto = CASE
+        WHEN UPPER(ISNULL(@Tipo, '')) = 'I' THEN ISNULL(@Cargo, 0)
+        ELSE ISNULL(@Abono, 0)
+    END;
+    SET @TransaccionId = NULL;
+
+    EXEC dbo.Crear_Transaccion_Contable_Banco
+        @RFC = @Rfc,
+        @Fecha = @Dia,
+        @Concepto = @Concepto,
+        @Tipo = @Tipo,
+        @Monto = @Monto,
+        @CuentaBancoID = @CuentaBancoId,
+        @TransaccionID = @TransaccionId OUTPUT;
+
+    IF @TransaccionId IS NOT NULL AND @TransaccionId > 0
+    BEGIN
+        UPDATE bancos.Movimientos
+        SET Transaccion_ID = @TransaccionId
+        WHERE Movimiento_ID = @MovimientoId
+          AND Transaccion_ID IS NULL;
+
+        SET @Processed += @@ROWCOUNT;
+    END
+
+    SET @CurrentRow += 1;
+END
+
+SELECT @Processed;";
 
     var parameters = new
     {
       Rfc = rfc,
-      Year = year,
-      Month = month,
+      StartDate = startDate,
+      EndDate = endDate,
       AccountId = accountId
     };
 
     using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-    var candidates = await connection
-        .QueryAsync<AutoPolicyCandidate>(selectSql, parameters)
-        .ConfigureAwait(false);
-
-    cancellationToken.ThrowIfCancellationRequested();
-
-    var processed = 0;
-
-    foreach (var candidate in candidates)
-    {
-      cancellationToken.ThrowIfCancellationRequested();
-
-      var monto = string.Equals(candidate.Tipo, "I", StringComparison.OrdinalIgnoreCase)
-        ? candidate.Cargo
-        : candidate.Abono;
-
-      var spParameters = new DynamicParameters();
-      spParameters.Add("@RFC", rfc, DbType.String);
-      spParameters.Add("@Fecha", candidate.Dia, DbType.DateTime2);
-      spParameters.Add("@Concepto", candidate.Concepto, DbType.String);
-      spParameters.Add("@Tipo", candidate.Tipo, DbType.StringFixedLength, size: 1);
-      spParameters.Add("@Monto", monto, DbType.Decimal);
-      spParameters.Add("@CuentaBancoID", candidate.CuentaBancoId, DbType.Int32);
-      spParameters.Add("@TransaccionID", dbType: DbType.Int32, direction: ParameterDirection.Output);
-
-      await connection.ExecuteAsync(
-              "dbo.Crear_Transaccion_Contable_Banco",
-              spParameters,
-              commandType: CommandType.StoredProcedure)
-          .ConfigureAwait(false);
-
-      var transactionId = spParameters.Get<int?>("@TransaccionID");
-
-      if (transactionId.HasValue && transactionId.Value > 0)
-      {
-        await connection.ExecuteAsync(
-                "UPDATE bancos.Movimientos SET Transaccion_ID = @TransaccionId WHERE Movimiento_ID = @MovimientoId;",
-                new { TransaccionId = transactionId.Value, MovimientoId = candidate.MovimientoId })
-            .ConfigureAwait(false);
-
-        processed++;
-      }
-    }
+    var processed = await connection.QuerySingleAsync<int>(
+        new CommandDefinition(batchSql, parameters, cancellationToken: cancellationToken, commandTimeout: 120))
+      .ConfigureAwait(false);
 
     return processed;
+  }
+
+  public async Task<int> AlignTransactionsToBankMovementsAsync(
+      string rfc,
+      int year,
+      int month,
+      int accountId,
+      CancellationToken cancellationToken = default)
+  {
+    if (string.IsNullOrWhiteSpace(rfc))
+    {
+      return 0;
+    }
+
+    if (accountId <= 0)
+    {
+      throw new ArgumentOutOfRangeException(nameof(accountId));
+    }
+
+    var (startDate, endDate) = BuildMonthRange(year, month);
+
+    const string sql = @"
+SET NOCOUNT ON;
+
+;WITH LinkedMovements AS
+(
+    SELECT
+        M.Transaccion_ID AS TransaccionId,
+        CAST(M.Dia AS date) AS BankDate,
+        COALESCE(
+            M.Secuencia_Clave,
+            CAST(
+                CONVERT(char(8), M.Dia, 112)
+                + RIGHT(
+                    '0000' + CAST(
+                        COALESCE(
+                            M.Secuencia_Diaria,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY M.Dia
+                                ORDER BY M.Movimiento_ID
+                            )
+                        ) AS varchar(10)
+                    ),
+                    4
+                )
+            AS bigint)
+        ) AS BankOrdenBalance,
+        ROW_NUMBER() OVER (
+            PARTITION BY M.Transaccion_ID
+            ORDER BY
+                COALESCE(M.Secuencia_Clave, CAST(CONVERT(char(8), M.Dia, 112) + '0000' AS bigint)),
+                M.Movimiento_ID
+        ) AS MovementRank
+    FROM bancos.Movimientos AS M
+    INNER JOIN dbo.Transacciones AS T
+        ON T.ID = M.Transaccion_ID
+       AND T.RFC = @Rfc
+    WHERE M.RFC = @Rfc
+      AND M.Cuenta_Banco_ID = @AccountId
+      AND M.Dia >= @StartDate
+      AND M.Dia < @EndDate
+      AND M.Transaccion_ID IS NOT NULL
+),
+Alignment AS
+(
+    SELECT
+        TransaccionId,
+        BankDate,
+        BankOrdenBalance
+    FROM LinkedMovements
+    WHERE MovementRank = 1
+)
+UPDATE T
+SET
+    T.Fecha = CAST(A.BankDate AS datetime),
+    T.OrdenBalance = A.BankOrdenBalance
+FROM dbo.Transacciones AS T
+INNER JOIN Alignment AS A
+    ON A.TransaccionId = T.ID
+WHERE T.RFC = @Rfc
+  AND (
+      T.Fecha <> CAST(A.BankDate AS datetime)
+      OR T.OrdenBalance <> A.BankOrdenBalance
+  );
+
+SELECT @@ROWCOUNT;";
+
+    var parameters = new
+    {
+      Rfc = rfc,
+      StartDate = startDate,
+      EndDate = endDate,
+      AccountId = accountId
+    };
+
+    using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+    var aligned = await connection.QuerySingleAsync<int>(
+        new CommandDefinition(sql, parameters, cancellationToken: cancellationToken, commandTimeout: 120))
+      .ConfigureAwait(false);
+
+    return aligned;
   }
 
   public async Task UnlinkMovementAsync(
@@ -580,21 +738,16 @@ WHERE Movimiento_ID = @MovimientoId;";
       int accountId,
       CancellationToken cancellationToken)
   {
-    var sql = AccountSelectSql + "WHERE Cuenta_Banco_ID = @CuentaBancoId;";
+    var sql = AccountSelectSql + "WHERE cb.Cuenta_Banco_ID = @CuentaBancoId;";
     var account = await connection.QuerySingleOrDefaultAsync<BankAccountDto>(sql, new { CuentaBancoId = accountId })
         .ConfigureAwait(false);
     cancellationToken.ThrowIfCancellationRequested();
     return account;
   }
 
-  private sealed record AutoPolicyCandidate
+  private static (DateTime StartDate, DateTime EndDate) BuildMonthRange(int year, int month)
   {
-    public long MovimientoId { get; init; }
-    public DateTime Dia { get; init; }
-    public string Concepto { get; init; } = string.Empty;
-    public string Tipo { get; init; } = string.Empty;
-    public decimal Cargo { get; init; }
-    public decimal Abono { get; init; }
-    public int CuentaBancoId { get; init; }
+    var startDate = new DateTime(year, month, 1);
+    return (startDate, startDate.AddMonths(1));
   }
 }

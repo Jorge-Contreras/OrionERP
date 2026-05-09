@@ -94,9 +94,25 @@
   --reservacion-accent: var(--orion-color-danger);
 }
 
+.reservacion-section-cfdi {
+  --reservacion-surface: #eef9f4;
+  --reservacion-accent: #1f7a59;
+}
+
 .reservacion-section-archivos {
   --reservacion-surface: #eef7f6;
   --reservacion-accent: var(--orion-color-primary-soft);
+}
+
+.reservacion-cfdi-panel {
+  border: 1px solid rgba(15, 45, 78, 0.08);
+  border-radius: 0.95rem;
+  padding: 0.95rem;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.reservacion-cfdi-panel h6 {
+  font-weight: 700;
 }
 
 .reservacion-picker-panel {

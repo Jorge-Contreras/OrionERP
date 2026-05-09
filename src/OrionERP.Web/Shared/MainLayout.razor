@@ -6,7 +6,7 @@
 
 <div class="@AppShellCssClass">
     <div id="layout-nav-sidebar" class="sidebar app-shell__sidebar">
-        <NavMenu />
+        <NavMenu OnMenuItemSelected="HideDesktopNavMenu" />
     </div>
 
     <main class="app-shell__main">
@@ -45,7 +45,7 @@
 
 @code {
     [CascadingParameter] private ErrorBoundary? _errorBoundary { get; set; }
-    private bool _isDesktopNavVisible = true;
+    private bool _isDesktopNavVisible;
 
     private string AppShellCssClass => _isDesktopNavVisible ? "page app-shell" : "page app-shell app-shell--nav-hidden";
 
@@ -63,5 +63,10 @@
     private void ToggleDesktopNavMenu()
     {
         _isDesktopNavVisible = !_isDesktopNavVisible;
+    }
+
+    private void HideDesktopNavMenu()
+    {
+        _isDesktopNavVisible = false;
     }
 }

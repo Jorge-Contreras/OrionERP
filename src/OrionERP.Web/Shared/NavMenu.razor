@@ -86,7 +86,7 @@
                                  href="@item.Href"
                                  Match="@item.Match"
                                  title="@item.Title"
-                                 @onclick="CloseNavMenu">
+                                 @onclick="CloseNavMenuAfterSelection">
                             <span class="nav-quick__icon">
                                 <span class="oi @item.Icon" aria-hidden="true"></span>
                             </span>
@@ -139,7 +139,7 @@
                                          href="@item.Href"
                                          Match="@item.Match"
                                          title="@item.Title"
-                                         @onclick="CloseNavMenu">
+                                         @onclick="CloseNavMenuAfterSelection">
                                     <span class="nav-link__icon">
                                         <span class="oi @item.Icon" aria-hidden="true"></span>
                                     </span>
@@ -180,7 +180,7 @@
                         <NavLink class="nav-link nav-link--rich"
                                  href="/admin/seguridad"
                                  title="Portal de seguridad"
-                                 @onclick="CloseNavMenu">
+                                 @onclick="CloseNavMenuAfterSelection">
                             <span class="nav-link__icon">
                                 <span class="oi oi-lock-locked" aria-hidden="true"></span>
                             </span>
@@ -236,6 +236,16 @@
                 new("/reservaciones/calendario", "Calendario", "Vista visual para planeacion, huecos y conflictos.", "oi-grid-three-up", "Calendario de reservaciones", NavLinkMatch.Prefix, false, "Vista", "calendario", "ocupacion", "programacion")
             }),
         new(
+            "Operacion",
+            "Ordenes",
+            "Trabajo operativo, limpieza, mantenimiento y evidencia movil.",
+            "oi-task",
+            new List<NavEntryDefinition>
+            {
+                new("/ordenes-trabajo", "Ordenes OT", "Dashboard, asignacion y ejecucion de ordenes de trabajo.", "oi-task", "Ordenes de trabajo", NavLinkMatch.Prefix, true, "OT", "ordenes", "trabajo", "limpieza", "mantenimiento", "actividades"),
+                new("/ordenes-trabajo/plantillas", "Plantillas OT", "Plantillas versionadas, pasos y mapeo por suite.", "oi-list-rich", "Plantillas de ordenes de trabajo", NavLinkMatch.Prefix, false, "Setup", "plantillas", "ruta critica", "pasos", "limpieza")
+            }),
+        new(
             "Inventario",
             "Logistica",
             "c",
@@ -244,6 +254,7 @@
             {
                 new("/logistica/materiales", "Materiales", "Catalogo base para insumos, productos y control de existencias.", "oi-box", "Materiales", NavLinkMatch.Prefix, true, "Stock", "materiales", "inventario", "productos"),
                 new("/logistica/proveedores", "Proveedores", "Relacion comercial y abastecimiento por proveedor.", "oi-briefcase", "Proveedores", NavLinkMatch.Prefix, false, "Supply", "proveedores", "compras", "abasto"),
+                new("/logistica/compras", "Compras", "Ordenes de compra, recepciones y planeacion por ubicacion.", "oi-cart", "Compras", NavLinkMatch.Prefix, true, "PO", "compras", "orden de compra", "recepciones", "purchase order"),
                 new("/logistica/ubicaciones", "Ubicaciones", "Existencia por almacen, rack, sucursal o punto de consumo.", "oi-map-marker", "Ubicaciones e inventario", NavLinkMatch.Prefix, false, "Mapa", "ubicaciones", "almacen", "inventario"),
                 new("/logistica/conteos", "Conteos", "Conteos fisicos, ajustes y validacion de diferencias.", "oi-task", "Conteos fisicos", NavLinkMatch.Prefix, false, "Conteo", "conteos", "inventario", "fisico")
             }),
@@ -262,6 +273,8 @@
 
     private bool collapseNavMenu = true;
     private string searchText = string.Empty;
+
+    [Parameter] public EventCallback OnMenuItemSelected { get; set; }
 
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
     private bool HasSearch => !string.IsNullOrWhiteSpace(searchText);
@@ -370,6 +383,12 @@
     private void CloseNavMenu()
     {
         collapseNavMenu = true;
+    }
+
+    private async Task CloseNavMenuAfterSelection()
+    {
+        CloseNavMenu();
+        await OnMenuItemSelected.InvokeAsync();
     }
 
     private void ClearSearch()

@@ -53,7 +53,6 @@ public sealed class PhysicalCountLineDto
   public DateTime? CapturedAt { get; set; }
   public string? CapturedBy { get; set; }
   public int AttachmentCount { get; set; }
-  public bool RequiresEvidence { get; set; }
   public IReadOnlyList<PhysicalCountAttachmentDto> Attachments { get; set; } = Array.Empty<PhysicalCountAttachmentDto>();
 }
 

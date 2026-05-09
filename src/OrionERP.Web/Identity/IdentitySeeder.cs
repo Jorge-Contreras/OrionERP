@@ -10,7 +10,15 @@ namespace OrionERP.Web.Identity
         {
             var roleMgr = sp.GetRequiredService<RoleManager<IdentityRole>>();
             var userMgr = sp.GetRequiredService<UserManager<ApplicationUser>>();
-            string[] roles = ["Administrador", "Operador", "Lectura"];
+            string[] roles =
+            [
+                "Administrador",
+                "Operador",
+                "Lectura",
+                "OrdenTrabajoAdmin",
+                "OrdenTrabajoSupervisor",
+                "OrdenTrabajoOperador"
+            ];
 
             foreach (var r in roles)
             {

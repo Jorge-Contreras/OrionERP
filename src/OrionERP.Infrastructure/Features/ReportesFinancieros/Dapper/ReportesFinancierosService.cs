@@ -5,6 +5,7 @@ using OrionERP.Application.Features.ReportesFinancieros.Models;
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Data.Common;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -25,7 +26,7 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
             string? rfc)
         {
             using var connection = _connectionFactory.Create();
-            connection.Open();
+            await OpenConnectionAsync(connection).ConfigureAwait(false);
 
             var parameters = new { Anio = anio, Mes = mes, Rfc = rfc };
 
@@ -33,7 +34,7 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
                 "reporteFinanciero.Rpt_BalanzaComprobacion",
                 parameters,
                 commandType: CommandType.StoredProcedure,
-                commandTimeout: 30);
+                commandTimeout: 30).ConfigureAwait(false);
 
             return result.AsList();
         }
@@ -44,7 +45,7 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
             string? rfc)
         {
             using var connection = _connectionFactory.Create();
-            connection.Open();
+            await OpenConnectionAsync(connection).ConfigureAwait(false);
 
             var parameters = new { startDate, endDate, RFC = rfc };
 
@@ -52,7 +53,7 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
                 "reporteFinanciero.ESTADO_PERDIDAS_GANANCIAS",
                 parameters,
                 commandType: CommandType.StoredProcedure,
-                commandTimeout: 30);
+                commandTimeout: 30).ConfigureAwait(false);
 
             return result.AsList();
         }
@@ -60,92 +61,103 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
         public async Task<HojaTrabajoViewModel> GetHojaTrabajoAsync(int anio, string rfc)
         {
             using var connection = _connectionFactory.Create();
-            connection.Open();
+            await OpenConnectionAsync(connection).ConfigureAwait(false);
 
             var parameters = new { Anio = anio, Rfc = rfc };
             using var multi = await connection.QueryMultipleAsync(
                 "contabilidad.Rpt_PapelTrabajo",
                 parameters,
                 commandType: CommandType.StoredProcedure,
-                commandTimeout: 30);
-
-            var cfdiRows = (await multi.ReadAsync<HojaTrabajoLongRowDto>()).ToList();
-            var contabilidadRows = (await multi.ReadAsync<HojaTrabajoLongRowDto>()).ToList();
-            var acumuladosRows = (await multi.ReadAsync<HojaTrabajoLongRowDto>()).ToList();
-            var complementosRows = (await multi.ReadAsync<HojaTrabajoLongRowDto>()).ToList();
-            var tipoERows = (await multi.ReadAsync<HojaTrabajoLongRowDto>()).ToList();
-            var tipoNRows = (await multi.ReadAsync<HojaTrabajoLongRowDto>()).ToList();
+                commandTimeout: 30).ConfigureAwait(false);
 
             return new HojaTrabajoViewModel
             {
-                Cfdi = PivotRows(cfdiRows),
-                Complementos = PivotRows(complementosRows),
-                Contabilidad = PivotRows(contabilidadRows),
-                Acumulados = PivotRows(acumuladosRows),
-                TipoE = PivotRows(tipoERows),
-                TipoN = PivotRows(tipoNRows)
+                Cfdi = PivotRows(await multi.ReadAsync<HojaTrabajoLongRowDto>().ConfigureAwait(false)),
+                Complementos = PivotRows(await multi.ReadAsync<HojaTrabajoLongRowDto>().ConfigureAwait(false)),
+                Contabilidad = PivotRows(await multi.ReadAsync<HojaTrabajoLongRowDto>().ConfigureAwait(false)),
+                Acumulados = PivotRows(await multi.ReadAsync<HojaTrabajoLongRowDto>().ConfigureAwait(false)),
+                TipoE = PivotRows(await multi.ReadAsync<HojaTrabajoLongRowDto>().ConfigureAwait(false)),
+                TipoN = PivotRows(await multi.ReadAsync<HojaTrabajoLongRowDto>().ConfigureAwait(false))
             };
         }
 
         private static List<HojaTrabajoTablaDto> PivotRows(IEnumerable<HojaTrabajoLongRowDto> rows)
         {
-            return rows
-                .GroupBy(r => new { r.Descripcion, r.Orden })
-                .Select(group =>
+            var groupedRows = new Dictionary<(string? Descripcion, int Orden), HojaTrabajoTablaDto>();
+
+            foreach (var row in rows)
+            {
+                var key = (row.Descripcion, row.Orden);
+                if (!groupedRows.TryGetValue(key, out var dto))
                 {
-                    var dto = new HojaTrabajoTablaDto
+                    dto = new HojaTrabajoTablaDto
                     {
-                        Descripcion = group.Key.Descripcion,
-                        Orden = group.Key.Orden,
+                        Descripcion = row.Descripcion,
+                        Orden = row.Orden,
                     };
+                    groupedRows.Add(key, dto);
+                }
 
-                    foreach (var row in group)
-                    {
-                        switch (row.Mes)
-                        {
-                            case 1:
-                                dto.ENERO = row.Monto;
-                                break;
-                            case 2:
-                                dto.FEBRERO = row.Monto;
-                                break;
-                            case 3:
-                                dto.MARZO = row.Monto;
-                                break;
-                            case 4:
-                                dto.ABRIL = row.Monto;
-                                break;
-                            case 5:
-                                dto.MAYO = row.Monto;
-                                break;
-                            case 6:
-                                dto.JUNIO = row.Monto;
-                                break;
-                            case 7:
-                                dto.JULIO = row.Monto;
-                                break;
-                            case 8:
-                                dto.AGOSTO = row.Monto;
-                                break;
-                            case 9:
-                                dto.SEPTIEMBRE = row.Monto;
-                                break;
-                            case 10:
-                                dto.OCTUBRE = row.Monto;
-                                break;
-                            case 11:
-                                dto.NOVIEMBRE = row.Monto;
-                                break;
-                            case 12:
-                                dto.DICIEMBRE = row.Monto;
-                                break;
-                        }
-                    }
+                AssignMonto(dto, row.Mes, row.Monto);
+            }
 
-                    return dto;
-                })
+            return groupedRows.Values
                 .OrderBy(dto => dto.Orden)
                 .ToList();
+        }
+
+        private static async Task OpenConnectionAsync(IDbConnection connection)
+        {
+            if (connection is DbConnection dbConnection)
+            {
+                await dbConnection.OpenAsync().ConfigureAwait(false);
+                return;
+            }
+
+            connection.Open();
+        }
+
+        private static void AssignMonto(HojaTrabajoTablaDto dto, int mes, decimal monto)
+        {
+            switch (mes)
+            {
+                case 1:
+                    dto.ENERO = monto;
+                    break;
+                case 2:
+                    dto.FEBRERO = monto;
+                    break;
+                case 3:
+                    dto.MARZO = monto;
+                    break;
+                case 4:
+                    dto.ABRIL = monto;
+                    break;
+                case 5:
+                    dto.MAYO = monto;
+                    break;
+                case 6:
+                    dto.JUNIO = monto;
+                    break;
+                case 7:
+                    dto.JULIO = monto;
+                    break;
+                case 8:
+                    dto.AGOSTO = monto;
+                    break;
+                case 9:
+                    dto.SEPTIEMBRE = monto;
+                    break;
+                case 10:
+                    dto.OCTUBRE = monto;
+                    break;
+                case 11:
+                    dto.NOVIEMBRE = monto;
+                    break;
+                case 12:
+                    dto.DICIEMBRE = monto;
+                    break;
+            }
         }
     }
 }

@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using System.Text;
 using Dapper;
 using Microsoft.Data.SqlClient;
@@ -24,6 +25,8 @@ public sealed class MaterialService : IMaterialService
   public async Task<IReadOnlyList<MaterialListItemDto>> GetMaterialsAsync(MaterialFilter filter, CancellationToken ct = default)
   {
     filter ??= new MaterialFilter();
+    var skip = Math.Max(filter.Skip, 0);
+    var take = Math.Max(filter.Take, 0);
 
     var sql = new StringBuilder(
       """
@@ -33,6 +36,7 @@ public sealed class MaterialService : IMaterialService
               SUM(sb.Quantity) AS TotalQuantity,
               COUNT(*) AS LocationCount
           FROM logistica.StockBalance sb
+          WHERE ISNULL(sb.IsRemoved, 0) = 0
           GROUP BY sb.MaterialId
       )
       SELECT
@@ -98,7 +102,19 @@ public sealed class MaterialService : IMaterialService
       sql.AppendLine(filter.HasImage.Value ? " AND m.PrimaryImage IS NOT NULL" : " AND m.PrimaryImage IS NULL");
     }
 
-    sql.AppendLine("ORDER BY m.MaterialCode, m.[Description], m.Id;");
+    sql.AppendLine("ORDER BY m.MaterialCode, m.[Description], m.Id");
+
+    if (take > 0)
+    {
+      sql.AppendLine("OFFSET @Skip ROWS");
+      sql.AppendLine("FETCH NEXT @Take ROWS ONLY;");
+      parameters.Add("@Skip", skip, DbType.Int32);
+      parameters.Add("@Take", take, DbType.Int32);
+    }
+    else
+    {
+      sql.AppendLine(";");
+    }
 
     using var conn = CreateConnection();
     var rows = await conn.QueryAsync<MaterialListItemDto>(
@@ -117,8 +133,10 @@ public sealed class MaterialService : IMaterialService
           m.LegacyMaterialId,
           m.[Description],
           m.BaseUnitId,
+          baseU.UnitName AS BaseUnitName,
           CAST(m.PurchaseQuantity AS decimal(18,4)) AS PurchaseQuantity,
           m.PurchaseUnitId,
+          purchaseU.UnitName AS PurchaseUnitName,
           m.BusinessPartnerId,
           CAST(m.Price AS decimal(18,4)) AS Price,
           m.CreatedDate,
@@ -139,6 +157,10 @@ public sealed class MaterialService : IMaterialService
           m.PrimaryImageFileName,
           m.PrimaryImageContentType
       FROM logistica.Material m
+      LEFT JOIN logistica.UnitOfMeasure baseU
+        ON baseU.Id = m.BaseUnitId
+      LEFT JOIN logistica.UnitOfMeasure purchaseU
+        ON purchaseU.Id = m.PurchaseUnitId
       WHERE m.Id = @MaterialId;
       """;
 
@@ -220,18 +242,12 @@ public sealed class MaterialService : IMaterialService
       """
       SELECT
           m.Id,
-          CASE
-              WHEN m.PrimaryImageThumbnail IS NOT NULL THEN CONCAT(m.MaterialCode, '-thumbnail.bin')
-              ELSE COALESCE(m.PrimaryImageFileName, CONCAT(m.MaterialCode, '.bin'))
-          END AS FileName,
-          CASE
-              WHEN m.PrimaryImageThumbnail IS NOT NULL THEN COALESCE(m.PrimaryImageThumbnailContentType, 'image/jpeg')
-              ELSE m.PrimaryImageContentType
-          END AS ContentType,
-          COALESCE(m.PrimaryImageThumbnail, m.PrimaryImage) AS Bytes
+          COALESCE(NULLIF(m.PrimaryImageFileName, ''), CONCAT(m.MaterialCode, '-thumbnail.jpg')) AS FileName,
+          COALESCE(m.PrimaryImageThumbnailContentType, 'image/jpeg') AS ContentType,
+          m.PrimaryImageThumbnail AS Bytes
       FROM logistica.Material m
       WHERE m.Id = @MaterialId
-        AND COALESCE(m.PrimaryImageThumbnail, m.PrimaryImage) IS NOT NULL;
+        AND m.PrimaryImageThumbnail IS NOT NULL;
       """;
 
     using var conn = CreateConnection();
@@ -263,18 +279,12 @@ public sealed class MaterialService : IMaterialService
       """
       SELECT
           m.Id,
-          CASE
-              WHEN m.PrimaryImageThumbnail IS NOT NULL THEN CONCAT(m.MaterialCode, '-thumbnail.bin')
-              ELSE COALESCE(m.PrimaryImageFileName, CONCAT(m.MaterialCode, '.bin'))
-          END AS FileName,
-          CASE
-              WHEN m.PrimaryImageThumbnail IS NOT NULL THEN COALESCE(m.PrimaryImageThumbnailContentType, 'image/jpeg')
-              ELSE m.PrimaryImageContentType
-          END AS ContentType,
-          COALESCE(m.PrimaryImageThumbnail, m.PrimaryImage) AS Bytes
+          COALESCE(NULLIF(m.PrimaryImageFileName, ''), CONCAT(m.MaterialCode, '-thumbnail.jpg')) AS FileName,
+          COALESCE(m.PrimaryImageThumbnailContentType, 'image/jpeg') AS ContentType,
+          m.PrimaryImageThumbnail AS Bytes
       FROM logistica.Material m
       WHERE m.Id IN @MaterialIds
-        AND COALESCE(m.PrimaryImageThumbnail, m.PrimaryImage) IS NOT NULL;
+        AND m.PrimaryImageThumbnail IS NOT NULL;
       """;
 
     using var conn = CreateConnection();
@@ -304,7 +314,7 @@ public sealed class MaterialService : IMaterialService
 
     using var conn = CreateConnection();
     await conn.OpenAsync(ct);
-    using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+    using var tx = await conn.BeginTransactionAsync(ct);
 
     try
     {
@@ -359,6 +369,7 @@ public sealed class MaterialService : IMaterialService
             """);
         }
 
+        sql.AppendLine();
         sql.AppendLine("WHERE Id = @Id;");
 
         await conn.ExecuteAsync(
@@ -521,9 +532,9 @@ public sealed class MaterialService : IMaterialService
     }
   }
 
-  private SqlConnection CreateConnection()
-    => _connectionFactory.Create() as SqlConnection
-      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una SqlConnection.");
+  private DbConnection CreateConnection()
+    => _connectionFactory.Create() as DbConnection
+      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
 
   private static string? NullIfWhiteSpace(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

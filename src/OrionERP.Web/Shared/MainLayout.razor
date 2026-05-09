@@ -6,7 +6,7 @@
 
 <div class="@AppShellCssClass">
     <div id="layout-nav-sidebar" class="sidebar app-shell__sidebar">
-        <NavMenu />
+        <NavMenu OnMenuItemSelected="HideDesktopNavMenu" />
     </div>
 
     <main class="app-shell__main">
@@ -63,5 +63,10 @@
     private void ToggleDesktopNavMenu()
     {
         _isDesktopNavVisible = !_isDesktopNavVisible;
+    }
+
+    private void HideDesktopNavMenu()
+    {
+        _isDesktopNavVisible = false;
     }
 }

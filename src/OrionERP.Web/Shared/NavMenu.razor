@@ -86,7 +86,7 @@
                                  href="@item.Href"
                                  Match="@item.Match"
                                  title="@item.Title"
-                                 @onclick="CloseNavMenu">
+                                 @onclick="CloseNavMenuAfterSelection">
                             <span class="nav-quick__icon">
                                 <span class="oi @item.Icon" aria-hidden="true"></span>
                             </span>
@@ -139,7 +139,7 @@
                                          href="@item.Href"
                                          Match="@item.Match"
                                          title="@item.Title"
-                                         @onclick="CloseNavMenu">
+                                         @onclick="CloseNavMenuAfterSelection">
                                     <span class="nav-link__icon">
                                         <span class="oi @item.Icon" aria-hidden="true"></span>
                                     </span>
@@ -180,7 +180,7 @@
                         <NavLink class="nav-link nav-link--rich"
                                  href="/admin/seguridad"
                                  title="Portal de seguridad"
-                                 @onclick="CloseNavMenu">
+                                 @onclick="CloseNavMenuAfterSelection">
                             <span class="nav-link__icon">
                                 <span class="oi oi-lock-locked" aria-hidden="true"></span>
                             </span>
@@ -273,6 +273,8 @@
 
     private bool collapseNavMenu = true;
     private string searchText = string.Empty;
+
+    [Parameter] public EventCallback OnMenuItemSelected { get; set; }
 
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
     private bool HasSearch => !string.IsNullOrWhiteSpace(searchText);
@@ -381,6 +383,12 @@
     private void CloseNavMenu()
     {
         collapseNavMenu = true;
+    }
+
+    private async Task CloseNavMenuAfterSelection()
+    {
+        CloseNavMenu();
+        await OnMenuItemSelected.InvokeAsync();
     }
 
     private void ClearSearch()

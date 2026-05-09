@@ -35,6 +35,15 @@
     max-width: 28ch;
 }
 
+.security-header__date {
+    display: block;
+    color: var(--orion-color-muted, #6c757d);
+    font-size: 0.8125rem;
+    line-height: 1.2;
+    margin-top: 0.125rem;
+    white-space: nowrap;
+}
+
 .security-header__logout {
     white-space: nowrap;
     font-weight: 600;

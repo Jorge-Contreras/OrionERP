@@ -221,6 +221,41 @@ WHERE TD.Transaccion_ID = @Id;";
     return data;
   }
 
+  public async Task<TransaccionCfdiLinkingWorkspaceDto> GetTransaccionCfdiLinkingWorkspaceAsync(
+      int transaccionId,
+      TransaccionCfdiSearchRequest request,
+      CancellationToken ct = default)
+  {
+    if (request is null)
+      throw new ArgumentNullException(nameof(request));
+
+    var linked = await GetLinkedCfdiSummaryAsync(transaccionId, ct);
+
+    var parameters = new DynamicParameters();
+    parameters.Add("@Transaccion_ID", transaccionId);
+    parameters.Add("@Monto", request.Monto);
+    parameters.Add("@Concepto", string.IsNullOrWhiteSpace(request.Concepto) ? null : request.Concepto);
+    parameters.Add("@Comprobante_ID", request.ComprobanteId);
+    parameters.Add("@Tipo", string.IsNullOrWhiteSpace(request.Tipo) ? null : request.Tipo);
+    parameters.Add("@Renglones", request.Renglones <= 0 ? 50 : request.Renglones);
+
+    using var conn = new SqlConnection(_cs);
+    using var multi = await conn.QueryMultipleAsync(
+        new CommandDefinition(
+            "cfdi.Transaccion_CFDI_Linking_Candidates",
+            parameters,
+            commandType: CommandType.StoredProcedure,
+            cancellationToken: ct));
+
+    var data = new TransaccionCfdiLinkingWorkspaceDto();
+    data.Linked.Comprobantes.AddRange(linked.Comprobantes);
+    data.Linked.ComplementosPago.AddRange(linked.ComplementosPago);
+    data.RegularCandidates.AddRange((await multi.ReadAsync<TransaccionRegularCfdiLinkCandidateDto>()).AsList());
+    data.Pago20Candidates.AddRange((await multi.ReadAsync<TransaccionPago20LinkCandidateDto>()).AsList());
+
+    return data;
+  }
+
   public async Task<CfdiPolizaLinkingWorkspaceDto> GetCfdiPolizaLinkingWorkspaceAsync(
       int comprobanteId,
       string? rfc,

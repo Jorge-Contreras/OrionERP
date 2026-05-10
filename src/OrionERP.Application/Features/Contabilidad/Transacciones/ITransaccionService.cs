@@ -38,6 +38,7 @@ public interface ITransaccionService
   Task<IReadOnlyList<TransaccionCfdiCandidateDto>> GetCfdiCandidatesAsync(TransaccionCfdiSearchRequest request, CancellationToken ct = default);
   Task<IReadOnlyList<long>> GetLinkedCfdiIdsAsync(int transaccionId, CancellationToken ct = default);
   Task<TransaccionCfdiLinkedDataDto> GetLinkedCfdiSummaryAsync(int transaccionId, CancellationToken ct = default);
+  Task<TransaccionCfdiLinkingWorkspaceDto> GetTransaccionCfdiLinkingWorkspaceAsync(int transaccionId, TransaccionCfdiSearchRequest request, CancellationToken ct = default);
   Task<CfdiPolizaLinkingWorkspaceDto> GetCfdiPolizaLinkingWorkspaceAsync(int comprobanteId, string? rfc, TransaccionFilter filter, CancellationToken ct = default);
   Task<Pago20PolizaLinkingWorkspaceDto> GetPago20PolizaLinkingWorkspaceAsync(int doctoRelacionadoId, string? rfc, TransaccionFilter filter, CancellationToken ct = default);
   Task<TransaccionCommandResult> LinkCfdiAsync(TransaccionCfdiLinkRequest request, CancellationToken ct = default);

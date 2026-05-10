@@ -1,6 +1,5 @@
 @page "/cfdi/LigarComplemento_Poliza/{DoctoRelacionado_Id:int}"
 @using System.Linq
-@using OrionERP.Application.Features.Cfdi.DeclaracionPrevia
 @using OrionERP.Application.Features.Contabilidad.Transacciones
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
@@ -20,268 +19,315 @@ else
     <div class="alert alert-danger" role="alert">@InlineError</div>
   }
 
-  @if (DoctoRelacionado is null)
+  @if (Summary is null)
   {
     <div class="alert alert-warning">Complemento de pago no encontrado.</div>
   }
   else
   {
-    <div class="card shadow-sm mb-3">
-      <div class="card-header">
-        <h5 class="mb-0">Complemento @DoctoRelacionado.DoctoRelacionado_Id</h5>
-      </div>
-      <div class="card-body">
-        <div class="row g-3">
-          <div class="col-md-4">
-            <label class="form-label fw-bold">Emisor RFC</label>
-            <div class="form-control-plaintext">@DoctoRelacionado.EmisorRfc</div>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label fw-bold">Receptor RFC</label>
-            <div class="form-control-plaintext">@DoctoRelacionado.ReceptorRfc</div>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label fw-bold">UUID Docto Relacionado</label>
-            <div class="form-control-plaintext">@DoctoRelacionado.UUID_DoctoRelacionado</div>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-bold">Fecha Pago</label>
-            <div class="form-control-plaintext">@DoctoRelacionado.FechaPago?.ToString("yyyy-MM-dd")</div>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-bold">Forma de Pago</label>
-            <div class="form-control-plaintext">@DoctoRelacionado.FormaDePagoP</div>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-bold">Moneda</label>
-            <div class="form-control-plaintext">@DoctoRelacionado.MonedaP</div>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-bold">Monto Pago</label>
-            <div class="form-control-plaintext">@DoctoRelacionado.MontoPago.ToString("C")</div>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-bold">Folio</label>
-            <div class="form-control-plaintext">@DoctoRelacionado.Folio</div>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-bold">Parcialidad</label>
-            <div class="form-control-plaintext">@DoctoRelacionado.NumParcialidad</div>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-bold">Imp. Pagado</label>
-            <div class="form-control-plaintext">@DoctoRelacionado.ImpPagado.ToString("C")</div>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-bold">Imp. Saldo Insoluto</label>
-            <div class="form-control-plaintext">@DoctoRelacionado.ImpSaldoInsoluto.ToString("C")</div>
-          </div>
+    <section class="linking-workspace">
+      <div class="linking-header">
+        <div>
+          <div class="linking-kicker">Pago20 · Docto @Summary.DoctoRelacionadoId · @Summary.Direccion</div>
+          <h1>@Summary.ComprobanteUuid</h1>
+          <div class="linking-uuid">Documento relacionado: @Summary.UuidDoctoRelacionado</div>
+        </div>
+        <div class="linking-status-strip">
+          <span class="badge @GetStatusBadgeClass(Summary.TotalComplementoStatus)">Asignación @FormatStatus(Summary.TotalComplementoStatus)</span>
+          <span class="badge @GetStatusBadgeClass(Summary.IvaStatus)">Comp IVA @FormatStatus(Summary.IvaStatus)</span>
         </div>
       </div>
-    </div>
-  }
 
-  <div class="card shadow-sm mb-3">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <h5 class="mb-0">Pólizas Ligadas</h5>
-      <span class="text-muted small">@Polizas.Count póliza(s)</span>
-    </div>
-    <div class="card-body">
-      @if (IsPolizasLoading)
-      {
-        <div class="orion-loading" role="status" aria-live="polite">
-          <span class="orion-spinner" aria-hidden="true"></span>
-          <span class="orion-strong">Cargando pólizas...</span>
+      <div class="linking-metrics">
+        <div class="linking-metric">
+          <span>Imp. pagado</span>
+          <strong>@FormatCurrency(Summary.ImpPagado)</strong>
         </div>
-      }
-      else if (Polizas.Count == 0)
+        <div class="linking-metric">
+          <span>Asignado</span>
+          <strong>@FormatCurrency(Summary.AsignadoComplemento)</strong>
+        </div>
+        <div class="linking-metric @(Summary.Pendiente < 0 ? "is-danger" : string.Empty)">
+          <span>Pendiente</span>
+          <strong>@FormatCurrency(Summary.Pendiente)</strong>
+        </div>
+        <div class="linking-metric">
+          <span>Comp IVA</span>
+          <strong>@FormatCurrency(Summary.CompIva)</strong>
+        </div>
+        <div class="linking-metric">
+          <span>Monto pago</span>
+          <strong>@FormatCurrency(Summary.MontoPago)</strong>
+        </div>
+        <div class="linking-metric">
+          <span>Documentos</span>
+          <strong>@Summary.RelatedDocumentsCount</strong>
+        </div>
+      </div>
+
+      <div class="linking-detail-grid">
+        <div>
+          <span>Emisor</span>
+          <strong>@Summary.EmisorRfc</strong>
+        </div>
+        <div>
+          <span>Receptor</span>
+          <strong>@Summary.ReceptorRfc</strong>
+        </div>
+        <div>
+          <span>Fecha pago</span>
+          <strong>@Summary.FechaPago?.ToString("yyyy-MM-dd")</strong>
+        </div>
+        <div>
+          <span>Forma / Moneda</span>
+          <strong>@Summary.FormaDePagoP / @Summary.MonedaP</strong>
+        </div>
+      </div>
+    </section>
+
+    @if (Documentos.Count > 0)
+    {
+      <section class="linking-section">
+        <div class="linking-section-header">
+          <div>
+            <h2>Documentos relacionados</h2>
+            <p>Detalle Pago20 del complemento, separado de CFDI regular.</p>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle linking-table">
+            <thead>
+              <tr>
+                <th>Docto</th>
+                <th>UUID</th>
+                <th>Folio</th>
+                <th>Parcialidad</th>
+                <th>Moneda</th>
+                <th class="text-end">Imp. pagado</th>
+                <th class="text-end">Saldo insoluto</th>
+                <th class="text-end">Comp IVA</th>
+              </tr>
+            </thead>
+            <tbody>
+              @foreach (var docto in Documentos)
+              {
+                <tr class="@(docto.DoctoRelacionadoId == Summary.DoctoRelacionadoId ? "table-active" : string.Empty)">
+                  <td class="fw-semibold">@docto.DoctoRelacionadoId</td>
+                  <td class="linking-uuid">@docto.UuidDoctoRelacionado</td>
+                  <td>@docto.Folio</td>
+                  <td>@docto.NumParcialidad</td>
+                  <td>@docto.MonedaDr</td>
+                  <td class="text-end">@FormatCurrency(docto.ImpPagado)</td>
+                  <td class="text-end">@FormatCurrency(docto.ImpSaldoInsoluto)</td>
+                  <td class="text-end">@FormatCurrency(docto.CompIva)</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    }
+
+    <section class="linking-section">
+      <div class="linking-section-header">
+        <div>
+          <h2>Pólizas vinculadas</h2>
+          <p>@Polizas.Count póliza(s), @FormatCurrency(Summary.AsignadoComplemento) asignado.</p>
+        </div>
+      </div>
+
+      @if (Polizas.Count == 0)
       {
-        <div class="alert alert-secondary mb-0">No hay pólizas vinculadas a este complemento.</div>
+        <div class="linking-empty">No hay pólizas vinculadas a este complemento.</div>
       }
       else
       {
-        <table class="table table-striped mt-2">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Fecha</th>
-              <th>Concepto</th>
-              <th>Monto</th>
-              <th>Monto Asignado</th>
-              <th>Tipo de Póliza</th>
-              <th>Forma de Pago</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            @foreach (var poliza in Polizas)
-            {
-              <tr>
-                <td>@poliza.Id</td>
-                <td>@poliza.Fecha.ToShortDateString()</td>
-                <td>@poliza.Concepto</td>
-                <td>@poliza.Monto</td>
-                <td>@poliza.MontoAsignado</td>
-                <td>@poliza.TipoPoliza</td>
-                <td>@poliza.FormaPago</td>
-                <td>
-                  <a href="/contabilidad/transacciones/@poliza.Id" class="btn btn-sm btn-primary">Ver/Editar</a>
-                </td>
-              </tr>
-            }
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colspan="3"></td>
-              <td><strong>Total:</strong></td>
-              <td>@Polizas.Sum(p => p.MontoAsignado)</td>
-              <td colspan="2"></td>
-            </tr>
-          </tfoot>
-        </table>
-      }
-    </div>
-  </div>
-
-  <div class="d-flex justify-content-end align-items-center mb-3">
-    <button class="btn btn-primary"
-            disabled="@(!CanLigar || IsLinking)"
-            @onclick="LigarAsync">
-      @(IsLinking ? "Ligando..." : "Ligar")
-    </button>
-  </div>
-
-  <div class="card shadow-sm">
-    <div class="card-header">
-      <h5 class="mb-0">Transacciones</h5>
-    </div>
-    <div class="card-body">
-      <EditForm Model="Filter">
-        <div class="row">
-          <div class="col-md-3">
-            <div class="form-group">
-              <label for="year">Año</label>
-              <select id="year" class="form-control" @bind="Filter.Year">
-                <option value="">Todos</option>
-                @for (var year = 2035; year >= 2000; year--)
-                {
-                  <option value="@year">@year</option>
-                }
-              </select>
-            </div>
-          </div>
-          <div class="col-md-3">
-            <div class="form-group">
-              <label for="month">Mes</label>
-              <select id="month" class="form-control" @bind="Filter.Month">
-                <option value="">Todos</option>
-                <option value="1">Enero</option>
-                <option value="2">Febrero</option>
-                <option value="3">Marzo</option>
-                <option value="4">Abril</option>
-                <option value="5">Mayo</option>
-                <option value="6">Junio</option>
-                <option value="7">Julio</option>
-                <option value="8">Agosto</option>
-                <option value="9">Septiembre</option>
-                <option value="10">Octubre</option>
-                <option value="11">Noviembre</option>
-                <option value="12">Diciembre</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div class="row mt-3">
-          <div class="col-md-12 text-right">
-            <button type="button" class="btn btn-primary" @onclick="BuscarAsync" disabled="@IsTransaccionesLoading">Buscar</button>
-            <button type="button" class="btn btn-secondary" @onclick="LimpiarFiltrosAsync" disabled="@IsTransaccionesLoading">Limpiar</button>
-            <a href="/contabilidad/transacciones/new" class="btn btn-success">Nueva Transacción</a>
-          </div>
-        </div>
-
-        @if (IsTransaccionesLoading)
-        {
-          <p><em>Cargando...</em></p>
-        }
-        else
-        {
-          <table class="table table-striped mt-4">
+        <div class="table-responsive">
+          <table class="table table-sm align-middle linking-table">
             <thead>
               <tr>
-                <th>
-                  <a href="#" @onclick='() => Ordenar("Id")'>ID</a>
-                  @if (Filter.SortBy == "Id")
-                  {
-                    <span>@(Filter.SortAsc ? "▲" : "▼")</span>
-                  }
-                  <InputNumber class="form-control" @bind-Value="Filter.Id" />
-                </th>
-                <th>
-                  <a href="#" @onclick='() => Ordenar("Fecha")'>Fecha</a>
-                  @if (Filter.SortBy == "Fecha")
-                  {
-                    <span>@(Filter.SortAsc ? "▲" : "▼")</span>
-                  }
-                </th>
-                <th>
-                  <a href="#" @onclick='() => Ordenar("Concepto")'>Concepto</a>
-                  @if (Filter.SortBy == "Concepto")
-                  {
-                    <span>@(Filter.SortAsc ? "▲" : "▼")</span>
-                  }
-                  <InputText class="form-control" @bind-Value="Filter.Concepto" />
-                </th>
-                <th>
-                  <a href="#" @onclick='() => Ordenar("Monto")'>Monto</a>
-                  @if (Filter.SortBy == "Monto")
-                  {
-                    <span>@(Filter.SortAsc ? "▲" : "▼")</span>
-                  }
-                  <InputNumber class="form-control" @bind-Value="Filter.Monto" />
-                </th>
-                <th>
-                  <a href="#" @onclick='() => Ordenar("TipoPoliza")'>Tipo de Póliza</a>
-                  @if (Filter.SortBy == "TipoPoliza")
-                  {
-                    <span>@(Filter.SortAsc ? "▲" : "▼")</span>
-                  }
-                  <InputText class="form-control" @bind-Value="Filter.TipoPoliza" />
-                </th>
-                <th>
-                  <a href="#" @onclick='() => Ordenar("FormaPago")'>Forma de Pago</a>
-                  @if (Filter.SortBy == "FormaPago")
-                  {
-                    <span>@(Filter.SortAsc ? "▲" : "▼")</span>
-                  }
-                  <InputText class="form-control" @bind-Value="Filter.FormaPago" />
-                </th>
+                <th>Póliza</th>
+                <th>Fecha</th>
+                <th>Concepto</th>
+                <th class="text-end">Monto póliza</th>
+                <th class="text-end">Asignado</th>
+                <th>IVA</th>
+                <th>Tipo</th>
+                <th>Forma</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              @foreach (var transaccion in Transacciones)
+              @foreach (var poliza in Polizas)
               {
-                <tr class="@GetRowClass(transaccion)" @onclick="() => SeleccionarTransaccion(transaccion)">
-                  <td>@transaccion.Id</td>
-                  <td>@transaccion.Fecha.ToShortDateString()</td>
-                  <td>@transaccion.Concepto</td>
-                  <td>@transaccion.Monto</td>
-                  <td>@transaccion.TipoPoliza</td>
-                  <td>@transaccion.FormaPago</td>
+                var editor = GetLinkedMontoEditor(poliza);
+                <tr class="@(HighlightedTransaccionId == poliza.TransaccionId ? "linking-row-highlight" : string.Empty)">
+                  <td class="fw-semibold">@poliza.TransaccionId</td>
+                  <td>@poliza.Fecha.ToString("yyyy-MM-dd")</td>
+                  <td>@poliza.Concepto</td>
+                  <td class="text-end">@FormatCurrency(poliza.TransaccionMonto)</td>
+                  <td class="linking-amount-editor">
+                    <InputNumber class="form-control form-control-sm text-end"
+                                 TValue="decimal"
+                                 min="0.01"
+                                 step="0.01"
+                                 @bind-Value="editor.Monto"
+                                 disabled="@IsSavingLinkedMonto(poliza)" />
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary"
+                            disabled="@IsSavingLinkedMonto(poliza)"
+                            @onclick="() => GuardarMontoLigadoAsync(poliza)">
+                      @(IsSavingLinkedMonto(poliza) ? "Guardando" : "Guardar")
+                    </button>
+                  </td>
                   <td>
-                    <a href="/contabilidad/transacciones/@transaccion.Id" class="btn btn-sm btn-primary">Ver/Editar</a>
+                    <span class="badge @GetStatusBadgeClass(poliza.IvaStatus)">@FormatStatus(poliza.IvaStatus)</span>
+                    <div class="linking-subtle">@FormatCurrency(poliza.IvaContable) contable</div>
+                  </td>
+                  <td>@poliza.TipoPoliza</td>
+                  <td>@poliza.FormaPago</td>
+                  <td class="text-end">
+                    <a href="/contabilidad/transacciones/@poliza.TransaccionId" class="btn btn-sm btn-primary">Ver/Editar</a>
                   </td>
                 </tr>
               }
             </tbody>
           </table>
+        </div>
+      }
+    </section>
 
-          <div class="form-text">
-            Selecciona una transacción para habilitar el botón “Ligar”.
+    <section class="linking-section">
+      <div class="linking-section-header">
+        <div>
+          <h2>Buscar y ligar póliza</h2>
+          <p>Candidatas ordenadas por pago, fecha, forma de pago y disponibilidad.</p>
+        </div>
+        <a href="/contabilidad/transacciones/new" class="btn btn-success">Nueva transacción</a>
+      </div>
+
+      <EditForm Model="Filter" OnSubmit="HandleFilterSubmitAsync">
+        <div class="linking-filter-grid">
+          <div>
+            <label class="form-label">Año</label>
+            <InputNumber class="form-control" @bind-Value="Filter.Year" />
           </div>
-        }
+          <div>
+            <label class="form-label">Mes</label>
+            <InputNumber class="form-control" @bind-Value="Filter.Month" />
+          </div>
+          <div>
+            <label class="form-label">Póliza</label>
+            <InputNumber class="form-control" @bind-Value="Filter.Id" />
+          </div>
+          <div>
+            <label class="form-label">Monto objetivo</label>
+            <InputNumber class="form-control" @bind-Value="Filter.Monto" />
+          </div>
+          <div>
+            <label class="form-label">Concepto</label>
+            <InputText class="form-control" @bind-Value="Filter.Concepto" />
+          </div>
+          <div>
+            <label class="form-label">Tipo póliza</label>
+            <InputText class="form-control" @bind-Value="Filter.TipoPoliza" />
+          </div>
+          <div>
+            <label class="form-label">Forma pago</label>
+            <InputText class="form-control" @bind-Value="Filter.FormaPago" />
+          </div>
+          <div class="linking-filter-actions">
+            <button type="submit" class="btn btn-primary" disabled="@IsCandidatesLoading">Buscar</button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="LimpiarFiltrosAsync" disabled="@IsCandidatesLoading">Limpiar</button>
+          </div>
+        </div>
       </EditForm>
-    </div>
-  </div>
+
+      @if (SelectedCandidate is not null)
+      {
+        <div class="linking-selection">
+          <div>
+            <div class="linking-kicker">Póliza seleccionada @SelectedCandidate.Id</div>
+            <strong>@SelectedCandidate.Concepto</strong>
+            <div class="linking-subtle">
+              Disponible @FormatCurrency(SelectedCandidate.Disponible) · sugerido @FormatCurrency(GetSuggestedMonto(SelectedCandidate))
+            </div>
+          </div>
+          <div class="linking-selection-controls">
+            <InputNumber class="form-control text-end"
+                         TValue="decimal"
+                         min="0.01"
+                         max="@GetMaxAllowedMonto(SelectedCandidate)"
+                         step="0.01"
+                         @bind-Value="LinkMonto"
+                         disabled="@IsLinking" />
+            <button class="btn btn-primary"
+                    disabled="@(!CanLigar || IsLinking)"
+                    @onclick="LigarAsync">
+              @(IsLinking ? "Ligando..." : "Ligar Pago20")
+            </button>
+          </div>
+        </div>
+      }
+
+      @if (IsCandidatesLoading)
+      {
+        <div class="orion-loading" role="status" aria-live="polite">
+          <span class="orion-spinner" aria-hidden="true"></span>
+          <span class="orion-strong">Buscando candidatas...</span>
+        </div>
+      }
+      else if (Candidates.Count == 0)
+      {
+        <div class="linking-empty">No se encontraron pólizas candidatas con los filtros actuales.</div>
+      }
+      else
+      {
+        <div class="table-responsive">
+          <table class="table table-sm align-middle linking-table linking-candidates">
+            <thead>
+              <tr>
+                <th>Match</th>
+                <th>Póliza</th>
+                <th>Fecha</th>
+                <th>Concepto</th>
+                <th class="text-end">Monto</th>
+                <th class="text-end">Asignado</th>
+                <th class="text-end">Disponible</th>
+                <th class="text-end">Sugerido</th>
+                <th>IVA</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @foreach (var candidate in Candidates)
+              {
+                <tr class="@GetCandidateRowClass(candidate)" @onclick="() => SeleccionarCandidate(candidate)">
+                  <td>
+                    <span class="badge @GetStatusBadgeClass(candidate.MatchStatus)">@FormatStatus(candidate.MatchStatus)</span>
+                    <div class="linking-subtle">@candidate.MatchScore pts</div>
+                  </td>
+                  <td class="fw-semibold">@candidate.Id</td>
+                  <td>@candidate.Fecha.ToString("yyyy-MM-dd")</td>
+                  <td>@candidate.Concepto</td>
+                  <td class="text-end">@FormatCurrency(candidate.Monto)</td>
+                  <td class="text-end">@FormatCurrency(candidate.MontoAsignado)</td>
+                  <td class="text-end">@FormatCurrency(candidate.Disponible)</td>
+                  <td class="text-end">@FormatCurrency(candidate.MontoSugerido)</td>
+                  <td>
+                    <span class="badge @GetStatusBadgeClass(candidate.IvaStatus)">@FormatStatus(candidate.IvaStatus)</span>
+                  </td>
+                  <td class="text-end">
+                    <a href="/contabilidad/transacciones/@candidate.Id"
+                       class="btn btn-sm btn-outline-primary"
+                       @onclick:stopPropagation="true">Ver</a>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  }
 }

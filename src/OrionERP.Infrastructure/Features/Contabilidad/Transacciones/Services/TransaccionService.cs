@@ -187,6 +187,95 @@ WHERE TD.Transaccion_ID = @Id;";
     return rows.AsList();
   }
 
+  public async Task<TransaccionCfdiLinkedDataDto> GetLinkedCfdiSummaryAsync(int transaccionId, CancellationToken ct = default)
+  {
+    using var conn = new SqlConnection(_cs);
+    using var multi = await conn.QueryMultipleAsync(
+        new CommandDefinition(
+            "cfdi.Transaccion_CFDI_Vinculados_Resumen",
+            new { Transaccion_ID = transaccionId },
+            commandType: CommandType.StoredProcedure,
+            cancellationToken: ct));
+
+    var comprobantes = (await multi.ReadAsync<TransaccionCfdiLinkedSummaryDto>()).AsList();
+    var comprobantePolizas = (await multi.ReadAsync<TransaccionCfdiLinkedPolizaDto>()).AsList();
+    var complementos = (await multi.ReadAsync<TransaccionPago20LinkedSummaryDto>()).AsList();
+    var documentos = (await multi.ReadAsync<TransaccionPago20DoctoRelacionadoDto>()).AsList();
+    var complementoPolizas = (await multi.ReadAsync<TransaccionCfdiLinkedPolizaDto>()).AsList();
+
+    var data = new TransaccionCfdiLinkedDataDto();
+
+    foreach (var comprobante in comprobantes)
+    {
+      comprobante.Polizas.AddRange(comprobantePolizas.Where(item => item.ComprobanteId == comprobante.ComprobanteId));
+      data.Comprobantes.Add(comprobante);
+    }
+
+    foreach (var complemento in complementos)
+    {
+      complemento.Documentos.AddRange(documentos.Where(item => item.ComprobanteId == complemento.ComprobanteId));
+      complemento.Polizas.AddRange(complementoPolizas.Where(item => item.ComprobanteId == complemento.ComprobanteId));
+      data.ComplementosPago.Add(complemento);
+    }
+
+    return data;
+  }
+
+  public async Task<CfdiPolizaLinkingWorkspaceDto> GetCfdiPolizaLinkingWorkspaceAsync(
+      int comprobanteId,
+      string? rfc,
+      TransaccionFilter filter,
+      CancellationToken ct = default)
+  {
+    filter ??= new TransaccionFilter();
+
+    using var conn = new SqlConnection(_cs);
+    using var multi = await conn.QueryMultipleAsync(
+        new CommandDefinition(
+            "cfdi.CFDI_Poliza_Linking_Workspace",
+            BuildLinkingWorkspaceParameters(comprobanteId, null, rfc, filter),
+            commandType: CommandType.StoredProcedure,
+            cancellationToken: ct));
+
+    var data = new CfdiPolizaLinkingWorkspaceDto
+    {
+      Summary = await multi.ReadFirstOrDefaultAsync<CfdiPolizaLinkingSummaryDto>()
+    };
+
+    data.Polizas.AddRange((await multi.ReadAsync<CfdiPolizaLinkedPolizaDto>()).AsList());
+    data.Candidates.AddRange((await multi.ReadAsync<CfdiPolizaCandidateDto>()).AsList());
+
+    return data;
+  }
+
+  public async Task<Pago20PolizaLinkingWorkspaceDto> GetPago20PolizaLinkingWorkspaceAsync(
+      int doctoRelacionadoId,
+      string? rfc,
+      TransaccionFilter filter,
+      CancellationToken ct = default)
+  {
+    filter ??= new TransaccionFilter();
+
+    using var conn = new SqlConnection(_cs);
+    using var multi = await conn.QueryMultipleAsync(
+        new CommandDefinition(
+            "cfdi.Pago20_Poliza_Linking_Workspace",
+            BuildLinkingWorkspaceParameters(null, doctoRelacionadoId, rfc, filter),
+            commandType: CommandType.StoredProcedure,
+            cancellationToken: ct));
+
+    var data = new Pago20PolizaLinkingWorkspaceDto
+    {
+      Summary = await multi.ReadFirstOrDefaultAsync<Pago20PolizaLinkingSummaryDto>()
+    };
+
+    data.Documentos.AddRange((await multi.ReadAsync<Pago20PolizaDoctoRelacionadoDto>()).AsList());
+    data.Polizas.AddRange((await multi.ReadAsync<CfdiPolizaLinkedPolizaDto>()).AsList());
+    data.Candidates.AddRange((await multi.ReadAsync<CfdiPolizaCandidateDto>()).AsList());
+
+    return data;
+  }
+
   public async Task<TransaccionCommandResult> LinkCfdiAsync(
       TransaccionCfdiLinkRequest request,
       CancellationToken ct = default)
@@ -1701,6 +1790,30 @@ VALUES (@TransaccionId, @DoctoRelacionadoId, @Monto);";
     }
   }
 
+  public async Task<TransaccionCommandResult> UpdateDoctoRelacionadoMontoAsync(int transaccionId, int doctoRelacionadoId, decimal monto, CancellationToken ct = default)
+  {
+    const string sql = @"UPDATE dbo.Transaccion_DoctoRelacionado
+SET Monto = @Monto
+WHERE Transaccion_ID = @TransaccionId
+  AND DoctoRelacionado_ID = @DoctoRelacionadoId;";
+
+    try
+    {
+      using var conn = new SqlConnection(_cs);
+      var affected = await conn.ExecuteAsync(
+        new CommandDefinition(sql, new { TransaccionId = transaccionId, DoctoRelacionadoId = doctoRelacionadoId, Monto = monto }, cancellationToken: ct));
+
+      return affected > 0
+        ? TransaccionCommandResult.Ok("Monto ligado actualizado correctamente.")
+        : TransaccionCommandResult.Fail("No se encontró el vínculo del complemento con la transacción.");
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Error al actualizar monto de transacción {TransaccionId} con docto relacionado {DoctoRelacionadoId}", transaccionId, doctoRelacionadoId);
+      return TransaccionCommandResult.Fail("No se pudo actualizar el monto ligado.");
+    }
+  }
+
   public async Task<TransaccionCommandResult> GuardarMovimientosAsync(TransaccionMovimientosUpdateRequest request, CancellationToken ct = default)
   {
       if (request is null)
@@ -2005,6 +2118,37 @@ WHERE rc.TransaccionID = @TransaccionId;";
       "txt" => "text/plain",
       _ => "application/octet-stream"
     };
+  }
+
+  private static DynamicParameters BuildLinkingWorkspaceParameters(
+      int? comprobanteId,
+      int? doctoRelacionadoId,
+      string? rfc,
+      TransaccionFilter filter)
+  {
+    var parameters = new DynamicParameters();
+
+    if (comprobanteId.HasValue)
+    {
+      parameters.Add("@Comprobante_Id", comprobanteId.Value);
+    }
+
+    if (doctoRelacionadoId.HasValue)
+    {
+      parameters.Add("@DoctoRelacionado_Id", doctoRelacionadoId.Value);
+    }
+
+    parameters.Add("@RFC", string.IsNullOrWhiteSpace(rfc) ? null : rfc);
+    parameters.Add("@Year", filter.Year);
+    parameters.Add("@Month", filter.Month);
+    parameters.Add("@TransaccionId", filter.Id);
+    parameters.Add("@Concepto", string.IsNullOrWhiteSpace(filter.Concepto) ? null : filter.Concepto);
+    parameters.Add("@Monto", filter.Monto);
+    parameters.Add("@TipoPoliza", string.IsNullOrWhiteSpace(filter.TipoPoliza) ? null : filter.TipoPoliza);
+    parameters.Add("@FormaPago", string.IsNullOrWhiteSpace(filter.FormaPago) ? null : filter.FormaPago);
+    parameters.Add("@Top", 200);
+
+    return parameters;
   }
 
   private static string? NormalizeGlobalMonth(string? value)

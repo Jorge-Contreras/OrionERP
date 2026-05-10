@@ -246,7 +246,7 @@ else
                     class="@GetTabButtonClass(SectionPanel.Comprobantes)"
                     @onclick="() => ActivateSection(SectionPanel.Comprobantes)">
               Comprobantes vinculados
-              <span class="badge text-bg-secondary ms-1">@Comprobantes.Count</span>
+              <span class="badge text-bg-secondary ms-1">@ComprobantesVinculadosCount</span>
             </button>
           </li>
           <li class="nav-item">
@@ -428,95 +428,274 @@ else
             </div>
           </div>
 
-          @if (Comprobantes.Count == 0)
+          @if (ComprobantesVinculadosCount == 0)
           {
             <p class="text-muted mb-0">No hay comprobantes vinculados.</p>
           }
           else
           {
-            <div class="table-responsive table-scroll" style="max-height: 320px;">
-              <table class="table table-sm table-hover align-middle mb-0">
-                <thead class="table-light">
-                  <tr>
-                    <th scope="col">Comprobante ID</th>
-                    <th scope="col">CFDI</th>
-                    <th scope="col">Fecha</th>
-                    <th scope="col">Tipo</th>
-                    <th scope="col">Serie</th>
-                    <th scope="col">Folio</th>
-                    <th scope="col">Emisor RFC</th>
-                    <th scope="col">Receptor RFC</th>
-                    <th scope="col">UUID</th>
-                    <th scope="col">Forma Pago</th>
-                    <th scope="col" class="text-end">Total</th>
-                    <th scope="col">#Pólizas</th>
-                    <th scope="col" class="text-end">Asignado</th>
-                    <th scope="col">Método Pago</th>
-                    <th scope="col">Uso CFDI</th>
-                    <th scope="col">Conceptos</th>
-                    <th scope="col">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @foreach (var comprobante in Comprobantes)
-                  {
-                    <tr class="@(IsComprobanteSelected(comprobante) ? "table-active" : string.Empty)"
-                        @onclick="() => SelectComprobante(comprobante)">
-                      <td>@comprobante.ComprobanteId</td>
-                      <td>
-                        <button type="button"
-                                class="btn btn-sm btn-outline-info"
-                                disabled="@(!comprobante.XmlAttachmentId.HasValue)"
-                                @onclick="() => OpenComprobanteCfdiAsync(comprobante)">
-                          CFDI-@comprobante.ComprobanteId
-                        </button>
-                      </td>
-                      <td>@comprobante.Fecha.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
-                      <td>@comprobante.Tipo</td>
-                      <td>@comprobante.Serie</td>
-                      <td>@comprobante.Folio</td>
-                      <td>@comprobante.EmisorRfc</td>
-                      <td>@comprobante.ReceptorRfc</td>
-                      <td>@comprobante.Uuid</td>
-                      <td>@comprobante.FormaPago</td>
-                      <td class="text-end">@FormatCurrency(comprobante.Total)</td>
-                      <td>@comprobante.Polizas</td>
-                      <td class="text-end">@FormatCurrency(comprobante.Asignado)</td>
-                      <td>@comprobante.MetodoPago</td>
-                      <td>@comprobante.UsoCfdi</td>
-                      <td class="text-wrap">@comprobante.Conceptos</td>
-                      <td>
-                        <button type="button"
-                                class="btn btn-sm btn-outline-warning"
-                                disabled="@IsComprobanteUnlinking(comprobante)"
-                                @onclick="() => UnlinkComprobanteAsync(comprobante)"
-                                @onclick:stopPropagation="true">
-                          @if (IsComprobanteUnlinking(comprobante))
-                          {
-                            <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
-                          }
-                          Desligar
-                        </button>
-                        @if (CanCancelComprobante(comprobante))
-                        {
-                          <button type="button"
-                                  class="btn btn-sm btn-outline-danger ms-1"
-                                  disabled="@IsComprobanteCancelling(comprobante)"
-                                  @onclick="() => CancelComprobanteCfdiAsync(comprobante)"
-                                  @onclick:stopPropagation="true">
-                            @if (IsComprobanteCancelling(comprobante))
+            @if (Comprobantes.Count > 0)
+            {
+              <div class="linked-cfdi-group mb-4">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <h6 class="mb-0">CFDIs fiscales</h6>
+                  <span class="badge text-bg-secondary">@Comprobantes.Count</span>
+                </div>
+                <div class="table-responsive table-scroll" style="max-height: 420px;">
+                  <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light">
+                      <tr>
+                        <th scope="col">CFDI</th>
+                        <th scope="col">Fecha</th>
+                        <th scope="col">Tipo</th>
+                        <th scope="col">Dirección</th>
+                        <th scope="col">Contraparte</th>
+                        <th scope="col">UUID</th>
+                        <th scope="col" class="text-end">Total</th>
+                        <th scope="col" class="text-end">Asignado</th>
+                        <th scope="col" class="text-end">IVA</th>
+                        <th scope="col" class="text-end">IVA Ret.</th>
+                        <th scope="col" class="text-end">ISR Ret.</th>
+                        <th scope="col">Congruencia</th>
+                        <th scope="col">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @foreach (var comprobante in Comprobantes)
+                      {
+                        <tr class="@(IsComprobanteSelected(comprobante) ? "table-active" : string.Empty)"
+                            @onclick="() => SelectComprobante(comprobante)">
+                          <td>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-info"
+                                    disabled="@(!comprobante.XmlAttachmentId.HasValue)"
+                                    @onclick="() => OpenComprobanteCfdiAsync(comprobante)"
+                                    @onclick:stopPropagation="true">
+                              @comprobante.ComprobanteId
+                            </button>
+                          </td>
+                          <td>@comprobante.Fecha.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                          <td>@comprobante.Tipo</td>
+                          <td>@comprobante.Direccion</td>
+                          <td>
+                            <div>@comprobante.EmisorRfc</div>
+                            <div class="text-muted small">@comprobante.ReceptorRfc</div>
+                          </td>
+                          <td class="linked-cfdi-uuid">@comprobante.Uuid</td>
+                          <td class="text-end">@FormatCurrency(comprobante.Total)</td>
+                          <td class="text-end">@FormatCurrency(comprobante.AsignadoCfdi)</td>
+                          <td class="text-end">@FormatCurrency(comprobante.Iva)</td>
+                          <td class="text-end">@FormatCurrency(comprobante.IvaRetenido)</td>
+                          <td class="text-end">@FormatCurrency(comprobante.IsrRetenido)</td>
+                          <td>
+                            <div class="linked-cfdi-statuses">
+                              <span class="badge @GetCfdiStatusBadgeClass(comprobante.TotalCfdiStatus)">CFDI @GetCfdiStatusLabel(comprobante.TotalCfdiStatus)</span>
+                              <span class="badge @GetCfdiStatusBadgeClass(comprobante.TransaccionAsignacionStatus)">Póliza @GetCfdiStatusLabel(comprobante.TransaccionAsignacionStatus)</span>
+                              <span class="badge @GetCfdiStatusBadgeClass(comprobante.IvaStatus)">IVA @GetCfdiStatusLabel(comprobante.IvaStatus)</span>
+                            </div>
+                          </td>
+                          <td>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-warning"
+                                    disabled="@IsComprobanteUnlinking(comprobante)"
+                                    @onclick="() => UnlinkComprobanteAsync(comprobante)"
+                                    @onclick:stopPropagation="true">
+                              @if (IsComprobanteUnlinking(comprobante))
+                              {
+                                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                              }
+                              Desligar
+                            </button>
+                            @if (CanCancelComprobante(comprobante))
                             {
-                              <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                              <button type="button"
+                                      class="btn btn-sm btn-outline-danger ms-1"
+                                      disabled="@IsComprobanteCancelling(comprobante)"
+                                      @onclick="() => CancelComprobanteCfdiAsync(comprobante)"
+                                      @onclick:stopPropagation="true">
+                                @if (IsComprobanteCancelling(comprobante))
+                                {
+                                  <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                                }
+                                Cancelar CFDI
+                              </button>
                             }
-                            Cancelar CFDI
-                          </button>
-                        }
-                      </td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            </div>
+                          </td>
+                        </tr>
+                        <tr class="linked-cfdi-detail-row">
+                          <td colspan="13">
+                            <div class="linked-cfdi-detail">
+                              <div class="linked-cfdi-concepts">@comprobante.Conceptos</div>
+                              <table class="table table-sm mb-0">
+                                <thead>
+                                  <tr>
+                                    <th>Póliza</th>
+                                    <th>Fecha</th>
+                                    <th>Tipo</th>
+                                    <th>Concepto</th>
+                                    <th class="text-end">Monto póliza</th>
+                                    <th class="text-end">Asignado</th>
+                                    <th class="text-end">IVA CFDI prop.</th>
+                                    <th class="text-end">IVA contable</th>
+                                    <th>Cuenta</th>
+                                    <th>Estado IVA</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  @foreach (var poliza in comprobante.Polizas)
+                                  {
+                                    <tr>
+                                      <td><a href="/contabilidad/transacciones/@poliza.TransaccionId">@poliza.TransaccionId</a></td>
+                                      <td>@poliza.Fecha.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                                      <td>@poliza.TipoPoliza</td>
+                                      <td>@poliza.Concepto</td>
+                                      <td class="text-end">@FormatCurrency(poliza.TransaccionMonto)</td>
+                                      <td class="text-end">@FormatCurrency(poliza.MontoAsignado)</td>
+                                      <td class="text-end">@FormatCurrency(poliza.IvaEsperado)</td>
+                                      <td class="text-end">@FormatCurrency(poliza.IvaContable)</td>
+                                      <td>@poliza.IvaCuentaNivel1</td>
+                                      <td><span class="badge @GetCfdiStatusBadgeClass(poliza.IvaStatus)">@GetCfdiStatusLabel(poliza.IvaStatus)</span></td>
+                                    </tr>
+                                  }
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            }
+
+            @if (ComplementosPago.Count > 0)
+            {
+              <div class="linked-cfdi-group">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <h6 class="mb-0">Complementos de pago</h6>
+                  <span class="badge text-bg-secondary">@ComplementosPago.Count</span>
+                </div>
+                <div class="table-responsive table-scroll" style="max-height: 420px;">
+                  <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light">
+                      <tr>
+                        <th scope="col">Complemento</th>
+                        <th scope="col">Fecha pago</th>
+                        <th scope="col">Dirección</th>
+                        <th scope="col">UUID</th>
+                        <th scope="col">Forma</th>
+                        <th scope="col" class="text-end">Monto pago</th>
+                        <th scope="col" class="text-end">Imp. pagado</th>
+                        <th scope="col" class="text-end">Comp. IVA</th>
+                        <th scope="col" class="text-end">IVA contable</th>
+                        <th scope="col">Estado IVA</th>
+                        <th scope="col">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @foreach (var complemento in ComplementosPago)
+                      {
+                        <tr class="@(IsComplementoPagoSelected(complemento) ? "table-active" : string.Empty)"
+                            @onclick="() => SelectComplementoPago(complemento)">
+                          <td>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-info"
+                                    disabled="@(!complemento.XmlAttachmentId.HasValue)"
+                                    @onclick="() => OpenComplementoPagoCfdiAsync(complemento)"
+                                    @onclick:stopPropagation="true">
+                              @complemento.ComprobanteId
+                            </button>
+                          </td>
+                          <td>@(complemento.FechaPago.HasValue ? complemento.FechaPago.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "-")</td>
+                          <td>@complemento.Direccion</td>
+                          <td class="linked-cfdi-uuid">@complemento.ComprobanteUuid</td>
+                          <td>@complemento.FormaDePagoP</td>
+                          <td class="text-end">@FormatCurrency(complemento.MontoPago)</td>
+                          <td class="text-end">@FormatCurrency(complemento.ImpPagado)</td>
+                          <td class="text-end">@FormatCurrency(complemento.CompIva)</td>
+                          <td class="text-end">@FormatCurrency(complemento.IvaContable)</td>
+                          <td><span class="badge @GetCfdiStatusBadgeClass(complemento.IvaStatus)">IVA @GetCfdiStatusLabel(complemento.IvaStatus)</span></td>
+                          <td>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-warning"
+                                    disabled="@IsComplementoPagoUnlinking(complemento)"
+                                    @onclick="() => UnlinkComplementoPagoAsync(complemento)"
+                                    @onclick:stopPropagation="true">
+                              @if (IsComplementoPagoUnlinking(complemento))
+                              {
+                                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                              }
+                              Desligar
+                            </button>
+                          </td>
+                        </tr>
+                        <tr class="linked-cfdi-detail-row">
+                          <td colspan="11">
+                            <div class="linked-cfdi-detail">
+                              <div class="row g-3">
+                                <div class="col-12 col-xl-7">
+                                  <div class="fw-semibold mb-1">Documentos relacionados</div>
+                                  <table class="table table-sm mb-0">
+                                    <thead>
+                                      <tr>
+                                        <th>UUID</th>
+                                        <th>Folio</th>
+                                        <th class="text-end">Pagado</th>
+                                        <th class="text-end">Saldo insoluto</th>
+                                        <th class="text-end">Comp. IVA</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      @foreach (var docto in complemento.Documentos)
+                                      {
+                                        <tr>
+                                          <td class="linked-cfdi-uuid">@docto.UuidDoctoRelacionado</td>
+                                          <td>@docto.Folio</td>
+                                          <td class="text-end">@FormatCurrency(docto.ImpPagado)</td>
+                                          <td class="text-end">@FormatCurrency(docto.ImpSaldoInsoluto)</td>
+                                          <td class="text-end">@FormatCurrency(docto.CompIva)</td>
+                                        </tr>
+                                      }
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <div class="col-12 col-xl-5">
+                                  <div class="fw-semibold mb-1">Pólizas vinculadas</div>
+                                  <table class="table table-sm mb-0">
+                                    <thead>
+                                      <tr>
+                                        <th>Póliza</th>
+                                        <th>Tipo</th>
+                                        <th class="text-end">IVA comp.</th>
+                                        <th class="text-end">IVA contable</th>
+                                        <th>Estado</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      @foreach (var poliza in complemento.Polizas)
+                                      {
+                                        <tr>
+                                          <td><a href="/contabilidad/transacciones/@poliza.TransaccionId">@poliza.TransaccionId</a></td>
+                                          <td>@poliza.TipoPoliza</td>
+                                          <td class="text-end">@FormatCurrency(poliza.IvaEsperado)</td>
+                                          <td class="text-end">@FormatCurrency(poliza.IvaContable)</td>
+                                          <td><span class="badge @GetCfdiStatusBadgeClass(poliza.IvaStatus)">@GetCfdiStatusLabel(poliza.IvaStatus)</span></td>
+                                        </tr>
+                                      }
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            }
           }
         }
         else if (IsActiveSection(SectionPanel.Reservaciones))
@@ -957,7 +1136,7 @@ else
             <dt class="col-6">Archivos</dt>
             <dd class="col-6 text-end">@Attachments.Count</dd>
             <dt class="col-6">Comprobantes</dt>
-            <dd class="col-6 text-end">@Comprobantes.Count</dd>
+            <dd class="col-6 text-end">@ComprobantesVinculadosCount</dd>
           </dl>
         }
       </div>

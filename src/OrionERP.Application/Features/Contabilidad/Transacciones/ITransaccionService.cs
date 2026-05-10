@@ -37,6 +37,9 @@ public interface ITransaccionService
       CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionCfdiCandidateDto>> GetCfdiCandidatesAsync(TransaccionCfdiSearchRequest request, CancellationToken ct = default);
   Task<IReadOnlyList<long>> GetLinkedCfdiIdsAsync(int transaccionId, CancellationToken ct = default);
+  Task<TransaccionCfdiLinkedDataDto> GetLinkedCfdiSummaryAsync(int transaccionId, CancellationToken ct = default);
+  Task<CfdiPolizaLinkingWorkspaceDto> GetCfdiPolizaLinkingWorkspaceAsync(int comprobanteId, string? rfc, TransaccionFilter filter, CancellationToken ct = default);
+  Task<Pago20PolizaLinkingWorkspaceDto> GetPago20PolizaLinkingWorkspaceAsync(int doctoRelacionadoId, string? rfc, TransaccionFilter filter, CancellationToken ct = default);
   Task<TransaccionCommandResult> LinkCfdiAsync(TransaccionCfdiLinkRequest request, CancellationToken ct = default);
   Task<TransaccionCommandResult> ApplyCategoriaPlantillaAsync(
       int transaccionId,
@@ -73,5 +76,6 @@ public interface ITransaccionService
   Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesByComprobanteIdAsync(int comprobanteId, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionListItemDto>> GetTransaccionesByDoctoRelacionadoIdAsync(int doctoRelacionadoId, CancellationToken ct = default);
   Task<TransaccionCommandResult> InsertTransaccionDoctoRelacionadoAsync(int transaccionId, int doctoRelacionadoId, decimal monto, CancellationToken ct = default);
+  Task<TransaccionCommandResult> UpdateDoctoRelacionadoMontoAsync(int transaccionId, int doctoRelacionadoId, decimal monto, CancellationToken ct = default);
   Task<TransaccionCommandResult> GuardarMovimientosAsync(TransaccionMovimientosUpdateRequest request, CancellationToken ct = default);
 }

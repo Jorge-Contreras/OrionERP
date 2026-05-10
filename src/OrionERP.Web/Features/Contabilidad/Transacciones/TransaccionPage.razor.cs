@@ -84,7 +84,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected List<MovimientoModel> Movimientos { get; } = [];
   protected List<BankMovementDto> BancoMovimientos { get; } = [];
   protected List<AttachmentModel> Attachments { get; } = [];
-  protected List<TransaccionCfdiCandidateDto> Comprobantes { get; } = [];
+  protected List<TransaccionCfdiLinkedSummaryDto> Comprobantes { get; } = [];
+  protected List<TransaccionPago20LinkedSummaryDto> ComplementosPago { get; } = [];
   protected List<TransaccionReservacionLinkDto> ReservacionLinks { get; } = [];
   protected List<TransaccionReservacionSearchItemDto> ReservacionCandidates { get; } = [];
   protected List<LookupInt32Dto> CategoriaOptions { get; } = [];
@@ -140,6 +141,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string ReservacionActionLabel => SelectedReservacionHasExistingLink
     ? "Actualizar asignacion"
     : "Asignar reservacion";
+  protected int ComprobantesVinculadosCount => Comprobantes.Count + ComplementosPago.Count;
   protected bool SelectedReservacionHasExistingLink => _selectedReservacionId.HasValue
     && ReservacionLinks.Any(item => item.ReservationId == _selectedReservacionId.Value);
   protected bool IsUploadingAttachment { get; private set; }
@@ -156,6 +158,19 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   protected static string FormatCurrency(decimal value)
     => value.ToString("C2", CurrencyCulture);
+
+  protected static string FormatOptionalCurrency(decimal? value)
+    => value.HasValue ? FormatCurrency(value.Value) : "-";
+
+  protected static string GetCfdiStatusBadgeClass(string? status)
+    => string.Equals(status, "OK", StringComparison.OrdinalIgnoreCase)
+      ? "text-bg-success"
+      : string.Equals(status, "NA", StringComparison.OrdinalIgnoreCase)
+        ? "text-bg-secondary"
+        : "text-bg-warning";
+
+  protected static string GetCfdiStatusLabel(string? status)
+    => string.IsNullOrWhiteSpace(status) ? "Pendiente" : status;
 
   protected string MontoInput
   {
@@ -1304,6 +1319,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private async Task ReloadComprobantesAsync(CancellationToken ct = default)
   {
     Comprobantes.Clear();
+    ComplementosPago.Clear();
 
     if (Header is null)
     {
@@ -1312,21 +1328,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     try
     {
-      var ids = await TransaccionService.GetLinkedCfdiIdsAsync(Header.Id, ct);
-      if (ids.Count == 0)
-      {
-        return;
-      }
-
-      var request = new TransaccionCfdiSearchRequest
-      {
-        Rfc = Header.Rfc ?? string.Empty,
-        ComprobantesCsv = string.Join(',', ids),
-        Renglones = Math.Max(ids.Count, 25)
-      };
-
-      var rows = await TransaccionService.GetCfdiCandidatesAsync(request, ct);
-      Comprobantes.AddRange(rows);
+      var data = await TransaccionService.GetLinkedCfdiSummaryAsync(Header.Id, ct);
+      Comprobantes.AddRange(data.Comprobantes);
+      ComplementosPago.AddRange(data.ComplementosPago);
     }
     catch (OperationCanceledException)
     {
@@ -1779,14 +1783,20 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     return Enumerable.Range(startYear, yearCount).ToArray();
   }
 
-  protected async Task OpenComprobanteCfdiAsync(TransaccionCfdiCandidateDto? comprobante)
+  protected Task OpenComprobanteCfdiAsync(TransaccionCfdiLinkedSummaryDto? comprobante)
+    => OpenCfdiAttachmentAsync(comprobante?.XmlAttachmentId);
+
+  protected Task OpenComplementoPagoCfdiAsync(TransaccionPago20LinkedSummaryDto? complemento)
+    => OpenCfdiAttachmentAsync(complemento?.XmlAttachmentId);
+
+  private async Task OpenCfdiAttachmentAsync(int? xmlAttachmentId)
   {
-    if (comprobante?.XmlAttachmentId is null)
+    if (xmlAttachmentId is null)
     {
       return;
     }
 
-    var url = $"/cfdi/html-cfdi/{comprobante.XmlAttachmentId}";
+    var url = $"/cfdi/html-cfdi/{xmlAttachmentId}";
 
     try
     {
@@ -1807,13 +1817,16 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected bool IsMovimientoDeleting(MovimientoModel movimiento)
     => movimiento is not null && movimiento.Id == _movimientoDeletingId;
 
-  protected bool IsComprobanteUnlinking(TransaccionCfdiCandidateDto comprobante)
+  protected bool IsComprobanteUnlinking(TransaccionCfdiLinkedSummaryDto comprobante)
     => comprobante is not null && comprobante.ComprobanteId == _unlinkingComprobanteId;
 
-  protected bool IsComprobanteCancelling(TransaccionCfdiCandidateDto comprobante)
+  protected bool IsComplementoPagoUnlinking(TransaccionPago20LinkedSummaryDto complemento)
+    => complemento is not null && complemento.ComprobanteId == _unlinkingComprobanteId;
+
+  protected bool IsComprobanteCancelling(TransaccionCfdiLinkedSummaryDto comprobante)
     => comprobante is not null && comprobante.ComprobanteId == _cancellingComprobanteId;
 
-  protected bool CanCancelComprobante(TransaccionCfdiCandidateDto comprobante)
+  protected bool CanCancelComprobante(TransaccionCfdiLinkedSummaryDto comprobante)
   {
     if (Header is null || comprobante is null)
     {
@@ -1827,16 +1840,24 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected bool IsBancoMovimientoUnlinking(BankMovementDto movimiento)
     => movimiento is not null && movimiento.MovimientoId == _unlinkingBancoMovimientoId;
 
-  protected bool IsComprobanteSelected(TransaccionCfdiCandidateDto comprobante)
+  protected bool IsComprobanteSelected(TransaccionCfdiLinkedSummaryDto comprobante)
     => comprobante is not null && comprobante.ComprobanteId == _selectedComprobanteId;
 
-  protected void SelectComprobante(TransaccionCfdiCandidateDto comprobante)
+  protected bool IsComplementoPagoSelected(TransaccionPago20LinkedSummaryDto complemento)
+    => complemento is not null && complemento.ComprobanteId == _selectedComprobanteId;
+
+  protected void SelectComprobante(TransaccionCfdiLinkedSummaryDto comprobante)
   {
     _selectedComprobanteId = comprobante.ComprobanteId;
   }
 
+  protected void SelectComplementoPago(TransaccionPago20LinkedSummaryDto complemento)
+  {
+    _selectedComprobanteId = complemento.ComprobanteId;
+  }
+
   protected bool CanRegenerarMovimientos()
-    => !IsRegeneratingMovimientos && Comprobantes.Count > 0;
+    => !IsRegeneratingMovimientos && ComprobantesVinculadosCount > 0;
 
   protected async Task RegenerarMovimientosDesdeComprobanteAsync()
   {
@@ -1845,7 +1866,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
     }
 
-    if (Comprobantes.Count == 0)
+    if (ComprobantesVinculadosCount == 0)
     {
       UiMessages.ShowWarning("No hay comprobantes vinculados para regenerar los movimientos.");
       return;
@@ -1858,16 +1879,10 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
 
     var comprobante = Comprobantes.FirstOrDefault(item => item.ComprobanteId == _selectedComprobanteId);
-    if (comprobante is null)
+    var complemento = ComplementosPago.FirstOrDefault(item => item.ComprobanteId == _selectedComprobanteId);
+    if (comprobante is null && complemento is null)
     {
       UiMessages.ShowWarning("Selecciona un comprobante antes de regenerar los movimientos.");
-      return;
-    }
-
-    var tipo = comprobante.Tipo?.Trim();
-    if (string.IsNullOrWhiteSpace(tipo))
-    {
-      UiMessages.ShowWarning("No se pudo determinar el tipo del comprobante.");
       return;
     }
 
@@ -1877,21 +1892,21 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     try
     {
       TransaccionCommandResult result;
-      if (string.Equals(tipo, "CFDI", StringComparison.OrdinalIgnoreCase))
+      if (comprobante is not null)
       {
         result = await TransaccionService.RegenerarPolizaDesdeComprobanteEnTransaccionAsync(
             Header.Id,
             comprobante.ComprobanteId);
       }
-      else if (string.Equals(tipo, "COMP", StringComparison.OrdinalIgnoreCase))
+      else if (complemento is not null)
       {
         result = await TransaccionService.RegenerarPolizaDesdeComplementoEnTransaccionAsync(
             Header.Id,
-            comprobante.ComprobanteId);
+            complemento.ComprobanteId);
       }
       else
       {
-        UiMessages.ShowWarning($"Tipo de comprobante no soportado: {comprobante.Tipo}.");
+        UiMessages.ShowWarning("Tipo de comprobante no soportado.");
         return;
       }
 
@@ -1915,7 +1930,13 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
   }
 
-  protected async Task UnlinkComprobanteAsync(TransaccionCfdiCandidateDto comprobante)
+  protected Task UnlinkComprobanteAsync(TransaccionCfdiLinkedSummaryDto comprobante)
+    => UnlinkComprobanteCoreAsync(comprobante.ComprobanteId, comprobante.Tipo);
+
+  protected Task UnlinkComplementoPagoAsync(TransaccionPago20LinkedSummaryDto complemento)
+    => UnlinkComprobanteCoreAsync(complemento.ComprobanteId, "P");
+
+  private async Task UnlinkComprobanteCoreAsync(long comprobanteId, string? tipo)
   {
     if (Header is null)
     {
@@ -1928,7 +1949,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
     }
 
-    _unlinkingComprobanteId = comprobante.ComprobanteId;
+    _unlinkingComprobanteId = comprobanteId;
     await InvokeAsync(StateHasChanged);
 
     try
@@ -1936,8 +1957,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       var request = new TransaccionComprobanteUnlinkRequest
       {
         CurrentTransaccionId = Header.Id,
-        ComprobanteId = comprobante.ComprobanteId,
-        Tipo = comprobante.Tipo
+        ComprobanteId = comprobanteId,
+        Tipo = tipo
       };
 
       var result = await TransaccionService.UnlinkComprobanteAsync(request);
@@ -1964,7 +1985,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
   }
 
-  protected async Task CancelComprobanteCfdiAsync(TransaccionCfdiCandidateDto comprobante)
+  protected async Task CancelComprobanteCfdiAsync(TransaccionCfdiLinkedSummaryDto comprobante)
   {
     if (Header is null || comprobante is null)
     {

@@ -114,14 +114,11 @@
 }
 
 .linking-amount-editor {
-  min-width: 13rem;
-}
-
-.linking-amount-editor {
   align-items: center;
   display: flex;
   gap: 0.4rem;
   justify-content: flex-end;
+  min-width: 13rem;
 }
 
 .linking-amount-editor .form-control {

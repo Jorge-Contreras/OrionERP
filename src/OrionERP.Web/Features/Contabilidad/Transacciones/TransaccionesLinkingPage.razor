@@ -3,51 +3,7 @@
 @using OrionERP.Application.Features.Contabilidad.Transacciones
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
-<PageTitle>Transacción @Header?.Id ?? Id</PageTitle>
-
-<style>
-  .linking-header .form-control,
-  .linking-header .form-control-plaintext {
-    font-weight: 500;
-  }
-
-  .linking-toolbar .btn-primary {
-    min-width: 120px;
-  }
-
-  .linking-table-wrapper {
-    max-height: 380px;
-    overflow-y: auto;
-  }
-
-  .linking-table tbody tr {
-    cursor: pointer;
-  }
-
-  .linking-table td.text-wrap {
-    white-space: normal;
-  }
-
-  .linking-toolbar .form-label {
-    font-size: 0.875rem;
-    font-weight: 600;
-  }
-    /* Limit Conceptos column width */
-    .linking-table td.conceptos-col {
-        width: 40ch; /* or 50ch if you prefer */
-        max-width: 40ch;
-    }
-
-        /* Force ellipsis on the text inside */
-        .linking-table td.conceptos-col .truncate-text {
-            display: block; /* or inline-block */
-            width: 100%; /* critical: definite width */
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-</style>
+<PageTitle>Ligar transacción @(Header?.Id ?? Id)</PageTitle>
 
 @if (IsLoading)
 {
@@ -64,224 +20,400 @@ else if (!string.IsNullOrEmpty(ErrorMessage))
 }
 else if (Header is not null)
 {
-  <div class="d-flex flex-column gap-3">
-    <div class="card shadow-sm">
-      <div class="card-header">
-        <h5 class="mb-0">Datos de la transacción</h5>
-      </div>
-      <div class="card-body linking-header">
-        <div class="row g-3 g-lg-4">
-          <div class="col-12 col-sm-6 col-lg-2">
-            <label class="form-label">ID</label>
-            <input class="form-control" value="@Header.Id" readonly />
-                        <a href="/Contabilidad/Transacciones/@Header.Id" target="_blank" rel="noopener">@Header.Id</a>
-          </div>
-          <div class="col-12 col-sm-6 col-lg-2">
-            <label class="form-label">Fecha</label>
-            <input class="form-control" value="@Header.Fecha.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" readonly />
-          </div>
-          <div class="col-12 col-sm-6 col-lg-2">
-            <label class="form-label">Monto</label>
-            <input class="form-control" value="@FormatCurrency(Header.Monto)" readonly />
-          </div>
-          <div class="col-12 col-sm-6 col-lg-3">
-            <label class="form-label">Tipo de póliza</label>
-            <input class="form-control" value="@Header.TipoPoliza" readonly />
-          </div>
-          <div class="col-12 col-sm-6 col-lg-3">
-            <label class="form-label">Forma de pago</label>
-            <input class="form-control" value="@Header.FormaPago" readonly />
-          </div>
-          <div class="col-12 col-sm-6 col-lg-2">
-            <label class="form-label">RFC</label>
-            <input class="form-control" value="@Header.Rfc" readonly />
-          </div>
-          <div class="col-12 col-lg-6">
-            <label class="form-label">Concepto</label>
-            <textarea class="form-control" rows="2" readonly>@Header.Concepto</textarea>
-          </div>
-          <div class="col-12 col-lg-6">
-            <label class="form-label">Memo</label>
-            <textarea class="form-control" rows="2" readonly>@Header.Memo</textarea>
-          </div>
+  <div class="transaction-linking-page">
+    <section class="transaction-linking-header">
+      <div>
+        <div class="transaction-linking-kicker">Póliza @Header.Id</div>
+        <h1>@Header.Concepto</h1>
+        <div class="transaction-linking-meta">
+          <span>@Header.Fecha.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</span>
+          <span>@Header.Rfc</span>
+          <span>@Header.TipoPoliza</span>
+          <span>@Header.FormaPago</span>
         </div>
       </div>
-    </div>
+      <a href="/Contabilidad/Transacciones/@Header.Id" target="_blank" rel="noopener" class="btn btn-outline-primary">Abrir póliza</a>
+    </section>
 
-    <div class="card shadow-sm">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Comprobantes ligados a la póliza</h5>
-                <span class="text-muted small">@LinkedRows.Count ligado(s)</span>
-            </div>
-            <div class="card-body">
-                @if (IsLoadingLinked)
-                {
-                    <div class="orion-loading" role="status" aria-live="polite">
-                        <span class="orion-spinner" aria-hidden="true"></span>
-                        <span class="orion-strong">Cargando comprobantes ligados…</span>
-                    </div>
-                }
-                else if (LinkedRows.Count == 0)
-                {
-                    <div class="alert alert-secondary mb-0">
-                        No hay comprobantes ligados a esta transacción.
-                    </div>
-                }
-                else
-                {
-                    <div class="table-responsive linking-table-wrapper">
-                        <table class="table table-sm table-striped align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th scope="col">Comprobante ID</th>
-                                    <th scope="col">XML Attachment ID</th>
-                                    <th scope="col">Fecha</th>
-                                    <th scope="col">Tipo</th>
-                                    <th scope="col">Serie</th>
-                                    <th scope="col">Folio</th>
-                                    <th scope="col">Emisor RFC</th>
-                                    <th scope="col">Receptor RFC</th>
-                                    <th scope="col">UUID</th>
-                                    <th scope="col">Forma Pago</th>
-                                    <th scope="col" class="text-end">Total</th>
-                                    <th scope="col">#Pólizas</th>
-                                    <th scope="col" class="text-end">Asignado</th>
-                                    <th scope="col">Método Pago</th>
-                                    <th scope="col">Uso CFDI</th>
-                                    <th scope="col">Conceptos</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var linked in LinkedRows)
-                                {
-                                    <tr>
-                                        <td>@linked.ComprobanteId</td>
-                                        <td>@linked.XmlAttachmentId</td>
-                                        <td>@linked.Fecha.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
-                                        <td>@linked.Tipo</td>
-                                        <td>@linked.Serie</td>
-                                        <td>@linked.Folio</td>
-                                        <td>@linked.EmisorRfc</td>
-                                        <td>@linked.ReceptorRfc</td>
-                                        <td>@linked.Uuid</td>
-                                        <td>@linked.FormaPago</td>
-                                        <td class="text-end">@FormatCurrency(linked.Total)</td>
-                                        <td>@linked.Polizas</td>
-                                        <td class="text-end">@FormatCurrency(linked.Asignado)</td>
-                                        <td>@linked.MetodoPago</td>
-                                        <td>@linked.UsoCfdi</td>
-                                        <td><span class="truncate-text">@linked.Conceptos</span></td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-            </div>
-        </div>
-    <div class="card shadow-sm">
-      <div class="card-body">
-        <div class="row g-3 align-items-end linking-toolbar">
-          <div class="col-12 col-md-auto d-flex gap-2">
-            <button class="btn btn-primary" type="button" @onclick="LinkSelectedAsync" disabled="@(SelectedCandidate is null || IsLinking)">
-              @(IsLinking ? "Ligando…" : "Ligar")
-            </button>
-            <button class="btn btn-outline-secondary" type="button" @onclick="SearchCandidatesAsync" disabled="@(IsSearchingCandidates || Header?.Rfc is null)">
-              @(IsSearchingCandidates ? "Buscando…" : "Buscar")
-            </button>
-          </div>
-          <div class="col-12 col-sm-6 col-lg-2">
-            <label class="form-label" for="montoInput">Monto</label>
-            <input id="montoInput" class="form-control" type="number" step="0.01" placeholder="Igual a Total" @bind="Filters.Monto" />
-          </div>
-          <div class="col-12 col-sm-6 col-lg-3">
-            <label class="form-label" for="conceptoInput">Concepto</label>
-            <input id="conceptoInput" class="form-control" type="text" placeholder="Contiene en Conceptos" @bind="Filters.Concepto" />
-          </div>
-          <div class="col-12 col-sm-6 col-lg-2">
-            <label class="form-label" for="comprobanteInput">Comprobante ID</label>
-            <input id="comprobanteInput" class="form-control" type="number" @bind="Filters.ComprobanteId" />
-          </div>
-        </div>
-        <div class="form-text mt-2">
-          El botón "Ligar" se habilita al seleccionar un CFDI candidato.
-        </div>
+    <section class="transaction-linking-metrics">
+      <div class="transaction-linking-metric">
+        <span>Monto póliza</span>
+        <strong>@FormatCurrency(Header.Monto)</strong>
       </div>
-    </div>
+      <div class="transaction-linking-metric @(RegularPendiente < 0 ? "is-danger" : string.Empty)">
+        <span>CFDI regular asignado</span>
+        <strong>@FormatCurrency(RegularAsignado)</strong>
+        <small>Pendiente @FormatCurrency(RegularPendiente)</small>
+      </div>
+      <div class="transaction-linking-metric @(Pago20Pendiente < 0 ? "is-danger" : string.Empty)">
+        <span>Pago20 asignado</span>
+        <strong>@FormatCurrency(Pago20Asignado)</strong>
+        <small>Pendiente @FormatCurrency(Pago20Pendiente)</small>
+      </div>
+      <div class="transaction-linking-metric">
+        <span>Ligados</span>
+        <strong>@LinkedCount</strong>
+        <small>@Workspace.Linked.Comprobantes.Count CFDI · @Workspace.Linked.ComplementosPago.Count Pago20</small>
+      </div>
+    </section>
 
-    <div class="card shadow-sm">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">CFDIs candidatos para póliza</h5>
-        <span class="text-muted small">@CandidateRows.Count candidato(s)</span>
+    @if (!string.IsNullOrWhiteSpace(Header.Memo))
+    {
+      <section class="transaction-linking-note">
+        <span>Memo</span>
+        <p>@Header.Memo</p>
+      </section>
+    }
+
+    <section class="transaction-linking-section">
+      <div class="transaction-linking-section-header">
+        <div>
+          <h2>Comprobantes vinculados</h2>
+          <p>Separado por CFDI regular y complementos de pago.</p>
+        </div>
+        <span class="badge text-bg-secondary">@LinkedCount ligado(s)</span>
       </div>
-      <div class="card-body">
-        @if (IsSearchingCandidates)
+
+      @if (LinkedCount == 0)
+      {
+        <div class="transaction-linking-empty">No hay comprobantes ligados a esta transacción.</div>
+      }
+      else
+      {
+        @if (Workspace.Linked.Comprobantes.Count > 0)
         {
-          <div class="orion-loading" role="status" aria-live="polite">
-            <span class="orion-spinner" aria-hidden="true"></span>
-            <span class="orion-strong">Buscando candidatos…</span>
-          </div>
-        }
-        else if (CandidateRows.Count == 0)
-        {
-          <div class="alert alert-info mb-0">
-            No se encontraron CFDIs candidatos con los filtros actuales.
-          </div>
-        }
-        else
-        {
-          <div class="table-responsive linking-table-wrapper">
-            <table class="table table-sm table-hover align-middle mb-0 linking-table">
-              <thead class="table-light">
-                <tr>
-                  <th scope="col">Comprobante ID</th>
-                  <th scope="col">XML Attachment ID</th>
-                  <th scope="col">Fecha</th>
-                  <th scope="col">Tipo</th>
-                  <th scope="col">Serie</th>
-                  <th scope="col">Folio</th>
-                  <th scope="col">Emisor RFC</th>
-                  <th scope="col">Receptor RFC</th>
-                  <th scope="col">UUID</th>
-                  <th scope="col">Forma Pago</th>
-                  <th scope="col" class="text-end">Total</th>
-                  <th scope="col">#Pólizas</th>
-                  <th scope="col" class="text-end">Asignado</th>
-                  <th scope="col">Método Pago</th>
-                  <th scope="col">Uso CFDI</th>
-                  <th scope="col">Conceptos</th>
-                </tr>
-              </thead>
-              <tbody>
-                @foreach (var candidate in CandidateRows)
-                {
-                  var isSelected = IsCandidateSelected(candidate);
-                  var rowClass = isSelected ? "table-primary" : string.Empty;
-                  <tr class="@rowClass" aria-selected="@(isSelected ? "true" : "false")" @onclick="() => SelectCandidate(candidate)">
-                    <td>@candidate.ComprobanteId</td>
-                    <td>@candidate.XmlAttachmentId</td>
-                    <td>@candidate.Fecha.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
-                    <td>@candidate.Tipo</td>
-                    <td>@candidate.Serie</td>
-                    <td>@candidate.Folio</td>
-                    <td>@candidate.EmisorRfc</td>
-                    <td>@candidate.ReceptorRfc</td>
-                    <td>@candidate.Uuid</td>
-                    <td>@candidate.FormaPago</td>
-                    <td class="text-end">@FormatCurrency(candidate.Total)</td>
-                    <td>@candidate.Polizas</td>
-                    <td class="text-end">@FormatCurrency(candidate.Asignado)</td>
-                    <td>@candidate.MetodoPago</td>
-                    <td>@candidate.UsoCfdi</td>
-                                        <td class="conceptos-col"><span class="truncate-text">@candidate.Conceptos</span></td>
+          <div class="transaction-linking-subsection">
+            <div class="transaction-linking-subsection-title">
+              <h3>CFDI regular</h3>
+              <span class="badge text-bg-light">@Workspace.Linked.Comprobantes.Count</span>
+            </div>
+            <div class="table-responsive transaction-linking-table-wrapper">
+              <table class="table table-sm align-middle transaction-linking-table">
+                <thead>
+                  <tr>
+                    <th>CFDI</th>
+                    <th>Fecha</th>
+                    <th>Tipo</th>
+                    <th>Dirección</th>
+                    <th>UUID</th>
+                    <th class="text-end">Total</th>
+                    <th class="text-end">Asignado</th>
+                    <th class="text-end">IVA</th>
+                    <th class="text-end">ISR ret.</th>
+                    <th>Estados</th>
+                    <th></th>
                   </tr>
-                }
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  @foreach (var linked in Workspace.Linked.Comprobantes)
+                  {
+                    <tr>
+                      <td class="fw-semibold">@linked.ComprobanteId</td>
+                      <td>@linked.Fecha.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                      <td>@linked.Tipo</td>
+                      <td>@linked.Direccion</td>
+                      <td class="transaction-linking-uuid">@linked.Uuid</td>
+                      <td class="text-end">@FormatCurrency(linked.Total)</td>
+                      <td class="text-end">@FormatCurrency(linked.AsignadoCfdi)</td>
+                      <td class="text-end">@FormatCurrency(linked.Iva)</td>
+                      <td class="text-end">@FormatCurrency(linked.IsrRetenido)</td>
+                      <td>
+                        <div class="transaction-linking-badges">
+                          <span class="badge @GetStatusBadgeClass(linked.TotalCfdiStatus)">Total @FormatStatus(linked.TotalCfdiStatus)</span>
+                          <span class="badge @GetStatusBadgeClass(linked.TransaccionAsignacionStatus)">Póliza @FormatStatus(linked.TransaccionAsignacionStatus)</span>
+                          <span class="badge @GetStatusBadgeClass(linked.IvaStatus)">IVA @FormatStatus(linked.IvaStatus)</span>
+                        </div>
+                      </td>
+                      <td class="text-end">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-primary"
+                                disabled="@(!linked.XmlAttachmentId.HasValue)"
+                                @onclick="() => OpenCfdiAsync(linked.XmlAttachmentId)">
+                          Ver XML
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
           </div>
         }
-      </div>
-    </div>
 
+        @if (Workspace.Linked.ComplementosPago.Count > 0)
+        {
+          <div class="transaction-linking-subsection">
+            <div class="transaction-linking-subsection-title">
+              <h3>Complementos de pago</h3>
+              <span class="badge text-bg-light">@Workspace.Linked.ComplementosPago.Count</span>
+            </div>
+            <div class="table-responsive transaction-linking-table-wrapper">
+              <table class="table table-sm align-middle transaction-linking-table">
+                <thead>
+                  <tr>
+                    <th>Complemento</th>
+                    <th>Fecha pago</th>
+                    <th>Dirección</th>
+                    <th>UUID</th>
+                    <th>Forma</th>
+                    <th class="text-end">Imp. pagado</th>
+                    <th class="text-end">Comp. IVA</th>
+                    <th class="text-end">IVA contable</th>
+                    <th>Estado</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach (var linked in Workspace.Linked.ComplementosPago)
+                  {
+                    <tr>
+                      <td class="fw-semibold">@linked.ComprobanteId</td>
+                      <td>@(linked.FechaPago.HasValue ? linked.FechaPago.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "-")</td>
+                      <td>@linked.Direccion</td>
+                      <td class="transaction-linking-uuid">@linked.ComprobanteUuid</td>
+                      <td>@linked.FormaDePagoP</td>
+                      <td class="text-end">@FormatCurrency(linked.ImpPagado)</td>
+                      <td class="text-end">@FormatCurrency(linked.CompIva)</td>
+                      <td class="text-end">@FormatCurrency(linked.IvaContable)</td>
+                      <td><span class="badge @GetStatusBadgeClass(linked.IvaStatus)">IVA @FormatStatus(linked.IvaStatus)</span></td>
+                      <td class="text-end">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-primary"
+                                disabled="@(!linked.XmlAttachmentId.HasValue)"
+                                @onclick="() => OpenCfdiAsync(linked.XmlAttachmentId)">
+                          Ver XML
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        }
+      }
+    </section>
+
+    <section class="transaction-linking-section">
+      <div class="transaction-linking-section-header">
+        <div>
+          <h2>Buscar candidatos</h2>
+          <p>CFDI regular y Pago20 se consultan por rutas separadas.</p>
+        </div>
+        <span class="badge text-bg-secondary">@CandidateCount candidato(s)</span>
+      </div>
+
+      <EditForm Model="Filters" OnSubmit="HandleFilterSubmitAsync">
+        <div class="transaction-linking-filter-grid">
+          <div>
+            <label class="form-label" for="montoInput">Monto objetivo</label>
+            <InputNumber id="montoInput" class="form-control" TValue="decimal?" @bind-Value="Filters.Monto" />
+          </div>
+          <div>
+            <label class="form-label" for="conceptoInput">Concepto / UUID</label>
+            <InputText id="conceptoInput" class="form-control" @bind-Value="Filters.Concepto" />
+          </div>
+          <div>
+            <label class="form-label" for="comprobanteInput">Comprobante / Docto</label>
+            <InputNumber id="comprobanteInput" class="form-control" TValue="long?" @bind-Value="Filters.ComprobanteId" />
+          </div>
+          <div>
+            <label class="form-label" for="tipoInput">Tipo</label>
+            <select id="tipoInput" class="form-select" @bind="Filters.Tipo">
+              <option value="">Todos</option>
+              <option value="CFDI">CFDI regular</option>
+              <option value="I">Ingreso</option>
+              <option value="E">Egreso</option>
+              <option value="N">Nómina</option>
+              <option value="P">Pago20</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" for="rowsInput">Renglones</label>
+            <InputNumber id="rowsInput" class="form-control" TValue="int" @bind-Value="Filters.Renglones" />
+          </div>
+          <div class="transaction-linking-filter-actions">
+            <button class="btn btn-primary" type="submit" disabled="@IsRefreshingWorkspace">
+              @(IsRefreshingWorkspace ? "Buscando..." : "Buscar")
+            </button>
+            <button class="btn btn-outline-secondary" type="button" @onclick="ResetFiltersAsync" disabled="@IsRefreshingWorkspace">Limpiar</button>
+          </div>
+        </div>
+      </EditForm>
+
+      @if (HasSelection)
+      {
+        <div class="transaction-linking-selection">
+          <div>
+            <div class="transaction-linking-kicker">
+              @(SelectedKind == CandidateSelectionKind.Pago20 ? "Pago20 seleccionado" : "CFDI seleccionado")
+            </div>
+            @if (SelectedKind == CandidateSelectionKind.Pago20 && SelectedPago20Candidate is not null)
+            {
+              <strong>Docto @SelectedPago20Candidate.DoctoRelacionadoId · @SelectedPago20Candidate.UuidDoctoRelacionado</strong>
+              <div class="transaction-linking-subtle">
+                Imp. pagado @FormatCurrency(SelectedPago20Candidate.ImpPagado) · sugerido @FormatCurrency(SelectedPago20Candidate.MontoSugerido)
+              </div>
+            }
+            else if (SelectedRegularCandidate is not null)
+            {
+              <strong>CFDI @SelectedRegularCandidate.ComprobanteId · @SelectedRegularCandidate.Uuid</strong>
+              <div class="transaction-linking-subtle">
+                Total @FormatCurrency(SelectedRegularCandidate.Total) · sugerido @FormatCurrency(SelectedRegularCandidate.MontoSugerido)
+              </div>
+            }
+          </div>
+          <div class="transaction-linking-selection-controls">
+            <InputNumber class="form-control text-end"
+                         TValue="decimal"
+                         min="0.01"
+                         step="0.01"
+                         @bind-Value="LinkMonto"
+                         disabled="@IsLinking" />
+            <button class="btn btn-primary" type="button" @onclick="LinkSelectedAsync" disabled="@(!CanLink)">
+              @(IsLinking ? "Ligando..." : "Ligar")
+            </button>
+          </div>
+        </div>
+      }
+
+      @if (IsRefreshingWorkspace)
+      {
+        <div class="orion-loading" role="status" aria-live="polite">
+          <span class="orion-spinner" aria-hidden="true"></span>
+          <span class="orion-strong">Buscando candidatos…</span>
+        </div>
+      }
+      else
+      {
+        <div class="transaction-linking-candidate-grid">
+          <div class="transaction-linking-candidate-panel">
+            <div class="transaction-linking-subsection-title">
+              <h3>CFDI regular</h3>
+              <span class="badge text-bg-light">@Workspace.RegularCandidates.Count</span>
+            </div>
+
+            @if (Workspace.RegularCandidates.Count == 0)
+            {
+              <div class="transaction-linking-empty">No se encontraron CFDIs regulares candidatos.</div>
+            }
+            else
+            {
+              <div class="table-responsive transaction-linking-table-wrapper">
+                <table class="table table-sm table-hover align-middle transaction-linking-table">
+                  <thead>
+                    <tr>
+                      <th>Match</th>
+                      <th>CFDI</th>
+                      <th>Fecha</th>
+                      <th>Tipo</th>
+                      <th>UUID</th>
+                      <th class="text-end">Total</th>
+                      <th class="text-end">Asignado</th>
+                      <th class="text-end">Sugerido</th>
+                      <th>IVA</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @foreach (var candidate in Workspace.RegularCandidates)
+                    {
+                      <tr class="@(IsRegularCandidateSelected(candidate) ? "table-primary" : string.Empty)"
+                          aria-selected="@(IsRegularCandidateSelected(candidate) ? "true" : "false")"
+                          @onclick="() => SelectRegularCandidate(candidate)">
+                        <td>
+                          <span class="badge @GetStatusBadgeClass(candidate.MatchStatus)">@FormatStatus(candidate.MatchStatus)</span>
+                          <div class="transaction-linking-subtle">@candidate.MatchScore pts</div>
+                        </td>
+                        <td class="fw-semibold">@candidate.ComprobanteId</td>
+                        <td>@candidate.Fecha.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                        <td>@candidate.Tipo</td>
+                        <td class="transaction-linking-uuid">@candidate.Uuid</td>
+                        <td class="text-end">@FormatCurrency(candidate.Total)</td>
+                        <td class="text-end">@FormatCurrency(candidate.AsignadoCfdi)</td>
+                        <td class="text-end">@FormatCurrency(candidate.MontoSugerido)</td>
+                        <td><span class="badge @GetStatusBadgeClass(candidate.IvaStatus)">@FormatStatus(candidate.IvaStatus)</span></td>
+                        <td class="text-end">
+                          <button type="button"
+                                  class="btn btn-sm btn-outline-primary"
+                                  disabled="@(!candidate.XmlAttachmentId.HasValue)"
+                                  @onclick="() => OpenCfdiAsync(candidate.XmlAttachmentId)"
+                                  @onclick:stopPropagation="true">
+                            Ver
+                          </button>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+
+          <div class="transaction-linking-candidate-panel">
+            <div class="transaction-linking-subsection-title">
+              <h3>Complementos de pago</h3>
+              <span class="badge text-bg-light">@Workspace.Pago20Candidates.Count</span>
+            </div>
+
+            @if (Workspace.Pago20Candidates.Count == 0)
+            {
+              <div class="transaction-linking-empty">No se encontraron complementos Pago20 candidatos.</div>
+            }
+            else
+            {
+              <div class="table-responsive transaction-linking-table-wrapper">
+                <table class="table table-sm table-hover align-middle transaction-linking-table">
+                  <thead>
+                    <tr>
+                      <th>Match</th>
+                      <th>Docto</th>
+                      <th>Fecha pago</th>
+                      <th>UUID docto</th>
+                      <th>Forma</th>
+                      <th class="text-end">Imp. pagado</th>
+                      <th class="text-end">Asignado</th>
+                      <th class="text-end">Sugerido</th>
+                      <th>IVA</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @foreach (var candidate in Workspace.Pago20Candidates)
+                    {
+                      <tr class="@(IsPago20CandidateSelected(candidate) ? "table-primary" : string.Empty)"
+                          aria-selected="@(IsPago20CandidateSelected(candidate) ? "true" : "false")"
+                          @onclick="() => SelectPago20Candidate(candidate)">
+                        <td>
+                          <span class="badge @GetStatusBadgeClass(candidate.MatchStatus)">@FormatStatus(candidate.MatchStatus)</span>
+                          <div class="transaction-linking-subtle">@candidate.MatchScore pts</div>
+                        </td>
+                        <td class="fw-semibold">@candidate.DoctoRelacionadoId</td>
+                        <td>@(candidate.FechaPago.HasValue ? candidate.FechaPago.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "-")</td>
+                        <td class="transaction-linking-uuid">@candidate.UuidDoctoRelacionado</td>
+                        <td>@candidate.FormaDePagoP</td>
+                        <td class="text-end">@FormatCurrency(candidate.ImpPagado)</td>
+                        <td class="text-end">@FormatCurrency(candidate.AsignadoComplemento)</td>
+                        <td class="text-end">@FormatCurrency(candidate.MontoSugerido)</td>
+                        <td><span class="badge @GetStatusBadgeClass(candidate.IvaStatus)">@FormatStatus(candidate.IvaStatus)</span></td>
+                        <td class="text-end">
+                          <button type="button"
+                                  class="btn btn-sm btn-outline-primary"
+                                  disabled="@(!candidate.XmlAttachmentId.HasValue)"
+                                  @onclick="() => OpenCfdiAsync(candidate.XmlAttachmentId)"
+                                  @onclick:stopPropagation="true">
+                            Ver
+                          </button>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </section>
   </div>
 }

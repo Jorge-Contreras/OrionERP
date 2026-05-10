@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
@@ -34,33 +35,31 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
   [Inject]
   public IJSRuntime Js { get; set; } = default!;
 
-  [Inject]
-  public NavigationManager Nav { get; set; } = default!;
-
-  protected ComprobanteDetalleDto? Comprobante { get; set; }
+  protected CfdiPolizaLinkingWorkspaceDto Workspace { get; private set; } = new();
+  protected CfdiPolizaLinkingSummaryDto? Summary => Workspace.Summary;
+  protected List<CfdiPolizaLinkedPolizaDto> Polizas => Workspace.Polizas;
+  protected List<CfdiPolizaCandidateDto> Candidates => Workspace.Candidates;
   protected bool IsLoading { get; set; }
-  protected bool IsPolizasLoading { get; set; }
-  protected bool IsTransaccionesLoading { get; set; }
+  protected bool IsCandidatesLoading { get; set; }
   protected bool IsLinking { get; set; }
   protected bool IsCreatingPoliza { get; set; }
   protected decimal LinkMonto { get; set; }
-  protected List<TransaccionListItemDto> Polizas { get; } = new();
-  protected List<TransaccionListItemDto> Transacciones { get; set; } = new();
   protected TransaccionFilter Filter { get; set; } = new();
-  protected TransaccionListItemDto? SelectedTransaccion { get; set; }
+  protected CfdiPolizaCandidateDto? SelectedCandidate { get; set; }
   protected string? InlineError { get; set; }
+  protected int? HighlightedTransaccionId { get; set; }
   private readonly Dictionary<int, LinkedMontoEditor> _linkedMontoEditors = new();
   private int? _savingLinkedMontoTransaccionId;
   private bool _disposed;
 
-  protected bool CanLigar => Comprobante is not null && SelectedTransaccion is not null && LinkMonto > 0m;
-  protected bool CanCreatePoliza => Comprobante is not null;
+  protected bool CanLigar => Summary is not null && SelectedCandidate is not null && LinkMonto > 0m;
+  protected bool CanCreatePoliza => Summary is not null;
 
   protected override async Task OnInitializedAsync()
   {
     RfcState.Changed += OnRfcChanged;
     ResetFilters();
-    await LoadDataAsync();
+    await LoadWorkspaceAsync();
   }
 
   private async void OnRfcChanged()
@@ -72,101 +71,55 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
 
     await InvokeAsync(async () =>
     {
-      Filter.Rfc = RfcState.CurrentRfc;
-      await LoadTransaccionesAsync();
+      ResetFilters();
+      await LoadWorkspaceAsync();
     });
   }
 
-  private async Task LoadDataAsync()
+  private async Task LoadWorkspaceAsync(bool candidatesOnly = false)
   {
-    IsLoading = true;
+    if (candidatesOnly)
+    {
+      IsCandidatesLoading = true;
+    }
+    else
+    {
+      IsLoading = true;
+    }
+
     InlineError = null;
-    Comprobante = null;
-    try
-    {
-      Comprobante = await DeclaracionPreviaService.GetComprobanteDetalleAsync(Comprobante_Id);
-      if (Comprobante is not null)
-      {
-        Filter.Monto = Comprobante.Total;
-        await LoadPolizasAsync();
-        await LoadTransaccionesAsync();
-      }
-    }
-    catch (Exception ex)
-    {
-      InlineError = ex.Message;
-    }
-    finally
-    {
-      IsLoading = false;
-    }
-  }
-
-  private async Task LoadPolizasAsync()
-  {
-    if (Comprobante is null)
-    {
-      return;
-    }
-
-    IsPolizasLoading = true;
-    Polizas.Clear();
+    SelectedCandidate = null;
+    LinkMonto = 0m;
 
     try
     {
-      if (!string.IsNullOrWhiteSpace(Comprobante.FOLIO_FISCAL))
-      {
-        var polizasByUuid = await TransaccionService.GetTransaccionesByUuidAsync(Comprobante.FOLIO_FISCAL);
-        Polizas.AddRange(polizasByUuid);
-      }
+      Filter.Rfc = RfcState.CurrentRfc;
+      Workspace = await TransaccionService.GetCfdiPolizaLinkingWorkspaceAsync(
+        Comprobante_Id,
+        RfcState.CurrentRfc,
+        Filter);
 
-      if (Polizas.Count == 0)
+      if (Workspace.Summary is not null && Filter.Monto is null)
       {
-        var polizasById = await TransaccionService.GetTransaccionesByComprobanteIdAsync(Comprobante.Comprobante_Id);
-        Polizas.AddRange(polizasById);
+        Filter.Monto = GetObjectiveMonto();
       }
 
       SyncLinkedMontoInputs();
     }
     catch (Exception ex)
     {
-      InlineError = $"No se pudieron cargar las pólizas ligadas. {ex.Message}";
+      InlineError = $"No se pudo cargar el espacio de ligado CFDI. {ex.Message}";
       UiMessages.ShowError(InlineError);
     }
     finally
     {
-      IsPolizasLoading = false;
+      IsLoading = false;
+      IsCandidatesLoading = false;
     }
   }
 
-  private async Task LoadTransaccionesAsync()
-  {
-    IsTransaccionesLoading = true;
-    InlineError = null;
-    SelectedTransaccion = null;
-    LinkMonto = 0m;
-
-    try
-    {
-      Filter.Rfc = RfcState.CurrentRfc;
-      var result = await TransaccionService.GetTransaccionesListAsync(Filter);
-      Transacciones = result.ToList();
-    }
-    catch (Exception ex)
-    {
-      InlineError = $"No se pudieron cargar las transacciones. {ex.Message}";
-      UiMessages.ShowError(InlineError);
-    }
-    finally
-    {
-      IsTransaccionesLoading = false;
-    }
-  }
-
-  protected async Task BuscarAsync()
-  {
-    await LoadTransaccionesAsync();
-  }
+  protected Task BuscarAsync()
+    => LoadWorkspaceAsync(candidatesOnly: true);
 
   protected Task HandleFilterSubmitAsync(EditContext _)
     => BuscarAsync();
@@ -174,59 +127,53 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
   protected async Task LimpiarFiltrosAsync()
   {
     ResetFilters();
-    await LoadTransaccionesAsync();
+    await LoadWorkspaceAsync(candidatesOnly: true);
   }
 
-  protected async Task Ordenar(string columnName)
+  protected void SeleccionarCandidate(CfdiPolizaCandidateDto item)
   {
-    if (Filter.SortBy == columnName)
-    {
-      Filter.SortAsc = !Filter.SortAsc;
-    }
-    else
-    {
-      Filter.SortBy = columnName;
-      Filter.SortAsc = true;
-    }
-
-    await LoadTransaccionesAsync();
-  }
-
-  protected string GetRowClass(TransaccionListItemDto item)
-    => SelectedTransaccion?.Id == item.Id ? "table-active" : string.Empty;
-
-  protected void SeleccionarTransaccion(TransaccionListItemDto item)
-  {
-    if (IsTransaccionesLoading)
+    if (IsCandidatesLoading)
     {
       return;
     }
 
-    SelectedTransaccion = item;
+    SelectedCandidate = item;
     LinkMonto = GetSuggestedMonto(item);
     InlineError = null;
   }
 
+  protected string GetCandidateRowClass(CfdiPolizaCandidateDto item)
+  {
+    var classes = new List<string>();
 
-  
+    if (SelectedCandidate?.Id == item.Id)
+    {
+      classes.Add("table-active");
+    }
 
+    if (HighlightedTransaccionId == item.Id)
+    {
+      classes.Add("linking-row-highlight");
+    }
 
+    return string.Join(" ", classes);
+  }
 
   protected async Task LigarAsync()
   {
-    if (!CanLigar || SelectedTransaccion is null || Comprobante is null)
+    if (!CanLigar || SelectedCandidate is null || Summary is null)
     {
       return;
     }
 
     InlineError = null;
-    var confirm = await Js.InvokeAsync<bool>("confirm", "¿Deseas ligar la transacción seleccionada a este CFDI?");
+    var confirm = await Js.InvokeAsync<bool>("confirm", "¿Deseas ligar la póliza seleccionada a este CFDI?");
     if (!confirm)
     {
       return;
     }
 
-    var maxMonto = GetMaxAllowedMonto(SelectedTransaccion);
+    var maxMonto = GetMaxAllowedMonto(SelectedCandidate);
     if (LinkMonto <= 0m)
     {
       InlineError = "El monto a ligar debe ser mayor que cero.";
@@ -236,7 +183,7 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
 
     if (maxMonto > 0m && LinkMonto > maxMonto)
     {
-      InlineError = $"El monto a ligar no puede exceder {maxMonto:C}.";
+      InlineError = $"El monto a ligar no puede exceder {FormatCurrency(maxMonto)}.";
       UiMessages.ShowError(InlineError);
       return;
     }
@@ -245,8 +192,8 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
     try
     {
       var result = await TransaccionService.LinkCfdiAndRelinkAttachmentAsync(
-        SelectedTransaccion.Id,
-        Comprobante.Comprobante_Id,
+        SelectedCandidate.Id,
+        Summary.ComprobanteId,
         LinkMonto);
 
       if (!result.Success)
@@ -256,16 +203,14 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
         return;
       }
 
+      HighlightedTransaccionId = SelectedCandidate.Id;
       UiMessages.ShowSuccess(result.Message);
       ResetFilters();
-      SelectedTransaccion = null;
-      LinkMonto = 0m;
-      await LoadPolizasAsync();
-      await LoadTransaccionesAsync();
+      await LoadWorkspaceAsync();
     }
     catch (Exception ex)
     {
-      InlineError = $"No se pudo ligar la transacción: {ex.Message}";
+      InlineError = $"No se pudo ligar la póliza: {ex.Message}";
       UiMessages.ShowError(InlineError);
     }
     finally
@@ -276,7 +221,7 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
 
   protected async Task CrearPolizaConComprobanteAsync()
   {
-    if (!CanCreatePoliza || Comprobante is null)
+    if (!CanCreatePoliza || Summary is null)
     {
       return;
     }
@@ -286,9 +231,14 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
 
     try
     {
-      await DeclaracionPreviaService.GenerarPolizaDesdeComprobanteAsync(Comprobante.Comprobante_Id, RfcState.CurrentRfc ?? string.Empty);
-      await OpenLinkedTransactionAsync();
-      await LoadPolizasAsync();
+      var transaccionId = await DeclaracionPreviaService.GenerarPolizaDesdeComprobanteAsync(
+        Summary.ComprobanteId,
+        RfcState.CurrentRfc ?? string.Empty);
+
+      HighlightedTransaccionId = transaccionId;
+      UiMessages.ShowSuccess($"Póliza {transaccionId} creada y ligada al CFDI.");
+      ResetFilters();
+      await LoadWorkspaceAsync();
     }
     catch (Exception ex)
     {
@@ -301,70 +251,69 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
     }
   }
 
-  private async Task OpenLinkedTransactionAsync()
-  {
-    var transId = await DeclaracionPreviaService.GetLinkedTransactionIdAsync(Comprobante_Id);
-
-    if (!transId.HasValue)
-    {
-      UiMessages.ShowWarning("No se encontró una Transacción vinculada a este CFDI.");
-      return;
-    }
-
-    var url = $"/Contabilidad/transacciones/{transId.Value}";
-
-    try
-    {
-      await Js.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
-    }
-    catch
-    {
-      Nav.NavigateTo(url);
-    }
-  }
-
   private void ResetFilters()
   {
+    var now = DateTime.Now;
     Filter = new TransaccionFilter
     {
       Rfc = RfcState.CurrentRfc,
-      Year = DateTime.Now.Year,
-      Month = DateTime.Now.Month,
-      Monto = Comprobante?.Total
+      Year = Summary?.Fecha.Year ?? now.Year,
+      Month = Summary?.Fecha.Month ?? now.Month,
+      Monto = null
     };
   }
 
-  protected decimal GetSuggestedMonto(TransaccionListItemDto? transaccion)
-    => GetMaxAllowedMonto(transaccion);
-
-  protected decimal GetMaxAllowedMonto(TransaccionListItemDto? transaccion)
+  protected decimal GetObjectiveMonto()
   {
-    if (Comprobante is null || transaccion is null)
+    if (Summary is null)
     {
       return 0m;
     }
 
-    return decimal.Min(Comprobante.Total, decimal.Abs(transaccion.Monto));
+    return Summary.Pendiente > 0m ? Summary.Pendiente : Summary.Total;
   }
 
-  protected LinkedMontoEditor GetLinkedMontoEditor(TransaccionListItemDto poliza)
+  protected decimal GetSuggestedMonto(CfdiPolizaCandidateDto? candidate)
   {
-    if (_linkedMontoEditors.TryGetValue(poliza.Id, out var editor))
+    if (candidate is null)
+    {
+      return 0m;
+    }
+
+    return candidate.MontoSugerido > 0m ? candidate.MontoSugerido : GetMaxAllowedMonto(candidate);
+  }
+
+  protected decimal GetMaxAllowedMonto(CfdiPolizaCandidateDto? candidate)
+  {
+    if (Summary is null || candidate is null)
+    {
+      return 0m;
+    }
+
+    var cfdiRemaining = Summary.Pendiente > 0m ? Summary.Pendiente : Summary.Total;
+    var candidateAvailable = candidate.Disponible > 0m ? candidate.Disponible : decimal.Abs(candidate.Monto);
+
+    return decimal.Min(cfdiRemaining, candidateAvailable);
+  }
+
+  protected LinkedMontoEditor GetLinkedMontoEditor(CfdiPolizaLinkedPolizaDto poliza)
+  {
+    if (_linkedMontoEditors.TryGetValue(poliza.TransaccionId, out var editor))
     {
       return editor;
     }
 
     editor = new LinkedMontoEditor { Monto = poliza.MontoAsignado };
-    _linkedMontoEditors[poliza.Id] = editor;
+    _linkedMontoEditors[poliza.TransaccionId] = editor;
     return editor;
   }
 
-  protected bool IsSavingLinkedMonto(TransaccionListItemDto poliza)
-    => _savingLinkedMontoTransaccionId == poliza.Id;
+  protected bool IsSavingLinkedMonto(CfdiPolizaLinkedPolizaDto poliza)
+    => _savingLinkedMontoTransaccionId == poliza.TransaccionId;
 
-  protected async Task GuardarMontoLigadoAsync(TransaccionListItemDto poliza)
+  protected async Task GuardarMontoLigadoAsync(CfdiPolizaLinkedPolizaDto poliza)
   {
-    if (Comprobante is null)
+    if (Summary is null)
     {
       return;
     }
@@ -377,22 +326,22 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
       return;
     }
 
-    var maxMonto = GetMaxAllowedMonto(poliza);
-    if (maxMonto > 0m && monto > maxMonto)
+    var maxMonto = decimal.Max(Summary.Total, decimal.Abs(poliza.TransaccionMonto));
+    if (monto > maxMonto)
     {
-      InlineError = $"El monto asignado para la póliza {poliza.Id} no puede exceder {maxMonto:C}.";
+      InlineError = $"El monto asignado para la póliza {poliza.TransaccionId} no puede exceder {FormatCurrency(maxMonto)}.";
       UiMessages.ShowError(InlineError);
       return;
     }
 
     InlineError = null;
-    _savingLinkedMontoTransaccionId = poliza.Id;
+    _savingLinkedMontoTransaccionId = poliza.TransaccionId;
 
     try
     {
       var result = await TransaccionService.UpdateComprobanteMontoAsync(
-        poliza.Id,
-        Comprobante.Comprobante_Id,
+        poliza.TransaccionId,
+        Summary.ComprobanteId,
         monto);
 
       if (!result.Success)
@@ -402,8 +351,9 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
         return;
       }
 
+      HighlightedTransaccionId = poliza.TransaccionId;
       UiMessages.ShowSuccess(result.Message);
-      await LoadPolizasAsync();
+      await LoadWorkspaceAsync();
     }
     catch (Exception ex)
     {
@@ -422,12 +372,39 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
 
     foreach (var poliza in Polizas)
     {
-      _linkedMontoEditors[poliza.Id] = new LinkedMontoEditor
+      _linkedMontoEditors[poliza.TransaccionId] = new LinkedMontoEditor
       {
         Monto = poliza.MontoAsignado
       };
     }
   }
+
+  protected static string FormatCurrency(decimal value)
+    => value.ToString("C", CultureInfo.CurrentCulture);
+
+  protected static string FormatStatus(string? status)
+    => status switch
+    {
+      "OK" => "Correcto",
+      "DIFERENCIA" => "Diferencia",
+      "NA" => "N/A",
+      "FUERTE" => "Fuerte",
+      "POSIBLE" => "Posible",
+      "AMPLIA" => "Amplia",
+      "SIN_DISPONIBLE" => "Sin disponible",
+      _ => string.IsNullOrWhiteSpace(status) ? "Sin dato" : status
+    };
+
+  protected static string GetStatusBadgeClass(string? status)
+    => status switch
+    {
+      "OK" or "FUERTE" => "text-bg-success",
+      "POSIBLE" => "text-bg-primary",
+      "AMPLIA" or "NA" => "text-bg-secondary",
+      "SIN_DISPONIBLE" => "text-bg-dark",
+      "DIFERENCIA" => "text-bg-danger",
+      _ => "text-bg-secondary"
+    };
 
   protected sealed class LinkedMontoEditor
   {

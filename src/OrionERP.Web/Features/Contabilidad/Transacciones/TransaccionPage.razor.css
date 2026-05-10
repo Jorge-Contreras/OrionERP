@@ -45,6 +45,40 @@
   cursor: pointer;
 }
 
+.linked-cfdi-group {
+  min-width: 0;
+}
+
+.linked-cfdi-statuses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.linked-cfdi-uuid {
+  max-width: 17rem;
+  overflow-wrap: anywhere;
+  font-family: var(--bs-font-monospace);
+  font-size: 0.78rem;
+}
+
+.linked-cfdi-detail-row > td {
+  background: rgba(15, 45, 78, 0.035);
+  padding: 0.7rem;
+}
+
+.linked-cfdi-detail {
+  border-left: 3px solid rgba(15, 45, 78, 0.22);
+  padding-left: 0.75rem;
+}
+
+.linked-cfdi-concepts {
+  color: var(--bs-secondary-color);
+  font-size: 0.86rem;
+  margin-bottom: 0.45rem;
+  overflow-wrap: anywhere;
+}
+
 .transaccion-lookup-results {
   max-height: 18rem;
   overflow-y: auto;

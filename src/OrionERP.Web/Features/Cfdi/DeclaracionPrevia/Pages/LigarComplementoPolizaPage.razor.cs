@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Globalization;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.JSInterop;
-using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Web.Services;
 using OrionERP.Web.State;
@@ -19,9 +19,6 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
   public int DoctoRelacionado_Id { get; set; }
 
   [Inject]
-  public IDeclaracionPreviaService DeclaracionPreviaService { get; set; } = default!;
-
-  [Inject]
   public ITransaccionService TransaccionService { get; set; } = default!;
 
   [Inject]
@@ -33,25 +30,30 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
   [Inject]
   public IJSRuntime Js { get; set; } = default!;
 
-  protected Pago20ResumenDetalleDto? DoctoRelacionado { get; set; }
+  protected Pago20PolizaLinkingWorkspaceDto Workspace { get; private set; } = new();
+  protected Pago20PolizaLinkingSummaryDto? Summary => Workspace.Summary;
+  protected List<Pago20PolizaDoctoRelacionadoDto> Documentos => Workspace.Documentos;
+  protected List<CfdiPolizaLinkedPolizaDto> Polizas => Workspace.Polizas;
+  protected List<CfdiPolizaCandidateDto> Candidates => Workspace.Candidates;
   protected bool IsLoading { get; set; }
-  protected bool IsPolizasLoading { get; set; }
-  protected bool IsTransaccionesLoading { get; set; }
+  protected bool IsCandidatesLoading { get; set; }
   protected bool IsLinking { get; set; }
-  protected List<TransaccionListItemDto> Polizas { get; } = new();
-  protected List<TransaccionListItemDto> Transacciones { get; set; } = new();
+  protected decimal LinkMonto { get; set; }
   protected TransaccionFilter Filter { get; set; } = new();
-  protected TransaccionListItemDto? SelectedTransaccion { get; set; }
+  protected CfdiPolizaCandidateDto? SelectedCandidate { get; set; }
   protected string? InlineError { get; set; }
+  protected int? HighlightedTransaccionId { get; set; }
+  private readonly Dictionary<int, LinkedMontoEditor> _linkedMontoEditors = new();
+  private int? _savingLinkedMontoTransaccionId;
   private bool _disposed;
 
-  protected bool CanLigar => DoctoRelacionado is not null && SelectedTransaccion is not null;
+  protected bool CanLigar => Summary is not null && SelectedCandidate is not null && LinkMonto > 0m;
 
   protected override async Task OnInitializedAsync()
   {
     RfcState.Changed += OnRfcChanged;
     ResetFilters();
-    await LoadDataAsync();
+    await LoadWorkspaceAsync();
   }
 
   private async void OnRfcChanged()
@@ -63,145 +65,130 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
 
     await InvokeAsync(async () =>
     {
-      Filter.Rfc = RfcState.CurrentRfc;
-      await LoadTransaccionesAsync();
+      ResetFilters();
+      await LoadWorkspaceAsync();
     });
   }
 
-  private async Task LoadDataAsync()
+  private async Task LoadWorkspaceAsync(bool candidatesOnly = false)
   {
-    IsLoading = true;
+    if (candidatesOnly)
+    {
+      IsCandidatesLoading = true;
+    }
+    else
+    {
+      IsLoading = true;
+    }
+
     InlineError = null;
-    DoctoRelacionado = null;
+    SelectedCandidate = null;
+    LinkMonto = 0m;
 
     try
     {
-      DoctoRelacionado = await DeclaracionPreviaService.GetPago20ResumenByDoctoRelacionadoIdAsync(DoctoRelacionado_Id);
-      if (DoctoRelacionado is not null)
+      Filter.Rfc = RfcState.CurrentRfc;
+      Workspace = await TransaccionService.GetPago20PolizaLinkingWorkspaceAsync(
+        DoctoRelacionado_Id,
+        RfcState.CurrentRfc,
+        Filter);
+
+      if (Workspace.Summary is not null && Filter.Monto is null)
       {
-        Filter.Monto = DoctoRelacionado.ImpPagado != 0 ? DoctoRelacionado.ImpPagado : DoctoRelacionado.MontoPago;
-        await LoadPolizasAsync();
-        await LoadTransaccionesAsync();
+        Filter.Monto = GetObjectiveMonto();
       }
+
+      SyncLinkedMontoInputs();
     }
     catch (Exception ex)
     {
-      InlineError = ex.Message;
+      InlineError = $"No se pudo cargar el espacio de ligado Pago20. {ex.Message}";
+      UiMessages.ShowError(InlineError);
     }
     finally
     {
       IsLoading = false;
+      IsCandidatesLoading = false;
     }
   }
 
-  private async Task LoadPolizasAsync()
-  {
-    if (DoctoRelacionado is null)
-    {
-      return;
-    }
+  protected Task BuscarAsync()
+    => LoadWorkspaceAsync(candidatesOnly: true);
 
-    IsPolizasLoading = true;
-    Polizas.Clear();
-
-    try
-    {
-      var linkedPolizas = await TransaccionService.GetTransaccionesByDoctoRelacionadoIdAsync(DoctoRelacionado.DoctoRelacionado_Id);
-      Polizas.AddRange(linkedPolizas);
-    }
-    catch (Exception ex)
-    {
-      InlineError = $"No se pudieron cargar las pólizas ligadas. {ex.Message}";
-      UiMessages.ShowError(InlineError);
-    }
-    finally
-    {
-      IsPolizasLoading = false;
-    }
-  }
-
-  private async Task LoadTransaccionesAsync()
-  {
-    IsTransaccionesLoading = true;
-    InlineError = null;
-    SelectedTransaccion = null;
-
-    try
-    {
-      Filter.Rfc = RfcState.CurrentRfc;
-      var result = await TransaccionService.GetTransaccionesListAsync(Filter);
-      Transacciones = result.ToList();
-    }
-    catch (Exception ex)
-    {
-      InlineError = $"No se pudieron cargar las transacciones. {ex.Message}";
-      UiMessages.ShowError(InlineError);
-    }
-    finally
-    {
-      IsTransaccionesLoading = false;
-    }
-  }
-
-  protected async Task BuscarAsync() => await LoadTransaccionesAsync();
+  protected Task HandleFilterSubmitAsync(EditContext _)
+    => BuscarAsync();
 
   protected async Task LimpiarFiltrosAsync()
   {
     ResetFilters();
-    await LoadTransaccionesAsync();
+    await LoadWorkspaceAsync(candidatesOnly: true);
   }
 
-  protected async Task Ordenar(string columnName)
+  protected void SeleccionarCandidate(CfdiPolizaCandidateDto item)
   {
-    if (Filter.SortBy == columnName)
-    {
-      Filter.SortAsc = !Filter.SortAsc;
-    }
-    else
-    {
-      Filter.SortBy = columnName;
-      Filter.SortAsc = true;
-    }
-
-    await LoadTransaccionesAsync();
-  }
-
-  protected string GetRowClass(TransaccionListItemDto item)
-    => SelectedTransaccion?.Id == item.Id ? "table-active" : string.Empty;
-
-  protected void SeleccionarTransaccion(TransaccionListItemDto item)
-  {
-    if (IsTransaccionesLoading)
+    if (IsCandidatesLoading)
     {
       return;
     }
 
-    SelectedTransaccion = item;
+    SelectedCandidate = item;
+    LinkMonto = GetSuggestedMonto(item);
     InlineError = null;
+  }
+
+  protected string GetCandidateRowClass(CfdiPolizaCandidateDto item)
+  {
+    var classes = new List<string>();
+
+    if (SelectedCandidate?.Id == item.Id)
+    {
+      classes.Add("table-active");
+    }
+
+    if (HighlightedTransaccionId == item.Id)
+    {
+      classes.Add("linking-row-highlight");
+    }
+
+    return string.Join(" ", classes);
   }
 
   protected async Task LigarAsync()
   {
-    if (!CanLigar || SelectedTransaccion is null || DoctoRelacionado is null)
+    if (!CanLigar || SelectedCandidate is null || Summary is null)
     {
       return;
     }
 
     InlineError = null;
-    var confirm = await Js.InvokeAsync<bool>("confirm", "¿Deseas ligar la transacción seleccionada a este complemento de pago?");
+    var confirm = await Js.InvokeAsync<bool>("confirm", "¿Deseas ligar la póliza seleccionada a este complemento de pago?");
     if (!confirm)
     {
+      return;
+    }
+
+    var maxMonto = GetMaxAllowedMonto(SelectedCandidate);
+    if (LinkMonto <= 0m)
+    {
+      InlineError = "El monto a ligar debe ser mayor que cero.";
+      UiMessages.ShowError(InlineError);
+      return;
+    }
+
+    if (maxMonto > 0m && LinkMonto > maxMonto)
+    {
+      InlineError = $"El monto a ligar no puede exceder {FormatCurrency(maxMonto)}.";
+      UiMessages.ShowError(InlineError);
       return;
     }
 
     IsLinking = true;
     try
     {
-      var monto = SelectedTransaccion.Monto;
       var result = await TransaccionService.InsertTransaccionDoctoRelacionadoAsync(
-        SelectedTransaccion.Id,
-        DoctoRelacionado.DoctoRelacionado_Id,
-        monto);
+        SelectedCandidate.Id,
+        Summary.DoctoRelacionadoId,
+        LinkMonto);
 
       if (!result.Success)
       {
@@ -210,15 +197,14 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
         return;
       }
 
+      HighlightedTransaccionId = SelectedCandidate.Id;
       UiMessages.ShowSuccess(result.Message);
       ResetFilters();
-      SelectedTransaccion = null;
-      await LoadPolizasAsync();
-      await LoadTransaccionesAsync();
+      await LoadWorkspaceAsync();
     }
     catch (Exception ex)
     {
-      InlineError = $"No se pudo ligar la transacción: {ex.Message}";
+      InlineError = $"No se pudo ligar la póliza: {ex.Message}";
       UiMessages.ShowError(InlineError);
     }
     finally
@@ -229,15 +215,162 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
 
   private void ResetFilters()
   {
-    var monto = DoctoRelacionado?.ImpPagado != 0 ? DoctoRelacionado?.ImpPagado : DoctoRelacionado?.MontoPago;
-
+    var now = DateTime.Now;
     Filter = new TransaccionFilter
     {
       Rfc = RfcState.CurrentRfc,
-      Year = DateTime.Now.Year,
-      Month = DateTime.Now.Month,
-      Monto = monto
+      Year = Summary?.FechaPago?.Year ?? now.Year,
+      Month = Summary?.FechaPago?.Month ?? now.Month,
+      Monto = null
     };
+  }
+
+  protected decimal GetObjectiveMonto()
+  {
+    if (Summary is null)
+    {
+      return 0m;
+    }
+
+    return Summary.Pendiente > 0m ? Summary.Pendiente : Summary.ImpPagado;
+  }
+
+  protected decimal GetSuggestedMonto(CfdiPolizaCandidateDto? candidate)
+  {
+    if (candidate is null)
+    {
+      return 0m;
+    }
+
+    return candidate.MontoSugerido > 0m ? candidate.MontoSugerido : GetMaxAllowedMonto(candidate);
+  }
+
+  protected decimal GetMaxAllowedMonto(CfdiPolizaCandidateDto? candidate)
+  {
+    if (Summary is null || candidate is null)
+    {
+      return 0m;
+    }
+
+    var complementoRemaining = Summary.Pendiente > 0m ? Summary.Pendiente : Summary.ImpPagado;
+    var candidateAvailable = candidate.Disponible > 0m ? candidate.Disponible : decimal.Abs(candidate.Monto);
+
+    return decimal.Min(complementoRemaining, candidateAvailable);
+  }
+
+  protected LinkedMontoEditor GetLinkedMontoEditor(CfdiPolizaLinkedPolizaDto poliza)
+  {
+    if (_linkedMontoEditors.TryGetValue(poliza.TransaccionId, out var editor))
+    {
+      return editor;
+    }
+
+    editor = new LinkedMontoEditor { Monto = poliza.MontoAsignado };
+    _linkedMontoEditors[poliza.TransaccionId] = editor;
+    return editor;
+  }
+
+  protected bool IsSavingLinkedMonto(CfdiPolizaLinkedPolizaDto poliza)
+    => _savingLinkedMontoTransaccionId == poliza.TransaccionId;
+
+  protected async Task GuardarMontoLigadoAsync(CfdiPolizaLinkedPolizaDto poliza)
+  {
+    if (Summary is null)
+    {
+      return;
+    }
+
+    var monto = GetLinkedMontoEditor(poliza).Monto;
+    if (monto <= 0m)
+    {
+      InlineError = "El monto asignado debe ser mayor que cero.";
+      UiMessages.ShowError(InlineError);
+      return;
+    }
+
+    var maxMonto = decimal.Max(Summary.ImpPagado, decimal.Abs(poliza.TransaccionMonto));
+    if (monto > maxMonto)
+    {
+      InlineError = $"El monto asignado para la póliza {poliza.TransaccionId} no puede exceder {FormatCurrency(maxMonto)}.";
+      UiMessages.ShowError(InlineError);
+      return;
+    }
+
+    InlineError = null;
+    _savingLinkedMontoTransaccionId = poliza.TransaccionId;
+
+    try
+    {
+      var result = await TransaccionService.UpdateDoctoRelacionadoMontoAsync(
+        poliza.TransaccionId,
+        Summary.DoctoRelacionadoId,
+        monto);
+
+      if (!result.Success)
+      {
+        InlineError = result.Message;
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      HighlightedTransaccionId = poliza.TransaccionId;
+      UiMessages.ShowSuccess(result.Message);
+      await LoadWorkspaceAsync();
+    }
+    catch (Exception ex)
+    {
+      InlineError = $"No se pudo actualizar el monto ligado: {ex.Message}";
+      UiMessages.ShowError(InlineError);
+    }
+    finally
+    {
+      _savingLinkedMontoTransaccionId = null;
+    }
+  }
+
+  private void SyncLinkedMontoInputs()
+  {
+    _linkedMontoEditors.Clear();
+
+    foreach (var poliza in Polizas)
+    {
+      _linkedMontoEditors[poliza.TransaccionId] = new LinkedMontoEditor
+      {
+        Monto = poliza.MontoAsignado
+      };
+    }
+  }
+
+  protected static string FormatCurrency(decimal value)
+    => value.ToString("C", CultureInfo.CurrentCulture);
+
+  protected static string FormatStatus(string? status)
+    => status switch
+    {
+      "OK" => "Correcto",
+      "DIFERENCIA" => "Diferencia",
+      "NA" => "N/A",
+      "FUERTE" => "Fuerte",
+      "POSIBLE" => "Posible",
+      "AMPLIA" => "Amplia",
+      "SIN_DISPONIBLE" => "Sin disponible",
+      _ => string.IsNullOrWhiteSpace(status) ? "Sin dato" : status
+    };
+
+  protected static string GetStatusBadgeClass(string? status)
+    => status switch
+    {
+      "OK" or "FUERTE" => "text-bg-success",
+      "POSIBLE" => "text-bg-primary",
+      "AMPLIA" or "NA" => "text-bg-secondary",
+      "SIN_DISPONIBLE" => "text-bg-dark",
+      "DIFERENCIA" => "text-bg-danger",
+      _ => "text-bg-secondary"
+    };
+
+  protected sealed class LinkedMontoEditor
+  {
+    public decimal Monto { get; set; }
   }
 
   public void Dispose()

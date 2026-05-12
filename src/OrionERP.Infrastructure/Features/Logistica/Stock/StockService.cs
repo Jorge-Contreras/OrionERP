@@ -161,6 +161,183 @@ public sealed class StockService : IStockService
     return rows.AsList();
   }
 
+  public async Task<LogisticsCommandResult> AddMaterialToLocationAsync(LocationMaterialAddRequest request, CancellationToken ct = default)
+  {
+    if (request is null)
+    {
+      throw new ArgumentNullException(nameof(request));
+    }
+
+    if (request.LocationId <= 0)
+    {
+      return LogisticsCommandResult.Fail("Selecciona una ubicación válida.");
+    }
+
+    if (request.MaterialId <= 0)
+    {
+      return LogisticsCommandResult.Fail("Selecciona un material válido.");
+    }
+
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(ct);
+
+    try
+    {
+      var location = await GetLocationStateAsync(conn, request.LocationId, tx, ct);
+      if (location is null)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("La ubicación seleccionada ya no existe.");
+      }
+
+      if (!location.IsActive)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("No puedes agregar materiales a una ubicación inactiva.");
+      }
+
+      if (!location.IsInventoryEnabled)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("La ubicación seleccionada no está habilitada para inventario.");
+      }
+
+      var material = await GetMaterialStateAsync(conn, request.MaterialId, tx, ct);
+      if (material is null)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("El material seleccionado ya no existe.");
+      }
+
+      if (!material.IsActive || !string.Equals(material.MaterialStatus, "ACTIVO", StringComparison.OrdinalIgnoreCase))
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("Solo puedes agregar materiales activos a una ubicación.");
+      }
+
+      var actor = NormalizeActor(request.AddedBy);
+      var stockBalance = await GetStockBalanceStateAsync(conn, request.LocationId, request.MaterialId, tx, ct);
+
+      if (stockBalance is not null)
+      {
+        if (!stockBalance.IsRemoved)
+        {
+          await tx.RollbackAsync(ct);
+          return LogisticsCommandResult.Fail("El material ya está activo en la ubicación seleccionada.");
+        }
+
+        var affected = await conn.ExecuteAsync(
+          new CommandDefinition(
+            """
+            UPDATE logistica.StockBalance
+            SET IsRemoved = 0,
+                RemovedAt = NULL,
+                RemovedBy = NULL,
+                UpdatedAt = SYSUTCDATETIME()
+            WHERE Id = @StockBalanceId
+              AND ISNULL(IsRemoved, 0) = 1;
+            """,
+            new { StockBalanceId = stockBalance.Id },
+            tx,
+            cancellationToken: ct));
+
+        if (affected == 0)
+        {
+          await tx.RollbackAsync(ct);
+          return LogisticsCommandResult.Fail("No se pudo agregar el material porque cambió mientras se procesaba la solicitud.");
+        }
+
+        await conn.ExecuteAsync(
+          new CommandDefinition(
+            """
+            UPDATE logistica.LocationMaterialAttachment
+            SET IsDeleted = 0,
+                DeletedAt = NULL,
+                DeletedBy = NULL
+            WHERE LocationId = @LocationId
+              AND MaterialId = @MaterialId
+              AND ISNULL(IsDeleted, 0) = 1;
+            """,
+            new
+            {
+              stockBalance.LocationId,
+              stockBalance.MaterialId
+            },
+            tx,
+            cancellationToken: ct));
+
+        await InsertStockAuditAsync(
+          conn,
+          tx,
+          stockBalance,
+          transactionType: "Reactivated",
+          performedBy: actor,
+          notes: "Material agregado nuevamente a la ubicación.",
+          ct);
+
+        await tx.CommitAsync(ct);
+        return LogisticsCommandResult.Ok("Material agregado a la ubicación correctamente.", stockBalance.Id);
+      }
+
+      var stockBalanceId = await conn.ExecuteScalarAsync<int>(
+        new CommandDefinition(
+          """
+          INSERT INTO logistica.StockBalance
+          (
+              LocationId,
+              MaterialId,
+              Quantity,
+              CreatedAt,
+              UpdatedAt
+          )
+          VALUES
+          (
+              @LocationId,
+              @MaterialId,
+              0,
+              SYSUTCDATETIME(),
+              SYSUTCDATETIME()
+          );
+
+          SELECT CAST(SCOPE_IDENTITY() AS int);
+          """,
+          new
+          {
+            request.LocationId,
+            request.MaterialId
+          },
+          tx,
+          cancellationToken: ct));
+
+      var addedStockBalance = new StockBalanceStateRow
+      {
+        Id = stockBalanceId,
+        LocationId = request.LocationId,
+        MaterialId = request.MaterialId,
+        Quantity = 0,
+        IsRemoved = false
+      };
+
+      await InsertStockAuditAsync(
+        conn,
+        tx,
+        addedStockBalance,
+        transactionType: "Added",
+        performedBy: actor,
+        notes: "Material agregado a la ubicación.",
+        ct);
+
+      await tx.CommitAsync(ct);
+      return LogisticsCommandResult.Ok("Material agregado a la ubicación correctamente.", stockBalanceId);
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
   public async Task<LogisticsCommandResult> SaveStockThresholdsAsync(StockThresholdUpdateRequest request, CancellationToken ct = default)
   {
     if (request is null)
@@ -610,6 +787,46 @@ public sealed class StockService : IStockService
   private static string NormalizeActor(string? actor)
     => NullIfWhiteSpace(actor) ?? "OrionERP";
 
+  private static async Task<LocationStateRow?> GetLocationStateAsync(
+    DbConnection conn,
+    int locationId,
+    DbTransaction? tx,
+    CancellationToken ct)
+  {
+    const string sql =
+      """
+      SELECT
+          l.Id,
+          CAST(l.IsInventoryEnabled AS bit) AS IsInventoryEnabled,
+          CAST(l.IsActive AS bit) AS IsActive
+      FROM logistica.Location l
+      WHERE l.Id = @LocationId;
+      """;
+
+    return await conn.QueryFirstOrDefaultAsync<LocationStateRow>(
+      new CommandDefinition(sql, new { LocationId = locationId }, tx, cancellationToken: ct));
+  }
+
+  private static async Task<MaterialStateRow?> GetMaterialStateAsync(
+    DbConnection conn,
+    int materialId,
+    DbTransaction? tx,
+    CancellationToken ct)
+  {
+    const string sql =
+      """
+      SELECT
+          m.Id,
+          m.MaterialStatus,
+          CAST(m.IsActive AS bit) AS IsActive
+      FROM logistica.Material m
+      WHERE m.Id = @MaterialId;
+      """;
+
+    return await conn.QueryFirstOrDefaultAsync<MaterialStateRow>(
+      new CommandDefinition(sql, new { MaterialId = materialId }, tx, cancellationToken: ct));
+  }
+
   private static async Task<StockBalanceStateRow?> GetStockBalanceStateAsync(
     DbConnection conn,
     int stockBalanceId,
@@ -668,6 +885,20 @@ public sealed class StockService : IStockService
 
   private static string? NullIfWhiteSpace(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+  private sealed class LocationStateRow
+  {
+    public int Id { get; set; }
+    public bool IsInventoryEnabled { get; set; }
+    public bool IsActive { get; set; }
+  }
+
+  private sealed class MaterialStateRow
+  {
+    public int Id { get; set; }
+    public string MaterialStatus { get; set; } = string.Empty;
+    public bool IsActive { get; set; }
+  }
 
   private sealed class StockBalanceStateRow
   {

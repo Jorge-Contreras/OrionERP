@@ -27,27 +27,37 @@ public partial class UbicacionesPage : ComponentBase
   [Inject] private IJSRuntime Js { get; set; } = default!;
 
   protected StockFilter StockFilter { get; set; } = new() { IncludeZeroBalances = true };
+  protected MaterialFilter MaterialPickerFilter { get; set; } = new() { Status = "ACTIVO" };
+  protected MaterialCatalogDto MaterialCatalog { get; set; } = new();
   protected List<LookupOptionDto> RoomOptions { get; set; } = [];
   protected List<LocationListItemDto> Locations { get; set; } = [];
   protected List<StockListItemDto> StockRows { get; set; } = [];
+  protected List<MaterialListItemDto> MaterialPickerRows { get; set; } = [];
   protected List<StockTransactionDto> SelectedStockTransactions { get; set; } = [];
   protected List<LocationMaterialAttachmentDto> SelectedStockAttachments { get; set; } = [];
   protected Dictionary<int, string> MaterialThumbnailDataUrls { get; set; } = [];
+  protected Dictionary<int, string> MaterialPickerThumbnailDataUrls { get; set; } = [];
   protected LocationUpsertRequest LocationEditor { get; set; } = CreateLocationEditor();
   protected StockThresholdUpdateRequest ThresholdEditor { get; set; } = CreateThresholdEditor();
   protected StockListItemDto? SelectedStock { get; set; }
   protected int? SelectedRoomId { get; set; }
   protected int? SelectedLocationId { get; set; }
+  protected int? AddingMaterialId { get; set; }
   protected bool IsLocationListCollapsed { get; set; }
   protected bool HasExecutedStockSearch { get; set; }
+  protected bool HasExecutedMaterialPickerSearch { get; set; }
   protected bool HasMoreStockRows { get; set; }
+  protected bool HasMoreMaterialPickerRows { get; set; }
   protected bool IsLoadingLocations { get; set; }
   protected bool IsLoadingStock { get; set; }
   protected bool IsLoadingMoreStock { get; set; }
+  protected bool IsLoadingMaterialPicker { get; set; }
+  protected bool IsLoadingMoreMaterialPicker { get; set; }
   protected bool IsSavingLocation { get; set; }
   protected bool IsSavingThresholds { get; set; }
   protected bool IsSavingAttachment { get; set; }
   protected bool IsMutatingStock { get; set; }
+  protected bool ShowAddMaterialDialog { get; set; }
   protected bool ShowMaterialImageModal { get; set; }
   protected bool IsLoadingMaterialImage { get; set; }
   protected string CurrentUserName { get; set; } = "Administrador";
@@ -61,7 +71,14 @@ public partial class UbicacionesPage : ComponentBase
 
   protected bool HasPendingAttachment => PendingAttachmentBytes is { Length: > 0 };
   protected bool IsStockBusy => IsLoadingStock || IsLoadingMoreStock;
+  protected bool IsMaterialPickerBusy => IsLoadingMaterialPicker || IsLoadingMoreMaterialPicker || AddingMaterialId.HasValue;
   protected bool CanEditSelectedStock => SelectedStock is { IsRemoved: false };
+  protected bool HasImageOnly
+  {
+    get => MaterialPickerFilter.HasImage ?? false;
+    set => MaterialPickerFilter.HasImage = value ? true : null;
+  }
+
   protected LookupOptionDto? SelectedRoom => RoomOptions.FirstOrDefault(room => room.Id == SelectedRoomId);
   protected string SelectedRoomName => SelectedRoom?.Name ?? "Selecciona una suite";
   protected int InventoryEnabledLocationCount => Locations.Count(item => item.IsInventoryEnabled);
@@ -137,6 +154,125 @@ public partial class UbicacionesPage : ComponentBase
     finally
     {
       IsLoadingStock = false;
+      StateHasChanged();
+    }
+  }
+
+  protected async Task BuscarMaterialesParaAgregarAsync()
+  {
+    if (!SelectedLocationId.HasValue)
+    {
+      ClearMaterialPickerResults();
+      StateHasChanged();
+      return;
+    }
+
+    HasExecutedMaterialPickerSearch = true;
+    IsLoadingMaterialPicker = true;
+    MaterialPickerRows = [];
+    MaterialPickerThumbnailDataUrls = [];
+    HasMoreMaterialPickerRows = false;
+    try
+    {
+      var page = await GetMaterialPickerPageAsync(0);
+      MaterialPickerRows = page.Items;
+      HasMoreMaterialPickerRows = page.HasMore;
+      await CargarMiniaturasCatalogoAsync(page.Items, append: false);
+    }
+    catch (Exception ex)
+    {
+      MaterialPickerThumbnailDataUrls = [];
+      UiMessages.ShowError($"No se pudo cargar el catálogo de materiales. {ex.Message}");
+    }
+    finally
+    {
+      IsLoadingMaterialPicker = false;
+      StateHasChanged();
+    }
+  }
+
+  protected async Task AbrirAgregarMaterialDialogAsync()
+  {
+    if (!SelectedLocationId.HasValue)
+    {
+      UiMessages.ShowWarning("Selecciona una ubicación antes de agregar materiales.");
+      return;
+    }
+
+    ShowAddMaterialDialog = true;
+
+    if (!HasExecutedMaterialPickerSearch && !IsLoadingMaterialPicker)
+    {
+      await BuscarMaterialesParaAgregarAsync();
+    }
+  }
+
+  protected void CerrarAgregarMaterialDialog()
+  {
+    ShowAddMaterialDialog = false;
+  }
+
+  protected async Task CargarMasMaterialesParaAgregarAsync()
+  {
+    if (IsMaterialPickerBusy || !HasMoreMaterialPickerRows)
+    {
+      return;
+    }
+
+    IsLoadingMoreMaterialPicker = true;
+    try
+    {
+      var page = await GetMaterialPickerPageAsync(MaterialPickerRows.Count);
+      MaterialPickerRows.AddRange(page.Items);
+      HasMoreMaterialPickerRows = page.HasMore;
+      await CargarMiniaturasCatalogoAsync(page.Items, append: true);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron cargar más materiales. {ex.Message}");
+    }
+    finally
+    {
+      IsLoadingMoreMaterialPicker = false;
+      StateHasChanged();
+    }
+  }
+
+  protected async Task AgregarMaterialAUbicacionAsync(MaterialListItemDto item)
+  {
+    if (!SelectedLocationId.HasValue || AddingMaterialId.HasValue)
+    {
+      return;
+    }
+
+    AddingMaterialId = item.Id;
+    try
+    {
+      var result = await StockService.AddMaterialToLocationAsync(new LocationMaterialAddRequest
+      {
+        LocationId = SelectedLocationId.Value,
+        MaterialId = item.Id,
+        AddedBy = CurrentUserName
+      });
+
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      IncrementSelectedLocationMaterialCount();
+      ResetStockFilterForAddedMaterial();
+      await RefrescarStockAsync(result.EntityId);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo agregar el material a la ubicación. {ex.Message}");
+    }
+    finally
+    {
+      AddingMaterialId = null;
       StateHasChanged();
     }
   }
@@ -557,6 +693,44 @@ public partial class UbicacionesPage : ComponentBase
     }
   }
 
+  protected async Task AbrirImagenMaterialAsync(MaterialListItemDto item)
+  {
+    ShowMaterialImageModal = true;
+    IsLoadingMaterialImage = true;
+    MaterialImageModalTitle = string.IsNullOrWhiteSpace(item.Description)
+      ? item.MaterialCode
+      : string.IsNullOrWhiteSpace(item.MaterialCode)
+        ? item.Description
+        : $"{item.Description} · {item.MaterialCode}";
+    MaterialImageModalDataUrl = TryGetMaterialPickerThumbnailDataUrl(item.Id, out var thumbnailDataUrl)
+      ? thumbnailDataUrl
+      : null;
+
+    try
+    {
+      var image = await MaterialService.GetMaterialImageAsync(item.Id);
+      if (image is null)
+      {
+        if (MaterialImageModalDataUrl is null)
+        {
+          UiMessages.ShowWarning("El material seleccionado no tiene imagen disponible.");
+        }
+
+        return;
+      }
+
+      MaterialImageModalDataUrl = BuildDataUrl(image.ContentType, image.Bytes);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo cargar la imagen del material. {ex.Message}");
+    }
+    finally
+    {
+      IsLoadingMaterialImage = false;
+    }
+  }
+
   protected void CloseMaterialImageModal()
   {
     ShowMaterialImageModal = false;
@@ -568,6 +742,7 @@ public partial class UbicacionesPage : ComponentBase
   private async Task LoadLookupsAsync()
   {
     RoomOptions = (await LocationService.GetRoomLookupAsync(roomType: SuiteRoomType)).ToList();
+    MaterialCatalog = await MaterialService.GetCatalogAsync();
   }
 
   private async Task LoadLocationsForSelectedRoomAsync(int? preferredLocationId = null)
@@ -611,6 +786,18 @@ public partial class UbicacionesPage : ComponentBase
   private async Task<(List<StockListItemDto> Items, bool HasMore)> GetStockPageAsync(int skip)
   {
     var rows = (await StockService.GetStockAsync(CreateQueryFilter(skip, QueryTake))).ToList();
+    var hasMore = rows.Count > PageSize;
+    if (hasMore)
+    {
+      rows = rows.Take(PageSize).ToList();
+    }
+
+    return (rows, hasMore);
+  }
+
+  private async Task<(List<MaterialListItemDto> Items, bool HasMore)> GetMaterialPickerPageAsync(int skip)
+  {
+    var rows = (await MaterialService.GetMaterialsAsync(CreateMaterialPickerQueryFilter(skip, QueryTake))).ToList();
     var hasMore = rows.Count > PageSize;
     if (hasMore)
     {
@@ -670,6 +857,57 @@ public partial class UbicacionesPage : ComponentBase
     }
   }
 
+  private async Task CargarMiniaturasCatalogoAsync(IEnumerable<MaterialListItemDto> materials, bool append)
+  {
+    if (!append)
+    {
+      MaterialPickerThumbnailDataUrls = [];
+    }
+
+    var materialIds = materials
+      .Where(material => material.HasImage)
+      .Select(material => material.Id)
+      .Distinct()
+      .Where(materialId => !append || !MaterialPickerThumbnailDataUrls.ContainsKey(materialId))
+      .ToList();
+
+    if (materialIds.Count == 0)
+    {
+      return;
+    }
+
+    try
+    {
+      var thumbnails = await MaterialService.GetMaterialThumbnailsAsync(materialIds);
+      var thumbnailDataUrls = thumbnails
+        .Where(thumbnail => thumbnail.Bytes.Length > 0)
+        .ToDictionary(
+          thumbnail => thumbnail.Id,
+          thumbnail => BuildDataUrl(thumbnail.ContentType, thumbnail.Bytes));
+
+      if (append)
+      {
+        foreach (var item in thumbnailDataUrls)
+        {
+          MaterialPickerThumbnailDataUrls[item.Key] = item.Value;
+        }
+      }
+      else
+      {
+        MaterialPickerThumbnailDataUrls = thumbnailDataUrls;
+      }
+    }
+    catch (Exception ex)
+    {
+      if (!append)
+      {
+        MaterialPickerThumbnailDataUrls = [];
+      }
+
+      UiMessages.ShowWarning($"No se pudieron cargar las miniaturas del catálogo. {ex.Message}");
+    }
+  }
+
   private StockFilter CreateQueryFilter(int skip, int take)
     => new()
     {
@@ -680,6 +918,19 @@ public partial class UbicacionesPage : ComponentBase
       CountDueOnly = StockFilter.CountDueOnly,
       IncludeZeroBalances = StockFilter.IncludeZeroBalances,
       IncludeRemoved = StockFilter.IncludeRemoved,
+      Skip = skip,
+      Take = take
+    };
+
+  private MaterialFilter CreateMaterialPickerQueryFilter(int skip, int take)
+    => new()
+    {
+      SearchText = MaterialPickerFilter.SearchText,
+      CategoryId = MaterialPickerFilter.CategoryId,
+      VendorId = MaterialPickerFilter.VendorId,
+      MaterialClass = MaterialPickerFilter.MaterialClass,
+      Status = MaterialPickerFilter.Status,
+      HasImage = MaterialPickerFilter.HasImage,
       Skip = skip,
       Take = take
     };
@@ -728,6 +979,7 @@ public partial class UbicacionesPage : ComponentBase
     SelectedLocationId = null;
     StockFilter.LocationId = null;
     ClearStockResults();
+    ClearMaterialPickerResults();
   }
 
   private void ClearStockResults()
@@ -740,6 +992,41 @@ public partial class UbicacionesPage : ComponentBase
     ResetStockSelection();
   }
 
+  private void ClearMaterialPickerResults()
+  {
+    ShowAddMaterialDialog = false;
+    HasExecutedMaterialPickerSearch = false;
+    HasMoreMaterialPickerRows = false;
+    IsLoadingMaterialPicker = false;
+    IsLoadingMoreMaterialPicker = false;
+    AddingMaterialId = null;
+    MaterialPickerRows = [];
+    MaterialPickerThumbnailDataUrls = [];
+  }
+
+  private void ResetStockFilterForAddedMaterial()
+  {
+    StockFilter.SearchText = null;
+    StockFilter.LowStockOnly = false;
+    StockFilter.CountDueOnly = false;
+    StockFilter.IncludeZeroBalances = true;
+    StockFilter.IncludeRemoved = false;
+  }
+
+  private void IncrementSelectedLocationMaterialCount()
+  {
+    if (!SelectedLocationId.HasValue)
+    {
+      return;
+    }
+
+    var selectedLocation = Locations.FirstOrDefault(item => item.Id == SelectedLocationId.Value);
+    if (selectedLocation is not null)
+    {
+      selectedLocation.MaterialCount++;
+    }
+  }
+
   private static void UpdateThresholds(StockListItemDto stock, decimal? minQuantity, decimal? maxQuantity, bool isLowStock)
   {
     stock.MinQuantity = minQuantity;
@@ -750,8 +1037,18 @@ public partial class UbicacionesPage : ComponentBase
   private bool TryGetMaterialThumbnailDataUrl(int materialId, out string dataUrl)
     => MaterialThumbnailDataUrls.TryGetValue(materialId, out dataUrl!);
 
+  private bool TryGetMaterialPickerThumbnailDataUrl(int materialId, out string dataUrl)
+    => MaterialPickerThumbnailDataUrls.TryGetValue(materialId, out dataUrl!);
+
   protected string? GetMaterialThumbnailDataUrl(int materialId)
     => TryGetMaterialThumbnailDataUrl(materialId, out var dataUrl) ? dataUrl : null;
+
+  protected string? GetMaterialPickerThumbnailDataUrl(int materialId)
+    => TryGetMaterialPickerThumbnailDataUrl(materialId, out var dataUrl) ? dataUrl : null;
+
+  protected bool IsMaterialAlreadyVisibleInSelectedLocation(int materialId)
+    => SelectedLocationId.HasValue
+      && StockRows.Any(item => item.LocationId == SelectedLocationId.Value && item.MaterialId == materialId && !item.IsRemoved);
 
   protected static string FormatThresholdQuantity(decimal? quantity)
     => quantity.HasValue ? quantity.Value.ToString("N2") : "No definido";

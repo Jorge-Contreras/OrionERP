@@ -66,6 +66,18 @@ public sealed class StockThresholdUpdateRequest : IValidatableObject
   }
 }
 
+public sealed class LocationMaterialAddRequest
+{
+  [Required]
+  public int LocationId { get; set; }
+
+  [Required]
+  public int MaterialId { get; set; }
+
+  [StringLength(256)]
+  public string? AddedBy { get; set; }
+}
+
 public sealed class StockTransactionDto
 {
   public int Id { get; set; }

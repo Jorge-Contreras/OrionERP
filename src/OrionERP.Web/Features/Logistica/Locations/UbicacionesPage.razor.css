@@ -218,6 +218,18 @@
   min-width: 18rem;
 }
 
+.ubicaciones-material-picker-wrap {
+  max-height: 52vh;
+}
+
+.ubicaciones-material-picker-table {
+  min-width: 58rem;
+}
+
+.ubicaciones-material-picker-table .ubicaciones-material-col {
+  min-width: 19rem;
+}
+
 .ubicaciones-stock-image-col {
   width: 4.75rem;
   min-width: 4.75rem;
@@ -292,7 +304,26 @@
 }
 
 .ubicaciones-image-modal-backdrop {
+  z-index: 1070;
   background-color: rgba(15, 45, 78, 0.45);
+}
+
+.ubicaciones-material-dialog-backdrop {
+  background-color: rgba(15, 45, 78, 0.45);
+}
+
+.ubicaciones-material-dialog {
+  width: min(96vw, 86rem);
+  max-width: min(96vw, 86rem);
+}
+
+.ubicaciones-material-dialog .modal-content {
+  max-height: min(92vh, 56rem);
+}
+
+.ubicaciones-material-dialog .modal-header {
+  align-items: flex-start;
+  gap: 1rem;
 }
 
 .ubicaciones-image-modal-preview {
@@ -323,6 +354,14 @@
 
   .ubicaciones-stock-table .ubicaciones-material-col {
     min-width: 12rem;
+  }
+
+  .ubicaciones-material-picker-table {
+    min-width: 48rem;
+  }
+
+  .ubicaciones-material-picker-table .ubicaciones-material-col {
+    min-width: 14rem;
   }
 
   .ubicaciones-stock-image-col {

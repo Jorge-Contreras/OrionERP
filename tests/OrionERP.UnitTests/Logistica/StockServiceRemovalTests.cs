@@ -8,6 +8,145 @@ namespace OrionERP.UnitTests.Logistica;
 public class StockServiceRemovalTests
 {
   [Fact]
+  public async Task AddMaterialToLocationAsync_InsertsZeroBalance_AndWritesAudit()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM logistica.Location l", StringComparison.Ordinal))
+        {
+          return CreateLocationStateTable(isInventoryEnabled: true, isActive: true);
+        }
+
+        if (commandText.Contains("FROM logistica.Material m", StringComparison.Ordinal))
+        {
+          return CreateMaterialStateTable(status: "ACTIVO", isActive: true);
+        }
+
+        return CreateEmptyStockBalanceStateTable();
+      },
+      NonQueryResultFactory = (_, _) => 1,
+      ScalarResultFactory = (_, _) => 73
+    };
+    var service = new StockService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.AddMaterialToLocationAsync(new LocationMaterialAddRequest
+    {
+      LocationId = 5,
+      MaterialId = 9,
+      AddedBy = "Ana"
+    });
+
+    Assert.True(result.Success);
+    Assert.Equal(73, result.EntityId);
+    Assert.NotNull(connection.LastTransaction);
+    Assert.True(connection.LastTransaction!.WasCommitted);
+
+    var stockInsert = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO logistica.StockBalance", StringComparison.Ordinal));
+    AssertParameter(stockInsert.Parameters, "@LocationId", 5);
+    AssertParameter(stockInsert.Parameters, "@MaterialId", 9);
+
+    var auditInsert = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO logistica.StockTransaction", StringComparison.Ordinal));
+    AssertParameter(auditInsert.Parameters, "@TransactionType", "Added");
+    AssertParameter(auditInsert.Parameters, "@QuantityAfter", 0m);
+    AssertParameter(auditInsert.Parameters, "@PerformedBy", "Ana");
+  }
+
+  [Fact]
+  public async Task AddMaterialToLocationAsync_Fails_WhenMaterialIsAlreadyActiveInLocation()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM logistica.Location l", StringComparison.Ordinal))
+        {
+          return CreateLocationStateTable(isInventoryEnabled: true, isActive: true);
+        }
+
+        if (commandText.Contains("FROM logistica.Material m", StringComparison.Ordinal))
+        {
+          return CreateMaterialStateTable(status: "ACTIVO", isActive: true);
+        }
+
+        if (commandText.Contains("WHERE sb.LocationId = @LocationId", StringComparison.Ordinal))
+        {
+          return CreateStockBalanceStateTable(id: 41, locationId: 5, materialId: 9, quantity: 0m, isRemoved: false);
+        }
+
+        return CreateEmptyStockBalanceStateTable();
+      }
+    };
+    var service = new StockService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.AddMaterialToLocationAsync(new LocationMaterialAddRequest
+    {
+      LocationId = 5,
+      MaterialId = 9,
+      AddedBy = "Ana"
+    });
+
+    Assert.False(result.Success);
+    Assert.Equal("El material ya está activo en la ubicación seleccionada.", result.Message);
+    Assert.NotNull(connection.LastTransaction);
+    Assert.True(connection.LastTransaction!.WasRolledBack);
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO logistica.StockBalance", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public async Task AddMaterialToLocationAsync_ReactivatesRemovedStockAndAttachments_AndWritesAudit()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM logistica.Location l", StringComparison.Ordinal))
+        {
+          return CreateLocationStateTable(isInventoryEnabled: true, isActive: true);
+        }
+
+        if (commandText.Contains("FROM logistica.Material m", StringComparison.Ordinal))
+        {
+          return CreateMaterialStateTable(status: "ACTIVO", isActive: true);
+        }
+
+        if (commandText.Contains("WHERE sb.LocationId = @LocationId", StringComparison.Ordinal))
+        {
+          return CreateStockBalanceStateTable(id: 41, locationId: 5, materialId: 9, quantity: 0m, isRemoved: true);
+        }
+
+        return CreateEmptyStockBalanceStateTable();
+      },
+      NonQueryResultFactory = (_, _) => 1
+    };
+    var service = new StockService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.AddMaterialToLocationAsync(new LocationMaterialAddRequest
+    {
+      LocationId = 5,
+      MaterialId = 9,
+      AddedBy = "Ana"
+    });
+
+    Assert.True(result.Success);
+    Assert.Equal(41, result.EntityId);
+    Assert.NotNull(connection.LastTransaction);
+    Assert.True(connection.LastTransaction!.WasCommitted);
+
+    var stockUpdate = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("SET IsRemoved = 0", StringComparison.Ordinal));
+    AssertParameter(stockUpdate.Parameters, "@StockBalanceId", 41);
+
+    var attachmentUpdate = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("SET IsDeleted = 0", StringComparison.Ordinal));
+    AssertParameter(attachmentUpdate.Parameters, "@LocationId", 5);
+    AssertParameter(attachmentUpdate.Parameters, "@MaterialId", 9);
+
+    var auditInsert = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO logistica.StockTransaction", StringComparison.Ordinal));
+    AssertParameter(auditInsert.Parameters, "@TransactionType", "Reactivated");
+    AssertParameter(auditInsert.Parameters, "@PerformedBy", "Ana");
+  }
+
+  [Fact]
   public async Task RemoveLocationMaterialAsync_Fails_WhenQuantityIsNotZero()
   {
     var connection = new FakeQueryDbConnection
@@ -143,6 +282,26 @@ public class StockServiceRemovalTests
     table.Columns.Add("MaterialId", typeof(int));
     table.Columns.Add("Quantity", typeof(decimal));
     table.Columns.Add("IsRemoved", typeof(bool));
+    return table;
+  }
+
+  private static DataTable CreateLocationStateTable(bool isInventoryEnabled, bool isActive)
+  {
+    var table = new DataTable();
+    table.Columns.Add("Id", typeof(int));
+    table.Columns.Add("IsInventoryEnabled", typeof(bool));
+    table.Columns.Add("IsActive", typeof(bool));
+    table.Rows.Add(5, isInventoryEnabled, isActive);
+    return table;
+  }
+
+  private static DataTable CreateMaterialStateTable(string status, bool isActive)
+  {
+    var table = new DataTable();
+    table.Columns.Add("Id", typeof(int));
+    table.Columns.Add("MaterialStatus", typeof(string));
+    table.Columns.Add("IsActive", typeof(bool));
+    table.Rows.Add(9, status, isActive);
     return table;
   }
 }

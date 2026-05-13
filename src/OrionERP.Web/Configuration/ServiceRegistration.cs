@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Arrendadores;
 using OrionERP.Application.Features.Auth.AdminPortal;
 using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
 using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
@@ -11,6 +12,7 @@ using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Application.Features.Contabilidad.ContabilidadRegistros;
 using OrionERP.Application.Features.Ajustes;
 using OrionERP.Infrastructure.Common;
+using OrionERP.Infrastructure.Features.Arrendadores;
 using OrionERP.Infrastructure.Features.Ajustes;
 using OrionERP.Infrastructure.Features.Auth.AdminPortal;
 using OrionERP.Infrastructure.Features.Cfdi.DeclaracionPrevia;
@@ -42,6 +44,7 @@ using OrionERP.Infrastructure.Features.Logistica.Stock;
 using OrionERP.Infrastructure.Features.OrdenesTrabajo;
 using OrionERP.Infrastructure.Features.Reservaciones.Cfdi;
 using OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
+using OrionERP.Web.Features.Arrendadores;
 using OrionERP.Web.Features.Logistica.Purchasing;
 using OrionERP.Web.Features.Reservaciones.OpenClaw;
 using OrionERP.Web.Features.Reservaciones.ListaReservaciones;
@@ -82,11 +85,13 @@ public static class ServiceRegistration
     services.AddScoped<IOutlookRoomCalendarSyncRepository, OutlookRoomCalendarSyncRepository>();
     services.AddHttpClient<IBonhomiaRoomCalendarSyncService, BonhomiaRoomCalendarSyncService>();
     services.AddScoped<IReservacionPdfService, ReservacionPdfService>();
+    services.AddScoped<IArrendadorEstadoCuentaPdfService, ArrendadorEstadoCuentaPdfService>();
     services.AddScoped<ReservacionesIOpenClawReservationsService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
     services.AddSingleton<IOpenClawReservationPdfTokenService, OpenClawReservationPdfTokenService>();
 
     services.AddScoped<ISatMetadataIngestService, SatMetadataIngestService>();
+    services.AddScoped<IArrendadoresEstadoCuentaService, ArrendadoresEstadoCuentaService>();
 
     return services;
   }
@@ -118,6 +123,7 @@ public static class ServiceRegistration
     services.AddScoped<IStockService, StockService>();
     services.AddScoped<IPhysicalCountService, PhysicalCountService>();
     services.AddScoped<IOrdenTrabajoService, OrdenTrabajoService>();
+    services.AddScoped<IArrendadoresEstadoCuentaService, ArrendadoresEstadoCuentaService>();
     services.AddScoped<IPurchaseMaterialThumbnailHydrator, PurchaseMaterialThumbnailHydrator>();
     services.AddScoped<IPurchaseOrderPdfDocumentFactory, PurchaseOrderPdfDocumentFactory>();
     services.AddScoped<IPurchaseOrderPdfService, PurchaseOrderPdfService>();
@@ -133,6 +139,7 @@ public static class ServiceRegistration
     services.AddScoped<IOutlookRoomCalendarSyncRepository, OutlookRoomCalendarSyncRepository>();
     services.AddHttpClient<IBonhomiaRoomCalendarSyncService, BonhomiaRoomCalendarSyncService>();
     services.AddScoped<IReservacionPdfService, ReservacionPdfService>();
+    services.AddScoped<IArrendadorEstadoCuentaPdfService, ArrendadorEstadoCuentaPdfService>();
     services.AddScoped<ReservacionesIOpenClawReservationsService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
     services.AddSingleton<IOpenClawReservationPdfTokenService, OpenClawReservationPdfTokenService>();

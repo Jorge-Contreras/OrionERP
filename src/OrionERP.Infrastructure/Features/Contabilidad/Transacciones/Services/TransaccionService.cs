@@ -362,11 +362,31 @@ WHERE TD.Transaccion_ID = @Id;";
     rc.Nivel1,
     rc.Nivel2,
     rc.Nivel3,
+    nivel1.Descripcion   AS Nivel1Descripcion,
+    nivel2.Descripcion   AS Nivel2Descripcion,
+    COALESCE(cuenta.Descripcion, rc.Nombre_Cuenta) AS Nivel3Descripcion,
     rc.Nombre_Cuenta      AS NombreCuenta,
     rc.Concepto           AS Concepto,
     CAST(ISNULL(rc.Debe, 0) AS decimal(18,4))  AS Debe,
     CAST(ISNULL(rc.Haber, 0) AS decimal(18,4)) AS Haber
 FROM dbo.Registro_Contable rc
+LEFT JOIN dbo.Transacciones t
+  ON t.ID = rc.TransaccionID
+LEFT JOIN dbo.CuentasContables nivel1
+  ON nivel1.RFC = t.RFC
+ AND nivel1.Nivel1 = rc.Nivel1
+ AND nivel1.Nivel2 = '00'
+ AND nivel1.Nivel3 = '00'
+LEFT JOIN dbo.CuentasContables nivel2
+  ON nivel2.RFC = t.RFC
+ AND nivel2.Nivel1 = rc.Nivel1
+ AND nivel2.Nivel2 = rc.Nivel2
+ AND nivel2.Nivel3 = '00'
+LEFT JOIN dbo.CuentasContables cuenta
+  ON cuenta.RFC = t.RFC
+ AND cuenta.Nivel1 = rc.Nivel1
+ AND cuenta.Nivel2 = rc.Nivel2
+ AND cuenta.Nivel3 = rc.Nivel3
 WHERE rc.TransaccionID = @TransaccionId
 ORDER BY rc.ID;";
 
@@ -379,12 +399,13 @@ ORDER BY rc.ID;";
   public async Task<IReadOnlyList<LookupInt32Dto>> GetCategoriasAsync(string rfc, CancellationToken ct = default)
   {
     const string sql = @"SELECT
-    c.ID           AS Id,
-    c.Descripcion  AS Description
-FROM dbo.Categorias c
-WHERE c.GrupoCategoria = 'PLANTILLA'
-  AND c.RFC = @Rfc
-ORDER BY c.Descripcion ASC;";
+    p.CategoriaID AS Id,
+    p.Nombre      AS Description
+FROM dbo.PlantillaContable p
+WHERE p.Activa = 1
+  AND p.CategoriaID IS NOT NULL
+  AND (p.RFC = @Rfc OR p.RFC IS NULL)
+ORDER BY p.Nombre ASC;";
 
     using var conn = new SqlConnection(_cs);
     var rows = await conn.QueryAsync<LookupInt32Dto>(
@@ -1305,19 +1326,19 @@ WHERE ID = @TransaccionId;";
   {
     var parameters = new Dictionary<string, object?>
     {
-      ["@TransactionID"] = transaccionId,
+      ["@TransaccionID"] = transaccionId,
       ["@CategoriaID"] = categoriaId
     };
 
     try
     {
       _logger.LogInformation(
-          "Applying category template {CategoriaId} to transaction {TransactionId}",
+          "Applying accounting template {CategoriaId} to transaction {TransactionId}",
           categoriaId,
           transaccionId);
 
       await _storedProcService.ExecuteAsync(
-          "dbo.APLICAR_PLANTILLA_CATEGORIA",
+          "dbo.AplicarPlantillaContable",
           parameters,
           ct);
 
@@ -1327,11 +1348,11 @@ WHERE ID = @TransaccionId;";
     {
       _logger.LogError(
           ex,
-          "Failed to apply category template {CategoriaId} to transaction {TransactionId}",
+          "Failed to apply accounting template {CategoriaId} to transaction {TransactionId}",
           categoriaId,
           transaccionId);
 
-      return TransaccionCommandResult.Fail("No se pudo aplicar la plantilla de categoría. Revisa los datos e inténtalo nuevamente.");
+      return TransaccionCommandResult.Fail("No se pudo aplicar la plantilla contable. Revisa los datos e inténtalo nuevamente.");
     }
   }
 
@@ -1580,11 +1601,12 @@ WHERE ID = @MovimientoId
           SELECT CAST(SCOPE_IDENTITY() as int);";
 
       const string defaultCategoriaSql = @"
-          SELECT TOP (1) c.ID
-          FROM dbo.Categorias c
-          WHERE c.GrupoCategoria = 'PLANTILLA'
-            AND c.RFC = @Rfc
-          ORDER BY c.Descripcion ASC;";
+          SELECT TOP (1) p.CategoriaID
+          FROM dbo.PlantillaContable p
+          WHERE p.Activa = 1
+            AND p.CategoriaID IS NOT NULL
+            AND (p.RFC = @Rfc OR p.RFC IS NULL)
+          ORDER BY p.Nombre ASC;";
 
       try
       {

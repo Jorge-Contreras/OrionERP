@@ -7,6 +7,9 @@ public sealed record CuentaContableSelection
     public string? Nivel1 { get; set; }
     public string? Nivel2 { get; set; }
     public string? Nivel3 { get; set; }
+    public string? Nivel1Descripcion { get; set; }
+    public string? Nivel2Descripcion { get; set; }
+    public string? Nivel3Descripcion { get; set; }
     public string? Descripcion { get; set; }
 
     public bool HasNivel1 => !string.IsNullOrWhiteSpace(Nivel1);

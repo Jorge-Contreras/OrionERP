@@ -1,0 +1,836 @@
+@page "/ajustes"
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using OrionERP.Application.Features.Ajustes
+@using OrionERP.Web.Shared
+@using OrionERP.Web.State
+@attribute [Authorize(Roles = "Administrador")]
+@inject IAjustesService AjustesService
+@inject IUiMessageService UiMessages
+@inject IJSRuntime JsRuntime
+@inject IUserRfcState RfcState
+
+<PageTitle>Ajustes</PageTitle>
+
+<div class="container-fluid py-3 ajustes-page">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-1">Ajustes</h1>
+      <p class="text-muted mb-0">Configuracion operativa para plantillas contables y automatizaciones.</p>
+    </div>
+    <button type="button" class="btn btn-outline-primary" @onclick="NewPlantilla">
+      Nueva plantilla
+    </button>
+  </div>
+
+  <section class="ajustes-section">
+    <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+      <div>
+        <h2 class="h5 mb-1">Plantillas contables</h2>
+        <p class="text-muted mb-0">Define las lineas que se generan automaticamente en los movimientos contables.</p>
+      </div>
+      <RfcPicker @bind-SelectedRfc="selectedRfc" @bind-SelectedRfc:after="OnRfcChangedAsync" />
+    </div>
+
+    <div class="row g-3">
+      <div class="col-12 col-xl-4">
+        <section class="card shadow-sm h-100">
+          <div class="card-body">
+            <div class="d-flex flex-column gap-3">
+              <div>
+                <label class="form-label">Buscar</label>
+                <input class="form-control"
+                       type="search"
+                       placeholder="Nombre, descripcion o codigo"
+                       @bind="searchText"
+                       @bind:event="oninput"
+                       @onkeydown="OnSearchKeyDown" />
+              </div>
+
+              <div class="d-flex flex-wrap gap-2 align-items-center">
+                <button type="button" class="btn btn-primary" @onclick="LoadPlantillasAsync" disabled="@isLoadingList">
+                  @(isLoadingList ? "Buscando..." : "Buscar")
+                </button>
+                <label class="form-check d-flex align-items-center gap-2 mb-0">
+                  <input class="form-check-input" type="checkbox" @bind="includeInactive" @bind:after="LoadPlantillasAsync" />
+                  <span class="form-check-label">Incluir inactivas</span>
+                </label>
+              </div>
+
+              <div class="table-responsive ajustes-template-list">
+                <table class="table table-sm table-hover align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Plantilla</th>
+                      <th class="text-end">Lineas</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @if (isLoadingList && Plantillas.Count == 0)
+                    {
+                      <tr>
+                        <td colspan="2" class="text-center text-muted py-4">Cargando plantillas...</td>
+                      </tr>
+                    }
+                    else if (Plantillas.Count == 0)
+                    {
+                      <tr>
+                        <td colspan="2" class="text-center text-muted py-4">No hay plantillas para los filtros actuales.</td>
+                      </tr>
+                    }
+                    else
+                    {
+                      @foreach (var plantilla in Plantillas)
+                      {
+                        <tr class="@(plantilla.PlantillaContableId == SelectedPlantillaId ? "table-primary" : null)"
+                            role="button"
+                            @onclick="() => SelectPlantillaAsync(plantilla.PlantillaContableId)">
+                          <td>
+                            <div class="fw-semibold">@plantilla.Nombre</div>
+                            <div class="d-flex flex-wrap gap-1 mt-1">
+                              <span class="badge text-bg-light">Codigo @plantilla.CategoriaId</span>
+                              @if (!plantilla.Activa)
+                              {
+                                <span class="badge text-bg-secondary">Inactiva</span>
+                              }
+                              @if (!string.IsNullOrWhiteSpace(plantilla.TipoPoliza))
+                              {
+                                <span class="badge text-bg-info">@plantilla.TipoPoliza</span>
+                              }
+                            </div>
+                          </td>
+                          <td class="text-end">
+                            <span class="badge text-bg-dark">@plantilla.LineCount</span>
+                          </td>
+                        </tr>
+                      }
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="col-12 col-xl-8">
+        <section class="card shadow-sm">
+          <div class="card-body">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+              <div>
+                <h3 class="h5 mb-1">@(Editor.PlantillaContableId.HasValue ? "Editar plantilla" : "Nueva plantilla")</h3>
+                <div class="text-muted">
+                  Codigo interno:
+                  <span class="fw-semibold">@(Editor.CategoriaId?.ToString(CultureInfo.InvariantCulture) ?? "Se asignara al guardar")</span>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2">
+                @if (Editor.PlantillaContableId.HasValue)
+                {
+                  <button type="button" class="btn btn-outline-danger" @onclick="DeletePlantillaAsync" disabled="@isSaving">
+                    Eliminar
+                  </button>
+                }
+                <button type="button" class="btn btn-primary" @onclick="SavePlantillaAsync" disabled="@isSaving">
+                  @(isSaving ? "Guardando..." : "Guardar plantilla")
+                </button>
+              </div>
+            </div>
+
+            <EditForm Model="Editor">
+              <DataAnnotationsValidator />
+              <ValidationSummary />
+
+              <div class="row g-3">
+                <div class="col-md-8">
+                  <label class="form-label">Nombre</label>
+                  <InputText class="form-control" @bind-Value="Editor.Nombre" />
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Tipo de poliza</label>
+                  <InputSelect class="form-select" @bind-Value="Editor.TipoPoliza">
+                    <option value="">Sin tipo fijo</option>
+                    @foreach (var tipo in TipoPolizaOptions)
+                    {
+                      <option value="@tipo">@tipo</option>
+                    }
+                  </InputSelect>
+                </div>
+                <div class="col-md-8">
+                  <label class="form-label">Descripcion</label>
+                  <InputText class="form-control" @bind-Value="Editor.Descripcion" />
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                  <label class="form-check form-switch mb-2">
+                    <InputCheckbox class="form-check-input" @bind-Value="Editor.Activa" />
+                    <span class="form-check-label">Activa</span>
+                  </label>
+                </div>
+              </div>
+            </EditForm>
+
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-4 mb-2">
+              <div>
+                <h4 class="h6 mb-0">Lineas de la plantilla</h4>
+                <small class="text-muted">Usa Debe y Haber con monto total, subtotal o IVA calculado.</small>
+              </div>
+              <button type="button" class="btn btn-outline-primary btn-sm" @onclick="OpenNewLineModal">
+                Agregar linea
+              </button>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle">
+                <thead class="table-light">
+                  <tr>
+                    <th class="text-center">#</th>
+                    <th>Cuenta</th>
+                    <th>Naturaleza</th>
+                    <th>Monto</th>
+                    <th class="text-end">Factor</th>
+                    <th>Concepto</th>
+                    <th class="text-end">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @if (ActiveLines.Count == 0)
+                  {
+                    <tr>
+                      <td colspan="7" class="text-center text-muted py-4">Agrega lineas para definir la plantilla.</td>
+                    </tr>
+                  }
+                  else
+                  {
+                    @foreach (var line in ActiveLines)
+                    {
+                      <tr>
+                        <td class="text-center">@line.Orden</td>
+                        <td>
+                          <div class="fw-semibold">@FormatCuentaCodigo(line)</div>
+                          <small class="text-muted">@line.CuentaDescripcion</small>
+                        </td>
+                        <td>
+                          <span class="badge @(line.Naturaleza == "DEBE" ? "text-bg-primary" : "text-bg-success")">@line.Naturaleza</span>
+                        </td>
+                        <td>@GetMontoTipoLabel(line.MontoTipo)</td>
+                        <td class="text-end">@line.Factor.ToString("N4", CultureInfo.InvariantCulture)</td>
+                        <td>@GetConceptoLabel(line)</td>
+                        <td class="text-end">
+                          <div class="d-inline-flex gap-1">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary"
+                                    title="Subir"
+                                    @onclick="() => MoveLine(line, -1)"
+                                    disabled="@(line.Orden <= 1)">
+                              <span class="oi oi-arrow-top" aria-hidden="true"></span>
+                            </button>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary"
+                                    title="Bajar"
+                                    @onclick="() => MoveLine(line, 1)"
+                                    disabled="@(line.Orden >= ActiveLines.Count)">
+                              <span class="oi oi-arrow-bottom" aria-hidden="true"></span>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenEditLineModal(line)">
+                              Editar
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveLine(line)">
+                              Eliminar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    }
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+</div>
+
+@if (showLineModal)
+{
+  <div class="modal fade show d-block ajustes-modal-backdrop" tabindex="-1" role="dialog" aria-modal="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">@(LineEditor.PlantillaContableLineaId.HasValue ? "Editar linea" : "Nueva linea")</h5>
+          <button type="button" class="btn-close" @onclick="CloseLineModal"></button>
+        </div>
+        <div class="modal-body">
+          @if (!string.IsNullOrWhiteSpace(lineEditorError))
+          {
+            <div class="alert alert-danger" role="alert">@lineEditorError</div>
+          }
+
+          <div class="row g-3">
+            <div class="col-12 col-xl-7">
+              <label class="form-label">Cuenta contable</label>
+              <CuentaContablePicker
+                @bind-SelectedRfc="LinePickerRfc"
+                Selection="LineAccountSelection"
+                SelectionChanged="OnLineAccountSelectionChangedAsync"
+                ErrorChanged="OnLineAccountErrorChangedAsync" />
+            </div>
+
+            <div class="col-12 col-xl-5">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label">Naturaleza</label>
+                  <InputSelect class="form-select" @bind-Value="LineEditor.Naturaleza">
+                    <option value="DEBE">Debe</option>
+                    <option value="HABER">Haber</option>
+                  </InputSelect>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Monto</label>
+                  <InputSelect class="form-select" @bind-Value="LineEditor.MontoTipo">
+                    @foreach (var option in MontoTipoOptions)
+                    {
+                      <option value="@option.Value">@option.Label</option>
+                    }
+                  </InputSelect>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Factor</label>
+                  <InputNumber class="form-control" @bind-Value="LineEditor.Factor" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Concepto</label>
+                  <InputSelect class="form-select" @bind-Value="LineEditor.ConceptoTipo">
+                    <option value="TRANSACCION">Concepto de poliza</option>
+                    <option value="FIJO">Texto fijo</option>
+                  </InputSelect>
+                </div>
+                @if (LineEditor.ConceptoTipo == "FIJO")
+                {
+                  <div class="col-12">
+                    <label class="form-label">Concepto fijo</label>
+                    <InputText class="form-control" @bind-Value="LineEditor.ConceptoFijo" />
+                  </div>
+                }
+              </div>
+
+              @if (LineAccountSelection?.Id is not null)
+              {
+                <div class="border rounded p-3 mt-3 bg-light">
+                  <div class="fw-semibold">@LineAccountSelection.Descripcion</div>
+                  <div class="text-muted small">@LineAccountSelection.Nivel1.@LineAccountSelection.Nivel2.@LineAccountSelection.Nivel3</div>
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" @onclick="CloseLineModal">Cancelar</button>
+          <button type="button" class="btn btn-primary" @onclick="SaveLineFromModal">Guardar linea</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+  private static readonly IReadOnlyList<string> TipoPolizaOptions = ["INGRESO", "EGRESO", "DIARIO"];
+  private static readonly IReadOnlyList<SelectOption> MontoTipoOptions =
+  [
+    new("MONTO_TOTAL", "Monto total"),
+    new("SUBTOTAL_IVA_16", "Subtotal IVA 16%"),
+    new("IVA_16", "IVA 16%")
+  ];
+
+  private readonly List<PlantillaContableListItemDto> Plantillas = [];
+  private PlantillaEditorModel Editor { get; set; } = new();
+  private PlantillaLineEditorModel LineEditor { get; set; } = new();
+  private CuentaContableSelection? LineAccountSelection { get; set; }
+  private string? LinePickerRfc { get; set; }
+  private string? selectedRfc;
+  private string searchText = string.Empty;
+  private bool includeInactive;
+  private bool isLoadingList;
+  private bool isSaving;
+  private bool showLineModal;
+  private string? lineEditorError;
+
+  private int? SelectedPlantillaId => Editor.PlantillaContableId;
+  private IReadOnlyList<PlantillaLineEditorModel> ActiveLines => Editor.Lines.OrderBy(line => line.Orden).ToList();
+
+  protected override async Task OnInitializedAsync()
+  {
+    selectedRfc = RfcState.CurrentRfc;
+    if (string.IsNullOrWhiteSpace(selectedRfc))
+    {
+      RfcState.ResetToDefault();
+      selectedRfc = RfcState.CurrentRfc;
+    }
+
+    NewPlantilla();
+    await LoadPlantillasAsync();
+  }
+
+  private async Task OnRfcChangedAsync()
+  {
+    NewPlantilla();
+    await LoadPlantillasAsync();
+  }
+
+  private async Task OnSearchKeyDown(KeyboardEventArgs args)
+  {
+    if (args.Key == "Enter" || args.Code == "NumpadEnter")
+    {
+      await LoadPlantillasAsync();
+    }
+  }
+
+  private async Task LoadPlantillasAsync()
+  {
+    isLoadingList = true;
+    try
+    {
+      Plantillas.Clear();
+      var rows = await AjustesService.GetPlantillasAsync(selectedRfc, searchText, includeInactive);
+      Plantillas.AddRange(rows);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron cargar las plantillas. {ex.Message}");
+    }
+    finally
+    {
+      isLoadingList = false;
+    }
+  }
+
+  private void NewPlantilla()
+  {
+    Editor = new PlantillaEditorModel
+    {
+      Rfc = selectedRfc,
+      Activa = true
+    };
+  }
+
+  private async Task SelectPlantillaAsync(int plantillaId)
+  {
+    try
+    {
+      var detail = await AjustesService.GetPlantillaAsync(plantillaId);
+      if (detail is null)
+      {
+        UiMessages.ShowWarning("La plantilla seleccionada ya no existe.");
+        await LoadPlantillasAsync();
+        return;
+      }
+
+      Editor = PlantillaEditorModel.FromDto(detail);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo cargar la plantilla. {ex.Message}");
+    }
+  }
+
+  private async Task SavePlantillaAsync()
+  {
+    if (isSaving)
+    {
+      return;
+    }
+
+    var validationMessage = ValidateEditor();
+    if (validationMessage is not null)
+    {
+      UiMessages.ShowError(validationMessage);
+      return;
+    }
+
+    isSaving = true;
+    try
+    {
+      RenumberLines();
+      var result = await AjustesService.SavePlantillaAsync(Editor.ToRequest());
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      await LoadPlantillasAsync();
+
+      if (result.EntityId.HasValue)
+      {
+        await SelectPlantillaAsync(result.EntityId.Value);
+      }
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo guardar la plantilla. {ex.Message}");
+    }
+    finally
+    {
+      isSaving = false;
+    }
+  }
+
+  private async Task DeletePlantillaAsync()
+  {
+    if (!Editor.PlantillaContableId.HasValue)
+    {
+      return;
+    }
+
+    var confirmed = await ConfirmAsync("Esta plantilla quedara inactiva y no aparecera en la aplicacion normal. Deseas continuar?");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    try
+    {
+      var result = await AjustesService.DeletePlantillaAsync(Editor.PlantillaContableId.Value);
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      NewPlantilla();
+      await LoadPlantillasAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo eliminar la plantilla. {ex.Message}");
+    }
+  }
+
+  private void OpenNewLineModal()
+  {
+    lineEditorError = null;
+    LineEditor = new PlantillaLineEditorModel
+    {
+      Orden = ActiveLines.Count + 1,
+      Naturaleza = "DEBE",
+      MontoTipo = "MONTO_TOTAL",
+      Factor = 1m,
+      ConceptoTipo = "TRANSACCION"
+    };
+    LinePickerRfc = Editor.Rfc ?? selectedRfc;
+    LineAccountSelection = null;
+    showLineModal = true;
+  }
+
+  private void OpenEditLineModal(PlantillaLineEditorModel line)
+  {
+    lineEditorError = null;
+    LineEditor = line.Clone();
+    LinePickerRfc = LineEditor.CuentaRfc ?? Editor.Rfc ?? selectedRfc;
+    LineAccountSelection = LineEditor.ToSelection();
+    showLineModal = true;
+  }
+
+  private void CloseLineModal()
+  {
+    showLineModal = false;
+    lineEditorError = null;
+    LineEditor = new PlantillaLineEditorModel();
+    LineAccountSelection = null;
+  }
+
+  private Task OnLineAccountSelectionChangedAsync(CuentaContableSelection? selection)
+  {
+    LineAccountSelection = selection;
+    if (selection is not null)
+    {
+      LineEditor.ApplySelection(selection);
+      if (string.IsNullOrWhiteSpace(Editor.Rfc))
+      {
+        Editor.Rfc = selection.Rfc;
+      }
+    }
+
+    lineEditorError = null;
+    return Task.CompletedTask;
+  }
+
+  private Task OnLineAccountErrorChangedAsync(string? message)
+  {
+    lineEditorError = message;
+    return Task.CompletedTask;
+  }
+
+  private void SaveLineFromModal()
+  {
+    var validationMessage = ValidateLine(LineEditor);
+    if (validationMessage is not null)
+    {
+      lineEditorError = validationMessage;
+      return;
+    }
+
+    var existingIndex = Editor.Lines.FindIndex(line => line.ClientId == LineEditor.ClientId);
+    if (existingIndex >= 0)
+    {
+      Editor.Lines[existingIndex] = LineEditor.Clone();
+    }
+    else
+    {
+      Editor.Lines.Add(LineEditor.Clone());
+    }
+
+    RenumberLines();
+    CloseLineModal();
+  }
+
+  private void RemoveLine(PlantillaLineEditorModel line)
+  {
+    Editor.Lines.RemoveAll(item => item.ClientId == line.ClientId);
+    RenumberLines();
+  }
+
+  private void MoveLine(PlantillaLineEditorModel line, int direction)
+  {
+    var ordered = ActiveLines.ToList();
+    var currentIndex = ordered.FindIndex(item => item.ClientId == line.ClientId);
+    var nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= ordered.Count)
+    {
+      return;
+    }
+
+    (ordered[currentIndex], ordered[nextIndex]) = (ordered[nextIndex], ordered[currentIndex]);
+    for (var index = 0; index < ordered.Count; index++)
+    {
+      ordered[index].Orden = index + 1;
+    }
+
+    Editor.Lines = ordered;
+  }
+
+  private void RenumberLines()
+  {
+    var ordered = ActiveLines.ToList();
+    for (var index = 0; index < ordered.Count; index++)
+    {
+      ordered[index].Orden = index + 1;
+    }
+
+    Editor.Lines = ordered;
+  }
+
+  private string? ValidateEditor()
+  {
+    if (string.IsNullOrWhiteSpace(Editor.Nombre))
+    {
+      return "Captura el nombre de la plantilla.";
+    }
+
+    if (ActiveLines.Count == 0)
+    {
+      return "Agrega al menos una linea a la plantilla.";
+    }
+
+    if (!ActiveLines.Any(line => line.Naturaleza == "DEBE") || !ActiveLines.Any(line => line.Naturaleza == "HABER"))
+    {
+      return "La plantilla necesita al menos una linea de Debe y una de Haber.";
+    }
+
+    foreach (var line in ActiveLines)
+    {
+      var validation = ValidateLine(line);
+      if (validation is not null)
+      {
+        return validation;
+      }
+    }
+
+    return null;
+  }
+
+  private static string? ValidateLine(PlantillaLineEditorModel line)
+  {
+    if (!line.CuentaContableId.HasValue)
+    {
+      return "Selecciona una cuenta contable para la linea.";
+    }
+
+    if (line.Factor <= 0)
+    {
+      return "El factor debe ser mayor a cero.";
+    }
+
+    if (line.ConceptoTipo == "FIJO" && string.IsNullOrWhiteSpace(line.ConceptoFijo))
+    {
+      return "Captura el concepto fijo.";
+    }
+
+    return null;
+  }
+
+  private async Task<bool> ConfirmAsync(string message)
+  {
+    try
+    {
+      return await JsRuntime.InvokeAsync<bool>("confirm", message);
+    }
+    catch
+    {
+      return true;
+    }
+  }
+
+  private static string FormatCuentaCodigo(PlantillaLineEditorModel line)
+  {
+    var parts = new[] { line.Nivel1, line.Nivel2, line.Nivel3 }
+        .Where(value => !string.IsNullOrWhiteSpace(value));
+
+    var code = string.Join('.', parts);
+    return string.IsNullOrWhiteSpace(code)
+        ? $"Cuenta {line.CuentaContableId?.ToString(CultureInfo.InvariantCulture) ?? "-"}"
+        : code;
+  }
+
+  private static string GetMontoTipoLabel(string montoTipo)
+    => MontoTipoOptions.FirstOrDefault(option => option.Value == montoTipo)?.Label ?? montoTipo;
+
+  private static string GetConceptoLabel(PlantillaLineEditorModel line)
+    => line.ConceptoTipo == "FIJO"
+        ? line.ConceptoFijo ?? "Texto fijo"
+        : "Concepto de poliza";
+
+  private sealed record SelectOption(string Value, string Label);
+
+  private sealed class PlantillaEditorModel
+  {
+    public int? PlantillaContableId { get; set; }
+    public int? CategoriaId { get; set; }
+
+    [Required(ErrorMessage = "Captura el nombre.")]
+    public string Nombre { get; set; } = string.Empty;
+    public string? Descripcion { get; set; }
+    public string? Rfc { get; set; }
+    public string? TipoPoliza { get; set; }
+    public bool Activa { get; set; } = true;
+    public List<PlantillaLineEditorModel> Lines { get; set; } = [];
+
+    public static PlantillaEditorModel FromDto(PlantillaContableDetailDto dto)
+      => new()
+      {
+        PlantillaContableId = dto.PlantillaContableId,
+        CategoriaId = dto.CategoriaId,
+        Nombre = dto.Nombre,
+        Descripcion = dto.Descripcion,
+        Rfc = dto.Rfc,
+        TipoPoliza = dto.TipoPoliza,
+        Activa = dto.Activa,
+        Lines = dto.Lineas.Select(PlantillaLineEditorModel.FromDto).ToList()
+      };
+
+    public PlantillaContableSaveRequest ToRequest()
+      => new()
+      {
+        PlantillaContableId = PlantillaContableId,
+        Nombre = Nombre,
+        Descripcion = Descripcion,
+        Rfc = Rfc,
+        TipoPoliza = TipoPoliza,
+        Activa = Activa,
+        Lineas = Lines.OrderBy(line => line.Orden).Select(line => line.ToRequest()).ToList()
+      };
+  }
+
+  private sealed class PlantillaLineEditorModel
+  {
+    public Guid ClientId { get; set; } = Guid.NewGuid();
+    public int? PlantillaContableLineaId { get; set; }
+    public int Orden { get; set; }
+    public int? CuentaContableId { get; set; }
+    public string? CuentaRfc { get; set; }
+    public string? Nivel1 { get; set; }
+    public string? Nivel2 { get; set; }
+    public string? Nivel3 { get; set; }
+    public string? CuentaDescripcion { get; set; }
+    public string Naturaleza { get; set; } = "DEBE";
+    public string MontoTipo { get; set; } = "MONTO_TOTAL";
+    public decimal Factor { get; set; } = 1m;
+    public string ConceptoTipo { get; set; } = "TRANSACCION";
+    public string? ConceptoFijo { get; set; }
+
+    public static PlantillaLineEditorModel FromDto(PlantillaContableLineaDto dto)
+      => new()
+      {
+        PlantillaContableLineaId = dto.PlantillaContableLineaId,
+        Orden = dto.Orden,
+        CuentaContableId = dto.CuentaContableId,
+        CuentaRfc = dto.CuentaRfc,
+        Nivel1 = dto.Nivel1,
+        Nivel2 = dto.Nivel2,
+        Nivel3 = dto.Nivel3,
+        CuentaDescripcion = dto.CuentaContable,
+        Naturaleza = dto.Naturaleza,
+        MontoTipo = dto.MontoTipo,
+        Factor = dto.Factor,
+        ConceptoTipo = dto.ConceptoTipo,
+        ConceptoFijo = dto.ConceptoFijo
+      };
+
+    public PlantillaLineEditorModel Clone()
+      => new()
+      {
+        ClientId = ClientId,
+        PlantillaContableLineaId = PlantillaContableLineaId,
+        Orden = Orden,
+        CuentaContableId = CuentaContableId,
+        CuentaRfc = CuentaRfc,
+        Nivel1 = Nivel1,
+        Nivel2 = Nivel2,
+        Nivel3 = Nivel3,
+        CuentaDescripcion = CuentaDescripcion,
+        Naturaleza = Naturaleza,
+        MontoTipo = MontoTipo,
+        Factor = Factor,
+        ConceptoTipo = ConceptoTipo,
+        ConceptoFijo = ConceptoFijo
+      };
+
+    public void ApplySelection(CuentaContableSelection selection)
+    {
+      CuentaContableId = selection.Id;
+      CuentaRfc = selection.Rfc;
+      Nivel1 = selection.Nivel1;
+      Nivel2 = selection.Nivel2;
+      Nivel3 = selection.Nivel3;
+      CuentaDescripcion = selection.Descripcion;
+    }
+
+    public CuentaContableSelection ToSelection()
+      => new()
+      {
+        Id = CuentaContableId,
+        Rfc = CuentaRfc,
+        Nivel1 = Nivel1,
+        Nivel2 = Nivel2,
+        Nivel3 = Nivel3,
+        Descripcion = CuentaDescripcion
+      };
+
+    public PlantillaContableLineaSaveRequest ToRequest()
+      => new()
+      {
+        PlantillaContableLineaId = PlantillaContableLineaId,
+        Orden = Orden,
+        CuentaContableId = CuentaContableId.GetValueOrDefault(),
+        Naturaleza = Naturaleza,
+        MontoTipo = MontoTipo,
+        Factor = Factor,
+        ConceptoTipo = ConceptoTipo,
+        ConceptoFijo = ConceptoTipo == "FIJO" ? ConceptoFijo : null
+      };
+  }
+}

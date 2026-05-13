@@ -189,10 +189,10 @@ else
 
           <div class="d-flex flex-column flex-lg-row gap-3 align-items-stretch align-items-lg-end mt-4">
                         <div class="categoria-col">
-                            <label class="form-label">Categoría (Plantilla)</label>
+                            <label class="form-label">Plantilla contable</label>
                             <div class="categoria-row">
                                 <InputSelect class="form-select" @bind-Value="Header.CategoriaId">
-                                    <option value="">Selecciona una categoría</option>
+                                    <option value="">Selecciona una plantilla</option>
                                     @foreach (var categoria in CategoriaOptions)
                                     {
                                         <option value="@categoria.Id">@categoria.Display</option>
@@ -328,9 +328,17 @@ else
                 <tbody>
                   @foreach (var movimiento in Movimientos.Select((item, index) => (item, index)))
                   {
+                    var cuentaCodigoDetallado = FormatCuentaCodigoDetallado(movimiento.item);
+
                     <tr class="@GetMovimientoRowClass(movimiento.item)" @onclick="() => OpenMovimientoModal(movimiento.item)">
                       <td>@(movimiento.index + 1)</td>
-                      <td>@FormatCuentaCodigo(movimiento.item)</td>
+                      <td>
+                        <div class="fw-semibold">@FormatCuentaCodigo(movimiento.item)</div>
+                        @if (!string.IsNullOrWhiteSpace(cuentaCodigoDetallado))
+                        {
+                          <div class="movimiento-codigo-detalle">@cuentaCodigoDetallado</div>
+                        }
+                      </td>
                       <td>@movimiento.item.NombreCuenta</td>
                       <td>@movimiento.item.Concepto</td>
                       <td class="text-end">@movimiento.item.Debe.ToString("N2") </td>

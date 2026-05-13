@@ -672,7 +672,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     if (Header.CategoriaId is null)
     {
-      UiMessages.ShowError("Selecciona una categoría.");
+      UiMessages.ShowError("Selecciona una plantilla contable.");
       return;
     }
 
@@ -799,7 +799,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     if (Header.CategoriaId is null)
     {
-      UiMessages.ShowWarning("Selecciona una categoría antes de aplicar la plantilla.");
+      UiMessages.ShowWarning("Selecciona una plantilla contable antes de aplicarla.");
       return;
     }
 
@@ -982,6 +982,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     MovimientoDraft.Nivel1 = selection?.Nivel1;
     MovimientoDraft.Nivel2 = selection?.Nivel2;
     MovimientoDraft.Nivel3 = selection?.Nivel3;
+    MovimientoDraft.Nivel1Descripcion = selection?.Nivel1Descripcion;
+    MovimientoDraft.Nivel2Descripcion = selection?.Nivel2Descripcion;
+    MovimientoDraft.Nivel3Descripcion = selection?.Nivel3Descripcion;
     MovimientoDraft.Descripcion = selection?.Descripcion;
     if (!string.IsNullOrWhiteSpace(selection?.Descripcion))
     {
@@ -992,6 +995,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Nivel1));
     NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Nivel2));
     NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Nivel3));
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Nivel1Descripcion));
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Nivel2Descripcion));
+    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Nivel3Descripcion));
     NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Descripcion));
     NotifyMovimientoFieldChanged(nameof(MovimientoDraft.NombreCuenta));
 
@@ -1203,6 +1209,52 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     return segments.Length == 0 ? "-" : string.Join('.', segments);
   }
 
+  protected static string FormatCuentaCodigoDetallado(MovimientoModel movimiento)
+  {
+    if (movimiento is null)
+    {
+      return string.Empty;
+    }
+
+    var descriptions = new[]
+    {
+      movimiento.Nivel1Descripcion,
+      movimiento.Nivel2Descripcion,
+      movimiento.Nivel3Descripcion,
+      movimiento.Descripcion,
+      movimiento.NombreCuenta
+    };
+
+    if (!descriptions.Any(description => !string.IsNullOrWhiteSpace(description)))
+    {
+      return string.Empty;
+    }
+
+    var segments = new[]
+    {
+      CreateCuentaDescripcionSegment(movimiento.Nivel1, movimiento.Nivel1Descripcion),
+      CreateCuentaDescripcionSegment(movimiento.Nivel2, movimiento.Nivel2Descripcion),
+      CreateCuentaDescripcionSegment(movimiento.Nivel3, movimiento.Nivel3Descripcion ?? movimiento.Descripcion ?? movimiento.NombreCuenta)
+    }
+    .Where(segment => !string.IsNullOrWhiteSpace(segment))
+    .ToArray();
+
+    return segments.Length == 0 ? string.Empty : string.Join('.', segments);
+  }
+
+  private static string? CreateCuentaDescripcionSegment(string? codigo, string? descripcion)
+  {
+    if (string.IsNullOrWhiteSpace(codigo))
+    {
+      return null;
+    }
+
+    var normalizedCodigo = codigo.Trim();
+    return string.IsNullOrWhiteSpace(descripcion)
+      ? normalizedCodigo
+      : $"{descripcion.Trim()}({normalizedCodigo})";
+  }
+
   private void NotifyMovimientoFieldChanged(string propertyName)
   {
     if (MovimientoDraft is null || MovimientoEditContext is null)
@@ -1250,6 +1302,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       Nivel1 = movimiento.Nivel1,
       Nivel2 = movimiento.Nivel2,
       Nivel3 = movimiento.Nivel3,
+      Nivel1Descripcion = movimiento.Nivel1Descripcion,
+      Nivel2Descripcion = movimiento.Nivel2Descripcion,
+      Nivel3Descripcion = movimiento.Nivel3Descripcion,
       Descripcion = movimiento.Descripcion ?? movimiento.NombreCuenta
     };
   }
@@ -1300,6 +1355,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       Nivel1 = movimiento.Nivel1,
       Nivel2 = movimiento.Nivel2,
       Nivel3 = movimiento.Nivel3,
+      Nivel1Descripcion = movimiento.Nivel1Descripcion,
+      Nivel2Descripcion = movimiento.Nivel2Descripcion,
+      Nivel3Descripcion = movimiento.Nivel3Descripcion,
       NombreCuenta = movimiento.NombreCuenta,
       Descripcion = movimiento.NombreCuenta,
       Concepto = movimiento.Concepto,
@@ -2426,7 +2484,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Monto inválido.")]
     public decimal Monto { get; set; }
 
-    [Required(ErrorMessage = "Selecciona una categoría.")]
+    [Required(ErrorMessage = "Selecciona una plantilla contable.")]
     public int? CategoriaId { get; set; }
 
     public bool Facturado { get; set; }
@@ -2516,6 +2574,12 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     public string? Nivel3 { get; set; }
 
+    public string? Nivel1Descripcion { get; set; }
+
+    public string? Nivel2Descripcion { get; set; }
+
+    public string? Nivel3Descripcion { get; set; }
+
     public string? Descripcion { get; set; }
 
     [Required(ErrorMessage = "El concepto es obligatorio.")]
@@ -2544,6 +2608,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       Nivel1 = other.Nivel1;
       Nivel2 = other.Nivel2;
       Nivel3 = other.Nivel3;
+      Nivel1Descripcion = other.Nivel1Descripcion;
+      Nivel2Descripcion = other.Nivel2Descripcion;
+      Nivel3Descripcion = other.Nivel3Descripcion;
       Descripcion = other.Descripcion;
       Concepto = other.Concepto;
       Debe = other.Debe;

@@ -1,0 +1,29 @@
+.ajustes-page .ajustes-section {
+  width: 100%;
+}
+
+.ajustes-template-list {
+  max-height: 64vh;
+  overflow-y: auto;
+}
+
+.ajustes-template-list thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.ajustes-modal-backdrop {
+  background-color: rgba(15, 45, 78, 0.35);
+}
+
+.ajustes-page .table td,
+.ajustes-page .table th {
+  vertical-align: middle;
+}
+
+@media (max-width: 767.98px) {
+  .ajustes-template-list {
+    max-height: 24rem;
+  }
+}

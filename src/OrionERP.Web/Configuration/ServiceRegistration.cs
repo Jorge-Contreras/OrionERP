@@ -9,7 +9,9 @@ using OrionERP.Application.Features.Cfdi.HtmlCFDI;
 using OrionERP.Application.Features.Rfcs.Contracts;
 using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Application.Features.Contabilidad.ContabilidadRegistros;
+using OrionERP.Application.Features.Ajustes;
 using OrionERP.Infrastructure.Common;
+using OrionERP.Infrastructure.Features.Ajustes;
 using OrionERP.Infrastructure.Features.Auth.AdminPortal;
 using OrionERP.Infrastructure.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Infrastructure.Features.Cfdi.Facturama;
@@ -102,6 +104,7 @@ public static class ServiceRegistration
     services.AddScoped<ISatDownloadCoordinator, SatDownloadCoordinator>();
 
     services.AddScoped<ICuentasContablesRepository, CuentasContablesRepository>();
+    services.AddScoped<IAjustesService, AjustesService>();
     services.AddScoped<IContabilidadRegistrosService, ContabilidadRegistrosService>();
     services.AddScoped<IDeclaracionPreviaService, DeclaracionPreviaService>();
     services.AddScoped<IBancosService, BancosService>();

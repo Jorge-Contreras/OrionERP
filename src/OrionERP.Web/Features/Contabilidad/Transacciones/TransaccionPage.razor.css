@@ -79,6 +79,13 @@
   overflow-wrap: anywhere;
 }
 
+.movimiento-codigo-detalle {
+  color: var(--bs-secondary-color);
+  font-size: 0.78rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 .transaccion-lookup-results {
   max-height: 18rem;
   overflow-y: auto;

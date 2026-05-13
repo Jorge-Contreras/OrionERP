@@ -7,6 +7,9 @@ public sealed class TransaccionMovimientoDto
     public string Nivel1 { get; set; } = string.Empty;
     public string Nivel2 { get; set; } = string.Empty;
     public string Nivel3 { get; set; } = string.Empty;
+    public string? Nivel1Descripcion { get; set; }
+    public string? Nivel2Descripcion { get; set; }
+    public string? Nivel3Descripcion { get; set; }
     public string? NombreCuenta { get; set; }
     public string? Concepto { get; set; }
     public decimal Debe { get; set; }

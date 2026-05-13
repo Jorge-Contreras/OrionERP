@@ -193,6 +193,23 @@
                             <span class="nav-link__badge">Admin</span>
                         </NavLink>
                     </li>
+                    <li class="nav-item">
+                        <NavLink class="nav-link nav-link--rich"
+                                 href="/ajustes"
+                                 title="Ajustes"
+                                 @onclick="CloseNavMenuAfterSelection">
+                            <span class="nav-link__icon">
+                                <span class="oi oi-cog" aria-hidden="true"></span>
+                            </span>
+
+                            <span class="nav-link__content">
+                                <span class="label">Ajustes</span>
+                                <span class="description">Plantillas contables y configuracion operativa.</span>
+                            </span>
+
+                            <span class="nav-link__badge">Setup</span>
+                        </NavLink>
+                    </li>
                 </ul>
             </section>
         </AuthorizeView>

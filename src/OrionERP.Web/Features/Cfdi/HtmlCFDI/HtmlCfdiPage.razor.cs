@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 using System.Linq;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Application.Features.Cfdi.HtmlCFDI;
@@ -19,6 +20,12 @@ public partial class HtmlCfdiPage : ComponentBase
   public IUiMessageService UiMessages { get; set; } = default!;
 
   [Inject]
+  public IJSRuntime Js { get; set; } = default!;
+
+  [Inject]
+  public ICfdiPdfService CfdiPdfService { get; set; } = default!;
+
+  [Inject]
   public ITransaccionService TransaccionService { get; set; } = default!;
 
   protected CfdiReadableDocument? Document { get; set; }
@@ -26,9 +33,12 @@ public partial class HtmlCfdiPage : ComponentBase
   protected bool IsLoading { get; set; }
   protected bool IsPolizasCollapsed { get; set; } = true;
   protected bool IsPolizasLoading { get; set; }
+  protected bool IsGeneratingPdf { get; set; }
   protected int ComprobanteId { get; set; }
   protected List<TransaccionListItemDto> Polizas { get; } = new();
   protected decimal TotalMontoAsignado => Polizas.Sum(p => p.MontoAsignado);
+  protected string TotalMontoAsignadoDisplay => TotalMontoAsignado.ToString("C", CultureInfo.CurrentCulture);
+  protected bool CanDownloadPdf => Document is not null && !IsLoading && !IsGeneratingPdf && string.IsNullOrWhiteSpace(ErrorMessage);
   private readonly Dictionary<int, LinkedMontoEditor> _linkedMontoEditors = new();
   private int? _savingLinkedMontoTransaccionId;
 
@@ -60,6 +70,33 @@ public partial class HtmlCfdiPage : ComponentBase
   protected void TogglePolizas()
   {
     IsPolizasCollapsed = !IsPolizasCollapsed;
+  }
+
+  protected async Task DescargarPdfAsync()
+  {
+    if (Document is null || IsGeneratingPdf)
+    {
+      return;
+    }
+
+    IsGeneratingPdf = true;
+
+    try
+    {
+      var pdfBytes = CfdiPdfService.Generate(Document);
+      var fileName = BuildPdfFileName();
+      var dataUrl = $"data:application/pdf;base64,{Convert.ToBase64String(pdfBytes)}";
+
+      await Js.InvokeVoidAsync("triggerFileDownload", fileName, dataUrl);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo generar el PDF del CFDI. {ex.Message}");
+    }
+    finally
+    {
+      IsGeneratingPdf = false;
+    }
   }
 
   private async Task LoadPolizasAsync()
@@ -193,6 +230,33 @@ public partial class HtmlCfdiPage : ComponentBase
     return decimal.TryParse(total, NumberStyles.Number, CultureInfo.CurrentCulture, out parsed)
       ? parsed
       : 0m;
+  }
+
+  private string BuildPdfFileName()
+  {
+    var identifier = Document is null
+      ? Id.ToString(CultureInfo.InvariantCulture)
+      : CfdiDisplay.FirstNonEmpty(CfdiDisplay.SerieFolio(Document), Document.Timbre?.Uuid, Id.ToString(CultureInfo.InvariantCulture));
+
+    return $"cfdi-{NormalizeFileNamePart(identifier)}.pdf";
+  }
+
+  private static string NormalizeFileNamePart(string value)
+  {
+    var normalized = new string(value
+      .Trim()
+      .ToLowerInvariant()
+      .Select(ch => char.IsLetterOrDigit(ch) ? ch : '-')
+      .ToArray());
+
+    while (normalized.Contains("--", StringComparison.Ordinal))
+    {
+      normalized = normalized.Replace("--", "-", StringComparison.Ordinal);
+    }
+
+    return string.IsNullOrWhiteSpace(normalized.Trim('-'))
+      ? "documento"
+      : normalized.Trim('-');
   }
 
   private void SyncLinkedMontoInputs()

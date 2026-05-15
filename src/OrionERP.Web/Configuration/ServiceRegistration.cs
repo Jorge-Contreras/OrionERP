@@ -45,6 +45,7 @@ using OrionERP.Infrastructure.Features.OrdenesTrabajo;
 using OrionERP.Infrastructure.Features.Reservaciones.Cfdi;
 using OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 using OrionERP.Web.Features.Arrendadores;
+using OrionERP.Web.Features.Cfdi.HtmlCFDI;
 using OrionERP.Web.Features.Logistica.Purchasing;
 using OrionERP.Web.Features.Reservaciones.OpenClaw;
 using OrionERP.Web.Features.Reservaciones.ListaReservaciones;
@@ -80,6 +81,7 @@ public static class ServiceRegistration
     services.AddScoped<CfdiReadableParser>();
     services.AddScoped<ITransactionAttachmentRepository, TransactionAttachmentRepository>();
     services.AddScoped<IHtmlCfdiService, HtmlCfdiService>();
+    services.AddScoped<ICfdiPdfService, CfdiPdfService>();
     services.AddScoped<ReservacionesIListaReservacionesService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservationCfdiService, ReservationCfdiService>();
     services.AddScoped<IOutlookRoomCalendarSyncRepository, OutlookRoomCalendarSyncRepository>();
@@ -134,6 +136,7 @@ public static class ServiceRegistration
     services.AddScoped<CfdiReadableParser>();
     services.AddScoped<ITransactionAttachmentRepository, TransactionAttachmentRepository>();
     services.AddScoped<IHtmlCfdiService, HtmlCfdiService>();
+    services.AddScoped<ICfdiPdfService, CfdiPdfService>();
     services.AddScoped<ReservacionesIListaReservacionesService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservationCfdiService, ReservationCfdiService>();
     services.AddScoped<IOutlookRoomCalendarSyncRepository, OutlookRoomCalendarSyncRepository>();

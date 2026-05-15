@@ -47,6 +47,7 @@ public sealed class CfdiReadableParser
       TipoCambio = GetAttribute(comprobante, "TipoCambio"),
       MetodoPago = GetAttribute(comprobante, "MetodoPago"),
       FormaPago = GetAttribute(comprobante, "FormaPago"),
+      NoCertificado = GetAttribute(comprobante, "NoCertificado"),
       SubTotal = GetAttribute(comprobante, "SubTotal"),
       Descuento = GetAttribute(comprobante, "Descuento"),
       Total = GetAttribute(comprobante, "Total"),

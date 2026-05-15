@@ -12,6 +12,7 @@ public sealed class CfdiReadableDocument
   public string? TipoCambio { get; set; }
   public string? MetodoPago { get; set; }
   public string? FormaPago { get; set; }
+  public string? NoCertificado { get; set; }
   public string? SubTotal { get; set; }
   public string? Descuento { get; set; }
   public string? Total { get; set; }

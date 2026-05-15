@@ -5,138 +5,155 @@
 <div class="cfdi-page">
     <div class="cfdi-page-heading">
         <div class="d-flex flex-column gap-2">
-            <h3 class="cfdi-page-title">CFDI en HTML</h3>
+            <div class="cfdi-page-kicker">Vista legible de XML</div>
+            <h3 class="cfdi-page-title">CFDI</h3>
             <div class="d-flex flex-wrap align-items-center gap-2">
                 <div class="cfdi-meta">Adjunto #@Id</div>
                 @if (ComprobanteId > 0)
                 {
                     <div class="cfdi-meta">Comprobante #@ComprobanteId</div>
                 }
+                @if (Document is not null)
+                {
+                    <div class="cfdi-meta">@CfdiDisplay.TypeLabel(Document.TipoDeComprobante)</div>
+                }
             </div>
+        </div>
+
+        <div class="cfdi-page-actions">
+            <button type="button"
+                    class="btn btn-primary btn-sm"
+                    disabled="@(!CanDownloadPdf)"
+                    @onclick="DescargarPdfAsync">
+                <span class="oi oi-document me-1" aria-hidden="true"></span>
+                @(IsGeneratingPdf ? "Generando..." : "PDF")
+            </button>
         </div>
     </div>
 
-    <section class="card cfdi-card">
-        <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <button class="btn btn-link p-0 cfdi-section-toggle"
-                    type="button"
-                    @onclick="TogglePolizas"
-                    aria-expanded="@(!IsPolizasCollapsed)"
-                    aria-controls="polizasSection">
-                <span class="cfdi-section-title">Pólizas vinculadas</span>
-                <span class="cfdi-toggle-icon">@(!IsPolizasCollapsed ? "▲" : "▼")</span>
-            </button>
-
-            @if (ComprobanteId > 0)
-            {
-                <a class="btn btn-primary btn-sm" href="@($"/cfdi/LigarCFDI_Poliza/{ComprobanteId}")">Ligar Polizas</a>
-            }
-            else if (!IsLoading)
-            {
-                <button type="button"
-                        class="btn btn-outline-secondary btn-sm"
-                        disabled
-                        title="No se encontró el Comprobante_ID para este XML_Attachment_ID.">
-                    Ligar Polizas
-                </button>
-            }
-        </div>
-
-        @if (!IsPolizasCollapsed)
+    @if (IsLoading)
+    {
+        <div class="alert alert-info mb-0">Cargando CFDI...</div>
+    }
+    else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="alert alert-danger mb-0">@ErrorMessage</div>
+    }
+    else if (Document is null)
+    {
+        <div class="alert alert-warning mb-0">No se pudo cargar el CFDI.</div>
+    }
+    else
+    {
+        @if (Document.TipoDeComprobante == "P")
         {
-            <div id="polizasSection" class="card-body">
-                @if (IsPolizasLoading)
+            <CfdiPago20View Document="Document" />
+        }
+        else
+        {
+            <CfdiComprobanteView Document="Document" />
+        }
+
+        <section class="card cfdi-card">
+            <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <button class="btn btn-link p-0 cfdi-section-toggle"
+                        type="button"
+                        @onclick="TogglePolizas"
+                        aria-expanded="@(!IsPolizasCollapsed)"
+                        aria-controls="polizasSection">
+                    <span class="cfdi-section-title">Pólizas vinculadas</span>
+                    <span class="cfdi-toggle-icon">@(!IsPolizasCollapsed ? "▲" : "▼")</span>
+                </button>
+
+                @if (ComprobanteId > 0)
                 {
-                    <div class="alert alert-info mb-0">Cargando pólizas...</div>
-                }
-                else if (Polizas.Count == 0)
-                {
-                    <div class="alert alert-secondary mb-0">No hay pólizas vinculadas a este CFDI.</div>
+                    <a class="btn btn-outline-primary btn-sm" href="@($"/cfdi/LigarCFDI_Poliza/{ComprobanteId}")">Ligar pólizas</a>
                 }
                 else
                 {
-                    <div class="table-responsive">
-                        <table class="table table-striped cfdi-table mb-0">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Fecha</th>
-                                    <th>Concepto</th>
-                                    <th>Monto</th>
-                                    <th>Monto Asignado</th>
-                                    <th>Tipo de Póliza</th>
-                                    <th>Forma de Pago</th>
-                                    <th>Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var poliza in Polizas)
-                                {
-                                    var editor = GetLinkedMontoEditor(poliza);
-                                    <tr>
-                                        <td>@poliza.Id</td>
-                                        <td>@poliza.Fecha.ToShortDateString()</td>
-                                        <td>@poliza.Concepto</td>
-                                        <td>@poliza.Monto.ToString("C")</td>
-                                        <td style="min-width: 13rem;">
-                                            <InputNumber class="form-control form-control-sm"
-                                                         TValue="decimal"
-                                                         min="0.01"
-                                                         max="@GetMaxAllowedMonto(poliza)"
-                                                         step="0.01"
-                                                         @bind-Value="editor.Monto"
-                                                         disabled="@(ComprobanteId <= 0 || IsSavingLinkedMonto(poliza))" />
-                                            <div class="form-text">Máximo: @GetMaxAllowedMonto(poliza).ToString("C")</div>
-                                        </td>
-                                        <td>@poliza.TipoPoliza</td>
-                                        <td>@poliza.FormaPago</td>
-                                        <td>
-                                            <div class="d-flex gap-2">
-                                                <button type="button"
-                                                        class="btn btn-sm btn-outline-primary"
-                                                        disabled="@(ComprobanteId <= 0 || IsSavingLinkedMonto(poliza))"
-                                                        @onclick="() => GuardarMontoLigadoAsync(poliza)">
-                                                    @(IsSavingLinkedMonto(poliza) ? "Guardando..." : "Guardar monto")
-                                                </button>
-                                                <a href="/contabilidad/transacciones/@poliza.Id" class="btn btn-sm btn-primary">Ver/Editar</a>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                            <tfoot>
-                                <tr>
-                                    <td colspan="3"></td>
-                                    <td><strong>Total:</strong></td>
-                                    <td>@TotalMontoAsignado</td>
-                                    <td colspan="2"></td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
+                    <button type="button"
+                            class="btn btn-outline-secondary btn-sm"
+                            disabled
+                            title="No se encontró el Comprobante_ID para este XML_Attachment_ID.">
+                        Ligar pólizas
+                    </button>
                 }
             </div>
-        }
-    </section>
-</div>
 
-@if (IsLoading)
-{
-    <div class="alert alert-info">Cargando CFDI...</div>
-}
-else if (!string.IsNullOrWhiteSpace(ErrorMessage))
-{
-    <div class="alert alert-danger">@ErrorMessage</div>
-}
-else if (Document is null)
-{
-    <div class="alert alert-warning">No se pudo cargar el CFDI.</div>
-}
-else if (Document.TipoDeComprobante == "P")
-{
-    <CfdiPago20View Document="Document" />
-}
-else
-{
-    <CfdiComprobanteView Document="Document" />
-}
+            @if (!IsPolizasCollapsed)
+            {
+                <div id="polizasSection" class="card-body">
+                    @if (IsPolizasLoading)
+                    {
+                        <div class="alert alert-info mb-0">Cargando pólizas...</div>
+                    }
+                    else if (Polizas.Count == 0)
+                    {
+                        <div class="alert alert-secondary mb-0">No hay pólizas vinculadas a este CFDI.</div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-striped cfdi-table mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Fecha</th>
+                                        <th>Concepto</th>
+                                        <th class="text-end">Monto</th>
+                                        <th>Monto asignado</th>
+                                        <th>Tipo de póliza</th>
+                                        <th>Forma de pago</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var poliza in Polizas)
+                                    {
+                                        var editor = GetLinkedMontoEditor(poliza);
+                                        <tr>
+                                            <td>@poliza.Id</td>
+                                            <td>@poliza.Fecha.ToShortDateString()</td>
+                                            <td>@poliza.Concepto</td>
+                                            <td class="text-end">@poliza.Monto.ToString("C")</td>
+                                            <td style="min-width: 13rem;">
+                                                <InputNumber class="form-control form-control-sm"
+                                                             TValue="decimal"
+                                                             min="0.01"
+                                                             max="@GetMaxAllowedMonto(poliza)"
+                                                             step="0.01"
+                                                             @bind-Value="editor.Monto"
+                                                             disabled="@(ComprobanteId <= 0 || IsSavingLinkedMonto(poliza))" />
+                                                <div class="form-text">Máximo: @GetMaxAllowedMonto(poliza).ToString("C")</div>
+                                            </td>
+                                            <td>@poliza.TipoPoliza</td>
+                                            <td>@poliza.FormaPago</td>
+                                            <td>
+                                                <div class="d-flex flex-wrap gap-2">
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-outline-primary"
+                                                            disabled="@(ComprobanteId <= 0 || IsSavingLinkedMonto(poliza))"
+                                                            @onclick="() => GuardarMontoLigadoAsync(poliza)">
+                                                        @(IsSavingLinkedMonto(poliza) ? "Guardando..." : "Guardar monto")
+                                                    </button>
+                                                    <a href="/contabilidad/transacciones/@poliza.Id" class="btn btn-sm btn-primary">Ver/Editar</a>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="4" class="text-end"><strong>Total asignado:</strong></td>
+                                        <td>@TotalMontoAsignadoDisplay</td>
+                                        <td colspan="3"></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+    }
+</div>

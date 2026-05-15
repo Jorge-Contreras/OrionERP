@@ -1,4 +1,6 @@
+using System.Text;
 using OrionERP.Application.Features.Cfdi.HtmlCFDI;
+using OrionERP.Web.Features.Cfdi.HtmlCFDI;
 
 namespace OrionERP.UnitTests.Cfdi;
 
@@ -14,6 +16,7 @@ public class CfdiReadableParserTests
         Assert.Equal("I", doc.TipoDeComprobante);
         Assert.Equal("MXN", doc.Moneda);
         Assert.Equal("90205", doc.LugarExpedicion);
+        Assert.Equal("00001000000714274329", doc.NoCertificado);
         Assert.Equal("NUEVA WAL MART DE MEXICO", doc.Emisor?.Nombre);
         Assert.Equal("OHM191112Q26", doc.Receptor?.Rfc);
         Assert.Equal("32F710B0-C35A-4169-BC4A-9CA3925BBF2E", doc.Timbre?.Uuid);
@@ -41,6 +44,19 @@ public class CfdiReadableParserTests
         Assert.Equal("aad6d134-a51f-431b-9104-736228757bbb", docto.IdDocumento);
         Assert.NotEmpty(docto.Traslados);
         Assert.NotEmpty(pago.Traslados);
+    }
+
+    [Fact]
+    public void Generate_IngresoCfdiPdf_ReturnsPdfBytes()
+    {
+        var parser = new CfdiReadableParser();
+        var document = parser.Parse(IngresoXml);
+        var service = new CfdiPdfService();
+
+        var bytes = service.Generate(document);
+
+        Assert.NotEmpty(bytes);
+        Assert.Equal("%PDF", Encoding.ASCII.GetString(bytes, 0, 4));
     }
 
     private const string Pago20Xml = """

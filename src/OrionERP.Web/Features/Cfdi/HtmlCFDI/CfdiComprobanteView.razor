@@ -6,171 +6,245 @@
     return;
 }
 
-<div class="cfdi-card card mb-3">
-    <div class="card-header">Encabezado</div>
-    <div class="card-body">
-        <div class="row mb-2">
-            <div class="col-md-4"><strong>Serie/Folio:</strong> @($"{Document.Serie} {Document.Folio}".Trim())</div>
-            <div class="col-md-4"><strong>Fecha:</strong> @Document.Fecha</div>
-            <div class="col-md-4"><strong>Lugar Expedición:</strong> @Document.LugarExpedicion</div>
+<div class="cfdi-document">
+    <section class="cfdi-document-header">
+        <div>
+            <div class="cfdi-document-kicker">Comprobante Fiscal Digital por Internet</div>
+            <h4>@CfdiDisplay.TypeName(Document.TipoDeComprobante)</h4>
+            <div class="cfdi-document-subtitle">CFDI v@CfdiDisplay.Safe(Document.Version) | @CfdiDisplay.TypeLabel(Document.TipoDeComprobante)</div>
         </div>
-        <div class="row mb-2">
-            <div class="col-md-4"><strong>Moneda:</strong> @Document.Moneda</div>
-            <div class="col-md-4"><strong>Tipo Cambio:</strong> @Document.TipoCambio</div>
-            <div class="col-md-4"><strong>Exportación:</strong> @Document.Exportacion</div>
+        <div class="cfdi-total-panel">
+            <div class="cfdi-total-label">Total</div>
+            <div class="cfdi-total-value">@CfdiDisplay.Amount(Document.Total, Document.Moneda)</div>
+            <div class="cfdi-total-currency">@CfdiDisplay.Safe(Document.Moneda)</div>
         </div>
-        <div class="row mb-2">
-            <div class="col-md-4"><strong>Forma Pago:</strong> @Document.FormaPago</div>
-            <div class="col-md-4"><strong>Método Pago:</strong> @Document.MetodoPago</div>
-            <div class="col-md-4"><strong>Condiciones Pago:</strong> @Document.CondicionesDePago</div>
-        </div>
-        <div class="row mb-2">
-            <div class="col-md-4"><strong>Tipo:</strong> @Document.TipoDeComprobante</div>
-            <div class="col-md-4"><strong>SubTotal:</strong> @Document.SubTotal</div>
-            <div class="col-md-4"><strong>Descuento:</strong> @Document.Descuento</div>
-        </div>
-        <div class="row mb-2">
-            <div class="col-md-4"><strong>Total:</strong> @Document.Total</div>
-        </div>
-    </div>
-</div>
+    </section>
 
-<div class="row g-3">
-    <div class="col-md-6">
-        <div class="cfdi-card card">
-            <div class="card-header">Emisor</div>
-            <div class="card-body">
-                <div><strong>RFC:</strong> @Document.Emisor?.Rfc</div>
-                <div><strong>Nombre:</strong> @Document.Emisor?.Nombre</div>
-                <div><strong>Régimen:</strong> @Document.Emisor?.RegimenFiscal</div>
-            </div>
+    <section class="cfdi-summary-strip" aria-label="Resumen del comprobante">
+        <div class="cfdi-summary-item">
+            <div class="cfdi-summary-label">Folio fiscal</div>
+            <div class="cfdi-summary-value cfdi-break">@CfdiDisplay.Safe(Document.Timbre?.Uuid)</div>
         </div>
-    </div>
-    <div class="col-md-6">
-        <div class="cfdi-card card">
-            <div class="card-header">Receptor</div>
-            <div class="card-body">
-                <div><strong>RFC:</strong> @Document.Receptor?.Rfc</div>
-                <div><strong>Nombre:</strong> @Document.Receptor?.Nombre</div>
-                <div><strong>Uso CFDI:</strong> @Document.Receptor?.UsoCfdi</div>
-                <div><strong>Domicilio:</strong> @Document.Receptor?.DomicilioFiscalReceptor</div>
-                <div><strong>Régimen:</strong> @(Document.Receptor?.RegimenFiscal ?? Document.Receptor?.RegimenFiscalReceptor)</div>
-            </div>
+        <div class="cfdi-summary-item">
+            <div class="cfdi-summary-label">Serie / Folio</div>
+            <div class="cfdi-summary-value">@CfdiDisplay.SerieFolio(Document)</div>
         </div>
-    </div>
-</div>
+        <div class="cfdi-summary-item">
+            <div class="cfdi-summary-label">Fecha y hora</div>
+            <div class="cfdi-summary-value">@CfdiDisplay.Safe(Document.Fecha)</div>
+        </div>
+        <div class="cfdi-summary-item">
+            <div class="cfdi-summary-label">Lugar expedición</div>
+            <div class="cfdi-summary-value">@CfdiDisplay.Safe(Document.LugarExpedicion)</div>
+        </div>
+    </section>
 
-<div class="card mt-3 cfdi-card">
-    <div class="card-header">Conceptos</div>
-    <div class="card-body p-0">
-        <table class="table table-striped table-sm cfdi-table mb-0">
-            <thead>
-                <tr>
-                    <th>ClaveProdServ</th>
-                    <th>Descripción</th>
-                    <th class="text-end">Cantidad</th>
-                    <th>Unidad</th>
-                    <th class="text-end">Valor Unitario</th>
-                    <th class="text-end">Importe</th>
-                    <th class="text-end">Descuento</th>
-                    <th>Objeto Imp.</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var c in Document.Conceptos)
-                {
+    <div class="cfdi-parties-grid">
+        @PartySection("Emisor", Document.Emisor)
+        @PartySection("Receptor", Document.Receptor)
+    </div>
+
+    <section class="cfdi-section">
+        <div class="cfdi-section-header">
+            <h5>Datos fiscales del comprobante</h5>
+        </div>
+        @FieldStrip(
+            new FieldItem("Tipo de comprobante", CfdiDisplay.TypeLabel(Document.TipoDeComprobante)),
+            new FieldItem("Método de pago", Document.MetodoPago),
+            new FieldItem("Forma de pago", Document.FormaPago),
+            new FieldItem("Moneda", Document.Moneda),
+            new FieldItem("Tipo de cambio", Document.TipoCambio),
+            new FieldItem("Exportación", Document.Exportacion),
+            new FieldItem("Certificado emisor", Document.NoCertificado),
+            new FieldItem("Condiciones de pago", Document.CondicionesDePago))
+    </section>
+
+    <section class="cfdi-section">
+        <div class="cfdi-section-header">
+            <h5>Conceptos</h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm cfdi-table cfdi-concepts-table mb-0">
+                <thead>
                     <tr>
-                        <td>@c.ClaveProdServ <br /> <small>@c.NoIdentificacion</small></td>
-                        <td>@c.Descripcion</td>
-                        <td class="text-end">@c.Cantidad</td>
-                        <td>@c.ClaveUnidad <br /> <small>@c.Unidad</small></td>
-                        <td class="text-end">@c.ValorUnitario</td>
-                        <td class="text-end">@c.Importe</td>
-                        <td class="text-end">@c.Descuento</td>
-                        <td>@c.ObjetoImp</td>
+                        <th>Clave P./S.</th>
+                        <th>Descripción</th>
+                        <th class="text-end">Cantidad</th>
+                        <th>Unidad</th>
+                        <th class="text-end">Valor unitario</th>
+                        <th class="text-end">Importe</th>
+                        <th class="text-end">Descuento</th>
+                        <th>Objeto imp.</th>
                     </tr>
-                    if (c.Traslados.Count > 0 || c.Retenciones.Count > 0)
+                </thead>
+                <tbody>
+                    @if (Document.Conceptos.Count == 0)
                     {
                         <tr>
-                            <td colspan="8" class="bg-light">
-                                <div class="d-flex gap-4">
-                                    @if (c.Traslados.Count > 0)
-                                    {
-                                        <div>
-                                            <div class="cfdi-section-title">Traslados</div>
-                                            @foreach (var t in c.Traslados)
-                                            {
-                                                <div>@t.Impuesto (@t.TipoFactor) Base: @t.Base Tasa: @t.TasaOCuota Importe: @t.Importe</div>
-                                            }
-                                        </div>
-                                    }
-                                    @if (c.Retenciones.Count > 0)
-                                    {
-                                        <div>
-                                            <div class="cfdi-section-title">Retenciones</div>
-                                            @foreach (var t in c.Retenciones)
-                                            {
-                                                <div>@t.Impuesto (@t.TipoFactor) Base: @t.Base Tasa: @t.TasaOCuota Importe: @t.Importe</div>
-                                            }
-                                        </div>
-                                    }
-                                </div>
-                            </td>
+                            <td colspan="8" class="text-muted">Sin conceptos.</td>
                         </tr>
                     }
-                }
-            </tbody>
-        </table>
-    </div>
-</div>
+                    else
+                    {
+                        @foreach (var c in Document.Conceptos)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="cfdi-table-primary">@CfdiDisplay.Safe(c.ClaveProdServ)</div>
+                                    @if (CfdiDisplay.HasRealValue(c.NoIdentificacion))
+                                    {
+                                        <div class="cfdi-table-muted">@c.NoIdentificacion</div>
+                                    }
+                                </td>
+                                <td class="cfdi-description-cell">@CfdiDisplay.Safe(c.Descripcion)</td>
+                                <td class="text-end">@CfdiDisplay.Safe(c.Cantidad)</td>
+                                <td>
+                                    <div class="cfdi-table-primary">@CfdiDisplay.Safe(c.ClaveUnidad)</div>
+                                    @if (CfdiDisplay.HasRealValue(c.Unidad))
+                                    {
+                                        <div class="cfdi-table-muted">@c.Unidad</div>
+                                    }
+                                </td>
+                                <td class="text-end">@CfdiDisplay.Amount(c.ValorUnitario, Document.Moneda)</td>
+                                <td class="text-end">@CfdiDisplay.Amount(c.Importe, Document.Moneda)</td>
+                                <td class="text-end">@CfdiDisplay.Amount(c.Descuento, Document.Moneda)</td>
+                                <td>@CfdiDisplay.Safe(c.ObjetoImp)</td>
+                            </tr>
+                            @if (c.Traslados.Count > 0 || c.Retenciones.Count > 0)
+                            {
+                                <tr class="cfdi-concept-tax-row">
+                                    <td colspan="8">
+                                        @TaxList("Traslados", c.Traslados)
+                                        @TaxList("Retenciones", c.Retenciones)
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
 
-@if (Document.Impuestos is not null)
-{
-    <div class="card mt-3 cfdi-card">
-        <div class="card-header">Impuestos</div>
-        <div class="card-body">
-            <div class="row mb-2">
-                <div class="col-md-4"><strong>Total Trasladados:</strong> @Document.Impuestos.TotalTrasladados</div>
-                <div class="col-md-4"><strong>Total Retenidos:</strong> @Document.Impuestos.TotalRetenidos</div>
+    <div class="cfdi-two-column">
+        <section class="cfdi-section">
+            <div class="cfdi-section-header">
+                <h5>Impuestos</h5>
             </div>
-            @if (Document.Impuestos.Traslados.Count > 0)
+            @if (Document.Impuestos is null)
             {
-                <div class="cfdi-section-title">Traslados</div>
-                <ul>
-                    @foreach (var t in Document.Impuestos.Traslados)
-                    {
-                        <li>@t.Impuesto (@t.TipoFactor) Base: @t.Base Tasa: @t.TasaOCuota Importe: @t.Importe</li>
-                    }
-                </ul>
+                <div class="cfdi-empty">Sin impuestos registrados.</div>
             }
-            @if (Document.Impuestos.Retenciones.Count > 0)
+            else
             {
-                <div class="cfdi-section-title mt-2">Retenciones</div>
-                <ul>
-                    @foreach (var t in Document.Impuestos.Retenciones)
-                    {
-                        <li>@t.Impuesto (@t.TipoFactor) Base: @t.Base Tasa: @t.TasaOCuota Importe: @t.Importe</li>
-                    }
-                </ul>
+                @FieldStrip(
+                    new FieldItem("Total trasladados", CfdiDisplay.Amount(Document.Impuestos.TotalTrasladados, Document.Moneda)),
+                    new FieldItem("Total retenidos", CfdiDisplay.Amount(Document.Impuestos.TotalRetenidos, Document.Moneda)))
+                @TaxList("Traslados", Document.Impuestos.Traslados)
+                @TaxList("Retenciones", Document.Impuestos.Retenciones)
             }
-        </div>
-    </div>
-}
+        </section>
 
-@if (Document.Timbre is not null)
-{
-    <div class="card mt-3 cfdi-card">
-        <div class="card-header">Timbre Fiscal Digital</div>
-        <div class="card-body">
-            <div><strong>UUID:</strong> @Document.Timbre.Uuid</div>
-            <div><strong>Fecha Timbrado:</strong> @Document.Timbre.FechaTimbrado</div>
-            <div><strong>NoCertificadoSAT:</strong> @Document.Timbre.NoCertificadoSat</div>
-            <div><strong>RfcProvCertif:</strong> @Document.Timbre.RfcProvCertif</div>
-        </div>
+        <section class="cfdi-section">
+            <div class="cfdi-section-header">
+                <h5>Totales</h5>
+            </div>
+            <div class="cfdi-totals-list">
+                @TotalRow("Subtotal", CfdiDisplay.Amount(Document.SubTotal, Document.Moneda))
+                @TotalRow("Descuento", CfdiDisplay.Amount(Document.Descuento, Document.Moneda))
+                @if (Document.Impuestos is not null)
+                {
+                    @TotalRow("IVA trasladado", CfdiDisplay.Amount(Document.Impuestos.TotalTrasladados, Document.Moneda))
+                    @TotalRow("Retenciones", CfdiDisplay.Amount(Document.Impuestos.TotalRetenidos, Document.Moneda))
+                }
+                <div class="cfdi-total-row cfdi-total-row--grand">
+                    <span>Total</span>
+                    <strong>@CfdiDisplay.Amount(Document.Total, Document.Moneda)</strong>
+                </div>
+            </div>
+        </section>
     </div>
-}
+
+    @TimbreSection(Document.Timbre)
+</div>
 
 @code {
     [Parameter]
     public CfdiReadableDocument? Document { get; set; }
+
+    private RenderFragment PartySection(string title, CfdiParty? party) => @<section class="cfdi-section cfdi-party-card">
+        <div class="cfdi-section-header">
+            <h5>@title</h5>
+        </div>
+        @FieldStrip(
+            new FieldItem("RFC", party?.Rfc),
+            new FieldItem("Razón social", party?.Nombre),
+            new FieldItem("Régimen fiscal", CfdiDisplay.PartyRegimen(party)),
+            new FieldItem("Uso CFDI", party?.UsoCfdi),
+            new FieldItem("Domicilio fiscal", party?.DomicilioFiscalReceptor))
+    </section>;
+
+    private static RenderFragment FieldStrip(params FieldItem[] fields) => @<div class="cfdi-field-strip">
+        @foreach (var field in fields.Where(field => CfdiDisplay.HasRealValue(field.Value)))
+        {
+            <span class="cfdi-inline-field">
+                <span class="cfdi-inline-label">@field.Label:</span>
+                <span class="cfdi-inline-value">@CfdiDisplay.Safe(field.Value)</span>
+            </span>
+        }
+    </div>;
+
+    private RenderFragment TaxList(string title, IReadOnlyList<CfdiImpuestoDetalle> taxes) => @<div>
+        @if (taxes.Count > 0)
+        {
+            <div class="cfdi-tax-title">@title</div>
+            <div class="cfdi-tax-list">
+                @foreach (var tax in taxes)
+                {
+                    <span class="cfdi-tax-pill">@TaxText(tax)</span>
+                }
+            </div>
+        }
+    </div>;
+
+    private RenderFragment TotalRow(string label, string value) => @<div class="cfdi-total-row">
+        <span>@label</span>
+        <strong>@value</strong>
+    </div>;
+
+    private RenderFragment TimbreSection(CfdiTimbre? timbre) => @<section class="cfdi-section">
+        <div class="cfdi-section-header">
+            <h5>Timbre Fiscal Digital</h5>
+        </div>
+        @if (timbre is null)
+        {
+            <div class="cfdi-empty">Sin timbre fiscal.</div>
+        }
+        else
+        {
+            @FieldStrip(
+                new FieldItem("UUID", timbre.Uuid),
+                new FieldItem("Fecha timbrado", timbre.FechaTimbrado),
+                new FieldItem("Certificado SAT", timbre.NoCertificadoSat),
+                new FieldItem("RFC proveedor certificación", timbre.RfcProvCertif),
+                new FieldItem("Leyenda", timbre.Leyenda))
+            @LongValue("Sello digital emisor", timbre.SelloCfd)
+            @LongValue("Sello digital SAT", timbre.SelloSat)
+        }
+    </section>;
+
+    private static RenderFragment LongValue(string label, string? value) => @<div>
+        @if (CfdiDisplay.HasRealValue(value))
+        {
+            <div class="cfdi-long-value">
+                <div class="cfdi-long-label">@label</div>
+                <div class="cfdi-long-text">@value</div>
+            </div>
+        }
+    </div>;
+
+    private string TaxText(CfdiImpuestoDetalle tax)
+        => $"{CfdiDisplay.Safe(tax.Impuesto)} {CfdiDisplay.Safe(tax.TipoFactor)} {CfdiDisplay.Safe(tax.TasaOCuota)} | Base {CfdiDisplay.Amount(tax.Base, Document?.Moneda)} | Importe {CfdiDisplay.Amount(tax.Importe, Document?.Moneda)}";
+
+    private sealed record FieldItem(string Label, string? Value);
 }

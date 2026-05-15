@@ -188,21 +188,22 @@
                                                     <div class="calendar-wo-badges">
                                                         @foreach (var badge in orderBadges)
                                                         {
+                                                            var badgeLabel = GetCalendarOrderBadgeLabel(badge);
                                                             @if (CanUseCalendarActions)
                                                             {
                                                                 <a class="@GetCalendarOrderBadgeClass(badge.Estado)"
                                                                    href="@($"/ordenes-trabajo/{badge.WorkOrderId}")"
-                                                                   title="@($"{badge.Folio} - {OrionERP.Web.Features.OrdenesTrabajo.OrdenesTrabajoPage.GetStatusLabel(badge.Estado)}")"
+                                                                   title="@($"{badgeLabel} | {badge.Folio} - {OrionERP.Web.Features.OrdenesTrabajo.OrdenesTrabajoPage.GetStatusLabel(badge.Estado)}")"
                                                                    @onclick:stopPropagation="true"
                                                                    @ondblclick:stopPropagation="true">
-                                                                    @badge.Folio
+                                                                    @badgeLabel
                                                                 </a>
                                                             }
                                                             else
                                                             {
                                                                 <span class="@GetCalendarOrderBadgeClass(badge.Estado)"
-                                                                      title="@($"{badge.Folio} - {OrionERP.Web.Features.OrdenesTrabajo.OrdenesTrabajoPage.GetStatusLabel(badge.Estado)}")">
-                                                                    @badge.Folio
+                                                                      title="@($"{badgeLabel} | {badge.Folio} - {OrionERP.Web.Features.OrdenesTrabajo.OrdenesTrabajoPage.GetStatusLabel(badge.Estado)}")">
+                                                                    @badgeLabel
                                                                 </span>
                                                             }
                                                         }

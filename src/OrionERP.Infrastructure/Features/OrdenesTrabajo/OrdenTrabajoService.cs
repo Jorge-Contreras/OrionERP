@@ -2180,9 +2180,22 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
           ot.Id AS WorkOrderId,
           ot.Folio,
           ot.Estado,
-          cat.Codigo AS CategoriaCodigo
+          cat.Codigo AS CategoriaCodigo,
+          COALESCE(NULLIF(LTRIM(RTRIM(ownerEmployee.NombreCorto)), ''), CONCAT(ownerEmployee.Nombre, ' ', ownerEmployee.ApellidoPaterno)) AS OwnerName,
+          helpers.HelperNames
       FROM dbo.OrdenTrabajo ot
       JOIN dbo.OrdenTrabajoCategoria cat ON cat.Id = ot.CategoriaId
+      JOIN dbo.Capital_Humano ownerEmployee ON ownerEmployee.ID = ot.OwnerEmployeeId
+      OUTER APPLY (
+          SELECT STUFF((
+              SELECT '/' + COALESCE(NULLIF(LTRIM(RTRIM(helperEmployee.NombreCorto)), ''), CONCAT(helperEmployee.Nombre, ' ', helperEmployee.ApellidoPaterno))
+              FROM dbo.OrdenTrabajoParticipante participant
+              JOIN dbo.Capital_Humano helperEmployee ON helperEmployee.ID = participant.EmployeeId
+              WHERE participant.OrdenTrabajoId = ot.Id
+              ORDER BY COALESCE(NULLIF(LTRIM(RTRIM(helperEmployee.NombreCorto)), ''), CONCAT(helperEmployee.Nombre, ' ', helperEmployee.ApellidoPaterno))
+              FOR XML PATH(''), TYPE
+          ).value('.', 'nvarchar(max)'), 1, 1, '') AS HelperNames
+      ) helpers
       WHERE ot.RoomCalendarId IS NOT NULL
         AND ot.FechaProgramada >= @StartDate
         AND ot.FechaProgramada < @EndDateExclusive

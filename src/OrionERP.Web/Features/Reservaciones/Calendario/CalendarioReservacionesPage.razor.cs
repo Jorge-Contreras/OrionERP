@@ -274,6 +274,33 @@ public partial class CalendarioReservacionesPage : ComponentBase
       _ => "calendar-wo-badge calendar-wo-badge-open"
     };
 
+  protected static string GetCalendarOrderBadgeLabel(OrdenTrabajoCalendarBadgeDto badge)
+  {
+    var names = new List<string>();
+    if (!string.IsNullOrWhiteSpace(badge.OwnerName))
+    {
+      names.Add(badge.OwnerName.Trim());
+    }
+
+    if (!string.IsNullOrWhiteSpace(badge.HelperNames))
+    {
+      names.AddRange(badge.HelperNames
+        .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+    }
+
+    var assigneeText = names.Count > 0
+      ? string.Join("/", names)
+      : badge.Folio;
+    var orderDigits = new string(badge.Folio.Where(char.IsDigit).ToArray());
+    var orderSuffix = orderDigits.Length > 0
+      ? orderDigits[^Math.Min(4, orderDigits.Length)..].PadLeft(4, '0')
+      : badge.Folio;
+
+    return string.IsNullOrWhiteSpace(orderSuffix)
+      ? assigneeText
+      : $"{assigneeText} - {orderSuffix}";
+  }
+
   protected string GetCellCompositeCssClass(RoomCalendarDayCellDto? cell, DateTime day)
   {
     var parts = new List<string> { GetCellCssClass(cell) };

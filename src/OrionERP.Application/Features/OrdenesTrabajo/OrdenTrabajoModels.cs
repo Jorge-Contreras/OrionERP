@@ -481,4 +481,6 @@ public sealed class OrdenTrabajoCalendarBadgeDto
   public string Folio { get; set; } = string.Empty;
   public string Estado { get; set; } = string.Empty;
   public string CategoriaCodigo { get; set; } = string.Empty;
+  public string OwnerName { get; set; } = string.Empty;
+  public string? HelperNames { get; set; }
 }

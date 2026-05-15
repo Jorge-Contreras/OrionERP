@@ -59,6 +59,8 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       "EXEC cfdi.Declaracion_CFDI_Base @Year, @Month, @RFC",
       new { Year = request.Year, Month = request.IsAnnual ? (object?)DBNull.Value : request.Month, RFC = request.Rfc })).AsList();
 
+    await ApplyCfdiCongruenceAsync(conn, allCfdiBase, request.Rfc);
+
     var emitidas = new List<DeclaracionEmitida>();
     var recibidas = new List<DeclaracionRecibida>();
     var emitidasPpd = new List<DeclaracionEmitida>();
@@ -117,9 +119,13 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
       .Select(ToDeclaracionEmitida)
       .ToList();
 
+    await ApplyCfdiCongruenceAsync(conn, canceladasOmitidas, request.Rfc);
+
     var complementosBase = (await conn.QueryAsync<DeclaracionComplementoBase>(
       "EXEC cfdi.Declaracion_Complementos_Base @Year, @Month, @RFC",
       new { Year = request.Year, Month = request.IsAnnual ? (object?)DBNull.Value : request.Month, RFC = request.Rfc })).AsList();
+
+    await ApplyComplementoCongruenceAsync(conn, complementosBase, request.Rfc);
 
     var complementosEmitidos = new List<DeclaracionComplementoEmitido>();
     var complementosRecibidos = new List<DeclaracionComplementoRecibido>();
@@ -364,6 +370,262 @@ WHERE DoctoRelacionado_Id = @DoctoRelacionado_Id;";
 
   private static DeclaracionComplementoRecibido ToComplementoRecibido(DeclaracionComplementoBase item) => new(item);
 
+  private static async Task ApplyCfdiCongruenceAsync(SqlConnection conn, IEnumerable<DeclaracionCfdiBase> items, string? rfc)
+  {
+    var list = items.ToList();
+    var ids = ToCsv(list.Select(item => item.Comprobante_Id));
+
+    if (string.IsNullOrWhiteSpace(ids))
+    {
+      return;
+    }
+
+    const string sql = @"
+;WITH TargetIds AS
+(
+    SELECT DISTINCT TRY_CONVERT(int, value) AS ComprobanteId
+    FROM STRING_SPLIT(@ComprobanteIds, ',')
+    WHERE TRY_CONVERT(int, value) IS NOT NULL
+),
+RegularLinks AS
+(
+    SELECT
+        cd.Comprobante_Id AS ComprobanteId,
+        tc.Transaccion_ID AS TransaccionId,
+        CAST(tc.Monto AS decimal(19, 4)) AS MontoAsignado,
+        CAST(cd.Total AS decimal(19, 4)) AS Total,
+        CAST(cd.IVA AS decimal(19, 4)) AS Iva,
+        CASE
+            WHEN cd.RFC_EMISOR = @ContextRfc THEN 'Emitido'
+            WHEN cd.RFC_RECEPTOR = @ContextRfc THEN 'Recibido'
+            ELSE 'Otro'
+        END AS Direccion,
+        CAST(ISNULL(txAssigned.AsignadoRegular, 0) AS decimal(19, 4)) AS TransaccionAsignadoRegular,
+        CAST(
+            CASE
+                WHEN cd.RFC_EMISOR = @ContextRfc AND cd.TipoDeComprobante = 'E'
+                    THEN ISNULL(iva208.Debe, 0) - ISNULL(iva208.Haber, 0)
+                WHEN cd.RFC_EMISOR = @ContextRfc
+                    THEN ISNULL(iva208.Haber, 0) - ISNULL(iva208.Debe, 0)
+                WHEN cd.RFC_RECEPTOR = @ContextRfc AND cd.TipoDeComprobante = 'E'
+                    THEN ISNULL(iva118.Haber, 0) - ISNULL(iva118.Debe, 0)
+                WHEN cd.RFC_RECEPTOR = @ContextRfc
+                    THEN ISNULL(iva118.Debe, 0) - ISNULL(iva118.Haber, 0)
+                ELSE 0
+            END AS decimal(19, 4)
+        ) AS IvaContableTransaccion
+    FROM TargetIds AS ids
+    JOIN cfdi.Comprobante_Detalle AS cd
+        ON cd.Comprobante_Id = ids.ComprobanteId
+    JOIN dbo.Transaccion_Comprobante AS tc
+        ON tc.Comprobante_ID = cd.Comprobante_Id
+    JOIN dbo.Transacciones AS t
+        ON t.ID = tc.Transaccion_ID
+    OUTER APPLY
+    (
+        SELECT SUM(CAST(tc2.Monto AS decimal(19, 4))) AS AsignadoRegular
+        FROM dbo.Transaccion_Comprobante AS tc2
+        JOIN cfdi.Comprobante AS c2
+            ON c2.Comprobante_Id = tc2.Comprobante_ID
+        WHERE tc2.Transaccion_ID = tc.Transaccion_ID
+          AND c2.TipoDeComprobante IN ('I', 'N', 'E')
+    ) AS txAssigned
+    OUTER APPLY
+    (
+        SELECT SUM(CAST(rc.Debe AS decimal(19, 4))) AS Debe, SUM(CAST(rc.Haber AS decimal(19, 4))) AS Haber
+        FROM dbo.Registro_Contable AS rc
+        WHERE rc.TransaccionID = tc.Transaccion_ID
+          AND rc.Nivel1 = '208'
+    ) AS iva208
+    OUTER APPLY
+    (
+        SELECT SUM(CAST(rc.Debe AS decimal(19, 4))) AS Debe, SUM(CAST(rc.Haber AS decimal(19, 4))) AS Haber
+        FROM dbo.Registro_Contable AS rc
+        WHERE rc.TransaccionID = tc.Transaccion_ID
+          AND rc.Nivel1 = '118'
+    ) AS iva118
+    WHERE cd.TipoDeComprobante IN ('I', 'N', 'E')
+),
+RegularStatus AS
+(
+    SELECT
+        rl.ComprobanteId,
+        rl.TransaccionId,
+        rl.MontoAsignado,
+        rl.Total,
+        rl.Direccion,
+        CAST(CASE WHEN rl.Total <> 0 THEN rl.Iva * (rl.MontoAsignado / rl.Total) ELSE 0 END AS decimal(19, 4)) AS IvaEsperado,
+        CAST(CASE WHEN rl.TransaccionAsignadoRegular <> 0 THEN rl.IvaContableTransaccion * (rl.MontoAsignado / rl.TransaccionAsignadoRegular) ELSE 0 END AS decimal(19, 4)) AS IvaContable
+    FROM RegularLinks AS rl
+)
+SELECT
+    ComprobanteId,
+    SUM(IvaEsperado) AS IvaEsperado,
+    SUM(IvaContable) AS IvaContable,
+    CAST(SUM(IvaEsperado) - SUM(IvaContable) AS decimal(19, 4)) AS IvaDiferencia,
+    CASE WHEN ABS(MAX(Total) - SUM(MontoAsignado)) <= @Tolerancia THEN 'OK' ELSE 'DIFERENCIA' END AS TotalCfdiStatus,
+    CASE WHEN COUNT(DISTINCT TransaccionId) > 0 THEN 'OK' ELSE 'DIFERENCIA' END AS TransaccionAsignacionStatus,
+    CASE
+        WHEN MAX(Direccion) = 'Otro' OR MAX(Total) = 0 THEN 'NA'
+        WHEN ABS(SUM(IvaEsperado) - SUM(IvaContable)) <= @Tolerancia THEN 'OK'
+        ELSE 'DIFERENCIA'
+    END AS IvaStatus
+FROM RegularStatus
+GROUP BY ComprobanteId;";
+
+    var rows = (await conn.QueryAsync<DeclaracionCfdiCongruenceRow>(
+      sql,
+      new
+      {
+        ComprobanteIds = ids,
+        ContextRfc = NormalizeRfc(rfc),
+        Tolerancia = 1.00m
+      })).ToDictionary(row => row.ComprobanteId);
+
+    foreach (var item in list)
+    {
+      if (!rows.TryGetValue(item.Comprobante_Id, out var row))
+      {
+        continue;
+      }
+
+      item.IvaEsperado = row.IvaEsperado;
+      item.IvaContable = row.IvaContable;
+      item.IvaDiferencia = row.IvaDiferencia;
+      item.TotalCfdiStatus = row.TotalCfdiStatus;
+      item.TransaccionAsignacionStatus = row.TransaccionAsignacionStatus;
+      item.IvaStatus = row.IvaStatus;
+    }
+  }
+
+  private static async Task ApplyComplementoCongruenceAsync(SqlConnection conn, IEnumerable<DeclaracionComplementoBase> items, string? rfc)
+  {
+    var list = items.ToList();
+    var ids = ToCsv(list.Select(item => item.DoctoRelacionado_Id));
+
+    if (string.IsNullOrWhiteSpace(ids))
+    {
+      return;
+    }
+
+    const string sql = @"
+;WITH TargetIds AS
+(
+    SELECT DISTINCT TRY_CONVERT(int, value) AS DoctoRelacionadoId
+    FROM STRING_SPLIT(@DoctoRelacionadoIds, ',')
+    WHERE TRY_CONVERT(int, value) IS NOT NULL
+),
+LinkedBase AS
+(
+    SELECT
+        v.DoctoRelacionado_Id AS DoctoRelacionadoId,
+        CAST(ISNULL(v.ImpPagado, 0) AS decimal(19, 4)) AS ImpPagado,
+        CAST(ISNULL(v.Comp_IVA, 0) AS decimal(19, 4)) AS CompIva,
+        td.Transaccion_ID AS TransaccionId,
+        CAST(td.Monto AS decimal(19, 4)) AS MontoAsignado,
+        CASE
+            WHEN v.EmisorRfc = @ContextRfc THEN 'Emitido'
+            WHEN v.ReceptorRfc = @ContextRfc THEN 'Recibido'
+            ELSE 'Otro'
+        END AS Direccion,
+        CAST(
+            CASE
+                WHEN v.EmisorRfc = @ContextRfc THEN ISNULL(iva208.Haber, 0) - ISNULL(iva208.Debe, 0)
+                WHEN v.ReceptorRfc = @ContextRfc THEN ISNULL(iva118.Debe, 0) - ISNULL(iva118.Haber, 0)
+                ELSE 0
+            END AS decimal(19, 4)
+        ) AS IvaContableTransaccion,
+        CAST(ISNULL(txAssigned.AsignadoPago20, 0) AS decimal(19, 4)) AS TransaccionAsignadoPago20
+    FROM TargetIds AS ids
+    JOIN cfdi.vw_Pagos20_Resumen AS v
+        ON v.DoctoRelacionado_Id = ids.DoctoRelacionadoId
+    JOIN dbo.Transaccion_DoctoRelacionado AS td
+        ON td.DoctoRelacionado_Id = v.DoctoRelacionado_Id
+    OUTER APPLY
+    (
+        SELECT SUM(CAST(rc.Debe AS decimal(19, 4))) AS Debe, SUM(CAST(rc.Haber AS decimal(19, 4))) AS Haber
+        FROM dbo.Registro_Contable AS rc
+        WHERE rc.TransaccionID = td.Transaccion_ID
+          AND rc.Nivel1 = '208'
+    ) AS iva208
+    OUTER APPLY
+    (
+        SELECT SUM(CAST(rc.Debe AS decimal(19, 4))) AS Debe, SUM(CAST(rc.Haber AS decimal(19, 4))) AS Haber
+        FROM dbo.Registro_Contable AS rc
+        WHERE rc.TransaccionID = td.Transaccion_ID
+          AND rc.Nivel1 = '118'
+    ) AS iva118
+    OUTER APPLY
+    (
+        SELECT SUM(CAST(td2.Monto AS decimal(19, 4))) AS AsignadoPago20
+        FROM dbo.Transaccion_DoctoRelacionado AS td2
+        WHERE td2.Transaccion_ID = td.Transaccion_ID
+    ) AS txAssigned
+),
+LinkedStatus AS
+(
+    SELECT
+        lb.DoctoRelacionadoId,
+        lb.TransaccionId,
+        lb.MontoAsignado,
+        lb.ImpPagado,
+        lb.CompIva,
+        lb.Direccion,
+        CAST(CASE WHEN lb.TransaccionAsignadoPago20 <> 0 THEN lb.IvaContableTransaccion * (lb.MontoAsignado / lb.TransaccionAsignadoPago20) ELSE 0 END AS decimal(19, 4)) AS IvaContable
+    FROM LinkedBase AS lb
+)
+SELECT
+    DoctoRelacionadoId,
+    SUM(MontoAsignado) AS AsignadoComplemento,
+    SUM(IvaContable) AS IvaContable,
+    CAST(MAX(CompIva) - SUM(IvaContable) AS decimal(19, 4)) AS IvaDiferencia,
+    CASE WHEN ABS(MAX(ImpPagado) - SUM(MontoAsignado)) <= @Tolerancia THEN 'OK' ELSE 'DIFERENCIA' END AS TotalComplementoStatus,
+    CASE
+        WHEN MAX(Direccion) = 'Otro' OR MAX(ImpPagado) = 0 THEN 'NA'
+        WHEN ABS(MAX(CompIva) - SUM(IvaContable)) <= @Tolerancia THEN 'OK'
+        ELSE 'DIFERENCIA'
+    END AS IvaStatus
+FROM LinkedStatus
+GROUP BY DoctoRelacionadoId;";
+
+    var rows = (await conn.QueryAsync<DeclaracionComplementoCongruenceRow>(
+      sql,
+      new
+      {
+        DoctoRelacionadoIds = ids,
+        ContextRfc = NormalizeRfc(rfc),
+        Tolerancia = 1.00m
+      })).ToDictionary(row => row.DoctoRelacionadoId);
+
+    foreach (var item in list)
+    {
+      if (!item.DoctoRelacionado_Id.HasValue || !rows.TryGetValue(item.DoctoRelacionado_Id.Value, out var row))
+      {
+        continue;
+      }
+
+      item.AsignadoComplemento = row.AsignadoComplemento;
+      item.IvaContable = row.IvaContable;
+      item.IvaDiferencia = row.IvaDiferencia;
+      item.TotalComplementoStatus = row.TotalComplementoStatus;
+      item.IvaStatus = row.IvaStatus;
+    }
+  }
+
+  private static string ToCsv(IEnumerable<int?> values) =>
+    string.Join(',', values
+      .Where(value => value.GetValueOrDefault() > 0)
+      .Select(value => value!.Value)
+      .Distinct());
+
+  private static string ToCsv(IEnumerable<int> values) =>
+    string.Join(',', values
+      .Where(value => value > 0)
+      .Distinct());
+
+  private static string? NormalizeRfc(string? rfc)
+    => string.IsNullOrWhiteSpace(rfc) ? null : rfc.Trim();
+
   private static decimal SatRound(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
 
   private static bool IsNomina(string? tipoDeComprobante) => string.Equals(tipoDeComprobante, "N", StringComparison.OrdinalIgnoreCase);
@@ -407,5 +669,26 @@ WHERE DoctoRelacionado_Id = @DoctoRelacionado_Id;";
       SumIEPS_RETENIDO = SatRound(list.Sum(x => x.IEPS_RETENIDO)),
       SumTotal = SatRound(list.Sum(x => x.Total))
     };
+  }
+
+  private sealed class DeclaracionCfdiCongruenceRow
+  {
+    public int ComprobanteId { get; set; }
+    public decimal IvaEsperado { get; set; }
+    public decimal IvaContable { get; set; }
+    public decimal IvaDiferencia { get; set; }
+    public string? TotalCfdiStatus { get; set; }
+    public string? TransaccionAsignacionStatus { get; set; }
+    public string? IvaStatus { get; set; }
+  }
+
+  private sealed class DeclaracionComplementoCongruenceRow
+  {
+    public int DoctoRelacionadoId { get; set; }
+    public decimal AsignadoComplemento { get; set; }
+    public decimal IvaContable { get; set; }
+    public decimal IvaDiferencia { get; set; }
+    public string? TotalComplementoStatus { get; set; }
+    public string? IvaStatus { get; set; }
   }
 }

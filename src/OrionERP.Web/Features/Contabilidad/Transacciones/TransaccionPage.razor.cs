@@ -62,6 +62,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private const decimal SubtotalDivisor = 1m + IvaRate;
   private const int ProyectoDescriptionMaxLength = 20;
   private const int HeaderConceptoMaxLength = 500;
+  private const string CfdiCancelConfirmationText = "Delete";
 
   [Parameter] public int Id { get; set; }
 
@@ -2086,9 +2087,10 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
     }
 
-    var confirmed = await ConfirmAsync($"¿Seguro que deseas cancelar el CFDI {comprobante.Uuid}? Esta acción se enviará a Facturama y no se puede deshacer.");
+    var confirmed = await ConfirmCfdiCancellationAsync(comprobante.Uuid);
     if (!confirmed)
     {
+      UiMessages.ShowWarning("No se canceló el CFDI. Debes escribir exactamente 'Delete' para confirmar.");
       return;
     }
 
@@ -2282,6 +2284,22 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     catch
     {
       return true;
+    }
+  }
+
+  private async Task<bool> ConfirmCfdiCancellationAsync(string? uuid)
+  {
+    try
+    {
+      var confirmation = await JsRuntime.InvokeAsync<string?>(
+        "prompt",
+        $"Para cancelar el CFDI {uuid} en Facturama, escribe '{CfdiCancelConfirmationText}' y presiona Aceptar.\nEsta acción no se puede deshacer.");
+
+      return confirmation == CfdiCancelConfirmationText;
+    }
+    catch
+    {
+      return false;
     }
   }
 

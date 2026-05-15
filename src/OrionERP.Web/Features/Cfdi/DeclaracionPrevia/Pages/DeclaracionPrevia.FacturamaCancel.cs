@@ -7,6 +7,8 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
   public partial class DeclaracionPrevia
   {
+    private const string CfdiCancelConfirmationText = "Delete";
+
     private bool CanCancelCfdi(DeclaracionCfdiBase item)
     {
       return item.EsEmitida
@@ -36,10 +38,11 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         statusMessage = "Selecciona una factura emitida a cancelar.";
         return;
       }
-      // Confirm with user:
-      bool confirm = await JS.InvokeAsync<bool>("confirm", $"¿Seguro que desea solicitar la cancelación del CFDI con UUID:\n{selectedEmitida.FOLIO_FISCAL}?\nEsta acción no se puede deshacer.");
-      if (!confirm)
+      var confirmed = await ConfirmCfdiCancellationAsync(selectedEmitida.FOLIO_FISCAL);
+      if (!confirmed)
       {
+        statusMessage = "No se canceló el CFDI. Debes escribir exactamente 'Delete' para confirmar.";
+        UiMessages.ShowWarning(statusMessage);
         return;
       }
       try
@@ -51,6 +54,22 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       catch (Exception ex)
       {
         SetErrorMessage("Error en el proceso de cancelación: " + ex.Message);
+      }
+    }
+
+    private async Task<bool> ConfirmCfdiCancellationAsync(string? uuid)
+    {
+      try
+      {
+        var confirmation = await JS.InvokeAsync<string?>(
+          "prompt",
+          $"Para cancelar el CFDI con UUID:\n{uuid}\n\nEscribe '{CfdiCancelConfirmationText}' y presiona Aceptar.\nEsta acción se enviará a Facturama y no se puede deshacer.");
+
+        return confirmation == CfdiCancelConfirmationText;
+      }
+      catch
+      {
+        return false;
       }
     }
   }

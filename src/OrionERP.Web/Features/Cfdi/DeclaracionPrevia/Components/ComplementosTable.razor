@@ -14,6 +14,7 @@
                             <th>@RenderSortSelect("Comprobante_Id")</th>
                             <th></th>
                             <th></th>
+                            <th></th>
                             <th>@RenderSortSelect("FechaPago")</th>
                             <th></th>
                             <th></th>
@@ -60,6 +61,7 @@
                     <th>Folio</th>
                     <th>✔</th>
                     <th class="num">Polizas</th>
+                    <th>Congruencia</th>
                     <th>Fecha Pago</th>
                     <th>Mes</th>
                     <th>Año</th>
@@ -100,6 +102,13 @@
                             <td>@item.Folio</td>
                             <td>@item.D</td>
                             <td class="num">@item.Polizas</td>
+                            <td>
+                                <div class="d-flex flex-column gap-1 align-items-start">
+                                    <span class="badge @GetCfdiStatusBadgeClass(GetComplementoTotalStatus(item))">CFDI @GetCfdiStatusLabel(GetComplementoTotalStatus(item))</span>
+                                    <span class="badge @GetCfdiStatusBadgeClass(GetComplementoPolizaStatus(item))">Póliza @GetCfdiStatusLabel(GetComplementoPolizaStatus(item))</span>
+                                    <span class="badge @GetCfdiStatusBadgeClass(GetComplementoIvaStatus(item))">IVA @GetCfdiStatusLabel(GetComplementoIvaStatus(item))</span>
+                                </div>
+                            </td>
                             <td>@FormatDate(item.FechaPago)</td>
                             <td>@item.MES_GLOBAL</td>
                             <td>@item.ANIO_GLOBAL</td>
@@ -134,7 +143,7 @@
             {
                 <tfoot class="totals cfdi-table__totals-footer">
                     <tr>
-                        <td colspan="8" class="cfdi-table__totals-summary"><strong># Complementos:</strong> @DisplayTotals.Count</td>
+                        <td colspan="9" class="cfdi-table__totals-summary"><strong># Complementos:</strong> @DisplayTotals.Count</td>
                         <td class="cfdi-table__totals-label"><strong>Totales:</strong></td>
                         <td class="num">@FormatDecimal(DisplayTotals.SumImpSaldoAnt)</td>
                         <td class="num">@FormatDecimal(DisplayTotals.SumImpPagado)</td>
@@ -158,7 +167,8 @@
 </div>
 
 @code {
-    private const int BaseColumnCount = 25;
+    private const int BaseColumnCount = 26;
+    private const decimal TotalPolizasTolerance = 0.99m;
     private static readonly IReadOnlyList<string?> BaseColumnWidths = new List<string?>
     {
         "8rem", // Acciones
@@ -166,6 +176,7 @@
         "14ch", // Folio
         "4ch",  // D
         "8ch",  // Polizas
+        "18ch", // Congruencia
         "12ch", // Fecha Pago
         "6ch",  // Mes
         "6ch",  // Año
@@ -205,7 +216,7 @@
 
     private int EffectiveColumnCount => BaseColumnCount;
 
-    private int RemainingColumns => Math.Max(0, EffectiveColumnCount - 15);
+    private int RemainingColumns => Math.Max(0, EffectiveColumnCount - 16);
 
     private IReadOnlyList<DeclaracionComplementoBase> _originalItems = Array.Empty<DeclaracionComplementoBase>();
     private List<DeclaracionComplementoBase> _filteredItems = new();
@@ -303,6 +314,41 @@
     private static string? FormatDate(DateTime? value) => value?.ToString("yyyy-MM-dd");
 
     private static string FormatDecimal(decimal? value) => value.HasValue ? string.Format("{0:N6}", value.Value) : string.Empty;
+
+    private static string GetCfdiStatusBadgeClass(string? status)
+        => string.Equals(status, "OK", StringComparison.OrdinalIgnoreCase)
+            ? "text-bg-success"
+            : string.Equals(status, "NA", StringComparison.OrdinalIgnoreCase)
+                ? "text-bg-secondary"
+                : "text-bg-warning";
+
+    private static string GetCfdiStatusLabel(string? status)
+        => string.IsNullOrWhiteSpace(status) ? "Pendiente" : status;
+
+    private string GetComplementoTotalStatus(DeclaracionComplementoBase item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.TotalComplementoStatus))
+        {
+            return item.TotalComplementoStatus;
+        }
+
+        if (item.AsignadoComplemento.HasValue)
+        {
+            var difference = Math.Abs((item.ImpPagado ?? 0m) - item.AsignadoComplemento.Value);
+            return difference > TotalPolizasTolerance ? "DIFERENCIA" : "OK";
+        }
+
+        return HasLinkedPoliza(item) ? "OK" : "NA";
+    }
+
+    private static string GetComplementoPolizaStatus(DeclaracionComplementoBase item)
+        => HasLinkedPoliza(item) ? "OK" : "DIFERENCIA";
+
+    private static string GetComplementoIvaStatus(DeclaracionComplementoBase item)
+        => string.IsNullOrWhiteSpace(item.IvaStatus) ? "NA" : item.IvaStatus;
+
+    private static bool HasLinkedPoliza(DeclaracionComplementoBase item)
+        => !string.IsNullOrWhiteSpace(item.Poliza) || item.Polizas.GetValueOrDefault() > 0;
 
     private void ApplyFiltersAndSorting(bool resetPage = true)
     {

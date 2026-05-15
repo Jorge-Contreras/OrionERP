@@ -398,12 +398,10 @@ public partial class ReservacionPage
       return;
     }
 
-    var confirmed = await Js.InvokeAsync<bool>(
-      "confirm",
-      $"¿Seguro que deseas cancelar el CFDI {document.Uuid}?\nEsta acción se enviará a Facturama y no se puede deshacer.");
-
+    var confirmed = await ConfirmCfdiCancellationAsync(document.Uuid);
     if (!confirmed)
     {
+      UiMessages.ShowWarning("No se canceló el CFDI. Debes escribir exactamente 'Delete' para confirmar.");
       return;
     }
 
@@ -425,6 +423,24 @@ public partial class ReservacionPage
     finally
     {
       CancellingReservationCfdiId = null;
+    }
+  }
+
+  private async Task<bool> ConfirmCfdiCancellationAsync(string? uuid)
+  {
+    const string confirmationText = "Delete";
+
+    try
+    {
+      var confirmation = await Js.InvokeAsync<string?>(
+        "prompt",
+        $"Para cancelar el CFDI {uuid} en Facturama, escribe '{confirmationText}' y presiona Aceptar.\nEsta acción no se puede deshacer.");
+
+      return confirmation == confirmationText;
+    }
+    catch
+    {
+      return false;
     }
   }
 

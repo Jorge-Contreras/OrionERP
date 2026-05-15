@@ -42,6 +42,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
   protected bool ShowCleaningModal { get; set; }
   protected bool IsCreatingCleaningOrders { get; set; }
   protected bool IsCreatingReservation { get; set; }
+  protected bool CanUseCalendarActions { get; set; }
   protected string? ErrorMessage { get; set; }
   protected string CurrentUserName { get; set; } = "OrionERP";
   protected int? CurrentEmployeeId { get; set; }
@@ -65,7 +66,11 @@ public partial class CalendarioReservacionesPage : ComponentBase
   protected override async Task OnInitializedAsync()
   {
     await ResolveCurrentUserAsync();
-    await LoadEmployeeOptionsAsync();
+    if (CanUseCalendarActions)
+    {
+      await LoadEmployeeOptionsAsync();
+    }
+
     await LoadCalendarAsync();
   }
 
@@ -200,6 +205,11 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
   protected void OnCellClick(MouseEventArgs args, RoomCalendarDayCellDto? cell)
   {
+    if (!CanUseCalendarActions)
+    {
+      return;
+    }
+
     if (args.Detail > 1)
     {
       return;
@@ -210,6 +220,11 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
   protected void OpenReservationFromCell(RoomCalendarDayCellDto? cell)
   {
+    if (!CanUseCalendarActions)
+    {
+      return;
+    }
+
     if (cell?.ReservationId is int reservationId)
     {
       Navigation.NavigateTo(GetReservationHref(reservationId));
@@ -218,6 +233,11 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
   protected void ToggleCellSelection(RoomCalendarDayCellDto? cell)
   {
+    if (!CanUseCalendarActions)
+    {
+      return;
+    }
+
     if (cell?.RoomCalendarId is not int roomCalendarId)
     {
       return;
@@ -263,12 +283,12 @@ public partial class CalendarioReservacionesPage : ComponentBase
       parts.Add("calendar-day-today");
     }
 
-    if (IsCellSelected(cell))
+    if (CanUseCalendarActions && IsCellSelected(cell))
     {
       parts.Add("calendar-cell-selected");
     }
 
-    if (cell?.RoomCalendarId is not null)
+    if (CanUseCalendarActions && cell?.RoomCalendarId is not null)
     {
       parts.Add("calendar-cell-selectable");
     }
@@ -278,6 +298,12 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
   protected void OpenCleaningModal()
   {
+    if (!CanUseCalendarActions)
+    {
+      UiMessages.ShowWarning("Este rol solo puede consultar el calendario.");
+      return;
+    }
+
     if (IsCreatingReservation)
     {
       return;
@@ -301,6 +327,12 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
   protected async Task CreateReservationFromSelectionAsync()
   {
+    if (!CanUseCalendarActions)
+    {
+      UiMessages.ShowWarning("Este rol solo puede consultar el calendario.");
+      return;
+    }
+
     if (IsCreatingReservation || IsCreatingCleaningOrders)
     {
       return;
@@ -436,6 +468,12 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
   protected async Task CreateCleaningOrdersAsync()
   {
+    if (!CanUseCalendarActions)
+    {
+      UiMessages.ShowWarning("Este rol solo puede consultar el calendario.");
+      return;
+    }
+
     if (IsCreatingReservation)
     {
       return;
@@ -592,6 +630,9 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
     var appUser = await UserManager.GetUserAsync(user);
     CurrentEmployeeId = appUser?.EmployeeId;
+    CanUseCalendarActions = user.IsInRole("Administrador")
+      || user.IsInRole("SatOperator")
+      || user.IsInRole("OrdenTrabajoOperador");
   }
 
   private static RoomCalendarTimelineFilter CreateDefaultFilter()

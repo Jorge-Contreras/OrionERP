@@ -30,8 +30,8 @@ else
             <button class="btn btn-outline-info btn-sm" @onclick="CrearPolizaAsync" disabled="@(IsSaving || IsWorking || IsCreatingPoliza)">Crear Póliza</button>
             <button class="btn btn-outline-primary btn-sm"
                     @onclick="ToggleCfdiPanelAsync"
-                    disabled="@(IsSaving || IsWorking || IsLoadingCfdiContext || IsCreatingCfdi || HasExistingReservationCfdis)">
-                @(IsLoadingCfdiContext ? "Preparando CFDI..." : HasExistingReservationCfdis ? "CFDI ligado" : ShowCfdiPanel ? "Cerrar CFDI" : "Crear CFDI")
+                    disabled="@(IsSaving || IsWorking || IsLoadingCfdiContext || IsCreatingCfdi || HasReservationFacturacionEvidence)">
+                @(IsLoadingCfdiContext ? "Preparando CFDI..." : HasReservationFacturacionEvidence ? "Facturación ligada" : ShowCfdiPanel ? "Cerrar CFDI" : "Crear CFDI")
             </button>
             <button class="btn btn-outline-danger btn-sm"
                     @onclick="BorrarReservacionAsync"
@@ -126,17 +126,24 @@ else
                     <div class="d-flex justify-content-between"><span>Total Reservación</span><strong>@FormatCurrency(TotalReservacion)</strong></div>
                     <div class="d-flex justify-content-between"><span>Total Pagado</span><strong>@FormatCurrency(TotalPagado)</strong></div>
                     <div class="d-flex justify-content-between"><span>Por Pagar</span><strong class="@(PorPagar > 0 ? "text-danger" : "text-success")">@FormatCurrency(PorPagar)</strong></div>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <span>Facturación</span>
+                        <span class="badge @GetFacturacionStatusBadgeClass()">@GetFacturacionSummaryLabel()</span>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    @if (HasExistingReservationCfdis)
+    @if (HasReservationFacturacionEvidence)
     {
         <div class="alert alert-info mb-3">
-            Esta reservación ya tiene CFDIs ligados. Se muestran abajo para evitar timbrados duplicados.
+            Esta reservación ya tiene pagos con CFDI o Pago20 ligado. Revisa la columna de facturación en pagos para evitar timbrados duplicados.
         </div>
+    }
 
+    @if (HasExistingReservationCfdis)
+    {
         <div class="card mb-3 reservacion-section reservacion-section-cfdi">
             <div class="card-header reservacion-section-title d-flex align-items-center gap-2">
                 <span>CFDIs ligados</span>
@@ -758,6 +765,7 @@ else
                             <th>ID</th>
                             <th>Fecha</th>
                             <th>Monto</th>
+                            <th>Facturación</th>
                             <th>Concepto</th>
                             <th></th>
                         </tr>
@@ -769,6 +777,12 @@ else
                                 <td>@pago.TransaccionId</td>
                                 <td>@pago.Fecha.ToShortDateString()</td>
                                 <td>@FormatCurrency(pago.Monto)</td>
+                                <td>
+                                    <span class="badge @GetPaymentFacturacionBadgeClass(pago)"
+                                          title="@GetPaymentFacturacionTitle(pago)">
+                                        @GetPaymentFacturacionLabel(pago)
+                                    </span>
+                                </td>
                                 <td>@pago.Concepto</td>
                                 <td><button class="btn btn-sm btn-outline-primary" @onclick="() => AbrirPagoAsync(pago.TransaccionId)">Abrir</button></td>
                             </tr>

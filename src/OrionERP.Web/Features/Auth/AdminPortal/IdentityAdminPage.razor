@@ -141,6 +141,7 @@
                                             }
                                         </div>
                                         <div class="browser-item__meta">@(string.IsNullOrWhiteSpace(user.Email) ? "Sin correo" : user.Email)</div>
+                                        <div class="browser-item__meta">@FormatArrendadorProveedor(user.ArrendadorProveedorId)</div>
                                         <div class="browser-item__meta">Claims: @user.ClaimCount · Logins: @user.LoginCount · Tokens: @user.TokenCount</div>
                                         <div class="tag-strip">
                                             @if (user.Roles.Count == 0)
@@ -245,6 +246,17 @@
                                         <label class="field">
                                             <span>EmployeeId</span>
                                             <input class="form-control" type="number" @bind="UserForm.EmployeeIdInput" />
+                                        </label>
+                                        <label class="field field-span-2">
+                                            <span>Arrendador (Proveedor)</span>
+                                            <select class="form-select" @bind="UserForm.ArrendadorProveedorIdInput">
+                                                <option value="">Sin arrendador ligado</option>
+                                                @foreach (var arrendador in ArrendadorOptions)
+                                                {
+                                                    <option value="@arrendador.Id">@arrendador.RazonSocial · ID @arrendador.Id · @arrendador.RoomCount rooms</option>
+                                                }
+                                            </select>
+                                            <small class="field-help">Requerido para usuarios con rol Arrendadores.</small>
                                         </label>
                                         @if (UserForm.IsNew)
                                         {

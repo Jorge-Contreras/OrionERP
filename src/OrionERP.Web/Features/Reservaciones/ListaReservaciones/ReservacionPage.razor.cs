@@ -177,6 +177,7 @@ public partial class ReservacionPage : ComponentBase
       Extras = Detail.Extras;
       Pagos = Detail.Pagos;
       Attachments = Detail.Attachments;
+      await LoadReservationFacturacionStatusAsync();
 
       SelectedSuiteIds.Clear();
       SelectedSuiteDisponibleIds.Clear();

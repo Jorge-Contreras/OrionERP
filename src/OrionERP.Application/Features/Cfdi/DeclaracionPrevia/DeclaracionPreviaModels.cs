@@ -41,6 +41,12 @@ public class DeclaracionCfdiBase : IDeclaracionComprobanteItem
   public string? fechastransacciones { get; set; }
   public string? Poliza { get; set; }
   public decimal? SumaPolizas { get; set; }
+  public decimal? IvaEsperado { get; set; }
+  public decimal? IvaContable { get; set; }
+  public decimal? IvaDiferencia { get; set; }
+  public string? TotalCfdiStatus { get; set; }
+  public string? TransaccionAsignacionStatus { get; set; }
+  public string? IvaStatus { get; set; }
   public int? XML_Attachment_ID { get; set; }
   public bool EsEmitida { get; set; }
   public bool EsRecibida { get; set; }
@@ -82,6 +88,12 @@ public class DeclaracionCfdiBase : IDeclaracionComprobanteItem
     fechastransacciones = source.fechastransacciones;
     Poliza = source.Poliza;
     SumaPolizas = source.SumaPolizas;
+    IvaEsperado = source.IvaEsperado;
+    IvaContable = source.IvaContable;
+    IvaDiferencia = source.IvaDiferencia;
+    TotalCfdiStatus = source.TotalCfdiStatus;
+    TransaccionAsignacionStatus = source.TransaccionAsignacionStatus;
+    IvaStatus = source.IvaStatus;
     XML_Attachment_ID = source.XML_Attachment_ID;
     EsEmitida = source.EsEmitida;
     EsRecibida = source.EsRecibida;
@@ -201,6 +213,11 @@ public class DeclaracionComplementoBase : IDeclaracionComprobanteItem
   public decimal? Comp_Actos16 { get; set; }
   public decimal? Comp_IVA { get; set; }
   public decimal? MontoPago { get; set; }
+  public decimal? AsignadoComplemento { get; set; }
+  public decimal? IvaContable { get; set; }
+  public decimal? IvaDiferencia { get; set; }
+  public string? TotalComplementoStatus { get; set; }
+  public string? IvaStatus { get; set; }
   public string? ComprobanteUUID { get; set; }
   public string? EmisorRfc { get; set; }
   public string? ReceptorRfc { get; set; }
@@ -236,6 +253,11 @@ public class DeclaracionComplementoBase : IDeclaracionComprobanteItem
     Comp_Actos16 = source.Comp_Actos16;
     Comp_IVA = source.Comp_IVA;
     MontoPago = source.MontoPago;
+    AsignadoComplemento = source.AsignadoComplemento;
+    IvaContable = source.IvaContable;
+    IvaDiferencia = source.IvaDiferencia;
+    TotalComplementoStatus = source.TotalComplementoStatus;
+    IvaStatus = source.IvaStatus;
     ComprobanteUUID = source.ComprobanteUUID;
     EmisorRfc = source.EmisorRfc;
     ReceptorRfc = source.ReceptorRfc;

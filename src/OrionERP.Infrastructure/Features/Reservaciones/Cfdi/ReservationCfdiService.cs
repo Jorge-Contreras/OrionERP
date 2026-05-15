@@ -117,6 +117,144 @@ public sealed class ReservationCfdiService : IReservationCfdiService
     };
   }
 
+  public async Task<ReservationFacturacionStatusDto> GetFacturacionStatusAsync(
+      int reservationId,
+      CancellationToken ct = default)
+  {
+    if (reservationId <= 0)
+      throw new ArgumentOutOfRangeException(nameof(reservationId));
+
+    const string sql = """
+SELECT
+    rt.TransaccionID AS TransaccionId,
+    t.Fecha,
+    ISNULL(t.Concepto, '') AS Concepto,
+    CAST(ISNULL(rt.Amount, ISNULL(t.Monto, 0)) AS decimal(18,2)) AS Monto
+FROM dbo.Reservation_Transacciones rt
+LEFT JOIN dbo.Transacciones t
+    ON t.ID = rt.TransaccionID
+WHERE rt.ReservationID = @ReservationId
+ORDER BY t.Fecha DESC, rt.TransaccionID DESC;
+
+WITH ReservationPayments AS
+(
+    SELECT DISTINCT rt.TransaccionID AS TransaccionId
+    FROM dbo.Reservation_Transacciones rt
+    WHERE rt.ReservationID = @ReservationId
+),
+Evidence AS
+(
+    SELECT
+        rp.TransaccionId,
+        CAST('CFDI' AS varchar(20)) AS EvidenceType,
+        CAST(c.Comprobante_Id AS bigint) AS ComprobanteId,
+        CAST(NULL AS int) AS DoctoRelacionadoId,
+        CAST(c.Fecha AS datetime) AS Fecha,
+        CAST(tfd.UUID AS varchar(100)) AS Uuid,
+        CAST(tc.Monto AS decimal(18,2)) AS Amount
+    FROM ReservationPayments rp
+    INNER JOIN dbo.Transaccion_Comprobante tc
+        ON tc.Transaccion_ID = rp.TransaccionId
+    INNER JOIN cfdi.Comprobante c
+        ON c.Comprobante_Id = tc.Comprobante_ID
+    LEFT JOIN cfdi.TimbreFiscalDigital tfd
+        ON tfd.Comprobante_ID = c.Comprobante_Id
+    WHERE ISNULL(c.TipoDeComprobante, '') <> 'P'
+      AND c.FechaCancelacion IS NULL
+      AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
+
+    UNION ALL
+
+    SELECT
+        rp.TransaccionId,
+        CAST('Pago20' AS varchar(20)) AS EvidenceType,
+        CAST(c.Comprobante_Id AS bigint) AS ComprobanteId,
+        CAST(NULL AS int) AS DoctoRelacionadoId,
+        CAST(c.Fecha AS datetime) AS Fecha,
+        CAST(tfd.UUID AS varchar(100)) AS Uuid,
+        CAST(tc.Monto AS decimal(18,2)) AS Amount
+    FROM ReservationPayments rp
+    INNER JOIN dbo.Transaccion_Comprobante tc
+        ON tc.Transaccion_ID = rp.TransaccionId
+    INNER JOIN cfdi.Comprobante c
+        ON c.Comprobante_Id = tc.Comprobante_ID
+    INNER JOIN cfdi.Pagos20 p20
+        ON p20.Comprobante_Id = c.Comprobante_Id
+    LEFT JOIN cfdi.TimbreFiscalDigital tfd
+        ON tfd.Comprobante_ID = c.Comprobante_Id
+    WHERE c.TipoDeComprobante = 'P'
+      AND c.FechaCancelacion IS NULL
+      AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
+
+    UNION ALL
+
+    SELECT
+        rp.TransaccionId,
+        CAST('Pago20' AS varchar(20)) AS EvidenceType,
+        CAST(c.Comprobante_Id AS bigint) AS ComprobanteId,
+        dr.DoctoRelacionado_Id AS DoctoRelacionadoId,
+        CAST(COALESCE(p.FechaPago, c.Fecha) AS datetime) AS Fecha,
+        CAST(tfd.UUID AS varchar(100)) AS Uuid,
+        CAST(ISNULL(td.Monto, dr.ImpPagado) AS decimal(18,2)) AS Amount
+    FROM ReservationPayments rp
+    INNER JOIN dbo.Transaccion_DoctoRelacionado td
+        ON td.Transaccion_ID = rp.TransaccionId
+    INNER JOIN cfdi.Pagos20_DoctoRelacionado dr
+        ON dr.DoctoRelacionado_Id = td.DoctoRelacionado_Id
+    INNER JOIN cfdi.Pagos20_Pago p
+        ON p.Pago_Id = dr.Pago_Id
+    INNER JOIN cfdi.Pagos20 p20
+        ON p20.Pagos20_Id = p.Pagos20_Id
+    INNER JOIN cfdi.Comprobante c
+        ON c.Comprobante_Id = p20.Comprobante_Id
+    LEFT JOIN cfdi.TimbreFiscalDigital tfd
+        ON tfd.Comprobante_ID = c.Comprobante_Id
+    WHERE c.FechaCancelacion IS NULL
+      AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
+)
+SELECT DISTINCT
+    TransaccionId,
+    EvidenceType,
+    ComprobanteId,
+    DoctoRelacionadoId,
+    Fecha,
+    Uuid,
+    Amount
+FROM Evidence
+ORDER BY TransaccionId, EvidenceType, Fecha DESC, ComprobanteId DESC, DoctoRelacionadoId DESC;
+""";
+
+    await using var conn = CreateConnection();
+    using var multi = await conn.QueryMultipleAsync(
+        new CommandDefinition(sql, new { ReservationId = reservationId }, cancellationToken: ct));
+
+    var payments = (await multi.ReadAsync<ReservationPaymentFacturacionStatusDto>()).AsList();
+    var documents = (await multi.ReadAsync<ReservationPaymentFacturacionDocumentDto>()).AsList();
+
+    foreach (var payment in payments)
+    {
+      var paymentDocuments = documents
+          .Where(document => document.TransaccionId == payment.TransaccionId)
+          .ToArray();
+
+      payment.RegularCfdiCount = paymentDocuments
+          .Where(static document => string.Equals(document.EvidenceType, "CFDI", StringComparison.OrdinalIgnoreCase))
+          .Select(static document => document.ComprobanteId)
+          .Distinct()
+          .Count();
+
+      payment.Pago20Count = paymentDocuments
+          .Where(static document => string.Equals(document.EvidenceType, "Pago20", StringComparison.OrdinalIgnoreCase))
+          .Select(static document => document.ComprobanteId)
+          .Distinct()
+          .Count();
+
+      payment.Documents = paymentDocuments;
+    }
+
+    return ReservationFacturacionStatusCalculator.Calculate(payments);
+  }
+
   public async Task<IReadOnlyList<ReservationCfdiCustomerSuggestionDto>> SearchCustomersAsync(
       string? searchText,
       CancellationToken ct = default)
@@ -346,11 +484,11 @@ WHEN NOT MATCHED THEN
       var items = ReservationCfdiLineFactory.CreateItems(suiteSources, extraSources, detail.Taxable);
       ValidateReservationTotals(detail, items);
 
-      var existingDocuments = await GetExistingDocumentsAsync(request.ReservationId, ct);
-      if (existingDocuments.Count > 0)
+      var facturacionStatus = await GetFacturacionStatusAsync(request.ReservationId, ct);
+      if (facturacionStatus.HasAnyFacturacionEvidence)
       {
         return ReservationCfdiCreateResult.Fail(
-            "La reservación ya tiene CFDIs ligados. Revisa los documentos existentes antes de generar otro.");
+            "La reservación ya tiene pagos con CFDI o Pago20 ligado. Revisa la facturación existente antes de generar otro.");
       }
 
       var normalizedReceiver = NormalizeReceiver(request.Receiver);

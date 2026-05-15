@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace OrionERP.Application.Features.Reservaciones.Cfdi;
 
@@ -78,6 +79,89 @@ public sealed class ReservationCfdiLinkedDocumentDto
   public string? ReceptorRfc { get; set; }
   public string? ReceptorNombre { get; set; }
   public decimal Total { get; set; }
+}
+
+public sealed class ReservationFacturacionStatusDto
+{
+  public string Status { get; set; } = ReservationFacturacionStatuses.SinFacturar;
+  public int PaymentCount { get; set; }
+  public int FacturadoPaymentCount { get; set; }
+  public int RegularCfdiCount { get; set; }
+  public int Pago20Count { get; set; }
+  public IReadOnlyList<ReservationPaymentFacturacionStatusDto> Payments { get; set; } = Array.Empty<ReservationPaymentFacturacionStatusDto>();
+  public bool HasAnyFacturacionEvidence => RegularCfdiCount > 0 || Pago20Count > 0;
+}
+
+public sealed class ReservationPaymentFacturacionStatusDto
+{
+  public int TransaccionId { get; set; }
+  public DateTime? Fecha { get; set; }
+  public string Concepto { get; set; } = string.Empty;
+  public decimal Monto { get; set; }
+  public int RegularCfdiCount { get; set; }
+  public int Pago20Count { get; set; }
+  public IReadOnlyList<ReservationPaymentFacturacionDocumentDto> Documents { get; set; } = Array.Empty<ReservationPaymentFacturacionDocumentDto>();
+  public bool IsFacturado => RegularCfdiCount > 0 || Pago20Count > 0;
+}
+
+public sealed class ReservationPaymentFacturacionDocumentDto
+{
+  public int TransaccionId { get; set; }
+  public string EvidenceType { get; set; } = string.Empty;
+  public long ComprobanteId { get; set; }
+  public int? DoctoRelacionadoId { get; set; }
+  public DateTime? Fecha { get; set; }
+  public string? Uuid { get; set; }
+  public decimal? Amount { get; set; }
+}
+
+public static class ReservationFacturacionStatuses
+{
+  public const string Facturada = "Facturada";
+  public const string Parcial = "Parcial";
+  public const string SinFacturar = "Sin facturar";
+}
+
+public static class ReservationFacturacionStatusCalculator
+{
+  public static ReservationFacturacionStatusDto Calculate(IEnumerable<ReservationPaymentFacturacionStatusDto>? payments)
+  {
+    var paymentList = (payments ?? Array.Empty<ReservationPaymentFacturacionStatusDto>())
+        .Select(payment =>
+        {
+          var documents = payment.Documents ?? Array.Empty<ReservationPaymentFacturacionDocumentDto>();
+          return new ReservationPaymentFacturacionStatusDto
+          {
+            TransaccionId = payment.TransaccionId,
+            Fecha = payment.Fecha,
+            Concepto = payment.Concepto,
+            Monto = payment.Monto,
+            RegularCfdiCount = payment.RegularCfdiCount,
+            Pago20Count = payment.Pago20Count,
+            Documents = documents.ToArray()
+          };
+        })
+        .ToArray();
+
+    var paymentCount = paymentList.Length;
+    var facturadoPaymentCount = paymentList.Count(static payment => payment.IsFacturado);
+
+    var status = paymentCount == 0 || facturadoPaymentCount == 0
+        ? ReservationFacturacionStatuses.SinFacturar
+        : facturadoPaymentCount == paymentCount
+            ? ReservationFacturacionStatuses.Facturada
+            : ReservationFacturacionStatuses.Parcial;
+
+    return new ReservationFacturacionStatusDto
+    {
+      Status = status,
+      PaymentCount = paymentCount,
+      FacturadoPaymentCount = facturadoPaymentCount,
+      RegularCfdiCount = paymentList.Sum(static payment => payment.RegularCfdiCount),
+      Pago20Count = paymentList.Sum(static payment => payment.Pago20Count),
+      Payments = paymentList
+    };
+  }
 }
 
 public sealed class ReservationCfdiCustomerUpsertRequest

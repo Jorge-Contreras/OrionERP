@@ -29,6 +29,7 @@
                                     <option value="unchecked">X</option>
                                 </select>
                             </th>
+                            <th></th>
                             <th>
                                 @RenderSortSelect("Fecha")
                             </th>
@@ -82,6 +83,7 @@
                     <th>CFDI</th>
                     <th>Poliza</th>
                     <th>✔</th>
+                    <th>Congruencia</th>
                     <th>Fecha</th>
                     <th>Mes</th>
                     <th>Año</th>
@@ -129,6 +131,13 @@
                                                />
                             }
                             <td>@item.D</td>
+                            <td>
+                                <div class="d-flex flex-column gap-1 align-items-start">
+                                    <span class="badge @GetCfdiStatusBadgeClass(GetCfdiTotalStatus(item))">CFDI @GetCfdiStatusLabel(GetCfdiTotalStatus(item))</span>
+                                    <span class="badge @GetCfdiStatusBadgeClass(GetCfdiPolizaStatus(item))">Póliza @GetCfdiStatusLabel(GetCfdiPolizaStatus(item))</span>
+                                    <span class="badge @GetCfdiStatusBadgeClass(GetCfdiIvaStatus(item))">IVA @GetCfdiStatusLabel(GetCfdiIvaStatus(item))</span>
+                                </div>
+                            </td>
                             <td>@item.Fecha.ToString("yyyy-MM-dd")</td>
                             <td>@item.MES_GLOBAL</td>
                             <td>@item.ANIO_GLOBAL</td>
@@ -180,7 +189,7 @@
             {
                 <tfoot class="totals cfdi-table__totals-footer">
                     <tr>
-                        <td colspan="4" class="cfdi-table__totals-summary"><strong># CFDIs:</strong> @DisplayTotals.CountCFDIs</td>
+                        <td colspan="5" class="cfdi-table__totals-summary"><strong># CFDIs:</strong> @DisplayTotals.CountCFDIs</td>
                         <td class="cfdi-table__totals-label"><strong>Totales:</strong></td>
                         <td></td>
                         <td></td>
@@ -213,13 +222,14 @@
 </div>
 
 @code {
-    private const int BaseColumnCount = 28;
+    private const int BaseColumnCount = 29;
     private const decimal TotalPolizasTolerance = 0.99m;
     private static readonly IReadOnlyList<string?> BaseColumnWidths = new List<string?>
     {
         "13rem", // Acciones
         "6rem", // Poliza
         "3rem", // ✔
+        "18ch", // Congruencia
         "10ch", // Fecha
         "5ch", // Mes
         "6ch", // Año
@@ -285,7 +295,7 @@
 
     private int EffectiveColumnCount => BaseColumnCount;
 
-    private int RemainingColumns => Math.Max(0, EffectiveColumnCount - 18);
+    private int RemainingColumns => Math.Max(0, EffectiveColumnCount - 19);
 
     private IReadOnlyList<DeclaracionCfdiBase> _originalItems = Array.Empty<DeclaracionCfdiBase>();
     private List<DeclaracionCfdiBase> _filteredItems = new();
@@ -507,6 +517,47 @@
         var difference = Math.Abs(item.Total - item.SumaPolizas.Value);
         return difference > TotalPolizasTolerance;
     }
+
+    private static string GetCfdiStatusBadgeClass(string? status)
+        => string.Equals(status, "OK", StringComparison.OrdinalIgnoreCase)
+            ? "text-bg-success"
+            : string.Equals(status, "NA", StringComparison.OrdinalIgnoreCase)
+                ? "text-bg-secondary"
+                : "text-bg-warning";
+
+    private static string GetCfdiStatusLabel(string? status)
+        => string.IsNullOrWhiteSpace(status) ? "Pendiente" : status;
+
+    private string GetCfdiTotalStatus(DeclaracionCfdiBase item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.TotalCfdiStatus))
+        {
+            return item.TotalCfdiStatus;
+        }
+
+        if (!item.SumaPolizas.HasValue)
+        {
+            return HasLinkedPoliza(item) ? "DIFERENCIA" : "NA";
+        }
+
+        return HasTotalPolizasDifference(item) ? "DIFERENCIA" : "OK";
+    }
+
+    private static string GetCfdiPolizaStatus(DeclaracionCfdiBase item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.TransaccionAsignacionStatus))
+        {
+            return item.TransaccionAsignacionStatus;
+        }
+
+        return HasLinkedPoliza(item) ? "OK" : "DIFERENCIA";
+    }
+
+    private static string GetCfdiIvaStatus(DeclaracionCfdiBase item)
+        => string.IsNullOrWhiteSpace(item.IvaStatus) ? "NA" : item.IvaStatus;
+
+    private static bool HasLinkedPoliza(DeclaracionCfdiBase item)
+        => !string.IsNullOrWhiteSpace(item.Poliza) || (item.SumaPolizas ?? 0m) != 0m;
 
     private bool HasActiveFilters =>
         !string.IsNullOrEmpty(_checkStatusFilter) ||

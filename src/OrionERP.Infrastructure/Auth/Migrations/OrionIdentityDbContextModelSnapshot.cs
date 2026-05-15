@@ -172,6 +172,9 @@ namespace OrionERP.Infrastructure.Auth.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("ArrendadorProveedorId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Email")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
@@ -216,6 +219,11 @@ namespace OrionERP.Infrastructure.Auth.Migrations
                         .HasColumnType("nvarchar(256)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ArrendadorProveedorId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_AspNetUsers_ArrendadorProveedorId")
+                        .HasFilter("[ArrendadorProveedorId] IS NOT NULL");
 
                     b.HasIndex("NormalizedEmail")
                         .HasDatabaseName("EmailIndex");

@@ -15,6 +15,7 @@ namespace OrionERP.Web.Identity
                 "Administrador",
                 "Operador",
                 "Lectura",
+                "Arrendadores",
                 "OrdenTrabajoAdmin",
                 "OrdenTrabajoSupervisor",
                 "OrdenTrabajoOperador"

@@ -1,4 +1,5 @@
 @using System.Linq
+@using Microsoft.AspNetCore.Components.Authorization
 @implements IDisposable
 @inject NavigationManager Navigation
 
@@ -217,6 +218,17 @@
 </div>
 
 @code {
+    private const string ArrendadoresRoleName = "Arrendadores";
+    private static readonly string[] ArrendadoresPrivilegedRoles =
+    [
+        "Administrador",
+        "SatOperator",
+        "OrdenTrabajoAdmin",
+        "OrdenTrabajoSupervisor",
+        "OrdenTrabajoOperador",
+        "Conteo"
+    ];
+
     private static readonly IReadOnlyList<NavSectionDefinition> Sections = new List<NavSectionDefinition>
     {
         new(
@@ -250,7 +262,8 @@
             new List<NavEntryDefinition>
             {
                 new("/reservaciones/lista", "Reserv", "Gestion de bookings, cambios y seguimiento operativo.", "oi-calendar", "Reservaciones", NavLinkMatch.Prefix, true, "Agenda", "reservaciones", "booking", "agenda"),
-                new("/reservaciones/calendario", "Calendario", "Vista visual para planeacion, huecos y conflictos.", "oi-grid-three-up", "Calendario de reservaciones", NavLinkMatch.Prefix, false, "Vista", "calendario", "ocupacion", "programacion")
+                new("/reservaciones/calendario", "Calendario", "Vista visual para planeacion, huecos y conflictos.", "oi-grid-three-up", "Calendario de reservaciones", NavLinkMatch.Prefix, false, "Vista", "calendario", "ocupacion", "programacion"),
+                new("/arrendadores", "Arrendadores", "Estado de cuenta por propiedad y pagos contabilizados.", "oi-spreadsheet", "Arrendadores", NavLinkMatch.Prefix, false, "Rentas", "arrendadores", "estado de cuenta", "bonhomia", "propietarios")
             }),
         new(
             "Operacion",
@@ -290,13 +303,15 @@
 
     private bool collapseNavMenu = true;
     private string searchText = string.Empty;
+    private bool isArrendadoresOnly;
 
     [Parameter] public EventCallback OnMenuItemSelected { get; set; }
+    [CascadingParameter] private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
 
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
     private bool HasSearch => !string.IsNullOrWhiteSpace(searchText);
 
-    private IReadOnlyList<VisibleNavSection> VisibleSections => BuildVisibleSections(Sections, searchText);
+    private IReadOnlyList<VisibleNavSection> VisibleSections => BuildVisibleSections(Sections, searchText, isArrendadoresOnly);
 
     private NavEntryDefinition? CurrentEntry
     {
@@ -316,21 +331,40 @@
         Navigation.LocationChanged += HandleLocationChanged;
     }
 
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AuthenticationStateTask is null)
+        {
+            isArrendadoresOnly = false;
+            return;
+        }
+
+        var authState = await AuthenticationStateTask;
+        var user = authState.User;
+        isArrendadoresOnly = user.Identity?.IsAuthenticated == true
+            && user.IsInRole(ArrendadoresRoleName)
+            && !ArrendadoresPrivilegedRoles.Any(role => user.IsInRole(role));
+    }
+
     public void Dispose()
     {
         Navigation.LocationChanged -= HandleLocationChanged;
     }
 
-    private static IReadOnlyList<VisibleNavSection> BuildVisibleSections(IReadOnlyList<NavSectionDefinition> source, string filter)
+    private static IReadOnlyList<VisibleNavSection> BuildVisibleSections(IReadOnlyList<NavSectionDefinition> source, string filter, bool arrendadoresOnly)
     {
         var query = filter.Trim();
         var sections = new List<VisibleNavSection>();
 
         foreach (var section in source)
         {
+            var availableItems = arrendadoresOnly
+                ? section.Items.Where(IsArrendadoresNavItem).ToList()
+                : section.Items;
+
             IReadOnlyList<NavEntryDefinition> items = string.IsNullOrWhiteSpace(query)
-                ? section.Items
-                : section.Items.Where(item => MatchesFilter(item, query)).ToList();
+                ? availableItems
+                : availableItems.Where(item => MatchesFilter(item, query)).ToList();
 
             if (items.Count > 0)
             {
@@ -339,6 +373,13 @@
         }
 
         return sections;
+    }
+
+    private static bool IsArrendadoresNavItem(NavEntryDefinition item)
+    {
+        var path = NormalizePath(item.Href);
+        return string.Equals(path, "reservaciones/calendario", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(path, "arrendadores", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool MatchesFilter(NavEntryDefinition item, string filter)

@@ -1,5 +1,5 @@
 @page "/reservaciones/calendario"
-@attribute [Authorize(Roles = "Administrador,SatOperator,OrdenTrabajoOperador")]
+@attribute [Authorize(Roles = "Administrador,SatOperator,OrdenTrabajoOperador,Arrendadores")]
 
 <PageTitle>Calendario de Reservaciones</PageTitle>
 
@@ -10,7 +10,11 @@
             <p class="text-muted mb-0">Vista operativa para ocupacion, seleccion multiple y ordenes de limpieza.</p>
         </div>
         <div class="calendar-header-actions">
-            @if (SelectedRoomCalendarIds.Count > 0)
+            @if (!CanUseCalendarActions)
+            {
+                <span class="badge text-bg-secondary align-self-center">Solo lectura</span>
+            }
+            @if (CanUseCalendarActions && SelectedRoomCalendarIds.Count > 0)
             {
                 <button class="btn btn-success" @onclick="CreateReservationFromSelectionAsync" disabled="@(IsLoading || IsCreatingReservation || IsCreatingCleaningOrders)">
                     @(IsCreatingReservation ? "Creando reservación..." : $"Crear Reservación ({SelectedRoomCalendarIds.Count})")
@@ -184,13 +188,23 @@
                                                     <div class="calendar-wo-badges">
                                                         @foreach (var badge in orderBadges)
                                                         {
-                                                            <a class="@GetCalendarOrderBadgeClass(badge.Estado)"
-                                                               href="@($"/ordenes-trabajo/{badge.WorkOrderId}")"
-                                                               title="@($"{badge.Folio} - {OrionERP.Web.Features.OrdenesTrabajo.OrdenesTrabajoPage.GetStatusLabel(badge.Estado)}")"
-                                                               @onclick:stopPropagation="true"
-                                                               @ondblclick:stopPropagation="true">
-                                                                @badge.Folio
-                                                            </a>
+                                                            @if (CanUseCalendarActions)
+                                                            {
+                                                                <a class="@GetCalendarOrderBadgeClass(badge.Estado)"
+                                                                   href="@($"/ordenes-trabajo/{badge.WorkOrderId}")"
+                                                                   title="@($"{badge.Folio} - {OrionERP.Web.Features.OrdenesTrabajo.OrdenesTrabajoPage.GetStatusLabel(badge.Estado)}")"
+                                                                   @onclick:stopPropagation="true"
+                                                                   @ondblclick:stopPropagation="true">
+                                                                    @badge.Folio
+                                                                </a>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="@GetCalendarOrderBadgeClass(badge.Estado)"
+                                                                      title="@($"{badge.Folio} - {OrionERP.Web.Features.OrdenesTrabajo.OrdenesTrabajoPage.GetStatusLabel(badge.Estado)}")">
+                                                                    @badge.Folio
+                                                                </span>
+                                                            }
                                                         }
                                                     </div>
                                                 }
@@ -242,7 +256,7 @@
     }
 </div>
 
-@if (ShowCleaningModal)
+@if (CanUseCalendarActions && ShowCleaningModal)
 {
     <div class="calendar-modal-backdrop" @onclick="CloseCleaningModal">
         <div class="calendar-modal" role="dialog" aria-modal="true" aria-labelledby="cleaning-modal-title" @onclick:stopPropagation="true">

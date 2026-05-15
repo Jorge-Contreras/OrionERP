@@ -16,6 +16,12 @@ namespace OrionERP.Infrastructure.Auth
         {
             base.OnModelCreating(b);
             b.HasDefaultSchema("auth");
+
+            b.Entity<ApplicationUser>()
+                .HasIndex(user => user.ArrendadorProveedorId)
+                .IsUnique()
+                .HasDatabaseName("IX_AspNetUsers_ArrendadorProveedorId")
+                .HasFilter("[ArrendadorProveedorId] IS NOT NULL");
         }
     }
 }

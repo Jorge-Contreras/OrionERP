@@ -92,6 +92,7 @@
                             <th>Total</th>
                             <th>Pagado</th>
                             <th>Adeudo</th>
+                            <th>Facturación</th>
                             <th>Notas</th>
                             <th>Acciones</th>
                         </tr>
@@ -100,7 +101,7 @@
                         @if (Reservaciones.Count == 0)
                         {
                             <tr class="reservaciones-list-empty-row">
-                                <td colspan="10" class="text-center text-muted">Sin reservaciones para mostrar.</td>
+                                <td colspan="11" class="text-center text-muted">Sin reservaciones para mostrar.</td>
                             </tr>
                         }
                         else
@@ -118,6 +119,12 @@
                                     <td data-label="Total">@row.TotalPrice.ToString("C")</td>
                                     <td data-label="Pagado">@row.Pagado.ToString("C")</td>
                                     <td data-label="Adeudo" class="@(Math.Abs(row.PorPagar) > 2 ? "text-danger fw-bold" : "text-success")">@row.PorPagar.ToString("C")</td>
+                                    <td data-label="Facturación">
+                                        <span class="badge @GetFacturacionBadgeClass(row)"
+                                              title="@GetFacturacionBadgeTitle(row)">
+                                            @GetFacturacionBadgeLabel(row)
+                                        </span>
+                                    </td>
                                     <td data-label="Notas" title="@row.Notes">@Short(row.Notes, 50)</td>
                                     <td data-label="Acciones" class="reservaciones-list-cell-actions">
                                         <div class="btn-group btn-group-sm" role="group">

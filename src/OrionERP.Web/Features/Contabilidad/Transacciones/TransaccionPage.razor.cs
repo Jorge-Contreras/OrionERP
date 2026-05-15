@@ -667,6 +667,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     if (HeaderEditContext is null || Header is null)
       return;
 
+    NormalizeHeaderConcepto(notify: false);
+
     if (!HeaderEditContext.Validate())
       return;
 
@@ -705,7 +707,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       var request = new TransaccionGuardarCerrarRequest
       {
         TransaccionId = Header.Id,
-        Concepto = Header.Concepto,
+        Concepto = NormalizeConceptoValue(Header.Concepto),
         Fecha = Header.Fecha,
         Cuenta = Header.Cuenta,
         Monto = Header.Monto,
@@ -772,13 +774,26 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     MontoInput = args.Value?.ToString() ?? string.Empty;
   }
 
-  protected void OnHeaderConceptoInput(ChangeEventArgs args)
+  protected void OnHeaderConceptoChange(ChangeEventArgs args)
   {
     if (Header is null)
       return;
 
     Header.Concepto = args.Value?.ToString();
-    HeaderEditContext?.NotifyFieldChanged(new FieldIdentifier(Header, nameof(Header.Concepto)));
+    NormalizeHeaderConcepto();
+  }
+
+  private void NormalizeHeaderConcepto(bool notify = true)
+  {
+    if (Header is null)
+      return;
+
+    Header.Concepto = NormalizeConceptoValue(Header.Concepto);
+
+    if (notify)
+    {
+      HeaderEditContext?.NotifyFieldChanged(new FieldIdentifier(Header, nameof(Header.Concepto)));
+    }
   }
 
   private void UpdateMontoInputFromHeader()
@@ -1033,6 +1048,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     if (MovimientoDraft is null || MovimientoEditContext is null || Header is null)
       return;
 
+    NormalizeMovimientoConcepto(notify: false);
+
     if (!MovimientoEditContext.Validate())
       return;
 
@@ -1073,7 +1090,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         Nivel2 = m.Nivel2,
         Nivel3 = m.Nivel3,
         NombreCuenta = m.NombreCuenta,
-        Concepto = m.Concepto,
+        Concepto = NormalizeConceptoValue(m.Concepto),
         Debe = m.Debe,
         Haber = m.Haber
       }).ToList()
@@ -1163,13 +1180,26 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Concepto));
   }
 
-  protected void OnMovimientoConceptoInput(ChangeEventArgs args)
+  protected void OnMovimientoConceptoChange(ChangeEventArgs args)
   {
     if (MovimientoDraft is null)
       return;
 
     MovimientoDraft.Concepto = args.Value?.ToString();
-    NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Concepto));
+    NormalizeMovimientoConcepto();
+  }
+
+  private void NormalizeMovimientoConcepto(bool notify = true)
+  {
+    if (MovimientoDraft is null)
+      return;
+
+    MovimientoDraft.Concepto = NormalizeConceptoValue(MovimientoDraft.Concepto);
+
+    if (notify)
+    {
+      NotifyMovimientoFieldChanged(nameof(MovimientoDraft.Concepto));
+    }
   }
 
   protected void UpdateAllMovimientosConceptoFromHeader()

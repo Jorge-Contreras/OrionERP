@@ -82,7 +82,7 @@ else
               <label class="form-label">Concepto</label>
               <input class="form-control text-uppercase"
                      value="@Header.Concepto"
-                     @oninput="OnHeaderConceptoInput" />
+                     @onchange="OnHeaderConceptoChange" />
               <ValidationMessage For="() => Header.Concepto" />
             </div>
 
@@ -1211,7 +1211,7 @@ else
                   <label class="form-label text-uppercase">Concepto</label>
                     <input class="form-control text-uppercase"
                            value="@MovimientoDraft!.Concepto"
-                           @oninput="OnMovimientoConceptoInput" />
+                           @onchange="OnMovimientoConceptoChange" />
                     <ValidationMessage For="() => MovimientoDraft!.Concepto" />
                 </div>
                 <div class="col-lg-4 d-flex align-items-end">

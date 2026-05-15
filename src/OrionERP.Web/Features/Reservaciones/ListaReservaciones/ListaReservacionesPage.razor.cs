@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Reservaciones.CalendarSync;
+using OrionERP.Application.Features.Reservaciones.Cfdi;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Web.Services;
 
@@ -281,6 +282,27 @@ public partial class ListaReservacionesPage : ComponentBase, IDisposable
       return string.Empty;
 
     return value.Length <= max ? value : value[..max] + "...";
+  }
+
+  protected static string GetFacturacionBadgeClass(ListaReservacionItemDto row)
+    => row.FacturacionStatus switch
+    {
+      ReservationFacturacionStatuses.Facturada => "text-bg-success",
+      ReservationFacturacionStatuses.Parcial => "text-bg-warning",
+      _ => "text-bg-secondary"
+    };
+
+  protected static string GetFacturacionBadgeLabel(ListaReservacionItemDto row)
+    => $"{row.FacturacionStatus} ({row.FacturacionFacturadoPaymentCount}/{row.FacturacionPaymentCount})";
+
+  protected static string GetFacturacionBadgeTitle(ListaReservacionItemDto row)
+  {
+    if (row.FacturacionRegularCfdiCount == 0 && row.FacturacionPago20Count == 0)
+    {
+      return "Sin comprobantes activos ligados a los pagos.";
+    }
+
+    return $"CFDI: {row.FacturacionRegularCfdiCount}; Pago20: {row.FacturacionPago20Count}.";
   }
 
   protected Task OnFilterChangedAsync()

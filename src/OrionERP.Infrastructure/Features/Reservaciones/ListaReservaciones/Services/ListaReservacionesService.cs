@@ -10,6 +10,7 @@ using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using OrionERP.Application.Features.Reservaciones.Cfdi;
 using OrionERP.Application.Features.Reservaciones.OpenClaw;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
@@ -92,6 +93,11 @@ ORDER BY r.CHECKIN DESC, r.ID DESC");
         TotalPrice = row.TotalPrice,
         Pagado = row.Pagado,
         PorPagar = row.PorPagar,
+        FacturacionStatus = row.FacturacionStatus,
+        FacturacionPaymentCount = row.FacturacionPaymentCount,
+        FacturacionFacturadoPaymentCount = row.FacturacionFacturadoPaymentCount,
+        FacturacionRegularCfdiCount = row.FacturacionRegularCfdiCount,
+        FacturacionPago20Count = row.FacturacionPago20Count,
         Notes = row.Notes
       })
       .ToList();
@@ -128,7 +134,82 @@ SELECT
 FROM dbo.Reservation_Transacciones rt
 LEFT JOIN dbo.Transacciones t
   ON t.ID = rt.TransaccionID
-WHERE rt.ReservationID IN @ReservationIds;";
+WHERE rt.ReservationID IN @ReservationIds;
+
+WITH ReservationPayments AS
+(
+    SELECT DISTINCT
+        rt.ReservationID AS ReservationId,
+        rt.TransaccionID AS TransaccionId
+    FROM dbo.Reservation_Transacciones rt
+    WHERE rt.ReservationID IN @ReservationIds
+),
+Evidence AS
+(
+    SELECT
+        rp.ReservationId,
+        rp.TransaccionId,
+        CAST('CFDI' AS varchar(20)) AS EvidenceType,
+        CAST(c.Comprobante_Id AS bigint) AS ComprobanteId
+    FROM ReservationPayments rp
+    INNER JOIN dbo.Transaccion_Comprobante tc
+      ON tc.Transaccion_ID = rp.TransaccionId
+    INNER JOIN cfdi.Comprobante c
+      ON c.Comprobante_Id = tc.Comprobante_ID
+    WHERE ISNULL(c.TipoDeComprobante, '') <> 'P'
+      AND c.FechaCancelacion IS NULL
+      AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
+
+    UNION ALL
+
+    SELECT
+        rp.ReservationId,
+        rp.TransaccionId,
+        CAST('Pago20' AS varchar(20)) AS EvidenceType,
+        CAST(c.Comprobante_Id AS bigint) AS ComprobanteId
+    FROM ReservationPayments rp
+    INNER JOIN dbo.Transaccion_Comprobante tc
+      ON tc.Transaccion_ID = rp.TransaccionId
+    INNER JOIN cfdi.Comprobante c
+      ON c.Comprobante_Id = tc.Comprobante_ID
+    INNER JOIN cfdi.Pagos20 p20
+      ON p20.Comprobante_Id = c.Comprobante_Id
+    WHERE c.TipoDeComprobante = 'P'
+      AND c.FechaCancelacion IS NULL
+      AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
+
+    UNION ALL
+
+    SELECT
+        rp.ReservationId,
+        rp.TransaccionId,
+        CAST('Pago20' AS varchar(20)) AS EvidenceType,
+        CAST(c.Comprobante_Id AS bigint) AS ComprobanteId
+    FROM ReservationPayments rp
+    INNER JOIN dbo.Transaccion_DoctoRelacionado td
+      ON td.Transaccion_ID = rp.TransaccionId
+    INNER JOIN cfdi.Pagos20_DoctoRelacionado dr
+      ON dr.DoctoRelacionado_Id = td.DoctoRelacionado_Id
+    INNER JOIN cfdi.Pagos20_Pago p
+      ON p.Pago_Id = dr.Pago_Id
+    INNER JOIN cfdi.Pagos20 p20
+      ON p20.Pagos20_Id = p.Pagos20_Id
+    INNER JOIN cfdi.Comprobante c
+      ON c.Comprobante_Id = p20.Comprobante_Id
+    WHERE c.FechaCancelacion IS NULL
+      AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
+)
+SELECT
+    rp.ReservationId,
+    COUNT(DISTINCT rp.TransaccionId) AS PaymentCount,
+    COUNT(DISTINCT CASE WHEN e.TransaccionId IS NOT NULL THEN rp.TransaccionId END) AS FacturadoPaymentCount,
+    COUNT(DISTINCT CASE WHEN e.EvidenceType = 'CFDI' THEN e.ComprobanteId END) AS RegularCfdiCount,
+    COUNT(DISTINCT CASE WHEN e.EvidenceType = 'Pago20' THEN e.ComprobanteId END) AS Pago20Count
+FROM ReservationPayments rp
+LEFT JOIN Evidence e
+  ON e.ReservationId = rp.ReservationId
+ AND e.TransaccionId = rp.TransaccionId
+GROUP BY rp.ReservationId;";
 
     using var multi = await conn.QueryMultipleAsync(
       new CommandDefinition(
@@ -142,6 +223,8 @@ WHERE rt.ReservationID IN @ReservationIds;";
       .ToLookup(row => row.ReservationId, row => row.Amount);
     var pagosByReservation = (await multi.ReadAsync<ReservationAmountRow>())
       .ToLookup(row => row.ReservationId, row => row.Amount);
+    var facturacionByReservation = (await multi.ReadAsync<ReservationFacturacionListRow>())
+      .ToDictionary(row => row.ReservationId);
 
     foreach (var row in rows)
     {
@@ -156,7 +239,28 @@ WHERE rt.ReservationID IN @ReservationIds;";
       row.TotalPrice = totals.TotalReservacion;
       row.Pagado = totals.TotalPagado;
       row.PorPagar = totals.PorPagar;
+
+      if (facturacionByReservation.TryGetValue(row.Id, out var facturacion))
+      {
+        row.FacturacionPaymentCount = facturacion.PaymentCount;
+        row.FacturacionFacturadoPaymentCount = facturacion.FacturadoPaymentCount;
+        row.FacturacionRegularCfdiCount = facturacion.RegularCfdiCount;
+        row.FacturacionPago20Count = facturacion.Pago20Count;
+        row.FacturacionStatus = ResolveFacturacionStatus(facturacion.PaymentCount, facturacion.FacturadoPaymentCount);
+      }
     }
+  }
+
+  private static string ResolveFacturacionStatus(int paymentCount, int facturadoPaymentCount)
+  {
+    if (paymentCount <= 0 || facturadoPaymentCount <= 0)
+    {
+      return ReservationFacturacionStatuses.SinFacturar;
+    }
+
+    return facturadoPaymentCount == paymentCount
+      ? ReservationFacturacionStatuses.Facturada
+      : ReservationFacturacionStatuses.Parcial;
   }
 
   private static void AppendListaFilters(
@@ -1873,6 +1977,11 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
     public decimal TotalPrice { get; set; }
     public decimal Pagado { get; set; }
     public decimal PorPagar { get; set; }
+    public string FacturacionStatus { get; set; } = ReservationFacturacionStatuses.SinFacturar;
+    public int FacturacionPaymentCount { get; set; }
+    public int FacturacionFacturadoPaymentCount { get; set; }
+    public int FacturacionRegularCfdiCount { get; set; }
+    public int FacturacionPago20Count { get; set; }
     public string? Notes { get; set; }
   }
 
@@ -1880,6 +1989,15 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
   {
     public int ReservationId { get; set; }
     public decimal Amount { get; set; }
+  }
+
+  private sealed class ReservationFacturacionListRow
+  {
+    public int ReservationId { get; set; }
+    public int PaymentCount { get; set; }
+    public int FacturadoPaymentCount { get; set; }
+    public int RegularCfdiCount { get; set; }
+    public int Pago20Count { get; set; }
   }
 
   private sealed class OpenClawRoomCatalogRow

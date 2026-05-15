@@ -12,5 +12,10 @@ public sealed class ListaReservacionItemDto
   public decimal TotalPrice { get; set; }
   public decimal Pagado { get; set; }
   public decimal PorPagar { get; set; }
+  public string FacturacionStatus { get; set; } = "Sin facturar";
+  public int FacturacionPaymentCount { get; set; }
+  public int FacturacionFacturadoPaymentCount { get; set; }
+  public int FacturacionRegularCfdiCount { get; set; }
+  public int FacturacionPago20Count { get; set; }
   public string? Notes { get; set; }
 }

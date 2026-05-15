@@ -7,6 +7,7 @@ namespace OrionERP.Application.Features.Reservaciones.Cfdi;
 public interface IReservationCfdiService
 {
   Task<ReservationCfdiContextDto?> GetContextAsync(int reservationId, string issuerRfc, CancellationToken ct = default);
+  Task<ReservationFacturacionStatusDto> GetFacturacionStatusAsync(int reservationId, CancellationToken ct = default);
   Task<IReadOnlyList<ReservationCfdiCustomerSuggestionDto>> SearchCustomersAsync(string? searchText, CancellationToken ct = default);
   Task<ReservationCfdiReceiverValidationDto> ValidateReceiverAsync(
       ReservationCfdiCustomerUpsertRequest request,

@@ -9,6 +9,7 @@ using Microsoft.JSInterop;
 using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Application.Features.Reservaciones.Cfdi;
+using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
 namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 
@@ -68,6 +69,7 @@ public partial class ReservacionPage
   [Inject] public IDeclaracionPreviaService DeclaracionPreviaService { get; set; } = default!;
 
   protected ReservationCfdiContextDto? CfdiContext { get; set; }
+  protected ReservationFacturacionStatusDto? FacturacionStatus { get; set; }
   protected List<FormaPagoLookupDto> CfdiFormaPagoOptions { get; } = [];
   protected List<ReservationCfdiCustomerSuggestionDto> CfdiCustomerSuggestions { get; } = new();
   protected ReservationCfdiCustomerUpsertRequest CfdiReceiver { get; set; } = new();
@@ -91,10 +93,13 @@ public partial class ReservacionPage
   protected bool HasCfdiDiscounts => CfdiContext?.Items.Any(item => item.Discount > 0m) == true;
 
   protected bool ShouldShowCfdiCreationPanel
-    => ShowCfdiPanel && !HasExistingReservationCfdis;
+    => ShowCfdiPanel && !HasReservationFacturacionEvidence;
 
   protected bool HasExistingReservationCfdis
     => CfdiContext?.ExistingDocuments.Count > 0;
+
+  protected bool HasReservationFacturacionEvidence
+    => FacturacionStatus?.HasAnyFacturacionEvidence == true || HasExistingReservationCfdis;
 
   protected bool IsCfdiPaymentFormLocked
     => string.Equals(SelectedCfdiMetodoPago, DeferredCfdiMetodoPago, StringComparison.OrdinalIgnoreCase);
@@ -119,7 +124,7 @@ public partial class ReservacionPage
   protected bool CanCreateReservationCfdi
     => CfdiContext is not null
        && !CfdiContext.HasUnsupportedIsh
-       && !HasExistingReservationCfdis
+       && !HasReservationFacturacionEvidence
        && !string.IsNullOrWhiteSpace(CfdiReceiver.CfdiUse)
        && !string.IsNullOrWhiteSpace(SelectedCfdiFormaPago)
        && !string.IsNullOrWhiteSpace(SelectedCfdiMetodoPago);
@@ -512,6 +517,83 @@ public partial class ReservacionPage
   protected static string GetCfdiReceiverFlagBadgeClass(bool matches)
     => matches ? "text-bg-success" : "text-bg-danger";
 
+  protected string GetFacturacionStatusBadgeClass()
+    => FacturacionStatus?.Status switch
+    {
+      ReservationFacturacionStatuses.Facturada => "text-bg-success",
+      ReservationFacturacionStatuses.Parcial => "text-bg-warning",
+      _ => "text-bg-secondary"
+    };
+
+  protected string GetPaymentFacturacionBadgeClass(ReservacionPagoDto pago)
+  {
+    var payment = GetPaymentFacturacionStatus(pago.TransaccionId);
+    if (payment?.IsFacturado == true)
+    {
+      return payment.RegularCfdiCount > 0 && payment.Pago20Count > 0
+          ? "text-bg-success"
+          : "text-bg-info";
+    }
+
+    return "text-bg-secondary";
+  }
+
+  protected string GetPaymentFacturacionLabel(ReservacionPagoDto pago)
+  {
+    var payment = GetPaymentFacturacionStatus(pago.TransaccionId);
+    if (payment is null || !payment.IsFacturado)
+    {
+      return "Sin CFDI";
+    }
+
+    if (payment.RegularCfdiCount > 0 && payment.Pago20Count > 0)
+    {
+      return "CFDI + Pago20";
+    }
+
+    return payment.Pago20Count > 0 ? "Pago20" : "CFDI";
+  }
+
+  protected string GetPaymentFacturacionTitle(ReservacionPagoDto pago)
+  {
+    var payment = GetPaymentFacturacionStatus(pago.TransaccionId);
+    if (payment is null || payment.Documents.Count == 0)
+    {
+      return "No se encontraron comprobantes activos ligados a esta poliza.";
+    }
+
+    return string.Join(
+        Environment.NewLine,
+        payment.Documents.Select(document =>
+            $"{document.EvidenceType} {document.ComprobanteId}"
+            + (document.DoctoRelacionadoId.HasValue ? $" / Docto {document.DoctoRelacionadoId}" : string.Empty)
+            + (!string.IsNullOrWhiteSpace(document.Uuid) ? $" / {document.Uuid}" : string.Empty)));
+  }
+
+  protected string GetFacturacionSummaryLabel()
+  {
+    var status = FacturacionStatus;
+    if (status is null)
+    {
+      return "Sin revisar";
+    }
+
+    return $"{status.Status} ({status.FacturadoPaymentCount}/{status.PaymentCount} pagos)";
+  }
+
+  protected async Task LoadReservationFacturacionStatusAsync()
+  {
+    try
+    {
+      FacturacionStatus = await ReservationCfdiService.GetFacturacionStatusAsync(ReservationId);
+    }
+    catch (Exception ex)
+    {
+      FacturacionStatus = ReservationFacturacionStatusCalculator.Calculate(Array.Empty<ReservationPaymentFacturacionStatusDto>());
+      UiMessages.ShowError($"No se pudo cargar el estado de facturacion. {ex.Message}");
+    }
+  }
+
   private async Task OpenCfdiPanelAsync(bool forceReload)
   {
     if (!forceReload && ShowCfdiPanel && CfdiContext is not null)
@@ -551,7 +633,7 @@ public partial class ReservacionPage
       }
 
       ApplyCfdiContext(CfdiContext);
-      if (HasExistingReservationCfdis)
+      if (HasReservationFacturacionEvidence)
       {
         ShowCfdiPanel = false;
       }
@@ -580,6 +662,9 @@ public partial class ReservacionPage
     ResetCfdiReceiverValidation();
     EnsureCfdiSelectionDefaults();
   }
+
+  private ReservationPaymentFacturacionStatusDto? GetPaymentFacturacionStatus(int transaccionId)
+    => FacturacionStatus?.Payments.FirstOrDefault(payment => payment.TransaccionId == transaccionId);
 
   private static int? ResolveSelectedCfdiTransaccionId(string? selectedValue)
   {

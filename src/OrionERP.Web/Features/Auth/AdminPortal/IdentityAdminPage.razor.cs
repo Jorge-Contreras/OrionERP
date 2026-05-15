@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
+using OrionERP.Application.Features.Arrendadores;
 using OrionERP.Application.Features.Auth.AdminPortal;
 using OrionERP.Web.Services;
 
@@ -25,11 +26,13 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
         private static readonly StringComparer RoleNameComparer = StringComparer.OrdinalIgnoreCase;
 
         [Inject] private IIdentityAdminService IdentityAdminService { get; set; } = default!;
+        [Inject] private IArrendadoresEstadoCuentaService ArrendadoresService { get; set; } = default!;
         [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
         [Inject] private IUiMessageService UiMessages { get; set; } = default!;
         [Inject] private IJSRuntime JS { get; set; } = default!;
 
         private IdentityAdminPortalSnapshot? Snapshot { get; set; }
+        private IReadOnlyList<ArrendadorListItemDto> ArrendadorOptions { get; set; } = Array.Empty<ArrendadorListItemDto>();
         private UserEditorModel UserForm { get; set; } = CreateEmptyUserModel();
         private RoleEditorModel RoleForm { get; set; } = CreateEmptyRoleModel();
         private IdentityAdminTab ActiveTab { get; set; } = IdentityAdminTab.Users;
@@ -439,6 +442,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
             try
             {
                 Snapshot = await IdentityAdminService.GetPortalSnapshotAsync();
+                ArrendadorOptions = await ArrendadoresService.GetArrendadoresAsync();
                 LastRefreshedAt = DateTimeOffset.Now;
 
                 preferredUserId = ResolveExistingUserId(preferredUserId) ?? ResolveDefaultUserId();
@@ -554,6 +558,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
                 EmptyToNull(UserForm.Email),
                 EmptyToNull(UserForm.PhoneNumber),
                 ParseNullableInt(UserForm.EmployeeIdInput),
+                ParseNullableInt(UserForm.ArrendadorProveedorIdInput),
                 UserForm.EmailConfirmed,
                 UserForm.PhoneNumberConfirmed,
                 UserForm.TwoFactorEnabled,
@@ -596,6 +601,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
                 Email = editor.Email ?? string.Empty,
                 PhoneNumber = editor.PhoneNumber ?? string.Empty,
                 EmployeeIdInput = editor.EmployeeId?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+                ArrendadorProveedorIdInput = editor.ArrendadorProveedorId?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
                 EmailConfirmed = editor.EmailConfirmed,
                 PhoneNumberConfirmed = editor.PhoneNumberConfirmed,
                 TwoFactorEnabled = editor.TwoFactorEnabled,
@@ -681,6 +687,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
             return user.UserName.Contains(normalized, StringComparison.OrdinalIgnoreCase)
                    || (user.Email?.Contains(normalized, StringComparison.OrdinalIgnoreCase) ?? false)
                    || (user.EmployeeId?.ToString(CultureInfo.InvariantCulture).Contains(normalized, StringComparison.OrdinalIgnoreCase) ?? false)
+                   || (user.ArrendadorProveedorId?.ToString(CultureInfo.InvariantCulture).Contains(normalized, StringComparison.OrdinalIgnoreCase) ?? false)
                    || user.Roles.Any(role => role.Contains(normalized, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -692,6 +699,19 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
             }
 
             return role.Name.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private string FormatArrendadorProveedor(int? proveedorId)
+        {
+            if (!proveedorId.HasValue)
+            {
+                return "Sin arrendador ligado";
+            }
+
+            var option = ArrendadorOptions.FirstOrDefault(arrendador => arrendador.Id == proveedorId.Value);
+            return option is null
+                ? $"Arrendador ID {proveedorId.Value.ToString(CultureInfo.InvariantCulture)}"
+                : $"{option.RazonSocial} · ID {option.Id.ToString(CultureInfo.InvariantCulture)}";
         }
 
         private static bool GetCheckboxValue(ChangeEventArgs args)
@@ -739,6 +759,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
             public string Email { get; set; } = string.Empty;
             public string PhoneNumber { get; set; } = string.Empty;
             public string EmployeeIdInput { get; set; } = string.Empty;
+            public string ArrendadorProveedorIdInput { get; set; } = string.Empty;
             public bool EmailConfirmed { get; set; }
             public bool PhoneNumberConfirmed { get; set; }
             public bool TwoFactorEnabled { get; set; }

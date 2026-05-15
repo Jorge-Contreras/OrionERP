@@ -376,7 +376,11 @@
     }
 
     private static bool IsArrendadoresNavItem(NavEntryDefinition item)
-        => string.Equals(NormalizePath(item.Href), "reservaciones/calendario", StringComparison.OrdinalIgnoreCase);
+    {
+        var path = NormalizePath(item.Href);
+        return string.Equals(path, "reservaciones/calendario", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(path, "arrendadores", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool MatchesFilter(NavEntryDefinition item, string filter)
     {

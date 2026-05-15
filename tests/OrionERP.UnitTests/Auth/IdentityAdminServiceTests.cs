@@ -120,6 +120,7 @@ public class IdentityAdminServiceTests
             admin.Email,
             null,
             null,
+            null,
             false,
             false,
             false,
@@ -131,6 +132,77 @@ public class IdentityAdminServiceTests
 
         Assert.False(result.Succeeded);
         Assert.Contains("quitarte a ti mismo", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SaveUserAsync_PersistsArrendadorProveedorId()
+    {
+        using var provider = CreateServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+        var service = scope.ServiceProvider.GetRequiredService<IIdentityAdminService>();
+
+        await roleManager.CreateAsync(new IdentityRole("Arrendadores"));
+
+        var result = await service.SaveUserAsync(new IdentityUserUpsertRequest(
+            null,
+            null,
+            "arrendador@orionerp.local",
+            "arrendador@orionerp.local",
+            null,
+            null,
+            123,
+            true,
+            false,
+            false,
+            true,
+            null,
+            "secret1",
+            ["Arrendadores"],
+            Array.Empty<IdentityClaimInput>()));
+
+        Assert.True(result.Succeeded);
+
+        var editor = await service.GetUserAsync(result.EntityId!);
+        Assert.NotNull(editor);
+        Assert.Equal(123, editor!.ArrendadorProveedorId);
+
+        var snapshot = await service.GetPortalSnapshotAsync();
+        var summary = Assert.Single(snapshot.Users);
+        Assert.Equal(123, summary.ArrendadorProveedorId);
+    }
+
+    [Fact]
+    public async Task SaveUserAsync_RejectsArrendadoresRoleWithoutProveedorLink()
+    {
+        using var provider = CreateServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+        var service = scope.ServiceProvider.GetRequiredService<IIdentityAdminService>();
+
+        await roleManager.CreateAsync(new IdentityRole("Arrendadores"));
+
+        var result = await service.SaveUserAsync(new IdentityUserUpsertRequest(
+            null,
+            null,
+            "arrendador-missing@orionerp.local",
+            "arrendador-missing@orionerp.local",
+            null,
+            null,
+            null,
+            true,
+            false,
+            false,
+            true,
+            null,
+            "secret1",
+            ["Arrendadores"],
+            Array.Empty<IdentityClaimInput>()));
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("Arrendador", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

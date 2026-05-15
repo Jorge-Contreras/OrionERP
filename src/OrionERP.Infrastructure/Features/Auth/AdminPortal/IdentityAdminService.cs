@@ -14,6 +14,7 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
     {
         private const string AdministratorRoleName = "Administrador";
         private const string AdministratorRoleNormalizedName = "ADMINISTRADOR";
+        private const string ArrendadoresRoleName = "Arrendadores";
         private static readonly StringComparer RoleNameComparer = StringComparer.OrdinalIgnoreCase;
 
         private readonly OrionIdentityDbContext _db;
@@ -42,6 +43,7 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
                     user.UserName,
                     user.Email,
                     user.EmployeeId,
+                    user.ArrendadorProveedorId,
                     user.EmailConfirmed,
                     user.LockoutEnabled,
                     user.LockoutEnd,
@@ -156,6 +158,7 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
                         user.UserName ?? user.Email ?? "(sin usuario)",
                         user.Email,
                         user.EmployeeId,
+                        user.ArrendadorProveedorId,
                         user.EmailConfirmed,
                         user.LockoutEnabled && user.LockoutEnd.HasValue && user.LockoutEnd.Value > now,
                         user.LockoutEnd,
@@ -239,6 +242,7 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
                 user.Email,
                 user.PhoneNumber,
                 user.EmployeeId,
+                user.ArrendadorProveedorId,
                 user.EmailConfirmed,
                 user.PhoneNumberConfirmed,
                 user.TwoFactorEnabled,
@@ -322,6 +326,31 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
             if (unknownRoleNames.Length > 0)
             {
                 return Failure($"Los siguientes roles no existen: {string.Join(", ", unknownRoleNames)}.");
+            }
+
+            if (request.ArrendadorProveedorId.HasValue && request.ArrendadorProveedorId.Value <= 0)
+            {
+                return Failure("El arrendador ligado debe ser un proveedor válido.");
+            }
+
+            if (desiredRoleNames.Contains(ArrendadoresRoleName, RoleNameComparer) && !request.ArrendadorProveedorId.HasValue)
+            {
+                return Failure("Los usuarios con rol Arrendadores deben tener un Arrendador (Proveedor) ligado.");
+            }
+
+            if (request.ArrendadorProveedorId.HasValue)
+            {
+                var providerAlreadyLinked = await _userManager.Users
+                    .AsNoTracking()
+                    .AnyAsync(user =>
+                        user.ArrendadorProveedorId == request.ArrendadorProveedorId.Value
+                        && (string.IsNullOrWhiteSpace(request.Id) || user.Id != request.Id),
+                        cancellationToken);
+
+                if (providerAlreadyLinked)
+                {
+                    return Failure("Este arrendador ya está ligado a otro usuario.");
+                }
             }
 
             await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
@@ -637,6 +666,7 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
             user.Email = email;
             user.PhoneNumber = phoneNumber;
             user.EmployeeId = request.EmployeeId;
+            user.ArrendadorProveedorId = request.ArrendadorProveedorId;
             user.EmailConfirmed = email is not null && request.EmailConfirmed;
             user.PhoneNumberConfirmed = phoneNumber is not null && request.PhoneNumberConfirmed;
             user.TwoFactorEnabled = request.TwoFactorEnabled;

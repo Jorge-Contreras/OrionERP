@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Identity;
@@ -126,6 +127,9 @@ if (string.IsNullOrWhiteSpace(conn))
       "a local appsettings.Development.json, or ConnectionStrings__OrionDb. In Production, " +
       "use ASPNETCORE_ConnectionStrings__OrionDb.");
 
+var userSessionTimeout = TimeSpan.FromHours(8);
+var disconnectedCircuitRetentionPeriod = TimeSpan.FromHours(2);
+
 builder.Services.AddDbContext<OrionIdentityDbContext>(opt =>
     opt.UseSqlServer(conn,
         sql => sql.MigrationsAssembly("OrionERP.Infrastructure"))); // migrations live in Infrastructure
@@ -148,6 +152,9 @@ builder.Services
 
 builder.Services.ConfigureApplicationCookie(options =>
 {
+  options.ExpireTimeSpan = userSessionTimeout;
+  options.SlidingExpiration = true;
+
   options.Events ??= new CookieAuthenticationEvents();
 
   options.Events.OnRedirectToLogin = context =>
@@ -216,7 +223,10 @@ builder.Services.AddAuthorization(options =>
 });
 
 builder.Services.AddRazorPages();      // Identity UI depends on Razor Pages
-builder.Services.AddServerSideBlazor();
+builder.Services.AddServerSideBlazor(options =>
+{
+  options.DisconnectedCircuitRetentionPeriod = disconnectedCircuitRetentionPeriod;
+});
 builder.Services.Configure<OpenClawApiOptions>(builder.Configuration.GetSection(OpenClawApiOptions.SectionName));
 builder.Services.Configure<GraphMailOptions>(builder.Configuration.GetSection(GraphMailOptions.SectionName));
 builder.Services.Configure<BonhomiaGraphCalendarSyncOptions>(builder.Configuration.GetSection(BonhomiaGraphCalendarSyncOptions.SectionName));

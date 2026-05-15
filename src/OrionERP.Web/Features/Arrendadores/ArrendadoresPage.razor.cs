@@ -1,7 +1,10 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Arrendadores;
+using OrionERP.Infrastructure.Auth;
 using OrionERP.Web.Services;
 
 namespace OrionERP.Web.Features.Arrendadores;
@@ -13,6 +16,8 @@ public partial class ArrendadoresPage : ComponentBase
 
   [Inject] private IArrendadoresEstadoCuentaService ArrendadoresService { get; set; } = default!;
   [Inject] private IArrendadorEstadoCuentaPdfService PdfService { get; set; } = default!;
+  [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
+  [Inject] private UserManager<ApplicationUser> UserManager { get; set; } = default!;
   [Inject] private IJSRuntime Js { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
 
@@ -28,11 +33,23 @@ public partial class ArrendadoresPage : ComponentBase
   protected bool IsLoadingRooms { get; set; }
   protected bool IsLoadingReport { get; set; }
   protected bool IsGeneratingPdf { get; set; }
+  protected bool IsAdministrator { get; set; }
+  protected bool IsArrendadorOnly { get; set; }
+  protected int? CurrentArrendadorProveedorId { get; set; }
+  protected string? AccessMessage { get; set; }
 
-  protected bool CanGenerate => SelectedArrendadorId.HasValue
+  private int? OwnerIdScope => IsArrendadorOnly ? CurrentArrendadorProveedorId : null;
+
+  protected bool CanSearchArrendadores => !IsArrendadorOnly;
+
+  protected bool CanGenerate => HasUsableScope
+    && SelectedArrendadorId.HasValue
     && SelectedRoomId.HasValue
+    && IsOwnerAllowed(SelectedArrendadorId.Value)
     && SelectedYear is >= 2000 and <= 2100
     && SelectedMonth is >= 1 and <= 12;
+
+  private bool HasUsableScope => !IsArrendadorOnly || CurrentArrendadorProveedorId.HasValue;
 
   protected IReadOnlyList<MonthOption> MonthOptions { get; } = Enumerable
     .Range(1, 12)
@@ -41,15 +58,34 @@ public partial class ArrendadoresPage : ComponentBase
 
   protected override async Task OnInitializedAsync()
   {
+    await ResolveCurrentUserAsync();
     await BuscarArrendadoresAsync();
   }
 
   protected async Task BuscarArrendadoresAsync()
   {
+    if (!HasUsableScope)
+    {
+      Arrendadores = [];
+      Rooms = [];
+      Report = null;
+      AccessMessage = "Tu usuario tiene el rol Arrendadores, pero no tiene un proveedor ligado.";
+      return;
+    }
+
     IsLoadingArrendadores = true;
     try
     {
-      Arrendadores = (await ArrendadoresService.GetArrendadoresAsync(SearchText)).ToList();
+      Arrendadores = (await ArrendadoresService.GetArrendadoresAsync(SearchText, OwnerIdScope)).ToList();
+
+      if (IsArrendadorOnly && CurrentArrendadorProveedorId.HasValue)
+      {
+        var scopedOwnerId = CurrentArrendadorProveedorId.Value;
+        if (!SelectedArrendadorId.HasValue || SelectedArrendadorId.Value != scopedOwnerId)
+        {
+          await SeleccionarArrendadorAsync(scopedOwnerId);
+        }
+      }
     }
     catch (Exception ex)
     {
@@ -63,6 +99,12 @@ public partial class ArrendadoresPage : ComponentBase
 
   protected async Task SeleccionarArrendadorAsync(int ownerId)
   {
+    if (!IsOwnerAllowed(ownerId))
+    {
+      UiMessages.ShowWarning("No tienes acceso a este arrendador.");
+      return;
+    }
+
     SelectedArrendadorId = ownerId;
     SelectedRoomId = null;
     Rooms = [];
@@ -71,7 +113,7 @@ public partial class ArrendadoresPage : ComponentBase
     IsLoadingRooms = true;
     try
     {
-      Rooms = (await ArrendadoresService.GetRoomsAsync(ownerId)).ToList();
+      Rooms = (await ArrendadoresService.GetRoomsAsync(ownerId, OwnerIdScope)).ToList();
       if (Rooms.Count == 1)
       {
         SelectedRoomId = Rooms[0].RoomId;
@@ -89,6 +131,12 @@ public partial class ArrendadoresPage : ComponentBase
 
   protected void SeleccionarRoom(int roomId)
   {
+    if (!Rooms.Any(room => room.RoomId == roomId))
+    {
+      UiMessages.ShowWarning("No tienes acceso a esta propiedad.");
+      return;
+    }
+
     SelectedRoomId = roomId;
     Report = null;
   }
@@ -108,7 +156,8 @@ public partial class ArrendadoresPage : ComponentBase
         SelectedArrendadorId!.Value,
         SelectedRoomId!.Value,
         SelectedYear,
-        SelectedMonth);
+        SelectedMonth,
+        OwnerIdScope);
 
       if (Report.Context is null)
       {
@@ -130,6 +179,12 @@ public partial class ArrendadoresPage : ComponentBase
     if (Report?.Context is null || Report.Summary is null || IsGeneratingPdf)
     {
       UiMessages.ShowWarning("Genera primero el estado de cuenta.");
+      return;
+    }
+
+    if (!IsOwnerAllowed(Report.Context.OwnerId))
+    {
+      UiMessages.ShowWarning("No tienes acceso al estado de cuenta seleccionado.");
       return;
     }
 
@@ -215,6 +270,26 @@ public partial class ArrendadoresPage : ComponentBase
 
     return normalized.Trim('-');
   }
+
+  private async Task ResolveCurrentUserAsync()
+  {
+    var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+    var user = authState.User;
+
+    IsAdministrator = user.IsInRole("Administrador");
+    IsArrendadorOnly = user.IsInRole("Arrendadores") && !IsAdministrator;
+
+    var appUser = await UserManager.GetUserAsync(user);
+    CurrentArrendadorProveedorId = appUser?.ArrendadorProveedorId;
+
+    if (IsArrendadorOnly && !CurrentArrendadorProveedorId.HasValue)
+    {
+      AccessMessage = "Tu usuario tiene el rol Arrendadores, pero no tiene un proveedor ligado.";
+    }
+  }
+
+  private bool IsOwnerAllowed(int ownerId)
+    => !IsArrendadorOnly || CurrentArrendadorProveedorId == ownerId;
 
   protected sealed record MonthOption(int Value, string Label);
 }

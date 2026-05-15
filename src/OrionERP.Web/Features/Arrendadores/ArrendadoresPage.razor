@@ -1,6 +1,6 @@
 @page "/arrendadores"
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize(Roles = "Administrador")]
+@attribute [Authorize(Roles = "Administrador,Arrendadores")]
 
 <PageTitle>Arrendadores</PageTitle>
 
@@ -20,51 +20,59 @@
         </div>
     </div>
 
+    @if (!string.IsNullOrWhiteSpace(AccessMessage))
+    {
+        <div class="alert alert-warning" role="alert">@AccessMessage</div>
+    }
+
     <div class="row g-3">
         <div class="col-12 col-xl-4">
-            <section class="card shadow-sm mb-3">
-                <div class="card-body">
-                    <div class="d-flex gap-2 align-items-end mb-3">
-                        <div class="flex-grow-1">
-                            <label class="form-label">Buscar arrendador</label>
-                            <input class="form-control" type="search" placeholder="Nombre o razon social" @bind="SearchText" @bind:event="oninput" />
+            @if (CanSearchArrendadores)
+            {
+                <section class="card shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="d-flex gap-2 align-items-end mb-3">
+                            <div class="flex-grow-1">
+                                <label class="form-label">Buscar arrendador</label>
+                                <input class="form-control" type="search" placeholder="Nombre o razon social" @bind="SearchText" @bind:event="oninput" />
+                            </div>
+                            <button type="button" class="btn btn-outline-primary" @onclick="BuscarArrendadoresAsync" disabled="@IsLoadingArrendadores">Buscar</button>
                         </div>
-                        <button type="button" class="btn btn-outline-primary" @onclick="BuscarArrendadoresAsync" disabled="@IsLoadingArrendadores">Buscar</button>
-                    </div>
 
-                    <div class="table-responsive" style="max-height: 42vh;">
-                        <table class="table table-sm table-hover align-middle">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Arrendador</th>
-                                    <th class="text-end">Rooms</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @if (Arrendadores.Count == 0)
-                                {
+                        <div class="table-responsive" style="max-height: 42vh;">
+                            <table class="table table-sm table-hover align-middle">
+                                <thead class="table-light">
                                     <tr>
-                                        <td colspan="2" class="text-center text-muted py-4">No hay arrendadores con propiedades.</td>
+                                        <th>Arrendador</th>
+                                        <th class="text-end">Rooms</th>
                                     </tr>
-                                }
-                                else
-                                {
-                                    @foreach (var arrendador in Arrendadores)
+                                </thead>
+                                <tbody>
+                                    @if (Arrendadores.Count == 0)
                                     {
-                                        <tr class="@(SelectedArrendadorId == arrendador.Id ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarArrendadorAsync(arrendador.Id)">
-                                            <td>
-                                                <div class="fw-semibold">@arrendador.RazonSocial</div>
-                                                <small class="text-muted">ID @arrendador.Id</small>
-                                            </td>
-                                            <td class="text-end">@arrendador.RoomCount</td>
+                                        <tr>
+                                            <td colspan="2" class="text-center text-muted py-4">No hay arrendadores con propiedades.</td>
                                         </tr>
                                     }
-                                }
-                            </tbody>
-                        </table>
+                                    else
+                                    {
+                                        @foreach (var arrendador in Arrendadores)
+                                        {
+                                            <tr class="@(SelectedArrendadorId == arrendador.Id ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarArrendadorAsync(arrendador.Id)">
+                                                <td>
+                                                    <div class="fw-semibold">@arrendador.RazonSocial</div>
+                                                    <small class="text-muted">ID @arrendador.Id</small>
+                                                </td>
+                                                <td class="text-end">@arrendador.RoomCount</td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
-            </section>
+                </section>
+            }
 
             <section class="card shadow-sm">
                 <div class="card-body">

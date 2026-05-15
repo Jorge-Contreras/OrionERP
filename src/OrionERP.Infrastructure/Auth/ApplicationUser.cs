@@ -5,5 +5,6 @@ namespace OrionERP.Infrastructure.Auth
     public class ApplicationUser : IdentityUser
     {
         public int? EmployeeId { get; set; }
+        public int? ArrendadorProveedorId { get; set; }
     }
 }

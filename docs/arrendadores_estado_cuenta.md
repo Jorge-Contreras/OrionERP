@@ -31,10 +31,8 @@ dbo.Transacciones.ID = dbo.Registro_Contable.TransaccionID
 Una noche entra al estado de cuenta si:
 
 - `ROOM_CALENDAR.IS_LOCKED = 1`.
-- `ROOM_CALENDAR.STATUS = 'ACTIVA'`.
 - `ROOM_CALENDAR.PRECIO > 0`.
 - `ROOM_CALENDAR.LOCK_DESCRIPTION` contiene un `RESERVATION.ID` valido.
-- `RESERVATION.STATUS = 'ACTIVA'`.
 - La reservacion tiene pagos en `Reservation_Transacciones` con `Amount > 0`.
 - Cada pago considerado tiene al menos un asiento en `Registro_Contable`.
 - La suma de `Reservation_Transacciones.Amount` contabilizada cubre `RESERVATION.TOTAL_PRICE`.
@@ -54,7 +52,6 @@ pago_final_arrendador = arrendador_30 - isr_10
 - `PRECIO_CERO`
 - `SIN_RESERVATION_ID_EN_LOCK_DESCRIPTION`
 - `RESERVACION_NO_ENCONTRADA`
-- `RESERVACION_NO_ACTIVA`
 - `SIN_PAGO_CONTABILIZADO`
 - `PAGO_PARCIAL`
 

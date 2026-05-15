@@ -17,6 +17,7 @@ public sealed class ArrendadoresEstadoCuentaService : IArrendadoresEstadoCuentaS
 
   public async Task<IReadOnlyList<ArrendadorListItemDto>> GetArrendadoresAsync(
     string? searchText = null,
+    int? ownerIdScope = null,
     CancellationToken ct = default)
   {
     using var connection = _connectionFactory.Create();
@@ -31,8 +32,8 @@ FROM dbo.Proveedores AS p
 INNER JOIN dbo.ROOM AS r
     ON r.OWNER_ID = p.id
 WHERE
-    @SearchText IS NULL
-    OR p.RazonSocial LIKE @SearchLike
+    (@OwnerIdScope IS NULL OR p.id = @OwnerIdScope)
+    AND (@SearchText IS NULL OR p.RazonSocial LIKE @SearchLike)
 GROUP BY p.id, p.RazonSocial
 ORDER BY p.RazonSocial;
 """;
@@ -44,7 +45,8 @@ ORDER BY p.RazonSocial;
         new
         {
           SearchText = normalizedSearch,
-          SearchLike = $"%{normalizedSearch}%"
+          SearchLike = $"%{normalizedSearch}%",
+          OwnerIdScope = ownerIdScope
         },
         cancellationToken: ct)).ConfigureAwait(false);
 
@@ -53,6 +55,7 @@ ORDER BY p.RazonSocial;
 
   public async Task<IReadOnlyList<ArrendadorRoomListItemDto>> GetRoomsAsync(
     int ownerId,
+    int? ownerIdScope = null,
     CancellationToken ct = default)
   {
     using var connection = _connectionFactory.Create();
@@ -66,11 +69,12 @@ SELECT
     CAST(r.BASE_PRICE AS decimal(18, 2)) AS BasePrice
 FROM dbo.ROOM AS r
 WHERE r.OWNER_ID = @OwnerId
+  AND (@OwnerIdScope IS NULL OR r.OWNER_ID = @OwnerIdScope)
 ORDER BY r.ROOM_NAME;
 """;
 
     var rows = await connection.QueryAsync<ArrendadorRoomListItemDto>(
-      new CommandDefinition(sql, new { OwnerId = ownerId }, cancellationToken: ct)).ConfigureAwait(false);
+      new CommandDefinition(sql, new { OwnerId = ownerId, OwnerIdScope = ownerIdScope }, cancellationToken: ct)).ConfigureAwait(false);
 
     return rows.AsList();
   }
@@ -80,6 +84,7 @@ ORDER BY r.ROOM_NAME;
     int roomId,
     int year,
     int month,
+    int? ownerIdScope = null,
     CancellationToken ct = default)
   {
     if (year < 2000 || year > 2100)
@@ -105,6 +110,7 @@ ORDER BY r.ROOM_NAME;
         {
           OwnerId = ownerId,
           RoomId = roomId,
+          OwnerIdScope = ownerIdScope,
           Year = year,
           Month = month,
           StartDate = startDate,
@@ -151,7 +157,8 @@ FROM dbo.Proveedores AS p
 INNER JOIN dbo.ROOM AS r
     ON r.OWNER_ID = p.id
 WHERE p.id = @OwnerId
-  AND r.ID = @RoomId;
+  AND r.ID = @RoomId
+  AND (@OwnerIdScope IS NULL OR p.id = @OwnerIdScope);
 
 WITH SelectedRoom AS (
     SELECT
@@ -160,6 +167,7 @@ WITH SelectedRoom AS (
     FROM dbo.ROOM AS r
     WHERE r.ID = @RoomId
       AND r.OWNER_ID = @OwnerId
+      AND (@OwnerIdScope IS NULL OR r.OWNER_ID = @OwnerIdScope)
 ),
 NochesBase AS (
     SELECT
@@ -202,9 +210,7 @@ NochesPagadas AS (
     INNER JOIN PagosContabilizados AS pc
         ON pc.ReservationID = r.ID
     WHERE nb.IsLocked = 1
-      AND nb.RoomCalendarStatus = 'ACTIVA'
       AND nb.Precio > 0
-      AND r.STATUS = 'ACTIVA'
       AND pc.TotalPagadoContabilizado >= CAST(r.TOTAL_PRICE AS decimal(18, 2))
 )
 SELECT
@@ -223,6 +229,7 @@ WITH SelectedRoom AS (
     FROM dbo.ROOM AS r
     WHERE r.ID = @RoomId
       AND r.OWNER_ID = @OwnerId
+      AND (@OwnerIdScope IS NULL OR r.OWNER_ID = @OwnerIdScope)
 ),
 NochesBase AS (
     SELECT
@@ -282,9 +289,7 @@ INNER JOIN dbo.RESERVATION AS r
 INNER JOIN PagosContabilizados AS pc
     ON pc.ReservationID = r.ID
 WHERE nb.IsLocked = 1
-  AND nb.RoomCalendarStatus = 'ACTIVA'
   AND nb.Precio > 0
-  AND r.STATUS = 'ACTIVA'
   AND pc.TotalPagadoContabilizado >= CAST(r.TOTAL_PRICE AS decimal(18, 2))
 ORDER BY nb.Noche, nb.RoomCalendarId;
 
@@ -295,6 +300,7 @@ WITH SelectedRoom AS (
     FROM dbo.ROOM AS r
     WHERE r.ID = @RoomId
       AND r.OWNER_ID = @OwnerId
+      AND (@OwnerIdScope IS NULL OR r.OWNER_ID = @OwnerIdScope)
 ),
 NochesBase AS (
     SELECT
@@ -312,7 +318,6 @@ NochesBase AS (
     WHERE rc.ROOM_DATE >= @StartDate
       AND rc.ROOM_DATE < @EndDate
       AND rc.IS_LOCKED = 1
-      AND rc.STATUS = 'ACTIVA'
 ),
 PagosContabilizados AS (
     SELECT
@@ -344,7 +349,6 @@ SELECT
         WHEN nb.Precio <= 0 THEN 'PRECIO_CERO'
         WHEN nb.ReservationId IS NULL THEN 'SIN_RESERVATION_ID_EN_LOCK_DESCRIPTION'
         WHEN r.ID IS NULL THEN 'RESERVACION_NO_ENCONTRADA'
-        WHEN r.STATUS <> 'ACTIVA' THEN 'RESERVACION_NO_ACTIVA'
         WHEN pc.ReservationID IS NULL THEN 'SIN_PAGO_CONTABILIZADO'
         WHEN pc.TotalPagadoContabilizado < CAST(r.TOTAL_PRICE AS decimal(18, 2)) THEN 'PAGO_PARCIAL'
         ELSE 'INCLUIBLE'
@@ -357,7 +361,6 @@ LEFT JOIN PagosContabilizados AS pc
 WHERE nb.Precio <= 0
    OR nb.ReservationId IS NULL
    OR r.ID IS NULL
-   OR r.STATUS <> 'ACTIVA'
    OR pc.ReservationID IS NULL
    OR pc.TotalPagadoContabilizado < CAST(r.TOTAL_PRICE AS decimal(18, 2))
 ORDER BY nb.Noche, nb.RoomCalendarId;

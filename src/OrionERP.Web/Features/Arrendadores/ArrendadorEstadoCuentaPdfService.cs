@@ -129,7 +129,7 @@ public sealed class ArrendadorEstadoCuentaPdfService : IArrendadorEstadoCuentaPd
       });
 
       column.Item().DefaultTextStyle(style => style.FontSize(8).FontColor(BrandMuted)).Text(
-        "Criterio: se incluyen noches con reservacion activa, precio mayor a cero y pago contabilizado en Registro_Contable. El ISR se calcula sobre el 30% del arrendador.");
+        "Criterio: se incluyen noches con reservacion ligada, precio mayor a cero y pago contabilizado en Registro_Contable. El ISR se calcula sobre el 30% del arrendador.");
     });
   }
 

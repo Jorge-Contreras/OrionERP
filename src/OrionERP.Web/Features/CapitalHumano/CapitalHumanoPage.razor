@@ -1,0 +1,462 @@
+@page "/capital-humano"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@attribute [Authorize(Roles = "Administrador")]
+
+<PageTitle>Capital Humano</PageTitle>
+
+<div class="container-fluid py-3 capital-humano-page">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h1 class="h3 mb-1">Capital Humano</h1>
+            <p class="text-muted mb-0">RFC empresa: <span class="fw-semibold">@CurrentRfc</span></p>
+        </div>
+        <button type="button" class="btn btn-outline-primary" @onclick="NuevoEmpleado">
+            Nuevo colaborador
+        </button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(LoadError))
+    {
+        <div class="alert alert-danger">@LoadError</div>
+    }
+
+    <div class="row g-3">
+        <div class="col-12 col-xl-5">
+            <section class="card shadow-sm">
+                <div class="card-body">
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Buscar</label>
+                            <input class="form-control" type="search" placeholder="Nombre, RFC, CURP, puesto" @bind="Filter.SearchText" @bind:event="oninput" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" @bind="Filter.Status">
+                                <option value="">Todos</option>
+                                @foreach (var status in Catalog.Statuses)
+                                {
+                                    <option value="@status">@status</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Foto</label>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" @bind="HasPhotoOnly" />
+                                <span class="form-check-label">Con foto</span>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Puesto</label>
+                            <input class="form-control" list="capital-filter-puestos" @bind="Filter.Puesto" />
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 mb-3">
+                        <button type="button" class="btn btn-primary" @onclick="BuscarAsync" disabled="@IsListBusy">
+                            @(IsBusy ? "Buscando..." : "Buscar")
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" @onclick="NuevoEmpleado" disabled="@IsSaving">
+                            Limpiar editor
+                        </button>
+                    </div>
+
+                    <div class="table-responsive capital-humano-list">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="capital-photo-col">Foto</th>
+                                    <th>Colaborador</th>
+                                    <th>Puesto</th>
+                                    <th>Auth</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (!HasExecutedSearch)
+                                {
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-4">Usa los filtros y presiona Buscar para cargar colaboradores.</td>
+                                    </tr>
+                                }
+                                else if (IsBusy && Employees.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-4">Cargando colaboradores...</td>
+                                    </tr>
+                                }
+                                else if (Employees.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-4">No hay colaboradores para el filtro actual.</td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var employee in Employees)
+                                    {
+                                        var photoUrl = GetEmployeePhotoDataUrl(employee.Id);
+                                        <tr class="@GetEmployeeRowClass(employee)" @onclick="() => SeleccionarEmpleadoAsync(employee.Id)">
+                                            <td class="capital-photo-col">
+                                                @if (photoUrl is not null)
+                                                {
+                                                    <img src="@photoUrl" alt="Foto de @employee.NombreCorto" class="capital-list-photo" />
+                                                }
+                                                else
+                                                {
+                                                    <div class="capital-list-photo-placeholder">Sin foto</div>
+                                                }
+                                            </td>
+                                            <td>
+                                                <div class="fw-semibold">@employee.NombreCorto</div>
+                                                <div>@employee.Nombre @employee.ApellidoPaterno @employee.ApellidoMaterno</div>
+                                                <div class="d-flex flex-wrap gap-1 mt-1">
+                                                    <span class="badge @FormatStatusBadge(employee.Status)">@employee.Status</span>
+                                                    @if (!string.IsNullOrWhiteSpace(employee.RFC_Capital_Humano))
+                                                    {
+                                                        <span class="badge text-bg-light">@employee.RFC_Capital_Humano</span>
+                                                    }
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div>@(string.IsNullOrWhiteSpace(employee.Puesto) ? "-" : employee.Puesto)</div>
+                                                <small class="text-muted">Alta @FormatDate(employee.Fecha_Alta)</small>
+                                            </td>
+                                            <td>
+                                                <small>@FormatAuthLink(employee)</small>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    @if (HasExecutedSearch && Employees.Count > 0)
+                    {
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+                            <span class="text-muted small">Mostrando @Employees.Count colaboradores.</span>
+                            @if (HasMoreEmployees)
+                            {
+                                <button class="btn btn-outline-primary" type="button" @onclick="CargarMasAsync" disabled="@IsListBusy">
+                                    @(IsLoadingMore ? "Cargando..." : $"Cargar {PageSize} más")
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            </section>
+        </div>
+
+        <div class="col-12 col-xl-7">
+            <section class="card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                            <h2 class="h5 mb-1">@(Editor.Id.HasValue ? "Editar colaborador" : "Nuevo colaborador")</h2>
+                            <div class="text-muted">
+                                ID: <span class="fw-semibold">@(Editor.Id?.ToString() ?? "Se asignará al guardar")</span>
+                                @if (SelectedDetail is not null)
+                                {
+                                    <span> · Auth: @FormatAuthLink(SelectedDetail)</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="capital-photo-editor">
+                            @if (PhotoPreviewDataUrl is not null)
+                            {
+                                <img src="@PhotoPreviewDataUrl" alt="Foto de @DisplayName" class="capital-photo-preview" />
+                            }
+                            else
+                            {
+                                <div class="capital-photo-preview-placeholder">Sin foto</div>
+                            }
+                        </div>
+                    </div>
+
+                    <EditForm Model="Editor" OnValidSubmit="GuardarAsync">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="capital-editor-sections">
+                            <section class="capital-editor-section">
+                                <div class="capital-section-header">
+                                    <h3>Identidad</h3>
+                                    @if (DerivedAge.HasValue)
+                                    {
+                                        <span class="badge text-bg-light">@DerivedAge años</span>
+                                    }
+                                </div>
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Nombre</label>
+                                        <InputText class="form-control" @bind-Value="Editor.Nombre" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Apellido paterno</label>
+                                        <InputText class="form-control" @bind-Value="Editor.ApellidoPaterno" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Apellido materno</label>
+                                        <InputText class="form-control" @bind-Value="Editor.ApellidoMaterno" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Nombre corto</label>
+                                        <InputText class="form-control" @bind-Value="Editor.NombreCorto" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">RFC trabajador</label>
+                                        <InputText class="form-control text-uppercase" @bind-Value="Editor.RFC_Capital_Humano" maxlength="13" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">CURP</label>
+                                        <InputText class="form-control text-uppercase" @bind-Value="Editor.CURP" maxlength="18" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">NSS</label>
+                                        <InputText class="form-control" @bind-Value="Editor.Seguro_Social" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Fecha nacimiento</label>
+                                        <InputDate class="form-control" @bind-Value="Editor.Fecha_Nacimiento" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Sexo</label>
+                                        <InputSelect class="form-select" @bind-Value="Editor.Sexo">
+                                            <option value="">Sin dato</option>
+                                            @foreach (var sexo in Catalog.Sexos)
+                                            {
+                                                <option value="@sexo">@sexo</option>
+                                            }
+                                        </InputSelect>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section class="capital-editor-section">
+                                <div class="capital-section-header">
+                                    <h3>Fotografía</h3>
+                                    @if (!string.IsNullOrWhiteSpace(SelectedPhotoFileName))
+                                    {
+                                        <span class="small text-muted">@SelectedPhotoFileName</span>
+                                    }
+                                </div>
+                                <InputFile OnChange="OnPhotoSelectedAsync" accept="image/*" />
+                            </section>
+
+                            <section class="capital-editor-section">
+                                <div class="capital-section-header">
+                                    <h3>Empleo</h3>
+                                    <span class="badge @FormatStatusBadge(Editor.Status)">@Editor.Status</span>
+                                </div>
+                                <div class="row g-3">
+                                    <div class="col-md-3">
+                                        <label class="form-label">Status</label>
+                                        <InputSelect class="form-select" @bind-Value="Editor.Status">
+                                            @foreach (var status in Catalog.Statuses)
+                                            {
+                                                <option value="@status">@status</option>
+                                            }
+                                        </InputSelect>
+                                    </div>
+                                    <div class="col-md-5">
+                                        <label class="form-label">Puesto</label>
+                                        <InputText class="form-control" list="capital-puestos" @bind-Value="Editor.Puesto" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Tipo capital humano</label>
+                                        <InputText class="form-control" list="capital-tipos" @bind-Value="Editor.Tipo_Capital_Humano" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Fecha alta</label>
+                                        <InputDate class="form-control" @bind-Value="Editor.Fecha_Alta" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Fecha baja</label>
+                                        <InputDate class="form-control" @bind-Value="Editor.Fecha_Baja" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Sueldo mensual</label>
+                                        <InputNumber class="form-control" @bind-Value="Editor.Sueldo_Mensual" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Esquema pagos</label>
+                                        <InputText class="form-control" list="capital-esquemas" @bind-Value="Editor.Esquema_Pagos" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Tipo contrato</label>
+                                        <InputText class="form-control" list="capital-contratos" @bind-Value="Editor.Tipo_Contrato" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Sede contratada</label>
+                                        <InputText class="form-control" list="capital-sedes" @bind-Value="Editor.Sede_Contratada" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Nivel máximo estudios</label>
+                                        <InputText class="form-control" list="capital-estudios" @bind-Value="Editor.Nivel_Maximo_Estudios" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Descanso semanal</label>
+                                        <InputText class="form-control" list="capital-descansos" @bind-Value="Editor.Descanso_Semanal" />
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section class="capital-editor-section">
+                                <div class="capital-section-header">
+                                    <h3>Contacto y domicilio</h3>
+                                </div>
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Teléfono</label>
+                                        <InputText class="form-control" type="tel" @bind-Value="Editor.Telefono" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Emergencia</label>
+                                        <InputText class="form-control" type="tel" @bind-Value="Editor.Numero_Emergencia" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Tipo sangre</label>
+                                        <InputSelect class="form-select" @bind-Value="Editor.Tipo_Sangre">
+                                            <option value="">Sin dato</option>
+                                            @foreach (var tipo in Catalog.TiposSangre)
+                                            {
+                                                <option value="@tipo">@tipo</option>
+                                            }
+                                        </InputSelect>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Calle</label>
+                                        <InputText class="form-control" @bind-Value="Editor.Calle" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Colonia</label>
+                                        <InputText class="form-control" @bind-Value="Editor.Colonia" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Comunidad</label>
+                                        <InputText class="form-control" @bind-Value="Editor.Comunidad" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Ciudad</label>
+                                        <InputText class="form-control" @bind-Value="Editor.Ciudad" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Estado</label>
+                                        <InputText class="form-control" list="capital-estados" @bind-Value="Editor.Estado" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Nacionalidad</label>
+                                        <InputText class="form-control" list="capital-nacionalidades" @bind-Value="Editor.Nacionalidad" />
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section class="capital-editor-section">
+                                <div class="capital-section-header">
+                                    <h3>Familia y notas</h3>
+                                </div>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Dependientes</label>
+                                        <InputTextArea class="form-control" rows="3" @bind-Value="Editor.Dependientes" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Beneficiarios</label>
+                                        <InputTextArea class="form-control" rows="3" @bind-Value="Editor.Beneficiarios" />
+                                    </div>
+                                    <div class="col-md-12">
+                                        <label class="form-label">Jornada</label>
+                                        <InputTextArea class="form-control" rows="2" @bind-Value="Editor.Jornada" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Lactancia</label>
+                                        <InputTextArea class="form-control" rows="2" @bind-Value="Editor.Lactancia" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Horario alimentos</label>
+                                        <InputTextArea class="form-control" rows="2" @bind-Value="Editor.Horario_Alimentos" />
+                                    </div>
+                                </div>
+                            </section>
+                        </div>
+
+                        <div class="d-flex flex-wrap gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary" disabled="@IsSaving">
+                                @(IsSaving ? "Guardando..." : "Guardar colaborador")
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" @onclick="NuevoEmpleado" disabled="@IsSaving">Limpiar</button>
+                            <button type="button"
+                                    class="btn btn-outline-danger ms-auto"
+                                    @onclick="DeactivateAsync"
+                                    disabled="@(!CanDeactivate)">
+                                @(IsDeactivating ? "Desactivando..." : "Desactivar")
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+
+<datalist id="capital-filter-puestos">
+    @foreach (var item in Catalog.Puestos)
+    {
+        <option value="@item"></option>
+    }
+</datalist>
+<datalist id="capital-puestos">
+    @foreach (var item in Catalog.Puestos)
+    {
+        <option value="@item"></option>
+    }
+</datalist>
+<datalist id="capital-tipos">
+    @foreach (var item in Catalog.TiposCapitalHumano)
+    {
+        <option value="@item"></option>
+    }
+</datalist>
+<datalist id="capital-esquemas">
+    @foreach (var item in Catalog.EsquemasPago)
+    {
+        <option value="@item"></option>
+    }
+</datalist>
+<datalist id="capital-contratos">
+    @foreach (var item in Catalog.TiposContrato)
+    {
+        <option value="@item"></option>
+    }
+</datalist>
+<datalist id="capital-sedes">
+    @foreach (var item in Catalog.Sedes)
+    {
+        <option value="@item"></option>
+    }
+</datalist>
+<datalist id="capital-estudios">
+    @foreach (var item in Catalog.NivelesEstudios)
+    {
+        <option value="@item"></option>
+    }
+</datalist>
+<datalist id="capital-descansos">
+    @foreach (var item in Catalog.DescansosSemanales)
+    {
+        <option value="@item"></option>
+    }
+</datalist>
+<datalist id="capital-estados">
+    @foreach (var item in Catalog.Estados)
+    {
+        <option value="@item"></option>
+    }
+</datalist>
+<datalist id="capital-nacionalidades">
+    @foreach (var item in Catalog.Nacionalidades)
+    {
+        <option value="@item"></option>
+    }
+</datalist>

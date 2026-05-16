@@ -112,10 +112,17 @@ public sealed class UserRfcState : IUserRfcState
 
   public void ResetToDefault()
   {
+    bool changed;
     lock (_gate)
     {
-      _current = _allowed.OrderBy(r => r).FirstOrDefault();
+      var next = _allowed.OrderBy(r => r).FirstOrDefault();
+      changed = !string.Equals(_current, next, StringComparison.OrdinalIgnoreCase);
+      _current = next;
     }
-    Changed?.Invoke();
+
+    if (changed)
+    {
+      Changed?.Invoke();
+    }
   }
 }

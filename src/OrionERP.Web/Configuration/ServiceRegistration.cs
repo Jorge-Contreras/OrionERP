@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity.UI.Services;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Arrendadores;
 using OrionERP.Application.Features.Auth.AdminPortal;
+using OrionERP.Application.Features.CapitalHumano;
 using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
 using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Application.Features.Cfdi.Facturama;
@@ -15,6 +16,7 @@ using OrionERP.Infrastructure.Common;
 using OrionERP.Infrastructure.Features.Arrendadores;
 using OrionERP.Infrastructure.Features.Ajustes;
 using OrionERP.Infrastructure.Features.Auth.AdminPortal;
+using OrionERP.Infrastructure.Features.CapitalHumano;
 using OrionERP.Infrastructure.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Infrastructure.Features.Cfdi.Facturama;
 using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Dapper;
@@ -112,6 +114,7 @@ public static class ServiceRegistration
 
     services.AddScoped<ICuentasContablesRepository, CuentasContablesRepository>();
     services.AddScoped<IAjustesService, AjustesService>();
+    services.AddScoped<ICapitalHumanoService, CapitalHumanoService>();
     services.AddScoped<IContabilidadRegistrosService, ContabilidadRegistrosService>();
     services.AddScoped<IDeclaracionPreviaService, DeclaracionPreviaService>();
     services.AddScoped<IBancosService, BancosService>();

@@ -30,5 +30,6 @@ public interface IOrdenTrabajoService
   Task<OrdenTrabajoCommandResult> PublishTemplateAsync(int templateId, string actor, CancellationToken ct = default);
   Task<OrdenTrabajoCommandResult> MapRoomTemplateAsync(int roomId, int templateId, string actor, CancellationToken ct = default);
   Task<OrdenTrabajoCommandResult> SeedCleaningTemplatesFromLegacyAsync(string rfc, string actor, CancellationToken ct = default);
+  Task<OrdenTrabajoCommandResult> SeedChecklistTemplatesFromLegacyAsync(string rfc, string actor, int asignacion = 36, CancellationToken ct = default);
   Task<IReadOnlyList<OrdenTrabajoCalendarBadgeDto>> GetCalendarBadgesAsync(DateTime startDate, DateTime endDateExclusive, CancellationToken ct = default);
 }

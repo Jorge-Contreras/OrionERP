@@ -209,10 +209,35 @@ public class FacturamaApiClientTests
     var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => client.CreateIssuedCfdiAsync("""{"test":true}"""));
 
     Assert.Contains("Facturama (apisandbox.facturama.mx) devolvió 400", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("Endpoint: POST /3/cfdis", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("Detalle interpretado:", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("Respuesta cruda:", ex.Message, StringComparison.Ordinal);
     Assert.Contains("La solicitud no es válida.", ex.Message, StringComparison.Ordinal);
     Assert.Contains("ExpeditionPlace: The ExpeditionPlace field is required.", ex.Message, StringComparison.Ordinal);
     Assert.Contains("PaymentForm: PaymentForm debe existir", ex.Message, StringComparison.Ordinal);
     Assert.Contains("Items: Debe de contener conceptos", ex.Message, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public async Task CreateIssuedCfdiAsync_IncludesVerboseContext_WhenResponseHasNoCfdiId()
+  {
+    var handler = new RecordingHttpMessageHandler(
+        HttpStatusCode.Created,
+        """{"Message":"Timbrado aceptado, pero sin identificador en la respuesta."}""");
+    var client = CreateClient(
+        handler,
+        new Dictionary<string, string?>
+        {
+          ["Facturama:BaseUrl"] = "https://apisandbox.facturama.mx"
+        });
+
+    var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => client.CreateIssuedCfdiAsync("""{"test":true}"""));
+
+    Assert.Contains("respuesta inesperada", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("Endpoint: POST /3/cfdis", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("sin el identificador", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("Timbrado aceptado", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("Respuesta cruda:", ex.Message, StringComparison.Ordinal);
   }
 
   [Fact]
@@ -265,6 +290,73 @@ public class FacturamaApiClientTests
     Assert.Equal(HttpMethod.Get, handler.LastRequest?.Method);
   }
 
+  [Fact]
+  public async Task CancelIssuedCfdiAsync_CallsIssuedCancelEndpoint()
+  {
+    var handler = new RecordingHttpMessageHandler(
+        HttpStatusCode.OK,
+        """{"Status":"canceled"}""");
+    var client = CreateClient(
+        handler,
+        new Dictionary<string, string?>
+        {
+          ["Facturama:BaseUrl"] = "https://apisandbox.facturama.mx"
+        });
+
+    await client.CancelIssuedCfdiAsync("sandbox-cfdi-id");
+
+    Assert.Equal(new Uri("https://apisandbox.facturama.mx/cfdi/sandbox-cfdi-id?type=issued&motive=02"), handler.LastRequest?.RequestUri);
+    Assert.Equal(HttpMethod.Delete, handler.LastRequest?.Method);
+  }
+
+  [Fact]
+  public async Task CancelIssuedCfdiAsync_Throws_WhenFacturamaLeavesCfdiActive()
+  {
+    var handler = new RecordingHttpMessageHandler(
+        HttpStatusCode.OK,
+        """{"Status":"active","Message":"El comprobante tiene documentos relacionados."}""");
+    var client = CreateClient(
+        handler,
+        new Dictionary<string, string?>
+        {
+          ["Facturama:BaseUrl"] = "https://apisandbox.facturama.mx"
+        });
+
+    var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => client.CancelIssuedCfdiAsync("sandbox-cfdi-id"));
+
+    Assert.Contains("no aceptó la cancelación", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("Endpoint: DELETE /cfdi/sandbox-cfdi-id?type=issued&motive=02", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("Estatus: active", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("documentos relacionados", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("Respuesta cruda:", ex.Message, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public async Task ValidateReceiverAsync_IncludesVerboseContext_WhenTransportFails()
+  {
+    var handler = new ThrowingHttpMessageHandler(new HttpRequestException("DNS lookup failed"));
+    var client = CreateClient(
+        handler,
+        new Dictionary<string, string?>
+        {
+          ["Facturama:BaseUrl"] = "https://apisandbox.facturama.mx"
+        });
+
+    var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => client.ValidateReceiverAsync(new FacturamaReceiverValidationRequest
+    {
+      Rfc = "AAA010101AAA",
+      Name = "CLIENTE DEMO",
+      CfdiUse = "G03",
+      FiscalRegime = "601",
+      TaxZipCode = "90204"
+    }));
+
+    Assert.Contains("No se pudo comunicar con Facturama", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("Endpoint: POST /customers/validate", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("DNS lookup failed", ex.Message, StringComparison.Ordinal);
+    Assert.Contains("conectividad", ex.Message, StringComparison.Ordinal);
+  }
+
   private static FacturamaApiClient CreateClient(HttpMessageHandler handler, IDictionary<string, string?> values)
   {
     var configuration = new ConfigurationBuilder()
@@ -306,5 +398,18 @@ public class FacturamaApiClientTests
         Content = new StringContent(_body, Encoding.UTF8, "application/json")
       };
     }
+  }
+
+  private sealed class ThrowingHttpMessageHandler : HttpMessageHandler
+  {
+    private readonly Exception _exception;
+
+    public ThrowingHttpMessageHandler(Exception exception)
+    {
+      _exception = exception;
+    }
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+      => Task.FromException<HttpResponseMessage>(_exception);
   }
 }

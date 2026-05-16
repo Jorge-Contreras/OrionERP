@@ -59,18 +59,15 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
       Content = new StringContent(jsonPayload, Encoding.UTF8, "application/json")
     };
 
-    request.Headers.Authorization = _authHeader;
-    request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-    using var response = await _httpClient.SendAsync(request, ct);
-    var body = await response.Content.ReadAsStringAsync(ct);
-
-    if (!response.IsSuccessStatusCode)
-      throw BuildHttpError(response.StatusCode, body);
+    var body = await SendFacturamaAsync(request, "crear el CFDI emitido", ct);
 
     var cfdiId = TryGetObjectStringProperty(body, "Id");
     if (string.IsNullOrWhiteSpace(cfdiId))
-      throw new InvalidOperationException("Facturama respondió sin el identificador del CFDI emitido.");
+      throw BuildUnexpectedResponseError(
+          request,
+          "crear el CFDI emitido",
+          "Facturama respondió sin el identificador del CFDI emitido.",
+          body);
 
     return cfdiId;
   }
@@ -86,39 +83,29 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
       Content = new StringContent(JsonSerializer.Serialize(request, JsonOptions), Encoding.UTF8, "application/json")
     };
 
-    message.Headers.Authorization = _authHeader;
-    message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    var body = await SendFacturamaAsync(message, $"validar el receptor RFC {request.Rfc}", ct);
 
-    using var response = await _httpClient.SendAsync(message, ct);
-    var body = await response.Content.ReadAsStringAsync(ct);
-
-    if (!response.IsSuccessStatusCode)
-      throw BuildHttpError(
-          response.StatusCode,
-          body,
-          $"Facturama ({_baseUri.Host}) no pudo validar el receptor RFC {request.Rfc}.");
-
-    return JsonSerializer.Deserialize<FacturamaReceiverValidationResult>(body, JsonOptions)
-        ?? new FacturamaReceiverValidationResult();
+    return DeserializeFacturamaResponse<FacturamaReceiverValidationResult>(
+        body,
+        message,
+        $"validar el receptor RFC {request.Rfc}") ?? new FacturamaReceiverValidationResult();
   }
 
   public async Task<FacturamaTaxEntity> GetTaxEntityAsync(CancellationToken ct = default)
   {
     using var request = new HttpRequestMessage(HttpMethod.Get, BuildUri("api/TaxEntity"));
-    request.Headers.Authorization = _authHeader;
-    request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-    using var response = await _httpClient.SendAsync(request, ct);
-    var body = await response.Content.ReadAsStringAsync(ct);
+    var body = await SendFacturamaAsync(request, "consultar la entidad fiscal configurada", ct);
 
-    if (!response.IsSuccessStatusCode)
-      throw BuildHttpError(
-          response.StatusCode,
-          body,
-          $"Facturama ({_baseUri.Host}) no pudo consultar la entidad fiscal configurada.");
-
-    return JsonSerializer.Deserialize<FacturamaTaxEntity>(body, JsonOptions)
-        ?? throw new InvalidOperationException("Facturama respondió sin datos de la entidad fiscal configurada.");
+    return DeserializeFacturamaResponse<FacturamaTaxEntity>(
+        body,
+        request,
+        "consultar la entidad fiscal configurada")
+        ?? throw BuildUnexpectedResponseError(
+            request,
+            "consultar la entidad fiscal configurada",
+            "Facturama respondió sin datos de la entidad fiscal configurada.",
+            body);
   }
 
   public async Task<FacturamaDocumentContent> DownloadIssuedDocumentAsync(
@@ -134,21 +121,16 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
         : $"cfdi/pdf/issued/{cfdiId}";
 
     using var request = new HttpRequestMessage(HttpMethod.Get, BuildUri(route));
-    request.Headers.Authorization = _authHeader;
-    request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-    using var response = await _httpClient.SendAsync(request, ct);
-    var body = await response.Content.ReadAsStringAsync(ct);
-
-    if (!response.IsSuccessStatusCode)
-      throw BuildHttpError(
-          response.StatusCode,
-          body,
-          $"Facturama ({_baseUri.Host}) no pudo descargar el archivo {documentType} del CFDI {cfdiId}.");
+    var body = await SendFacturamaAsync(request, $"descargar el archivo {documentType} del CFDI {cfdiId}", ct);
 
     var base64 = TryGetObjectStringProperty(body, "Content");
     if (string.IsNullOrWhiteSpace(base64))
-      throw new InvalidOperationException($"Facturama respondió sin contenido base64 para el archivo {documentType}.");
+      throw BuildUnexpectedResponseError(
+          request,
+          $"descargar el archivo {documentType} del CFDI {cfdiId}",
+          $"Facturama respondió sin contenido base64 para el archivo {documentType}.",
+          body);
 
     return new FacturamaDocumentContent(
         documentType == FacturamaIssuedDocumentType.Xml ? "xml" : "pdf",
@@ -163,19 +145,10 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
     var route = $"cfdi?type=issued&uuid={Uri.EscapeDataString(uuid)}";
 
     using var request = new HttpRequestMessage(HttpMethod.Get, BuildUri(route));
-    request.Headers.Authorization = _authHeader;
-    request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-    using var response = await _httpClient.SendAsync(request, ct);
-    var body = await response.Content.ReadAsStringAsync(ct);
+    var body = await SendFacturamaAsync(request, $"consultar el UUID {uuid}", ct);
 
-    if (!response.IsSuccessStatusCode)
-      throw BuildHttpError(
-          response.StatusCode,
-          body,
-          $"Facturama ({_baseUri.Host}) devolvió {(int)response.StatusCode} al consultar el UUID {uuid}.");
-
-    using var document = JsonDocument.Parse(body);
+    using var document = ParseFacturamaJsonDocument(body, request, $"consultar el UUID {uuid}");
     if (document.RootElement.ValueKind == JsonValueKind.Array &&
         document.RootElement.GetArrayLength() > 0 &&
         document.RootElement[0].TryGetProperty("Id", out var idElement))
@@ -200,32 +173,152 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
     var route = $"cfdi/{cfdiId}?type=issued&motive={Uri.EscapeDataString(motive)}";
 
     using var request = new HttpRequestMessage(HttpMethod.Delete, BuildUri(route));
-    request.Headers.Authorization = _authHeader;
-    request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-    using var response = await _httpClient.SendAsync(request, ct);
-    var body = await response.Content.ReadAsStringAsync(ct);
+    var body = await SendFacturamaAsync(request, $"cancelar el CFDI {cfdiId}", ct);
 
-    if (!response.IsSuccessStatusCode)
-      throw BuildHttpError(
-          response.StatusCode,
-          body,
-          $"Facturama ({_baseUri.Host}) devolvió {(int)response.StatusCode} al cancelar el CFDI {cfdiId}.");
+    var cancellation = TryDeserializeCancellationResult(body);
+    if (IsRejectedCancellationStatus(cancellation?.Status))
+    {
+      var detail = BuildCancellationStatusDetail(cancellation, body);
+      throw BuildUnexpectedResponseError(
+          request,
+          $"cancelar el CFDI {cfdiId}",
+          $"Facturama no aceptó la cancelación del CFDI {cfdiId}. {detail}",
+          body);
+    }
   }
 
   private Uri BuildUri(string relativePath)
     => new(_baseUri, relativePath);
 
+  private async Task<string> SendFacturamaAsync(
+      HttpRequestMessage request,
+      string operationDescription,
+      CancellationToken ct)
+  {
+    request.Headers.Authorization = _authHeader;
+    request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+    try
+    {
+      using var response = await _httpClient.SendAsync(request, ct);
+      var body = await response.Content.ReadAsStringAsync(ct);
+
+      if (!response.IsSuccessStatusCode)
+      {
+        throw BuildHttpError(request, response, body, operationDescription);
+      }
+
+      return body;
+    }
+    catch (HttpRequestException ex)
+    {
+      throw new InvalidOperationException(BuildTransportErrorMessage(request, operationDescription, ex), ex);
+    }
+    catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
+    {
+      throw new InvalidOperationException(BuildTimeoutErrorMessage(request, operationDescription), ex);
+    }
+  }
+
   private static string? TryGetObjectStringProperty(string json, string propertyName)
   {
-    using var document = JsonDocument.Parse(json);
-    if (document.RootElement.ValueKind == JsonValueKind.Object &&
-        document.RootElement.TryGetProperty(propertyName, out var property))
+    try
     {
-      return property.GetString();
+      using var document = JsonDocument.Parse(json);
+      if (document.RootElement.ValueKind == JsonValueKind.Object &&
+          document.RootElement.TryGetProperty(propertyName, out var property))
+      {
+        return property.GetString();
+      }
+    }
+    catch (JsonException)
+    {
+      return null;
     }
 
     return null;
+  }
+
+  private T? DeserializeFacturamaResponse<T>(
+      string body,
+      HttpRequestMessage request,
+      string operationDescription)
+  {
+    try
+    {
+      return JsonSerializer.Deserialize<T>(body, JsonOptions);
+    }
+    catch (JsonException ex)
+    {
+      throw BuildUnexpectedResponseError(
+          request,
+          operationDescription,
+          $"Facturama devolvió JSON inválido o inesperado para {operationDescription}. {ex.Message}",
+          body);
+    }
+  }
+
+  private JsonDocument ParseFacturamaJsonDocument(
+      string body,
+      HttpRequestMessage request,
+      string operationDescription)
+  {
+    try
+    {
+      return JsonDocument.Parse(body);
+    }
+    catch (JsonException ex)
+    {
+      throw BuildUnexpectedResponseError(
+          request,
+          operationDescription,
+          $"Facturama devolvió JSON inválido o inesperado para {operationDescription}. {ex.Message}",
+          body);
+    }
+  }
+
+  private static FacturamaCancellationResult? TryDeserializeCancellationResult(string body)
+  {
+    if (string.IsNullOrWhiteSpace(body))
+    {
+      return null;
+    }
+
+    try
+    {
+      return JsonSerializer.Deserialize<FacturamaCancellationResult>(body, JsonOptions);
+    }
+    catch (JsonException)
+    {
+      return null;
+    }
+  }
+
+  private static bool IsRejectedCancellationStatus(string? status)
+    => string.Equals(status?.Trim(), "active", StringComparison.OrdinalIgnoreCase)
+       || string.Equals(status?.Trim(), "rejected", StringComparison.OrdinalIgnoreCase);
+
+  private static string BuildCancellationStatusDetail(FacturamaCancellationResult? cancellation, string body)
+  {
+    var parts = new List<string>();
+
+    if (!string.IsNullOrWhiteSpace(cancellation?.Status))
+    {
+      parts.Add($"Estatus: {cancellation.Status.Trim()}");
+    }
+
+    if (!string.IsNullOrWhiteSpace(cancellation?.Message))
+    {
+      parts.Add(cancellation.Message.Trim());
+    }
+
+    if (parts.Count == 0)
+    {
+      parts.Add(FormatFacturamaErrorBody(body));
+    }
+
+    return string.Join(". ", parts);
   }
 
   private static FacturamaSettings ResolveSettings(IConfiguration configuration)
@@ -290,30 +383,82 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
   }
 
   private InvalidOperationException BuildHttpError(
-      System.Net.HttpStatusCode statusCode,
+      HttpRequestMessage request,
+      HttpResponseMessage response,
       string body,
-      string? prefix = null)
+      string operationDescription)
   {
+    var statusCode = response.StatusCode;
+    var detail = FormatFacturamaErrorBody(body);
+    var responseBody = FormatRawResponseBody(body);
+    var reason = string.IsNullOrWhiteSpace(response.ReasonPhrase)
+        ? statusCode.ToString()
+        : response.ReasonPhrase;
+    var endpoint = DescribeRequest(request);
+    var message =
+        $"Facturama ({_baseUri.Host}) devolvió {(int)statusCode} {reason} al {operationDescription}. " +
+        $"Endpoint: {endpoint}. " +
+        $"Detalle interpretado: {detail}. " +
+        $"Respuesta cruda: {responseBody}.";
+
     if (statusCode == System.Net.HttpStatusCode.Unauthorized)
     {
-      var baseMessage =
-          $"Facturama ({_baseUri.Host}) devolvió 401. " +
-          "Verifica las credenciales configuradas en Facturama:User y Facturama:Password.";
-
-      if (string.IsNullOrWhiteSpace(prefix))
-      {
-        return new InvalidOperationException(baseMessage);
-      }
-
-      return new InvalidOperationException($"{prefix} {baseMessage}");
+      message += " Verifica las credenciales configuradas en Facturama:User y Facturama:Password.";
     }
 
-    var detail = FormatFacturamaErrorBody(body);
-    var message = string.IsNullOrWhiteSpace(prefix)
-        ? $"Facturama ({_baseUri.Host}) devolvió {(int)statusCode}: {detail}"
-        : $"{prefix} Estatus {(int)statusCode}: {detail}";
+    return new InvalidOperationException(message);
+  }
+
+  private InvalidOperationException BuildUnexpectedResponseError(
+      HttpRequestMessage request,
+      string operationDescription,
+      string reason,
+      string body)
+  {
+    var message =
+        $"Facturama ({_baseUri.Host}) devolvió una respuesta inesperada al {operationDescription}. " +
+        $"Endpoint: {DescribeRequest(request)}. " +
+        $"Problema: {reason}. " +
+        $"Detalle interpretado: {FormatFacturamaErrorBody(body)}. " +
+        $"Respuesta cruda: {FormatRawResponseBody(body)}.";
 
     return new InvalidOperationException(message);
+  }
+
+  private string BuildTransportErrorMessage(
+      HttpRequestMessage request,
+      string operationDescription,
+      HttpRequestException exception)
+  {
+    return
+        $"No se pudo comunicar con Facturama ({_baseUri.Host}) al {operationDescription}. " +
+        $"Endpoint: {DescribeRequest(request)}. " +
+        $"Error de red: {exception.Message}. " +
+        "Revisa conectividad, DNS, TLS/proxy/firewall y disponibilidad de Facturama.";
+  }
+
+  private string BuildTimeoutErrorMessage(
+      HttpRequestMessage request,
+      string operationDescription)
+  {
+    return
+        $"Facturama ({_baseUri.Host}) no respondió a tiempo al {operationDescription}. " +
+        $"Endpoint: {DescribeRequest(request)}. " +
+        "Revisa la disponibilidad de Facturama, la conectividad de red y vuelve a intentar.";
+  }
+
+  private static string DescribeRequest(HttpRequestMessage request)
+  {
+    if (request.RequestUri is null)
+    {
+      return $"{request.Method.Method} <sin URI>";
+    }
+
+    var target = request.RequestUri.IsAbsoluteUri
+        ? request.RequestUri.PathAndQuery
+        : request.RequestUri.ToString();
+
+    return $"{request.Method.Method} {target}";
   }
 
   private static string FormatFacturamaErrorBody(string body)
@@ -339,6 +484,12 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
       AddStringProperty(parts, root, "error");
       AddStringProperty(parts, root, "Description");
       AddStringProperty(parts, root, "description");
+      AddStringProperty(parts, root, "Detail");
+      AddStringProperty(parts, root, "detail");
+      AddStringProperty(parts, root, "Code");
+      AddStringProperty(parts, root, "code");
+      AddStringProperty(parts, root, "Status");
+      AddStringProperty(parts, root, "status");
 
       if (root.TryGetProperty("ModelState", out var modelState) &&
           modelState.ValueKind == JsonValueKind.Object)
@@ -353,12 +504,37 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
         }
       }
 
+      AddNestedErrors(parts, root, "Errors");
+      AddNestedErrors(parts, root, "errors");
+
       return parts.Count == 0 ? body : string.Join(" | ", parts);
     }
     catch (JsonException)
     {
       return body;
     }
+  }
+
+  private static string FormatRawResponseBody(string body)
+  {
+    var raw = NormalizeWhitespace(body);
+    if (string.IsNullOrWhiteSpace(raw))
+    {
+      return "<sin cuerpo>";
+    }
+
+    const int maxLength = 4000;
+    return raw.Length <= maxLength ? raw : raw[..maxLength] + "... <truncado>";
+  }
+
+  private static string NormalizeWhitespace(string value)
+  {
+    if (string.IsNullOrWhiteSpace(value))
+    {
+      return string.Empty;
+    }
+
+    return string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
   }
 
   private static void AddStringProperty(List<string> parts, JsonElement root, string propertyName)
@@ -400,6 +576,31 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
     }
   }
 
+  private static void AddNestedErrors(List<string> parts, JsonElement root, string propertyName)
+  {
+    if (!root.TryGetProperty(propertyName, out var errors))
+    {
+      return;
+    }
+
+    if (errors.ValueKind == JsonValueKind.Object)
+    {
+      foreach (var property in errors.EnumerateObject())
+      {
+        foreach (var error in EnumerateErrorMessages(property.Value))
+        {
+          parts.Add($"{NormalizeFacturamaFieldName(property.Name)}: {error}");
+        }
+      }
+      return;
+    }
+
+    foreach (var error in EnumerateErrorMessages(errors))
+    {
+      parts.Add(error);
+    }
+  }
+
   private static string NormalizeFacturamaFieldName(string fieldName)
   {
     const string prefix = "cfdiToCreate.";
@@ -409,4 +610,13 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
   }
 
   private sealed record FacturamaSettings(string BaseUrl, string User, string Password);
+
+  private sealed class FacturamaCancellationResult
+  {
+    [JsonPropertyName("Status")]
+    public string? Status { get; set; }
+
+    [JsonPropertyName("Message")]
+    public string? Message { get; set; }
+  }
 }

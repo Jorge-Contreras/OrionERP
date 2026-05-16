@@ -38,7 +38,17 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         statusMessage = "Selecciona una factura emitida a cancelar.";
         return;
       }
-      var confirmed = await ConfirmCfdiCancellationAsync(selectedEmitida.FOLIO_FISCAL);
+
+      var uuid = selectedEmitida.FOLIO_FISCAL;
+      var comprobanteId = selectedEmitida.Comprobante_Id;
+      if (string.IsNullOrWhiteSpace(uuid))
+      {
+        statusMessage = "La factura emitida seleccionada no tiene UUID para cancelar.";
+        UiMessages.ShowWarning(statusMessage);
+        return;
+      }
+
+      var confirmed = await ConfirmCfdiCancellationAsync(uuid);
       if (!confirmed)
       {
         statusMessage = "No se canceló el CFDI. Debes escribir exactamente 'Delete' para confirmar.";
@@ -47,9 +57,9 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       try
       {
-        await DeclaracionService.CancelEmitidaAsync(selectedEmitida.FOLIO_FISCAL ?? string.Empty, selectedEmitida.Comprobante_Id);
+        await DeclaracionService.CancelEmitidaAsync(uuid, comprobanteId);
         await LoadAllData();
-        statusMessage = $"Cancelación solicitada para CFDI UUID {selectedEmitida.FOLIO_FISCAL}.";
+        statusMessage = $"Cancelación solicitada para CFDI UUID {uuid}.";
       }
       catch (Exception ex)
       {

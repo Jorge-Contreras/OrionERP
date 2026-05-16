@@ -303,6 +303,12 @@ public partial class OrdenTrabajoPlantillasPage : ComponentBase
     await LoadAsync();
   }
 
+  protected async Task SeedLegacyChecklistsAsync()
+  {
+    await MutateAsync(() => OrdenTrabajoService.SeedChecklistTemplatesFromLegacyAsync(CurrentRfc, CurrentUserName));
+    await LoadAsync();
+  }
+
   protected string GetTemplateListClass(OrdenTrabajoTemplateSummaryDto template)
     => SelectedTemplate?.Id == template.Id
       ? "list-group-item list-group-item-action active"

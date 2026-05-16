@@ -2171,6 +2171,271 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
     }
   }
 
+  public async Task<OrdenTrabajoCommandResult> SeedChecklistTemplatesFromLegacyAsync(string rfc, string actor, int asignacion = 36, CancellationToken ct = default)
+  {
+    if (asignacion <= 0)
+    {
+      return OrdenTrabajoCommandResult.Fail("La asignacion legacy debe ser mayor a cero.");
+    }
+
+    var safeRfc = RequireText(rfc, "El RFC es obligatorio.");
+    var safeActor = NormalizeActor(actor);
+
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+
+    try
+    {
+      var categoryId = await ResolveCategoryIdAsync(conn, tx, OrdenTrabajoCodes.CategoriaChecklist, ct);
+      if (categoryId is null)
+      {
+        await tx.RollbackAsync(ct);
+        return OrdenTrabajoCommandResult.Fail("No existe la categoria Checklist.");
+      }
+
+      var legacyTemplates = (await conn.QueryAsync<LegacyTemplateHeader>(
+        new CommandDefinition(
+          """
+          ;WITH checklist_sources AS (
+            SELECT
+                a.ID AS ActividadId,
+                COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), a.Descripcion))), ''), CONCAT(N'Checklist ', a.ID)) AS BaseTemplateName,
+                COUNT(rc.ID) AS StepCount
+            FROM dbo.Actividad a
+            LEFT JOIN dbo.Actividad_Ruta_Critica rc ON rc.Actividad_ID = a.ID
+            WHERE UPPER(LTRIM(RTRIM(ISNULL(CONVERT(nvarchar(50), a.Tipo_Proyecto), N'')))) = N'CHECKLIST'
+              AND a.Asignacion = @Asignacion
+            GROUP BY
+                a.ID,
+                COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), a.Descripcion))), ''), CONCAT(N'Checklist ', a.ID))
+          ),
+          ranked AS (
+            SELECT
+                ActividadId,
+                BaseTemplateName,
+                StepCount,
+                COUNT(*) OVER (PARTITION BY BaseTemplateName) AS DuplicateNameCount
+            FROM checklist_sources
+          )
+          SELECT
+              ActividadId,
+              CASE
+                WHEN DuplicateNameCount > 1
+                  THEN CONVERT(nvarchar(200), CONCAT(LEFT(BaseTemplateName, 175), N' (Actividad ', ActividadId, N')'))
+                ELSE BaseTemplateName
+              END AS TemplateName,
+              CAST(N'' AS nvarchar(100)) AS RoomName,
+              StepCount
+          FROM ranked
+          ORDER BY TemplateName, ActividadId;
+          """,
+          new { Asignacion = asignacion },
+          tx,
+          cancellationToken: ct))).AsList();
+
+      if (legacyTemplates.Count == 0)
+      {
+        await tx.CommitAsync(ct);
+        return OrdenTrabajoCommandResult.Ok("No se encontraron checklists legacy para importar.");
+      }
+
+      var created = 0;
+      var published = 0;
+      var fallbackSteps = 0;
+      foreach (var legacy in legacyTemplates)
+      {
+        var templateName = Truncate(RequireText(legacy.TemplateName, "Actividad sin descripcion."), 200);
+        var templateMatch = await FindTemplateByNameAsync(conn, tx, safeRfc, templateName, ct);
+        if (templateMatch is not null
+          && !string.Equals(templateMatch.CategoriaCodigo, OrdenTrabajoCodes.CategoriaChecklist, StringComparison.OrdinalIgnoreCase))
+        {
+          templateName = Truncate($"{Truncate(templateName, 170)} (Actividad {legacy.ActividadId})", 200);
+          templateMatch = await FindTemplateByNameAsync(conn, tx, safeRfc, templateName, ct);
+        }
+
+        if (templateMatch is not null
+          && !string.Equals(templateMatch.CategoriaCodigo, OrdenTrabajoCodes.CategoriaChecklist, StringComparison.OrdinalIgnoreCase))
+        {
+          await tx.RollbackAsync(ct);
+          return OrdenTrabajoCommandResult.Fail($"Ya existe una plantilla llamada {templateName} en otra categoria.");
+        }
+
+        var templateId = templateMatch?.Id;
+        if (!templateId.HasValue)
+        {
+          templateId = await conn.ExecuteScalarAsync<int>(
+            new CommandDefinition(
+              """
+              INSERT INTO dbo.OrdenTrabajoPlantilla (CategoriaId, Rfc, Nombre, Activa, CreadaPor)
+              VALUES (@CategoryId, @Rfc, @Name, 1, @Actor);
+              SELECT CAST(SCOPE_IDENTITY() AS int);
+              """,
+              new { CategoryId = categoryId.Value, Rfc = safeRfc, Name = templateName, Actor = safeActor },
+              tx,
+              cancellationToken: ct));
+          created++;
+        }
+        else
+        {
+          await conn.ExecuteAsync(
+            new CommandDefinition(
+              """
+              UPDATE dbo.OrdenTrabajoPlantilla
+              SET Activa = 1,
+                  ActualizadaEn = SYSUTCDATETIME(),
+                  ActualizadaPor = @Actor
+              WHERE Id = @TemplateId
+                AND Activa = 0;
+              """,
+              new { TemplateId = templateId.Value, Actor = safeActor },
+              tx,
+              cancellationToken: ct));
+        }
+
+        var hasPublishedWithSteps = await conn.ExecuteScalarAsync<bool>(
+          new CommandDefinition(
+            """
+            SELECT CAST(CASE WHEN EXISTS (
+              SELECT 1
+              FROM dbo.OrdenTrabajoPlantillaVersion ver
+              WHERE ver.PlantillaId = @TemplateId
+                AND ver.Estado = 'PUBLICADA'
+                AND EXISTS (
+                  SELECT 1
+                  FROM dbo.OrdenTrabajoPlantillaPaso step
+                  WHERE step.PlantillaVersionId = ver.Id
+                )
+            ) THEN 1 ELSE 0 END AS bit);
+            """,
+            new { TemplateId = templateId.Value },
+            tx,
+            cancellationToken: ct));
+
+        if (hasPublishedWithSteps)
+        {
+          continue;
+        }
+
+        await conn.ExecuteAsync(
+          new CommandDefinition(
+            """
+            UPDATE dbo.OrdenTrabajoPlantillaVersion
+            SET Estado = 'ARCHIVADA'
+            WHERE PlantillaId = @TemplateId
+              AND Estado = 'PUBLICADA';
+            """,
+            new { TemplateId = templateId.Value },
+            tx,
+            cancellationToken: ct));
+
+        var versionId = await conn.ExecuteScalarAsync<int>(
+          new CommandDefinition(
+            """
+            INSERT INTO dbo.OrdenTrabajoPlantillaVersion (PlantillaId, NumeroVersion, Estado, CreadaPor, PublicadaEn, PublicadaPor)
+            SELECT @TemplateId, ISNULL(MAX(NumeroVersion), 0) + 1, 'PUBLICADA', @Actor, SYSUTCDATETIME(), @Actor
+            FROM dbo.OrdenTrabajoPlantillaVersion
+            WHERE PlantillaId = @TemplateId;
+            SELECT CAST(SCOPE_IDENTITY() AS int);
+            """,
+            new { TemplateId = templateId.Value, Actor = safeActor },
+            tx,
+            cancellationToken: ct));
+        published++;
+
+        var legacySteps = (await conn.QueryAsync<LegacyTemplateStep>(
+          new CommandDefinition(
+            """
+            ;WITH route_steps AS (
+              SELECT
+                  ROW_NUMBER() OVER (ORDER BY rc.Paso_Numero, rc.ID) AS RowNumber,
+                  CAST(ISNULL(rc.Paso_Numero, 0) AS decimal(9,2)) AS Secuencia,
+                  COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(1000), rc.Descripcion))), ''), @TemplateName) AS Descripcion,
+                  rc.Procedimiento_ID AS ProcedimientoId
+              FROM dbo.Actividad_Ruta_Critica rc
+              WHERE rc.Actividad_ID = @ActividadId
+            ),
+            fallback_step AS (
+              SELECT
+                  1 AS RowNumber,
+                  CAST(1 AS decimal(9,2)) AS Secuencia,
+                  @TemplateName AS Descripcion,
+                  CAST(NULL AS int) AS ProcedimientoId
+              WHERE NOT EXISTS (
+                SELECT 1
+                FROM dbo.Actividad_Ruta_Critica rc
+                WHERE rc.Actividad_ID = @ActividadId
+              )
+            )
+            SELECT RowNumber, Secuencia, Descripcion, ProcedimientoId
+            FROM route_steps
+            UNION ALL
+            SELECT RowNumber, Secuencia, Descripcion, ProcedimientoId
+            FROM fallback_step
+            ORDER BY RowNumber;
+            """,
+            new { legacy.ActividadId, TemplateName = templateName },
+            tx,
+            cancellationToken: ct))).AsList();
+
+        if (legacy.StepCount == 0)
+        {
+          fallbackSteps++;
+        }
+
+        foreach (var step in legacySteps)
+        {
+          var title = BuildStepTitle(step.RowNumber, step.Descripcion);
+          await conn.ExecuteAsync(
+            new CommandDefinition(
+              """
+              INSERT INTO dbo.OrdenTrabajoPlantillaPaso
+              (
+                  PlantillaVersionId,
+                  Secuencia,
+                  Titulo,
+                  Descripcion,
+                  PoliticaFoto,
+                  RequiereNotasEnIncidencia,
+                  RequiereNotasEnNoAplica,
+                  ProcedimientoId
+              )
+              VALUES
+              (
+                  @VersionId,
+                  @Secuencia,
+                  @Titulo,
+                  @Descripcion,
+                  @PoliticaFoto,
+                  1,
+                  1,
+                  @ProcedimientoId
+              );
+              """,
+              new
+              {
+                VersionId = versionId,
+                Secuencia = step.Secuencia == 0 ? step.RowNumber : step.Secuencia,
+                Titulo = title,
+                Descripcion = Truncate(RequireText(step.Descripcion, "Paso sin descripcion."), 1000),
+                PoliticaFoto = InferLegacyPhotoPolicy(step.Descripcion),
+                step.ProcedimientoId
+              },
+              tx,
+              cancellationToken: ct));
+        }
+      }
+
+      await tx.CommitAsync(ct);
+      return OrdenTrabajoCommandResult.Ok($"Importacion checklist terminada. Actividades: {legacyTemplates.Count}. Plantillas nuevas: {created}. Versiones publicadas: {published}. Pasos fallback: {fallbackSteps}.");
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
   public async Task<IReadOnlyList<OrdenTrabajoCalendarBadgeDto>> GetCalendarBadgesAsync(DateTime startDate, DateTime endDateExclusive, CancellationToken ct = default)
   {
     const string sql =
@@ -2237,6 +2502,22 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
         ) THEN 1 ELSE 0 END AS bit);
         """,
         new { EmployeeId = employeeId },
+        tx,
+        cancellationToken: ct));
+
+  private async Task<LegacyTemplateMatch?> FindTemplateByNameAsync(DbConnection conn, IDbTransaction tx, string rfc, string name, CancellationToken ct)
+    => await conn.QueryFirstOrDefaultAsync<LegacyTemplateMatch>(
+      new CommandDefinition(
+        """
+        SELECT
+            tpl.Id,
+            cat.Codigo AS CategoriaCodigo
+        FROM dbo.OrdenTrabajoPlantilla tpl
+        JOIN dbo.OrdenTrabajoCategoria cat ON cat.Id = tpl.CategoriaId
+        WHERE tpl.Rfc = @Rfc
+          AND tpl.Nombre = @Name;
+        """,
+        new { Rfc = rfc, Name = name },
         tx,
         cancellationToken: ct));
 
@@ -2901,6 +3182,12 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
     public int TemplateId { get; set; }
     public int VersionId { get; set; }
     public string TemplateName { get; set; } = string.Empty;
+  }
+
+  private sealed class LegacyTemplateMatch
+  {
+    public int Id { get; set; }
+    public string CategoriaCodigo { get; set; } = string.Empty;
   }
 
   private sealed class WorkOrderInsertArgs

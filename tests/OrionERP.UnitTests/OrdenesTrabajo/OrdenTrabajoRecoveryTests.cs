@@ -323,6 +323,89 @@ public class OrdenTrabajoRecoveryTests
     Assert.Contains("StepCount DESC", source, StringComparison.Ordinal);
   }
 
+  [Fact]
+  public async Task ChecklistLegacySeed_ImportsChecklistActivitiesForAsignacion36()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.Actividad a", StringComparison.Ordinal)
+          && commandText.Contains("a.Asignacion = @Asignacion", StringComparison.Ordinal))
+        {
+          return Table(
+            ["ActividadId", "TemplateName", "RoomName", "StepCount"],
+            [501, "Checklist alberca", string.Empty, 2]);
+        }
+
+        if (commandText.Contains("route_steps", StringComparison.Ordinal))
+        {
+          return Table(
+            ["RowNumber", "Secuencia", "Descripcion", "ProcedimientoId"],
+            [1, 1m, "Revisar bombas", null],
+            [2, 2m, "Tomar FOTO de tablero", 44]);
+        }
+
+        return new DataTable();
+      },
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("SELECT Id FROM dbo.OrdenTrabajoCategoria", StringComparison.Ordinal))
+        {
+          return 3;
+        }
+
+        if (commandText.Contains("INSERT INTO dbo.OrdenTrabajoPlantilla (CategoriaId", StringComparison.Ordinal))
+        {
+          return 100;
+        }
+
+        if (commandText.Contains("INSERT INTO dbo.OrdenTrabajoPlantillaVersion", StringComparison.Ordinal))
+        {
+          return 200;
+        }
+
+        if (commandText.Contains("SELECT CAST(CASE WHEN EXISTS", StringComparison.Ordinal))
+        {
+          return false;
+        }
+
+        return null;
+      }
+    };
+    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.SeedChecklistTemplatesFromLegacyAsync("RFC", "admin");
+
+    Assert.True(result.Success);
+    Assert.Contains("Actividades: 1", result.Message, StringComparison.Ordinal);
+
+    var sourceQuery = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("FROM dbo.Actividad a", StringComparison.Ordinal)
+        && command.CommandText.Contains("a.Asignacion = @Asignacion", StringComparison.Ordinal));
+    Assert.Contains("Tipo_Proyecto", sourceQuery.CommandText, StringComparison.Ordinal);
+    Assert.Contains("N'CHECKLIST'", sourceQuery.CommandText, StringComparison.Ordinal);
+    Assert.Contains(sourceQuery.Parameters, parameter => string.Equals(parameter.Name, "Asignacion", StringComparison.OrdinalIgnoreCase)
+      && Convert.ToInt32(parameter.Value) == 36);
+
+    var templateInsert = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("INSERT INTO dbo.OrdenTrabajoPlantilla (CategoriaId", StringComparison.Ordinal));
+    Assert.Contains(templateInsert.Parameters, parameter => string.Equals(parameter.Name, "CategoryId", StringComparison.OrdinalIgnoreCase)
+      && Convert.ToInt32(parameter.Value) == 3);
+    Assert.Contains(templateInsert.Parameters, parameter => string.Equals(parameter.Name, "Name", StringComparison.OrdinalIgnoreCase)
+      && string.Equals(parameter.Value?.ToString(), "Checklist alberca", StringComparison.Ordinal));
+
+    var stepInserts = connection.ExecutedCommands
+      .Where(command => command.CommandText.Contains("INSERT INTO dbo.OrdenTrabajoPlantillaPaso", StringComparison.Ordinal))
+      .ToList();
+    Assert.Equal(2, stepInserts.Count);
+    Assert.Contains(stepInserts[1].Parameters, parameter => string.Equals(parameter.Name, "PoliticaFoto", StringComparison.OrdinalIgnoreCase)
+      && string.Equals(parameter.Value?.ToString(), OrdenTrabajoCodes.FotoRequerida, StringComparison.Ordinal));
+    Assert.True(connection.LastTransaction?.WasCommitted);
+  }
+
   private static string GetRepoFile(string relativePath)
   {
     var directory = new DirectoryInfo(AppContext.BaseDirectory);

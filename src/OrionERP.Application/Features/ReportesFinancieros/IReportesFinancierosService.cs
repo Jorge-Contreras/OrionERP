@@ -19,6 +19,13 @@ namespace OrionERP.Application.Features.ReportesFinancieros
             DateTime endDate,
             string? rfc);
 
+        Task<SaludEmpresaReport> GetSaludEmpresaAsync(
+            int anioInicio,
+            int mesInicio,
+            int anioFin,
+            int mesFin,
+            string? rfc);
+
     }
 
     public class HojaTrabajoLongRowDto

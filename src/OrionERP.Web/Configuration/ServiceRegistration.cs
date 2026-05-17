@@ -49,6 +49,7 @@ using OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 using OrionERP.Web.Features.Arrendadores;
 using OrionERP.Web.Features.Cfdi.HtmlCFDI;
 using OrionERP.Web.Features.Logistica.Purchasing;
+using OrionERP.Web.Features.ReportesFinancieros.SaludEmpresa;
 using OrionERP.Web.Features.Reservaciones.OpenClaw;
 using OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Web.Identity;
@@ -90,6 +91,7 @@ public static class ServiceRegistration
     services.AddHttpClient<IBonhomiaRoomCalendarSyncService, BonhomiaRoomCalendarSyncService>();
     services.AddScoped<IReservacionPdfService, ReservacionPdfService>();
     services.AddScoped<IArrendadorEstadoCuentaPdfService, ArrendadorEstadoCuentaPdfService>();
+    services.AddScoped<ISaludEmpresaPdfService, SaludEmpresaPdfService>();
     services.AddScoped<ReservacionesIOpenClawReservationsService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
     services.AddSingleton<IOpenClawReservationPdfTokenService, OpenClawReservationPdfTokenService>();
@@ -146,6 +148,7 @@ public static class ServiceRegistration
     services.AddHttpClient<IBonhomiaRoomCalendarSyncService, BonhomiaRoomCalendarSyncService>();
     services.AddScoped<IReservacionPdfService, ReservacionPdfService>();
     services.AddScoped<IArrendadorEstadoCuentaPdfService, ArrendadorEstadoCuentaPdfService>();
+    services.AddScoped<ISaludEmpresaPdfService, SaludEmpresaPdfService>();
     services.AddScoped<ReservacionesIOpenClawReservationsService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
     services.AddSingleton<IOpenClawReservationPdfTokenService, OpenClawReservationPdfTokenService>();

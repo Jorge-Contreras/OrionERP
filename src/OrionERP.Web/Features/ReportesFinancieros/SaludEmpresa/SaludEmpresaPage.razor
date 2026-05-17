@@ -1,0 +1,327 @@
+@page "/ReportesFinancieros/SaludEmpresa"
+@page "/reportes-financieros/salud-empresa"
+@using Microsoft.AspNetCore.Authorization
+@using OrionERP.Application.Features.ReportesFinancieros.Models
+@attribute [Authorize(Roles = "Administrador")]
+
+<PageTitle>Salud Financiera</PageTitle>
+
+<div class="report-page salud-page">
+    <div class="report-page__header salud-page__header">
+        <div>
+            <p class="salud-page__eyebrow">Reporte financiero</p>
+            <h1 class="report-page__title">Salud Financiera</h1>
+        </div>
+
+        @if (SelectedPeriod is not null)
+        {
+            <div class="salud-market-status">
+                <span>@SelectedPeriod.PeriodLabel</span>
+                <strong class="@SignedClass(SelectedPeriod.NetResult)">@MoneyCompact(SelectedPeriod.NetResult)</strong>
+            </div>
+        }
+    </div>
+
+    <section class="health-filter-panel no-print">
+        <div class="health-filter-panel__copy">
+            <h2>Filtros</h2>
+            <p>@(SelectedPeriod is null ? PeriodRangeDescription : $"{SelectedPeriod.PeriodScope}: {PeriodRangeDescription}")</p>
+        </div>
+
+        <div class="health-filter-panel__controls">
+            <div class="health-field">
+                <label for="salud-mes-inicial">MES INICIAL</label>
+                <input id="salud-mes-inicial" class="form-control" type="month" value="@StartMonthValue" @onchange="OnStartMonthChanged" />
+            </div>
+
+            <div class="health-field">
+                <label for="salud-mes-final">MES FINAL</label>
+                <input id="salud-mes-final" class="form-control" type="month" value="@EndMonthValue" @onchange="OnEndMonthChanged" />
+            </div>
+
+            <div class="health-field health-field--rfc">
+                <label for="salud-rfc">RFC</label>
+                <input id="salud-rfc" class="form-control" value="@CurrentRfc" readonly />
+            </div>
+
+            <div class="health-actions">
+                <button type="button" class="btn btn-primary" @onclick="RefreshAsync" disabled="@IsLoading" title="Refrescar">
+                    <span class="oi oi-reload" aria-hidden="true"></span>
+                    <span>Refrescar</span>
+                </button>
+
+                <button type="button" class="btn btn-outline-secondary" @onclick="GeneratePdfAsync" disabled="@(!HasReport || IsGeneratingPdf)" title="PDF">
+                    <span class="oi oi-document" aria-hidden="true"></span>
+                    <span>@(IsGeneratingPdf ? "PDF..." : "PDF")</span>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    @if (IsLoading)
+    {
+        <div class="health-state">Cargando...</div>
+    }
+    else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="alert alert-danger">@ErrorMessage</div>
+    }
+    else if (!HasReport)
+    {
+        <div class="health-state">No hay datos para los filtros seleccionados.</div>
+    }
+    else
+    {
+        <div id="salud-empresa-dashboard" class="health-dashboard">
+            <section class="health-kpi-grid" aria-label="Indicadores principales">
+                @foreach (var metric in HeadlineMetrics)
+                {
+                    <article class="health-kpi">
+                        <div class="health-kpi__topline">
+                            <span class="health-kpi__icon"><span class="oi @metric.Icon" aria-hidden="true"></span></span>
+                            <span>@metric.Label</span>
+                        </div>
+                        <strong>@metric.Value</strong>
+                        <p>@metric.Caption</p>
+                        <div class="health-kpi__changes">
+                            <span class="@metric.MonthChange.CssClass">MoM @metric.MonthChange.Text</span>
+                            <span class="@metric.YearChange.CssClass">YoY @metric.YearChange.Text</span>
+                        </div>
+                    </article>
+                }
+            </section>
+
+            <section class="health-layout">
+                <article class="health-panel health-panel--wide">
+                    <header class="health-panel__header">
+                        <div>
+                            <h2>Mercado del periodo</h2>
+                            <p>Periodo, comparativos y acumulados</p>
+                        </div>
+                    </header>
+
+                    <div class="health-period-list">
+                        @foreach (var row in PeriodRows)
+                        {
+                            <div class="health-period-row">
+                                <div class="health-period-row__label">
+                                    <strong>@row.PeriodLabel</strong>
+                                    <span>@row.PeriodScope</span>
+                                </div>
+
+                                <div class="health-period-row__metric">
+                                    <span>Ingresos</span>
+                                    <div class="health-bar-track">
+                                        <i class="health-bar health-bar--income" style="@WidthStyle(row.RoomRevenue, MaxPeriodRevenue)"></i>
+                                    </div>
+                                    <strong>@MoneyCompact(row.RoomRevenue)</strong>
+                                </div>
+
+                                <div class="health-period-row__metric">
+                                    <span>Resultado</span>
+                                    <div class="health-bar-track">
+                                        <i class="health-bar @(row.NetResult >= 0 ? "health-bar--income" : "health-bar--loss")" style="@WidthStyle(row.NetResult, MaxPeriodNetResult)"></i>
+                                    </div>
+                                    <strong class="@SignedClass(row.NetResult)">@MoneyCompact(row.NetResult)</strong>
+                                </div>
+
+                                <div class="health-period-row__compact">
+                                    <span>@Percent(row.NetMarginPct)</span>
+                                    <small>Margen</small>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </article>
+
+                <article class="health-panel">
+                    <header class="health-panel__header">
+                        <div>
+                            <h2>Score</h2>
+                            <p>@SelectedPeriod!.RentableSuites suites rentables</p>
+                        </div>
+                    </header>
+
+                    <div class="health-score">
+                        <div>
+                            <span>Noches vendidas</span>
+                            <strong>@Number(SelectedPeriod.OccupiedNights) / @Number(SelectedPeriod.AvailableNights)</strong>
+                        </div>
+                        <div>
+                            <span>ADR</span>
+                            <strong>@Money(SelectedPeriod.ADR)</strong>
+                        </div>
+                        <div>
+                            <span>Reservaciones</span>
+                            <strong>@Number(SelectedPeriod.ReservationCount)</strong>
+                        </div>
+                        <div>
+                            <span>Cobranza pendiente</span>
+                            <strong>@Money(SelectedPeriod.OutstandingCollections)</strong>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="health-panel">
+                    <header class="health-panel__header">
+                        <div>
+                            <h2>Resultado</h2>
+                            <p>Desglose financiero</p>
+                        </div>
+                    </header>
+
+                    <div class="health-breakdown">
+                        @foreach (var item in FinancialBreakdownItems)
+                        {
+                            <div class="health-breakdown__row">
+                                <span>@item.Label</span>
+                                <div class="health-bar-track">
+                                    <i class="health-bar @item.BarClass" style="@WidthStyle(item.Amount, MaxFinancialAmount)"></i>
+                                </div>
+                                <strong class="@SignedClass(item.Amount)">@MoneyCompact(item.Amount)</strong>
+                            </div>
+                        }
+                    </div>
+                </article>
+
+                <article class="health-panel">
+                    <header class="health-panel__header">
+                        <div>
+                            <h2>Flujo</h2>
+                            <p>Entradas, salidas y cierre</p>
+                        </div>
+                    </header>
+
+                    <div class="health-cash-list">
+                        @foreach (var row in CashFlowRows)
+                        {
+                            <div class="health-cash-row">
+                                <div>
+                                    <strong>@row.PeriodLabel</strong>
+                                    <span>@Number(row.CashTransactionCount) movimientos</span>
+                                </div>
+                                <div class="health-cash-row__bars">
+                                    <span style="@WidthStyle(row.CashIn, MaxCashFlowAmount)" class="health-cash-row__in"></span>
+                                    <span style="@WidthStyle(row.CashOut, MaxCashFlowAmount)" class="health-cash-row__out"></span>
+                                </div>
+                                <strong class="@SignedClass(row.NetCashflow)">@MoneyCompact(row.NetCashflow)</strong>
+                            </div>
+                        }
+                    </div>
+                </article>
+
+                <article class="health-panel health-panel--wide">
+                    <header class="health-panel__header">
+                        <div>
+                            <h2>Suites</h2>
+                            <p>Ranking del periodo seleccionado</p>
+                        </div>
+                    </header>
+
+                    @if (TopSuites.Count == 0)
+                    {
+                        <div class="health-state health-state--compact">Sin suites con datos del periodo.</div>
+                    }
+                    else
+                    {
+                        <div class="health-suite-list">
+                            @foreach (var suite in TopSuites)
+                            {
+                                <div class="health-suite-row">
+                                    <div class="health-suite-row__name">
+                                        <strong>@suite.RoomName</strong>
+                                        <span>@Number(suite.OccupiedNights) de @Number(suite.AvailableNights) noches</span>
+                                    </div>
+                                    <div class="health-bar-track">
+                                        <i class="health-bar health-bar--suite" style="@WidthStyle(suite.RoomRevenue, MaxSuiteRevenue)"></i>
+                                    </div>
+                                    <div class="health-suite-row__stats">
+                                        <strong>@MoneyCompact(suite.RoomRevenue)</strong>
+                                        <span>@Percent(suite.OccupancyPct) occ.</span>
+                                        <span>@MoneyCompact(suite.RevPAR) RevPAR</span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </article>
+
+                <article class="health-panel">
+                    <header class="health-panel__header">
+                        <div>
+                            <h2>Conciliacion</h2>
+                            <p>Alertas del periodo seleccionado</p>
+                        </div>
+                    </header>
+
+                    @if (PriorityIssues.Count == 0)
+                    {
+                        <div class="health-state health-state--compact">Sin alertas relevantes.</div>
+                    }
+                    else
+                    {
+                        <div class="health-issue-list">
+                            @foreach (var issue in PriorityIssues)
+                            {
+                                <div class="health-issue">
+                                    <span class="@DataQualityClass(issue.Severity)">@issue.Severity</span>
+                                    <div>
+                                        <strong>@issue.CheckType</strong>
+                                        <p>@issue.Item</p>
+                                        @if (!string.IsNullOrWhiteSpace(issue.SampleReference))
+                                        {
+                                            <small>@issue.SampleReference</small>
+                                        }
+                                    </div>
+                                    <strong>@MoneyCompact(issue.NetEffect ?? issue.MetricAmount)</strong>
+                                </div>
+                            }
+                        </div>
+                    }
+                </article>
+            </section>
+
+            <section class="health-table-panel">
+                <header class="health-panel__header">
+                    <div>
+                        <h2>Detalle financiero</h2>
+                        <p>Lectura contable por periodo</p>
+                    </div>
+                </header>
+
+                <div class="table-responsive report-table-shell">
+                    <table class="table table-sm align-middle report-table health-detail-table">
+                        <thead>
+                            <tr>
+                                <th>Periodo</th>
+                                <th class="text-end">Ingreso neto</th>
+                                <th class="text-end">Utilidad bruta</th>
+                                <th class="text-end">Gastos op.</th>
+                                <th class="text-end">Impuestos</th>
+                                <th class="text-end">Resultado neto</th>
+                                <th class="text-end">Pend. banco</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in Report!.FinancialBreakdown.OrderBy(row => row.SortOrder))
+                            {
+                                <tr>
+                                    <td>
+                                        <strong>@row.PeriodLabel</strong>
+                                        <span>@row.PeriodScope</span>
+                                    </td>
+                                    <td class="text-end">@Money(row.NetAccountingIncome)</td>
+                                    <td class="text-end">@Money(row.GrossProfit)</td>
+                                    <td class="text-end">@Money(row.OperatingExpenses602605)</td>
+                                    <td class="text-end">@Money(row.Taxes611)</td>
+                                    <td class="text-end @SignedClass(row.NetResult)">@Money(row.NetResult)</td>
+                                    <td class="text-end">@Money(row.PendingBankNetExcluded)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    }
+</div>

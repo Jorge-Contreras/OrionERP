@@ -1,0 +1,491 @@
+.salud-page {
+  color: #182432;
+}
+
+.salud-page__header {
+  align-items: center;
+}
+
+.salud-page__eyebrow {
+  margin: 0 0 .25rem;
+  color: #667085;
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.salud-market-status {
+  display: inline-grid;
+  gap: .15rem;
+  min-width: 11rem;
+  padding: .7rem .85rem;
+  border: 1px solid #d8e2e7;
+  border-radius: 8px;
+  background: #fff;
+  text-align: right;
+  box-shadow: 0 8px 18px rgba(20, 38, 55, .08);
+}
+
+.salud-market-status span {
+  color: #667085;
+  font-size: .76rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.salud-market-status strong {
+  font-size: 1.25rem;
+}
+
+.health-filter-panel,
+.health-panel,
+.health-table-panel,
+.health-kpi {
+  border: 1px solid #d8e2e7;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(20, 38, 55, .08);
+}
+
+.health-filter-panel {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) 2.4fr;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.health-filter-panel__copy h2,
+.health-panel__header h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: #17212f;
+}
+
+.health-filter-panel__copy p,
+.health-panel__header p {
+  margin: .2rem 0 0;
+  color: #667085;
+  font-size: .86rem;
+}
+
+.health-filter-panel__controls {
+  display: grid;
+  grid-template-columns: minmax(6rem, .55fr) minmax(11rem, 1fr) minmax(12rem, 1.2fr) auto;
+  gap: .8rem;
+  align-items: end;
+}
+
+.health-field {
+  display: grid;
+  gap: .35rem;
+}
+
+.health-actions {
+  display: inline-flex;
+  gap: .5rem;
+  align-items: center;
+}
+
+.health-actions .btn {
+  display: inline-flex;
+  gap: .45rem;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.health-state {
+  padding: 1.2rem;
+  border: 1px dashed #cdd7de;
+  border-radius: 8px;
+  background: #fff;
+  color: #667085;
+}
+
+.health-state--compact {
+  padding: .85rem;
+}
+
+.health-dashboard {
+  display: grid;
+  gap: 1rem;
+}
+
+.health-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .8rem;
+}
+
+.health-kpi {
+  display: grid;
+  gap: .55rem;
+  min-height: 9.4rem;
+  padding: .9rem;
+}
+
+.health-kpi__topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  color: #667085;
+  font-size: .76rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.health-kpi__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: 999px;
+  background: #eff7f5;
+  color: #0f766e;
+}
+
+.health-kpi strong {
+  color: #111827;
+  font-size: 1.5rem;
+  line-height: 1.08;
+}
+
+.health-kpi p {
+  margin: 0;
+  color: #667085;
+  font-size: .83rem;
+}
+
+.health-kpi__changes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin-top: auto;
+}
+
+.health-change--good,
+.health-change--bad,
+.health-change--neutral {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.45rem;
+  padding: .16rem .42rem;
+  border-radius: 999px;
+  font-size: .76rem;
+  font-weight: 700;
+}
+
+.health-change--good {
+  background: #e8f7ef;
+  color: #117241;
+}
+
+.health-change--bad {
+  background: #fff1f1;
+  color: #b42318;
+}
+
+.health-change--neutral {
+  background: #f2f4f7;
+  color: #667085;
+}
+
+.health-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(20rem, .95fr);
+  gap: 1rem;
+}
+
+.health-panel,
+.health-table-panel {
+  padding: 1rem;
+}
+
+.health-panel--wide {
+  grid-column: span 1;
+}
+
+.health-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: .75rem;
+  margin-bottom: .85rem;
+}
+
+.health-period-list,
+.health-breakdown,
+.health-cash-list,
+.health-suite-list,
+.health-issue-list,
+.health-score {
+  display: grid;
+  gap: .65rem;
+}
+
+.health-period-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, .8fr) minmax(11rem, 1fr) minmax(11rem, 1fr) minmax(4.8rem, .45fr);
+  gap: .8rem;
+  align-items: center;
+  padding: .72rem;
+  border: 1px solid #eef2f4;
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.health-period-row__label,
+.health-period-row__metric,
+.health-period-row__compact,
+.health-suite-row__name,
+.health-score > div,
+.health-cash-row > div:first-child {
+  display: grid;
+  gap: .12rem;
+  min-width: 0;
+}
+
+.health-period-row__label span,
+.health-period-row__metric span,
+.health-period-row__compact small,
+.health-suite-row__name span,
+.health-suite-row__stats span,
+.health-score span,
+.health-cash-row span {
+  color: #667085;
+  font-size: .78rem;
+}
+
+.health-period-row__metric {
+  grid-template-columns: 4.5rem minmax(4rem, 1fr) minmax(5.8rem, auto);
+  align-items: center;
+}
+
+.health-period-row__metric strong,
+.health-breakdown__row strong,
+.health-cash-row strong,
+.health-suite-row__stats strong {
+  font-size: .88rem;
+  white-space: nowrap;
+}
+
+.health-period-row__compact {
+  justify-items: end;
+  text-align: right;
+}
+
+.health-bar-track {
+  width: 100%;
+  height: .48rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf1f4;
+}
+
+.health-bar {
+  display: block;
+  height: 100%;
+  min-width: .18rem;
+  border-radius: inherit;
+}
+
+.health-bar--income {
+  background: #14966f;
+}
+
+.health-bar--loss,
+.health-bar--expense {
+  background: #d1495b;
+}
+
+.health-bar--cost {
+  background: #d98c24;
+}
+
+.health-bar--tax {
+  background: #7c6f64;
+}
+
+.health-bar--suite {
+  background: #2878bd;
+}
+
+.health-value--positive {
+  color: #117241;
+}
+
+.health-value--negative {
+  color: #b42318;
+}
+
+.health-score {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.health-score > div {
+  padding: .75rem;
+  border: 1px solid #eef2f4;
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.health-score strong {
+  color: #111827;
+  font-size: 1rem;
+}
+
+.health-breakdown__row {
+  display: grid;
+  grid-template-columns: minmax(8rem, .9fr) minmax(6rem, 1fr) minmax(6rem, auto);
+  gap: .65rem;
+  align-items: center;
+}
+
+.health-breakdown__row > span {
+  color: #344054;
+  font-size: .86rem;
+}
+
+.health-cash-row,
+.health-suite-row,
+.health-issue {
+  display: grid;
+  gap: .7rem;
+  align-items: center;
+  padding: .72rem;
+  border: 1px solid #eef2f4;
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.health-cash-row {
+  grid-template-columns: minmax(7rem, .8fr) minmax(7rem, 1fr) minmax(5.6rem, auto);
+}
+
+.health-cash-row__bars {
+  display: grid;
+  gap: .22rem;
+}
+
+.health-cash-row__bars span {
+  display: block;
+  height: .42rem;
+  min-width: .18rem;
+  border-radius: 999px;
+}
+
+.health-cash-row__in {
+  background: #14966f;
+}
+
+.health-cash-row__out {
+  background: #d1495b;
+}
+
+.health-suite-row {
+  grid-template-columns: minmax(8rem, .85fr) minmax(8rem, 1fr) minmax(8rem, auto);
+}
+
+.health-suite-row__stats {
+  display: grid;
+  gap: .1rem;
+  justify-items: end;
+  text-align: right;
+}
+
+.health-issue {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.health-issue p {
+  margin: .1rem 0;
+  color: #344054;
+  font-size: .84rem;
+}
+
+.health-issue small {
+  color: #667085;
+}
+
+.health-severity {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.6rem;
+  padding: .18rem .45rem;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.health-severity--high {
+  background: #fff1f1;
+  color: #b42318;
+}
+
+.health-severity--medium {
+  background: #fff6e5;
+  color: #9a5b00;
+}
+
+.health-severity--low {
+  background: #f2f4f7;
+  color: #667085;
+}
+
+.health-detail-table td:first-child {
+  display: grid;
+  gap: .08rem;
+}
+
+.health-detail-table td:first-child span {
+  color: #667085;
+  font-size: .76rem;
+}
+
+@media (max-width: 1200px) {
+  .health-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .health-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .health-filter-panel,
+  .health-filter-panel__controls,
+  .health-period-row,
+  .health-cash-row,
+  .health-suite-row,
+  .health-issue {
+    grid-template-columns: 1fr;
+  }
+
+  .health-field--rfc,
+  .health-actions,
+  .health-actions .btn {
+    width: 100%;
+  }
+
+  .health-kpi-grid,
+  .health-score {
+    grid-template-columns: 1fr;
+  }
+
+  .health-period-row__metric,
+  .health-breakdown__row {
+    grid-template-columns: 1fr;
+  }
+
+  .health-period-row__compact,
+  .health-suite-row__stats {
+    justify-items: start;
+    text-align: left;
+  }
+}

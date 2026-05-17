@@ -58,6 +58,46 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
             return result.AsList();
         }
 
+        public async Task<SaludEmpresaReport> GetSaludEmpresaAsync(
+            int anioInicio,
+            int mesInicio,
+            int anioFin,
+            int mesFin,
+            string? rfc)
+        {
+            using var connection = _connectionFactory.Create();
+            await OpenConnectionAsync(connection).ConfigureAwait(false);
+
+            var parameters = new
+            {
+                AnioInicio = anioInicio,
+                MesInicio = mesInicio,
+                AnioFin = anioFin,
+                MesFin = mesFin,
+                RFC = rfc,
+                IncluirHabitacionesNoRentables = false
+            };
+
+            using var multi = await connection.QueryMultipleAsync(
+                "reporteFinanciero.Reporte_Salud_Empresa",
+                parameters,
+                commandType: CommandType.StoredProcedure,
+                commandTimeout: 60).ConfigureAwait(false);
+
+            var executiveIndicators = (await multi.ReadAsync<SaludEmpresaExecutiveIndicatorRow>().ConfigureAwait(false)).AsList();
+            var suitePerformance = (await multi.ReadAsync<SaludEmpresaSuitePerformanceRow>().ConfigureAwait(false)).AsList();
+            var financialBreakdown = (await multi.ReadAsync<SaludEmpresaFinancialBreakdownRow>().ConfigureAwait(false)).AsList();
+            var cashFlow = (await multi.ReadAsync<SaludEmpresaCashFlowRow>().ConfigureAwait(false)).AsList();
+            var dataQuality = (await multi.ReadAsync<SaludEmpresaDataQualityRow>().ConfigureAwait(false)).AsList();
+
+            return new SaludEmpresaReport(
+                executiveIndicators,
+                suitePerformance,
+                financialBreakdown,
+                cashFlow,
+                dataQuality);
+        }
+
         public async Task<HojaTrabajoViewModel> GetHojaTrabajoAsync(int anio, string rfc)
         {
             using var connection = _connectionFactory.Create();

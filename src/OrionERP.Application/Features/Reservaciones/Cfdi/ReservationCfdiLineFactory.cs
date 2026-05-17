@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Application.Features.Reservaciones.OpenClaw;
 
 namespace OrionERP.Application.Features.Reservaciones.Cfdi;
@@ -32,11 +33,13 @@ public static class ReservationCfdiLineFactory
   public static IReadOnlyList<ReservationCfdiItemPreviewDto> CreateItems(
       IEnumerable<ReservationCfdiSuiteSource> suites,
       IEnumerable<ReservationCfdiExtraSource> extras,
-      bool taxable)
+      bool taxable,
+      decimal suiteDiscountPercent = 0m)
   {
     ArgumentNullException.ThrowIfNull(suites);
     ArgumentNullException.ThrowIfNull(extras);
 
+    var activeSuiteDiscountPercent = ReservacionTotalsCalculator.NormalizeSuiteDiscountPercent(suiteDiscountPercent);
     var items = new List<ReservationCfdiItemPreviewDto>();
 
     foreach (var suite in suites.Where(static item => item.Price > 0m))
@@ -89,6 +92,7 @@ public static class ReservationCfdiLineFactory
       });
     }
 
+    ApplySuiteDiscount(items, activeSuiteDiscountPercent);
     ApplyDiscountPool(items, discountPool);
     ApplyTaxes(items, taxable);
 
@@ -162,6 +166,19 @@ public static class ReservationCfdiLineFactory
   private static string BuildExtraDescription(string description)
     => description.Trim().ToUpperInvariant();
 
+  private static void ApplySuiteDiscount(List<ReservationCfdiItemPreviewDto> items, decimal discountPercent)
+  {
+    if (discountPercent <= 0m)
+    {
+      return;
+    }
+
+    foreach (var item in items.Where(static item => string.Equals(item.SourceType, "Suite", StringComparison.Ordinal)))
+    {
+      item.Discount = RoundCurrency(item.Subtotal * (discountPercent / 100m));
+    }
+  }
+
   private static void ApplyDiscountPool(List<ReservationCfdiItemPreviewDto> items, decimal discountPool)
   {
     var remainingDiscount = RoundCurrency(discountPool);
@@ -170,8 +187,8 @@ public static class ReservationCfdiLineFactory
       return;
     }
 
-    var totalSubtotal = RoundCurrency(items.Sum(static item => item.Subtotal));
-    if (remainingDiscount > totalSubtotal)
+    var totalDiscountableSubtotal = RoundCurrency(items.Sum(static item => item.Subtotal - item.Discount));
+    if (remainingDiscount > totalDiscountableSubtotal)
     {
       throw new InvalidOperationException("El descuento de la reservacion excede el subtotal facturable.");
     }
@@ -184,25 +201,43 @@ public static class ReservationCfdiLineFactory
         break;
       }
 
+      var discountableSubtotal = RoundCurrency(item.Subtotal - item.Discount);
+      if (discountableSubtotal <= 0m)
+      {
+        continue;
+      }
+
       decimal itemDiscount;
       if (index == items.Count - 1)
       {
-        itemDiscount = remainingDiscount;
+        itemDiscount = Math.Min(discountableSubtotal, remainingDiscount);
       }
       else
       {
-        var proportionalShare = RoundCurrency((item.Subtotal / totalSubtotal) * discountPool);
-        itemDiscount = Math.Min(item.Subtotal, proportionalShare);
+        var proportionalShare = RoundCurrency((discountableSubtotal / totalDiscountableSubtotal) * discountPool);
+        itemDiscount = Math.Min(discountableSubtotal, proportionalShare);
       }
 
-      item.Discount = RoundCurrency(itemDiscount);
-      remainingDiscount = RoundCurrency(remainingDiscount - item.Discount);
+      item.Discount = RoundCurrency(item.Discount + itemDiscount);
+      remainingDiscount = RoundCurrency(remainingDiscount - itemDiscount);
     }
 
     if (remainingDiscount > 0m)
     {
-      var lastItem = items[^1];
-      lastItem.Discount = RoundCurrency(lastItem.Discount + remainingDiscount);
+      var lastDiscountableItem = items.LastOrDefault(static item => RoundCurrency(item.Subtotal - item.Discount) > 0m);
+      if (lastDiscountableItem is null)
+      {
+        throw new InvalidOperationException("El descuento de la reservacion excede el subtotal facturable.");
+      }
+
+      var remainingCapacity = RoundCurrency(lastDiscountableItem.Subtotal - lastDiscountableItem.Discount);
+      var extraDiscount = Math.Min(remainingCapacity, remainingDiscount);
+      lastDiscountableItem.Discount = RoundCurrency(lastDiscountableItem.Discount + extraDiscount);
+      remainingDiscount = RoundCurrency(remainingDiscount - extraDiscount);
+      if (remainingDiscount > 0m)
+      {
+        throw new InvalidOperationException("El descuento de la reservacion excede el subtotal facturable.");
+      }
     }
 
     foreach (var item in items)

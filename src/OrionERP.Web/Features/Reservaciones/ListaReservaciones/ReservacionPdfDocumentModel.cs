@@ -14,6 +14,8 @@ public sealed record ReservacionPdfDocumentModel(
   string Notes,
   string GeneratedAt,
   string TotalSuites,
+  string SuiteDiscountPercent,
+  string SuiteDiscountAmount,
   string TotalExtras,
   string SubTotal,
   string Tax,

@@ -10,6 +10,8 @@ public sealed class ReservationCfdiContextDto
   public string ReservationCliente { get; set; } = string.Empty;
   public bool Taxable { get; set; }
   public decimal TotalSuites { get; set; }
+  public decimal SuiteDiscountPercent { get; set; }
+  public decimal SuiteDiscountAmount { get; set; }
   public decimal TotalExtras { get; set; }
   public decimal SubTotal { get; set; }
   public decimal Tax { get; set; }

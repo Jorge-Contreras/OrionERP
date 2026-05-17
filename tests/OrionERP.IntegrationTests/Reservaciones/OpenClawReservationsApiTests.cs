@@ -269,6 +269,8 @@ public class OpenClawReservationsApiTests
         string.Empty,
         DateTime.Now.ToString("f"),
         "$0.00",
+        string.Empty,
+        string.Empty,
         "$0.00",
         "$0.00",
         "$0.00",

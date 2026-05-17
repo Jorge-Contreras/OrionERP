@@ -85,7 +85,11 @@ public sealed class ReservationCfdiService : IReservationCfdiService
         })
         .ToArray();
 
-    var items = ReservationCfdiLineFactory.CreateItems(suiteSources, extraSources, detail.Taxable);
+    var items = ReservationCfdiLineFactory.CreateItems(
+      suiteSources,
+      extraSources,
+      detail.Taxable,
+      detail.SuiteDiscountPercent);
     ValidateReservationTotals(detail, items);
 
     var searchSeed = string.IsNullOrWhiteSpace(detail.Cliente) ? null : detail.Cliente;
@@ -103,6 +107,8 @@ public sealed class ReservationCfdiService : IReservationCfdiService
       ReservationCliente = detail.Cliente,
       Taxable = detail.Taxable,
       TotalSuites = detail.TotalSuites,
+      SuiteDiscountPercent = detail.SuiteDiscountPercent,
+      SuiteDiscountAmount = detail.SuiteDiscountAmount,
       TotalExtras = detail.TotalExtras,
       SubTotal = detail.SubTotal,
       Tax = detail.Tax,
@@ -481,7 +487,11 @@ WHEN NOT MATCHED THEN
           })
           .ToArray();
 
-      var items = ReservationCfdiLineFactory.CreateItems(suiteSources, extraSources, detail.Taxable);
+      var items = ReservationCfdiLineFactory.CreateItems(
+        suiteSources,
+        extraSources,
+        detail.Taxable,
+        detail.SuiteDiscountPercent);
       ValidateReservationTotals(detail, items);
 
       var facturacionStatus = await GetFacturacionStatusAsync(request.ReservationId, ct);

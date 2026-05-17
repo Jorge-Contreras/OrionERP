@@ -14,6 +14,8 @@ public sealed record ReservacionPdfSnapshot(
   bool Facturable,
   string? Notes,
   decimal TotalSuites,
+  decimal SuiteDiscountPercent,
+  decimal SuiteDiscountAmount,
   decimal TotalExtras,
   decimal SubTotal,
   decimal Tax,

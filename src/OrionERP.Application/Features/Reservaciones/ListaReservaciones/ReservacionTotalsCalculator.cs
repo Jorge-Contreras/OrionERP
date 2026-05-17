@@ -15,11 +15,15 @@ public static class ReservacionTotalsCalculator
     bool taxable,
     decimal totalSuites,
     decimal totalExtras,
-    decimal totalPagado)
+    decimal totalPagado,
+    decimal suiteDiscountPercent = 0m)
   {
+    var activeDiscountPercent = NormalizeSuiteDiscountPercent(suiteDiscountPercent);
     var roundedSuites = RoundCurrency(totalSuites);
     var roundedExtras = RoundCurrency(totalExtras);
-    var subtotal = RoundCurrency(roundedSuites + roundedExtras);
+    var suiteDiscountAmount = RoundCurrency(roundedSuites * (activeDiscountPercent / 100m));
+    var discountedSuites = RoundCurrency(roundedSuites - suiteDiscountAmount);
+    var subtotal = RoundCurrency(discountedSuites + roundedExtras);
 
     var tax = 0m;
     var ish = 0m;
@@ -32,7 +36,17 @@ public static class ReservacionTotalsCalculator
       }
     }
 
-    return BuildBreakdown(checkIn, checkOut, roundedSuites, roundedExtras, subtotal, tax, ish, totalPagado);
+    return BuildBreakdown(
+      checkIn,
+      checkOut,
+      roundedSuites,
+      activeDiscountPercent,
+      suiteDiscountAmount,
+      roundedExtras,
+      subtotal,
+      tax,
+      ish,
+      totalPagado);
   }
 
   public static ReservacionTotalsBreakdown Calculate(
@@ -41,18 +55,25 @@ public static class ReservacionTotalsCalculator
     bool taxable,
     IEnumerable<decimal> suiteLineTotals,
     IEnumerable<decimal> extraLineTotals,
-    decimal totalPagado)
+    decimal totalPagado,
+    decimal suiteDiscountPercent = 0m)
   {
     ArgumentNullException.ThrowIfNull(suiteLineTotals);
     ArgumentNullException.ThrowIfNull(extraLineTotals);
 
+    var activeDiscountPercent = NormalizeSuiteDiscountPercent(suiteDiscountPercent);
     var roundedSuiteLines = suiteLineTotals.Select(RoundCurrency).ToArray();
     var roundedExtraLines = extraLineTotals.Select(RoundCurrency).ToArray();
-    var taxableLines = roundedSuiteLines.Concat(roundedExtraLines).ToArray();
+    var discountedSuiteLines = roundedSuiteLines
+      .Select(line => RoundCurrency(line - RoundCurrency(line * (activeDiscountPercent / 100m))))
+      .ToArray();
+    var taxableLines = discountedSuiteLines.Concat(roundedExtraLines).ToArray();
 
     var roundedSuites = RoundCurrency(roundedSuiteLines.Sum());
+    var discountedSuites = RoundCurrency(discountedSuiteLines.Sum());
+    var suiteDiscountAmount = RoundCurrency(roundedSuites - discountedSuites);
     var roundedExtras = RoundCurrency(roundedExtraLines.Sum());
-    var subtotal = RoundCurrency(roundedSuites + roundedExtras);
+    var subtotal = RoundCurrency(discountedSuites + roundedExtras);
 
     var tax = 0m;
     var ish = 0m;
@@ -65,13 +86,25 @@ public static class ReservacionTotalsCalculator
       }
     }
 
-    return BuildBreakdown(checkIn, checkOut, roundedSuites, roundedExtras, subtotal, tax, ish, totalPagado);
+    return BuildBreakdown(
+      checkIn,
+      checkOut,
+      roundedSuites,
+      activeDiscountPercent,
+      suiteDiscountAmount,
+      roundedExtras,
+      subtotal,
+      tax,
+      ish,
+      totalPagado);
   }
 
   private static ReservacionTotalsBreakdown BuildBreakdown(
     DateTime? checkIn,
     DateTime? checkOut,
     decimal roundedSuites,
+    decimal suiteDiscountPercent,
+    decimal suiteDiscountAmount,
     decimal roundedExtras,
     decimal subtotal,
     decimal tax,
@@ -95,6 +128,8 @@ public static class ReservacionTotalsCalculator
 
     return new ReservacionTotalsBreakdown(
       roundedSuites,
+      suiteDiscountPercent,
+      suiteDiscountAmount,
       roundedExtras,
       subtotal,
       tax,
@@ -107,6 +142,16 @@ public static class ReservacionTotalsCalculator
 
   private static decimal SumRoundedTax(IEnumerable<decimal> lineTotals, decimal rate)
     => RoundCurrency(lineTotals.Sum(line => RoundCurrency(line * rate)));
+
+  public static decimal NormalizeSuiteDiscountPercent(decimal value)
+  {
+    if (value > 100m)
+    {
+      throw new ArgumentOutOfRangeException(nameof(value), "Suite discount percent must be less than or equal to 100.");
+    }
+
+    return value > 1m ? RoundCurrency(value) : 0m;
+  }
 
   private static decimal RoundCurrency(decimal value)
     => decimal.Round(value, 2, MidpointRounding.ToEven);

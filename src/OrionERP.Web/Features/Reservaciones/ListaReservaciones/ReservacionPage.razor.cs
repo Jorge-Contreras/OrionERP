@@ -29,6 +29,7 @@ public partial class ReservacionPage : ComponentBase
     DateTime? CheckIn,
     DateTime? CheckOut,
     bool Taxable,
+    decimal SuiteDiscountPercent,
     string? RecommenedBy,
     string? Notes);
 
@@ -67,6 +68,8 @@ public partial class ReservacionPage : ComponentBase
   protected string? Notes { get; set; }
 
   protected decimal TotalSuites { get; set; }
+  protected decimal SuiteDiscountPercent { get; set; }
+  protected decimal SuiteDiscountAmount { get; set; }
   protected decimal TotalExtras { get; set; }
   protected decimal SubTotal { get; set; }
   protected decimal Tax { get; set; }
@@ -123,6 +126,9 @@ public partial class ReservacionPage : ComponentBase
 
   protected decimal ExtraTotal
     => decimal.Round(ExtraPrice - ExtraDiscountAmount, 2, MidpointRounding.ToEven);
+
+  protected bool HasActiveSuiteDiscount
+    => SuiteDiscountPercent > 1m && SuiteDiscountAmount > 0m;
 
   protected bool IsEditingExtra => EditingExtraId.HasValue;
 
@@ -376,7 +382,8 @@ public partial class ReservacionPage : ComponentBase
         RecommenedBy = RecommenedBy,
         Notes = Notes,
         Taxable = Taxable,
-        TotalPrice = TotalReservacion
+        TotalPrice = TotalReservacion,
+        SuiteDiscountPercent = SuiteDiscountPercent
       });
 
       if (!saveResult.Success)
@@ -486,6 +493,17 @@ public partial class ReservacionPage : ComponentBase
 
   protected static string FormatCurrency(decimal value)
     => value.ToString("C", CultureInfo.CurrentCulture);
+
+  protected static string FormatPercent(decimal value)
+    => value.ToString("0.##", CultureInfo.CurrentCulture);
+
+  private static bool TryParseDiscountPercent(string value, out decimal percent)
+  {
+    value = value.Trim().TrimEnd('%').Trim();
+
+    return decimal.TryParse(value, NumberStyles.Number, CultureInfo.CurrentCulture, out percent)
+      || decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out percent);
+  }
 
   protected bool IsAttachmentDownloading(ReservacionAttachmentDto attachment)
     => _attachmentDownloadingId == attachment.Id;
@@ -984,9 +1002,12 @@ public partial class ReservacionPage : ComponentBase
       Taxable,
       Suites.Select(s => s.Precio),
       Extras.Select(e => e.DiscountedPrice),
-      Pagos.Sum(p => p.Monto));
+      Pagos.Sum(p => p.Monto),
+      SuiteDiscountPercent);
 
     TotalSuites = totals.TotalSuites;
+    SuiteDiscountPercent = totals.SuiteDiscountPercent;
+    SuiteDiscountAmount = totals.SuiteDiscountAmount;
     TotalExtras = totals.TotalExtras;
     SubTotal = totals.SubTotal;
     Tax = totals.Tax;
@@ -997,6 +1018,38 @@ public partial class ReservacionPage : ComponentBase
     NumNoches = totals.NumNoches;
 
     TotalSuiteInput = TotalSuites;
+  }
+
+  protected async Task AplicarDescuentoSuitesAsync()
+  {
+    var currentValue = SuiteDiscountPercent > 0m
+      ? SuiteDiscountPercent.ToString("0.##", CultureInfo.CurrentCulture)
+      : "0";
+
+    var input = await Js.InvokeAsync<string?>(
+      "prompt",
+      "Porcentaje de descuento para suites (0 para quitar):",
+      currentValue);
+
+    if (input is null)
+    {
+      return;
+    }
+
+    if (!TryParseDiscountPercent(input, out var discountPercent))
+    {
+      UiMessages.ShowWarning("Captura un porcentaje válido para el descuento.");
+      return;
+    }
+
+    if (discountPercent < 0m || discountPercent > 100m || (discountPercent > 0m && discountPercent <= 1m))
+    {
+      UiMessages.ShowWarning("El descuento debe ser 0 para quitarlo, o mayor a 1% y menor o igual a 100%.");
+      return;
+    }
+
+    SuiteDiscountPercent = ReservacionTotalsCalculator.NormalizeSuiteDiscountPercent(discountPercent);
+    RecalculateTotals();
   }
 
   private async Task<bool> EnsureClienteReadyForSaveAsync()
@@ -1138,6 +1191,7 @@ public partial class ReservacionPage : ComponentBase
       CheckIn,
       CheckOut,
       Taxable,
+      SuiteDiscountPercent,
       RecommenedBy,
       Notes);
 
@@ -1151,6 +1205,7 @@ public partial class ReservacionPage : ComponentBase
     CheckIn = formState.CheckIn?.Date;
     CheckOut = formState.CheckOut?.Date;
     Taxable = formState.Taxable;
+    SuiteDiscountPercent = formState.SuiteDiscountPercent;
     RecommenedBy = formState.RecommenedBy;
     Notes = formState.Notes;
   }
@@ -1171,6 +1226,7 @@ public partial class ReservacionPage : ComponentBase
     CheckIn = Detail.CheckIn?.Date;
     CheckOut = Detail.CheckOut?.Date;
     Taxable = Detail.Taxable;
+    SuiteDiscountPercent = Detail.SuiteDiscountPercent;
     RecommenedBy = Detail.RecommenedBy;
     Notes = Detail.Notes;
   }
@@ -1197,6 +1253,8 @@ public partial class ReservacionPage : ComponentBase
       Taxable,
       Notes ?? Detail?.Notes,
       TotalSuites,
+      SuiteDiscountPercent,
+      SuiteDiscountAmount,
       TotalExtras,
       SubTotal,
       Tax,

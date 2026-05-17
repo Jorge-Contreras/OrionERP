@@ -17,6 +17,8 @@ public sealed class ReservacionDetailDto
   public decimal Pagado { get; set; }
   public decimal PorPagar { get; set; }
   public decimal TotalSuites { get; set; }
+  public decimal SuiteDiscountPercent { get; set; }
+  public decimal SuiteDiscountAmount { get; set; }
   public decimal TotalExtras { get; set; }
   public decimal SubTotal { get; set; }
   public decimal Tax { get; set; }

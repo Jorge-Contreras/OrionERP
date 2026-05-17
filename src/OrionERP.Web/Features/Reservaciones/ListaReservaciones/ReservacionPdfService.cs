@@ -325,6 +325,15 @@ public sealed class ReservacionPdfService : IReservacionPdfService
           line.ConstantItem(86).AlignRight().Text(model.TotalSuites).FontSize(9.5f).SemiBold();
         });
 
+        if (!string.IsNullOrWhiteSpace(model.SuiteDiscountAmount))
+        {
+          summary.Item().Row(line =>
+          {
+            line.RelativeItem().Text($"Desc. Suites ({model.SuiteDiscountPercent}%)").FontSize(9).FontColor(BrandMuted);
+            line.ConstantItem(86).AlignRight().Text(model.SuiteDiscountAmount).FontSize(9.5f).SemiBold();
+          });
+        }
+
         summary.Item().Row(line =>
         {
           line.RelativeItem().Text("Extras").FontSize(9).FontColor(BrandMuted);

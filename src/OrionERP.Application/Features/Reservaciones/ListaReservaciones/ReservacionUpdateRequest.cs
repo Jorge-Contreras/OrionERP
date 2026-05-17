@@ -13,4 +13,5 @@ public sealed class ReservacionUpdateRequest
   public string? Notes { get; set; }
   public bool Taxable { get; set; }
   public decimal TotalPrice { get; set; }
+  public decimal SuiteDiscountPercent { get; set; }
 }

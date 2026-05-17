@@ -48,6 +48,7 @@ SELECT
     r.STATUS AS Status,
     CAST(ISNULL(r.TAXABLE, 0) AS bit) AS Taxable,
     CAST(ISNULL(r.TOTAL_PRICE, 0) AS decimal(18,2)) AS TotalPrice,
+    CAST(ISNULL(r.SUITE_DISCOUNT_PERCENT, 0) AS decimal(18,2)) AS SuiteDiscountPercent,
     CAST(0 AS decimal(18,2)) AS Pagado,
     CAST(ISNULL(r.TOTAL_PRICE, 0) AS decimal(18,2)) AS PorPagar,
     r.NOTES AS Notes
@@ -234,7 +235,8 @@ GROUP BY rp.ReservationId;";
         row.Taxable,
         suitesByReservation[row.Id],
         extrasByReservation[row.Id],
-        pagosByReservation[row.Id].Sum());
+        pagosByReservation[row.Id].Sum(),
+        row.SuiteDiscountPercent);
 
       row.TotalPrice = totals.TotalReservacion;
       row.Pagado = totals.TotalPagado;
@@ -793,6 +795,7 @@ SELECT TOP (1)
     r.RECOMMENED_BY AS RecommenedBy,
     CAST(ISNULL(r.TAXABLE, 0) AS bit) AS Taxable,
     CAST(ISNULL(r.TOTAL_PRICE, 0) AS decimal(18,2)) AS TotalPrice,
+    CAST(ISNULL(r.SUITE_DISCOUNT_PERCENT, 0) AS decimal(18,2)) AS SuiteDiscountPercent,
     r.NOTES AS Notes
 FROM dbo.RESERVATION r
 LEFT JOIN dbo.Clientes c
@@ -1296,6 +1299,15 @@ WHERE ra.ID = @AttachmentId;";
     if (cliente is null)
       return ReservacionCommandResult.Fail("El cliente seleccionado ya no existe. Selecciona o crea un cliente antes de guardar.");
 
+    if (request.SuiteDiscountPercent < 0m
+        || request.SuiteDiscountPercent > 100m
+        || (request.SuiteDiscountPercent > 0m && request.SuiteDiscountPercent <= 1m))
+    {
+      return ReservacionCommandResult.Fail("El descuento de suites debe ser 0, o mayor a 1% y menor o igual a 100%.");
+    }
+
+    var suiteDiscountPercent = ReservacionTotalsCalculator.NormalizeSuiteDiscountPercent(request.SuiteDiscountPercent);
+
     const string sql = @"
 UPDATE dbo.RESERVATION
 SET
@@ -1306,7 +1318,8 @@ SET
     RECOMMENED_BY = @RecommenedBy,
     NOTES = @Notes,
     TAXABLE = @Taxable,
-    TOTAL_PRICE = @TotalPrice
+    TOTAL_PRICE = @TotalPrice,
+    SUITE_DISCOUNT_PERCENT = @SuiteDiscountPercent
 WHERE ID = @Id;";
 
     await using var conn = new SqlConnection(_cs);
@@ -1323,7 +1336,8 @@ WHERE ID = @Id;";
           RecommenedBy = string.IsNullOrWhiteSpace(request.RecommenedBy) ? null : request.RecommenedBy.Trim(),
           Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
           request.Taxable,
-          request.TotalPrice
+          request.TotalPrice,
+          SuiteDiscountPercent = suiteDiscountPercent
         },
         cancellationToken: ct));
 
@@ -1848,9 +1862,12 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
       detail.Taxable,
       suites.Select(s => s.Precio),
       extras.Select(e => e.DiscountedPrice),
-      pagos.Sum(p => p.Monto));
+      pagos.Sum(p => p.Monto),
+      detail.SuiteDiscountPercent);
 
     detail.TotalSuites = totals.TotalSuites;
+    detail.SuiteDiscountPercent = totals.SuiteDiscountPercent;
+    detail.SuiteDiscountAmount = totals.SuiteDiscountAmount;
     detail.TotalExtras = totals.TotalExtras;
     detail.SubTotal = totals.SubTotal;
     detail.Tax = totals.Tax;
@@ -1975,6 +1992,7 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
     public string? Status { get; set; }
     public bool Taxable { get; set; }
     public decimal TotalPrice { get; set; }
+    public decimal SuiteDiscountPercent { get; set; }
     public decimal Pagado { get; set; }
     public decimal PorPagar { get; set; }
     public string FacturacionStatus { get; set; } = ReservationFacturacionStatuses.SinFacturar;

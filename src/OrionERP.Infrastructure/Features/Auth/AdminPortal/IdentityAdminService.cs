@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
+using System.Data.Common;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -333,6 +335,12 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
                 return Failure("El arrendador ligado debe ser un proveedor válido.");
             }
 
+            var employeeValidationFailure = await ValidateEmployeeIdAsync(request, cancellationToken);
+            if (employeeValidationFailure is not null)
+            {
+                return employeeValidationFailure;
+            }
+
             if (desiredRoleNames.Contains(ArrendadoresRoleName, RoleNameComparer) && !request.ArrendadorProveedorId.HasValue)
             {
                 return Failure("Los usuarios con rol Arrendadores deben tener un Arrendador (Proveedor) ligado.");
@@ -367,9 +375,17 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
 
             ApplyUserValues(user, request, normalizedUserName);
 
-            var identityResult = isNewUser
-                ? await _userManager.CreateAsync(user, request.NewPassword!)
-                : await _userManager.UpdateAsync(user);
+            IdentityResult identityResult;
+            try
+            {
+                identityResult = isNewUser
+                    ? await _userManager.CreateAsync(user, request.NewPassword!)
+                    : await _userManager.UpdateAsync(user);
+            }
+            catch (DbUpdateException ex)
+            {
+                return Failure(BuildUserSaveDatabaseFailureMessage(request, ex));
+            }
 
             if (!identityResult.Succeeded)
             {
@@ -733,6 +749,176 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
             return changed;
         }
 
+        private async Task<IdentityAdminCommandResult?> ValidateEmployeeIdAsync(
+            IdentityUserUpsertRequest request,
+            CancellationToken cancellationToken)
+        {
+            if (!request.EmployeeId.HasValue)
+            {
+                return null;
+            }
+
+            var employeeId = request.EmployeeId.Value;
+            if (employeeId <= 0)
+            {
+                return Failure("EmployeeId debe ser un número mayor a cero.");
+            }
+
+            if (!_db.Database.IsRelational())
+            {
+                return null;
+            }
+
+            try
+            {
+                var employee = await GetEmployeeLinkTargetAsync(employeeId, cancellationToken);
+                if (employee is null)
+                {
+                    return Failure($"EmployeeId {employeeId} no existe en Capital Humano (dbo.Capital_Humano.ID). Verifica el ID en el módulo Capital Humano antes de guardar el usuario.");
+                }
+
+                var foreignKey = await GetEmployeeIdForeignKeyAsync(cancellationToken);
+                if (foreignKey is not null && !foreignKey.PointsToCapitalHumano)
+                {
+                    return Failure(
+                        $"EmployeeId {employeeId} existe en Capital Humano ({employee.Describe()}), pero la base de datos tiene la llave foránea {foreignKey.Name} de auth.AspNetUsers.EmployeeId apuntando a {foreignKey.Target} en lugar de dbo.Capital_Humano.ID. SQL Server rechazará esta asignación aunque el empleado sea válido. Ejecuta la reparación de la llave foránea de AspNetUsers.EmployeeId y vuelve a guardar.");
+                }
+
+                return null;
+            }
+            catch (DbException ex)
+            {
+                return Failure(
+                    $"No se pudo validar EmployeeId {employeeId} contra Capital Humano antes de guardar el usuario.",
+                    GetBaseExceptionMessage(ex));
+            }
+        }
+
+        private async Task<EmployeeLinkTarget?> GetEmployeeLinkTargetAsync(int employeeId, CancellationToken cancellationToken)
+        {
+            var connection = _db.Database.GetDbConnection();
+            var shouldClose = connection.State == ConnectionState.Closed;
+            if (shouldClose)
+            {
+                await connection.OpenAsync(cancellationToken);
+            }
+
+            try
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText =
+                    """
+                    SELECT TOP (1)
+                        ch.ID,
+                        NULLIF(LTRIM(RTRIM(ch.RFC)), '') AS Rfc,
+                        NULLIF(LTRIM(RTRIM(ch.NombreCorto)), '') AS NombreCorto,
+                        NULLIF(LTRIM(RTRIM(CONCAT(
+                            ISNULL(ch.Nombre, ''),
+                            ' ',
+                            ISNULL(ch.ApellidoPaterno, ''),
+                            ' ',
+                            ISNULL(ch.ApellidoMaterno, '')))), '') AS NombreCompleto,
+                        NULLIF(LTRIM(RTRIM(ch.[Status])), '') AS [Status]
+                    FROM dbo.Capital_Humano ch
+                    WHERE ch.ID = @EmployeeId;
+                    """;
+                AddParameter(command, "@EmployeeId", employeeId);
+
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                if (!await reader.ReadAsync(cancellationToken))
+                {
+                    return null;
+                }
+
+                var shortName = ReadNullableString(reader, "NombreCorto");
+                var fullName = ReadNullableString(reader, "NombreCompleto");
+                var displayName = !string.IsNullOrWhiteSpace(shortName)
+                    ? shortName
+                    : !string.IsNullOrWhiteSpace(fullName)
+                        ? fullName
+                        : $"ID {employeeId}";
+
+                return new EmployeeLinkTarget(
+                    employeeId,
+                    displayName,
+                    ReadNullableString(reader, "Rfc"),
+                    ReadNullableString(reader, "Status"));
+            }
+            finally
+            {
+                if (shouldClose)
+                {
+                    await connection.CloseAsync();
+                }
+            }
+        }
+
+        private async Task<EmployeeIdForeignKey?> GetEmployeeIdForeignKeyAsync(CancellationToken cancellationToken)
+        {
+            var connection = _db.Database.GetDbConnection();
+            var shouldClose = connection.State == ConnectionState.Closed;
+            if (shouldClose)
+            {
+                await connection.OpenAsync(cancellationToken);
+            }
+
+            try
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText =
+                    """
+                    SELECT TOP (1)
+                        fk.name AS ForeignKeyName,
+                        principal_schema.name AS PrincipalSchema,
+                        principal_table.name AS PrincipalTable,
+                        principal_column.name AS PrincipalColumn
+                    FROM sys.foreign_keys fk
+                    JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
+                    JOIN sys.tables parent_table ON parent_table.object_id = fkc.parent_object_id
+                    JOIN sys.schemas parent_schema ON parent_schema.schema_id = parent_table.schema_id
+                    JOIN sys.columns parent_column
+                        ON parent_column.object_id = parent_table.object_id
+                        AND parent_column.column_id = fkc.parent_column_id
+                    JOIN sys.tables principal_table ON principal_table.object_id = fkc.referenced_object_id
+                    JOIN sys.schemas principal_schema ON principal_schema.schema_id = principal_table.schema_id
+                    JOIN sys.columns principal_column
+                        ON principal_column.object_id = principal_table.object_id
+                        AND principal_column.column_id = fkc.referenced_column_id
+                    WHERE parent_schema.name = 'auth'
+                      AND parent_table.name = 'AspNetUsers'
+                      AND parent_column.name = 'EmployeeId'
+                    ORDER BY
+                        CASE
+                            WHEN principal_schema.name = 'dbo'
+                             AND principal_table.name = 'Capital_Humano'
+                             AND principal_column.name = 'ID'
+                            THEN 1
+                            ELSE 0
+                        END,
+                        fk.name;
+                    """;
+
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                if (!await reader.ReadAsync(cancellationToken))
+                {
+                    return null;
+                }
+
+                return new EmployeeIdForeignKey(
+                    ReadRequiredString(reader, "ForeignKeyName"),
+                    ReadRequiredString(reader, "PrincipalSchema"),
+                    ReadRequiredString(reader, "PrincipalTable"),
+                    ReadRequiredString(reader, "PrincipalColumn"));
+            }
+            finally
+            {
+                if (shouldClose)
+                {
+                    await connection.CloseAsync();
+                }
+            }
+        }
+
         private async Task<bool> SyncRoleClaimsAsync(
             string roleId,
             IReadOnlyList<ClaimSignature> desiredClaims,
@@ -947,6 +1133,39 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
                 message,
                 Errors: result.Errors.Select(error => error.Description).ToArray());
 
+        private static string BuildUserSaveDatabaseFailureMessage(IdentityUserUpsertRequest request, DbUpdateException exception)
+        {
+            var detail = GetBaseExceptionMessage(exception);
+            if (request.EmployeeId.HasValue &&
+                detail.Contains("FOREIGN KEY", StringComparison.OrdinalIgnoreCase) &&
+                detail.Contains("EmployeeId", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"No se pudo guardar el usuario porque SQL Server rechazó EmployeeId {request.EmployeeId.Value}. El empleado debe existir en dbo.Capital_Humano.ID y la llave foránea auth.AspNetUsers.EmployeeId debe apuntar a Capital Humano. Detalle de base de datos: {detail}";
+            }
+
+            return $"No se pudo guardar el usuario por un error de base de datos. Detalle: {detail}";
+        }
+
+        private static void AddParameter(DbCommand command, string name, object value)
+        {
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = name;
+            parameter.Value = value;
+            command.Parameters.Add(parameter);
+        }
+
+        private static string? ReadNullableString(DbDataReader reader, string name)
+        {
+            var ordinal = reader.GetOrdinal(name);
+            return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+        }
+
+        private static string ReadRequiredString(DbDataReader reader, string name)
+            => ReadNullableString(reader, name) ?? string.Empty;
+
+        private static string GetBaseExceptionMessage(Exception exception)
+            => exception.GetBaseException().Message;
+
         private static string? CreateTokenPreview(string? value)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -963,5 +1182,38 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
         }
 
         private readonly record struct ClaimSignature(string ClaimType, string ClaimValue);
+
+        private sealed record EmployeeLinkTarget(int Id, string DisplayName, string? Rfc, string? Status)
+        {
+            public string Describe()
+            {
+                var parts = new List<string> { DisplayName, $"ID {Id}" };
+                if (!string.IsNullOrWhiteSpace(Rfc))
+                {
+                    parts.Add($"RFC empresa {Rfc}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(Status))
+                {
+                    parts.Add($"status {Status}");
+                }
+
+                return string.Join(", ", parts);
+            }
+        }
+
+        private sealed record EmployeeIdForeignKey(
+            string Name,
+            string PrincipalSchema,
+            string PrincipalTable,
+            string PrincipalColumn)
+        {
+            public bool PointsToCapitalHumano =>
+                string.Equals(PrincipalSchema, "dbo", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(PrincipalTable, "Capital_Humano", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(PrincipalColumn, "ID", StringComparison.OrdinalIgnoreCase);
+
+            public string Target => $"{PrincipalSchema}.{PrincipalTable}.{PrincipalColumn}";
+        }
     }
 }

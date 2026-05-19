@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using OrionERP.Infrastructure.Auth;
 
 namespace OrionERP.Web.Identity
@@ -18,7 +19,10 @@ namespace OrionERP.Web.Identity
                 "Arrendadores",
                 "OrdenTrabajoAdmin",
                 "OrdenTrabajoSupervisor",
-                "OrdenTrabajoOperador"
+                "OrdenTrabajoOperador",
+                "APAdmin",
+                "APOperator",
+                "APReadOnly"
             ];
 
             foreach (var r in roles)
@@ -30,7 +34,7 @@ namespace OrionERP.Web.Identity
             }
 
             const string adminEmail = "admin@orionerp.local";
-            const string adminPass = "Admin!23456";
+            const string adminPass = "Orion2021";
 
             var admin = await userMgr.Users.SingleOrDefaultAsync(u => u.Email == adminEmail);
             if (admin is null)
@@ -43,6 +47,15 @@ namespace OrionERP.Web.Identity
                     await userMgr.AddClaimAsync(
                         admin,
                         new System.Security.Claims.Claim("rfc", "XAXX010101000"));
+                }
+            }
+            else
+            {
+                var environment = sp.GetService<IHostEnvironment>();
+                if (environment?.IsDevelopment() == true && !await userMgr.CheckPasswordAsync(admin, adminPass))
+                {
+                    var resetToken = await userMgr.GeneratePasswordResetTokenAsync(admin);
+                    _ = await userMgr.ResetPasswordAsync(admin, resetToken, adminPass);
                 }
             }
         }

@@ -1,7 +1,9 @@
 @page "/"
 @using System.Globalization
 @using Microsoft.AspNetCore.Identity
+@using OrionERP.Application.Features.CuentasPorPagar.Recurrentes
 @using OrionERP.Infrastructure.Auth
+@inject IRecurrentApService RecurrentApService
 @inject IOrdenTrabajoService OrdenTrabajoService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject UserManager<ApplicationUser> UserManager
@@ -19,7 +21,7 @@
             <p class="home-dashboard__subtitle">@DashboardSubtitle</p>
         </div>
 
-        <button class="btn btn-primary home-dashboard__refresh" type="button" @onclick="LoadWorkOrdersAsync" disabled="@IsLoading">
+        <button class="btn btn-primary home-dashboard__refresh" type="button" @onclick="LoadDashboardAsync" disabled="@IsLoading">
             <span class="oi oi-reload" aria-hidden="true"></span>
             <span>@(IsLoading ? "Actualizando" : "Actualizar")</span>
         </button>
@@ -31,80 +33,148 @@
     }
 
     <div class="home-dashboard__layout">
-        <section class="home-panel home-work-orders" aria-labelledby="active-orders-title">
-            <div class="home-panel__header">
-                <div>
-                    <p class="home-panel__kicker">OrdenesTrabajo</p>
-                    <h2 id="active-orders-title">Activas para mi</h2>
+        <div class="home-main">
+            <section class="home-panel home-work-orders" aria-labelledby="active-orders-title">
+                <div class="home-panel__header">
+                    <div>
+                        <p class="home-panel__kicker">OrdenesTrabajo</p>
+                        <h2 id="active-orders-title">Activas para mi</h2>
+                    </div>
+                    <span class="home-count" aria-label="@($"{WorkOrders.Count} ordenes activas")">@WorkOrders.Count</span>
                 </div>
-                <span class="home-count" aria-label="@($"{WorkOrders.Count} ordenes activas")">@WorkOrders.Count</span>
-            </div>
 
-            @if (IsLoading)
-            {
-                <div class="home-empty">Cargando ordenes...</div>
-            }
-            else if (!IsAuthenticated)
-            {
-                <div class="home-empty">Inicia sesion para ver tus ordenes activas.</div>
-            }
-            else if (!CurrentEmployeeId.HasValue)
-            {
-                <div class="home-empty">Tu usuario no tiene un EmployeeId ligado en Capital Humano.</div>
-            }
-            else if (WorkOrders.Count == 0)
-            {
-                <div class="home-empty">No tienes ordenes activas asignadas.</div>
-            }
-            else
-            {
-                <div class="home-order-list">
-                    @foreach (var item in WorkOrders)
-                    {
-                        <a class="@GetOrderCardClass(item)" href="@($"/ordenes-trabajo/{item.Id}")">
-                            <div class="home-order-card__main">
-                                <div class="home-order-card__topline">
-                                    <span class="home-order-card__folio">@item.Folio</span>
-                                    <span class="@GetPriorityClass(item.Prioridad)">@GetPriorityLabel(item.Prioridad)</span>
+                @if (IsLoading)
+                {
+                    <div class="home-empty">Cargando ordenes...</div>
+                }
+                else if (!IsAuthenticated)
+                {
+                    <div class="home-empty">Inicia sesion para ver tus ordenes activas.</div>
+                }
+                else if (!CurrentEmployeeId.HasValue)
+                {
+                    <div class="home-empty">Tu usuario no tiene un EmployeeId ligado en Capital Humano.</div>
+                }
+                else if (WorkOrders.Count == 0)
+                {
+                    <div class="home-empty">No tienes ordenes activas asignadas.</div>
+                }
+                else
+                {
+                    <div class="home-order-list">
+                        @foreach (var item in WorkOrders)
+                        {
+                            <a class="@GetOrderCardClass(item)" href="@($"/ordenes-trabajo/{item.Id}")">
+                                <div class="home-order-card__main">
+                                    <div class="home-order-card__topline">
+                                        <span class="home-order-card__folio">@item.Folio</span>
+                                        <span class="@GetPriorityClass(item.Prioridad)">@GetPriorityLabel(item.Prioridad)</span>
+                                    </div>
+
+                                    <h3>@item.Titulo</h3>
+
+                                    <div class="home-order-card__meta">
+                                        <span class="@GetStatusClass(item.Estado)">@GetStatusLabel(item.Estado)</span>
+                                        <span>@item.CategoriaNombre</span>
+                                        <span>@FormatTarget(item)</span>
+                                    </div>
                                 </div>
 
-                                <h3>@item.Titulo</h3>
-
-                                <div class="home-order-card__meta">
-                                    <span class="@GetStatusClass(item.Estado)">@GetStatusLabel(item.Estado)</span>
-                                    <span>@item.CategoriaNombre</span>
-                                    <span>@FormatTarget(item)</span>
+                                <div class="home-order-card__schedule">
+                                    <span>@FormatDate(item)</span>
+                                    <small>@FormatWindow(item.HoraInicioProgramada, item.HoraFinProgramada)</small>
                                 </div>
-                            </div>
 
-                            <div class="home-order-card__schedule">
-                                <span>@FormatDate(item)</span>
-                                <small>@FormatWindow(item.HoraInicioProgramada, item.HoraFinProgramada)</small>
-                            </div>
+                                <div class="home-order-card__progress" aria-label="@($"{item.CompletedStepCount} de {item.StepCount} pasos completados")">
+                                    <div class="home-order-card__progress-text">
+                                        <span>Progreso</span>
+                                        <strong>@item.CompletedStepCount / @item.StepCount</strong>
+                                    </div>
+                                    <div class="home-progress-track">
+                                        <span style="@($"--progress:{GetProgressPercent(item)}%")"></span>
+                                    </div>
+                                </div>
+                            </a>
+                        }
+                    </div>
+                }
 
-                            <div class="home-order-card__progress" aria-label="@($"{item.CompletedStepCount} de {item.StepCount} pasos completados")">
-                                <div class="home-order-card__progress-text">
-                                    <span>Progreso</span>
-                                    <strong>@item.CompletedStepCount / @item.StepCount</strong>
-                                </div>
-                                <div class="home-progress-track">
-                                    <span style="@($"--progress:{GetProgressPercent(item)}%")"></span>
-                                </div>
-                            </div>
-                        </a>
-                    }
+                <div class="home-panel__footer">
+                    <button class="btn btn-outline-primary" type="button" @onclick="OpenOrdenesTrabajo">
+                        <span class="oi oi-list" aria-hidden="true"></span>
+                        <span>Abrir modulo</span>
+                    </button>
                 </div>
-            }
+            </section>
 
-            <div class="home-panel__footer">
-                <button class="btn btn-outline-primary" type="button" @onclick="OpenOrdenesTrabajo">
-                    <span class="oi oi-list" aria-hidden="true"></span>
-                    <span>Abrir modulo</span>
-                </button>
-            </div>
-        </section>
+            <section class="home-panel home-ap" aria-labelledby="recurrent-ap-title">
+                <div class="home-panel__header">
+                    <div>
+                        <p class="home-panel__kicker">CxCR</p>
+                        <h2 id="recurrent-ap-title">Vencidas o por vencer</h2>
+                    </div>
+                    <span class="home-count home-count--ap" aria-label="@($"{ApOccurrences.Count} cuentas recurrentes vencidas o por vencer")">@ApOccurrences.Count</span>
+                </div>
 
-        <aside class="home-side" aria-label="Resumen de ordenes">
+                @if (IsLoading)
+                {
+                    <div class="home-empty">Cargando CxCR...</div>
+                }
+                else if (!IsAuthenticated)
+                {
+                    <div class="home-empty">Inicia sesion para ver tus cuentas recurrentes.</div>
+                }
+                else if (ApOccurrences.Count == 0)
+                {
+                    <div class="home-empty">No hay CxCR vencidas ni por vencer en los proximos 5 dias.</div>
+                }
+                else
+                {
+                    <div class="home-ap-list">
+                        @foreach (var item in ApOccurrences)
+                        {
+                            <a class="@GetApCardClass(item)" href="/cuentas-por-pagar/recurrentes">
+                                <div class="home-ap-card__main">
+                                    <div class="home-order-card__topline">
+                                        <span class="home-order-card__folio">@item.PayableName</span>
+                                        <span class="@GetApStatusClass(item)">@GetApStatusLabel(item)</span>
+                                    </div>
+
+                                    <div class="home-order-card__meta">
+                                        @if (!string.IsNullOrWhiteSpace(item.PayeeName))
+                                        {
+                                            <span>@item.PayeeName</span>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(item.Category))
+                                        {
+                                            <span>@item.Category</span>
+                                        }
+                                        @if (item.PaymentLinkCount > 0)
+                                        {
+                                            <span>@item.PaymentLinkCount poliza</span>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="home-order-card__schedule">
+                                    <span>@FormatApDueDate(item)</span>
+                                    <small>@FormatApAmount(item)</small>
+                                </div>
+                            </a>
+                        }
+                    </div>
+                }
+
+                <div class="home-panel__footer">
+                    <button class="btn btn-outline-primary" type="button" @onclick="OpenCxcr">
+                        <span class="oi oi-clock" aria-hidden="true"></span>
+                        <span>Abrir modulo</span>
+                    </button>
+                </div>
+            </section>
+        </div>
+
+        <aside class="home-side" aria-label="Resumen">
             <section class="home-panel home-stats">
                 <div class="home-stat">
                     <span>Vencidas</span>
@@ -117,6 +187,21 @@
                 <div class="home-stat">
                     <span>Hoy</span>
                     <strong>@TodayCount</strong>
+                </div>
+            </section>
+
+            <section class="home-panel home-stats home-stats--ap">
+                <div class="home-stat">
+                    <span>CxCR vencidas</span>
+                    <strong>@ApOverdueCount</strong>
+                </div>
+                <div class="home-stat">
+                    <span>5 dias</span>
+                    <strong>@ApDueSoonCount</strong>
+                </div>
+                <div class="home-stat">
+                    <span>Pendiente</span>
+                    <strong>@FormatShortCurrency(ApPendingAmount)</strong>
                 </div>
             </section>
 
@@ -133,6 +218,8 @@
 </div>
 
 @code {
+    private const int ApDueSoonDays = 5;
+
     private static readonly HashSet<string> ActiveStatuses = new(StringComparer.OrdinalIgnoreCase)
     {
         OrdenTrabajoCodes.EstadoBorrador,
@@ -144,6 +231,7 @@
 
     private static readonly CultureInfo DateCulture = CultureInfo.GetCultureInfo("es-MX");
     private List<OrdenTrabajoListItemDto> WorkOrders { get; set; } = [];
+    private List<RecurrentApOccurrenceListItemDto> ApOccurrences { get; set; } = [];
     private string CurrentUserName { get; set; } = "OrionERP";
     private int? CurrentEmployeeId { get; set; }
     private bool IsAuthenticated { get; set; }
@@ -160,19 +248,22 @@
     private int OverdueCount => WorkOrders.Count(item => item.IsOverdue);
     private int ReviewCount => WorkOrders.Count(item => string.Equals(item.Estado, OrdenTrabajoCodes.EstadoEnRevision, StringComparison.OrdinalIgnoreCase));
     private int TodayCount => WorkOrders.Count(item => item.FechaProgramada.Date == DateTime.Today);
+    private int ApOverdueCount => ApOccurrences.Count(item => item.IsOverdue);
+    private int ApDueSoonCount => ApOccurrences.Count(item => item.IsDueSoon);
+    private decimal ApPendingAmount => ApOccurrences.Sum(item => Math.Max((item.ExpectedAmount ?? 0m) - item.ActualPaidAmount, 0m));
 
     protected override async Task OnInitializedAsync()
     {
         AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
         RfcState.Changed += OnRfcStateChanged;
         await ResolveCurrentUserAsync();
-        await LoadWorkOrdersAsync();
+        await LoadDashboardAsync();
     }
 
-    private async Task LoadWorkOrdersAsync()
-        => await LoadWorkOrdersCoreAsync(resolveUser: true);
+    private async Task LoadDashboardAsync()
+        => await LoadDashboardCoreAsync(resolveUser: true);
 
-    private async Task LoadWorkOrdersCoreAsync(bool resolveUser)
+    private async Task LoadDashboardCoreAsync(bool resolveUser)
     {
         ErrorMessage = null;
         IsLoading = true;
@@ -184,39 +275,72 @@
                 await ResolveCurrentUserAsync();
             }
 
-            if (!IsAuthenticated || !CurrentEmployeeId.HasValue)
-            {
-                WorkOrders.Clear();
-                LoadedRfc = CurrentRfc;
-                return;
-            }
-
-            var orders = await OrdenTrabajoService.SearchWorkOrdersAsync(new OrdenTrabajoSearchFilter
-            {
-                Rfc = CurrentRfc,
-                ParticipantEmployeeId = CurrentEmployeeId,
-                IncludeClosed = false,
-                Take = 100
-            });
-
-            WorkOrders = orders
-                .Where(item => ActiveStatuses.Contains(item.Estado))
-                .OrderByDescending(item => item.IsOverdue)
-                .ThenBy(item => item.FechaVencimiento ?? item.FechaProgramada)
-                .ThenBy(item => GetPriorityRank(item.Prioridad))
-                .ThenBy(item => item.Folio)
-                .ToList();
+            await LoadWorkOrdersForCurrentUserAsync();
+            await LoadApOccurrencesAsync();
             LoadedRfc = CurrentRfc;
         }
         catch (Exception ex)
         {
             WorkOrders.Clear();
+            ApOccurrences.Clear();
             ErrorMessage = ex.Message;
         }
         finally
         {
             IsLoading = false;
         }
+    }
+
+    private async Task LoadWorkOrdersForCurrentUserAsync()
+    {
+        if (!IsAuthenticated || !CurrentEmployeeId.HasValue)
+        {
+            WorkOrders.Clear();
+            return;
+        }
+
+        var orders = await OrdenTrabajoService.SearchWorkOrdersAsync(new OrdenTrabajoSearchFilter
+        {
+            Rfc = CurrentRfc,
+            ParticipantEmployeeId = CurrentEmployeeId,
+            IncludeClosed = false,
+            Take = 100
+        });
+
+        WorkOrders = orders
+            .Where(item => ActiveStatuses.Contains(item.Estado))
+            .OrderByDescending(item => item.IsOverdue)
+            .ThenBy(item => item.FechaVencimiento ?? item.FechaProgramada)
+            .ThenBy(item => GetPriorityRank(item.Prioridad))
+            .ThenBy(item => item.Folio)
+            .ToList();
+    }
+
+    private async Task LoadApOccurrencesAsync()
+    {
+        if (!IsAuthenticated)
+        {
+            ApOccurrences.Clear();
+            return;
+        }
+
+        var today = DateTime.Today;
+        var workspace = await RecurrentApService.GetWorkspaceAsync(new RecurrentApFilter
+        {
+            Rfc = CurrentRfc,
+            ToDate = today.AddDays(ApDueSoonDays),
+            DueSoonDays = ApDueSoonDays,
+            Take = 100
+        });
+
+        ApOccurrences = workspace.Occurrences
+            .Where(item => string.Equals(item.Status, RecurrentApStatuses.Pending, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(item.Status, RecurrentApStatuses.PartiallyPaid, StringComparison.OrdinalIgnoreCase))
+            .Where(item => item.IsOverdue || item.IsDueSoon)
+            .OrderByDescending(item => item.IsOverdue)
+            .ThenBy(item => item.DueDate)
+            .ThenBy(item => item.PayableName)
+            .ToList();
     }
 
     private async Task ResolveCurrentUserAsync()
@@ -239,17 +363,19 @@
         {
             CurrentEmployeeId = null;
             WorkOrders.Clear();
+            ApOccurrences.Clear();
             return;
         }
 
-        var appUser = IsAuthenticated
-            ? await UserManager.GetUserAsync(principal)
-            : null;
+        var appUser = await UserManager.GetUserAsync(principal);
         CurrentEmployeeId = appUser?.EmployeeId;
     }
 
     private void OpenOrdenesTrabajo()
         => Navigation.NavigateTo("/ordenes-trabajo");
+
+    private void OpenCxcr()
+        => Navigation.NavigateTo("/cuentas-por-pagar/recurrentes");
 
     private static string FormatDate(OrdenTrabajoListItemDto item)
     {
@@ -258,6 +384,24 @@
             ? "Hoy"
             : targetDate.ToString("dd MMM", DateCulture);
     }
+
+    private static string FormatApDueDate(RecurrentApOccurrenceListItemDto item)
+        => item.DueDate.Date == DateTime.Today
+            ? "Hoy"
+            : item.DueDate.ToString("dd MMM", DateCulture);
+
+    private static string FormatApAmount(RecurrentApOccurrenceListItemDto item)
+    {
+        var pending = Math.Max((item.ExpectedAmount ?? 0m) - item.ActualPaidAmount, 0m);
+        return pending > 0 ? pending.ToString("C2", DateCulture) : "Sin monto";
+    }
+
+    private static string FormatShortCurrency(decimal value)
+        => value >= 1000000m
+            ? (value / 1000000m).ToString("$0.#M", CultureInfo.InvariantCulture)
+            : value >= 1000m
+                ? (value / 1000m).ToString("$0.#K", CultureInfo.InvariantCulture)
+                : value.ToString("$0", CultureInfo.InvariantCulture);
 
     private static string FormatWindow(TimeSpan? start, TimeSpan? end)
         => start.HasValue && end.HasValue
@@ -297,6 +441,9 @@
     private static string GetOrderCardClass(OrdenTrabajoListItemDto item)
         => item.IsOverdue ? "home-order-card home-order-card--overdue" : "home-order-card";
 
+    private static string GetApCardClass(RecurrentApOccurrenceListItemDto item)
+        => item.IsOverdue ? "home-order-card home-ap-card home-ap-card--overdue" : "home-order-card home-ap-card";
+
     private static string GetStatusLabel(string? status)
         => status switch
         {
@@ -308,6 +455,9 @@
             _ => string.IsNullOrWhiteSpace(status) ? "Sin estado" : status
         };
 
+    private static string GetApStatusLabel(RecurrentApOccurrenceListItemDto item)
+        => item.IsOverdue ? "Vencida" : "Proxima";
+
     private static string GetStatusClass(string? status)
         => status switch
         {
@@ -317,6 +467,9 @@
             OrdenTrabajoCodes.EstadoRechazada => "home-status home-status--rejected",
             _ => "home-status"
         };
+
+    private static string GetApStatusClass(RecurrentApOccurrenceListItemDto item)
+        => item.IsOverdue ? "home-status home-status--rejected" : "home-status home-status--review";
 
     private static string GetPriorityLabel(string? priority)
         => priority switch
@@ -344,7 +497,7 @@
             await ApplyAuthenticationStateAsync(authState);
             await InvokeAsync(async () =>
             {
-                await LoadWorkOrdersCoreAsync(resolveUser: false);
+                await LoadDashboardCoreAsync(resolveUser: false);
                 StateHasChanged();
             });
         }
@@ -363,7 +516,7 @@
 
         try
         {
-            await InvokeAsync(LoadWorkOrdersAsync);
+            await InvokeAsync(LoadDashboardAsync);
         }
         catch
         {

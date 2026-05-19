@@ -11,5 +11,6 @@ namespace OrionERP.Application.Features.Contabilidad.Transacciones
         public decimal MontoAsignado { get; set; }
         public string TipoPoliza { get; set; } = string.Empty;
         public string FormaPago { get; set; } = string.Empty;
+        public int ApLinkCount { get; set; }
     }
 }

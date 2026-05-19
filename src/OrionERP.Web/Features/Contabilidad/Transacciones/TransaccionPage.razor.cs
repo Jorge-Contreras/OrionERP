@@ -5,6 +5,7 @@ using Microsoft.JSInterop;
 using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
+using OrionERP.Application.Features.CuentasPorPagar.Recurrentes;
 using OrionERP.Web.Services;
 using OrionERP.Web.Shared;
 using OrionERP.Web.State;
@@ -26,6 +27,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     Movimientos,
     Comprobantes,
     Reservaciones,
+    CuentasPorPagar,
     Banco,
     Attachments,
     Resumen
@@ -73,6 +75,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   [Inject] public NavigationManager NavManager { get; set; } = default!;
   [Inject] public IBancosService BancosService { get; set; } = default!;
   [Inject] public IDeclaracionPreviaService DeclaracionPreviaService { get; set; } = default!;
+  [Inject] public IRecurrentApService RecurrentApService { get; set; } = default!;
 
   protected TransaccionHeaderModel? Header { get; private set; }
   protected EditContext? HeaderEditContext { get; private set; }
@@ -89,6 +92,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected List<TransaccionPago20LinkedSummaryDto> ComplementosPago { get; } = [];
   protected List<TransaccionReservacionLinkDto> ReservacionLinks { get; } = [];
   protected List<TransaccionReservacionSearchItemDto> ReservacionCandidates { get; } = [];
+  protected List<RecurrentApTransactionLinkDto> ApLinks { get; } = [];
+  protected List<RecurrentApOccurrenceListItemDto> ApOccurrenceCandidates { get; } = [];
   protected List<LookupInt32Dto> CategoriaOptions { get; } = [];
   protected List<LookupInt32Dto> ProyectoOptions { get; } = [];
   protected List<LookupInt32Dto> CompraOptions { get; } = [];
@@ -102,6 +107,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string ProyectoSearchTerm { get; set; } = string.Empty;
   protected string CompraSearchTerm { get; set; } = string.Empty;
   protected string ReservacionSearchTerm { get; set; } = string.Empty;
+  protected string ApOccurrenceSearchTerm { get; set; } = string.Empty;
   protected decimal ReservacionAmountInput { get; set; }
   protected string SelectedPublicoMonthCode { get; set; } = DateTime.Today.Month.ToString("00", CultureInfo.InvariantCulture);
   protected int SelectedPublicoYear { get; set; } = DateTime.Today.Year;
@@ -115,6 +121,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected CuentaContableSelection? MovimientoCuentaSelection { get; private set; }
   protected string? CuentaPickerRfc { get; private set; }
   protected string? CuentaPickerError { get; private set; }
+  protected string CurrentUserName => "OrionERP";
 
   protected string HeaderStatus => Totals.Balance == 0m ? "Balanceada" : "Desbalanceada";
   protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
@@ -150,6 +157,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected bool IsLoadingReservacionLinks { get; private set; }
   protected bool IsSearchingReservaciones { get; private set; }
   protected bool IsSavingReservacionLink { get; private set; }
+  protected bool IsSearchingApOccurrences { get; private set; }
+  protected bool IsLinkingApOccurrence { get; private set; }
+  protected int? UnlinkingApPaymentId { get; private set; }
   protected bool IsRegeneratingMovimientos { get; private set; }
   protected bool IsTimbrandoPublico { get; private set; }
 
@@ -587,6 +597,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       await ReloadComprobantesAsync(ct);
       await ReloadBancoMovimientosAsync(ct);
       await ReloadReservacionLinksAsync(ct);
+      await ReloadApLinksAsync(ct);
       await SearchReservacionesAsync(ct);
     }
     catch (OperationCanceledException)
@@ -617,10 +628,101 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     Comprobantes.Clear();
     ReservacionLinks.Clear();
     ReservacionCandidates.Clear();
+    ApLinks.Clear();
+    ApOccurrenceCandidates.Clear();
     Totals = new MovimientoTotalsDto();
     ClearReservacionSelection();
     CloseMovimientoModal();
   }
+
+  private async Task ReloadApLinksAsync(CancellationToken ct = default)
+  {
+    ApLinks.Clear();
+    var links = await RecurrentApService.GetTransactionLinksAsync(Id, ct);
+    ApLinks.AddRange(links);
+  }
+
+  protected async Task SearchApOccurrencesAsync(CancellationToken ct = default)
+  {
+    if (Header is null || string.IsNullOrWhiteSpace(Header.Rfc))
+    {
+      UiMessages.ShowWarning("La póliza necesita RFC para buscar vencimientos AP.");
+      return;
+    }
+
+    IsSearchingApOccurrences = true;
+    try
+    {
+      ApOccurrenceCandidates.Clear();
+      var rows = await RecurrentApService.SearchOpenOccurrencesAsync(Header.Rfc, ApOccurrenceSearchTerm, top: 25, ct);
+      ApOccurrenceCandidates.AddRange(rows);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError(ex.Message);
+    }
+    finally
+    {
+      IsSearchingApOccurrences = false;
+    }
+  }
+
+  protected async Task LinkApOccurrenceAsync(RecurrentApOccurrenceListItemDto occurrence)
+  {
+    if (Header is null)
+    {
+      return;
+    }
+
+    IsLinkingApOccurrence = true;
+    try
+    {
+      await RecurrentApService.LinkTransactionAsync(new RecurrentApTransactionLinkRequest
+      {
+        OccurrenceId = occurrence.Id,
+        Rfc = occurrence.Rfc,
+        TransaccionId = Header.Id,
+        Amount = Math.Abs(Header.Monto),
+        PaymentDate = Header.Fecha
+      }, CurrentUserName, CancellationToken.None);
+
+      UiMessages.ShowSuccess("Vencimiento AP ligado a la póliza.");
+      await ReloadApLinksAsync();
+      await SearchApOccurrencesAsync();
+      StateHasChanged();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError(ex.Message);
+    }
+    finally
+    {
+      IsLinkingApOccurrence = false;
+    }
+  }
+
+  protected async Task UnlinkApPaymentAsync(RecurrentApTransactionLinkDto link)
+  {
+    UnlinkingApPaymentId = link.PaymentId;
+    try
+    {
+      await RecurrentApService.UnlinkTransactionAsync(link.PaymentId, link.Rfc, CurrentUserName);
+      UiMessages.ShowSuccess("Liga AP eliminada.");
+      await ReloadApLinksAsync();
+      await SearchApOccurrencesAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError(ex.Message);
+    }
+    finally
+    {
+      UnlinkingApPaymentId = null;
+    }
+  }
+
+  protected bool IsApPaymentUnlinking(RecurrentApTransactionLinkDto link)
+    => UnlinkingApPaymentId == link.PaymentId;
 
   private static TransaccionHeaderModel CreateHeaderModel(TransaccionHeaderDto headerDto)
     => new()

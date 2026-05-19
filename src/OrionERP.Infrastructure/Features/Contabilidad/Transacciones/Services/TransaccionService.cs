@@ -1664,8 +1664,14 @@ WHERE ID = @MovimientoId
               t.Concepto,
               t.Monto,
               t.Tipo_Poliza AS TipoPoliza,
-              t.Forma_Pago AS FormaPago
+              t.Forma_Pago AS FormaPago,
+              ISNULL(apLinks.ApLinkCount, 0) AS ApLinkCount
           FROM dbo.Transacciones t
+          OUTER APPLY (
+              SELECT COUNT(*) AS ApLinkCount
+              FROM AP.OccurrencePayment apPayment
+              WHERE apPayment.TransaccionId = t.ID
+          ) apLinks
           /**where**/
           /**orderby**/"
       );

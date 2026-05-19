@@ -1,0 +1,20 @@
+.recurrent-ap-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: .75rem;
+}
+
+.recurrent-ap-metric {
+  border: 1px solid rgba(0, 0, 0, .08);
+  border-radius: 8px;
+  background: #fff;
+  padding: .9rem 1rem;
+}
+
+.recurrent-ap-table-wrap {
+  max-height: 58vh;
+}
+
+.recurrent-ap-candidates {
+  max-height: 260px;
+}

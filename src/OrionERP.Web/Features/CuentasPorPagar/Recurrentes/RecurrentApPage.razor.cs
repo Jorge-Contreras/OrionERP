@@ -37,6 +37,8 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
   protected int? UnlinkingPaymentId { get; set; }
   protected bool IsUploadingAttachment { get; set; }
   protected bool IsReadOnly { get; set; }
+  protected bool IsEditorVisible { get; set; } = true;
+  protected bool AreOccurrencesVisible { get; set; } = true;
   protected bool IsReadOnlyOrSaving => IsReadOnly || IsSavingPayable;
   protected bool IsReadOnlyOrMutating => IsReadOnly || IsSavingOccurrence || IsLinkingTransaction || UnlinkingPaymentId.HasValue || IsUploadingAttachment;
   protected string? CurrentRfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault();
@@ -66,6 +68,7 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
   protected void NewPayable()
   {
     Editor = CreateEditor(CurrentRfc);
+    IsEditorVisible = true;
   }
 
   protected async Task EditPayable(int payableId)
@@ -101,6 +104,7 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
       Currency = payable.Currency,
       IsActive = payable.IsActive
     };
+    IsEditorVisible = true;
   }
 
   protected async Task SavePayableAsync()
@@ -118,6 +122,7 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
       UiMessages.ShowSuccess("Cuenta recurrente guardada.");
       await LoadWorkspaceAsync();
       await EditPayable(id);
+      IsEditorVisible = false;
     }
     catch (Exception ex)
     {
@@ -131,6 +136,7 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
 
   protected async Task SelectOccurrenceAsync(RecurrentApOccurrenceListItemDto occurrence)
   {
+    AreOccurrencesVisible = false;
     SelectedOccurrence = occurrence;
     StatusEditor = new RecurrentApOccurrenceStatusRequest
     {
@@ -144,6 +150,16 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
     await LoadSelectedOccurrenceRelatedDataAsync(occurrence.Id, occurrence.Rfc);
     TransactionCandidates = [];
     TransactionSearchText = string.Empty;
+  }
+
+  protected void ShowOccurrences()
+  {
+    AreOccurrencesVisible = true;
+  }
+
+  protected void ShowEditor()
+  {
+    IsEditorVisible = true;
   }
 
   protected void ClearSelectedOccurrence()
@@ -169,11 +185,8 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
       await ApService.SetOccurrenceStatusAsync(StatusEditor, CurrentUserName);
       UiMessages.ShowSuccess("Estatus AP actualizado.");
       await LoadWorkspaceAsync();
-      var refreshed = Workspace.Occurrences.FirstOrDefault(item => item.Id == SelectedOccurrence.Id);
-      if (refreshed is not null)
-      {
-        await SelectOccurrenceAsync(refreshed);
-      }
+      ClearSelectedOccurrence();
+      AreOccurrencesVisible = true;
     }
     catch (Exception ex)
     {
@@ -396,6 +409,8 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
     {
       ResetFilters();
       Editor = CreateEditor(CurrentRfc);
+      IsEditorVisible = true;
+      AreOccurrencesVisible = true;
       ClearSelectedOccurrence();
       await LoadWorkspaceAsync();
       StateHasChanged();

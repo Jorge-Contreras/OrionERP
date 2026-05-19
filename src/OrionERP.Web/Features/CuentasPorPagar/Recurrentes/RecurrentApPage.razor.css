@@ -15,6 +15,10 @@
   max-height: 58vh;
 }
 
+.recurrent-ap-occurrence-row {
+  cursor: pointer;
+}
+
 .recurrent-ap-candidates {
   max-height: 260px;
 }

@@ -49,6 +49,7 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
   protected string? CameraError { get; set; }
   protected bool IsEvidencePreviewOpen { get; set; }
   protected bool IsEvidencePreviewLoading { get; set; }
+  protected bool IsEditingSteps { get; set; }
   protected string? EvidencePreviewImageDataUrl { get; set; }
   protected string? EvidencePreviewError { get; set; }
   protected string EvidencePreviewTitle { get; set; } = "Foto capturada";
@@ -121,18 +122,45 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
 
   protected void AddStep()
   {
+    if (!CanEditSteps || !IsEditingSteps)
+    {
+      return;
+    }
+
     StepEditor.Add(CreateEmptyStep(StepEditor.Count + 1));
   }
 
   protected void RemoveStep(OrdenTrabajoStepSaveRequest step)
   {
+    if (!CanEditSteps || !IsEditingSteps)
+    {
+      return;
+    }
+
     StepEditor.Remove(step);
     ResequenceStepEditor();
   }
 
+  protected void StartStepEdit()
+  {
+    if (!CanEditSteps)
+    {
+      return;
+    }
+
+    BuildStepEditorFromOrder();
+    IsEditingSteps = true;
+  }
+
+  protected void CancelStepEdit()
+  {
+    BuildStepEditorFromOrder();
+    IsEditingSteps = false;
+  }
+
   protected async Task SaveStepsAsync()
   {
-    if (!CanEditSteps || Order is null)
+    if (!CanEditSteps || !IsEditingSteps || Order is null)
     {
       return;
     }
@@ -148,6 +176,11 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
           Steps = StepEditor,
           SavedBy = CurrentUserName
         });
+      if (result.Success)
+      {
+        IsEditingSteps = false;
+      }
+
       await HandleMutationResultAsync(result);
     }
     finally
@@ -690,6 +723,18 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
     };
     EditHelperIds = Order.Helpers.Select(helper => helper.EmployeeId).ToHashSet();
     StepNotes = Order.Steps.ToDictionary(step => step.Id, step => step.Notas);
+    BuildStepEditorFromOrder();
+    IsEditingSteps = false;
+  }
+
+  private void BuildStepEditorFromOrder()
+  {
+    if (Order is null)
+    {
+      StepEditor = [];
+      return;
+    }
+
     StepEditor = Order.Steps.Count == 0
       ? [CreateEmptyStep(1)]
       : Order.Steps

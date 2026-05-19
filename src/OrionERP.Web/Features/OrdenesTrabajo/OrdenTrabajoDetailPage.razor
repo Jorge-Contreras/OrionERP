@@ -178,11 +178,21 @@
                             </div>
                             @if (CanEditSteps)
                             {
-                                <button class="btn btn-sm btn-outline-primary" type="button" @onclick="AddStep" disabled="@IsMutating">Agregar paso</button>
+                                <div class="d-flex flex-wrap gap-2">
+                                    @if (IsEditingSteps)
+                                    {
+                                        <button class="btn btn-sm btn-outline-primary" type="button" @onclick="AddStep" disabled="@IsMutating">Agregar paso</button>
+                                        <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="CancelStepEdit" disabled="@IsMutating">Cancelar edicion</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="StartStepEdit" disabled="@IsMutating">Editar ruta critica</button>
+                                    }
+                                </div>
                             }
                         </div>
 
-                        @if (CanEditSteps)
+                        @if (CanEditSteps && IsEditingSteps)
                         {
                             <div class="orden-step-editor mb-3">
                                 @foreach (var step in StepEditor)

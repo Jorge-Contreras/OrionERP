@@ -174,6 +174,36 @@ public class IdentityAdminServiceTests
     }
 
     [Fact]
+    public async Task SaveUserAsync_RejectsNonPositiveEmployeeId()
+    {
+        using var provider = CreateServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var service = scope.ServiceProvider.GetRequiredService<IIdentityAdminService>();
+
+        var result = await service.SaveUserAsync(new IdentityUserUpsertRequest(
+            null,
+            null,
+            "employee-invalid@orionerp.local",
+            "employee-invalid@orionerp.local",
+            null,
+            0,
+            null,
+            true,
+            false,
+            false,
+            true,
+            null,
+            "secret1",
+            Array.Empty<string>(),
+            Array.Empty<IdentityClaimInput>()));
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("EmployeeId", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("mayor a cero", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task SaveUserAsync_RejectsArrendadoresRoleWithoutProveedorLink()
     {
         using var provider = CreateServiceProvider();

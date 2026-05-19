@@ -243,6 +243,9 @@
         "OrdenTrabajoAdmin",
         "OrdenTrabajoSupervisor",
         "OrdenTrabajoOperador",
+        "APAdmin",
+        "APOperator",
+        "APReadOnly",
         "Conteo"
     ];
 
@@ -268,6 +271,7 @@
             new List<NavEntryDefinition>
             {
                 new("/contabilidad/Bancos", "Bancos", "Consulta movimientos, saldos y control de tesoreria.", "oi-bold", "Bancos", NavLinkMatch.Prefix, true, "Cash", "bancos", "tesoreria", "movimientos"),
+                new("/cuentas-por-pagar/recurrentes", "CxCR", "Cuentas Por Cobrar Recurrentes.", "oi-clock", "Cuentas Por Cobrar Recurrentes", NavLinkMatch.Prefix, true, "AP", "ap", "servicios", "pagos recurrentes", "impuestos", "seguros"),
                 new("/contabilidad/registros-contables", "Registros Contables", "Administra asientos, auxiliares y capturas contables.", "oi-folder", "Registros contables", NavLinkMatch.Prefix, false, "Ledger", "registros", "contables", "asientos"),
                 new("/contabilidad/transacciones/list", "Polizas", "Seguimiento de polizas para cierre, ajustes y auditoria.", "oi-layers", "Polizas", NavLinkMatch.Prefix, true, "Cierre", "polizas", "transacciones", "contabilidad")
             }),

@@ -144,6 +144,7 @@ else
                         }
                         <input type="text" class="form-control" @bind-value="Filter.FormaPago" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
                     </th>
+                    <th>AP</th>
                     <th></th>
                 </tr>
             </thead>
@@ -157,6 +158,16 @@ else
                         <td>@transaccion.Monto</td>
                         <td>@transaccion.TipoPoliza</td>
                         <td>@transaccion.FormaPago</td>
+                        <td>
+                            @if (transaccion.ApLinkCount > 0)
+                            {
+                                <span class="badge text-bg-info">@transaccion.ApLinkCount</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">-</span>
+                            }
+                        </td>
                         <td>
                             <a href="/contabilidad/transacciones/@transaccion.Id" class="btn btn-sm btn-primary">Ver/Editar</a>
                         </td>

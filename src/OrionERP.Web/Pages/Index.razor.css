@@ -47,6 +47,7 @@
 }
 
 .home-dashboard__layout,
+.home-main,
 .home-side {
   display: grid;
   gap: 1rem;
@@ -89,7 +90,12 @@
   line-height: 1;
 }
 
-.home-order-list {
+.home-count--ap {
+  background: #7a4b12;
+}
+
+.home-order-list,
+.home-ap-list {
   display: grid;
   gap: 0.75rem;
   padding: 0.85rem;
@@ -127,7 +133,16 @@
   border-left-color: #b42318;
 }
 
+.home-ap-card {
+  border-left-color: #c26a18;
+}
+
+.home-ap-card--overdue {
+  border-left-color: #b42318;
+}
+
 .home-order-card__main,
+.home-ap-card__main,
 .home-order-card__progress {
   min-width: 0;
 }
@@ -297,6 +312,10 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
   overflow: hidden;
+}
+
+.home-stats--ap .home-stat strong {
+  color: #7a4b12;
 }
 
 .home-stat {

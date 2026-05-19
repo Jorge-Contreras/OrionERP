@@ -259,6 +259,14 @@ else
           </li>
           <li class="nav-item">
             <button type="button"
+                    class="@GetTabButtonClass(SectionPanel.CuentasPorPagar)"
+                    @onclick="() => ActivateSection(SectionPanel.CuentasPorPagar)">
+              AP
+              <span class="badge text-bg-secondary ms-1">@ApLinks.Count</span>
+            </button>
+          </li>
+          <li class="nav-item">
+            <button type="button"
                     class="@GetTabButtonClass(SectionPanel.Banco)"
                     @onclick="() => ActivateSection(SectionPanel.Banco)">
               Banco
@@ -705,6 +713,104 @@ else
               </div>
             }
           }
+        }
+        else if (IsActiveSection(SectionPanel.CuentasPorPagar))
+        {
+          <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+            <h5 class="mb-0">AP recurrente</h5>
+            <span class="badge text-bg-secondary">@ApLinks.Count ligas</span>
+          </div>
+
+          @if (ApLinks.Count == 0)
+          {
+            <p class="text-muted">Esta póliza no está ligada a vencimientos AP.</p>
+          }
+          else
+          {
+            <div class="table-responsive mb-4">
+              <table class="table table-sm table-hover align-middle">
+                <thead class="table-light">
+                  <tr>
+                    <th>Recurrente</th>
+                    <th>Vencimiento</th>
+                    <th class="text-end">Monto ligado</th>
+                    <th>Estatus</th>
+                    <th class="text-end">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach (var link in ApLinks)
+                  {
+                    <tr>
+                      <td>@link.PayableName</td>
+                      <td>@link.DueDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                      <td class="text-end">@FormatCurrency(link.Amount)</td>
+                      <td><span class="badge text-bg-light border">@link.Status</span></td>
+                      <td class="text-end">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-warning"
+                                disabled="@IsApPaymentUnlinking(link)"
+                                @onclick="() => UnlinkApPaymentAsync(link)">
+                          Desligar
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+
+          <div class="border rounded p-3">
+            <div class="d-flex flex-column flex-lg-row gap-2 align-items-lg-end">
+              <div class="flex-grow-1">
+                <label class="form-label">Buscar vencimiento AP abierto</label>
+                <input class="form-control" @bind="ApOccurrenceSearchTerm" @bind:event="oninput" placeholder="Nombre, proveedor o categoría" />
+              </div>
+              <button type="button" class="btn btn-outline-secondary" @onclick="() => SearchApOccurrencesAsync()" disabled="@IsSearchingApOccurrences">
+                @(IsSearchingApOccurrences ? "Buscando..." : "Buscar AP")
+              </button>
+            </div>
+
+            @if (ApOccurrenceCandidates.Count > 0)
+            {
+              <div class="table-responsive mt-3">
+                <table class="table table-sm table-hover align-middle">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Vencimiento</th>
+                      <th>Proveedor</th>
+                      <th class="text-end">Esperado</th>
+                      <th>Estatus</th>
+                      <th class="text-end">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @foreach (var occurrence in ApOccurrenceCandidates)
+                    {
+                      <tr>
+                        <td>
+                          <div class="fw-semibold">@occurrence.PayableName</div>
+                          <div class="small text-muted">@occurrence.DueDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</div>
+                        </td>
+                        <td>@occurrence.PayeeName</td>
+                        <td class="text-end">@FormatOptionalCurrency(occurrence.ExpectedAmount)</td>
+                        <td><span class="badge text-bg-light border">@occurrence.Status</span></td>
+                        <td class="text-end">
+                          <button type="button"
+                                  class="btn btn-sm btn-outline-success"
+                                  disabled="@IsLinkingApOccurrence"
+                                  @onclick="() => LinkApOccurrenceAsync(occurrence)">
+                            Ligar
+                          </button>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
         }
         else if (IsActiveSection(SectionPanel.Reservaciones))
         {

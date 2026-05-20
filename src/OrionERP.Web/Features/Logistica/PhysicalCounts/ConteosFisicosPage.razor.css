@@ -187,6 +187,19 @@
   margin-top: 0.45rem;
 }
 
+.conteos-selected-line-captured-at,
+.conteos-line-captured-at {
+  margin-top: 0.35rem;
+  color: var(--orion-color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.conteos-selected-line-captured-at {
+  font-size: 0.78rem;
+}
+
 .conteos-unit-badge {
   display: inline-flex;
   align-items: center;

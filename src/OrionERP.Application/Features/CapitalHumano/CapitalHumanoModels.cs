@@ -33,6 +33,69 @@ public sealed class CapitalHumanoBinaryContent
   public byte[] Bytes { get; set; } = Array.Empty<byte>();
 }
 
+public sealed class CapitalHumanoAttachmentDto
+{
+  public int Id { get; set; }
+  public int EmployeeId { get; set; }
+  public string AttachmentName { get; set; } = string.Empty;
+  public string AttachmentExtension { get; set; } = string.Empty;
+  public string AttachmentDescription { get; set; } = string.Empty;
+  public long Length { get; set; }
+}
+
+public sealed class CapitalHumanoAttachmentContent
+{
+  public int AttachmentId { get; set; }
+  public string FileName { get; set; } = string.Empty;
+  public string ContentType { get; set; } = "application/octet-stream";
+  public byte[] Bytes { get; set; } = Array.Empty<byte>();
+}
+
+public sealed class CapitalHumanoAttachmentCreateRequest
+{
+  public const int MaxFileSizeBytes = 5 * 1024 * 1024;
+
+  public int EmployeeId { get; init; }
+
+  [Required]
+  [StringLength(50)]
+  public string Rfc { get; init; } = string.Empty;
+
+  [Required]
+  [StringLength(200)]
+  public string FileName { get; init; } = string.Empty;
+
+  [StringLength(200)]
+  public string? Extension { get; init; }
+
+  [StringLength(500)]
+  public string? Description { get; init; }
+
+  public byte[] Content { get; init; } = Array.Empty<byte>();
+}
+
+public sealed class CapitalHumanoAttachmentUpdateRequest
+{
+  public int AttachmentId { get; init; }
+  public int EmployeeId { get; init; }
+
+  [Required]
+  [StringLength(50)]
+  public string Rfc { get; init; } = string.Empty;
+
+  [Required]
+  [StringLength(200)]
+  public string FileName { get; init; } = string.Empty;
+
+  [StringLength(200)]
+  public string? Extension { get; init; }
+
+  [StringLength(500)]
+  public string? Description { get; init; }
+
+  public byte[]? Content { get; init; }
+}
+
 public sealed class CapitalHumanoFilter
 {
   [Required]

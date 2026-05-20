@@ -85,6 +85,21 @@
   font-size: 1rem;
 }
 
+.capital-collapse-button {
+  width: 2.25rem;
+  height: 2rem;
+  display: inline-grid;
+  place-items: center;
+}
+
+.capital-attachments-table th:last-child {
+  width: 8rem;
+}
+
+.capital-attachments-table td {
+  vertical-align: middle;
+}
+
 @media (max-width: 575.98px) {
   .capital-photo-preview,
   .capital-photo-preview-placeholder {

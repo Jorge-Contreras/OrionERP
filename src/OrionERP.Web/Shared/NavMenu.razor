@@ -5,8 +5,9 @@
 
 @{
     var visibleSections = VisibleSections;
+    var visibleAdminItems = VisibleAdminItems;
     var quickAccessItems = HasSearch ? Array.Empty<NavEntryDefinition>() : GetQuickAccessItems(visibleSections);
-    var visibleItemCount = visibleSections.Sum(section => section.Items.Count);
+    var visibleItemCount = visibleSections.Sum(section => section.Items.Count) + visibleAdminItems.Count;
 }
 
 <div class="navmenu-topbar navbar navbar-dark">
@@ -102,7 +103,7 @@
             </section>
         }
 
-        @if (visibleSections.Count == 0)
+        @if (visibleSections.Count == 0 && visibleAdminItems.Count == 0)
         {
             <section class="nav-empty" aria-live="polite">
                 <span class="oi oi-magnifying-glass nav-empty__icon" aria-hidden="true"></span>
@@ -162,75 +163,53 @@
             }
         }
 
-        <AuthorizeView Roles="Administrador">
-            <section class="nav-cluster nav-cluster--admin">
-                <header class="nav-cluster__header">
-                    <div class="nav-cluster__icon">
-                        <span class="oi oi-lock-locked" aria-hidden="true"></span>
-                    </div>
+        @if (visibleAdminItems.Count > 0)
+        {
+            <AuthorizeView Roles="Administrador">
+                <section class="nav-cluster nav-cluster--admin">
+                    <header class="nav-cluster__header">
+                        <div class="nav-cluster__icon">
+                            <span class="oi @AdminSection.Icon" aria-hidden="true"></span>
+                        </div>
 
-                    <div class="nav-cluster__copy">
-                        <div class="nav-cluster__eyebrow">Administracion</div>
-                        <h3>Control y seguridad</h3>
-                        <p>Gestiona accesos, roles y mantenimiento del portal.</p>
-                    </div>
-                </header>
+                        <div class="nav-cluster__copy">
+                            <div class="nav-cluster__eyebrow">@AdminSection.Kicker</div>
+                            <h3>@AdminSection.Title</h3>
+                            <p>@AdminSection.Description</p>
+                        </div>
 
-                <ul class="nav-cluster__list">
-                    <li class="nav-item">
-                        <NavLink class="nav-link nav-link--rich"
-                                 href="/admin/seguridad"
-                                 title="Portal de seguridad"
-                                 @onclick="CloseNavMenuAfterSelection">
-                            <span class="nav-link__icon">
-                                <span class="oi oi-lock-locked" aria-hidden="true"></span>
-                            </span>
+                        <span class="nav-cluster__count">@visibleAdminItems.Count</span>
+                    </header>
 
-                            <span class="nav-link__content">
-                                <span class="label">Portal de Seguridad</span>
-                                <span class="description">Usuarios, permisos y configuracion administrativa.</span>
-                            </span>
+                    <ul class="nav-cluster__list">
+                        @foreach (var item in visibleAdminItems)
+                        {
+                            <li class="nav-item">
+                                <NavLink class="nav-link nav-link--rich"
+                                         href="@item.Href"
+                                         Match="@item.Match"
+                                         title="@item.Title"
+                                         @onclick="CloseNavMenuAfterSelection">
+                                    <span class="nav-link__icon">
+                                        <span class="oi @item.Icon" aria-hidden="true"></span>
+                                    </span>
 
-                            <span class="nav-link__badge">Admin</span>
-                        </NavLink>
-                    </li>
-                    <li class="nav-item">
-                        <NavLink class="nav-link nav-link--rich"
-                                 href="/ajustes"
-                                 title="Ajustes"
-                                 @onclick="CloseNavMenuAfterSelection">
-                            <span class="nav-link__icon">
-                                <span class="oi oi-cog" aria-hidden="true"></span>
-                            </span>
+                                    <span class="nav-link__content">
+                                        <span class="label">@item.Label</span>
+                                        <span class="description">@item.Description</span>
+                                    </span>
 
-                            <span class="nav-link__content">
-                                <span class="label">Ajustes</span>
-                                <span class="description">Plantillas contables y configuracion operativa.</span>
-                            </span>
-
-                            <span class="nav-link__badge">Setup</span>
-                        </NavLink>
-                    </li>
-                    <li class="nav-item">
-                        <NavLink class="nav-link nav-link--rich"
-                                 href="/capital-humano"
-                                 title="Capital Humano"
-                                 @onclick="CloseNavMenuAfterSelection">
-                            <span class="nav-link__icon">
-                                <span class="oi oi-people" aria-hidden="true"></span>
-                            </span>
-
-                            <span class="nav-link__content">
-                                <span class="label">Capital Humano</span>
-                                <span class="description">Colaboradores, datos laborales y fotografía.</span>
-                            </span>
-
-                            <span class="nav-link__badge">HR</span>
-                        </NavLink>
-                    </li>
-                </ul>
-            </section>
-        </AuthorizeView>
+                                    @if (!string.IsNullOrWhiteSpace(item.Badge))
+                                    {
+                                        <span class="nav-link__badge">@item.Badge</span>
+                                    }
+                                </NavLink>
+                            </li>
+                        }
+                    </ul>
+                </section>
+            </AuthorizeView>
+        }
     </nav>
 </div>
 
@@ -323,9 +302,22 @@
             })
     };
 
+    private static readonly NavSectionDefinition AdminSection = new(
+        "Control y seguridad",
+        "Administracion",
+        "Gestiona accesos, roles y mantenimiento del portal.",
+        "oi-lock-locked",
+        new List<NavEntryDefinition>
+        {
+            new("/admin/seguridad", "Portal de Seguridad", "Usuarios, permisos y configuracion administrativa.", "oi-lock-locked", "Portal de seguridad", NavLinkMatch.Prefix, false, "Admin", "seguridad", "usuarios", "permisos", "roles"),
+            new("/ajustes", "Ajustes", "Plantillas contables y configuracion operativa.", "oi-cog", "Ajustes", NavLinkMatch.Prefix, false, "Setup", "ajustes", "configuracion", "plantillas"),
+            new("/capital-humano", "Capital Humano", "Colaboradores, datos laborales, archivos y fotografia.", "oi-people", "Capital Humano", NavLinkMatch.Prefix, false, "HR", "capital", "humano", "recursos humanos", "colaboradores", "empleados", "archivos")
+        });
+
     private bool collapseNavMenu = true;
     private string searchText = string.Empty;
     private bool isArrendadoresOnly;
+    private bool isAdmin;
 
     [Parameter] public EventCallback OnMenuItemSelected { get; set; }
     [CascadingParameter] private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
@@ -334,15 +326,20 @@
     private bool HasSearch => !string.IsNullOrWhiteSpace(searchText);
 
     private IReadOnlyList<VisibleNavSection> VisibleSections => BuildVisibleSections(Sections, searchText, isArrendadoresOnly);
+    private IReadOnlyList<NavEntryDefinition> VisibleAdminItems => BuildVisibleAdminItems(searchText, isAdmin);
 
     private NavEntryDefinition? CurrentEntry
     {
         get
         {
             var currentPath = NormalizePath(Navigation.ToBaseRelativePath(Navigation.Uri));
+            var allItems = Sections.SelectMany(section => section.Items);
+            if (isAdmin)
+            {
+                allItems = allItems.Concat(AdminSection.Items);
+            }
 
-            return Sections
-                .SelectMany(section => section.Items)
+            return allItems
                 .OrderByDescending(item => NormalizePath(item.Href).Length)
                 .FirstOrDefault(item => IsCurrentRoute(currentPath, item));
         }
@@ -358,11 +355,13 @@
         if (AuthenticationStateTask is null)
         {
             isArrendadoresOnly = false;
+            isAdmin = false;
             return;
         }
 
         var authState = await AuthenticationStateTask;
         var user = authState.User;
+        isAdmin = user.Identity?.IsAuthenticated == true && user.IsInRole("Administrador");
         isArrendadoresOnly = user.Identity?.IsAuthenticated == true
             && user.IsInRole(ArrendadoresRoleName)
             && !ArrendadoresPrivilegedRoles.Any(role => user.IsInRole(role));
@@ -395,6 +394,19 @@
         }
 
         return sections;
+    }
+
+    private static IReadOnlyList<NavEntryDefinition> BuildVisibleAdminItems(string filter, bool isAdminUser)
+    {
+        if (!isAdminUser)
+        {
+            return Array.Empty<NavEntryDefinition>();
+        }
+
+        var query = filter.Trim();
+        return string.IsNullOrWhiteSpace(query)
+            ? AdminSection.Items
+            : AdminSection.Items.Where(item => MatchesFilter(item, query)).ToArray();
     }
 
     private static bool IsArrendadoresNavItem(NavEntryDefinition item)

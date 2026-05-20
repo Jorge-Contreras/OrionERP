@@ -236,6 +236,19 @@ public partial class ConteosFisicosPage : ComponentBase
       ? label
       : $"{label} ({unitName.Trim()})";
 
+  protected static string FormatLineCapturedSummary(PhysicalCountLineDto line)
+  {
+    if (!line.CapturedAt.HasValue)
+    {
+      return "Sin conteo capturado";
+    }
+
+    var capturedAt = line.CapturedAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture);
+    return string.IsNullOrWhiteSpace(line.CapturedBy)
+      ? $"Conteo {capturedAt}"
+      : $"Conteo {capturedAt} · {line.CapturedBy.Trim()}";
+  }
+
   protected string GetLineRowClass(PhysicalCountLineDto line)
   {
     var isSelected = IsSelectedLine(line);

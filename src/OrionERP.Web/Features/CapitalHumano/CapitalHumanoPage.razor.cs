@@ -24,9 +24,15 @@ public partial class CapitalHumanoPage : ComponentBase, IDisposable
   protected List<CapitalHumanoListItemDto> Employees { get; set; } = [];
   protected CapitalHumanoSaveRequest Editor { get; set; } = CreateNewEditor();
   protected Dictionary<int, string> EmployeePhotoDataUrls { get; set; } = [];
+  protected List<CapitalHumanoAttachmentDto> Attachments { get; set; } = [];
   protected int? SelectedEmployeeId { get; set; }
   protected string? PhotoPreviewDataUrl { get; set; }
   protected string? SelectedPhotoFileName { get; set; }
+  protected string AttachmentDescription { get; set; } = string.Empty;
+  protected string? PendingAttachmentFileName { get; set; }
+  protected string AttachmentEditFileName { get; set; } = string.Empty;
+  protected string AttachmentEditDescription { get; set; } = string.Empty;
+  protected string? ReplacementAttachmentFileName { get; set; }
   protected CapitalHumanoDetailDto? SelectedDetail { get; set; }
   protected bool HasExecutedSearch { get; set; }
   protected bool HasMoreEmployees { get; set; }
@@ -34,12 +40,28 @@ public partial class CapitalHumanoPage : ComponentBase, IDisposable
   protected bool IsLoadingMore { get; set; }
   protected bool IsSaving { get; set; }
   protected bool IsDeactivating { get; set; }
+  protected bool IsAttachmentsExpanded { get; set; } = true;
+  protected bool IsUploadingAttachment { get; set; }
+  protected bool IsUpdatingAttachment { get; set; }
   protected string? LoadError { get; set; }
   protected bool IsListBusy => IsBusy || IsLoadingMore;
+  protected bool CanManageAttachments => Editor.Id.HasValue && !IsSaving && !IsDeactivating;
+  protected bool CanSaveAttachmentEdit => EditingAttachmentId.HasValue
+    && CanManageAttachments
+    && !IsUpdatingAttachment
+    && !string.IsNullOrWhiteSpace(AttachmentEditFileName);
   protected bool CanDeactivate => Editor.Id.HasValue
     && !IsSaving
     && !IsDeactivating
     && !string.Equals(Editor.Status, "INACTIVO", StringComparison.OrdinalIgnoreCase);
+
+  private IBrowserFile? _pendingAttachment;
+  private IBrowserFile? _pendingAttachmentReplacement;
+  protected int AttachmentInputKey { get; set; }
+  protected int ReplacementAttachmentInputKey { get; set; }
+  protected int? EditingAttachmentId { get; set; }
+  private int? _attachmentDownloadingId;
+  private int? _attachmentDeletingId;
 
   protected string CurrentRfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault() ?? "OHM191112Q26";
 
@@ -153,6 +175,7 @@ public partial class CapitalHumanoPage : ComponentBase, IDisposable
     SelectedPhotoFileName = null;
     Editor = CreateNewEditor();
     Editor.Rfc = CurrentRfc;
+    ClearAttachmentState();
   }
 
   protected async Task SeleccionarEmpleadoAsync(int employeeId)
@@ -171,6 +194,7 @@ public partial class CapitalHumanoPage : ComponentBase, IDisposable
       SelectedDetail = detail;
       Editor = MapToEditor(detail);
       await LoadPhotoPreviewAsync(detail.Id);
+      await RefreshAttachmentsAsync(detail.Id);
     }
     catch (Exception ex)
     {
@@ -280,6 +304,227 @@ public partial class CapitalHumanoPage : ComponentBase, IDisposable
     }
   }
 
+  protected void ToggleAttachments()
+  {
+    IsAttachmentsExpanded = !IsAttachmentsExpanded;
+  }
+
+  protected async Task OnAttachmentSelectedAsync(InputFileChangeEventArgs args)
+  {
+    _pendingAttachment = args.FileCount > 0 ? args.File : null;
+    PendingAttachmentFileName = _pendingAttachment?.Name;
+    await InvokeAsync(StateHasChanged);
+  }
+
+  protected async Task CargarAttachmentAsync()
+  {
+    if (!Editor.Id.HasValue)
+    {
+      UiMessages.ShowWarning("Guarda el colaborador antes de cargar archivos.");
+      return;
+    }
+
+    if (_pendingAttachment is null)
+    {
+      UiMessages.ShowWarning("Selecciona un archivo.");
+      return;
+    }
+
+    if (_pendingAttachment.Size > CapitalHumanoAttachmentCreateRequest.MaxFileSizeBytes)
+    {
+      UiMessages.ShowError("El archivo excede el tamaño máximo permitido (5 MB).");
+      return;
+    }
+
+    IsUploadingAttachment = true;
+    try
+    {
+      var content = await ReadAttachmentFileAsync(_pendingAttachment);
+      await CapitalHumanoService.AddEmployeeAttachmentAsync(new CapitalHumanoAttachmentCreateRequest
+      {
+        EmployeeId = Editor.Id.Value,
+        Rfc = CurrentRfc,
+        FileName = _pendingAttachment.Name,
+        Extension = Path.GetExtension(_pendingAttachment.Name).TrimStart('.'),
+        Description = AttachmentDescription,
+        Content = content
+      });
+
+      AttachmentDescription = string.Empty;
+      _pendingAttachment = null;
+      PendingAttachmentFileName = null;
+      AttachmentInputKey++;
+      await RefreshAttachmentsAsync(Editor.Id.Value);
+      UiMessages.ShowSuccess("Archivo agregado.");
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo cargar el archivo. {ex.Message}");
+    }
+    finally
+    {
+      IsUploadingAttachment = false;
+    }
+  }
+
+  protected void EditarAttachment(CapitalHumanoAttachmentDto attachment)
+  {
+    EditingAttachmentId = attachment.Id;
+    AttachmentEditFileName = attachment.AttachmentName;
+    AttachmentEditDescription = attachment.AttachmentDescription;
+    ReplacementAttachmentFileName = null;
+    _pendingAttachmentReplacement = null;
+    ReplacementAttachmentInputKey++;
+  }
+
+  protected void CancelarEdicionAttachment()
+  {
+    EditingAttachmentId = null;
+    AttachmentEditFileName = string.Empty;
+    AttachmentEditDescription = string.Empty;
+    ReplacementAttachmentFileName = null;
+    _pendingAttachmentReplacement = null;
+    ReplacementAttachmentInputKey++;
+  }
+
+  protected async Task OnAttachmentReplacementSelectedAsync(InputFileChangeEventArgs args)
+  {
+    _pendingAttachmentReplacement = args.FileCount > 0 ? args.File : null;
+    ReplacementAttachmentFileName = _pendingAttachmentReplacement?.Name;
+    if (_pendingAttachmentReplacement is not null)
+    {
+      AttachmentEditFileName = _pendingAttachmentReplacement.Name;
+    }
+
+    await InvokeAsync(StateHasChanged);
+  }
+
+  protected async Task GuardarAttachmentEditAsync(CapitalHumanoAttachmentDto attachment)
+  {
+    if (!Editor.Id.HasValue || EditingAttachmentId != attachment.Id)
+    {
+      return;
+    }
+
+    if (string.IsNullOrWhiteSpace(AttachmentEditFileName))
+    {
+      UiMessages.ShowWarning("Ingresa el nombre del archivo.");
+      return;
+    }
+
+    if (_pendingAttachmentReplacement is not null &&
+        _pendingAttachmentReplacement.Size > CapitalHumanoAttachmentCreateRequest.MaxFileSizeBytes)
+    {
+      UiMessages.ShowError("El archivo excede el tamaño máximo permitido (5 MB).");
+      return;
+    }
+
+    IsUpdatingAttachment = true;
+    try
+    {
+      byte[]? replacementContent = null;
+      var extension = Path.GetExtension(AttachmentEditFileName).TrimStart('.');
+      if (_pendingAttachmentReplacement is not null)
+      {
+        replacementContent = await ReadAttachmentFileAsync(_pendingAttachmentReplacement);
+        extension = Path.GetExtension(_pendingAttachmentReplacement.Name).TrimStart('.');
+      }
+
+      if (string.IsNullOrWhiteSpace(extension))
+      {
+        extension = attachment.AttachmentExtension;
+      }
+
+      await CapitalHumanoService.UpdateEmployeeAttachmentAsync(new CapitalHumanoAttachmentUpdateRequest
+      {
+        AttachmentId = attachment.Id,
+        EmployeeId = Editor.Id.Value,
+        Rfc = CurrentRfc,
+        FileName = AttachmentEditFileName,
+        Extension = extension,
+        Description = AttachmentEditDescription,
+        Content = replacementContent
+      });
+
+      CancelarEdicionAttachment();
+      await RefreshAttachmentsAsync(Editor.Id.Value);
+      UiMessages.ShowSuccess("Archivo actualizado.");
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo actualizar el archivo. {ex.Message}");
+    }
+    finally
+    {
+      IsUpdatingAttachment = false;
+    }
+  }
+
+  protected async Task DescargarAttachmentAsync(CapitalHumanoAttachmentDto attachment)
+  {
+    _attachmentDownloadingId = attachment.Id;
+    try
+    {
+      var content = await CapitalHumanoService.GetEmployeeAttachmentContentAsync(attachment.Id, CurrentRfc);
+      if (content is null || content.Bytes.Length == 0)
+      {
+        UiMessages.ShowError("No se encontro el contenido del archivo.");
+        return;
+      }
+
+      var dataUrl = $"data:{content.ContentType};base64,{Convert.ToBase64String(content.Bytes)}";
+      await JS.InvokeVoidAsync("triggerFileDownload", content.FileName, dataUrl);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo descargar el archivo. {ex.Message}");
+    }
+    finally
+    {
+      _attachmentDownloadingId = null;
+    }
+  }
+
+  protected async Task EliminarAttachmentAsync(CapitalHumanoAttachmentDto attachment)
+  {
+    var confirmed = await JS.InvokeAsync<bool>("confirm", "¿Eliminar el archivo seleccionado?");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    _attachmentDeletingId = attachment.Id;
+    try
+    {
+      var result = await CapitalHumanoService.DeleteEmployeeAttachmentAsync(attachment.Id, CurrentRfc);
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      if (Editor.Id.HasValue)
+      {
+        await RefreshAttachmentsAsync(Editor.Id.Value);
+      }
+
+      if (EditingAttachmentId == attachment.Id)
+      {
+        CancelarEdicionAttachment();
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo eliminar el archivo. {ex.Message}");
+    }
+    finally
+    {
+      _attachmentDeletingId = null;
+    }
+  }
+
   protected string GetEmployeeRowClass(CapitalHumanoListItemDto item)
     => item.Id == SelectedEmployeeId ? "table-primary" : string.Empty;
 
@@ -377,6 +622,55 @@ public partial class CapitalHumanoPage : ComponentBase, IDisposable
     {
       UiMessages.ShowWarning($"No se pudieron cargar algunas fotografias. {ex.Message}");
     }
+  }
+
+  protected bool IsAttachmentDownloading(CapitalHumanoAttachmentDto attachment)
+    => _attachmentDownloadingId == attachment.Id;
+
+  protected bool IsAttachmentDeleting(CapitalHumanoAttachmentDto attachment)
+    => _attachmentDeletingId == attachment.Id;
+
+  protected bool IsEditingAttachment(CapitalHumanoAttachmentDto attachment)
+    => EditingAttachmentId == attachment.Id;
+
+  protected static string FormatFileSize(long bytes)
+  {
+    if (bytes < 1024)
+    {
+      return $"{bytes} B";
+    }
+
+    var kiloBytes = bytes / 1024d;
+    if (kiloBytes < 1024)
+    {
+      return $"{kiloBytes:0.#} KB";
+    }
+
+    var megaBytes = kiloBytes / 1024d;
+    return $"{megaBytes:0.##} MB";
+  }
+
+  private async Task RefreshAttachmentsAsync(int employeeId)
+  {
+    Attachments = (await CapitalHumanoService.GetEmployeeAttachmentsAsync(employeeId, CurrentRfc)).ToList();
+  }
+
+  private void ClearAttachmentState()
+  {
+    Attachments = [];
+    AttachmentDescription = string.Empty;
+    PendingAttachmentFileName = null;
+    _pendingAttachment = null;
+    CancelarEdicionAttachment();
+    AttachmentInputKey++;
+  }
+
+  private static async Task<byte[]> ReadAttachmentFileAsync(IBrowserFile file)
+  {
+    await using var stream = file.OpenReadStream(CapitalHumanoAttachmentCreateRequest.MaxFileSizeBytes);
+    using var ms = new MemoryStream();
+    await stream.CopyToAsync(ms);
+    return ms.ToArray();
   }
 
   private void NormalizeEditorForSave()

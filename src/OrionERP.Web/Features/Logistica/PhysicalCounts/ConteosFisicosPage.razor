@@ -196,6 +196,10 @@
                                                     <div class="conteos-line-unit">
                                                         <span class="@GetCountUnitBadgeClass(line.BaseUnitName)">Contar en @lineUnitLabel</span>
                                                     </div>
+                                                    @if (line.CapturedAt.HasValue)
+                                                    {
+                                                        <div class="conteos-line-captured-at">@FormatLineCapturedSummary(line)</div>
+                                                    }
                                                     @if (capturedByCurrentUser)
                                                     {
                                                         <div class="conteos-line-user-indicator">
@@ -279,6 +283,10 @@
                                         <div class="conteos-selected-line-unit">
                                             <span class="@GetCountUnitBadgeClass(SelectedLine.BaseUnitName)">Contar en @selectedLineUnitLabel</span>
                                         </div>
+                                        @if (SelectedLine.CapturedAt.HasValue)
+                                        {
+                                            <div class="conteos-selected-line-captured-at">@FormatLineCapturedSummary(SelectedLine)</div>
+                                        }
                                     </div>
                                     <div class="row g-3 conteos-capture-form">
                                         <div class="col-6 col-md-4">

@@ -289,6 +289,234 @@ public sealed partial class CapitalHumanoService : ICapitalHumanoService
     return rows;
   }
 
+  public async Task<IReadOnlyList<CapitalHumanoAttachmentDto>> GetEmployeeAttachmentsAsync(int employeeId, string rfc, CancellationToken ct = default)
+  {
+    if (employeeId <= 0)
+    {
+      return Array.Empty<CapitalHumanoAttachmentDto>();
+    }
+
+    const string sql =
+      """
+      SELECT
+          ea.ID AS Id,
+          ea.EmpID AS EmployeeId,
+          ISNULL(ea.AttachmentName, CONCAT('Archivo ', ea.ID)) AS AttachmentName,
+          ISNULL(ea.AttachmentExtension, '') AS AttachmentExtension,
+          ISNULL(ea.AttachmentDescription, '') AS AttachmentDescription,
+          CAST(DATALENGTH(ea.Attachment) AS bigint) AS [Length]
+      FROM dbo.EMPLOYEE_ATTACHMENT ea
+      INNER JOIN dbo.Capital_Humano ch
+          ON ch.ID = ea.EmpID
+      WHERE ea.EmpID = @EmployeeId
+        AND ch.RFC = @Rfc
+      ORDER BY ea.ID DESC;
+      """;
+
+    using var conn = CreateConnection();
+    var rows = await conn.QueryAsync<CapitalHumanoAttachmentDto>(
+      new CommandDefinition(
+        sql,
+        new { EmployeeId = employeeId, Rfc = RequireText(rfc, "El RFC de la compania es obligatorio.") },
+        cancellationToken: ct));
+    return rows.AsList();
+  }
+
+  public async Task<CapitalHumanoAttachmentContent?> GetEmployeeAttachmentContentAsync(int attachmentId, string rfc, CancellationToken ct = default)
+  {
+    const string sql =
+      """
+      SELECT TOP (1)
+          ea.AttachmentName,
+          ea.AttachmentExtension,
+          ea.Attachment
+      FROM dbo.EMPLOYEE_ATTACHMENT ea
+      INNER JOIN dbo.Capital_Humano ch
+          ON ch.ID = ea.EmpID
+      WHERE ea.ID = @AttachmentId
+        AND ch.RFC = @Rfc;
+      """;
+
+    using var conn = CreateConnection();
+    var row = await conn.QueryFirstOrDefaultAsync<(string? AttachmentName, string? AttachmentExtension, byte[]? Attachment)>(
+      new CommandDefinition(
+        sql,
+        new { AttachmentId = attachmentId, Rfc = RequireText(rfc, "El RFC de la compania es obligatorio.") },
+        cancellationToken: ct));
+
+    if (row.Attachment is null || row.Attachment.Length == 0)
+    {
+      return null;
+    }
+
+    var extension = NormalizeAttachmentExtension(row.AttachmentExtension, row.AttachmentName);
+    var fileName = BuildAttachmentDownloadFileName(row.AttachmentName, extension, attachmentId);
+
+    return new CapitalHumanoAttachmentContent
+    {
+      AttachmentId = attachmentId,
+      FileName = fileName,
+      ContentType = ResolveAttachmentContentType(extension),
+      Bytes = row.Attachment
+    };
+  }
+
+  public async Task<CapitalHumanoAttachmentDto> AddEmployeeAttachmentAsync(CapitalHumanoAttachmentCreateRequest request, CancellationToken ct = default)
+  {
+    if (request is null)
+    {
+      throw new ArgumentNullException(nameof(request));
+    }
+
+    ValidateAttachmentContent(request.Content);
+
+    var normalized = new NormalizedAttachmentInput(
+      request.EmployeeId,
+      RequireText(request.Rfc, "El RFC de la compania es obligatorio.").ToUpperInvariant(),
+      NormalizeAttachmentName(request.FileName),
+      NormalizeAttachmentExtension(request.Extension, request.FileName),
+      NormalizeAttachmentDescription(request.Description),
+      request.Content);
+
+    const string insertSql =
+      """
+      INSERT INTO dbo.EMPLOYEE_ATTACHMENT
+      (
+          EmpID,
+          Attachment,
+          AttachmentName,
+          AttachmentExtension,
+          AttachmentDescription
+      )
+      VALUES
+      (
+          @EmployeeId,
+          @Attachment,
+          @AttachmentName,
+          @AttachmentExtension,
+          @AttachmentDescription
+      );
+      SELECT CAST(SCOPE_IDENTITY() AS int);
+      """;
+
+    using var conn = CreateConnection();
+    await EnsureEmployeeExistsAsync(conn, normalized.EmployeeId, normalized.Rfc, ct);
+    var attachmentId = await conn.ExecuteScalarAsync<int>(
+      new CommandDefinition(
+        insertSql,
+        new
+        {
+          normalized.EmployeeId,
+          Attachment = normalized.Content,
+          normalized.AttachmentName,
+          normalized.AttachmentExtension,
+          normalized.AttachmentDescription
+        },
+        cancellationToken: ct));
+
+    return await GetEmployeeAttachmentOrThrowAsync(conn, attachmentId, normalized.Rfc, ct);
+  }
+
+  public async Task<CapitalHumanoAttachmentDto> UpdateEmployeeAttachmentAsync(CapitalHumanoAttachmentUpdateRequest request, CancellationToken ct = default)
+  {
+    if (request is null)
+    {
+      throw new ArgumentNullException(nameof(request));
+    }
+
+    if (request.Content is { Length: > 0 })
+    {
+      ValidateAttachmentContent(request.Content);
+    }
+    else if (request.Content is { Length: 0 })
+    {
+      throw new ArgumentException("El archivo adjunto no contiene datos.", nameof(request));
+    }
+
+    var normalized = new NormalizedAttachmentInput(
+      request.EmployeeId,
+      RequireText(request.Rfc, "El RFC de la compania es obligatorio.").ToUpperInvariant(),
+      NormalizeAttachmentName(request.FileName),
+      NormalizeAttachmentExtension(request.Extension, request.FileName),
+      NormalizeAttachmentDescription(request.Description),
+      request.Content);
+
+    var hasReplacement = normalized.Content is { Length: > 0 };
+    var updateSql = new StringBuilder(
+      """
+      UPDATE ea
+      SET AttachmentName = @AttachmentName,
+          AttachmentExtension = @AttachmentExtension,
+          AttachmentDescription = @AttachmentDescription
+      """);
+
+    if (hasReplacement)
+    {
+      updateSql.AppendLine(", Attachment = @Attachment");
+    }
+    else
+    {
+      updateSql.AppendLine();
+    }
+
+    updateSql.AppendLine(
+      """
+      FROM dbo.EMPLOYEE_ATTACHMENT ea
+      INNER JOIN dbo.Capital_Humano ch
+          ON ch.ID = ea.EmpID
+      WHERE ea.ID = @AttachmentId
+        AND ea.EmpID = @EmployeeId
+        AND ch.RFC = @Rfc;
+      """);
+
+    using var conn = CreateConnection();
+    var affected = await conn.ExecuteAsync(
+      new CommandDefinition(
+        updateSql.ToString(),
+        new
+        {
+          request.AttachmentId,
+          normalized.EmployeeId,
+          normalized.Rfc,
+          normalized.AttachmentName,
+          normalized.AttachmentExtension,
+          normalized.AttachmentDescription,
+          Attachment = normalized.Content
+        },
+        cancellationToken: ct));
+
+    if (affected == 0)
+    {
+      throw new InvalidOperationException("El archivo no existe para el empleado y RFC seleccionados.");
+    }
+
+    return await GetEmployeeAttachmentOrThrowAsync(conn, request.AttachmentId, normalized.Rfc, ct);
+  }
+
+  public async Task<CapitalHumanoCommandResult> DeleteEmployeeAttachmentAsync(int attachmentId, string rfc, CancellationToken ct = default)
+  {
+    const string sql =
+      """
+      DELETE ea
+      FROM dbo.EMPLOYEE_ATTACHMENT ea
+      INNER JOIN dbo.Capital_Humano ch
+          ON ch.ID = ea.EmpID
+      WHERE ea.ID = @AttachmentId
+        AND ch.RFC = @Rfc;
+      """;
+
+    using var conn = CreateConnection();
+    var affected = await conn.ExecuteAsync(
+      new CommandDefinition(
+        sql,
+        new { AttachmentId = attachmentId, Rfc = RequireText(rfc, "El RFC de la compania es obligatorio.") },
+        cancellationToken: ct));
+
+    return affected == 0
+      ? CapitalHumanoCommandResult.Fail("El archivo no existe para el RFC seleccionado.", attachmentId)
+      : CapitalHumanoCommandResult.Ok("Archivo eliminado correctamente.", attachmentId);
+  }
+
   public async Task<CapitalHumanoCommandResult> SaveEmployeeAsync(CapitalHumanoSaveRequest request, CancellationToken ct = default)
   {
     if (request is null)
@@ -662,6 +890,129 @@ public sealed partial class CapitalHumanoService : ICapitalHumanoService
       .ToArray();
   }
 
+  private static async Task EnsureEmployeeExistsAsync(DbConnection conn, int employeeId, string rfc, CancellationToken ct)
+  {
+    if (employeeId <= 0)
+    {
+      throw new ArgumentException("El empleado es obligatorio.", nameof(employeeId));
+    }
+
+    const string sql =
+      """
+      SELECT COUNT(1)
+      FROM dbo.Capital_Humano
+      WHERE ID = @EmployeeId
+        AND RFC = @Rfc;
+      """;
+
+    var exists = await conn.ExecuteScalarAsync<int>(
+      new CommandDefinition(sql, new { EmployeeId = employeeId, Rfc = rfc }, cancellationToken: ct));
+    if (exists == 0)
+    {
+      throw new InvalidOperationException("El empleado no existe para el RFC seleccionado.");
+    }
+  }
+
+  private static async Task<CapitalHumanoAttachmentDto> GetEmployeeAttachmentOrThrowAsync(
+    DbConnection conn,
+    int attachmentId,
+    string rfc,
+    CancellationToken ct)
+  {
+    const string sql =
+      """
+      SELECT
+          ea.ID AS Id,
+          ea.EmpID AS EmployeeId,
+          ISNULL(ea.AttachmentName, CONCAT('Archivo ', ea.ID)) AS AttachmentName,
+          ISNULL(ea.AttachmentExtension, '') AS AttachmentExtension,
+          ISNULL(ea.AttachmentDescription, '') AS AttachmentDescription,
+          CAST(DATALENGTH(ea.Attachment) AS bigint) AS [Length]
+      FROM dbo.EMPLOYEE_ATTACHMENT ea
+      INNER JOIN dbo.Capital_Humano ch
+          ON ch.ID = ea.EmpID
+      WHERE ea.ID = @AttachmentId
+        AND ch.RFC = @Rfc;
+      """;
+
+    var dto = await conn.QueryFirstOrDefaultAsync<CapitalHumanoAttachmentDto>(
+      new CommandDefinition(sql, new { AttachmentId = attachmentId, Rfc = rfc }, cancellationToken: ct));
+
+    return dto ?? throw new InvalidOperationException("No se pudo recuperar el archivo.");
+  }
+
+  private static void ValidateAttachmentContent(byte[]? content)
+  {
+    if (content is null || content.Length == 0)
+    {
+      throw new ArgumentException("El archivo adjunto no contiene datos.", nameof(content));
+    }
+
+    if (content.Length > CapitalHumanoAttachmentCreateRequest.MaxFileSizeBytes)
+    {
+      throw new InvalidOperationException("El archivo adjunto excede el tamaño máximo permitido (5 MB).");
+    }
+  }
+
+  private static string NormalizeAttachmentName(string? fileName)
+  {
+    var safeFileName = Path.GetFileName(RequireText(fileName, "El nombre del archivo es obligatorio."));
+    return TrimMax(RequireText(safeFileName, "El nombre del archivo es obligatorio."), 200);
+  }
+
+  private static string NormalizeAttachmentExtension(string? extension, string? fileName)
+  {
+    var cleanExtension = NullIfWhiteSpace(extension)?.TrimStart('.');
+    if (cleanExtension is null && !string.IsNullOrWhiteSpace(fileName))
+    {
+      cleanExtension = NullIfWhiteSpace(Path.GetExtension(fileName))?.TrimStart('.');
+    }
+
+    return TrimMax(cleanExtension ?? string.Empty, 200);
+  }
+
+  private static string NormalizeAttachmentDescription(string? description)
+    => TrimMax(NullIfWhiteSpace(description) ?? "Archivo adjunto", 500);
+
+  private static string BuildAttachmentDownloadFileName(string? attachmentName, string? extension, int attachmentId)
+  {
+    var fileName = string.IsNullOrWhiteSpace(attachmentName)
+      ? $"archivo-{attachmentId}"
+      : TrimMax(Path.GetFileName(attachmentName.Trim()), 200);
+
+    var cleanExtension = NullIfWhiteSpace(extension);
+    if (!string.IsNullOrWhiteSpace(cleanExtension) &&
+        !fileName.EndsWith($".{cleanExtension}", StringComparison.OrdinalIgnoreCase))
+    {
+      fileName = $"{fileName}.{cleanExtension}";
+    }
+
+    return fileName;
+  }
+
+  private static string ResolveAttachmentContentType(string? extension)
+  {
+    if (string.IsNullOrWhiteSpace(extension))
+    {
+      return "application/octet-stream";
+    }
+
+    return extension.Trim().TrimStart('.').ToLowerInvariant() switch
+    {
+      "pdf" => "application/pdf",
+      "xml" => "application/xml",
+      "jpg" or "jpeg" => "image/jpeg",
+      "png" => "image/png",
+      "txt" => "text/plain",
+      "csv" => "text/csv",
+      "xls" => "application/vnd.ms-excel",
+      "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "doc" => "application/msword",
+      "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      _ => "application/octet-stream"
+    };
+  }
+
   private static IReadOnlyList<string> MergeOptions(IEnumerable<string> defaults, IEnumerable<string> values)
     => defaults
       .Concat(values)
@@ -766,4 +1117,12 @@ public sealed partial class CapitalHumanoService : ICapitalHumanoService
 
   [GeneratedRegex(@"^[A-ZÑ&]{4}\d{6}[A-Z0-9]{3}$", RegexOptions.CultureInvariant)]
   private static partial Regex PhysicalPersonRfcRegex();
+
+  private sealed record NormalizedAttachmentInput(
+    int EmployeeId,
+    string Rfc,
+    string AttachmentName,
+    string AttachmentExtension,
+    string AttachmentDescription,
+    byte[]? Content);
 }

@@ -244,6 +244,172 @@
                                 <InputFile OnChange="OnPhotoSelectedAsync" accept="image/*" />
                             </section>
 
+                            <section class="capital-editor-section capital-attachments-section">
+                                <div class="capital-section-header">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <h3>Archivos</h3>
+                                        <span class="badge text-bg-light">@Attachments.Count</span>
+                                    </div>
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-secondary capital-collapse-button"
+                                            @onclick="ToggleAttachments"
+                                            aria-expanded="@IsAttachmentsExpanded"
+                                            title="@(IsAttachmentsExpanded ? "Ocultar archivos" : "Mostrar archivos")">
+                                        <span class="oi @(IsAttachmentsExpanded ? "oi-chevron-top" : "oi-chevron-bottom")" aria-hidden="true"></span>
+                                    </button>
+                                </div>
+
+                                @if (IsAttachmentsExpanded)
+                                {
+                                    @if (!CanManageAttachments)
+                                    {
+                                        <div class="text-muted small">Guarda el colaborador antes de cargar archivos.</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="row g-2 align-items-end mb-3">
+                                            <div class="col-md-5">
+                                                <label class="form-label">Descripción</label>
+                                                <input class="form-control"
+                                                       type="text"
+                                                       maxlength="500"
+                                                       @bind="AttachmentDescription"
+                                                       disabled="@IsUploadingAttachment" />
+                                            </div>
+                                            <div class="col-md-5">
+                                                <label class="form-label">Archivo</label>
+                                                <InputFile @key="AttachmentInputKey" OnChange="OnAttachmentSelectedAsync" disabled="@IsUploadingAttachment" />
+                                                @if (!string.IsNullOrWhiteSpace(PendingAttachmentFileName))
+                                                {
+                                                    <div class="form-text">@PendingAttachmentFileName</div>
+                                                }
+                                            </div>
+                                            <div class="col-md-2">
+                                                <button type="button"
+                                                        class="btn btn-outline-primary w-100"
+                                                        @onclick="CargarAttachmentAsync"
+                                                        disabled="@(_pendingAttachment is null || IsUploadingAttachment)">
+                                                    @(IsUploadingAttachment ? "Cargando..." : "Cargar")
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-hover align-middle mb-0 capital-attachments-table">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Archivo</th>
+                                                    <th>Descripción</th>
+                                                    <th>Tamaño</th>
+                                                    <th class="text-end">Acciones</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @if (Attachments.Count == 0)
+                                                {
+                                                    <tr>
+                                                        <td colspan="4" class="text-center text-muted py-3">Sin archivos.</td>
+                                                    </tr>
+                                                }
+                                                else
+                                                {
+                                                    @foreach (var attachment in Attachments)
+                                                    {
+                                                        @if (IsEditingAttachment(attachment))
+                                                        {
+                                                            <tr class="table-light">
+                                                                <td colspan="4">
+                                                                    <div class="row g-2 align-items-end">
+                                                                        <div class="col-md-4">
+                                                                            <label class="form-label">Nombre</label>
+                                                                            <input class="form-control form-control-sm"
+                                                                                   type="text"
+                                                                                   maxlength="200"
+                                                                                   @bind="AttachmentEditFileName"
+                                                                                   disabled="@IsUpdatingAttachment" />
+                                                                        </div>
+                                                                        <div class="col-md-4">
+                                                                            <label class="form-label">Descripción</label>
+                                                                            <input class="form-control form-control-sm"
+                                                                                   type="text"
+                                                                                   maxlength="500"
+                                                                                   @bind="AttachmentEditDescription"
+                                                                                   disabled="@IsUpdatingAttachment" />
+                                                                        </div>
+                                                                        <div class="col-md-4">
+                                                                            <label class="form-label">Reemplazar archivo</label>
+                                                                            <InputFile @key="ReplacementAttachmentInputKey" OnChange="OnAttachmentReplacementSelectedAsync" disabled="@IsUpdatingAttachment" />
+                                                                            @if (!string.IsNullOrWhiteSpace(ReplacementAttachmentFileName))
+                                                                            {
+                                                                                <div class="form-text">@ReplacementAttachmentFileName</div>
+                                                                            }
+                                                                        </div>
+                                                                        <div class="col-12 d-flex justify-content-end gap-2">
+                                                                            <button type="button"
+                                                                                    class="btn btn-sm btn-outline-secondary"
+                                                                                    @onclick="CancelarEdicionAttachment"
+                                                                                    disabled="@IsUpdatingAttachment">
+                                                                                Cancelar
+                                                                            </button>
+                                                                            <button type="button"
+                                                                                    class="btn btn-sm btn-primary"
+                                                                                    @onclick="() => GuardarAttachmentEditAsync(attachment)"
+                                                                                    disabled="@(!CanSaveAttachmentEdit)">
+                                                                                @(IsUpdatingAttachment ? "Guardando..." : "Guardar")
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                        else
+                                                        {
+                                                            <tr>
+                                                                <td>
+                                                                    <div class="fw-semibold">@attachment.AttachmentName</div>
+                                                                    @if (!string.IsNullOrWhiteSpace(attachment.AttachmentExtension))
+                                                                    {
+                                                                        <span class="badge text-bg-light">@attachment.AttachmentExtension</span>
+                                                                    }
+                                                                </td>
+                                                                <td>@attachment.AttachmentDescription</td>
+                                                                <td>@FormatFileSize(attachment.Length)</td>
+                                                                <td class="text-end">
+                                                                    <div class="btn-group btn-group-sm" role="group" aria-label="Acciones de archivo">
+                                                                        <button type="button"
+                                                                                class="btn btn-outline-primary"
+                                                                                @onclick="() => DescargarAttachmentAsync(attachment)"
+                                                                                disabled="@IsAttachmentDownloading(attachment)"
+                                                                                title="Descargar">
+                                                                            <span class="oi oi-cloud-download" aria-hidden="true"></span>
+                                                                        </button>
+                                                                        <button type="button"
+                                                                                class="btn btn-outline-secondary"
+                                                                                @onclick="() => EditarAttachment(attachment)"
+                                                                                disabled="@(!CanManageAttachments || IsUpdatingAttachment)"
+                                                                                title="Editar">
+                                                                            <span class="oi oi-pencil" aria-hidden="true"></span>
+                                                                        </button>
+                                                                        <button type="button"
+                                                                                class="btn btn-outline-danger"
+                                                                                @onclick="() => EliminarAttachmentAsync(attachment)"
+                                                                                disabled="@(!CanManageAttachments || IsAttachmentDeleting(attachment))"
+                                                                                title="Eliminar">
+                                                                            <span class="oi oi-trash" aria-hidden="true"></span>
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    }
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                            </section>
+
                             <section class="capital-editor-section">
                                 <div class="capital-section-header">
                                     <h3>Empleo</h3>

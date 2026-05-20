@@ -158,6 +158,89 @@ public class CapitalHumanoServiceTests
   }
 
   [Fact]
+  public async Task AddEmployeeAttachmentAsync_InsertsIntoEmployeeAttachmentScopedByCompanyRfc()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ScalarResultFactory = static (commandText, _) =>
+      {
+        if (commandText.Contains("COUNT(1)", StringComparison.Ordinal))
+          return 1;
+
+        if (commandText.Contains("SCOPE_IDENTITY", StringComparison.Ordinal))
+          return 22;
+
+        return null;
+      },
+      ReaderResultFactory = static (_, _) => Table(
+        ["Id", "EmployeeId", "AttachmentName", "AttachmentExtension", "AttachmentDescription", "Length"],
+        [22, 84, "ine.pdf", "pdf", "INE", 3L])
+    };
+    var service = new CapitalHumanoService(new FakeQueryConnectionFactory(connection));
+
+    var attachment = await service.AddEmployeeAttachmentAsync(new CapitalHumanoAttachmentCreateRequest
+    {
+      EmployeeId = 84,
+      Rfc = "OHM191112Q26",
+      FileName = "ine.pdf",
+      Extension = "pdf",
+      Description = "INE",
+      Content = [1, 2, 3]
+    });
+
+    Assert.Equal(22, attachment.Id);
+
+    var employeeCheck = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("FROM dbo.Capital_Humano", StringComparison.Ordinal)
+        && command.CommandText.Contains("RFC = @Rfc", StringComparison.Ordinal));
+    Assert.Contains(employeeCheck.Parameters, parameter => string.Equals(parameter.Name, "EmployeeId", StringComparison.OrdinalIgnoreCase)
+      && Convert.ToInt32(parameter.Value) == 84);
+
+    var insert = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("INSERT INTO dbo.EMPLOYEE_ATTACHMENT", StringComparison.Ordinal));
+    Assert.Contains("EmpID", insert.CommandText, StringComparison.Ordinal);
+    Assert.Contains(insert.Parameters, parameter => string.Equals(parameter.Name, "Attachment", StringComparison.OrdinalIgnoreCase)
+      && parameter.Value is byte[] bytes
+      && bytes.Length == 3);
+  }
+
+  [Fact]
+  public async Task UpdateEmployeeAttachmentAsync_PreservesContentWhenNoReplacementProvided()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      NonQueryResultFactory = static (_, _) => 1,
+      ReaderResultFactory = static (_, _) => Table(
+        ["Id", "EmployeeId", "AttachmentName", "AttachmentExtension", "AttachmentDescription", "Length"],
+        [22, 84, "contrato.pdf", "pdf", "Contrato firmado", 12L])
+    };
+    var service = new CapitalHumanoService(new FakeQueryConnectionFactory(connection));
+
+    var attachment = await service.UpdateEmployeeAttachmentAsync(new CapitalHumanoAttachmentUpdateRequest
+    {
+      AttachmentId = 22,
+      EmployeeId = 84,
+      Rfc = "OHM191112Q26",
+      FileName = "contrato.pdf",
+      Extension = "pdf",
+      Description = "Contrato firmado"
+    });
+
+    Assert.Equal("Contrato firmado", attachment.AttachmentDescription);
+
+    var update = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("UPDATE ea", StringComparison.Ordinal));
+    Assert.Contains("dbo.EMPLOYEE_ATTACHMENT", update.CommandText, StringComparison.Ordinal);
+    Assert.Contains("INNER JOIN dbo.Capital_Humano", update.CommandText, StringComparison.Ordinal);
+    Assert.Contains("ch.RFC = @Rfc", update.CommandText, StringComparison.Ordinal);
+    Assert.DoesNotContain("Attachment = @Attachment", update.CommandText, StringComparison.Ordinal);
+    Assert.DoesNotContain("@AttachmentDescriptionFROM", update.CommandText, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public void CapitalHumanoUi_DoesNotUseLegacyRolesOrCredentialFields()
   {
     var page = File.ReadAllText(GetRepoFile("src/OrionERP.Web/Features/CapitalHumano/CapitalHumanoPage.razor"));

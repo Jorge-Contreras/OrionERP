@@ -23,6 +23,32 @@
     </button>
   </div>
 
+  <section class="ajustes-section mb-3">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+          <div>
+            <h2 class="h5 mb-1">Notificaciones CxCR</h2>
+            <p class="text-muted mb-0">Define cuantos dias antes aparecen los vencimientos AP en el dashboard de inicio.</p>
+          </div>
+          <EditForm Model="GeneralSettingsEditor" OnValidSubmit="SaveGeneralSettingsAsync" class="ajustes-dashboard-settings">
+            <DataAnnotationsValidator />
+            <div class="d-flex flex-wrap align-items-end gap-2">
+              <div>
+                <label class="form-label">Dias de anticipacion</label>
+                <InputNumber class="form-control ajustes-days-input" @bind-Value="GeneralSettingsEditor.ApOccurrenceNotificationDays" min="0" max="365" disabled="@isLoadingGeneralSettings" />
+                <ValidationMessage For="@(() => GeneralSettingsEditor.ApOccurrenceNotificationDays)" />
+              </div>
+              <button type="submit" class="btn btn-primary" disabled="@(isLoadingGeneralSettings || isSavingGeneralSettings)">
+                @(isSavingGeneralSettings ? "Guardando..." : "Guardar")
+              </button>
+            </div>
+          </EditForm>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="ajustes-section">
     <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
       <div>
@@ -345,6 +371,7 @@
   ];
 
   private readonly List<PlantillaContableListItemDto> Plantillas = [];
+  private GeneralSettingsEditorModel GeneralSettingsEditor { get; set; } = new();
   private PlantillaEditorModel Editor { get; set; } = new();
   private PlantillaLineEditorModel LineEditor { get; set; } = new();
   private CuentaContableSelection? LineAccountSelection { get; set; }
@@ -352,6 +379,8 @@
   private string? selectedRfc;
   private string searchText = string.Empty;
   private bool includeInactive;
+  private bool isLoadingGeneralSettings;
+  private bool isSavingGeneralSettings;
   private bool isLoadingList;
   private bool isSaving;
   private bool showLineModal;
@@ -369,6 +398,7 @@
       selectedRfc = RfcState.CurrentRfc;
     }
 
+    await LoadGeneralSettingsAsync();
     NewPlantilla();
     await LoadPlantillasAsync();
   }
@@ -403,6 +433,54 @@
     finally
     {
       isLoadingList = false;
+    }
+  }
+
+  private async Task LoadGeneralSettingsAsync()
+  {
+    isLoadingGeneralSettings = true;
+    try
+    {
+      var settings = await AjustesService.GetGeneralSettingsAsync();
+      GeneralSettingsEditor = GeneralSettingsEditorModel.FromDto(settings);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron cargar los ajustes generales. {ex.Message}");
+    }
+    finally
+    {
+      isLoadingGeneralSettings = false;
+    }
+  }
+
+  private async Task SaveGeneralSettingsAsync()
+  {
+    if (isSavingGeneralSettings)
+    {
+      return;
+    }
+
+    isSavingGeneralSettings = true;
+    try
+    {
+      var result = await AjustesService.SaveGeneralSettingsAsync(GeneralSettingsEditor.ToRequest());
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      await LoadGeneralSettingsAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron guardar los ajustes generales. {ex.Message}");
+    }
+    finally
+    {
+      isSavingGeneralSettings = false;
     }
   }
 
@@ -705,6 +783,27 @@
         : "Concepto de poliza";
 
   private sealed record SelectOption(string Value, string Label);
+
+  private sealed class GeneralSettingsEditorModel
+  {
+    [Range(
+      AjustesGeneralSettingsDto.MinApOccurrenceNotificationDays,
+      AjustesGeneralSettingsDto.MaxApOccurrenceNotificationDays,
+      ErrorMessage = "Captura un valor entre 0 y 365 dias.")]
+    public int ApOccurrenceNotificationDays { get; set; } = AjustesGeneralSettingsDto.DefaultApOccurrenceNotificationDays;
+
+    public static GeneralSettingsEditorModel FromDto(AjustesGeneralSettingsDto dto)
+      => new()
+      {
+        ApOccurrenceNotificationDays = dto.ApOccurrenceNotificationDays
+      };
+
+    public AjustesGeneralSettingsSaveRequest ToRequest()
+      => new()
+      {
+        ApOccurrenceNotificationDays = ApOccurrenceNotificationDays
+      };
+  }
 
   private sealed class PlantillaEditorModel
   {

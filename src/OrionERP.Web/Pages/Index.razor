@@ -1,8 +1,10 @@
 @page "/"
 @using System.Globalization
 @using Microsoft.AspNetCore.Identity
+@using OrionERP.Application.Features.Ajustes
 @using OrionERP.Application.Features.CuentasPorPagar.Recurrentes
 @using OrionERP.Infrastructure.Auth
+@inject IAjustesService AjustesService
 @inject IRecurrentApService RecurrentApService
 @inject IOrdenTrabajoService OrdenTrabajoService
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -126,7 +128,7 @@
                 }
                 else if (ApOccurrences.Count == 0)
                 {
-                    <div class="home-empty">No hay CxCR vencidas ni por vencer en los proximos 5 dias.</div>
+                    <div class="home-empty">@ApEmptyMessage</div>
                 }
                 else
                 {
@@ -196,7 +198,7 @@
                     <strong>@ApOverdueCount</strong>
                 </div>
                 <div class="home-stat">
-                    <span>5 dias</span>
+                    <span>@ApNotificationWindowLabel</span>
                     <strong>@ApDueSoonCount</strong>
                 </div>
                 <div class="home-stat">
@@ -218,8 +220,6 @@
 </div>
 
 @code {
-    private const int ApDueSoonDays = 5;
-
     private static readonly HashSet<string> ActiveStatuses = new(StringComparer.OrdinalIgnoreCase)
     {
         OrdenTrabajoCodes.EstadoBorrador,
@@ -238,6 +238,7 @@
     private bool IsLoading { get; set; }
     private string? ErrorMessage { get; set; }
     private string? LoadedRfc { get; set; }
+    private int ApNotificationDays { get; set; } = AjustesGeneralSettingsDto.DefaultApOccurrenceNotificationDays;
 
     private string CurrentRfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault() ?? "OHM191112Q26";
 
@@ -251,6 +252,8 @@
     private int ApOverdueCount => ApOccurrences.Count(item => item.IsOverdue);
     private int ApDueSoonCount => ApOccurrences.Count(item => item.IsDueSoon);
     private decimal ApPendingAmount => ApOccurrences.Sum(item => Math.Max((item.ExpectedAmount ?? 0m) - item.ActualPaidAmount, 0m));
+    private string ApNotificationWindowLabel => ApNotificationDays == 1 ? "1 dia" : $"{ApNotificationDays} dias";
+    private string ApEmptyMessage => $"No hay CxCR vencidas ni por vencer en los proximos {ApNotificationWindowLabel}.";
 
     protected override async Task OnInitializedAsync()
     {
@@ -275,6 +278,10 @@
                 await ResolveCurrentUserAsync();
             }
 
+            if (IsAuthenticated)
+            {
+                await LoadApNotificationSettingsAsync();
+            }
             await LoadWorkOrdersForCurrentUserAsync();
             await LoadApOccurrencesAsync();
             LoadedRfc = CurrentRfc;
@@ -325,12 +332,17 @@
         }
 
         var today = DateTime.Today;
+        var notificationDays = Math.Clamp(
+            ApNotificationDays,
+            AjustesGeneralSettingsDto.MinApOccurrenceNotificationDays,
+            AjustesGeneralSettingsDto.MaxApOccurrenceNotificationDays);
         var workspace = await RecurrentApService.GetWorkspaceAsync(new RecurrentApFilter
         {
             Rfc = CurrentRfc,
-            ToDate = today.AddDays(ApDueSoonDays),
-            DueSoonDays = ApDueSoonDays,
-            Take = 100
+            ToDate = today.AddDays(notificationDays),
+            DueSoonDays = notificationDays,
+            OpenOnly = true,
+            Take = 500
         });
 
         ApOccurrences = workspace.Occurrences
@@ -341,6 +353,12 @@
             .ThenBy(item => item.DueDate)
             .ThenBy(item => item.PayableName)
             .ToList();
+    }
+
+    private async Task LoadApNotificationSettingsAsync()
+    {
+        var settings = await AjustesService.GetGeneralSettingsAsync();
+        ApNotificationDays = settings.ApOccurrenceNotificationDays;
     }
 
     private async Task ResolveCurrentUserAsync()

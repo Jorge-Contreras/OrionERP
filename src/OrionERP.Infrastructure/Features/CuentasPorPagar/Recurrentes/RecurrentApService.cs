@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Data.Common;
+using System.Security.Cryptography;
+using System.Text;
 using Dapper;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.CuentasPorPagar.Recurrentes;
@@ -39,7 +41,7 @@ public sealed class RecurrentApService : IRecurrentApService
     };
   }
 
-  public async Task<RecurrentApPayableSummaryDto?> GetPayableAsync(int payableId, string rfc, CancellationToken ct = default)
+  public async Task<RecurrentApPayableSummaryDto?> GetPayableAsync(int payableId, string rfc, bool includePassword = false, CancellationToken ct = default)
   {
     const string sql =
       """
@@ -51,6 +53,10 @@ public sealed class RecurrentApService : IRecurrentApService
           PayeeNameSnapshot,
           PayeeRfcSnapshot,
           Category,
+          [Description],
+          Website,
+          UserName,
+          PasswordEnc,
           FrequencyUnit,
           IntervalCount,
           StartDate,
@@ -66,8 +72,9 @@ public sealed class RecurrentApService : IRecurrentApService
       """;
 
     using var conn = CreateConnection();
-    return await conn.QueryFirstOrDefaultAsync<RecurrentApPayableSummaryDto>(
+    var row = await conn.QueryFirstOrDefaultAsync<RecurringPayableRow>(
       new CommandDefinition(sql, new { PayableId = payableId, Rfc = NormalizeRequiredRfc(rfc) }, cancellationToken: ct));
+    return row is null ? null : MapPayable(row, includePassword);
   }
 
   public async Task<int> SavePayableAsync(RecurrentApUpsertRequest request, string? savedBy, CancellationToken ct = default)
@@ -85,6 +92,10 @@ public sealed class RecurrentApService : IRecurrentApService
     request.PayeeRfcSnapshot = NullIfWhiteSpace(request.PayeeRfcSnapshot);
     request.Category = NullIfWhiteSpace(request.Category);
     request.Description = NullIfWhiteSpace(request.Description);
+    request.Website = NullIfWhiteSpace(request.Website);
+    request.UserName = NullIfWhiteSpace(request.UserName);
+    request.Password = NullIfWhiteSpace(request.Password);
+    var passwordEnc = RecurrentApCredentialProtector.ProtectUtf8OrNull(request.Password);
 
     using var conn = CreateConnection();
     await conn.OpenAsync(ct);
@@ -118,6 +129,9 @@ public sealed class RecurrentApService : IRecurrentApService
                 PayeeRfcSnapshot = @PayeeRfcSnapshot,
                 Category = @Category,
                 [Description] = @Description,
+                Website = @Website,
+                UserName = @UserName,
+                PasswordEnc = @PasswordEnc,
                 FrequencyUnit = @FrequencyUnit,
                 IntervalCount = @IntervalCount,
                 StartDate = @StartDate,
@@ -142,6 +156,9 @@ public sealed class RecurrentApService : IRecurrentApService
               request.PayeeRfcSnapshot,
               request.Category,
               request.Description,
+              request.Website,
+              request.UserName,
+              PasswordEnc = passwordEnc,
               request.FrequencyUnit,
               request.IntervalCount,
               StartDate = request.StartDate.Date,
@@ -173,14 +190,14 @@ public sealed class RecurrentApService : IRecurrentApService
             INSERT INTO AP.RecurringPayable
             (
                 Rfc, [Name], BusinessPartnerId, PayeeNameSnapshot, PayeeRfcSnapshot,
-                Category, [Description], FrequencyUnit, IntervalCount, StartDate, EndDate,
+                Category, [Description], Website, UserName, PasswordEnc, FrequencyUnit, IntervalCount, StartDate, EndDate,
                 DueDayOfMonth, DueMonth, ExpectedAmount, Currency, IsActive, CreatedBy
             )
             OUTPUT INSERTED.Id
             VALUES
             (
                 @Rfc, @Name, @BusinessPartnerId, @PayeeNameSnapshot, @PayeeRfcSnapshot,
-                @Category, @Description, @FrequencyUnit, @IntervalCount, @StartDate, @EndDate,
+                @Category, @Description, @Website, @UserName, @PasswordEnc, @FrequencyUnit, @IntervalCount, @StartDate, @EndDate,
                 @DueDayOfMonth, @DueMonth, @ExpectedAmount, @Currency, @IsActive, @CreatedBy
             );
             """,
@@ -193,6 +210,9 @@ public sealed class RecurrentApService : IRecurrentApService
               request.PayeeRfcSnapshot,
               request.Category,
               request.Description,
+              request.Website,
+              request.UserName,
+              PasswordEnc = passwordEnc,
               request.FrequencyUnit,
               request.IntervalCount,
               StartDate = request.StartDate.Date,
@@ -277,6 +297,96 @@ public sealed class RecurrentApService : IRecurrentApService
     }
   }
 
+  public async Task<RecurrentApReseedResult> ReseedPayableOccurrencesAsync(int payableId, string rfc, string? updatedBy, CancellationToken ct = default)
+  {
+    var normalizedRfc = NormalizeRequiredRfc(rfc);
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(ct);
+
+    try
+    {
+      var payable = await LoadPayableForGenerationAsync(conn, tx, payableId, normalizedRfc, ct)
+        ?? throw new InvalidOperationException("La cuenta recurrente debe existir, pertenecer al RFC y estar activa para resembrar.");
+
+      var preserved = await CountFuturePreservedOccurrencesAsync(conn, tx, payableId, normalizedRfc, ct);
+      var deleted = await DeleteFuturePendingOccurrencesAsync(conn, tx, payableId, normalizedRfc, ct);
+      var created = await GeneratePayableOccurrencesAsync(conn, tx, payable, DateTime.Today.AddMonths(DefaultRollingMonths), ct);
+      var actor = NormalizeActor(updatedBy);
+
+      await AddAuditAsync(
+        conn,
+        tx,
+        normalizedRfc,
+        "RecurringPayable",
+        payableId,
+        "Reseeded",
+        $"Deleted={deleted}; Created={created}; Preserved={preserved}",
+        actor,
+        ct);
+
+      await tx.CommitAsync(ct);
+      return new RecurrentApReseedResult
+      {
+        RecurringPayableId = payableId,
+        DeletedCount = deleted,
+        CreatedCount = created,
+        PreservedCount = preserved
+      };
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
+  public async Task<RecurrentApOccurrenceDetailDto?> GetOccurrenceDetailAsync(int occurrenceId, string rfc, bool includePassword = false, CancellationToken ct = default)
+  {
+    const string sql =
+      """
+      SELECT
+          o.Id,
+          o.RecurringPayableId,
+          o.Rfc,
+          rp.[Name] AS PayableName,
+          COALESCE(rp.PayeeNameSnapshot, bp.PartnerName) AS PayeeName,
+          COALESCE(rp.PayeeRfcSnapshot, bp.Rfc) AS PayeeRfc,
+          rp.Category,
+          rp.[Description],
+          rp.Website,
+          rp.UserName,
+          rp.PasswordEnc,
+          rp.FrequencyUnit,
+          rp.IntervalCount,
+          rp.StartDate,
+          rp.EndDate,
+          rp.DueDayOfMonth,
+          rp.DueMonth,
+          rp.IsActive,
+          o.PeriodStartDate,
+          o.DueDate,
+          o.ExpectedAmount,
+          o.ActualPaidAmount,
+          o.[Status],
+          o.PaymentDate,
+          o.Notes
+      FROM AP.PayableOccurrence o
+      JOIN AP.RecurringPayable rp
+        ON rp.Id = o.RecurringPayableId
+      LEFT JOIN dbo.BusinessPartner bp
+        ON bp.Id = rp.BusinessPartnerId
+      WHERE o.Id = @OccurrenceId
+        AND o.Rfc = @Rfc;
+      """;
+
+    using var conn = CreateConnection();
+    var row = await conn.QueryFirstOrDefaultAsync<OccurrenceDetailRow>(
+      new CommandDefinition(sql, new { OccurrenceId = occurrenceId, Rfc = NormalizeRequiredRfc(rfc) }, cancellationToken: ct));
+
+    return row is null ? null : MapOccurrenceDetail(row, includePassword);
+  }
+
   public async Task SetOccurrenceStatusAsync(RecurrentApOccurrenceStatusRequest request, string? updatedBy, CancellationToken ct = default)
   {
     if (request is null)
@@ -286,21 +396,9 @@ public sealed class RecurrentApService : IRecurrentApService
 
     var rfc = NormalizeRequiredRfc(request.Rfc);
     var status = NormalizeStatus(request.Status);
+    var expectedAmount = request.ExpectedAmount.HasValue ? Math.Max(request.ExpectedAmount.Value, 0m) : (decimal?)null;
     var actualAmount = Math.Max(request.ActualAmount ?? 0m, 0m);
     var actor = NormalizeActor(updatedBy);
-
-    const string sql =
-      """
-      UPDATE AP.PayableOccurrence
-      SET [Status] = @Status,
-          ActualPaidAmount = @ActualPaidAmount,
-          PaymentDate = @PaymentDate,
-          Notes = @Notes,
-          UpdatedAt = SYSUTCDATETIME(),
-          UpdatedBy = @UpdatedBy
-      WHERE Id = @OccurrenceId
-        AND Rfc = @Rfc;
-      """;
 
     using var conn = CreateConnection();
     await conn.OpenAsync(ct);
@@ -308,6 +406,27 @@ public sealed class RecurrentApService : IRecurrentApService
 
     try
     {
+      var paymentSummary = await LoadPaymentSummaryAsync(conn, tx, request.OccurrenceId, rfc, ct);
+      if (paymentSummary.PaymentCount > 0)
+      {
+        actualAmount = paymentSummary.TotalAmount;
+        status = ResolvePaymentStatus(paymentSummary.TotalAmount, expectedAmount);
+      }
+
+      const string sql =
+        """
+        UPDATE AP.PayableOccurrence
+        SET [Status] = @Status,
+            ExpectedAmount = @ExpectedAmount,
+            ActualPaidAmount = @ActualPaidAmount,
+            PaymentDate = @PaymentDate,
+            Notes = @Notes,
+            UpdatedAt = SYSUTCDATETIME(),
+            UpdatedBy = @UpdatedBy
+        WHERE Id = @OccurrenceId
+          AND Rfc = @Rfc;
+        """;
+
       var rows = await conn.ExecuteAsync(new CommandDefinition(
         sql,
         new
@@ -315,8 +434,9 @@ public sealed class RecurrentApService : IRecurrentApService
           request.OccurrenceId,
           Rfc = rfc,
           Status = status,
+          ExpectedAmount = expectedAmount,
           ActualPaidAmount = actualAmount,
-          PaymentDate = request.PaymentDate?.Date,
+          PaymentDate = paymentSummary.PaymentCount > 0 ? paymentSummary.PaymentDate : request.PaymentDate?.Date,
           Notes = NullIfWhiteSpace(request.Notes),
           UpdatedBy = actor
         },
@@ -329,6 +449,64 @@ public sealed class RecurrentApService : IRecurrentApService
       }
 
       await AddAuditAsync(conn, tx, rfc, "PayableOccurrence", request.OccurrenceId, "StatusChanged", status, actor, ct);
+      await tx.CommitAsync(ct);
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
+  public async Task CancelOccurrenceAsync(int occurrenceId, string rfc, string? updatedBy, CancellationToken ct = default)
+  {
+    var normalizedRfc = NormalizeRequiredRfc(rfc);
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(ct);
+
+    try
+    {
+      var paymentCount = await conn.ExecuteScalarAsync<int>(
+        new CommandDefinition(
+          """
+          SELECT COUNT(*)
+          FROM AP.OccurrencePayment
+          WHERE OccurrenceId = @OccurrenceId
+            AND Rfc = @Rfc;
+          """,
+          new { OccurrenceId = occurrenceId, Rfc = normalizedRfc },
+          tx,
+          cancellationToken: ct));
+
+      if (paymentCount > 0)
+      {
+        throw new InvalidOperationException("No se puede cancelar un vencimiento con pólizas ligadas. Primero desliga la póliza.");
+      }
+
+      var actor = NormalizeActor(updatedBy);
+      var rows = await conn.ExecuteAsync(
+        new CommandDefinition(
+          """
+          UPDATE AP.PayableOccurrence
+          SET [Status] = 'Cancelled',
+              ActualPaidAmount = 0,
+              PaymentDate = NULL,
+              UpdatedAt = SYSUTCDATETIME(),
+              UpdatedBy = @UpdatedBy
+          WHERE Id = @OccurrenceId
+            AND Rfc = @Rfc;
+          """,
+          new { OccurrenceId = occurrenceId, Rfc = normalizedRfc, UpdatedBy = actor },
+          tx,
+          cancellationToken: ct));
+
+      if (rows == 0)
+      {
+        throw new InvalidOperationException("El vencimiento AP ya no existe o pertenece a otro RFC.");
+      }
+
+      await AddAuditAsync(conn, tx, normalizedRfc, "PayableOccurrence", occurrenceId, "Cancelled", "Cancelado manualmente", actor, ct);
       await tx.CommitAsync(ct);
     }
     catch
@@ -760,6 +938,10 @@ public sealed class RecurrentApService : IRecurrentApService
       sql += "\n  AND o.[Status] = @Status";
       parameters.Add("@Status", NormalizeStatus(filter.Status), DbType.String);
     }
+    else if (filter.OpenOnly)
+    {
+      sql += "\n  AND o.[Status] IN ('Pending','PartiallyPaid')";
+    }
 
     if (!string.IsNullOrWhiteSpace(filter.SearchText))
     {
@@ -821,6 +1003,9 @@ public sealed class RecurrentApService : IRecurrentApService
           PayeeNameSnapshot,
           PayeeRfcSnapshot,
           Category,
+          [Description],
+          Website,
+          UserName,
           FrequencyUnit,
           IntervalCount,
           StartDate,
@@ -841,9 +1026,9 @@ public sealed class RecurrentApService : IRecurrentApService
 
     sql += "\nORDER BY IsActive DESC, [Name], Id;";
 
-    var rows = await conn.QueryAsync<RecurrentApPayableSummaryDto>(
+    var rows = await conn.QueryAsync<RecurringPayableRow>(
       new CommandDefinition(sql, new { Rfc = rfc }, cancellationToken: ct));
-    return rows.AsList();
+    return rows.Select(row => MapPayable(row, includePassword: false)).ToList();
   }
 
   private static async Task<IReadOnlyList<RecurrentApVendorOptionDto>> LoadVendorsAsync(DbConnection conn, CancellationToken ct)
@@ -883,6 +1068,9 @@ public sealed class RecurrentApService : IRecurrentApService
           PayeeNameSnapshot,
           PayeeRfcSnapshot,
           Category,
+          [Description],
+          Website,
+          UserName,
           FrequencyUnit,
           IntervalCount,
           StartDate,
@@ -897,9 +1085,9 @@ public sealed class RecurrentApService : IRecurrentApService
         AND IsActive = 1;
       """;
 
-    var rows = await conn.QueryAsync<RecurrentApPayableSummaryDto>(
+    var rows = await conn.QueryAsync<RecurringPayableRow>(
       new CommandDefinition(sql, new { Rfc = rfc }, tx, cancellationToken: ct));
-    return rows.AsList();
+    return rows.Select(row => MapPayable(row, includePassword: false)).ToList();
   }
 
   private static async Task<RecurrentApPayableSummaryDto?> LoadPayableForGenerationAsync(
@@ -952,9 +1140,9 @@ public sealed class RecurrentApService : IRecurrentApService
     return created;
   }
 
-  private static async Task DeleteFuturePendingOccurrencesAsync(DbConnection conn, DbTransaction tx, int payableId, string rfc, CancellationToken ct)
+  private static async Task<int> DeleteFuturePendingOccurrencesAsync(DbConnection conn, DbTransaction tx, int payableId, string rfc, CancellationToken ct)
   {
-    await conn.ExecuteAsync(
+    return await conn.ExecuteAsync(
       new CommandDefinition(
         """
         DELETE o
@@ -963,8 +1151,37 @@ public sealed class RecurrentApService : IRecurrentApService
           AND o.Rfc = @Rfc
           AND o.DueDate >= CONVERT(date, SYSUTCDATETIME())
           AND o.[Status] = 'Pending'
+          AND o.ActualPaidAmount = 0
+          AND o.PaymentDate IS NULL
+          AND o.Notes IS NULL
+          AND o.UpdatedAt IS NULL
           AND NOT EXISTS (SELECT 1 FROM AP.OccurrencePayment p WHERE p.OccurrenceId = o.Id)
           AND NOT EXISTS (SELECT 1 FROM AP.OccurrenceAttachment a WHERE a.OccurrenceId = o.Id AND a.DeletedAt IS NULL);
+        """,
+        new { PayableId = payableId, Rfc = rfc },
+        tx,
+        cancellationToken: ct));
+  }
+
+  private static async Task<int> CountFuturePreservedOccurrencesAsync(DbConnection conn, DbTransaction tx, int payableId, string rfc, CancellationToken ct)
+  {
+    return await conn.ExecuteScalarAsync<int>(
+      new CommandDefinition(
+        """
+        SELECT COUNT(*)
+        FROM AP.PayableOccurrence o
+        WHERE o.RecurringPayableId = @PayableId
+          AND o.Rfc = @Rfc
+          AND o.DueDate >= CONVERT(date, SYSUTCDATETIME())
+          AND (
+              o.[Status] <> 'Pending'
+              OR o.ActualPaidAmount <> 0
+              OR o.PaymentDate IS NOT NULL
+              OR o.Notes IS NOT NULL
+              OR o.UpdatedAt IS NOT NULL
+              OR EXISTS (SELECT 1 FROM AP.OccurrencePayment p WHERE p.OccurrenceId = o.Id)
+              OR EXISTS (SELECT 1 FROM AP.OccurrenceAttachment a WHERE a.OccurrenceId = o.Id AND a.DeletedAt IS NULL)
+          );
         """,
         new { PayableId = payableId, Rfc = rfc },
         tx,
@@ -1010,6 +1227,23 @@ public sealed class RecurrentApService : IRecurrentApService
 
     return await conn.QueryFirstOrDefaultAsync<TransactionStateRow>(
       new CommandDefinition(sql, new { TransaccionId = transaccionId }, tx, cancellationToken: ct));
+  }
+
+  private static async Task<PaymentSummaryRow> LoadPaymentSummaryAsync(DbConnection conn, DbTransaction tx, int occurrenceId, string rfc, CancellationToken ct)
+  {
+    const string sql =
+      """
+      SELECT
+          COUNT(*) AS PaymentCount,
+          CAST(ISNULL(SUM(Amount), 0) AS decimal(18,2)) AS TotalAmount,
+          MAX(PaymentDate) AS PaymentDate
+      FROM AP.OccurrencePayment
+      WHERE OccurrenceId = @OccurrenceId
+        AND Rfc = @Rfc;
+      """;
+
+    return await conn.QuerySingleAsync<PaymentSummaryRow>(
+      new CommandDefinition(sql, new { OccurrenceId = occurrenceId, Rfc = rfc }, tx, cancellationToken: ct));
   }
 
   private static async Task RecalculateOccurrenceFromPaymentsAsync(
@@ -1206,6 +1440,114 @@ public sealed class RecurrentApService : IRecurrentApService
   private static string? NullIfWhiteSpace(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+  private static RecurrentApPayableSummaryDto MapPayable(RecurringPayableRow row, bool includePassword)
+    => new()
+    {
+      Id = row.Id,
+      Rfc = row.Rfc,
+      Name = row.Name,
+      BusinessPartnerId = row.BusinessPartnerId,
+      PayeeNameSnapshot = row.PayeeNameSnapshot,
+      PayeeRfcSnapshot = row.PayeeRfcSnapshot,
+      Category = row.Category,
+      Description = row.Description,
+      Website = row.Website,
+      UserName = row.UserName,
+      Password = includePassword ? RecurrentApCredentialProtector.UnprotectUtf8OrNull(row.PasswordEnc) : null,
+      FrequencyUnit = row.FrequencyUnit,
+      IntervalCount = row.IntervalCount,
+      StartDate = row.StartDate,
+      EndDate = row.EndDate,
+      DueDayOfMonth = row.DueDayOfMonth,
+      DueMonth = row.DueMonth,
+      ExpectedAmount = row.ExpectedAmount,
+      Currency = row.Currency,
+      IsActive = row.IsActive
+    };
+
+  private static RecurrentApOccurrenceDetailDto MapOccurrenceDetail(OccurrenceDetailRow row, bool includePassword)
+    => new()
+    {
+      Id = row.Id,
+      RecurringPayableId = row.RecurringPayableId,
+      Rfc = row.Rfc,
+      PayableName = row.PayableName,
+      PayeeName = row.PayeeName,
+      PayeeRfc = row.PayeeRfc,
+      Category = row.Category,
+      Description = row.Description,
+      Website = row.Website,
+      UserName = row.UserName,
+      Password = includePassword ? RecurrentApCredentialProtector.UnprotectUtf8OrNull(row.PasswordEnc) : null,
+      FrequencyUnit = row.FrequencyUnit,
+      IntervalCount = row.IntervalCount,
+      StartDate = row.StartDate,
+      EndDate = row.EndDate,
+      DueDayOfMonth = row.DueDayOfMonth,
+      DueMonth = row.DueMonth,
+      IsActive = row.IsActive,
+      PeriodStartDate = row.PeriodStartDate,
+      DueDate = row.DueDate,
+      ExpectedAmount = row.ExpectedAmount,
+      ActualPaidAmount = row.ActualPaidAmount,
+      Status = row.Status,
+      PaymentDate = row.PaymentDate,
+      Notes = row.Notes
+    };
+
+  private sealed class RecurringPayableRow
+  {
+    public int Id { get; set; }
+    public string Rfc { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public int? BusinessPartnerId { get; set; }
+    public string? PayeeNameSnapshot { get; set; }
+    public string? PayeeRfcSnapshot { get; set; }
+    public string? Category { get; set; }
+    public string? Description { get; set; }
+    public string? Website { get; set; }
+    public string? UserName { get; set; }
+    public byte[]? PasswordEnc { get; set; }
+    public string FrequencyUnit { get; set; } = RecurrentApFrequencyUnits.Months;
+    public int IntervalCount { get; set; }
+    public DateTime StartDate { get; set; }
+    public DateTime? EndDate { get; set; }
+    public int? DueDayOfMonth { get; set; }
+    public int? DueMonth { get; set; }
+    public decimal? ExpectedAmount { get; set; }
+    public string Currency { get; set; } = "MXN";
+    public bool IsActive { get; set; }
+  }
+
+  private sealed class OccurrenceDetailRow
+  {
+    public int Id { get; set; }
+    public int RecurringPayableId { get; set; }
+    public string Rfc { get; set; } = string.Empty;
+    public string PayableName { get; set; } = string.Empty;
+    public string? PayeeName { get; set; }
+    public string? PayeeRfc { get; set; }
+    public string? Category { get; set; }
+    public string? Description { get; set; }
+    public string? Website { get; set; }
+    public string? UserName { get; set; }
+    public byte[]? PasswordEnc { get; set; }
+    public string FrequencyUnit { get; set; } = RecurrentApFrequencyUnits.Months;
+    public int IntervalCount { get; set; }
+    public DateTime StartDate { get; set; }
+    public DateTime? EndDate { get; set; }
+    public int? DueDayOfMonth { get; set; }
+    public int? DueMonth { get; set; }
+    public bool IsActive { get; set; }
+    public DateTime PeriodStartDate { get; set; }
+    public DateTime DueDate { get; set; }
+    public decimal? ExpectedAmount { get; set; }
+    public decimal ActualPaidAmount { get; set; }
+    public string Status { get; set; } = RecurrentApStatuses.Pending;
+    public DateTime? PaymentDate { get; set; }
+    public string? Notes { get; set; }
+  }
+
   private sealed class OccurrenceStateRow
   {
     public int Id { get; set; }
@@ -1227,5 +1569,102 @@ public sealed class RecurrentApService : IRecurrentApService
     public int Id { get; set; }
     public int OccurrenceId { get; set; }
     public decimal? ExpectedAmount { get; set; }
+  }
+
+  private sealed class PaymentSummaryRow
+  {
+    public int PaymentCount { get; set; }
+    public decimal TotalAmount { get; set; }
+    public DateTime? PaymentDate { get; set; }
+  }
+}
+
+internal static class RecurrentApCredentialProtector
+{
+  private const string EncryptionKeyFileName = "rfc-register.aes.key";
+  private const int NonceSize = 12;
+  private const int TagSize = 16;
+  private static readonly Lazy<byte[]> EncryptionKey = new(LoadKey, isThreadSafe: true);
+
+  public static byte[]? ProtectUtf8OrNull(string? plaintext)
+  {
+    if (string.IsNullOrEmpty(plaintext))
+    {
+      return null;
+    }
+
+    var bytes = Encoding.UTF8.GetBytes(plaintext);
+    var nonce = RandomNumberGenerator.GetBytes(NonceSize);
+    var ciphertext = new byte[bytes.Length];
+    var tag = new byte[TagSize];
+
+    using var aesGcm = new AesGcm(EncryptionKey.Value, TagSize);
+    aesGcm.Encrypt(nonce, bytes, ciphertext, tag);
+
+    var payload = new byte[NonceSize + TagSize + ciphertext.Length];
+    Buffer.BlockCopy(nonce, 0, payload, 0, NonceSize);
+    Buffer.BlockCopy(tag, 0, payload, NonceSize, TagSize);
+    Buffer.BlockCopy(ciphertext, 0, payload, NonceSize + TagSize, ciphertext.Length);
+    return payload;
+  }
+
+  public static string? UnprotectUtf8OrNull(byte[]? ciphertext)
+  {
+    if (ciphertext is not { Length: > NonceSize + TagSize })
+    {
+      return null;
+    }
+
+    try
+    {
+      var data = ciphertext.AsSpan();
+      var nonce = data[..NonceSize];
+      var tag = data.Slice(NonceSize, TagSize);
+      var encryptedData = data[(NonceSize + TagSize)..];
+      var plaintext = new byte[encryptedData.Length];
+
+      using var aesGcm = new AesGcm(EncryptionKey.Value, TagSize);
+      aesGcm.Decrypt(nonce, encryptedData, tag, plaintext);
+      return Encoding.UTF8.GetString(plaintext);
+    }
+    catch (CryptographicException)
+    {
+      return null;
+    }
+  }
+
+  private static byte[] LoadKey()
+  {
+    foreach (var keyPath in GetCandidateKeyPaths())
+    {
+      if (!File.Exists(keyPath))
+      {
+        continue;
+      }
+
+      var key = File.ReadAllBytes(keyPath);
+      if (key.Length != 32)
+      {
+        throw new InvalidDataException($"Encryption key must be 32 bytes. Found {key.Length} bytes at '{keyPath}'.");
+      }
+
+      return key;
+    }
+
+    throw new FileNotFoundException(
+      $"Encryption key '{EncryptionKeyFileName}' was not found in App_Data or the repository Web App_Data folder.");
+  }
+
+  private static IEnumerable<string> GetCandidateKeyPaths()
+  {
+    yield return Path.Combine(AppContext.BaseDirectory, "App_Data", EncryptionKeyFileName);
+
+    var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
+    while (directory is not null)
+    {
+      yield return Path.Combine(directory.FullName, "src", "OrionERP.Web", "App_Data", EncryptionKeyFileName);
+      yield return Path.Combine(directory.FullName, "App_Data", EncryptionKeyFileName);
+      directory = directory.Parent;
+    }
   }
 }

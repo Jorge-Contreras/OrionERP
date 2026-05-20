@@ -2,6 +2,10 @@ namespace OrionERP.Application.Features.Ajustes;
 
 public interface IAjustesService
 {
+  Task<AjustesGeneralSettingsDto> GetGeneralSettingsAsync(CancellationToken ct = default);
+
+  Task<AjustesCommandResult> SaveGeneralSettingsAsync(AjustesGeneralSettingsSaveRequest request, CancellationToken ct = default);
+
   Task<IReadOnlyList<PlantillaContableListItemDto>> GetPlantillasAsync(
       string? rfc,
       string? search,

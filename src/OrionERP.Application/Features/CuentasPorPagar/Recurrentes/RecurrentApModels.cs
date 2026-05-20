@@ -45,6 +45,7 @@ public sealed class RecurrentApFilter
   public string? SearchText { get; set; }
   public int DueSoonDays { get; set; } = 7;
   public int Take { get; set; } = 500;
+  public bool OpenOnly { get; set; }
 }
 
 public sealed class RecurrentApDashboardDto
@@ -76,6 +77,10 @@ public sealed class RecurrentApPayableSummaryDto
   public string? PayeeNameSnapshot { get; set; }
   public string? PayeeRfcSnapshot { get; set; }
   public string? Category { get; set; }
+  public string? Description { get; set; }
+  public string? Website { get; set; }
+  public string? UserName { get; set; }
+  public string? Password { get; set; }
   public string FrequencyUnit { get; set; } = RecurrentApFrequencyUnits.Months;
   public int IntervalCount { get; set; } = 1;
   public DateTime StartDate { get; set; } = DateTime.Today;
@@ -108,6 +113,35 @@ public sealed class RecurrentApOccurrenceListItemDto
   public bool IsOverdue { get; set; }
 }
 
+public sealed class RecurrentApOccurrenceDetailDto
+{
+  public int Id { get; set; }
+  public int RecurringPayableId { get; set; }
+  public string Rfc { get; set; } = string.Empty;
+  public string PayableName { get; set; } = string.Empty;
+  public string? PayeeName { get; set; }
+  public string? PayeeRfc { get; set; }
+  public string? Category { get; set; }
+  public string? Description { get; set; }
+  public string? Website { get; set; }
+  public string? UserName { get; set; }
+  public string? Password { get; set; }
+  public string FrequencyUnit { get; set; } = RecurrentApFrequencyUnits.Months;
+  public int IntervalCount { get; set; } = 1;
+  public DateTime StartDate { get; set; }
+  public DateTime? EndDate { get; set; }
+  public int? DueDayOfMonth { get; set; }
+  public int? DueMonth { get; set; }
+  public bool IsActive { get; set; }
+  public DateTime PeriodStartDate { get; set; }
+  public DateTime DueDate { get; set; }
+  public decimal? ExpectedAmount { get; set; }
+  public decimal ActualPaidAmount { get; set; }
+  public string Status { get; set; } = RecurrentApStatuses.Pending;
+  public DateTime? PaymentDate { get; set; }
+  public string? Notes { get; set; }
+}
+
 public sealed class RecurrentApUpsertRequest
 {
   public int? Id { get; set; }
@@ -133,6 +167,15 @@ public sealed class RecurrentApUpsertRequest
 
   [StringLength(1000)]
   public string? Description { get; set; }
+
+  [StringLength(500)]
+  public string? Website { get; set; }
+
+  [StringLength(200)]
+  public string? UserName { get; set; }
+
+  [StringLength(1000)]
+  public string? Password { get; set; }
 
   [Required]
   public string FrequencyUnit { get; set; } = RecurrentApFrequencyUnits.Months;
@@ -165,9 +208,18 @@ public sealed class RecurrentApOccurrenceStatusRequest
   public int OccurrenceId { get; set; }
   public string Rfc { get; set; } = string.Empty;
   public string Status { get; set; } = RecurrentApStatuses.Pending;
+  public decimal? ExpectedAmount { get; set; }
   public decimal? ActualAmount { get; set; }
   public DateTime? PaymentDate { get; set; }
   public string? Notes { get; set; }
+}
+
+public sealed class RecurrentApReseedResult
+{
+  public int RecurringPayableId { get; set; }
+  public int DeletedCount { get; set; }
+  public int CreatedCount { get; set; }
+  public int PreservedCount { get; set; }
 }
 
 public sealed class RecurrentApTransactionLinkRequest

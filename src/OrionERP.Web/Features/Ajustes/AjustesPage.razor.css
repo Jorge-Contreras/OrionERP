@@ -13,6 +13,14 @@
   z-index: 1;
 }
 
+.ajustes-dashboard-settings {
+  min-width: min(100%, 26rem);
+}
+
+.ajustes-days-input {
+  width: 8rem;
+}
+
 .ajustes-modal-backdrop {
   background-color: rgba(15, 45, 78, 0.35);
 }

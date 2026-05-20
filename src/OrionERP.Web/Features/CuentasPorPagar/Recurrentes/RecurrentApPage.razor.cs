@@ -25,6 +25,7 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
   protected RecurrentApUpsertRequest Editor { get; set; } = CreateEditor();
   protected RecurrentApOccurrenceStatusRequest StatusEditor { get; set; } = new();
   protected RecurrentApOccurrenceListItemDto? SelectedOccurrence { get; set; }
+  protected RecurrentApOccurrenceDetailDto? OccurrenceDetail { get; set; }
   protected List<RecurrentApAttachmentDto> Attachments { get; set; } = [];
   protected List<RecurrentApTransactionLinkDto> LinkedTransactions { get; set; } = [];
   protected List<RecurrentApTransactionCandidateDto> TransactionCandidates { get; set; } = [];
@@ -36,11 +37,14 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
   protected bool IsLinkingTransaction { get; set; }
   protected int? UnlinkingPaymentId { get; set; }
   protected bool IsUploadingAttachment { get; set; }
+  protected bool IsReseedingPayable { get; set; }
+  protected bool IsCancellingOccurrence { get; set; }
   protected bool IsReadOnly { get; set; }
   protected bool IsEditorVisible { get; set; } = true;
   protected bool AreOccurrencesVisible { get; set; } = true;
   protected bool IsReadOnlyOrSaving => IsReadOnly || IsSavingPayable;
-  protected bool IsReadOnlyOrMutating => IsReadOnly || IsSavingOccurrence || IsLinkingTransaction || UnlinkingPaymentId.HasValue || IsUploadingAttachment;
+  protected bool IsReadOnlyOrMutating => IsReadOnly || IsSavingOccurrence || IsLinkingTransaction || UnlinkingPaymentId.HasValue || IsUploadingAttachment || IsReseedingPayable || IsCancellingOccurrence;
+  protected bool CanUseProviderCredentials => !IsReadOnly;
   protected string? CurrentRfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault();
   protected string CurrentRfcLabel => CurrentRfc ?? "Sin RFC";
   protected string EditorTitle => Editor.Id.HasValue ? "Editar recurrente" : "Nuevo recurrente";
@@ -78,7 +82,7 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
       return;
     }
 
-    var payable = await ApService.GetPayableAsync(payableId, CurrentRfc);
+    var payable = await ApService.GetPayableAsync(payableId, CurrentRfc, includePassword: CanUseProviderCredentials);
     if (payable is null)
     {
       UiMessages.ShowWarning("La cuenta recurrente ya no existe.");
@@ -94,6 +98,10 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
       PayeeNameSnapshot = payable.PayeeNameSnapshot,
       PayeeRfcSnapshot = payable.PayeeRfcSnapshot,
       Category = payable.Category,
+      Description = payable.Description,
+      Website = payable.Website,
+      UserName = payable.UserName,
+      Password = payable.Password,
       FrequencyUnit = payable.FrequencyUnit,
       IntervalCount = payable.IntervalCount,
       StartDate = payable.StartDate,
@@ -143,6 +151,7 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
       OccurrenceId = occurrence.Id,
       Rfc = occurrence.Rfc,
       Status = occurrence.Status,
+      ExpectedAmount = occurrence.ExpectedAmount,
       ActualAmount = occurrence.ActualPaidAmount,
       PaymentDate = occurrence.PaymentDate,
       Notes = occurrence.Notes
@@ -165,6 +174,7 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
   protected void ClearSelectedOccurrence()
   {
     SelectedOccurrence = null;
+    OccurrenceDetail = null;
     Attachments = [];
     LinkedTransactions = [];
     TransactionCandidates = [];
@@ -196,6 +206,99 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
     {
       IsSavingOccurrence = false;
     }
+  }
+
+  protected async Task ReseedPayableAsync()
+  {
+    if (!Editor.Id.HasValue || string.IsNullOrWhiteSpace(CurrentRfc) || IsReadOnly)
+    {
+      return;
+    }
+
+    var confirmed = await ConfirmAsync("Se eliminarán y recrearán solo los vencimientos futuros pendientes sin pólizas, archivos, notas ni cambios manuales. ¿Deseas continuar?");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    IsReseedingPayable = true;
+    try
+    {
+      var result = await ApService.ReseedPayableOccurrencesAsync(Editor.Id.Value, CurrentRfc, CurrentUserName);
+      UiMessages.ShowSuccess($"Resiembra completada. Creados: {result.CreatedCount}. Eliminados: {result.DeletedCount}. Conservados: {result.PreservedCount}.");
+      await LoadWorkspaceAsync();
+      if (SelectedOccurrence is not null)
+      {
+        var refreshed = Workspace.Occurrences.FirstOrDefault(item => item.Id == SelectedOccurrence.Id);
+        if (refreshed is not null)
+        {
+          await SelectOccurrenceAsync(refreshed);
+        }
+        else
+        {
+          ClearSelectedOccurrence();
+          AreOccurrencesVisible = true;
+        }
+      }
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError(ex.Message);
+    }
+    finally
+    {
+      IsReseedingPayable = false;
+    }
+  }
+
+  protected async Task CancelSelectedOccurrenceAsync()
+  {
+    if (SelectedOccurrence is null || IsReadOnly)
+    {
+      return;
+    }
+
+    var confirmed = await ConfirmAsync("¿Deseas cancelar este vencimiento? No se puede cancelar si tiene pólizas ligadas.");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    IsCancellingOccurrence = true;
+    try
+    {
+      await ApService.CancelOccurrenceAsync(SelectedOccurrence.Id, SelectedOccurrence.Rfc, CurrentUserName);
+      UiMessages.ShowSuccess("Vencimiento cancelado.");
+      await LoadWorkspaceAsync();
+      ClearSelectedOccurrence();
+      AreOccurrencesVisible = true;
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError(ex.Message);
+    }
+    finally
+    {
+      IsCancellingOccurrence = false;
+    }
+  }
+
+  protected async Task CopyProviderValueAsync(string label, string? value)
+  {
+    if (!CanUseProviderCredentials)
+    {
+      UiMessages.ShowWarning("No tienes permiso para copiar credenciales del proveedor.");
+      return;
+    }
+
+    if (string.IsNullOrWhiteSpace(value))
+    {
+      UiMessages.ShowWarning($"{label} no está configurado.");
+      return;
+    }
+
+    await Js.InvokeVoidAsync("navigator.clipboard.writeText", value);
+    UiMessages.ShowSuccess($"{label} copiado al portapapeles.");
   }
 
   protected async Task SearchTransactionsAsync()
@@ -355,6 +458,7 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
 
   private async Task LoadSelectedOccurrenceRelatedDataAsync(int occurrenceId, string rfc)
   {
+    OccurrenceDetail = await ApService.GetOccurrenceDetailAsync(occurrenceId, rfc, includePassword: CanUseProviderCredentials);
     Attachments = (await ApService.GetAttachmentsAsync(occurrenceId, rfc)).ToList();
     LinkedTransactions = (await ApService.GetOccurrenceTransactionLinksAsync(occurrenceId, rfc)).ToList();
   }
@@ -450,6 +554,9 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
       Currency = "MXN",
       IsActive = true
     };
+
+  private async Task<bool> ConfirmAsync(string message)
+    => await Js.InvokeAsync<bool>("confirm", message);
 
   protected static string FormatCurrency(decimal value)
     => value.ToString("C2", CultureInfo.GetCultureInfo("es-MX"));

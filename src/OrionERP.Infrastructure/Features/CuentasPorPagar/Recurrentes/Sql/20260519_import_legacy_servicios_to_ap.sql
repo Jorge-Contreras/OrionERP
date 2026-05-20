@@ -49,6 +49,27 @@ BEGIN
 END;
 GO
 
+IF COL_LENGTH('AP.RecurringPayable', 'Website') IS NULL
+BEGIN
+  ALTER TABLE AP.RecurringPayable
+    ADD Website nvarchar(500) NULL;
+END;
+GO
+
+IF COL_LENGTH('AP.RecurringPayable', 'UserName') IS NULL
+BEGIN
+  ALTER TABLE AP.RecurringPayable
+    ADD UserName nvarchar(200) NULL;
+END;
+GO
+
+IF COL_LENGTH('AP.RecurringPayable', 'PasswordEnc') IS NULL
+BEGIN
+  ALTER TABLE AP.RecurringPayable
+    ADD PasswordEnc varbinary(max) NULL;
+END;
+GO
+
 IF COL_LENGTH('AP.OccurrenceAttachment', 'LegacyServiciosAttachmentId') IS NULL
 BEGIN
   ALTER TABLE AP.OccurrenceAttachment
@@ -79,6 +100,7 @@ DECLARE @PaymentsInserted int = 0;
 DECLARE @AttachmentsInserted int = 0;
 DECLARE @OccurrencesRecalculated int = 0;
 DECLARE @AuditRowsInserted int = 0;
+DECLARE @PayablePortalFieldsUpdated int = 0;
 DECLARE @LegacyServiciosTotal bigint = 0;
 DECLARE @PayablesLinkedToLegacy bigint = 0;
 DECLARE @CandidateTransactions bigint = 0;
@@ -149,6 +171,8 @@ BEGIN TRY
               THEN CONVERT(bit, 0)
               ELSE CONVERT(bit, 1)
           END AS IsActive,
+          LEFT(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(4000), s.Pagina_Web))), N''), 500) AS Website,
+          LEFT(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(4000), s.Usuario))), N''), 200) AS UserName,
           LEFT(CONCAT_WS(
               CHAR(10),
               CONCAT(N'Importado de dbo.Servicios ID ', CONVERT(nvarchar(20), s.id), N'.'),
@@ -172,7 +196,8 @@ BEGIN TRY
                    THEN CONCAT(N'Cuenta domiciliada: ', LTRIM(RTRIM(CONVERT(nvarchar(4000), s.Cuenta_Domiciliada)))) END,
               CASE WHEN NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(4000), s.Comentarios))), N'') IS NOT NULL
                    THEN CONCAT(N'Comentarios: ', LTRIM(RTRIM(CONVERT(nvarchar(4000), s.Comentarios)))) END,
-              N'Credenciales legacy no importadas.'
+              CASE WHEN NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(4000), s.Claves_de_Acceso))), N'') IS NOT NULL
+                   THEN CONCAT(N'Claves de acceso legacy: ', LTRIM(RTRIM(CONVERT(nvarchar(4000), s.Claves_de_Acceso)))) END
           ), 1000) AS [Description]
       FROM dbo.Servicios s
       LEFT JOIN dbo.BusinessPartner bp
@@ -216,6 +241,8 @@ BEGIN TRY
       PayeeRfcSnapshot,
       Category,
       [Description],
+      Website,
+      UserName,
       FrequencyUnit,
       IntervalCount,
       StartDate,
@@ -236,6 +263,8 @@ BEGIN TRY
       p.PayeeRfcSnapshot,
       p.Category,
       p.[Description],
+      p.Website,
+      p.UserName,
       p.FrequencyUnit,
       p.IntervalCount,
       p.StartDate,
@@ -259,6 +288,27 @@ BEGIN TRY
     );
 
   SET @PayablesInserted = @@ROWCOUNT;
+
+  WITH PreparedPortalFields AS (
+      SELECT
+          s.id AS LegacyServicioId,
+          LEFT(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(4000), s.Pagina_Web))), N''), 500) AS Website,
+          LEFT(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(4000), s.Usuario))), N''), 200) AS UserName
+      FROM dbo.Servicios s
+  )
+  UPDATE rp
+  SET
+      Website = COALESCE(NULLIF(LTRIM(RTRIM(rp.Website)), N''), p.Website),
+      UserName = COALESCE(NULLIF(LTRIM(RTRIM(rp.UserName)), N''), p.UserName),
+      UpdatedAt = SYSUTCDATETIME(),
+      UpdatedBy = N'LegacyServiciosImport'
+  FROM AP.RecurringPayable rp
+  JOIN PreparedPortalFields p
+    ON p.LegacyServicioId = rp.LegacyServicioId
+  WHERE (NULLIF(LTRIM(RTRIM(rp.Website)), N'') IS NULL AND p.Website IS NOT NULL)
+     OR (NULLIF(LTRIM(RTRIM(rp.UserName)), N'') IS NULL AND p.UserName IS NOT NULL);
+
+  SET @PayablePortalFieldsUpdated = @@ROWCOUNT;
 
   WITH Payables AS (
       SELECT
@@ -693,6 +743,7 @@ FROM (VALUES
     (N'LegacyServiciosTotal', @LegacyServiciosTotal),
     (N'RecurringPayablesInserted', CONVERT(bigint, @PayablesInserted)),
     (N'RecurringPayablesLinkedToLegacy', @PayablesLinkedToLegacy),
+    (N'RecurringPayablePortalFieldsUpdated', CONVERT(bigint, @PayablePortalFieldsUpdated)),
     (N'OccurrencesInserted', CONVERT(bigint, @OccurrencesInserted)),
     (N'CandidateTransactionLinks', @CandidateTransactions),
     (N'AlreadyLinkedTransactions', @AlreadyLinkedTransactions),

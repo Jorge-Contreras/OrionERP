@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
@@ -8,6 +9,8 @@ namespace OrionERP.Infrastructure.Features.Ajustes;
 
 public sealed class AjustesService : IAjustesService
 {
+  private const string ApOccurrenceNotificationDaysParameter = "CxcrApNotificationDays";
+
   private static readonly HashSet<string> ValidNaturalezas = new(StringComparer.OrdinalIgnoreCase)
   {
     "DEBE",
@@ -33,6 +36,75 @@ public sealed class AjustesService : IAjustesService
   {
     _connectionString = configuration.GetConnectionString("OrionDb")
         ?? throw new InvalidOperationException("Missing connection string 'OrionDb'.");
+  }
+
+  public async Task<AjustesGeneralSettingsDto> GetGeneralSettingsAsync(CancellationToken ct = default)
+  {
+    const string sql = @"
+SELECT TOP (1) VALOR1
+FROM dbo.PARAMETROS_CONFIGURACION
+WHERE PARAMETRO = @parameter
+ORDER BY ID DESC;";
+
+    using var connection = new SqlConnection(_connectionString);
+    var storedValue = await connection.QueryFirstOrDefaultAsync<string?>(
+        new CommandDefinition(
+            sql,
+            new { parameter = ApOccurrenceNotificationDaysParameter },
+            cancellationToken: ct));
+
+    return new AjustesGeneralSettingsDto
+    {
+      ApOccurrenceNotificationDays = NormalizeApOccurrenceNotificationDays(storedValue)
+    };
+  }
+
+  public async Task<AjustesCommandResult> SaveGeneralSettingsAsync(AjustesGeneralSettingsSaveRequest request, CancellationToken ct = default)
+  {
+    var notificationDays = NormalizeApOccurrenceNotificationDays(request.ApOccurrenceNotificationDays);
+    const string sql = @"
+UPDATE dbo.PARAMETROS_CONFIGURACION
+SET VALOR1 = @value,
+    VALOR2 = N'Dias de anticipacion para notificar CxCR en dashboard',
+    VALOR3 = NULL,
+    VALOR4 = NULL,
+    VALOR5 = NULL
+WHERE PARAMETRO = @parameter;
+
+IF @@ROWCOUNT = 0
+BEGIN
+    INSERT INTO dbo.PARAMETROS_CONFIGURACION
+    (
+        PARAMETRO,
+        VALOR1,
+        VALOR2,
+        VALOR3,
+        VALOR4,
+        VALOR5
+    )
+    VALUES
+    (
+        @parameter,
+        @value,
+        N'Dias de anticipacion para notificar CxCR en dashboard',
+        NULL,
+        NULL,
+        NULL
+    );
+END;";
+
+    using var connection = new SqlConnection(_connectionString);
+    await connection.ExecuteAsync(
+        new CommandDefinition(
+            sql,
+            new
+            {
+              parameter = ApOccurrenceNotificationDaysParameter,
+              value = notificationDays.ToString(CultureInfo.InvariantCulture)
+            },
+            cancellationToken: ct));
+
+    return AjustesCommandResult.Ok("Ajustes generales guardados correctamente.");
   }
 
   public async Task<IReadOnlyList<PlantillaContableListItemDto>> GetPlantillasAsync(
@@ -528,6 +600,17 @@ WHERE PlantillaContableLineaID = @plantillaContableLineaId
     var trimmed = value?.Trim();
     return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
   }
+
+  private static int NormalizeApOccurrenceNotificationDays(string? value)
+    => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+      ? NormalizeApOccurrenceNotificationDays(parsed)
+      : AjustesGeneralSettingsDto.DefaultApOccurrenceNotificationDays;
+
+  private static int NormalizeApOccurrenceNotificationDays(int value)
+    => Math.Clamp(
+      value,
+      AjustesGeneralSettingsDto.MinApOccurrenceNotificationDays,
+      AjustesGeneralSettingsDto.MaxApOccurrenceNotificationDays);
 
   private static string NormalizeRequired(string? value)
     => NormalizeNullable(value) ?? string.Empty;

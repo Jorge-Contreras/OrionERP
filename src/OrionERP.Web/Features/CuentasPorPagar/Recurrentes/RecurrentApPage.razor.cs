@@ -13,12 +13,17 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
 {
   private const long AttachmentMaxFileSize = RecurrentApAttachmentCreateRequest.MaxFileSizeBytes;
   private bool _disposed;
+  private int? _handledRequestedOccurrenceId;
 
   [Inject] private IRecurrentApService ApService { get; set; } = default!;
   [Inject] private IUserRfcState RfcState { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
   [Inject] private IJSRuntime Js { get; set; } = default!;
+
+  [Parameter]
+  [SupplyParameterFromQuery(Name = "occurrenceId")]
+  public int? RequestedOccurrenceId { get; set; }
 
   protected RecurrentApWorkspaceDto Workspace { get; set; } = new();
   protected RecurrentApFilter Filter { get; set; } = new();
@@ -56,6 +61,18 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
     await ResolvePermissionsAsync();
     ResetFilters();
     await LoadWorkspaceAsync();
+  }
+
+  protected override async Task OnParametersSetAsync()
+  {
+    if (!RequestedOccurrenceId.HasValue
+      || RequestedOccurrenceId.Value <= 0
+      || RequestedOccurrenceId == _handledRequestedOccurrenceId)
+    {
+      return;
+    }
+
+    await SelectRequestedOccurrenceAsync(RequestedOccurrenceId.Value);
   }
 
   protected async Task RefreshAsync()
@@ -463,6 +480,45 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
     LinkedTransactions = (await ApService.GetOccurrenceTransactionLinksAsync(occurrenceId, rfc)).ToList();
   }
 
+  private async Task SelectRequestedOccurrenceAsync(int occurrenceId)
+  {
+    if (string.IsNullOrWhiteSpace(CurrentRfc))
+    {
+      return;
+    }
+
+    var requestedOccurrence = Workspace.Occurrences.FirstOrDefault(item => item.Id == occurrenceId);
+    if (requestedOccurrence is null)
+    {
+      var previousFilter = Filter;
+      Filter = new RecurrentApFilter
+      {
+        Rfc = CurrentRfc,
+        OccurrenceId = occurrenceId,
+        DueSoonDays = Filter.DueSoonDays,
+        Take = 1
+      };
+
+      await LoadWorkspaceAsync();
+      requestedOccurrence = Workspace.Occurrences.FirstOrDefault(item => item.Id == occurrenceId);
+      if (requestedOccurrence is null)
+      {
+        Filter = previousFilter;
+        await LoadWorkspaceAsync();
+      }
+    }
+
+    _handledRequestedOccurrenceId = occurrenceId;
+
+    if (requestedOccurrence is null)
+    {
+      UiMessages.ShowWarning("El vencimiento AP seleccionado ya no existe o pertenece a otro RFC.");
+      return;
+    }
+
+    await SelectOccurrenceAsync(requestedOccurrence);
+  }
+
   private async Task LoadWorkspaceAsync()
   {
     if (string.IsNullOrWhiteSpace(CurrentRfc))
@@ -516,7 +572,12 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
       IsEditorVisible = true;
       AreOccurrencesVisible = true;
       ClearSelectedOccurrence();
+      _handledRequestedOccurrenceId = null;
       await LoadWorkspaceAsync();
+      if (RequestedOccurrenceId.HasValue && RequestedOccurrenceId.Value > 0)
+      {
+        await SelectRequestedOccurrenceAsync(RequestedOccurrenceId.Value);
+      }
       StateHasChanged();
     });
   }

@@ -135,7 +135,7 @@
                     <div class="home-ap-list">
                         @foreach (var item in ApOccurrences)
                         {
-                            <a class="@GetApCardClass(item)" href="/cuentas-por-pagar/recurrentes">
+                            <a class="@GetApCardClass(item)" href="@BuildApOccurrenceUrl(item)">
                                 <div class="home-ap-card__main">
                                     <div class="home-order-card__topline">
                                         <span class="home-order-card__folio">@item.PayableName</span>
@@ -394,6 +394,9 @@
 
     private void OpenCxcr()
         => Navigation.NavigateTo("/cuentas-por-pagar/recurrentes");
+
+    private static string BuildApOccurrenceUrl(RecurrentApOccurrenceListItemDto item)
+        => $"/cuentas-por-pagar/recurrentes?occurrenceId={item.Id}";
 
     private static string FormatDate(OrdenTrabajoListItemDto item)
     {

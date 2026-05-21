@@ -43,6 +43,7 @@ public sealed class RecurrentApFilter
   public DateTime? ToDate { get; set; }
   public string? Status { get; set; }
   public string? SearchText { get; set; }
+  public int? OccurrenceId { get; set; }
   public int DueSoonDays { get; set; } = 7;
   public int Take { get; set; } = 500;
   public bool OpenOnly { get; set; }

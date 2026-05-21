@@ -933,6 +933,12 @@ public sealed class RecurrentApService : IRecurrentApService
       parameters.Add("@ToDate", filter.ToDate.Value.Date, DbType.Date);
     }
 
+    if (filter.OccurrenceId.HasValue)
+    {
+      sql += "\n  AND o.Id = @OccurrenceId";
+      parameters.Add("@OccurrenceId", filter.OccurrenceId.Value, DbType.Int32);
+    }
+
     if (!string.IsNullOrWhiteSpace(filter.Status))
     {
       sql += "\n  AND o.[Status] = @Status";

@@ -288,9 +288,44 @@ public class RecurrentApServiceTests
     Assert.Contains("AjustesService.GetGeneralSettingsAsync", homeSource, StringComparison.Ordinal);
     Assert.Contains("OpenOnly = true", homeSource, StringComparison.Ordinal);
     Assert.Contains("ApNotificationWindowLabel", homeSource, StringComparison.Ordinal);
+    Assert.Contains("href=\"@BuildApOccurrenceUrl(item)\"", homeSource, StringComparison.Ordinal);
+    Assert.Contains("occurrenceId={item.Id}", homeSource, StringComparison.Ordinal);
     Assert.DoesNotContain("ApDueSoonDays = 5", homeSource, StringComparison.Ordinal);
     Assert.Contains("filter.OpenOnly", serviceSource, StringComparison.Ordinal);
     Assert.Contains("o.[Status] IN ('Pending','PartiallyPaid')", serviceSource, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void RecurrentApPage_OpensRequestedOccurrenceFromDashboardQuery()
+  {
+    var pageSource = ReadRepositoryFile(
+      "src",
+      "OrionERP.Web",
+      "Features",
+      "CuentasPorPagar",
+      "Recurrentes",
+      "RecurrentApPage.razor.cs");
+    var modelsSource = ReadRepositoryFile(
+      "src",
+      "OrionERP.Application",
+      "Features",
+      "CuentasPorPagar",
+      "Recurrentes",
+      "RecurrentApModels.cs");
+    var serviceSource = ReadRepositoryFile(
+      "src",
+      "OrionERP.Infrastructure",
+      "Features",
+      "CuentasPorPagar",
+      "Recurrentes",
+      "RecurrentApService.cs");
+
+    Assert.Contains("SupplyParameterFromQuery(Name = \"occurrenceId\")", pageSource, StringComparison.Ordinal);
+    Assert.Contains("SelectRequestedOccurrenceAsync", pageSource, StringComparison.Ordinal);
+    Assert.Contains("OccurrenceId = occurrenceId", pageSource, StringComparison.Ordinal);
+    Assert.Contains("await SelectOccurrenceAsync(requestedOccurrence)", pageSource, StringComparison.Ordinal);
+    Assert.Contains("public int? OccurrenceId", modelsSource, StringComparison.Ordinal);
+    Assert.Contains("o.Id = @OccurrenceId", serviceSource, StringComparison.Ordinal);
   }
 
   [Fact]

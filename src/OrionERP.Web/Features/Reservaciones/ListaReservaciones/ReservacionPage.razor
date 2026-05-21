@@ -140,6 +140,13 @@ else
                     <div class="d-flex justify-content-between"><span>Total Reservación</span><strong>@FormatCurrency(TotalReservacion)</strong></div>
                     <div class="d-flex justify-content-between"><span>Total Pagado</span><strong>@FormatCurrency(TotalPagado)</strong></div>
                     <div class="d-flex justify-content-between"><span>Por Pagar</span><strong class="@(PorPagar > 0 ? "text-danger" : "text-success")">@FormatCurrency(PorPagar)</strong></div>
+                    @if (Detail.AirbnbBreakdown is not null)
+                    {
+                        <div class="d-flex justify-content-between text-success">
+                            <span>Airbnb tú ganas</span>
+                            <strong>@FormatCurrency(Detail.AirbnbBreakdown.PayoutAmount)</strong>
+                        </div>
+                    }
                     <div class="d-flex justify-content-between align-items-center mt-2">
                         <span>Facturación</span>
                         <span class="badge @GetFacturacionStatusBadgeClass()">@GetFacturacionSummaryLabel()</span>
@@ -613,6 +620,114 @@ else
                 <div class="col-md-2 d-flex align-items-end"><button class="btn btn-sm btn-outline-secondary w-100" @onclick="ApplySuiteActionAsync">Aplicar</button></div>
                 <div class="col-md-6 text-muted small d-flex align-items-end">Tecla P/I/D/L/T en Access replicada con acciones rápidas.</div>
             </div>
+
+            @if (ShowAirbnbPanel)
+            {
+                var airbnbPreview = GetAirbnbPreview();
+                var airbnbPreviewError = AirbnbErrorMessage ?? GetAirbnbPreviewError();
+
+                <div class="reservacion-airbnb-panel mb-3">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <strong>Airbnb</strong>
+                        <span class="badge text-bg-secondary">@AirbnbTargetSuiteCount suites</span>
+                        @if (airbnbPreview is not null)
+                        {
+                            <span class="badge text-bg-success">Total CFDI @FormatCurrency(airbnbPreview.GrossCfdiTotal)</span>
+                        }
+                    </div>
+
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-3">
+                            <label class="form-label">Tú ganas</label>
+                            <input class="form-control form-control-sm" type="number" step="0.01" @bind="AirbnbPayoutInput" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Limpieza</label>
+                            <input class="form-control form-control-sm" type="number" step="0.01" @bind="AirbnbCleaningFeeInput" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Comisión %</label>
+                            <input class="form-control form-control-sm" type="number" step="0.01" @bind="AirbnbHostServiceFeeRatePercentInput" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">IVA comisión %</label>
+                            <input class="form-control form-control-sm" type="number" step="0.01" @bind="AirbnbHostServiceFeeIvaRatePercentInput" />
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label">IVA ret %</label>
+                            <input class="form-control form-control-sm" type="number" step="0.01" @bind="AirbnbIvaRetentionRatePercentInput" />
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label">ISR ret %</label>
+                            <input class="form-control form-control-sm" type="number" step="0.01" @bind="AirbnbIsrRetentionRatePercentInput" />
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label">IVA %</label>
+                            <input class="form-control form-control-sm" type="number" step="0.01" @bind="AirbnbIvaRatePercentInput" />
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(airbnbPreviewError))
+                    {
+                        <div class="alert alert-warning py-2 px-3 mt-3 mb-0">@airbnbPreviewError</div>
+                    }
+                    else if (airbnbPreview is not null)
+                    {
+                        <div class="table-responsive reservacion-table-wrap mt-3">
+                            <table class="table table-sm table-bordered mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Concepto</th>
+                                        <th class="text-end">Monto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Tarifa habitación</td>
+                                        <td class="text-end">@FormatCurrency(airbnbPreview.RoomRateAmount)</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Limpieza</td>
+                                        <td class="text-end">@FormatCurrency(airbnbPreview.CleaningFee)</td>
+                                    </tr>
+                                    <tr>
+                                        <td>IVA trasladado</td>
+                                        <td class="text-end">@FormatCurrency(airbnbPreview.IvaTransferredAmount)</td>
+                                    </tr>
+                                    <tr>
+                                        <td>IVA retenido</td>
+                                        <td class="text-end">@FormatCurrency(-airbnbPreview.IvaRetainedAmount)</td>
+                                    </tr>
+                                    <tr>
+                                        <td>ISR retenido</td>
+                                        <td class="text-end">@FormatCurrency(-airbnbPreview.IsrRetainedAmount)</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Comisión Airbnb</td>
+                                        <td class="text-end">@FormatCurrency(-airbnbPreview.HostServiceFeeTotalAmount)</td>
+                                    </tr>
+                                </tbody>
+                                <tfoot class="table-light">
+                                    <tr>
+                                        <th>Tú ganas</th>
+                                        <th class="text-end">@FormatCurrency(airbnbPreview.PayoutAmount)</th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    }
+
+                    <div class="d-flex flex-wrap gap-2 justify-content-end mt-3">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="CloseAirbnbPanel" disabled="@IsApplyingAirbnb">Cancelar</button>
+                        <button class="btn btn-sm btn-primary"
+                                type="button"
+                                @onclick="AplicarAirbnbAsync"
+                                disabled="@(IsApplyingAirbnb || airbnbPreview is null || AirbnbTargetSuiteCount == 0)">
+                            @(IsApplyingAirbnb ? "Aplicando..." : "Aplicar Airbnb")
+                        </button>
+                    </div>
+                </div>
+            }
 
             @if (ShowSuitePicker)
             {

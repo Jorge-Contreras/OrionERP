@@ -8,8 +8,11 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.Configuration;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
+using OrionERP.Application.Features.Reservaciones.CalendarSync;
+using OrionERP.Application.Features.Reservaciones.Cfdi;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Web.Services;
 using OrionERP.Web.State;
@@ -36,11 +39,13 @@ public partial class ReservacionPage : ComponentBase
   [Parameter] public int ReservationId { get; set; }
 
   [Inject] public IListaReservacionesService ReservacionesService { get; set; } = default!;
+  [Inject] public IBonhomiaRoomCalendarSyncService BonhomiaRoomCalendarSyncService { get; set; } = default!;
   [Inject] public ITransaccionService TransaccionService { get; set; } = default!;
   [Inject] public IUserRfcState RfcState { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
   [Inject] public IJSRuntime Js { get; set; } = default!;
   [Inject] public NavigationManager Nav { get; set; } = default!;
+  [Inject] public IConfiguration Configuration { get; set; } = default!;
   [Inject] public IReservacionPdfService ReservacionPdfService { get; set; } = default!;
   [Inject] public IReservacionPdfDocumentFactory ReservacionPdfDocumentFactory { get; set; } = default!;
 
@@ -101,16 +106,29 @@ public partial class ReservacionPage : ComponentBase
   protected bool IsGeneratingPdf { get; set; }
   protected bool IsDeletingReservation { get; set; }
   protected bool IsUploadingAttachment { get; set; }
+  protected bool IsApplyingAirbnb { get; set; }
   protected string? ErrorMessage { get; set; }
+  protected string? AirbnbErrorMessage { get; set; }
 
   private IBrowserFile? _pendingAttachment;
   private int _attachmentInputKey;
   private int? _attachmentDownloadingId;
   private int? _attachmentDeletingId;
+  private bool _airbnbDefaultsLoaded;
   private const string SuiteActionPrice = "price";
   private const string SuiteActionPriceWithIva = "price-with-iva";
   private const string SuiteActionTotal = "total";
   private const string SuiteActionCleaning = "cleaning";
+  private const string SuiteActionAirbnb = "airbnb";
+
+  protected bool ShowAirbnbPanel { get; set; }
+  protected decimal AirbnbPayoutInput { get; set; }
+  protected decimal AirbnbCleaningFeeInput { get; set; } = AirbnbReservationDefaults.CleaningFee;
+  protected decimal AirbnbIvaRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.IvaRate);
+  protected decimal AirbnbIvaRetentionRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.IvaRetentionRate);
+  protected decimal AirbnbIsrRetentionRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.IsrRetentionRate);
+  protected decimal AirbnbHostServiceFeeRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.HostServiceFeeRate);
+  protected decimal AirbnbHostServiceFeeIvaRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.HostServiceFeeIvaRate);
 
   protected IReadOnlyList<string> StatusOptions { get; } = new[] { "NUEVA", "PAGADA", "Cancelada" };
   protected IReadOnlyList<(string Value, string Label)> SuiteActionOptions { get; } = new[]
@@ -118,7 +136,8 @@ public partial class ReservacionPage : ComponentBase
     (SuiteActionPrice, "Precio"),
     (SuiteActionPriceWithIva, "Precio c/IVA"),
     (SuiteActionTotal, "Total"),
-    (SuiteActionCleaning, "Limpieza")
+    (SuiteActionCleaning, "Limpieza"),
+    (SuiteActionAirbnb, "Airbnb")
   };
 
   protected decimal ExtraDiscountAmount
@@ -145,8 +164,14 @@ public partial class ReservacionPage : ComponentBase
       SuiteActionPriceWithIva => "Precio c/IVA",
       SuiteActionTotal => "Total",
       SuiteActionCleaning => "Sin monto",
+      SuiteActionAirbnb => "Tú ganas",
       _ => "Valor"
     };
+
+  protected bool HasAirbnbBreakdown => Detail?.AirbnbBreakdown is not null;
+
+  protected int AirbnbTargetSuiteCount
+    => GetAirbnbTargetSuiteIds().Length;
 
   protected override async Task OnParametersSetAsync()
   {
@@ -155,6 +180,7 @@ public partial class ReservacionPage : ComponentBase
 
   protected async Task LoadAllAsync(bool preserveFormState = false)
   {
+    EnsureAirbnbDefaultsLoaded();
     IsLoading = true;
     ErrorMessage = null;
     var formState = preserveFormState ? CaptureFormState() : null;
@@ -333,6 +359,41 @@ public partial class ReservacionPage : ComponentBase
         return;
       }
 
+      var linkResult = await TransaccionService.UpsertReservacionLinkAsync(new TransaccionReservacionLinkUpsertRequest
+      {
+        ReservationId = Detail.Id,
+        TransaccionId = createResult.NewTransaccionId,
+        Amount = TotalReservacion
+      });
+
+      if (!linkResult.Success)
+      {
+        UiMessages.ShowError(
+          $"La póliza {createResult.NewTransaccionId} se creó, pero no se pudo ligar a la reservación. {linkResult.Message}");
+        return;
+      }
+
+      var appliedAirbnbAccounting = false;
+      if (Detail.AirbnbBreakdown is not null)
+      {
+        var accountingResult = await ReservationCfdiService.ApplyAirbnbAccountingAsync(
+          new ReservationAirbnbAccountingRequest
+          {
+            ReservationId = Detail.Id,
+            TransaccionId = createResult.NewTransaccionId,
+            IssuerRfc = RfcState.CurrentRfc!
+          });
+
+        if (!accountingResult.Success)
+        {
+          UiMessages.ShowError(
+            $"La póliza {createResult.NewTransaccionId} se creó y se ligó a la reservación, pero no se pudo generar el registro contable Airbnb. {accountingResult.Message}");
+          return;
+        }
+
+        appliedAirbnbAccounting = true;
+      }
+
       var url = $"/contabilidad/transacciones/{createResult.NewTransaccionId}";
       try
       {
@@ -343,7 +404,9 @@ public partial class ReservacionPage : ComponentBase
         Nav.NavigateTo(url);
       }
 
-      UiMessages.ShowSuccess($"Póliza {createResult.NewTransaccionId} creada.");
+      UiMessages.ShowSuccess(appliedAirbnbAccounting
+        ? $"Póliza {createResult.NewTransaccionId} creada, ligada y con registro contable Airbnb."
+        : $"Póliza {createResult.NewTransaccionId} creada.");
     }
     catch (Exception ex)
     {
@@ -394,6 +457,7 @@ public partial class ReservacionPage : ComponentBase
 
       await ReservacionesService.SyncSuiteStatusAsync(Detail.Id, Status);
       await ReservacionesService.SyncSuiteLockedByAsync(Detail.Id, ClienteId);
+      await SyncConAirbnbAsync();
       await LoadAllAsync();
 
       if (showSuccessMessage)
@@ -412,6 +476,53 @@ public partial class ReservacionPage : ComponentBase
     {
       IsSaving = false;
     }
+  }
+
+  private async Task SyncConAirbnbAsync()
+  {
+    try
+    {
+      var today = DateTime.Today;
+      var endDateExclusive = new DateTime(today.Year + 1, 1, 1);
+      var result = await BonhomiaRoomCalendarSyncService.SyncAsync(today, endDateExclusive);
+
+      if (result.ErrorCount <= 0)
+      {
+        return;
+      }
+
+      var summary = BuildSyncSummary(result);
+      if (result.ErrorCount >= result.Rooms.Count && result.Rooms.Count > 0)
+      {
+        UiMessages.ShowError(summary);
+      }
+      else
+      {
+        UiMessages.ShowWarning(summary);
+      }
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowWarning($"La reservación se guardó, pero no se pudo sincronizar Outlook/Airbnb. {ex.Message}");
+    }
+  }
+
+  private static string BuildSyncSummary(BonhomiaRoomCalendarSyncResult result)
+  {
+    var summary = $"Sync Outlook/Airbnb: {result.CreatedCount} creados, {result.UpdatedCount} actualizados, {result.DeletedCount} borrados, {result.SkippedCount} sin cambios.";
+    if (result.RecoveredMappingCount > 0)
+    {
+      summary += $" {result.RecoveredMappingCount} mapeos recuperados.";
+    }
+
+    var errorRooms = result.Rooms
+      .Where(item => !string.IsNullOrWhiteSpace(item.ErrorMessage))
+      .Select(item => item.RoomName)
+      .ToArray();
+
+    return errorRooms.Length > 0
+      ? $"{summary} Con errores en: {string.Join(", ", errorRooms)}."
+      : $"{summary} Se detectaron {result.ErrorCount} errores.";
   }
 
   protected async Task OnStatusChangedAsync(ChangeEventArgs args)
@@ -662,8 +773,7 @@ public partial class ReservacionPage : ComponentBase
     var result = await ReservacionesService.SetSuitesPriceAsync(SelectedSuiteIds.ToArray(), PrecioSuiteInput);
     if (result.Success)
     {
-      UiMessages.ShowSuccess(result.Message);
-      await LoadAllAsync(preserveFormState: true);
+      await HandleNonAirbnbSuiteActionSuccessAsync(result);
     }
     else
     {
@@ -682,8 +792,7 @@ public partial class ReservacionPage : ComponentBase
     var result = await ReservacionesService.SetSuitesPriceWithIvaAsync(SelectedSuiteIds.ToArray(), PrecioSuiteConIvaInput);
     if (result.Success)
     {
-      UiMessages.ShowSuccess(result.Message);
-      await LoadAllAsync(preserveFormState: true);
+      await HandleNonAirbnbSuiteActionSuccessAsync(result);
     }
     else
     {
@@ -705,8 +814,7 @@ public partial class ReservacionPage : ComponentBase
     var result = await ReservacionesService.ToggleSuitesLimpiezaAsync(SelectedSuiteIds.ToArray(), nextState);
     if (result.Success)
     {
-      UiMessages.ShowSuccess(result.Message);
-      await LoadAllAsync(preserveFormState: true);
+      await HandleNonAirbnbSuiteActionSuccessAsync(result);
     }
     else
     {
@@ -725,8 +833,7 @@ public partial class ReservacionPage : ComponentBase
     var result = await ReservacionesService.DistributeSuitesTotalWithIvaAsync(SelectedSuiteIds.ToArray(), TotalSuiteInput);
     if (result.Success)
     {
-      UiMessages.ShowSuccess(result.Message);
-      await LoadAllAsync(preserveFormState: true);
+      await HandleNonAirbnbSuiteActionSuccessAsync(result);
     }
     else
     {
@@ -754,11 +861,137 @@ public partial class ReservacionPage : ComponentBase
       case SuiteActionCleaning:
         await AlternarLimpiezaSuiteAsync();
         break;
+      case SuiteActionAirbnb:
+        OpenAirbnbPanel();
+        break;
       default:
         UiMessages.ShowWarning("Selecciona una acción válida.");
         break;
     }
   }
+
+  private async Task HandleNonAirbnbSuiteActionSuccessAsync(ReservacionCommandResult actionResult)
+  {
+    UiMessages.ShowSuccess(actionResult.Message);
+    await ClearAirbnbBreakdownAfterManualSuiteActionAsync();
+    await LoadAllAsync(preserveFormState: true);
+  }
+
+  private async Task ClearAirbnbBreakdownAfterManualSuiteActionAsync()
+  {
+    if (Detail?.AirbnbBreakdown is null)
+    {
+      return;
+    }
+
+    var result = await ReservacionesService.ClearAirbnbBreakdownIfNoPolizaAsync(Detail.Id);
+    if (!result.Success)
+    {
+      UiMessages.ShowWarning(result.Message);
+      return;
+    }
+
+    if (result.Message.Contains("eliminado", StringComparison.OrdinalIgnoreCase))
+    {
+      UiMessages.ShowSuccess(result.Message);
+    }
+    else if (result.Message.Contains("conservado", StringComparison.OrdinalIgnoreCase))
+    {
+      UiMessages.ShowWarning(result.Message);
+    }
+  }
+
+  protected void OpenAirbnbPanel()
+  {
+    if (Suites.Count == 0)
+    {
+      UiMessages.ShowWarning("Agrega suites a la reservación antes de aplicar Airbnb.");
+      return;
+    }
+
+    if (AirbnbPayoutInput <= 0m && SuiteActionValueInput > 0m)
+    {
+      AirbnbPayoutInput = SuiteActionValueInput;
+    }
+
+    ShowAirbnbPanel = true;
+    AirbnbErrorMessage = null;
+  }
+
+  protected void CloseAirbnbPanel()
+  {
+    ShowAirbnbPanel = false;
+    AirbnbErrorMessage = null;
+  }
+
+  protected async Task AplicarAirbnbAsync()
+  {
+    if (Detail is null || IsApplyingAirbnb)
+    {
+      return;
+    }
+
+    if (!TryCalculateAirbnbPreview(out _, out var errorMessage))
+    {
+      AirbnbErrorMessage = errorMessage;
+      UiMessages.ShowWarning(errorMessage ?? "Revisa el desglose Airbnb.");
+      return;
+    }
+
+    var targetSuiteIds = GetAirbnbTargetSuiteIds();
+    if (targetSuiteIds.Length == 0)
+    {
+      AirbnbErrorMessage = "Selecciona al menos una suite para aplicar el desglose Airbnb.";
+      UiMessages.ShowWarning(AirbnbErrorMessage);
+      return;
+    }
+
+    IsApplyingAirbnb = true;
+    AirbnbErrorMessage = null;
+
+    try
+    {
+      var result = await ReservacionesService.ApplyAirbnbBreakdownAsync(new AirbnbReservationBreakdownApplyRequest
+      {
+        ReservationId = Detail.Id,
+        RoomCalendarIds = targetSuiteIds,
+        PayoutAmount = AirbnbPayoutInput,
+        CleaningFee = AirbnbCleaningFeeInput,
+        IvaRate = PercentToRate(AirbnbIvaRatePercentInput),
+        IvaRetentionRate = PercentToRate(AirbnbIvaRetentionRatePercentInput),
+        IsrRetentionRate = PercentToRate(AirbnbIsrRetentionRatePercentInput),
+        HostServiceFeeRate = PercentToRate(AirbnbHostServiceFeeRatePercentInput),
+        HostServiceFeeIvaRate = PercentToRate(AirbnbHostServiceFeeIvaRatePercentInput)
+      });
+
+      if (!result.Success)
+      {
+        AirbnbErrorMessage = result.Message;
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      ShowAirbnbPanel = false;
+      SelectedSuiteIds.Clear();
+      await LoadAllAsync();
+    }
+    catch (Exception ex)
+    {
+      AirbnbErrorMessage = ex.Message;
+      UiMessages.ShowError($"No se pudo aplicar Airbnb. {ex.Message}");
+    }
+    finally
+    {
+      IsApplyingAirbnb = false;
+    }
+  }
+
+  protected AirbnbReservationBreakdownDto? GetAirbnbPreview()
+    => TryCalculateAirbnbPreview(out var preview, out _) ? preview : null;
+
+  protected string? GetAirbnbPreviewError()
+    => TryCalculateAirbnbPreview(out _, out var errorMessage) ? null : errorMessage;
 
   protected void ToggleExtraForm()
   {
@@ -1208,6 +1441,7 @@ public partial class ReservacionPage : ComponentBase
     SuiteDiscountPercent = formState.SuiteDiscountPercent;
     RecommenedBy = formState.RecommenedBy;
     Notes = formState.Notes;
+    ApplyAirbnbBreakdownToInputs();
   }
 
   private void ApplyDetailToForm()
@@ -1229,7 +1463,98 @@ public partial class ReservacionPage : ComponentBase
     SuiteDiscountPercent = Detail.SuiteDiscountPercent;
     RecommenedBy = Detail.RecommenedBy;
     Notes = Detail.Notes;
+    ApplyAirbnbBreakdownToInputs();
   }
+
+  private void ApplyAirbnbBreakdownToInputs()
+  {
+    if (Detail?.AirbnbBreakdown is null)
+    {
+      return;
+    }
+
+    var breakdown = Detail.AirbnbBreakdown;
+    AirbnbPayoutInput = breakdown.PayoutAmount;
+    AirbnbCleaningFeeInput = breakdown.CleaningFee;
+    AirbnbIvaRatePercentInput = RateToPercent(breakdown.IvaRate);
+    AirbnbIvaRetentionRatePercentInput = RateToPercent(breakdown.IvaRetentionRate);
+    AirbnbIsrRetentionRatePercentInput = RateToPercent(breakdown.IsrRetentionRate);
+    AirbnbHostServiceFeeRatePercentInput = RateToPercent(breakdown.HostServiceFeeRate);
+    AirbnbHostServiceFeeIvaRatePercentInput = RateToPercent(breakdown.HostServiceFeeIvaRate);
+  }
+
+  private void EnsureAirbnbDefaultsLoaded()
+  {
+    if (_airbnbDefaultsLoaded)
+    {
+      return;
+    }
+
+    AirbnbCleaningFeeInput = ReadAirbnbDecimal("CleaningFee", AirbnbReservationDefaults.CleaningFee);
+    AirbnbIvaRatePercentInput = RateToPercent(ReadAirbnbDecimal("IvaRate", AirbnbReservationDefaults.IvaRate));
+    AirbnbIvaRetentionRatePercentInput = RateToPercent(ReadAirbnbDecimal("IvaRetentionRate", AirbnbReservationDefaults.IvaRetentionRate));
+    AirbnbIsrRetentionRatePercentInput = RateToPercent(ReadAirbnbDecimal("IsrRetentionRate", AirbnbReservationDefaults.IsrRetentionRate));
+    AirbnbHostServiceFeeRatePercentInput = RateToPercent(ReadAirbnbDecimal("HostServiceFeeRate", AirbnbReservationDefaults.HostServiceFeeRate));
+    AirbnbHostServiceFeeIvaRatePercentInput = RateToPercent(ReadAirbnbDecimal("HostServiceFeeIvaRate", AirbnbReservationDefaults.HostServiceFeeIvaRate));
+    _airbnbDefaultsLoaded = true;
+  }
+
+  private decimal ReadAirbnbDecimal(string key, decimal defaultValue)
+  {
+    var value = Configuration[$"Reservations:Airbnb:{key}"];
+    return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
+      ? parsed
+      : defaultValue;
+  }
+
+  private bool TryCalculateAirbnbPreview(out AirbnbReservationBreakdownDto? preview, out string? errorMessage)
+  {
+    preview = null;
+    errorMessage = null;
+
+    try
+    {
+      preview = AirbnbReservationBreakdownCalculator.Calculate(new AirbnbReservationBreakdownInput
+      {
+        PayoutAmount = AirbnbPayoutInput,
+        CleaningFee = AirbnbCleaningFeeInput,
+        IvaRate = PercentToRate(AirbnbIvaRatePercentInput),
+        IvaRetentionRate = PercentToRate(AirbnbIvaRetentionRatePercentInput),
+        IsrRetentionRate = PercentToRate(AirbnbIsrRetentionRatePercentInput),
+        HostServiceFeeRate = PercentToRate(AirbnbHostServiceFeeRatePercentInput),
+        HostServiceFeeIvaRate = PercentToRate(AirbnbHostServiceFeeIvaRatePercentInput)
+      });
+
+      return true;
+    }
+    catch (Exception ex)
+    {
+      errorMessage = ex.Message;
+      return false;
+    }
+  }
+
+  private int[] GetAirbnbTargetSuiteIds()
+  {
+    if (SelectedSuiteIds.Count > 0)
+    {
+      return SelectedSuiteIds
+        .Where(id => Suites.Any(suite => suite.Id == id))
+        .OrderBy(id => id)
+        .ToArray();
+    }
+
+    return Suites
+      .Select(suite => suite.Id)
+      .OrderBy(id => id)
+      .ToArray();
+  }
+
+  private static decimal PercentToRate(decimal percent)
+    => percent / 100m;
+
+  private static decimal RateToPercent(decimal rate)
+    => decimal.Round(rate * 100m, 4, MidpointRounding.ToEven);
 
   private void EnsureValidDateRange()
   {

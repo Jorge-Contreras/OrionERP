@@ -622,6 +622,11 @@ WHERE ID = @ReservationId;";
     const string sql = @"
 SET NOCOUNT ON;
 
+DECLARE @EmptyReservations TABLE
+(
+    ReservationId int NOT NULL PRIMARY KEY
+);
+
 ;WITH ReferencedReservations AS (
     SELECT DISTINCT refs.ReservationId
     FROM (
@@ -646,11 +651,25 @@ SET NOCOUNT ON;
         WHERE rt.ReservationID IS NOT NULL
     ) AS refs
 )
-DELETE r
+INSERT INTO @EmptyReservations (ReservationId)
+SELECT r.ID
 FROM dbo.RESERVATION AS r
 LEFT JOIN ReferencedReservations AS refs
   ON refs.ReservationId = r.ID
 WHERE refs.ReservationId IS NULL;
+
+IF OBJECT_ID('dbo.ReservationAirbnbBreakdown', 'U') IS NOT NULL
+BEGIN
+    DELETE b
+    FROM dbo.ReservationAirbnbBreakdown AS b
+    INNER JOIN @EmptyReservations AS empty
+      ON empty.ReservationId = b.ReservationID;
+END;
+
+DELETE r
+FROM dbo.RESERVATION AS r
+INNER JOIN @EmptyReservations AS empty
+  ON empty.ReservationId = r.ID;
 
 SELECT @@ROWCOUNT;";
 
@@ -721,6 +740,13 @@ WHERE ID IN @Ids;";
 DELETE FROM dbo.RESERVATION_DETAIL
 WHERE RESERVATION_ID = @ReservationId;";
 
+    const string deleteAirbnbBreakdownSql = @"
+IF OBJECT_ID('dbo.ReservationAirbnbBreakdown', 'U') IS NOT NULL
+BEGIN
+    DELETE FROM dbo.ReservationAirbnbBreakdown
+    WHERE ReservationID = @ReservationId;
+END;";
+
     const string deleteReservationSql = @"
 DELETE FROM dbo.RESERVATION
 WHERE ID = @ReservationId;";
@@ -761,6 +787,9 @@ WHERE ID = @ReservationId;";
 
       await conn.ExecuteAsync(
         new CommandDefinition(deleteExtrasSql, new { ReservationId = reservationId }, tx, cancellationToken: ct));
+
+      await conn.ExecuteAsync(
+        new CommandDefinition(deleteAirbnbBreakdownSql, new { ReservationId = reservationId }, tx, cancellationToken: ct));
 
       var deleted = await conn.ExecuteAsync(
         new CommandDefinition(deleteReservationSql, new { ReservationId = reservationId }, tx, cancellationToken: ct));
@@ -848,7 +877,56 @@ SELECT
     CAST(DATALENGTH(ra.Attachment) AS bigint) AS Length
 FROM dbo.RESERVATION_ATTACHMENT ra
 WHERE ra.ReservationID = @ReservationId
-ORDER BY ra.ID DESC;";
+ORDER BY ra.ID DESC;
+
+IF OBJECT_ID('dbo.ReservationAirbnbBreakdown', 'U') IS NOT NULL
+BEGIN
+    SELECT
+        b.ReservationID AS ReservationId,
+        b.PayoutAmount,
+        b.TaxableBase,
+        b.RoomRateAmount,
+        b.CleaningFee,
+        b.IvaTransferredAmount,
+        b.IvaRetainedAmount,
+        b.IsrRetainedAmount,
+        b.HostServiceFeeBaseAmount,
+        b.HostServiceFeeIvaAmount,
+        b.HostServiceFeeTotalAmount,
+        b.GrossCfdiTotal,
+        b.IvaRate,
+        b.IvaRetentionRate,
+        b.IsrRetentionRate,
+        b.HostServiceFeeRate,
+        b.HostServiceFeeIvaRate,
+        b.CreatedAtUtc,
+        b.UpdatedAtUtc
+    FROM dbo.ReservationAirbnbBreakdown b
+    WHERE b.ReservationID = @ReservationId;
+END
+ELSE
+BEGIN
+    SELECT TOP (0)
+        CAST(NULL AS int) AS ReservationId,
+        CAST(NULL AS decimal(18,2)) AS PayoutAmount,
+        CAST(NULL AS decimal(18,2)) AS TaxableBase,
+        CAST(NULL AS decimal(18,2)) AS RoomRateAmount,
+        CAST(NULL AS decimal(18,2)) AS CleaningFee,
+        CAST(NULL AS decimal(18,2)) AS IvaTransferredAmount,
+        CAST(NULL AS decimal(18,2)) AS IvaRetainedAmount,
+        CAST(NULL AS decimal(18,2)) AS IsrRetainedAmount,
+        CAST(NULL AS decimal(18,2)) AS HostServiceFeeBaseAmount,
+        CAST(NULL AS decimal(18,2)) AS HostServiceFeeIvaAmount,
+        CAST(NULL AS decimal(18,2)) AS HostServiceFeeTotalAmount,
+        CAST(NULL AS decimal(18,2)) AS GrossCfdiTotal,
+        CAST(NULL AS decimal(9,6)) AS IvaRate,
+        CAST(NULL AS decimal(9,6)) AS IvaRetentionRate,
+        CAST(NULL AS decimal(9,6)) AS IsrRetentionRate,
+        CAST(NULL AS decimal(9,6)) AS HostServiceFeeRate,
+        CAST(NULL AS decimal(9,6)) AS HostServiceFeeIvaRate,
+        CAST(NULL AS datetime2) AS CreatedAtUtc,
+        CAST(NULL AS datetime2) AS UpdatedAtUtc;
+END;";
 
     await using var conn = new SqlConnection(_cs);
     await conn.OpenAsync(ct);
@@ -864,12 +942,14 @@ ORDER BY ra.ID DESC;";
     var extras = (await multi.ReadAsync<ReservacionExtraDto>()).AsList();
     var pagos = (await multi.ReadAsync<ReservacionPagoDto>()).AsList();
     var attachments = (await multi.ReadAsync<ReservacionAttachmentDto>()).AsList();
+    var airbnbBreakdown = await multi.ReadFirstOrDefaultAsync<AirbnbReservationBreakdownDto>();
 
     ApplyCalculatedTotals(detail, suites, extras, pagos);
     detail.Suites = suites;
     detail.Extras = extras;
     detail.Pagos = pagos;
     detail.Attachments = attachments;
+    detail.AirbnbBreakdown = airbnbBreakdown;
     return detail;
   }
 
@@ -1547,6 +1627,301 @@ WHERE ID IN (
       try { await tx!.RollbackAsync(ct); } catch { /* ignore */ }
       _logger.LogError(ex, "Error distributing suite total with IVA.");
       return ReservacionCommandResult.Fail("No se pudo distribuir el total en las suites seleccionadas.");
+    }
+  }
+
+  public async Task<ReservacionCommandResult> ApplyAirbnbBreakdownAsync(AirbnbReservationBreakdownApplyRequest request, CancellationToken ct = default)
+  {
+    if (request is null)
+      throw new ArgumentNullException(nameof(request));
+
+    if (request.ReservationId <= 0)
+      return ReservacionCommandResult.Fail("Selecciona una reservación válida.");
+
+    AirbnbReservationBreakdownDto breakdown;
+    try
+    {
+      breakdown = AirbnbReservationBreakdownCalculator.Calculate(request);
+    }
+    catch (Exception ex)
+    {
+      return ReservacionCommandResult.Fail($"No se pudo calcular el desglose Airbnb. {ex.Message}");
+    }
+
+    if (!breakdown.IsBalanced)
+    {
+      return ReservacionCommandResult.Fail("El desglose Airbnb no genera una póliza balanceada.");
+    }
+
+    const string tableExistsSql = @"SELECT OBJECT_ID('dbo.ReservationAirbnbBreakdown', 'U');";
+    const string reservationExistsSql = @"SELECT TOP (1) 1 FROM dbo.RESERVATION WITH (UPDLOCK) WHERE ID = @ReservationId;";
+    const string extrasCountSql = @"SELECT COUNT(1) FROM dbo.RESERVATION_DETAIL WHERE RESERVATION_ID = @ReservationId;";
+    const string selectedSuitesSql = @"
+SELECT
+    rc.ID AS Id
+FROM dbo.ROOM_CALENDAR rc WITH (UPDLOCK)
+WHERE TRY_CAST(rc.LOCK_DESCRIPTION AS int) = @ReservationId
+  AND rc.ID IN @Ids
+ORDER BY rc.ROOM_DATE, rc.ROOM, rc.ID;";
+    const string allSuitesSql = @"
+SELECT
+    rc.ID AS Id
+FROM dbo.ROOM_CALENDAR rc WITH (UPDLOCK)
+WHERE TRY_CAST(rc.LOCK_DESCRIPTION AS int) = @ReservationId
+ORDER BY rc.ROOM_DATE, rc.ROOM, rc.ID;";
+    const string updateSuiteSql = @"UPDATE dbo.ROOM_CALENDAR SET PRECIO = @Precio WHERE ID = @Id;";
+    const string updateReservationSql = @"
+UPDATE dbo.RESERVATION
+SET TAXABLE = 1,
+    TOTAL_PRICE = @TotalPrice,
+    SUITE_DISCOUNT_PERCENT = 0,
+    AIRBNB_UPDATED = 1
+WHERE ID = @ReservationId;";
+    const string upsertBreakdownSql = @"
+UPDATE dbo.ReservationAirbnbBreakdown
+SET PayoutAmount = @PayoutAmount,
+    TaxableBase = @TaxableBase,
+    RoomRateAmount = @RoomRateAmount,
+    CleaningFee = @CleaningFee,
+    IvaTransferredAmount = @IvaTransferredAmount,
+    IvaRetainedAmount = @IvaRetainedAmount,
+    IsrRetainedAmount = @IsrRetainedAmount,
+    HostServiceFeeBaseAmount = @HostServiceFeeBaseAmount,
+    HostServiceFeeIvaAmount = @HostServiceFeeIvaAmount,
+    HostServiceFeeTotalAmount = @HostServiceFeeTotalAmount,
+    GrossCfdiTotal = @GrossCfdiTotal,
+    IvaRate = @IvaRate,
+    IvaRetentionRate = @IvaRetentionRate,
+    IsrRetentionRate = @IsrRetentionRate,
+    HostServiceFeeRate = @HostServiceFeeRate,
+    HostServiceFeeIvaRate = @HostServiceFeeIvaRate,
+    UsedDefaultRates = @UsedDefaultRates,
+    UpdatedAtUtc = SYSUTCDATETIME()
+WHERE ReservationID = @ReservationId;
+
+IF @@ROWCOUNT = 0
+BEGIN
+    INSERT INTO dbo.ReservationAirbnbBreakdown
+    (
+        ReservationID,
+        PayoutAmount,
+        TaxableBase,
+        RoomRateAmount,
+        CleaningFee,
+        IvaTransferredAmount,
+        IvaRetainedAmount,
+        IsrRetainedAmount,
+        HostServiceFeeBaseAmount,
+        HostServiceFeeIvaAmount,
+        HostServiceFeeTotalAmount,
+        GrossCfdiTotal,
+        IvaRate,
+        IvaRetentionRate,
+        IsrRetentionRate,
+        HostServiceFeeRate,
+        HostServiceFeeIvaRate,
+        UsedDefaultRates
+    )
+    VALUES
+    (
+        @ReservationId,
+        @PayoutAmount,
+        @TaxableBase,
+        @RoomRateAmount,
+        @CleaningFee,
+        @IvaTransferredAmount,
+        @IvaRetainedAmount,
+        @IsrRetainedAmount,
+        @HostServiceFeeBaseAmount,
+        @HostServiceFeeIvaAmount,
+        @HostServiceFeeTotalAmount,
+        @GrossCfdiTotal,
+        @IvaRate,
+        @IvaRetentionRate,
+        @IsrRetentionRate,
+        @HostServiceFeeRate,
+        @HostServiceFeeIvaRate,
+        @UsedDefaultRates
+    );
+END;";
+
+    await using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct) as SqlTransaction;
+
+    try
+    {
+      var tableExists = await conn.ExecuteScalarAsync<int?>(
+        new CommandDefinition(tableExistsSql, transaction: tx, cancellationToken: ct));
+      if (!tableExists.HasValue)
+      {
+        await tx!.RollbackAsync(ct);
+        return ReservacionCommandResult.Fail("Falta ejecutar el script de base de datos para dbo.ReservationAirbnbBreakdown.");
+      }
+
+      var reservationExists = await conn.ExecuteScalarAsync<int?>(
+        new CommandDefinition(reservationExistsSql, new { request.ReservationId }, tx, cancellationToken: ct));
+      if (!reservationExists.HasValue)
+      {
+        await tx!.RollbackAsync(ct);
+        return ReservacionCommandResult.Fail("No se encontró la reservación seleccionada.");
+      }
+
+      var extrasCount = await conn.ExecuteScalarAsync<int>(
+        new CommandDefinition(extrasCountSql, new { request.ReservationId }, tx, cancellationToken: ct));
+      if (extrasCount > 0)
+      {
+        await tx!.RollbackAsync(ct);
+        return ReservacionCommandResult.Fail("Quita los extras de la reservación antes de aplicar el desglose Airbnb.");
+      }
+
+      var requestedIds = request.RoomCalendarIds?
+        .Where(id => id > 0)
+        .Distinct()
+        .ToArray() ?? Array.Empty<int>();
+
+      var suiteRows = requestedIds.Length > 0
+        ? (await conn.QueryAsync<int>(
+            new CommandDefinition(
+              selectedSuitesSql,
+              new { request.ReservationId, Ids = requestedIds },
+              tx,
+              cancellationToken: ct))).AsList()
+        : (await conn.QueryAsync<int>(
+            new CommandDefinition(allSuitesSql, new { request.ReservationId }, tx, cancellationToken: ct))).AsList();
+
+      if (suiteRows.Count == 0)
+      {
+        await tx!.RollbackAsync(ct);
+        return ReservacionCommandResult.Fail("La reservación no tiene suites para distribuir el desglose Airbnb.");
+      }
+
+      if (requestedIds.Length > 0 && suiteRows.Count != requestedIds.Length)
+      {
+        await tx!.RollbackAsync(ct);
+        return ReservacionCommandResult.Fail("Una o más suites seleccionadas no pertenecen a la reservación.");
+      }
+
+      var suiteAmounts = AirbnbReservationBreakdownCalculator.SplitCurrency(breakdown.TaxableBase, suiteRows.Count);
+      for (var index = 0; index < suiteRows.Count; index++)
+      {
+        await conn.ExecuteAsync(
+          new CommandDefinition(
+            updateSuiteSql,
+            new { Id = suiteRows[index], Precio = suiteAmounts[index] },
+            tx,
+            cancellationToken: ct));
+      }
+
+      await conn.ExecuteAsync(
+        new CommandDefinition(
+          updateReservationSql,
+          new
+          {
+            request.ReservationId,
+            TotalPrice = breakdown.GrossCfdiTotal
+          },
+          tx,
+          cancellationToken: ct));
+
+      await conn.ExecuteAsync(
+        new CommandDefinition(
+          upsertBreakdownSql,
+          new
+          {
+            request.ReservationId,
+            breakdown.PayoutAmount,
+            breakdown.TaxableBase,
+            breakdown.RoomRateAmount,
+            breakdown.CleaningFee,
+            breakdown.IvaTransferredAmount,
+            breakdown.IvaRetainedAmount,
+            breakdown.IsrRetainedAmount,
+            breakdown.HostServiceFeeBaseAmount,
+            breakdown.HostServiceFeeIvaAmount,
+            breakdown.HostServiceFeeTotalAmount,
+            breakdown.GrossCfdiTotal,
+            breakdown.IvaRate,
+            breakdown.IvaRetentionRate,
+            breakdown.IsrRetentionRate,
+            breakdown.HostServiceFeeRate,
+            breakdown.HostServiceFeeIvaRate,
+            UsedDefaultRates = AirbnbReservationBreakdownCalculator.UsesDefaultRates(request)
+          },
+          tx,
+          cancellationToken: ct));
+
+      await tx!.CommitAsync(ct);
+      return ReservacionCommandResult.Ok(
+        $"Desglose Airbnb aplicado. Total CFDI {breakdown.GrossCfdiTotal.ToString("N2", CultureInfo.InvariantCulture)}.");
+    }
+    catch (Exception ex)
+    {
+      try { await tx!.RollbackAsync(ct); } catch { /* ignore */ }
+      _logger.LogError(ex, "Error applying Airbnb breakdown to reservation {ReservationId}.", request.ReservationId);
+      return ReservacionCommandResult.Fail("No se pudo aplicar el desglose Airbnb.");
+    }
+  }
+
+  public async Task<ReservacionCommandResult> ClearAirbnbBreakdownIfNoPolizaAsync(int reservationId, CancellationToken ct = default)
+  {
+    if (reservationId <= 0)
+      return ReservacionCommandResult.Fail("La reservación seleccionada no es válida.");
+
+    const string sql = """
+DECLARE @Result int = 0;
+
+IF OBJECT_ID('dbo.ReservationAirbnbBreakdown', 'U') IS NOT NULL
+   AND EXISTS (
+       SELECT 1
+       FROM dbo.ReservationAirbnbBreakdown
+       WHERE ReservationID = @ReservationId
+   )
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM dbo.Reservation_Transacciones
+        WHERE ReservationID = @ReservationId
+    )
+    BEGIN
+        SET @Result = 2;
+    END
+    ELSE
+    BEGIN
+        DELETE FROM dbo.ReservationAirbnbBreakdown
+        WHERE ReservationID = @ReservationId;
+
+        IF COL_LENGTH('dbo.RESERVATION', 'AIRBNB_UPDATED') IS NOT NULL
+        BEGIN
+            UPDATE dbo.RESERVATION
+            SET AIRBNB_UPDATED = 0
+            WHERE ID = @ReservationId;
+        END
+
+        SET @Result = 1;
+    END
+END
+
+SELECT @Result;
+""";
+
+    try
+    {
+      await using var conn = new SqlConnection(_cs);
+      var result = await conn.ExecuteScalarAsync<int>(
+          new CommandDefinition(sql, new { ReservationId = reservationId }, cancellationToken: ct));
+
+      return result switch
+      {
+        1 => ReservacionCommandResult.Ok("Desglose Airbnb eliminado porque se aplicó una acción manual."),
+        2 => ReservacionCommandResult.Ok("Desglose Airbnb conservado porque la reservación ya tiene una póliza ligada."),
+        _ => ReservacionCommandResult.Ok("La reservación no tenía desglose Airbnb.")
+      };
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Error clearing Airbnb breakdown for reservation {ReservationId}.", reservationId);
+      return ReservacionCommandResult.Fail($"No se pudo limpiar el desglose Airbnb: {ex.Message}");
     }
   }
 

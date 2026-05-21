@@ -46,6 +46,8 @@ public interface IListaReservacionesService
   Task<ReservacionCommandResult> SetSuitesPriceWithIvaAsync(IReadOnlyCollection<int> roomCalendarIds, decimal priceWithIva, CancellationToken ct = default);
   Task<ReservacionCommandResult> ToggleSuitesLimpiezaAsync(IReadOnlyCollection<int> roomCalendarIds, bool nextState, CancellationToken ct = default);
   Task<ReservacionCommandResult> DistributeSuitesTotalWithIvaAsync(IReadOnlyCollection<int> roomCalendarIds, decimal totalWithIva, CancellationToken ct = default);
+  Task<ReservacionCommandResult> ApplyAirbnbBreakdownAsync(AirbnbReservationBreakdownApplyRequest request, CancellationToken ct = default);
+  Task<ReservacionCommandResult> ClearAirbnbBreakdownIfNoPolizaAsync(int reservationId, CancellationToken ct = default);
 
   Task<ReservacionCommandResult> AddExtraAsync(ReservacionExtraCreateRequest request, CancellationToken ct = default);
   Task<ReservacionCommandResult> UpdateExtraAsync(ReservacionExtraUpdateRequest request, CancellationToken ct = default);

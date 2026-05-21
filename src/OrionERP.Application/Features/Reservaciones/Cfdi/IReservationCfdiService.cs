@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using OrionERP.Application.Features.Contabilidad.Transacciones;
 
 namespace OrionERP.Application.Features.Reservaciones.Cfdi;
 
@@ -13,5 +14,6 @@ public interface IReservationCfdiService
       ReservationCfdiCustomerUpsertRequest request,
       CancellationToken ct = default);
   Task<ReservationCfdiCustomerSaveResult> SaveCustomerAsync(ReservationCfdiCustomerUpsertRequest request, CancellationToken ct = default);
+  Task<TransaccionCommandResult> ApplyAirbnbAccountingAsync(ReservationAirbnbAccountingRequest request, CancellationToken ct = default);
   Task<ReservationCfdiCreateResult> CreateCfdiAsync(ReservationCfdiCreateRequest request, CancellationToken ct = default);
 }

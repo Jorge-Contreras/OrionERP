@@ -26,6 +26,13 @@ public sealed class ReservationCfdiContextDto
   public ReservationCfdiCustomerUpsertRequest ReceiverDraft { get; set; } = new();
 }
 
+public sealed class ReservationAirbnbAccountingRequest
+{
+  public int ReservationId { get; set; }
+  public int TransaccionId { get; set; }
+  public string IssuerRfc { get; set; } = string.Empty;
+}
+
 public sealed class ReservationCfdiPolizaOptionDto
 {
   public int TransaccionId { get; set; }

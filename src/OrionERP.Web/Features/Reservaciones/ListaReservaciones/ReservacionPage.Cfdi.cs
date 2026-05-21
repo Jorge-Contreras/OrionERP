@@ -323,7 +323,7 @@ public partial class ReservacionPage
     CfdiReceiver = currentReceiver;
     CfdiCustomerSearchText = currentSearchText;
     PersistCfdiCustomer = currentPersistFlag;
-    SelectedCfdiPolizaOption = currentPolizaSelection;
+    SelectedCfdiPolizaOption = ResolveCfdiPolizaSelectionAfterReload(currentPolizaSelection, CfdiContext);
     SelectedCfdiFormaPago = currentFormaPago;
     SelectedCfdiMetodoPago = currentMetodoPago;
     CfdiReceiverValidation = currentValidation;
@@ -691,6 +691,27 @@ public partial class ReservacionPage
 
   private int? ResolveSelectedCfdiTransaccionId()
     => ResolveSelectedCfdiTransaccionId(SelectedCfdiPolizaOption);
+
+  private static string ResolveCfdiPolizaSelectionAfterReload(
+    string? currentSelection,
+    ReservationCfdiContextDto context)
+  {
+    var autoSelected = context.AutoSelectedTransaccionId?.ToString(CultureInfo.InvariantCulture);
+    if (string.IsNullOrWhiteSpace(currentSelection)
+        || string.Equals(currentSelection, NewCfdiPolizaOption, StringComparison.OrdinalIgnoreCase))
+    {
+      return autoSelected ?? NewCfdiPolizaOption;
+    }
+
+    var selectedTransaccionId = ResolveSelectedCfdiTransaccionId(currentSelection);
+    if (selectedTransaccionId.HasValue
+        && context.PolizaOptions.Any(option => option.TransaccionId == selectedTransaccionId.Value))
+    {
+      return currentSelection;
+    }
+
+    return autoSelected ?? NewCfdiPolizaOption;
+  }
 
   private static ReservationCfdiCustomerUpsertRequest CloneReceiver(ReservationCfdiCustomerUpsertRequest source)
     => new()

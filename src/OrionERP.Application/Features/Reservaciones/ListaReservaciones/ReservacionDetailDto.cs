@@ -29,4 +29,5 @@ public sealed class ReservacionDetailDto
   public IReadOnlyList<ReservacionExtraDto> Extras { get; set; } = Array.Empty<ReservacionExtraDto>();
   public IReadOnlyList<ReservacionPagoDto> Pagos { get; set; } = Array.Empty<ReservacionPagoDto>();
   public IReadOnlyList<ReservacionAttachmentDto> Attachments { get; set; } = Array.Empty<ReservacionAttachmentDto>();
+  public AirbnbReservationBreakdownDto? AirbnbBreakdown { get; set; }
 }

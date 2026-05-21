@@ -97,9 +97,7 @@ public sealed class ReservationCfdiService : IReservationCfdiService
     var polizaOptions = await GetPolizaOptionsAsync(reservationId, issuerRfc, detail.TotalPrice, ct);
     var existingDocuments = await GetExistingDocumentsAsync(reservationId, ct);
     var clienteEmail = await GetReservationCustomerEmailAsync(detail.ClienteId, ct);
-    var autoSelectedTransaccionId = polizaOptions.Count(static option => option.IsEligible) == 1
-        ? polizaOptions.First(static option => option.IsEligible).TransaccionId
-        : (int?)null;
+    var autoSelectedTransaccionId = GetSingleEligiblePolizaId(polizaOptions);
 
     return new ReservationCfdiContextDto
     {
@@ -447,6 +445,50 @@ WHEN NOT MATCHED THEN
     }
   }
 
+  public async Task<TransaccionCommandResult> ApplyAirbnbAccountingAsync(
+      ReservationAirbnbAccountingRequest request,
+      CancellationToken ct = default)
+  {
+    if (request is null)
+      throw new ArgumentNullException(nameof(request));
+
+    if (request.ReservationId <= 0)
+      return TransaccionCommandResult.Fail("La reservación seleccionada no es válida.");
+
+    if (request.TransaccionId <= 0)
+      return TransaccionCommandResult.Fail("La póliza seleccionada no es válida.");
+
+    var issuerRfc = NormalizeRfc(request.IssuerRfc);
+    if (string.IsNullOrWhiteSpace(issuerRfc))
+      return TransaccionCommandResult.Fail("Selecciona un RFC emisor antes de generar la póliza Airbnb.");
+
+    try
+    {
+      var detail = await _reservacionesService.GetReservacionDetailAsync(request.ReservationId, ct);
+      if (detail is null)
+      {
+        return TransaccionCommandResult.Fail("No se encontró la reservación seleccionada.");
+      }
+
+      if (detail.AirbnbBreakdown is null)
+      {
+        return TransaccionCommandResult.Ok("La reservación no tiene desglose Airbnb.");
+      }
+
+      return await SaveAirbnbAccountingAsync(request.TransaccionId, issuerRfc, detail, ct);
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(
+          ex,
+          "Failed to apply Airbnb accounting for reservation {ReservationId} and transaction {TransaccionId}",
+          request.ReservationId,
+          request.TransaccionId);
+
+      return TransaccionCommandResult.Fail($"No se pudo generar la póliza contable Airbnb: {ex.Message}");
+    }
+  }
+
   public async Task<ReservationCfdiCreateResult> CreateCfdiAsync(
       ReservationCfdiCreateRequest request,
       CancellationToken ct = default)
@@ -529,6 +571,17 @@ WHEN NOT MATCHED THEN
         return ReservationCfdiCreateResult.Fail(linkResult.Message ?? "No se pudo ligar la póliza a la reservación.", target.TransaccionId);
       }
 
+      if (detail.AirbnbBreakdown is not null)
+      {
+        var accountingResult = await SaveAirbnbAccountingAsync(target.TransaccionId, issuerRfc, detail, ct);
+        if (!accountingResult.Success)
+        {
+          return ReservationCfdiCreateResult.Fail(
+              accountingResult.Message ?? "No se pudo generar la póliza contable Airbnb.",
+              target.TransaccionId);
+        }
+      }
+
       var expeditionZipCode = await ResolveIssuerTaxZipCodeAsync(issuerRfc, ct);
       var payload = BuildReservationPayload(
           target.TransaccionId,
@@ -584,18 +637,28 @@ WHEN NOT MATCHED THEN
       string requestedPaymentForm,
       CancellationToken ct)
   {
+    var polizaOptions = await GetPolizaOptionsAsync(detail.Id, issuerRfc, detail.TotalPrice, ct);
+
     if (request.CreateNewPoliza)
     {
+      var autoSelectedTransaccionId = GetSingleEligiblePolizaId(polizaOptions);
+      if (autoSelectedTransaccionId.HasValue)
+      {
+        return await ResolveExistingTransaccionAsync(
+            detail,
+            requestedPaymentForm,
+            autoSelectedTransaccionId.Value,
+            polizaOptions,
+            ct);
+      }
+
       return await CreateTransaccionAsync(detail, issuerRfc, requestedPaymentForm, ct);
     }
 
-    var polizaOptions = await GetPolizaOptionsAsync(detail.Id, issuerRfc, detail.TotalPrice, ct);
     var selectedTransaccionId = request.TransaccionId;
     if (!selectedTransaccionId.HasValue)
     {
-      selectedTransaccionId = polizaOptions.Count(static option => option.IsEligible) == 1
-          ? polizaOptions.First(static option => option.IsEligible).TransaccionId
-          : (int?)null;
+      selectedTransaccionId = GetSingleEligiblePolizaId(polizaOptions);
     }
 
     if (!selectedTransaccionId.HasValue)
@@ -603,7 +666,22 @@ WHEN NOT MATCHED THEN
       throw new InvalidOperationException("Selecciona una póliza elegible o crea una nueva para emitir el CFDI.");
     }
 
-    var selected = polizaOptions.FirstOrDefault(option => option.TransaccionId == selectedTransaccionId.Value);
+    return await ResolveExistingTransaccionAsync(
+        detail,
+        requestedPaymentForm,
+        selectedTransaccionId.Value,
+        polizaOptions,
+        ct);
+  }
+
+  private async Task<ResolvedTransaccionTarget> ResolveExistingTransaccionAsync(
+      ReservacionDetailDto detail,
+      string requestedPaymentForm,
+      int selectedTransaccionId,
+      IReadOnlyList<ReservationCfdiPolizaOptionDto> polizaOptions,
+      CancellationToken ct)
+  {
+    var selected = polizaOptions.FirstOrDefault(option => option.TransaccionId == selectedTransaccionId);
     if (selected is null)
     {
       throw new InvalidOperationException("La póliza seleccionada no está ligada a la reservación actual.");
@@ -633,6 +711,17 @@ WHEN NOT MATCHED THEN
         false);
   }
 
+  private static int? GetSingleEligiblePolizaId(IReadOnlyList<ReservationCfdiPolizaOptionDto> polizaOptions)
+  {
+    var eligible = polizaOptions
+        .Where(static option => option.IsEligible)
+        .Select(static option => option.TransaccionId)
+        .Take(2)
+        .ToArray();
+
+    return eligible.Length == 1 ? eligible[0] : null;
+  }
+
   private async Task<ResolvedTransaccionTarget> CreateTransaccionAsync(
       ReservacionDetailDto detail,
       string issuerRfc,
@@ -659,6 +748,125 @@ WHEN NOT MATCHED THEN
     }
 
     return new ResolvedTransaccionTarget(createResult.NewTransaccionId, paymentForm, true);
+  }
+
+  private async Task<TransaccionCommandResult> SaveAirbnbAccountingAsync(
+      int transaccionId,
+      string issuerRfc,
+      ReservacionDetailDto detail,
+      CancellationToken ct)
+  {
+    var breakdown = detail.AirbnbBreakdown
+        ?? throw new InvalidOperationException("La reservación no tiene desglose Airbnb.");
+
+    var concept = BuildReservationConcept(detail);
+    var accounts = await GetAirbnbAccountsAsync(issuerRfc, ct);
+    var movimientos = new List<TransaccionMovimientoUpdateItem>();
+
+    AddMovimiento(movimientos, accounts.Bank, concept, breakdown.PayoutAmount, debe: true);
+    AddMovimiento(movimientos, accounts.IvaRetained, concept, breakdown.IvaRetainedAmount, debe: true);
+    AddMovimiento(movimientos, accounts.IsrRetained, concept, breakdown.IsrRetainedAmount, debe: true);
+    AddMovimiento(movimientos, accounts.AirbnbCommission, concept, breakdown.HostServiceFeeTotalAmount, debe: true);
+    AddMovimiento(movimientos, accounts.IvaTransferred, concept, breakdown.IvaTransferredAmount, debe: false);
+    AddMovimiento(movimientos, accounts.Income, concept, breakdown.TaxableBase, debe: false);
+
+    var debe = RoundCurrency(movimientos.Sum(static item => item.Debe));
+    var haber = RoundCurrency(movimientos.Sum(static item => item.Haber));
+    if (debe != haber)
+    {
+      return TransaccionCommandResult.Fail(
+          $"El desglose Airbnb no balancea la póliza. Debe {debe:N2}, Haber {haber:N2}.");
+    }
+
+    return await _transaccionService.GuardarMovimientosAsync(
+        new TransaccionMovimientosUpdateRequest
+        {
+          TransaccionId = transaccionId,
+          Movimientos = movimientos
+        },
+        ct);
+  }
+
+  private async Task<AirbnbAccountingAccounts> GetAirbnbAccountsAsync(string issuerRfc, CancellationToken ct)
+  {
+    const string sql = """
+SELECT
+    cc.Nivel1,
+    cc.Nivel2,
+    cc.Nivel3,
+    cc.Descripcion AS NombreCuenta
+FROM dbo.CuentasContables cc
+WHERE cc.RFC = @IssuerRfc
+  AND (
+      (cc.Nivel1 = '102' AND cc.Nivel2 = '01' AND cc.Nivel3 = '02')
+      OR (cc.Nivel1 = '208' AND cc.Nivel2 = '01' AND cc.Nivel3 = '01')
+      OR (cc.Nivel1 = '401' AND cc.Nivel2 = '25' AND cc.Nivel3 = '02')
+      OR (cc.Nivel1 = '113' AND cc.Nivel2 = '01' AND cc.Nivel3 = '05')
+      OR (cc.Nivel1 = '114' AND cc.Nivel2 = '01' AND cc.Nivel3 = '03')
+      OR (cc.Nivel1 = '601' AND cc.Nivel2 = '74' AND cc.Nivel3 = '02')
+  );
+""";
+
+    await using var conn = CreateConnection();
+    var rows = (await conn.QueryAsync<AirbnbAccountingAccount>(
+        new CommandDefinition(sql, new { IssuerRfc = issuerRfc }, cancellationToken: ct))).AsList();
+
+    return new AirbnbAccountingAccounts(
+        RequireAccount(rows, "102", "01", "02"),
+        RequireAccount(rows, "208", "01", "01"),
+        RequireAccount(rows, "401", "25", "02"),
+        RequireAccount(rows, "113", "01", "05"),
+        RequireAccount(rows, "114", "01", "03"),
+        RequireAccount(rows, "601", "74", "02"));
+  }
+
+  private static AirbnbAccountingAccount RequireAccount(
+      IReadOnlyList<AirbnbAccountingAccount> accounts,
+      string nivel1,
+      string nivel2,
+      string nivel3)
+  {
+    var account = accounts.FirstOrDefault(account =>
+        string.Equals(account.Nivel1, nivel1, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(account.Nivel2, nivel2, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(account.Nivel3, nivel3, StringComparison.OrdinalIgnoreCase));
+
+    return account ?? throw new InvalidOperationException(
+        $"Falta la cuenta contable {nivel1}-{nivel2}-{nivel3} para generar la póliza Airbnb.");
+  }
+
+  private static void AddMovimiento(
+      List<TransaccionMovimientoUpdateItem> movimientos,
+      AirbnbAccountingAccount account,
+      string concept,
+      decimal amount,
+      bool debe)
+  {
+    amount = RoundCurrency(amount);
+    if (amount <= 0m)
+    {
+      return;
+    }
+
+    movimientos.Add(new TransaccionMovimientoUpdateItem
+    {
+      Nivel1 = account.Nivel1,
+      Nivel2 = account.Nivel2,
+      Nivel3 = account.Nivel3,
+      NombreCuenta = account.NombreCuenta,
+      Concepto = concept,
+      Debe = debe ? amount : 0m,
+      Haber = debe ? 0m : amount
+    });
+  }
+
+  private static string BuildReservationConcept(ReservacionDetailDto detail)
+  {
+    var cliente = string.IsNullOrWhiteSpace(detail.Cliente)
+        ? "(Sin cliente)"
+        : detail.Cliente.Trim().ToUpperInvariant();
+
+    return $"PAGO DE LA RESERVACION#{detail.Id} ({cliente})";
   }
 
   private static FacturamaIssuedCfdiRequest BuildReservationPayload(
@@ -1454,6 +1662,21 @@ ORDER BY bp.IsActive DESC, bp.Id;
 
   private sealed record ResolvedTransaccionTarget(int TransaccionId, string FormaPago, bool CreatedNew);
   private sealed record PaymentSelection(string PaymentForm, string PaymentMethod);
+  private sealed record AirbnbAccountingAccounts(
+      AirbnbAccountingAccount Bank,
+      AirbnbAccountingAccount IvaTransferred,
+      AirbnbAccountingAccount Income,
+      AirbnbAccountingAccount IvaRetained,
+      AirbnbAccountingAccount IsrRetained,
+      AirbnbAccountingAccount AirbnbCommission);
+
+  private sealed class AirbnbAccountingAccount
+  {
+    public string Nivel1 { get; set; } = string.Empty;
+    public string Nivel2 { get; set; } = string.Empty;
+    public string Nivel3 { get; set; } = string.Empty;
+    public string NombreCuenta { get; set; } = string.Empty;
+  }
 
   private sealed class ReservationTransaccionTargetRow
   {

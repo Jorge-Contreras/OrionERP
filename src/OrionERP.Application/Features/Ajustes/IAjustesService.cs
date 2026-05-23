@@ -6,6 +6,10 @@ public interface IAjustesService
 
   Task<AjustesCommandResult> SaveGeneralSettingsAsync(AjustesGeneralSettingsSaveRequest request, CancellationToken ct = default);
 
+  Task<CfdiPolizaCuentaDefaultsDto> GetCfdiPolizaCuentaDefaultsAsync(string? rfc, CancellationToken ct = default);
+
+  Task<AjustesCommandResult> SaveCfdiPolizaCuentaDefaultsAsync(CfdiPolizaCuentaDefaultsSaveRequest request, CancellationToken ct = default);
+
   Task<IReadOnlyList<PlantillaContableListItemDto>> GetPlantillasAsync(
       string? rfc,
       string? search,

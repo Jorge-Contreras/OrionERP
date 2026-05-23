@@ -21,6 +21,25 @@
   width: 8rem;
 }
 
+.ajustes-cfdi-selected-account {
+  border: 1px solid rgba(13, 110, 253, 0.35);
+  border-left: 0.35rem solid #0d6efd;
+  border-radius: 0.375rem;
+  background: #f5f9ff;
+  padding: 0.65rem 0.75rem;
+}
+
+.ajustes-cfdi-selected-code {
+  color: #0b3d91;
+  font-weight: 700;
+}
+
+.ajustes-cfdi-selected-description {
+  color: #334155;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
 .ajustes-modal-backdrop {
   background-color: rgba(15, 45, 78, 0.35);
 }

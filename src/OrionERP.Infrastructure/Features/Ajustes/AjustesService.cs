@@ -11,6 +11,11 @@ public sealed class AjustesService : IAjustesService
 {
   private const string ApOccurrenceNotificationDaysParameter = "CxcrApNotificationDays";
 
+  private static readonly IReadOnlyDictionary<string, CfdiPolizaCuentaDefaultRoleDto> CfdiDefaultRolesByKey =
+      CfdiPolizaCuentaDefaultRoles.Required.ToDictionary(
+          role => role.CuentaClave,
+          StringComparer.OrdinalIgnoreCase);
+
   private static readonly HashSet<string> ValidNaturalezas = new(StringComparer.OrdinalIgnoreCase)
   {
     "DEBE",
@@ -105,6 +110,149 @@ END;";
             cancellationToken: ct));
 
     return AjustesCommandResult.Ok("Ajustes generales guardados correctamente.");
+  }
+
+  public async Task<CfdiPolizaCuentaDefaultsDto> GetCfdiPolizaCuentaDefaultsAsync(string? rfc, CancellationToken ct = default)
+  {
+    var normalizedRfc = NormalizeNullable(rfc);
+    if (normalizedRfc is null)
+    {
+      return BuildEmptyCfdiPolizaCuentaDefaults(string.Empty);
+    }
+
+    const string sql = @"
+SELECT
+    d.CuentaClave,
+    d.CuentaContableId,
+    cc.RFC AS CuentaRfc,
+    cc.Nivel1,
+    cc.Nivel2,
+    cc.Nivel3,
+    cc.Descripcion AS CuentaDescripcion
+FROM dbo.CfdiPolizaCuentaDefault AS d
+INNER JOIN dbo.CuentasContables AS cc
+    ON cc.id = d.CuentaContableId
+WHERE d.Rfc = @rfc;";
+
+    using var connection = new SqlConnection(_connectionString);
+    var storedRows = await connection.QueryAsync<CfdiPolizaCuentaDefaultAccountDto>(
+        new CommandDefinition(sql, new { rfc = normalizedRfc }, cancellationToken: ct));
+    var rowsByKey = storedRows.ToDictionary(row => row.CuentaClave, StringComparer.OrdinalIgnoreCase);
+
+    return new CfdiPolizaCuentaDefaultsDto
+    {
+      Rfc = normalizedRfc,
+      Cuentas = CfdiPolizaCuentaDefaultRoles.Required
+          .Select(role => rowsByKey.TryGetValue(role.CuentaClave, out var row)
+              ? row
+              : new CfdiPolizaCuentaDefaultAccountDto { CuentaClave = role.CuentaClave })
+          .ToList()
+    };
+  }
+
+  public async Task<AjustesCommandResult> SaveCfdiPolizaCuentaDefaultsAsync(
+      CfdiPolizaCuentaDefaultsSaveRequest request,
+      CancellationToken ct = default)
+  {
+    var normalizedRfc = NormalizeNullable(request?.Rfc);
+    if (normalizedRfc is null)
+    {
+      return AjustesCommandResult.Fail("Selecciona un RFC antes de guardar las cuentas CFDI.");
+    }
+
+    var normalizedItems = request!.Cuentas
+        .Select(item => new CfdiPolizaCuentaDefaultSaveItem
+        {
+          CuentaClave = NormalizeRequired(item.CuentaClave).ToUpperInvariant(),
+          CuentaContableId = item.CuentaContableId
+        })
+        .ToList();
+
+    var validationError = ValidateCfdiPolizaCuentaDefaults(normalizedItems);
+    if (validationError is not null)
+    {
+      return AjustesCommandResult.Fail(validationError);
+    }
+
+    var cuentaIds = normalizedItems
+        .Select(item => item.CuentaContableId)
+        .Distinct()
+        .ToArray();
+
+    const string accountSql = @"
+SELECT id AS Id,
+       RFC AS Rfc
+FROM dbo.CuentasContables
+WHERE id IN @cuentaIds;";
+
+    using var connection = new SqlConnection(_connectionString);
+    var accountRows = (await connection.QueryAsync<CuentaContableRfcRow>(
+        new CommandDefinition(accountSql, new { cuentaIds }, cancellationToken: ct))).AsList();
+    var accountsById = accountRows.ToDictionary(row => row.Id);
+
+    foreach (var item in normalizedItems)
+    {
+      if (!accountsById.TryGetValue(item.CuentaContableId, out var account))
+      {
+        return AjustesCommandResult.Fail("Una de las cuentas seleccionadas ya no existe.");
+      }
+
+      if (!string.Equals(account.Rfc, normalizedRfc, StringComparison.OrdinalIgnoreCase))
+      {
+        var roleName = CfdiDefaultRolesByKey[item.CuentaClave].Nombre;
+        return AjustesCommandResult.Fail($"La cuenta seleccionada para {roleName} no pertenece al RFC actual.");
+      }
+    }
+
+    const string deleteSql = @"DELETE dbo.CfdiPolizaCuentaDefault WHERE Rfc = @rfc;";
+    const string insertSql = @"
+INSERT INTO dbo.CfdiPolizaCuentaDefault
+(
+    Rfc,
+    CuentaClave,
+    CuentaContableId,
+    CreadoEn,
+    ActualizadoEn
+)
+VALUES
+(
+    @rfc,
+    @cuentaClave,
+    @cuentaContableId,
+    SYSUTCDATETIME(),
+    SYSUTCDATETIME()
+);";
+
+    await connection.OpenAsync(ct);
+    using var tx = (SqlTransaction)await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+
+    try
+    {
+      await connection.ExecuteAsync(new CommandDefinition(deleteSql, new { rfc = normalizedRfc }, tx, cancellationToken: ct));
+
+      foreach (var item in normalizedItems.OrderBy(item => item.CuentaClave, StringComparer.OrdinalIgnoreCase))
+      {
+        await connection.ExecuteAsync(
+            new CommandDefinition(
+                insertSql,
+                new
+                {
+                  rfc = normalizedRfc,
+                  cuentaClave = item.CuentaClave,
+                  cuentaContableId = item.CuentaContableId
+                },
+                tx,
+                cancellationToken: ct));
+      }
+
+      await tx.CommitAsync(ct);
+      return AjustesCommandResult.Ok("Cuentas contables CFDI guardadas correctamente.");
+    }
+    catch
+    {
+      await RollbackQuietlyAsync(tx, ct);
+      throw;
+    }
   }
 
   public async Task<IReadOnlyList<PlantillaContableListItemDto>> GetPlantillasAsync(
@@ -595,6 +743,48 @@ WHERE PlantillaContableLineaID = @plantillaContableLineaId
     return null;
   }
 
+  private static CfdiPolizaCuentaDefaultsDto BuildEmptyCfdiPolizaCuentaDefaults(string rfc)
+    => new()
+    {
+      Rfc = rfc,
+      Cuentas = CfdiPolizaCuentaDefaultRoles.Required
+          .Select(role => new CfdiPolizaCuentaDefaultAccountDto { CuentaClave = role.CuentaClave })
+          .ToList()
+    };
+
+  private static string? ValidateCfdiPolizaCuentaDefaults(IReadOnlyList<CfdiPolizaCuentaDefaultSaveItem> items)
+  {
+    var invalidRole = items.FirstOrDefault(item => !CfdiPolizaCuentaDefaultRoles.IsRequired(item.CuentaClave));
+    if (invalidRole is not null)
+    {
+      return $"La cuenta CFDI '{invalidRole.CuentaClave}' no es valida.";
+    }
+
+    var duplicatedRole = items
+        .GroupBy(item => item.CuentaClave, StringComparer.OrdinalIgnoreCase)
+        .FirstOrDefault(group => group.Count() > 1);
+    if (duplicatedRole is not null)
+    {
+      return $"La cuenta CFDI '{duplicatedRole.Key}' esta duplicada.";
+    }
+
+    var missingRoles = CfdiPolizaCuentaDefaultRoles.Required
+        .Where(role => !items.Any(item => string.Equals(item.CuentaClave, role.CuentaClave, StringComparison.OrdinalIgnoreCase)))
+        .Select(role => role.Nombre)
+        .ToList();
+    if (missingRoles.Count > 0)
+    {
+      return $"Captura todas las cuentas contables CFDI: {string.Join(", ", missingRoles)}.";
+    }
+
+    if (items.Any(item => item.CuentaContableId <= 0))
+    {
+      return "Todas las cuentas CFDI deben tener una cuenta contable seleccionada.";
+    }
+
+    return null;
+  }
+
   private static string? NormalizeNullable(string? value)
   {
     var trimmed = value?.Trim();
@@ -625,5 +815,11 @@ WHERE PlantillaContableLineaID = @plantillaContableLineaId
     {
       // ignored
     }
+  }
+
+  private sealed record CuentaContableRfcRow
+  {
+    public int Id { get; init; }
+    public string Rfc { get; init; } = string.Empty;
   }
 }

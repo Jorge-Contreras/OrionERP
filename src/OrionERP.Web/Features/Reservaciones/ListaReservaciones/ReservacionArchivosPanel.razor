@@ -1,0 +1,62 @@
+<section class="reservacion-tab-panel reservacion-section-archivos">
+    <div class="reservacion-panel-heading">
+        <div>
+            <h2>ARCHIVOS</h2>
+            <p>@Page.Attachments.Count adjuntos.</p>
+        </div>
+    </div>
+
+    <div class="reservacion-inline-editor row g-2 mb-3">
+        <div class="col-md-4">
+            <input class="form-control form-control-sm" @bind="Page.AttachmentDescription" placeholder="Descripción del archivo" />
+        </div>
+        <div class="col-md-4">
+            <InputFile @key="Page.AttachmentInputKey" OnChange="Page.OnAttachmentSelectedAsync" />
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-sm btn-outline-primary w-100" @onclick="Page.CargarAttachmentAsync" disabled="@Page.IsUploadingAttachment">
+                @(Page.IsUploadingAttachment ? "Cargando..." : "Cargar")
+            </button>
+        </div>
+    </div>
+
+    <div class="table-responsive reservacion-table-wrap">
+        <table class="table table-sm table-bordered mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Nombre</th>
+                    <th>Ext</th>
+                    <th>Descripción</th>
+                    <th class="text-end">Tamaño</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Page.Attachments.Count == 0)
+                {
+                    <tr><td colspan="5" class="text-center text-muted py-3">No hay archivos adjuntos.</td></tr>
+                }
+                else
+                {
+                    @foreach (var attachment in Page.Attachments)
+                    {
+                        <tr>
+                            <td>@attachment.AttachmentName</td>
+                            <td>@attachment.AttachmentExtension</td>
+                            <td>@attachment.AttachmentDescription</td>
+                            <td class="text-end">@attachment.Length</td>
+                            <td class="text-end">
+                                <button type="button" class="btn btn-sm btn-outline-primary me-1" @onclick="() => Page.DescargarAttachmentAsync(attachment)" disabled="@Page.IsAttachmentDownloading(attachment)">Descargar</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => Page.EliminarAttachmentAsync(attachment)" disabled="@Page.IsAttachmentDeleting(attachment)">Eliminar</button>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    [CascadingParameter] public ReservacionPage Page { get; set; } = default!;
+}

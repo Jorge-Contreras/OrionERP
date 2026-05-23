@@ -1,0 +1,54 @@
+<section class="reservacion-tab-panel reservacion-section-pagos">
+    <div class="reservacion-panel-heading">
+        <div>
+            <h2>PAGOS</h2>
+            <p>@Page.Pagos.Count pólizas ligadas.</p>
+        </div>
+    </div>
+
+    <div class="table-responsive reservacion-table-wrap">
+        <table class="table table-sm table-striped table-bordered mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>ID</th>
+                    <th>Fecha</th>
+                    <th class="text-end">Monto</th>
+                    <th>Facturación</th>
+                    <th>Concepto</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Page.Pagos.Count == 0)
+                {
+                    <tr><td colspan="6" class="text-center text-muted py-3">No hay pagos ligados.</td></tr>
+                }
+                else
+                {
+                    @foreach (var pago in Page.Pagos)
+                    {
+                        <tr>
+                            <td>@pago.TransaccionId</td>
+                            <td>@pago.Fecha.ToShortDateString()</td>
+                            <td class="text-end">@ReservacionPage.FormatCurrency(pago.Monto)</td>
+                            <td>
+                                <span class="badge @Page.GetPaymentFacturacionBadgeClass(pago)"
+                                      title="@Page.GetPaymentFacturacionTitle(pago)">
+                                    @Page.GetPaymentFacturacionLabel(pago)
+                                </span>
+                            </td>
+                            <td>@pago.Concepto</td>
+                            <td class="text-end">
+                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => Page.AbrirPagoAsync(pago.TransaccionId)">Abrir</button>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    [CascadingParameter] public ReservacionPage Page { get; set; } = default!;
+}

@@ -49,89 +49,94 @@ public partial class ReservacionPage : ComponentBase
   [Inject] public IReservacionPdfService ReservacionPdfService { get; set; } = default!;
   [Inject] public IReservacionPdfDocumentFactory ReservacionPdfDocumentFactory { get; set; } = default!;
 
-  protected ReservacionDetailDto? Detail { get; set; }
-  protected List<ClienteOptionDto> Clientes { get; set; } = new();
-  protected List<RoomOptionDto> Rooms { get; set; } = new();
-  protected IReadOnlyList<ReservacionSuiteDto> Suites { get; set; } = Array.Empty<ReservacionSuiteDto>();
-  protected List<SuiteDisponibleDto> SuitesDisponibles { get; set; } = new();
-  protected IReadOnlyList<ReservacionExtraDto> Extras { get; set; } = Array.Empty<ReservacionExtraDto>();
-  protected IReadOnlyList<ReservacionPagoDto> Pagos { get; set; } = Array.Empty<ReservacionPagoDto>();
-  protected IReadOnlyList<ReservacionAttachmentDto> Attachments { get; set; } = Array.Empty<ReservacionAttachmentDto>();
+  internal ReservacionDetailDto? Detail { get; set; }
+  internal List<ClienteOptionDto> Clientes { get; set; } = new();
+  internal List<RoomOptionDto> Rooms { get; set; } = new();
+  internal IReadOnlyList<ReservacionSuiteDto> Suites { get; set; } = Array.Empty<ReservacionSuiteDto>();
+  internal List<SuiteDisponibleDto> SuitesDisponibles { get; set; } = new();
+  internal IReadOnlyList<ReservacionExtraDto> Extras { get; set; } = Array.Empty<ReservacionExtraDto>();
+  internal IReadOnlyList<ReservacionPagoDto> Pagos { get; set; } = Array.Empty<ReservacionPagoDto>();
+  internal IReadOnlyList<ReservacionAttachmentDto> Attachments { get; set; } = Array.Empty<ReservacionAttachmentDto>();
 
-  protected HashSet<int> SelectedSuiteIds { get; set; } = new();
-  protected HashSet<int> SelectedSuiteDisponibleIds { get; set; } = new();
+  internal HashSet<int> SelectedSuiteIds { get; set; } = new();
+  internal HashSet<int> SelectedSuiteDisponibleIds { get; set; } = new();
 
-  protected int? ClienteId { get; set; }
-  protected string ClienteSearchText { get; set; } = string.Empty;
-  protected string SelectedClienteNombre { get; set; } = string.Empty;
-  protected bool ShowClienteResults { get; set; }
-  protected string? Status { get; set; }
-  protected DateTime? CheckIn { get; set; }
-  protected DateTime? CheckOut { get; set; }
-  protected bool Taxable { get; set; }
-  protected string? RecommenedBy { get; set; }
-  protected string? Notes { get; set; }
+  internal int? ClienteId { get; set; }
+  internal string ClienteSearchText { get; set; } = string.Empty;
+  internal string SelectedClienteNombre { get; set; } = string.Empty;
+  internal bool ShowClienteResults { get; set; }
+  internal string? Status { get; set; }
+  internal DateTime? CheckIn { get; set; }
+  internal DateTime? CheckOut { get; set; }
+  internal bool Taxable { get; set; }
+  internal string? RecommenedBy { get; set; }
+  internal string? Notes { get; set; }
 
-  protected decimal TotalSuites { get; set; }
-  protected decimal SuiteDiscountPercent { get; set; }
-  protected decimal SuiteDiscountAmount { get; set; }
-  protected decimal TotalExtras { get; set; }
-  protected decimal SubTotal { get; set; }
-  protected decimal Tax { get; set; }
-  protected decimal Ish { get; set; }
-  protected decimal TotalReservacion { get; set; }
-  protected decimal TotalPagado { get; set; }
-  protected decimal PorPagar { get; set; }
-  protected int NumNoches { get; set; }
+  internal decimal TotalSuites { get; set; }
+  internal decimal SuiteDiscountPercent { get; set; }
+  internal decimal SuiteDiscountAmount { get; set; }
+  internal decimal TotalExtras { get; set; }
+  internal decimal SubTotal { get; set; }
+  internal decimal Tax { get; set; }
+  internal decimal Ish { get; set; }
+  internal decimal TotalReservacion { get; set; }
+  internal decimal TotalPagado { get; set; }
+  internal decimal PorPagar { get; set; }
+  internal int NumNoches { get; set; }
 
-  protected decimal PrecioSuiteInput { get; set; }
-  protected decimal PrecioSuiteConIvaInput { get; set; }
-  protected decimal TotalSuiteInput { get; set; }
-  protected decimal SuiteActionValueInput { get; set; }
-  protected string SelectedSuiteAction { get; set; } = SuiteActionPrice;
+  internal decimal PrecioSuiteInput { get; set; }
+  internal decimal PrecioSuiteConIvaInput { get; set; }
+  internal decimal TotalSuiteInput { get; set; }
+  internal decimal SuiteActionValueInput { get; set; }
+  internal string SelectedSuiteAction { get; set; } = SuiteActionPrice;
 
-  protected int? EditingExtraId { get; set; }
-  protected int? ExtraRoomId { get; set; }
-  protected decimal ExtraPrice { get; set; }
-  protected decimal ExtraDiscount { get; set; }
-  protected string? ExtraNotes { get; set; }
+  internal int? EditingExtraId { get; set; }
+  internal int? ExtraRoomId { get; set; }
+  internal decimal ExtraPrice { get; set; }
+  internal decimal ExtraDiscount { get; set; }
+  internal string? ExtraNotes { get; set; }
 
-  protected string AttachmentDescription { get; set; } = string.Empty;
-  protected bool ShowSuitePicker { get; set; }
-  protected bool ShowExtraForm { get; set; }
-  protected bool IsLoading { get; set; }
-  protected bool IsSaving { get; set; }
-  protected bool IsWorking { get; set; }
-  protected bool IsCreatingPoliza { get; set; }
-  protected bool IsGeneratingPdf { get; set; }
-  protected bool IsDeletingReservation { get; set; }
-  protected bool IsUploadingAttachment { get; set; }
-  protected bool IsApplyingAirbnb { get; set; }
-  protected string? ErrorMessage { get; set; }
-  protected string? AirbnbErrorMessage { get; set; }
+  internal string AttachmentDescription { get; set; } = string.Empty;
+  internal bool ShowSuitePicker { get; set; }
+  internal bool ShowExtraForm { get; set; }
+  internal ReservationEditorTab ActiveTab { get; set; } = ReservationEditorTab.Suites;
+  internal bool IsLoading { get; set; }
+  internal bool IsSaving { get; set; }
+  internal bool IsWorking { get; set; }
+  internal bool IsCreatingPoliza { get; set; }
+  internal bool IsGeneratingPdf { get; set; }
+  internal bool IsDeletingReservation { get; set; }
+  internal bool IsUploadingAttachment { get; set; }
+  internal bool IsApplyingAirbnb { get; set; }
+  internal string? ErrorMessage { get; set; }
+  internal string? AirbnbErrorMessage { get; set; }
 
   private IBrowserFile? _pendingAttachment;
   private int _attachmentInputKey;
   private int? _attachmentDownloadingId;
   private int? _attachmentDeletingId;
   private bool _airbnbDefaultsLoaded;
-  private const string SuiteActionPrice = "price";
-  private const string SuiteActionPriceWithIva = "price-with-iva";
-  private const string SuiteActionTotal = "total";
-  private const string SuiteActionCleaning = "cleaning";
-  private const string SuiteActionAirbnb = "airbnb";
+  private bool _roomsLoaded;
+  private bool _hasPendingCalendarSync;
+  internal int AttachmentInputKey => _attachmentInputKey;
 
-  protected bool ShowAirbnbPanel { get; set; }
-  protected decimal AirbnbPayoutInput { get; set; }
-  protected decimal AirbnbCleaningFeeInput { get; set; } = AirbnbReservationDefaults.CleaningFee;
-  protected decimal AirbnbIvaRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.IvaRate);
-  protected decimal AirbnbIvaRetentionRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.IvaRetentionRate);
-  protected decimal AirbnbIsrRetentionRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.IsrRetentionRate);
-  protected decimal AirbnbHostServiceFeeRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.HostServiceFeeRate);
-  protected decimal AirbnbHostServiceFeeIvaRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.HostServiceFeeIvaRate);
+  internal const string SuiteActionPrice = "price";
+  internal const string SuiteActionPriceWithIva = "price-with-iva";
+  internal const string SuiteActionTotal = "total";
+  internal const string SuiteActionCleaning = "cleaning";
+  internal const string SuiteActionAirbnb = "airbnb";
 
-  protected IReadOnlyList<string> StatusOptions { get; } = new[] { "NUEVA", "PAGADA", "Cancelada" };
-  protected IReadOnlyList<(string Value, string Label)> SuiteActionOptions { get; } = new[]
+  internal bool ShowAirbnbPanel { get; set; }
+  internal decimal AirbnbPayoutInput { get; set; }
+  internal decimal AirbnbCleaningFeeInput { get; set; } = AirbnbReservationDefaults.CleaningFee;
+  internal decimal AirbnbIvaRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.IvaRate);
+  internal decimal AirbnbIvaRetentionRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.IvaRetentionRate);
+  internal decimal AirbnbIsrRetentionRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.IsrRetentionRate);
+  internal decimal AirbnbHostServiceFeeRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.HostServiceFeeRate);
+  internal decimal AirbnbHostServiceFeeIvaRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.HostServiceFeeIvaRate);
+
+  internal IReadOnlyList<string> StatusOptions { get; } = new[] { "NUEVA", "PAGADA", "Cancelada" };
+  internal IReadOnlyList<(string Value, string Label)> SuiteActionOptions { get; } = new[]
   {
     (SuiteActionPrice, "Precio"),
     (SuiteActionPriceWithIva, "Precio c/IVA"),
@@ -140,24 +145,24 @@ public partial class ReservacionPage : ComponentBase
     (SuiteActionAirbnb, "Airbnb")
   };
 
-  protected decimal ExtraDiscountAmount
+  internal decimal ExtraDiscountAmount
     => ExtraDiscount > 0 ? decimal.Round(ExtraPrice * (ExtraDiscount / 100m), 2, MidpointRounding.ToEven) : 0m;
 
-  protected decimal ExtraTotal
+  internal decimal ExtraTotal
     => decimal.Round(ExtraPrice - ExtraDiscountAmount, 2, MidpointRounding.ToEven);
 
-  protected bool HasActiveSuiteDiscount
+  internal bool HasActiveSuiteDiscount
     => SuiteDiscountPercent > 1m && SuiteDiscountAmount > 0m;
 
-  protected bool IsEditingExtra => EditingExtraId.HasValue;
+  internal bool IsEditingExtra => EditingExtraId.HasValue;
 
-  protected string CheckInText
+  internal string CheckInText
     => CheckIn?.ToString("yyyy-MM-dd") ?? string.Empty;
 
-  protected string CheckOutText
+  internal string CheckOutText
     => CheckOut?.ToString("yyyy-MM-dd") ?? string.Empty;
 
-  protected string SuiteActionPlaceholder
+  internal string SuiteActionPlaceholder
     => SelectedSuiteAction switch
     {
       SuiteActionPrice => "Precio",
@@ -168,9 +173,9 @@ public partial class ReservacionPage : ComponentBase
       _ => "Valor"
     };
 
-  protected bool HasAirbnbBreakdown => Detail?.AirbnbBreakdown is not null;
+  internal bool HasAirbnbBreakdown => Detail?.AirbnbBreakdown is not null;
 
-  protected int AirbnbTargetSuiteCount
+  internal int AirbnbTargetSuiteCount
     => GetAirbnbTargetSuiteIds().Length;
 
   protected override async Task OnParametersSetAsync()
@@ -178,7 +183,7 @@ public partial class ReservacionPage : ComponentBase
     await LoadAllAsync();
   }
 
-  protected async Task LoadAllAsync(bool preserveFormState = false)
+  internal async Task LoadAllAsync(bool preserveFormState = false)
   {
     EnsureAirbnbDefaultsLoaded();
     IsLoading = true;
@@ -202,8 +207,8 @@ public partial class ReservacionPage : ComponentBase
         RestoreFormState(formState);
       }
 
-      Clientes = await LoadClientesAsync(ClienteSearchText);
-      Rooms = (await ReservacionesService.GetRoomsForExtrasAsync()).ToList();
+      Clientes.Clear();
+      await EnsureRoomsLoadedAsync();
 
       Suites = Detail.Suites;
       Extras = Detail.Extras;
@@ -227,12 +232,17 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected async Task GuardarAsync()
+  internal async Task GuardarAsync()
   {
     await SaveReservationStateAsync(showSuccessMessage: true);
   }
 
-  protected async Task CerrarAsync()
+  internal void SetActiveTab(ReservationEditorTab tab)
+  {
+    ActiveTab = tab;
+  }
+
+  internal async Task CerrarAsync()
   {
     if (IsSaving || IsWorking)
     {
@@ -243,7 +253,7 @@ public partial class ReservacionPage : ComponentBase
     await Task.CompletedTask;
   }
 
-  protected async Task AbrirPdfAsync()
+  internal async Task AbrirPdfAsync()
   {
     if (Detail is null || IsGeneratingPdf)
     {
@@ -274,7 +284,7 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected async Task BorrarReservacionAsync()
+  internal async Task BorrarReservacionAsync()
   {
     if (Detail is null || IsDeletingReservation)
       return;
@@ -317,7 +327,7 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected async Task CrearPolizaAsync()
+  internal async Task CrearPolizaAsync()
   {
     if (Detail is null)
       return;
@@ -429,11 +439,18 @@ public partial class ReservacionPage : ComponentBase
     IsSaving = true;
     try
     {
+      var calendarBefore = ReservationCalendarSyncDecision.FromDetail(Detail);
       var clienteReady = await EnsureClienteReadyForSaveAsync();
       if (!clienteReady)
       {
         return false;
       }
+
+      var calendarAfter = ReservationCalendarSyncDecision.FromForm(ClienteId, Status, CheckIn, CheckOut);
+      var shouldSyncCalendar = ReservationCalendarSyncDecision.ShouldSync(
+        calendarBefore,
+        calendarAfter,
+        _hasPendingCalendarSync);
 
       var saveResult = await ReservacionesService.SaveReservationAsync(new ReservacionUpdateRequest
       {
@@ -455,9 +472,14 @@ public partial class ReservacionPage : ComponentBase
         return false;
       }
 
-      await ReservacionesService.SyncSuiteStatusAsync(Detail.Id, Status);
-      await ReservacionesService.SyncSuiteLockedByAsync(Detail.Id, ClienteId);
-      await SyncConAirbnbAsync();
+      if (shouldSyncCalendar)
+      {
+        await ReservacionesService.SyncSuiteStatusAsync(Detail.Id, Status);
+        await ReservacionesService.SyncSuiteLockedByAsync(Detail.Id, ClienteId);
+        await SyncConAirbnbAsync();
+        _hasPendingCalendarSync = false;
+      }
+
       await LoadAllAsync();
 
       if (showSuccessMessage)
@@ -476,6 +498,17 @@ public partial class ReservacionPage : ComponentBase
     {
       IsSaving = false;
     }
+  }
+
+  private async Task EnsureRoomsLoadedAsync()
+  {
+    if (_roomsLoaded && Rooms.Count > 0)
+    {
+      return;
+    }
+
+    Rooms = (await ReservacionesService.GetRoomsForExtrasAsync()).ToList();
+    _roomsLoaded = true;
   }
 
   private async Task SyncConAirbnbAsync()
@@ -525,7 +558,7 @@ public partial class ReservacionPage : ComponentBase
       : $"{summary} Se detectaron {result.ErrorCount} errores.";
   }
 
-  protected async Task OnStatusChangedAsync(ChangeEventArgs args)
+  internal async Task OnStatusChangedAsync(ChangeEventArgs args)
   {
     Status = args.Value?.ToString();
     if (Detail is null)
@@ -535,7 +568,7 @@ public partial class ReservacionPage : ComponentBase
     await RefreshSuitesAsync();
   }
 
-  protected async Task OnClienteInputChangedAsync(ChangeEventArgs args)
+  internal async Task OnClienteInputChangedAsync(ChangeEventArgs args)
   {
     ClienteSearchText = args.Value?.ToString() ?? string.Empty;
     if (!string.Equals(NormalizeClienteNombre(ClienteSearchText), NormalizeClienteNombre(SelectedClienteNombre), StringComparison.OrdinalIgnoreCase))
@@ -547,7 +580,7 @@ public partial class ReservacionPage : ComponentBase
     await RefreshClienteMatchesAsync(allowEmptySearch: false);
   }
 
-  protected async Task OnClienteInputKeyDownAsync(KeyboardEventArgs args)
+  internal async Task OnClienteInputKeyDownAsync(KeyboardEventArgs args)
   {
     if (!IsClienteSearchTriggerKey(args))
     {
@@ -557,7 +590,7 @@ public partial class ReservacionPage : ComponentBase
     await RefreshClienteMatchesAsync(allowEmptySearch: true);
   }
 
-  protected async Task SelectClienteAsync(ClienteOptionDto cliente)
+  internal async Task SelectClienteAsync(ClienteOptionDto cliente)
   {
     await ApplyClienteSelectionAsync(cliente);
 
@@ -568,7 +601,7 @@ public partial class ReservacionPage : ComponentBase
     await RefreshSuitesAsync();
   }
 
-  protected Task OnCheckInChangedAsync(ChangeEventArgs args)
+  internal Task OnCheckInChangedAsync(ChangeEventArgs args)
   {
     CheckIn = ParseDate(args.Value?.ToString());
     EnsureValidDateRange();
@@ -576,7 +609,7 @@ public partial class ReservacionPage : ComponentBase
     return Task.CompletedTask;
   }
 
-  protected Task OnCheckOutChangedAsync(ChangeEventArgs args)
+  internal Task OnCheckOutChangedAsync(ChangeEventArgs args)
   {
     CheckOut = ParseDate(args.Value?.ToString());
     EnsureValidDateRange();
@@ -584,7 +617,7 @@ public partial class ReservacionPage : ComponentBase
     return Task.CompletedTask;
   }
 
-  protected Task ToggleTaxableAsync(ChangeEventArgs args)
+  internal Task ToggleTaxableAsync(ChangeEventArgs args)
   {
     Taxable = args.Value is bool b && b;
     RecalculateTotals();
@@ -599,13 +632,13 @@ public partial class ReservacionPage : ComponentBase
     return DateTime.TryParse(value, out var parsed) ? parsed.Date : null;
   }
 
-  protected static string FormatDate(DateTime? value)
+  internal static string FormatDate(DateTime? value)
     => value.HasValue ? value.Value.ToString("d", CultureInfo.CurrentCulture) : string.Empty;
 
-  protected static string FormatCurrency(decimal value)
+  internal static string FormatCurrency(decimal value)
     => value.ToString("C", CultureInfo.CurrentCulture);
 
-  protected static string FormatPercent(decimal value)
+  internal static string FormatPercent(decimal value)
     => value.ToString("0.##", CultureInfo.CurrentCulture);
 
   private static bool TryParseDiscountPercent(string value, out decimal percent)
@@ -616,13 +649,13 @@ public partial class ReservacionPage : ComponentBase
       || decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out percent);
   }
 
-  protected bool IsAttachmentDownloading(ReservacionAttachmentDto attachment)
+  internal bool IsAttachmentDownloading(ReservacionAttachmentDto attachment)
     => _attachmentDownloadingId == attachment.Id;
 
-  protected bool IsAttachmentDeleting(ReservacionAttachmentDto attachment)
+  internal bool IsAttachmentDeleting(ReservacionAttachmentDto attachment)
     => _attachmentDeletingId == attachment.Id;
 
-  protected async Task RefreshSuitesAsync()
+  internal async Task RefreshSuitesAsync()
   {
     if (Detail is null)
       return;
@@ -631,7 +664,7 @@ public partial class ReservacionPage : ComponentBase
     RecalculateTotals();
   }
 
-  protected void ToggleSuiteSelection(int id, bool isSelected)
+  internal void ToggleSuiteSelection(int id, bool isSelected)
   {
     if (isSelected)
     {
@@ -643,12 +676,12 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected void SeleccionarTodasSuites()
+  internal void SeleccionarTodasSuites()
   {
     SelectedSuiteIds = Suites.Select(s => s.Id).ToHashSet();
   }
 
-  protected void ToggleSuiteDisponibleSelection(int id, bool isSelected)
+  internal void ToggleSuiteDisponibleSelection(int id, bool isSelected)
   {
     if (isSelected)
     {
@@ -660,7 +693,7 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected async Task OpenSuitePickerAsync()
+  internal async Task OpenSuitePickerAsync()
   {
     if (!CheckIn.HasValue || !CheckOut.HasValue)
     {
@@ -674,13 +707,13 @@ public partial class ReservacionPage : ComponentBase
     ShowSuitePicker = true;
   }
 
-  protected void CancelSuitePicker()
+  internal void CancelSuitePicker()
   {
     ShowSuitePicker = false;
     SelectedSuiteDisponibleIds.Clear();
   }
 
-  protected async Task AddSuitesSeleccionadasAsync()
+  internal async Task AddSuitesSeleccionadasAsync()
   {
     if (Detail is null || SelectedSuiteDisponibleIds.Count == 0)
     {
@@ -712,7 +745,8 @@ public partial class ReservacionPage : ComponentBase
 
       UiMessages.ShowSuccess(result.Message);
       ShowSuitePicker = false;
-      await LoadAllAsync(preserveFormState: true);
+      _hasPendingCalendarSync = true;
+      await RefreshSuitesAsync();
     }
     catch (Exception ex)
     {
@@ -724,7 +758,7 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected async Task EliminarSuitesSeleccionadasAsync()
+  internal async Task EliminarSuitesSeleccionadasAsync()
   {
     if (SelectedSuiteIds.Count == 0)
     {
@@ -750,7 +784,8 @@ public partial class ReservacionPage : ComponentBase
 
       UiMessages.ShowSuccess(result.Message);
       SelectedSuiteIds.Clear();
-      await LoadAllAsync(preserveFormState: true);
+      _hasPendingCalendarSync = true;
+      await RefreshSuitesAsync();
     }
     catch (Exception ex)
     {
@@ -762,7 +797,7 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected async Task AplicarPrecioSuiteAsync()
+  internal async Task AplicarPrecioSuiteAsync()
   {
     if (SelectedSuiteIds.Count == 0)
     {
@@ -781,7 +816,7 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected async Task AplicarPrecioConIvaSuiteAsync()
+  internal async Task AplicarPrecioConIvaSuiteAsync()
   {
     if (SelectedSuiteIds.Count == 0)
     {
@@ -800,7 +835,7 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected async Task AlternarLimpiezaSuiteAsync()
+  internal async Task AlternarLimpiezaSuiteAsync()
   {
     if (SelectedSuiteIds.Count == 0)
     {
@@ -822,7 +857,7 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected async Task DistribuirTotalSuitesAsync()
+  internal async Task DistribuirTotalSuitesAsync()
   {
     if (SelectedSuiteIds.Count == 0)
     {
@@ -841,7 +876,7 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected async Task ApplySuiteActionAsync()
+  internal async Task ApplySuiteActionAsync()
   {
     PrecioSuiteInput = SuiteActionValueInput;
     PrecioSuiteConIvaInput = SuiteActionValueInput;
@@ -901,7 +936,7 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected void OpenAirbnbPanel()
+  internal void OpenAirbnbPanel()
   {
     if (Suites.Count == 0)
     {
@@ -918,13 +953,13 @@ public partial class ReservacionPage : ComponentBase
     AirbnbErrorMessage = null;
   }
 
-  protected void CloseAirbnbPanel()
+  internal void CloseAirbnbPanel()
   {
     ShowAirbnbPanel = false;
     AirbnbErrorMessage = null;
   }
 
-  protected async Task AplicarAirbnbAsync()
+  internal async Task AplicarAirbnbAsync()
   {
     if (Detail is null || IsApplyingAirbnb)
     {
@@ -987,247 +1022,19 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  protected AirbnbReservationBreakdownDto? GetAirbnbPreview()
+  internal AirbnbReservationBreakdownDto? GetAirbnbPreview()
     => TryCalculateAirbnbPreview(out var preview, out _) ? preview : null;
 
-  protected string? GetAirbnbPreviewError()
+  internal string? GetAirbnbPreviewError()
     => TryCalculateAirbnbPreview(out _, out var errorMessage) ? null : errorMessage;
 
-  protected void ToggleExtraForm()
-  {
-    if (ShowExtraForm && !IsEditingExtra)
-    {
-      ResetExtraEditor();
-      return;
-    }
-
-    StartNewExtra();
-  }
-
-  protected void EditExtra(ReservacionExtraDto extra)
-  {
-    EditingExtraId = extra.Id;
-    ExtraRoomId = extra.RoomId;
-    ExtraPrice = extra.Price;
-    ExtraDiscount = extra.Discount;
-    ExtraNotes = extra.Notes;
-    ShowExtraForm = true;
-  }
-
-  protected void OnExtraRoomChanged(ChangeEventArgs args)
-  {
-    if (!int.TryParse(args.Value?.ToString(), out var id))
-    {
-      ExtraRoomId = null;
-      return;
-    }
-
-    ExtraRoomId = id;
-    var room = Rooms.FirstOrDefault(r => r.Id == id);
-    if (room is not null)
-    {
-      ExtraPrice = room.BasePrice;
-    }
-  }
-
-  protected async Task GuardarExtraAsync()
-  {
-    if (!ExtraRoomId.HasValue)
-    {
-      UiMessages.ShowWarning("Selecciona una suite para el extra.");
-      return;
-    }
-
-    ReservacionCommandResult result;
-    if (IsEditingExtra)
-    {
-      result = await ReservacionesService.UpdateExtraAsync(new ReservacionExtraUpdateRequest
-      {
-        Id = EditingExtraId!.Value,
-        ReservationId = ReservationId,
-        RoomId = ExtraRoomId.Value,
-        Price = ExtraPrice,
-        Discount = ExtraDiscount,
-        DiscountedPrice = ExtraTotal,
-        Notes = ExtraNotes
-      });
-    }
-    else
-    {
-      result = await ReservacionesService.AddExtraAsync(new ReservacionExtraCreateRequest
-      {
-        ReservationId = ReservationId,
-        RoomId = ExtraRoomId.Value,
-        Price = ExtraPrice,
-        Discount = ExtraDiscount,
-        DiscountedPrice = ExtraTotal,
-        Notes = ExtraNotes
-      });
-    }
-
-    if (result.Success)
-    {
-      UiMessages.ShowSuccess(result.Message);
-      ResetExtraEditor();
-      await LoadAllAsync(preserveFormState: true);
-    }
-    else
-    {
-      UiMessages.ShowError(result.Message);
-    }
-  }
-
-  protected async Task EliminarExtraAsync(int extraId)
-  {
-    var confirm = await Js.InvokeAsync<bool>("confirm", "¿Eliminar el extra seleccionado?");
-    if (!confirm)
-    {
-      return;
-    }
-
-    var result = await ReservacionesService.DeleteExtraAsync(extraId);
-    if (result.Success)
-    {
-      if (EditingExtraId == extraId)
-      {
-        ResetExtraEditor();
-      }
-
-      UiMessages.ShowSuccess(result.Message);
-      await LoadAllAsync(preserveFormState: true);
-    }
-    else
-    {
-      UiMessages.ShowError(result.Message);
-    }
-  }
-
-  protected void CancelExtraEdit()
-  {
-    ResetExtraEditor();
-  }
-
-  protected async Task AbrirPagoAsync(int transaccionId)
+  internal async Task AbrirPagoAsync(int transaccionId)
   {
     var url = $"/contabilidad/transacciones/{transaccionId}";
     await Js.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
   }
 
-  protected async Task OnAttachmentSelectedAsync(InputFileChangeEventArgs args)
-  {
-    _pendingAttachment = args.FileCount > 0 ? args.File : null;
-    await InvokeAsync(StateHasChanged);
-  }
-
-  protected async Task CargarAttachmentAsync()
-  {
-    if (_pendingAttachment is null)
-    {
-      UiMessages.ShowWarning("Selecciona un archivo.");
-      return;
-    }
-
-    if (string.IsNullOrWhiteSpace(AttachmentDescription))
-    {
-      UiMessages.ShowWarning("Ingresa una descripción para el archivo.");
-      return;
-    }
-
-    if (_pendingAttachment.Size > ReservacionAttachmentCreateRequest.MaxFileSizeBytes)
-    {
-      UiMessages.ShowError("El archivo excede el tamaño máximo permitido (5 MB).");
-      return;
-    }
-
-    IsUploadingAttachment = true;
-    try
-    {
-      await using var stream = _pendingAttachment.OpenReadStream(ReservacionAttachmentCreateRequest.MaxFileSizeBytes);
-      using var ms = new MemoryStream();
-      await stream.CopyToAsync(ms);
-
-      var extension = Path.GetExtension(_pendingAttachment.Name)?.TrimStart('.');
-      await ReservacionesService.AddAttachmentAsync(new ReservacionAttachmentCreateRequest
-      {
-        ReservationId = ReservationId,
-        FileName = _pendingAttachment.Name,
-        Extension = extension,
-        Description = AttachmentDescription.Trim(),
-        Content = ms.ToArray()
-      });
-
-      AttachmentDescription = string.Empty;
-      _pendingAttachment = null;
-      _attachmentInputKey++;
-      await RefreshAttachmentsAsync();
-      UiMessages.ShowSuccess("Archivo agregado.");
-    }
-    catch (Exception ex)
-    {
-      UiMessages.ShowError($"No se pudo cargar el archivo. {ex.Message}");
-    }
-    finally
-    {
-      IsUploadingAttachment = false;
-    }
-  }
-
-  protected async Task DescargarAttachmentAsync(ReservacionAttachmentDto attachment)
-  {
-    _attachmentDownloadingId = attachment.Id;
-    try
-    {
-      var content = await ReservacionesService.GetAttachmentContentAsync(attachment.Id);
-      if (content is null || content.Bytes.Length == 0)
-      {
-        UiMessages.ShowError("No se encontró el contenido del archivo.");
-        return;
-      }
-
-      var dataUrl = $"data:{content.ContentType};base64,{Convert.ToBase64String(content.Bytes)}";
-      await Js.InvokeVoidAsync("triggerFileDownload", content.FileName, dataUrl);
-    }
-    catch (Exception ex)
-    {
-      UiMessages.ShowError($"No se pudo descargar el archivo. {ex.Message}");
-    }
-    finally
-    {
-      _attachmentDownloadingId = null;
-    }
-  }
-
-  protected async Task EliminarAttachmentAsync(ReservacionAttachmentDto attachment)
-  {
-    var confirm = await Js.InvokeAsync<bool>("confirm", "¿Eliminar el archivo seleccionado?");
-    if (!confirm)
-    {
-      return;
-    }
-
-    _attachmentDeletingId = attachment.Id;
-    try
-    {
-      await ReservacionesService.DeleteAttachmentAsync(attachment.Id);
-      await RefreshAttachmentsAsync();
-      UiMessages.ShowSuccess("Archivo eliminado.");
-    }
-    catch (Exception ex)
-    {
-      UiMessages.ShowError($"No se pudo eliminar el archivo. {ex.Message}");
-    }
-    finally
-    {
-      _attachmentDeletingId = null;
-    }
-  }
-
-  protected async Task RefreshAttachmentsAsync()
-  {
-    Attachments = await ReservacionesService.GetAttachmentsAsync(ReservationId);
-  }
-
-  protected void RecalculateTotals()
+  internal void RecalculateTotals()
   {
     var totals = ReservacionTotalsCalculator.Calculate(
       CheckIn,
@@ -1253,7 +1060,7 @@ public partial class ReservacionPage : ComponentBase
     TotalSuiteInput = TotalSuites;
   }
 
-  protected async Task AplicarDescuentoSuitesAsync()
+  internal async Task AplicarDescuentoSuitesAsync()
   {
     var currentValue = SuiteDiscountPercent > 0m
       ? SuiteDiscountPercent.ToString("0.##", CultureInfo.CurrentCulture)
@@ -1318,7 +1125,7 @@ public partial class ReservacionPage : ComponentBase
     return true;
   }
 
-  private async Task ApplyClienteSelectionAsync(ClienteOptionDto cliente, bool reloadMatches = true)
+  private Task ApplyClienteSelectionAsync(ClienteOptionDto cliente, bool reloadMatches = true)
   {
     var clienteNombre = NormalizeClienteNombre(cliente.Nombre);
 
@@ -1326,11 +1133,9 @@ public partial class ReservacionPage : ComponentBase
     SelectedClienteNombre = clienteNombre;
     ClienteSearchText = clienteNombre;
     ShowClienteResults = false;
+    Clientes.Clear();
 
-    if (reloadMatches)
-    {
-      Clientes = await LoadClientesAsync(clienteNombre);
-    }
+    return Task.CompletedTask;
   }
 
   private async Task RefreshClienteMatchesAsync(bool allowEmptySearch)
@@ -1393,26 +1198,6 @@ public partial class ReservacionPage : ComponentBase
     return string.Equals(normalized, "(Sin cliente)", StringComparison.OrdinalIgnoreCase)
       ? string.Empty
       : normalized;
-  }
-
-  private void StartNewExtra()
-  {
-    EditingExtraId = null;
-    ExtraRoomId = null;
-    ExtraPrice = 0m;
-    ExtraDiscount = 0m;
-    ExtraNotes = null;
-    ShowExtraForm = true;
-  }
-
-  private void ResetExtraEditor()
-  {
-    EditingExtraId = null;
-    ExtraRoomId = null;
-    ExtraPrice = 0m;
-    ExtraDiscount = 0m;
-    ExtraNotes = null;
-    ShowExtraForm = false;
   }
 
   private ReservationFormState CaptureFormState()

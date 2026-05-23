@@ -1,0 +1,91 @@
+<section class="reservacion-tab-panel reservacion-section-extras">
+    <div class="reservacion-panel-heading">
+        <div>
+            <h2>EXTRAS</h2>
+            <p>@Page.Extras.Count cargos adicionales.</p>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="Page.ToggleExtraForm">+</button>
+    </div>
+
+    @if (Page.ShowExtraForm)
+    {
+        <div class="reservacion-inline-editor row g-2 mb-3">
+            <div class="col-md-3">
+                <label class="form-label">Suite</label>
+                <select class="form-select form-select-sm" value="@Page.ExtraRoomId" @onchange="Page.OnExtraRoomChanged">
+                    <option value="">Suite</option>
+                    @foreach (var room in Page.Rooms)
+                    {
+                        <option value="@room.Id">@room.RoomName</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Precio</label>
+                <input class="form-control form-control-sm" type="number" @bind="Page.ExtraPrice" placeholder="Precio" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Desc %</label>
+                <input class="form-control form-control-sm" type="number" @bind="Page.ExtraDiscount" placeholder="% Desc." />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Total</label>
+                <input class="form-control form-control-sm" value="@Page.ExtraTotal" readonly />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Notas</label>
+                <input class="form-control form-control-sm" @bind="Page.ExtraNotes" placeholder="Notas" />
+            </div>
+            <div class="col-md-2 d-flex gap-2 align-items-end">
+                <button type="button" class="btn btn-sm btn-success flex-fill" @onclick="Page.GuardarExtraAsync">@(Page.IsEditingExtra ? "Guardar" : "Agregar")</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary flex-fill" @onclick="Page.CancelExtraEdit">Cancelar</button>
+            </div>
+        </div>
+    }
+
+    <div class="table-responsive reservacion-table-wrap">
+        <table class="table table-sm table-bordered mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Suite</th>
+                    <th>Descripción</th>
+                    <th class="text-end">Precio</th>
+                    <th class="text-end">Desc %</th>
+                    <th class="text-end">Total</th>
+                    <th>Notas</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Page.Extras.Count == 0)
+                {
+                    <tr><td colspan="7" class="text-center text-muted py-3">No hay extras capturados.</td></tr>
+                }
+                else
+                {
+                    @foreach (var extra in Page.Extras)
+                    {
+                        <tr>
+                            <td>@extra.RoomName</td>
+                            <td>@extra.RoomDescription</td>
+                            <td class="text-end">@ReservacionPage.FormatCurrency(extra.Price)</td>
+                            <td class="text-end">@extra.Discount</td>
+                            <td class="text-end">@ReservacionPage.FormatCurrency(extra.DiscountedPrice)</td>
+                            <td>@extra.Notes</td>
+                            <td class="text-end">
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-outline-primary" @onclick="() => Page.EditExtra(extra)">Editar</button>
+                                    <button type="button" class="btn btn-outline-danger" @onclick="() => Page.EliminarExtraAsync(extra.Id)">Eliminar</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    [CascadingParameter] public ReservacionPage Page { get; set; } = default!;
+}

@@ -1,0 +1,73 @@
+.reservacion-totals-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.reservacion-total-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--orion-color-border);
+}
+
+.reservacion-total-group--summary {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--orion-color-border);
+}
+
+.reservacion-total-group-title {
+  color: var(--orion-color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.reservacion-total-row,
+.reservacion-total-status-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(7.5rem, auto);
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.reservacion-total-row span,
+.reservacion-total-status-row span:first-child {
+  min-width: 0;
+  color: var(--orion-color-text-muted);
+}
+
+.reservacion-total-row strong {
+  min-width: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.reservacion-total-row--grand {
+  color: var(--orion-color-primary);
+  font-size: 1.06rem;
+}
+
+.reservacion-total-row--grand span,
+.reservacion-total-row--grand strong {
+  color: var(--orion-color-primary);
+}
+
+.reservacion-total-row--danger span,
+.reservacion-total-row--danger strong {
+  color: var(--orion-color-danger);
+}
+
+.reservacion-total-row--success span,
+.reservacion-total-row--success strong {
+  color: var(--orion-color-success);
+}
+
+.reservacion-total-status-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding-top: 0.1rem;
+}

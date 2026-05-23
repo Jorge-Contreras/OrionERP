@@ -351,6 +351,89 @@ public class RecurrentApServiceTests
     Assert.Contains("PARAMETROS_CONFIGURACION", serviceSource, StringComparison.Ordinal);
   }
 
+  [Fact]
+  public void AjustesPage_ExposesCfdiCuentaDefaultSettings()
+  {
+    var pageSource = ReadRepositoryFile(
+      "src",
+      "OrionERP.Web",
+      "Features",
+      "Ajustes",
+      "AjustesPage.razor");
+    var serviceSource = ReadRepositoryFile(
+      "src",
+      "OrionERP.Infrastructure",
+      "Features",
+      "Ajustes",
+      "AjustesService.cs");
+    var dtoSource = ReadRepositoryFile(
+      "src",
+      "OrionERP.Application",
+      "Features",
+      "Ajustes",
+      "CfdiPolizaCuentaDefaultDtos.cs");
+    var cssSource = ReadRepositoryFile(
+      "src",
+      "OrionERP.Web",
+      "Features",
+      "Ajustes",
+      "AjustesPage.razor.css");
+
+    Assert.Contains("Cuentas contables CFDI", pageSource, StringComparison.Ordinal);
+    Assert.Contains("CuentaContablePicker", pageSource, StringComparison.Ordinal);
+    Assert.Contains("SelectedRfc=\"@selectedRfc\"", pageSource, StringComparison.Ordinal);
+    Assert.Contains("ajustes-cfdi-selected-account", pageSource, StringComparison.Ordinal);
+    Assert.Contains("Seleccionada", pageSource, StringComparison.Ordinal);
+    Assert.Contains("ajustes-cfdi-selected-code", cssSource, StringComparison.Ordinal);
+    Assert.Contains("SaveCfdiPolizaCuentaDefaultsAsync", pageSource, StringComparison.Ordinal);
+    Assert.Contains("dbo.CfdiPolizaCuentaDefault", serviceSource, StringComparison.Ordinal);
+    Assert.Contains("CfdiPolizaCuentaDefaultRoles.Required", serviceSource, StringComparison.Ordinal);
+
+    var requiredRoles = new[]
+    {
+      "SUBTOTAL_GASTO",
+      "SUBTOTAL_INGRESO",
+      "IVA_TRASLADADO",
+      "IVA_ACREDITABLE",
+      "IEPS_TRASLADADO",
+      "IEPS_ACREDITABLE",
+      "RETENCION_IVA",
+      "RETENCION_ISR",
+      "RETENCION_IEPS",
+      "TOTAL_GASTO",
+      "TOTAL_INGRESO"
+    };
+
+    foreach (var role in requiredRoles)
+    {
+      Assert.Contains(role, dtoSource, StringComparison.Ordinal);
+    }
+  }
+
+  [Fact]
+  public void RegenerarPolizaDesdeComprobante_UsesConfiguredCfdiAccounts()
+  {
+    var spSource = ReadRepositoryFile(
+      "tmp",
+      "dbdefs",
+      "contabilidad__Regenerar_Poliza_Desde_Comprobante_En_Transaccion.sql");
+    var deploymentSource = ReadRepositoryFile(
+      "src",
+      "OrionERP.Infrastructure",
+      "Features",
+      "Contabilidad",
+      "Transacciones",
+      "Sql",
+      "20260523_cfdi_poliza_cuenta_defaults.sql");
+
+    Assert.Contains("dbo.CfdiPolizaCuentaDefault", spSource, StringComparison.Ordinal);
+    Assert.Contains("Configura las cuentas contables CFDI", spSource, StringComparison.Ordinal);
+    Assert.DoesNotContain("@N1_ACT16_G   VARCHAR(50) = '603'", spSource, StringComparison.Ordinal);
+    Assert.DoesNotContain("@N1_TOTAL_I   VARCHAR(50) = '403'", spSource, StringComparison.Ordinal);
+    Assert.Contains("CREATE TABLE dbo.CfdiPolizaCuentaDefault", deploymentSource, StringComparison.Ordinal);
+    Assert.Contains("CREATE OR ALTER PROCEDURE [contabilidad].[Regenerar_Poliza_Desde_Comprobante_En_Transaccion]", deploymentSource, StringComparison.Ordinal);
+  }
+
   private static DataTable CreateTransactionCandidateTable()
   {
     var table = new DataTable();

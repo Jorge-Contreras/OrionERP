@@ -1490,7 +1490,7 @@ WHERE ID = @TransaccionId;";
           comprobanteId,
           transaccionId);
 
-      return TransaccionCommandResult.Fail("No se pudieron regenerar los movimientos desde el comprobante.");
+      return TransaccionCommandResult.Fail($"No se pudieron regenerar los movimientos desde el comprobante: {ex.Message}");
     }
   }
 

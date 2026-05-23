@@ -18,9 +18,12 @@
       <h1 class="h3 mb-1">Ajustes</h1>
       <p class="text-muted mb-0">Configuracion operativa para plantillas contables y automatizaciones.</p>
     </div>
-    <button type="button" class="btn btn-outline-primary" @onclick="NewPlantilla">
-      Nueva plantilla
-    </button>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <RfcPicker @bind-SelectedRfc="selectedRfc" @bind-SelectedRfc:after="OnRfcChangedAsync" />
+      <button type="button" class="btn btn-outline-primary" @onclick="NewPlantilla">
+        Nueva plantilla
+      </button>
+    </div>
   </div>
 
   <section class="ajustes-section mb-3">
@@ -49,13 +52,75 @@
     </div>
   </section>
 
+  <section class="ajustes-section mb-3">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+          <div>
+            <h2 class="h5 mb-1">Cuentas contables CFDI</h2>
+            <p class="text-muted mb-0">Define las cuentas por RFC para regenerar movimientos desde comprobantes CFDI.</p>
+          </div>
+          <button type="button"
+                  class="btn btn-primary"
+                  @onclick="SaveCfdiPolizaCuentaDefaultsAsync"
+                  disabled="@(isLoadingCfdiDefaults || isSavingCfdiDefaults || string.IsNullOrWhiteSpace(selectedRfc))">
+            @(isSavingCfdiDefaults ? "Guardando..." : "Guardar cuentas CFDI")
+          </button>
+        </div>
+
+        @if (string.IsNullOrWhiteSpace(selectedRfc))
+        {
+          <div class="alert alert-warning mb-0" role="alert">Selecciona un RFC para configurar las cuentas CFDI.</div>
+        }
+        else if (isLoadingCfdiDefaults)
+        {
+          <div class="text-muted py-3">Cargando cuentas CFDI...</div>
+        }
+        else
+        {
+          <div class="row g-3">
+            @foreach (var cuenta in CfdiDefaultsEditor.Cuentas)
+            {
+              <div class="col-12 col-xl-6" @key="cuenta.CuentaClave">
+                <div class="border-top pt-3 h-100">
+                  <label class="form-label mb-1">@cuenta.Nombre</label>
+                  <div class="text-muted small mb-2">@cuenta.Descripcion</div>
+                  <CuentaContablePicker
+                    SelectedRfc="@selectedRfc"
+                    Selection="cuenta.Selection"
+                    SelectionChanged="@((CuentaContableSelection? selection) => OnCfdiDefaultSelectionChangedAsync(cuenta.CuentaClave, selection))"
+                    ErrorChanged="@((string? message) => OnCfdiDefaultErrorChangedAsync(cuenta.CuentaClave, message))" />
+
+                  @if (cuenta.Selection?.Id is not null)
+                  {
+                    <div class="ajustes-cfdi-selected-account mt-2">
+                      <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="badge text-bg-primary">Seleccionada</span>
+                        <span class="ajustes-cfdi-selected-code">@FormatCuentaCodigo(cuenta.Selection)</span>
+                      </div>
+                      <div class="ajustes-cfdi-selected-description">@cuenta.Selection.Descripcion</div>
+                    </div>
+                  }
+
+                  @if (!string.IsNullOrWhiteSpace(cuenta.ErrorMessage))
+                  {
+                    <div class="text-danger small mt-2">@cuenta.ErrorMessage</div>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  </section>
+
   <section class="ajustes-section">
     <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
       <div>
         <h2 class="h5 mb-1">Plantillas contables</h2>
         <p class="text-muted mb-0">Define las lineas que se generan automaticamente en los movimientos contables.</p>
       </div>
-      <RfcPicker @bind-SelectedRfc="selectedRfc" @bind-SelectedRfc:after="OnRfcChangedAsync" />
     </div>
 
     <div class="row g-3">
@@ -372,6 +437,7 @@
 
   private readonly List<PlantillaContableListItemDto> Plantillas = [];
   private GeneralSettingsEditorModel GeneralSettingsEditor { get; set; } = new();
+  private CfdiPolizaCuentaDefaultsEditorModel CfdiDefaultsEditor { get; set; } = CfdiPolizaCuentaDefaultsEditorModel.CreateEmpty();
   private PlantillaEditorModel Editor { get; set; } = new();
   private PlantillaLineEditorModel LineEditor { get; set; } = new();
   private CuentaContableSelection? LineAccountSelection { get; set; }
@@ -381,6 +447,8 @@
   private bool includeInactive;
   private bool isLoadingGeneralSettings;
   private bool isSavingGeneralSettings;
+  private bool isLoadingCfdiDefaults;
+  private bool isSavingCfdiDefaults;
   private bool isLoadingList;
   private bool isSaving;
   private bool showLineModal;
@@ -399,6 +467,7 @@
     }
 
     await LoadGeneralSettingsAsync();
+    await LoadCfdiPolizaCuentaDefaultsAsync();
     NewPlantilla();
     await LoadPlantillasAsync();
   }
@@ -406,6 +475,7 @@
   private async Task OnRfcChangedAsync()
   {
     NewPlantilla();
+    await LoadCfdiPolizaCuentaDefaultsAsync();
     await LoadPlantillasAsync();
   }
 
@@ -482,6 +552,80 @@
     {
       isSavingGeneralSettings = false;
     }
+  }
+
+  private async Task LoadCfdiPolizaCuentaDefaultsAsync()
+  {
+    isLoadingCfdiDefaults = true;
+    try
+    {
+      var settings = await AjustesService.GetCfdiPolizaCuentaDefaultsAsync(selectedRfc);
+      CfdiDefaultsEditor = CfdiPolizaCuentaDefaultsEditorModel.FromDto(settings);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron cargar las cuentas CFDI. {ex.Message}");
+      CfdiDefaultsEditor = CfdiPolizaCuentaDefaultsEditorModel.CreateEmpty(selectedRfc);
+    }
+    finally
+    {
+      isLoadingCfdiDefaults = false;
+    }
+  }
+
+  private async Task SaveCfdiPolizaCuentaDefaultsAsync()
+  {
+    if (isSavingCfdiDefaults)
+    {
+      return;
+    }
+
+    if (string.IsNullOrWhiteSpace(selectedRfc))
+    {
+      UiMessages.ShowWarning("Selecciona un RFC antes de guardar las cuentas CFDI.");
+      return;
+    }
+
+    var validationMessage = CfdiDefaultsEditor.Validate();
+    if (validationMessage is not null)
+    {
+      UiMessages.ShowError(validationMessage);
+      return;
+    }
+
+    isSavingCfdiDefaults = true;
+    try
+    {
+      var result = await AjustesService.SaveCfdiPolizaCuentaDefaultsAsync(CfdiDefaultsEditor.ToRequest(selectedRfc));
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      await LoadCfdiPolizaCuentaDefaultsAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron guardar las cuentas CFDI. {ex.Message}");
+    }
+    finally
+    {
+      isSavingCfdiDefaults = false;
+    }
+  }
+
+  private Task OnCfdiDefaultSelectionChangedAsync(string cuentaClave, CuentaContableSelection? selection)
+  {
+    CfdiDefaultsEditor.ApplySelection(cuentaClave, selection);
+    return Task.CompletedTask;
+  }
+
+  private Task OnCfdiDefaultErrorChangedAsync(string cuentaClave, string? message)
+  {
+    CfdiDefaultsEditor.ApplyError(cuentaClave, message);
+    return Task.CompletedTask;
   }
 
   private void NewPlantilla()
@@ -774,6 +918,17 @@
         : code;
   }
 
+  private static string FormatCuentaCodigo(CuentaContableSelection selection)
+  {
+    var parts = new[] { selection.Nivel1, selection.Nivel2, selection.Nivel3 }
+        .Where(value => !string.IsNullOrWhiteSpace(value));
+
+    var code = string.Join('.', parts);
+    return string.IsNullOrWhiteSpace(code)
+        ? $"Cuenta {selection.Id?.ToString(CultureInfo.InvariantCulture) ?? "-"}"
+        : code;
+  }
+
   private static string GetMontoTipoLabel(string montoTipo)
     => MontoTipoOptions.FirstOrDefault(option => option.Value == montoTipo)?.Label ?? montoTipo;
 
@@ -802,6 +957,119 @@
       => new()
       {
         ApOccurrenceNotificationDays = ApOccurrenceNotificationDays
+      };
+  }
+
+  private sealed class CfdiPolizaCuentaDefaultsEditorModel
+  {
+    public List<CfdiPolizaCuentaDefaultEditorModel> Cuentas { get; set; } = [];
+
+    public static CfdiPolizaCuentaDefaultsEditorModel CreateEmpty(string? rfc = null)
+      => new()
+      {
+        Cuentas = CfdiPolizaCuentaDefaultRoles.Required
+            .Select(role => CfdiPolizaCuentaDefaultEditorModel.CreateEmpty(role, rfc))
+            .ToList()
+      };
+
+    public static CfdiPolizaCuentaDefaultsEditorModel FromDto(CfdiPolizaCuentaDefaultsDto dto)
+    {
+      var accountsByKey = dto.Cuentas.ToDictionary(account => account.CuentaClave, StringComparer.OrdinalIgnoreCase);
+      return new CfdiPolizaCuentaDefaultsEditorModel
+      {
+        Cuentas = CfdiPolizaCuentaDefaultRoles.Required
+            .Select(role => accountsByKey.TryGetValue(role.CuentaClave, out var account)
+                ? CfdiPolizaCuentaDefaultEditorModel.FromDto(role, account, dto.Rfc)
+                : CfdiPolizaCuentaDefaultEditorModel.CreateEmpty(role, dto.Rfc))
+            .ToList()
+      };
+    }
+
+    public void ApplySelection(string cuentaClave, CuentaContableSelection? selection)
+    {
+      var account = FindAccount(cuentaClave);
+      if (account is null)
+      {
+        return;
+      }
+
+      account.Selection = selection;
+      account.ErrorMessage = null;
+    }
+
+    public void ApplyError(string cuentaClave, string? message)
+    {
+      var account = FindAccount(cuentaClave);
+      if (account is not null)
+      {
+        account.ErrorMessage = message;
+      }
+    }
+
+    public string? Validate()
+    {
+      var missing = Cuentas
+          .Where(account => account.Selection?.Id is null)
+          .Select(account => account.Nombre)
+          .ToList();
+
+      return missing.Count == 0
+          ? null
+          : $"Selecciona todas las cuentas CFDI: {string.Join(", ", missing)}.";
+    }
+
+    public CfdiPolizaCuentaDefaultsSaveRequest ToRequest(string? rfc)
+      => new()
+      {
+        Rfc = rfc ?? string.Empty,
+        Cuentas = Cuentas
+            .Select(account => new CfdiPolizaCuentaDefaultSaveItem
+            {
+              CuentaClave = account.CuentaClave,
+              CuentaContableId = account.Selection?.Id ?? 0
+            })
+            .ToList()
+      };
+
+    private CfdiPolizaCuentaDefaultEditorModel? FindAccount(string cuentaClave)
+      => Cuentas.FirstOrDefault(account => string.Equals(account.CuentaClave, cuentaClave, StringComparison.OrdinalIgnoreCase));
+  }
+
+  private sealed class CfdiPolizaCuentaDefaultEditorModel
+  {
+    public string CuentaClave { get; set; } = string.Empty;
+    public string Nombre { get; set; } = string.Empty;
+    public string Descripcion { get; set; } = string.Empty;
+    public CuentaContableSelection? Selection { get; set; }
+    public string? ErrorMessage { get; set; }
+
+    public static CfdiPolizaCuentaDefaultEditorModel CreateEmpty(CfdiPolizaCuentaDefaultRoleDto role, string? rfc)
+      => new()
+      {
+        CuentaClave = role.CuentaClave,
+        Nombre = role.Nombre,
+        Descripcion = role.Descripcion,
+        Selection = new CuentaContableSelection { Rfc = rfc }
+      };
+
+    public static CfdiPolizaCuentaDefaultEditorModel FromDto(
+        CfdiPolizaCuentaDefaultRoleDto role,
+        CfdiPolizaCuentaDefaultAccountDto dto,
+        string rfc)
+      => new()
+      {
+        CuentaClave = role.CuentaClave,
+        Nombre = role.Nombre,
+        Descripcion = role.Descripcion,
+        Selection = new CuentaContableSelection
+        {
+          Id = dto.CuentaContableId,
+          Rfc = dto.CuentaRfc ?? rfc,
+          Nivel1 = dto.Nivel1,
+          Nivel2 = dto.Nivel2,
+          Nivel3 = dto.Nivel3,
+          Descripcion = dto.CuentaDescripcion
+        }
       };
   }
 

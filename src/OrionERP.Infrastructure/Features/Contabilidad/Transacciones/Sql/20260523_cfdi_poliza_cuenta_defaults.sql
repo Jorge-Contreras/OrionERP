@@ -1,3 +1,35 @@
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF OBJECT_ID(N'dbo.CfdiPolizaCuentaDefault', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.CfdiPolizaCuentaDefault
+    (
+        Rfc varchar(50) NOT NULL,
+        CuentaClave varchar(50) NOT NULL,
+        CuentaContableId int NOT NULL,
+        CreadoEn datetime2(0) NOT NULL CONSTRAINT DF_CfdiPolizaCuentaDefault_CreadoEn DEFAULT SYSUTCDATETIME(),
+        ActualizadoEn datetime2(0) NOT NULL CONSTRAINT DF_CfdiPolizaCuentaDefault_ActualizadoEn DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT PK_CfdiPolizaCuentaDefault PRIMARY KEY (Rfc, CuentaClave),
+        CONSTRAINT FK_CfdiPolizaCuentaDefault_CuentasContables FOREIGN KEY (CuentaContableId) REFERENCES dbo.CuentasContables(id)
+    );
+END;
+GO
+
+IF NOT EXISTS
+(
+    SELECT 1
+    FROM sys.indexes
+    WHERE object_id = OBJECT_ID(N'dbo.CfdiPolizaCuentaDefault')
+      AND name = N'IX_CfdiPolizaCuentaDefault_CuentaContableId'
+)
+BEGIN
+    CREATE INDEX IX_CfdiPolizaCuentaDefault_CuentaContableId
+        ON dbo.CfdiPolizaCuentaDefault (CuentaContableId);
+END;
+GO
 
 /*==============================================================
   Regenera Registro_Contable y actualiza la p�liza existente
@@ -8,7 +40,7 @@
       dbo.Transacciones.Concepto (la p�liza existente) en vez del
       concepto calculado desde el comprobante.
 ==============================================================*/
-CREATE PROCEDURE [contabilidad].[Regenerar_Poliza_Desde_Comprobante_En_Transaccion]
+CREATE OR ALTER PROCEDURE [contabilidad].[Regenerar_Poliza_Desde_Comprobante_En_Transaccion]
     @Comprobante_Id INT,
     @Transaccion_ID INT
 AS
@@ -596,3 +628,5 @@ BEGIN
     END CATCH;
 END;
 
+
+GO

@@ -1,0 +1,81 @@
+<section class="card reservacion-section reservacion-section-totales">
+    <div class="card-header reservacion-section-title d-flex align-items-center gap-2">
+        <span>Totales</span>
+        <button type="button"
+                class="btn btn-sm btn-outline-primary ms-auto"
+                @onclick="Page.AplicarDescuentoSuitesAsync"
+                disabled="@(Page.IsSaving || Page.IsWorking || Page.IsLoading)">
+            Descuento
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="reservacion-totals-stack">
+            <div class="reservacion-total-group">
+                <div class="reservacion-total-group-title">Cargos</div>
+                <div class="reservacion-total-row">
+                    <span>Total por Suites</span>
+                    <strong>@ReservacionPage.FormatCurrency(Page.TotalSuites)</strong>
+                </div>
+                @if (Page.HasActiveSuiteDiscount)
+                {
+                    <div class="reservacion-total-row reservacion-total-row--danger">
+                        <span>Descuento Suites (@ReservacionPage.FormatPercent(Page.SuiteDiscountPercent)%)</span>
+                        <strong>@ReservacionPage.FormatCurrency(-Page.SuiteDiscountAmount)</strong>
+                    </div>
+                }
+                <div class="reservacion-total-row">
+                    <span>Total por Extras</span>
+                    <strong>@ReservacionPage.FormatCurrency(Page.TotalExtras)</strong>
+                </div>
+            </div>
+
+            <div class="reservacion-total-group">
+                <div class="reservacion-total-group-title">Impuestos</div>
+                <div class="reservacion-total-row">
+                    <span>Subtotal</span>
+                    <strong>@ReservacionPage.FormatCurrency(Page.SubTotal)</strong>
+                </div>
+                <div class="reservacion-total-row">
+                    <span>IVA</span>
+                    <strong>@ReservacionPage.FormatCurrency(Page.Tax)</strong>
+                </div>
+                <div class="reservacion-total-row">
+                    <span>ISH</span>
+                    <strong>@ReservacionPage.FormatCurrency(Page.Ish)</strong>
+                </div>
+            </div>
+
+            <div class="reservacion-total-group reservacion-total-group--summary">
+                <div class="reservacion-total-group-title">Saldo</div>
+                <div class="reservacion-total-row reservacion-total-row--grand">
+                    <span>Total Reservación</span>
+                    <strong>@ReservacionPage.FormatCurrency(Page.TotalReservacion)</strong>
+                </div>
+                <div class="reservacion-total-row">
+                    <span>Total Pagado</span>
+                    <strong>@ReservacionPage.FormatCurrency(Page.TotalPagado)</strong>
+                </div>
+                <div class="reservacion-total-row">
+                    <span>Por Pagar</span>
+                    <strong class="@(Page.PorPagar > 0 ? "text-danger" : "text-success")">@ReservacionPage.FormatCurrency(Page.PorPagar)</strong>
+                </div>
+                @if (Page.Detail?.AirbnbBreakdown is not null)
+                {
+                    <div class="reservacion-total-row reservacion-total-row--success">
+                        <span>Airbnb tú ganas</span>
+                        <strong>@ReservacionPage.FormatCurrency(Page.Detail.AirbnbBreakdown.PayoutAmount)</strong>
+                    </div>
+                }
+            </div>
+
+            <div class="reservacion-total-status-row">
+                <span>Facturación</span>
+                <span class="badge @Page.GetFacturacionStatusBadgeClass()">@Page.GetFacturacionSummaryLabel()</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+@code {
+    [CascadingParameter] public ReservacionPage Page { get; set; } = default!;
+}

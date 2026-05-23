@@ -1,0 +1,214 @@
+@using System.Linq
+
+<section class="reservacion-tab-panel reservacion-section-suites">
+    <div class="reservacion-panel-heading">
+        <div>
+            <h2>SUITES</h2>
+            <p>@Page.Suites.Count noches/suites en esta reservación.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="Page.OpenSuitePickerAsync">+</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Page.SeleccionarTodasSuites" disabled="@(!Page.Suites.Any())">Seleccionar todas</button>
+            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="Page.EliminarSuitesSeleccionadasAsync">Eliminar</button>
+        </div>
+    </div>
+
+    <div class="row g-2 mb-3">
+        <div class="col-md-3">
+            <label class="form-label">Monto</label>
+            <input class="form-control form-control-sm"
+                   type="number"
+                   @bind="Page.SuiteActionValueInput"
+                   placeholder="@Page.SuiteActionPlaceholder"
+                   disabled="@(Page.SelectedSuiteAction == ReservacionPage.SuiteActionCleaning)" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Acción</label>
+            <select class="form-select form-select-sm" @bind="Page.SelectedSuiteAction">
+                @foreach (var action in Page.SuiteActionOptions)
+                {
+                    <option value="@action.Value">@action.Label</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+            <button type="button" class="btn btn-sm btn-outline-secondary w-100" @onclick="Page.ApplySuiteActionAsync">Aplicar</button>
+        </div>
+        <div class="col-md-4 text-muted small d-flex align-items-end">Tecla P/I/D/L/T en Access replicada con acciones rápidas.</div>
+    </div>
+
+    @if (Page.ShowAirbnbPanel)
+    {
+        var airbnbPreview = Page.GetAirbnbPreview();
+        var airbnbPreviewError = Page.AirbnbErrorMessage ?? Page.GetAirbnbPreviewError();
+
+        <div class="reservacion-airbnb-panel mb-3">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <strong>Airbnb</strong>
+                <span class="badge text-bg-secondary">@Page.AirbnbTargetSuiteCount suites</span>
+                @if (airbnbPreview is not null)
+                {
+                    <span class="badge text-bg-success">Total CFDI @ReservacionPage.FormatCurrency(airbnbPreview.GrossCfdiTotal)</span>
+                }
+            </div>
+
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Tú ganas</label>
+                    <input class="form-control form-control-sm" type="number" step="0.01" @bind="Page.AirbnbPayoutInput" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Limpieza</label>
+                    <input class="form-control form-control-sm" type="number" step="0.01" @bind="Page.AirbnbCleaningFeeInput" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Comisión %</label>
+                    <input class="form-control form-control-sm" type="number" step="0.01" @bind="Page.AirbnbHostServiceFeeRatePercentInput" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">IVA comisión %</label>
+                    <input class="form-control form-control-sm" type="number" step="0.01" @bind="Page.AirbnbHostServiceFeeIvaRatePercentInput" />
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">IVA ret %</label>
+                    <input class="form-control form-control-sm" type="number" step="0.01" @bind="Page.AirbnbIvaRetentionRatePercentInput" />
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">ISR ret %</label>
+                    <input class="form-control form-control-sm" type="number" step="0.01" @bind="Page.AirbnbIsrRetentionRatePercentInput" />
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">IVA %</label>
+                    <input class="form-control form-control-sm" type="number" step="0.01" @bind="Page.AirbnbIvaRatePercentInput" />
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(airbnbPreviewError))
+            {
+                <div class="alert alert-warning py-2 px-3 mt-3 mb-0">@airbnbPreviewError</div>
+            }
+            else if (airbnbPreview is not null)
+            {
+                <div class="table-responsive reservacion-table-wrap mt-3">
+                    <table class="table table-sm table-bordered mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Concepto</th>
+                                <th class="text-end">Monto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Tarifa habitación</td><td class="text-end">@ReservacionPage.FormatCurrency(airbnbPreview.RoomRateAmount)</td></tr>
+                            <tr><td>Limpieza</td><td class="text-end">@ReservacionPage.FormatCurrency(airbnbPreview.CleaningFee)</td></tr>
+                            <tr><td>IVA trasladado</td><td class="text-end">@ReservacionPage.FormatCurrency(airbnbPreview.IvaTransferredAmount)</td></tr>
+                            <tr><td>IVA retenido</td><td class="text-end">@ReservacionPage.FormatCurrency(-airbnbPreview.IvaRetainedAmount)</td></tr>
+                            <tr><td>ISR retenido</td><td class="text-end">@ReservacionPage.FormatCurrency(-airbnbPreview.IsrRetainedAmount)</td></tr>
+                            <tr><td>Comisión Airbnb</td><td class="text-end">@ReservacionPage.FormatCurrency(-airbnbPreview.HostServiceFeeTotalAmount)</td></tr>
+                        </tbody>
+                        <tfoot class="table-light">
+                            <tr>
+                                <th>Tú ganas</th>
+                                <th class="text-end">@ReservacionPage.FormatCurrency(airbnbPreview.PayoutAmount)</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            }
+
+            <div class="d-flex flex-wrap gap-2 justify-content-end mt-3">
+                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Page.CloseAirbnbPanel" disabled="@Page.IsApplyingAirbnb">Cancelar</button>
+                <button type="button"
+                        class="btn btn-sm btn-primary"
+                        @onclick="Page.AplicarAirbnbAsync"
+                        disabled="@(Page.IsApplyingAirbnb || airbnbPreview is null || Page.AirbnbTargetSuiteCount == 0)">
+                    @(Page.IsApplyingAirbnb ? "Aplicando..." : "Aplicar Airbnb")
+                </button>
+            </div>
+        </div>
+    }
+
+    @if (Page.ShowSuitePicker)
+    {
+        <div class="reservacion-picker-panel mb-3">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <strong>Suites Disponibles</strong>
+                <button type="button" class="btn btn-sm btn-success ms-auto" @onclick="Page.AddSuitesSeleccionadasAsync">Agregar Seleccionadas</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Page.CancelSuitePicker">Cerrar</button>
+            </div>
+            <div class="table-responsive reservacion-table-wrap reservacion-table-wrap--available">
+                <table class="table table-sm table-bordered mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th></th>
+                            <th>Día</th>
+                            <th>Suite</th>
+                            <th>Fecha</th>
+                            <th>Disponible</th>
+                            <th>Bloqueado por</th>
+                            <th>Precio</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in Page.SuitesDisponibles)
+                        {
+                            <tr class="@(row.IsLocked ? "table-danger" : string.Empty)">
+                                <td>
+                                    <input type="checkbox"
+                                           checked="@Page.SelectedSuiteDisponibleIds.Contains(row.Id)"
+                                           @onchange="(e) => Page.ToggleSuiteDisponibleSelection(row.Id, e.Value is bool v && v)" />
+                                </td>
+                                <td>@row.Dia</td>
+                                <td>@row.Suite</td>
+                                <td>@row.RoomDate.ToShortDateString()</td>
+                                <td>@(row.IsLocked ? "No" : "Sí")</td>
+                                <td>@row.LockedBy</td>
+                                <td>@ReservacionPage.FormatCurrency(row.Precio)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    <div class="table-responsive reservacion-table-wrap">
+        <table class="table table-sm table-striped table-bordered mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th></th>
+                    <th>Fecha</th>
+                    <th>Suite</th>
+                    <th class="text-end">Precio</th>
+                    <th>Limpieza</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Page.Suites.Count == 0)
+                {
+                    <tr><td colspan="5" class="text-center text-muted py-3">No hay suites en esta reservación.</td></tr>
+                }
+                else
+                {
+                    @foreach (var suite in Page.Suites)
+                    {
+                        <tr>
+                            <td>
+                                <input type="checkbox"
+                                       checked="@Page.SelectedSuiteIds.Contains(suite.Id)"
+                                       @onchange="(e) => Page.ToggleSuiteSelection(suite.Id, e.Value is bool v && v)" />
+                            </td>
+                            <td>@suite.Fecha.ToShortDateString()</td>
+                            <td>@suite.Suite</td>
+                            <td class="text-end">@ReservacionPage.FormatCurrency(suite.Precio)</td>
+                            <td>@(suite.LimpiezaProfunda ? "Sí" : string.Empty)</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    [CascadingParameter] public ReservacionPage Page { get; set; } = default!;
+}

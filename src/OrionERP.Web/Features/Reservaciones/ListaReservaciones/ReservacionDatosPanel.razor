@@ -1,0 +1,85 @@
+<section class="card reservacion-section reservacion-section-datos">
+    <div class="card-header reservacion-section-heading">
+        <span class="reservacion-section-title">Datos de la Reservación</span>
+        <span class="reservacion-status-strip reservacion-status-strip--datos" aria-label="Estado de la reservación">
+            <span class="badge text-bg-secondary">@(!string.IsNullOrWhiteSpace(Page.Status) ? Page.Status : "Sin status")</span>
+            <span class="badge @Page.GetFacturacionStatusBadgeClass()">@Page.GetFacturacionSummaryLabel()</span>
+            <span class="badge text-bg-light">@Page.NumNoches noches</span>
+            @if (Page.Detail?.AirbnbBreakdown is not null)
+            {
+                <span class="badge text-bg-success">Airbnb</span>
+            }
+        </span>
+    </div>
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-lg-4 col-md-12 reservacion-lookup">
+                <label class="form-label">CLIENTE</label>
+                <input class="form-control"
+                       placeholder="Cliente"
+                       value="@Page.ClienteSearchText"
+                       @oninput="Page.OnClienteInputChangedAsync"
+                       @onkeydown="Page.OnClienteInputKeyDownAsync" />
+                @if (Page.ShowClienteResults)
+                {
+                    <div class="list-group position-absolute w-100 shadow-sm reservacion-lookup-results">
+                        @if (Page.Clientes.Count == 0)
+                        {
+                            <div class="list-group-item text-muted small">Sin resultados.</div>
+                        }
+                        else
+                        {
+                            @foreach (var cliente in Page.Clientes)
+                            {
+                                <button type="button"
+                                        class="list-group-item list-group-item-action"
+                                        @onclick="() => Page.SelectClienteAsync(cliente)">
+                                    @cliente.Nombre
+                                </button>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+            <div class="col-sm-6 col-lg-2">
+                <label class="form-label">STATUS</label>
+                <select class="form-select" value="@Page.Status" @onchange="Page.OnStatusChangedAsync">
+                    @foreach (var item in Page.StatusOptions)
+                    {
+                        <option value="@item">@item</option>
+                    }
+                </select>
+            </div>
+            <div class="col-sm-6 col-lg-2">
+                <label class="form-label">CHECKIN</label>
+                <input class="form-control" type="date" value="@Page.CheckInText" @onchange="Page.OnCheckInChangedAsync" />
+            </div>
+            <div class="col-sm-6 col-lg-2">
+                <label class="form-label">CHECKOUT</label>
+                <input class="form-control" type="date" value="@Page.CheckOutText" @onchange="Page.OnCheckOutChangedAsync" />
+            </div>
+            <div class="col-sm-6 col-lg-2">
+                <label class="form-label">#Noches</label>
+                <input class="form-control text-center fw-bold" value="@Page.NumNoches" readonly />
+            </div>
+            <div class="col-sm-6 col-lg-4">
+                <label class="form-label">RECOMENDACION</label>
+                <input class="form-control" @bind="Page.RecommenedBy" />
+            </div>
+            <div class="col-sm-6 col-lg-3 d-flex align-items-end">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" checked="@Page.Taxable" @onchange="Page.ToggleTaxableAsync" id="taxableCheck" />
+                    <label class="form-check-label" for="taxableCheck">FACTURABLE</label>
+                </div>
+            </div>
+            <div class="col-12">
+                <label class="form-label">NOTAS</label>
+                <textarea class="form-control" rows="2" @bind="Page.Notes"></textarea>
+            </div>
+        </div>
+    </div>
+</section>
+
+@code {
+    [CascadingParameter] public ReservacionPage Page { get; set; } = default!;
+}

@@ -15,7 +15,7 @@ namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 
 public partial class ReservacionPage
 {
-  private const string NewCfdiPolizaOption = "new";
+  internal const string NewCfdiPolizaOption = "new";
   private const string DefaultCfdiUse = "G03";
   private const string DefaultCfdiFormaPago = "03";
   private const string DeferredCfdiFormaPago = "99";
@@ -68,60 +68,60 @@ public partial class ReservacionPage
   [Inject] public IReservationCfdiService ReservationCfdiService { get; set; } = default!;
   [Inject] public IDeclaracionPreviaService DeclaracionPreviaService { get; set; } = default!;
 
-  protected ReservationCfdiContextDto? CfdiContext { get; set; }
-  protected ReservationFacturacionStatusDto? FacturacionStatus { get; set; }
-  protected List<FormaPagoLookupDto> CfdiFormaPagoOptions { get; } = [];
-  protected List<ReservationCfdiCustomerSuggestionDto> CfdiCustomerSuggestions { get; } = new();
-  protected ReservationCfdiCustomerUpsertRequest CfdiReceiver { get; set; } = new();
-  protected ReservationCfdiReceiverValidationDto? CfdiReceiverValidation { get; set; }
-  protected string CfdiCustomerSearchText { get; set; } = string.Empty;
-  protected string SelectedCfdiPolizaOption { get; set; } = NewCfdiPolizaOption;
-  protected string SelectedCfdiFormaPago { get; set; } = DefaultCfdiFormaPago;
-  protected string SelectedCfdiMetodoPago { get; set; } = DefaultCfdiMetodoPago;
-  protected string? LastCfdiReceiverValidationSignature { get; set; }
-  protected bool ShowCfdiPanel { get; set; }
-  protected bool ShowCfdiCustomerResults { get; set; }
-  protected bool PersistCfdiCustomer { get; set; } = true;
-  protected bool IsLoadingCfdiContext { get; set; }
-  protected bool IsSearchingCfdiCustomers { get; set; }
-  protected bool IsSavingCfdiCustomer { get; set; }
-  protected bool IsValidatingCfdiReceiver { get; set; }
-  protected bool IsCreatingCfdi { get; set; }
-  protected long? CancellingReservationCfdiId { get; set; }
-  protected string? CfdiErrorMessage { get; set; }
+  internal ReservationCfdiContextDto? CfdiContext { get; set; }
+  internal ReservationFacturacionStatusDto? FacturacionStatus { get; set; }
+  internal List<FormaPagoLookupDto> CfdiFormaPagoOptions { get; } = [];
+  internal List<ReservationCfdiCustomerSuggestionDto> CfdiCustomerSuggestions { get; } = new();
+  internal ReservationCfdiCustomerUpsertRequest CfdiReceiver { get; set; } = new();
+  internal ReservationCfdiReceiverValidationDto? CfdiReceiverValidation { get; set; }
+  internal string CfdiCustomerSearchText { get; set; } = string.Empty;
+  internal string SelectedCfdiPolizaOption { get; set; } = NewCfdiPolizaOption;
+  internal string SelectedCfdiFormaPago { get; set; } = DefaultCfdiFormaPago;
+  internal string SelectedCfdiMetodoPago { get; set; } = DefaultCfdiMetodoPago;
+  internal string? LastCfdiReceiverValidationSignature { get; set; }
+  internal bool ShowCfdiPanel { get; set; }
+  internal bool ShowCfdiCustomerResults { get; set; }
+  internal bool PersistCfdiCustomer { get; set; } = true;
+  internal bool IsLoadingCfdiContext { get; set; }
+  internal bool IsSearchingCfdiCustomers { get; set; }
+  internal bool IsSavingCfdiCustomer { get; set; }
+  internal bool IsValidatingCfdiReceiver { get; set; }
+  internal bool IsCreatingCfdi { get; set; }
+  internal long? CancellingReservationCfdiId { get; set; }
+  internal string? CfdiErrorMessage { get; set; }
 
-  protected bool HasCfdiDiscounts => CfdiContext?.Items.Any(item => item.Discount > 0m) == true;
+  internal bool HasCfdiDiscounts => CfdiContext?.Items.Any(item => item.Discount > 0m) == true;
 
-  protected bool ShouldShowCfdiCreationPanel
+  internal bool ShouldShowCfdiCreationPanel
     => ShowCfdiPanel && !HasReservationFacturacionEvidence;
 
-  protected bool HasExistingReservationCfdis
+  internal bool HasExistingReservationCfdis
     => CfdiContext?.ExistingDocuments.Count > 0;
 
-  protected bool HasReservationFacturacionEvidence
+  internal bool HasReservationFacturacionEvidence
     => FacturacionStatus?.HasAnyFacturacionEvidence == true || HasExistingReservationCfdis;
 
-  protected bool IsCfdiPaymentFormLocked
+  internal bool IsCfdiPaymentFormLocked
     => string.Equals(SelectedCfdiMetodoPago, DeferredCfdiMetodoPago, StringComparison.OrdinalIgnoreCase);
 
-  protected bool CanValidateCfdiReceiver
+  internal bool CanValidateCfdiReceiver
     => !string.IsNullOrWhiteSpace(CfdiReceiver.Rfc)
        && !string.IsNullOrWhiteSpace(CfdiReceiver.FiscalName)
        && !string.IsNullOrWhiteSpace(CfdiReceiver.TaxZipCode)
        && !string.IsNullOrWhiteSpace(CfdiReceiver.FiscalRegime)
        && !string.IsNullOrWhiteSpace(CfdiReceiver.CfdiUse);
 
-  protected bool HasFreshCfdiReceiverValidation
+  internal bool HasFreshCfdiReceiverValidation
     => CfdiReceiverValidation is not null
        && string.Equals(
            LastCfdiReceiverValidationSignature,
            BuildCfdiReceiverValidationSignature(CfdiReceiver),
            StringComparison.Ordinal);
 
-  protected bool IsCfdiReceiverValidationStale
+  internal bool IsCfdiReceiverValidationStale
     => CfdiReceiverValidation is not null && !HasFreshCfdiReceiverValidation;
 
-  protected bool CanCreateReservationCfdi
+  internal bool CanCreateReservationCfdi
     => CfdiContext is not null
        && !CfdiContext.HasUnsupportedIsh
        && !HasReservationFacturacionEvidence
@@ -129,16 +129,16 @@ public partial class ReservacionPage
        && !string.IsNullOrWhiteSpace(SelectedCfdiFormaPago)
        && !string.IsNullOrWhiteSpace(SelectedCfdiMetodoPago);
 
-  protected IReadOnlyList<LookupStringDto> CfdiMetodoPagoOptions => CfdiMetodoCatalogOptions;
-  protected IReadOnlyList<LookupStringDto> CfdiUsoCfdiOptions => CfdiUseCatalogOptions;
+  internal IReadOnlyList<LookupStringDto> CfdiMetodoPagoOptions => CfdiMetodoCatalogOptions;
+  internal IReadOnlyList<LookupStringDto> CfdiUsoCfdiOptions => CfdiUseCatalogOptions;
 
-  protected bool IsCreatingNewCfdiPoliza
+  internal bool IsCreatingNewCfdiPoliza
     => string.Equals(SelectedCfdiPolizaOption, NewCfdiPolizaOption, StringComparison.OrdinalIgnoreCase);
 
-  protected bool IsCancellingReservationCfdi(ReservationCfdiLinkedDocumentDto document)
+  internal bool IsCancellingReservationCfdi(ReservationCfdiLinkedDocumentDto document)
     => document is not null && CancellingReservationCfdiId == document.ComprobanteId;
 
-  protected async Task ToggleCfdiPanelAsync()
+  internal async Task ToggleCfdiPanelAsync()
   {
     if (ShowCfdiPanel)
     {
@@ -150,19 +150,19 @@ public partial class ReservacionPage
     await OpenCfdiPanelAsync(forceReload: true);
   }
 
-  protected async Task ReloadCfdiContextAsync()
+  internal async Task ReloadCfdiContextAsync()
   {
     await OpenCfdiPanelAsync(forceReload: true);
   }
 
-  protected Task OnCfdiFormaPagoChanged(ChangeEventArgs args)
+  internal Task OnCfdiFormaPagoChanged(ChangeEventArgs args)
   {
     SelectedCfdiFormaPago = NormalizeCfdiSelection(args.Value?.ToString(), DefaultCfdiFormaPago);
     EnsureCfdiSelectionDefaults();
     return Task.CompletedTask;
   }
 
-  protected Task OnCfdiMetodoPagoChanged(ChangeEventArgs args)
+  internal Task OnCfdiMetodoPagoChanged(ChangeEventArgs args)
   {
     SelectedCfdiMetodoPago = NormalizeCfdiSelection(args.Value?.ToString(), DefaultCfdiMetodoPago);
 
@@ -176,7 +176,7 @@ public partial class ReservacionPage
     return Task.CompletedTask;
   }
 
-  protected async Task OnCfdiCustomerInputChangedAsync(ChangeEventArgs args)
+  internal async Task OnCfdiCustomerInputChangedAsync(ChangeEventArgs args)
   {
     CfdiCustomerSearchText = args.Value?.ToString() ?? string.Empty;
     CfdiReceiver.BusinessPartnerId = null;
@@ -191,7 +191,7 @@ public partial class ReservacionPage
     await SearchCfdiCustomersAsync(allowEmptySearch: false);
   }
 
-  protected async Task OnCfdiCustomerInputKeyDownAsync(KeyboardEventArgs args)
+  internal async Task OnCfdiCustomerInputKeyDownAsync(KeyboardEventArgs args)
   {
     if (!IsClienteSearchTriggerKey(args))
     {
@@ -201,7 +201,7 @@ public partial class ReservacionPage
     await SearchCfdiCustomersAsync(allowEmptySearch: true);
   }
 
-  protected async Task SearchCfdiCustomersAsync(bool allowEmptySearch)
+  internal async Task SearchCfdiCustomersAsync(bool allowEmptySearch)
   {
     var searchText = string.IsNullOrWhiteSpace(CfdiCustomerSearchText)
       ? null
@@ -235,7 +235,7 @@ public partial class ReservacionPage
     }
   }
 
-  protected void SelectCfdiCustomer(ReservationCfdiCustomerSuggestionDto suggestion)
+  internal void SelectCfdiCustomer(ReservationCfdiCustomerSuggestionDto suggestion)
   {
     CfdiReceiver = new ReservationCfdiCustomerUpsertRequest
     {
@@ -259,7 +259,7 @@ public partial class ReservacionPage
     EnsureCfdiSelectionDefaults();
   }
 
-  protected async Task SaveCfdiCustomerAsync()
+  internal async Task SaveCfdiCustomerAsync()
   {
     IsSavingCfdiCustomer = true;
     CfdiErrorMessage = null;
@@ -288,10 +288,10 @@ public partial class ReservacionPage
     }
   }
 
-  protected Task ValidateCfdiReceiverAsync()
+  internal Task ValidateCfdiReceiverAsync()
     => RefreshCfdiReceiverValidationAsync(showToast: true);
 
-  protected async Task CrearCfdiReservacionAsync()
+  internal async Task CrearCfdiReservacionAsync()
   {
     if (string.IsNullOrWhiteSpace(RfcState.CurrentRfc))
     {
@@ -385,7 +385,7 @@ public partial class ReservacionPage
     }
   }
 
-  protected async Task CancelarCfdiReservacionAsync(ReservationCfdiLinkedDocumentDto document)
+  internal async Task CancelarCfdiReservacionAsync(ReservationCfdiLinkedDocumentDto document)
   {
     if (document is null)
     {
@@ -444,7 +444,7 @@ public partial class ReservacionPage
     }
   }
 
-  protected string GetCfdiPolizaStatusClass(ReservationCfdiPolizaOptionDto option)
+  internal string GetCfdiPolizaStatusClass(ReservationCfdiPolizaOptionDto option)
   {
     if (option.IsEligible)
     {
@@ -464,13 +464,13 @@ public partial class ReservacionPage
     return "text-bg-secondary";
   }
 
-  protected string FormatCfdiPolizaLabel(ReservationCfdiPolizaOptionDto option)
+  internal string FormatCfdiPolizaLabel(ReservationCfdiPolizaOptionDto option)
   {
     var amount = option.Monto.ToString("C", CultureInfo.CurrentCulture);
     return $"Poliza {option.TransaccionId} | {option.Fecha:yyyy-MM-dd} | {amount}";
   }
 
-  protected string GetCfdiReceiverValidationAlertClass()
+  internal string GetCfdiReceiverValidationAlertClass()
   {
     if (CfdiReceiverValidation is null)
     {
@@ -490,7 +490,7 @@ public partial class ReservacionPage
     return CfdiReceiverValidation.BlocksStamping ? "alert-danger" : "alert-warning";
   }
 
-  protected string GetCfdiReceiverValidationStatusBadgeClass()
+  internal string GetCfdiReceiverValidationStatusBadgeClass()
   {
     if (CfdiReceiverValidation is null)
     {
@@ -510,7 +510,7 @@ public partial class ReservacionPage
     return CfdiReceiverValidation.BlocksStamping ? "text-bg-danger" : "text-bg-warning";
   }
 
-  protected string GetCfdiReceiverValidationStatusLabel()
+  internal string GetCfdiReceiverValidationStatusLabel()
   {
     if (CfdiReceiverValidation is null)
     {
@@ -530,10 +530,10 @@ public partial class ReservacionPage
     return CfdiReceiverValidation.BlocksStamping ? "Bloquea timbrado" : "Advertencia";
   }
 
-  protected static string GetCfdiReceiverFlagBadgeClass(bool matches)
+  internal static string GetCfdiReceiverFlagBadgeClass(bool matches)
     => matches ? "text-bg-success" : "text-bg-danger";
 
-  protected string GetFacturacionStatusBadgeClass()
+  internal string GetFacturacionStatusBadgeClass()
     => FacturacionStatus?.Status switch
     {
       ReservationFacturacionStatuses.Facturada => "text-bg-success",
@@ -541,7 +541,7 @@ public partial class ReservacionPage
       _ => "text-bg-secondary"
     };
 
-  protected string GetPaymentFacturacionBadgeClass(ReservacionPagoDto pago)
+  internal string GetPaymentFacturacionBadgeClass(ReservacionPagoDto pago)
   {
     var payment = GetPaymentFacturacionStatus(pago.TransaccionId);
     if (payment?.IsFacturado == true)
@@ -554,7 +554,7 @@ public partial class ReservacionPage
     return "text-bg-secondary";
   }
 
-  protected string GetPaymentFacturacionLabel(ReservacionPagoDto pago)
+  internal string GetPaymentFacturacionLabel(ReservacionPagoDto pago)
   {
     var payment = GetPaymentFacturacionStatus(pago.TransaccionId);
     if (payment is null || !payment.IsFacturado)
@@ -570,7 +570,7 @@ public partial class ReservacionPage
     return payment.Pago20Count > 0 ? "Pago20" : "CFDI";
   }
 
-  protected string GetPaymentFacturacionTitle(ReservacionPagoDto pago)
+  internal string GetPaymentFacturacionTitle(ReservacionPagoDto pago)
   {
     var payment = GetPaymentFacturacionStatus(pago.TransaccionId);
     if (payment is null || payment.Documents.Count == 0)
@@ -586,7 +586,7 @@ public partial class ReservacionPage
             + (!string.IsNullOrWhiteSpace(document.Uuid) ? $" / {document.Uuid}" : string.Empty)));
   }
 
-  protected string GetFacturacionSummaryLabel()
+  internal string GetFacturacionSummaryLabel()
   {
     var status = FacturacionStatus;
     if (status is null)
@@ -597,7 +597,7 @@ public partial class ReservacionPage
     return $"{status.Status} ({status.FacturadoPaymentCount}/{status.PaymentCount} pagos)";
   }
 
-  protected async Task LoadReservationFacturacionStatusAsync()
+  internal async Task LoadReservationFacturacionStatusAsync()
   {
     try
     {
@@ -689,7 +689,7 @@ public partial class ReservacionPage
       : (int?)null;
   }
 
-  private int? ResolveSelectedCfdiTransaccionId()
+  internal int? ResolveSelectedCfdiTransaccionId()
     => ResolveSelectedCfdiTransaccionId(SelectedCfdiPolizaOption);
 
   private static string ResolveCfdiPolizaSelectionAfterReload(

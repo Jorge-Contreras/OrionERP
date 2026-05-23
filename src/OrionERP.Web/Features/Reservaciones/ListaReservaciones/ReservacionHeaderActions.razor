@@ -1,0 +1,35 @@
+<header class="reservacion-page-header">
+    <div class="reservacion-title-block">
+        <div class="reservacion-eyebrow">Reservación</div>
+        <h1>RESERVACION #@Page.ReservationId</h1>
+    </div>
+
+    <div class="reservacion-header-actions">
+        <button type="button" class="btn btn-primary btn-sm" @onclick="Page.GuardarAsync" disabled="@Page.IsSaving">
+            @(Page.IsSaving ? "Guardando..." : "Guardar")
+        </button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="Page.CerrarAsync">Cerrar</button>
+        <button type="button" class="btn btn-outline-success btn-sm" @onclick="Page.AbrirPdfAsync" disabled="@(Page.IsGeneratingPdf || Page.IsLoading)">
+            @(Page.IsGeneratingPdf ? "Generando PDF..." : "PDF")
+        </button>
+        <button type="button" class="btn btn-outline-info btn-sm" @onclick="Page.CrearPolizaAsync" disabled="@(Page.IsSaving || Page.IsWorking || Page.IsCreatingPoliza)">
+            @(Page.IsCreatingPoliza ? "Creando..." : "Crear Póliza")
+        </button>
+        <button type="button"
+                class="btn btn-outline-primary btn-sm"
+                @onclick="Page.ToggleCfdiPanelAsync"
+                disabled="@(Page.IsSaving || Page.IsWorking || Page.IsLoadingCfdiContext || Page.IsCreatingCfdi || Page.HasReservationFacturacionEvidence)">
+            @(Page.IsLoadingCfdiContext ? "Preparando CFDI..." : Page.HasReservationFacturacionEvidence ? "Facturación ligada" : Page.ShowCfdiPanel ? "Cerrar CFDI" : "Crear CFDI")
+        </button>
+        <button type="button"
+                class="btn btn-outline-danger btn-sm"
+                @onclick="Page.BorrarReservacionAsync"
+                disabled="@(Page.IsSaving || Page.IsWorking || Page.IsDeletingReservation || Page.IsCreatingPoliza || Page.IsGeneratingPdf || Page.IsCreatingCfdi)">
+            @(Page.IsDeletingReservation ? "Borrando..." : "Borrar")
+        </button>
+    </div>
+</header>
+
+@code {
+    [CascadingParameter] public ReservacionPage Page { get; set; } = default!;
+}

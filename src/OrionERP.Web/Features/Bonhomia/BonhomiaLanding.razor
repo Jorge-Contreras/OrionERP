@@ -1,0 +1,321 @@
+@using System.Globalization
+
+<PageTitle>Bonhomia Suites | Hospedaje en Calpulalpan</PageTitle>
+<HeadContent>
+    <meta name="description" content="Bonhomia Suites: Business Bed & Breakfast en Calpulalpan, Tlaxcala. Suites, departamentos y casas amuebladas con limpieza profesional, seguridad y atencion cercana." />
+</HeadContent>
+
+<div class="bonhomia-site">
+    <header class="bonhomia-nav" aria-label="Bonhomia Suites">
+        <a class="bonhomia-brand" href="#inicio" aria-label="Bonhomia Suites">
+            <img src="/Images/Bonhomia/logo-vertical.png" alt="Bonhomia Suites" />
+            <span>Bonhomia Suites</span>
+        </a>
+
+        <nav class="bonhomia-nav__links" aria-label="Secciones">
+            <a href="#suites">Suites</a>
+            <a href="#tarifas">Tarifas</a>
+            <a href="#servicios">Servicios</a>
+            <a href="#contacto">Contacto</a>
+        </nav>
+
+        <a class="bonhomia-nav__cta" href="@WhatsAppUrl" target="_blank" rel="noopener noreferrer">
+            <i class="bi bi-whatsapp" aria-hidden="true"></i>
+            <span>Reservar</span>
+        </a>
+    </header>
+
+    <main>
+        <section id="inicio" class="bonhomia-hero" style="background-image: url('/Images/Bonhomia/hero-penthouse.jpg');" aria-labelledby="bonhomia-title">
+            <div class="bonhomia-hero__content">
+                <p class="bonhomia-eyebrow">Business Bed & Breakfast en Calpulalpan</p>
+                <h1 id="bonhomia-title">Bonhomia Suites</h1>
+                <p class="bonhomia-hero__lead">Departamentos y casas amuebladas listas para llegar, descansar y seguir tu viaje con limpieza impecable, seguridad y atencion cercana.</p>
+
+                <div class="bonhomia-hero__actions">
+                    <a class="bonhomia-button bonhomia-button--primary" href="@WhatsAppUrl" target="_blank" rel="noopener noreferrer">
+                        <i class="bi bi-whatsapp" aria-hidden="true"></i>
+                        <span>Reservar por WhatsApp</span>
+                    </a>
+                    <a class="bonhomia-button bonhomia-button--light" href="#suites">
+                        <i class="bi bi-door-open" aria-hidden="true"></i>
+                        <span>Ver suites</span>
+                    </a>
+                </div>
+            </div>
+
+            <div class="bonhomia-hero__proof" aria-label="Datos destacados">
+                <div>
+                    <span>Airbnb</span>
+                    <strong>Superhost</strong>
+                </div>
+                <div>
+                    <span>Check-in</span>
+                    <strong>15:00 hrs</strong>
+                </div>
+                <div>
+                    <span>Desde</span>
+                    <strong>$1,250 MXN</strong>
+                </div>
+            </div>
+        </section>
+
+        <section class="bonhomia-booking" aria-labelledby="booking-title">
+            <div class="bonhomia-booking__intro">
+                <p class="bonhomia-eyebrow">Reserva directa</p>
+                <h2 id="booking-title">Dinos tus fechas y te ayudamos a elegir</h2>
+            </div>
+
+            <form class="bonhomia-booking__form" @onsubmit:preventDefault="true">
+                <label>
+                    <span>Check-in</span>
+                    <input type="date" value="@CheckIn" @onchange="OnCheckInChanged" />
+                </label>
+                <label>
+                    <span>Check-out</span>
+                    <input type="date" value="@CheckOut" @onchange="OnCheckOutChanged" />
+                </label>
+                <label>
+                    <span>Huespedes</span>
+                    <input type="number" min="1" max="10" @bind="Guests" />
+                </label>
+                <label>
+                    <span>Preferencia</span>
+                    <select @bind="SuitePreference">
+                        <option value="Ayudenme a elegir">Ayudenme a elegir</option>
+                        @foreach (var suite in Suites)
+                        {
+                            <option value="@suite.Name">@suite.Name</option>
+                        }
+                    </select>
+                </label>
+                <label class="bonhomia-booking__notes">
+                    <span>Plan de viaje</span>
+                    <textarea rows="2" @bind="TravelNotes"></textarea>
+                </label>
+
+                <a class="bonhomia-button bonhomia-button--dark bonhomia-booking__submit" href="@WhatsAppUrl" target="_blank" rel="noopener noreferrer">
+                    <i class="bi bi-send" aria-hidden="true"></i>
+                    <span>Enviar consulta</span>
+                </a>
+            </form>
+        </section>
+
+        <section class="bonhomia-section bonhomia-intro" aria-labelledby="intro-title">
+            <div class="bonhomia-section__header">
+                <p class="bonhomia-eyebrow">Hospedaje con caracter</p>
+                <h2 id="intro-title">Comodidad de casa, operacion profesional</h2>
+                <p>Bonhomia Suites combina privacidad, blancos listos, amenidades de cortesia, Wi-Fi, agua caliente y limpieza profesional entre estancias. Es una base tranquila para trabajo, descanso o viajes en grupo por el centro del pais.</p>
+            </div>
+
+            <div class="bonhomia-intro__media">
+                <img src="/Images/Bonhomia/gallery-terrace-living.jpg" alt="Sala amueblada con terraza en Bonhomia Suites" />
+                <img src="/Images/Bonhomia/gallery-kitchen.jpg" alt="Cocina equipada en Bonhomia Suites" />
+                <img src="/Images/Bonhomia/exterior-main.jpg" alt="Exterior de edificio Bonhomia Suites en Calpulalpan" />
+            </div>
+        </section>
+
+        <section id="suites" class="bonhomia-section bonhomia-suites" aria-labelledby="suites-title">
+            <div class="bonhomia-section__header">
+                <p class="bonhomia-eyebrow">Nuestras suites</p>
+                <h2 id="suites-title">Elige por capacidad, privacidad y plan de viaje</h2>
+                <p>Cada espacio tiene personalidad propia. Las tarifas son por noche, en MXN, y pueden variar por temporada o disponibilidad.</p>
+            </div>
+
+            <div class="bonhomia-suite-grid">
+                @foreach (var suite in Suites)
+                {
+                    <article class="bonhomia-suite-card">
+                        <img src="@suite.Image" alt="@($"Vista de referencia para {suite.Name}")" />
+                        <div class="bonhomia-suite-card__body">
+                            <div class="bonhomia-suite-card__topline">
+                                <span>@suite.Tag</span>
+                                <strong>@FormatPrice(suite.Price)</strong>
+                            </div>
+                            <h3>@suite.Name</h3>
+                            <p>@suite.Ideal</p>
+                            <div class="bonhomia-suite-card__meta">
+                                <span><i class="bi bi-people" aria-hidden="true"></i>@suite.Capacity personas</span>
+                                <span><i class="bi bi-moon" aria-hidden="true"></i>@suite.Bedrooms recamara@(suite.Bedrooms == 1 ? string.Empty : "s")</span>
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <section class="bonhomia-section bonhomia-gallery" aria-labelledby="gallery-title">
+            <div class="bonhomia-section__header">
+                <p class="bonhomia-eyebrow">Instalaciones</p>
+                <h2 id="gallery-title">Espacios pensados para instalarte de inmediato</h2>
+            </div>
+
+            <div class="bonhomia-gallery__grid">
+                <img src="/Images/Bonhomia/gallery-lounge.jpg" alt="Sala principal en suite amueblada" />
+                <img src="/Images/Bonhomia/gallery-wine-detail.jpg" alt="Detalle de mesa y copa en Bonhomia Suites" />
+                <img src="/Images/Bonhomia/exterior-vertical.jpg" alt="Fachada vertical de Bonhomia Suites" />
+                <img src="/Images/Bonhomia/welcome-detail.png" alt="Detalle de bienvenida Bonhomia Suites" />
+            </div>
+        </section>
+
+        <section id="tarifas" class="bonhomia-section bonhomia-rate-strip" aria-labelledby="rates-title">
+            <div class="bonhomia-section__header">
+                <p class="bonhomia-eyebrow">Tarifas y servicios</p>
+                <h2 id="rates-title">Extras que se ajustan a tu estancia</h2>
+            </div>
+
+            <div id="servicios" class="bonhomia-extra-grid">
+                @foreach (var extra in Extras)
+                {
+                    <article class="bonhomia-extra-card">
+                        <i class="@extra.Icon" aria-hidden="true"></i>
+                        <h3>@extra.Name</h3>
+                        <p>@extra.Detail</p>
+                        <strong>@extra.Price</strong>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <section class="bonhomia-section bonhomia-next" aria-labelledby="next-title">
+            <div class="bonhomia-section__header">
+                <p class="bonhomia-eyebrow">Siguiente version</p>
+                <h2 id="next-title">La experiencia digital ya tiene lugar reservado</h2>
+                <p>V1 deja el sitio listo visualmente y prepara el terreno para conectar los modulos existentes de calendario, reservaciones y contabilidad.</p>
+            </div>
+
+            <div class="bonhomia-next__grid">
+                @foreach (var item in NextFeatures)
+                {
+                    <article class="bonhomia-next-card">
+                        <span>@item.Status</span>
+                        <i class="@item.Icon" aria-hidden="true"></i>
+                        <h3>@item.Title</h3>
+                        <p>@item.Description</p>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <section class="bonhomia-section bonhomia-policy" aria-labelledby="policy-title">
+            <div class="bonhomia-policy__main">
+                <p class="bonhomia-eyebrow">Politicas claras</p>
+                <h2 id="policy-title">Reserva con informacion completa</h2>
+                <p>Check-in estandar a partir de las 15:00 hrs y check-out hasta las 11:00 hrs. Las cancelaciones con mas de 30 dias de anticipacion pueden recibir reembolso neto del 85%; con 30 dias o menos son no reembolsables salvo condiciones especificas confirmadas al reservar.</p>
+            </div>
+
+            <div class="bonhomia-policy__items">
+                <div>
+                    <img src="/Images/Bonhomia/catalog-checkin.png" alt="" />
+                    <span>Early y late options sujetas a disponibilidad</span>
+                </div>
+                <div>
+                    <img src="/Images/Bonhomia/catalog-cancellation.png" alt="" />
+                    <span>Cancelaciones por el mismo canal de reservacion</span>
+                </div>
+                <div>
+                    <img src="/Images/Bonhomia/catalog-why.png" alt="" />
+                    <span>Reglas de convivencia para descanso y seguridad</span>
+                </div>
+            </div>
+        </section>
+
+        <section id="contacto" class="bonhomia-section bonhomia-contact" aria-labelledby="contact-title">
+            <div>
+                <p class="bonhomia-eyebrow">Contacto</p>
+                <h2 id="contact-title">Te esperamos en Calpulalpan</h2>
+                <p>Carr. Mexico-Veracruz km 74, 90202 Heroica Ciudad de Calpulalpan, Tlaxcala, Mexico.</p>
+            </div>
+
+            <div class="bonhomia-contact__actions">
+                <a class="bonhomia-button bonhomia-button--primary" href="@WhatsAppUrl" target="_blank" rel="noopener noreferrer">
+                    <i class="bi bi-whatsapp" aria-hidden="true"></i>
+                    <span>WhatsApp +52 749 110 3026</span>
+                </a>
+                <a class="bonhomia-button bonhomia-button--outline" href="mailto:recepcion@bonhomiasuites.com">
+                    <i class="bi bi-envelope" aria-hidden="true"></i>
+                    <span>recepcion@bonhomiasuites.com</span>
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bonhomia-footer">
+        <img src="/Images/Bonhomia/logo-letterhead.svg" alt="Bonhomia Suites" />
+        <span>Miembro de Grupo Orion</span>
+        <a href="/erp">Portal OrionERP</a>
+    </footer>
+</div>
+
+@code {
+    private const string WhatsAppPhone = "527491103026";
+    private static readonly CultureInfo MoneyCulture = CultureInfo.GetCultureInfo("es-MX");
+
+    private string CheckIn { get; set; } = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    private string CheckOut { get; set; } = DateTime.Today.AddDays(9).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    private int Guests { get; set; } = 2;
+    private string SuitePreference { get; set; } = "Ayudenme a elegir";
+    private string TravelNotes { get; set; } = "Viaje de trabajo o descanso.";
+
+    private void OnCheckInChanged(ChangeEventArgs args)
+        => CheckIn = args.Value?.ToString() ?? CheckIn;
+
+    private void OnCheckOutChanged(ChangeEventArgs args)
+        => CheckOut = args.Value?.ToString() ?? CheckOut;
+
+    private string WhatsAppUrl
+    {
+        get
+        {
+            var message = string.Join(
+                Environment.NewLine,
+                "Hola Bonhomia Suites, quiero consultar disponibilidad.",
+                $"Check-in: {CheckIn}",
+                $"Check-out: {CheckOut}",
+                $"Huespedes: {Guests}",
+                $"Suite preferida: {SuitePreference}",
+                $"Plan: {TravelNotes}");
+
+            return $"https://wa.me/{WhatsAppPhone}?text={Uri.EscapeDataString(message)}";
+        }
+    }
+
+    private static string FormatPrice(decimal value)
+        => $"{value.ToString("C0", MoneyCulture)} MXN";
+
+    private static readonly SuiteOffer[] Suites =
+    [
+        new("Casa Berlin", 6, 3, "Para familias o equipos de trabajo que necesitan amplitud, privacidad y tres recamaras.", 2950m, "/Images/Bonhomia/exterior-main.jpg", "Casa completa"),
+        new("Suite Manhattan", 4, 2, "Dos recamaras y espacio comodo para compartir sin sacrificar privacidad.", 1750m, "/Images/Bonhomia/gallery-terrace-living.jpg", "Ejecutiva"),
+        new("Suite Seul", 4, 2, "Estancias largas con habitaciones independientes y un ambiente tranquilo.", 1750m, "/Images/Bonhomia/gallery-kitchen.jpg", "Larga estancia"),
+        new("Suite Moscu", 2, 1, "Practicidad y confort para parejas o viajeros de negocio.", 1250m, "/Images/Bonhomia/gallery-wine-detail.jpg", "Compacta"),
+        new("Suite Paris", 2, 1, "Un espacio acogedor para desconectar, celebrar o hacer home office.", 1250m, "/Images/Bonhomia/welcome-detail.png", "Acogedora"),
+        new("Penthouse", 2, 1, "Maxima privacidad con un toque premium y una vista mas abierta.", 2750m, "/Images/Bonhomia/hero-penthouse.jpg", "Premium"),
+        new("Casa Grecia", 10, 4, "Casa completa para convivir, descansar y viajar en grupo.", 4500m, "/Images/Bonhomia/catalog-exterior.png", "Grupos"),
+        new("Casa London", 6, 3, "Para familias y grupos que quieren una casa completa y funcional.", 3150m, "/Images/Bonhomia/exterior-vertical.jpg", "Familiar")
+    ];
+
+    private static readonly ExtraOffer[] Extras =
+    [
+        new("Early check-in", "Ingreso desde 13:00 hrs", "$200", "bi bi-alarm"),
+        new("Late check-out", "Salida de 12:00 a 14:00 hrs", "$200", "bi bi-clock-history"),
+        new("Mascota", "Admisión por estancia", "$500", "bi bi-house-heart"),
+        new("Alimentos", "Desayuno o cena por persona", "$200", "bi bi-cup-hot"),
+        new("Transporte AICM", "Sencillo hasta 3 personas", "$3,000", "bi bi-car-front"),
+        new("Lavanderia", "Servicio por kilogramo", "$80", "bi bi-basket")
+    ];
+
+    private static readonly NextFeature[] NextFeatures =
+    [
+        new("V2", "Calendario en tiempo real", "Consulta de disponibilidad conectada al calendario interno.", "bi bi-calendar3"),
+        new("V2", "Reserva online", "Flujo para crear la reservacion desde el sitio.", "bi bi-check2-square"),
+        new("V2", "Pago con PayPal", "Cobro directo con el PayPal existente de Bonhomia.", "bi bi-paypal"),
+        new("V2", "Polizas contables", "Registro de la reservacion y polizas generadas en OrionERP.", "bi bi-journal-check")
+    ];
+
+    private sealed record SuiteOffer(string Name, int Capacity, int Bedrooms, string Ideal, decimal Price, string Image, string Tag);
+
+    private sealed record ExtraOffer(string Name, string Detail, string Price, string Icon);
+
+    private sealed record NextFeature(string Status, string Title, string Description, string Icon);
+}

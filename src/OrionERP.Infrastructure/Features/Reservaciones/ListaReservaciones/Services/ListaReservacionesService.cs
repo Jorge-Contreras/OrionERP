@@ -59,7 +59,8 @@ WHERE 1=1");
 
     if (!filter.IncluirCanceladas)
     {
-      sql.Append(" AND (r.STATUS <> 'Cancelada' OR r.STATUS IS NULL)");
+      sql.Append(" AND (r.STATUS <> @CanceladaStatus OR r.STATUS IS NULL)");
+      p.Add("@CanceladaStatus", ReservationStatuses.Cancelada, DbType.String);
     }
 
     AppendListaFilters(
@@ -331,9 +332,11 @@ FETCH NEXT @Take ROWS ONLY");
     if (request.ClienteId <= 0)
       throw new ArgumentException("ClienteId must be greater than zero.", nameof(request));
 
+    var status = ReservationStatuses.NormalizeOrDefault(request.Status);
+
     const string sql = @"
-INSERT INTO dbo.RESERVATION (CLIENTE_ID, NOTES)
-VALUES (@ClienteId, @Notes);
+INSERT INTO dbo.RESERVATION (CLIENTE_ID, STATUS, NOTES)
+VALUES (@ClienteId, @Status, @Notes);
 SELECT CAST(SCOPE_IDENTITY() AS int);";
 
     await using var conn = new SqlConnection(_cs);
@@ -343,6 +346,7 @@ SELECT CAST(SCOPE_IDENTITY() AS int);";
         new
         {
           request.ClienteId,
+          Status = status,
           Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim()
         },
         cancellationToken: ct));
@@ -354,7 +358,7 @@ SELECT CAST(SCOPE_IDENTITY() AS int);";
       throw new ArgumentNullException(nameof(request));
 
     var clientName = RequireValue(request.ClientName, "El nombre del cliente es obligatorio.");
-    var status = string.IsNullOrWhiteSpace(request.Status) ? "NUEVA" : request.Status.Trim();
+    var status = ReservationStatuses.NormalizeOrDefault(request.Status);
     var recommendedBy = TrimOrNull(request.RecommendedBy);
     var reservationNotes = TrimOrNull(request.ReservationNotes);
     var taxable = request.Taxable ?? true;

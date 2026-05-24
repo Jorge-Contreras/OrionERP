@@ -405,7 +405,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
       var checkIn = availableCells.Min(cell => cell.RoomDate).Date;
       var checkOut = availableCells.Max(cell => cell.RoomDate).Date.AddDays(1);
-      var status = "NUEVA";
+      var status = ReservationStatuses.Cotizacion;
       var notes = BuildCalendarReservationNotes(availableCells.Count, skippedCount);
       var totals = ReservacionTotalsCalculator.Calculate(
         checkIn,
@@ -418,6 +418,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
       var reservationId = await ReservacionesService.CreateReservationAsync(new ListaReservacionCreateRequest
       {
         ClienteId = cliente.Id,
+        Status = status,
         Notes = notes
       });
 

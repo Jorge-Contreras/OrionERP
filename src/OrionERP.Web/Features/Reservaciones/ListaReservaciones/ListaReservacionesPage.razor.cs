@@ -164,10 +164,11 @@ public partial class ListaReservacionesPage : ComponentBase, IDisposable
 
       var id = await ReservacionesService.CreateReservationAsync(new ListaReservacionCreateRequest
       {
-        ClienteId = cliente.Id
+        ClienteId = cliente.Id,
+        Status = ReservationStatuses.Cotizacion
       });
 
-      UiMessages.ShowSuccess($"Reservación {id} creada con cliente {cliente.Nombre}.");
+      UiMessages.ShowSuccess($"Cotización {id} creada con cliente {cliente.Nombre}.");
       Nav.NavigateTo($"/reservaciones/{id}");
     }
     catch (Exception ex)

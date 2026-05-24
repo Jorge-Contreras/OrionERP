@@ -135,7 +135,7 @@ public partial class ReservacionPage : ComponentBase
   internal decimal AirbnbHostServiceFeeRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.HostServiceFeeRate);
   internal decimal AirbnbHostServiceFeeIvaRatePercentInput { get; set; } = RateToPercent(AirbnbReservationDefaults.HostServiceFeeIvaRate);
 
-  internal IReadOnlyList<string> StatusOptions { get; } = new[] { "NUEVA", "PAGADA", "Cancelada" };
+  internal IReadOnlyList<string> StatusOptions { get; } = ReservationStatuses.EditableOptions;
   internal IReadOnlyList<(string Value, string Label)> SuiteActionOptions { get; } = new[]
   {
     (SuiteActionPrice, "Precio"),

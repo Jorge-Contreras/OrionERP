@@ -118,8 +118,10 @@ BEGIN
         CASE
             WHEN rc.ID IS NULL THEN 'missing'
             WHEN ISNULL(rc.IS_LOCKED, 0) = 0 THEN 'available'
-            WHEN UPPER(LTRIM(RTRIM(ISNULL(rc.LOCKED_BY, '')))) COLLATE Latin1_General_100_CI_AI = N'COTIZACION' THEN 'soft_hold'
             WHEN TRY_CAST(rc.LOCK_DESCRIPTION AS int) IS NOT NULL AND r.ID IS NULL THEN 'orphan'
+            WHEN TRY_CAST(rc.LOCK_DESCRIPTION AS int) IS NOT NULL
+              AND r.ID IS NOT NULL
+              AND UPPER(LTRIM(RTRIM(ISNULL(r.STATUS, '')))) COLLATE Latin1_General_100_CI_AI = N'COTIZACION' THEN 'soft_hold'
             WHEN TRY_CAST(rc.LOCK_DESCRIPTION AS int) IS NOT NULL AND r.ID IS NOT NULL THEN 'reserved'
             ELSE 'blocked'
         END AS StateCode,

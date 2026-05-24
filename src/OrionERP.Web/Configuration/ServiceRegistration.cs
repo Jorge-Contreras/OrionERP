@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity.UI.Services;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Arrendadores;
 using OrionERP.Application.Features.Auth.AdminPortal;
+using OrionERP.Application.Features.Bonhomia.PublicBooking;
 using OrionERP.Application.Features.CapitalHumano;
 using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts;
 using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
@@ -17,6 +18,7 @@ using OrionERP.Infrastructure.Common;
 using OrionERP.Infrastructure.Features.Arrendadores;
 using OrionERP.Infrastructure.Features.Ajustes;
 using OrionERP.Infrastructure.Features.Auth.AdminPortal;
+using OrionERP.Infrastructure.Features.Bonhomia.PublicBooking;
 using OrionERP.Infrastructure.Features.CapitalHumano;
 using OrionERP.Infrastructure.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Infrastructure.Features.Cfdi.Facturama;
@@ -98,6 +100,8 @@ public static class ServiceRegistration
     services.AddScoped<ReservacionesIOpenClawReservationsService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
     services.AddSingleton<IOpenClawReservationPdfTokenService, OpenClawReservationPdfTokenService>();
+    services.AddScoped<IBonhomiaPublicBookingService, BonhomiaPublicBookingService>();
+    services.AddHttpClient<IBonhomiaPayPalClient, BonhomiaPayPalClient>();
 
     services.AddScoped<ISatMetadataIngestService, SatMetadataIngestService>();
     services.AddScoped<IArrendadoresEstadoCuentaService, ArrendadoresEstadoCuentaService>();
@@ -156,6 +160,8 @@ public static class ServiceRegistration
     services.AddScoped<ReservacionesIOpenClawReservationsService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
     services.AddSingleton<IOpenClawReservationPdfTokenService, OpenClawReservationPdfTokenService>();
+    services.AddScoped<IBonhomiaPublicBookingService, BonhomiaPublicBookingService>();
+    services.AddHttpClient<IBonhomiaPayPalClient, BonhomiaPayPalClient>();
 
     return services;
   }

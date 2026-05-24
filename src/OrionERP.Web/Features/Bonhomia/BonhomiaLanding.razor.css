@@ -23,6 +23,10 @@
   box-sizing: border-box;
 }
 
+.bonhomia-site [id] {
+  scroll-margin-top: 6rem;
+}
+
 .bonhomia-nav {
   position: fixed;
   top: 0;
@@ -331,6 +335,560 @@
   min-height: 3.1rem;
 }
 
+.bonhomia-checkout {
+  align-items: stretch;
+}
+
+.bonhomia-booking__intro p {
+  margin: 0.75rem 0 0;
+  color: var(--bonhomia-muted);
+  line-height: 1.55;
+}
+
+.bonhomia-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 4rem;
+  color: var(--bonhomia-teal-dark);
+  font-weight: 800;
+}
+
+.bonhomia-loading i {
+  animation: bonhomia-spin 0.9s linear infinite;
+}
+
+@keyframes bonhomia-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.bonhomia-wizard {
+  display: grid;
+  gap: 1rem;
+}
+
+.bonhomia-wizard__steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.bonhomia-wizard__step button {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: 0.2rem 0.6rem;
+  width: 100%;
+  min-height: 4.6rem;
+  padding: 0.7rem;
+  border: 1px solid var(--bonhomia-border);
+  border-radius: 8px;
+  background: #fbfaf6;
+  color: var(--bonhomia-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.bonhomia-wizard__step button:disabled {
+  cursor: default;
+}
+
+.bonhomia-wizard__step span {
+  grid-row: span 2;
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: rgba(15, 76, 92, 0.12);
+  color: var(--bonhomia-teal-dark);
+  font-weight: 900;
+}
+
+.bonhomia-wizard__step strong {
+  align-self: end;
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
+.bonhomia-wizard__step small {
+  color: var(--bonhomia-muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.bonhomia-wizard__step--active button {
+  border-color: var(--bonhomia-gold);
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(23, 38, 34, 0.11);
+}
+
+.bonhomia-wizard__step--active span,
+.bonhomia-wizard__step--complete span {
+  background: var(--bonhomia-teal);
+  color: #fff;
+}
+
+.bonhomia-wizard__step--locked button {
+  opacity: 0.62;
+}
+
+.bonhomia-wizard__panel {
+  min-height: 24rem;
+}
+
+.bonhomia-wizard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+.bonhomia-wizard__actions > span {
+  min-width: 1px;
+}
+
+.bonhomia-review-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.bonhomia-review-card {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.9rem;
+  border: 1px solid var(--bonhomia-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.bonhomia-review-card span {
+  color: var(--bonhomia-muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bonhomia-review-card strong {
+  color: var(--bonhomia-ink);
+  font-size: 1.15rem;
+}
+
+.bonhomia-review-card small {
+  color: var(--bonhomia-muted);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.bonhomia-payment-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 0.46fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.bonhomia-checkout__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 0.42fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.bonhomia-checkout__workspace,
+.bonhomia-step,
+.bonhomia-summary__card {
+  display: grid;
+  gap: 1rem;
+}
+
+.bonhomia-step {
+  padding: 1rem;
+  border: 1px solid var(--bonhomia-border);
+  border-radius: 8px;
+  background: #fbfaf6;
+}
+
+.bonhomia-step__header {
+  display: grid;
+  grid-template-columns: 2.4rem minmax(0, 1fr);
+  gap: 0.8rem;
+  align-items: start;
+}
+
+.bonhomia-step__header > span {
+  display: inline-grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  background: var(--bonhomia-teal);
+  color: #fff;
+  font-weight: 900;
+}
+
+.bonhomia-step h3,
+.bonhomia-summary h3,
+.bonhomia-month h4 {
+  margin: 0;
+  color: var(--bonhomia-ink);
+  font-size: 1.1rem;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.bonhomia-step p,
+.bonhomia-summary__empty,
+.bonhomia-paypal-gate p,
+.bonhomia-summary__expires {
+  margin: 0.25rem 0 0;
+  color: var(--bonhomia-muted);
+  line-height: 1.5;
+}
+
+.bonhomia-date-row,
+.bonhomia-customer-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.bonhomia-date-row label,
+.bonhomia-customer-form label {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  color: var(--bonhomia-muted);
+  font-size: 0.74rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.bonhomia-date-row input,
+.bonhomia-customer-form input,
+.bonhomia-extra-selector select {
+  width: 100%;
+  min-height: 2.95rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--bonhomia-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--bonhomia-ink);
+  font: inherit;
+  font-size: 0.98rem;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.bonhomia-room-picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.bonhomia-room-option {
+  display: grid;
+  gap: 0.4rem;
+  min-height: 13.5rem;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--bonhomia-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--bonhomia-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.bonhomia-room-option:hover,
+.bonhomia-room-option:focus-visible,
+.bonhomia-room-option--selected {
+  border-color: var(--bonhomia-gold);
+  box-shadow: 0 12px 26px rgba(23, 38, 34, 0.12);
+}
+
+.bonhomia-room-option:focus-visible {
+  outline: 3px solid rgba(201, 157, 74, 0.38);
+  outline-offset: 2px;
+}
+
+.bonhomia-room-option img {
+  width: 100%;
+  height: 6.7rem;
+  object-fit: cover;
+  background: #e8e1d0;
+}
+
+.bonhomia-room-option span,
+.bonhomia-room-option strong,
+.bonhomia-room-option small {
+  margin: 0 0.75rem;
+}
+
+.bonhomia-room-option span {
+  color: var(--bonhomia-clay);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bonhomia-room-option strong {
+  font-size: 0.98rem;
+  line-height: 1.2;
+}
+
+.bonhomia-room-option small {
+  margin-bottom: 0.75rem;
+  color: var(--bonhomia-muted);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.bonhomia-calendar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.bonhomia-month {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.85rem;
+  border: 1px solid var(--bonhomia-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.bonhomia-weekdays,
+.bonhomia-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.28rem;
+}
+
+.bonhomia-weekdays span {
+  color: var(--bonhomia-muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.bonhomia-day {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 850;
+}
+
+button.bonhomia-day {
+  cursor: pointer;
+}
+
+.bonhomia-day--available {
+  background: #eff8f1;
+  color: var(--bonhomia-teal-dark);
+}
+
+.bonhomia-day--unavailable,
+.bonhomia-day--past {
+  background: #f1ede2;
+  color: #9a958a;
+}
+
+.bonhomia-day--start,
+.bonhomia-day--end {
+  background: var(--bonhomia-teal);
+  color: #fff;
+}
+
+.bonhomia-day--range {
+  background: rgba(15, 76, 92, 0.16);
+  color: var(--bonhomia-teal-dark);
+}
+
+.bonhomia-extra-selector {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.bonhomia-extra-selector article {
+  display: grid;
+  grid-template-columns: 2.6rem minmax(0, 1fr) 5rem;
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.8rem;
+  border: 1px solid var(--bonhomia-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.bonhomia-extra-selector i {
+  display: inline-grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  background: rgba(15, 76, 92, 0.1);
+  color: var(--bonhomia-teal);
+  font-size: 1.25rem;
+}
+
+.bonhomia-extra-selector strong,
+.bonhomia-extra-selector span,
+.bonhomia-extra-selector small {
+  display: block;
+}
+
+.bonhomia-extra-selector strong {
+  color: var(--bonhomia-ink);
+}
+
+.bonhomia-extra-selector span {
+  color: var(--bonhomia-muted);
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.bonhomia-extra-selector small {
+  color: var(--bonhomia-clay);
+  font-weight: 900;
+}
+
+.bonhomia-quote-button {
+  justify-self: start;
+}
+
+.bonhomia-policy-check {
+  grid-column: 1 / -1;
+  display: flex !important;
+  align-items: center;
+  gap: 0.55rem !important;
+  color: var(--bonhomia-ink) !important;
+  text-transform: none !important;
+}
+
+.bonhomia-policy-check input {
+  width: 1.1rem;
+  min-height: 1.1rem;
+}
+
+.bonhomia-summary {
+  position: sticky;
+  top: 6rem;
+}
+
+.bonhomia-summary__card {
+  padding: 1rem;
+  border: 1px solid var(--bonhomia-border);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 44px rgba(23, 38, 34, 0.12);
+}
+
+.bonhomia-summary__card img {
+  width: 100%;
+  height: 11rem;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.bonhomia-summary__title {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.bonhomia-summary__title strong {
+  color: var(--bonhomia-ink);
+  font-size: 1.15rem;
+}
+
+.bonhomia-summary__title span {
+  color: var(--bonhomia-muted);
+  font-weight: 750;
+}
+
+.bonhomia-summary__lines,
+.bonhomia-summary__totals {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.bonhomia-summary__lines div,
+.bonhomia-summary__totals div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--bonhomia-muted);
+}
+
+.bonhomia-summary__lines strong,
+.bonhomia-summary__totals strong {
+  color: var(--bonhomia-ink);
+  white-space: nowrap;
+}
+
+.bonhomia-summary__grand {
+  align-items: center;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--bonhomia-border);
+  color: var(--bonhomia-ink) !important;
+  font-size: 1.12rem;
+  font-weight: 900;
+}
+
+.bonhomia-alert {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.8rem;
+  border-radius: 8px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.bonhomia-alert a {
+  color: inherit;
+}
+
+.bonhomia-alert--info {
+  background: #e8f5ff;
+  color: #084c75;
+}
+
+.bonhomia-alert--success {
+  background: #e7f7ed;
+  color: #155934;
+}
+
+.bonhomia-alert--warning {
+  background: #fff5d8;
+  color: #6a4a06;
+}
+
+.bonhomia-alert--error {
+  background: #ffe8e0;
+  color: #842d16;
+}
+
+.bonhomia-paypal-container {
+  min-height: 3.5rem;
+}
+
+.bonhomia-summary__whatsapp {
+  width: 100%;
+}
+
 .bonhomia-section {
   padding: 5rem 0 0;
 }
@@ -616,6 +1174,22 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .bonhomia-checkout__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bonhomia-payment-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bonhomia-summary {
+    position: static;
+  }
+
+  .bonhomia-room-picker {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .bonhomia-booking__form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -657,7 +1231,10 @@
   .bonhomia-intro__media,
   .bonhomia-gallery__grid,
   .bonhomia-extra-grid,
-  .bonhomia-next__grid {
+  .bonhomia-next__grid,
+  .bonhomia-calendar,
+  .bonhomia-extra-selector,
+  .bonhomia-review-grid {
     grid-template-columns: 1fr;
   }
 
@@ -731,8 +1308,38 @@
   }
 
   .bonhomia-booking__form,
-  .bonhomia-suite-grid {
+  .bonhomia-suite-grid,
+  .bonhomia-date-row,
+  .bonhomia-customer-form,
+  .bonhomia-room-picker,
+  .bonhomia-wizard__steps {
     grid-template-columns: 1fr;
+  }
+
+  .bonhomia-step,
+  .bonhomia-summary__card {
+    padding: 0.85rem;
+  }
+
+  .bonhomia-wizard__step button {
+    min-height: 3.8rem;
+  }
+
+  .bonhomia-wizard__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .bonhomia-wizard__actions > span {
+    display: none;
+  }
+
+  .bonhomia-extra-selector article {
+    grid-template-columns: 2.6rem minmax(0, 1fr);
+  }
+
+  .bonhomia-extra-selector select {
+    grid-column: 1 / -1;
   }
 
   .bonhomia-booking__notes,

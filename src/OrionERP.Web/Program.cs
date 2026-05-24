@@ -17,12 +17,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using OfficeOpenXml;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Bonhomia.PublicBooking;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using OrionERP.Infrastructure.Auth;
 using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
 using OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 using OrionERP.Web.Configuration;
 using OrionERP.Web.Data;
+using OrionERP.Web.Features.Bonhomia.Checkout;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
 using OrionERP.Web.Features.Reservaciones.OpenClaw;
 using OrionERP.Web.Identity;
@@ -213,6 +215,7 @@ static bool IsApiOrBlazorCircuitRequest(HttpRequest request)
 builder.Services.AddScoped<IUserRfcState, UserRfcState>();
 builder.Services.AddScoped<ICurrentRfcAccessor, UserRfcStateAccessor>();
 builder.Services.AddScoped<ProtectedLocalStorage>();
+builder.Services.AddScoped<ProtectedSessionStorage>();
 builder.Services.AddScoped<IRfcContext, RfcContext>();
 builder.Services.AddScoped<IAuthorizationHandler, RoleForRfcHandler>();
 builder.Services.AddAuthorization(options =>
@@ -230,11 +233,13 @@ builder.Services.AddServerSideBlazor(options =>
 builder.Services.Configure<OpenClawApiOptions>(builder.Configuration.GetSection(OpenClawApiOptions.SectionName));
 builder.Services.Configure<GraphMailOptions>(builder.Configuration.GetSection(GraphMailOptions.SectionName));
 builder.Services.Configure<BonhomiaGraphCalendarSyncOptions>(builder.Configuration.GetSection(BonhomiaGraphCalendarSyncOptions.SectionName));
+builder.Services.Configure<BonhomiaCheckoutOptions>(builder.Configuration.GetSection(BonhomiaCheckoutOptions.SectionName));
 
 builder.Services.AddSingleton<WeatherForecastService>();
 builder.Services.AddCfdiCargarXmlSat();
 builder.Services.AddOrionServices();
 builder.Services.AddScoped<IUiMessageService, UiMessageService>();
+builder.Services.AddSingleton<IBonhomiaQuoteTokenService, BonhomiaQuoteTokenService>();
 
 builder.Host.UseWindowsService();
 
@@ -291,6 +296,7 @@ app.UseAuthorization();
 app.MapRazorPages();
 app.MapBlazorHub();
 app.MapOpenClawReservationsApi();
+app.MapBonhomiaCheckoutApi();
 app.MapFallbackToPage("/_Host");
 
 app.MapGet("/auth/logout", async (HttpContext ctx) =>

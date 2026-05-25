@@ -328,6 +328,9 @@ VALUES
     }
   }
 
+  public Task<ReservacionDetailDto?> GetReservationDetailAsync(int reservationId, CancellationToken ct = default)
+    => _reservacionesService.GetReservacionDetailAsync(reservationId, ct);
+
   private async Task<IReadOnlyList<int>> GetRoomCalendarIdsForQuoteAsync(BonhomiaQuoteDto quote, CancellationToken ct)
   {
     const string sql = """

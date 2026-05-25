@@ -217,6 +217,14 @@
       if (element) {
         element.scrollIntoView({ behavior: "smooth", block: "start" });
       }
+    },
+
+    focusElement(elementId) {
+      const element = document.getElementById(elementId);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
+        element.focus({ preventScroll: true });
+      }
     }
   };
 })();

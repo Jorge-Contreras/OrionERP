@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
+using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
 namespace OrionERP.Application.Features.Bonhomia.PublicBooking;
 
@@ -22,5 +23,9 @@ public interface IBonhomiaPublicBookingService
     BonhomiaQuoteDto quote,
     BonhomiaCustomerInfo customer,
     BonhomiaPayPalCaptureResult payment,
+    CancellationToken ct = default);
+
+  Task<ReservacionDetailDto?> GetReservationDetailAsync(
+    int reservationId,
     CancellationToken ct = default);
 }

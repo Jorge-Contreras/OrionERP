@@ -1,12 +1,15 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Web.Features.Bonhomia.Checkout;
+using OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 
 namespace OrionERP.IntegrationTests.Reservaciones;
 
@@ -121,9 +124,57 @@ public class BonhomiaCheckoutApiTests
     Assert.NotNull(payload);
     Assert.Equal(49210, payload!.ReservationId);
     Assert.Equal(8821, payload.TransaccionId);
+    Assert.Equal("Cliente Web", payload.ClientName);
+    Assert.Equal("Suite Paris", payload.RoomName);
+    Assert.Equal(new DateOnly(2026, 6, 10), payload.CheckIn);
+    Assert.Equal(new DateOnly(2026, 6, 12), payload.CheckOut);
+    Assert.Equal(2, payload.Nights);
+    Assert.Equal(2, payload.Guests);
+    Assert.Equal("PAYPAL-1", payload.PayPalOrderId);
+    Assert.Equal("CAPTURE-1", payload.PayPalCaptureId);
+    Assert.Equal("COMPLETED", payload.PayPalStatus);
+    Assert.Equal("payer@example.com", payload.PayPalPayerEmail);
+    Assert.Contains("/api/bonhomia/checkout/reservations/49210/pdf?token=", payload.PdfUrl, StringComparison.Ordinal);
     Assert.Equal(1, payPal.CaptureCount);
     Assert.Equal("cap-attempt-confirm-123", payPal.LastCaptureIdempotencyKey);
     Assert.Equal(1, booking.PaidReservationCount);
+  }
+
+  [Fact]
+  public async Task ConfirmOrder_UsesConfiguredPublicBaseUrl_ForReservationPdf()
+  {
+    var quote = CreateQuote(1250m);
+    var booking = new FakeBookingService
+    {
+      Quote = quote,
+      PaidReservation = new BonhomiaPaidReservationResult
+      {
+        ReservationId = 49210,
+        TransaccionId = 8821,
+        ClientName = "Cliente Web",
+        Total = quote.Total
+      }
+    };
+
+    await using var app = await CreateAppAsync(
+      bookingService: booking,
+      configureOptions: options => options.PublicBaseUrl = "https://Bonhomia.Orion.land");
+    var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
+    var client = app.GetTestClient();
+
+    var response = await client.PostAsJsonAsync("/api/bonhomia/checkout/orders/PAYPAL-1", new BonhomiaConfirmPayPalOrderRequest
+    {
+      QuoteToken = tokenService.CreateToken(quote),
+      QuoteFingerprint = quote.Fingerprint,
+      PaymentAttemptId = "attempt-confirm-123",
+      Customer = CreateCustomer()
+    });
+
+    response.EnsureSuccessStatusCode();
+    var payload = await response.Content.ReadFromJsonAsync<BonhomiaConfirmPayPalOrderResponse>();
+
+    Assert.NotNull(payload);
+    Assert.StartsWith("https://bonhomia.orion.land/api/bonhomia/checkout/reservations/49210/pdf?token=", payload!.PdfUrl, StringComparison.Ordinal);
   }
 
   [Fact]
@@ -201,9 +252,55 @@ public class BonhomiaCheckoutApiTests
     Assert.Equal(0, booking.PaidReservationCount);
   }
 
+  [Fact]
+  public async Task GetReservationPdf_ReturnsUnauthorized_WhenTokenIsInvalid()
+  {
+    await using var app = await CreateAppAsync();
+    var client = app.GetTestClient();
+
+    var response = await client.GetAsync("/api/bonhomia/checkout/reservations/49210/pdf?token=invalido");
+
+    Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+  }
+
+  [Fact]
+  public async Task GetReservationPdf_ReturnsPdf_WhenTokenIsValid()
+  {
+    var booking = new FakeBookingService
+    {
+      Quote = CreateQuote(1250m),
+      ReservationDetail = new ReservacionDetailDto
+      {
+        Id = 49210,
+        Cliente = "Cliente Web",
+        CheckIn = new DateTime(2026, 6, 10),
+        CheckOut = new DateTime(2026, 6, 12),
+        Status = "PAGADA",
+        Taxable = true,
+        TotalSuites = 2500m,
+        SubTotal = 2500m,
+        Tax = 400m,
+        TotalPrice = 2900m,
+        Pagado = 2900m,
+        PorPagar = 0m
+      }
+    };
+    await using var app = await CreateAppAsync(bookingService: booking);
+    var pdfTokenService = app.Services.GetRequiredService<IBonhomiaReservationPdfTokenService>();
+    var client = app.GetTestClient();
+
+    var response = await client.GetAsync($"/api/bonhomia/checkout/reservations/49210/pdf?token={pdfTokenService.CreateToken(49210)}");
+
+    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    Assert.Equal("application/pdf", response.Content.Headers.ContentType?.MediaType);
+    var bytes = await response.Content.ReadAsByteArrayAsync();
+    Assert.True(bytes.AsSpan().StartsWith("%PDF"u8), "The API should return a PDF payload.");
+  }
+
   private static async Task<WebApplication> CreateAppAsync(
     FakeBookingService? bookingService = null,
-    FakePayPalClient? payPalClient = null)
+    FakePayPalClient? payPalClient = null,
+    Action<BonhomiaCheckoutOptions>? configureOptions = null)
   {
     var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     {
@@ -213,9 +310,17 @@ public class BonhomiaCheckoutApiTests
     builder.WebHost.UseTestServer();
     builder.Services.AddRouting();
     builder.Services.AddDataProtection();
+    builder.Services.Configure<BonhomiaCheckoutOptions>(options =>
+    {
+      options.PdfTokenLifetimeMinutes = 30;
+      configureOptions?.Invoke(options);
+    });
     builder.Services.AddSingleton<IBonhomiaQuoteTokenService, BonhomiaQuoteTokenService>();
+    builder.Services.AddSingleton<IBonhomiaReservationPdfTokenService, BonhomiaReservationPdfTokenService>();
     builder.Services.AddSingleton<IBonhomiaPublicBookingService>(bookingService ?? new FakeBookingService { Quote = CreateQuote(1250m) });
     builder.Services.AddSingleton<IBonhomiaPayPalClient>(payPalClient ?? new FakePayPalClient());
+    builder.Services.AddSingleton<IReservacionPdfDocumentFactory, FakeReservacionPdfDocumentFactory>();
+    builder.Services.AddSingleton<IReservacionPdfService, FakeReservacionPdfService>();
 
     var app = builder.Build();
     app.MapBonhomiaCheckoutApi();
@@ -266,6 +371,7 @@ public class BonhomiaCheckoutApiTests
     public BonhomiaPublicBookingException? CreatePaidReservationException { get; set; }
     public Exception? CreatePaidReservationUnexpectedException { get; set; }
     public BonhomiaPaidReservationResult? PaidReservation { get; set; }
+    public ReservacionDetailDto? ReservationDetail { get; set; }
     public int PaidReservationCount { get; private set; }
 
     public Task<BonhomiaAvailabilityDto> GetAvailabilityAsync(DateOnly startDate, DateOnly endDateExclusive, CancellationToken ct = default)
@@ -309,6 +415,9 @@ public class BonhomiaCheckoutApiTests
         Total = quote.Total
       });
     }
+
+    public Task<ReservacionDetailDto?> GetReservationDetailAsync(int reservationId, CancellationToken ct = default)
+      => Task.FromResult(ReservationDetail);
   }
 
   private sealed class FakePayPalClient : IBonhomiaPayPalClient
@@ -331,6 +440,7 @@ public class BonhomiaCheckoutApiTests
       return Task.FromResult(CaptureResult ?? new BonhomiaPayPalCaptureResult
       {
         OrderId = orderId,
+        OrderStatus = "COMPLETED",
         CaptureId = "CAPTURE-1",
         Status = "COMPLETED",
         Amount = CreateQuote(1250m).Total,
@@ -338,5 +448,49 @@ public class BonhomiaCheckoutApiTests
         PayerEmail = "payer@example.com"
       });
     }
+  }
+
+  private sealed class FakeReservacionPdfDocumentFactory : IReservacionPdfDocumentFactory
+  {
+    public ReservacionPdfDocumentModel CreateFromDetail(ReservacionDetailDto detail)
+      => CreateModel(detail.Id, detail.Cliente);
+
+    public ReservacionPdfDocumentModel CreateFromSnapshot(ReservacionPdfSnapshot snapshot)
+      => CreateModel(snapshot.ReservationId, snapshot.Cliente);
+
+    private static ReservacionPdfDocumentModel CreateModel(int reservationId, string cliente)
+      => new(
+        reservationId,
+        cliente,
+        "PAGADA",
+        "10/06/2026",
+        "12/06/2026",
+        "2",
+        "Bonhomia Web",
+        "Si",
+        string.Empty,
+        DateTime.Now.ToString("f"),
+        "$2,500.00",
+        string.Empty,
+        string.Empty,
+        "$0.00",
+        "$2,500.00",
+        "$400.00",
+        "$0.00",
+        "$2,900.00",
+        "$2,900.00",
+        "$0.00",
+        Array.Empty<ReservacionPdfSuiteRow>(),
+        Array.Empty<ReservacionPdfExtraRow>(),
+        Array.Empty<ReservacionPdfPagoRow>(),
+        Array.Empty<ReservacionPdfAttachmentRow>());
+  }
+
+  private sealed class FakeReservacionPdfService : IReservacionPdfService
+  {
+    private static readonly byte[] PdfBytes = Encoding.ASCII.GetBytes("%PDF-1.4\n%Fake Bonhomia\n");
+
+    public byte[] Generate(ReservacionPdfDocumentModel model)
+      => PdfBytes;
   }
 }

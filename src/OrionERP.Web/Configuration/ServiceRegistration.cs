@@ -51,6 +51,7 @@ using OrionERP.Infrastructure.Features.OrdenesTrabajo;
 using OrionERP.Infrastructure.Features.Reservaciones.Cfdi;
 using OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 using OrionERP.Web.Features.Arrendadores;
+using OrionERP.Web.Features.Bonhomia.Checkout;
 using OrionERP.Web.Features.Cfdi.HtmlCFDI;
 using OrionERP.Web.Features.Logistica.Purchasing;
 using OrionERP.Web.Features.ReportesFinancieros.SaludEmpresa;
@@ -100,6 +101,7 @@ public static class ServiceRegistration
     services.AddScoped<ReservacionesIOpenClawReservationsService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
     services.AddSingleton<IOpenClawReservationPdfTokenService, OpenClawReservationPdfTokenService>();
+    services.AddSingleton<IBonhomiaReservationPdfTokenService, BonhomiaReservationPdfTokenService>();
     services.AddScoped<IBonhomiaPublicBookingService, BonhomiaPublicBookingService>();
     services.AddHttpClient<IBonhomiaPayPalClient, BonhomiaPayPalClient>();
 
@@ -160,6 +162,7 @@ public static class ServiceRegistration
     services.AddScoped<ReservacionesIOpenClawReservationsService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
     services.AddSingleton<IOpenClawReservationPdfTokenService, OpenClawReservationPdfTokenService>();
+    services.AddSingleton<IBonhomiaReservationPdfTokenService, BonhomiaReservationPdfTokenService>();
     services.AddScoped<IBonhomiaPublicBookingService, BonhomiaPublicBookingService>();
     services.AddHttpClient<IBonhomiaPayPalClient, BonhomiaPayPalClient>();
 

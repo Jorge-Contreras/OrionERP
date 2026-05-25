@@ -9,8 +9,10 @@ public sealed class BonhomiaCheckoutOptions
   public string PayPalClientId { get; set; } = string.Empty;
   public string PayPalClientSecret { get; set; } = string.Empty;
   public int QuoteTokenLifetimeMinutes { get; set; } = 30;
+  public int PdfTokenLifetimeMinutes { get; set; } = 30;
   public int AvailabilityDays { get; set; } = 60;
   public int MaxStayNights { get; set; } = 60;
+  public string? PublicBaseUrl { get; set; }
   public string AccountingRfc { get; set; } = "OHM191112Q26";
   public int AccountingCategoryId { get; set; } = 19;
   public string AccountingPaymentForm { get; set; } = "03";

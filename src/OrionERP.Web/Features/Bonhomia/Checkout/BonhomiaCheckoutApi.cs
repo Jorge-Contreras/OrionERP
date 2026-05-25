@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 
 namespace OrionERP.Web.Features.Bonhomia.Checkout;
 
@@ -13,6 +14,7 @@ public static class BonhomiaCheckoutApi
   {
     endpoints.MapPost("/api/bonhomia/checkout/orders", CreatePayPalOrderAsync).AllowAnonymous();
     endpoints.MapPost("/api/bonhomia/checkout/orders/{orderId}", ConfirmPayPalOrderAsync).AllowAnonymous();
+    endpoints.MapGet("/api/bonhomia/checkout/reservations/{reservationId:int}/pdf", DownloadReservationPdfAsync).AllowAnonymous();
     return endpoints;
   }
 
@@ -58,7 +60,10 @@ public static class BonhomiaCheckoutApi
     IBonhomiaQuoteTokenService quoteTokenService,
     IBonhomiaPublicBookingService bookingService,
     IBonhomiaPayPalClient payPalClient,
+    IBonhomiaReservationPdfTokenService pdfTokenService,
+    IOptions<BonhomiaCheckoutOptions> options,
     ILoggerFactory loggerFactory,
+    HttpContext httpContext,
     CancellationToken ct)
   {
     if (string.IsNullOrWhiteSpace(orderId))
@@ -93,7 +98,36 @@ public static class BonhomiaCheckoutApi
         ReservationId = result.ReservationId,
         TransaccionId = result.TransaccionId,
         ClientName = result.ClientName,
-        Total = result.Total
+        CustomerEmail = request.Customer.Email.Trim(),
+        CustomerPhone = request.Customer.Phone.Trim(),
+        RoomName = liveQuote.RoomName,
+        RoomImage = liveQuote.RoomImage,
+        CheckIn = liveQuote.CheckIn,
+        CheckOut = liveQuote.CheckOut,
+        Nights = liveQuote.Nights,
+        Guests = liveQuote.Guests,
+        SuiteSubtotal = liveQuote.SuiteSubtotal,
+        ExtrasSubtotal = liveQuote.ExtrasSubtotal,
+        SubTotal = liveQuote.SubTotal,
+        Tax = liveQuote.Tax,
+        Ish = liveQuote.Ish,
+        Total = result.Total,
+        Currency = liveQuote.Currency,
+        Lines = liveQuote.Lines,
+        PayPalOrderId = string.IsNullOrWhiteSpace(capture.OrderId) ? orderId.Trim() : capture.OrderId,
+        PayPalCaptureId = capture.CaptureId,
+        PayPalOrderStatus = capture.OrderStatus,
+        PayPalStatus = capture.Status,
+        PayPalStatusReason = capture.StatusReason,
+        PayPalPayerEmail = capture.PayerEmail,
+        PayPalAmount = capture.Amount,
+        PayPalCurrency = capture.Currency,
+        ConfirmedAtUtc = DateTimeOffset.UtcNow,
+        PdfUrl = BuildReservationPdfUrl(
+          httpContext,
+          options.Value,
+          result.ReservationId,
+          pdfTokenService.CreateToken(result.ReservationId))
       });
     }
     catch (BonhomiaPublicBookingException ex)
@@ -115,6 +149,33 @@ public static class BonhomiaCheckoutApi
           ["errorCode"] = "checkout_confirm_failed"
         });
     }
+  }
+
+  private static async Task<IResult> DownloadReservationPdfAsync(
+    int reservationId,
+    string? token,
+    IBonhomiaReservationPdfTokenService pdfTokenService,
+    IBonhomiaPublicBookingService bookingService,
+    IReservacionPdfDocumentFactory pdfDocumentFactory,
+    IReservacionPdfService pdfService,
+    CancellationToken ct)
+  {
+    if (!pdfTokenService.TryValidate(reservationId, token, out var errorMessage))
+    {
+      return Results.Problem(title: "Acceso no autorizado", detail: errorMessage, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var detail = await bookingService.GetReservationDetailAsync(reservationId, ct);
+    if (detail is null)
+    {
+      return Results.NotFound();
+    }
+
+    var document = pdfDocumentFactory.CreateFromDetail(detail);
+    var bytes = pdfService.Generate(document);
+    var fileName = $"bonhomia-reservacion-{reservationId:D6}.pdf";
+
+    return Results.File(bytes, "application/pdf", fileName);
   }
 
   private static bool TryReadQuote(
@@ -185,6 +246,19 @@ public static class BonhomiaCheckoutApi
     var requestId = $"{prefix}-{safe}";
     return requestId.Length <= 38 ? requestId : requestId[..38];
   }
+
+  private static string BuildReservationPdfUrl(HttpContext httpContext, BonhomiaCheckoutOptions options, int reservationId, string token)
+  {
+    var path = $"/api/bonhomia/checkout/reservations/{reservationId}/pdf?token={Uri.EscapeDataString(token)}";
+    var configuredBaseUrl = options.PublicBaseUrl?.Trim();
+    if (!string.IsNullOrWhiteSpace(configuredBaseUrl)
+        && Uri.TryCreate(configuredBaseUrl, UriKind.Absolute, out var baseUri))
+    {
+      return new Uri(baseUri, path).ToString();
+    }
+
+    return $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{path}";
+  }
 }
 
 public sealed class BonhomiaCreatePayPalOrderRequest
@@ -213,5 +287,30 @@ public sealed class BonhomiaConfirmPayPalOrderResponse
   public int ReservationId { get; set; }
   public int TransaccionId { get; set; }
   public string ClientName { get; set; } = string.Empty;
+  public string CustomerEmail { get; set; } = string.Empty;
+  public string CustomerPhone { get; set; } = string.Empty;
+  public string RoomName { get; set; } = string.Empty;
+  public string RoomImage { get; set; } = string.Empty;
+  public DateOnly CheckIn { get; set; }
+  public DateOnly CheckOut { get; set; }
+  public int Nights { get; set; }
+  public int Guests { get; set; }
+  public decimal SuiteSubtotal { get; set; }
+  public decimal ExtrasSubtotal { get; set; }
+  public decimal SubTotal { get; set; }
+  public decimal Tax { get; set; }
+  public decimal Ish { get; set; }
   public decimal Total { get; set; }
+  public string Currency { get; set; } = "MXN";
+  public IReadOnlyList<BonhomiaQuoteLineDto> Lines { get; set; } = Array.Empty<BonhomiaQuoteLineDto>();
+  public string PayPalOrderId { get; set; } = string.Empty;
+  public string PayPalCaptureId { get; set; } = string.Empty;
+  public string PayPalOrderStatus { get; set; } = string.Empty;
+  public string PayPalStatus { get; set; } = string.Empty;
+  public string PayPalStatusReason { get; set; } = string.Empty;
+  public string PayPalPayerEmail { get; set; } = string.Empty;
+  public decimal PayPalAmount { get; set; }
+  public string PayPalCurrency { get; set; } = "MXN";
+  public DateTimeOffset ConfirmedAtUtc { get; set; }
+  public string PdfUrl { get; set; } = string.Empty;
 }

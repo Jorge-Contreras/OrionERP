@@ -1084,6 +1084,11 @@ else
           <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
             <h5 class="mb-0">Movimientos bancarios</h5>
             <span class="badge text-bg-secondary">Total: @BancoMovimientos.Count</span>
+            <button type="button"
+                    class="btn btn-sm btn-outline-primary ms-auto"
+                    @onclick="() => OpenBancoMovimientoLinkingWorkspace()">
+              Ligar movimientos
+            </button>
           </div>
 
           @if (IsLoadingBancoMovimientos)
@@ -1111,6 +1116,8 @@ else
                     <th scope="col">Tipo</th>
                     <th scope="col" class="text-end">Cargo</th>
                     <th scope="col" class="text-end">Abono</th>
+                    <th scope="col" class="text-end">Asignado Debe</th>
+                    <th scope="col" class="text-end">Asignado Haber</th>
                     <th scope="col" class="text-end">Saldo</th>
                     <th scope="col">Fecha carga</th>
                     <th scope="col" class="text-end">Acciones</th>
@@ -1128,19 +1135,28 @@ else
                       <td>@movimiento.Tipo</td>
                       <td class="text-end">@FormatCurrency(movimiento.Cargo)</td>
                       <td class="text-end">@FormatCurrency(movimiento.Abono)</td>
+                      <td class="text-end">@FormatCurrency(movimiento.BankRegistroDebe)</td>
+                      <td class="text-end">@FormatCurrency(movimiento.BankRegistroHaber)</td>
                       <td class="text-end">@FormatCurrency(movimiento.Saldo)</td>
                       <td>@movimiento.FechaCarga.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
                       <td class="text-end">
-                        <button type="button"
-                                class="btn btn-sm btn-outline-warning"
-                                disabled="@IsBancoMovimientoUnlinking(movimiento)"
-                                @onclick="() => UnlinkBancoMovimientoAsync(movimiento)">
-                          @if (IsBancoMovimientoUnlinking(movimiento))
-                          {
-                            <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
-                          }
-                          Desligar
-                        </button>
+                        <div class="btn-group btn-group-sm">
+                          <button type="button"
+                                  class="btn btn-outline-primary"
+                                  @onclick="() => OpenBancoMovimientoLinkingWorkspace(movimiento)">
+                            Ligar
+                          </button>
+                          <button type="button"
+                                  class="btn btn-outline-warning"
+                                  disabled="@IsBancoMovimientoUnlinking(movimiento)"
+                                  @onclick="() => UnlinkBancoMovimientoAsync(movimiento)">
+                            @if (IsBancoMovimientoUnlinking(movimiento))
+                            {
+                              <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                            }
+                            Desligar
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   }

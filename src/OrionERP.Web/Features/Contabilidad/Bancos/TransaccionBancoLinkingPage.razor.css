@@ -1,0 +1,127 @@
+.transaction-bank-linking-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.transaction-bank-linking-header,
+.transaction-bank-linking-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.transaction-bank-linking-header h1 {
+  margin: 0.15rem 0 0;
+  max-width: 70rem;
+  font-size: clamp(1.35rem, 2vw, 2rem);
+  line-height: 1.15;
+}
+
+.transaction-bank-linking-kicker,
+.transaction-bank-linking-meta,
+.transaction-bank-linking-subtle {
+  color: var(--bs-secondary-color);
+  font-size: 0.85rem;
+}
+
+.transaction-bank-linking-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+}
+
+.transaction-bank-linking-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.transaction-bank-linking-metric {
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background: var(--bs-body-bg);
+}
+
+.transaction-bank-linking-metric span,
+.transaction-bank-linking-metric small {
+  display: block;
+  color: var(--bs-secondary-color);
+}
+
+.transaction-bank-linking-metric strong {
+  display: block;
+  margin: 0.15rem 0;
+  font-size: 1.15rem;
+}
+
+.transaction-bank-linking-section {
+  display: grid;
+  gap: 0.75rem;
+  border-top: 1px solid var(--bs-border-color);
+  padding-top: 1rem;
+}
+
+.transaction-bank-linking-section-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.transaction-bank-linking-section-header p {
+  margin: 0.15rem 0 0;
+  color: var(--bs-secondary-color);
+}
+
+.transaction-bank-linking-filters {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) auto auto;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.transaction-bank-linking-check {
+  align-self: center;
+  margin-top: 1.8rem;
+}
+
+.transaction-bank-linking-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.transaction-bank-linking-table {
+  min-width: 72rem;
+}
+
+.transaction-bank-linking-empty {
+  border: 1px dashed var(--bs-border-color);
+  border-radius: 0.5rem;
+  color: var(--bs-secondary-color);
+  padding: 1rem;
+}
+
+.transaction-bank-linking-complete-row {
+  opacity: 0.72;
+}
+
+@media (max-width: 900px) {
+  .transaction-bank-linking-header,
+  .transaction-bank-linking-section-header {
+    display: grid;
+  }
+
+  .transaction-bank-linking-metrics,
+  .transaction-bank-linking-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .transaction-bank-linking-check {
+    margin-top: 0;
+  }
+
+  .transaction-bank-linking-actions {
+    justify-content: flex-start;
+  }
+}

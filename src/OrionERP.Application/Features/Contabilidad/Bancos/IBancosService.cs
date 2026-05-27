@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using OrionERP.Application.Features.Contabilidad.Transacciones;
 
 namespace OrionERP.Application.Features.Contabilidad.Bancos;
 
@@ -27,6 +28,27 @@ public interface IBancosService
       int year,
       int month,
       CancellationToken cancellationToken = default);
+  Task<BankMovementLinkingWorkspaceDto> GetMovementLinkingWorkspaceAsync(
+      long movimientoId,
+      string? search,
+      bool includeOtherCandidates,
+      int? focusTransaccionId = null,
+      CancellationToken cancellationToken = default);
+  Task<BankTransactionMovementWorkspaceDto> GetTransactionMovementLinkingWorkspaceAsync(
+      int transaccionId,
+      string? search,
+      bool includeFullyLinkedMovements,
+      CancellationToken cancellationToken = default);
+  Task<TransaccionCommandResult> SaveMovementLinksAsync(
+      BankMovementLinkSaveRequest request,
+      CancellationToken cancellationToken = default);
+  Task<TransaccionCommandResult> UnlinkMovementTransactionAsync(
+      long movimientoId,
+      int transaccionId,
+      CancellationToken cancellationToken = default);
+  Task<TransaccionCommandResult> FixMovementTransactionBankLineAsync(
+      BankMovementAccountingFixRequest request,
+      CancellationToken cancellationToken = default);
   Task<ProcessBbvaResult?> ProcessBbvaFileAsync(
       string fileContents,
       int accountId,
@@ -43,12 +65,5 @@ public interface IBancosService
       int year,
       int month,
       int accountId,
-      CancellationToken cancellationToken = default);
-  Task LinkMovementToTransactionAsync(
-      long movimientoId,
-      int transaccionId,
-      CancellationToken cancellationToken = default);
-  Task UnlinkMovementAsync(
-      long movimientoId,
       CancellationToken cancellationToken = default);
 }

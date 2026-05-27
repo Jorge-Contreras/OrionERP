@@ -1,0 +1,219 @@
+@page "/contabilidad/bancos/movimientos/{MovimientoId:long}/ligar"
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Forms
+@using OrionERP.Application.Features.Contabilidad.Bancos
+@attribute [Authorize(Roles = "Administrador,SatOperator")]
+
+<PageTitle>Ligar movimiento bancario @MovimientoId</PageTitle>
+
+@if (IsLoading)
+{
+  <div class="orion-loading" role="status" aria-live="polite">
+    <span class="orion-spinner" aria-hidden="true"></span>
+    <span class="orion-strong">Cargando espacio de ligado…</span>
+  </div>
+}
+else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+{
+  <div class="alert alert-danger" role="alert">@ErrorMessage</div>
+}
+else if (Summary is null)
+{
+  <div class="alert alert-warning">Movimiento bancario no encontrado.</div>
+}
+else
+{
+  <div class="bank-linking-page">
+    <section class="bank-linking-header">
+      <div>
+        <div class="bank-linking-kicker">Movimiento @Summary.MovimientoId · @Summary.NombreBanco · @Summary.NumeroCuenta</div>
+        <h1>@Summary.Concepto</h1>
+        <div class="bank-linking-meta">
+          <span>@Summary.Dia.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</span>
+          <span>@Summary.Rfc</span>
+          <span>@Summary.Tipo</span>
+          <span>@FormatCurrency(Summary.MovementAmount)</span>
+        </div>
+      </div>
+      <button type="button" class="btn btn-outline-secondary" @onclick="GoBack">Volver</button>
+    </section>
+
+    <section class="bank-linking-metrics">
+      <div class="bank-linking-metric">
+        <span>Banco</span>
+        <strong>@(Summary.IsCargo ? FormatCurrency(Summary.Cargo) : FormatCurrency(Summary.Abono))</strong>
+        <small>@(Summary.IsCargo ? "Debe esperado" : "Haber esperado")</small>
+      </div>
+      <div class="bank-linking-metric @(RemainingDebe != 0m ? "is-danger" : string.Empty)">
+        <span>Debe asignado</span>
+        <strong>@FormatCurrency(AssignedDebe)</strong>
+        <small>Restante @FormatCurrency(RemainingDebe)</small>
+      </div>
+      <div class="bank-linking-metric @(RemainingHaber != 0m ? "is-danger" : string.Empty)">
+        <span>Haber asignado</span>
+        <strong>@FormatCurrency(AssignedHaber)</strong>
+        <small>Restante @FormatCurrency(RemainingHaber)</small>
+      </div>
+      <div class="bank-linking-metric">
+        <span>Cuenta contable banco</span>
+        <strong>@FormatBankAccount(Summary)</strong>
+        <small>@Summary.BankAccountDescription</small>
+      </div>
+    </section>
+
+    @if (!Summary.MappingValid)
+    {
+      <div class="alert alert-warning">@Summary.SetupIssue</div>
+    }
+
+    <section class="bank-linking-section">
+      <div class="bank-linking-section-header">
+        <div>
+          <h2>Asignación a pólizas</h2>
+          <p>Los importes asignan la línea de banco del Registro_Contable de cada póliza.</p>
+        </div>
+        <button type="button" class="btn btn-primary" @onclick="SaveAsync" disabled="@(!CanSave)">
+          @(IsSaving ? "Guardando..." : "Guardar asignación")
+        </button>
+      </div>
+
+      @if (Editors.Count == 0)
+      {
+        <div class="bank-linking-empty">Agrega una o más pólizas candidatas para ligar este movimiento.</div>
+      }
+      else
+      {
+        <div class="table-responsive">
+          <table class="table table-sm align-middle bank-linking-table">
+            <thead>
+              <tr>
+                <th>Póliza</th>
+                <th>Fecha</th>
+                <th>Concepto</th>
+                <th class="text-end">Debe</th>
+                <th class="text-end">Haber</th>
+                <th class="text-end">RC banco</th>
+                <th class="text-end">Disponible</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @foreach (var editor in Editors)
+              {
+                <tr>
+                  <td class="fw-semibold"><a href="/contabilidad/transacciones/@editor.TransaccionId" target="_blank" rel="noopener">@editor.TransaccionId</a></td>
+                  <td>@editor.Fecha.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                  <td class="text-wrap">@editor.Concepto</td>
+                  <td class="text-end">
+                    <InputNumber class="form-control form-control-sm text-end" TValue="decimal" step="0.01" @bind-Value="editor.Debe" disabled="@(!Summary.IsCargo)" />
+                  </td>
+                  <td class="text-end">
+                    <InputNumber class="form-control form-control-sm text-end" TValue="decimal" step="0.01" @bind-Value="editor.Haber" disabled="@(Summary.IsCargo)" />
+                  </td>
+                  <td class="text-end">@FormatCurrency(editor.BankRegistroDebe) / @FormatCurrency(editor.BankRegistroHaber)</td>
+                  <td class="text-end">@FormatCurrency(editor.AvailableDebe) / @FormatCurrency(editor.AvailableHaber)</td>
+                  <td>
+                    <span class="badge @GetEditorBadgeClass(editor)">@GetEditorStatus(editor)</span>
+                  </td>
+                  <td class="text-end">
+                    <div class="btn-group btn-group-sm">
+                      <button type="button"
+                              class="btn btn-outline-secondary"
+                              title="Ajustar línea de banco en Registro_Contable"
+                              disabled="@(!CanFixBankLine(editor))"
+                              @onclick="() => FixBankLineAsync(editor)">
+                        @(IsFixing(editor) ? "Ajustando..." : "Ajustar RC")
+                      </button>
+                      <button type="button" class="btn btn-outline-danger" @onclick="() => RemoveEditor(editor)">Quitar</button>
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+
+    <section class="bank-linking-section">
+      <div class="bank-linking-section-header">
+        <div>
+          <h2>Pólizas candidatas</h2>
+          <p>Primero se muestran pólizas con línea de banco compatible; activa otras pólizas para búsqueda amplia.</p>
+        </div>
+        <span class="badge text-bg-secondary">@Candidates.Count candidato(s)</span>
+      </div>
+
+      <EditForm Model="@this" OnSubmit="HandleSearchSubmitAsync">
+        <div class="bank-linking-filters">
+          <div>
+            <label class="form-label" for="bank-link-search">Buscar</label>
+            <InputText id="bank-link-search" class="form-control" @bind-Value="Search" />
+          </div>
+          <div class="form-check bank-linking-check">
+            <InputCheckbox id="include-other-polizas" class="form-check-input" @bind-Value="IncludeOtherCandidates" />
+            <label class="form-check-label" for="include-other-polizas">Incluir otras pólizas</label>
+          </div>
+          <div class="bank-linking-actions">
+            <button type="submit" class="btn btn-primary" disabled="@IsSearching">Buscar</button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="ClearSearchAsync" disabled="@IsSearching">Limpiar</button>
+          </div>
+        </div>
+      </EditForm>
+
+      @if (IsSearching)
+      {
+        <div class="orion-loading" role="status" aria-live="polite">
+          <span class="orion-spinner" aria-hidden="true"></span>
+          <span class="orion-strong">Buscando pólizas…</span>
+        </div>
+      }
+      else if (Candidates.Count == 0)
+      {
+        <div class="bank-linking-empty">No se encontraron pólizas candidatas.</div>
+      }
+      else
+      {
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle bank-linking-table">
+            <thead>
+              <tr>
+                <th>Match</th>
+                <th>Póliza</th>
+                <th>Fecha</th>
+                <th>Concepto</th>
+                <th class="text-end">Monto</th>
+                <th class="text-end">RC banco</th>
+                <th class="text-end">Disponible</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @foreach (var candidate in Candidates)
+              {
+                <tr class="@(candidate.IsOtherCandidate ? "bank-linking-other-row" : string.Empty)">
+                  <td>
+                    <span class="badge @GetCandidateBadgeClass(candidate)">@FormatStatus(candidate.MatchStatus)</span>
+                    <div class="bank-linking-subtle">@candidate.MatchScore pts</div>
+                  </td>
+                  <td class="fw-semibold">@candidate.TransaccionId</td>
+                  <td>@candidate.Fecha.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                  <td class="text-wrap">@candidate.Concepto</td>
+                  <td class="text-end">@FormatCurrency(candidate.TransaccionMonto)</td>
+                  <td class="text-end">@FormatCurrency(candidate.BankRegistroDebe) / @FormatCurrency(candidate.BankRegistroHaber)</td>
+                  <td class="text-end">@FormatCurrency(candidate.AvailableDebe) / @FormatCurrency(candidate.AvailableHaber)</td>
+                  <td class="text-end">
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => AddCandidate(candidate)" disabled="@IsCandidateAdded(candidate)">
+                      Agregar
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  </div>
+}

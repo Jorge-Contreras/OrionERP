@@ -55,6 +55,7 @@ public partial class BancosPage : ComponentBase, IDisposable
   [Inject] public IUserRfcState RfcState { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
   [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
+  [Inject] public NavigationManager NavManager { get; set; } = default!;
 
   protected List<BankAccountDto> Accounts { get; } = new();
   protected List<BankMovementDto> Movements { get; } = new();
@@ -139,14 +140,14 @@ public partial class BancosPage : ComponentBase, IDisposable
 
   protected IReadOnlyList<KeyValuePair<int, string>> MonthOptions => MonthOptionsInternal;
 
-  protected bool CanLink => SelectedPendingTransactionId.HasValue && SelectedMovimientoId.HasValue;
+  protected bool CanLink => SelectedMovimientoId.HasValue;
 
-  protected bool CanUnlink => GetSelectedMovement() is { Policy: int policyValue } && policyValue > 0;
+  protected bool CanUnlink => GetSelectedMovement() is { PolicyCount: > 0 };
 
   protected bool CanAlignTransactionsToBankOrder
     => SelectedAccountId.HasValue &&
        !IsAligningTransactions &&
-       Movements.Any(m => m.Policy is int policy && policy > 0);
+       Movements.Any(m => m.PolicyCount > 0);
 
   protected bool HasPendingTransactions => PendingTransactions.Count > 0;
 
@@ -166,7 +167,7 @@ public partial class BancosPage : ComponentBase, IDisposable
 
       if (ShowOnlyUnlinkedMovements)
       {
-        movements = movements.Where(m => m.Policy is null or <= 0);
+        movements = movements.Where(m => m.PolicyCount <= 0);
       }
 
       if (ShowOnlyAccountingIssues)
@@ -773,52 +774,19 @@ public partial class BancosPage : ComponentBase, IDisposable
   {
     if (!CanLink)
     {
-      UiMessages.ShowWarning("Selecciona una transacción y un movimiento.");
+      UiMessages.ShowWarning("Selecciona un movimiento bancario.");
       return;
     }
 
     var movement = Movements.FirstOrDefault(m => m.MovimientoId == SelectedMovimientoId);
-    var transaction = PendingTransactions.FirstOrDefault(t => t.TransaccionId == SelectedPendingTransactionId);
-
-    if (movement is null || transaction is null)
+    if (movement is null)
     {
-      UiMessages.ShowWarning("Selecciona una transacción y un movimiento válidos.");
+      UiMessages.ShowWarning("Selecciona un movimiento válido.");
       return;
     }
 
-    var hasExistingPolicy = movement.Policy.HasValue && movement.Policy.Value > 0;
-    var confirmationMessage = hasExistingPolicy
-      ? "El movimiento ya tiene una póliza ligada. ¿Deseas reemplazarla con la transacción seleccionada?"
-      : "¿Deseas ligar la transacción seleccionada con el movimiento?";
-
-    bool confirm;
-    try
-    {
-      confirm = await JsRuntime.InvokeAsync<bool>("confirm", confirmationMessage);
-    }
-    catch
-    {
-      confirm = true;
-    }
-
-    if (!confirm)
-    {
-      return;
-    }
-
-    try
-    {
-      await BancosService.LinkMovementToTransactionAsync(movement.MovimientoId, transaction.TransaccionId);
-      UiMessages.ShowSuccess("Movimiento ligado correctamente.");
-      SelectedMovimientoId = null;
-      SelectedPendingTransactionId = null;
-      await LoadPendingTransactionsAsync();
-      await LoadMovementsAsync();
-    }
-    catch (Exception)
-    {
-      UiMessages.ShowError("No se pudo ligar el movimiento seleccionado.");
-    }
+    OpenMovementLinkingWorkspace(movement.MovimientoId, SelectedPendingTransactionId);
+    await Task.CompletedTask;
   }
 
   protected async Task OnUnlinkClicked()
@@ -831,39 +799,19 @@ public partial class BancosPage : ComponentBase, IDisposable
       return;
     }
 
-    if (movement.Policy is null or <= 0)
+    OpenMovementLinkingWorkspace(movement.MovimientoId);
+    await Task.CompletedTask;
+  }
+
+  protected void OpenMovementLinkingWorkspace(long movimientoId, int? transaccionId = null)
+  {
+    var url = $"/contabilidad/bancos/movimientos/{movimientoId}/ligar";
+    if (transaccionId.HasValue && transaccionId.Value > 0)
     {
-      UiMessages.ShowWarning("El movimiento seleccionado no tiene una póliza ligada.");
-      return;
+      url += $"?transaccionId={transaccionId.Value}";
     }
 
-    bool confirm;
-    try
-    {
-      confirm = await JsRuntime.InvokeAsync<bool>("confirm", "¿Estas Seguro que deseas desligar este Movimiento?");
-    }
-    catch
-    {
-      confirm = true;
-    }
-
-    if (!confirm)
-    {
-      return;
-    }
-
-    try
-    {
-      await BancosService.UnlinkMovementAsync(movement.MovimientoId);
-      UiMessages.ShowSuccess("Movimiento desligado correctamente.");
-      SelectedMovimientoId = null;
-      await LoadPendingTransactionsAsync();
-      await LoadMovementsAsync();
-    }
-    catch (Exception)
-    {
-      UiMessages.ShowError("No se pudo desligar el movimiento seleccionado.");
-    }
+    NavManager.NavigateTo(url);
   }
 
   protected async Task OnAutoPolizasClicked()
@@ -937,7 +885,7 @@ public partial class BancosPage : ComponentBase, IDisposable
       return;
     }
 
-    if (!Movements.Any(m => m.Policy is int policy && policy > 0))
+    if (!Movements.Any(m => m.PolicyCount > 0))
     {
       UiMessages.ShowInfo("No hay pólizas ligadas para alinear en este periodo.");
       return;

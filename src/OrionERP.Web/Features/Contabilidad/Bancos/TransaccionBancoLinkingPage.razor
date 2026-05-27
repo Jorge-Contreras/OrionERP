@@ -1,0 +1,201 @@
+@page "/contabilidad/transacciones/{TransaccionId:int}/bancos/ligar"
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Forms
+@using OrionERP.Application.Features.Contabilidad.Bancos
+@attribute [Authorize(Roles = "Administrador,SatOperator")]
+
+<PageTitle>Ligar movimientos bancarios @TransaccionId</PageTitle>
+
+@if (IsLoading)
+{
+  <div class="orion-loading" role="status" aria-live="polite">
+    <span class="orion-spinner" aria-hidden="true"></span>
+    <span class="orion-strong">Cargando movimientos bancarios…</span>
+  </div>
+}
+else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+{
+  <div class="alert alert-danger" role="alert">@ErrorMessage</div>
+}
+else if (Summary is null)
+{
+  <div class="alert alert-warning">Póliza no encontrada.</div>
+}
+else
+{
+  <div class="transaction-bank-linking-page">
+    <section class="transaction-bank-linking-header">
+      <div>
+        <div class="transaction-bank-linking-kicker">Póliza @Summary.TransaccionId · @Summary.TipoPoliza · @Summary.FormaPago</div>
+        <h1>@Summary.Concepto</h1>
+        <div class="transaction-bank-linking-meta">
+          <span>@Summary.Fecha.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</span>
+          <span>@Summary.Rfc</span>
+          <span>@FormatCurrency(Summary.Monto)</span>
+        </div>
+      </div>
+      <button type="button" class="btn btn-outline-secondary" @onclick="GoBack">Volver</button>
+    </section>
+
+    <section class="transaction-bank-linking-metrics">
+      <div class="transaction-bank-linking-metric">
+        <span>RC banco Debe</span>
+        <strong>@FormatCurrency(Summary.BankRegistroDebe)</strong>
+        <small>Disponible @FormatCurrency(Summary.AvailableDebe)</small>
+      </div>
+      <div class="transaction-bank-linking-metric">
+        <span>RC banco Haber</span>
+        <strong>@FormatCurrency(Summary.BankRegistroHaber)</strong>
+        <small>Disponible @FormatCurrency(Summary.AvailableHaber)</small>
+      </div>
+      <div class="transaction-bank-linking-metric">
+        <span>Ligado Debe</span>
+        <strong>@FormatCurrency(Summary.LinkedDebe)</strong>
+        <small>@Summary.BankLineCount línea(s) de banco</small>
+      </div>
+      <div class="transaction-bank-linking-metric">
+        <span>Ligado Haber</span>
+        <strong>@FormatCurrency(Summary.LinkedHaber)</strong>
+        <small>Asignación actual</small>
+      </div>
+    </section>
+
+    @if (!Summary.HasBankAccountMapping)
+    {
+      <div class="alert alert-warning">@Summary.SetupIssue</div>
+    }
+
+    <section class="transaction-bank-linking-section">
+      <div class="transaction-bank-linking-section-header">
+        <div>
+          <h2>Movimientos ligados</h2>
+          <p>Abre cualquier movimiento para ajustar la asignación exacta y sus pólizas relacionadas.</p>
+        </div>
+        <span class="badge text-bg-secondary">@Workspace.Links.Count movimiento(s)</span>
+      </div>
+
+      @if (Workspace.Links.Count == 0)
+      {
+        <div class="transaction-bank-linking-empty">No hay movimientos bancarios ligados a esta póliza.</div>
+      }
+      else
+      {
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle transaction-bank-linking-table">
+            <thead>
+              <tr>
+                <th>Movimiento</th>
+                <th>Banco</th>
+                <th>Día</th>
+                <th>Concepto</th>
+                <th class="text-end">Movimiento</th>
+                <th class="text-end">Asignado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @foreach (var link in Workspace.Links)
+              {
+                <tr>
+                  <td class="fw-semibold">@link.MovimientoId</td>
+                  <td>@link.NombreBanco · @link.NumeroCuenta</td>
+                  <td>@link.Dia.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                  <td class="text-wrap">@link.Concepto</td>
+                  <td class="text-end">@FormatMovementAmount(link.Cargo, link.Abono)</td>
+                  <td class="text-end">@FormatCurrency(link.BankRegistroDebe) / @FormatCurrency(link.BankRegistroHaber)</td>
+                  <td class="text-end">
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenMovementWorkspace(link.MovimientoId)">
+                      Revisar
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+
+    <section class="transaction-bank-linking-section">
+      <div class="transaction-bank-linking-section-header">
+        <div>
+          <h2>Movimientos candidatos</h2>
+          <p>Se priorizan movimientos de cuentas bancarias que coinciden con la línea contable de banco.</p>
+        </div>
+        <span class="badge text-bg-secondary">@Workspace.Candidates.Count candidato(s)</span>
+      </div>
+
+      <EditForm Model="@Filters" OnSubmit="HandleSearchSubmitAsync">
+        <div class="transaction-bank-linking-filters">
+          <div>
+            <label class="form-label" for="transaction-bank-search">Buscar</label>
+            <InputText id="transaction-bank-search" class="form-control" @bind-Value="Filters.Search" />
+          </div>
+          <div class="form-check transaction-bank-linking-check">
+            <InputCheckbox id="include-fully-linked" class="form-check-input" @bind-Value="Filters.IncludeFullyLinkedMovements" />
+            <label class="form-check-label" for="include-fully-linked">Incluir movimientos completos</label>
+          </div>
+          <div class="transaction-bank-linking-actions">
+            <button type="submit" class="btn btn-primary" disabled="@IsSearching">Buscar</button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="ClearSearchAsync" disabled="@IsSearching">Limpiar</button>
+          </div>
+        </div>
+      </EditForm>
+
+      @if (IsSearching)
+      {
+        <div class="orion-loading" role="status" aria-live="polite">
+          <span class="orion-spinner" aria-hidden="true"></span>
+          <span class="orion-strong">Buscando movimientos…</span>
+        </div>
+      }
+      else if (Workspace.Candidates.Count == 0)
+      {
+        <div class="transaction-bank-linking-empty">No se encontraron movimientos candidatos.</div>
+      }
+      else
+      {
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle transaction-bank-linking-table">
+            <thead>
+              <tr>
+                <th>Match</th>
+                <th>Movimiento</th>
+                <th>Banco</th>
+                <th>Día</th>
+                <th>Concepto</th>
+                <th class="text-end">Movimiento</th>
+                <th class="text-end">Restante movimiento</th>
+                <th class="text-end">Disponible póliza</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @foreach (var candidate in Workspace.Candidates)
+              {
+                <tr class="@(candidate.IsFullyLinked ? "transaction-bank-linking-complete-row" : string.Empty)">
+                  <td>
+                    <span class="badge @GetCandidateBadgeClass(candidate)">@FormatStatus(candidate.MatchStatus)</span>
+                    <div class="transaction-bank-linking-subtle">@candidate.MatchScore pts</div>
+                  </td>
+                  <td class="fw-semibold">@candidate.MovimientoId</td>
+                  <td>@candidate.NombreBanco · @candidate.NumeroCuenta</td>
+                  <td>@candidate.Dia.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                  <td class="text-wrap">@candidate.Concepto</td>
+                  <td class="text-end">@FormatMovementAmount(candidate.Cargo, candidate.Abono)</td>
+                  <td class="text-end">@FormatCurrency(candidate.RemainingDebe) / @FormatCurrency(candidate.RemainingHaber)</td>
+                  <td class="text-end">@FormatCurrency(candidate.TransactionAvailableDebe) / @FormatCurrency(candidate.TransactionAvailableHaber)</td>
+                  <td class="text-end">
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenMovementWorkspace(candidate.MovimientoId)">
+                      Ligar
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  </div>
+}

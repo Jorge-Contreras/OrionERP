@@ -3,9 +3,7 @@ namespace OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 public sealed class ReservacionExtraCreateRequest
 {
   public int ReservationId { get; set; }
-  public int RoomId { get; set; }
+  public int? RoomId { get; set; }
   public decimal Price { get; set; }
-  public decimal Discount { get; set; }
-  public decimal DiscountedPrice { get; set; }
   public string? Notes { get; set; }
 }

@@ -31,7 +31,7 @@ public partial class ReservacionPage : ComponentBase
     string? Status,
     DateTime? CheckIn,
     DateTime? CheckOut,
-    bool Taxable,
+    bool RequiresCfdi,
     decimal SuiteDiscountPercent,
     string? RecommenedBy,
     string? Notes);
@@ -68,7 +68,7 @@ public partial class ReservacionPage : ComponentBase
   internal string? Status { get; set; }
   internal DateTime? CheckIn { get; set; }
   internal DateTime? CheckOut { get; set; }
-  internal bool Taxable { get; set; }
+  internal bool RequiresCfdi { get; set; }
   internal string? RecommenedBy { get; set; }
   internal string? Notes { get; set; }
 
@@ -93,7 +93,6 @@ public partial class ReservacionPage : ComponentBase
   internal int? EditingExtraId { get; set; }
   internal int? ExtraRoomId { get; set; }
   internal decimal ExtraPrice { get; set; }
-  internal decimal ExtraDiscount { get; set; }
   internal string? ExtraNotes { get; set; }
 
   internal string AttachmentDescription { get; set; } = string.Empty;
@@ -144,12 +143,6 @@ public partial class ReservacionPage : ComponentBase
     (SuiteActionCleaning, "Limpieza"),
     (SuiteActionAirbnb, "Airbnb")
   };
-
-  internal decimal ExtraDiscountAmount
-    => ExtraDiscount > 0 ? decimal.Round(ExtraPrice * (ExtraDiscount / 100m), 2, MidpointRounding.ToEven) : 0m;
-
-  internal decimal ExtraTotal
-    => decimal.Round(ExtraPrice - ExtraDiscountAmount, 2, MidpointRounding.ToEven);
 
   internal bool HasActiveSuiteDiscount
     => SuiteDiscountPercent > 1m && SuiteDiscountAmount > 0m;
@@ -461,7 +454,7 @@ public partial class ReservacionPage : ComponentBase
         Status = Status,
         RecommenedBy = RecommenedBy,
         Notes = Notes,
-        Taxable = Taxable,
+        RequiresCfdi = RequiresCfdi,
         TotalPrice = TotalReservacion,
         SuiteDiscountPercent = SuiteDiscountPercent
       });
@@ -617,10 +610,9 @@ public partial class ReservacionPage : ComponentBase
     return Task.CompletedTask;
   }
 
-  internal Task ToggleTaxableAsync(ChangeEventArgs args)
+  internal Task ToggleRequiresCfdiAsync(ChangeEventArgs args)
   {
-    Taxable = args.Value is bool b && b;
-    RecalculateTotals();
+    RequiresCfdi = args.Value is bool b && b;
     return Task.CompletedTask;
   }
 
@@ -1039,9 +1031,8 @@ public partial class ReservacionPage : ComponentBase
     var totals = ReservacionTotalsCalculator.Calculate(
       CheckIn,
       CheckOut,
-      Taxable,
       Suites.Select(s => s.Precio),
-      Extras.Select(e => e.DiscountedPrice),
+      Extras.Select(e => e.Price),
       Pagos.Sum(p => p.Monto),
       SuiteDiscountPercent);
 
@@ -1208,7 +1199,7 @@ public partial class ReservacionPage : ComponentBase
       Status,
       CheckIn,
       CheckOut,
-      Taxable,
+      RequiresCfdi,
       SuiteDiscountPercent,
       RecommenedBy,
       Notes);
@@ -1222,7 +1213,7 @@ public partial class ReservacionPage : ComponentBase
     Status = formState.Status;
     CheckIn = formState.CheckIn?.Date;
     CheckOut = formState.CheckOut?.Date;
-    Taxable = formState.Taxable;
+    RequiresCfdi = formState.RequiresCfdi;
     SuiteDiscountPercent = formState.SuiteDiscountPercent;
     RecommenedBy = formState.RecommenedBy;
     Notes = formState.Notes;
@@ -1244,7 +1235,7 @@ public partial class ReservacionPage : ComponentBase
     Status = Detail.Status;
     CheckIn = Detail.CheckIn?.Date;
     CheckOut = Detail.CheckOut?.Date;
-    Taxable = Detail.Taxable;
+    RequiresCfdi = Detail.RequiresCfdi;
     SuiteDiscountPercent = Detail.SuiteDiscountPercent;
     RecommenedBy = Detail.RecommenedBy;
     Notes = Detail.Notes;
@@ -1360,7 +1351,7 @@ public partial class ReservacionPage : ComponentBase
       CheckIn ?? Detail?.CheckIn,
       CheckOut ?? Detail?.CheckOut,
       RecommenedBy ?? Detail?.RecommenedBy,
-      Taxable,
+      RequiresCfdi,
       Notes ?? Detail?.Notes,
       TotalSuites,
       SuiteDiscountPercent,

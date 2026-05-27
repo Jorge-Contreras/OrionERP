@@ -33,7 +33,6 @@ public static class ReservationCfdiLineFactory
   public static IReadOnlyList<ReservationCfdiItemPreviewDto> CreateItems(
       IEnumerable<ReservationCfdiSuiteSource> suites,
       IEnumerable<ReservationCfdiExtraSource> extras,
-      bool taxable,
       decimal suiteDiscountPercent = 0m)
   {
     ArgumentNullException.ThrowIfNull(suites);
@@ -56,7 +55,7 @@ public static class ReservationCfdiLineFactory
         Quantity = 1m,
         UnitPrice = RoundCurrency(suite.Price),
         Subtotal = RoundCurrency(suite.Price),
-        TaxObject = taxable ? "02" : "01"
+        TaxObject = "02"
       });
     }
 
@@ -88,13 +87,13 @@ public static class ReservationCfdiLineFactory
         Quantity = 1m,
         UnitPrice = RoundCurrency(extra.Amount),
         Subtotal = RoundCurrency(extra.Amount),
-        TaxObject = taxable ? "02" : "01"
+        TaxObject = "02"
       });
     }
 
     ApplySuiteDiscount(items, activeSuiteDiscountPercent);
     ApplyDiscountPool(items, discountPool);
-    ApplyTaxes(items, taxable);
+    ApplyTaxes(items);
 
     return items;
   }
@@ -249,7 +248,7 @@ public static class ReservationCfdiLineFactory
     }
   }
 
-  private static void ApplyTaxes(List<ReservationCfdiItemPreviewDto> items, bool taxable)
+  private static void ApplyTaxes(List<ReservationCfdiItemPreviewDto> items)
   {
     foreach (var item in items)
     {
@@ -259,7 +258,7 @@ public static class ReservationCfdiLineFactory
         throw new InvalidOperationException("La base gravable del concepto no puede ser negativa.");
       }
 
-      item.Tax = taxable ? RoundCurrency(taxableBase * IvaRate) : 0m;
+      item.Tax = RoundCurrency(taxableBase * IvaRate);
       item.Total = RoundCurrency(taxableBase + item.Tax);
     }
   }

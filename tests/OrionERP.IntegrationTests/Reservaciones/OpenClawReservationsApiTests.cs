@@ -42,7 +42,7 @@ public class OpenClawReservationsApiTests
         CheckIn = new DateOnly(2026, 3, 18),
         CheckOut = new DateOnly(2026, 3, 20),
         Status = "NUEVA",
-        Taxable = true,
+        RequiresCfdi = true,
         SuiteNames = new[] { "LONDON", "PARIS", "MOSCU" },
         Extras = new[]
         {
@@ -71,6 +71,7 @@ public class OpenClawReservationsApiTests
     Assert.Equal(new DateOnly(2026, 3, 18), payload.CheckIn);
     Assert.Equal(new DateOnly(2026, 3, 20), payload.CheckOut);
     Assert.Equal("NUEVA", payload.Status);
+    Assert.True(payload.RequiresCfdi);
     Assert.True(payload.Taxable);
     Assert.Equal(new[] { "LONDON", "PARIS", "MOSCU" }, payload.SuiteNames);
     Assert.Equal(3, payload.Extras.Count);
@@ -89,7 +90,7 @@ public class OpenClawReservationsApiTests
         CheckIn = new DateOnly(2026, 3, 18),
         CheckOut = new DateOnly(2026, 3, 20),
         Status = "NUEVA",
-        Taxable = true,
+        RequiresCfdi = true,
         SuiteNames = new[] { "LONDON", "PARIS", "MOSCU" },
         Extras = Array.Empty<OpenClawReservationCreatedExtra>(),
         SuiteSubtotal = 4237.29m,
@@ -157,7 +158,7 @@ public class OpenClawReservationsApiTests
         CheckIn = new DateTime(2026, 3, 18),
         CheckOut = new DateTime(2026, 3, 20),
         Status = "NUEVA",
-        Taxable = true,
+        RequiresCfdi = true,
         TotalSuites = 4237.29m,
         TotalExtras = 290.10m,
         SubTotal = 4527.39m,

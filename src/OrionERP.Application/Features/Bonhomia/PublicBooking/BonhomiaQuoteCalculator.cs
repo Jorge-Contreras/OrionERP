@@ -68,7 +68,6 @@ public static class BonhomiaQuoteCalculator
     var totals = ReservacionTotalsCalculator.Calculate(
       checkIn.ToDateTime(TimeOnly.MinValue),
       checkOut.ToDateTime(TimeOnly.MinValue),
-      taxable: true,
       suiteLines,
       extraLines,
       totalPagado: 0m);

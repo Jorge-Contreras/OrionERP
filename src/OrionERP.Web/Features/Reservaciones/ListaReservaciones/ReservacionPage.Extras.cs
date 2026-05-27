@@ -24,7 +24,6 @@ public partial class ReservacionPage
     EditingExtraId = extra.Id;
     ExtraRoomId = extra.RoomId;
     ExtraPrice = extra.Price;
-    ExtraDiscount = extra.Discount;
     ExtraNotes = extra.Notes;
     ShowExtraForm = true;
   }
@@ -47,12 +46,6 @@ public partial class ReservacionPage
 
   internal async Task GuardarExtraAsync()
   {
-    if (!ExtraRoomId.HasValue)
-    {
-      UiMessages.ShowWarning("Selecciona una suite para el extra.");
-      return;
-    }
-
     ReservacionCommandResult result;
     if (IsEditingExtra)
     {
@@ -60,10 +53,8 @@ public partial class ReservacionPage
       {
         Id = EditingExtraId!.Value,
         ReservationId = ReservationId,
-        RoomId = ExtraRoomId.Value,
+        RoomId = ExtraRoomId,
         Price = ExtraPrice,
-        Discount = ExtraDiscount,
-        DiscountedPrice = ExtraTotal,
         Notes = ExtraNotes
       });
     }
@@ -72,10 +63,8 @@ public partial class ReservacionPage
       result = await ReservacionesService.AddExtraAsync(new ReservacionExtraCreateRequest
       {
         ReservationId = ReservationId,
-        RoomId = ExtraRoomId.Value,
+        RoomId = ExtraRoomId,
         Price = ExtraPrice,
-        Discount = ExtraDiscount,
-        DiscountedPrice = ExtraTotal,
         Notes = ExtraNotes
       });
     }
@@ -133,7 +122,6 @@ public partial class ReservacionPage
     EditingExtraId = null;
     ExtraRoomId = null;
     ExtraPrice = 0m;
-    ExtraDiscount = 0m;
     ExtraNotes = null;
     ShowExtraForm = true;
   }
@@ -143,7 +131,6 @@ public partial class ReservacionPage
     EditingExtraId = null;
     ExtraRoomId = null;
     ExtraPrice = 0m;
-    ExtraDiscount = 0m;
     ExtraNotes = null;
     ShowExtraForm = false;
   }

@@ -218,7 +218,6 @@ ORDER BY rc.ROOM_DATE;
       var totals = ReservacionTotalsCalculator.Calculate(
         quote.CheckIn.ToDateTime(TimeOnly.MinValue),
         quote.CheckOut.ToDateTime(TimeOnly.MinValue),
-        taxable: true,
         suiteLineTotals,
         extraLineTotals,
         totalPagado: 0m);
@@ -235,7 +234,7 @@ ORDER BY rc.ROOM_DATE;
 INSERT INTO dbo.RESERVATION
 (CLIENTE_ID, CHECKIN, CHECKOUT, STATUS, RECOMMENED_BY, NOTES, TAXABLE, TOTAL_PRICE)
 VALUES
-(@ClienteId, @CheckIn, @CheckOut, @Status, @RecommendedBy, @Notes, @Taxable, @TotalPrice);
+(@ClienteId, @CheckIn, @CheckOut, @Status, @RecommendedBy, @Notes, @RequiresCfdi, @TotalPrice);
 SELECT CAST(SCOPE_IDENTITY() AS int);
 """,
           new
@@ -246,7 +245,7 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
             Status = ReservationStatuses.Pagada,
             RecommendedBy = "Bonhomia Web",
             Notes = BuildReservationNotes(quote, customer, payment),
-            Taxable = true,
+            RequiresCfdi = true,
             TotalPrice = totals.TotalReservacion
           },
           tx,
@@ -285,16 +284,15 @@ WHERE ID IN @Ids
           new CommandDefinition(
             """
 INSERT INTO dbo.RESERVATION_DETAIL
-(RESERVATION_ID, ROOM_ID, PRICE, DISCOUNTED_PRICE, DISCOUNT, NOTES)
+(RESERVATION_ID, ROOM_ID, PRICE, NOTES)
 VALUES
-(@ReservationId, @RoomId, @Price, @DiscountedPrice, 0, @Notes);
+(@ReservationId, @RoomId, @Price, @Notes);
 """,
             extras.Select(extra => new
             {
               ReservationId = reservationId,
               RoomId = extra.RoomId,
               Price = extra.UnitPrice * extra.Quantity,
-              DiscountedPrice = extra.UnitPrice * extra.Quantity,
               Notes = extra.Quantity == 1
                 ? extra.DisplayName
                 : $"{extra.DisplayName} x{extra.Quantity}"

@@ -11,7 +11,7 @@ public sealed class ReservacionUpdateRequest
   public string? Status { get; set; }
   public string? RecommenedBy { get; set; }
   public string? Notes { get; set; }
-  public bool Taxable { get; set; }
+  public bool RequiresCfdi { get; set; }
   public decimal TotalPrice { get; set; }
   public decimal SuiteDiscountPercent { get; set; }
 }

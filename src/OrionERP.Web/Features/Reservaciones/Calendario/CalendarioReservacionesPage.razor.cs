@@ -410,7 +410,6 @@ public partial class CalendarioReservacionesPage : ComponentBase
       var totals = ReservacionTotalsCalculator.Calculate(
         checkIn,
         checkOut,
-        taxable: true,
         suiteLineTotals: availableCells.Select(cell => cell.Price),
         extraLineTotals: Array.Empty<decimal>(),
         totalPagado: 0m);
@@ -442,7 +441,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
         CheckOut = checkOut,
         Status = status,
         Notes = notes,
-        Taxable = true,
+        RequiresCfdi = true,
         TotalPrice = totals.TotalReservacion
       });
 

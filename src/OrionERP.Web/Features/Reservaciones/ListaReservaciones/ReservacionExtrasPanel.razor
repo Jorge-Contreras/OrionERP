@@ -13,7 +13,7 @@
             <div class="col-md-3">
                 <label class="form-label">Suite</label>
                 <select class="form-select form-select-sm" value="@Page.ExtraRoomId" @onchange="Page.OnExtraRoomChanged">
-                    <option value="">Suite</option>
+                    <option value="">Sin suite</option>
                     @foreach (var room in Page.Rooms)
                     {
                         <option value="@room.Id">@room.RoomName</option>
@@ -23,14 +23,6 @@
             <div class="col-md-2">
                 <label class="form-label">Precio</label>
                 <input class="form-control form-control-sm" type="number" @bind="Page.ExtraPrice" placeholder="Precio" />
-            </div>
-            <div class="col-md-2">
-                <label class="form-label">Desc %</label>
-                <input class="form-control form-control-sm" type="number" @bind="Page.ExtraDiscount" placeholder="% Desc." />
-            </div>
-            <div class="col-md-2">
-                <label class="form-label">Total</label>
-                <input class="form-control form-control-sm" value="@Page.ExtraTotal" readonly />
             </div>
             <div class="col-md-3">
                 <label class="form-label">Notas</label>
@@ -50,8 +42,6 @@
                     <th>Suite</th>
                     <th>Descripción</th>
                     <th class="text-end">Precio</th>
-                    <th class="text-end">Desc %</th>
-                    <th class="text-end">Total</th>
                     <th>Notas</th>
                     <th></th>
                 </tr>
@@ -59,18 +49,16 @@
             <tbody>
                 @if (Page.Extras.Count == 0)
                 {
-                    <tr><td colspan="7" class="text-center text-muted py-3">No hay extras capturados.</td></tr>
+                    <tr><td colspan="5" class="text-center text-muted py-3">No hay extras capturados.</td></tr>
                 }
                 else
                 {
                     @foreach (var extra in Page.Extras)
                     {
                         <tr>
-                            <td>@extra.RoomName</td>
+                            <td>@(string.IsNullOrWhiteSpace(extra.RoomName) ? "Sin suite" : extra.RoomName)</td>
                             <td>@extra.RoomDescription</td>
                             <td class="text-end">@ReservacionPage.FormatCurrency(extra.Price)</td>
-                            <td class="text-end">@extra.Discount</td>
-                            <td class="text-end">@ReservacionPage.FormatCurrency(extra.DiscountedPrice)</td>
                             <td>@extra.Notes</td>
                             <td class="text-end">
                                 <div class="btn-group btn-group-sm" role="group">

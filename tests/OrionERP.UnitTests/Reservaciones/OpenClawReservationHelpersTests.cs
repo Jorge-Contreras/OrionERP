@@ -44,7 +44,6 @@ public class OpenClawReservationHelpersTests
     var totals = ReservacionTotalsCalculator.Calculate(
       new DateTime(2026, 3, 18),
       new DateTime(2026, 3, 20),
-      true,
       4237.29m,
       290.10m,
       1000m);
@@ -66,7 +65,6 @@ public class OpenClawReservationHelpersTests
     var totals = ReservacionTotalsCalculator.Calculate(
       new DateTime(2026, 3, 18),
       new DateTime(2026, 3, 20),
-      true,
       new[] { 1077.59m, 1077.59m, 1077.59m, 1077.59m },
       Array.Empty<decimal>(),
       0m);
@@ -88,7 +86,6 @@ public class OpenClawReservationHelpersTests
     var totals = ReservacionTotalsCalculator.Calculate(
       new DateTime(2026, 3, 18),
       new DateTime(2026, 3, 20),
-      true,
       1000m,
       200m,
       0m,
@@ -109,7 +106,6 @@ public class OpenClawReservationHelpersTests
     var totals = ReservacionTotalsCalculator.Calculate(
       new DateTime(2026, 3, 18),
       new DateTime(2026, 3, 20),
-      true,
       new[] { 1077.59m, 1077.59m, 1077.59m, 1077.59m },
       new[] { 100m },
       0m,
@@ -129,7 +125,6 @@ public class OpenClawReservationHelpersTests
     var zero = ReservacionTotalsCalculator.Calculate(
       null,
       null,
-      false,
       100m,
       0m,
       0m,
@@ -138,7 +133,6 @@ public class OpenClawReservationHelpersTests
     var one = ReservacionTotalsCalculator.Calculate(
       null,
       null,
-      false,
       100m,
       0m,
       0m,
@@ -157,7 +151,6 @@ public class OpenClawReservationHelpersTests
     Assert.Throws<ArgumentOutOfRangeException>(() => ReservacionTotalsCalculator.Calculate(
       null,
       null,
-      false,
       100m,
       0m,
       0m,
@@ -203,13 +196,13 @@ public class OpenClawReservationHelpersTests
           Description = "DESCUENTO GENERAL",
           Amount = -25m
         }
-      },
-      taxable: true);
+      });
 
     Assert.Equal(3, items.Count);
     Assert.Equal(25m, items.Sum(item => item.Discount));
     Assert.Equal(261.00m, items.Sum(item => item.Total));
     Assert.All(items, item => Assert.True(item.Total > 0m));
+    Assert.All(items, item => Assert.Equal("02", item.TaxObject));
     Assert.Contains(items, item => item.SourceType == "Extra" && item.ProductCode == "56101515");
   }
 
@@ -246,7 +239,6 @@ public class OpenClawReservationHelpersTests
           Amount = 50m
         }
       },
-      taxable: true,
       suiteDiscountPercent: 10m);
 
     Assert.Equal(20m, items.Where(item => item.SourceType == "Suite").Sum(item => item.Discount));
@@ -277,7 +269,6 @@ public class OpenClawReservationHelpersTests
           Description = "DESCUENTO GENERAL",
           Amount = -150m
         }
-      },
-      taxable: true));
+      }));
   }
 }

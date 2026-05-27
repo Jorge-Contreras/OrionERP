@@ -22,6 +22,8 @@ public sealed class ReservationCfdiExtraSource
   public string CatalogName { get; set; } = string.Empty;
   public string? Description { get; set; }
   public decimal Amount { get; set; }
+  public decimal Quantity { get; set; } = 1m;
+  public decimal UnitPrice { get; set; }
   public string? Notes { get; set; }
 }
 
@@ -75,6 +77,11 @@ public static class ReservationCfdiLineFactory
       }
 
       var mapping = ResolveExtraMapping(extra);
+      var quantity = extra.Quantity > 0m ? extra.Quantity : 1m;
+      var unitPrice = extra.UnitPrice != 0m
+        ? RoundCurrency(extra.UnitPrice)
+        : RoundCurrency(extra.Amount / quantity);
+      var subtotal = RoundCurrency(unitPrice * quantity);
 
       items.Add(new ReservationCfdiItemPreviewDto
       {
@@ -84,9 +91,9 @@ public static class ReservationCfdiLineFactory
         ProductCode = mapping.ProductCode,
         UnitCode = mapping.UnitCode,
         Unit = mapping.Unit,
-        Quantity = 1m,
-        UnitPrice = RoundCurrency(extra.Amount),
-        Subtotal = RoundCurrency(extra.Amount),
+        Quantity = quantity,
+        UnitPrice = unitPrice,
+        Subtotal = subtotal,
         TaxObject = "02"
       });
     }

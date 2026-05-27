@@ -283,19 +283,20 @@ WHERE ID IN @Ids
         await conn.ExecuteAsync(
           new CommandDefinition(
             """
-INSERT INTO dbo.RESERVATION_DETAIL
-(RESERVATION_ID, ROOM_ID, PRICE, NOTES)
+INSERT INTO dbo.Reservation_Extra
+(ReservationID, ExtraID, ExtraNameSnapshot, ExtraDescriptionSnapshot, UnitPriceSnapshot, Quantity, Notes)
 VALUES
-(@ReservationId, @RoomId, @Price, @Notes);
+(@ReservationId, @ExtraId, @ExtraNameSnapshot, @ExtraDescriptionSnapshot, @UnitPriceSnapshot, @Quantity, @Notes);
 """,
             extras.Select(extra => new
             {
               ReservationId = reservationId,
-              RoomId = extra.RoomId,
-              Price = extra.UnitPrice * extra.Quantity,
-              Notes = extra.Quantity == 1
-                ? extra.DisplayName
-                : $"{extra.DisplayName} x{extra.Quantity}"
+              ExtraId = extra.ExtraId,
+              ExtraNameSnapshot = extra.DisplayName,
+              ExtraDescriptionSnapshot = extra.Description,
+              UnitPriceSnapshot = extra.UnitPrice,
+              extra.Quantity,
+              Notes = BuildExtraNotes(extra)
             }).ToArray(),
             tx,
             cancellationToken: ct));
@@ -359,32 +360,39 @@ ORDER BY rc.ROOM_DATE;
   {
     const string sql = """
 SELECT
-    r.ID AS RoomId,
-    r.ROOM_NAME AS RoomName,
-    CAST(ISNULL(r.BASE_PRICE, 0) AS decimal(18,2)) AS BasePrice
-FROM dbo.ROOM r
-WHERE ISNULL(r.ROOM_TYPE, '') <> 'SUITE';
+    e.ExtraID,
+    e.[Name],
+    e.[Description],
+    CAST(ISNULL(e.Price, 0) AS decimal(18,2)) AS Price
+FROM dbo.Extra e
+WHERE e.IsActive = 1;
 """;
 
     await using var conn = new SqlConnection(_connectionString);
     var dbExtras = (await conn.QueryAsync<ExtraCatalogRow>(new CommandDefinition(sql, cancellationToken: ct))).AsList();
 
-    return BonhomiaPublicExtraCatalog.Items
-      .Select(item =>
+    var options = new List<BonhomiaExtraOptionDto>();
+    foreach (var item in BonhomiaPublicExtraCatalog.Items)
+    {
+      var match = dbExtras.FirstOrDefault(row => item.Aliases.Any(alias => NamesMatch(alias, row.Name)));
+      if (match is null)
       {
-        var match = dbExtras.FirstOrDefault(row => item.Aliases.Any(alias => NamesMatch(alias, row.RoomName)));
-        return new BonhomiaExtraOptionDto
-        {
-          Code = item.Code,
-          Name = item.Name,
-          Detail = item.Detail,
-          CatalogName = match?.RoomName ?? item.CatalogName,
-          Icon = item.Icon,
-          UnitPrice = match?.BasePrice > 0m ? match.BasePrice : item.UnitPrice,
-          MaxQuantity = item.MaxQuantity
-        };
-      })
-      .ToArray();
+        continue;
+      }
+
+      options.Add(new BonhomiaExtraOptionDto
+      {
+        Code = item.Code,
+        Name = item.Name,
+        Detail = item.Detail,
+        CatalogName = match.Name,
+        Icon = item.Icon,
+        UnitPrice = match.Price,
+        MaxQuantity = item.MaxQuantity
+      });
+    }
+
+    return options;
   }
 
   private async Task<RoomCatalogRow> ResolveRoomAsync(
@@ -429,15 +437,16 @@ FROM dbo.ROOM r;
 
     var publicExtras = await GetPublicExtraOptionsAsync(ct);
     var optionsByCode = publicExtras.ToDictionary(extra => extra.Code, StringComparer.OrdinalIgnoreCase);
-    var rows = (await conn.QueryAsync<RoomCatalogRow>(
+    var rows = (await conn.QueryAsync<ExtraCatalogRow>(
       new CommandDefinition(
         """
 SELECT
-    r.ID AS RoomId,
-    r.ROOM_NAME AS RoomName,
-    r.ROOM_TYPE AS RoomType,
-    CAST(ISNULL(r.BASE_PRICE, 0) AS decimal(18,2)) AS BasePrice
-FROM dbo.ROOM r;
+    e.ExtraID,
+    e.[Name],
+    e.[Description],
+    CAST(ISNULL(e.Price, 0) AS decimal(18,2)) AS Price
+FROM dbo.Extra e
+WHERE e.IsActive = 1;
 """,
         transaction: tx,
         cancellationToken: ct))).AsList();
@@ -450,15 +459,16 @@ FROM dbo.ROOM r;
         throw new BonhomiaPublicBookingException("unknown_extra", "Uno de los extras seleccionados ya no esta disponible.");
       }
 
-      var room = rows.FirstOrDefault(row => NamesMatch(row.RoomName, option.CatalogName));
-      if (room is null)
+      var extra = rows.FirstOrDefault(row => NamesMatch(row.Name, option.CatalogName));
+      if (extra is null)
       {
         throw new BonhomiaPublicBookingException("extra_not_configured", $"{option.Name} no esta configurado en el catalogo de OrionERP.");
       }
 
       resolved.Add(new ResolvedExtraLine(
-        room.RoomId,
+        extra.ExtraID,
         option.Name,
+        extra.Description,
         option.UnitPrice,
         selected.Quantity));
     }
@@ -720,7 +730,12 @@ ORDER BY r.ID DESC;
       extras.Length == 0 ? "Extras: ninguno" : $"Extras: {string.Join(", ", extras)}");
   }
 
-  private sealed record ResolvedExtraLine(int RoomId, string DisplayName, decimal UnitPrice, int Quantity);
+  private static string BuildExtraNotes(ResolvedExtraLine extra)
+    => extra.Quantity == 1
+      ? extra.DisplayName
+      : $"{extra.DisplayName} x{extra.Quantity}";
+
+  private sealed record ResolvedExtraLine(int ExtraId, string DisplayName, string? Description, decimal UnitPrice, int Quantity);
 
   private sealed class ClienteRow
   {
@@ -757,9 +772,10 @@ ORDER BY r.ID DESC;
 
   private sealed class ExtraCatalogRow
   {
-    public int RoomId { get; set; }
-    public string RoomName { get; set; } = string.Empty;
-    public decimal BasePrice { get; set; }
+    public int ExtraID { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public decimal Price { get; set; }
   }
 
   private sealed record PublicRoomMetadata(int Capacity, int Bedrooms, string Ideal, string Image, string Tag);

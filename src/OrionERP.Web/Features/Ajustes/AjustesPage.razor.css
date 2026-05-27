@@ -7,7 +7,18 @@
   overflow-y: auto;
 }
 
+.ajustes-extra-list {
+  max-height: 28rem;
+  overflow-y: auto;
+}
+
 .ajustes-template-list thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.ajustes-extra-list thead {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -50,6 +61,7 @@
 }
 
 @media (max-width: 767.98px) {
+  .ajustes-extra-list,
   .ajustes-template-list {
     max-height: 24rem;
   }

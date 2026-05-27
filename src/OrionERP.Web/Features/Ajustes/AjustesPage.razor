@@ -2,6 +2,7 @@
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization
 @using OrionERP.Application.Features.Ajustes
+@using OrionERP.Application.Features.Reservaciones.Extras
 @using OrionERP.Web.Shared
 @using OrionERP.Web.State
 @attribute [Authorize(Roles = "Administrador")]
@@ -47,6 +48,148 @@
               </button>
             </div>
           </EditForm>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="ajustes-section mb-3">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+          <div>
+            <h2 class="h5 mb-1">Catálogo de extras</h2>
+            <p class="text-muted mb-0">Servicios y productos disponibles para agregar a reservaciones.</p>
+          </div>
+          <button type="button" class="btn btn-outline-primary" @onclick="NewExtra">
+            Nuevo extra
+          </button>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-12 col-xl-5">
+            <div class="d-flex flex-column gap-3">
+              <div>
+                <label class="form-label">Buscar</label>
+                <input class="form-control"
+                       type="search"
+                       placeholder="Nombre o descripcion"
+                       @bind="extraSearchText"
+                       @bind:event="oninput"
+                       @onkeydown="OnExtraSearchKeyDown" />
+              </div>
+
+              <div class="d-flex flex-wrap gap-2 align-items-center">
+                <button type="button" class="btn btn-primary" @onclick="LoadExtraCatalogAsync" disabled="@isLoadingExtras">
+                  @(isLoadingExtras ? "Buscando..." : "Buscar")
+                </button>
+                <label class="form-check d-flex align-items-center gap-2 mb-0">
+                  <input class="form-check-input" type="checkbox" @bind="includeInactiveExtras" @bind:after="LoadExtraCatalogAsync" />
+                  <span class="form-check-label">Incluir inactivos</span>
+                </label>
+              </div>
+
+              <div class="table-responsive ajustes-extra-list">
+                <table class="table table-sm table-hover align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Extra</th>
+                      <th class="text-end">Precio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @if (isLoadingExtras && ExtraCatalogItems.Count == 0)
+                    {
+                      <tr>
+                        <td colspan="2" class="text-center text-muted py-4">Cargando extras...</td>
+                      </tr>
+                    }
+                    else if (ExtraCatalogItems.Count == 0)
+                    {
+                      <tr>
+                        <td colspan="2" class="text-center text-muted py-4">No hay extras para los filtros actuales.</td>
+                      </tr>
+                    }
+                    else
+                    {
+                      @foreach (var extra in ExtraCatalogItems)
+                      {
+                        <tr class="@(extra.ExtraId == SelectedExtraId ? "table-primary" : null)"
+                            role="button"
+                            @onclick="() => SelectExtra(extra)">
+                          <td>
+                            <div class="fw-semibold">@extra.Name</div>
+                            <div class="d-flex flex-wrap gap-1 mt-1">
+                              @if (!extra.IsActive)
+                              {
+                                <span class="badge text-bg-secondary">Inactivo</span>
+                              }
+                              @if (extra.LegacyRoomId.HasValue)
+                              {
+                                <span class="badge text-bg-light">Migrado</span>
+                              }
+                            </div>
+                          </td>
+                          <td class="text-end">@FormatCurrency(extra.Price)</td>
+                        </tr>
+                      }
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 col-xl-7">
+            <section class="border rounded p-3 h-100">
+              <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                <div>
+                  <h3 class="h5 mb-1">@(ExtraEditor.ExtraId.HasValue ? "Editar extra" : "Nuevo extra")</h3>
+                  @if (ExtraEditor.LegacyRoomId.HasValue)
+                  {
+                    <div class="text-muted small">Migrado desde Room ID @ExtraEditor.LegacyRoomId.Value.ToString(CultureInfo.InvariantCulture)</div>
+                  }
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                  @if (ExtraEditor.ExtraId.HasValue)
+                  {
+                    <button type="button" class="btn btn-outline-danger" @onclick="DeleteExtraAsync" disabled="@isSavingExtra">
+                      Desactivar
+                    </button>
+                  }
+                  <button type="button" class="btn btn-primary" @onclick="SaveExtraAsync" disabled="@isSavingExtra">
+                    @(isSavingExtra ? "Guardando..." : "Guardar extra")
+                  </button>
+                </div>
+              </div>
+
+              <EditForm Model="ExtraEditor">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="row g-3">
+                  <div class="col-md-8">
+                    <label class="form-label">Nombre</label>
+                    <InputText class="form-control" @bind-Value="ExtraEditor.Name" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Precio</label>
+                    <InputNumber class="form-control" @bind-Value="ExtraEditor.Price" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label">Descripcion</label>
+                    <InputTextArea class="form-control" rows="3" @bind-Value="ExtraEditor.Description" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-check form-switch mb-0">
+                      <InputCheckbox class="form-check-input" @bind-Value="ExtraEditor.IsActive" />
+                      <span class="form-check-label">Activo</span>
+                    </label>
+                  </div>
+                </div>
+              </EditForm>
+            </section>
+          </div>
         </div>
       </div>
     </div>
@@ -435,18 +578,24 @@
     new("IVA_16", "IVA 16%")
   ];
 
+  private readonly List<ExtraCatalogItemDto> ExtraCatalogItems = [];
   private readonly List<PlantillaContableListItemDto> Plantillas = [];
   private GeneralSettingsEditorModel GeneralSettingsEditor { get; set; } = new();
+  private ExtraCatalogEditorModel ExtraEditor { get; set; } = new();
   private CfdiPolizaCuentaDefaultsEditorModel CfdiDefaultsEditor { get; set; } = CfdiPolizaCuentaDefaultsEditorModel.CreateEmpty();
   private PlantillaEditorModel Editor { get; set; } = new();
   private PlantillaLineEditorModel LineEditor { get; set; } = new();
   private CuentaContableSelection? LineAccountSelection { get; set; }
   private string? LinePickerRfc { get; set; }
   private string? selectedRfc;
+  private string extraSearchText = string.Empty;
   private string searchText = string.Empty;
+  private bool includeInactiveExtras;
   private bool includeInactive;
   private bool isLoadingGeneralSettings;
   private bool isSavingGeneralSettings;
+  private bool isLoadingExtras;
+  private bool isSavingExtra;
   private bool isLoadingCfdiDefaults;
   private bool isSavingCfdiDefaults;
   private bool isLoadingList;
@@ -454,6 +603,7 @@
   private bool showLineModal;
   private string? lineEditorError;
 
+  private int? SelectedExtraId => ExtraEditor.ExtraId;
   private int? SelectedPlantillaId => Editor.PlantillaContableId;
   private IReadOnlyList<PlantillaLineEditorModel> ActiveLines => Editor.Lines.OrderBy(line => line.Orden).ToList();
 
@@ -467,6 +617,7 @@
     }
 
     await LoadGeneralSettingsAsync();
+    await LoadExtraCatalogAsync();
     await LoadCfdiPolizaCuentaDefaultsAsync();
     NewPlantilla();
     await LoadPlantillasAsync();
@@ -551,6 +702,124 @@
     finally
     {
       isSavingGeneralSettings = false;
+    }
+  }
+
+  private async Task OnExtraSearchKeyDown(KeyboardEventArgs args)
+  {
+    if (args.Key == "Enter" || args.Code == "NumpadEnter")
+    {
+      await LoadExtraCatalogAsync();
+    }
+  }
+
+  private async Task LoadExtraCatalogAsync()
+  {
+    isLoadingExtras = true;
+    try
+    {
+      ExtraCatalogItems.Clear();
+      var rows = await AjustesService.GetExtraCatalogAsync(extraSearchText, includeInactiveExtras);
+      ExtraCatalogItems.AddRange(rows);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo cargar el catálogo de extras. {ex.Message}");
+    }
+    finally
+    {
+      isLoadingExtras = false;
+    }
+  }
+
+  private void NewExtra()
+  {
+    ExtraEditor = new ExtraCatalogEditorModel
+    {
+      IsActive = true
+    };
+  }
+
+  private void SelectExtra(ExtraCatalogItemDto extra)
+  {
+    ExtraEditor = ExtraCatalogEditorModel.FromDto(extra);
+  }
+
+  private async Task SaveExtraAsync()
+  {
+    if (isSavingExtra)
+    {
+      return;
+    }
+
+    var validationMessage = ValidateExtraEditor();
+    if (validationMessage is not null)
+    {
+      UiMessages.ShowError(validationMessage);
+      return;
+    }
+
+    isSavingExtra = true;
+    try
+    {
+      var result = await AjustesService.SaveExtraCatalogItemAsync(ExtraEditor.ToRequest());
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      await LoadExtraCatalogAsync();
+
+      if (result.EntityId.HasValue)
+      {
+        var saved = ExtraCatalogItems.FirstOrDefault(extra => extra.ExtraId == result.EntityId.Value);
+        if (saved is not null)
+        {
+          SelectExtra(saved);
+        }
+      }
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo guardar el extra. {ex.Message}");
+    }
+    finally
+    {
+      isSavingExtra = false;
+    }
+  }
+
+  private async Task DeleteExtraAsync()
+  {
+    if (!ExtraEditor.ExtraId.HasValue)
+    {
+      return;
+    }
+
+    var confirmed = await ConfirmAsync("El extra quedara inactivo y no aparecera al agregar extras a reservaciones. Deseas continuar?");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    try
+    {
+      var result = await AjustesService.DeleteExtraCatalogItemAsync(ExtraEditor.ExtraId.Value);
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      NewExtra();
+      await LoadExtraCatalogAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo desactivar el extra. {ex.Message}");
     }
   }
 
@@ -846,6 +1115,21 @@
     Editor.Lines = ordered;
   }
 
+  private string? ValidateExtraEditor()
+  {
+    if (string.IsNullOrWhiteSpace(ExtraEditor.Name))
+    {
+      return "Captura el nombre del extra.";
+    }
+
+    if (ExtraEditor.Price < 0m)
+    {
+      return "El precio del extra no puede ser negativo.";
+    }
+
+    return null;
+  }
+
   private string? ValidateEditor()
   {
     if (string.IsNullOrWhiteSpace(Editor.Nombre))
@@ -937,7 +1221,43 @@
         ? line.ConceptoFijo ?? "Texto fijo"
         : "Concepto de poliza";
 
+  private static string FormatCurrency(decimal value)
+    => value.ToString("C", CultureInfo.CurrentCulture);
+
   private sealed record SelectOption(string Value, string Label);
+
+  private sealed class ExtraCatalogEditorModel
+  {
+    public int? ExtraId { get; set; }
+
+    [Required(ErrorMessage = "Captura el nombre.")]
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public decimal Price { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int? LegacyRoomId { get; set; }
+
+    public static ExtraCatalogEditorModel FromDto(ExtraCatalogItemDto dto)
+      => new()
+      {
+        ExtraId = dto.ExtraId,
+        Name = dto.Name,
+        Description = dto.Description,
+        Price = dto.Price,
+        IsActive = dto.IsActive,
+        LegacyRoomId = dto.LegacyRoomId
+      };
+
+    public ExtraCatalogSaveRequest ToRequest()
+      => new()
+      {
+        ExtraId = ExtraId,
+        Name = Name,
+        Description = Description,
+        Price = Price,
+        IsActive = IsActive
+      };
+  }
 
   private sealed class GeneralSettingsEditorModel
   {

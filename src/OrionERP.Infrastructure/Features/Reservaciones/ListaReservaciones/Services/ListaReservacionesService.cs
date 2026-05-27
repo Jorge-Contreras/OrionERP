@@ -11,6 +11,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OrionERP.Application.Features.Reservaciones.Cfdi;
+using OrionERP.Application.Features.Reservaciones.Extras;
 using OrionERP.Application.Features.Reservaciones.OpenClaw;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
@@ -124,10 +125,10 @@ FROM dbo.ROOM_CALENDAR rc
 WHERE TRY_CAST(rc.LOCK_DESCRIPTION AS int) IN @ReservationIds;
 
 SELECT
-    rd.RESERVATION_ID AS ReservationId,
-    CAST(ISNULL(rd.PRICE, 0) AS decimal(18,2)) AS Amount
-FROM dbo.RESERVATION_DETAIL rd
-WHERE rd.RESERVATION_ID IN @ReservationIds;
+    re.ReservationID AS ReservationId,
+    CAST(ISNULL(re.UnitPriceSnapshot, 0) * ISNULL(re.Quantity, 1) AS decimal(18,2)) AS Amount
+FROM dbo.Reservation_Extra re
+WHERE re.ReservationID IN @ReservationIds;
 
 SELECT
     rt.ReservationID AS ReservationId,
@@ -394,8 +395,23 @@ FROM dbo.ROOM r;
           transaction: tx,
           cancellationToken: ct))).AsList();
 
+      var extraCatalog = (await conn.QueryAsync<OpenClawExtraCatalogRow>(
+        new CommandDefinition(
+          """
+SELECT
+    e.ExtraID AS Id,
+    e.[Name],
+    e.[Description],
+    CAST(ISNULL(e.Price, 0) AS decimal(18,2)) AS Price,
+    CAST(ISNULL(e.IsActive, 0) AS bit) AS IsActive
+FROM dbo.Extra e
+WHERE e.IsActive = 1;
+""",
+          transaction: tx,
+          cancellationToken: ct))).AsList();
+
       var resolvedSuites = ResolveRequestedRooms(requestedSuites, rooms, requireSuiteType: true);
-      var resolvedExtras = ResolveRequestedExtras(requestedExtras, rooms);
+      var resolvedExtras = ResolveRequestedExtras(requestedExtras, extraCatalog);
 
       var calendarRows = (await conn.QueryAsync<OpenClawRoomCalendarRow>(
         new CommandDefinition(
@@ -428,19 +444,18 @@ ORDER BY rc.ROOM, rc.ROOM_DATE;
       var suiteSubtotal = decimal.Round(calendarRows.Sum(row => row.Precio), 2, MidpointRounding.ToEven);
 
       var createdExtras = resolvedExtras
-        .Select(item => OpenClawReservationLineFactory.CreateExtra(item.RoomName, item.Quantity, item.UnitPrice, item.Notes))
+        .Select(item => OpenClawReservationLineFactory.CreateExtra(item.Name, item.Quantity, item.UnitPrice, item.Notes))
         .ToList();
 
-      if (request.GeneralDiscountPercent is > 0)
-      {
-        createdExtras.Add(OpenClawReservationLineFactory.CreateDiscount("DESCUENTO", suiteSubtotal, request.GeneralDiscountPercent.Value));
-      }
+      var suiteDiscountPercent = request.GeneralDiscountPercent is > 0
+        ? ReservacionTotalsCalculator.NormalizeSuiteDiscountPercent(request.GeneralDiscountPercent.Value)
+        : 0m;
 
       const string insertReservationSql = """
 INSERT INTO dbo.RESERVATION
-(CLIENTE_ID, CHECKIN, CHECKOUT, STATUS, RECOMMENED_BY, NOTES, TAXABLE, TOTAL_PRICE)
+(CLIENTE_ID, CHECKIN, CHECKOUT, STATUS, RECOMMENED_BY, NOTES, TAXABLE, TOTAL_PRICE, SUITE_DISCOUNT_PERCENT)
 VALUES
-(@ClienteId, @CheckIn, @CheckOut, @Status, @RecommenedBy, @Notes, @RequiresCfdi, @TotalPrice);
+(@ClienteId, @CheckIn, @CheckOut, @Status, @RecommenedBy, @Notes, @RequiresCfdi, @TotalPrice, @SuiteDiscountPercent);
 SELECT CAST(SCOPE_IDENTITY() AS int);
 """;
 
@@ -456,7 +471,8 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
             RecommenedBy = recommendedBy,
             Notes = reservationNotes,
             RequiresCfdi = requiresCfdi,
-            TotalPrice = 0m
+            TotalPrice = 0m,
+            SuiteDiscountPercent = suiteDiscountPercent
           },
           tx,
           cancellationToken: ct));
@@ -487,40 +503,39 @@ WHERE ID IN @Ids;
 
       if (createdExtras.Count > 0)
       {
-        var extraParameters = createdExtras
-          .Select(item =>
+        var extraParameters = resolvedExtras
+          .Zip(createdExtras, (resolved, created) => new
           {
-            var room = ResolveRequestedRoom(item.CatalogName, rooms, requireSuiteType: false);
-            return new
-            {
-              ReservationId = reservationId,
-              RoomId = room.Id,
-              Price = item.LinePrice,
-              Notes = TrimOrNull(item.Notes)
-            };
+            ReservationId = reservationId,
+            ExtraId = resolved.ExtraId,
+            ExtraNameSnapshot = resolved.Name,
+            ExtraDescriptionSnapshot = resolved.Description,
+            UnitPriceSnapshot = created.UnitPrice,
+            Quantity = created.Quantity,
+            Notes = TrimOrNull(created.Notes)
           })
           .ToArray();
 
         await conn.ExecuteAsync(
           new CommandDefinition(
             """
-INSERT INTO dbo.RESERVATION_DETAIL
-(RESERVATION_ID, ROOM_ID, PRICE, NOTES)
+INSERT INTO dbo.Reservation_Extra
+(ReservationID, ExtraID, ExtraNameSnapshot, ExtraDescriptionSnapshot, UnitPriceSnapshot, Quantity, Notes)
 VALUES
-(@ReservationId, @RoomId, @Price, @Notes);
+(@ReservationId, @ExtraId, @ExtraNameSnapshot, @ExtraDescriptionSnapshot, @UnitPriceSnapshot, @Quantity, @Notes);
 """,
             extraParameters,
             tx,
             cancellationToken: ct));
       }
 
-      var extrasSubtotal = decimal.Round(createdExtras.Sum(item => item.LinePrice), 2, MidpointRounding.ToEven);
       var totals = ReservacionTotalsCalculator.Calculate(
         checkIn,
         checkOut,
         calendarRows.Select(row => row.Precio),
         createdExtras.Select(item => item.LinePrice),
-        0m);
+        0m,
+        suiteDiscountPercent);
 
       var totalAffected = await conn.ExecuteAsync(
         new CommandDefinition(
@@ -639,9 +654,9 @@ DECLARE @EmptyReservations TABLE
 
         UNION ALL
 
-        SELECT rd.RESERVATION_ID
-        FROM dbo.RESERVATION_DETAIL AS rd
-        WHERE rd.RESERVATION_ID IS NOT NULL
+        SELECT re.ReservationID
+        FROM dbo.Reservation_Extra AS re
+        WHERE re.ReservationID IS NOT NULL
 
         UNION ALL
 
@@ -736,8 +751,8 @@ SET
 WHERE ID IN @Ids;";
 
     const string deleteExtrasSql = @"
-DELETE FROM dbo.RESERVATION_DETAIL
-WHERE RESERVATION_ID = @ReservationId;";
+DELETE FROM dbo.Reservation_Extra
+WHERE ReservationID = @ReservationId;";
 
     const string deleteAirbnbBreakdownSql = @"
 IF OBJECT_ID('dbo.ReservationAirbnbBreakdown', 'U') IS NOT NULL
@@ -842,17 +857,17 @@ WHERE TRY_CAST(rc.LOCK_DESCRIPTION AS int) = @ReservationId
 ORDER BY rc.ROOM_DATE, rc.ROOM;
 
 SELECT
-    rd.ID AS Id,
-    rd.ROOM_ID AS RoomId,
-    ISNULL(r.ROOM_NAME, '') AS RoomName,
-    ISNULL(r.ROOM_DESCRIPTION, '') AS RoomDescription,
-    CAST(ISNULL(rd.PRICE, 0) AS decimal(18,2)) AS Price,
-    rd.NOTES AS Notes
-FROM dbo.RESERVATION_DETAIL rd
-LEFT JOIN dbo.ROOM r
-  ON r.ID = rd.ROOM_ID
-WHERE rd.RESERVATION_ID = @ReservationId
-ORDER BY rd.ID;
+    re.ReservationExtraID AS Id,
+    re.ExtraID,
+    ISNULL(re.ExtraNameSnapshot, '') AS [Name],
+    re.ExtraDescriptionSnapshot AS [Description],
+    CAST(ISNULL(re.UnitPriceSnapshot, 0) AS decimal(18,2)) AS UnitPrice,
+    ISNULL(re.Quantity, 1) AS Quantity,
+    CAST(ISNULL(re.UnitPriceSnapshot, 0) * ISNULL(re.Quantity, 1) AS decimal(18,2)) AS Price,
+    re.Notes
+FROM dbo.Reservation_Extra re
+WHERE re.ReservationID = @ReservationId
+ORDER BY re.ReservationExtraID;
 
 SELECT
     rt.TransaccionID AS TransaccionId,
@@ -1069,19 +1084,24 @@ SELECT CAST(SCOPE_IDENTITY() AS int);";
     }
   }
 
-  public async Task<IReadOnlyList<RoomOptionDto>> GetRoomsForExtrasAsync(CancellationToken ct = default)
+  public async Task<IReadOnlyList<ExtraCatalogItemDto>> GetActiveExtraCatalogAsync(CancellationToken ct = default)
   {
     const string sql = @"
 SELECT
-    r.ID AS Id,
-    r.ROOM_NAME AS RoomName,
-    r.ROOM_TYPE AS RoomType,
-    CAST(ISNULL(r.BASE_PRICE, 0) AS decimal(18,2)) AS BasePrice
-FROM dbo.ROOM r
-ORDER BY r.ROOM_NAME;";
+    e.ExtraID AS ExtraId,
+    e.[Name],
+    e.[Description],
+    CAST(ISNULL(e.Price, 0) AS decimal(18,2)) AS Price,
+    CAST(ISNULL(e.IsActive, 0) AS bit) AS IsActive,
+    e.LegacyRoomID AS LegacyRoomId,
+    e.CreatedAtUtc,
+    e.UpdatedAtUtc
+FROM dbo.Extra e
+WHERE e.IsActive = 1
+ORDER BY e.[Name], e.ExtraID;";
 
     await using var conn = new SqlConnection(_cs);
-    var rows = await conn.QueryAsync<RoomOptionDto>(new CommandDefinition(sql, cancellationToken: ct));
+    var rows = await conn.QueryAsync<ExtraCatalogItemDto>(new CommandDefinition(sql, cancellationToken: ct));
     return rows.AsList();
   }
 
@@ -1206,17 +1226,17 @@ EXEC ROOMS_BY_DATE_AND_ROOM
   {
     const string sql = @"
 SELECT
-    rd.ID AS Id,
-    rd.ROOM_ID AS RoomId,
-    ISNULL(r.ROOM_NAME, '') AS RoomName,
-    ISNULL(r.ROOM_DESCRIPTION, '') AS RoomDescription,
-    CAST(ISNULL(rd.PRICE, 0) AS decimal(18,2)) AS Price,
-    rd.NOTES AS Notes
-FROM dbo.RESERVATION_DETAIL rd
-LEFT JOIN dbo.ROOM r
-  ON r.ID = rd.ROOM_ID
-WHERE rd.RESERVATION_ID = @ReservationId
-ORDER BY rd.ID;";
+    re.ReservationExtraID AS Id,
+    re.ExtraID,
+    ISNULL(re.ExtraNameSnapshot, '') AS [Name],
+    re.ExtraDescriptionSnapshot AS [Description],
+    CAST(ISNULL(re.UnitPriceSnapshot, 0) AS decimal(18,2)) AS UnitPrice,
+    ISNULL(re.Quantity, 1) AS Quantity,
+    CAST(ISNULL(re.UnitPriceSnapshot, 0) * ISNULL(re.Quantity, 1) AS decimal(18,2)) AS Price,
+    re.Notes
+FROM dbo.Reservation_Extra re
+WHERE re.ReservationID = @ReservationId
+ORDER BY re.ReservationExtraID;";
 
     await using var conn = new SqlConnection(_cs);
     var rows = await conn.QueryAsync<ReservacionExtraDto>(
@@ -1650,7 +1670,7 @@ WHERE ID IN (
 
     const string tableExistsSql = @"SELECT OBJECT_ID('dbo.ReservationAirbnbBreakdown', 'U');";
     const string reservationExistsSql = @"SELECT TOP (1) 1 FROM dbo.RESERVATION WITH (UPDLOCK) WHERE ID = @ReservationId;";
-    const string extrasCountSql = @"SELECT COUNT(1) FROM dbo.RESERVATION_DETAIL WHERE RESERVATION_ID = @ReservationId;";
+    const string extrasCountSql = @"SELECT COUNT(1) FROM dbo.Reservation_Extra WHERE ReservationID = @ReservationId;";
     const string selectedSuitesSql = @"
 SELECT
     rc.ID AS Id
@@ -1941,14 +1961,34 @@ SELECT @Result;
     if (request is null)
       throw new ArgumentNullException(nameof(request));
 
-    if (request.ReservationId <= 0 || request.RoomId is <= 0)
+    if (request.ReservationId <= 0 || request.ExtraId <= 0 || request.Quantity <= 0)
       return ReservacionCommandResult.Fail("Selecciona una reservación válida para el extra.");
 
+    if (request.UnitPrice < 0m)
+      return ReservacionCommandResult.Fail("El precio del extra no puede ser negativo.");
+
     const string sql = @"
-INSERT INTO dbo.RESERVATION_DETAIL
-(RESERVATION_ID, ROOM_ID, PRICE, NOTES)
-VALUES
-(@ReservationId, @RoomId, @Price, @Notes);";
+INSERT INTO dbo.Reservation_Extra
+(
+    ReservationID,
+    ExtraID,
+    ExtraNameSnapshot,
+    ExtraDescriptionSnapshot,
+    UnitPriceSnapshot,
+    Quantity,
+    Notes
+)
+SELECT
+    @ReservationId,
+    e.ExtraID,
+    e.[Name],
+    e.[Description],
+    @UnitPrice,
+    @Quantity,
+    @Notes
+FROM dbo.Extra e
+WHERE e.ExtraID = @ExtraId
+  AND e.IsActive = 1;";
 
     await using var conn = new SqlConnection(_cs);
     var affected = await conn.ExecuteAsync(
@@ -1957,8 +1997,9 @@ VALUES
         new
         {
           request.ReservationId,
-          RoomId = NormalizeOptionalId(request.RoomId),
-          request.Price,
+          request.ExtraId,
+          request.UnitPrice,
+          request.Quantity,
           Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim()
         },
         cancellationToken: ct));
@@ -1973,17 +2014,28 @@ VALUES
     if (request is null)
       throw new ArgumentNullException(nameof(request));
 
-    if (request.Id <= 0 || request.ReservationId <= 0 || request.RoomId is <= 0)
+    if (request.Id <= 0 || request.ReservationId <= 0 || request.ExtraId <= 0 || request.Quantity <= 0)
       return ReservacionCommandResult.Fail("Selecciona un extra y una reservación válidos.");
 
+    if (request.UnitPrice < 0m)
+      return ReservacionCommandResult.Fail("El precio del extra no puede ser negativo.");
+
     const string sql = @"
-UPDATE dbo.RESERVATION_DETAIL
+UPDATE re
 SET
-    ROOM_ID = @RoomId,
-    PRICE = @Price,
-    NOTES = @Notes
-WHERE ID = @Id
-  AND RESERVATION_ID = @ReservationId;";
+    ExtraID = e.ExtraID,
+    ExtraNameSnapshot = e.[Name],
+    ExtraDescriptionSnapshot = e.[Description],
+    UnitPriceSnapshot = @UnitPrice,
+    Quantity = @Quantity,
+    Notes = @Notes,
+    UpdatedAtUtc = SYSUTCDATETIME()
+FROM dbo.Reservation_Extra re
+INNER JOIN dbo.Extra e
+  ON e.ExtraID = @ExtraId
+WHERE re.ReservationExtraID = @Id
+  AND re.ReservationID = @ReservationId
+  AND e.IsActive = 1;";
 
     await using var conn = new SqlConnection(_cs);
     var affected = await conn.ExecuteAsync(
@@ -1993,8 +2045,9 @@ WHERE ID = @Id
         {
           request.Id,
           request.ReservationId,
-          RoomId = NormalizeOptionalId(request.RoomId),
-          request.Price,
+          request.ExtraId,
+          request.UnitPrice,
+          request.Quantity,
           Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim()
         },
         cancellationToken: ct));
@@ -2004,12 +2057,12 @@ WHERE ID = @Id
       : ReservacionCommandResult.Fail("No se encontró el extra seleccionado.");
   }
 
-  public async Task<ReservacionCommandResult> DeleteExtraAsync(int reservationDetailId, CancellationToken ct = default)
+  public async Task<ReservacionCommandResult> DeleteExtraAsync(int reservationExtraId, CancellationToken ct = default)
   {
-    const string sql = @"DELETE FROM dbo.RESERVATION_DETAIL WHERE ID = @Id;";
+    const string sql = @"DELETE FROM dbo.Reservation_Extra WHERE ReservationExtraID = @Id;";
 
     await using var conn = new SqlConnection(_cs);
-    var affected = await conn.ExecuteAsync(new CommandDefinition(sql, new { Id = reservationDetailId }, cancellationToken: ct));
+    var affected = await conn.ExecuteAsync(new CommandDefinition(sql, new { Id = reservationExtraId }, cancellationToken: ct));
 
     return affected > 0
       ? ReservacionCommandResult.Ok("Extra eliminado.")
@@ -2115,13 +2168,19 @@ WHERE ID = @Id
 
   private static IReadOnlyList<OpenClawResolvedExtra> ResolveRequestedExtras(
     IReadOnlyList<OpenClawRequestedExtra> requestedExtras,
-    IReadOnlyList<OpenClawRoomCatalogRow> rooms)
+    IReadOnlyList<OpenClawExtraCatalogRow> extras)
   {
     return requestedExtras
       .Select(extra =>
       {
-        var room = ResolveRequestedRoom(extra.CatalogName, rooms, requireSuiteType: false);
-        return new OpenClawResolvedExtra(room.Id, room.RoomName, room.BasePrice, extra.Quantity, extra.Notes);
+        var resolved = ResolveRequestedExtra(extra.CatalogName, extras);
+        return new OpenClawResolvedExtra(
+          resolved.Id,
+          resolved.Name,
+          resolved.Description,
+          resolved.Price,
+          extra.Quantity,
+          extra.Notes);
       })
       .ToArray();
   }
@@ -2196,6 +2255,20 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
 
     var resolved = matches[0];
     return new OpenClawResolvedRoom(resolved.Id, resolved.RoomName, resolved.BasePrice);
+  }
+
+  private static OpenClawExtraCatalogRow ResolveRequestedExtra(
+    string requestedName,
+    IReadOnlyList<OpenClawExtraCatalogRow> extras)
+  {
+    var requestedKey = OpenClawReservationNaming.NormalizeLookupKey(requestedName);
+    var match = extras.FirstOrDefault(extra => OpenClawReservationNaming.NormalizeLookupKey(extra.Name) == requestedKey);
+    if (match is null)
+    {
+      throw new OpenClawReservationValidationException($"No se encontró el extra '{requestedName}'.");
+    }
+
+    return match;
   }
 
   private static bool IsSuiteRoom(string? roomType)
@@ -2347,7 +2420,16 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
 
   private sealed record OpenClawRequestedExtra(string CatalogName, int Quantity, string? Notes);
   private sealed record OpenClawResolvedRoom(int Id, string RoomName, decimal BasePrice);
-  private sealed record OpenClawResolvedExtra(int RoomId, string RoomName, decimal UnitPrice, int Quantity, string? Notes);
+  private sealed record OpenClawResolvedExtra(int ExtraId, string Name, string? Description, decimal UnitPrice, int Quantity, string? Notes);
+
+  private sealed class OpenClawExtraCatalogRow
+  {
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public decimal Price { get; set; }
+    public bool IsActive { get; set; }
+  }
 
   private sealed class ListaReservacionListRow
   {

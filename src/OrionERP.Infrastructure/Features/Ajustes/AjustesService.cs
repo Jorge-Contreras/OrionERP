@@ -4,6 +4,7 @@ using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using OrionERP.Application.Features.Ajustes;
+using OrionERP.Application.Features.Reservaciones.Extras;
 
 namespace OrionERP.Infrastructure.Features.Ajustes;
 
@@ -110,6 +111,163 @@ END;";
             cancellationToken: ct));
 
     return AjustesCommandResult.Ok("Ajustes generales guardados correctamente.");
+  }
+
+  public async Task<IReadOnlyList<ExtraCatalogItemDto>> GetExtraCatalogAsync(
+      string? search,
+      bool includeInactive,
+      CancellationToken ct = default)
+  {
+    const string sql = @"
+SELECT
+    e.ExtraID AS ExtraId,
+    e.[Name],
+    e.[Description],
+    CAST(ISNULL(e.Price, 0) AS decimal(18,2)) AS Price,
+    CAST(ISNULL(e.IsActive, 0) AS bit) AS IsActive,
+    e.LegacyRoomID AS LegacyRoomId,
+    e.CreatedAtUtc,
+    e.UpdatedAtUtc
+FROM dbo.Extra AS e
+WHERE (@includeInactive = 1 OR e.IsActive = 1)
+  AND
+  (
+      @search IS NULL
+      OR e.[Name] LIKE @searchLike
+      OR e.[Description] LIKE @searchLike
+  )
+ORDER BY e.IsActive DESC, e.[Name], e.ExtraID;";
+
+    var normalizedSearch = NormalizeNullable(search);
+
+    using var connection = new SqlConnection(_connectionString);
+    var rows = await connection.QueryAsync<ExtraCatalogItemDto>(
+        new CommandDefinition(
+            sql,
+            new
+            {
+              includeInactive,
+              search = normalizedSearch,
+              searchLike = normalizedSearch is null ? null : $"%{normalizedSearch}%"
+            },
+            cancellationToken: ct));
+
+    return rows.AsList();
+  }
+
+  public async Task<AjustesCommandResult> SaveExtraCatalogItemAsync(
+      ExtraCatalogSaveRequest request,
+      CancellationToken ct = default)
+  {
+    if (request is null)
+    {
+      return AjustesCommandResult.Fail("No se recibio el extra.");
+    }
+
+    var name = NormalizeNullable(request.Name);
+    if (name is null)
+    {
+      return AjustesCommandResult.Fail("Captura el nombre del extra.");
+    }
+
+    if (request.Price < 0m)
+    {
+      return AjustesCommandResult.Fail("El precio del extra no puede ser negativo.");
+    }
+
+    var description = NormalizeNullable(request.Description);
+    var extraId = request.ExtraId.GetValueOrDefault();
+
+    const string duplicateSql = @"
+SELECT TOP (1) ExtraID
+FROM dbo.Extra
+WHERE UPPER(LTRIM(RTRIM([Name]))) = UPPER(@name)
+  AND ExtraID <> @extraId;";
+
+    const string insertSql = @"
+INSERT INTO dbo.Extra
+(
+    [Name],
+    [Description],
+    Price,
+    IsActive,
+    CreatedAtUtc,
+    UpdatedAtUtc
+)
+OUTPUT INSERTED.ExtraID
+VALUES
+(
+    @name,
+    @description,
+    @price,
+    @isActive,
+    SYSUTCDATETIME(),
+    SYSUTCDATETIME()
+);";
+
+    const string updateSql = @"
+UPDATE dbo.Extra
+SET [Name] = @name,
+    [Description] = @description,
+    Price = @price,
+    IsActive = @isActive,
+    UpdatedAtUtc = SYSUTCDATETIME()
+WHERE ExtraID = @extraId;";
+
+    using var connection = new SqlConnection(_connectionString);
+    await connection.OpenAsync(ct);
+
+    var duplicateId = await connection.ExecuteScalarAsync<int?>(
+        new CommandDefinition(duplicateSql, new { name, extraId }, cancellationToken: ct));
+    if (duplicateId.HasValue)
+    {
+      return AjustesCommandResult.Fail("Ya existe un extra con ese nombre.");
+    }
+
+    var parameters = new
+    {
+      extraId,
+      name,
+      description,
+      price = request.Price,
+      isActive = request.IsActive
+    };
+
+    if (extraId <= 0)
+    {
+      var createdId = await connection.ExecuteScalarAsync<int>(
+          new CommandDefinition(insertSql, parameters, cancellationToken: ct));
+      return AjustesCommandResult.Ok("Extra guardado correctamente.", createdId);
+    }
+
+    var affected = await connection.ExecuteAsync(
+        new CommandDefinition(updateSql, parameters, cancellationToken: ct));
+
+    return affected == 0
+        ? AjustesCommandResult.Fail("El extra seleccionado ya no existe.")
+        : AjustesCommandResult.Ok("Extra guardado correctamente.", extraId);
+  }
+
+  public async Task<AjustesCommandResult> DeleteExtraCatalogItemAsync(int extraId, CancellationToken ct = default)
+  {
+    if (extraId <= 0)
+    {
+      return AjustesCommandResult.Fail("Selecciona un extra valido.");
+    }
+
+    const string sql = @"
+UPDATE dbo.Extra
+SET IsActive = 0,
+    UpdatedAtUtc = SYSUTCDATETIME()
+WHERE ExtraID = @extraId;";
+
+    using var connection = new SqlConnection(_connectionString);
+    var affected = await connection.ExecuteAsync(
+        new CommandDefinition(sql, new { extraId }, cancellationToken: ct));
+
+    return affected == 0
+        ? AjustesCommandResult.Fail("El extra seleccionado ya no existe.")
+        : AjustesCommandResult.Ok("Extra desactivado correctamente.", extraId);
   }
 
   public async Task<CfdiPolizaCuentaDefaultsDto> GetCfdiPolizaCuentaDefaultsAsync(string? rfc, CancellationToken ct = default)

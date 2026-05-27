@@ -313,6 +313,10 @@
   max-height: 220px;
 }
 
+.reservacion-modal-backdrop {
+  background-color: rgba(15, 45, 78, 0.35);
+}
+
 @container (max-width: 72rem) {
   .reservacion-top-grid,
   .reservacion-cfdi-grid {

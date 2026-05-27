@@ -275,7 +275,7 @@ public class RecurrentApServiceTests
       "src",
       "OrionERP.Web",
       "Pages",
-      "Index.razor");
+      "ErpHomeDashboard.razor");
     var serviceSource = ReadRepositoryFile(
       "src",
       "OrionERP.Infrastructure",

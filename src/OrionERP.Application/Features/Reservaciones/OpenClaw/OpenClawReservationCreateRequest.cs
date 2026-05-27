@@ -12,6 +12,7 @@ public sealed class OpenClawReservationCreateRequest
   public decimal? GeneralDiscountPercent { get; set; }
   public IReadOnlyList<OpenClawReservationExtraRequest> Extras { get; set; } = Array.Empty<OpenClawReservationExtraRequest>();
   public string? Status { get; set; }
+  public bool? RequiresCfdi { get; set; }
   public bool? Taxable { get; set; }
   public string? RecommendedBy { get; set; }
   public string? ReservationNotes { get; set; }

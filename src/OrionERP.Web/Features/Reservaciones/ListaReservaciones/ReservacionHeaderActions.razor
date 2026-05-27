@@ -18,8 +18,8 @@
         <button type="button"
                 class="btn btn-outline-primary btn-sm"
                 @onclick="Page.ToggleCfdiPanelAsync"
-                disabled="@(Page.IsSaving || Page.IsWorking || Page.IsLoadingCfdiContext || Page.IsCreatingCfdi || Page.HasReservationFacturacionEvidence)">
-            @(Page.IsLoadingCfdiContext ? "Preparando CFDI..." : Page.HasReservationFacturacionEvidence ? "Facturación ligada" : Page.ShowCfdiPanel ? "Cerrar CFDI" : "Crear CFDI")
+                disabled="@(Page.IsSaving || Page.IsWorking || Page.IsLoadingCfdiContext || Page.IsCreatingCfdi || Page.HasReservationFacturacionEvidence || !Page.RequiresCfdi)">
+            @(Page.IsLoadingCfdiContext ? "Preparando CFDI..." : Page.HasReservationFacturacionEvidence ? "Facturación ligada" : !Page.RequiresCfdi ? "CFDI no requerido" : Page.ShowCfdiPanel ? "Cerrar CFDI" : "Crear CFDI")
         </button>
         <button type="button"
                 class="btn btn-outline-danger btn-sm"

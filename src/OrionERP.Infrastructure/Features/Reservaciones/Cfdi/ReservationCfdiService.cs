@@ -80,7 +80,7 @@ public sealed class ReservationCfdiService : IReservationCfdiService
           Id = extra.Id,
           CatalogName = extra.RoomName,
           Description = extra.RoomDescription,
-          Amount = extra.DiscountedPrice,
+          Amount = extra.Price,
           Notes = extra.Notes
         })
         .ToArray();
@@ -88,7 +88,6 @@ public sealed class ReservationCfdiService : IReservationCfdiService
     var items = ReservationCfdiLineFactory.CreateItems(
       suiteSources,
       extraSources,
-      detail.Taxable,
       detail.SuiteDiscountPercent);
     ValidateReservationTotals(detail, items);
 
@@ -103,7 +102,7 @@ public sealed class ReservationCfdiService : IReservationCfdiService
     {
       ReservationId = detail.Id,
       ReservationCliente = detail.Cliente,
-      Taxable = detail.Taxable,
+      RequiresCfdi = detail.RequiresCfdi,
       TotalSuites = detail.TotalSuites,
       SuiteDiscountPercent = detail.SuiteDiscountPercent,
       SuiteDiscountAmount = detail.SuiteDiscountAmount,
@@ -511,6 +510,11 @@ WHEN NOT MATCHED THEN
         return ReservationCfdiCreateResult.Fail("No se encontró la reservación seleccionada.");
       }
 
+      if (!detail.RequiresCfdi)
+      {
+        return ReservationCfdiCreateResult.Fail("La reservación no está marcada como Requiere CFDI.");
+      }
+
       if (detail.Ish > 0.009m)
       {
         return ReservationCfdiCreateResult.Fail(
@@ -524,7 +528,7 @@ WHEN NOT MATCHED THEN
             Id = extra.Id,
             CatalogName = extra.RoomName,
             Description = extra.RoomDescription,
-            Amount = extra.DiscountedPrice,
+            Amount = extra.Price,
             Notes = extra.Notes
           })
           .ToArray();
@@ -532,7 +536,6 @@ WHEN NOT MATCHED THEN
       var items = ReservationCfdiLineFactory.CreateItems(
         suiteSources,
         extraSources,
-        detail.Taxable,
         detail.SuiteDiscountPercent);
       ValidateReservationTotals(detail, items);
 

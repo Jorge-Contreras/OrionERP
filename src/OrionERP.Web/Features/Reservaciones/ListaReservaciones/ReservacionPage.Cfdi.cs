@@ -93,7 +93,7 @@ public partial class ReservacionPage
   internal bool HasCfdiDiscounts => CfdiContext?.Items.Any(item => item.Discount > 0m) == true;
 
   internal bool ShouldShowCfdiCreationPanel
-    => ShowCfdiPanel && !HasReservationFacturacionEvidence;
+    => ShowCfdiPanel && RequiresCfdi && !HasReservationFacturacionEvidence;
 
   internal bool HasExistingReservationCfdis
     => CfdiContext?.ExistingDocuments.Count > 0;
@@ -123,6 +123,7 @@ public partial class ReservacionPage
 
   internal bool CanCreateReservationCfdi
     => CfdiContext is not null
+       && RequiresCfdi
        && !CfdiContext.HasUnsupportedIsh
        && !HasReservationFacturacionEvidence
        && !string.IsNullOrWhiteSpace(CfdiReceiver.CfdiUse)
@@ -144,6 +145,12 @@ public partial class ReservacionPage
     {
       ShowCfdiPanel = false;
       ShowCfdiCustomerResults = false;
+      return;
+    }
+
+    if (!RequiresCfdi)
+    {
+      UiMessages.ShowWarning("Marca Requiere CFDI antes de preparar la factura.");
       return;
     }
 

@@ -160,15 +160,13 @@ public sealed class ReservacionPdfService : IReservacionPdfService
 
         section.Item().Element(container => ComposeTable(
           container,
-          ["Suite", "Descripcion", "Precio", "Desc %", "Total", "Notas"],
+          ["Suite", "Descripcion", "Precio", "Notas"],
           model.Extras,
-          row => [row.Suite, row.Descripcion, row.Precio, row.Descuento, row.Total, row.Notas],
+          row => [row.Suite, row.Descripcion, row.Precio, row.Notas],
           columns =>
           {
             columns.RelativeColumn(1.2f);
             columns.RelativeColumn(1.8f);
-            columns.RelativeColumn(1f);
-            columns.RelativeColumn(0.9f);
             columns.RelativeColumn(1f);
             columns.RelativeColumn(1.8f);
           },
@@ -294,7 +292,7 @@ public sealed class ReservacionPdfService : IReservacionPdfService
         row.Spacing(10);
         row.RelativeItem(1.7f).Element(cell => ComposeInlineValue(cell, "Cliente", model.Cliente, 11, true));
         row.RelativeItem().Element(cell => ComposeInlineValue(cell, "Recomendacion", model.Recomendacion));
-        row.ConstantItem(74).Element(cell => ComposeInlineValue(cell, "Facturable", model.Facturable));
+        row.ConstantItem(96).Element(cell => ComposeInlineValue(cell, "Requiere CFDI", model.Facturable));
       });
 
       column.Item().LineHorizontal(1).LineColor(BrandBorder);

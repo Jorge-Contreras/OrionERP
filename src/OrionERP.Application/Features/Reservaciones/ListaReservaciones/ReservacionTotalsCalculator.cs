@@ -12,7 +12,6 @@ public static class ReservacionTotalsCalculator
   public static ReservacionTotalsBreakdown Calculate(
     DateTime? checkIn,
     DateTime? checkOut,
-    bool taxable,
     decimal totalSuites,
     decimal totalExtras,
     decimal totalPagado,
@@ -25,15 +24,11 @@ public static class ReservacionTotalsCalculator
     var discountedSuites = RoundCurrency(roundedSuites - suiteDiscountAmount);
     var subtotal = RoundCurrency(discountedSuites + roundedExtras);
 
-    var tax = 0m;
+    var tax = RoundCurrency(subtotal * TaxRate);
     var ish = 0m;
-    if (taxable)
+    if (checkIn.HasValue && checkIn.Value.Year < 2025)
     {
-      tax = RoundCurrency(subtotal * TaxRate);
-      if (checkIn.HasValue && checkIn.Value.Year < 2025)
-      {
-        ish = RoundCurrency(subtotal * IshRate);
-      }
+      ish = RoundCurrency(subtotal * IshRate);
     }
 
     return BuildBreakdown(
@@ -52,7 +47,6 @@ public static class ReservacionTotalsCalculator
   public static ReservacionTotalsBreakdown Calculate(
     DateTime? checkIn,
     DateTime? checkOut,
-    bool taxable,
     IEnumerable<decimal> suiteLineTotals,
     IEnumerable<decimal> extraLineTotals,
     decimal totalPagado,
@@ -75,15 +69,11 @@ public static class ReservacionTotalsCalculator
     var roundedExtras = RoundCurrency(roundedExtraLines.Sum());
     var subtotal = RoundCurrency(discountedSuites + roundedExtras);
 
-    var tax = 0m;
+    var tax = SumRoundedTax(taxableLines, TaxRate);
     var ish = 0m;
-    if (taxable)
+    if (checkIn.HasValue && checkIn.Value.Year < 2025)
     {
-      tax = SumRoundedTax(taxableLines, TaxRate);
-      if (checkIn.HasValue && checkIn.Value.Year < 2025)
-      {
-        ish = SumRoundedTax(taxableLines, IshRate);
-      }
+      ish = SumRoundedTax(taxableLines, IshRate);
     }
 
     return BuildBreakdown(

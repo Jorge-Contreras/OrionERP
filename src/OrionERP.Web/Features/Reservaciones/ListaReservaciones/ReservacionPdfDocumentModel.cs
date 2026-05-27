@@ -38,8 +38,6 @@ public sealed record ReservacionPdfExtraRow(
   string Suite,
   string Descripcion,
   string Precio,
-  string Descuento,
-  string Total,
   string Notas);
 
 public sealed record ReservacionPdfPagoRow(

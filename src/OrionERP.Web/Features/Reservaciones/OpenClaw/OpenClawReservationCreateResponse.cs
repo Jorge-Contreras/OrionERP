@@ -11,6 +11,7 @@ public sealed class OpenClawReservationCreateResponse
   public DateOnly CheckIn { get; set; }
   public DateOnly CheckOut { get; set; }
   public string Status { get; set; } = string.Empty;
+  public bool RequiresCfdi { get; set; }
   public bool Taxable { get; set; }
   public IReadOnlyList<string> SuiteNames { get; set; } = Array.Empty<string>();
   public IReadOnlyList<OpenClawReservationCreatedExtra> Extras { get; set; } = Array.Empty<OpenClawReservationCreatedExtra>();

@@ -12,7 +12,7 @@ public sealed class ReservacionDetailDto
   public DateTime? CheckOut { get; set; }
   public string? Status { get; set; }
   public string? RecommenedBy { get; set; }
-  public bool Taxable { get; set; }
+  public bool RequiresCfdi { get; set; }
   public decimal TotalPrice { get; set; }
   public decimal Pagado { get; set; }
   public decimal PorPagar { get; set; }

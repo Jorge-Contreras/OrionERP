@@ -18,7 +18,7 @@ public sealed class ReservacionPdfDocumentFactory : IReservacionPdfDocumentFacto
       detail.CheckIn,
       detail.CheckOut,
       detail.RecommenedBy,
-      detail.Taxable,
+      detail.RequiresCfdi,
       detail.Notes,
       detail.TotalSuites,
       detail.SuiteDiscountPercent,
@@ -75,11 +75,9 @@ public sealed class ReservacionPdfDocumentFactory : IReservacionPdfDocumentFacto
           suite.LimpiezaProfunda ? "Si" : "No"))
         .ToList(),
       snapshot.Extras.Select(extra => new ReservacionPdfExtraRow(
-          extra.RoomName,
+          string.IsNullOrWhiteSpace(extra.RoomName) ? "Sin suite" : extra.RoomName,
           extra.RoomDescription,
           FormatCurrency(extra.Price, culture),
-          extra.Discount.ToString(culture),
-          FormatCurrency(extra.DiscountedPrice, culture),
           extra.Notes ?? string.Empty))
         .ToList(),
       snapshot.Pagos.Select(pago => new ReservacionPdfPagoRow(

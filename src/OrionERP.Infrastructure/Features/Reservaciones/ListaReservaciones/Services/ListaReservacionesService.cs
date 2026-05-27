@@ -46,7 +46,6 @@ SELECT
     r.CHECKIN AS CheckIn,
     r.CHECKOUT AS CheckOut,
     r.STATUS AS Status,
-    CAST(ISNULL(r.TAXABLE, 0) AS bit) AS Taxable,
     CAST(ISNULL(r.TOTAL_PRICE, 0) AS decimal(18,2)) AS TotalPrice,
     CAST(ISNULL(r.SUITE_DISCOUNT_PERCENT, 0) AS decimal(18,2)) AS SuiteDiscountPercent,
     CAST(0 AS decimal(18,2)) AS Pagado,
@@ -126,7 +125,7 @@ WHERE TRY_CAST(rc.LOCK_DESCRIPTION AS int) IN @ReservationIds;
 
 SELECT
     rd.RESERVATION_ID AS ReservationId,
-    CAST(ISNULL(rd.DISCOUNTED_PRICE, 0) AS decimal(18,2)) AS Amount
+    CAST(ISNULL(rd.PRICE, 0) AS decimal(18,2)) AS Amount
 FROM dbo.RESERVATION_DETAIL rd
 WHERE rd.RESERVATION_ID IN @ReservationIds;
 
@@ -233,7 +232,6 @@ GROUP BY rp.ReservationId;";
       var totals = ReservacionTotalsCalculator.Calculate(
         row.CheckIn,
         row.CheckOut,
-        row.Taxable,
         suitesByReservation[row.Id],
         extrasByReservation[row.Id],
         pagosByReservation[row.Id].Sum(),
@@ -361,7 +359,7 @@ SELECT CAST(SCOPE_IDENTITY() AS int);";
     var status = ReservationStatuses.NormalizeOrDefault(request.Status);
     var recommendedBy = TrimOrNull(request.RecommendedBy);
     var reservationNotes = TrimOrNull(request.ReservationNotes);
-    var taxable = request.Taxable ?? true;
+    var requiresCfdi = request.RequiresCfdi ?? request.Taxable ?? true;
     var checkIn = request.CheckIn.ToDateTime(TimeOnly.MinValue);
     var checkOut = request.CheckOut.ToDateTime(TimeOnly.MinValue);
 
@@ -442,7 +440,7 @@ ORDER BY rc.ROOM, rc.ROOM_DATE;
 INSERT INTO dbo.RESERVATION
 (CLIENTE_ID, CHECKIN, CHECKOUT, STATUS, RECOMMENED_BY, NOTES, TAXABLE, TOTAL_PRICE)
 VALUES
-(@ClienteId, @CheckIn, @CheckOut, @Status, @RecommenedBy, @Notes, @Taxable, @TotalPrice);
+(@ClienteId, @CheckIn, @CheckOut, @Status, @RecommenedBy, @Notes, @RequiresCfdi, @TotalPrice);
 SELECT CAST(SCOPE_IDENTITY() AS int);
 """;
 
@@ -457,7 +455,7 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
             Status = status,
             RecommenedBy = recommendedBy,
             Notes = reservationNotes,
-            Taxable = taxable,
+            RequiresCfdi = requiresCfdi,
             TotalPrice = 0m
           },
           tx,
@@ -498,8 +496,6 @@ WHERE ID IN @Ids;
               ReservationId = reservationId,
               RoomId = room.Id,
               Price = item.LinePrice,
-              DiscountedPrice = item.LinePrice,
-              Discount = 0m,
               Notes = TrimOrNull(item.Notes)
             };
           })
@@ -509,9 +505,9 @@ WHERE ID IN @Ids;
           new CommandDefinition(
             """
 INSERT INTO dbo.RESERVATION_DETAIL
-(RESERVATION_ID, ROOM_ID, PRICE, DISCOUNTED_PRICE, DISCOUNT, NOTES)
+(RESERVATION_ID, ROOM_ID, PRICE, NOTES)
 VALUES
-(@ReservationId, @RoomId, @Price, @DiscountedPrice, @Discount, @Notes);
+(@ReservationId, @RoomId, @Price, @Notes);
 """,
             extraParameters,
             tx,
@@ -522,7 +518,6 @@ VALUES
       var totals = ReservacionTotalsCalculator.Calculate(
         checkIn,
         checkOut,
-        taxable,
         calendarRows.Select(row => row.Precio),
         createdExtras.Select(item => item.LinePrice),
         0m);
@@ -554,7 +549,7 @@ WHERE ID = @ReservationId;
         CheckIn = request.CheckIn,
         CheckOut = request.CheckOut,
         Status = status,
-        Taxable = taxable,
+        RequiresCfdi = requiresCfdi,
         SuiteNames = resolvedSuites.Select(item => item.RoomName).ToArray(),
         Extras = createdExtras,
         SuiteSubtotal = totals.TotalSuites,
@@ -826,7 +821,7 @@ SELECT TOP (1)
     r.CHECKOUT AS CheckOut,
     r.STATUS AS Status,
     r.RECOMMENED_BY AS RecommenedBy,
-    CAST(ISNULL(r.TAXABLE, 0) AS bit) AS Taxable,
+    CAST(ISNULL(r.TAXABLE, 0) AS bit) AS RequiresCfdi,
     CAST(ISNULL(r.TOTAL_PRICE, 0) AS decimal(18,2)) AS TotalPrice,
     CAST(ISNULL(r.SUITE_DISCOUNT_PERCENT, 0) AS decimal(18,2)) AS SuiteDiscountPercent,
     r.NOTES AS Notes
@@ -852,9 +847,7 @@ SELECT
     ISNULL(r.ROOM_NAME, '') AS RoomName,
     ISNULL(r.ROOM_DESCRIPTION, '') AS RoomDescription,
     CAST(ISNULL(rd.PRICE, 0) AS decimal(18,2)) AS Price,
-    rd.NOTES AS Notes,
-    CAST(ISNULL(rd.DISCOUNT, 0) AS decimal(18,2)) AS Discount,
-    CAST(ISNULL(rd.DISCOUNTED_PRICE, 0) AS decimal(18,2)) AS DiscountedPrice
+    rd.NOTES AS Notes
 FROM dbo.RESERVATION_DETAIL rd
 LEFT JOIN dbo.ROOM r
   ON r.ID = rd.ROOM_ID
@@ -1218,9 +1211,7 @@ SELECT
     ISNULL(r.ROOM_NAME, '') AS RoomName,
     ISNULL(r.ROOM_DESCRIPTION, '') AS RoomDescription,
     CAST(ISNULL(rd.PRICE, 0) AS decimal(18,2)) AS Price,
-    rd.NOTES AS Notes,
-    CAST(ISNULL(rd.DISCOUNT, 0) AS decimal(18,2)) AS Discount,
-    CAST(ISNULL(rd.DISCOUNTED_PRICE, 0) AS decimal(18,2)) AS DiscountedPrice
+    rd.NOTES AS Notes
 FROM dbo.RESERVATION_DETAIL rd
 LEFT JOIN dbo.ROOM r
   ON r.ID = rd.ROOM_ID
@@ -1401,7 +1392,7 @@ SET
     STATUS = @Status,
     RECOMMENED_BY = @RecommenedBy,
     NOTES = @Notes,
-    TAXABLE = @Taxable,
+    TAXABLE = @RequiresCfdi,
     TOTAL_PRICE = @TotalPrice,
     SUITE_DISCOUNT_PERCENT = @SuiteDiscountPercent
 WHERE ID = @Id;";
@@ -1419,7 +1410,7 @@ WHERE ID = @Id;";
           Status = string.IsNullOrWhiteSpace(request.Status) ? null : request.Status.Trim(),
           RecommenedBy = string.IsNullOrWhiteSpace(request.RecommenedBy) ? null : request.RecommenedBy.Trim(),
           Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
-          request.Taxable,
+          request.RequiresCfdi,
           request.TotalPrice,
           SuiteDiscountPercent = suiteDiscountPercent
         },
@@ -1950,14 +1941,14 @@ SELECT @Result;
     if (request is null)
       throw new ArgumentNullException(nameof(request));
 
-    if (request.ReservationId <= 0 || request.RoomId <= 0)
-      return ReservacionCommandResult.Fail("Selecciona una suite válida para el extra.");
+    if (request.ReservationId <= 0 || request.RoomId is <= 0)
+      return ReservacionCommandResult.Fail("Selecciona una reservación válida para el extra.");
 
     const string sql = @"
 INSERT INTO dbo.RESERVATION_DETAIL
-(RESERVATION_ID, ROOM_ID, PRICE, DISCOUNTED_PRICE, DISCOUNT, NOTES)
+(RESERVATION_ID, ROOM_ID, PRICE, NOTES)
 VALUES
-(@ReservationId, @RoomId, @Price, @DiscountedPrice, @Discount, @Notes);";
+(@ReservationId, @RoomId, @Price, @Notes);";
 
     await using var conn = new SqlConnection(_cs);
     var affected = await conn.ExecuteAsync(
@@ -1966,10 +1957,8 @@ VALUES
         new
         {
           request.ReservationId,
-          request.RoomId,
+          RoomId = NormalizeOptionalId(request.RoomId),
           request.Price,
-          request.DiscountedPrice,
-          request.Discount,
           Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim()
         },
         cancellationToken: ct));
@@ -1984,16 +1973,14 @@ VALUES
     if (request is null)
       throw new ArgumentNullException(nameof(request));
 
-    if (request.Id <= 0 || request.ReservationId <= 0 || request.RoomId <= 0)
-      return ReservacionCommandResult.Fail("Selecciona un extra y una suite válidos.");
+    if (request.Id <= 0 || request.ReservationId <= 0 || request.RoomId is <= 0)
+      return ReservacionCommandResult.Fail("Selecciona un extra y una reservación válidos.");
 
     const string sql = @"
 UPDATE dbo.RESERVATION_DETAIL
 SET
     ROOM_ID = @RoomId,
     PRICE = @Price,
-    DISCOUNTED_PRICE = @DiscountedPrice,
-    DISCOUNT = @Discount,
     NOTES = @Notes
 WHERE ID = @Id
   AND RESERVATION_ID = @ReservationId;";
@@ -2006,10 +1993,8 @@ WHERE ID = @Id
         {
           request.Id,
           request.ReservationId,
-          request.RoomId,
+          RoomId = NormalizeOptionalId(request.RoomId),
           request.Price,
-          request.DiscountedPrice,
-          request.Discount,
           Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim()
         },
         cancellationToken: ct));
@@ -2238,9 +2223,8 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
     var totals = ReservacionTotalsCalculator.Calculate(
       detail.CheckIn,
       detail.CheckOut,
-      detail.Taxable,
       suites.Select(s => s.Precio),
-      extras.Select(e => e.DiscountedPrice),
+      extras.Select(e => e.Price),
       pagos.Sum(p => p.Monto),
       detail.SuiteDiscountPercent);
 
@@ -2302,6 +2286,9 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
         : 0m
     };
   }
+
+  private static int? NormalizeOptionalId(int? value)
+    => value is > 0 ? value.GetValueOrDefault() : null;
 
   private static DateTime? ToDateTime(object? value)
   {
@@ -2369,7 +2356,6 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
     public DateTime? CheckIn { get; set; }
     public DateTime? CheckOut { get; set; }
     public string? Status { get; set; }
-    public bool Taxable { get; set; }
     public decimal TotalPrice { get; set; }
     public decimal SuiteDiscountPercent { get; set; }
     public decimal Pagado { get; set; }

@@ -276,7 +276,7 @@ public class BonhomiaCheckoutApiTests
         CheckIn = new DateTime(2026, 6, 10),
         CheckOut = new DateTime(2026, 6, 12),
         Status = "PAGADA",
-        Taxable = true,
+        RequiresCfdi = true,
         TotalSuites = 2500m,
         SubTotal = 2500m,
         Tax = 400m,

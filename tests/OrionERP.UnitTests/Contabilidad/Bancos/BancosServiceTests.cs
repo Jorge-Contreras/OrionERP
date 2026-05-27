@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Infrastructure.Features.Contabilidad.Bancos;
 using OrionERP.UnitTests.Common;
 
@@ -163,7 +164,7 @@ public class BancosServiceTests
     Assert.Contains("T.OrdenBalance = A.BankOrdenBalance", command.CommandText, StringComparison.Ordinal);
     Assert.Contains("M.Secuencia_Clave", command.CommandText, StringComparison.Ordinal);
     Assert.Contains("M.Cuenta_Banco_ID = @AccountId", command.CommandText, StringComparison.Ordinal);
-    Assert.Contains("M.Transaccion_ID IS NOT NULL", command.CommandText, StringComparison.Ordinal);
+    Assert.Contains("bancos.Movimiento_Transaccion AS MT", command.CommandText, StringComparison.Ordinal);
 
     AssertParameter(command.Parameters, "@Rfc", "RFC123456789");
     AssertParameter(command.Parameters, "@StartDate", new DateTime(2026, 5, 1));
@@ -171,10 +172,143 @@ public class BancosServiceTests
     AssertParameter(command.Parameters, "@AccountId", 18);
   }
 
+  [Fact]
+  public async Task SaveMovementLinksAsync_BlocksWhenBankAccountMappingIsMissing()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = static (_, _) => CreateMovementValidationContext(mappingValid: false)
+    };
+
+    var service = new BancosService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.SaveMovementLinksAsync(new BankMovementLinkSaveRequest
+    {
+      MovimientoId = 1001,
+      Links =
+      {
+        new BankMovementLinkSaveItem { TransaccionId = 9001, Debe = 350m }
+      }
+    });
+
+    Assert.False(result.Success);
+    Assert.Contains("Cuenta_Contable_ID", result.Message, StringComparison.Ordinal);
+    Assert.True(connection.LastTransaction?.WasRolledBack);
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("DELETE FROM bancos.Movimiento_Transaccion", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public async Task SaveMovementLinksAsync_RequiresExactMovementAllocation()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = static (_, _) => CreateMovementValidationContext(mappingValid: true, expectedDebe: 350m)
+    };
+
+    var service = new BancosService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.SaveMovementLinksAsync(new BankMovementLinkSaveRequest
+    {
+      MovimientoId = 1001,
+      Links =
+      {
+        new BankMovementLinkSaveItem { TransaccionId = 9001, Debe = 200m }
+      }
+    });
+
+    Assert.False(result.Success);
+    Assert.Contains("exactamente", result.Message, StringComparison.OrdinalIgnoreCase);
+    Assert.True(connection.LastTransaction?.WasRolledBack);
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("FROM dbo.Transacciones AS T", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public async Task SaveMovementLinksAsync_RejectsOverAllocationAgainstBankRegistroLine()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = static (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.Transacciones AS T", StringComparison.Ordinal))
+        {
+          return CreateTransactionCapacity(bankRegistroDebe: 200m);
+        }
+
+        return CreateMovementValidationContext(mappingValid: true, expectedDebe: 350m);
+      }
+    };
+
+    var service = new BancosService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.SaveMovementLinksAsync(new BankMovementLinkSaveRequest
+    {
+      MovimientoId = 1001,
+      Links =
+      {
+        new BankMovementLinkSaveItem { TransaccionId = 9001, Debe = 350m }
+      }
+    });
+
+    Assert.False(result.Success);
+    Assert.Contains("disponible en Debe", result.Message, StringComparison.Ordinal);
+    Assert.True(connection.LastTransaction?.WasRolledBack);
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO bancos.Movimiento_Transaccion", StringComparison.Ordinal));
+  }
+
   private static void AssertParameter(IReadOnlyList<FakeQueryParameter> parameters, string name, object? expectedValue)
   {
     var normalizedName = name.TrimStart('@');
     var parameter = Assert.Single(parameters, item => string.Equals(item.Name.TrimStart('@'), normalizedName, StringComparison.OrdinalIgnoreCase));
     Assert.Equal(expectedValue, parameter.Value);
+  }
+
+  private static DataTable CreateMovementValidationContext(
+      bool mappingValid,
+      decimal expectedDebe = 350m,
+      decimal expectedHaber = 0m)
+  {
+    var table = new DataTable();
+    table.Columns.Add("MovimientoId", typeof(long));
+    table.Columns.Add("Rfc", typeof(string));
+    table.Columns.Add("CuentaBancoId", typeof(int));
+    table.Columns.Add("ExpectedDebe", typeof(decimal));
+    table.Columns.Add("ExpectedHaber", typeof(decimal));
+    table.Columns.Add("CuentaContableId", typeof(int));
+    table.Columns.Add("Nivel1", typeof(string));
+    table.Columns.Add("Nivel2", typeof(string));
+    table.Columns.Add("Nivel3", typeof(string));
+    table.Columns.Add("BankAccountDescription", typeof(string));
+    table.Columns.Add("MappingValid", typeof(bool));
+    table.Columns.Add("SetupIssue", typeof(string));
+
+    table.Rows.Add(
+      1001L,
+      "RFC123456789",
+      18,
+      expectedDebe,
+      expectedHaber,
+      mappingValid ? 42 : DBNull.Value,
+      mappingValid ? "102" : string.Empty,
+      mappingValid ? "01" : string.Empty,
+      mappingValid ? "00" : string.Empty,
+      mappingValid ? "Banco principal" : string.Empty,
+      mappingValid,
+      mappingValid ? DBNull.Value : "La cuenta bancaria no tiene Cuenta_Contable_ID.");
+
+    return table;
+  }
+
+  private static DataTable CreateTransactionCapacity(decimal bankRegistroDebe)
+  {
+    var table = new DataTable();
+    table.Columns.Add("TransaccionId", typeof(int));
+    table.Columns.Add("Rfc", typeof(string));
+    table.Columns.Add("BankRegistroDebe", typeof(decimal));
+    table.Columns.Add("BankRegistroHaber", typeof(decimal));
+    table.Columns.Add("OtherLinkedDebe", typeof(decimal));
+    table.Columns.Add("OtherLinkedHaber", typeof(decimal));
+
+    table.Rows.Add(9001, "RFC123456789", bankRegistroDebe, 0m, 0m, 0m);
+    return table;
   }
 }

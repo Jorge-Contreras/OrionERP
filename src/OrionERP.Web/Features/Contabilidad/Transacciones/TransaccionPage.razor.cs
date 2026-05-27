@@ -2031,6 +2031,17 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected bool IsBancoMovimientoUnlinking(BankMovementDto movimiento)
     => movimiento is not null && movimiento.MovimientoId == _unlinkingBancoMovimientoId;
 
+  protected void OpenBancoMovimientoLinkingWorkspace(BankMovementDto? movimiento = null)
+  {
+    if (movimiento is null)
+    {
+      NavManager.NavigateTo($"/contabilidad/transacciones/{Id}/bancos/ligar");
+      return;
+    }
+
+    NavManager.NavigateTo($"/contabilidad/bancos/movimientos/{movimiento.MovimientoId}/ligar?transaccionId={Id}");
+  }
+
   protected bool IsComprobanteSelected(TransaccionCfdiLinkedSummaryDto comprobante)
     => comprobante is not null && comprobante.ComprobanteId == _selectedComprobanteId;
 
@@ -2250,8 +2261,16 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     try
     {
-      await BancosService.UnlinkMovementAsync(movimiento.MovimientoId);
-      UiMessages.ShowSuccess("Movimiento bancario desligado correctamente.");
+      var result = await BancosService.UnlinkMovementTransactionAsync(movimiento.MovimientoId, Id);
+      if (!result.Success)
+      {
+        UiMessages.ShowWarning(result.Message);
+      }
+      else
+      {
+        UiMessages.ShowSuccess(result.Message);
+      }
+
       await ReloadBancoMovimientosAsync();
     }
     catch (Exception ex)

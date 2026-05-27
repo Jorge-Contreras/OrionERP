@@ -17,6 +17,11 @@ public sealed record BankMovementDto
   public string NumeroCuenta { get; init; } = string.Empty;
   public long SecuenciaClave { get; init; }
   public int? Policy { get; init; }
+  public int PolicyCount { get; init; }
+  public string LinkedPolicyIds { get; init; } = string.Empty;
+  public string LinkedPolicySummary { get; init; } = string.Empty;
+  public decimal LinkedDebe { get; init; }
+  public decimal LinkedHaber { get; init; }
   public string Issues { get; init; } = "OK";
   public DateTime? PolicyDate { get; init; }
   public long? OrdenBalance { get; init; }

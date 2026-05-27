@@ -1554,7 +1554,7 @@ WHERE ID = @MovimientoId
                  EXISTS (SELECT 1 FROM dbo.Transaccion_DoctoRelacionado WHERE Transaccion_ID = @TransaccionId) OR
                  EXISTS (SELECT 1 FROM dbo.Reservation_Transacciones WHERE TransaccionID = @TransaccionId) OR
                  EXISTS (SELECT 1 FROM dbo.TRANSACTION_ATTACHMENT WHERE TranID = @TransaccionId) OR
-                 EXISTS (SELECT 1 FROM bancos.Movimientos WHERE Transaccion_ID = @TransaccionId)
+                 EXISTS (SELECT 1 FROM bancos.Movimiento_Transaccion WHERE Transaccion_ID = @TransaccionId)
               BEGIN
                   SELECT 1;
               END

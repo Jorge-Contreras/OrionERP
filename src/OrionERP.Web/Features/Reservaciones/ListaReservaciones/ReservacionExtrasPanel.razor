@@ -4,44 +4,18 @@
             <h2>EXTRAS</h2>
             <p>@Page.Extras.Count cargos adicionales.</p>
         </div>
-        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="Page.ToggleExtraForm">+</button>
+        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="Page.OpenNewExtraModal">Agregar</button>
     </div>
-
-    @if (Page.ShowExtraForm)
-    {
-        <div class="reservacion-inline-editor row g-2 mb-3">
-            <div class="col-md-3">
-                <label class="form-label">Suite</label>
-                <select class="form-select form-select-sm" value="@Page.ExtraRoomId" @onchange="Page.OnExtraRoomChanged">
-                    <option value="">Sin suite</option>
-                    @foreach (var room in Page.Rooms)
-                    {
-                        <option value="@room.Id">@room.RoomName</option>
-                    }
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label">Precio</label>
-                <input class="form-control form-control-sm" type="number" @bind="Page.ExtraPrice" placeholder="Precio" />
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Notas</label>
-                <input class="form-control form-control-sm" @bind="Page.ExtraNotes" placeholder="Notas" />
-            </div>
-            <div class="col-md-2 d-flex gap-2 align-items-end">
-                <button type="button" class="btn btn-sm btn-success flex-fill" @onclick="Page.GuardarExtraAsync">@(Page.IsEditingExtra ? "Guardar" : "Agregar")</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary flex-fill" @onclick="Page.CancelExtraEdit">Cancelar</button>
-            </div>
-        </div>
-    }
 
     <div class="table-responsive reservacion-table-wrap">
         <table class="table table-sm table-bordered mb-0">
             <thead class="table-light">
                 <tr>
-                    <th>Suite</th>
+                    <th>Extra</th>
                     <th>Descripción</th>
-                    <th class="text-end">Precio</th>
+                    <th class="text-end">Cant.</th>
+                    <th class="text-end">P. unitario</th>
+                    <th class="text-end">Total</th>
                     <th>Notas</th>
                     <th></th>
                 </tr>
@@ -49,15 +23,17 @@
             <tbody>
                 @if (Page.Extras.Count == 0)
                 {
-                    <tr><td colspan="5" class="text-center text-muted py-3">No hay extras capturados.</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted py-3">No hay extras capturados.</td></tr>
                 }
                 else
                 {
                     @foreach (var extra in Page.Extras)
                     {
                         <tr>
-                            <td>@(string.IsNullOrWhiteSpace(extra.RoomName) ? "Sin suite" : extra.RoomName)</td>
-                            <td>@extra.RoomDescription</td>
+                            <td>@extra.Name</td>
+                            <td>@extra.Description</td>
+                            <td class="text-end">@extra.Quantity</td>
+                            <td class="text-end">@ReservacionPage.FormatCurrency(extra.UnitPrice)</td>
                             <td class="text-end">@ReservacionPage.FormatCurrency(extra.Price)</td>
                             <td>@extra.Notes</td>
                             <td class="text-end">
@@ -73,6 +49,58 @@
         </table>
     </div>
 </section>
+
+@if (Page.ShowExtraModal)
+{
+    <div class="modal fade show d-block reservacion-modal-backdrop" tabindex="-1" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(Page.IsEditingExtra ? "Editar extra" : "Agregar extra")</h5>
+                    <button type="button" class="btn-close" @onclick="Page.CancelExtraEdit"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Catálogo</label>
+                            <select class="form-select" value="@Page.ExtraCatalogId" @onchange="Page.OnExtraCatalogChanged">
+                                <option value="">Selecciona un extra</option>
+                                @foreach (var extra in Page.ExtraCatalog)
+                                {
+                                    <option value="@extra.ExtraId">@extra.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Precio unitario</label>
+                            <div class="input-group">
+                                <input class="form-control" type="number" step="0.01" @bind="Page.ExtraUnitPrice" @bind:event="oninput" />
+                                <button type="button" class="btn btn-outline-secondary" title="Dividir entre 1.16" @onclick="Page.ConvertExtraPriceToSubtotal">Subtotal</button>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Cantidad</label>
+                            <input class="form-control" type="number" min="1" step="1" @bind="Page.ExtraQuantity" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Total</label>
+                            <input class="form-control" type="text" value="@ReservacionPage.FormatCurrency(Page.ExtraUnitPrice * Page.ExtraQuantity)" readonly />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notas</label>
+                            <textarea class="form-control" rows="3" @bind="Page.ExtraNotes"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="Page.CancelExtraEdit">Cancelar</button>
+                    <button type="button" class="btn btn-primary" @onclick="Page.GuardarExtraAsync">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
 
 @code {
     [CascadingParameter] public ReservacionPage Page { get; set; } = default!;

@@ -160,14 +160,16 @@ public sealed class ReservacionPdfService : IReservacionPdfService
 
         section.Item().Element(container => ComposeTable(
           container,
-          ["Suite", "Descripcion", "Precio", "Notas"],
+          ["Extra", "Descripcion", "Cant.", "P. unit.", "Total", "Notas"],
           model.Extras,
-          row => [row.Suite, row.Descripcion, row.Precio, row.Notas],
+          row => [row.Extra, row.Descripcion, row.Cantidad, row.PrecioUnitario, row.Total, row.Notas],
           columns =>
           {
             columns.RelativeColumn(1.2f);
             columns.RelativeColumn(1.8f);
-            columns.RelativeColumn(1f);
+            columns.RelativeColumn(0.6f);
+            columns.RelativeColumn(0.9f);
+            columns.RelativeColumn(0.9f);
             columns.RelativeColumn(1.8f);
           },
           "Sin extras registrados."));

@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
@@ -8,44 +9,67 @@ namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 
 public partial class ReservacionPage
 {
-  internal void ToggleExtraForm()
+  internal void OpenNewExtraModal()
   {
-    if (ShowExtraForm && !IsEditingExtra)
-    {
-      ResetExtraEditor();
-      return;
-    }
-
     StartNewExtra();
   }
 
   internal void EditExtra(ReservacionExtraDto extra)
   {
     EditingExtraId = extra.Id;
-    ExtraRoomId = extra.RoomId;
-    ExtraPrice = extra.Price;
+    ExtraCatalogId = extra.ExtraId;
+    ExtraUnitPrice = extra.UnitPrice;
+    ExtraQuantity = extra.Quantity <= 0 ? 1 : extra.Quantity;
     ExtraNotes = extra.Notes;
-    ShowExtraForm = true;
+    ShowExtraModal = true;
   }
 
-  internal void OnExtraRoomChanged(ChangeEventArgs args)
+  internal void OnExtraCatalogChanged(ChangeEventArgs args)
   {
     if (!int.TryParse(args.Value?.ToString(), out var id))
     {
-      ExtraRoomId = null;
+      ExtraCatalogId = null;
       return;
     }
 
-    ExtraRoomId = id;
-    var room = Rooms.FirstOrDefault(r => r.Id == id);
-    if (room is not null)
+    ExtraCatalogId = id;
+    var extra = ExtraCatalog.FirstOrDefault(item => item.ExtraId == id);
+    if (extra is not null)
     {
-      ExtraPrice = room.BasePrice;
+      ExtraUnitPrice = extra.Price;
     }
+  }
+
+  internal void ConvertExtraPriceToSubtotal()
+  {
+    if (ExtraUnitPrice == 0m)
+    {
+      return;
+    }
+
+    ExtraUnitPrice = decimal.Round(ExtraUnitPrice / 1.16m, 2, MidpointRounding.ToEven);
   }
 
   internal async Task GuardarExtraAsync()
   {
+    if (!ExtraCatalogId.HasValue || ExtraCatalogId.Value <= 0)
+    {
+      UiMessages.ShowWarning("Selecciona un extra del catálogo.");
+      return;
+    }
+
+    if (ExtraQuantity <= 0)
+    {
+      UiMessages.ShowWarning("La cantidad del extra debe ser mayor a cero.");
+      return;
+    }
+
+    if (ExtraUnitPrice < 0m)
+    {
+      UiMessages.ShowWarning("El precio del extra no puede ser negativo.");
+      return;
+    }
+
     ReservacionCommandResult result;
     if (IsEditingExtra)
     {
@@ -53,8 +77,9 @@ public partial class ReservacionPage
       {
         Id = EditingExtraId!.Value,
         ReservationId = ReservationId,
-        RoomId = ExtraRoomId,
-        Price = ExtraPrice,
+        ExtraId = ExtraCatalogId.Value,
+        UnitPrice = ExtraUnitPrice,
+        Quantity = ExtraQuantity,
         Notes = ExtraNotes
       });
     }
@@ -63,8 +88,9 @@ public partial class ReservacionPage
       result = await ReservacionesService.AddExtraAsync(new ReservacionExtraCreateRequest
       {
         ReservationId = ReservationId,
-        RoomId = ExtraRoomId,
-        Price = ExtraPrice,
+        ExtraId = ExtraCatalogId.Value,
+        UnitPrice = ExtraUnitPrice,
+        Quantity = ExtraQuantity,
         Notes = ExtraNotes
       });
     }
@@ -115,23 +141,26 @@ public partial class ReservacionPage
   {
     Extras = await ReservacionesService.GetExtrasAsync(ReservationId);
     RecalculateTotals();
+    await InvokeAsync(StateHasChanged);
   }
 
   private void StartNewExtra()
   {
     EditingExtraId = null;
-    ExtraRoomId = null;
-    ExtraPrice = 0m;
+    ExtraCatalogId = null;
+    ExtraUnitPrice = 0m;
+    ExtraQuantity = 1;
     ExtraNotes = null;
-    ShowExtraForm = true;
+    ShowExtraModal = true;
   }
 
   private void ResetExtraEditor()
   {
     EditingExtraId = null;
-    ExtraRoomId = null;
-    ExtraPrice = 0m;
+    ExtraCatalogId = null;
+    ExtraUnitPrice = 0m;
+    ExtraQuantity = 1;
     ExtraNotes = null;
-    ShowExtraForm = false;
+    ShowExtraModal = false;
   }
 }

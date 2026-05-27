@@ -675,7 +675,7 @@
                         <i class="@extra.Icon" aria-hidden="true"></i>
                         <h3>@extra.Name</h3>
                         <p>@extra.Detail</p>
-                        <strong>@extra.Price</strong>
+                        <strong>@GetPublicExtraPrice(extra)</strong>
                     </article>
                 }
             </div>
@@ -1620,6 +1620,12 @@
 
     private static string FormatMoney(decimal value)
       => $"{value.ToString("C0", MoneyCulture)} MXN";
+
+    private string GetPublicExtraPrice(ExtraOffer extra)
+    {
+        var catalogExtra = Availability?.Extras.FirstOrDefault(item => string.Equals(item.Name, extra.Name, StringComparison.OrdinalIgnoreCase));
+        return catalogExtra is null ? extra.Price : FormatMoney(catalogExtra.UnitPrice);
+    }
 
     private static string FormatReservationNumber(int value)
       => value > 0 ? $"#{value.ToString("D6", CultureInfo.InvariantCulture)}" : "#";

@@ -35,9 +35,11 @@ public sealed record ReservacionPdfSuiteRow(
   string Limpieza);
 
 public sealed record ReservacionPdfExtraRow(
-  string Suite,
+  string Extra,
   string Descripcion,
-  string Precio,
+  string Cantidad,
+  string PrecioUnitario,
+  string Total,
   string Notas);
 
 public sealed record ReservacionPdfPagoRow(

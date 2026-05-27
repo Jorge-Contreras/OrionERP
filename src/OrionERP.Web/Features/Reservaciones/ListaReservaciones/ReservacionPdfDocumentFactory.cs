@@ -75,8 +75,10 @@ public sealed class ReservacionPdfDocumentFactory : IReservacionPdfDocumentFacto
           suite.LimpiezaProfunda ? "Si" : "No"))
         .ToList(),
       snapshot.Extras.Select(extra => new ReservacionPdfExtraRow(
-          string.IsNullOrWhiteSpace(extra.RoomName) ? "Sin suite" : extra.RoomName,
-          extra.RoomDescription,
+          extra.Name,
+          extra.Description ?? string.Empty,
+          extra.Quantity.ToString(culture),
+          FormatCurrency(extra.UnitPrice, culture),
           FormatCurrency(extra.Price, culture),
           extra.Notes ?? string.Empty))
         .ToList(),

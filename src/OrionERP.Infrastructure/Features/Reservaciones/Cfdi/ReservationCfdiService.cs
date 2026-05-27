@@ -78,9 +78,11 @@ public sealed class ReservationCfdiService : IReservationCfdiService
         .Select(extra => new ReservationCfdiExtraSource
         {
           Id = extra.Id,
-          CatalogName = extra.RoomName,
-          Description = extra.RoomDescription,
+          CatalogName = extra.Name,
+          Description = extra.Description,
           Amount = extra.Price,
+          Quantity = extra.Quantity,
+          UnitPrice = extra.UnitPrice,
           Notes = extra.Notes
         })
         .ToArray();
@@ -526,9 +528,11 @@ WHEN NOT MATCHED THEN
           .Select(extra => new ReservationCfdiExtraSource
           {
             Id = extra.Id,
-            CatalogName = extra.RoomName,
-            Description = extra.RoomDescription,
+            CatalogName = extra.Name,
+            Description = extra.Description,
             Amount = extra.Price,
+            Quantity = extra.Quantity,
+            UnitPrice = extra.UnitPrice,
             Notes = extra.Notes
           })
           .ToArray();

@@ -131,8 +131,8 @@ BEGIN
         CAST(CASE WHEN r.ID IS NOT NULL AND d.RoomDate = DATEADD(day, -1, r.CHECKOUT) THEN 1 ELSE 0 END AS bit) AS IsDeparture,
         CAST(CASE WHEN r.ID IS NOT NULL AND EXISTS (
             SELECT 1
-            FROM dbo.RESERVATION_DETAIL rd
-            WHERE rd.RESERVATION_ID = r.ID
+            FROM dbo.Reservation_Extra re
+            WHERE re.ReservationID = r.ID
         ) THEN 1 ELSE 0 END AS bit) AS HasExtras,
         CAST(ISNULL(rc.LIMPIEZA_PROFUNDA, 0) AS bit) AS HasDeepCleaning,
         CAST(ISNULL(rc.CHECK_DIARIO, 0) AS bit) AS HasDailyCheck,

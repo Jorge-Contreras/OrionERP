@@ -13,6 +13,7 @@ using Microsoft.JSInterop;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Application.Features.Reservaciones.CalendarSync;
 using OrionERP.Application.Features.Reservaciones.Cfdi;
+using OrionERP.Application.Features.Reservaciones.Extras;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Web.Services;
 using OrionERP.Web.State;
@@ -51,7 +52,7 @@ public partial class ReservacionPage : ComponentBase
 
   internal ReservacionDetailDto? Detail { get; set; }
   internal List<ClienteOptionDto> Clientes { get; set; } = new();
-  internal List<RoomOptionDto> Rooms { get; set; } = new();
+  internal List<ExtraCatalogItemDto> ExtraCatalog { get; set; } = new();
   internal IReadOnlyList<ReservacionSuiteDto> Suites { get; set; } = Array.Empty<ReservacionSuiteDto>();
   internal List<SuiteDisponibleDto> SuitesDisponibles { get; set; } = new();
   internal IReadOnlyList<ReservacionExtraDto> Extras { get; set; } = Array.Empty<ReservacionExtraDto>();
@@ -91,13 +92,14 @@ public partial class ReservacionPage : ComponentBase
   internal string SelectedSuiteAction { get; set; } = SuiteActionPrice;
 
   internal int? EditingExtraId { get; set; }
-  internal int? ExtraRoomId { get; set; }
-  internal decimal ExtraPrice { get; set; }
+  internal int? ExtraCatalogId { get; set; }
+  internal decimal ExtraUnitPrice { get; set; }
+  internal int ExtraQuantity { get; set; } = 1;
   internal string? ExtraNotes { get; set; }
 
   internal string AttachmentDescription { get; set; } = string.Empty;
   internal bool ShowSuitePicker { get; set; }
-  internal bool ShowExtraForm { get; set; }
+  internal bool ShowExtraModal { get; set; }
   internal ReservationEditorTab ActiveTab { get; set; } = ReservationEditorTab.Suites;
   internal bool IsLoading { get; set; }
   internal bool IsSaving { get; set; }
@@ -115,7 +117,7 @@ public partial class ReservacionPage : ComponentBase
   private int? _attachmentDownloadingId;
   private int? _attachmentDeletingId;
   private bool _airbnbDefaultsLoaded;
-  private bool _roomsLoaded;
+  private bool _extraCatalogLoaded;
   private bool _hasPendingCalendarSync;
   internal int AttachmentInputKey => _attachmentInputKey;
 
@@ -201,7 +203,7 @@ public partial class ReservacionPage : ComponentBase
       }
 
       Clientes.Clear();
-      await EnsureRoomsLoadedAsync();
+      await EnsureExtraCatalogLoadedAsync();
 
       Suites = Detail.Suites;
       Extras = Detail.Extras;
@@ -493,15 +495,15 @@ public partial class ReservacionPage : ComponentBase
     }
   }
 
-  private async Task EnsureRoomsLoadedAsync()
+  private async Task EnsureExtraCatalogLoadedAsync()
   {
-    if (_roomsLoaded && Rooms.Count > 0)
+    if (_extraCatalogLoaded && ExtraCatalog.Count > 0)
     {
       return;
     }
 
-    Rooms = (await ReservacionesService.GetRoomsForExtrasAsync()).ToList();
-    _roomsLoaded = true;
+    ExtraCatalog = (await ReservacionesService.GetActiveExtraCatalogAsync()).ToList();
+    _extraCatalogLoaded = true;
   }
 
   private async Task SyncConAirbnbAsync()
@@ -1047,6 +1049,24 @@ public partial class ReservacionPage : ComponentBase
     TotalPagado = totals.TotalPagado;
     PorPagar = totals.PorPagar;
     NumNoches = totals.NumNoches;
+
+    if (Detail is not null)
+    {
+      Detail.Suites = Suites;
+      Detail.Extras = Extras;
+      Detail.Pagos = Pagos;
+      Detail.TotalSuites = TotalSuites;
+      Detail.SuiteDiscountPercent = SuiteDiscountPercent;
+      Detail.SuiteDiscountAmount = SuiteDiscountAmount;
+      Detail.TotalExtras = TotalExtras;
+      Detail.SubTotal = SubTotal;
+      Detail.Tax = Tax;
+      Detail.Ish = Ish;
+      Detail.TotalPrice = TotalReservacion;
+      Detail.Pagado = TotalPagado;
+      Detail.PorPagar = PorPagar;
+      Detail.NumNoches = NumNoches;
+    }
 
     TotalSuiteInput = TotalSuites;
   }

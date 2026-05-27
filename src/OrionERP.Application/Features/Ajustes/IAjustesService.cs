@@ -1,3 +1,5 @@
+using OrionERP.Application.Features.Reservaciones.Extras;
+
 namespace OrionERP.Application.Features.Ajustes;
 
 public interface IAjustesService
@@ -5,6 +7,15 @@ public interface IAjustesService
   Task<AjustesGeneralSettingsDto> GetGeneralSettingsAsync(CancellationToken ct = default);
 
   Task<AjustesCommandResult> SaveGeneralSettingsAsync(AjustesGeneralSettingsSaveRequest request, CancellationToken ct = default);
+
+  Task<IReadOnlyList<ExtraCatalogItemDto>> GetExtraCatalogAsync(
+      string? search,
+      bool includeInactive,
+      CancellationToken ct = default);
+
+  Task<AjustesCommandResult> SaveExtraCatalogItemAsync(ExtraCatalogSaveRequest request, CancellationToken ct = default);
+
+  Task<AjustesCommandResult> DeleteExtraCatalogItemAsync(int extraId, CancellationToken ct = default);
 
   Task<CfdiPolizaCuentaDefaultsDto> GetCfdiPolizaCuentaDefaultsAsync(string? rfc, CancellationToken ct = default);
 

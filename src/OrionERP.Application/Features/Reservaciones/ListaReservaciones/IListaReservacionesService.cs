@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using OrionERP.Application.Features.Reservaciones.Extras;
 
 namespace OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
@@ -18,7 +19,7 @@ public interface IListaReservacionesService
   Task<IReadOnlyList<ClienteOptionDto>> GetClientesAsync(string? searchText = null, int maxResults = 5, CancellationToken ct = default);
   Task<ClienteOptionDto?> ResolveClienteAsync(int? clienteId, string? clienteNombre, CancellationToken ct = default);
   Task<ClienteOptionDto> CreateClienteAsync(string clienteNombre, CancellationToken ct = default);
-  Task<IReadOnlyList<RoomOptionDto>> GetRoomsForExtrasAsync(CancellationToken ct = default);
+  Task<IReadOnlyList<ExtraCatalogItemDto>> GetActiveExtraCatalogAsync(CancellationToken ct = default);
   Task<RoomCalendarTimelineDto> GetCalendarTimelineAsync(RoomCalendarTimelineFilter filter, CancellationToken ct = default);
   Task<IReadOnlyList<ReservacionSuiteDto>> GetSuitesByReservationAsync(int reservationId, CancellationToken ct = default);
   Task<IReadOnlyList<SuiteDisponibleDto>> GetSuitesDisponiblesAsync(DateTime checkIn, DateTime checkOut, CancellationToken ct = default);

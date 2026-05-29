@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrionERP.IntegrationTests",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sat.MassiveDownload", "SatMassiveDownload\SatMassiveDownload\Sat.MassiveDownload.csproj", "{3824857B-BF69-3226-9768-5221D8F76CDF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrionERP.Bonhomia.Web", "src\OrionERP.Bonhomia.Web\OrionERP.Bonhomia.Web.csproj", "{03821D8C-F991-4D45-8B2D-A317C14B9445}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -113,6 +115,18 @@ Global
 		{3824857B-BF69-3226-9768-5221D8F76CDF}.Release|x64.Build.0 = Release|Any CPU
 		{3824857B-BF69-3226-9768-5221D8F76CDF}.Release|x86.ActiveCfg = Release|Any CPU
 		{3824857B-BF69-3226-9768-5221D8F76CDF}.Release|x86.Build.0 = Release|Any CPU
+		{03821D8C-F991-4D45-8B2D-A317C14B9445}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{03821D8C-F991-4D45-8B2D-A317C14B9445}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{03821D8C-F991-4D45-8B2D-A317C14B9445}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{03821D8C-F991-4D45-8B2D-A317C14B9445}.Debug|x64.Build.0 = Debug|Any CPU
+		{03821D8C-F991-4D45-8B2D-A317C14B9445}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{03821D8C-F991-4D45-8B2D-A317C14B9445}.Debug|x86.Build.0 = Debug|Any CPU
+		{03821D8C-F991-4D45-8B2D-A317C14B9445}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{03821D8C-F991-4D45-8B2D-A317C14B9445}.Release|Any CPU.Build.0 = Release|Any CPU
+		{03821D8C-F991-4D45-8B2D-A317C14B9445}.Release|x64.ActiveCfg = Release|Any CPU
+		{03821D8C-F991-4D45-8B2D-A317C14B9445}.Release|x64.Build.0 = Release|Any CPU
+		{03821D8C-F991-4D45-8B2D-A317C14B9445}.Release|x86.ActiveCfg = Release|Any CPU
+		{03821D8C-F991-4D45-8B2D-A317C14B9445}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -124,6 +138,7 @@ Global
 		{D582261B-F144-4FBE-AF2B-B922C4F527DD} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{DB1DE891-290D-4C05-8CF2-5C4A0D0BADC7} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{E496D761-A8FF-4739-ADD1-5E7388DDA50D} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{03821D8C-F991-4D45-8B2D-A317C14B9445} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {825C5B25-1DBD-4B56-98FB-C2367BB0755D}

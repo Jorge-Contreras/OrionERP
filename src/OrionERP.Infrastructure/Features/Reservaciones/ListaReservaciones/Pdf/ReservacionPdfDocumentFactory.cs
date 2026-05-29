@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Linq;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
-namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
+namespace OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 
 public sealed class ReservacionPdfDocumentFactory : IReservacionPdfDocumentFactory
 {

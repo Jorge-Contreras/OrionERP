@@ -6,10 +6,12 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Routing;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
-using OrionERP.Web.Features.Bonhomia.Checkout;
-using OrionERP.Web.Features.Reservaciones.ListaReservaciones;
+using OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
+using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 
 namespace OrionERP.IntegrationTests.Reservaciones;
 
@@ -24,6 +26,19 @@ public class BonhomiaCheckoutApiTests
     var response = await client.PostAsJsonAsync("/api/bonhomia/checkout/orders", new BonhomiaCreatePayPalOrderRequest());
 
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+  }
+
+  [Fact]
+  public async Task CheckoutRoutes_AreAnonymous_InPublicHostMapping()
+  {
+    await using var app = await CreateAppAsync();
+    var endpoints = app.Services.GetRequiredService<EndpointDataSource>().Endpoints
+      .OfType<RouteEndpoint>()
+      .ToArray();
+
+    AssertAnonymousRoute(endpoints, "/api/bonhomia/checkout/orders");
+    AssertAnonymousRoute(endpoints, "/api/bonhomia/checkout/orders/{orderId}");
+    AssertAnonymousRoute(endpoints, "/api/bonhomia/checkout/reservations/{reservationId:int}/pdf");
   }
 
   [Fact]
@@ -326,6 +341,12 @@ public class BonhomiaCheckoutApiTests
     app.MapBonhomiaCheckoutApi();
     await app.StartAsync();
     return app;
+  }
+
+  private static void AssertAnonymousRoute(IReadOnlyCollection<RouteEndpoint> endpoints, string routePattern)
+  {
+    var endpoint = Assert.Single(endpoints, item => item.RoutePattern.RawText == routePattern);
+    Assert.NotNull(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
   }
 
   private static BonhomiaQuoteDto CreateQuote(decimal nightlyPrice)

@@ -1,7 +1,7 @@
 using System.Globalization;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
 
-namespace OrionERP.Web.Features.Bonhomia;
+namespace OrionERP.Bonhomia.Web.Features.Bonhomia;
 
 public enum BonhomiaCalendarSelectionTarget
 {

@@ -1,6 +1,6 @@
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
-namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
+namespace OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 
 public interface IReservacionPdfDocumentFactory
 {

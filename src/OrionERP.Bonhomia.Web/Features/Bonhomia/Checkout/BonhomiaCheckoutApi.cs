@@ -4,9 +4,9 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
-using OrionERP.Web.Features.Reservaciones.ListaReservaciones;
+using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 
-namespace OrionERP.Web.Features.Bonhomia.Checkout;
+namespace OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
 public static class BonhomiaCheckoutApi
 {

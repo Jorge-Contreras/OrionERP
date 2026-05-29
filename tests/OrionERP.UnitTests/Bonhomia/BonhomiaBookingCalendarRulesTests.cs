@@ -1,6 +1,6 @@
 using System.Globalization;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
-using OrionERP.Web.Features.Bonhomia;
+using OrionERP.Bonhomia.Web.Features.Bonhomia;
 
 namespace OrionERP.UnitTests.Bonhomia;
 

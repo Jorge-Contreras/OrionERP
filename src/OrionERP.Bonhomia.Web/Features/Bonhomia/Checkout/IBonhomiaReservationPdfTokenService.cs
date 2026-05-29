@@ -1,4 +1,4 @@
-namespace OrionERP.Web.Features.Bonhomia.Checkout;
+namespace OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
 public interface IBonhomiaReservationPdfTokenService
 {

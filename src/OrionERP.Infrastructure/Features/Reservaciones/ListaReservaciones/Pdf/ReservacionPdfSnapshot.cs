@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
-namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
+namespace OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 
 public sealed record ReservacionPdfSnapshot(
   int ReservationId,

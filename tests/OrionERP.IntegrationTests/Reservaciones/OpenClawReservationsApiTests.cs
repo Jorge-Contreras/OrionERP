@@ -12,7 +12,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Application.Features.Reservaciones.OpenClaw;
-using OrionERP.Web.Features.Reservaciones.ListaReservaciones;
+using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 using OrionERP.Web.Features.Reservaciones.OpenClaw;
 
 namespace OrionERP.IntegrationTests.Reservaciones;

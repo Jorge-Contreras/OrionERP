@@ -36,8 +36,14 @@ public sealed class PhysicalCountService : IPhysicalCountService
           s.ApprovedBy,
           s.PostedAt,
           s.PostedBy,
+          s.CanceledAt,
+          s.CanceledBy,
+          s.CancelReason,
+          activePlan.RequestedAt AS RecountRequestedAt,
+          activePlan.RequestedBy AS RecountRequestedBy,
           COUNT(line.Id) AS LineCount,
-          SUM(CASE WHEN line.VarianceQuantity IS NOT NULL AND line.VarianceQuantity <> 0 THEN 1 ELSE 0 END) AS VarianceLineCount
+          SUM(CASE WHEN line.VarianceQuantity IS NOT NULL AND line.VarianceQuantity <> 0 THEN 1 ELSE 0 END) AS VarianceLineCount,
+          COUNT(activePlanLine.Id) AS RecountLineCount
       FROM logistica.PhysicalCountSession s
       JOIN logistica.Location l
         ON l.Id = s.LocationId
@@ -45,6 +51,12 @@ public sealed class PhysicalCountService : IPhysicalCountService
         ON room.ID = l.RoomId
       LEFT JOIN logistica.PhysicalCountLine line
         ON line.SessionId = s.Id
+      LEFT JOIN logistica.PhysicalCountRecountPlan activePlan
+        ON activePlan.SessionId = s.Id
+       AND activePlan.CompletedAt IS NULL
+      LEFT JOIN logistica.PhysicalCountRecountPlanLine activePlanLine
+        ON activePlanLine.RecountPlanId = activePlan.Id
+       AND activePlanLine.PhysicalCountLineId = line.Id
       GROUP BY
           s.Id,
           s.SessionCode,
@@ -59,7 +71,12 @@ public sealed class PhysicalCountService : IPhysicalCountService
           s.ApprovedAt,
           s.ApprovedBy,
           s.PostedAt,
-          s.PostedBy
+          s.PostedBy,
+          s.CanceledAt,
+          s.CanceledBy,
+          s.CancelReason,
+          activePlan.RequestedAt,
+          activePlan.RequestedBy
       ORDER BY s.CreatedAt DESC, s.Id DESC;
       """;
 
@@ -89,12 +106,21 @@ public sealed class PhysicalCountService : IPhysicalCountService
           s.ApprovedAt,
           s.ApprovedBy,
           s.PostedAt,
-          s.PostedBy
+          s.PostedBy,
+          s.CanceledAt,
+          s.CanceledBy,
+          s.CancelReason,
+          activePlan.Id AS ActiveRecountPlanId,
+          activePlan.RequestedAt AS RecountRequestedAt,
+          activePlan.RequestedBy AS RecountRequestedBy
       FROM logistica.PhysicalCountSession s
       JOIN logistica.Location l
         ON l.Id = s.LocationId
       LEFT JOIN dbo.ROOM room
         ON room.ID = l.RoomId
+      LEFT JOIN logistica.PhysicalCountRecountPlan activePlan
+        ON activePlan.SessionId = s.Id
+       AND activePlan.CompletedAt IS NULL
       WHERE s.Id = @SessionId;
 
       SELECT
@@ -113,6 +139,10 @@ public sealed class PhysicalCountService : IPhysicalCountService
           line.IsDamaged,
           line.CapturedAt,
           line.CapturedBy,
+          activePlanLine.IssueCode AS RecountIssueCode,
+          activePlanLine.Reason AS RecountReason,
+          activePlan.RequestedAt AS RecountRequestedAt,
+          activePlan.RequestedBy AS RecountRequestedBy,
           (
             SELECT COUNT(*)
             FROM logistica.PhysicalCountAttachment attachment
@@ -123,6 +153,12 @@ public sealed class PhysicalCountService : IPhysicalCountService
         ON m.Id = line.MaterialId
       LEFT JOIN logistica.UnitOfMeasure u
         ON u.Id = m.BaseUnitId
+      LEFT JOIN logistica.PhysicalCountRecountPlan activePlan
+        ON activePlan.SessionId = line.SessionId
+       AND activePlan.CompletedAt IS NULL
+      LEFT JOIN logistica.PhysicalCountRecountPlanLine activePlanLine
+        ON activePlanLine.RecountPlanId = activePlan.Id
+       AND activePlanLine.PhysicalCountLineId = line.Id
       WHERE line.SessionId = @SessionId
       ORDER BY m.MaterialCode, m.[Description], line.Id;
 
@@ -328,10 +364,10 @@ public sealed class PhysicalCountService : IPhysicalCountService
           tx,
           cancellationToken: ct));
 
-      if (!string.Equals(status, "Draft", StringComparison.OrdinalIgnoreCase))
+      if (!IsDraftStatus(status) && !IsRecountStatus(status))
       {
         await tx.RollbackAsync(ct);
-        return LogisticsCommandResult.Fail("Solo las sesiones en borrador permiten capturar conteos.");
+        return LogisticsCommandResult.Fail("Solo las sesiones en borrador o reconteo permiten capturar conteos.");
       }
 
       await conn.ExecuteAsync(
@@ -505,10 +541,10 @@ public sealed class PhysicalCountService : IPhysicalCountService
           tx,
           cancellationToken: ct));
 
-      if (!string.Equals(status, "Draft", StringComparison.OrdinalIgnoreCase))
+      if (!IsDraftStatus(status) && !IsRecountStatus(status))
       {
         await tx.RollbackAsync(ct);
-        return LogisticsCommandResult.Fail("Solo las sesiones en borrador pueden enviarse a aprobación.");
+        return LogisticsCommandResult.Fail("Solo las sesiones en borrador o reconteo pueden enviarse a aprobación.");
       }
 
       var missingLines = await conn.ExecuteScalarAsync<int>(
@@ -529,6 +565,28 @@ public sealed class PhysicalCountService : IPhysicalCountService
         return LogisticsCommandResult.Fail("Todas las líneas deben capturar cantidad contada antes de enviar el conteo.");
       }
 
+      var safeSubmittedBy = string.IsNullOrWhiteSpace(submittedBy) ? "OrionERP" : submittedBy.Trim();
+
+      if (IsRecountStatus(status))
+      {
+        await conn.ExecuteAsync(
+          new CommandDefinition(
+            """
+            UPDATE logistica.PhysicalCountRecountPlan
+            SET CompletedAt = SYSUTCDATETIME(),
+                CompletedBy = @SubmittedBy
+            WHERE SessionId = @SessionId
+              AND CompletedAt IS NULL;
+            """,
+            new
+            {
+              SessionId = sessionId,
+              SubmittedBy = safeSubmittedBy
+            },
+            tx,
+            cancellationToken: ct));
+      }
+
       await conn.ExecuteAsync(
         new CommandDefinition(
           """
@@ -541,7 +599,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
           new
           {
             SessionId = sessionId,
-            SubmittedBy = string.IsNullOrWhiteSpace(submittedBy) ? "OrionERP" : submittedBy.Trim()
+            SubmittedBy = safeSubmittedBy
           },
           tx,
           cancellationToken: ct));
@@ -579,6 +637,328 @@ public sealed class PhysicalCountService : IPhysicalCountService
     return affected == 0
       ? LogisticsCommandResult.Fail("La sesión debe estar enviada para poder aprobarse.")
       : LogisticsCommandResult.Ok("Sesión aprobada correctamente.", sessionId);
+  }
+
+  public async Task<LogisticsCommandResult> RequestRecountAsync(PhysicalCountRecountRequest request, CancellationToken ct = default)
+  {
+    if (request is null)
+    {
+      throw new ArgumentNullException(nameof(request));
+    }
+
+    var lineRequests = request.Lines
+      .Where(line => line.LineId > 0)
+      .ToList();
+    if (lineRequests.Count == 0)
+    {
+      return LogisticsCommandResult.Fail("Selecciona al menos una línea para enviar a reconteo.");
+    }
+
+    var duplicateLineId = lineRequests
+      .GroupBy(line => line.LineId)
+      .FirstOrDefault(group => group.Count() > 1)
+      ?.Key;
+    if (duplicateLineId.HasValue)
+    {
+      return LogisticsCommandResult.Fail("No repitas líneas en el plan de reconteo.");
+    }
+
+    foreach (var line in lineRequests)
+    {
+      if (string.IsNullOrWhiteSpace(line.IssueCode) || !PhysicalCountRecountIssueCodes.All.Contains(line.IssueCode))
+      {
+        return LogisticsCommandResult.Fail("Selecciona un tipo de incidencia válido para cada línea de reconteo.");
+      }
+
+      if (string.IsNullOrWhiteSpace(line.Reason))
+      {
+        return LogisticsCommandResult.Fail("Captura una razón para cada línea enviada a reconteo.");
+      }
+    }
+
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    using var tx = await conn.BeginTransactionAsync(ct);
+
+    try
+    {
+      var status = await conn.ExecuteScalarAsync<string?>(
+        new CommandDefinition(
+          "SELECT [Status] FROM logistica.PhysicalCountSession WHERE Id = @SessionId;",
+          new { request.SessionId },
+          tx,
+          cancellationToken: ct));
+
+      if (status is null)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("La sesión de conteo no existe.");
+      }
+
+      if (!IsSubmittedStatus(status) && !IsApprovedStatus(status))
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("Solo las sesiones enviadas o aprobadas pueden enviarse a reconteo.");
+      }
+
+      var activeRecountPlans = await conn.ExecuteScalarAsync<int>(
+        new CommandDefinition(
+          """
+          SELECT COUNT(*)
+          FROM logistica.PhysicalCountRecountPlan
+          WHERE SessionId = @SessionId
+            AND CompletedAt IS NULL;
+          """,
+          new { request.SessionId },
+          tx,
+          cancellationToken: ct));
+
+      if (activeRecountPlans > 0)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("La sesión ya tiene un plan de reconteo pendiente.");
+      }
+
+      var lineIds = lineRequests.Select(line => line.LineId).ToArray();
+      var matchingLineCount = await conn.ExecuteScalarAsync<int>(
+        new CommandDefinition(
+          """
+          SELECT COUNT(*)
+          FROM logistica.PhysicalCountLine
+          WHERE SessionId = @SessionId
+            AND Id IN @LineIds;
+          """,
+          new
+          {
+            request.SessionId,
+            LineIds = lineIds
+          },
+          tx,
+          cancellationToken: ct));
+
+      if (matchingLineCount != lineRequests.Count)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("Una o más líneas seleccionadas no pertenecen a la sesión.");
+      }
+
+      var requestedBy = NullIfWhiteSpace(request.RequestedBy) ?? "OrionERP";
+      var planId = await conn.ExecuteScalarAsync<int>(
+        new CommandDefinition(
+          """
+          INSERT INTO logistica.PhysicalCountRecountPlan
+          (
+              SessionId,
+              RequestedAt,
+              RequestedBy
+          )
+          VALUES
+          (
+              @SessionId,
+              SYSUTCDATETIME(),
+              @RequestedBy
+          );
+
+          SELECT CAST(SCOPE_IDENTITY() AS int);
+          """,
+          new
+          {
+            request.SessionId,
+            RequestedBy = requestedBy
+          },
+          tx,
+          cancellationToken: ct));
+
+      foreach (var line in lineRequests)
+      {
+        await conn.ExecuteAsync(
+          new CommandDefinition(
+            """
+            INSERT INTO logistica.PhysicalCountRecountPlanLine
+            (
+                RecountPlanId,
+                PhysicalCountLineId,
+                IssueCode,
+                Reason,
+                PreviousCountedQuantity,
+                PreviousVarianceQuantity,
+                PreviousNotes,
+                PreviousIsMissing,
+                PreviousIsDamaged,
+                PreviousCapturedAt,
+                PreviousCapturedBy
+            )
+            SELECT
+                @RecountPlanId,
+                countLine.Id,
+                @IssueCode,
+                @Reason,
+                countLine.CountedQuantity,
+                countLine.VarianceQuantity,
+                countLine.Notes,
+                countLine.IsMissing,
+                countLine.IsDamaged,
+                countLine.CapturedAt,
+                countLine.CapturedBy
+            FROM logistica.PhysicalCountLine countLine
+            WHERE countLine.Id = @LineId
+              AND countLine.SessionId = @SessionId;
+            """,
+            new
+            {
+              RecountPlanId = planId,
+              line.LineId,
+              request.SessionId,
+              IssueCode = line.IssueCode.Trim(),
+              Reason = line.Reason.Trim()
+            },
+            tx,
+            cancellationToken: ct));
+
+        await conn.ExecuteAsync(
+          new CommandDefinition(
+            """
+            UPDATE logistica.PhysicalCountLine
+            SET CountedQuantity = NULL,
+                VarianceQuantity = NULL,
+                CapturedAt = NULL,
+                CapturedBy = NULL
+            WHERE Id = @LineId
+              AND SessionId = @SessionId;
+            """,
+            new
+            {
+              line.LineId,
+              request.SessionId
+            },
+            tx,
+            cancellationToken: ct));
+      }
+
+      await conn.ExecuteAsync(
+        new CommandDefinition(
+          """
+          UPDATE logistica.PhysicalCountSession
+          SET [Status] = 'Recount',
+              ApprovedAt = NULL,
+              ApprovedBy = NULL
+          WHERE Id = @SessionId;
+          """,
+          new { request.SessionId },
+          tx,
+          cancellationToken: ct));
+
+      await tx.CommitAsync(ct);
+      return LogisticsCommandResult.Ok("Sesión enviada a reconteo correctamente.", request.SessionId);
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
+  public async Task<LogisticsCommandResult> CancelSessionAsync(PhysicalCountCancelRequest request, CancellationToken ct = default)
+  {
+    if (request is null)
+    {
+      throw new ArgumentNullException(nameof(request));
+    }
+
+    var reason = NullIfWhiteSpace(request.Reason);
+    if (reason is null)
+    {
+      return LogisticsCommandResult.Fail("Captura una razón para cancelar el conteo.");
+    }
+
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    using var tx = await conn.BeginTransactionAsync(ct);
+
+    try
+    {
+      var status = await conn.ExecuteScalarAsync<string?>(
+        new CommandDefinition(
+          "SELECT [Status] FROM logistica.PhysicalCountSession WHERE Id = @SessionId;",
+          new { request.SessionId },
+          tx,
+          cancellationToken: ct));
+
+      if (status is null)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("La sesión de conteo no existe.");
+      }
+
+      if (IsPostedStatus(status))
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("Las sesiones contabilizadas no se pueden cancelar.");
+      }
+
+      if (IsCanceledStatus(status))
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("La sesión ya está cancelada.");
+      }
+
+      if (!IsCancelableStatus(status))
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("La sesión no está en un estado cancelable.");
+      }
+
+      var canceledBy = NullIfWhiteSpace(request.CanceledBy) ?? "OrionERP";
+      await conn.ExecuteAsync(
+        new CommandDefinition(
+          """
+          UPDATE logistica.PhysicalCountRecountPlan
+          SET CompletedAt = SYSUTCDATETIME(),
+              CompletedBy = @CanceledBy
+          WHERE SessionId = @SessionId
+            AND CompletedAt IS NULL;
+          """,
+          new
+          {
+            request.SessionId,
+            CanceledBy = canceledBy
+          },
+          tx,
+          cancellationToken: ct));
+
+      var affected = await conn.ExecuteAsync(
+        new CommandDefinition(
+          """
+          UPDATE logistica.PhysicalCountSession
+          SET [Status] = 'Canceled',
+              CanceledAt = SYSUTCDATETIME(),
+              CanceledBy = @CanceledBy,
+              CancelReason = @CancelReason
+          WHERE Id = @SessionId;
+          """,
+          new
+          {
+            request.SessionId,
+            CanceledBy = canceledBy,
+            CancelReason = reason
+          },
+          tx,
+          cancellationToken: ct));
+
+      if (affected == 0)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("La sesión de conteo no existe.");
+      }
+
+      await tx.CommitAsync(ct);
+      return LogisticsCommandResult.Ok("Sesión cancelada correctamente.", request.SessionId);
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
   }
 
   public async Task<LogisticsCommandResult> PostSessionAsync(int sessionId, string postedBy, CancellationToken ct = default)
@@ -731,6 +1111,51 @@ public sealed class PhysicalCountService : IPhysicalCountService
     }
   }
 
+  public async Task<IReadOnlyList<PhysicalCountPendingRecountDto>> GetPendingRecountsAsync(CancellationToken ct = default)
+  {
+    const string sql =
+      """
+      SELECT
+          s.Id,
+          s.SessionCode,
+          l.LocationName,
+          room.ROOM_NAME AS RoomName,
+          activePlan.RequestedAt AS RecountRequestedAt,
+          activePlan.RequestedBy AS RecountRequestedBy,
+          COUNT(line.Id) AS LineCount,
+          COUNT(activePlanLine.Id) AS RecountLineCount,
+          COALESCE(STRING_AGG(CONVERT(varchar(max), activePlanLine.IssueCode), ', '), '') AS IssueSummary
+      FROM logistica.PhysicalCountSession s
+      JOIN logistica.Location l
+        ON l.Id = s.LocationId
+      LEFT JOIN dbo.ROOM room
+        ON room.ID = l.RoomId
+      JOIN logistica.PhysicalCountRecountPlan activePlan
+        ON activePlan.SessionId = s.Id
+       AND activePlan.CompletedAt IS NULL
+      LEFT JOIN logistica.PhysicalCountLine line
+        ON line.SessionId = s.Id
+      LEFT JOIN logistica.PhysicalCountRecountPlanLine activePlanLine
+        ON activePlanLine.RecountPlanId = activePlan.Id
+       AND activePlanLine.PhysicalCountLineId = line.Id
+      WHERE s.[Status] = 'Recount'
+      GROUP BY
+          s.Id,
+          s.SessionCode,
+          l.LocationName,
+          room.ROOM_NAME,
+          activePlan.RequestedAt,
+          activePlan.RequestedBy
+      ORDER BY activePlan.RequestedAt DESC, s.Id DESC;
+      """;
+
+    using var conn = CreateConnection();
+    var rows = await conn.QueryAsync<PhysicalCountPendingRecountDto>(
+      new CommandDefinition(sql, cancellationToken: ct));
+
+    return rows.AsList();
+  }
+
   public async Task<LogisticsBinaryContent?> GetAttachmentContentAsync(int attachmentId, CancellationToken ct = default)
   {
     const string sql =
@@ -763,6 +1188,33 @@ public sealed class PhysicalCountService : IPhysicalCountService
 
   private static string? NullIfWhiteSpace(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+  private static string NormalizeStatus(string? status)
+    => string.IsNullOrWhiteSpace(status) ? string.Empty : status.Trim();
+
+  private static bool IsDraftStatus(string? status)
+    => string.Equals(NormalizeStatus(status), PhysicalCountSessionStatuses.Draft, StringComparison.OrdinalIgnoreCase);
+
+  private static bool IsSubmittedStatus(string? status)
+    => string.Equals(NormalizeStatus(status), PhysicalCountSessionStatuses.Submitted, StringComparison.OrdinalIgnoreCase);
+
+  private static bool IsApprovedStatus(string? status)
+    => string.Equals(NormalizeStatus(status), PhysicalCountSessionStatuses.Approved, StringComparison.OrdinalIgnoreCase);
+
+  private static bool IsRecountStatus(string? status)
+    => string.Equals(NormalizeStatus(status), PhysicalCountSessionStatuses.Recount, StringComparison.OrdinalIgnoreCase);
+
+  private static bool IsPostedStatus(string? status)
+    => string.Equals(NormalizeStatus(status), PhysicalCountSessionStatuses.Posted, StringComparison.OrdinalIgnoreCase);
+
+  private static bool IsCanceledStatus(string? status)
+    => string.Equals(NormalizeStatus(status), PhysicalCountSessionStatuses.Canceled, StringComparison.OrdinalIgnoreCase);
+
+  private static bool IsCancelableStatus(string? status)
+    => IsDraftStatus(status)
+      || IsSubmittedStatus(status)
+      || IsApprovedStatus(status)
+      || IsRecountStatus(status);
 
   private sealed class SessionPostingRow
   {

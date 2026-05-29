@@ -3,6 +3,36 @@ using OrionERP.Application.Features.Logistica.Shared;
 
 namespace OrionERP.Application.Features.Logistica.PhysicalCounts;
 
+public static class PhysicalCountSessionStatuses
+{
+  public const string Draft = "Draft";
+  public const string Submitted = "Submitted";
+  public const string Approved = "Approved";
+  public const string Recount = "Recount";
+  public const string Posted = "Posted";
+  public const string Canceled = "Canceled";
+}
+
+public static class PhysicalCountRecountIssueCodes
+{
+  public const string QuantityMismatch = "QuantityMismatch";
+  public const string UnitIssue = "UnitIssue";
+  public const string WrongMaterial = "WrongMaterial";
+  public const string EvidenceMissing = "EvidenceMissing";
+  public const string ConditionIssue = "ConditionIssue";
+  public const string Other = "Other";
+
+  public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+  {
+    QuantityMismatch,
+    UnitIssue,
+    WrongMaterial,
+    EvidenceMissing,
+    ConditionIssue,
+    Other
+  };
+}
+
 public sealed class PhysicalCountSessionSummaryDto
 {
   public int Id { get; set; }
@@ -19,8 +49,14 @@ public sealed class PhysicalCountSessionSummaryDto
   public string? ApprovedBy { get; set; }
   public DateTime? PostedAt { get; set; }
   public string? PostedBy { get; set; }
+  public DateTime? CanceledAt { get; set; }
+  public string? CanceledBy { get; set; }
+  public string? CancelReason { get; set; }
+  public DateTime? RecountRequestedAt { get; set; }
+  public string? RecountRequestedBy { get; set; }
   public int LineCount { get; set; }
   public int VarianceLineCount { get; set; }
+  public int RecountLineCount { get; set; }
 }
 
 public sealed class PhysicalCountAttachmentDto
@@ -52,6 +88,10 @@ public sealed class PhysicalCountLineDto
   public bool IsDamaged { get; set; }
   public DateTime? CapturedAt { get; set; }
   public string? CapturedBy { get; set; }
+  public string? RecountIssueCode { get; set; }
+  public string? RecountReason { get; set; }
+  public DateTime? RecountRequestedAt { get; set; }
+  public string? RecountRequestedBy { get; set; }
   public int AttachmentCount { get; set; }
   public IReadOnlyList<PhysicalCountAttachmentDto> Attachments { get; set; } = Array.Empty<PhysicalCountAttachmentDto>();
 }
@@ -73,7 +113,26 @@ public sealed class PhysicalCountSessionDetailDto
   public string? ApprovedBy { get; set; }
   public DateTime? PostedAt { get; set; }
   public string? PostedBy { get; set; }
+  public DateTime? CanceledAt { get; set; }
+  public string? CanceledBy { get; set; }
+  public string? CancelReason { get; set; }
+  public int? ActiveRecountPlanId { get; set; }
+  public DateTime? RecountRequestedAt { get; set; }
+  public string? RecountRequestedBy { get; set; }
   public IReadOnlyList<PhysicalCountLineDto> Lines { get; set; } = Array.Empty<PhysicalCountLineDto>();
+}
+
+public sealed class PhysicalCountPendingRecountDto
+{
+  public int Id { get; set; }
+  public string SessionCode { get; set; } = string.Empty;
+  public string LocationName { get; set; } = string.Empty;
+  public string? RoomName { get; set; }
+  public DateTime RecountRequestedAt { get; set; }
+  public string? RecountRequestedBy { get; set; }
+  public int LineCount { get; set; }
+  public int RecountLineCount { get; set; }
+  public string IssueSummary { get; set; } = string.Empty;
 }
 
 public sealed class PhysicalCountSessionCreateRequest
@@ -120,4 +179,42 @@ public sealed class PhysicalCountLineCaptureRequest
 
   [StringLength(500)]
   public string? AttachmentDescription { get; set; }
+}
+
+public sealed class PhysicalCountRecountRequest
+{
+  [Required]
+  public int SessionId { get; set; }
+
+  [StringLength(256)]
+  public string? RequestedBy { get; set; }
+
+  public IReadOnlyList<PhysicalCountRecountLineRequest> Lines { get; set; } = Array.Empty<PhysicalCountRecountLineRequest>();
+}
+
+public sealed class PhysicalCountRecountLineRequest
+{
+  [Required]
+  public int LineId { get; set; }
+
+  [Required]
+  [StringLength(50)]
+  public string IssueCode { get; set; } = PhysicalCountRecountIssueCodes.QuantityMismatch;
+
+  [Required]
+  [StringLength(1000)]
+  public string Reason { get; set; } = string.Empty;
+}
+
+public sealed class PhysicalCountCancelRequest
+{
+  [Required]
+  public int SessionId { get; set; }
+
+  [StringLength(256)]
+  public string? CanceledBy { get; set; }
+
+  [Required]
+  [StringLength(1000)]
+  public string Reason { get; set; } = string.Empty;
 }

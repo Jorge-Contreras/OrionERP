@@ -1,6 +1,7 @@
 @page "/logistica/conteos"
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Forms
+@using OrionERP.Application.Features.Logistica.PhysicalCounts
 @attribute [Authorize(Roles = "Administrador,Conteo")]
 
 <PageTitle>Logística · Conteos físicos</PageTitle>
@@ -52,7 +53,7 @@
 
                     <div class="form-check mb-3">
                         <InputCheckbox id="conteos-mostrar-contabilizadas" class="form-check-input" @bind-Value="ShowPostedSessions" />
-                        <label class="form-check-label" for="conteos-mostrar-contabilizadas">Mostrar contabilizadas</label>
+                        <label class="form-check-label" for="conteos-mostrar-contabilizadas">Mostrar contabilizadas/canceladas</label>
                     </div>
 
                     <div class="table-responsive conteos-sessions-scroll">
@@ -136,15 +137,19 @@
                                 <button class="btn btn-outline-secondary conteos-session-action d-md-none" type="button" @onclick="MostrarSesionesAsync">
                                     Cambiar sesión
                                 </button>
-                                @if (CanDeleteDraft)
+                                @if (CanCancel)
                                 {
                                     <button class="btn btn-outline-danger conteos-session-action" type="button" @onclick="CancelarSesionAsync" disabled="@IsMutatingSession">
-                                        @(IsDeletingSession ? "Eliminando..." : "Cancelar borrador")
+                                        @(IsCancelingSession ? "Cancelando..." : "Cancelar conteo")
                                     </button>
                                 }
                                 <button class="btn btn-outline-primary conteos-session-action" type="button" @onclick="EnviarSesionAsync" disabled="@(!CanSubmit || IsMutatingSession)">Enviar</button>
-                                <button class="btn btn-outline-success conteos-session-action" type="button" @onclick="AprobarSesionAsync" disabled="@(!CanApprove || IsMutatingSession)">Aprobar</button>
-                                <button class="btn btn-success conteos-session-action" type="button" @onclick="ContabilizarSesionAsync" disabled="@(!CanPost || IsMutatingSession)">Contabilizar</button>
+                                @if (IsAdministrator)
+                                {
+                                    <button class="btn btn-outline-warning conteos-session-action" type="button" @onclick="AbrirReconteo" disabled="@(!CanRequestRecount || IsMutatingSession)">Reconteo</button>
+                                    <button class="btn btn-outline-success conteos-session-action" type="button" @onclick="AprobarSesionAsync" disabled="@(!CanApprove || IsMutatingSession)">Aprobar</button>
+                                    <button class="btn btn-success conteos-session-action" type="button" @onclick="ContabilizarSesionAsync" disabled="@(!CanPost || IsMutatingSession)">Contabilizar</button>
+                                }
                             </div>
                         </div>
 
@@ -206,6 +211,16 @@
                                                             <span class="conteos-line-user-badge">Capturado por ti</span>
                                                         </div>
                                                     }
+                                                    @if (HasRecountIssue(line))
+                                                    {
+                                                        <div class="conteos-line-recount-note">
+                                                            <span class="conteos-line-recount-badge">@GetRecountIssueLabel(line.RecountIssueCode)</span>
+                                                            @if (!string.IsNullOrWhiteSpace(line.RecountReason))
+                                                            {
+                                                                <span>@line.RecountReason</span>
+                                                            }
+                                                        </div>
+                                                    }
                                                 </div>
                                             </td>
                                             <td data-label="@(GetQuantityFieldLabel("Esperado", line.BaseUnitName))" class="text-end conteos-quantity-col">@line.ExpectedQuantity.ToString("N2")</td>
@@ -237,11 +252,11 @@
                                                             @(IsSavingLine ? "Guardando..." : "Guardar")
                                                         </button>
                                                     </div>
-                                                    <div class="d-none d-md-block">@((line.CountedQuantity ?? 0).ToString("N2"))</div>
+                                                    <div class="d-none d-md-block">@FormatOptionalQuantity(line.CountedQuantity)</div>
                                                 }
                                                 else
                                                 {
-                                                    @((line.CountedQuantity ?? 0).ToString("N2"))
+                                                    @FormatOptionalQuantity(line.CountedQuantity)
                                                 }
                                             </td>
                                             <td data-label="@(GetQuantityFieldLabel("Varianza", line.BaseUnitName))" class="text-end conteos-quantity-col">
@@ -286,6 +301,16 @@
                                         @if (SelectedLine.CapturedAt.HasValue)
                                         {
                                             <div class="conteos-selected-line-captured-at">@FormatLineCapturedSummary(SelectedLine)</div>
+                                        }
+                                        @if (HasRecountIssue(SelectedLine))
+                                        {
+                                            <div class="conteos-selected-line-recount mt-2">
+                                                <span class="conteos-line-recount-badge">@GetRecountIssueLabel(SelectedLine.RecountIssueCode)</span>
+                                                @if (!string.IsNullOrWhiteSpace(SelectedLine.RecountReason))
+                                                {
+                                                    <span>@SelectedLine.RecountReason</span>
+                                                }
+                                            </div>
                                         }
                                     </div>
                                     <div class="row g-3 conteos-capture-form">
@@ -393,6 +418,103 @@
         </div>
     </div>
 </div>
+
+@if (ShowCancelModal && SelectedSession is not null)
+{
+    <div class="modal fade show d-block conteos-modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Cancelar @SelectedSession.SessionCode</h5>
+                    <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CerrarCancelacion"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label">Razón</label>
+                    <InputTextArea class="form-control" rows="4" @bind-Value="CancelReason" />
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" type="button" @onclick="CerrarCancelacion" disabled="@IsCancelingSession">Cerrar</button>
+                    <button class="btn btn-danger" type="button" @onclick="ConfirmarCancelacionAsync" disabled="@IsCancelingSession">
+                        @(IsCancelingSession ? "Cancelando..." : "Cancelar conteo")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (ShowRecountModal && SelectedSession is not null)
+{
+    <div class="modal fade show d-block conteos-modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Plan de reconteo · @SelectedSession.SessionCode</h5>
+                    <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CerrarReconteo"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive conteos-recount-scroll">
+                        <table class="table table-sm align-middle conteos-recount-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="conteos-recount-select-col">Recontar</th>
+                                    <th>Material</th>
+                                    <th class="text-end">Esperado</th>
+                                    <th class="text-end">Contado</th>
+                                    <th>Incidencia</th>
+                                    <th>Razón</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var line in RecountPlanLines)
+                                {
+                                    <tr class="@(line.IsSelected ? "table-warning" : string.Empty)">
+                                        <td data-label="Recontar" class="conteos-recount-select-col">
+                                            <InputCheckbox class="form-check-input" @bind-Value="line.IsSelected" />
+                                        </td>
+                                        <td data-label="Material">
+                                            <div class="conteos-cell-stack">
+                                                <div class="conteos-cell-primary">@line.MaterialDescription</div>
+                                                @if (!string.IsNullOrWhiteSpace(line.MaterialCode) && !string.Equals(line.MaterialCode, line.MaterialDescription, StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <div class="conteos-cell-secondary">@line.MaterialCode</div>
+                                                }
+                                            </div>
+                                        </td>
+                                        <td data-label="Esperado" class="text-end">@line.ExpectedQuantity.ToString("N2")</td>
+                                        <td data-label="Contado" class="text-end">@FormatOptionalQuantity(line.CountedQuantity)</td>
+                                        <td data-label="Incidencia">
+                                            <select class="form-select form-select-sm" @bind="line.IssueCode" disabled="@(!line.IsSelected)">
+                                                <option value="@PhysicalCountRecountIssueCodes.QuantityMismatch">@GetRecountIssueLabel(PhysicalCountRecountIssueCodes.QuantityMismatch)</option>
+                                                <option value="@PhysicalCountRecountIssueCodes.UnitIssue">@GetRecountIssueLabel(PhysicalCountRecountIssueCodes.UnitIssue)</option>
+                                                <option value="@PhysicalCountRecountIssueCodes.WrongMaterial">@GetRecountIssueLabel(PhysicalCountRecountIssueCodes.WrongMaterial)</option>
+                                                <option value="@PhysicalCountRecountIssueCodes.EvidenceMissing">@GetRecountIssueLabel(PhysicalCountRecountIssueCodes.EvidenceMissing)</option>
+                                                <option value="@PhysicalCountRecountIssueCodes.ConditionIssue">@GetRecountIssueLabel(PhysicalCountRecountIssueCodes.ConditionIssue)</option>
+                                                <option value="@PhysicalCountRecountIssueCodes.Other">@GetRecountIssueLabel(PhysicalCountRecountIssueCodes.Other)</option>
+                                            </select>
+                                        </td>
+                                        <td data-label="Razón">
+                                            <InputTextArea class="form-control form-control-sm conteos-recount-reason"
+                                                           rows="2"
+                                                           disabled="@(!line.IsSelected)"
+                                                           @bind-Value="line.Reason" />
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" type="button" @onclick="CerrarReconteo" disabled="@IsRequestingRecount">Cerrar</button>
+                    <button class="btn btn-warning" type="button" @onclick="EnviarAReconteoAsync" disabled="@IsRequestingRecount">
+                        @(IsRequestingRecount ? "Enviando..." : "Enviar a reconteo")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
 
 @if (ShowMaterialImageModal)
 {

@@ -46,6 +46,7 @@ BEGIN
         SELECT
             cd.Comprobante_Id AS ComprobanteId,
             tc.Transaccion_ID AS TransaccionId,
+            c.Fecha AS CfdiFecha,
             t.Fecha,
             t.Concepto,
             CAST(t.Monto AS decimal(19, 4)) AS TransaccionMonto,
@@ -91,6 +92,8 @@ BEGIN
             ON tc.Comprobante_ID = ids.ComprobanteId
         JOIN dbo.Transacciones AS t
             ON t.ID = tc.Transaccion_ID
+        JOIN cfdi.Comprobante AS c
+            ON c.Comprobante_Id = tc.Comprobante_ID
         JOIN cfdi.Comprobante_Detalle AS cd
             ON cd.Comprobante_Id = tc.Comprobante_ID
         OUTER APPLY
@@ -162,7 +165,7 @@ BEGIN
     )
     SELECT
         r.ComprobanteId,
-        MAX(r.Fecha) AS Fecha,
+        MAX(r.CfdiFecha) AS Fecha,
         MAX(r.Tipo) AS Tipo,
         MAX(r.Serie) AS Serie,
         MAX(r.Folio) AS Folio,
@@ -199,7 +202,7 @@ BEGIN
     LEFT JOIN ConceptosAgg AS ca
         ON ca.ComprobanteId = r.ComprobanteId
     GROUP BY r.ComprobanteId
-    ORDER BY MAX(r.Fecha) DESC, r.ComprobanteId DESC;
+    ORDER BY MAX(r.CfdiFecha) DESC, r.ComprobanteId DESC;
 
     SELECT
         r.ComprobanteId,

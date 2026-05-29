@@ -164,7 +164,7 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
 
     var fullName = RequireCustomerValue(customer.FullName, "El nombre completo es obligatorio.");
     var email = RequireCustomerValue(customer.Email, "El correo es obligatorio.");
-    var phone = RequireCustomerValue(customer.Phone, "El telefono es obligatorio.");
+    var phone = customer.Phone?.Trim() ?? string.Empty;
     if (!IsValidEmail(email))
     {
       throw new BonhomiaPublicBookingException("invalid_customer", "El correo no tiene un formato valido.");
@@ -724,10 +724,17 @@ ORDER BY r.ID DESC;
       Environment.NewLine,
       "Reservacion creada desde Bonhomia Web.",
       $"Huespedes: {quote.Guests}",
-      $"Contacto: {customer.Email.Trim()} | {customer.Phone.Trim()}",
+      $"Contacto: {BuildContactNote(customer)}",
       $"PayPal Order: {payment.OrderId}",
       $"PayPal Capture: {payment.CaptureId}",
       extras.Length == 0 ? "Extras: ninguno" : $"Extras: {string.Join(", ", extras)}");
+  }
+
+  private static string BuildContactNote(BonhomiaCustomerInfo customer)
+  {
+    var parts = new[] { customer.Email?.Trim() ?? string.Empty, customer.Phone?.Trim() ?? string.Empty }
+      .Where(part => !string.IsNullOrWhiteSpace(part));
+    return string.Join(" | ", parts);
   }
 
   private static string BuildExtraNotes(ResolvedExtraLine extra)

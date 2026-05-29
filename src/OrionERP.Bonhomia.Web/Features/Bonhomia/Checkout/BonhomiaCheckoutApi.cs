@@ -91,15 +91,16 @@ public static class BonhomiaCheckoutApi
       }
 
       var capture = await payPalClient.CaptureOrderAsync(orderId, BuildPayPalRequestId("cap", request.PaymentAttemptId, quote.QuoteId), ct);
-      var result = await bookingService.CreatePaidReservationAsync(liveQuote, request.Customer, capture, ct);
+      var customer = BuildCustomerFromPayPal(request.Customer, capture);
+      var result = await bookingService.CreatePaidReservationAsync(liveQuote, customer, capture, ct);
 
       return Results.Ok(new BonhomiaConfirmPayPalOrderResponse
       {
         ReservationId = result.ReservationId,
         TransaccionId = result.TransaccionId,
         ClientName = result.ClientName,
-        CustomerEmail = request.Customer.Email.Trim(),
-        CustomerPhone = request.Customer.Phone.Trim(),
+        CustomerEmail = customer.Email.Trim(),
+        CustomerPhone = customer.Phone.Trim(),
         RoomName = liveQuote.RoomName,
         RoomImage = liveQuote.RoomImage,
         CheckIn = liveQuote.CheckIn,
@@ -150,6 +151,22 @@ public static class BonhomiaCheckoutApi
         });
     }
   }
+
+  private static BonhomiaCustomerInfo BuildCustomerFromPayPal(
+    BonhomiaCustomerInfo? fallbackCustomer,
+    BonhomiaPayPalCaptureResult capture)
+  {
+    var email = FirstPresent(capture.PayerEmail, fallbackCustomer?.Email);
+    return new BonhomiaCustomerInfo
+    {
+      FullName = FirstPresent(capture.PayerName, fallbackCustomer?.FullName, email, "Cliente PayPal"),
+      Email = email,
+      Phone = FirstPresent(capture.PayerPhone, fallbackCustomer?.Phone)
+    };
+  }
+
+  private static string FirstPresent(params string?[] values)
+    => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
 
   private static async Task<IResult> DownloadReservationPdfAsync(
     int reservationId,

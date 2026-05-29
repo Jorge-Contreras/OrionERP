@@ -331,7 +331,9 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
             && decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
               ? parsed
               : 0m,
-          PayerEmail = GetPayerEmail(root)
+          PayerName = GetPayerName(root),
+          PayerEmail = GetPayerEmail(root),
+          PayerPhone = GetPayerPhone(root)
         };
 
         return !string.IsNullOrWhiteSpace(result.CaptureId);
@@ -352,10 +354,31 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
     return string.Empty;
   }
 
+  private static string GetPayerName(JsonElement root)
+  {
+    if (TryGetPaymentSourcePayPal(root, out var paypal)
+        && TryGetName(paypal, out var sourceName))
+    {
+      return sourceName;
+    }
+
+    if (root.TryGetProperty("payer", out var payer)
+        && TryGetName(payer, out var payerName))
+    {
+      return payerName;
+    }
+
+    if (TryGetShippingName(root, out var shippingName))
+    {
+      return shippingName;
+    }
+
+    return string.Empty;
+  }
+
   private static string GetPayerEmail(JsonElement root)
   {
-    if (root.TryGetProperty("payment_source", out var paymentSource)
-        && paymentSource.TryGetProperty("paypal", out var paypal)
+    if (TryGetPaymentSourcePayPal(root, out var paypal)
         && paypal.TryGetProperty("email_address", out var sourceEmail))
     {
       return sourceEmail.GetString() ?? string.Empty;
@@ -364,6 +387,128 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
     return root.TryGetProperty("payer", out var payer) && payer.TryGetProperty("email_address", out var payerEmail)
       ? payerEmail.GetString() ?? string.Empty
       : string.Empty;
+  }
+
+  private static string GetPayerPhone(JsonElement root)
+  {
+    if (TryGetPaymentSourcePayPal(root, out var paypal)
+        && TryGetPhoneNumber(paypal, out var sourcePhone))
+    {
+      return sourcePhone;
+    }
+
+    if (root.TryGetProperty("payer", out var payer)
+        && TryGetPhoneNumber(payer, out var payerPhone))
+    {
+      return payerPhone;
+    }
+
+    return string.Empty;
+  }
+
+  private static bool TryGetPaymentSourcePayPal(JsonElement root, out JsonElement paypal)
+  {
+    paypal = default;
+    return root.TryGetProperty("payment_source", out var paymentSource)
+      && paymentSource.TryGetProperty("paypal", out paypal);
+  }
+
+  private static bool TryGetName(JsonElement parent, out string value)
+  {
+    value = string.Empty;
+    if (!parent.TryGetProperty("name", out var name))
+    {
+      return false;
+    }
+
+    if (name.ValueKind == JsonValueKind.String)
+    {
+      value = name.GetString()?.Trim() ?? string.Empty;
+      return !string.IsNullOrWhiteSpace(value);
+    }
+
+    if (name.ValueKind != JsonValueKind.Object)
+    {
+      return false;
+    }
+
+    if (name.TryGetProperty("full_name", out var fullName))
+    {
+      value = fullName.GetString()?.Trim() ?? string.Empty;
+      return !string.IsNullOrWhiteSpace(value);
+    }
+
+    var givenName = name.TryGetProperty("given_name", out var given)
+      ? given.GetString()
+      : string.Empty;
+    var surname = name.TryGetProperty("surname", out var family)
+      ? family.GetString()
+      : string.Empty;
+    value = string.Join(" ", new[] { givenName, surname }.Where(part => !string.IsNullOrWhiteSpace(part))).Trim();
+    return !string.IsNullOrWhiteSpace(value);
+  }
+
+  private static bool TryGetPhoneNumber(JsonElement parent, out string value)
+  {
+    value = string.Empty;
+    if (parent.TryGetProperty("phone_number", out var phoneNumber)
+        && TryReadPhoneNumber(phoneNumber, out value))
+    {
+      return true;
+    }
+
+    return parent.TryGetProperty("phone", out var phone)
+      && (TryReadPhoneNumber(phone, out value)
+          || phone.TryGetProperty("phone_number", out var nestedPhone) && TryReadPhoneNumber(nestedPhone, out value));
+  }
+
+  private static bool TryReadPhoneNumber(JsonElement phoneNumber, out string value)
+  {
+    value = string.Empty;
+    if (phoneNumber.ValueKind == JsonValueKind.String)
+    {
+      value = phoneNumber.GetString()?.Trim() ?? string.Empty;
+      return !string.IsNullOrWhiteSpace(value);
+    }
+
+    if (phoneNumber.ValueKind != JsonValueKind.Object)
+    {
+      return false;
+    }
+
+    if (phoneNumber.TryGetProperty("national_number", out var nationalNumber))
+    {
+      value = nationalNumber.GetString()?.Trim() ?? string.Empty;
+      return !string.IsNullOrWhiteSpace(value);
+    }
+
+    if (phoneNumber.TryGetProperty("number", out var number))
+    {
+      value = number.GetString()?.Trim() ?? string.Empty;
+      return !string.IsNullOrWhiteSpace(value);
+    }
+
+    return false;
+  }
+
+  private static bool TryGetShippingName(JsonElement root, out string value)
+  {
+    value = string.Empty;
+    if (!root.TryGetProperty("purchase_units", out var purchaseUnits) || purchaseUnits.ValueKind != JsonValueKind.Array)
+    {
+      return false;
+    }
+
+    foreach (var purchaseUnit in purchaseUnits.EnumerateArray())
+    {
+      if (purchaseUnit.TryGetProperty("shipping", out var shipping)
+          && TryGetName(shipping, out value))
+      {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private static string NormalizeRequestId(string idempotencyKey)

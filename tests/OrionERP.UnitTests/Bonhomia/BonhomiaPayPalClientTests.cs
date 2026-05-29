@@ -58,7 +58,14 @@ public class BonhomiaPayPalClientTests
             "status": "COMPLETED",
             "payment_source": {
               "paypal": {
-                "email_address": "buyer@example.com"
+                "email_address": "buyer@example.com",
+                "name": {
+                  "given_name": "Buyer",
+                  "surname": "Bonhomia"
+                },
+                "phone_number": {
+                  "national_number": "7491234567"
+                }
               }
             },
             "purchase_units": [
@@ -89,7 +96,9 @@ public class BonhomiaPayPalClientTests
     Assert.Equal("COMPLETED", result.Status);
     Assert.Equal("MXN", result.Currency);
     Assert.Equal(4227m, result.Amount);
+    Assert.Equal("Buyer Bonhomia", result.PayerName);
     Assert.Equal("buyer@example.com", result.PayerEmail);
+    Assert.Equal("7491234567", result.PayerPhone);
     Assert.Equal(
       [
         "POST https://api-m.sandbox.paypal.com/v1/oauth2/token",
@@ -120,7 +129,15 @@ public class BonhomiaPayPalClientTests
             "id": "PAYPAL-ORDER-2",
             "status": "COMPLETED",
             "payer": {
-              "email_address": "guest@example.com"
+              "email_address": "guest@example.com",
+              "name": {
+                "full_name": "Guest Bonhomia"
+              },
+              "phone": {
+                "phone_number": {
+                  "national_number": "5550102"
+                }
+              }
             },
             "purchase_units": [
               {
@@ -150,7 +167,9 @@ public class BonhomiaPayPalClientTests
     Assert.Equal("COMPLETED", result.Status);
     Assert.Equal("MXN", result.Currency);
     Assert.Equal(1200.50m, result.Amount);
+    Assert.Equal("Guest Bonhomia", result.PayerName);
     Assert.Equal("guest@example.com", result.PayerEmail);
+    Assert.Equal("5550102", result.PayerPhone);
     Assert.Equal(
       [
         "POST https://api-m.sandbox.paypal.com/v1/oauth2/token",

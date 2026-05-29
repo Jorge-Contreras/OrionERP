@@ -110,7 +110,9 @@ public sealed class BonhomiaPayPalCaptureResult
   public string CaptureId { get; set; } = string.Empty;
   public string Status { get; set; } = string.Empty;
   public string StatusReason { get; set; } = string.Empty;
+  public string PayerName { get; set; } = string.Empty;
   public string PayerEmail { get; set; } = string.Empty;
+  public string PayerPhone { get; set; } = string.Empty;
   public decimal Amount { get; set; }
   public string Currency { get; set; } = "MXN";
   public bool IsCompleted => string.Equals(Status, "COMPLETED", StringComparison.OrdinalIgnoreCase);

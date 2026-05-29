@@ -116,11 +116,25 @@ public class BonhomiaCheckoutApiTests
       {
         ReservationId = 49210,
         TransaccionId = 8821,
-        ClientName = "Cliente Web",
+        ClientName = "Comprador PayPal",
         Total = quote.Total
       }
     };
-    var payPal = new FakePayPalClient();
+    var payPal = new FakePayPalClient
+    {
+      CaptureResult = new BonhomiaPayPalCaptureResult
+      {
+        OrderId = "PAYPAL-1",
+        OrderStatus = "COMPLETED",
+        CaptureId = "CAPTURE-1",
+        Status = "COMPLETED",
+        Amount = quote.Total,
+        Currency = "MXN",
+        PayerName = "Comprador PayPal",
+        PayerEmail = "payer@example.com",
+        PayerPhone = "7491234567"
+      }
+    };
     await using var app = await CreateAppAsync(booking, payPal);
     var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
     var client = app.GetTestClient();
@@ -129,8 +143,7 @@ public class BonhomiaCheckoutApiTests
     {
       QuoteToken = tokenService.CreateToken(quote),
       QuoteFingerprint = quote.Fingerprint,
-      PaymentAttemptId = "attempt-confirm-123",
-      Customer = CreateCustomer()
+      PaymentAttemptId = "attempt-confirm-123"
     });
 
     response.EnsureSuccessStatusCode();
@@ -139,7 +152,9 @@ public class BonhomiaCheckoutApiTests
     Assert.NotNull(payload);
     Assert.Equal(49210, payload!.ReservationId);
     Assert.Equal(8821, payload.TransaccionId);
-    Assert.Equal("Cliente Web", payload.ClientName);
+    Assert.Equal("Comprador PayPal", payload.ClientName);
+    Assert.Equal("payer@example.com", payload.CustomerEmail);
+    Assert.Equal("7491234567", payload.CustomerPhone);
     Assert.Equal("Suite Paris", payload.RoomName);
     Assert.Equal(new DateOnly(2026, 6, 10), payload.CheckIn);
     Assert.Equal(new DateOnly(2026, 6, 12), payload.CheckOut);
@@ -153,6 +168,10 @@ public class BonhomiaCheckoutApiTests
     Assert.Equal(1, payPal.CaptureCount);
     Assert.Equal("cap-attempt-confirm-123", payPal.LastCaptureIdempotencyKey);
     Assert.Equal(1, booking.PaidReservationCount);
+    Assert.NotNull(booking.LastCustomer);
+    Assert.Equal("Comprador PayPal", booking.LastCustomer!.FullName);
+    Assert.Equal("payer@example.com", booking.LastCustomer.Email);
+    Assert.Equal("7491234567", booking.LastCustomer.Phone);
   }
 
   [Fact]
@@ -394,6 +413,7 @@ public class BonhomiaCheckoutApiTests
     public BonhomiaPaidReservationResult? PaidReservation { get; set; }
     public ReservacionDetailDto? ReservationDetail { get; set; }
     public int PaidReservationCount { get; private set; }
+    public BonhomiaCustomerInfo? LastCustomer { get; private set; }
 
     public Task<BonhomiaAvailabilityDto> GetAvailabilityAsync(DateOnly startDate, DateOnly endDateExclusive, CancellationToken ct = default)
       => Task.FromResult(new BonhomiaAvailabilityDto());
@@ -428,6 +448,7 @@ public class BonhomiaCheckoutApiTests
       }
 
       PaidReservationCount++;
+      LastCustomer = customer;
       return Task.FromResult(PaidReservation ?? new BonhomiaPaidReservationResult
       {
         ReservationId = 1,
@@ -466,6 +487,7 @@ public class BonhomiaCheckoutApiTests
         Status = "COMPLETED",
         Amount = CreateQuote(1250m).Total,
         Currency = "MXN",
+        PayerName = "Comprador PayPal",
         PayerEmail = "payer@example.com"
       });
     }

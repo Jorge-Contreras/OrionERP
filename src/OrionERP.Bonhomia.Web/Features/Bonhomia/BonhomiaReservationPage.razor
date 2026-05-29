@@ -75,14 +75,6 @@
                                     </div>
                                 </div>
 
-                                <div class="bonhomia-wizard__actions bonhomia-wizard__actions--top">
-                                    <span></span>
-                                    <button type="button" class="bonhomia-button bonhomia-button--next" @onclick="GoNextAsync">
-                                        <span>Continuar a suites</span>
-                                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
-                                    </button>
-                                </div>
-
                                 <div class="bonhomia-date-row">
                                     <label>
                                         <span>Check-in</span>
@@ -151,6 +143,13 @@
                                     </div>
                                 }
 
+                                <div class="bonhomia-wizard__actions bonhomia-wizard__actions--bottom">
+                                    <span></span>
+                                    <button type="button" class="bonhomia-button bonhomia-button--next" @onclick="GoNextAsync">
+                                        <span>Continuar a suites</span>
+                                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                                    </button>
+                                </div>
                             </div>
                         }
                         else if (ActiveCheckoutStep == CheckoutStep.Suite)
@@ -162,17 +161,6 @@
                                         <h3>Suite</h3>
                                         <p>Elige una suite disponible para las fechas seleccionadas.</p>
                                     </div>
-                                </div>
-
-                                <div class="bonhomia-wizard__actions bonhomia-wizard__actions--top">
-                                    <button type="button" class="bonhomia-button bonhomia-button--outline" @onclick="GoBackAsync">
-                                        <i class="bi bi-arrow-left" aria-hidden="true"></i>
-                                        <span>Atras</span>
-                                    </button>
-                                    <button type="button" class="bonhomia-button bonhomia-button--next" @onclick="GoNextAsync">
-                                        <span>Continuar a extras</span>
-                                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
-                                    </button>
                                 </div>
 
                                 <div class="bonhomia-room-picker" role="list" aria-label="Suites disponibles">
@@ -196,6 +184,17 @@
                                         </button>
                                     }
                                 </div>
+
+                                <div class="bonhomia-wizard__actions bonhomia-wizard__actions--bottom">
+                                    <button type="button" class="bonhomia-button bonhomia-button--outline" @onclick="GoBackAsync">
+                                        <i class="bi bi-arrow-left" aria-hidden="true"></i>
+                                        <span>Atras</span>
+                                    </button>
+                                    <button type="button" class="bonhomia-button bonhomia-button--next" @onclick="GoNextAsync">
+                                        <span>Continuar a extras</span>
+                                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                                    </button>
+                                </div>
                             </div>
                         }
                         else if (ActiveCheckoutStep == CheckoutStep.Extras)
@@ -207,17 +206,6 @@
                                         <h3>Extras</h3>
                                         <p>Agrega servicios opcionales o continua sin extras.</p>
                                     </div>
-                                </div>
-
-                                <div class="bonhomia-wizard__actions bonhomia-wizard__actions--top">
-                                    <button type="button" class="bonhomia-button bonhomia-button--outline" @onclick="GoBackAsync">
-                                        <i class="bi bi-arrow-left" aria-hidden="true"></i>
-                                        <span>Atras</span>
-                                    </button>
-                                    <button type="button" class="bonhomia-button bonhomia-button--next" @onclick="GoNextAsync">
-                                        <span>Revisar cotizacion</span>
-                                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
-                                    </button>
                                 </div>
 
                                 <div class="bonhomia-extra-selector">
@@ -239,91 +227,31 @@
                                         </article>
                                     }
                                 </div>
-                            </div>
-                        }
-                        else if (ActiveCheckoutStep == CheckoutStep.Review)
-                        {
-                            <div class="bonhomia-step">
-                                <div class="bonhomia-step__header">
-                                    <span>4</span>
-                                    <div>
-                                        <h3>Cotizacion</h3>
-                                        <p>Revisa tu seleccion. Si algo cambio en el calendario, el mensaje aparecera aqui mismo.</p>
-                                    </div>
-                                </div>
 
-                                <div class="bonhomia-wizard__actions bonhomia-wizard__actions--top">
+                                <div class="bonhomia-wizard__actions bonhomia-wizard__actions--bottom">
                                     <button type="button" class="bonhomia-button bonhomia-button--outline" @onclick="GoBackAsync">
                                         <i class="bi bi-arrow-left" aria-hidden="true"></i>
                                         <span>Atras</span>
                                     </button>
-                                    @if (Quote is null)
-                                    {
-                                        <button type="button"
-                                                class="bonhomia-button bonhomia-button--next"
-                                                disabled="@IsQuoteBusy"
-                                                @onclick="GenerateQuoteAsync">
-                                            <i class="bi bi-receipt" aria-hidden="true"></i>
-                                            <span>@(IsQuoteBusy ? "Generando..." : "Generar cotizacion")</span>
-                                        </button>
-                                    }
-                                    else
-                                    {
-                                        <button type="button" class="bonhomia-button bonhomia-button--next" @onclick="GoNextAsync">
-                                            <span>Continuar al pago</span>
-                                            <i class="bi bi-arrow-right" aria-hidden="true"></i>
-                                        </button>
-                                    }
+                                    <button type="button"
+                                            class="bonhomia-button bonhomia-button--next"
+                                            disabled="@IsQuoteBusy"
+                                            @onclick="GenerateQuoteAsync">
+                                        <i class="bi bi-receipt" aria-hidden="true"></i>
+                                        <span>@(IsQuoteBusy ? "Generando..." : "Continuar al pago")</span>
+                                    </button>
                                 </div>
-
-                                <div class="bonhomia-review-grid">
-                                    <article class="bonhomia-review-card">
-                                        <span>Suite</span>
-                                        <strong>@(SelectedRoom?.RoomName ?? "Sin seleccionar")</strong>
-                                        <small>@Guests huesped@(Guests == 1 ? string.Empty : "es") · @CheckIn.ToString("dd MMM", HeaderCulture) - @CheckOut.ToString("dd MMM yyyy", HeaderCulture)</small>
-                                    </article>
-                                    <article class="bonhomia-review-card">
-                                        <span>Noches</span>
-                                        <strong>@StayNights</strong>
-                                        <small>La disponibilidad se valida otra vez antes de PayPal.</small>
-                                    </article>
-                                    <article class="bonhomia-review-card">
-                                        <span>Extras</span>
-                                        <strong>@SelectedExtrasCount</strong>
-                                        <small>@SelectedExtrasLabel</small>
-                                    </article>
-                                </div>
-
-                                @if (!string.IsNullOrWhiteSpace(StatusMessage))
-                                {
-                                    <div class="bonhomia-alert bonhomia-alert--info">@StatusMessage</div>
-                                }
-
-                                @if (Quote is not null)
-                                {
-                                    <div class="bonhomia-alert bonhomia-alert--success">
-                                        <strong>Cotizacion lista: @FormatMoney(Quote.Total)</strong>
-                                        <span>Continua al pago para capturar tus datos y abrir PayPal.</span>
-                                    </div>
-                                }
                             </div>
                         }
                         else if (ActiveCheckoutStep == CheckoutStep.Payment)
                         {
                             <div class="bonhomia-step">
                                 <div class="bonhomia-step__header">
-                                    <span>5</span>
+                                    <span>4</span>
                                     <div>
                                         <h3>Pago y confirmacion</h3>
-                                        <p>Completa tus datos. La reservacion se crea hasta que PayPal confirma el pago.</p>
+                                        <p>Acepta los terminos y paga con PayPal. La reservacion se crea cuando PayPal confirma el pago.</p>
                                     </div>
-                                </div>
-
-                                <div class="bonhomia-wizard__actions bonhomia-wizard__actions--top">
-                                    <button type="button" class="bonhomia-button bonhomia-button--outline" @onclick="GoBackAsync">
-                                        <i class="bi bi-arrow-left" aria-hidden="true"></i>
-                                        <span>Atras</span>
-                                    </button>
                                 </div>
 
                                 @if (CompletedReservation is not null)
@@ -458,24 +386,19 @@
                                 else
                                 {
                                     <div class="bonhomia-payment-grid">
-                                        <div class="bonhomia-customer-form">
-                                            <label>
-                                                <span>Nombre completo</span>
-                                                <input value="@Customer.FullName" @oninput="args => OnCustomerChanged(nameof(Customer.FullName), args.Value?.ToString())" autocomplete="name" />
-                                            </label>
-                                            <label>
-                                                <span>Correo</span>
-                                                <input type="email" value="@Customer.Email" @oninput="args => OnCustomerChanged(nameof(Customer.Email), args.Value?.ToString())" autocomplete="email" />
-                                            </label>
-                                            <label>
-                                                <span>Telefono</span>
-                                                <input type="tel" value="@Customer.Phone" @oninput="args => OnCustomerChanged(nameof(Customer.Phone), args.Value?.ToString())" autocomplete="tel" />
-                                            </label>
-                                            <label class="bonhomia-policy-check">
-                                                <input type="checkbox" checked="@AcceptedPolicies" @onchange="OnPoliciesChanged" />
-                                                <span>Acepto politicas de check-in, cancelacion y convivencia.</span>
-                                            </label>
-                                        </div>
+                                        <section class="bonhomia-checkout-requirement" aria-label="Requisito para pagar con PayPal">
+                                            <div class="bonhomia-checkout-requirement__icon">
+                                                <i class="bi bi-shield-check" aria-hidden="true"></i>
+                                            </div>
+                                            <div>
+                                                <h4>Solo falta aceptar terminos</h4>
+                                                <p>PayPal nos devolvera tu nombre, correo y telefono cuando confirme el pago.</p>
+                                                <label class="@GetPolicyRequirementClass()">
+                                                    <input type="checkbox" checked="@AcceptedPolicies" @onchange="OnPoliciesChanged" />
+                                                    <span>Debo aceptar los terminos, politicas de check-in, cancelacion y convivencia para activar PayPal.</span>
+                                                </label>
+                                            </div>
+                                        </section>
 
                                         <aside class="bonhomia-summary" aria-label="Resumen de cotizacion">
                                             <div class="bonhomia-summary__card">
@@ -524,7 +447,7 @@
                                                     <div class="bonhomia-paypal-gate">
                                                         @if (!CanRenderPayPal)
                                                         {
-                                                            <p>@(PaymentConfirmationFailed ? "El pago necesita revision. Para evitar un doble cargo, genera una nueva cotizacion solo despues de revisar PayPal." : "Completa tus datos y acepta politicas para activar PayPal.")</p>
+                                                            <p class="@(PaymentConfirmationFailed ? null : "bonhomia-paypal-gate__requirement")">@(PaymentConfirmationFailed ? "El pago necesita revision. Para evitar un doble cargo, genera una nueva cotizacion solo despues de revisar PayPal." : "Acepta los terminos marcando la casilla para activar PayPal.")</p>
                                                         }
                                                         <div id="@PayPalContainerId" class="bonhomia-paypal-container" aria-live="polite"></div>
                                                         @if (PaymentConfirmationFailed && !string.IsNullOrWhiteSpace(PendingPayPalOrderId))
@@ -545,6 +468,13 @@
                                         </aside>
                                     </div>
                                 }
+
+                                <div class="bonhomia-wizard__actions bonhomia-wizard__actions--bottom">
+                                    <button type="button" class="bonhomia-button bonhomia-button--outline" @onclick="GoBackAsync">
+                                        <i class="bi bi-arrow-left" aria-hidden="true"></i>
+                                        <span>Atras</span>
+                                    </button>
+                                </div>
                             </div>
                         }
                     </div>
@@ -568,7 +498,6 @@
         new(CheckoutStep.Dates, "Fechas", "Llegada y salida"),
         new(CheckoutStep.Suite, "Suite", "Disponible"),
         new(CheckoutStep.Extras, "Extras", "Opcionales"),
-        new(CheckoutStep.Review, "Cotizacion", "Total final"),
         new(CheckoutStep.Payment, "Pago", "PayPal")
     ];
 
@@ -615,7 +544,6 @@
       && CheckoutOptions.Value.IsPayPalConfigured
       && ActiveCheckoutStep == CheckoutStep.Payment
       && AcceptedPolicies
-      && HasValidCustomer
       && !IsPaymentProcessing
       && CompletedReservation is null;
     private bool CanRenderPayPal => Quote is not null
@@ -623,14 +551,8 @@
       && CheckoutOptions.Value.IsPayPalConfigured
       && ActiveCheckoutStep == CheckoutStep.Payment
       && AcceptedPolicies
-      && HasValidCustomer
       && !PaymentConfirmationFailed
       && CompletedReservation is null;
-    private bool HasValidCustomer
-      => !string.IsNullOrWhiteSpace(Customer.FullName)
-        && !string.IsNullOrWhiteSpace(Customer.Email)
-        && Customer.Email.Contains('@', StringComparison.Ordinal)
-        && !string.IsNullOrWhiteSpace(Customer.Phone);
 
     private DateOnly EarliestCalendarMonth
       => BonhomiaBookingCalendarRules.GetMonthStart(Today);
@@ -692,10 +614,7 @@
         }
 
         ActiveCheckoutStep = step;
-        if (step != CheckoutStep.Review)
-        {
-            CheckoutError = null;
-        }
+        CheckoutError = null;
 
         await ScrollCheckoutIntoViewAsync();
     }
@@ -728,18 +647,8 @@
         }
         else if (ActiveCheckoutStep == CheckoutStep.Extras)
         {
-            ActiveCheckoutStep = CheckoutStep.Review;
-        }
-        else if (ActiveCheckoutStep == CheckoutStep.Review)
-        {
-            if (Quote is null)
-            {
-                CheckoutError = "Genera la cotizacion antes de continuar al pago.";
-                await ScrollCheckoutIntoViewAsync();
-                return;
-            }
-
-            ActiveCheckoutStep = CheckoutStep.Payment;
+            await GenerateQuoteAsync();
+            return;
         }
 
         await ScrollCheckoutIntoViewAsync();
@@ -763,7 +672,6 @@
           CheckoutStep.Dates => true,
           CheckoutStep.Suite => CanContinueFromDates(),
           CheckoutStep.Extras => CanContinueFromSuite(),
-          CheckoutStep.Review => CanContinueFromSuite(),
           CheckoutStep.Payment => Quote is not null || CompletedReservation is not null,
           _ => false
       };
@@ -835,7 +743,7 @@
             return;
         }
 
-        ActiveCheckoutStep = CheckoutStep.Review;
+        ActiveCheckoutStep = CheckoutStep.Extras;
         IsQuoteBusy = true;
         CheckoutError = null;
         StatusMessage = null;
@@ -849,20 +757,20 @@
             var request = BuildQuoteRequest();
             Quote = await BookingService.CreateQuoteAsync(request);
             QuoteToken = QuoteTokenService.CreateToken(Quote);
-            StatusMessage = "Cotizacion lista. Completa tus datos para pagar con PayPal.";
+            StatusMessage = "Cotizacion lista. Acepta los terminos para pagar con PayPal.";
             await PersistCheckoutAsync();
             ActiveCheckoutStep = CheckoutStep.Payment;
         }
         catch (BonhomiaPublicBookingException ex)
         {
             ClearQuoteState();
-            ActiveCheckoutStep = CheckoutStep.Review;
+            ActiveCheckoutStep = CheckoutStep.Extras;
             CheckoutError = ex.Message;
         }
         catch (Exception ex)
         {
             ClearQuoteState();
-            ActiveCheckoutStep = CheckoutStep.Review;
+            ActiveCheckoutStep = CheckoutStep.Extras;
             CheckoutError = $"No se pudo generar la cotizacion. {ex.Message}";
         }
         finally
@@ -1002,6 +910,13 @@
 
     private int GetExtraQuantity(string code)
       => ExtraQuantities.TryGetValue(code, out var quantity) ? quantity : 0;
+
+    private string GetPolicyRequirementClass()
+    {
+        var classes = new List<string> { "bonhomia-policy-check", "bonhomia-policy-check--checkout" };
+        classes.Add(AcceptedPolicies ? "bonhomia-policy-check--accepted" : "bonhomia-policy-check--required");
+        return string.Join(" ", classes);
+    }
 
     private IReadOnlyList<DateOnly> GetUnavailableSuiteDates(BonhomiaRoomAvailabilityDto room)
       => BonhomiaBookingCalendarRules.GetUnavailableDatesForStay(room, CheckIn, CheckOut);
@@ -1244,7 +1159,7 @@
             return;
         }
 
-        var renderKey = string.Join("|", Quote.Fingerprint, QuoteToken, Customer.FullName, Customer.Email, Customer.Phone, AcceptedPolicies);
+        var renderKey = string.Join("|", Quote.Fingerprint, QuoteToken, AcceptedPolicies);
         if (string.Equals(renderKey, _lastPayPalRenderKey, StringComparison.Ordinal))
         {
             return;
@@ -1267,7 +1182,6 @@
                     currency = Quote.Currency,
                     quoteToken = QuoteToken,
                     quoteFingerprint = Quote.Fingerprint,
-                    customer = Customer,
                     renderKey,
                     paymentAttemptId = PendingPaymentAttemptId
                 },
@@ -1482,7 +1396,6 @@
         Dates,
         Suite,
         Extras,
-        Review,
         Payment
     }
 

@@ -59,10 +59,7 @@
       options?.clientId || "",
       options?.currency || "MXN",
       options?.quoteToken || "",
-      options?.quoteFingerprint || "",
-      options?.customer?.fullName || options?.customer?.FullName || "",
-      options?.customer?.email || options?.customer?.Email || "",
-      options?.customer?.phone || options?.customer?.Phone || ""
+      options?.quoteFingerprint || ""
     ].join("|");
 
   const createAttemptId = () => {
@@ -90,8 +87,7 @@
         body: JSON.stringify({
           quoteToken: options.quoteToken,
           quoteFingerprint: options.quoteFingerprint,
-          paymentAttemptId,
-          customer: options.customer
+          paymentAttemptId
         })
       });
 

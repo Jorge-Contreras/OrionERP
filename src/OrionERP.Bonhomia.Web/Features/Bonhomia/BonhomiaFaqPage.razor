@@ -1,0 +1,41 @@
+@page "/preguntas-frecuentes"
+
+<PageTitle>Preguntas frecuentes | Bonhomia Suites</PageTitle>
+<HeadContent>
+    <meta name="description" content="Preguntas frecuentes de Bonhomia Suites sobre reservas, trabajo remoto, familias, pagos, politicas y facturacion." />
+</HeadContent>
+
+<main class="bonhomia-page">
+    <section class="bonhomia-page__title">
+        <p class="bonhomia-eyebrow">Preguntas frecuentes</p>
+        <h1>Resuelve dudas antes de reservar</h1>
+        <p>Estas respuestas ayudan a viajeros de trabajo, familias, conferencistas y visitantes con agenda profesional a decidir con claridad.</p>
+    </section>
+
+    <section class="bonhomia-section bonhomia-section--last">
+        <div class="bonhomia-faq">
+            @foreach (var faq in BonhomiaSiteContent.Faqs)
+            {
+                <details>
+                    <summary>@faq.Question</summary>
+                    <p><strong>@faq.Category.</strong> @faq.Answer</p>
+                </details>
+            }
+        </div>
+
+        <div class="bonhomia-contact-panel bonhomia-spaced-top">
+            <div>
+                <p class="bonhomia-eyebrow">Todavia tienes una duda</p>
+                <h2>Escribenos con tus fechas y motivo de viaje</h2>
+                <p>Para viajes de trabajo, estancias familiares o agenda institucional, conviene confirmar requisitos especiales antes de pagar.</p>
+            </div>
+            <div class="bonhomia-contact-panel__actions">
+                <a class="bonhomia-button bonhomia-button--primary" href='@BonhomiaSiteContent.WhatsAppUrl("Hola Bonhomia Suites, tengo una pregunta antes de reservar.")' target="_blank" rel="noopener noreferrer">
+                    <i class="bi bi-whatsapp" aria-hidden="true"></i>
+                    <span>WhatsApp</span>
+                </a>
+                <a class="bonhomia-button bonhomia-button--outline" href="/reservar">Reservar</a>
+            </div>
+        </div>
+    </section>
+</main>

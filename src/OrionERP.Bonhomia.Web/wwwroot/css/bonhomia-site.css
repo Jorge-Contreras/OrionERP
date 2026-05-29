@@ -1,0 +1,545 @@
+.bonhomia-page {
+  background: var(--bonhomia-warm, #fbfaf6);
+  color: var(--bonhomia-ink, #172622);
+}
+
+.bonhomia-page a {
+  color: inherit;
+}
+
+.bonhomia-page__hero {
+  position: relative;
+  display: grid;
+  align-items: end;
+  min-height: min(42rem, calc(100vh - 4rem));
+  padding: clamp(4.5rem, 9vw, 8rem) clamp(1rem, 4vw, 2rem) clamp(1.25rem, 4vw, 2rem);
+  isolation: isolate;
+  background-color: #0e302f;
+  background-position: center;
+  background-size: cover;
+}
+
+.bonhomia-page__hero::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(90deg, rgba(10, 32, 31, 0.78), rgba(10, 32, 31, 0.44));
+  content: "";
+}
+
+.bonhomia-page__hero-content {
+  width: min(76rem, 100%);
+  margin: 0 auto;
+  color: #fff;
+}
+
+.bonhomia-page__hero h1,
+.bonhomia-page__title h1,
+.bonhomia-split h2,
+.bonhomia-section__header h2,
+.bonhomia-document h1 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  line-height: 1.04;
+  letter-spacing: 0;
+}
+
+.bonhomia-page__hero h1 {
+  max-width: 44rem;
+  color: #fff;
+  font-size: clamp(3rem, 8vw, 5.8rem);
+}
+
+.bonhomia-page__hero-lead {
+  max-width: 43rem;
+  margin: 1.1rem 0 0;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 1.18rem;
+  line-height: 1.6;
+}
+
+.bonhomia-eyebrow {
+  margin: 0 0 0.75rem;
+  color: var(--bonhomia-clay, #9d5941);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.bonhomia-page__hero .bonhomia-eyebrow {
+  color: #f0d895;
+}
+
+.bonhomia-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 1.6rem;
+}
+
+.bonhomia-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-height: 3rem;
+  padding: 0.75rem 1.05rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-weight: 850;
+  line-height: 1.1;
+  text-decoration: none;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.bonhomia-button:hover,
+.bonhomia-button:focus-visible {
+  transform: translateY(-1px);
+}
+
+.bonhomia-button:focus-visible {
+  outline: 3px solid rgba(201, 157, 74, 0.42);
+  outline-offset: 2px;
+}
+
+.bonhomia-button--primary {
+  background: var(--bonhomia-gold, #c99d4a);
+  color: #201710;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.2);
+}
+
+.bonhomia-button--secondary {
+  border-color: rgba(255, 255, 255, 0.62);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.bonhomia-button--dark {
+  background: var(--bonhomia-teal-dark, #083640);
+  color: #fff;
+}
+
+.bonhomia-button--outline {
+  border-color: var(--bonhomia-border, rgba(23, 38, 34, 0.14));
+  background: #fff;
+  color: var(--bonhomia-teal-dark, #083640);
+}
+
+.bonhomia-proof-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: min(76rem, calc(100% - 2rem));
+  margin: -1.2rem auto 0;
+  overflow: hidden;
+  border: 1px solid rgba(15, 76, 92, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 60px rgba(23, 38, 34, 0.14);
+}
+
+.bonhomia-proof-strip div {
+  padding: 1rem;
+  border-left: 1px solid rgba(15, 76, 92, 0.14);
+}
+
+.bonhomia-proof-strip div:first-child {
+  border-left: 0;
+}
+
+.bonhomia-proof-strip span,
+.bonhomia-card__meta,
+.bonhomia-document dt {
+  color: var(--bonhomia-muted, #63736b);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bonhomia-proof-strip strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--bonhomia-teal-dark, #083640);
+  font-size: 1.1rem;
+}
+
+.bonhomia-section,
+.bonhomia-page__title,
+.bonhomia-document {
+  width: min(76rem, calc(100% - 2rem));
+  margin: 0 auto;
+}
+
+.bonhomia-section {
+  padding: 4.5rem 0 0;
+}
+
+.bonhomia-section--last {
+  padding-bottom: 4.5rem;
+}
+
+.bonhomia-page__title {
+  padding: 3.5rem 0 0;
+}
+
+.bonhomia-page__title h1,
+.bonhomia-document h1 {
+  max-width: 48rem;
+  color: var(--bonhomia-ink, #172622);
+  font-size: clamp(2.4rem, 5vw, 4rem);
+}
+
+.bonhomia-page__title p,
+.bonhomia-section__header p,
+.bonhomia-split p,
+.bonhomia-card p,
+.bonhomia-route-card p,
+.bonhomia-document p,
+.bonhomia-document li,
+.bonhomia-faq details p {
+  color: var(--bonhomia-muted, #63736b);
+  line-height: 1.62;
+}
+
+.bonhomia-section__header {
+  max-width: 52rem;
+}
+
+.bonhomia-section__header h2,
+.bonhomia-split h2 {
+  color: var(--bonhomia-ink, #172622);
+  font-size: clamp(2rem, 4vw, 3rem);
+}
+
+.bonhomia-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.bonhomia-grid--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.bonhomia-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bonhomia-card,
+.bonhomia-route-card,
+.bonhomia-document-card,
+.bonhomia-faq details {
+  border: 1px solid var(--bonhomia-border, rgba(23, 38, 34, 0.14));
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 14px 34px rgba(23, 38, 34, 0.08);
+}
+
+.bonhomia-card {
+  display: grid;
+  gap: 0.7rem;
+  padding: 1.15rem;
+}
+
+.bonhomia-card > i,
+.bonhomia-route-card > i {
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  background: rgba(15, 76, 92, 0.1);
+  color: var(--bonhomia-teal, #0f4c5c);
+  font-size: 1.35rem;
+}
+
+.bonhomia-card h3,
+.bonhomia-route-card h3,
+.bonhomia-document h2,
+.bonhomia-document h3 {
+  margin: 0;
+  color: var(--bonhomia-ink, #172622);
+  font-size: 1.18rem;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.bonhomia-card p,
+.bonhomia-route-card p {
+  margin: 0;
+}
+
+.bonhomia-route-card {
+  display: grid;
+  gap: 0.75rem;
+  min-height: 15rem;
+  padding: 1.2rem;
+  text-decoration: none;
+}
+
+.bonhomia-route-card span {
+  align-self: end;
+  color: var(--bonhomia-teal, #0f4c5c);
+  font-weight: 900;
+}
+
+.bonhomia-split {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 2rem;
+  align-items: center;
+}
+
+.bonhomia-split__media,
+.bonhomia-gallery {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.bonhomia-split__media {
+  grid-template-columns: 1.05fr 0.95fr;
+}
+
+.bonhomia-split__media img,
+.bonhomia-gallery img,
+.bonhomia-suite-card img {
+  width: 100%;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #e8e1d0;
+}
+
+.bonhomia-split__media img {
+  height: 14rem;
+}
+
+.bonhomia-split__media img:first-child {
+  grid-row: span 2;
+  height: 28.8rem;
+}
+
+.bonhomia-suite-card {
+  overflow: hidden;
+  padding: 0;
+}
+
+.bonhomia-suite-card img {
+  height: 12rem;
+  border-radius: 0;
+}
+
+.bonhomia-suite-card__body {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.bonhomia-suite-card__topline,
+.bonhomia-suite-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bonhomia-suite-card__topline strong {
+  color: var(--bonhomia-clay, #9d5941);
+  white-space: nowrap;
+}
+
+.bonhomia-suite-card__meta {
+  justify-content: flex-start;
+}
+
+.bonhomia-suite-card__meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 1.8rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: var(--bonhomia-ivory, #f3eedf);
+  color: var(--bonhomia-teal-dark, #083640);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.bonhomia-gallery {
+  grid-template-columns: 1.35fr 0.85fr 0.9fr;
+}
+
+.bonhomia-gallery img {
+  height: 17rem;
+}
+
+.bonhomia-gallery img:first-child {
+  grid-row: span 2;
+  height: 34.8rem;
+}
+
+.bonhomia-band {
+  margin-top: 4.5rem;
+  padding: 2rem;
+  border-radius: 8px;
+  background: var(--bonhomia-teal-dark, #083640);
+  color: #fff;
+}
+
+.bonhomia-band p,
+.bonhomia-band .bonhomia-eyebrow {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.bonhomia-band .bonhomia-eyebrow {
+  color: #f0d895;
+}
+
+.bonhomia-band h2 {
+  color: #fff;
+}
+
+.bonhomia-document {
+  display: grid;
+  gap: 1.25rem;
+  padding: 3.5rem 0 4.5rem;
+}
+
+.bonhomia-document__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.bonhomia-document-card {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1.2rem;
+}
+
+.bonhomia-document-card ul,
+.bonhomia-document-card ol {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.bonhomia-document dl,
+.bonhomia-document-card dl {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.bonhomia-document dt {
+  margin-bottom: 0.15rem;
+}
+
+.bonhomia-document dd {
+  margin: 0;
+  color: var(--bonhomia-ink, #172622);
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.bonhomia-note {
+  padding: 0.9rem;
+  border: 1px solid rgba(201, 157, 74, 0.38);
+  border-radius: 8px;
+  background: #fff7df;
+  color: #5e4410;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.bonhomia-faq {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1.5rem;
+}
+
+.bonhomia-faq details {
+  padding: 1rem;
+}
+
+.bonhomia-faq summary {
+  color: var(--bonhomia-ink, #172622);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.bonhomia-faq details p {
+  margin-bottom: 0;
+}
+
+.bonhomia-contact-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.7fr);
+  gap: 1rem;
+  align-items: center;
+  padding: 1.25rem;
+  border: 1px solid var(--bonhomia-border, rgba(23, 38, 34, 0.14));
+  border-radius: 8px;
+  background: #fff;
+}
+
+.bonhomia-contact-panel__actions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.bonhomia-spaced-top {
+  margin-top: 1.5rem;
+}
+
+@media (max-width: 1080px) {
+  .bonhomia-grid,
+  .bonhomia-grid--four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bonhomia-document__grid,
+  .bonhomia-contact-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .bonhomia-page__hero {
+    min-height: 36rem;
+  }
+
+  .bonhomia-proof-strip,
+  .bonhomia-split,
+  .bonhomia-grid,
+  .bonhomia-grid--two,
+  .bonhomia-grid--four,
+  .bonhomia-split__media,
+  .bonhomia-gallery {
+    grid-template-columns: 1fr;
+  }
+
+  .bonhomia-proof-strip div {
+    border-top: 1px solid rgba(15, 76, 92, 0.14);
+    border-left: 0;
+  }
+
+  .bonhomia-proof-strip div:first-child {
+    border-top: 0;
+  }
+
+  .bonhomia-split__media img,
+  .bonhomia-split__media img:first-child,
+  .bonhomia-gallery img,
+  .bonhomia-gallery img:first-child {
+    height: 18rem;
+  }
+
+  .bonhomia-band {
+    padding: 1.25rem;
+  }
+}

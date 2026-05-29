@@ -1,5 +1,46 @@
 @inherits LayoutComponentBase
 
 <div class="bonhomia-public-shell">
+    <header class="bonhomia-public-nav" aria-label="Bonhomia Suites">
+        <a class="bonhomia-public-brand" href="/" aria-label="Bonhomia Suites inicio">
+            <img src="/Images/Bonhomia/logo-vertical.png" alt="Bonhomia Suites" />
+            <span>Bonhomia Suites</span>
+        </a>
+
+        <nav class="bonhomia-public-nav__links" aria-label="Navegacion principal">
+            <NavLink href="/" Match="NavLinkMatch.All">Inicio</NavLink>
+            <NavLink href="/suites">Suites</NavLink>
+            <NavLink href="/servicios">Servicios</NavLink>
+            <NavLink href="/preguntas-frecuentes">FAQ</NavLink>
+            <NavLink href="/contacto">Contacto</NavLink>
+        </nav>
+
+        <a class="bonhomia-public-nav__cta" href="/reservar">
+            <i class="bi bi-calendar-check" aria-hidden="true"></i>
+            <span>Reservar</span>
+        </a>
+    </header>
+
     @Body
+
+    <footer class="bonhomia-public-footer">
+        <div class="bonhomia-public-footer__brand">
+            <img src="/Images/Bonhomia/logo-letterhead.svg" alt="Bonhomia Suites" />
+            <p>Suites y casas amuebladas para viajes de trabajo, familia y agenda profesional en Calpulalpan.</p>
+        </div>
+
+        <nav aria-label="Documentos Bonhomia">
+            <a href="/politicas-de-reserva">Politicas de reserva</a>
+            <a href="/terminos-y-condiciones">Terminos y condiciones</a>
+            <a href="/aviso-de-privacidad">Aviso de privacidad</a>
+            <a href="/preguntas-frecuentes">Preguntas frecuentes</a>
+        </nav>
+
+        <div class="bonhomia-public-footer__contact">
+            <span>@BonhomiaSiteContent.Address</span>
+            <a href='@BonhomiaSiteContent.WhatsAppUrl("Hola Bonhomia Suites, quiero informacion para una estancia.")' target="_blank" rel="noopener noreferrer">WhatsApp @BonhomiaSiteContent.WhatsAppDisplay</a>
+            <a href="mailto:@BonhomiaSiteContent.Email">@BonhomiaSiteContent.Email</a>
+            <a href="/erp">Portal OrionERP</a>
+        </div>
+    </footer>
 </div>

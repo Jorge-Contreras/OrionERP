@@ -1,0 +1,59 @@
+@page "/servicios"
+
+<PageTitle>Servicios | Bonhomia Suites</PageTitle>
+<HeadContent>
+    <meta name="description" content="Servicios, amenidades y extras de Bonhomia Suites para trabajo, familia, conferencias y estancias en Calpulalpan." />
+</HeadContent>
+
+<main class="bonhomia-page">
+    <section class="bonhomia-page__title">
+        <p class="bonhomia-eyebrow">Servicios y amenidades</p>
+        <h1>Todo lo necesario para instalarte sin friccion</h1>
+        <p>Bonhomia combina espacios amueblados con extras claros para que el viaje de trabajo, familia o agenda profesional sea mas sencillo de organizar.</p>
+    </section>
+
+    <section class="bonhomia-section">
+        <div class="bonhomia-grid">
+            @foreach (var service in BonhomiaSiteContent.Services)
+            {
+                <article class="bonhomia-card">
+                    <i class="@service.Icon" aria-hidden="true"></i>
+                    <h3>@service.Title</h3>
+                    <p>@service.Text</p>
+                </article>
+            }
+        </div>
+    </section>
+
+    <section class="bonhomia-section" aria-labelledby="bonhomia-extras-title">
+        <div class="bonhomia-section__header">
+            <p class="bonhomia-eyebrow">Extras</p>
+            <h2 id="bonhomia-extras-title">Opciones que se ajustan a tu estancia</h2>
+            <p>Los extras estan sujetos a disponibilidad y se confirman durante el proceso de reserva o por contacto directo.</p>
+        </div>
+        <div class="bonhomia-grid bonhomia-grid--three">
+            @foreach (var extra in BonhomiaSiteContent.Extras)
+            {
+                <article class="bonhomia-card">
+                    <span class="bonhomia-card__meta">@extra.Price</span>
+                    <h3>@extra.Name</h3>
+                    <p>@extra.Detail</p>
+                </article>
+            }
+        </div>
+    </section>
+
+    <section class="bonhomia-section bonhomia-section--last">
+        <div class="bonhomia-band bonhomia-split">
+            <div>
+                <p class="bonhomia-eyebrow">Listo para elegir fechas</p>
+                <h2>Reserva cuando ya tengas claro lo que necesitas</h2>
+                <p>La pagina de reserva te lleva por fechas, suite, extras, cotizacion y pago.</p>
+            </div>
+            <div class="bonhomia-actions">
+                <a class="bonhomia-button bonhomia-button--primary" href="/reservar">Ir a reservar</a>
+                <a class="bonhomia-button bonhomia-button--secondary" href="/suites">Comparar suites</a>
+            </div>
+        </div>
+    </section>
+</main>

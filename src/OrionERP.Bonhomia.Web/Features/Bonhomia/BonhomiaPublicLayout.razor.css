@@ -1,4 +1,197 @@
 .bonhomia-public-shell {
+  --bonhomia-ink: #172622;
+  --bonhomia-muted: #63736b;
+  --bonhomia-teal: #0f4c5c;
+  --bonhomia-teal-dark: #083640;
+  --bonhomia-ivory: #f3eedf;
+  --bonhomia-warm: #fbfaf6;
+  --bonhomia-sage: #5f7d69;
+  --bonhomia-clay: #9d5941;
+  --bonhomia-gold: #c99d4a;
+  --bonhomia-border: rgba(23, 38, 34, 0.14);
   min-height: 100vh;
   background: #fbfaf6;
+  color: var(--bonhomia-ink);
+  font-family: "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  letter-spacing: 0;
+}
+
+.bonhomia-public-shell *,
+.bonhomia-public-shell *::before,
+.bonhomia-public-shell *::after {
+  box-sizing: border-box;
+}
+
+.bonhomia-public-nav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 1.2rem;
+  align-items: center;
+  min-height: 5rem;
+  padding: 0.75rem clamp(1rem, 4vw, 2rem);
+  border-bottom: 1px solid rgba(15, 76, 92, 0.14);
+  background: rgba(251, 250, 246, 0.94);
+  backdrop-filter: blur(18px);
+}
+
+.bonhomia-public-brand,
+.bonhomia-public-nav__links,
+.bonhomia-public-nav__cta,
+.bonhomia-public-footer a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.bonhomia-public-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--bonhomia-teal-dark);
+  font-weight: 900;
+}
+
+.bonhomia-public-brand img {
+  width: 3rem;
+  height: 3rem;
+  object-fit: contain;
+}
+
+.bonhomia-public-brand span {
+  white-space: nowrap;
+}
+
+.bonhomia-public-nav__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.bonhomia-public-nav__links a {
+  min-height: 2.35rem;
+  padding: 0.52rem 0.75rem;
+  border-radius: 999px;
+  color: var(--bonhomia-ink);
+  font-size: 0.94rem;
+  font-weight: 800;
+}
+
+.bonhomia-public-nav__links a:hover,
+.bonhomia-public-nav__links a:focus-visible,
+.bonhomia-public-nav__links a.active {
+  background: rgba(15, 76, 92, 0.1);
+  color: var(--bonhomia-teal);
+}
+
+.bonhomia-public-nav__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border-radius: 999px;
+  background: var(--bonhomia-teal);
+  color: #fff;
+  font-weight: 900;
+}
+
+.bonhomia-public-nav__cta:hover,
+.bonhomia-public-nav__cta:focus-visible {
+  transform: translateY(-1px);
+}
+
+.bonhomia-public-nav__cta:focus-visible,
+.bonhomia-public-brand:focus-visible,
+.bonhomia-public-nav__links a:focus-visible,
+.bonhomia-public-footer a:focus-visible {
+  outline: 3px solid rgba(201, 157, 74, 0.42);
+  outline-offset: 2px;
+}
+
+.bonhomia-public-footer {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1.2fr) minmax(10rem, 0.8fr) minmax(14rem, 1fr);
+  gap: 1.5rem;
+  width: min(76rem, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 2.25rem 0;
+  border-top: 1px solid var(--bonhomia-border);
+  color: var(--bonhomia-muted);
+  font-weight: 750;
+}
+
+.bonhomia-public-footer img {
+  width: 10rem;
+  height: 4rem;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.bonhomia-public-footer p {
+  max-width: 25rem;
+  margin: 0.65rem 0 0;
+  line-height: 1.55;
+}
+
+.bonhomia-public-footer nav,
+.bonhomia-public-footer__contact {
+  display: grid;
+  gap: 0.55rem;
+  align-content: start;
+}
+
+.bonhomia-public-footer a {
+  color: var(--bonhomia-teal);
+  font-weight: 850;
+}
+
+.bonhomia-public-footer__contact span {
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .bonhomia-public-nav {
+    grid-template-columns: 1fr auto;
+  }
+
+  .bonhomia-public-nav__links {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 0.15rem;
+  }
+
+  .bonhomia-public-footer {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .bonhomia-public-nav {
+    min-height: 4.35rem;
+    padding: 0.6rem 0.85rem;
+  }
+
+  .bonhomia-public-brand img {
+    width: 2.55rem;
+    height: 2.55rem;
+  }
+
+  .bonhomia-public-brand span {
+    display: none;
+  }
+
+  .bonhomia-public-nav__cta span {
+    display: none;
+  }
+
+  .bonhomia-public-nav__cta {
+    width: 2.75rem;
+    padding-left: 0;
+    padding-right: 0;
+  }
 }

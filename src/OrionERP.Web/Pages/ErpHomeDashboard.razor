@@ -2,10 +2,12 @@
 @using Microsoft.AspNetCore.Identity
 @using OrionERP.Application.Features.Ajustes
 @using OrionERP.Application.Features.CuentasPorPagar.Recurrentes
+@using OrionERP.Application.Features.Logistica.PhysicalCounts
 @using OrionERP.Infrastructure.Auth
 @inject IAjustesService AjustesService
 @inject IRecurrentApService RecurrentApService
 @inject IOrdenTrabajoService OrdenTrabajoService
+@inject IPhysicalCountService PhysicalCountService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject IUserRfcState RfcState
@@ -107,6 +109,70 @@
                     </button>
                 </div>
             </section>
+
+            @if (HasConteoRole)
+            {
+                <section class="home-panel home-recounts" aria-labelledby="pending-recounts-title">
+                    <div class="home-panel__header">
+                        <div>
+                            <p class="home-panel__kicker">Conteos</p>
+                            <h2 id="pending-recounts-title">Pendientes de reconteo</h2>
+                        </div>
+                        <span class="home-count home-count--recount" aria-label="@($"{PendingRecounts.Count} conteos pendientes de reconteo")">@PendingRecounts.Count</span>
+                    </div>
+
+                    @if (IsLoading)
+                    {
+                        <div class="home-empty">Cargando reconteos...</div>
+                    }
+                    else if (PendingRecounts.Count == 0)
+                    {
+                        <div class="home-empty">No hay conteos pendientes de reconteo.</div>
+                    }
+                    else
+                    {
+                        <div class="home-recount-list">
+                            @foreach (var item in PendingRecounts)
+                            {
+                                <a class="home-order-card home-recount-card" href="@BuildPendingRecountUrl(item)">
+                                    <div class="home-order-card__main">
+                                        <div class="home-order-card__topline">
+                                            <span class="home-order-card__folio">@item.SessionCode</span>
+                                            <span class="home-status home-status--review">Reconteo</span>
+                                        </div>
+
+                                        <h3>@item.LocationName</h3>
+
+                                        <div class="home-order-card__meta">
+                                            @if (!string.IsNullOrWhiteSpace(item.RoomName))
+                                            {
+                                                <span>@item.RoomName</span>
+                                            }
+                                            <span>@FormatRecountIssueSummary(item.IssueSummary)</span>
+                                            @if (!string.IsNullOrWhiteSpace(item.RecountRequestedBy))
+                                            {
+                                                <span>@item.RecountRequestedBy</span>
+                                            }
+                                        </div>
+                                    </div>
+
+                                    <div class="home-order-card__schedule">
+                                        <span>@FormatRecountRequestedAt(item)</span>
+                                        <small>@($"{item.RecountLineCount} de {item.LineCount} líneas")</small>
+                                    </div>
+                                </a>
+                            }
+                        </div>
+                    }
+
+                    <div class="home-panel__footer">
+                        <button class="btn btn-outline-primary" type="button" @onclick="OpenConteos">
+                            <span class="oi oi-list" aria-hidden="true"></span>
+                            <span>Abrir modulo</span>
+                        </button>
+                    </div>
+                </section>
+            }
 
             <section class="home-panel home-ap" aria-labelledby="recurrent-ap-title">
                 <div class="home-panel__header">
@@ -231,9 +297,11 @@
     private static readonly CultureInfo DateCulture = CultureInfo.GetCultureInfo("es-MX");
     private List<OrdenTrabajoListItemDto> WorkOrders { get; set; } = [];
     private List<RecurrentApOccurrenceListItemDto> ApOccurrences { get; set; } = [];
+    private List<PhysicalCountPendingRecountDto> PendingRecounts { get; set; } = [];
     private string CurrentUserName { get; set; } = "OrionERP";
     private int? CurrentEmployeeId { get; set; }
     private bool IsAuthenticated { get; set; }
+    private bool HasConteoRole { get; set; }
     private bool IsLoading { get; set; }
     private string? ErrorMessage { get; set; }
     private string? LoadedRfc { get; set; }
@@ -282,6 +350,7 @@
                 await LoadApNotificationSettingsAsync();
             }
             await LoadWorkOrdersForCurrentUserAsync();
+            await LoadPendingRecountsAsync();
             await LoadApOccurrencesAsync();
             LoadedRfc = CurrentRfc;
         }
@@ -289,6 +358,7 @@
         {
             WorkOrders.Clear();
             ApOccurrences.Clear();
+            PendingRecounts.Clear();
             ErrorMessage = ex.Message;
         }
         finally
@@ -354,6 +424,20 @@
             .ToList();
     }
 
+    private async Task LoadPendingRecountsAsync()
+    {
+        if (!IsAuthenticated || !HasConteoRole)
+        {
+            PendingRecounts.Clear();
+            return;
+        }
+
+        PendingRecounts = (await PhysicalCountService.GetPendingRecountsAsync())
+            .OrderByDescending(item => item.RecountRequestedAt)
+            .ThenBy(item => item.SessionCode)
+            .ToList();
+    }
+
     private async Task LoadApNotificationSettingsAsync()
     {
         var settings = await AjustesService.GetGeneralSettingsAsync();
@@ -370,6 +454,7 @@
     {
         var principal = authState.User;
         IsAuthenticated = principal.Identity?.IsAuthenticated == true;
+        HasConteoRole = IsAuthenticated && principal.IsInRole("Conteo");
         CurrentUserName = principal.Identity?.Name?.Trim() switch
         {
             { Length: > 0 } name => name,
@@ -381,6 +466,7 @@
             CurrentEmployeeId = null;
             WorkOrders.Clear();
             ApOccurrences.Clear();
+            PendingRecounts.Clear();
             return;
         }
 
@@ -394,8 +480,14 @@
     private void OpenCxcr()
         => Navigation.NavigateTo("/cuentas-por-pagar/recurrentes");
 
+    private void OpenConteos()
+        => Navigation.NavigateTo("/logistica/conteos");
+
     private static string BuildApOccurrenceUrl(RecurrentApOccurrenceListItemDto item)
         => $"/cuentas-por-pagar/recurrentes?occurrenceId={item.Id}";
+
+    private static string BuildPendingRecountUrl(PhysicalCountPendingRecountDto item)
+        => $"/logistica/conteos?sessionId={item.Id}";
 
     private static string FormatDate(OrdenTrabajoListItemDto item)
     {
@@ -409,6 +501,22 @@
         => item.DueDate.Date == DateTime.Today
             ? "Hoy"
             : item.DueDate.ToString("dd MMM", DateCulture);
+
+    private static string FormatRecountRequestedAt(PhysicalCountPendingRecountDto item)
+        => item.RecountRequestedAt.ToLocalTime().Date == DateTime.Today
+            ? "Hoy"
+            : item.RecountRequestedAt.ToLocalTime().ToString("dd MMM", DateCulture);
+
+    private static string FormatRecountIssueSummary(string? issueSummary)
+    {
+        var labels = (issueSummary ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(GetRecountIssueLabel)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return labels.Count == 0 ? "Sin incidencia" : string.Join(", ", labels);
+    }
 
     private static string FormatApAmount(RecurrentApOccurrenceListItemDto item)
     {
@@ -477,6 +585,18 @@
 
     private static string GetApStatusLabel(RecurrentApOccurrenceListItemDto item)
         => item.IsOverdue ? "Vencida" : "Proxima";
+
+    private static string GetRecountIssueLabel(string? issueCode)
+        => issueCode switch
+        {
+            PhysicalCountRecountIssueCodes.QuantityMismatch => "Cantidad",
+            PhysicalCountRecountIssueCodes.UnitIssue => "Unidad",
+            PhysicalCountRecountIssueCodes.WrongMaterial => "Material",
+            PhysicalCountRecountIssueCodes.EvidenceMissing => "Evidencia",
+            PhysicalCountRecountIssueCodes.ConditionIssue => "Condicion",
+            PhysicalCountRecountIssueCodes.Other => "Otro",
+            _ => string.IsNullOrWhiteSpace(issueCode) ? "Incidencia" : issueCode
+        };
 
     private static string GetStatusClass(string? status)
         => status switch

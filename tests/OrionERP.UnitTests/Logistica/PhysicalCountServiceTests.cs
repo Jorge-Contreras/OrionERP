@@ -1,3 +1,4 @@
+using OrionERP.Application.Features.Logistica.PhysicalCounts;
 using OrionERP.Infrastructure.Features.Logistica.PhysicalCounts;
 using OrionERP.UnitTests.Common;
 
@@ -5,6 +6,269 @@ namespace OrionERP.UnitTests.Logistica;
 
 public class PhysicalCountServiceTests
 {
+  [Fact]
+  public async Task RequestRecountAsync_Fails_WhenNoLinesAreSelected()
+  {
+    var connection = new FakeQueryDbConnection();
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.RequestRecountAsync(new PhysicalCountRecountRequest
+    {
+      SessionId = 51,
+      RequestedBy = "admin@orionerp.local"
+    });
+
+    Assert.False(result.Success);
+    Assert.Equal("Selecciona al menos una línea para enviar a reconteo.", result.Message);
+    Assert.Empty(connection.ExecutedCommands);
+  }
+
+  [Fact]
+  public async Task RequestRecountAsync_Fails_WhenIssueCodeIsInvalid()
+  {
+    var connection = new FakeQueryDbConnection();
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.RequestRecountAsync(new PhysicalCountRecountRequest
+    {
+      SessionId = 51,
+      RequestedBy = "admin@orionerp.local",
+      Lines =
+      [
+        new PhysicalCountRecountLineRequest
+        {
+          LineId = 10,
+          IssueCode = "Unknown",
+          Reason = "La cantidad capturada no cuadra."
+        }
+      ]
+    });
+
+    Assert.False(result.Success);
+    Assert.Equal("Selecciona un tipo de incidencia válido para cada línea de reconteo.", result.Message);
+    Assert.Empty(connection.ExecutedCommands);
+  }
+
+  [Fact]
+  public async Task RequestRecountAsync_Fails_WhenSessionIsNotSubmittedOrApproved()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ScalarResultFactory = (commandText, _) => commandText.Contains("SELECT [Status]", StringComparison.Ordinal) ? "Draft" : null
+    };
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.RequestRecountAsync(new PhysicalCountRecountRequest
+    {
+      SessionId = 51,
+      RequestedBy = "admin@orionerp.local",
+      Lines =
+      [
+        new PhysicalCountRecountLineRequest
+        {
+          LineId = 10,
+          IssueCode = PhysicalCountRecountIssueCodes.QuantityMismatch,
+          Reason = "La cantidad capturada no cuadra."
+        }
+      ]
+    });
+
+    Assert.False(result.Success);
+    Assert.Equal("Solo las sesiones enviadas o aprobadas pueden enviarse a reconteo.", result.Message);
+    Assert.NotNull(connection.LastTransaction);
+    Assert.True(connection.LastTransaction!.WasRolledBack);
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO logistica.PhysicalCountRecountPlan", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public async Task RequestRecountAsync_CreatesPlanSnapshotsClearsLinesAndMarksSessionForRecount()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("SELECT [Status]", StringComparison.Ordinal))
+        {
+          return "Approved";
+        }
+
+        if (commandText.Contains("FROM logistica.PhysicalCountRecountPlan", StringComparison.Ordinal)
+          && commandText.Contains("COUNT(*)", StringComparison.Ordinal))
+        {
+          return 0;
+        }
+
+        if (commandText.Contains("FROM logistica.PhysicalCountLine", StringComparison.Ordinal)
+          && commandText.Contains("COUNT(*)", StringComparison.Ordinal))
+        {
+          return 2;
+        }
+
+        if (commandText.Contains("INSERT INTO logistica.PhysicalCountRecountPlan", StringComparison.Ordinal))
+        {
+          return 701;
+        }
+
+        return null;
+      }
+    };
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.RequestRecountAsync(new PhysicalCountRecountRequest
+    {
+      SessionId = 51,
+      RequestedBy = "admin@orionerp.local",
+      Lines =
+      [
+        new PhysicalCountRecountLineRequest
+        {
+          LineId = 10,
+          IssueCode = PhysicalCountRecountIssueCodes.QuantityMismatch,
+          Reason = "La cantidad capturada no cuadra."
+        },
+        new PhysicalCountRecountLineRequest
+        {
+          LineId = 11,
+          IssueCode = PhysicalCountRecountIssueCodes.EvidenceMissing,
+          Reason = "Falta evidencia del conteo."
+        }
+      ]
+    });
+
+    Assert.True(result.Success);
+    Assert.Equal(51, result.EntityId);
+    Assert.Equal("Sesión enviada a reconteo correctamente.", result.Message);
+    Assert.NotNull(connection.LastTransaction);
+    Assert.True(connection.LastTransaction!.WasCommitted);
+
+    var planInsert = Assert.Single(connection.ExecutedCommands, command =>
+      command.CommandText.Contains("INSERT INTO logistica.PhysicalCountRecountPlan", StringComparison.Ordinal)
+      && !command.CommandText.Contains("PhysicalCountRecountPlanLine", StringComparison.Ordinal));
+    AssertParameter(planInsert.Parameters, "@SessionId", 51);
+    AssertParameter(planInsert.Parameters, "@RequestedBy", "admin@orionerp.local");
+
+    var planLineInserts = connection.ExecutedCommands
+      .Where(command => command.CommandText.Contains("INSERT INTO logistica.PhysicalCountRecountPlanLine", StringComparison.Ordinal))
+      .ToList();
+    Assert.Equal(2, planLineInserts.Count);
+    Assert.All(planLineInserts, command => AssertParameter(command.Parameters, "@RecountPlanId", 701));
+
+    var lineClears = connection.ExecutedCommands
+      .Where(command => command.CommandText.Contains("SET CountedQuantity = NULL", StringComparison.Ordinal))
+      .ToList();
+    Assert.Equal(2, lineClears.Count);
+
+    var sessionUpdate = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("SET [Status] = 'Recount'", StringComparison.Ordinal));
+    AssertParameter(sessionUpdate.Parameters, "@SessionId", 51);
+  }
+
+  [Fact]
+  public async Task CancelSessionAsync_Fails_WhenReasonIsMissing()
+  {
+    var connection = new FakeQueryDbConnection();
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CancelSessionAsync(new PhysicalCountCancelRequest
+    {
+      SessionId = 51,
+      CanceledBy = "admin@orionerp.local",
+      Reason = " "
+    });
+
+    Assert.False(result.Success);
+    Assert.Equal("Captura una razón para cancelar el conteo.", result.Message);
+    Assert.Empty(connection.ExecutedCommands);
+  }
+
+  [Fact]
+  public async Task CancelSessionAsync_Fails_WhenSessionIsPosted()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ScalarResultFactory = (commandText, _) => commandText.Contains("SELECT [Status]", StringComparison.Ordinal) ? "Posted" : null
+    };
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CancelSessionAsync(new PhysicalCountCancelRequest
+    {
+      SessionId = 51,
+      CanceledBy = "admin@orionerp.local",
+      Reason = "Conteo duplicado."
+    });
+
+    Assert.False(result.Success);
+    Assert.Equal("Las sesiones contabilizadas no se pueden cancelar.", result.Message);
+    Assert.NotNull(connection.LastTransaction);
+    Assert.True(connection.LastTransaction!.WasRolledBack);
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("SET [Status] = 'Canceled'", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public async Task CancelSessionAsync_SoftCancelsUnpostedSessionWithoutDeletingRows()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ScalarResultFactory = (commandText, _) => commandText.Contains("SELECT [Status]", StringComparison.Ordinal) ? "Approved" : null,
+      NonQueryResultFactory = (_, _) => 1
+    };
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CancelSessionAsync(new PhysicalCountCancelRequest
+    {
+      SessionId = 51,
+      CanceledBy = "admin@orionerp.local",
+      Reason = "Conteo creado por error."
+    });
+
+    Assert.True(result.Success);
+    Assert.Equal(51, result.EntityId);
+    Assert.Equal("Sesión cancelada correctamente.", result.Message);
+    Assert.NotNull(connection.LastTransaction);
+    Assert.True(connection.LastTransaction!.WasCommitted);
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("DELETE FROM logistica.PhysicalCountLine", StringComparison.Ordinal));
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("DELETE attachment", StringComparison.Ordinal));
+
+    var sessionUpdate = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("SET [Status] = 'Canceled'", StringComparison.Ordinal));
+    AssertParameter(sessionUpdate.Parameters, "@SessionId", 51);
+    AssertParameter(sessionUpdate.Parameters, "@CanceledBy", "admin@orionerp.local");
+    AssertParameter(sessionUpdate.Parameters, "@CancelReason", "Conteo creado por error.");
+  }
+
+  [Fact]
+  public async Task SubmitSessionAsync_ClosesActiveRecountPlan_WhenSessionIsInRecount()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("SELECT [Status]", StringComparison.Ordinal))
+        {
+          return "Recount";
+        }
+
+        if (commandText.Contains("FROM logistica.PhysicalCountLine", StringComparison.Ordinal)
+          && commandText.Contains("COUNT(*)", StringComparison.Ordinal))
+        {
+          return 0;
+        }
+
+        return null;
+      },
+      NonQueryResultFactory = (_, _) => 1
+    };
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.SubmitSessionAsync(51, "contador@orionerp.local");
+
+    Assert.True(result.Success);
+    Assert.NotNull(connection.LastTransaction);
+    Assert.True(connection.LastTransaction!.WasCommitted);
+
+    var recountPlanClose = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("UPDATE logistica.PhysicalCountRecountPlan", StringComparison.Ordinal));
+    AssertParameter(recountPlanClose.Parameters, "@SessionId", 51);
+    AssertParameter(recountPlanClose.Parameters, "@SubmittedBy", "contador@orionerp.local");
+  }
+
   [Fact]
   public async Task DeleteDraftSessionAsync_Fails_WhenSessionDoesNotExist()
   {

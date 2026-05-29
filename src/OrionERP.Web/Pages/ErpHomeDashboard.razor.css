@@ -94,8 +94,13 @@
   background: #7a4b12;
 }
 
+.home-count--recount {
+  background: #8a5a00;
+}
+
 .home-order-list,
-.home-ap-list {
+.home-ap-list,
+.home-recount-list {
   display: grid;
   gap: 0.75rem;
   padding: 0.85rem;
@@ -139,6 +144,10 @@
 
 .home-ap-card--overdue {
   border-left-color: #b42318;
+}
+
+.home-recount-card {
+  border-left-color: #9a6700;
 }
 
 .home-order-card__main,

@@ -1,0 +1,116 @@
+<PageTitle>Bonhomia Suites | Hospedaje en Calpulalpan</PageTitle>
+<HeadContent>
+    <meta name="description" content="Bonhomia Suites ofrece suites y casas amuebladas en Calpulalpan para viajeros de trabajo, familias, conferencistas y estancias remotas." />
+</HeadContent>
+
+<main class="bonhomia-page">
+    <section class="bonhomia-page__hero" style="background-image: url('/Images/Bonhomia/hero-penthouse.jpg');" aria-labelledby="bonhomia-home-title">
+        <div class="bonhomia-page__hero-content">
+            <p class="bonhomia-eyebrow">Suites y casas amuebladas en Calpulalpan</p>
+            <h1 id="bonhomia-home-title">Bonhomia Suites</h1>
+            <p class="bonhomia-page__hero-lead">Hospedaje privado, comodo y bien operado para quienes llegan a trabajar, visitar familia, participar en una conferencia o cumplir una agenda profesional.</p>
+            <div class="bonhomia-actions">
+                <a class="bonhomia-button bonhomia-button--primary" href="/suites">
+                    <i class="bi bi-building" aria-hidden="true"></i>
+                    <span>Conocer las suites</span>
+                </a>
+                <a class="bonhomia-button bonhomia-button--secondary" href="/reservar">
+                    <i class="bi bi-calendar-check" aria-hidden="true"></i>
+                    <span>Reservar ahora</span>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <div class="bonhomia-proof-strip" aria-label="Datos destacados">
+        <div><span>Reserva</span><strong>Pago seguro</strong></div>
+        <div><span>Check-in</span><strong>15:00 hrs</strong></div>
+        <div><span>Ubicacion</span><strong>Calpulalpan</strong></div>
+        <div><span>Moneda</span><strong>MXN</strong></div>
+    </div>
+
+    <section class="bonhomia-section bonhomia-split" aria-labelledby="bonhomia-intro-title">
+        <div>
+            <p class="bonhomia-eyebrow">Primero conoce el lugar</p>
+            <h2 id="bonhomia-intro-title">Comodidad de casa con operacion profesional</h2>
+            <p>Antes de reservar, revisa que tipo de suite te conviene, que servicios estan disponibles y cuales politicas aplican a tu estancia. Bonhomia esta pensado para descansar sin improvisar.</p>
+            <div class="bonhomia-actions">
+                <a class="bonhomia-button bonhomia-button--dark" href="/servicios">Ver servicios</a>
+                <a class="bonhomia-button bonhomia-button--outline" href="/politicas-de-reserva">Leer politicas</a>
+            </div>
+        </div>
+        <div class="bonhomia-split__media">
+            <img src="/Images/Bonhomia/gallery-terrace-living.jpg" alt="Sala amueblada con terraza en Bonhomia Suites" />
+            <img src="/Images/Bonhomia/gallery-kitchen.jpg" alt="Cocina equipada en Bonhomia Suites" />
+            <img src="/Images/Bonhomia/exterior-main.jpg" alt="Exterior de Bonhomia Suites en Calpulalpan" />
+        </div>
+    </section>
+
+    <section class="bonhomia-section" aria-labelledby="bonhomia-guests-title">
+        <div class="bonhomia-section__header">
+            <p class="bonhomia-eyebrow">Para quien funciona</p>
+            <h2 id="bonhomia-guests-title">Una estancia seria para viajes con proposito</h2>
+            <p>El sitio guia a cada visitante desde la informacion esencial hasta la reserva directa, con mensajes claros para los perfiles que mas necesitan confianza y comodidad.</p>
+        </div>
+        <div class="bonhomia-grid">
+            @foreach (var profile in BonhomiaSiteContent.GuestProfiles)
+            {
+                <article class="bonhomia-card">
+                    <i class="@profile.Icon" aria-hidden="true"></i>
+                    <h3>@profile.Title</h3>
+                    <p>@profile.Text</p>
+                </article>
+            }
+        </div>
+    </section>
+
+    <section class="bonhomia-section" aria-labelledby="bonhomia-next-title">
+        <div class="bonhomia-section__header">
+            <p class="bonhomia-eyebrow">Sigue tu ruta</p>
+            <h2 id="bonhomia-next-title">Elige que necesitas saber antes de reservar</h2>
+        </div>
+        <div class="bonhomia-grid bonhomia-grid--four">
+            <a class="bonhomia-route-card" href="/suites">
+                <i class="bi bi-door-open" aria-hidden="true"></i>
+                <h3>Suites</h3>
+                <p>Capacidad, estilo y tipo de estancia recomendada para cada espacio.</p>
+                <span>Explorar suites</span>
+            </a>
+            <a class="bonhomia-route-card" href="/servicios">
+                <i class="bi bi-stars" aria-hidden="true"></i>
+                <h3>Servicios</h3>
+                <p>Amenidades, extras y elementos utiles para trabajo o familia.</p>
+                <span>Ver servicios</span>
+            </a>
+            <a class="bonhomia-route-card" href="/preguntas-frecuentes">
+                <i class="bi bi-question-circle" aria-hidden="true"></i>
+                <h3>FAQ</h3>
+                <p>Respuestas sobre reservas, trabajo remoto, familias, pagos y facturacion.</p>
+                <span>Resolver dudas</span>
+            </a>
+            <a class="bonhomia-route-card" href="/reservar">
+                <i class="bi bi-calendar2-week" aria-hidden="true"></i>
+                <h3>Reservar</h3>
+                <p>Consulta disponibilidad, genera cotizacion y completa el pago seguro.</p>
+                <span>Ir a reservar</span>
+            </a>
+        </div>
+    </section>
+
+    <section class="bonhomia-section bonhomia-section--last">
+        <div class="bonhomia-band bonhomia-split">
+            <div>
+                <p class="bonhomia-eyebrow">Contacto directo</p>
+                <h2>Planea tu estancia con informacion clara</h2>
+                <p>Si viajas por trabajo, con familia o con agenda institucional, comparte fechas y numero de huespedes para orientarte antes de reservar.</p>
+            </div>
+            <div class="bonhomia-actions">
+                <a class="bonhomia-button bonhomia-button--primary" href='@BonhomiaSiteContent.WhatsAppUrl("Hola Bonhomia Suites, quiero informacion para una estancia en Calpulalpan.")' target="_blank" rel="noopener noreferrer">
+                    <i class="bi bi-whatsapp" aria-hidden="true"></i>
+                    <span>WhatsApp @BonhomiaSiteContent.WhatsAppDisplay</span>
+                </a>
+                <a class="bonhomia-button bonhomia-button--secondary" href="/contacto">Ver contacto</a>
+            </div>
+        </div>
+    </section>
+</main>

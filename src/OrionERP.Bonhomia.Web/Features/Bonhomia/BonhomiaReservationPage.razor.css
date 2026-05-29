@@ -278,6 +278,7 @@
   box-shadow: 0 22px 56px rgba(23, 38, 34, 0.14);
 }
 
+.bonhomia-booking__intro h1,
 .bonhomia-booking__intro h2,
 .bonhomia-section__header h2,
 .bonhomia-policy__main h2,
@@ -759,6 +760,9 @@ button.bonhomia-room-option:disabled {
 }
 
 .bonhomia-weekdays span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
   color: var(--bonhomia-muted);
   font-size: 0.68rem;
   font-weight: 900;
@@ -771,6 +775,9 @@ button.bonhomia-room-option:disabled {
   place-items: center;
   aspect-ratio: 1;
   min-width: 0;
+  min-inline-size: 0;
+  padding: 0;
+  overflow: hidden;
   border: 1px solid transparent;
   border-radius: 8px;
   font: inherit;
@@ -1607,6 +1614,7 @@ button.bonhomia-day {
     width: min(100% - 1.5rem, 76rem);
   }
 
+  .bonhomia-booking__intro h1,
   .bonhomia-booking__intro h2,
   .bonhomia-section__header h2,
   .bonhomia-policy__main h2,
@@ -1693,4 +1701,12 @@ button.bonhomia-day {
     align-items: flex-start;
     flex-direction: column;
   }
+}
+
+.bonhomia-reservation-page {
+  padding: 2rem 0 4.5rem;
+}
+
+.bonhomia-reservation-page .bonhomia-booking {
+  margin-top: 0;
 }

@@ -1,0 +1,50 @@
+@page "/contacto"
+
+<PageTitle>Contacto | Bonhomia Suites</PageTitle>
+<HeadContent>
+    <meta name="description" content="Contacta a Bonhomia Suites en Calpulalpan por WhatsApp, correo o direccion para resolver dudas antes de reservar." />
+</HeadContent>
+
+<main class="bonhomia-page">
+    <section class="bonhomia-page__title">
+        <p class="bonhomia-eyebrow">Contacto</p>
+        <h1>Te esperamos en Calpulalpan</h1>
+        <p>Comparte fechas, numero de huespedes y motivo de viaje para orientarte antes de reservar.</p>
+    </section>
+
+    <section class="bonhomia-section bonhomia-section--last">
+        <div class="bonhomia-document__grid">
+            <div class="bonhomia-document-card">
+                <h2>Datos de contacto</h2>
+                <dl>
+                    <div><dt>Direccion</dt><dd>@BonhomiaSiteContent.Address</dd></div>
+                    <div><dt>WhatsApp</dt><dd>@BonhomiaSiteContent.WhatsAppDisplay</dd></div>
+                    <div><dt>Correo</dt><dd>@BonhomiaSiteContent.Email</dd></div>
+                </dl>
+                <div class="bonhomia-actions">
+                    <a class="bonhomia-button bonhomia-button--primary" href='@BonhomiaSiteContent.WhatsAppUrl("Hola Bonhomia Suites, quiero informacion para una estancia.")' target="_blank" rel="noopener noreferrer">
+                        <i class="bi bi-whatsapp" aria-hidden="true"></i>
+                        <span>WhatsApp</span>
+                    </a>
+                    <a class="bonhomia-button bonhomia-button--outline" href="mailto:@BonhomiaSiteContent.Email">
+                        <i class="bi bi-envelope" aria-hidden="true"></i>
+                        <span>Correo</span>
+                    </a>
+                </div>
+            </div>
+
+            <div class="bonhomia-document-card">
+                <h2>Cuando escribir</h2>
+                <ul>
+                    <li>Si viajas por trabajo y necesitas confirmar condiciones de llegada.</li>
+                    <li>Si planeas una estancia familiar y quieres elegir la capacidad correcta.</li>
+                    <li>Si participas en una conferencia o agenda publica con horarios definidos.</li>
+                    <li>Si requieres factura, mascota, transporte, alimentos o lavanderia.</li>
+                    <li>Si tienes dudas antes de completar el pago en linea.</li>
+                </ul>
+                <p>Para reservar por tu cuenta, usa la pagina de reserva directa con disponibilidad, cotizacion y pago seguro.</p>
+                <a class="bonhomia-button bonhomia-button--dark" href="/reservar">Ir a reservar</a>
+            </div>
+        </div>
+    </section>
+</main>

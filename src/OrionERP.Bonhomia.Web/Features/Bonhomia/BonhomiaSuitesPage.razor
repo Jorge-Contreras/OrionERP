@@ -1,0 +1,63 @@
+@page "/suites"
+
+<PageTitle>Suites | Bonhomia Suites</PageTitle>
+<HeadContent>
+    <meta name="description" content="Conoce las suites y casas amuebladas de Bonhomia Suites en Calpulalpan por capacidad, privacidad y tipo de viaje." />
+</HeadContent>
+
+<main class="bonhomia-page">
+    <section class="bonhomia-page__title">
+        <p class="bonhomia-eyebrow">Nuestras suites</p>
+        <h1>Elige por capacidad, privacidad y plan de viaje</h1>
+        <p>Cada espacio tiene personalidad propia. Las tarifas son por noche, en MXN, y pueden variar por temporada o disponibilidad.</p>
+    </section>
+
+    <section class="bonhomia-section">
+        <div class="bonhomia-grid bonhomia-grid--four">
+            @foreach (var suite in BonhomiaSiteContent.Suites)
+            {
+                <article class="bonhomia-card bonhomia-suite-card">
+                    <img src="@suite.Image" alt="@($"Vista de referencia para {suite.Name}")" />
+                    <div class="bonhomia-suite-card__body">
+                        <div class="bonhomia-suite-card__topline">
+                            <span class="bonhomia-card__meta">@suite.Tag</span>
+                            <strong>@suite.StartingRate</strong>
+                        </div>
+                        <h3>@suite.Name</h3>
+                        <p>@suite.Description</p>
+                        <div class="bonhomia-suite-card__meta">
+                            <span><i class="bi bi-people" aria-hidden="true"></i>@suite.Capacity</span>
+                            <span><i class="bi bi-moon" aria-hidden="true"></i>@suite.Bedrooms</span>
+                        </div>
+                    </div>
+                </article>
+            }
+        </div>
+    </section>
+
+    <section class="bonhomia-section">
+        <div class="bonhomia-gallery">
+            <img src="/Images/Bonhomia/gallery-lounge.jpg" alt="Sala principal en suite amueblada" />
+            <img src="/Images/Bonhomia/gallery-wine-detail.jpg" alt="Detalle de mesa y copa en Bonhomia Suites" />
+            <img src="/Images/Bonhomia/exterior-vertical.jpg" alt="Fachada vertical de Bonhomia Suites" />
+            <img src="/Images/Bonhomia/welcome-detail.png" alt="Detalle de bienvenida Bonhomia Suites" />
+        </div>
+    </section>
+
+    <section class="bonhomia-section bonhomia-section--last">
+        <div class="bonhomia-contact-panel">
+            <div>
+                <p class="bonhomia-eyebrow">Despues de conocer las suites</p>
+                <h2>Consulta disponibilidad y genera tu cotizacion</h2>
+                <p>La reserva directa valida disponibilidad antes del pago y mantiene la cotizacion durante tu sesion.</p>
+            </div>
+            <div class="bonhomia-contact-panel__actions">
+                <a class="bonhomia-button bonhomia-button--primary" href="/reservar">
+                    <i class="bi bi-calendar-check" aria-hidden="true"></i>
+                    <span>Reservar</span>
+                </a>
+                <a class="bonhomia-button bonhomia-button--outline" href="/preguntas-frecuentes">Ver preguntas frecuentes</a>
+            </div>
+        </div>
+    </section>
+</main>

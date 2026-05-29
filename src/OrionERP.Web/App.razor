@@ -1,12 +1,11 @@
 @using OrionERP.Web.State
 @using OrionERP.Web.Shared   @* For typeof(MainLayout) *@
-@inject NavigationManager Navigation
 
 <RfcStateInitializer>
     <CascadingAuthenticationState>
         <Router AppAssembly="@typeof(Program).Assembly">
             <Found Context="routeData">
-                <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@ResolveDefaultLayout()">
+                <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
                     <NotAuthorized>
                         <p role="alert">No autorizado. Inicie sesión para continuar.</p>
                     </NotAuthorized>
@@ -16,25 +15,10 @@
             </Found>
 
             <NotFound>
-                <LayoutView Layout="@ResolveDefaultLayout()">
+                <LayoutView Layout="@typeof(MainLayout)">
                     <p>Página no encontrada.</p>
                 </LayoutView>
             </NotFound>
         </Router>
     </CascadingAuthenticationState>
 </RfcStateInitializer>
-
-@code {
-    private Type ResolveDefaultLayout()
-    {
-        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
-        var path = uri.AbsolutePath.Trim('/');
-        return IsBonhomiaDomain(uri.Host) && string.IsNullOrWhiteSpace(path)
-            ? typeof(BonhomiaPublicLayout)
-            : typeof(MainLayout);
-    }
-
-    private static bool IsBonhomiaDomain(string host)
-        => string.Equals(host, "bonhomiasuites.com", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(host, "www.bonhomiasuites.com", StringComparison.OrdinalIgnoreCase);
-}

@@ -1,6 +1,6 @@
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
 
-namespace OrionERP.Web.Features.Bonhomia.Checkout;
+namespace OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
 public interface IBonhomiaQuoteTokenService
 {

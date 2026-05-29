@@ -2,7 +2,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
 
-namespace OrionERP.Web.Features.Bonhomia.Checkout;
+namespace OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
 public sealed class BonhomiaQuoteTokenService : IBonhomiaQuoteTokenService
 {

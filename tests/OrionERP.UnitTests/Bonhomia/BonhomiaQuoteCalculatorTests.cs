@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.DataProtection;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
-using OrionERP.Web.Features.Bonhomia.Checkout;
+using OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
 namespace OrionERP.UnitTests.Bonhomia;
 

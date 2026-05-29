@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Options;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 
-namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
+namespace OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 
 public sealed class ReservacionPdfService : IReservacionPdfService
 {
@@ -18,11 +18,11 @@ public sealed class ReservacionPdfService : IReservacionPdfService
   private const string BrandSurface = "#F8FBFA";
   private readonly string _logoSvg;
 
-  public ReservacionPdfService(IWebHostEnvironment environment)
+  public ReservacionPdfService(IOptions<ReservacionPdfOptions> options)
   {
     QuestPDF.Settings.License = LicenseType.Community;
 
-    var logoPath = Path.Combine(environment.WebRootPath, "Images", "BonhomiaSuitesLetterheadLogo.svg");
+    var logoPath = options.Value.LogoPath?.Trim();
     _logoSvg = File.Exists(logoPath)
       ? File.ReadAllText(logoPath)
       : FallbackLogoSvg;
@@ -503,4 +503,9 @@ public sealed class ReservacionPdfService : IReservacionPdfService
   </g>
 </svg>
 """;
+}
+
+public sealed class ReservacionPdfOptions
+{
+  public string? LogoPath { get; set; }
 }

@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Options;
 using OrionERP.Application.Features.Reservaciones.OpenClaw;
-using OrionERP.Web.Features.Reservaciones.ListaReservaciones;
+using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 
 namespace OrionERP.Web.Features.Reservaciones.OpenClaw;
 

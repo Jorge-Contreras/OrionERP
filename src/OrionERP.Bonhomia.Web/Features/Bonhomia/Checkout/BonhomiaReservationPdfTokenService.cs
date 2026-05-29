@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
 
-namespace OrionERP.Web.Features.Bonhomia.Checkout;
+namespace OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
 public sealed class BonhomiaReservationPdfTokenService : IBonhomiaReservationPdfTokenService
 {

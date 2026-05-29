@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting.WindowsServices;
+using Microsoft.Extensions.Options;
 using OfficeOpenXml;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
@@ -22,9 +23,9 @@ using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using OrionERP.Infrastructure.Auth;
 using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
 using OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
+using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 using OrionERP.Web.Configuration;
 using OrionERP.Web.Data;
-using OrionERP.Web.Features.Bonhomia.Checkout;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
 using OrionERP.Web.Features.Reservaciones.OpenClaw;
 using OrionERP.Web.Identity;
@@ -234,12 +235,16 @@ builder.Services.Configure<OpenClawApiOptions>(builder.Configuration.GetSection(
 builder.Services.Configure<GraphMailOptions>(builder.Configuration.GetSection(GraphMailOptions.SectionName));
 builder.Services.Configure<BonhomiaGraphCalendarSyncOptions>(builder.Configuration.GetSection(BonhomiaGraphCalendarSyncOptions.SectionName));
 builder.Services.Configure<BonhomiaCheckoutOptions>(builder.Configuration.GetSection(BonhomiaCheckoutOptions.SectionName));
+builder.Services.Configure<ReservacionPdfOptions>(options =>
+{
+  var webRootPath = builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
+  options.LogoPath = Path.Combine(webRootPath, "Images", "BonhomiaSuitesLetterheadLogo.svg");
+});
 
 builder.Services.AddSingleton<WeatherForecastService>();
 builder.Services.AddCfdiCargarXmlSat();
 builder.Services.AddOrionServices();
 builder.Services.AddScoped<IUiMessageService, UiMessageService>();
-builder.Services.AddSingleton<IBonhomiaQuoteTokenService, BonhomiaQuoteTokenService>();
 
 builder.Host.UseWindowsService();
 
@@ -296,7 +301,17 @@ app.UseAuthorization();
 app.MapRazorPages();
 app.MapBlazorHub();
 app.MapOpenClawReservationsApi();
-app.MapBonhomiaCheckoutApi();
+app.MapGet("/bonhomia", (IOptions<BonhomiaCheckoutOptions> options) =>
+{
+  var publicBaseUrl = options.Value.PublicBaseUrl?.Trim();
+  if (!string.IsNullOrWhiteSpace(publicBaseUrl)
+      && Uri.TryCreate(publicBaseUrl, UriKind.Absolute, out var baseUri))
+  {
+    return Results.Redirect(new Uri(baseUri, "/bonhomia").ToString());
+  }
+
+  return Results.Redirect("/");
+});
 app.MapFallbackToPage("/_Host");
 
 app.MapGet("/auth/logout", async (HttpContext ctx) =>

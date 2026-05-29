@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
+namespace OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 
 public sealed record ReservacionPdfDocumentModel(
   int ReservationId,

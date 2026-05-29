@@ -1,0 +1,11 @@
+<Router AppAssembly="@typeof(Program).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(BonhomiaPublicLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="@typeof(BonhomiaPublicLayout)">
+            <p>Página no encontrada.</p>
+        </LayoutView>
+    </NotFound>
+</Router>

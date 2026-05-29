@@ -1,0 +1,22 @@
+@using Microsoft.AspNetCore.Components.Web
+@namespace OrionERP.Bonhomia.Web.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] - Bonhomia Suites</title>
+    <base href="~/" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="~/OrionERP.Bonhomia.Web.styles.css" asp-append-version="true" />
+    <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
+</head>
+<body>
+    @RenderBody()
+
+    <script src="~/_framework/blazor.server.js"></script>
+    <script src="~/js/bonhomia-checkout.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

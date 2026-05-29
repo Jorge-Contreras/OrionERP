@@ -15,6 +15,7 @@ using OrionERP.Application.Features.Reservaciones.CalendarSync;
 using OrionERP.Application.Features.Reservaciones.Cfdi;
 using OrionERP.Application.Features.Reservaciones.Extras;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
+using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 using OrionERP.Web.Services;
 using OrionERP.Web.State;
 

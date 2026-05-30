@@ -13,14 +13,14 @@ internal static class BonhomiaSiteContent
 
   public static readonly SuiteSummary[] Suites =
   [
-    new("Casa Berlin", "Casa completa", "Para familias o equipos de trabajo que necesitan amplitud, privacidad y tres recamaras.", "6 personas", "3 recamaras", "$2,950 MXN", "/Images/Bonhomia/exterior-main.jpg"),
-    new("Suite Manhattan", "Ejecutiva", "Dos recamaras y espacio comodo para compartir sin sacrificar privacidad.", "4 personas", "2 recamaras", "$1,750 MXN", "/Images/Bonhomia/gallery-terrace-living.jpg"),
-    new("Suite Seul", "Larga estancia", "Estancias largas con habitaciones independientes, cocina y ambiente tranquilo.", "4 personas", "2 recamaras", "$1,750 MXN", "/Images/Bonhomia/gallery-kitchen.jpg"),
-    new("Suite Moscu", "Compacta", "Practicidad y confort para parejas o viajeros de negocio.", "2 personas", "1 recamara", "$1,250 MXN", "/Images/Bonhomia/gallery-wine-detail.jpg"),
-    new("Suite Paris", "Acogedora", "Un espacio cuidado para desconectar, celebrar o trabajar remoto.", "2 personas", "1 recamara", "$1,250 MXN", "/Images/Bonhomia/welcome-detail.png"),
-    new("Penthouse", "Premium", "Maxima privacidad con un toque premium y una vista mas abierta.", "2 personas", "1 recamara", "$2,750 MXN", "/Images/Bonhomia/hero-penthouse.jpg"),
-    new("Casa Grecia", "Grupos", "Casa completa para convivir, descansar y viajar en grupo.", "10 personas", "4 recamaras", "$4,500 MXN", "/Images/Bonhomia/catalog-exterior.png"),
-    new("Casa London", "Familiar", "Para familias y grupos que quieren una casa completa y funcional.", "6 personas", "3 recamaras", "$3,150 MXN", "/Images/Bonhomia/exterior-vertical.jpg")
+    new("Casa Berlin", "Casa completa", "Para familias o equipos de trabajo que necesitan amplitud, privacidad y tres recamaras.", "6 personas", "3 recamaras", "$2,950 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Casa Berlin")),
+    new("Suite Manhattan", "Ejecutiva", "Dos recamaras y espacio comodo para compartir sin sacrificar privacidad.", "4 personas", "2 recamaras", "$1,750 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Suite Manhattan")),
+    new("Suite Seul", "Larga estancia", "Estancias largas con habitaciones independientes, cocina y ambiente tranquilo.", "4 personas", "2 recamaras", "$1,750 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Suite Seul")),
+    new("Suite Moscu", "Compacta", "Practicidad y confort para parejas o viajeros de negocio.", "2 personas", "1 recamara", "$1,250 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Suite Moscu")),
+    new("Suite Paris", "Acogedora", "Un espacio cuidado para desconectar, celebrar o trabajar remoto.", "2 personas", "1 recamara", "$1,250 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Suite Paris")),
+    new("Penthouse", "Premium", "Maxima privacidad con un toque premium y una vista mas abierta.", "2 personas", "1 recamara", "$2,750 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Penthouse")),
+    new("Casa Grecia", "Grupos", "Casa completa para convivir, descansar y viajar en grupo.", "10 personas", "4 recamaras", "$4,500 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Casa Grecia")),
+    new("Casa London", "Familiar", "Para familias y grupos que quieren una casa completa y funcional.", "6 personas", "3 recamaras", "$3,150 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Casa London"))
   ];
 
   public static readonly InfoCard[] GuestProfiles =

@@ -645,7 +645,7 @@
 
 .bonhomia-room-option {
   display: grid;
-  gap: 0.4rem;
+  grid-template-rows: minmax(0, 1fr) auto;
   min-height: 13.5rem;
   padding: 0;
   overflow: hidden;
@@ -654,22 +654,39 @@
   background: #fff;
   color: var(--bonhomia-ink);
   text-align: left;
-  cursor: pointer;
 }
 
 .bonhomia-room-option:not(.bonhomia-room-option--unavailable):hover,
-.bonhomia-room-option:focus-visible,
 .bonhomia-room-option--selected {
   border-color: var(--bonhomia-gold);
   box-shadow: 0 12px 26px rgba(23, 38, 34, 0.12);
 }
 
-.bonhomia-room-option:focus-visible {
-  outline: 3px solid rgba(201, 157, 74, 0.38);
-  outline-offset: 2px;
+.bonhomia-room-option__select {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: 0;
+  text-align: left;
+  cursor: pointer;
 }
 
-.bonhomia-room-option img {
+.bonhomia-room-option__select:disabled {
+  cursor: not-allowed;
+}
+
+.bonhomia-room-option__select:focus-visible,
+.bonhomia-room-option__photos:focus-visible {
+  outline: 3px solid rgba(201, 157, 74, 0.38);
+  outline-offset: -3px;
+}
+
+.bonhomia-room-option__select img {
   width: 100%;
   height: 6.7rem;
   object-fit: cover;
@@ -682,34 +699,30 @@
   cursor: not-allowed;
 }
 
-button.bonhomia-room-option:disabled {
-  cursor: not-allowed;
-}
-
-.bonhomia-room-option--unavailable img {
+.bonhomia-room-option--unavailable .bonhomia-room-option__select img {
   filter: grayscale(0.75);
   opacity: 0.62;
 }
 
-.bonhomia-room-option span,
-.bonhomia-room-option strong,
-.bonhomia-room-option small {
+.bonhomia-room-option__select > span,
+.bonhomia-room-option__select > strong,
+.bonhomia-room-option__select > small {
   margin: 0 0.75rem;
 }
 
-.bonhomia-room-option span {
+.bonhomia-room-option__select > span {
   color: var(--bonhomia-clay);
   font-size: 0.74rem;
   font-weight: 900;
   text-transform: uppercase;
 }
 
-.bonhomia-room-option strong {
+.bonhomia-room-option__select > strong {
   font-size: 0.98rem;
   line-height: 1.2;
 }
 
-.bonhomia-room-option small {
+.bonhomia-room-option__select > small {
   margin-bottom: 0.75rem;
   color: var(--bonhomia-muted);
   font-weight: 700;
@@ -726,6 +739,25 @@ button.bonhomia-room-option:disabled {
 
 .bonhomia-room-option__status--blocked {
   color: #8a4f43 !important;
+}
+
+.bonhomia-room-option__photos {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 2.25rem;
+  margin: 0 0.75rem 0.75rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--bonhomia-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--bonhomia-teal-dark);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 850;
+  letter-spacing: 0;
+  cursor: pointer;
 }
 
 .bonhomia-calendar {

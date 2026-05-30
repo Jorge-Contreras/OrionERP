@@ -17,7 +17,16 @@
             @foreach (var suite in BonhomiaSiteContent.Suites)
             {
                 <article class="bonhomia-card bonhomia-suite-card">
-                    <img src="@suite.Image" alt="@($"Vista de referencia para {suite.Name}")" />
+                    <button type="button"
+                            class="bonhomia-suite-card__media"
+                            title="@($"Ver fotos de {suite.Name}")"
+                            @onclick="() => OpenSuiteGallery(suite.Name)">
+                        <img src="@suite.Image" alt="@($"Vista de referencia para {suite.Name}")" />
+                        <span class="bonhomia-suite-card__media-action">
+                            <i class="bi bi-images" aria-hidden="true"></i>
+                            <span>Ver fotos</span>
+                        </span>
+                    </button>
                     <div class="bonhomia-suite-card__body">
                         <div class="bonhomia-suite-card__topline">
                             <span class="bonhomia-card__meta">@suite.Tag</span>
@@ -29,6 +38,12 @@
                             <span><i class="bi bi-people" aria-hidden="true"></i>@suite.Capacity</span>
                             <span><i class="bi bi-moon" aria-hidden="true"></i>@suite.Bedrooms</span>
                         </div>
+                        <button type="button"
+                                class="bonhomia-button bonhomia-button--outline bonhomia-suite-card__gallery"
+                                @onclick="() => OpenSuiteGallery(suite.Name)">
+                            <i class="bi bi-images" aria-hidden="true"></i>
+                            <span>Ver fotos</span>
+                        </button>
                     </div>
                 </article>
             }
@@ -37,10 +52,10 @@
 
     <section class="bonhomia-section">
         <div class="bonhomia-gallery">
-            <img src="/Images/Bonhomia/gallery-lounge.jpg" alt="Sala principal en suite amueblada" />
-            <img src="/Images/Bonhomia/gallery-wine-detail.jpg" alt="Detalle de mesa y copa en Bonhomia Suites" />
-            <img src="/Images/Bonhomia/exterior-vertical.jpg" alt="Fachada vertical de Bonhomia Suites" />
-            <img src="/Images/Bonhomia/welcome-detail.png" alt="Detalle de bienvenida Bonhomia Suites" />
+            @foreach (var image in BonhomiaSuiteGalleryCatalog.BuildingImages)
+            {
+                <img src="@image.Source" alt="@image.Alt" />
+            }
         </div>
     </section>
 
@@ -61,3 +76,19 @@
         </div>
     </section>
 </main>
+
+<BonhomiaSuiteGalleryModal Gallery="ActiveGallery" OnClose="CloseSuiteGallery" />
+
+@code {
+    private BonhomiaSuiteGallery? ActiveGallery { get; set; }
+
+    private void OpenSuiteGallery(string suiteName)
+    {
+        ActiveGallery = BonhomiaSuiteGalleryCatalog.FindSuite(suiteName);
+    }
+
+    private void CloseSuiteGallery()
+    {
+        ActiveGallery = null;
+    }
+}

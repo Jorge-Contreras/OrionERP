@@ -793,27 +793,27 @@ ORDER BY r.ID DESC;
       2,
       1,
       "Suite amueblada para una estancia comoda y tranquila.",
-      "/Images/Bonhomia/gallery-terrace-living.jpg",
+      "/Images/Bonhomia/suites/manhattan/01.jpg",
       "Suite");
 
     private static readonly IReadOnlyDictionary<string, PublicRoomMetadata> Items =
       new Dictionary<string, PublicRoomMetadata>(StringComparer.OrdinalIgnoreCase)
       {
-        ["CASA BERLIN"] = new(6, 3, "Para familias o equipos de trabajo que necesitan amplitud, privacidad y tres recamaras.", "/Images/Bonhomia/exterior-main.jpg", "Casa completa"),
-        ["BERLIN"] = new(6, 3, "Para familias o equipos de trabajo que necesitan amplitud, privacidad y tres recamaras.", "/Images/Bonhomia/exterior-main.jpg", "Casa completa"),
-        ["SUITE MANHATTAN"] = new(4, 2, "Dos recamaras y espacio comodo para compartir sin sacrificar privacidad.", "/Images/Bonhomia/gallery-terrace-living.jpg", "Ejecutiva"),
-        ["MANHATTAN"] = new(4, 2, "Dos recamaras y espacio comodo para compartir sin sacrificar privacidad.", "/Images/Bonhomia/gallery-terrace-living.jpg", "Ejecutiva"),
-        ["SUITE SEUL"] = new(4, 2, "Estancias largas con habitaciones independientes y un ambiente tranquilo.", "/Images/Bonhomia/gallery-kitchen.jpg", "Larga estancia"),
-        ["SEUL"] = new(4, 2, "Estancias largas con habitaciones independientes y un ambiente tranquilo.", "/Images/Bonhomia/gallery-kitchen.jpg", "Larga estancia"),
-        ["SUITE MOSCU"] = new(2, 1, "Practicidad y confort para parejas o viajeros de negocio.", "/Images/Bonhomia/gallery-wine-detail.jpg", "Compacta"),
-        ["MOSCU"] = new(2, 1, "Practicidad y confort para parejas o viajeros de negocio.", "/Images/Bonhomia/gallery-wine-detail.jpg", "Compacta"),
-        ["SUITE PARIS"] = new(2, 1, "Un espacio acogedor para desconectar, celebrar o hacer home office.", "/Images/Bonhomia/welcome-detail.png", "Acogedora"),
-        ["PARIS"] = new(2, 1, "Un espacio acogedor para desconectar, celebrar o hacer home office.", "/Images/Bonhomia/welcome-detail.png", "Acogedora"),
-        ["PENTHOUSE"] = new(2, 1, "Maxima privacidad con un toque premium y una vista mas abierta.", "/Images/Bonhomia/hero-penthouse.jpg", "Premium"),
-        ["CASA GRECIA"] = new(10, 4, "Casa completa para convivir, descansar y viajar en grupo.", "/Images/Bonhomia/catalog-exterior.png", "Grupos"),
-        ["GRECIA"] = new(10, 4, "Casa completa para convivir, descansar y viajar en grupo.", "/Images/Bonhomia/catalog-exterior.png", "Grupos"),
-        ["CASA LONDON"] = new(6, 3, "Para familias y grupos que quieren una casa completa y funcional.", "/Images/Bonhomia/exterior-vertical.jpg", "Familiar"),
-        ["LONDON"] = new(6, 3, "Para familias y grupos que quieren una casa completa y funcional.", "/Images/Bonhomia/exterior-vertical.jpg", "Familiar")
+        ["CASA BERLIN"] = new(6, 3, "Para familias o equipos de trabajo que necesitan amplitud, privacidad y tres recamaras.", "/Images/Bonhomia/suites/berlin/01.jpg", "Casa completa"),
+        ["BERLIN"] = new(6, 3, "Para familias o equipos de trabajo que necesitan amplitud, privacidad y tres recamaras.", "/Images/Bonhomia/suites/berlin/01.jpg", "Casa completa"),
+        ["SUITE MANHATTAN"] = new(4, 2, "Dos recamaras y espacio comodo para compartir sin sacrificar privacidad.", "/Images/Bonhomia/suites/manhattan/01.jpg", "Ejecutiva"),
+        ["MANHATTAN"] = new(4, 2, "Dos recamaras y espacio comodo para compartir sin sacrificar privacidad.", "/Images/Bonhomia/suites/manhattan/01.jpg", "Ejecutiva"),
+        ["SUITE SEUL"] = new(4, 2, "Estancias largas con habitaciones independientes y un ambiente tranquilo.", "/Images/Bonhomia/suites/seul/01.jpg", "Larga estancia"),
+        ["SEUL"] = new(4, 2, "Estancias largas con habitaciones independientes y un ambiente tranquilo.", "/Images/Bonhomia/suites/seul/01.jpg", "Larga estancia"),
+        ["SUITE MOSCU"] = new(2, 1, "Practicidad y confort para parejas o viajeros de negocio.", "/Images/Bonhomia/suites/moscu/01.jpg", "Compacta"),
+        ["MOSCU"] = new(2, 1, "Practicidad y confort para parejas o viajeros de negocio.", "/Images/Bonhomia/suites/moscu/01.jpg", "Compacta"),
+        ["SUITE PARIS"] = new(2, 1, "Un espacio acogedor para desconectar, celebrar o hacer home office.", "/Images/Bonhomia/suites/paris/01.jpg", "Acogedora"),
+        ["PARIS"] = new(2, 1, "Un espacio acogedor para desconectar, celebrar o hacer home office.", "/Images/Bonhomia/suites/paris/01.jpg", "Acogedora"),
+        ["PENTHOUSE"] = new(2, 1, "Maxima privacidad con un toque premium y una vista mas abierta.", "/Images/Bonhomia/suites/penthouse/01.jpg", "Premium"),
+        ["CASA GRECIA"] = new(10, 4, "Casa completa para convivir, descansar y viajar en grupo.", "/Images/Bonhomia/suites/grecia/01.jpg", "Grupos"),
+        ["GRECIA"] = new(10, 4, "Casa completa para convivir, descansar y viajar en grupo.", "/Images/Bonhomia/suites/grecia/01.jpg", "Grupos"),
+        ["CASA LONDON"] = new(6, 3, "Para familias y grupos que quieren una casa completa y funcional.", "/Images/Bonhomia/suites/london/01.jpg", "Familiar"),
+        ["LONDON"] = new(6, 3, "Para familias y grupos que quieren una casa completa y funcional.", "/Images/Bonhomia/suites/london/01.jpg", "Familiar")
       };
 
     public static PublicRoomMetadata Resolve(string roomName)

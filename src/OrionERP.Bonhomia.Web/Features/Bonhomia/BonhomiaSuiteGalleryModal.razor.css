@@ -1,0 +1,216 @@
+.bonhomia-gallery-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(8, 28, 30, 0.72);
+}
+
+.bonhomia-gallery-modal:focus {
+  outline: none;
+}
+
+.bonhomia-gallery-modal__dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 0.9rem;
+  width: min(72rem, 100%);
+  max-height: min(92vh, 54rem);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: #fbfaf6;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.36);
+}
+
+.bonhomia-gallery-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1rem 0;
+}
+
+.bonhomia-gallery-modal__header p {
+  margin: 0 0 0.15rem;
+  color: var(--bonhomia-clay, #9d5941);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.bonhomia-gallery-modal__header h2 {
+  margin: 0;
+  color: var(--bonhomia-ink, #172622);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.25rem, 3vw, 2rem);
+  line-height: 1.1;
+}
+
+.bonhomia-gallery-modal__close,
+.bonhomia-gallery-modal__nav,
+.bonhomia-gallery-modal__thumb {
+  border: 0;
+  font: inherit;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.bonhomia-gallery-modal__close {
+  display: inline-grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--bonhomia-teal-dark, #083640);
+  box-shadow: 0 10px 24px rgba(23, 38, 34, 0.12);
+}
+
+.bonhomia-gallery-modal__close span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.bonhomia-gallery-modal__stage {
+  position: relative;
+  display: grid;
+  min-height: 0;
+  padding: 0 1rem;
+}
+
+.bonhomia-gallery-modal__stage img {
+  width: 100%;
+  height: min(58vh, 34rem);
+  border-radius: 8px;
+  background: #e8e1d0;
+  object-fit: contain;
+}
+
+.bonhomia-gallery-modal__nav {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--bonhomia-teal-dark, #083640);
+  font-weight: 850;
+  transform: translateY(-50%);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.22);
+}
+
+.bonhomia-gallery-modal__nav:first-child {
+  left: 1.6rem;
+}
+
+.bonhomia-gallery-modal__nav:last-child {
+  right: 1.6rem;
+}
+
+.bonhomia-gallery-modal__footer {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0 1rem 1rem;
+}
+
+.bonhomia-gallery-modal__footer strong {
+  justify-self: center;
+  color: var(--bonhomia-muted, #6f6a60);
+  font-size: 0.9rem;
+}
+
+.bonhomia-gallery-modal__thumbs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.bonhomia-gallery-modal__thumb {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.bonhomia-gallery-modal__thumb--active,
+.bonhomia-gallery-modal__thumb:focus-visible {
+  border-color: var(--bonhomia-gold, #c99d4a);
+  outline: none;
+}
+
+.bonhomia-gallery-modal__thumb img {
+  display: block;
+  width: 100%;
+  height: 4.6rem;
+  object-fit: cover;
+}
+
+.bonhomia-gallery-modal__close:focus-visible,
+.bonhomia-gallery-modal__nav:focus-visible {
+  outline: 3px solid rgba(201, 157, 74, 0.42);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .bonhomia-gallery-modal {
+    padding: 0.6rem;
+  }
+
+  .bonhomia-gallery-modal__dialog {
+    max-height: 94vh;
+  }
+
+  .bonhomia-gallery-modal__stage {
+    padding: 0 0.6rem;
+  }
+
+  .bonhomia-gallery-modal__stage img {
+    height: 52vh;
+  }
+
+  .bonhomia-gallery-modal__nav span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .bonhomia-gallery-modal__nav:first-child {
+    left: 1rem;
+  }
+
+  .bonhomia-gallery-modal__nav:last-child {
+    right: 1rem;
+  }
+
+  .bonhomia-gallery-modal__footer {
+    padding: 0 0.6rem 0.6rem;
+  }
+
+  .bonhomia-gallery-modal__thumbs {
+    gap: 0.4rem;
+  }
+
+  .bonhomia-gallery-modal__thumb img {
+    height: 3.4rem;
+  }
+}

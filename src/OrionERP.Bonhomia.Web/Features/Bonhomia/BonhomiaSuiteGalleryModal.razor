@@ -1,0 +1,151 @@
+@if (Gallery is not null)
+{
+    <div class="bonhomia-gallery-modal" tabindex="-1" @ref="DialogRoot" @onkeydown="OnKeyDown" @onclick="CloseAsync">
+        <section class="bonhomia-gallery-modal__dialog"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="bonhomia-gallery-modal-title"
+                 @onclick:stopPropagation="true">
+            <header class="bonhomia-gallery-modal__header">
+                <div>
+                    <p>Galeria</p>
+                    <h2 id="bonhomia-gallery-modal-title">@Gallery.Name</h2>
+                </div>
+                <button type="button" class="bonhomia-gallery-modal__close" title="Cerrar galeria" @onclick="CloseAsync">
+                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                    <span>Cerrar</span>
+                </button>
+            </header>
+
+            <div class="bonhomia-gallery-modal__stage">
+                <button type="button" class="bonhomia-gallery-modal__nav" title="Imagen anterior" @onclick="ShowPrevious">
+                    <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                    <span>Anterior</span>
+                </button>
+                <img src="@CurrentImage.Source" alt="@CurrentImage.Alt" />
+                <button type="button" class="bonhomia-gallery-modal__nav" title="Imagen siguiente" @onclick="ShowNext">
+                    <span>Siguiente</span>
+                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                </button>
+            </div>
+
+            <footer class="bonhomia-gallery-modal__footer">
+                <strong>@(CurrentIndex + 1) / @Gallery.Images.Count</strong>
+                <div class="bonhomia-gallery-modal__thumbs" role="list" aria-label="@($"Imagenes de {Gallery.Name}")">
+                    @for (var index = 0; index < Gallery.Images.Count; index++)
+                    {
+                        var image = Gallery.Images[index];
+                        var imageIndex = index;
+                        <button type="button"
+                                class="@GetThumbnailClass(imageIndex)"
+                                role="listitem"
+                                title="@($"Ver imagen {imageIndex + 1}")"
+                                aria-current="@(imageIndex == CurrentIndex ? "true" : null)"
+                                @onclick="() => ShowImage(imageIndex)">
+                            <img src="@image.Source" alt="" />
+                        </button>
+                    }
+                </div>
+            </footer>
+        </section>
+    </div>
+}
+
+@code {
+    private ElementReference DialogRoot { get; set; }
+    private BonhomiaSuiteGallery? PreviousGallery { get; set; }
+    private bool ShouldFocusDialog { get; set; }
+    private int CurrentIndex { get; set; }
+
+    [Parameter]
+    public BonhomiaSuiteGallery? Gallery { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private BonhomiaGalleryImage CurrentImage
+      => Gallery?.Images.Count > CurrentIndex
+        ? Gallery.Images[CurrentIndex]
+        : new BonhomiaGalleryImage(string.Empty, string.Empty);
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(Gallery, PreviousGallery))
+        {
+            CurrentIndex = 0;
+            PreviousGallery = Gallery;
+            ShouldFocusDialog = Gallery is not null;
+            return;
+        }
+
+        if (Gallery is not null && CurrentIndex >= Gallery.Images.Count)
+        {
+            CurrentIndex = 0;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!ShouldFocusDialog || Gallery is null)
+        {
+            return;
+        }
+
+        ShouldFocusDialog = false;
+        await DialogRoot.FocusAsync();
+    }
+
+    private async Task CloseAsync()
+      => await OnClose.InvokeAsync();
+
+    private void ShowPrevious()
+    {
+        if (Gallery is null || Gallery.Images.Count == 0)
+        {
+            return;
+        }
+
+        CurrentIndex = CurrentIndex == 0 ? Gallery.Images.Count - 1 : CurrentIndex - 1;
+    }
+
+    private void ShowNext()
+    {
+        if (Gallery is null || Gallery.Images.Count == 0)
+        {
+            return;
+        }
+
+        CurrentIndex = (CurrentIndex + 1) % Gallery.Images.Count;
+    }
+
+    private void ShowImage(int index)
+    {
+        if (Gallery is null || index < 0 || index >= Gallery.Images.Count)
+        {
+            return;
+        }
+
+        CurrentIndex = index;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            await CloseAsync();
+        }
+        else if (args.Key == "ArrowLeft")
+        {
+            ShowPrevious();
+        }
+        else if (args.Key == "ArrowRight")
+        {
+            ShowNext();
+        }
+    }
+
+    private string GetThumbnailClass(int index)
+      => index == CurrentIndex
+        ? "bonhomia-gallery-modal__thumb bonhomia-gallery-modal__thumb--active"
+        : "bonhomia-gallery-modal__thumb";
+}

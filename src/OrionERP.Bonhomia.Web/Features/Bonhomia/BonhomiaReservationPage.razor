@@ -169,19 +169,29 @@
                                         var unavailableDates = GetUnavailableSuiteDates(room);
                                         var isAvailableForStay = unavailableDates.Count == 0;
                                         var selected = string.Equals(room.RoomName, SelectedRoomName, StringComparison.OrdinalIgnoreCase);
-                                        <button type="button"
-                                                class="@GetRoomOptionClass(selected, isAvailableForStay)"
-                                                disabled="@(!isAvailableForStay)"
-                                                title="@GetRoomOptionTitle(room, unavailableDates)"
-                                                @onclick="() => SelectRoom(room.RoomName)">
-                                            <img src="@room.Image" alt="@room.RoomName" />
-                                            <span>@room.Tag</span>
-                                            <strong>@room.RoomName</strong>
-                                            <small>@room.Capacity huesped@(room.Capacity == 1 ? string.Empty : "es") · desde @FormatMoney(room.BasePrice)</small>
-                                            <small class="@(isAvailableForStay ? "bonhomia-room-option__status bonhomia-room-option__status--available" : "bonhomia-room-option__status bonhomia-room-option__status--blocked")">
-                                                @(isAvailableForStay ? "Disponible para tus fechas" : GetUnavailableSuiteNote(unavailableDates))
-                                            </small>
-                                        </button>
+                                        <div class="@GetRoomOptionClass(selected, isAvailableForStay)" role="listitem">
+                                            <button type="button"
+                                                    class="bonhomia-room-option__select"
+                                                    disabled="@(!isAvailableForStay)"
+                                                    title="@GetRoomOptionTitle(room, unavailableDates)"
+                                                    aria-pressed="@selected"
+                                                    @onclick="() => SelectRoom(room.RoomName)">
+                                                <img src="@room.Image" alt="@room.RoomName" />
+                                                <span>@room.Tag</span>
+                                                <strong>@room.RoomName</strong>
+                                                <small>@room.Capacity huesped@(room.Capacity == 1 ? string.Empty : "es") · desde @FormatMoney(room.BasePrice)</small>
+                                                <small class="@(isAvailableForStay ? "bonhomia-room-option__status bonhomia-room-option__status--available" : "bonhomia-room-option__status bonhomia-room-option__status--blocked")">
+                                                    @(isAvailableForStay ? "Disponible para tus fechas" : GetUnavailableSuiteNote(unavailableDates))
+                                                </small>
+                                            </button>
+                                            <button type="button"
+                                                    class="bonhomia-room-option__photos"
+                                                    title="@($"Ver fotos de {room.RoomName}")"
+                                                    @onclick="() => OpenSuiteGallery(room.RoomName)">
+                                                <i class="bi bi-images" aria-hidden="true"></i>
+                                                <span>Fotos</span>
+                                            </button>
+                                        </div>
                                     }
                                 </div>
 
@@ -484,6 +494,8 @@
 
     </main>
 
+<BonhomiaSuiteGalleryModal Gallery="ActiveGallery" OnClose="CloseSuiteGallery" />
+
 @code {
     private const string WhatsAppPhone = "527491103026";
     private const string SessionKey = "bonhomia.checkout.v2";
@@ -505,6 +517,7 @@
     private BonhomiaQuoteDto? Quote { get; set; }
     private BonhomiaCustomerInfo Customer { get; set; } = new();
     private BonhomiaConfirmPayPalOrderResponse? CompletedReservation { get; set; }
+    private BonhomiaSuiteGallery? ActiveGallery { get; set; }
     private string? QuoteToken { get; set; }
     private string SelectedRoomName { get; set; } = string.Empty;
     private DateOnly Today { get; } = DateOnly.FromDateTime(DateTime.Today);
@@ -817,6 +830,16 @@
 
         SelectedRoomName = room.RoomName;
         ClearQuoteState();
+    }
+
+    private void OpenSuiteGallery(string roomName)
+    {
+        ActiveGallery = BonhomiaSuiteGalleryCatalog.FindSuite(roomName);
+    }
+
+    private void CloseSuiteGallery()
+    {
+        ActiveGallery = null;
     }
 
     private void SelectCalendarDay(DateOnly day)

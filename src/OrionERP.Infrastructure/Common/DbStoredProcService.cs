@@ -13,11 +13,16 @@ public sealed class DbStoredProcService : IDbStoredProcService
 {
   private readonly IDbConnectionFactory _connectionFactory;
   private readonly ILogger<DbStoredProcService> _logger;
+  private readonly ICurrentUserAccessor? _currentUserAccessor;
 
-  public DbStoredProcService(IDbConnectionFactory connectionFactory, ILogger<DbStoredProcService> logger)
+  public DbStoredProcService(
+      IDbConnectionFactory connectionFactory,
+      ILogger<DbStoredProcService> logger,
+      ICurrentUserAccessor? currentUserAccessor = null)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    _currentUserAccessor = currentUserAccessor;
   }
 
   public async Task<int> ExecuteAsync(
@@ -37,6 +42,7 @@ public sealed class DbStoredProcService : IDbStoredProcService
     if (connection is DbConnection dbConnection)
     {
       await dbConnection.OpenAsync(cancellationToken).ConfigureAwait(false);
+      await SetAuditSessionContextAsync(dbConnection, cancellationToken).ConfigureAwait(false);
       return await ExecuteAsyncInternal(dbConnection, storedProcedure, parameters, cancellationToken).ConfigureAwait(false);
     }
 
@@ -131,5 +137,39 @@ public sealed class DbStoredProcService : IDbStoredProcService
       command.Parameters.Add(parameter);
     }
   }
-}
 
+  private async Task SetAuditSessionContextAsync(
+      DbConnection connection,
+      CancellationToken cancellationToken)
+  {
+    if (_currentUserAccessor is null)
+    {
+      return;
+    }
+
+    var userName = NormalizeAuditUserName(await _currentUserAccessor.GetUserNameAsync(cancellationToken).ConfigureAwait(false));
+
+    await using var command = connection.CreateCommand();
+    command.CommandType = CommandType.Text;
+    command.CommandText = @"
+EXEC sys.sp_set_session_context @key = N'OrionERP.UserName', @value = @UserName;
+EXEC sys.sp_set_session_context @key = N'OrionERP.Application', @value = N'OrionERP';";
+
+    var userNameParameter = command.CreateParameter();
+    userNameParameter.ParameterName = "@UserName";
+    userNameParameter.Value = userName;
+    command.Parameters.Add(userNameParameter);
+
+    await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+  }
+
+  private static string NormalizeAuditUserName(string? userName)
+  {
+    userName = userName?.Trim();
+    return string.IsNullOrWhiteSpace(userName)
+        ? "OrionERP"
+        : userName.Length <= 256
+            ? userName
+            : userName[..256];
+  }
+}

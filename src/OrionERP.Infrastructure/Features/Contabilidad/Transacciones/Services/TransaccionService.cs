@@ -26,6 +26,7 @@ public sealed class TransaccionService : ITransaccionService
   private readonly ISatRfcProfileRepository _satRfcProfileRepository;
   private readonly ICfdiStampingService _cfdiStampingService;
   private readonly ILogger<TransaccionService> _logger;
+  private readonly ICurrentUserAccessor? _currentUserAccessor;
 
   public TransaccionService(
       IConfiguration cfg,
@@ -33,7 +34,8 @@ public sealed class TransaccionService : ITransaccionService
       IFacturamaApiClient facturamaApiClient,
       ISatRfcProfileRepository satRfcProfileRepository,
       ICfdiStampingService cfdiStampingService,
-      ILogger<TransaccionService> logger)
+      ILogger<TransaccionService> logger,
+      ICurrentUserAccessor? currentUserAccessor = null)
   {
     _cfg = cfg ?? throw new ArgumentNullException(nameof(cfg));
     _cs = _cfg.GetConnectionString("OrionDb")
@@ -43,6 +45,7 @@ public sealed class TransaccionService : ITransaccionService
     _satRfcProfileRepository = satRfcProfileRepository ?? throw new ArgumentNullException(nameof(satRfcProfileRepository));
     _cfdiStampingService = cfdiStampingService ?? throw new ArgumentNullException(nameof(cfdiStampingService));
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    _currentUserAccessor = currentUserAccessor;
   }
 
   public async Task<TransaccionHeaderDto?> GetHeaderAsync(int transaccionId, CancellationToken ct = default)
@@ -1243,8 +1246,7 @@ WHERE Transaccion_ID = @CurrentTransaccionId
 
   public async Task<TransaccionGuardarCerrarResult> GuardarYCerrarAsync(TransaccionGuardarCerrarRequest request, CancellationToken ct = default)
   {
-    using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    using var conn = await OpenConnectionWithAuditContextAsync(ct);
     using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
 
     try
@@ -1465,7 +1467,7 @@ WHERE ID = @TransaccionId;";
       long comprobanteId,
       CancellationToken ct = default)
   {
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenConnectionWithAuditContextAsync(ct);
 
     try
     {
@@ -1499,7 +1501,7 @@ WHERE ID = @TransaccionId;";
       long comprobanteId,
       CancellationToken ct = default)
   {
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenConnectionWithAuditContextAsync(ct);
 
     try
     {
@@ -1534,15 +1536,14 @@ WHERE ID = @TransaccionId;";
 WHERE ID = @MovimientoId
   AND TransaccionID = @TransaccionId;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenConnectionWithAuditContextAsync(ct);
     await conn.ExecuteAsync(
       new CommandDefinition(sql, new { MovimientoId = movimientoId, TransaccionId = transaccionId }, cancellationToken: ct));
   }
 
   public async Task<TransaccionCommandResult> DeleteTransaccionAsync(int transaccionId, CancellationToken ct = default)
   {
-      using var conn = new SqlConnection(_cs);
-      await conn.OpenAsync(ct);
+      using var conn = await OpenConnectionWithAuditContextAsync(ct);
       using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
 
       try
@@ -1610,7 +1611,7 @@ WHERE ID = @MovimientoId
 
       try
       {
-          using var conn = new SqlConnection(_cs);
+          using var conn = await OpenConnectionWithAuditContextAsync(ct);
           var categoriaId = request.CategoriaId;
 
           if (!categoriaId.HasValue)
@@ -1882,22 +1883,88 @@ WHERE Transaccion_ID = @TransaccionId
       if (request is null)
           throw new ArgumentNullException(nameof(request));
 
-      using var conn = new SqlConnection(_cs);
-      await conn.OpenAsync(ct);
+      using var conn = await OpenConnectionWithAuditContextAsync(ct);
       using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
 
       try
       {
-          const string deleteSql = @"DELETE FROM dbo.Registro_Contable WHERE TransaccionID = @TransaccionId;";
-          await conn.ExecuteAsync(new CommandDefinition(deleteSql, new { request.TransaccionId }, tx, cancellationToken: ct));
+          const string existingIdsSql = @"SELECT ID
+FROM dbo.Registro_Contable
+WHERE TransaccionID = @TransaccionId;";
 
-            if (request.Movimientos.Count != 0)
+          var existingIds = (await conn.QueryAsync<int>(
+              new CommandDefinition(existingIdsSql, new { request.TransaccionId }, tx, cancellationToken: ct)))
+              .ToHashSet();
+
+          var requestedExistingIds = request.Movimientos
+              .Where(m => existingIds.Contains(m.Id))
+              .Select(m => m.Id)
+              .ToHashSet();
+
+          var movementIdsToDelete = existingIds
+              .Where(id => !requestedExistingIds.Contains(id))
+              .ToArray();
+
+          if (movementIdsToDelete.Length != 0)
           {
-              const string insertSql = @"
-                  INSERT INTO dbo.Registro_Contable (TransaccionID, Nivel1, Nivel2, Nivel3, Nombre_Cuenta, Concepto, Debe, Haber)
-                  VALUES (@TransaccionId, @Nivel1, @Nivel2, @Nivel3, @NombreCuenta, @Concepto, @Debe, @Haber);";
+              const string deleteSql = @"DELETE FROM dbo.Registro_Contable
+WHERE TransaccionID = @TransaccionId
+  AND ID IN @MovimientoIds;";
 
-              var movementsToInsert = request.Movimientos.Select(m => new
+              await conn.ExecuteAsync(new CommandDefinition(
+                  deleteSql,
+                  new { request.TransaccionId, MovimientoIds = movementIdsToDelete },
+                  tx,
+                  cancellationToken: ct));
+          }
+
+          var movementsToUpdate = request.Movimientos
+              .Where(m => existingIds.Contains(m.Id))
+              .Select(m => new
+              {
+                  MovimientoId = m.Id,
+                  request.TransaccionId,
+                  m.Nivel1,
+                  m.Nivel2,
+                  m.Nivel3,
+                  m.NombreCuenta,
+                  m.Concepto,
+                  m.Debe,
+                  m.Haber
+              })
+              .ToArray();
+
+          if (movementsToUpdate.Length != 0)
+          {
+              const string updateSql = @"
+UPDATE dbo.Registro_Contable
+SET Nivel1 = @Nivel1,
+    Nivel2 = @Nivel2,
+    Nivel3 = @Nivel3,
+    Nombre_Cuenta = @NombreCuenta,
+    Concepto = @Concepto,
+    Debe = @Debe,
+    Haber = @Haber
+WHERE ID = @MovimientoId
+  AND TransaccionID = @TransaccionId
+  AND EXISTS
+  (
+      SELECT @Nivel1, @Nivel2, @Nivel3, @NombreCuenta, @Concepto,
+             CAST(@Debe AS decimal(18,4)), CAST(@Haber AS decimal(18,4))
+      EXCEPT
+      SELECT currentRow.Nivel1, currentRow.Nivel2, currentRow.Nivel3, currentRow.Nombre_Cuenta, currentRow.Concepto,
+             CAST(ISNULL(currentRow.Debe, 0) AS decimal(18,4)), CAST(ISNULL(currentRow.Haber, 0) AS decimal(18,4))
+      FROM dbo.Registro_Contable AS currentRow
+      WHERE currentRow.ID = @MovimientoId
+        AND currentRow.TransaccionID = @TransaccionId
+  );";
+
+              await conn.ExecuteAsync(new CommandDefinition(updateSql, movementsToUpdate, tx, cancellationToken: ct));
+          }
+
+          var movementsToInsert = request.Movimientos
+              .Where(m => !existingIds.Contains(m.Id))
+              .Select(m => new
               {
                   request.TransaccionId,
                   m.Nivel1,
@@ -1907,7 +1974,14 @@ WHERE Transaccion_ID = @TransaccionId
                   m.Concepto,
                   m.Debe,
                   m.Haber
-              });
+              })
+              .ToArray();
+
+          if (movementsToInsert.Length != 0)
+          {
+              const string insertSql = @"
+                  INSERT INTO dbo.Registro_Contable (TransaccionID, Nivel1, Nivel2, Nivel3, Nombre_Cuenta, Concepto, Debe, Haber)
+                  VALUES (@TransaccionId, @Nivel1, @Nivel2, @Nivel3, @NombreCuenta, @Concepto, @Debe, @Haber);";
 
               await conn.ExecuteAsync(new CommandDefinition(insertSql, movementsToInsert, tx, cancellationToken: ct));
           }
@@ -1921,6 +1995,54 @@ WHERE Transaccion_ID = @TransaccionId
           _logger.LogError(ex, "Error al guardar movimientos para la transacción {TransaccionId}", request.TransaccionId);
           return TransaccionCommandResult.Fail($"Ocurrió un error al guardar los movimientos: {ex.Message}");
       }
+  }
+
+  private async Task<SqlConnection> OpenConnectionWithAuditContextAsync(CancellationToken ct)
+  {
+      var conn = new SqlConnection(_cs);
+      await conn.OpenAsync(ct);
+
+      try
+      {
+          await SetAuditSessionContextAsync(conn, transaction: null, ct);
+          return conn;
+      }
+      catch
+      {
+          await conn.DisposeAsync();
+          throw;
+      }
+  }
+
+  private async Task SetAuditSessionContextAsync(
+      SqlConnection conn,
+      SqlTransaction? transaction,
+      CancellationToken ct)
+  {
+      var userName = NormalizeAuditUserName(
+          _currentUserAccessor is null
+              ? null
+              : await _currentUserAccessor.GetUserNameAsync(ct));
+
+      const string sql = @"
+EXEC sys.sp_set_session_context @key = N'OrionERP.UserName', @value = @UserName;
+EXEC sys.sp_set_session_context @key = N'OrionERP.Application', @value = N'OrionERP';";
+
+      await conn.ExecuteAsync(new CommandDefinition(
+          sql,
+          new { UserName = userName },
+          transaction,
+          cancellationToken: ct));
+  }
+
+  private static string NormalizeAuditUserName(string? userName)
+  {
+      userName = userName?.Trim();
+      return string.IsNullOrWhiteSpace(userName)
+          ? "OrionERP"
+          : userName.Length <= 256
+              ? userName
+              : userName[..256];
   }
 
   private sealed class CfdiCandidateRow

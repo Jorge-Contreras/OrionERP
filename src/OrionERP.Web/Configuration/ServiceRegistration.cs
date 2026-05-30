@@ -55,6 +55,7 @@ using OrionERP.Web.Features.Logistica.Purchasing;
 using OrionERP.Web.Features.ReportesFinancieros.SaludEmpresa;
 using OrionERP.Web.Features.Reservaciones.OpenClaw;
 using OrionERP.Web.Identity;
+using OrionERP.Web.Services;
 using Sat.MassiveDownload;
 using Sat.MassiveDownload.Core;
 using ContabITransaccionService = OrionERP.Application.Features.Contabilidad.Transacciones.ITransaccionService;
@@ -77,6 +78,7 @@ public static class ServiceRegistration
     services.AddSingleton<SqlConnectionFactory>();
     services.AddSingleton<IDbConnectionFactory>(sp => sp.GetRequiredService<SqlConnectionFactory>());
     services.AddScoped<IDbStoredProcService, DbStoredProcService>();
+    services.AddScoped<ICurrentUserAccessor, AuthenticationStateCurrentUserAccessor>();
 
     services.AddScoped<IComprobanteQueryService, ComprobanteQueryService>();
     services.AddScoped<ISatXmlInboxService, SatXmlInboxService>();
@@ -112,6 +114,7 @@ public static class ServiceRegistration
     services.AddSingleton<SqlConnectionFactory>();
     services.AddSingleton<IDbConnectionFactory>(sp => sp.GetRequiredService<SqlConnectionFactory>());
     services.AddScoped<IDbStoredProcService, DbStoredProcService>();
+    services.AddScoped<ICurrentUserAccessor, AuthenticationStateCurrentUserAccessor>();
     services.AddScoped<ISatRfcProfileRepository, SatRfcProfileRepository>();
     services.AddScoped<ISatSolicitudesRepository, SatSolicitudesRepository>();
     services.AddScoped<ISatPaquetesRepository, SatPaquetesRepository>();

@@ -1,6 +1,8 @@
+using System.Net;
 using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
@@ -9,6 +11,13 @@ using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Host.UseWindowsService();
+
+if (!builder.Environment.IsDevelopment())
+{
+  builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 5010));
+}
 
 var appDataDirectory = Path.Combine(AppContext.BaseDirectory, "App_Data", "keys");
 Directory.CreateDirectory(appDataDirectory);
@@ -58,13 +67,33 @@ if (!string.IsNullOrWhiteSpace(conn))
   builder.Configuration["ConnectionStrings:OrionDb"] = conn;
 }
 
-Console.WriteLine($"[BONHOMIA BOOT] ENV={builder.Environment.EnvironmentName} OrionDb={BuildConnectionSummary(conn)}");
+var checkoutOptions = builder.Configuration
+  .GetSection(BonhomiaCheckoutOptions.SectionName)
+  .Get<BonhomiaCheckoutOptions>() ?? new BonhomiaCheckoutOptions();
+
+Console.WriteLine(
+  $"[BONHOMIA BOOT] ENV={builder.Environment.EnvironmentName} " +
+  $"OrionDb={BuildConnectionSummary(conn)} " +
+  $"PayPalMode={BuildPayPalModeSummary(checkoutOptions)} " +
+  $"PayPalConfigured={checkoutOptions.IsPayPalConfigured} " +
+  $"PublicBaseUrl={BuildPublicBaseUrlSummary(checkoutOptions.PublicBaseUrl)}");
+
 if (string.IsNullOrWhiteSpace(conn))
 {
   throw new InvalidOperationException(
     "Missing/empty ConnectionStrings:OrionDb. In Development, set it with User Secrets, " +
     "a local appsettings.Development.json, or ConnectionStrings__OrionDb. In Production, " +
     "use ASPNETCORE_ConnectionStrings__OrionDb.");
+}
+
+var checkoutValidationErrors = BonhomiaCheckoutOptionsValidator.ValidateForEnvironment(
+  checkoutOptions,
+  builder.Environment.EnvironmentName);
+if (checkoutValidationErrors.Count > 0)
+{
+  throw new InvalidOperationException(
+    "Invalid BonhomiaCheckout production configuration: " +
+    string.Join(" ", checkoutValidationErrors));
 }
 
 builder.Services.AddRazorPages();
@@ -97,6 +126,7 @@ if (!app.Environment.IsDevelopment())
 app.UseStaticFiles();
 app.UseRouting();
 
+app.MapGet("/healthz", () => Results.Text("OK", "text/plain"));
 app.MapBonhomiaCheckoutApi();
 app.MapRazorPages();
 app.MapBlazorHub();
@@ -124,5 +154,19 @@ static string BuildConnectionSummary(string? connectionString)
     return "<present>";
   }
 }
+
+static string BuildPayPalModeSummary(BonhomiaCheckoutOptions options)
+{
+  var mode = string.IsNullOrWhiteSpace(options.Environment)
+    ? "<empty>"
+    : options.Environment.Trim();
+  var target = options.UseLivePayPal ? "Live" : "Sandbox";
+  return $"{mode}->{target}";
+}
+
+static string BuildPublicBaseUrlSummary(string? publicBaseUrl)
+  => string.IsNullOrWhiteSpace(publicBaseUrl)
+    ? "<missing>"
+    : publicBaseUrl.Trim();
 
 public partial class Program { }

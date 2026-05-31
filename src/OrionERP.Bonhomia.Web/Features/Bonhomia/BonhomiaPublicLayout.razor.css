@@ -30,11 +30,23 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 1.2rem;
   align-items: center;
-  min-height: 5rem;
+  min-height: 5.2rem;
   padding: 0.75rem clamp(1rem, 4vw, 2rem);
-  border-bottom: 1px solid rgba(15, 76, 92, 0.14);
-  background: rgba(251, 250, 246, 0.94);
-  backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(15, 76, 92, 0.12);
+  background: linear-gradient(180deg, rgba(251, 250, 246, 0.98), rgba(251, 250, 246, 0.9));
+  backdrop-filter: blur(20px);
+  box-shadow: 0 18px 44px rgba(23, 38, 34, 0.07);
+}
+
+.bonhomia-public-nav::after {
+  position: absolute;
+  right: clamp(1rem, 4vw, 2rem);
+  bottom: -1px;
+  left: clamp(1rem, 4vw, 2rem);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(201, 157, 74, 0.56), transparent);
+  content: "";
+  pointer-events: none;
 }
 
 .bonhomia-public-brand,
@@ -46,17 +58,25 @@
 }
 
 .bonhomia-public-brand {
+  justify-self: start;
   display: inline-flex;
   align-items: center;
   gap: 0.75rem;
   color: var(--bonhomia-teal-dark);
   font-weight: 900;
+  transition: color 0.18s ease, transform 0.18s ease;
+}
+
+.bonhomia-public-brand:hover,
+.bonhomia-public-brand:focus-visible {
+  color: var(--bonhomia-teal);
 }
 
 .bonhomia-public-brand img {
   width: 3rem;
   height: 3rem;
   object-fit: contain;
+  filter: drop-shadow(0 8px 14px rgba(23, 38, 34, 0.14));
 }
 
 .bonhomia-public-brand span {
@@ -65,48 +85,101 @@
 
 .bonhomia-public-nav__links {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
-  gap: 0.35rem;
+  justify-self: center;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0.3rem;
+  border: 1px solid rgba(15, 76, 92, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 12px 30px rgba(23, 38, 34, 0.06);
 }
 
-.bonhomia-public-nav__links a {
+.bonhomia-public-nav__links ::deep a {
+  position: relative;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
   min-height: 2.35rem;
-  padding: 0.52rem 0.75rem;
+  padding: 0.52rem 0.9rem;
   border-radius: 999px;
-  color: var(--bonhomia-ink);
+  color: rgba(23, 38, 34, 0.78);
   font-size: 0.94rem;
   font-weight: 800;
+  line-height: 1;
+  text-decoration: none;
+  transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
-.bonhomia-public-nav__links a:hover,
-.bonhomia-public-nav__links a:focus-visible,
-.bonhomia-public-nav__links a.active {
-  background: rgba(15, 76, 92, 0.1);
-  color: var(--bonhomia-teal);
+.bonhomia-public-nav__links ::deep a::after {
+  position: absolute;
+  right: 0.95rem;
+  bottom: 0.36rem;
+  left: 0.95rem;
+  height: 2px;
+  border-radius: 999px;
+  background: transparent;
+  content: "";
+  transition: background 0.18s ease;
+}
+
+.bonhomia-public-nav__links ::deep a:hover,
+.bonhomia-public-nav__links ::deep a:focus-visible {
+  background: rgba(15, 76, 92, 0.08);
+  color: var(--bonhomia-teal-dark);
+  transform: translateY(-1px);
+}
+
+.bonhomia-public-nav__links ::deep a.active {
+  background: linear-gradient(135deg, var(--bonhomia-teal-dark), var(--bonhomia-teal));
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(15, 76, 92, 0.22);
+}
+
+.bonhomia-public-nav__links ::deep a.active::after {
+  background: rgba(240, 216, 149, 0.9);
 }
 
 .bonhomia-public-nav__cta {
+  justify-self: end;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
   min-height: 2.75rem;
   padding: 0.65rem 1rem;
+  border: 1px solid rgba(8, 54, 64, 0.14);
   border-radius: 999px;
-  background: var(--bonhomia-teal);
+  background: linear-gradient(135deg, var(--bonhomia-teal), var(--bonhomia-sage));
   color: #fff;
   font-weight: 900;
+  box-shadow: 0 14px 30px rgba(15, 76, 92, 0.22);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.bonhomia-public-nav__cta i {
+  display: inline-grid;
+  place-items: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 0.94rem;
 }
 
 .bonhomia-public-nav__cta:hover,
 .bonhomia-public-nav__cta:focus-visible {
   transform: translateY(-1px);
+  box-shadow: 0 18px 34px rgba(15, 76, 92, 0.27);
 }
 
 .bonhomia-public-nav__cta:focus-visible,
 .bonhomia-public-brand:focus-visible,
-.bonhomia-public-nav__links a:focus-visible,
+.bonhomia-public-nav__links ::deep a:focus-visible,
 .bonhomia-public-footer a:focus-visible {
   outline: 3px solid rgba(201, 157, 74, 0.42);
   outline-offset: 2px;
@@ -147,6 +220,12 @@
 .bonhomia-public-footer a {
   color: var(--bonhomia-teal);
   font-weight: 850;
+  transition: color 0.18s ease;
+}
+
+.bonhomia-public-footer a:hover,
+.bonhomia-public-footer a:focus-visible {
+  color: var(--bonhomia-teal-dark);
 }
 
 .bonhomia-public-footer__contact span {
@@ -158,11 +237,28 @@
     grid-template-columns: 1fr auto;
   }
 
+  .bonhomia-public-brand {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .bonhomia-public-nav__cta {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
   .bonhomia-public-nav__links {
     grid-column: 1 / -1;
+    grid-row: 2;
     justify-content: flex-start;
+    justify-self: stretch;
     overflow-x: auto;
     padding-bottom: 0.15rem;
+    scrollbar-width: none;
+  }
+
+  .bonhomia-public-nav__links::-webkit-scrollbar {
+    display: none;
   }
 
   .bonhomia-public-footer {

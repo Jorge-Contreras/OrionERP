@@ -10,6 +10,59 @@ namespace OrionERP.UnitTests.Bonhomia;
 public class BonhomiaPayPalClientTests
 {
   [Fact]
+  public async Task CreateOrder_UsesLivePayPalBaseUri_WhenEnvironmentIsLive()
+  {
+    var handler = new SequencedHttpMessageHandler(
+      new HttpResponseMessage(HttpStatusCode.OK)
+      {
+        Content = JsonContent("""
+          {
+            "access_token": "live-token",
+            "expires_in": 3600
+          }
+          """)
+      },
+      new HttpResponseMessage(HttpStatusCode.OK)
+      {
+        Content = JsonContent("""
+          {
+            "id": "LIVE-PAYPAL-ORDER-1",
+            "status": "CREATED"
+          }
+          """)
+      });
+    var client = CreateClient(
+      handler,
+      new BonhomiaCheckoutOptions
+      {
+        Environment = "Live",
+        Currency = "MXN",
+        PayPalClientId = "live-client-id",
+        PayPalClientSecret = "live-client-secret"
+      });
+
+    var result = await client.CreateOrderAsync(
+      new BonhomiaQuoteDto
+      {
+        QuoteId = Guid.Parse("b962a5d8-f60f-4e7a-9bb8-8599679df0c2"),
+        RoomName = "Suite Paris",
+        Fingerprint = "quote-fingerprint",
+        Currency = "MXN",
+        Total = 1250m
+      },
+      "ord-live");
+
+    Assert.Equal("LIVE-PAYPAL-ORDER-1", result.OrderId);
+    Assert.Equal("CREATED", result.Status);
+    Assert.Equal(
+      [
+        "POST https://api-m.paypal.com/v1/oauth2/token",
+        "POST https://api-m.paypal.com/v2/checkout/orders"
+      ],
+      handler.Requests);
+  }
+
+  [Fact]
   public async Task CaptureOrder_WhenPaymentAlreadyDone_LoadsCapturedOrderDetails()
   {
     var handler = new SequencedHttpMessageHandler(
@@ -178,10 +231,10 @@ public class BonhomiaPayPalClientTests
       handler.Requests);
   }
 
-  private static BonhomiaPayPalClient CreateClient(HttpMessageHandler handler)
+  private static BonhomiaPayPalClient CreateClient(HttpMessageHandler handler, BonhomiaCheckoutOptions? options = null)
     => new(
       new HttpClient(handler),
-      Options.Create(new BonhomiaCheckoutOptions
+      Options.Create(options ?? new BonhomiaCheckoutOptions
       {
         Environment = "Sandbox",
         Currency = "MXN",

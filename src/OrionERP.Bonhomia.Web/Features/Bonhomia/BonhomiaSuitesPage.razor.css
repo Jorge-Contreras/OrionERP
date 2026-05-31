@@ -14,22 +14,33 @@
   display: block;
 }
 
+.bonhomia-suite-card__media::after {
+  position: absolute;
+  inset: auto 0 0;
+  height: 42%;
+  background: linear-gradient(180deg, transparent, rgba(8, 54, 64, 0.34));
+  content: "";
+  pointer-events: none;
+}
+
 .bonhomia-suite-card__media-action {
   position: absolute;
   right: 0.75rem;
   bottom: 0.75rem;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
   min-height: 2rem;
   padding: 0.35rem 0.65rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.94);
   color: var(--bonhomia-teal-dark, #083640);
   font-size: 0.82rem;
   font-weight: 900;
   letter-spacing: 0;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(10px);
 }
 
 .bonhomia-suite-card__media:focus-visible {

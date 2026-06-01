@@ -968,6 +968,21 @@ button.bonhomia-day {
   line-height: 1.45;
 }
 
+.bonhomia-checkout-requirement__link {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 0.75rem;
+  color: var(--bonhomia-teal);
+  font-weight: 950;
+  text-decoration: none;
+}
+
+.bonhomia-checkout-requirement__link:hover,
+.bonhomia-checkout-requirement__link:focus-visible {
+  color: var(--bonhomia-teal-dark);
+  text-decoration: underline;
+}
+
 .bonhomia-policy-check {
   grid-column: 1 / -1;
   display: flex !important;

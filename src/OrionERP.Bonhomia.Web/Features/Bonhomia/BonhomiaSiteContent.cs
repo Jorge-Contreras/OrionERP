@@ -6,7 +6,14 @@ internal static class BonhomiaSiteContent
   public const string WhatsAppDisplay = "+52 749 110 3026";
   public const string Email = "recepcion@bonhomiasuites.com";
   public const string Address = "Carr. Mexico-Veracruz km 74, 90202 Heroica Ciudad de Calpulalpan, Tlaxcala, Mexico.";
-  public const string PrivacyResponsiblePlaceholder = "[Pendiente: razon social completa, RFC, domicilio fiscal y correo ARCO del responsable]";
+  public const string LegalVersion = "2026-05-31";
+  public const string LegalUpdatedDisplay = "31 de mayo de 2026";
+  public const string LegalManagerName = "Orion Habitat de Mexico, S.A. de C.V.";
+  public const string LegalRfc = "OHM191112Q26";
+  public const string LegalArcoEmail = "info@orion.land";
+  public const string LegalFiscalAddress = "Calle Lazaro Cardenas 105, Col. Otra no especificada en el catalogo, Heroica Ciudad de Calpulalpan, Calpulalpan, Tlaxcala, C.P. 90204.";
+  public const string LegalOperatingAddress = Address;
+  public const string LegalResponsibleSummary = LegalManagerName + ", RFC " + LegalRfc;
 
   public static string WhatsAppUrl(string message)
     => $"https://wa.me/{WhatsAppPhone}?text={Uri.EscapeDataString(message)}";

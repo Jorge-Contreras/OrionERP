@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@inject IJSRuntime Js
 
 <div class="bonhomia-public-shell">
     <header class="bonhomia-public-nav" aria-label="Bonhomia Suites">
@@ -30,9 +31,10 @@
         </div>
 
         <nav aria-label="Documentos Bonhomia">
-            <a href="/politicas-de-reserva">Politicas de reserva</a>
-            <a href="/terminos-y-condiciones">Terminos y condiciones</a>
-            <a href="/aviso-de-privacidad">Aviso de privacidad</a>
+            <a href="/legal">Centro legal</a>
+            <a href="/legal#politicas-reserva">Politicas de reserva</a>
+            <a href="/legal#terminos-condiciones">Terminos y condiciones</a>
+            <a href="/legal#aviso-privacidad">Aviso de privacidad</a>
             <a href="/preguntas-frecuentes">Preguntas frecuentes</a>
         </nav>
 
@@ -43,4 +45,34 @@
             <a href="/erp">Portal OrionERP</a>
         </div>
     </footer>
+
+    <aside class="bonhomia-legal-ack" data-bonhomia-legal-ack="@BonhomiaSiteContent.LegalVersion" aria-label="Reconocimiento de documentos legales">
+        <p>
+            <strong>Centro legal Bonhomia.</strong>
+            Aviso de privacidad, terminos, politicas y reglas de hospedaje version @BonhomiaSiteContent.LegalVersion.
+            <a href="/legal">Leer</a>
+        </p>
+        <button type="button" class="bonhomia-legal-ack__button" data-bonhomia-legal-accept>
+            Aceptar
+        </button>
+    </aside>
 </div>
+
+@code {
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (!firstRender)
+    {
+      return;
+    }
+
+    try
+    {
+      await Js.InvokeVoidAsync("bonhomiaLegal.initAcknowledgement", BonhomiaSiteContent.LegalVersion);
+    }
+    catch
+    {
+      // The site remains usable if browser storage is unavailable.
+    }
+  }
+}

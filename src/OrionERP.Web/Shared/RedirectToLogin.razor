@@ -1,0 +1,12 @@
+@inject NavigationManager Navigation
+
+<p class="visually-hidden" role="status">Redirigiendo a inicio de sesion.</p>
+
+@code {
+    protected override void OnInitialized()
+    {
+        var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var returnUrl = string.IsNullOrWhiteSpace(relativePath) ? "/" : $"/{relativePath}";
+        Navigation.NavigateTo($"/Identity/Account/Login?returnUrl={Uri.EscapeDataString(returnUrl)}", forceLoad: true);
+    }
+}

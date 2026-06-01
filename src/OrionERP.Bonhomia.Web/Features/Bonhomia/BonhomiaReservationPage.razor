@@ -4,6 +4,7 @@
 @using Microsoft.JSInterop
 @using Microsoft.Extensions.Options
 @using OrionERP.Application.Features.Bonhomia.PublicBooking
+@using OrionERP.Application.Features.Reservaciones.Experiencias
 @using OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout
 @implements IAsyncDisposable
 @inject IBonhomiaPublicBookingService BookingService
@@ -201,6 +202,176 @@
                                         <span>Atras</span>
                                     </button>
                                     <button type="button" class="bonhomia-button bonhomia-button--next" @onclick="GoNextAsync">
+                                        <span>Continuar a experiencias</span>
+                                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                        else if (ActiveCheckoutStep == CheckoutStep.Experiences)
+                        {
+                            <div class="bonhomia-step">
+                                <div class="bonhomia-step__header">
+                                    <span>3</span>
+                                    <div>
+                                        <h3>Experiencias</h3>
+                                        <p>Agrega una experiencia de temporada a tu estancia o continua sin experiencias.</p>
+                                    </div>
+                                </div>
+
+                                @if (PrimaryExperience is null)
+                                {
+                                    <div class="bonhomia-alert bonhomia-alert--warning">
+                                        No hay experiencias publicas configuradas para las fechas visibles.
+                                    </div>
+                                }
+                                else
+                                {
+                                    var preview = GetSelectedExperiencePreview();
+                                    var totalExperienceParticipants = ExperienceAdultParticipants + ExperienceChildParticipants;
+                                    var selectedExperienceAddOnCount = PrimaryExperience.AddOns.Count(addOn => SelectedExperienceAddOnCodes.Contains(addOn.Code));
+                                    <section class="@(IncludeExperience ? "bonhomia-experience-card bonhomia-experience-card--active" : "bonhomia-experience-card")">
+                                        <label class="bonhomia-experience-toggle">
+                                            <span class="bonhomia-experience-toggle__copy">
+                                                <span>Experiencia de temporada</span>
+                                                <strong>@PrimaryExperience.Name</strong>
+                                                <small>@FormatExperienceSeason(PrimaryExperience)</small>
+                                            </span>
+                                            <span class="bonhomia-switch">
+                                                <input type="checkbox"
+                                                       checked="@IncludeExperience"
+                                                       aria-label="@($"Agregar {PrimaryExperience.Name}")"
+                                                       @onchange="OnIncludeExperienceChanged" />
+                                                <span class="bonhomia-switch__track"></span>
+                                            </span>
+                                        </label>
+
+                                        <div class="bonhomia-experience-card__body">
+                                            <div class="bonhomia-experience-provider">
+                                                <i class="bi bi-stars" aria-hidden="true"></i>
+                                                <div>
+                                                    <strong>@PrimaryExperience.ProviderName</strong>
+                                                    <span>@PrimaryExperience.Description</span>
+                                                </div>
+                                            </div>
+
+                                            @if (!IncludeExperience)
+                                            {
+                                                <div class="bonhomia-experience-state">
+                                                    <strong>Sin experiencia agregada</strong>
+                                                    <span>@PrimaryExperience.Description</span>
+                                                </div>
+                                            }
+
+                                            <details class="bonhomia-experience-section" open="@IncludeExperience">
+                                                <summary>
+                                                    <span class="bonhomia-experience-section__index">1</span>
+                                                    <span>
+                                                        <strong>Paquete y personas</strong>
+                                                        <small>@(IncludeExperience ? $"{SelectedExperiencePackage?.Name ?? "Selecciona paquete"} · {totalExperienceParticipants} persona{(totalExperienceParticipants == 1 ? string.Empty : "s")}" : "Pendiente")</small>
+                                                    </span>
+                                                    <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                                                </summary>
+                                                <div class="bonhomia-experience-section__content">
+                                                    <div class="bonhomia-date-row">
+                                                        <label>
+                                                            <span>Fecha</span>
+                                                            <input type="date"
+                                                                   value="@ExperienceDateText"
+                                                                   min="@CheckInText"
+                                                                   max="@ExperienceMaxDateText"
+                                                                   disabled="@(!IncludeExperience)"
+                                                                   @onchange="OnExperienceDateChanged" />
+                                                        </label>
+                                                        <label>
+                                                            <span>Paquete</span>
+                                                            <select value="@SelectedExperiencePackageCode" disabled="@(!IncludeExperience)" @onchange="OnExperiencePackageChanged">
+                                                                @foreach (var package in PrimaryExperience.Packages)
+                                                                {
+                                                                    <option value="@package.Code">@package.Name - @FormatMoney(package.UnitPrice) + IVA por persona</option>
+                                                                }
+                                                            </select>
+                                                        </label>
+                                                        <label>
+                                                            <span>Adultos</span>
+                                                            <input type="number" min="1" max="@ExperienceParticipantLimit" value="@ExperienceAdultParticipants" disabled="@(!IncludeExperience)" @onchange="OnExperienceAdultParticipantsChanged" />
+                                                        </label>
+                                                        <label>
+                                                            <span>Menores</span>
+                                                            <input type="number" min="0" max="@(Math.Max(ExperienceParticipantLimit - ExperienceAdultParticipants, 0))" value="@ExperienceChildParticipants" disabled="@(!IncludeExperience)" @onchange="OnExperienceChildParticipantsChanged" />
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </details>
+
+                                            @if (PrimaryExperience.AddOns.Count > 0)
+                                            {
+                                                <details class="bonhomia-experience-section" open="@IncludeExperience">
+                                                    <summary>
+                                                        <span class="bonhomia-experience-section__index">2</span>
+                                                        <span>
+                                                            <strong>Complementos</strong>
+                                                            <small>@(IncludeExperience ? $"{selectedExperienceAddOnCount} seleccionado{(selectedExperienceAddOnCount == 1 ? string.Empty : "s")}" : "Opcional")</small>
+                                                        </span>
+                                                        <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                                                    </summary>
+                                                    <div class="bonhomia-experience-section__content">
+                                                        <div class="bonhomia-experience-addons">
+                                                            @foreach (var addOn in PrimaryExperience.AddOns)
+                                                            {
+                                                                var isSelected = SelectedExperienceAddOnCodes.Contains(addOn.Code);
+                                                                <label class="@(isSelected ? "bonhomia-experience-addon bonhomia-experience-addon--selected" : "bonhomia-experience-addon")">
+                                                                    <i class="bi bi-signpost-split" aria-hidden="true"></i>
+                                                                    <span class="bonhomia-experience-addon__copy">
+                                                                        <strong>@addOn.Name</strong>
+                                                                        <span>@addOn.Description</span>
+                                                                        <small>@FormatMoney(addOn.UnitPrice) + IVA @(addOn.AppliesPerParticipant ? "por persona" : null)</small>
+                                                                    </span>
+                                                                    <span class="bonhomia-switch bonhomia-switch--small">
+                                                                        <input type="checkbox"
+                                                                               checked="@isSelected"
+                                                                               disabled="@(!IncludeExperience)"
+                                                                               aria-label="@($"Agregar {addOn.Name}")"
+                                                                               @onchange="args => OnExperienceAddOnChanged(addOn.Code, args)" />
+                                                                        <span class="bonhomia-switch__track"></span>
+                                                                    </span>
+                                                                </label>
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                </details>
+                                            }
+
+                                            @if (IncludeExperience && preview is not null)
+                                            {
+                                                <div class="bonhomia-experience-total">
+                                                    <div>
+                                                        <span>Paquete antes de IVA</span>
+                                                        <strong>@FormatMoney(preview.PackageSubtotal)</strong>
+                                                    </div>
+                                                    @if (preview.AddOnsTotal > 0m)
+                                                    {
+                                                        <div>
+                                                            <span>Complementos antes de IVA</span>
+                                                            <strong>@FormatMoney(preview.AddOnsTotal)</strong>
+                                                        </div>
+                                                    }
+                                                    <div class="bonhomia-experience-total__grand">
+                                                        <span>Subtotal experiencia</span>
+                                                        <strong>@FormatMoney(preview.Total)</strong>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    </section>
+                                }
+
+                                <div class="bonhomia-wizard__actions bonhomia-wizard__actions--bottom">
+                                    <button type="button" class="bonhomia-button bonhomia-button--outline" @onclick="GoBackAsync">
+                                        <i class="bi bi-arrow-left" aria-hidden="true"></i>
+                                        <span>Atras</span>
+                                    </button>
+                                    <button type="button" class="bonhomia-button bonhomia-button--next" @onclick="GoNextAsync">
                                         <span>Continuar a extras</span>
                                         <i class="bi bi-arrow-right" aria-hidden="true"></i>
                                     </button>
@@ -211,7 +382,7 @@
                         {
                             <div class="bonhomia-step">
                                 <div class="bonhomia-step__header">
-                                    <span>3</span>
+                                    <span>4</span>
                                     <div>
                                         <h3>Extras</h3>
                                         <p>Agrega servicios opcionales o continua sin extras.</p>
@@ -257,7 +428,7 @@
                         {
                             <div class="bonhomia-step">
                                 <div class="bonhomia-step__header">
-                                    <span>4</span>
+                                    <span>5</span>
                                     <div>
                                         <h3>Pago y confirmacion</h3>
                                         <p>Acepta los terminos y paga con PayPal. La reservacion se crea cuando PayPal confirma el pago.</p>
@@ -362,6 +533,10 @@
                                             <div class="bonhomia-confirmation__totals">
                                                 <div><span>Suite</span><strong>@FormatMoney(CompletedReservation.SuiteSubtotal)</strong></div>
                                                 <div><span>Extras</span><strong>@FormatMoney(CompletedReservation.ExtrasSubtotal)</strong></div>
+                                                @if (CompletedReservation.ExperiencesSubtotal > 0m)
+                                                {
+                                                    <div><span>Experiencias</span><strong>@FormatMoney(CompletedReservation.ExperiencesSubtotal)</strong></div>
+                                                }
                                                 <div><span>Subtotal</span><strong>@FormatMoney(CompletedReservation.SubTotal)</strong></div>
                                                 <div><span>IVA</span><strong>@FormatMoney(CompletedReservation.Tax)</strong></div>
                                                 @if (CompletedReservation.Ish > 0m)
@@ -432,6 +607,10 @@
 
                                                 <div class="bonhomia-summary__totals">
                                                     <div><span>Subtotal</span><strong>@FormatMoney(Quote.SubTotal)</strong></div>
+                                                    @if (Quote.ExperiencesSubtotal > 0m)
+                                                    {
+                                                        <div><span>Experiencias</span><strong>@FormatMoney(Quote.ExperiencesSubtotal)</strong></div>
+                                                    }
                                                     <div><span>IVA</span><strong>@FormatMoney(Quote.Tax)</strong></div>
                                                     @if (Quote.Ish > 0m)
                                                     {
@@ -510,6 +689,7 @@
     [
         new(CheckoutStep.Dates, "Fechas", "Llegada y salida"),
         new(CheckoutStep.Suite, "Suite", "Disponible"),
+        new(CheckoutStep.Experiences, "Experiencias", "Temporada"),
         new(CheckoutStep.Extras, "Extras", "Opcionales"),
         new(CheckoutStep.Payment, "Pago", "PayPal")
     ];
@@ -525,6 +705,13 @@
     private DateOnly CheckIn { get; set; } = DateOnly.FromDateTime(DateTime.Today).AddDays(7);
     private DateOnly CheckOut { get; set; } = DateOnly.FromDateTime(DateTime.Today).AddDays(9);
     private int Guests { get; set; } = 2;
+    private bool IncludeExperience { get; set; }
+    private string SelectedExperienceCode { get; set; } = string.Empty;
+    private string SelectedExperiencePackageCode { get; set; } = string.Empty;
+    private DateOnly? SelectedExperienceDate { get; set; }
+    private int ExperienceAdultParticipants { get; set; }
+    private int ExperienceChildParticipants { get; set; }
+    private HashSet<string> SelectedExperienceAddOnCodes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     private bool AcceptedPolicies { get; set; }
     private bool IsLoadingAvailability { get; set; } = true;
     private bool IsQuoteBusy { get; set; }
@@ -553,6 +740,14 @@
       ? "Sin extras seleccionados"
       : $"{SelectedExtrasCount} extra{(SelectedExtrasCount == 1 ? string.Empty : "s")} seleccionado{(SelectedExtrasCount == 1 ? string.Empty : "s")}";
     private BonhomiaRoomAvailabilityDto? SelectedRoom => Availability?.Rooms.FirstOrDefault(room => string.Equals(room.RoomName, SelectedRoomName, StringComparison.OrdinalIgnoreCase));
+    private ExperienceCatalogItemDto? PrimaryExperience
+      => Availability?.Experiences.FirstOrDefault(item => string.Equals(item.Code, SelectedExperienceCode, StringComparison.OrdinalIgnoreCase))
+        ?? Availability?.Experiences.FirstOrDefault();
+    private ExperiencePackageOptionDto? SelectedExperiencePackage
+      => PrimaryExperience?.Packages.FirstOrDefault(item => string.Equals(item.Code, SelectedExperiencePackageCode, StringComparison.OrdinalIgnoreCase));
+    private int ExperienceParticipantLimit => Math.Max(SelectedRoom?.Capacity ?? Guests, 1);
+    private string ExperienceDateText => (SelectedExperienceDate ?? ResolveDefaultExperienceDate()).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    private string ExperienceMaxDateText => CheckOut.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     private bool CanPay => Quote is not null
       && !string.IsNullOrWhiteSpace(QuoteToken)
       && CheckoutOptions.Value.IsPayPalConfigured
@@ -657,6 +852,18 @@
                 return;
             }
 
+            EnsureExperienceDefaults();
+            ActiveCheckoutStep = CheckoutStep.Experiences;
+        }
+        else if (ActiveCheckoutStep == CheckoutStep.Experiences)
+        {
+            if (!CanContinueFromExperiences())
+            {
+                CheckoutError = "Revisa la experiencia seleccionada o desactivala para continuar.";
+                await ScrollCheckoutIntoViewAsync();
+                return;
+            }
+
             ActiveCheckoutStep = CheckoutStep.Extras;
         }
         else if (ActiveCheckoutStep == CheckoutStep.Extras)
@@ -685,6 +892,7 @@
       {
           CheckoutStep.Dates => true,
           CheckoutStep.Suite => CanContinueFromDates(),
+          CheckoutStep.Experiences => CanContinueFromSuite(),
           CheckoutStep.Extras => CanContinueFromSuite(),
           CheckoutStep.Payment => Quote is not null || CompletedReservation is not null,
           _ => false
@@ -698,6 +906,10 @@
       => CanContinueFromDates()
         && SelectedRoom is { } room
         && IsSuiteAvailableForStay(room);
+
+    private bool CanContinueFromExperiences()
+      => !IncludeExperience
+        || GetSelectedExperiencePreview() is not null;
 
     private string GetWizardStepClass(CheckoutStep step)
     {
@@ -736,6 +948,7 @@
               CalendarMaxMonthOffset,
               CalendarVisibleMonthCount);
             EnsureSelectedRoomAvailableForStay();
+            EnsureExperienceDefaults();
         }
         catch (Exception ex)
         {
@@ -804,7 +1017,8 @@
           Extras = ExtraQuantities
             .Where(item => item.Value > 0)
             .Select(item => new BonhomiaSelectedExtraRequest { Code = item.Key, Quantity = item.Value })
-            .ToArray()
+            .ToArray(),
+          Experiences = BuildSelectedExperienceRequests()
       };
 
     private Dictionary<string, int> ExtraQuantities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -818,6 +1032,7 @@
         CheckOut = selection.CheckOut;
         NextCalendarSelection = selection.NextSelection;
         EnsureSelectedRoomAvailableForStay();
+        EnsureExperienceDefaults();
         ClearQuoteState();
     }
 
@@ -893,6 +1108,7 @@
         if (int.TryParse(args.Value?.ToString(), out var parsed))
         {
             Guests = Math.Clamp(parsed, 1, 10);
+            EnsureExperienceDefaults();
             ClearQuoteState();
         }
     }
@@ -904,6 +1120,68 @@
             ExtraQuantities[code] = Math.Max(parsed, 0);
             ClearQuoteState();
         }
+    }
+
+    private void OnIncludeExperienceChanged(ChangeEventArgs args)
+    {
+        IncludeExperience = args.Value is bool value && value
+          || bool.TryParse(args.Value?.ToString(), out var parsed) && parsed;
+        EnsureExperienceDefaults();
+        ClearQuoteState();
+    }
+
+    private void OnExperiencePackageChanged(ChangeEventArgs args)
+    {
+        SelectedExperiencePackageCode = args.Value?.ToString() ?? string.Empty;
+        EnsureExperienceDefaults();
+        ClearQuoteState();
+    }
+
+    private void OnExperienceDateChanged(ChangeEventArgs args)
+    {
+        if (TryParseDate(args.Value?.ToString(), out var parsed))
+        {
+            SelectedExperienceDate = parsed;
+            EnsureExperienceDefaults();
+            ClearQuoteState();
+        }
+    }
+
+    private void OnExperienceAdultParticipantsChanged(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out var parsed))
+        {
+            ExperienceAdultParticipants = Math.Clamp(parsed, 1, ExperienceParticipantLimit);
+            EnsureExperienceDefaults();
+            ClearQuoteState();
+        }
+    }
+
+    private void OnExperienceChildParticipantsChanged(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out var parsed))
+        {
+            ExperienceChildParticipants = Math.Clamp(parsed, 0, Math.Max(ExperienceParticipantLimit - 1, 0));
+            EnsureExperienceDefaults();
+            ClearQuoteState();
+        }
+    }
+
+    private void OnExperienceAddOnChanged(string code, ChangeEventArgs args)
+    {
+        var isSelected = args.Value is bool value && value
+          || bool.TryParse(args.Value?.ToString(), out var parsed) && parsed;
+
+        if (isSelected)
+        {
+            SelectedExperienceAddOnCodes.Add(code);
+        }
+        else
+        {
+            SelectedExperienceAddOnCodes.Remove(code);
+        }
+
+        ClearQuoteState();
     }
 
     private void OnCustomerChanged(string fieldName, string? value)
@@ -934,6 +1212,143 @@
 
     private int GetExtraQuantity(string code)
       => ExtraQuantities.TryGetValue(code, out var quantity) ? quantity : 0;
+
+    private IReadOnlyList<BonhomiaSelectedExperienceRequest> BuildSelectedExperienceRequests()
+    {
+        if (!IncludeExperience || PrimaryExperience is null || SelectedExperiencePackage is null)
+        {
+            return Array.Empty<BonhomiaSelectedExperienceRequest>();
+        }
+
+        var selectedAddOns = PrimaryExperience.AddOns
+          .Where(addOn => SelectedExperienceAddOnCodes.Contains(addOn.Code))
+          .Select(addOn => new BonhomiaSelectedExperienceAddOnRequest
+          {
+              Code = addOn.Code,
+              Quantity = 1
+          })
+          .ToArray();
+
+        return
+        [
+          new BonhomiaSelectedExperienceRequest
+          {
+              Code = PrimaryExperience.Code,
+              PackageCode = SelectedExperiencePackage.Code,
+              ExperienceDate = SelectedExperienceDate ?? ResolveDefaultExperienceDate(),
+              AdultParticipants = ExperienceAdultParticipants,
+              ChildParticipants = ExperienceChildParticipants,
+              AddOns = selectedAddOns
+          }
+        ];
+    }
+
+    private void EnsureExperienceDefaults()
+    {
+        var experience = PrimaryExperience;
+        if (experience is null)
+        {
+            IncludeExperience = false;
+            SelectedExperienceCode = string.Empty;
+            SelectedExperiencePackageCode = string.Empty;
+            SelectedExperienceDate = null;
+            SelectedExperienceAddOnCodes.Clear();
+            return;
+        }
+
+        SelectedExperienceCode = experience.Code;
+
+        if ((string.IsNullOrWhiteSpace(SelectedExperiencePackageCode) || SelectedExperiencePackage is null)
+            && experience.Packages.Count > 0)
+        {
+            SelectedExperiencePackageCode = experience.Packages
+              .FirstOrDefault(package => string.Equals(package.Code, "clasico", StringComparison.OrdinalIgnoreCase))
+              ?.Code
+              ?? experience.Packages[0].Code;
+        }
+
+        var defaultDate = ResolveDefaultExperienceDate();
+        if (!SelectedExperienceDate.HasValue
+            || SelectedExperienceDate.Value < CheckIn
+            || SelectedExperienceDate.Value >= CheckOut
+            || (experience.SeasonStart.HasValue && SelectedExperienceDate.Value < experience.SeasonStart.Value)
+            || (experience.SeasonEnd.HasValue && SelectedExperienceDate.Value > experience.SeasonEnd.Value))
+        {
+            SelectedExperienceDate = defaultDate;
+        }
+
+        ExperienceAdultParticipants = ExperienceAdultParticipants <= 0
+          ? ExperienceParticipantLimit
+          : Math.Clamp(ExperienceAdultParticipants, 1, ExperienceParticipantLimit);
+
+        ExperienceChildParticipants = Math.Clamp(
+          ExperienceChildParticipants,
+          0,
+          Math.Max(ExperienceParticipantLimit - ExperienceAdultParticipants, 0));
+
+        var activeAddOnCodes = experience.AddOns.Select(addOn => addOn.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        SelectedExperienceAddOnCodes.RemoveWhere(code => !activeAddOnCodes.Contains(code));
+    }
+
+    private DateOnly ResolveDefaultExperienceDate()
+    {
+        var date = CheckIn;
+        if (PrimaryExperience?.SeasonStart is DateOnly seasonStart && date < seasonStart)
+        {
+            date = seasonStart;
+        }
+
+        if (date >= CheckOut)
+        {
+            date = CheckIn;
+        }
+
+        return date;
+    }
+
+    private ExperiencePricingResult? GetSelectedExperiencePreview()
+    {
+        if (!IncludeExperience || PrimaryExperience is null || SelectedExperiencePackage is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var selectedAddOns = PrimaryExperience.AddOns
+              .Where(addOn => SelectedExperienceAddOnCodes.Contains(addOn.Code))
+              .Select(addOn => new ExperiencePricingAddOnInput
+              {
+                  AddOn = addOn,
+                  Quantity = 1
+              })
+              .ToArray();
+
+            return ExperiencePricingCalculator.Calculate(new ExperiencePricingInput
+            {
+                ExperienceDate = SelectedExperienceDate ?? ResolveDefaultExperienceDate(),
+                Experience = PrimaryExperience,
+                Package = SelectedExperiencePackage,
+                AdultParticipants = ExperienceAdultParticipants,
+                ChildParticipants = ExperienceChildParticipants,
+                AddOns = selectedAddOns
+            });
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string FormatExperienceSeason(ExperienceCatalogItemDto experience)
+    {
+        if (experience.SeasonStart.HasValue && experience.SeasonEnd.HasValue)
+        {
+            return $"{experience.SeasonStart.Value:dd MMM yyyy} - {experience.SeasonEnd.Value:dd MMM yyyy}";
+        }
+
+        return "Disponible por temporada";
+    }
 
     private string GetPolicyRequirementClass()
     {
@@ -1078,12 +1493,14 @@
             CheckOut = stored.Request.CheckOut;
             Guests = stored.Request.Guests;
             ExtraQuantities = stored.Request.Extras.ToDictionary(item => item.Code, item => item.Quantity, StringComparer.OrdinalIgnoreCase);
+            RestoreExperienceSelection(stored.Request.Experiences);
             Customer = stored.Customer ?? new BonhomiaCustomerInfo();
             AcceptedPolicies = stored.AcceptedPolicies;
             PendingPayPalOrderId = stored.PendingPayPalOrderId;
             PendingPaymentAttemptId = stored.PendingPaymentAttemptId;
             PaymentConfirmationFailed = !string.IsNullOrWhiteSpace(PendingPayPalOrderId);
             EnsureSelectedRoomAvailableForStay();
+            EnsureExperienceDefaults();
             if (string.IsNullOrWhiteSpace(SelectedRoomName))
             {
                 PendingPayPalOrderId = null;
@@ -1128,6 +1545,33 @@
         {
             // Session storage should not block checkout.
         }
+    }
+
+    private void RestoreExperienceSelection(IReadOnlyList<BonhomiaSelectedExperienceRequest>? experiences)
+    {
+        var experience = experiences?.FirstOrDefault(item => item.AdultParticipants + item.ChildParticipants > 0);
+        if (experience is null)
+        {
+            IncludeExperience = false;
+            SelectedExperienceCode = string.Empty;
+            SelectedExperiencePackageCode = string.Empty;
+            SelectedExperienceDate = null;
+            ExperienceAdultParticipants = 0;
+            ExperienceChildParticipants = 0;
+            SelectedExperienceAddOnCodes.Clear();
+            return;
+        }
+
+        IncludeExperience = true;
+        SelectedExperienceCode = experience.Code;
+        SelectedExperiencePackageCode = experience.PackageCode;
+        SelectedExperienceDate = experience.ExperienceDate;
+        ExperienceAdultParticipants = experience.AdultParticipants;
+        ExperienceChildParticipants = experience.ChildParticipants;
+        SelectedExperienceAddOnCodes = experience.AddOns
+          .Where(item => item.Quantity > 0)
+          .Select(item => item.Code)
+          .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task ClearStoredCheckoutAsync()
@@ -1419,6 +1863,7 @@
     {
         Dates,
         Suite,
+        Experiences,
         Extras,
         Payment
     }

@@ -2,6 +2,18 @@
 @namespace OrionERP.Web.Pages
 @addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
 @{
+    if (User.Identity?.IsAuthenticated != true)
+    {
+        var returnUrl = $"{Request.PathBase}{Request.Path}{Request.QueryString}";
+        if (string.IsNullOrWhiteSpace(returnUrl))
+        {
+            returnUrl = "/";
+        }
+
+        Response.Redirect($"/Identity/Account/Login?returnUrl={Uri.EscapeDataString(returnUrl)}");
+        return;
+    }
+
     Layout = "_Layout";
 }
 

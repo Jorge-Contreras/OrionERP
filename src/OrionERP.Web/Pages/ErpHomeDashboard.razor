@@ -18,16 +18,23 @@
 
 <div class="home-dashboard">
     <section class="home-dashboard__masthead" aria-labelledby="home-title">
-        <div>
-            <p class="home-dashboard__eyebrow">Dashboard</p>
-            <h1 id="home-title">Mis ordenes activas</h1>
+        <div class="home-dashboard__masthead-copy">
+            <p class="home-dashboard__eyebrow">Dashboard OrionERP</p>
+            <h1 id="home-title">Centro de operacion</h1>
             <p class="home-dashboard__subtitle">@DashboardSubtitle</p>
         </div>
 
-        <button class="btn btn-primary home-dashboard__refresh" type="button" @onclick="LoadDashboardAsync" disabled="@IsLoading">
-            <span class="oi oi-reload" aria-hidden="true"></span>
-            <span>@(IsLoading ? "Actualizando" : "Actualizar")</span>
-        </button>
+        <div class="home-dashboard__masthead-actions">
+            <div class="home-dashboard__signal" aria-label="RFC seleccionado">
+                <span class="home-dashboard__signal-dot" aria-hidden="true"></span>
+                <span>@CurrentRfc</span>
+            </div>
+
+            <button class="btn btn-primary home-dashboard__refresh" type="button" @onclick="LoadDashboardAsync" disabled="@IsLoading">
+                <span class="oi oi-reload" aria-hidden="true"></span>
+                <span>@(IsLoading ? "Actualizando" : "Actualizar")</span>
+            </button>
+        </div>
     </section>
 
     @if (!string.IsNullOrWhiteSpace(ErrorMessage))
@@ -40,7 +47,7 @@
             <section class="home-panel home-work-orders" aria-labelledby="active-orders-title">
                 <div class="home-panel__header">
                     <div>
-                        <p class="home-panel__kicker">OrdenesTrabajo</p>
+                        <p class="home-panel__kicker">Ordenes de trabajo</p>
                         <h2 id="active-orders-title">Activas para mi</h2>
                     </div>
                     <span class="home-count" aria-label="@($"{WorkOrders.Count} ordenes activas")">@WorkOrders.Count</span>
@@ -272,13 +279,56 @@
                 </div>
             </section>
 
-            <section class="home-brand-panel">
-                <img src="Images/OrionERPMainPage.png"
-                     alt="Visual principal de OrionERP"
-                     class="home-brand-panel__image" />
+            <section class="home-command-panel" aria-labelledby="home-command-title">
                 <img src="Images/OrionERP_Logo.svg"
                      alt="OrionERP"
-                     class="home-brand-panel__logo" />
+                     class="home-command-panel__logo" />
+
+                <p class="home-command-panel__kicker">Pulso de trabajo</p>
+                <h2 id="home-command-title">Lo importante, a la vista.</h2>
+                <p class="home-command-panel__text">
+                    Ordenes, cuentas recurrentes y reconteos quedan priorizados para avanzar sin perder contexto.
+                </p>
+
+                <div class="home-command-panel__metrics" aria-label="Resumen operativo">
+                    <div>
+                        <span>OT activas</span>
+                        <strong>@WorkOrders.Count</strong>
+                    </div>
+                    <div>
+                        <span>CxCR</span>
+                        <strong>@ApOccurrences.Count</strong>
+                    </div>
+                    <div>
+                        <span>Reconteos</span>
+                        <strong>@PendingRecounts.Count</strong>
+                    </div>
+                </div>
+
+                <div class="home-command-panel__actions" aria-label="Accesos directos">
+                    <button type="button" @onclick="OpenOrdenesTrabajo" title="Abrir ordenes de trabajo">
+                        <span class="oi oi-task" aria-hidden="true"></span>
+                        <span>OT</span>
+                    </button>
+                    <button type="button" @onclick="OpenCxcr" title="Abrir CxCR">
+                        <span class="oi oi-clock" aria-hidden="true"></span>
+                        <span>CxCR</span>
+                    </button>
+                    @if (HasConteoRole)
+                    {
+                        <button type="button" @onclick="OpenConteos" title="Abrir conteos">
+                            <span class="oi oi-list" aria-hidden="true"></span>
+                            <span>Conteos</span>
+                        </button>
+                    }
+                    @if (HasCalendarioRole)
+                    {
+                        <button type="button" @onclick="OpenCalendario" title="Abrir calendario de reservaciones">
+                            <span class="oi oi-calendar" aria-hidden="true"></span>
+                            <span>Calendario</span>
+                        </button>
+                    }
+                </div>
             </section>
         </aside>
     </div>
@@ -302,6 +352,7 @@
     private int? CurrentEmployeeId { get; set; }
     private bool IsAuthenticated { get; set; }
     private bool HasConteoRole { get; set; }
+    private bool HasCalendarioRole { get; set; }
     private bool IsLoading { get; set; }
     private string? ErrorMessage { get; set; }
     private string? LoadedRfc { get; set; }
@@ -455,6 +506,11 @@
         var principal = authState.User;
         IsAuthenticated = principal.Identity?.IsAuthenticated == true;
         HasConteoRole = IsAuthenticated && principal.IsInRole("Conteo");
+        HasCalendarioRole = IsAuthenticated
+            && (principal.IsInRole("Administrador")
+                || principal.IsInRole("SatOperator")
+                || principal.IsInRole("OrdenTrabajoOperador")
+                || principal.IsInRole("Arrendadores"));
         CurrentUserName = principal.Identity?.Name?.Trim() switch
         {
             { Length: > 0 } name => name,
@@ -464,6 +520,7 @@
         if (!IsAuthenticated)
         {
             CurrentEmployeeId = null;
+            HasCalendarioRole = false;
             WorkOrders.Clear();
             ApOccurrences.Clear();
             PendingRecounts.Clear();
@@ -482,6 +539,9 @@
 
     private void OpenConteos()
         => Navigation.NavigateTo("/logistica/conteos");
+
+    private void OpenCalendario()
+        => Navigation.NavigateTo("/reservaciones/calendario");
 
     private static string BuildApOccurrenceUrl(RecurrentApOccurrenceListItemDto item)
         => $"/cuentas-por-pagar/recurrentes?occurrenceId={item.Id}";

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using OrionERP.Application.Features.Reservaciones.Experiencias;
 
 namespace OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
@@ -20,6 +21,7 @@ public sealed class ReservacionDetailDto
   public decimal SuiteDiscountPercent { get; set; }
   public decimal SuiteDiscountAmount { get; set; }
   public decimal TotalExtras { get; set; }
+  public decimal TotalExperiences { get; set; }
   public decimal SubTotal { get; set; }
   public decimal Tax { get; set; }
   public decimal Ish { get; set; }
@@ -27,6 +29,7 @@ public sealed class ReservacionDetailDto
   public string? Notes { get; set; }
   public IReadOnlyList<ReservacionSuiteDto> Suites { get; set; } = Array.Empty<ReservacionSuiteDto>();
   public IReadOnlyList<ReservacionExtraDto> Extras { get; set; } = Array.Empty<ReservacionExtraDto>();
+  public IReadOnlyList<ReservacionExperienceDto> Experiences { get; set; } = Array.Empty<ReservacionExperienceDto>();
   public IReadOnlyList<ReservacionPagoDto> Pagos { get; set; } = Array.Empty<ReservacionPagoDto>();
   public IReadOnlyList<ReservacionAttachmentDto> Attachments { get; set; } = Array.Empty<ReservacionAttachmentDto>();
   public AirbnbReservationBreakdownDto? AirbnbBreakdown { get; set; }

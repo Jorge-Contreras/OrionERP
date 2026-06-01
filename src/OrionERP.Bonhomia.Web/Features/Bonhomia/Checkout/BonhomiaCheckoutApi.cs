@@ -109,6 +109,7 @@ public static class BonhomiaCheckoutApi
         Guests = liveQuote.Guests,
         SuiteSubtotal = liveQuote.SuiteSubtotal,
         ExtrasSubtotal = liveQuote.ExtrasSubtotal,
+        ExperiencesSubtotal = liveQuote.ExperiencesSubtotal,
         SubTotal = liveQuote.SubTotal,
         Tax = liveQuote.Tax,
         Ish = liveQuote.Ish,
@@ -314,6 +315,7 @@ public sealed class BonhomiaConfirmPayPalOrderResponse
   public int Guests { get; set; }
   public decimal SuiteSubtotal { get; set; }
   public decimal ExtrasSubtotal { get; set; }
+  public decimal ExperiencesSubtotal { get; set; }
   public decimal SubTotal { get; set; }
   public decimal Tax { get; set; }
   public decimal Ish { get; set; }

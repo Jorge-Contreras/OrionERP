@@ -5,6 +5,7 @@ public sealed record ReservacionTotalsBreakdown(
   decimal SuiteDiscountPercent,
   decimal SuiteDiscountAmount,
   decimal TotalExtras,
+  decimal TotalExperiences,
   decimal SubTotal,
   decimal Tax,
   decimal Ish,

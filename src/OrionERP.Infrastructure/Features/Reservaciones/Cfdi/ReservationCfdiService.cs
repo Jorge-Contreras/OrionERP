@@ -74,18 +74,7 @@ public sealed class ReservationCfdiService : IReservationCfdiService
         ?? throw new InvalidOperationException("No se encontró la reservación seleccionada.");
 
     var suiteSources = await GetSuiteSourcesAsync(reservationId, ct);
-    var extraSources = detail.Extras
-        .Select(extra => new ReservationCfdiExtraSource
-        {
-          Id = extra.Id,
-          CatalogName = extra.Name,
-          Description = extra.Description,
-          Amount = extra.Price,
-          Quantity = extra.Quantity,
-          UnitPrice = extra.UnitPrice,
-          Notes = extra.Notes
-        })
-        .ToArray();
+    var extraSources = BuildExtraSources(detail);
 
     var items = ReservationCfdiLineFactory.CreateItems(
       suiteSources,
@@ -524,18 +513,7 @@ WHEN NOT MATCHED THEN
       }
 
       var suiteSources = await GetSuiteSourcesAsync(request.ReservationId, ct);
-      var extraSources = detail.Extras
-          .Select(extra => new ReservationCfdiExtraSource
-          {
-            Id = extra.Id,
-            CatalogName = extra.Name,
-            Description = extra.Description,
-            Amount = extra.Price,
-            Quantity = extra.Quantity,
-            UnitPrice = extra.UnitPrice,
-            Notes = extra.Notes
-          })
-          .ToArray();
+      var extraSources = BuildExtraSources(detail);
 
       var items = ReservationCfdiLineFactory.CreateItems(
         suiteSources,
@@ -1407,6 +1385,45 @@ ORDER BY
            !string.IsNullOrWhiteSpace(right) &&
            (left.Contains(right, StringComparison.Ordinal) || right.Contains(left, StringComparison.Ordinal));
   }
+
+  private static IReadOnlyList<ReservationCfdiExtraSource> BuildExtraSources(ReservacionDetailDto detail)
+  {
+    var sources = detail.Extras
+      .Select(extra => new ReservationCfdiExtraSource
+      {
+        Id = extra.Id,
+        CatalogName = extra.Name,
+        Description = extra.Description,
+        Amount = extra.Price,
+        Quantity = extra.Quantity,
+        UnitPrice = extra.UnitPrice,
+        Notes = extra.Notes
+      })
+      .ToList();
+
+    sources.AddRange(detail.Experiences.Select(experience =>
+    {
+      var amount = IsTaxIncluded(experience.TaxMode)
+        ? RoundCurrency(experience.Total / 1.16m)
+        : experience.Total;
+
+      return new ReservationCfdiExtraSource
+      {
+        Id = experience.Id,
+        CatalogName = experience.ExperienceName,
+        Description = experience.PackageName,
+        Amount = amount,
+        Quantity = 1m,
+        UnitPrice = amount,
+        Notes = $"{experience.PackageName}; {experience.AdultParticipants} adulto(s); {experience.ChildParticipants} menor(es)"
+      };
+    }));
+
+    return sources;
+  }
+
+  private static bool IsTaxIncluded(string? taxMode)
+    => string.Equals(taxMode, "TaxIncluded", StringComparison.OrdinalIgnoreCase);
 
   private static void ValidateReservationTotals(
       ReservacionDetailDto detail,

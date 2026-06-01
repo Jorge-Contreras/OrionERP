@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using OrionERP.Application.Features.Reservaciones.Experiencias;
 
 namespace OrionERP.Application.Features.Bonhomia.PublicBooking;
 
@@ -9,6 +10,7 @@ public sealed class BonhomiaAvailabilityDto
   public DateOnly EndDateExclusive { get; set; }
   public IReadOnlyList<BonhomiaRoomAvailabilityDto> Rooms { get; set; } = Array.Empty<BonhomiaRoomAvailabilityDto>();
   public IReadOnlyList<BonhomiaExtraOptionDto> Extras { get; set; } = Array.Empty<BonhomiaExtraOptionDto>();
+  public IReadOnlyList<ExperienceCatalogItemDto> Experiences { get; set; } = Array.Empty<ExperienceCatalogItemDto>();
 }
 
 public sealed class BonhomiaRoomAvailabilityDto
@@ -50,9 +52,26 @@ public sealed class BonhomiaQuoteRequest
   public DateOnly CheckOut { get; set; }
   public int Guests { get; set; }
   public IReadOnlyList<BonhomiaSelectedExtraRequest> Extras { get; set; } = Array.Empty<BonhomiaSelectedExtraRequest>();
+  public IReadOnlyList<BonhomiaSelectedExperienceRequest> Experiences { get; set; } = Array.Empty<BonhomiaSelectedExperienceRequest>();
 }
 
 public sealed class BonhomiaSelectedExtraRequest
+{
+  public string Code { get; set; } = string.Empty;
+  public int Quantity { get; set; }
+}
+
+public sealed class BonhomiaSelectedExperienceRequest
+{
+  public string Code { get; set; } = string.Empty;
+  public string PackageCode { get; set; } = string.Empty;
+  public DateOnly ExperienceDate { get; set; }
+  public int AdultParticipants { get; set; }
+  public int ChildParticipants { get; set; }
+  public IReadOnlyList<BonhomiaSelectedExperienceAddOnRequest> AddOns { get; set; } = Array.Empty<BonhomiaSelectedExperienceAddOnRequest>();
+}
+
+public sealed class BonhomiaSelectedExperienceAddOnRequest
 {
   public string Code { get; set; } = string.Empty;
   public int Quantity { get; set; }
@@ -70,6 +89,7 @@ public sealed class BonhomiaQuoteDto
   public DateOnly CheckOut { get; set; }
   public decimal SuiteSubtotal { get; set; }
   public decimal ExtrasSubtotal { get; set; }
+  public decimal ExperiencesSubtotal { get; set; }
   public decimal SubTotal { get; set; }
   public decimal Tax { get; set; }
   public decimal Ish { get; set; }

@@ -1,0 +1,185 @@
+<section class="reservacion-tab-panel reservacion-section-extras">
+    <div class="reservacion-panel-heading">
+        <div>
+            <h2>EXPERIENCIAS</h2>
+            <p>@Page.Experiences.Count experiencias capturadas.</p>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="Page.OpenNewExperienceModal">Agregar</button>
+    </div>
+
+    <div class="table-responsive reservacion-table-wrap">
+        <table class="table table-sm table-bordered mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Experiencia</th>
+                    <th>Fecha</th>
+                    <th>Paquete</th>
+                    <th class="text-end">Adultos</th>
+                    <th class="text-end">Menores</th>
+                    <th>Adicionales</th>
+                    <th class="text-end">Total</th>
+                    <th>Notas</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Page.Experiences.Count == 0)
+                {
+                    <tr><td colspan="9" class="text-center text-muted py-3">No hay experiencias capturadas.</td></tr>
+                }
+                else
+                {
+                    @foreach (var experience in Page.Experiences)
+                    {
+                        <tr>
+                            <td>
+                                <strong>@experience.ExperienceName</strong>
+                                <div class="text-muted small">@experience.ProviderName</div>
+                            </td>
+                            <td>@ReservacionPage.FormatDate(experience.ExperienceDate)</td>
+                            <td>@experience.PackageName</td>
+                            <td class="text-end">@experience.AdultParticipants</td>
+                            <td class="text-end">
+                                @experience.ChildParticipants
+                                @if (experience.RequiresOperationalWarning)
+                                {
+                                    <div class="badge bg-warning text-dark mt-1">Aviso operativo</div>
+                                }
+                            </td>
+                            <td>
+                                @if (experience.AddOns.Count == 0)
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                                else
+                                {
+                                    @string.Join(", ", experience.AddOns.Select(addOn => $"{addOn.AddOnName} x{addOn.Quantity}"))
+                                }
+                            </td>
+                            <td class="text-end">@ReservacionPage.FormatCurrency(experience.Total)</td>
+                            <td>@experience.Notes</td>
+                            <td class="text-end">
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-outline-primary" @onclick="() => Page.EditExperience(experience)">Editar</button>
+                                    <button type="button" class="btn btn-outline-danger" @onclick="() => Page.EliminarExperienceAsync(experience.Id)">Eliminar</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@if (Page.ShowExperienceModal)
+{
+    var preview = Page.GetExperiencePreview();
+    <div class="modal fade show d-block reservacion-modal-backdrop" tabindex="-1" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(Page.IsEditingExperience ? "Editar experiencia" : "Agregar experiencia")</h5>
+                    <button type="button" class="btn-close" @onclick="Page.CancelExperienceEdit"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-7">
+                            <label class="form-label">Experiencia</label>
+                            <select class="form-select" value="@Page.ExperienceCatalogId" @onchange="Page.OnExperienceCatalogChanged">
+                                <option value="">Selecciona una experiencia</option>
+                                @foreach (var experience in Page.ExperienceCatalog)
+                                {
+                                    <option value="@experience.ExperienceId">@experience.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">Fecha</label>
+                            <input class="form-control" type="date" value="@Page.ExperienceDateText" @onchange="Page.OnExperienceDateChanged" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Paquete</label>
+                            <select class="form-select" value="@Page.ExperiencePackageId" @onchange="Page.OnExperiencePackageChanged">
+                                <option value="">Selecciona un paquete</option>
+                                @if (Page.SelectedExperienceCatalog is not null)
+                                {
+                                    @foreach (var package in Page.SelectedExperienceCatalog.Packages)
+                                    {
+                                        <option value="@package.ExperiencePackageId">@package.Name</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Adultos</label>
+                            <input class="form-control" type="number" min="1" step="1" @bind="Page.ExperienceAdultParticipants" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Menores</label>
+                            <input class="form-control" type="number" min="0" step="1" @bind="Page.ExperienceChildParticipants" />
+                        </div>
+
+                        @if (Page.SelectedExperienceCatalog?.AddOns.Count > 0)
+                        {
+                            <div class="col-12">
+                                <label class="form-label">Adicionales</label>
+                                <div class="reservacion-addon-grid">
+                                    @foreach (var addOn in Page.SelectedExperienceCatalog.AddOns)
+                                    {
+                                        <label class="form-check reservacion-addon-option">
+                                            <input class="form-check-input"
+                                                   type="checkbox"
+                                                   checked="@Page.SelectedExperienceAddOnIds.Contains(addOn.ExperienceAddOnId)"
+                                                   @onchange="args => Page.ToggleExperienceAddOn(addOn.ExperienceAddOnId, args)" />
+                                            <span class="form-check-label">
+                                                @addOn.Name - @ReservacionPage.FormatCurrency(addOn.UnitPrice) + IVA
+                                            </span>
+                                        </label>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        <div class="col-12">
+                            <label class="form-label">Notas</label>
+                            <textarea class="form-control" rows="3" @bind="Page.ExperienceNotes"></textarea>
+                        </div>
+
+                        @if (preview is not null)
+                        {
+                            <div class="col-12">
+                                <div class="alert alert-info mb-0">
+                                    Subtotal paquete: @ReservacionPage.FormatCurrency(preview.PackageSubtotal)
+                                    @if (preview.AddOnsTotal > 0)
+                                    {
+                                        <span> | Adicionales: @ReservacionPage.FormatCurrency(preview.AddOnsTotal)</span>
+                                    }
+                                    <strong> | Subtotal antes de IVA: @ReservacionPage.FormatCurrency(preview.Total)</strong>
+                                </div>
+                            </div>
+                        }
+
+                        @if (Page.ExperienceChildParticipants > 0)
+                        {
+                            <div class="col-12">
+                                <div class="alert alert-warning mb-0">
+                                    Aviso operativo: revisar indicaciones del proveedor para menores.
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="Page.CancelExperienceEdit">Cancelar</button>
+                    <button type="button" class="btn btn-primary" @onclick="Page.GuardarExperienceAsync">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    [CascadingParameter] public ReservacionPage Page { get; set; } = default!;
+}

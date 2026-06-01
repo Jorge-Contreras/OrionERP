@@ -4,9 +4,11 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 using OrionERP.Infrastructure.Features.Bonhomia.PublicBooking;
+using OrionERP.Infrastructure.Features.Reservaciones.Experiencias;
 using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Services;
 
@@ -108,6 +110,7 @@ builder.Services.Configure<ReservacionPdfOptions>(options =>
 });
 
 builder.Services.AddScoped<IListaReservacionesService, ListaReservacionesService>();
+builder.Services.AddScoped<IReservacionExperiencesService, ReservacionExperiencesService>();
 builder.Services.AddScoped<IBonhomiaPublicBookingService, BonhomiaPublicBookingService>();
 builder.Services.AddHttpClient<IBonhomiaPayPalClient, BonhomiaPayPalClient>();
 builder.Services.AddSingleton<IBonhomiaQuoteTokenService, BonhomiaQuoteTokenService>();

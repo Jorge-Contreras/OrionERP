@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.DataProtection;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
 namespace OrionERP.UnitTests.Bonhomia;
@@ -23,6 +24,7 @@ public class BonhomiaQuoteCalculatorTests
       },
       CreateRoom(),
       CreateExtras(),
+      Array.Empty<ExperienceCatalogItemDto>(),
       DateTimeOffset.UtcNow.AddMinutes(30),
       "MXN",
       60);
@@ -56,6 +58,7 @@ public class BonhomiaQuoteCalculatorTests
       },
       room,
       CreateExtras(),
+      Array.Empty<ExperienceCatalogItemDto>(),
       DateTimeOffset.UtcNow.AddMinutes(30),
       "MXN",
       60));
@@ -76,11 +79,56 @@ public class BonhomiaQuoteCalculatorTests
       },
       CreateRoom(),
       CreateExtras(),
+      Array.Empty<ExperienceCatalogItemDto>(),
       DateTimeOffset.UtcNow.AddMinutes(30),
       "MXN",
       60));
 
     Assert.Equal("capacity_exceeded", ex.ErrorCode);
+  }
+
+  [Fact]
+  public void BuildQuote_IncludesLuciernagasExperienceAsPreTaxLines()
+  {
+    var room = CreateRoom();
+    room.Days =
+    [
+      new BonhomiaDayAvailabilityDto { Date = new DateOnly(2026, 6, 15), IsAvailable = true, StateCode = "available", Price = 1250m }
+    ];
+
+    var quote = BonhomiaQuoteCalculator.BuildQuote(
+      new BonhomiaQuoteRequest
+      {
+        RoomName = "Suite Paris",
+        CheckIn = new DateOnly(2026, 6, 15),
+        CheckOut = new DateOnly(2026, 6, 16),
+        Guests = 2,
+        Experiences =
+        [
+          new BonhomiaSelectedExperienceRequest
+          {
+            Code = "luciernagas-calpulalpan",
+            PackageCode = "clasico",
+            ExperienceDate = new DateOnly(2026, 6, 15),
+            AdultParticipants = 2,
+            AddOns =
+            [
+              new BonhomiaSelectedExperienceAddOnRequest { Code = "tecoaque", Quantity = 1 }
+            ]
+          }
+        ]
+      },
+      room,
+      CreateExtras(),
+      CreateExperiences(),
+      DateTimeOffset.UtcNow.AddMinutes(30),
+      "MXN",
+      60);
+
+    Assert.Equal(2400m, quote.ExperiencesSubtotal);
+    Assert.Contains(quote.Lines, line => line.Type == "experience" && line.Total == 1800m);
+    Assert.Contains(quote.Lines, line => line.Type == "experience-addon" && line.Total == 600m);
+    Assert.Equal(4234m, quote.Total);
   }
 
   [Fact]
@@ -135,6 +183,7 @@ public class BonhomiaQuoteCalculatorTests
       },
       CreateRoom(),
       CreateExtras(),
+      Array.Empty<ExperienceCatalogItemDto>(),
       DateTimeOffset.UtcNow.AddMinutes(30),
       "MXN",
       60);
@@ -168,6 +217,53 @@ public class BonhomiaQuoteCalculatorTests
         CatalogName = "CHECK-IN ANTICIPADO",
         UnitPrice = 200m,
         MaxQuantity = 1
+      }
+    ];
+
+  private static IReadOnlyList<ExperienceCatalogItemDto> CreateExperiences()
+    =>
+    [
+      new ExperienceCatalogItemDto
+      {
+        ExperienceId = 1,
+        Code = "luciernagas-calpulalpan",
+        Name = "Avistamiento de Luciernagas en Calpulalpan",
+        ProviderName = "Avistamiento las 4E",
+        SeasonStart = new DateOnly(2026, 6, 15),
+        SeasonEnd = new DateOnly(2026, 8, 15),
+        MinimumParticipants = 1,
+        IsPublic = true,
+        IsActive = true,
+        Packages =
+        [
+          new ExperiencePackageOptionDto
+          {
+            ExperiencePackageId = 1,
+            ExperienceId = 1,
+            Code = "clasico",
+            Name = "Experiencia Clasica",
+            ProviderPackageName = "Paquete Clasico",
+            UnitPrice = 900m,
+            TaxMode = ExperienceTaxModes.TaxableExclusive,
+            IsPublic = true,
+            IsActive = true
+          }
+        ],
+        AddOns =
+        [
+          new ExperienceAddOnOptionDto
+          {
+            ExperienceAddOnId = 1,
+            ExperienceId = 1,
+            Code = "tecoaque",
+            Name = "Tecoaque",
+            UnitPrice = 300m,
+            AppliesPerParticipant = true,
+            TaxMode = ExperienceTaxModes.TaxableExclusive,
+            IsPublic = true,
+            IsActive = true
+          }
+        ]
       }
     ];
 }

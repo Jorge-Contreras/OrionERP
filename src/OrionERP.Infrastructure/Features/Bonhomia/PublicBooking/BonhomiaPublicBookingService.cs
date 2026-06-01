@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Application.Features.Reservaciones.OpenClaw;
 
@@ -15,18 +16,21 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
 {
   private readonly string _connectionString;
   private readonly IListaReservacionesService _reservacionesService;
+  private readonly IReservacionExperiencesService _experiencesService;
   private readonly BonhomiaCheckoutOptions _options;
   private readonly ILogger<BonhomiaPublicBookingService> _logger;
 
   public BonhomiaPublicBookingService(
     IConfiguration configuration,
     IListaReservacionesService reservacionesService,
+    IReservacionExperiencesService experiencesService,
     IOptions<BonhomiaCheckoutOptions> options,
     ILogger<BonhomiaPublicBookingService> logger)
   {
     _connectionString = configuration.GetConnectionString("OrionDb")
       ?? throw new InvalidOperationException("Missing ConnectionStrings:OrionDb.");
     _reservacionesService = reservacionesService;
+    _experiencesService = experiencesService;
     _options = options.Value;
     _logger = logger;
   }
@@ -51,6 +55,7 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
       ct);
 
     var extras = await GetPublicExtraOptionsAsync(ct);
+    var experiences = await _experiencesService.GetPublicExperienceCatalogAsync(startDate, endDateExclusive, ct);
     var cellsByRoom = timeline.DayCells
       .GroupBy(cell => cell.RoomId)
       .ToDictionary(group => group.Key, group => group.ToList());
@@ -95,7 +100,8 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
       StartDate = startDate,
       EndDateExclusive = endDateExclusive,
       Rooms = rooms,
-      Extras = extras
+      Extras = extras,
+      Experiences = experiences
     };
   }
 
@@ -116,6 +122,7 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
       request,
       room,
       availability.Extras,
+      availability.Experiences,
       DateTimeOffset.UtcNow.AddMinutes(Math.Max(_options.QuoteTokenLifetimeMinutes, 5)),
       _options.Currency,
       Math.Max(_options.MaxStayNights, 1));
@@ -213,13 +220,16 @@ ORDER BY rc.ROOM_DATE;
       ValidateLockedCalendarRows(quote, calendarRows);
 
       var extras = await ResolveSelectedExtrasAsync(conn, tx, quote.Request.Extras, ct);
+      var experiences = await ResolveSelectedExperiencesAsync(quote, ct);
       var suiteLineTotals = calendarRows.Select(row => row.Precio > 0m ? row.Precio : room.BasePrice).ToArray();
       var extraLineTotals = extras.Select(extra => extra.UnitPrice * extra.Quantity).ToArray();
+      var experienceLineTotals = experiences.SelectMany(experience => BuildExperienceChargeLines(experience.Pricing)).ToArray();
       var totals = ReservacionTotalsCalculator.Calculate(
         quote.CheckIn.ToDateTime(TimeOnly.MinValue),
         quote.CheckOut.ToDateTime(TimeOnly.MinValue),
         suiteLineTotals,
         extraLineTotals,
+        experienceLineTotals,
         totalPagado: 0m);
 
       if (decimal.Abs(totals.TotalReservacion - quote.Total) > 0.01m)
@@ -300,6 +310,101 @@ VALUES
             }).ToArray(),
             tx,
             cancellationToken: ct));
+      }
+
+      if (experiences.Count > 0)
+      {
+        foreach (var experience in experiences)
+        {
+          var reservationExperienceId = await conn.ExecuteScalarAsync<int>(
+            new CommandDefinition(
+              """
+INSERT INTO dbo.Reservation_Experience
+(
+    ReservationID,
+    ExperienceID,
+    ExperiencePackageID,
+    ExperienceDate,
+    ExperienceNameSnapshot,
+    PackageNameSnapshot,
+    ProviderNameSnapshot,
+    PackageIncludesSnapshot,
+    PayingParticipants,
+    NonPayingParticipants,
+    UnitPriceSnapshot,
+    PackageSubtotalSnapshot,
+    AddOnsTotalSnapshot,
+    TotalSnapshot,
+    TaxMode,
+    Notes
+)
+VALUES
+(
+    @ReservationId,
+    @ExperienceId,
+    @ExperiencePackageId,
+    @ExperienceDate,
+    @ExperienceName,
+    @PackageName,
+    @ProviderName,
+    @PackageIncludes,
+    @AdultParticipants,
+    @ChildParticipants,
+    @UnitPrice,
+    @PackageSubtotal,
+    @AddOnsTotal,
+    @Total,
+    @TaxMode,
+    @Notes
+);
+SELECT CAST(SCOPE_IDENTITY() AS int);
+""",
+              new
+              {
+                ReservationId = reservationId,
+                experience.Experience.ExperienceId,
+                experience.Package.ExperiencePackageId,
+                ExperienceDate = experience.Request.ExperienceDate.ToDateTime(TimeOnly.MinValue),
+                ExperienceName = experience.Experience.Name,
+                PackageName = experience.Package.Name,
+                ProviderName = experience.Experience.ProviderName,
+                PackageIncludes = experience.Package.Includes,
+                AdultParticipants = experience.Request.AdultParticipants,
+                ChildParticipants = experience.Request.ChildParticipants,
+                UnitPrice = experience.Pricing.UnitPrice,
+                PackageSubtotal = experience.Pricing.PackageSubtotal,
+                AddOnsTotal = experience.Pricing.AddOnsTotal,
+                Total = experience.Pricing.Total,
+                TaxMode = experience.Pricing.TaxMode,
+                Notes = BuildExperienceNotes(experience)
+              },
+              tx,
+              cancellationToken: ct));
+
+          if (experience.Pricing.AddOns.Count > 0)
+          {
+            await conn.ExecuteAsync(
+              new CommandDefinition(
+                """
+INSERT INTO dbo.Reservation_ExperienceAddOn
+(ReservationExperienceID, ExperienceAddOnID, AddOnNameSnapshot, Quantity, UnitPriceSnapshot, TotalSnapshot, TaxMode)
+VALUES
+(@ReservationExperienceId, @ExperienceAddOnId, @AddOnName, @Quantity, @UnitPrice, @Total, @TaxMode);
+""",
+                experience.Pricing.AddOns.Select(addOn => new
+                {
+                  ReservationExperienceId = reservationExperienceId,
+                  addOn.AddOn.ExperienceAddOnId,
+                  AddOnName = addOn.AddOn.Name,
+                  addOn.Quantity,
+                  addOn.UnitPrice,
+                  addOn.Total,
+                  addOn.TaxMode
+                }).ToArray(),
+                tx,
+                cancellationToken: ct));
+          }
+        }
       }
 
       var transaccionId = await CreatePaymentTransactionAsync(conn, tx, reservationId, cliente.Nombre, totals.TotalReservacion, payment, ct);
@@ -475,6 +580,99 @@ WHERE e.IsActive = 1;
 
     return resolved;
   }
+
+  private async Task<IReadOnlyList<ResolvedExperienceLine>> ResolveSelectedExperiencesAsync(
+    BonhomiaQuoteDto quote,
+    CancellationToken ct)
+  {
+    if (quote.Request.Experiences.Count == 0)
+    {
+      return Array.Empty<ResolvedExperienceLine>();
+    }
+
+    var catalog = await _experiencesService.GetPublicExperienceCatalogAsync(quote.CheckIn, quote.CheckOut, ct);
+    var experiencesByCode = catalog.ToDictionary(item => item.Code, StringComparer.OrdinalIgnoreCase);
+    var resolved = new List<ResolvedExperienceLine>();
+
+    foreach (var selected in quote.Request.Experiences.Where(item => item.AdultParticipants + item.ChildParticipants > 0))
+    {
+      if (!experiencesByCode.TryGetValue(selected.Code, out var experience))
+      {
+        throw new BonhomiaPublicBookingException("unknown_experience", "Una de las experiencias seleccionadas ya no esta disponible.");
+      }
+
+      var package = experience.Packages.FirstOrDefault(item => string.Equals(item.Code, selected.PackageCode, StringComparison.OrdinalIgnoreCase));
+      if (package is null)
+      {
+        throw new BonhomiaPublicBookingException("unknown_experience_package", $"{experience.Name} ya no tiene disponible el paquete seleccionado.");
+      }
+
+      var addOnsByCode = experience.AddOns.ToDictionary(item => item.Code, StringComparer.OrdinalIgnoreCase);
+      var addOns = new List<ExperiencePricingAddOnInput>();
+      var normalizedAddOns = new List<BonhomiaSelectedExperienceAddOnRequest>();
+
+      foreach (var addOnRequest in selected.AddOns.Where(item => item.Quantity > 0))
+      {
+        if (!addOnsByCode.TryGetValue(addOnRequest.Code, out var addOn))
+        {
+          throw new BonhomiaPublicBookingException("unknown_experience_addon", $"Un adicional de {experience.Name} ya no esta disponible.");
+        }
+
+        addOns.Add(new ExperiencePricingAddOnInput
+        {
+          AddOn = addOn,
+          Quantity = addOnRequest.Quantity
+        });
+        normalizedAddOns.Add(new BonhomiaSelectedExperienceAddOnRequest
+        {
+          Code = addOn.Code,
+          Quantity = addOnRequest.Quantity
+        });
+      }
+
+      var normalizedRequest = new BonhomiaSelectedExperienceRequest
+      {
+        Code = experience.Code,
+        PackageCode = package.Code,
+        ExperienceDate = selected.ExperienceDate,
+        AdultParticipants = selected.AdultParticipants,
+        ChildParticipants = selected.ChildParticipants,
+        AddOns = normalizedAddOns
+      };
+
+      var pricing = ExperiencePricingCalculator.Calculate(new ExperiencePricingInput
+      {
+        ExperienceDate = normalizedRequest.ExperienceDate,
+        Experience = experience,
+        Package = package,
+        AdultParticipants = normalizedRequest.AdultParticipants,
+        ChildParticipants = normalizedRequest.ChildParticipants,
+        AddOns = addOns
+      });
+
+      resolved.Add(new ResolvedExperienceLine(experience, package, normalizedRequest, pricing));
+    }
+
+    return resolved;
+  }
+
+  private static IEnumerable<ReservationChargeLine> BuildExperienceChargeLines(ExperiencePricingResult pricing)
+  {
+    yield return new ReservationChargeLine(pricing.PackageSubtotal, MapTaxMode(pricing.TaxMode));
+
+    foreach (var addOn in pricing.AddOns)
+    {
+      yield return new ReservationChargeLine(addOn.Total, MapTaxMode(addOn.TaxMode));
+    }
+  }
+
+  private static ReservationChargeTaxMode MapTaxMode(string? value)
+    => value switch
+    {
+      ExperienceTaxModes.TaxIncluded => ReservationChargeTaxMode.TaxIncluded,
+      ExperienceTaxModes.NonTaxable => ReservationChargeTaxMode.NonTaxable,
+      _ => ReservationChargeTaxMode.TaxableExclusive
+    };
 
   private async Task<ClienteRow> ResolveOrCreateCustomerAsync(
     SqlConnection conn,
@@ -719,6 +917,11 @@ ORDER BY r.ID DESC;
       .Where(line => string.Equals(line.Type, "extra", StringComparison.OrdinalIgnoreCase))
       .Select(line => $"{line.Description} x{line.Quantity}")
       .ToArray();
+    var experiences = quote.Lines
+      .Where(line => string.Equals(line.Type, "experience", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(line.Type, "experience-addon", StringComparison.OrdinalIgnoreCase))
+      .Select(line => $"{line.Description} x{line.Quantity}")
+      .ToArray();
 
     return string.Join(
       Environment.NewLine,
@@ -727,7 +930,8 @@ ORDER BY r.ID DESC;
       $"Contacto: {BuildContactNote(customer)}",
       $"PayPal Order: {payment.OrderId}",
       $"PayPal Capture: {payment.CaptureId}",
-      extras.Length == 0 ? "Extras: ninguno" : $"Extras: {string.Join(", ", extras)}");
+      extras.Length == 0 ? "Extras: ninguno" : $"Extras: {string.Join(", ", extras)}",
+      experiences.Length == 0 ? "Experiencias: ninguna" : $"Experiencias: {string.Join(", ", experiences)}");
   }
 
   private static string BuildContactNote(BonhomiaCustomerInfo customer)
@@ -742,7 +946,36 @@ ORDER BY r.ID DESC;
       ? extra.DisplayName
       : $"{extra.DisplayName} x{extra.Quantity}";
 
+  private static string BuildExperienceNotes(ResolvedExperienceLine experience)
+  {
+    var parts = new List<string>
+    {
+      $"{experience.Experience.Name} - {experience.Package.Name}",
+      $"Fecha: {experience.Request.ExperienceDate:yyyy-MM-dd}",
+      $"Adultos: {experience.Request.AdultParticipants}",
+      $"Menores: {experience.Request.ChildParticipants}"
+    };
+
+    if (experience.Pricing.RequiresOperationalWarning)
+    {
+      parts.Add("Aviso operativo: revisar indicaciones del proveedor para menores.");
+    }
+
+    if (experience.Pricing.AddOns.Count > 0)
+    {
+      parts.Add($"Adicionales: {string.Join(", ", experience.Pricing.AddOns.Select(addOn => $"{addOn.AddOn.Name} x{addOn.Quantity}"))}");
+    }
+
+    return string.Join(" | ", parts);
+  }
+
   private sealed record ResolvedExtraLine(int ExtraId, string DisplayName, string? Description, decimal UnitPrice, int Quantity);
+
+  private sealed record ResolvedExperienceLine(
+    ExperienceCatalogItemDto Experience,
+    ExperiencePackageOptionDto Package,
+    BonhomiaSelectedExperienceRequest Request,
+    ExperiencePricingResult Pricing);
 
   private sealed class ClienteRow
   {

@@ -237,7 +237,7 @@
             "oi-document",
             new List<NavEntryDefinition>
             {
-                new("/cfdi/register", "Registrar RFC", "Alta rapida para nuevos emisores o receptores.", "oi-plus", "Registrar RFC", NavLinkMatch.Prefix, true, "Alta", "rfc", "registro", "cliente", "proveedor"),
+                new("/cfdi/register", "Registrar RFC", "Alta rapida para nuevos emisores o receptores.", "oi-plus", "Registrar RFC", NavLinkMatch.Prefix, false, "Alta", "rfc", "registro", "cliente", "proveedor"),
                 new("/cfdi/declaracion-previa", "CFDIs", "Revision previa y amarre antes de contabilizar.", "oi-document", "Declaracion previa", NavLinkMatch.Prefix, true, "Fiscal", "cfdi", "xml", "facturas", "declaracion"),
                 new("/cfdi/descarga-masiva", "Descarga masiva SAT", "Trae XML directo del SAT para conciliacion y control.", "oi-cloud-download", "Descarga masiva SAT", NavLinkMatch.Prefix, true, "SAT", "sat", "descarga", "xml", "masiva"),
                 new("/cfdi/cargar-XML-SAT", "Cargar XML", "Incorpora archivos manuales o recibidos por terceros.", "oi-cloud-upload", "Cargar XML", NavLinkMatch.Prefix, false, "XML", "cargar", "subir", "xml")
@@ -262,7 +262,7 @@
             new List<NavEntryDefinition>
             {
                 new("/reservaciones/lista", "Reserv", "Gestion de bookings, cambios y seguimiento operativo.", "oi-calendar", "Reservaciones", NavLinkMatch.Prefix, true, "Agenda", "reservaciones", "booking", "agenda"),
-                new("/reservaciones/calendario", "Calendario", "Vista visual para planeacion, huecos y conflictos.", "oi-grid-three-up", "Calendario de reservaciones", NavLinkMatch.Prefix, false, "Vista", "calendario", "ocupacion", "programacion"),
+                new("/reservaciones/calendario", "Calendario", "Vista visual para planeacion, huecos y conflictos.", "oi-grid-three-up", "Calendario de reservaciones", NavLinkMatch.Prefix, true, "Vista", "calendario", "ocupacion", "programacion"),
                 new("/arrendadores", "Arrendadores", "Estado de cuenta por propiedad y pagos contabilizados.", "oi-spreadsheet", "Arrendadores", NavLinkMatch.Prefix, false, "Rentas", "arrendadores", "estado de cuenta", "bonhomia", "propietarios")
             }),
         new(

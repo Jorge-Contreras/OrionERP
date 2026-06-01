@@ -614,6 +614,7 @@
 .bonhomia-customer-form label {
   display: grid;
   gap: 0.35rem;
+  min-width: 0;
   margin: 0;
   color: var(--bonhomia-muted);
   font-size: 0.74rem;
@@ -622,9 +623,11 @@
 }
 
 .bonhomia-date-row input,
+.bonhomia-date-row select,
 .bonhomia-customer-form input,
 .bonhomia-extra-selector select {
   width: 100%;
+  min-width: 0;
   min-height: 2.95rem;
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--bonhomia-border);
@@ -926,6 +929,328 @@ button.bonhomia-day {
 .bonhomia-extra-selector small {
   color: var(--bonhomia-clay);
   font-weight: 900;
+}
+
+.bonhomia-experience-card {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(15, 76, 92, 0.16);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 42px rgba(34, 42, 38, 0.08);
+}
+
+.bonhomia-experience-card--active {
+  border-color: rgba(15, 76, 92, 0.34);
+  box-shadow: 0 22px 54px rgba(15, 76, 92, 0.13);
+}
+
+.bonhomia-experience-toggle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: linear-gradient(180deg, #fff, #f8fbf5);
+  cursor: pointer;
+}
+
+.bonhomia-experience-toggle__copy {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.bonhomia-experience-toggle__copy > span,
+.bonhomia-experience-toggle__copy small {
+  color: var(--bonhomia-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.bonhomia-experience-toggle__copy strong {
+  color: var(--bonhomia-ink);
+  font-size: 1.1rem;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.bonhomia-switch {
+  position: relative;
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 3.55rem;
+  height: 2rem;
+}
+
+.bonhomia-switch input {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.bonhomia-switch__track {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 1px solid rgba(15, 76, 92, 0.18);
+  border-radius: 999px;
+  background: #ded8ca;
+  box-shadow: inset 0 1px 2px rgba(23, 38, 34, 0.12);
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.bonhomia-switch__track::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0.22rem;
+  width: 1.46rem;
+  height: 1.46rem;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 5px 14px rgba(23, 38, 34, 0.24);
+  transform: translateY(-50%);
+  transition: transform 0.18s ease;
+}
+
+.bonhomia-switch input:checked + .bonhomia-switch__track {
+  border-color: var(--bonhomia-teal);
+  background: var(--bonhomia-teal);
+  box-shadow: 0 8px 18px rgba(15, 76, 92, 0.22);
+}
+
+.bonhomia-switch input:checked + .bonhomia-switch__track::after {
+  transform: translate(1.52rem, -50%);
+}
+
+.bonhomia-switch input:focus-visible + .bonhomia-switch__track {
+  outline: 3px solid rgba(201, 157, 74, 0.42);
+  outline-offset: 3px;
+}
+
+.bonhomia-switch input:disabled {
+  cursor: default;
+}
+
+.bonhomia-switch input:disabled + .bonhomia-switch__track {
+  opacity: 0.52;
+}
+
+.bonhomia-switch--small {
+  width: 3.05rem;
+  height: 1.72rem;
+}
+
+.bonhomia-switch--small .bonhomia-switch__track::after {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.bonhomia-switch--small input:checked + .bonhomia-switch__track::after {
+  transform: translate(1.32rem, -50%);
+}
+
+.bonhomia-experience-card__body {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border-top: 1px solid var(--bonhomia-border);
+}
+
+.bonhomia-experience-provider,
+.bonhomia-experience-state {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.bonhomia-experience-provider > i {
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  background: rgba(201, 157, 74, 0.16);
+  color: var(--bonhomia-clay);
+  font-size: 1.25rem;
+}
+
+.bonhomia-experience-state {
+  grid-template-columns: 1fr;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--bonhomia-border);
+  border-bottom: 1px solid var(--bonhomia-border);
+}
+
+.bonhomia-experience-section {
+  border-top: 1px solid var(--bonhomia-border);
+}
+
+.bonhomia-experience-section:first-of-type {
+  border-top: 0;
+}
+
+.bonhomia-experience-section summary {
+  display: grid;
+  grid-template-columns: 2.15rem minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.9rem 0;
+  color: var(--bonhomia-ink);
+  cursor: pointer;
+  list-style: none;
+}
+
+.bonhomia-experience-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.bonhomia-experience-section summary > span:not(.bonhomia-experience-section__index) {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.bonhomia-experience-section summary i {
+  color: var(--bonhomia-muted);
+  transition: transform 0.18s ease;
+}
+
+.bonhomia-experience-section[open] summary i {
+  transform: rotate(180deg);
+}
+
+.bonhomia-experience-section__index {
+  display: inline-grid;
+  place-items: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  border-radius: 50%;
+  background: rgba(15, 76, 92, 0.1);
+  color: var(--bonhomia-teal-dark);
+  font-weight: 950;
+}
+
+.bonhomia-experience-section__content {
+  padding-bottom: 1rem;
+}
+
+.bonhomia-experience-card .bonhomia-date-row {
+  grid-template-columns:
+    minmax(8.5rem, 0.8fr)
+    minmax(18rem, 2fr)
+    minmax(6.5rem, 0.55fr)
+    minmax(6.5rem, 0.55fr);
+  align-items: end;
+}
+
+.bonhomia-experience-addons {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.bonhomia-experience-addon {
+  display: grid;
+  grid-template-columns: 2.6rem minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--bonhomia-border);
+  color: var(--bonhomia-ink);
+  cursor: pointer;
+}
+
+.bonhomia-experience-addon:first-child {
+  border-top: 0;
+}
+
+.bonhomia-experience-addon > i {
+  display: inline-grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  background: rgba(15, 76, 92, 0.1);
+  color: var(--bonhomia-teal);
+  font-size: 1.2rem;
+}
+
+.bonhomia-experience-addon--selected > i {
+  background: rgba(15, 76, 92, 0.16);
+  color: var(--bonhomia-teal-dark);
+}
+
+.bonhomia-experience-addon:has(input:disabled) {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.bonhomia-experience-addon__copy {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.bonhomia-experience-card__body strong,
+.bonhomia-experience-card__body span,
+.bonhomia-experience-card__body small {
+  display: block;
+}
+
+.bonhomia-experience-card__body span {
+  color: var(--bonhomia-muted);
+  line-height: 1.45;
+}
+
+.bonhomia-experience-card__body small {
+  color: var(--bonhomia-clay);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.bonhomia-experience-total {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.9rem 0 0;
+  border-top: 1px solid var(--bonhomia-border);
+}
+
+.bonhomia-experience-total div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: baseline;
+}
+
+.bonhomia-experience-total span {
+  color: var(--bonhomia-muted);
+  font-weight: 800;
+}
+
+.bonhomia-experience-total strong {
+  color: var(--bonhomia-ink);
+  font-weight: 950;
+}
+
+.bonhomia-experience-total__grand {
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(15, 76, 92, 0.12);
+}
+
+.bonhomia-experience-total__grand strong {
+  color: var(--bonhomia-teal-dark);
+  font-size: 1.12rem;
 }
 
 .bonhomia-quote-button {
@@ -1734,6 +2059,10 @@ button.bonhomia-day {
     padding-bottom: 0.25rem;
   }
 
+  .bonhomia-experience-card .bonhomia-date-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .bonhomia-intro__media img,
   .bonhomia-intro__media img:first-child,
   .bonhomia-gallery__grid img,
@@ -1813,6 +2142,10 @@ button.bonhomia-day {
   .bonhomia-confirmation__numbers,
   .bonhomia-confirmation__grid,
   .bonhomia-wizard__steps {
+    grid-template-columns: 1fr;
+  }
+
+  .bonhomia-experience-card .bonhomia-date-row {
     grid-template-columns: 1fr;
   }
 

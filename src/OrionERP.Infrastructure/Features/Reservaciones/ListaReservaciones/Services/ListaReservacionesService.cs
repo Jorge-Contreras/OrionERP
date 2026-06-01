@@ -11,6 +11,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OrionERP.Application.Features.Reservaciones.Cfdi;
+using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.Extras;
 using OrionERP.Application.Features.Reservaciones.OpenClaw;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
@@ -869,6 +870,82 @@ FROM dbo.Reservation_Extra re
 WHERE re.ReservationID = @ReservationId
 ORDER BY re.ReservationExtraID;
 
+IF OBJECT_ID('dbo.Reservation_Experience', 'U') IS NOT NULL
+BEGIN
+    SELECT
+        re.ReservationExperienceID AS Id,
+        re.ReservationID AS ReservationId,
+        re.ExperienceID AS ExperienceId,
+        re.ExperiencePackageID AS ExperiencePackageId,
+        CAST(re.ExperienceDate AS datetime2) AS ExperienceDate,
+        ISNULL(re.ExperienceNameSnapshot, '') AS ExperienceName,
+        ISNULL(re.PackageNameSnapshot, '') AS PackageName,
+        ISNULL(re.ProviderNameSnapshot, '') AS ProviderName,
+        re.PackageIncludesSnapshot AS PackageIncludes,
+        re.PayingParticipants AS AdultParticipants,
+        re.NonPayingParticipants AS ChildParticipants,
+        CAST(ISNULL(re.UnitPriceSnapshot, 0) AS decimal(18,2)) AS UnitPrice,
+        CAST(ISNULL(re.PackageSubtotalSnapshot, 0) AS decimal(18,2)) AS PackageSubtotal,
+        CAST(ISNULL(re.AddOnsTotalSnapshot, 0) AS decimal(18,2)) AS AddOnsTotal,
+        CAST(ISNULL(re.TotalSnapshot, 0) AS decimal(18,2)) AS Total,
+        ISNULL(re.TaxMode, 'TaxableExclusive') AS TaxMode,
+        re.Notes
+    FROM dbo.Reservation_Experience re
+    WHERE re.ReservationID = @ReservationId
+    ORDER BY re.ExperienceDate, re.ReservationExperienceID;
+END
+ELSE
+BEGIN
+    SELECT TOP (0)
+        CAST(NULL AS int) AS Id,
+        CAST(NULL AS int) AS ReservationId,
+        CAST(NULL AS int) AS ExperienceId,
+        CAST(NULL AS int) AS ExperiencePackageId,
+        CAST(NULL AS datetime2) AS ExperienceDate,
+        CAST(NULL AS nvarchar(200)) AS ExperienceName,
+        CAST(NULL AS nvarchar(160)) AS PackageName,
+        CAST(NULL AS nvarchar(200)) AS ProviderName,
+        CAST(NULL AS nvarchar(2000)) AS PackageIncludes,
+        CAST(NULL AS int) AS AdultParticipants,
+        CAST(NULL AS int) AS ChildParticipants,
+        CAST(NULL AS decimal(18,2)) AS UnitPrice,
+        CAST(NULL AS decimal(18,2)) AS PackageSubtotal,
+        CAST(NULL AS decimal(18,2)) AS AddOnsTotal,
+        CAST(NULL AS decimal(18,2)) AS Total,
+        CAST(NULL AS nvarchar(40)) AS TaxMode,
+        CAST(NULL AS nvarchar(1000)) AS Notes;
+END;
+
+IF OBJECT_ID('dbo.Reservation_ExperienceAddOn', 'U') IS NOT NULL
+BEGIN
+    SELECT
+        rea.ReservationExperienceAddOnID AS Id,
+        rea.ReservationExperienceID,
+        rea.ExperienceAddOnID,
+        ISNULL(rea.AddOnNameSnapshot, '') AS AddOnName,
+        rea.Quantity,
+        CAST(ISNULL(rea.UnitPriceSnapshot, 0) AS decimal(18,2)) AS UnitPrice,
+        CAST(ISNULL(rea.TotalSnapshot, 0) AS decimal(18,2)) AS Total,
+        ISNULL(rea.TaxMode, 'TaxableExclusive') AS TaxMode
+    FROM dbo.Reservation_ExperienceAddOn rea
+    INNER JOIN dbo.Reservation_Experience re
+        ON re.ReservationExperienceID = rea.ReservationExperienceID
+    WHERE re.ReservationID = @ReservationId
+    ORDER BY rea.ReservationExperienceAddOnID;
+END
+ELSE
+BEGIN
+    SELECT TOP (0)
+        CAST(NULL AS int) AS Id,
+        CAST(NULL AS int) AS ReservationExperienceID,
+        CAST(NULL AS int) AS ExperienceAddOnID,
+        CAST(NULL AS nvarchar(160)) AS AddOnName,
+        CAST(NULL AS int) AS Quantity,
+        CAST(NULL AS decimal(18,2)) AS UnitPrice,
+        CAST(NULL AS decimal(18,2)) AS Total,
+        CAST(NULL AS nvarchar(40)) AS TaxMode;
+END;
+
 SELECT
     rt.TransaccionID AS TransaccionId,
     t.Fecha AS Fecha,
@@ -952,13 +1029,27 @@ END;";
 
     var suites = (await multi.ReadAsync<ReservacionSuiteDto>()).AsList();
     var extras = (await multi.ReadAsync<ReservacionExtraDto>()).AsList();
+    var experiences = (await multi.ReadAsync<ReservacionExperienceDto>()).AsList();
+    var experienceAddOns = (await multi.ReadAsync<ReservacionExperienceAddOnDto>()).AsList();
     var pagos = (await multi.ReadAsync<ReservacionPagoDto>()).AsList();
     var attachments = (await multi.ReadAsync<ReservacionAttachmentDto>()).AsList();
     var airbnbBreakdown = await multi.ReadFirstOrDefaultAsync<AirbnbReservationBreakdownDto>();
 
-    ApplyCalculatedTotals(detail, suites, extras, pagos);
+    var addOnsByExperience = experienceAddOns
+      .GroupBy(item => item.ReservationExperienceId)
+      .ToDictionary(group => group.Key, group => (IReadOnlyList<ReservacionExperienceAddOnDto>)group.ToArray());
+
+    foreach (var experience in experiences)
+    {
+      experience.AddOns = addOnsByExperience.TryGetValue(experience.Id, out var addOns)
+        ? addOns
+        : Array.Empty<ReservacionExperienceAddOnDto>();
+    }
+
+    ApplyCalculatedTotals(detail, suites, extras, experiences, pagos);
     detail.Suites = suites;
     detail.Extras = extras;
+    detail.Experiences = experiences;
     detail.Pagos = pagos;
     detail.Attachments = attachments;
     detail.AirbnbBreakdown = airbnbBreakdown;
@@ -2291,6 +2382,7 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
       ReservacionDetailDto detail,
       IReadOnlyList<ReservacionSuiteDto> suites,
       IReadOnlyList<ReservacionExtraDto> extras,
+      IReadOnlyList<ReservacionExperienceDto> experiences,
       IReadOnlyList<ReservacionPagoDto> pagos)
   {
     var totals = ReservacionTotalsCalculator.Calculate(
@@ -2298,6 +2390,7 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
       detail.CheckOut,
       suites.Select(s => s.Precio),
       extras.Select(e => e.Price),
+      experiences.Select(e => new ReservationChargeLine(e.Total, MapTaxMode(e.TaxMode))),
       pagos.Sum(p => p.Monto),
       detail.SuiteDiscountPercent);
 
@@ -2305,6 +2398,7 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
     detail.SuiteDiscountPercent = totals.SuiteDiscountPercent;
     detail.SuiteDiscountAmount = totals.SuiteDiscountAmount;
     detail.TotalExtras = totals.TotalExtras;
+    detail.TotalExperiences = totals.TotalExperiences;
     detail.SubTotal = totals.SubTotal;
     detail.Tax = totals.Tax;
     detail.Ish = totals.Ish;
@@ -2313,6 +2407,14 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
     detail.PorPagar = totals.PorPagar;
     detail.NumNoches = totals.NumNoches;
   }
+
+  private static ReservationChargeTaxMode MapTaxMode(string? value)
+    => value switch
+    {
+      "TaxIncluded" => ReservationChargeTaxMode.TaxIncluded,
+      "NonTaxable" => ReservationChargeTaxMode.NonTaxable,
+      _ => ReservationChargeTaxMode.TaxableExclusive
+    };
 
   private static object? GetValue(IDictionary<string, object> row, string name)
   {

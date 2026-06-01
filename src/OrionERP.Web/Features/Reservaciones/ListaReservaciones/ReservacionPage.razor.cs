@@ -13,6 +13,7 @@ using Microsoft.JSInterop;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Application.Features.Reservaciones.CalendarSync;
 using OrionERP.Application.Features.Reservaciones.Cfdi;
+using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.Extras;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
@@ -41,6 +42,7 @@ public partial class ReservacionPage : ComponentBase
   [Parameter] public int ReservationId { get; set; }
 
   [Inject] public IListaReservacionesService ReservacionesService { get; set; } = default!;
+  [Inject] public IReservacionExperiencesService ExperiencesService { get; set; } = default!;
   [Inject] public IBonhomiaRoomCalendarSyncService BonhomiaRoomCalendarSyncService { get; set; } = default!;
   [Inject] public ITransaccionService TransaccionService { get; set; } = default!;
   [Inject] public IUserRfcState RfcState { get; set; } = default!;
@@ -54,9 +56,11 @@ public partial class ReservacionPage : ComponentBase
   internal ReservacionDetailDto? Detail { get; set; }
   internal List<ClienteOptionDto> Clientes { get; set; } = new();
   internal List<ExtraCatalogItemDto> ExtraCatalog { get; set; } = new();
+  internal List<ExperienceCatalogItemDto> ExperienceCatalog { get; set; } = new();
   internal IReadOnlyList<ReservacionSuiteDto> Suites { get; set; } = Array.Empty<ReservacionSuiteDto>();
   internal List<SuiteDisponibleDto> SuitesDisponibles { get; set; } = new();
   internal IReadOnlyList<ReservacionExtraDto> Extras { get; set; } = Array.Empty<ReservacionExtraDto>();
+  internal IReadOnlyList<ReservacionExperienceDto> Experiences { get; set; } = Array.Empty<ReservacionExperienceDto>();
   internal IReadOnlyList<ReservacionPagoDto> Pagos { get; set; } = Array.Empty<ReservacionPagoDto>();
   internal IReadOnlyList<ReservacionAttachmentDto> Attachments { get; set; } = Array.Empty<ReservacionAttachmentDto>();
 
@@ -78,6 +82,7 @@ public partial class ReservacionPage : ComponentBase
   internal decimal SuiteDiscountPercent { get; set; }
   internal decimal SuiteDiscountAmount { get; set; }
   internal decimal TotalExtras { get; set; }
+  internal decimal TotalExperiences { get; set; }
   internal decimal SubTotal { get; set; }
   internal decimal Tax { get; set; }
   internal decimal Ish { get; set; }
@@ -98,9 +103,19 @@ public partial class ReservacionPage : ComponentBase
   internal int ExtraQuantity { get; set; } = 1;
   internal string? ExtraNotes { get; set; }
 
+  internal int? EditingExperienceId { get; set; }
+  internal int? ExperienceCatalogId { get; set; }
+  internal int? ExperiencePackageId { get; set; }
+  internal DateTime ExperienceDate { get; set; } = DateTime.Today;
+  internal int ExperienceAdultParticipants { get; set; } = 2;
+  internal int ExperienceChildParticipants { get; set; }
+  internal HashSet<int> SelectedExperienceAddOnIds { get; set; } = new();
+  internal string? ExperienceNotes { get; set; }
+
   internal string AttachmentDescription { get; set; } = string.Empty;
   internal bool ShowSuitePicker { get; set; }
   internal bool ShowExtraModal { get; set; }
+  internal bool ShowExperienceModal { get; set; }
   internal ReservationEditorTab ActiveTab { get; set; } = ReservationEditorTab.Suites;
   internal bool IsLoading { get; set; }
   internal bool IsSaving { get; set; }
@@ -119,6 +134,7 @@ public partial class ReservacionPage : ComponentBase
   private int? _attachmentDeletingId;
   private bool _airbnbDefaultsLoaded;
   private bool _extraCatalogLoaded;
+  private bool _experienceCatalogLoaded;
   private bool _hasPendingCalendarSync;
   internal int AttachmentInputKey => _attachmentInputKey;
 
@@ -151,6 +167,8 @@ public partial class ReservacionPage : ComponentBase
     => SuiteDiscountPercent > 1m && SuiteDiscountAmount > 0m;
 
   internal bool IsEditingExtra => EditingExtraId.HasValue;
+
+  internal bool IsEditingExperience => EditingExperienceId.HasValue;
 
   internal string CheckInText
     => CheckIn?.ToString("yyyy-MM-dd") ?? string.Empty;
@@ -205,9 +223,11 @@ public partial class ReservacionPage : ComponentBase
 
       Clientes.Clear();
       await EnsureExtraCatalogLoadedAsync();
+      await EnsureExperienceCatalogLoadedAsync();
 
       Suites = Detail.Suites;
       Extras = Detail.Extras;
+      Experiences = Detail.Experiences;
       Pagos = Detail.Pagos;
       Attachments = Detail.Attachments;
       await LoadReservationFacturacionStatusAsync();
@@ -505,6 +525,17 @@ public partial class ReservacionPage : ComponentBase
 
     ExtraCatalog = (await ReservacionesService.GetActiveExtraCatalogAsync()).ToList();
     _extraCatalogLoaded = true;
+  }
+
+  private async Task EnsureExperienceCatalogLoadedAsync()
+  {
+    if (_experienceCatalogLoaded && ExperienceCatalog.Count > 0)
+    {
+      return;
+    }
+
+    ExperienceCatalog = (await ExperiencesService.GetActiveExperienceCatalogAsync()).ToList();
+    _experienceCatalogLoaded = true;
   }
 
   private async Task SyncConAirbnbAsync()
@@ -1036,6 +1067,7 @@ public partial class ReservacionPage : ComponentBase
       CheckOut,
       Suites.Select(s => s.Precio),
       Extras.Select(e => e.Price),
+      Experiences.Select(e => new ReservationChargeLine(e.Total, MapExperienceTaxMode(e.TaxMode))),
       Pagos.Sum(p => p.Monto),
       SuiteDiscountPercent);
 
@@ -1043,6 +1075,7 @@ public partial class ReservacionPage : ComponentBase
     SuiteDiscountPercent = totals.SuiteDiscountPercent;
     SuiteDiscountAmount = totals.SuiteDiscountAmount;
     TotalExtras = totals.TotalExtras;
+    TotalExperiences = totals.TotalExperiences;
     SubTotal = totals.SubTotal;
     Tax = totals.Tax;
     Ish = totals.Ish;
@@ -1055,11 +1088,13 @@ public partial class ReservacionPage : ComponentBase
     {
       Detail.Suites = Suites;
       Detail.Extras = Extras;
+      Detail.Experiences = Experiences;
       Detail.Pagos = Pagos;
       Detail.TotalSuites = TotalSuites;
       Detail.SuiteDiscountPercent = SuiteDiscountPercent;
       Detail.SuiteDiscountAmount = SuiteDiscountAmount;
       Detail.TotalExtras = TotalExtras;
+      Detail.TotalExperiences = TotalExperiences;
       Detail.SubTotal = SubTotal;
       Detail.Tax = Tax;
       Detail.Ish = Ish;
@@ -1071,6 +1106,14 @@ public partial class ReservacionPage : ComponentBase
 
     TotalSuiteInput = TotalSuites;
   }
+
+  private static ReservationChargeTaxMode MapExperienceTaxMode(string? value)
+    => value switch
+    {
+      ExperienceTaxModes.TaxIncluded => ReservationChargeTaxMode.TaxIncluded,
+      ExperienceTaxModes.NonTaxable => ReservationChargeTaxMode.NonTaxable,
+      _ => ReservationChargeTaxMode.TaxableExclusive
+    };
 
   internal async Task AplicarDescuentoSuitesAsync()
   {

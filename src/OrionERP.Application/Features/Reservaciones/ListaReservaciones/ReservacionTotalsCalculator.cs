@@ -38,6 +38,7 @@ public static class ReservacionTotalsCalculator
       activeDiscountPercent,
       suiteDiscountAmount,
       roundedExtras,
+      0m,
       subtotal,
       tax,
       ish,
@@ -83,6 +84,89 @@ public static class ReservacionTotalsCalculator
       activeDiscountPercent,
       suiteDiscountAmount,
       roundedExtras,
+      0m,
+      subtotal,
+      tax,
+      ish,
+      totalPagado);
+  }
+
+  public static ReservacionTotalsBreakdown Calculate(
+    DateTime? checkIn,
+    DateTime? checkOut,
+    IEnumerable<decimal> suiteLineTotals,
+    IEnumerable<decimal> extraLineTotals,
+    IEnumerable<ReservationChargeLine> experienceLineTotals,
+    decimal totalPagado,
+    decimal suiteDiscountPercent = 0m)
+  {
+    ArgumentNullException.ThrowIfNull(suiteLineTotals);
+    ArgumentNullException.ThrowIfNull(extraLineTotals);
+    ArgumentNullException.ThrowIfNull(experienceLineTotals);
+
+    var activeDiscountPercent = NormalizeSuiteDiscountPercent(suiteDiscountPercent);
+    var roundedSuiteLines = suiteLineTotals.Select(RoundCurrency).ToArray();
+    var roundedExtraLines = extraLineTotals.Select(RoundCurrency).ToArray();
+    var roundedExperienceLines = experienceLineTotals
+      .Select(line => new ReservationChargeLine(RoundCurrency(line.Amount), line.TaxMode))
+      .ToArray();
+
+    var discountedSuiteLines = roundedSuiteLines
+      .Select(line => RoundCurrency(line - RoundCurrency(line * (activeDiscountPercent / 100m))))
+      .ToArray();
+
+    var taxableExclusiveLines = discountedSuiteLines
+      .Concat(roundedExtraLines)
+      .ToArray();
+
+    var taxableIncludedSubtotals = roundedExperienceLines
+      .Where(line => line.TaxMode == ReservationChargeTaxMode.TaxIncluded)
+      .Select(line => RoundCurrency(line.Amount / (1m + TaxRate)))
+      .ToArray();
+
+    var nonTaxableExperienceLines = roundedExperienceLines
+      .Where(line => line.TaxMode == ReservationChargeTaxMode.NonTaxable)
+      .Select(line => line.Amount)
+      .ToArray();
+
+    var taxableExperienceLines = roundedExperienceLines
+      .Where(line => line.TaxMode == ReservationChargeTaxMode.TaxableExclusive)
+      .Select(line => line.Amount)
+      .ToArray();
+
+    var roundedSuites = RoundCurrency(roundedSuiteLines.Sum());
+    var discountedSuites = RoundCurrency(discountedSuiteLines.Sum());
+    var suiteDiscountAmount = RoundCurrency(roundedSuites - discountedSuites);
+    var roundedExtras = RoundCurrency(roundedExtraLines.Sum());
+    var roundedExperiences = RoundCurrency(roundedExperienceLines.Sum(line => line.Amount));
+    var subtotal = RoundCurrency(
+      discountedSuites
+      + roundedExtras
+      + taxableIncludedSubtotals.Sum()
+      + taxableExperienceLines.Sum()
+      + nonTaxableExperienceLines.Sum());
+
+    var tax = SumRoundedTax(taxableExclusiveLines.Concat(taxableExperienceLines), TaxRate)
+      + RoundCurrency(roundedExperienceLines
+        .Where(line => line.TaxMode == ReservationChargeTaxMode.TaxIncluded)
+        .Sum(line => line.Amount)
+        - taxableIncludedSubtotals.Sum());
+    tax = RoundCurrency(tax);
+
+    var ish = 0m;
+    if (checkIn.HasValue && checkIn.Value.Year < 2025)
+    {
+      ish = SumRoundedTax(taxableExclusiveLines.Concat(taxableExperienceLines), IshRate);
+    }
+
+    return BuildBreakdown(
+      checkIn,
+      checkOut,
+      roundedSuites,
+      activeDiscountPercent,
+      suiteDiscountAmount,
+      roundedExtras,
+      roundedExperiences,
       subtotal,
       tax,
       ish,
@@ -96,6 +180,7 @@ public static class ReservacionTotalsCalculator
     decimal suiteDiscountPercent,
     decimal suiteDiscountAmount,
     decimal roundedExtras,
+    decimal roundedExperiences,
     decimal subtotal,
     decimal tax,
     decimal ish,
@@ -121,6 +206,7 @@ public static class ReservacionTotalsCalculator
       suiteDiscountPercent,
       suiteDiscountAmount,
       roundedExtras,
+      roundedExperiences,
       subtotal,
       tax,
       ish,
@@ -145,4 +231,15 @@ public static class ReservacionTotalsCalculator
 
   private static decimal RoundCurrency(decimal value)
     => decimal.Round(value, 2, MidpointRounding.ToEven);
+}
+
+public sealed record ReservationChargeLine(
+  decimal Amount,
+  ReservationChargeTaxMode TaxMode = ReservationChargeTaxMode.TaxableExclusive);
+
+public enum ReservationChargeTaxMode
+{
+  TaxableExclusive,
+  TaxIncluded,
+  NonTaxable
 }

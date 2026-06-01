@@ -1,0 +1,143 @@
+@page
+@model OrionERP.Web.Areas.Identity.Pages.Account.LoginModel
+@{
+    ViewData["Title"] = "Iniciar sesion";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/auth.css" asp-append-version="true" />
+}
+
+<div class="auth-shell">
+    <section class="auth-brand" aria-label="OrionERP">
+        <div class="auth-brand__top">
+            <a class="auth-brand__logo" href="/">
+                <img src="~/Images/OrionERP_Logo.svg" alt="OrionERP" />
+            </a>
+            <span class="auth-brand__tag">Centro de operacion</span>
+        </div>
+
+        <div class="auth-brand__stage" aria-hidden="true">
+            <div class="auth-stage__rail auth-stage__rail--top"></div>
+            <div class="auth-stage__rail auth-stage__rail--middle"></div>
+            <div class="auth-stage__rail auth-stage__rail--bottom"></div>
+
+            <div class="auth-stage__hub">
+                <span>ERP</span>
+            </div>
+
+            <div class="auth-stage__module auth-stage__module--finance">
+                <i class="bi bi-cash-stack" aria-hidden="true"></i>
+                <span>Finanzas</span>
+            </div>
+
+            <div class="auth-stage__module auth-stage__module--operations">
+                <i class="bi bi-calendar2-check" aria-hidden="true"></i>
+                <span>Operacion</span>
+            </div>
+
+            <div class="auth-stage__module auth-stage__module--logistics">
+                <i class="bi bi-box-seam" aria-hidden="true"></i>
+                <span>Logistica</span>
+            </div>
+        </div>
+
+        <div class="auth-brand__copy">
+            <p class="auth-eyebrow">Grupo Orion</p>
+            <h1>Una entrada clara para trabajo sensible.</h1>
+            <p>
+                Accede a reservaciones, finanzas, inventario y operaciones desde un entorno protegido.
+            </p>
+        </div>
+    </section>
+
+    <main class="auth-panel">
+        <section class="auth-card" aria-labelledby="login-title">
+            <div class="auth-card__header">
+                <span class="auth-card__mark" aria-hidden="true">
+                    <i class="bi bi-shield-lock"></i>
+                </span>
+                <div>
+                    <p class="auth-eyebrow">Acceso seguro</p>
+                    <h2 id="login-title">Iniciar sesion</h2>
+                </div>
+            </div>
+
+            <p class="auth-card__intro">
+                Usa tu cuenta de OrionERP para continuar al centro de operacion.
+            </p>
+
+            <div asp-validation-summary="ModelOnly" class="auth-validation" role="alert"></div>
+
+            <form id="account" method="post" class="auth-form" novalidate>
+                <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+
+                <div class="auth-field">
+                    <label asp-for="Input.Email">Correo electronico</label>
+                    <div class="auth-input">
+                        <i class="bi bi-envelope" aria-hidden="true"></i>
+                        <input asp-for="Input.Email"
+                               autocomplete="username"
+                               autocapitalize="none"
+                               spellcheck="false"
+                               placeholder="usuario@orionerp.local" />
+                    </div>
+                    <span asp-validation-for="Input.Email" class="auth-field__error"></span>
+                </div>
+
+                <div class="auth-field">
+                    <div class="auth-field__label-row">
+                        <label asp-for="Input.Password">Contrasena</label>
+                        <a href="/Identity/Account/ForgotPassword">Recuperar acceso</a>
+                    </div>
+                    <div class="auth-input auth-input--password">
+                        <i class="bi bi-key" aria-hidden="true"></i>
+                        <input asp-for="Input.Password"
+                               id="Input_Password"
+                               autocomplete="current-password"
+                               placeholder="Ingresa tu contrasena" />
+                        <button class="auth-input__action"
+                                type="button"
+                                title="Mostrar u ocultar contrasena"
+                                aria-label="Mostrar u ocultar contrasena"
+                                data-password-toggle="Input_Password">
+                            <i class="bi bi-eye" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <span asp-validation-for="Input.Password" class="auth-field__error"></span>
+                </div>
+
+                <label class="auth-check">
+                    <input asp-for="Input.RememberMe" />
+                    <span>Recordar esta sesion</span>
+                </label>
+
+                <button type="submit" class="auth-submit">
+                    <span>Entrar a OrionERP</span>
+                    <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                </button>
+            </form>
+        </section>
+    </main>
+</div>
+
+@section Scripts {
+    <script>
+        (() => {
+            const buttons = document.querySelectorAll("[data-password-toggle]");
+            buttons.forEach((button) => {
+                button.addEventListener("click", () => {
+                    const input = document.getElementById(button.dataset.passwordToggle);
+                    if (!input) {
+                        return;
+                    }
+
+                    const isHidden = input.type === "password";
+                    input.type = isHidden ? "text" : "password";
+                    button.querySelector("i")?.classList.toggle("bi-eye", !isHidden);
+                    button.querySelector("i")?.classList.toggle("bi-eye-slash", isHidden);
+                });
+            });
+        })();
+    </script>
+}

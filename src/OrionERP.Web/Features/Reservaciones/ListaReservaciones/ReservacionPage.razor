@@ -41,6 +41,13 @@ else
                         <span>@Suites.Count</span>
                     </button>
                     <button type="button"
+                            class="reservacion-tab-button @(ActiveTab == ReservationEditorTab.Experiences ? "active" : null)"
+                            aria-selected="@(ActiveTab == ReservationEditorTab.Experiences)"
+                            @onclick="() => SetActiveTab(ReservationEditorTab.Experiences)">
+                        Experiencias
+                        <span>@Experiences.Count</span>
+                    </button>
+                    <button type="button"
                             class="reservacion-tab-button @(ActiveTab == ReservationEditorTab.Extras ? "active" : null)"
                             aria-selected="@(ActiveTab == ReservationEditorTab.Extras)"
                             @onclick="() => SetActiveTab(ReservationEditorTab.Extras)">
@@ -66,6 +73,9 @@ else
                 <div class="reservacion-tab-content">
                     @switch (ActiveTab)
                     {
+                        case ReservationEditorTab.Experiences:
+                            <ReservacionExperiencesPanel />
+                            break;
                         case ReservationEditorTab.Extras:
                             <ReservacionExtrasPanel />
                             break;

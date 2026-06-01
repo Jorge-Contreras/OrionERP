@@ -9,6 +9,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Routing;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
@@ -392,6 +393,7 @@ public class BonhomiaCheckoutApiTests
         ]
       },
       Array.Empty<BonhomiaExtraOptionDto>(),
+      Array.Empty<ExperienceCatalogItemDto>(),
       DateTimeOffset.UtcNow.AddMinutes(30),
       "MXN",
       60);

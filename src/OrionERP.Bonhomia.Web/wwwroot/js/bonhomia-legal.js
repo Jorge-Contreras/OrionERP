@@ -20,11 +20,24 @@
     return payload;
   };
 
-  const updatePanel = (panel, version, acknowledgement) => {
-    const isCurrent = acknowledgement && acknowledgement.version === version;
-    panel.hidden = Boolean(isCurrent);
-    panel.classList.toggle("bonhomia-legal-ack--visible", !isCurrent);
+  const updatePanels = (panels, version, acknowledgement) => {
+    const isCurrent = Boolean(acknowledgement?.version === version);
+
+    panels.forEach((panel) => {
+      panel.hidden = isCurrent;
+      panel.classList.toggle("bonhomia-legal-ack--visible", !isCurrent);
+    });
+
     document.documentElement.classList.toggle("bonhomia-legal-ack-visible", !isCurrent);
+  };
+
+  const hidePanels = (panels) => {
+    panels.forEach((panel) => {
+      panel.hidden = true;
+      panel.classList.remove("bonhomia-legal-ack--visible");
+    });
+
+    document.documentElement.classList.remove("bonhomia-legal-ack-visible");
   };
 
   window.bonhomiaLegal = {
@@ -35,7 +48,7 @@
       }
 
       const acknowledgement = readAcknowledgement();
-      panels.forEach((panel) => updatePanel(panel, version, acknowledgement));
+      updatePanels(panels, version, acknowledgement);
 
       panels.forEach((panel) => {
         const button = panel.querySelector("[data-bonhomia-legal-accept]");
@@ -47,11 +60,9 @@
         button.addEventListener("click", () => {
           try {
             const updated = writeAcknowledgement(version);
-            panels.forEach((item) => updatePanel(item, version, updated));
+            updatePanels(panels, version, updated);
           } catch {
-            panel.hidden = true;
-            panel.classList.remove("bonhomia-legal-ack--visible");
-            document.documentElement.classList.remove("bonhomia-legal-ack-visible");
+            hidePanels(panels);
           }
         });
       });

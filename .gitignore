@@ -27,6 +27,7 @@ Thumbs.db
 *.log
 *.tmp
 *.cache
+recepcion_bonhomia entra secret.txt
 TestResults/
 test-results/
 coverage/

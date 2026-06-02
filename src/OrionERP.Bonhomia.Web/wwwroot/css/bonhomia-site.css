@@ -581,10 +581,6 @@ body {
   background: rgba(255, 255, 255, 0.74);
 }
 
-.bonhomia-legal-facts {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
 .bonhomia-legal-facts strong,
 .bonhomia-legal-facts span,
 .bonhomia-legal-facts a {
@@ -711,11 +707,6 @@ body {
 .bonhomia-legal-rules > section,
 .bonhomia-legal-contact-grid > div {
   min-width: 0;
-}
-
-.bonhomia-legal-policy-grid > section,
-.bonhomia-legal-rules > section,
-.bonhomia-legal-contact-grid > div {
   padding: 0.8rem;
   border: 1px solid rgba(15, 76, 92, 0.1);
   border-radius: 8px;

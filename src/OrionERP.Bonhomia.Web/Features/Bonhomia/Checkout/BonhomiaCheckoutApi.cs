@@ -67,6 +67,8 @@ public static class BonhomiaCheckoutApi
     HttpContext httpContext,
     CancellationToken ct)
   {
+    var logger = loggerFactory.CreateLogger("BonhomiaCheckoutApi");
+
     if (string.IsNullOrWhiteSpace(orderId))
     {
       return Results.Problem(
@@ -156,9 +158,7 @@ public static class BonhomiaCheckoutApi
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-          loggerFactory
-            .CreateLogger(nameof(BonhomiaCheckoutApi))
-            .LogError(ex, "Bonhomia confirmation email failed for reservation {ReservationId}.", result.ReservationId);
+          logger.LogError(ex, "Bonhomia confirmation email failed for reservation {ReservationId}.", result.ReservationId);
         }
       }
 
@@ -170,9 +170,7 @@ public static class BonhomiaCheckoutApi
     }
     catch (Exception ex) when (ex is not OperationCanceledException)
     {
-      loggerFactory
-        .CreateLogger(nameof(BonhomiaCheckoutApi))
-        .LogError(ex, "Bonhomia checkout confirmation failed after PayPal order {OrderId}.", orderId);
+      logger.LogError(ex, "Bonhomia checkout confirmation failed after PayPal order {OrderId}.", orderId);
 
       return Results.Problem(
         title: "No se pudo crear la reservacion",

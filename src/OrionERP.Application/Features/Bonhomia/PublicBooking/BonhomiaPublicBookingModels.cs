@@ -144,6 +144,7 @@ public sealed class BonhomiaPaidReservationResult
   public int TransaccionId { get; set; }
   public string ClientName { get; set; } = string.Empty;
   public decimal Total { get; set; }
+  public bool CreatedNewReservation { get; set; }
 }
 
 public sealed class BonhomiaPublicBookingException : Exception

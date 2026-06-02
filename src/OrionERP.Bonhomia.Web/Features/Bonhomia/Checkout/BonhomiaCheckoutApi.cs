@@ -61,6 +61,7 @@ public static class BonhomiaCheckoutApi
     IBonhomiaPublicBookingService bookingService,
     IBonhomiaPayPalClient payPalClient,
     IBonhomiaReservationPdfTokenService pdfTokenService,
+    IBonhomiaReservationConfirmationEmailSender confirmationEmailSender,
     IOptions<BonhomiaCheckoutOptions> options,
     ILoggerFactory loggerFactory,
     HttpContext httpContext,
@@ -93,8 +94,14 @@ public static class BonhomiaCheckoutApi
       var capture = await payPalClient.CaptureOrderAsync(orderId, BuildPayPalRequestId("cap", request.PaymentAttemptId, quote.QuoteId), ct);
       var customer = BuildCustomerFromPayPal(request.Customer, capture);
       var result = await bookingService.CreatePaidReservationAsync(liveQuote, customer, capture, ct);
+      var confirmedAtUtc = DateTimeOffset.UtcNow;
+      var pdfUrl = BuildReservationPdfUrl(
+        httpContext,
+        options.Value,
+        result.ReservationId,
+        pdfTokenService.CreateToken(result.ReservationId));
 
-      return Results.Ok(new BonhomiaConfirmPayPalOrderResponse
+      var response = new BonhomiaConfirmPayPalOrderResponse
       {
         ReservationId = result.ReservationId,
         TransaccionId = result.TransaccionId,
@@ -124,13 +131,38 @@ public static class BonhomiaCheckoutApi
         PayPalPayerEmail = capture.PayerEmail,
         PayPalAmount = capture.Amount,
         PayPalCurrency = capture.Currency,
-        ConfirmedAtUtc = DateTimeOffset.UtcNow,
-        PdfUrl = BuildReservationPdfUrl(
-          httpContext,
-          options.Value,
-          result.ReservationId,
-          pdfTokenService.CreateToken(result.ReservationId))
-      });
+        ConfirmedAtUtc = confirmedAtUtc,
+        PdfUrl = pdfUrl
+      };
+
+      if (result.CreatedNewReservation)
+      {
+        try
+        {
+          await confirmationEmailSender.SendConfirmationAsync(
+            new BonhomiaReservationConfirmationEmail
+            {
+              ReservationId = result.ReservationId,
+              TransaccionId = result.TransaccionId,
+              ClientName = result.ClientName,
+              Quote = liveQuote,
+              Customer = customer,
+              Payment = capture,
+              Total = result.Total,
+              ConfirmedAtUtc = confirmedAtUtc,
+              PdfUrl = pdfUrl
+            },
+            ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+          loggerFactory
+            .CreateLogger(nameof(BonhomiaCheckoutApi))
+            .LogError(ex, "Bonhomia confirmation email failed for reservation {ReservationId}.", result.ReservationId);
+        }
+      }
+
+      return Results.Ok(response);
     }
     catch (BonhomiaPublicBookingException ex)
     {

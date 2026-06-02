@@ -8,6 +8,7 @@ public sealed class BonhomiaCheckoutOptions
   public string Currency { get; set; } = "MXN";
   public string PayPalClientId { get; set; } = string.Empty;
   public string PayPalClientSecret { get; set; } = string.Empty;
+  public string PayPalLocale { get; set; } = "es_MX";
   public int QuoteTokenLifetimeMinutes { get; set; } = 30;
   public int PdfTokenLifetimeMinutes { get; set; } = 30;
   public int AvailabilityDays { get; set; } = 60;

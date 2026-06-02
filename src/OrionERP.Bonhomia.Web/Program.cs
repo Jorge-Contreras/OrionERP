@@ -8,6 +8,7 @@ using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 using OrionERP.Infrastructure.Features.Bonhomia.PublicBooking;
+using OrionERP.Infrastructure.Features.Mail;
 using OrionERP.Infrastructure.Features.Reservaciones.Experiencias;
 using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Services;
@@ -103,6 +104,7 @@ builder.Services.AddServerSideBlazor();
 builder.Services.AddScoped<ProtectedSessionStorage>();
 
 builder.Services.Configure<BonhomiaCheckoutOptions>(builder.Configuration.GetSection(BonhomiaCheckoutOptions.SectionName));
+builder.Services.Configure<BonhomiaGraphMailOptions>(builder.Configuration.GetSection(BonhomiaGraphMailOptions.SectionName));
 builder.Services.Configure<ReservacionPdfOptions>(options =>
 {
   var webRootPath = builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
@@ -113,6 +115,8 @@ builder.Services.AddScoped<IListaReservacionesService, ListaReservacionesService
 builder.Services.AddScoped<IReservacionExperiencesService, ReservacionExperiencesService>();
 builder.Services.AddScoped<IBonhomiaPublicBookingService, BonhomiaPublicBookingService>();
 builder.Services.AddHttpClient<IBonhomiaPayPalClient, BonhomiaPayPalClient>();
+builder.Services.AddHttpClient<IMicrosoftGraphMailClient<BonhomiaGraphMailOptions>, MicrosoftGraphMailClient<BonhomiaGraphMailOptions>>();
+builder.Services.AddScoped<IBonhomiaReservationConfirmationEmailSender, BonhomiaReservationConfirmationEmailSender>();
 builder.Services.AddSingleton<IBonhomiaQuoteTokenService, BonhomiaQuoteTokenService>();
 builder.Services.AddSingleton<IBonhomiaReservationPdfTokenService, BonhomiaReservationPdfTokenService>();
 builder.Services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();

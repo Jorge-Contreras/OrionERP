@@ -118,7 +118,8 @@ public class BonhomiaCheckoutApiTests
         ReservationId = 49210,
         TransaccionId = 8821,
         ClientName = "Comprador PayPal",
-        Total = quote.Total
+        Total = quote.Total,
+        CreatedNewReservation = true
       }
     };
     var payPal = new FakePayPalClient
@@ -136,7 +137,8 @@ public class BonhomiaCheckoutApiTests
         PayerPhone = "7491234567"
       }
     };
-    await using var app = await CreateAppAsync(booking, payPal);
+    var emailSender = new FakeConfirmationEmailSender();
+    await using var app = await CreateAppAsync(booking, payPal, emailSender);
     var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
     var client = app.GetTestClient();
 
@@ -173,6 +175,83 @@ public class BonhomiaCheckoutApiTests
     Assert.Equal("Comprador PayPal", booking.LastCustomer!.FullName);
     Assert.Equal("payer@example.com", booking.LastCustomer.Email);
     Assert.Equal("7491234567", booking.LastCustomer.Phone);
+    var confirmationEmail = Assert.Single(emailSender.Sent);
+    Assert.Equal(49210, confirmationEmail.ReservationId);
+    Assert.Equal("payer@example.com", confirmationEmail.Customer.Email);
+    Assert.Equal("CAPTURE-1", confirmationEmail.Payment.CaptureId);
+    Assert.Contains("/api/bonhomia/checkout/reservations/49210/pdf?token=", confirmationEmail.PdfUrl, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public async Task ConfirmOrder_ReturnsSuccess_WhenConfirmationEmailFails()
+  {
+    var quote = CreateQuote(1250m);
+    var booking = new FakeBookingService
+    {
+      Quote = quote,
+      PaidReservation = new BonhomiaPaidReservationResult
+      {
+        ReservationId = 49210,
+        TransaccionId = 8821,
+        ClientName = "Comprador PayPal",
+        Total = quote.Total,
+        CreatedNewReservation = true
+      }
+    };
+    var emailSender = new FakeConfirmationEmailSender
+    {
+      SendException = new InvalidOperationException("Graph unavailable")
+    };
+
+    await using var app = await CreateAppAsync(bookingService: booking, confirmationEmailSender: emailSender);
+    var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
+    var client = app.GetTestClient();
+
+    var response = await client.PostAsJsonAsync("/api/bonhomia/checkout/orders/PAYPAL-1", new BonhomiaConfirmPayPalOrderRequest
+    {
+      QuoteToken = tokenService.CreateToken(quote),
+      QuoteFingerprint = quote.Fingerprint,
+      PaymentAttemptId = "attempt-confirm-123",
+      Customer = CreateCustomer()
+    });
+
+    response.EnsureSuccessStatusCode();
+    Assert.Single(emailSender.Sent);
+    Assert.Equal(1, booking.PaidReservationCount);
+  }
+
+  [Fact]
+  public async Task ConfirmOrder_DoesNotSendConfirmationEmail_WhenReservationAlreadyExists()
+  {
+    var quote = CreateQuote(1250m);
+    var booking = new FakeBookingService
+    {
+      Quote = quote,
+      PaidReservation = new BonhomiaPaidReservationResult
+      {
+        ReservationId = 49210,
+        TransaccionId = 8821,
+        ClientName = "Comprador PayPal",
+        Total = quote.Total,
+        CreatedNewReservation = false
+      }
+    };
+    var emailSender = new FakeConfirmationEmailSender();
+
+    await using var app = await CreateAppAsync(bookingService: booking, confirmationEmailSender: emailSender);
+    var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
+    var client = app.GetTestClient();
+
+    var response = await client.PostAsJsonAsync("/api/bonhomia/checkout/orders/PAYPAL-1", new BonhomiaConfirmPayPalOrderRequest
+    {
+      QuoteToken = tokenService.CreateToken(quote),
+      QuoteFingerprint = quote.Fingerprint,
+      PaymentAttemptId = "attempt-confirm-123",
+      Customer = CreateCustomer()
+    });
+
+    response.EnsureSuccessStatusCode();
+    Assert.Empty(emailSender.Sent);
   }
 
   [Fact]
@@ -335,6 +414,7 @@ public class BonhomiaCheckoutApiTests
   private static async Task<WebApplication> CreateAppAsync(
     FakeBookingService? bookingService = null,
     FakePayPalClient? payPalClient = null,
+    FakeConfirmationEmailSender? confirmationEmailSender = null,
     Action<BonhomiaCheckoutOptions>? configureOptions = null)
   {
     var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -354,6 +434,7 @@ public class BonhomiaCheckoutApiTests
     builder.Services.AddSingleton<IBonhomiaReservationPdfTokenService, BonhomiaReservationPdfTokenService>();
     builder.Services.AddSingleton<IBonhomiaPublicBookingService>(bookingService ?? new FakeBookingService { Quote = CreateQuote(1250m) });
     builder.Services.AddSingleton<IBonhomiaPayPalClient>(payPalClient ?? new FakePayPalClient());
+    builder.Services.AddSingleton<IBonhomiaReservationConfirmationEmailSender>(confirmationEmailSender ?? new FakeConfirmationEmailSender());
     builder.Services.AddSingleton<IReservacionPdfDocumentFactory, FakeReservacionPdfDocumentFactory>();
     builder.Services.AddSingleton<IReservacionPdfService, FakeReservacionPdfService>();
 
@@ -456,7 +537,8 @@ public class BonhomiaCheckoutApiTests
         ReservationId = 1,
         TransaccionId = 2,
         ClientName = customer.FullName,
-        Total = quote.Total
+        Total = quote.Total,
+        CreatedNewReservation = true
       });
     }
 
@@ -492,6 +574,26 @@ public class BonhomiaCheckoutApiTests
         PayerName = "Comprador PayPal",
         PayerEmail = "payer@example.com"
       });
+    }
+  }
+
+  private sealed class FakeConfirmationEmailSender : IBonhomiaReservationConfirmationEmailSender
+  {
+    public List<BonhomiaReservationConfirmationEmail> Sent { get; } = new();
+    public Exception? SendException { get; set; }
+
+    public Task SendConfirmationAsync(
+      BonhomiaReservationConfirmationEmail confirmation,
+      CancellationToken ct = default)
+    {
+      Sent.Add(confirmation);
+
+      if (SendException is not null)
+      {
+        throw SendException;
+      }
+
+      return Task.CompletedTask;
     }
   }
 

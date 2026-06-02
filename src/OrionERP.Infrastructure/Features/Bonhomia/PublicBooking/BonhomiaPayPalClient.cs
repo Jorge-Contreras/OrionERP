@@ -476,19 +476,39 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
       return false;
     }
 
+    var localNumber = string.Empty;
     if (phoneNumber.TryGetProperty("national_number", out var nationalNumber))
     {
-      value = nationalNumber.GetString()?.Trim() ?? string.Empty;
-      return !string.IsNullOrWhiteSpace(value);
+      localNumber = nationalNumber.GetString()?.Trim() ?? string.Empty;
     }
-
-    if (phoneNumber.TryGetProperty("number", out var number))
+    else if (phoneNumber.TryGetProperty("number", out var number))
     {
-      value = number.GetString()?.Trim() ?? string.Empty;
-      return !string.IsNullOrWhiteSpace(value);
+      localNumber = number.GetString()?.Trim() ?? string.Empty;
     }
 
-    return false;
+    if (string.IsNullOrWhiteSpace(localNumber))
+    {
+      return false;
+    }
+
+    if (localNumber.StartsWith("+", StringComparison.Ordinal))
+    {
+      value = localNumber;
+      return true;
+    }
+
+    if (phoneNumber.TryGetProperty("country_code", out var countryCodeElement))
+    {
+      var countryCode = countryCodeElement.GetString()?.Trim().TrimStart('+');
+      if (!string.IsNullOrWhiteSpace(countryCode))
+      {
+        value = $"+{countryCode} {localNumber}";
+        return true;
+      }
+    }
+
+    value = localNumber;
+    return true;
   }
 
   private static bool TryGetShippingName(JsonElement root, out string value)

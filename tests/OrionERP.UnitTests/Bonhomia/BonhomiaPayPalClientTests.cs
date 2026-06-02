@@ -163,6 +163,64 @@ public class BonhomiaPayPalClientTests
   }
 
   [Fact]
+  public async Task CaptureOrder_WhenPayerPhoneIncludesCountryCode_KeepsCountryCode()
+  {
+    var handler = new SequencedHttpMessageHandler(
+      new HttpResponseMessage(HttpStatusCode.OK)
+      {
+        Content = JsonContent("""
+          {
+            "access_token": "sandbox-token",
+            "expires_in": 3600
+          }
+          """)
+      },
+      new HttpResponseMessage(HttpStatusCode.OK)
+      {
+        Content = JsonContent("""
+          {
+            "id": "PAYPAL-ORDER-COUNTRY-CODE",
+            "status": "COMPLETED",
+            "payment_source": {
+              "paypal": {
+                "email_address": "buyer@example.com",
+                "name": {
+                  "given_name": "Buyer",
+                  "surname": "Bonhomia"
+                },
+                "phone_number": {
+                  "country_code": "52",
+                  "national_number": "7491234567"
+                }
+              }
+            },
+            "purchase_units": [
+              {
+                "payments": {
+                  "captures": [
+                    {
+                      "id": "CAPTURE-COUNTRY-CODE",
+                      "status": "COMPLETED",
+                      "amount": {
+                        "currency_code": "MXN",
+                        "value": "4227.00"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+          """)
+      });
+    var client = CreateClient(handler);
+
+    var result = await client.CaptureOrderAsync("PAYPAL-ORDER-COUNTRY-CODE", "cap-quote");
+
+    Assert.Equal("+52 7491234567", result.PayerPhone);
+  }
+
+  [Fact]
   public async Task CaptureOrder_WhenOrderAlreadyHasCompletedCapture_DoesNotCaptureAgain()
   {
     var handler = new SequencedHttpMessageHandler(

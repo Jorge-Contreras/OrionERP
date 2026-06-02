@@ -1,8 +1,9 @@
 (function () {
   const sdkPromises = new Map();
 
-  const loadPayPalSdk = (clientId, currency) => {
-    const key = `${clientId}|${currency}`;
+  const loadPayPalSdk = (clientId, currency, locale) => {
+    const sdkLocale = locale || "es_MX";
+    const key = `${clientId}|${currency}|${sdkLocale}`;
     if (sdkPromises.has(key)) {
       return sdkPromises.get(key);
     }
@@ -17,7 +18,8 @@
       const params = new URLSearchParams({
         "client-id": clientId,
         currency: currency || "MXN",
-        intent: "capture"
+        intent: "capture",
+        locale: sdkLocale
       });
 
       script.src = `https://www.paypal.com/sdk/js?${params.toString()}`;
@@ -58,6 +60,7 @@
     : [
       options?.clientId || "",
       options?.currency || "MXN",
+      options?.locale || "es_MX",
       options?.quoteToken || "",
       options?.quoteFingerprint || ""
     ].join("|");
@@ -128,7 +131,7 @@
       const paymentAttemptId = createAttemptId();
 
       try {
-        const paypal = await loadPayPalSdk(options.clientId, options.currency || "MXN");
+        const paypal = await loadPayPalSdk(options.clientId, options.currency || "MXN", options.locale || "es_MX");
         if (!paypal || !paypal.Buttons) {
           throw new Error("PayPal no esta disponible.");
         }

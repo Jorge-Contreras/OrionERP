@@ -14,6 +14,8 @@ namespace OrionERP.Infrastructure.Features.Bonhomia.PublicBooking;
 
 public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
 {
+  private const string TaxIncluded = "TaxIncluded";
+
   private readonly string _connectionString;
   private readonly IListaReservacionesService _reservacionesService;
   private readonly IReservacionExperiencesService _experiencesService;
@@ -80,6 +82,7 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
           Image = metadata.Image,
           Capacity = metadata.Capacity,
           Bedrooms = metadata.Bedrooms,
+          Bathrooms = metadata.Bathrooms,
           BasePrice = resource.BasePrice,
           Days = cells
             .OrderBy(cell => cell.RoomDate)
@@ -222,7 +225,9 @@ ORDER BY rc.ROOM_DATE;
       var extras = await ResolveSelectedExtrasAsync(conn, tx, quote.Request.Extras, ct);
       var experiences = await ResolveSelectedExperiencesAsync(quote, ct);
       var suiteLineTotals = calendarRows.Select(row => row.Precio > 0m ? row.Precio : room.BasePrice).ToArray();
-      var extraLineTotals = extras.Select(extra => extra.UnitPrice * extra.Quantity).ToArray();
+      var extraLineTotals = extras
+        .Select(extra => new ReservationChargeLine(extra.UnitPrice * extra.Quantity, ReservationChargeTaxMode.TaxIncluded))
+        .ToArray();
       var experienceLineTotals = experiences.SelectMany(experience => BuildExperienceChargeLines(experience.Pricing)).ToArray();
       var totals = ReservacionTotalsCalculator.Calculate(
         quote.CheckIn.ToDateTime(TimeOnly.MinValue),
@@ -294,9 +299,9 @@ WHERE ID IN @Ids
           new CommandDefinition(
             """
 INSERT INTO dbo.Reservation_Extra
-(ReservationID, ExtraID, ExtraNameSnapshot, ExtraDescriptionSnapshot, UnitPriceSnapshot, Quantity, Notes)
+(ReservationID, ExtraID, ExtraNameSnapshot, ExtraDescriptionSnapshot, UnitPriceSnapshot, Quantity, TaxMode, Notes)
 VALUES
-(@ReservationId, @ExtraId, @ExtraNameSnapshot, @ExtraDescriptionSnapshot, @UnitPriceSnapshot, @Quantity, @Notes);
+(@ReservationId, @ExtraId, @ExtraNameSnapshot, @ExtraDescriptionSnapshot, @UnitPriceSnapshot, @Quantity, @TaxMode, @Notes);
 """,
             extras.Select(extra => new
             {
@@ -306,6 +311,7 @@ VALUES
               ExtraDescriptionSnapshot = extra.Description,
               UnitPriceSnapshot = extra.UnitPrice,
               extra.Quantity,
+              TaxMode = TaxIncluded,
               Notes = BuildExtraNotes(extra)
             }).ToArray(),
             tx,
@@ -1020,13 +1026,14 @@ ORDER BY r.ID DESC;
     public decimal Price { get; set; }
   }
 
-  private sealed record PublicRoomMetadata(int Capacity, int Bedrooms, string Ideal, string Image, string Tag);
+  private sealed record PublicRoomMetadata(int Capacity, int Bedrooms, decimal Bathrooms, string Ideal, string Image, string Tag);
 
   private static class BonhomiaPublicRoomMetadata
   {
     private static readonly PublicRoomMetadata Default = new(
       2,
       1,
+      1m,
       "Suite amueblada para una estancia comoda y tranquila.",
       "/Images/Bonhomia/suites/manhattan/01.jpg",
       "Suite");
@@ -1034,21 +1041,21 @@ ORDER BY r.ID DESC;
     private static readonly IReadOnlyDictionary<string, PublicRoomMetadata> Items =
       new Dictionary<string, PublicRoomMetadata>(StringComparer.OrdinalIgnoreCase)
       {
-        ["CASA BERLIN"] = new(6, 3, "Para familias o equipos de trabajo que necesitan amplitud, privacidad y tres recamaras.", "/Images/Bonhomia/suites/berlin/01.jpg", "Casa completa"),
-        ["BERLIN"] = new(6, 3, "Para familias o equipos de trabajo que necesitan amplitud, privacidad y tres recamaras.", "/Images/Bonhomia/suites/berlin/01.jpg", "Casa completa"),
-        ["SUITE MANHATTAN"] = new(4, 2, "Dos recamaras y espacio comodo para compartir sin sacrificar privacidad.", "/Images/Bonhomia/suites/manhattan/01.jpg", "Ejecutiva"),
-        ["MANHATTAN"] = new(4, 2, "Dos recamaras y espacio comodo para compartir sin sacrificar privacidad.", "/Images/Bonhomia/suites/manhattan/01.jpg", "Ejecutiva"),
-        ["SUITE SEUL"] = new(4, 2, "Estancias largas con habitaciones independientes y un ambiente tranquilo.", "/Images/Bonhomia/suites/seul/01.jpg", "Larga estancia"),
-        ["SEUL"] = new(4, 2, "Estancias largas con habitaciones independientes y un ambiente tranquilo.", "/Images/Bonhomia/suites/seul/01.jpg", "Larga estancia"),
-        ["SUITE MOSCU"] = new(2, 1, "Practicidad y confort para parejas o viajeros de negocio.", "/Images/Bonhomia/suites/moscu/01.jpg", "Compacta"),
-        ["MOSCU"] = new(2, 1, "Practicidad y confort para parejas o viajeros de negocio.", "/Images/Bonhomia/suites/moscu/01.jpg", "Compacta"),
-        ["SUITE PARIS"] = new(2, 1, "Un espacio acogedor para desconectar, celebrar o hacer home office.", "/Images/Bonhomia/suites/paris/01.jpg", "Acogedora"),
-        ["PARIS"] = new(2, 1, "Un espacio acogedor para desconectar, celebrar o hacer home office.", "/Images/Bonhomia/suites/paris/01.jpg", "Acogedora"),
-        ["PENTHOUSE"] = new(2, 1, "Maxima privacidad con un toque premium y una vista mas abierta.", "/Images/Bonhomia/suites/penthouse/01.jpg", "Premium"),
-        ["CASA GRECIA"] = new(10, 4, "Casa completa para convivir, descansar y viajar en grupo.", "/Images/Bonhomia/suites/grecia/01.jpg", "Grupos"),
-        ["GRECIA"] = new(10, 4, "Casa completa para convivir, descansar y viajar en grupo.", "/Images/Bonhomia/suites/grecia/01.jpg", "Grupos"),
-        ["CASA LONDON"] = new(6, 3, "Para familias y grupos que quieren una casa completa y funcional.", "/Images/Bonhomia/suites/london/01.jpg", "Familiar"),
-        ["LONDON"] = new(6, 3, "Para familias y grupos que quieren una casa completa y funcional.", "/Images/Bonhomia/suites/london/01.jpg", "Familiar")
+        ["CASA BERLIN"] = new(6, 3, 2.5m, "Para familias o equipos de trabajo que necesitan amplitud, privacidad y tres recamaras.", "/Images/Bonhomia/suites/berlin/01.jpg", "Casa completa"),
+        ["BERLIN"] = new(6, 3, 2.5m, "Para familias o equipos de trabajo que necesitan amplitud, privacidad y tres recamaras.", "/Images/Bonhomia/suites/berlin/01.jpg", "Casa completa"),
+        ["SUITE MANHATTAN"] = new(4, 2, 1m, "Dos recamaras y espacio comodo para compartir sin sacrificar privacidad.", "/Images/Bonhomia/suites/manhattan/01.jpg", "Ejecutiva"),
+        ["MANHATTAN"] = new(4, 2, 1m, "Dos recamaras y espacio comodo para compartir sin sacrificar privacidad.", "/Images/Bonhomia/suites/manhattan/01.jpg", "Ejecutiva"),
+        ["SUITE SEUL"] = new(4, 2, 1m, "Estancias largas con habitaciones independientes y un ambiente tranquilo.", "/Images/Bonhomia/suites/seul/01.jpg", "Larga estancia"),
+        ["SEUL"] = new(4, 2, 1m, "Estancias largas con habitaciones independientes y un ambiente tranquilo.", "/Images/Bonhomia/suites/seul/01.jpg", "Larga estancia"),
+        ["SUITE MOSCU"] = new(2, 1, 1m, "Practicidad y confort para parejas o viajeros de negocio.", "/Images/Bonhomia/suites/moscu/01.jpg", "Compacta"),
+        ["MOSCU"] = new(2, 1, 1m, "Practicidad y confort para parejas o viajeros de negocio.", "/Images/Bonhomia/suites/moscu/01.jpg", "Compacta"),
+        ["SUITE PARIS"] = new(2, 1, 1m, "Un espacio acogedor para desconectar, celebrar o hacer home office.", "/Images/Bonhomia/suites/paris/01.jpg", "Acogedora"),
+        ["PARIS"] = new(2, 1, 1m, "Un espacio acogedor para desconectar, celebrar o hacer home office.", "/Images/Bonhomia/suites/paris/01.jpg", "Acogedora"),
+        ["PENTHOUSE"] = new(2, 1, 1m, "Maxima privacidad con un toque premium y una vista mas abierta.", "/Images/Bonhomia/suites/penthouse/01.jpg", "Premium"),
+        ["CASA GRECIA"] = new(10, 4, 3.5m, "Casa completa para convivir, descansar y viajar en grupo.", "/Images/Bonhomia/suites/grecia/01.jpg", "Grupos"),
+        ["GRECIA"] = new(10, 4, 3.5m, "Casa completa para convivir, descansar y viajar en grupo.", "/Images/Bonhomia/suites/grecia/01.jpg", "Grupos"),
+        ["CASA LONDON"] = new(6, 3, 2.5m, "Para familias y grupos que quieren una casa completa y funcional.", "/Images/Bonhomia/suites/london/01.jpg", "Familiar"),
+        ["LONDON"] = new(6, 3, 2.5m, "Para familias y grupos que quieren una casa completa y funcional.", "/Images/Bonhomia/suites/london/01.jpg", "Familiar")
       };
 
     public static PublicRoomMetadata Resolve(string roomName)

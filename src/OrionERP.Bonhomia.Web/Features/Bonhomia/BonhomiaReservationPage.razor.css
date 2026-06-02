@@ -184,6 +184,13 @@
   transform: translateY(-1px);
 }
 
+.bonhomia-button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 .bonhomia-button:focus-visible,
 .bonhomia-nav__cta:focus-visible,
 .bonhomia-nav__links a:focus-visible {
@@ -448,7 +455,7 @@
 
 .bonhomia-wizard__steps {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.55rem;
   padding: 0;
   margin: 0;
@@ -460,6 +467,7 @@
   grid-template-columns: 2rem minmax(0, 1fr);
   gap: 0.2rem 0.6rem;
   width: 100%;
+  min-width: 0;
   min-height: 4.6rem;
   padding: 0.7rem;
   border: 1px solid var(--bonhomia-border);
@@ -488,11 +496,19 @@
 
 .bonhomia-wizard__step strong {
   align-self: end;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.92rem;
   font-weight: 900;
 }
 
 .bonhomia-wizard__step small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--bonhomia-muted);
   font-size: 0.78rem;
   font-weight: 750;
@@ -665,6 +681,12 @@
   box-shadow: 0 12px 26px rgba(23, 38, 34, 0.12);
 }
 
+.bonhomia-room-option--selected {
+  border-color: #0b7a5a;
+  background: #f0fbf5;
+  box-shadow: 0 0 0 3px rgba(11, 122, 90, 0.2), 0 16px 34px rgba(11, 122, 90, 0.18);
+}
+
 .bonhomia-room-option__select {
   display: grid;
   gap: 0.4rem;
@@ -689,11 +711,41 @@
   outline-offset: -3px;
 }
 
+.bonhomia-room-option__media {
+  position: relative;
+  min-width: 0;
+}
+
 .bonhomia-room-option__select img {
   width: 100%;
   height: 6.7rem;
   object-fit: cover;
   background: #e8e1d0;
+}
+
+.bonhomia-room-option__selected-badge {
+  position: absolute;
+  right: 0.55rem;
+  bottom: 0.55rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: calc(100% - 1.1rem);
+  min-height: 1.75rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  background: #0b7a5a;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 950;
+  line-height: 1;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
+}
+
+.bonhomia-room-option__selected-badge span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bonhomia-room-option--unavailable {
@@ -1269,6 +1321,12 @@ button.bonhomia-day {
   box-shadow: 0 16px 34px rgba(157, 89, 65, 0.12);
 }
 
+.bonhomia-checkout-requirement--accepted {
+  border-color: rgba(11, 122, 90, 0.36);
+  background: #f0fbf5;
+  box-shadow: 0 16px 34px rgba(11, 122, 90, 0.12);
+}
+
 .bonhomia-checkout-requirement__icon {
   display: inline-grid;
   place-items: center;
@@ -1291,6 +1349,44 @@ button.bonhomia-day {
   margin: 0.3rem 0 0.8rem;
   color: var(--bonhomia-muted);
   line-height: 1.45;
+}
+
+.bonhomia-phone-field {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 0.8rem;
+  color: var(--bonhomia-muted);
+  font-size: 0.74rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.bonhomia-phone-field input {
+  width: 100%;
+  min-height: 2.95rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--bonhomia-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--bonhomia-ink);
+  font: inherit;
+  font-size: 0.98rem;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.bonhomia-checkout-requirement__legal {
+  margin-bottom: 0.9rem !important;
+  color: #6e3423 !important;
+  font-weight: 800;
+}
+
+.bonhomia-checkout-requirement__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .bonhomia-checkout-requirement__link {
@@ -1682,7 +1778,7 @@ button.bonhomia-day {
 }
 
 .bonhomia-paypal-container {
-  min-height: 3.5rem;
+  min-height: 8rem;
 }
 
 .bonhomia-paypal-gate__requirement {
@@ -2003,10 +2099,6 @@ button.bonhomia-day {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .bonhomia-wizard__steps {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .bonhomia-booking__form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2068,6 +2160,32 @@ button.bonhomia-day {
   .bonhomia-gallery__grid img,
   .bonhomia-gallery__grid img:first-child {
     height: 18rem;
+  }
+
+  .bonhomia-wizard__steps {
+    gap: 0.35rem;
+  }
+
+  .bonhomia-wizard__step button {
+    grid-template-columns: 1.75rem minmax(0, 1fr);
+    min-height: 3.7rem;
+    padding: 0.5rem 0.45rem;
+    gap: 0.1rem 0.4rem;
+  }
+
+  .bonhomia-wizard__step span {
+    width: 1.75rem;
+    height: 1.75rem;
+    font-size: 0.82rem;
+  }
+
+  .bonhomia-wizard__step strong {
+    align-self: center;
+    font-size: 0.8rem;
+  }
+
+  .bonhomia-wizard__step small {
+    display: none;
   }
 }
 
@@ -2140,8 +2258,7 @@ button.bonhomia-day {
   .bonhomia-checkout-requirement,
   .bonhomia-room-picker,
   .bonhomia-confirmation__numbers,
-  .bonhomia-confirmation__grid,
-  .bonhomia-wizard__steps {
+  .bonhomia-confirmation__grid {
     grid-template-columns: 1fr;
   }
 
@@ -2171,7 +2288,28 @@ button.bonhomia-day {
   }
 
   .bonhomia-wizard__step button {
-    min-height: 3.8rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 3.55rem;
+    padding: 0.45rem 0.2rem;
+    gap: 0.24rem;
+    text-align: center;
+  }
+
+  .bonhomia-wizard__step span {
+    width: 1.55rem;
+    height: 1.55rem;
+    font-size: 0.76rem;
+  }
+
+  .bonhomia-wizard__step strong {
+    align-self: auto;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 0.68rem;
+    line-height: 1.05;
   }
 
   .bonhomia-wizard__actions {

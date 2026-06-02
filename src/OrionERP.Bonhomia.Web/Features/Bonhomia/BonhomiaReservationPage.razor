@@ -177,10 +177,19 @@
                                                     title="@GetRoomOptionTitle(room, unavailableDates)"
                                                     aria-pressed="@selected"
                                                     @onclick="() => SelectRoom(room.RoomName)">
-                                                <img src="@room.Image" alt="@room.RoomName" />
+                                                <div class="bonhomia-room-option__media">
+                                                    <img src="@room.Image" alt="@room.RoomName" />
+                                                    @if (selected)
+                                                    {
+                                                        <span class="bonhomia-room-option__selected-badge">
+                                                            <i class="bi bi-check2-circle" aria-hidden="true"></i>
+                                                            <span>Seleccionada</span>
+                                                        </span>
+                                                    }
+                                                </div>
                                                 <span>@room.Tag</span>
                                                 <strong>@room.RoomName</strong>
-                                                <small>@room.Capacity huesped@(room.Capacity == 1 ? string.Empty : "es") · desde @FormatMoney(room.BasePrice)</small>
+                                                <small>@room.Capacity huesped@(room.Capacity == 1 ? string.Empty : "es") · @FormatBedroomCount(room.Bedrooms) · @FormatBathroomCount(room.Bathrooms) · desde @FormatMoney(room.BasePrice)</small>
                                                 <small class="@(isAvailableForStay ? "bonhomia-room-option__status bonhomia-room-option__status--available" : "bonhomia-room-option__status bonhomia-room-option__status--blocked")">
                                                     @(isAvailableForStay ? "Disponible para tus fechas" : GetUnavailableSuiteNote(unavailableDates))
                                                 </small>
@@ -533,10 +542,6 @@
                                             <div class="bonhomia-confirmation__totals">
                                                 <div><span>Suite</span><strong>@FormatMoney(CompletedReservation.SuiteSubtotal)</strong></div>
                                                 <div><span>Extras</span><strong>@FormatMoney(CompletedReservation.ExtrasSubtotal)</strong></div>
-                                                @if (CompletedReservation.ExperiencesSubtotal > 0m)
-                                                {
-                                                    <div><span>Experiencias</span><strong>@FormatMoney(CompletedReservation.ExperiencesSubtotal)</strong></div>
-                                                }
                                                 <div><span>Subtotal</span><strong>@FormatMoney(CompletedReservation.SubTotal)</strong></div>
                                                 <div><span>IVA</span><strong>@FormatMoney(CompletedReservation.Tax)</strong></div>
                                                 @if (CompletedReservation.Ish > 0m)
@@ -571,18 +576,63 @@
                                 else
                                 {
                                     <div class="bonhomia-payment-grid">
-                                        <section class="bonhomia-checkout-requirement" aria-label="Requisito para pagar con PayPal">
+                                        <section class="@GetCheckoutRequirementClass()" aria-label="Requisito para pagar con PayPal">
                                             <div class="bonhomia-checkout-requirement__icon">
-                                                <i class="bi bi-shield-check" aria-hidden="true"></i>
+                                                <i class="@(AcceptedPolicies && HasCustomerPhone ? "bi bi-paypal" : "bi bi-shield-check")" aria-hidden="true"></i>
                                             </div>
                                             <div>
-                                                <h4>Solo falta aceptar terminos</h4>
-                                                <p>PayPal nos devolvera tu nombre, correo y telefono cuando confirme el pago. Esta aceptacion es independiente del reconocimiento general del centro legal.</p>
-                                                <label class="@GetPolicyRequirementClass()">
-                                                    <input type="checkbox" checked="@AcceptedPolicies" @onchange="OnPoliciesChanged" />
-                                                    <span>Debo aceptar el centro legal de Bonhomia, incluyendo aviso de privacidad, terminos, politicas de reserva, cancelacion, check-in, convivencia y reglamento de hospedaje, para activar PayPal.</span>
-                                                </label>
-                                                <a class="bonhomia-checkout-requirement__link" href="/legal" target="_blank" rel="noopener noreferrer">Leer centro legal</a>
+                                                @if (!AcceptedPolicies || !HasCustomerPhone)
+                                                {
+                                                    <h4>Confirma telefono y politicas</h4>
+                                                    <p>Para pagos internacionales PayPal puede no compartir telefono. Ingresa un numero de contacto antes de aceptar las politicas y activar PayPal.</p>
+                                                    <label class="bonhomia-phone-field">
+                                                        <span>Telefono de contacto</span>
+                                                        <input type="tel"
+                                                               value="@Customer.Phone"
+                                                               autocomplete="tel"
+                                                               inputmode="tel"
+                                                               placeholder="+52 749 000 0000"
+                                                               @oninput="args => OnCustomerChanged(nameof(Customer.Phone), args.Value?.ToString())" />
+                                                    </label>
+                                                    <p class="bonhomia-checkout-requirement__legal">Al presionar Aceptar confirmas que leiste y aceptas el centro legal de Bonhomia, incluyendo aviso de privacidad, terminos, politicas de reserva, cancelacion, check-in, convivencia y reglamento de hospedaje.</p>
+                                                    <div class="bonhomia-checkout-requirement__actions">
+                                                        <a class="bonhomia-checkout-requirement__link" href="/legal" target="_blank" rel="noopener noreferrer">Leer centro legal</a>
+                                                        <button type="button"
+                                                                class="bonhomia-button bonhomia-button--primary"
+                                                                disabled="@(!CanAcceptPolicies)"
+                                                                @onclick="AcceptPoliciesAsync">
+                                                            <i class="bi bi-check2" aria-hidden="true"></i>
+                                                            <span>Aceptar</span>
+                                                        </button>
+                                                    </div>
+                                                }
+                                                else if (!CheckoutOptions.Value.IsPayPalConfigured)
+                                                {
+                                                    <h4>PayPal pendiente de configuracion</h4>
+                                                    <p>La cotizacion esta lista para probar el flujo y se puede confirmar por WhatsApp.</p>
+                                                    <div class="bonhomia-alert bonhomia-alert--warning">
+                                                        PayPal aun no esta configurado.
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <h4>Paga con PayPal</h4>
+                                                    <p>Telefono de contacto: <strong>@DisplayValue(Customer.Phone)</strong></p>
+                                                    <div class="bonhomia-paypal-gate">
+                                                        @if (!CanRenderPayPal)
+                                                        {
+                                                            <p class="@(PaymentConfirmationFailed ? null : "bonhomia-paypal-gate__requirement")">@(PaymentConfirmationFailed ? "El pago necesita revision. Para evitar un doble cargo, genera una nueva cotizacion solo despues de revisar PayPal." : "Preparando PayPal...")</p>
+                                                        }
+                                                        <div id="@PayPalContainerId" class="bonhomia-paypal-container" aria-live="polite"></div>
+                                                        @if (PaymentConfirmationFailed && !string.IsNullOrWhiteSpace(PendingPayPalOrderId))
+                                                        {
+                                                            <button class="bonhomia-button bonhomia-button--primary" type="button" @onclick="RetryPendingPayPalConfirmationAsync" disabled="@IsPaymentProcessing">
+                                                                <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+                                                                <span>@(IsPaymentProcessing ? "Revisando pago..." : "Revisar pago en PayPal")</span>
+                                                            </button>
+                                                        }
+                                                    </div>
+                                                }
                                             </div>
                                         </section>
 
@@ -607,10 +657,6 @@
 
                                                 <div class="bonhomia-summary__totals">
                                                     <div><span>Subtotal</span><strong>@FormatMoney(Quote.SubTotal)</strong></div>
-                                                    @if (Quote.ExperiencesSubtotal > 0m)
-                                                    {
-                                                        <div><span>Experiencias</span><strong>@FormatMoney(Quote.ExperiencesSubtotal)</strong></div>
-                                                    }
                                                     <div><span>IVA</span><strong>@FormatMoney(Quote.Tax)</strong></div>
                                                     @if (Quote.Ish > 0m)
                                                     {
@@ -624,30 +670,6 @@
                                                 @if (!string.IsNullOrWhiteSpace(StatusMessage))
                                                 {
                                                     <div class="bonhomia-alert bonhomia-alert--info">@StatusMessage</div>
-                                                }
-
-                                                @if (!CheckoutOptions.Value.IsPayPalConfigured)
-                                                {
-                                                    <div class="bonhomia-alert bonhomia-alert--warning">
-                                                        PayPal aun no esta configurado. La cotizacion esta lista para probar el flujo y se puede confirmar por WhatsApp.
-                                                    </div>
-                                                }
-                                                else
-                                                {
-                                                    <div class="bonhomia-paypal-gate">
-                                                        @if (!CanRenderPayPal)
-                                                        {
-                                                            <p class="@(PaymentConfirmationFailed ? null : "bonhomia-paypal-gate__requirement")">@(PaymentConfirmationFailed ? "El pago necesita revision. Para evitar un doble cargo, genera una nueva cotizacion solo despues de revisar PayPal." : "Acepta los terminos marcando la casilla para activar PayPal.")</p>
-                                                        }
-                                                        <div id="@PayPalContainerId" class="bonhomia-paypal-container" aria-live="polite"></div>
-                                                        @if (PaymentConfirmationFailed && !string.IsNullOrWhiteSpace(PendingPayPalOrderId))
-                                                        {
-                                                            <button class="bonhomia-button bonhomia-button--primary" type="button" @onclick="RetryPendingPayPalConfirmationAsync" disabled="@IsPaymentProcessing">
-                                                                <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
-                                                                <span>@(IsPaymentProcessing ? "Revisando pago..." : "Revisar pago en PayPal")</span>
-                                                            </button>
-                                                        }
-                                                    </div>
                                                 }
 
                                                 <a class="bonhomia-button bonhomia-button--outline bonhomia-summary__whatsapp" href="@WhatsAppUrl" target="_blank" rel="noopener noreferrer">
@@ -748,11 +770,16 @@
     private int ExperienceParticipantLimit => Math.Max(SelectedRoom?.Capacity ?? Guests, 1);
     private string ExperienceDateText => (SelectedExperienceDate ?? ResolveDefaultExperienceDate()).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     private string ExperienceMaxDateText => CheckOut.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    private bool HasCustomerPhone => !string.IsNullOrWhiteSpace(Customer.Phone);
+    private bool CanAcceptPolicies => Quote is not null
+      && !IsPaymentProcessing
+      && HasCustomerPhone;
     private bool CanPay => Quote is not null
       && !string.IsNullOrWhiteSpace(QuoteToken)
       && CheckoutOptions.Value.IsPayPalConfigured
       && ActiveCheckoutStep == CheckoutStep.Payment
       && AcceptedPolicies
+      && HasCustomerPhone
       && !IsPaymentProcessing
       && CompletedReservation is null;
     private bool CanRenderPayPal => Quote is not null
@@ -760,6 +787,7 @@
       && CheckoutOptions.Value.IsPayPalConfigured
       && ActiveCheckoutStep == CheckoutStep.Payment
       && AcceptedPolicies
+      && HasCustomerPhone
       && !PaymentConfirmationFailed
       && CompletedReservation is null;
 
@@ -978,13 +1006,16 @@
         PaymentConfirmationFailed = false;
         PendingPayPalOrderId = null;
         PendingPaymentAttemptId = null;
+        AcceptedPolicies = false;
+        _lastPayPalRenderKey = null;
+        _payPalRenderInFlightKey = null;
 
         try
         {
             var request = BuildQuoteRequest();
             Quote = await BookingService.CreateQuoteAsync(request);
             QuoteToken = QuoteTokenService.CreateToken(Quote);
-            StatusMessage = "Cotizacion lista. Acepta los terminos para pagar con PayPal.";
+            StatusMessage = "Cotizacion lista. Ingresa tu telefono y acepta las politicas para pagar con PayPal.";
             await PersistCheckoutAsync();
             ActiveCheckoutStep = CheckoutStep.Payment;
         }
@@ -1197,17 +1228,35 @@
         else if (fieldName == nameof(Customer.Phone))
         {
             Customer.Phone = value ?? string.Empty;
+            if (!HasCustomerPhone)
+            {
+                AcceptedPolicies = false;
+                _lastPayPalRenderKey = null;
+                _payPalRenderInFlightKey = null;
+                _ = ClearPayPalButtonsAsync();
+            }
         }
 
         CheckoutError = null;
         _ = PersistCheckoutAsync();
     }
 
-    private void OnPoliciesChanged(ChangeEventArgs args)
+    private async Task AcceptPoliciesAsync()
     {
-        AcceptedPolicies = args.Value is bool value && value
-          || bool.TryParse(args.Value?.ToString(), out var parsed) && parsed;
-        _ = PersistCheckoutAsync();
+        var phone = Customer.Phone?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(phone))
+        {
+            CheckoutError = "Ingresa un telefono de contacto antes de aceptar las politicas.";
+            AcceptedPolicies = false;
+            await PersistCheckoutAsync();
+            return;
+        }
+
+        Customer.Phone = phone;
+        AcceptedPolicies = true;
+        CheckoutError = null;
+        StatusMessage = null;
+        await PersistCheckoutAsync();
     }
 
     private int GetExtraQuantity(string code)
@@ -1350,11 +1399,23 @@
         return "Disponible por temporada";
     }
 
-    private string GetPolicyRequirementClass()
+    private string GetCheckoutRequirementClass()
     {
-        var classes = new List<string> { "bonhomia-policy-check", "bonhomia-policy-check--checkout" };
-        classes.Add(AcceptedPolicies ? "bonhomia-policy-check--accepted" : "bonhomia-policy-check--required");
+        var classes = new List<string> { "bonhomia-checkout-requirement" };
+        classes.Add(AcceptedPolicies && HasCustomerPhone ? "bonhomia-checkout-requirement--accepted" : "bonhomia-checkout-requirement--required");
         return string.Join(" ", classes);
+    }
+
+    private static string FormatBedroomCount(int value)
+      => $"{value} recamara{(value == 1 ? string.Empty : "s")}";
+
+    private static string FormatBathroomCount(decimal value)
+    {
+        var formatted = value % 1m == 0m
+          ? ((int)value).ToString(CultureInfo.InvariantCulture)
+          : value.ToString("0.#", CultureInfo.InvariantCulture);
+
+        return $"{formatted} baño{(value == 1m ? string.Empty : "s")}";
     }
 
     private IReadOnlyList<DateOnly> GetUnavailableSuiteDates(BonhomiaRoomAvailabilityDto room)
@@ -1596,6 +1657,7 @@
         PaymentConfirmationFailed = false;
         PendingPayPalOrderId = null;
         PendingPaymentAttemptId = null;
+        AcceptedPolicies = false;
         _lastPayPalRenderKey = null;
         _payPalRenderInFlightKey = null;
         _ = ClearPayPalButtonsAsync();
@@ -1627,7 +1689,7 @@
             return;
         }
 
-        var renderKey = string.Join("|", Quote.Fingerprint, QuoteToken, AcceptedPolicies, CheckoutOptions.Value.PayPalLocale);
+        var renderKey = string.Join("|", Quote.Fingerprint, QuoteToken, AcceptedPolicies, Customer.Phone.Trim(), CheckoutOptions.Value.PayPalLocale);
         if (string.Equals(renderKey, _lastPayPalRenderKey, StringComparison.Ordinal))
         {
             return;
@@ -1652,7 +1714,8 @@
                     quoteToken = QuoteToken,
                     quoteFingerprint = Quote.Fingerprint,
                     renderKey,
-                    paymentAttemptId = PendingPaymentAttemptId
+                    paymentAttemptId = PendingPaymentAttemptId,
+                    customer = Customer
                 },
                 _dotNetRef);
 
@@ -1822,7 +1885,10 @@
       => DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
 
     private static string FormatMoney(decimal value)
-      => $"{value.ToString("C0", MoneyCulture)} MXN";
+    {
+        var format = value == decimal.Round(value, 0, MidpointRounding.ToEven) ? "C0" : "C2";
+        return $"{value.ToString(format, MoneyCulture)} MXN";
+    }
 
     private static string FormatReservationNumber(int value)
       => value > 0 ? $"#{value.ToString("D6", CultureInfo.InvariantCulture)}" : "#";

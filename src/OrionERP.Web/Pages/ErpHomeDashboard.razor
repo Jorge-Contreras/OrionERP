@@ -3,11 +3,13 @@
 @using OrionERP.Application.Features.Ajustes
 @using OrionERP.Application.Features.CuentasPorPagar.Recurrentes
 @using OrionERP.Application.Features.Logistica.PhysicalCounts
+@using OrionERP.Application.Features.Reservaciones.ListaReservaciones
 @using OrionERP.Infrastructure.Auth
 @inject IAjustesService AjustesService
 @inject IRecurrentApService RecurrentApService
 @inject IOrdenTrabajoService OrdenTrabajoService
 @inject IPhysicalCountService PhysicalCountService
+@inject IListaReservacionesService ReservacionesService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject IUserRfcState RfcState
@@ -116,6 +118,78 @@
                     </button>
                 </div>
             </section>
+
+            @if (HasCalendarioRole)
+            {
+                <section class="home-panel home-reservations" aria-labelledby="home-reservations-title">
+                    <div class="home-panel__header">
+                        <div>
+                            <p class="home-panel__kicker">Reservaciones</p>
+                            <h2 id="home-reservations-title">Reservaciones pagadas</h2>
+                        </div>
+                        <span class="home-count home-count--reservation" aria-label="@($"{UpcomingPaidReservations.Count} reservaciones pagadas")">@UpcomingPaidReservations.Count</span>
+                    </div>
+
+                    @if (IsLoading)
+                    {
+                        <div class="home-empty">Cargando reservaciones...</div>
+                    }
+                    else
+                    {
+                        <div class="home-reservation-days">
+                            @foreach (var group in UpcomingReservationGroups)
+                            {
+                                <section class="home-reservation-day" aria-labelledby="@group.TitleId">
+                                    <div class="home-reservation-day__header">
+                                        <div>
+                                            <p>@group.Label</p>
+                                            <h3 id="@group.TitleId">@group.DayName</h3>
+                                        </div>
+                                        <span>@group.Items.Count</span>
+                                    </div>
+
+                                    @if (group.Items.Count == 0)
+                                    {
+                                        <div class="home-reservation-day__empty">Sin reservaciones.</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="home-reservation-list">
+                                            @foreach (var item in group.Items)
+                                            {
+                                                <a class="home-reservation-card" href="@($"/reservaciones/{item.Id}")">
+                                                    <div class="home-order-card__topline">
+                                                        <span class="home-order-card__folio">#@item.Id</span>
+                                                        <span class="home-status home-status--paid">@item.Status</span>
+                                                    </div>
+
+                                                    <h4>@item.Cliente</h4>
+
+                                                    <div class="home-order-card__meta">
+                                                        @if (!string.IsNullOrWhiteSpace(item.Suite))
+                                                        {
+                                                            <span>@item.Suite</span>
+                                                        }
+                                                        <span>@FormatReservationStay(item)</span>
+                                                        <span>@FormatReservationTotal(item)</span>
+                                                    </div>
+                                                </a>
+                                            }
+                                        </div>
+                                    }
+                                </section>
+                            }
+                        </div>
+                    }
+
+                    <div class="home-panel__footer">
+                        <button class="btn btn-outline-primary" type="button" @onclick="OpenCalendario">
+                            <span class="oi oi-calendar" aria-hidden="true"></span>
+                            <span>Abrir calendario</span>
+                        </button>
+                    </div>
+                </section>
+            }
 
             @if (HasConteoRole)
             {
@@ -348,6 +422,7 @@
     private List<OrdenTrabajoListItemDto> WorkOrders { get; set; } = [];
     private List<RecurrentApOccurrenceListItemDto> ApOccurrences { get; set; } = [];
     private List<PhysicalCountPendingRecountDto> PendingRecounts { get; set; } = [];
+    private List<ListaReservacionItemDto> UpcomingPaidReservations { get; set; } = [];
     private string CurrentUserName { get; set; } = "OrionERP";
     private int? CurrentEmployeeId { get; set; }
     private bool IsAuthenticated { get; set; }
@@ -372,6 +447,7 @@
     private decimal ApPendingAmount => ApOccurrences.Sum(item => Math.Max((item.ExpectedAmount ?? 0m) - item.ActualPaidAmount, 0m));
     private string ApNotificationWindowLabel => ApNotificationDays == 1 ? "1 dia" : $"{ApNotificationDays} dias";
     private string ApEmptyMessage => $"No hay CxCR vencidas ni por vencer en los proximos {ApNotificationWindowLabel}.";
+    private IReadOnlyList<ReservationDayGroupVm> UpcomingReservationGroups => BuildUpcomingReservationGroups();
 
     protected override async Task OnInitializedAsync()
     {
@@ -401,6 +477,7 @@
                 await LoadApNotificationSettingsAsync();
             }
             await LoadWorkOrdersForCurrentUserAsync();
+            await LoadUpcomingPaidReservationsAsync();
             await LoadPendingRecountsAsync();
             await LoadApOccurrencesAsync();
             LoadedRfc = CurrentRfc;
@@ -410,6 +487,7 @@
             WorkOrders.Clear();
             ApOccurrences.Clear();
             PendingRecounts.Clear();
+            UpcomingPaidReservations.Clear();
             ErrorMessage = ex.Message;
         }
         finally
@@ -489,6 +567,27 @@
             .ToList();
     }
 
+    private async Task LoadUpcomingPaidReservationsAsync()
+    {
+        if (!IsAuthenticated || !HasCalendarioRole)
+        {
+            UpcomingPaidReservations.Clear();
+            return;
+        }
+
+        var syncResult = await ReservacionesService.SyncPaidReservationStatusesAsync();
+        if (!syncResult.Success)
+        {
+            ErrorMessage = syncResult.Message;
+        }
+
+        UpcomingPaidReservations = (await ReservacionesService.GetUpcomingPaidReservationsAsync(DateTime.Today, 3))
+            .OrderBy(item => item.RoomDate ?? DateTime.MaxValue)
+            .ThenBy(item => item.CheckIn ?? DateTime.MaxValue)
+            .ThenBy(item => item.Id)
+            .ToList();
+    }
+
     private async Task LoadApNotificationSettingsAsync()
     {
         var settings = await AjustesService.GetGeneralSettingsAsync();
@@ -524,6 +623,7 @@
             WorkOrders.Clear();
             ApOccurrences.Clear();
             PendingRecounts.Clear();
+            UpcomingPaidReservations.Clear();
             return;
         }
 
@@ -561,6 +661,53 @@
         => item.DueDate.Date == DateTime.Today
             ? "Hoy"
             : item.DueDate.ToString("dd MMM", DateCulture);
+
+    private IReadOnlyList<ReservationDayGroupVm> BuildUpcomingReservationGroups()
+    {
+        var today = DateTime.Today;
+        return Enumerable.Range(0, 3)
+            .Select(offset =>
+            {
+                var date = today.AddDays(offset);
+                var items = UpcomingPaidReservations
+                    .Where(item => item.RoomDate?.Date == date)
+                    .OrderBy(item => item.RoomDate)
+                    .ThenBy(item => item.CheckIn)
+                    .ThenBy(item => item.Id)
+                    .ToList();
+
+                return new ReservationDayGroupVm(
+                    $"reservation-day-{offset}",
+                    GetReservationGroupLabel(offset),
+                    date.ToString("dddd", DateCulture),
+                    items);
+            })
+            .ToList();
+    }
+
+    private static string GetReservationGroupLabel(int offset)
+        => offset switch
+        {
+            0 => "Hoy",
+            1 => "Mañana",
+            2 => "Pasado Mañana",
+            _ => "Próxima"
+        };
+
+    private static string FormatReservationStay(ListaReservacionItemDto item)
+    {
+        if (!item.CheckIn.HasValue)
+        {
+            return "Sin fecha";
+        }
+
+        return item.CheckOut.HasValue
+            ? $"{item.CheckIn.Value.ToString("dd MMM", DateCulture)} - {item.CheckOut.Value.ToString("dd MMM", DateCulture)}"
+            : item.CheckIn.Value.ToString("dd MMM", DateCulture);
+    }
+
+    private static string FormatReservationTotal(ListaReservacionItemDto item)
+        => item.TotalPrice.ToString("C2", DateCulture);
 
     private static string FormatRecountRequestedAt(PhysicalCountPendingRecountDto item)
         => item.RecountRequestedAt.ToLocalTime().Date == DateTime.Today
@@ -729,4 +876,10 @@
         AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
         RfcState.Changed -= OnRfcStateChanged;
     }
+
+    private sealed record ReservationDayGroupVm(
+        string TitleId,
+        string Label,
+        string DayName,
+        IReadOnlyList<ListaReservacionItemDto> Items);
 }

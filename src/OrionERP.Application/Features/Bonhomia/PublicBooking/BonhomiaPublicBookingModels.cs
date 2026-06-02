@@ -22,6 +22,7 @@ public sealed class BonhomiaRoomAvailabilityDto
   public string Image { get; set; } = string.Empty;
   public int Capacity { get; set; }
   public int Bedrooms { get; set; }
+  public decimal Bathrooms { get; set; }
   public decimal BasePrice { get; set; }
   public IReadOnlyList<BonhomiaDayAvailabilityDto> Days { get; set; } = Array.Empty<BonhomiaDayAvailabilityDto>();
 }

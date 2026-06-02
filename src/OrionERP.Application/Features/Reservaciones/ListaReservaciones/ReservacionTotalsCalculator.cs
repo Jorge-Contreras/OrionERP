@@ -100,13 +100,36 @@ public static class ReservacionTotalsCalculator
     decimal totalPagado,
     decimal suiteDiscountPercent = 0m)
   {
+    ArgumentNullException.ThrowIfNull(extraLineTotals);
+
+    return Calculate(
+      checkIn,
+      checkOut,
+      suiteLineTotals,
+      extraLineTotals.Select(line => new ReservationChargeLine(line)),
+      experienceLineTotals,
+      totalPagado,
+      suiteDiscountPercent);
+  }
+
+  public static ReservacionTotalsBreakdown Calculate(
+    DateTime? checkIn,
+    DateTime? checkOut,
+    IEnumerable<decimal> suiteLineTotals,
+    IEnumerable<ReservationChargeLine> extraLineTotals,
+    IEnumerable<ReservationChargeLine> experienceLineTotals,
+    decimal totalPagado,
+    decimal suiteDiscountPercent = 0m)
+  {
     ArgumentNullException.ThrowIfNull(suiteLineTotals);
     ArgumentNullException.ThrowIfNull(extraLineTotals);
     ArgumentNullException.ThrowIfNull(experienceLineTotals);
 
     var activeDiscountPercent = NormalizeSuiteDiscountPercent(suiteDiscountPercent);
     var roundedSuiteLines = suiteLineTotals.Select(RoundCurrency).ToArray();
-    var roundedExtraLines = extraLineTotals.Select(RoundCurrency).ToArray();
+    var roundedExtraLines = extraLineTotals
+      .Select(line => new ReservationChargeLine(RoundCurrency(line.Amount), line.TaxMode))
+      .ToArray();
     var roundedExperienceLines = experienceLineTotals
       .Select(line => new ReservationChargeLine(RoundCurrency(line.Amount), line.TaxMode))
       .ToArray();
@@ -115,8 +138,23 @@ public static class ReservacionTotalsCalculator
       .Select(line => RoundCurrency(line - RoundCurrency(line * (activeDiscountPercent / 100m))))
       .ToArray();
 
+    var taxableIncludedExtraSubtotals = roundedExtraLines
+      .Where(line => line.TaxMode == ReservationChargeTaxMode.TaxIncluded)
+      .Select(line => RoundCurrency(line.Amount / (1m + TaxRate)))
+      .ToArray();
+
+    var nonTaxableExtraLines = roundedExtraLines
+      .Where(line => line.TaxMode == ReservationChargeTaxMode.NonTaxable)
+      .Select(line => line.Amount)
+      .ToArray();
+
+    var taxableExtraLines = roundedExtraLines
+      .Where(line => line.TaxMode == ReservationChargeTaxMode.TaxableExclusive)
+      .Select(line => line.Amount)
+      .ToArray();
+
     var taxableExclusiveLines = discountedSuiteLines
-      .Concat(roundedExtraLines)
+      .Concat(taxableExtraLines)
       .ToArray();
 
     var taxableIncludedSubtotals = roundedExperienceLines
@@ -137,16 +175,22 @@ public static class ReservacionTotalsCalculator
     var roundedSuites = RoundCurrency(roundedSuiteLines.Sum());
     var discountedSuites = RoundCurrency(discountedSuiteLines.Sum());
     var suiteDiscountAmount = RoundCurrency(roundedSuites - discountedSuites);
-    var roundedExtras = RoundCurrency(roundedExtraLines.Sum());
+    var roundedExtras = RoundCurrency(taxableExtraLines.Sum() + taxableIncludedExtraSubtotals.Sum() + nonTaxableExtraLines.Sum());
     var roundedExperiences = RoundCurrency(roundedExperienceLines.Sum(line => line.Amount));
     var subtotal = RoundCurrency(
       discountedSuites
-      + roundedExtras
+      + taxableExtraLines.Sum()
+      + taxableIncludedExtraSubtotals.Sum()
+      + nonTaxableExtraLines.Sum()
       + taxableIncludedSubtotals.Sum()
       + taxableExperienceLines.Sum()
       + nonTaxableExperienceLines.Sum());
 
     var tax = SumRoundedTax(taxableExclusiveLines.Concat(taxableExperienceLines), TaxRate)
+      + RoundCurrency(roundedExtraLines
+        .Where(line => line.TaxMode == ReservationChargeTaxMode.TaxIncluded)
+        .Sum(line => line.Amount)
+        - taxableIncludedExtraSubtotals.Sum())
       + RoundCurrency(roundedExperienceLines
         .Where(line => line.TaxMode == ReservationChargeTaxMode.TaxIncluded)
         .Sum(line => line.Amount)

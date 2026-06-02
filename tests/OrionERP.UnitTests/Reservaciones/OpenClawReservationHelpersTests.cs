@@ -101,6 +101,23 @@ public class OpenClawReservationHelpersTests
   }
 
   [Fact]
+  public void CalculateTotals_SupportsTaxIncludedExtraLines()
+  {
+    var totals = ReservacionTotalsCalculator.Calculate(
+      new DateTime(2026, 3, 18),
+      new DateTime(2026, 3, 20),
+      Array.Empty<decimal>(),
+      new[] { new ReservationChargeLine(200m, ReservationChargeTaxMode.TaxIncluded) },
+      Array.Empty<ReservationChargeLine>(),
+      0m);
+
+    Assert.Equal(172.41m, totals.TotalExtras);
+    Assert.Equal(172.41m, totals.SubTotal);
+    Assert.Equal(27.59m, totals.Tax);
+    Assert.Equal(200m, totals.TotalReservacion);
+  }
+
+  [Fact]
   public void CalculateTotals_DiscountsSuiteLinesBeforePerLineTaxes()
   {
     var totals = ReservacionTotalsCalculator.Calculate(

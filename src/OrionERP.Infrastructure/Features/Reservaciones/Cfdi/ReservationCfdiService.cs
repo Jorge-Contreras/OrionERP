@@ -1389,15 +1389,23 @@ ORDER BY
   private static IReadOnlyList<ReservationCfdiExtraSource> BuildExtraSources(ReservacionDetailDto detail)
   {
     var sources = detail.Extras
-      .Select(extra => new ReservationCfdiExtraSource
+      .Select(extra =>
       {
-        Id = extra.Id,
-        CatalogName = extra.Name,
-        Description = extra.Description,
-        Amount = extra.Price,
-        Quantity = extra.Quantity,
-        UnitPrice = extra.UnitPrice,
-        Notes = extra.Notes
+        var isTaxIncluded = IsTaxIncluded(extra.TaxMode);
+        var amount = isTaxIncluded
+          ? RoundCurrency(extra.Price / 1.16m)
+          : extra.Price;
+
+        return new ReservationCfdiExtraSource
+        {
+          Id = extra.Id,
+          CatalogName = extra.Name,
+          Description = extra.Description,
+          Amount = amount,
+          Quantity = isTaxIncluded ? 1m : extra.Quantity,
+          UnitPrice = isTaxIncluded ? amount : extra.UnitPrice,
+          Notes = extra.Notes
+        };
       })
       .ToList();
 

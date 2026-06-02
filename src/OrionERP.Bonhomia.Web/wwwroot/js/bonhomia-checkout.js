@@ -90,7 +90,8 @@
         body: JSON.stringify({
           quoteToken: options.quoteToken,
           quoteFingerprint: options.quoteFingerprint,
-          paymentAttemptId
+          paymentAttemptId,
+          customer: options.customer || null
         })
       });
 

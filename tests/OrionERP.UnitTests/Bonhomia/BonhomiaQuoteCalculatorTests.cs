@@ -31,10 +31,11 @@ public class BonhomiaQuoteCalculatorTests
 
     Assert.Equal(2, quote.Nights);
     Assert.Equal(2500m, quote.SuiteSubtotal);
-    Assert.Equal(200m, quote.ExtrasSubtotal);
-    Assert.Equal(2700m, quote.SubTotal);
-    Assert.Equal(432m, quote.Tax);
-    Assert.Equal(3132m, quote.Total);
+    Assert.Equal(172.41m, quote.ExtrasSubtotal);
+    Assert.Equal(2672.41m, quote.SubTotal);
+    Assert.Equal(427.59m, quote.Tax);
+    Assert.Equal(3100m, quote.Total);
+    Assert.Contains(quote.Lines, line => line.Type == "extra" && line.UnitPrice == 172.41m && line.Total == 172.41m);
     Assert.False(string.IsNullOrWhiteSpace(quote.Fingerprint));
   }
 

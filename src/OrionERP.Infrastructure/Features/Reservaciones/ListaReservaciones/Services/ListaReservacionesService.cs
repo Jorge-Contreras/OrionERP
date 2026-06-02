@@ -85,25 +85,193 @@ ORDER BY r.CHECKIN DESC, r.ID DESC");
 
     await ApplyCalculatedListTotalsAsync(conn, rows, ct);
 
-    return rows
-      .Select(row => new ListaReservacionItemDto
+    return MapListRows(rows);
+  }
+
+  public async Task<IReadOnlyList<ListaReservacionItemDto>> GetUpcomingPaidReservationsAsync(
+    DateTime startDate,
+    int dayCount = 3,
+    CancellationToken ct = default)
+  {
+    var normalizedDayCount = Math.Clamp(dayCount, 1, 31);
+    var fromDate = startDate.Date;
+    var toDate = fromDate.AddDays(normalizedDayCount);
+
+    const string sql = @"
+SELECT
+    r.ID AS Id,
+    ISNULL(c.Nombre, '(Sin cliente)') AS Cliente,
+    r.CHECKIN AS CheckIn,
+    r.CHECKOUT AS CheckOut,
+    CAST(rc.ROOM_DATE AS date) AS RoomDate,
+    STRING_AGG(CONVERT(nvarchar(max), NULLIF(LTRIM(RTRIM(ISNULL(rc.ROOM, ''))), '')), ', ') AS Suite,
+    r.STATUS AS Status,
+    CAST(ISNULL(r.TOTAL_PRICE, 0) AS decimal(18,2)) AS TotalPrice,
+    CAST(ISNULL(r.SUITE_DISCOUNT_PERCENT, 0) AS decimal(18,2)) AS SuiteDiscountPercent,
+    CAST(0 AS decimal(18,2)) AS Pagado,
+    CAST(ISNULL(r.TOTAL_PRICE, 0) AS decimal(18,2)) AS PorPagar,
+    r.NOTES AS Notes
+FROM dbo.RESERVATION r
+INNER JOIN dbo.ROOM_CALENDAR rc
+  ON r.ID = TRY_CAST(rc.LOCK_DESCRIPTION AS int)
+LEFT JOIN dbo.Clientes c
+  ON c.ID = r.CLIENTE_ID
+WHERE UPPER(LTRIM(RTRIM(ISNULL(r.STATUS, '')))) = @PagadaStatus
+  AND rc.ROOM_DATE >= @FromDate
+  AND rc.ROOM_DATE < @ToDate
+GROUP BY
+    r.ID,
+    c.Nombre,
+    r.CHECKIN,
+    r.CHECKOUT,
+    CAST(rc.ROOM_DATE AS date),
+    r.STATUS,
+    r.TOTAL_PRICE,
+    r.SUITE_DISCOUNT_PERCENT,
+    r.NOTES
+ORDER BY CAST(rc.ROOM_DATE AS date) ASC, r.CHECKIN ASC, r.ID ASC;";
+
+    await using var conn = new SqlConnection(_cs);
+    var rows = (await conn.QueryAsync<ListaReservacionListRow>(
+      new CommandDefinition(
+        sql,
+        new
+        {
+          PagadaStatus = ReservationStatuses.Pagada,
+          FromDate = fromDate,
+          ToDate = toDate
+        },
+        cancellationToken: ct))).AsList();
+
+    await ApplyCalculatedListTotalsAsync(conn, rows, ct);
+
+    return MapListRows(rows);
+  }
+
+  public async Task<ReservacionCommandResult> SyncPaidReservationStatusesAsync(CancellationToken ct = default)
+  {
+    const int batchSize = 500;
+    const string candidateSql = @"
+SELECT TOP (@Take)
+    r.ID AS Id,
+    ISNULL(c.Nombre, '(Sin cliente)') AS Cliente,
+    r.CHECKIN AS CheckIn,
+    r.CHECKOUT AS CheckOut,
+    r.STATUS AS Status,
+    CAST(ISNULL(r.TOTAL_PRICE, 0) AS decimal(18,2)) AS TotalPrice,
+    CAST(ISNULL(r.SUITE_DISCOUNT_PERCENT, 0) AS decimal(18,2)) AS SuiteDiscountPercent,
+    CAST(0 AS decimal(18,2)) AS Pagado,
+    CAST(ISNULL(r.TOTAL_PRICE, 0) AS decimal(18,2)) AS PorPagar,
+    r.NOTES AS Notes
+FROM dbo.RESERVATION r
+LEFT JOIN dbo.Clientes c
+  ON c.ID = r.CLIENTE_ID
+WHERE r.ID > @LastId
+  AND UPPER(LTRIM(RTRIM(ISNULL(r.STATUS, '')))) NOT IN (@PagadaStatus, @CanceladaStatus, @CanceladoStatus)
+ORDER BY r.ID ASC;";
+
+    const string updateReservationSql = @"
+UPDATE dbo.RESERVATION
+SET STATUS = @PagadaStatus
+WHERE ID IN @ReservationIds
+  AND UPPER(LTRIM(RTRIM(ISNULL(STATUS, '')))) NOT IN (@PagadaStatus, @CanceladaStatus, @CanceladoStatus);";
+
+    const string updateRoomCalendarSql = @"
+UPDATE dbo.ROOM_CALENDAR
+SET STATUS = @PagadaStatus
+WHERE TRY_CAST(LOCK_DESCRIPTION AS int) IN @ReservationIds;";
+
+    await using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+
+    var updatedCount = 0;
+    var lastId = 0;
+
+    try
+    {
+      while (true)
       {
-        Id = row.Id,
-        Cliente = row.Cliente,
-        CheckIn = row.CheckIn,
-        CheckOut = row.CheckOut,
-        Status = row.Status,
-        TotalPrice = row.TotalPrice,
-        Pagado = row.Pagado,
-        PorPagar = row.PorPagar,
-        FacturacionStatus = row.FacturacionStatus,
-        FacturacionPaymentCount = row.FacturacionPaymentCount,
-        FacturacionFacturadoPaymentCount = row.FacturacionFacturadoPaymentCount,
-        FacturacionRegularCfdiCount = row.FacturacionRegularCfdiCount,
-        FacturacionPago20Count = row.FacturacionPago20Count,
-        Notes = row.Notes
-      })
-      .ToList();
+        var rows = (await conn.QueryAsync<ListaReservacionListRow>(
+          new CommandDefinition(
+            candidateSql,
+            new
+            {
+              LastId = lastId,
+              Take = batchSize,
+              PagadaStatus = ReservationStatuses.Pagada,
+              CanceladaStatus = ReservationStatuses.Cancelada.ToUpperInvariant(),
+              CanceladoStatus = "CANCELADO"
+            },
+            cancellationToken: ct))).AsList();
+
+        if (rows.Count == 0)
+        {
+          break;
+        }
+
+        lastId = rows[^1].Id;
+        await ApplyCalculatedListTotalsAsync(conn, rows, ct);
+
+        var paidReservationIds = rows
+          .Where(ShouldMarkReservationAsPaid)
+          .Select(row => row.Id)
+          .ToArray();
+
+        if (paidReservationIds.Length > 0)
+        {
+          await using var tx = await conn.BeginTransactionAsync(ct);
+          try
+          {
+            var affected = await conn.ExecuteAsync(
+              new CommandDefinition(
+                updateReservationSql,
+                new
+                {
+                  ReservationIds = paidReservationIds,
+                  PagadaStatus = ReservationStatuses.Pagada,
+                  CanceladaStatus = ReservationStatuses.Cancelada.ToUpperInvariant(),
+                  CanceladoStatus = "CANCELADO"
+                },
+                transaction: tx,
+                cancellationToken: ct));
+
+            await conn.ExecuteAsync(
+              new CommandDefinition(
+                updateRoomCalendarSql,
+                new
+                {
+                  ReservationIds = paidReservationIds,
+                  PagadaStatus = ReservationStatuses.Pagada
+                },
+                transaction: tx,
+                cancellationToken: ct));
+
+            await tx.CommitAsync(ct);
+            updatedCount += affected;
+          }
+          catch
+          {
+            await tx.RollbackAsync(ct);
+            throw;
+          }
+        }
+
+        if (rows.Count < batchSize)
+        {
+          break;
+        }
+      }
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "Error syncing paid reservation statuses.");
+      return ReservacionCommandResult.Fail("No se pudieron sincronizar las reservaciones pagadas.");
+    }
+
+    var message = updatedCount == 1
+      ? "1 reservación marcada como PAGADA."
+      : $"{updatedCount} reservaciones marcadas como PAGADA.";
+    return ReservacionCommandResult.Ok(message);
   }
 
   private static async Task ApplyCalculatedListTotalsAsync(
@@ -127,9 +295,27 @@ WHERE TRY_CAST(rc.LOCK_DESCRIPTION AS int) IN @ReservationIds;
 
 SELECT
     re.ReservationID AS ReservationId,
-    CAST(ISNULL(re.UnitPriceSnapshot, 0) * ISNULL(re.Quantity, 1) AS decimal(18,2)) AS Amount
+    CAST(ISNULL(re.UnitPriceSnapshot, 0) * ISNULL(re.Quantity, 1) AS decimal(18,2)) AS Amount,
+    ISNULL(re.TaxMode, 'TaxableExclusive') AS TaxMode
 FROM dbo.Reservation_Extra re
 WHERE re.ReservationID IN @ReservationIds;
+
+IF OBJECT_ID('dbo.Reservation_Experience', 'U') IS NOT NULL
+BEGIN
+    SELECT
+        re.ReservationID AS ReservationId,
+        CAST(ISNULL(re.TotalSnapshot, 0) AS decimal(18,2)) AS Amount,
+        ISNULL(re.TaxMode, 'TaxableExclusive') AS TaxMode
+    FROM dbo.Reservation_Experience re
+    WHERE re.ReservationID IN @ReservationIds;
+END
+ELSE
+BEGIN
+    SELECT TOP (0)
+        CAST(NULL AS int) AS ReservationId,
+        CAST(NULL AS decimal(18,2)) AS Amount,
+        CAST(NULL AS nvarchar(40)) AS TaxMode;
+END;
 
 SELECT
     rt.ReservationID AS ReservationId,
@@ -223,7 +409,9 @@ GROUP BY rp.ReservationId;";
     var suitesByReservation = (await multi.ReadAsync<ReservationAmountRow>())
       .ToLookup(row => row.ReservationId, row => row.Amount);
     var extrasByReservation = (await multi.ReadAsync<ReservationAmountRow>())
-      .ToLookup(row => row.ReservationId, row => row.Amount);
+      .ToLookup(row => row.ReservationId, row => new ReservationChargeLine(row.Amount, MapTaxMode(row.TaxMode)));
+    var experiencesByReservation = (await multi.ReadAsync<ReservationAmountRow>())
+      .ToLookup(row => row.ReservationId, row => new ReservationChargeLine(row.Amount, MapTaxMode(row.TaxMode)));
     var pagosByReservation = (await multi.ReadAsync<ReservationAmountRow>())
       .ToLookup(row => row.ReservationId, row => row.Amount);
     var facturacionByReservation = (await multi.ReadAsync<ReservationFacturacionListRow>())
@@ -236,6 +424,7 @@ GROUP BY rp.ReservationId;";
         row.CheckOut,
         suitesByReservation[row.Id],
         extrasByReservation[row.Id],
+        experiencesByReservation[row.Id],
         pagosByReservation[row.Id].Sum(),
         row.SuiteDiscountPercent);
 
@@ -265,6 +454,34 @@ GROUP BY rp.ReservationId;";
       ? ReservationFacturacionStatuses.Facturada
       : ReservationFacturacionStatuses.Parcial;
   }
+
+  private static IReadOnlyList<ListaReservacionItemDto> MapListRows(IEnumerable<ListaReservacionListRow> rows)
+    => rows
+      .Select(row => new ListaReservacionItemDto
+      {
+        Id = row.Id,
+        Cliente = row.Cliente,
+        CheckIn = row.CheckIn,
+        CheckOut = row.CheckOut,
+        RoomDate = row.RoomDate,
+        Suite = row.Suite,
+        Status = row.Status,
+        TotalPrice = row.TotalPrice,
+        Pagado = row.Pagado,
+        PorPagar = row.PorPagar,
+        FacturacionStatus = row.FacturacionStatus,
+        FacturacionPaymentCount = row.FacturacionPaymentCount,
+        FacturacionFacturadoPaymentCount = row.FacturacionFacturadoPaymentCount,
+        FacturacionRegularCfdiCount = row.FacturacionRegularCfdiCount,
+        FacturacionPago20Count = row.FacturacionPago20Count,
+        Notes = row.Notes
+      })
+      .ToList();
+
+  private static bool ShouldMarkReservationAsPaid(ListaReservacionListRow row)
+    => row.TotalPrice > 5m
+      && row.PorPagar >= -5m
+      && row.PorPagar <= 5m;
 
   private static void AppendListaFilters(
     StringBuilder sql,
@@ -865,6 +1082,7 @@ SELECT
     CAST(ISNULL(re.UnitPriceSnapshot, 0) AS decimal(18,2)) AS UnitPrice,
     ISNULL(re.Quantity, 1) AS Quantity,
     CAST(ISNULL(re.UnitPriceSnapshot, 0) * ISNULL(re.Quantity, 1) AS decimal(18,2)) AS Price,
+    ISNULL(re.TaxMode, 'TaxableExclusive') AS TaxMode,
     re.Notes
 FROM dbo.Reservation_Extra re
 WHERE re.ReservationID = @ReservationId
@@ -1324,6 +1542,7 @@ SELECT
     CAST(ISNULL(re.UnitPriceSnapshot, 0) AS decimal(18,2)) AS UnitPrice,
     ISNULL(re.Quantity, 1) AS Quantity,
     CAST(ISNULL(re.UnitPriceSnapshot, 0) * ISNULL(re.Quantity, 1) AS decimal(18,2)) AS Price,
+    ISNULL(re.TaxMode, 'TaxableExclusive') AS TaxMode,
     re.Notes
 FROM dbo.Reservation_Extra re
 WHERE re.ReservationID = @ReservationId
@@ -2389,7 +2608,7 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
       detail.CheckIn,
       detail.CheckOut,
       suites.Select(s => s.Precio),
-      extras.Select(e => e.Price),
+      extras.Select(e => new ReservationChargeLine(e.Price, MapTaxMode(e.TaxMode))),
       experiences.Select(e => new ReservationChargeLine(e.Total, MapTaxMode(e.TaxMode))),
       pagos.Sum(p => p.Monto),
       detail.SuiteDiscountPercent);
@@ -2539,6 +2758,8 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
     public string Cliente { get; set; } = string.Empty;
     public DateTime? CheckIn { get; set; }
     public DateTime? CheckOut { get; set; }
+    public DateTime? RoomDate { get; set; }
+    public string? Suite { get; set; }
     public string? Status { get; set; }
     public decimal TotalPrice { get; set; }
     public decimal SuiteDiscountPercent { get; set; }
@@ -2556,6 +2777,7 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
   {
     public int ReservationId { get; set; }
     public decimal Amount { get; set; }
+    public string TaxMode { get; set; } = "TaxableExclusive";
   }
 
   private sealed class ReservationFacturacionListRow

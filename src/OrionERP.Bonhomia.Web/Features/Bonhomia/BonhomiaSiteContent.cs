@@ -20,14 +20,14 @@ internal static class BonhomiaSiteContent
 
   public static readonly SuiteSummary[] Suites =
   [
-    new("Casa Berlin", "Casa completa", "Para familias o equipos de trabajo que necesitan amplitud, privacidad y tres recamaras.", "6 personas", "3 recamaras", "$2,950 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Casa Berlin")),
-    new("Suite Manhattan", "Ejecutiva", "Dos recamaras y espacio comodo para compartir sin sacrificar privacidad.", "4 personas", "2 recamaras", "$1,750 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Suite Manhattan")),
-    new("Suite Seul", "Larga estancia", "Estancias largas con habitaciones independientes, cocina y ambiente tranquilo.", "4 personas", "2 recamaras", "$1,750 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Suite Seul")),
-    new("Suite Moscu", "Compacta", "Practicidad y confort para parejas o viajeros de negocio.", "2 personas", "1 recamara", "$1,250 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Suite Moscu")),
-    new("Suite Paris", "Acogedora", "Un espacio cuidado para desconectar, celebrar o trabajar remoto.", "2 personas", "1 recamara", "$1,250 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Suite Paris")),
-    new("Penthouse", "Premium", "Maxima privacidad con un toque premium y una vista mas abierta.", "2 personas", "1 recamara", "$2,750 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Penthouse")),
-    new("Casa Grecia", "Grupos", "Casa completa para convivir, descansar y viajar en grupo.", "10 personas", "4 recamaras", "$4,500 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Casa Grecia")),
-    new("Casa London", "Familiar", "Para familias y grupos que quieren una casa completa y funcional.", "6 personas", "3 recamaras", "$3,150 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Casa London"))
+    new("Casa Berlin", "Casa completa", "Para familias o equipos de trabajo que necesitan amplitud, privacidad y tres recamaras.", "6 personas", "3 recamaras", "2.5 baños", "$2,950 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Casa Berlin")),
+    new("Suite Manhattan", "Ejecutiva", "Dos recamaras y espacio comodo para compartir sin sacrificar privacidad.", "4 personas", "2 recamaras", "1 baño", "$1,750 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Suite Manhattan")),
+    new("Suite Seul", "Larga estancia", "Estancias largas con habitaciones independientes, cocina y ambiente tranquilo.", "4 personas", "2 recamaras", "1 baño", "$1,750 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Suite Seul")),
+    new("Suite Moscu", "Compacta", "Practicidad y confort para parejas o viajeros de negocio.", "2 personas", "1 recamara", "1 baño", "$1,250 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Suite Moscu")),
+    new("Suite Paris", "Acogedora", "Un espacio cuidado para desconectar, celebrar o trabajar remoto.", "2 personas", "1 recamara", "1 baño", "$1,250 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Suite Paris")),
+    new("Penthouse", "Premium", "Maxima privacidad con un toque premium y una vista mas abierta.", "2 personas", "1 recamara", "1 baño", "$2,750 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Penthouse")),
+    new("Casa Grecia", "Grupos", "Casa completa para convivir, descansar y viajar en grupo.", "10 personas", "4 recamaras", "3.5 baños", "$4,500 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Casa Grecia")),
+    new("Casa London", "Familiar", "Para familias y grupos que quieren una casa completa y funcional.", "6 personas", "3 recamaras", "2.5 baños", "$3,150 MXN", BonhomiaSuiteGalleryCatalog.GetPrimaryImageForSuite("Casa London"))
   ];
 
   public static readonly InfoCard[] GuestProfiles =
@@ -82,7 +82,7 @@ internal static class BonhomiaSiteContent
   ];
 }
 
-internal sealed record SuiteSummary(string Name, string Tag, string Description, string Capacity, string Bedrooms, string StartingRate, string Image);
+internal sealed record SuiteSummary(string Name, string Tag, string Description, string Capacity, string Bedrooms, string Bathrooms, string StartingRate, string Image);
 
 internal sealed record InfoCard(string Title, string Text, string Icon);
 

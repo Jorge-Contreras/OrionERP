@@ -206,6 +206,12 @@ public partial class ReservacionPage : ComponentBase
 
     try
     {
+      var paidStatusSync = await ReservacionesService.SyncPaidReservationStatusesAsync();
+      if (!paidStatusSync.Success)
+      {
+        UiMessages.ShowWarning(paidStatusSync.Message);
+      }
+
       Detail = await ReservacionesService.GetReservacionDetailAsync(ReservationId);
       if (Detail is null)
       {
@@ -1066,8 +1072,8 @@ public partial class ReservacionPage : ComponentBase
       CheckIn,
       CheckOut,
       Suites.Select(s => s.Precio),
-      Extras.Select(e => e.Price),
-      Experiences.Select(e => new ReservationChargeLine(e.Total, MapExperienceTaxMode(e.TaxMode))),
+      Extras.Select(e => new ReservationChargeLine(e.Price, MapTaxMode(e.TaxMode))),
+      Experiences.Select(e => new ReservationChargeLine(e.Total, MapTaxMode(e.TaxMode))),
       Pagos.Sum(p => p.Monto),
       SuiteDiscountPercent);
 
@@ -1107,7 +1113,7 @@ public partial class ReservacionPage : ComponentBase
     TotalSuiteInput = TotalSuites;
   }
 
-  private static ReservationChargeTaxMode MapExperienceTaxMode(string? value)
+  private static ReservationChargeTaxMode MapTaxMode(string? value)
     => value switch
     {
       ExperienceTaxModes.TaxIncluded => ReservationChargeTaxMode.TaxIncluded,

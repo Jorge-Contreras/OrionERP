@@ -8,6 +8,8 @@ namespace OrionERP.Application.Features.Bonhomia.PublicBooking;
 
 public static class BonhomiaQuoteCalculator
 {
+  private const decimal TaxIncludedFactor = 1.16m;
+
   public static BonhomiaQuoteDto BuildQuote(
     BonhomiaQuoteRequest request,
     BonhomiaRoomAvailabilityDto room,
@@ -65,7 +67,7 @@ public static class BonhomiaQuoteCalculator
 
     var selectedExtras = NormalizeSelectedExtras(request.Extras, extras);
     var extraLines = selectedExtras
-      .Select(item => item.Option.UnitPrice * item.Quantity)
+      .Select(item => new ReservationChargeLine(item.Option.UnitPrice * item.Quantity, ReservationChargeTaxMode.TaxIncluded))
       .ToArray();
     var selectedExperiences = NormalizeSelectedExperiences(request.Experiences, experiences, room.Capacity, checkIn, checkOut);
     var experienceChargeLines = selectedExperiences
@@ -97,8 +99,8 @@ public static class BonhomiaQuoteCalculator
       Type = "extra",
       Description = item.Option.Name,
       Quantity = item.Quantity,
-      UnitPrice = item.Option.UnitPrice,
-      Total = item.Option.UnitPrice * item.Quantity
+      UnitPrice = CalculateTaxIncludedSubtotal(item.Option.UnitPrice),
+      Total = CalculateTaxIncludedSubtotal(item.Option.UnitPrice * item.Quantity)
     }));
 
     foreach (var selectedExperience in selectedExperiences)
@@ -375,6 +377,9 @@ public static class BonhomiaQuoteCalculator
       ExperienceTaxModes.NonTaxable => ReservationChargeTaxMode.NonTaxable,
       _ => ReservationChargeTaxMode.TaxableExclusive
     };
+
+  private static decimal CalculateTaxIncludedSubtotal(decimal amount)
+    => decimal.Round(amount / TaxIncludedFactor, 2, MidpointRounding.ToEven);
 
   private sealed record SelectedExperience(
     ExperienceCatalogItemDto Experience,

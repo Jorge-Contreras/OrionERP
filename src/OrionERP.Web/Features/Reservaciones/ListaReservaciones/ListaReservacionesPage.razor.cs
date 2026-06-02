@@ -73,6 +73,12 @@ public partial class ListaReservacionesPage : ComponentBase, IDisposable
 
     try
     {
+      var paidStatusSync = await ReservacionesService.SyncPaidReservationStatusesAsync();
+      if (!paidStatusSync.Success)
+      {
+        UiMessages.ShowWarning(paidStatusSync.Message);
+      }
+
       var page = await GetReservacionesPageAsync(0);
       if (searchVersion != _searchVersion)
       {

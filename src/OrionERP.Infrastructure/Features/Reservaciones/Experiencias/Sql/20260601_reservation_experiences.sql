@@ -341,9 +341,9 @@ DECLARE @Packages table
 
 INSERT INTO @Packages (Code, [Name], ProviderPackageName, [Description], Includes, UnitPrice, DisplayOrder)
 VALUES
-    (N'esencial', N'Experiencia Esencial', N'Paquete Esencial', N'Recorrido base de luciernagas.', N'Estacionamiento; banos; recorrido de formas y sonidos del bosque; platica de moneda antigua; platica del perro de agua; transporte; guia acreditado SECTUR; avistamiento de luciernagas.', 800, 10),
-    (N'clasico', N'Experiencia Clasica', N'Paquete Clasico', N'Experiencia de luciernagas con atole y pan.', N'Estacionamiento; banos; recorrido de formas y sonidos del bosque; platica de moneda antigua; platica del perro de agua; transporte; guia acreditado SECTUR; avistamiento de luciernagas; degustacion de atole y pan.', 900, 20),
-    (N'gastronomico', N'Experiencia Gastronomica', N'Paquete Gastronomico', N'Experiencia de luciernagas con atole, pan y comida regional.', N'Estacionamiento; banos; recorrido de formas y sonidos del bosque; platica de moneda antigua; platica del perro de agua; transporte; guia acreditado SECTUR; avistamiento de luciernagas; degustacion de atole y pan; comida tradicional.', 1200, 30);
+    (N'esencial', N'Experiencia Esencial', N'Paquete Esencial', N'Recorrido base de luciernagas.', N'Estacionamiento; baños; recorrido de formas y sonidos del bosque; platica de moneda antigua; platica del perro de agua; transporte; guia acreditado SECTUR; avistamiento de luciernagas.', 800, 10),
+    (N'clasico', N'Experiencia Clasica', N'Paquete Clasico', N'Experiencia de luciernagas con atole y pan.', N'Estacionamiento; baños; recorrido de formas y sonidos del bosque; platica de moneda antigua; platica del perro de agua; transporte; guia acreditado SECTUR; avistamiento de luciernagas; degustacion de atole y pan.', 900, 20),
+    (N'gastronomico', N'Experiencia Gastronomica', N'Paquete Gastronomico', N'Experiencia de luciernagas con atole, pan y comida regional.', N'Estacionamiento; baños; recorrido de formas y sonidos del bosque; platica de moneda antigua; platica del perro de agua; transporte; guia acreditado SECTUR; avistamiento de luciernagas; degustacion de atole y pan; comida tradicional.', 1200, 30);
 
 MERGE dbo.ExperiencePackage AS target
 USING @Packages AS source

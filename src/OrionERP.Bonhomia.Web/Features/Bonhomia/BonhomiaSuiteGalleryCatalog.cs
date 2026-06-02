@@ -9,14 +9,14 @@ public static class BonhomiaSuiteGalleryCatalog
 
   public static IReadOnlyList<BonhomiaSuiteGallery> Suites { get; } =
   [
-    new("Casa Berlin", "berlin", ["Casa Berlin", "Berlin"], CreateSuiteImages("Casa Berlin", "berlin")),
-    new("Suite Manhattan", "manhattan", ["Suite Manhattan", "Manhattan"], CreateSuiteImages("Suite Manhattan", "manhattan")),
-    new("Suite Seul", "seul", ["Suite Seul", "Seul"], CreateSuiteImages("Suite Seul", "seul")),
-    new("Suite Moscu", "moscu", ["Suite Moscu", "Moscu"], CreateSuiteImages("Suite Moscu", "moscu")),
-    new("Suite Paris", "paris", ["Suite Paris", "Paris"], CreateSuiteImages("Suite Paris", "paris")),
-    new("Penthouse", "penthouse", ["Penthouse"], CreateSuiteImages("Penthouse", "penthouse")),
-    new("Casa Grecia", "grecia", ["Casa Grecia", "Grecia"], CreateSuiteImages("Casa Grecia", "grecia")),
-    new("Casa London", "london", ["Casa London", "London"], CreateSuiteImages("Casa London", "london"))
+    new("Casa Berlin", "berlin", ["Casa Berlin", "Berlin"], CreateSuiteImages("Casa Berlin", "berlin", "CASA BERLIN PLANTA - BAJA-RENDER.png", "CASA BERLIN - PLANTA ALTA-RENDER.png")),
+    new("Suite Manhattan", "manhattan", ["Suite Manhattan", "Manhattan"], CreateSuiteImages("Suite Manhattan", "manhattan", "MANHATTAN - RENDER.png")),
+    new("Suite Seul", "seul", ["Suite Seul", "Seul"], CreateSuiteImages("Suite Seul", "seul", "SEUL - RENDER.png")),
+    new("Suite Moscu", "moscu", ["Suite Moscu", "Moscu"], CreateSuiteImages("Suite Moscu", "moscu", "MOSCU - RENDER.png")),
+    new("Suite Paris", "paris", ["Suite Paris", "Paris"], CreateSuiteImages("Suite Paris", "paris", "PARIS - RENDER.png")),
+    new("Penthouse", "penthouse", ["Penthouse"], CreateSuiteImages("Penthouse", "penthouse", "PENTHOUSE - RENDER.png")),
+    new("Casa Grecia", "grecia", ["Casa Grecia", "Grecia"], CreateSuiteImages("Casa Grecia", "grecia", "Grecia_Render.png")),
+    new("Casa London", "london", ["Casa London", "London"], CreateSuiteImages("Casa London", "london", "London Render.png"))
   ];
 
   public static IReadOnlyList<BonhomiaGalleryImage> BuildingImages { get; }
@@ -48,8 +48,19 @@ public static class BonhomiaSuiteGalleryCatalog
     return index;
   }
 
-  private static IReadOnlyList<BonhomiaGalleryImage> CreateSuiteImages(string suiteName, string slug)
-    => CreateImages(suiteName, $"/Images/Bonhomia/suites/{slug}");
+  private static IReadOnlyList<BonhomiaGalleryImage> CreateSuiteImages(string suiteName, string slug, params string[] extraFileNames)
+  {
+    var basePath = $"/Images/Bonhomia/suites/{slug}";
+    var images = CreateImages(suiteName, basePath).ToList();
+    for (var index = 0; index < extraFileNames.Length; index++)
+    {
+      images.Add(new BonhomiaGalleryImage(
+        $"{basePath}/{Uri.EscapeDataString(extraFileNames[index])}",
+        $"{suiteName} render {index + 1}"));
+    }
+
+    return images;
+  }
 
   private static IReadOnlyList<BonhomiaGalleryImage> CreateImages(string subject, string basePath)
   {

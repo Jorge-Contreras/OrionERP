@@ -47,6 +47,7 @@ using OrionERP.Infrastructure.Features.Logistica.Purchasing;
 using OrionERP.Infrastructure.Features.Logistica.PhysicalCounts;
 using OrionERP.Infrastructure.Features.Logistica.Stock;
 using OrionERP.Infrastructure.Features.OrdenesTrabajo;
+using OrionERP.Infrastructure.Features.Mail;
 using OrionERP.Infrastructure.Features.Reservaciones.Cfdi;
 using OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 using OrionERP.Infrastructure.Features.Reservaciones.Experiencias;
@@ -131,7 +132,8 @@ public static class ServiceRegistration
     services.AddScoped<IBancosService, BancosService>();
     services.AddScoped<IRecurrentApService, RecurrentApService>();
     services.AddScoped<IIdentityAdminService, IdentityAdminService>();
-    services.AddHttpClient<IEmailSender, MicrosoftGraphEmailSender>();
+    services.AddHttpClient<IMicrosoftGraphMailClient<GraphMailOptions>, MicrosoftGraphMailClient<GraphMailOptions>>();
+    services.AddScoped<IEmailSender, MicrosoftGraphEmailSender>();
     services.AddScoped<IReportesFinancierosService, ReportesFinancierosService>();
     services.AddScoped<IBusinessPartnerService, BusinessPartnerService>();
     services.AddScoped<IMaterialService, MaterialService>();

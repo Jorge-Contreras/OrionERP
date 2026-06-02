@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OrionERP.Infrastructure.Auth;
+using OrionERP.Infrastructure.Features.Mail;
 using OrionERP.Web.Identity;
 
 namespace OrionERP.Web.Areas.Identity.Pages.Account;

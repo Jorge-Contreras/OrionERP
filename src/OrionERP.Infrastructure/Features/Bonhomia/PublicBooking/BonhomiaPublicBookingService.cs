@@ -416,7 +416,8 @@ VALUES
         ReservationId = reservationId,
         TransaccionId = transaccionId,
         ClientName = cliente.Nombre,
-        Total = totals.TotalReservacion
+        Total = totals.TotalReservacion,
+        CreatedNewReservation = true
       };
     }
     catch (Exception ex)
@@ -833,7 +834,8 @@ ORDER BY r.ID DESC;
       ReservationId = row.ReservationId,
       TransaccionId = row.TransaccionId,
       ClientName = row.ClientName,
-      Total = row.Total
+      Total = row.Total,
+      CreatedNewReservation = false
     };
   }
 

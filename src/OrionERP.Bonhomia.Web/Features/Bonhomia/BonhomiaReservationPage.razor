@@ -1627,7 +1627,7 @@
             return;
         }
 
-        var renderKey = string.Join("|", Quote.Fingerprint, QuoteToken, AcceptedPolicies);
+        var renderKey = string.Join("|", Quote.Fingerprint, QuoteToken, AcceptedPolicies, CheckoutOptions.Value.PayPalLocale);
         if (string.Equals(renderKey, _lastPayPalRenderKey, StringComparison.Ordinal))
         {
             return;
@@ -1648,6 +1648,7 @@
                 {
                     clientId = CheckoutOptions.Value.PayPalClientId,
                     currency = Quote.Currency,
+                    locale = CheckoutOptions.Value.PayPalLocale,
                     quoteToken = QuoteToken,
                     quoteFingerprint = Quote.Fingerprint,
                     renderKey,

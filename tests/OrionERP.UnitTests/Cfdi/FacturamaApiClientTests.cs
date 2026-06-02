@@ -158,7 +158,7 @@ public class FacturamaApiClientTests
         handler,
         new Dictionary<string, string?>
         {
-          ["ConnectionStrings:OrionDb"] = "Server=127.0.0.1,1433;Database=Orion_SandBox;User Id=sa;Password=secret;TrustServerCertificate=True;Encrypt=True;"
+          ["ConnectionStrings:OrionDb"] = "Server=127.0.0.1,1433;Database=Orion_Sandbox;User Id=sa;Password=secret;TrustServerCertificate=True;Encrypt=True;"
         }));
 
     Assert.Contains("Facturama:User", ex.Message, StringComparison.Ordinal);

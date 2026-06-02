@@ -26,7 +26,6 @@ using OrionERP.Infrastructure.Features.Mail;
 using OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 using OrionERP.Web.Configuration;
-using OrionERP.Web.Data;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
 using OrionERP.Web.Features.Reservaciones.OpenClaw;
 using OrionERP.Web.Identity;
@@ -84,9 +83,9 @@ if (!string.IsNullOrWhiteSpace(conn))
         string.Equals(devConnectionBuilder.InitialCatalog, "grupocarpio", StringComparison.OrdinalIgnoreCase) &&
         !allowProductionDbInDevelopment)
     {
-      devConnectionBuilder.InitialCatalog = "Orion_SandBox";
+      devConnectionBuilder.InitialCatalog = "Orion_Sandbox";
       conn = devConnectionBuilder.ConnectionString;
-      Console.WriteLine("[BOOT] Development connection retargeted from 'grupocarpio' to 'Orion_SandBox'.");
+      Console.WriteLine("[BOOT] Development connection retargeted from 'grupocarpio' to 'Orion_Sandbox'.");
     }
   }
   catch
@@ -242,7 +241,6 @@ builder.Services.Configure<ReservacionPdfOptions>(options =>
   options.LogoPath = Path.Combine(webRootPath, "Images", "BonhomiaSuitesLetterheadLogo.svg");
 });
 
-builder.Services.AddSingleton<WeatherForecastService>();
 builder.Services.AddCfdiCargarXmlSat();
 builder.Services.AddOrionServices();
 builder.Services.AddScoped<IUiMessageService, UiMessageService>();

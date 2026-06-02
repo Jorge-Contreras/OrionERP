@@ -44,7 +44,7 @@ public sealed class SatMassiveClient : ISatMassiveService
         // 3) POST with SOAPAction: http://DescargaMasivaTerceros.gob.mx/IAutenticacion/Autentica
         // 4) Parse token from response into _token
 
-        var soapXml = BuildAuthEnvelope(cert);                 // TODO: implement
+        var soapXml = BuildAuthEnvelope(cert);
         var req = new HttpRequestMessage(HttpMethod.Post, AuthUrl)
         {
             Content = new StringContent(soapXml, Encoding.UTF8, "text/xml")
@@ -56,7 +56,7 @@ public sealed class SatMassiveClient : ISatMassiveService
         resp.EnsureSuccessStatusCode();
         _cert = cert;
 
-        _token = ExtractToken(xml);                            // TODO: implement
+        _token = ExtractToken(xml);
         if (string.IsNullOrWhiteSpace(_token))
             throw new InvalidOperationException("SAT token not found");
     }
@@ -83,7 +83,7 @@ public sealed class SatMassiveClient : ISatMassiveService
         var xml = await resp.Content.ReadAsStringAsync(ct);
         resp.EnsureSuccessStatusCode();
 
-        return ExtractIdSolicitud(xml); // TODO: implement
+        return ExtractIdSolicitud(xml);
     }
 
     public async Task<VerifyResult> VerifyAsync(string idSolicitud, string rfcSolicitante, CancellationToken ct = default)
@@ -122,7 +122,7 @@ public sealed class SatMassiveClient : ISatMassiveService
         var xml = await resp.Content.ReadAsStringAsync(ct);
         resp.EnsureSuccessStatusCode();
 
-        var base64 = ExtractTag(xml, "Paquete"); // TODO
+        var base64 = ExtractTag(xml, "Paquete");
         return string.IsNullOrWhiteSpace(base64) ? null : Convert.FromBase64String(base64);
     }
 
@@ -131,9 +131,6 @@ public sealed class SatMassiveClient : ISatMassiveService
         if (string.IsNullOrWhiteSpace(_token))
             throw new InvalidOperationException("Not authenticated: call AuthenticateAsync first");
     }
-
-    // ===== Helpers to implement =====
-    // Dentro de SatMassiveClient
 
     private static string ExtractIdSolicitud(string xml)
     {

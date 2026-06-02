@@ -13,7 +13,7 @@ internal static class BonhomiaSiteContent
   public const string LegalArcoEmail = "info@orion.land";
   public const string LegalFiscalAddress = "Calle Lazaro Cardenas 105, Col. Otra no especificada en el catalogo, Heroica Ciudad de Calpulalpan, Calpulalpan, Tlaxcala, C.P. 90204.";
   public const string LegalOperatingAddress = Address;
-  public const string LegalResponsibleSummary = LegalManagerName + ", RFC " + LegalRfc;
+  public static string LegalResponsibleSummary => $"{LegalManagerName}, RFC {LegalRfc}";
 
   public static string WhatsAppUrl(string message)
     => $"https://wa.me/{WhatsAppPhone}?text={Uri.EscapeDataString(message)}";

@@ -4,7 +4,7 @@ param(
   [string]$ConnectionString = $env:ASPNETCORE_ConnectionStrings__OrionDb,
 
   [Parameter(Mandatory = $false)]
-  [string]$DatabaseName = "Orion_SandBox"
+  [string]$DatabaseName = "Orion_Sandbox"
 )
 
 Set-StrictMode -Version Latest

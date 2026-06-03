@@ -231,7 +231,7 @@
                                 @if (PrimaryExperience is null)
                                 {
                                     <div class="bonhomia-alert bonhomia-alert--warning">
-                                        No hay experiencias publicas configuradas para las fechas visibles.
+                                        No hay experiencias publicas disponibles para las fechas seleccionadas.
                                     </div>
                                 }
                                 else
@@ -287,7 +287,7 @@
                                                             <span>Fecha</span>
                                                             <input type="date"
                                                                    value="@ExperienceDateText"
-                                                                   min="@CheckInText"
+                                                                   min="@ExperienceMinDateText"
                                                                    max="@ExperienceMaxDateText"
                                                                    disabled="@(!IncludeExperience)"
                                                                    @onchange="OnExperienceDateChanged" />
@@ -762,14 +762,22 @@
       ? "Sin extras seleccionados"
       : $"{SelectedExtrasCount} extra{(SelectedExtrasCount == 1 ? string.Empty : "s")} seleccionado{(SelectedExtrasCount == 1 ? string.Empty : "s")}";
     private BonhomiaRoomAvailabilityDto? SelectedRoom => Availability?.Rooms.FirstOrDefault(room => string.Equals(room.RoomName, SelectedRoomName, StringComparison.OrdinalIgnoreCase));
+    private IReadOnlyList<ExperienceCatalogItemDto> StayExperiences
+      => Availability?.Experiences.Where(IsExperienceAvailableForSelection).ToArray()
+        ?? Array.Empty<ExperienceCatalogItemDto>();
     private ExperienceCatalogItemDto? PrimaryExperience
-      => Availability?.Experiences.FirstOrDefault(item => string.Equals(item.Code, SelectedExperienceCode, StringComparison.OrdinalIgnoreCase))
-        ?? Availability?.Experiences.FirstOrDefault();
+      => StayExperiences.FirstOrDefault(item => string.Equals(item.Code, SelectedExperienceCode, StringComparison.OrdinalIgnoreCase))
+        ?? StayExperiences.FirstOrDefault();
     private ExperiencePackageOptionDto? SelectedExperiencePackage
       => PrimaryExperience?.Packages.FirstOrDefault(item => string.Equals(item.Code, SelectedExperiencePackageCode, StringComparison.OrdinalIgnoreCase));
-    private int ExperienceParticipantLimit => Math.Max(SelectedRoom?.Capacity ?? Guests, 1);
+    private int ExperienceParticipantLimit => GetExperienceParticipantLimit(PrimaryExperience);
     private string ExperienceDateText => (SelectedExperienceDate ?? ResolveDefaultExperienceDate()).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-    private string ExperienceMaxDateText => CheckOut.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    private string ExperienceMinDateText => PrimaryExperience is { } experience
+      ? ExperienceCatalogRules.GetFirstSelectableDate(experience, CheckIn).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+      : CheckInText;
+    private string ExperienceMaxDateText => PrimaryExperience is { } experience
+      ? ExperienceCatalogRules.GetLastSelectableDate(experience, CheckOut).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+      : CheckOut.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     private bool HasCustomerPhone => !string.IsNullOrWhiteSpace(Customer.Phone);
     private bool CanAcceptPolicies => Quote is not null
       && !IsPaymentProcessing
@@ -921,7 +929,7 @@
           CheckoutStep.Dates => true,
           CheckoutStep.Suite => CanContinueFromDates(),
           CheckoutStep.Experiences => CanContinueFromSuite(),
-          CheckoutStep.Extras => CanContinueFromSuite(),
+          CheckoutStep.Extras => CanContinueFromSuite() && CanContinueFromExperiences(),
           CheckoutStep.Payment => Quote is not null || CompletedReservation is not null,
           _ => false
       };
@@ -1316,12 +1324,12 @@
               ?? experience.Packages[0].Code;
         }
 
+        var minDate = ExperienceCatalogRules.GetFirstSelectableDate(experience, CheckIn);
+        var maxDate = ExperienceCatalogRules.GetLastSelectableDate(experience, CheckOut);
         var defaultDate = ResolveDefaultExperienceDate();
         if (!SelectedExperienceDate.HasValue
-            || SelectedExperienceDate.Value < CheckIn
-            || SelectedExperienceDate.Value >= CheckOut
-            || (experience.SeasonStart.HasValue && SelectedExperienceDate.Value < experience.SeasonStart.Value)
-            || (experience.SeasonEnd.HasValue && SelectedExperienceDate.Value > experience.SeasonEnd.Value))
+            || SelectedExperienceDate.Value < minDate
+            || SelectedExperienceDate.Value > maxDate)
         {
             SelectedExperienceDate = defaultDate;
         }
@@ -1341,19 +1349,18 @@
 
     private DateOnly ResolveDefaultExperienceDate()
     {
-        var date = CheckIn;
-        if (PrimaryExperience?.SeasonStart is DateOnly seasonStart && date < seasonStart)
-        {
-            date = seasonStart;
-        }
-
-        if (date >= CheckOut)
-        {
-            date = CheckIn;
-        }
-
-        return date;
+        var experience = PrimaryExperience;
+        return experience is null
+          ? CheckIn
+          : ExperienceCatalogRules.ResolveDefaultDate(experience, CheckIn, CheckOut);
     }
+
+    private bool IsExperienceAvailableForSelection(ExperienceCatalogItemDto experience)
+      => ExperienceCatalogRules.IsAvailableForStay(experience, CheckIn, CheckOut)
+        && Math.Max(experience.MinimumParticipants, 1) <= GetExperienceParticipantLimit(experience);
+
+    private int GetExperienceParticipantLimit(ExperienceCatalogItemDto? experience)
+      => ExperienceCatalogRules.GetParticipantLimit(experience, SelectedRoom?.Capacity ?? Guests);
 
     private ExperiencePricingResult? GetSelectedExperiencePreview()
     {

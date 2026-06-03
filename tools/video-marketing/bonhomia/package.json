@@ -1,0 +1,27 @@
+{
+  "name": "@orionerp/bonhomia-video-marketing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Automated vertical promotional video pipeline for the public Bonhomia Suites reservation flow.",
+  "scripts": {
+    "install:browsers": "playwright install chromium",
+    "capture": "node scripts/capture-flow.mjs",
+    "voice": "node scripts/generate-voice.mjs",
+    "music": "node scripts/generate-music.mjs",
+    "prepare:assets": "node scripts/prepare-assets.mjs",
+    "render": "node scripts/render.mjs",
+    "produce": "npm run capture && npm run voice && npm run music && npm run render",
+    "validate": "node scripts/validate.mjs"
+  },
+  "dependencies": {
+    "@remotion/bundler": "^4.0.421",
+    "@remotion/renderer": "^4.0.421",
+    "dotenv": "^17.2.3",
+    "openai": "^6.0.0",
+    "playwright": "^1.57.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.421"
+  }
+}

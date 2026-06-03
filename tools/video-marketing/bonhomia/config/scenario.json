@@ -1,0 +1,34 @@
+{
+  "baseUrl": "http://localhost:57474",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "deviceScaleFactor": 3
+  },
+  "stay": {
+    "checkInOffsetDays": 14,
+    "nights": 2,
+    "guests": 2
+  },
+  "preferredSuiteNames": [
+    "Suite Manhattan",
+    "Suite Seul",
+    "Suite Paris",
+    "Penthouse",
+    "Casa Berlin"
+  ],
+  "extras": [
+    {
+      "nameContains": "Early",
+      "quantity": 1
+    }
+  ],
+  "customer": {
+    "phone": "+52 749 110 3026"
+  },
+  "paypal": {
+    "attemptSandboxCompletion": true,
+    "buyerEmailEnv": "PAYPAL_SANDBOX_BUYER_EMAIL",
+    "buyerPasswordEnv": "PAYPAL_SANDBOX_BUYER_PASSWORD"
+  }
+}

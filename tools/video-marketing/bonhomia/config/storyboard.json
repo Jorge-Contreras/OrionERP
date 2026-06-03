@@ -1,0 +1,114 @@
+{
+  "format": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "durationSeconds": 60
+  },
+  "metadata": {
+    "title": "Bonhomia Suites - Reserva directa en minutos",
+    "language": "es-MX",
+    "voiceDisclosure": "Voz generada con IA.",
+    "caption": "Reserva directa en bonhomiasuites.com. Voz generada con IA."
+  },
+  "scenes": [
+    {
+      "id": "brand",
+      "start": 0,
+      "duration": 6,
+      "assetKey": "hero",
+      "kicker": "Calpulalpan",
+      "title": "Bonhomia Suites",
+      "body": "Hospedaje comodo, directo y sin vueltas.",
+      "voiceover": "Necesitas hospedaje en Calpulalpan? En Bonhomia reservas directo, rapido y sin vueltas."
+    },
+    {
+      "id": "landing",
+      "start": 6,
+      "duration": 6,
+      "assetKey": "landing",
+      "captureKey": "landing",
+      "kicker": "Inicio",
+      "title": "Abres el sitio",
+      "body": "Ves fotos, ubicacion y el boton para reservar.",
+      "voiceover": "Abres el sitio, ves el lugar, las fotos reales y el boton de reservar queda a la mano."
+    },
+    {
+      "id": "suites",
+      "start": 12,
+      "duration": 6,
+      "assetKey": "suites",
+      "captureKey": "suites",
+      "kicker": "Suites",
+      "title": "Comparas opciones",
+      "body": "Capacidad, recamaras, fotos y tarifa de referencia.",
+      "voiceover": "Luego comparas suites y casas por capacidad, fotos, recamaras y precio de referencia."
+    },
+    {
+      "id": "services",
+      "start": 18,
+      "duration": 5,
+      "assetKey": "services",
+      "captureKey": "services",
+      "kicker": "Servicios",
+      "title": "Checas lo incluido",
+      "body": "Wi-Fi, cocina, extras y soporte por WhatsApp.",
+      "voiceover": "Tambien checas servicios: Wi-Fi, cocina, extras, transporte y contacto por WhatsApp."
+    },
+    {
+      "id": "dates",
+      "start": 23,
+      "duration": 7,
+      "assetKey": "calendar",
+      "captureKey": "reservation-dates",
+      "kicker": "Paso 1",
+      "title": "Pones fechas",
+      "body": "Llegada, salida y numero de huespedes.",
+      "voiceover": "En reservas pones llegada, salida y cuantos viajan. El calendario te ayuda a no adivinar."
+    },
+    {
+      "id": "suite",
+      "start": 30,
+      "duration": 7,
+      "assetKey": "suite",
+      "captureKey": "reservation-suite",
+      "kicker": "Paso 2",
+      "title": "Eliges tu suite",
+      "body": "Solo ves opciones disponibles para esas fechas.",
+      "voiceover": "Despues eliges tu suite. OrionERP valida disponibilidad real antes de sacar la cotizacion."
+    },
+    {
+      "id": "extras",
+      "start": 37,
+      "duration": 6,
+      "assetKey": "extras",
+      "captureKey": "reservation-extras",
+      "kicker": "Paso 3",
+      "title": "Agregas extras",
+      "body": "Early check-in, mascota, alimentos o transporte.",
+      "voiceover": "Si quieres, agregas extras: early check-in, mascota, alimentos, transporte o lavanderia."
+    },
+    {
+      "id": "payment",
+      "start": 43,
+      "duration": 7,
+      "assetKey": "payment",
+      "captureKey": "payment",
+      "kicker": "Pago",
+      "title": "Pagas con PayPal",
+      "body": "Revisas total, aceptas politicas y sigues en PayPal.",
+      "voiceover": "Revisas el total, aceptas politicas y pagas con PayPal. No hay pasos raros."
+    },
+    {
+      "id": "confirmation",
+      "start": 50,
+      "duration": 10,
+      "assetKey": "confirmation",
+      "captureKey": "confirmation",
+      "kicker": "Listo",
+      "title": "Llegas con todo listo",
+      "body": "Folio, PDF y recepcion lista para darte seguimiento.",
+      "voiceover": "Cuando PayPal confirma, tu reserva queda registrada. Te llevas folio, PDF y seguimiento de recepcion. Bonhomia Suites: reserva en linea y llega tranquilo."
+    }
+  ]
+}

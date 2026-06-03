@@ -27,6 +27,8 @@ Thumbs.db
 *.log
 *.tmp
 *.cache
+tools/video-marketing/bonhomia/.env
+tools/video-marketing/bonhomia/.env.local
 recepcion_bonhomia entra secret.txt
 TestResults/
 test-results/

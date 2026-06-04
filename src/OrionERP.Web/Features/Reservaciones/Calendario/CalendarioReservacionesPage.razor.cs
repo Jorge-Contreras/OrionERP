@@ -59,8 +59,8 @@ public partial class CalendarioReservacionesPage : ComponentBase
   protected int BlockedCellCount => Timeline?.DayCells.Count(x => x.StateCode == "blocked") ?? 0;
   protected int OrphanCellCount => Timeline?.DayCells.Count(x => x.StateCode == "orphan") ?? 0;
 
-  protected string StartDateText => Filter.StartDate.ToString("yyyy-MM-dd");
-  protected string EndDateText => Filter.EndDateExclusive.ToString("yyyy-MM-dd");
+  protected string StartMonthValue => ToMonthInputValue(Filter.StartDate);
+  protected string EndMonthValue => ToMonthInputValue(Filter.EndDateExclusive.AddDays(-1));
   private string CurrentRfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault() ?? "OHM191112Q26";
 
   protected override async Task OnInitializedAsync()
@@ -76,6 +76,16 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
   protected async Task LoadCalendarAsync()
   {
+    if (!IsValidMonthRange(Filter))
+    {
+      ErrorMessage = "El mes final debe ser mayor o igual al mes inicial.";
+      Timeline = null;
+      VisibleDates.Clear();
+      CellLookup.Clear();
+      WorkOrderBadgesByRoomCalendar.Clear();
+      return;
+    }
+
     IsLoading = true;
     ErrorMessage = null;
 
@@ -101,16 +111,20 @@ public partial class CalendarioReservacionesPage : ComponentBase
     }
   }
 
-  protected void OnStartDateChanged(ChangeEventArgs args)
+  protected void OnStartMonthChanged(ChangeEventArgs args)
   {
-    if (DateTime.TryParse(args.Value?.ToString(), out var parsed))
-      Filter.StartDate = parsed.Date;
+    if (TryParseMonthValue(args.Value?.ToString(), out var year, out var month))
+    {
+      Filter.StartDate = new DateTime(year, month, 1);
+    }
   }
 
-  protected void OnEndDateChanged(ChangeEventArgs args)
+  protected void OnEndMonthChanged(ChangeEventArgs args)
   {
-    if (DateTime.TryParse(args.Value?.ToString(), out var parsed))
-      Filter.EndDateExclusive = parsed.Date;
+    if (TryParseMonthValue(args.Value?.ToString(), out var year, out var month))
+    {
+      Filter.EndDateExclusive = new DateTime(year, month, 1).AddMonths(1);
+    }
   }
 
   protected void OnRoomTypeChanged(ChangeEventArgs args)
@@ -663,13 +677,52 @@ public partial class CalendarioReservacionesPage : ComponentBase
   }
 
   private static RoomCalendarTimelineFilter CreateDefaultFilter()
+    => CreateDefaultFilter(DateTime.Today);
+
+  protected static RoomCalendarTimelineFilter CreateDefaultFilter(DateTime today)
   {
-    var today = DateTime.Today;
+    var currentMonth = new DateTime(today.Year, today.Month, 1);
+
     return new RoomCalendarTimelineFilter
     {
-      StartDate = today.AddDays(-3),
-      EndDateExclusive = today.AddDays(21),
+      StartDate = currentMonth,
+      EndDateExclusive = currentMonth.AddMonths(2),
       RoomType = "SUITE"
     };
   }
+
+  protected static bool IsValidMonthRange(RoomCalendarTimelineFilter filter)
+  {
+    ArgumentNullException.ThrowIfNull(filter);
+
+    return filter.EndDateExclusive.Date > filter.StartDate.Date;
+  }
+
+  protected static bool TryParseMonthValue(string? value, out int year, out int month)
+  {
+    year = 0;
+    month = 0;
+
+    if (string.IsNullOrWhiteSpace(value))
+    {
+      return false;
+    }
+
+    var parts = value.Split('-', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+    if (parts.Length != 2 ||
+        !int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out year) ||
+        !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out month) ||
+        year is < 1900 or > 9999 ||
+        month is < 1 or > 12)
+    {
+      year = 0;
+      month = 0;
+      return false;
+    }
+
+    return true;
+  }
+
+  private static string ToMonthInputValue(DateTime value)
+    => value.ToString("yyyy-MM", CultureInfo.InvariantCulture);
 }

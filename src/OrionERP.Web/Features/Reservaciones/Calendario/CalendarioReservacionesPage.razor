@@ -33,12 +33,12 @@
         <div class="card-body">
             <div class="row g-3 align-items-end">
                 <div class="col-md-3">
-                    <label class="form-label">Inicio</label>
-                    <input class="form-control" type="date" value="@StartDateText" @onchange="OnStartDateChanged" />
+                    <label class="form-label">Mes inicial</label>
+                    <input class="form-control" type="month" lang="es-MX" value="@StartMonthValue" @onchange="OnStartMonthChanged" />
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">Fin exclusivo</label>
-                    <input class="form-control" type="date" value="@EndDateText" @onchange="OnEndDateChanged" />
+                    <label class="form-label">Mes final</label>
+                    <input class="form-control" type="month" lang="es-MX" value="@EndMonthValue" @onchange="OnEndMonthChanged" />
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Tipo de espacio</label>

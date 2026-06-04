@@ -9,6 +9,23 @@ The SQL Server databases that go side by side with this repo are:
 - `grupocarpio`: production database.
 - `Orion_Sandbox`: development and validation database.
 
+## Public Platform Boundaries
+
+This repository contains two different web platforms that are publicly exposed through Cloudflare tunnels:
+
+- OrionERP management console: `src/OrionERP.Web`, published by `Publish-prod.ps1` as the `OrionERP` service, publicly exposed at `https://orionerp.orion.land`. When the user says `OrionERP`, assume they mean this management console unless they explicitly mention another project.
+- Bonhomia public website: `src/OrionERP.Bonhomia.Web`, published by `Publish-Bonhomia-prod.ps1` as the `OrionERP.Bonhomia` service, publicly exposed at `https://bonhomiasuites.com`. When the user says `public website`, assume they mean this Bonhomia-facing website unless they explicitly say otherwise.
+
+The two platforms share application, infrastructure, and SQL Server data model code, so route UI and configuration changes to the correct web project while keeping shared data/workflow changes consistent across both surfaces when needed.
+
+Public base URLs are operational configuration and are not secrets. Keep public origins in appsettings when useful for local defaults or generated links, but keep passwords, API keys, PayPal secrets, Graph secrets, and SQL Server credentials in user secrets, environment variables, deployment configuration, or another approved private secret store.
+
+## UI Control Design Defaults
+
+When building or changing UI in either web platform, treat common controls as intentional product surfaces. Text fields, selectors, dropdowns, date/month inputs, toggles, checkboxes, scrollbars, tabs, buttons, and table controls should look modern, polished, and consistent with the surrounding app instead of falling back to dated raw browser defaults.
+
+Prefer accessible native controls and semantic HTML first, then style their visible states thoughtfully: default, hover, focus, active, disabled, loading, validation, and overflow/scroll states. Keep controls compact and operational for OrionERP workflows, but make sure they feel current and easy to use on both desktop and mobile.
+
 ## SQL Server Connection
 
 The application uses `ConnectionStrings:OrionDb` as the canonical database connection setting. For environment-based configuration, use `ASPNETCORE_ConnectionStrings__OrionDb`.

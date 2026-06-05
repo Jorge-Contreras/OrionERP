@@ -11,6 +11,10 @@ const defaultProps = {
     title: "Bonhomia Suites",
     voiceDisclosure: "Voz generada con IA."
   },
+  brand: {
+    name: "Bonhomia Suites",
+    publicBaseUrl: "https://bonhomiasuites.com"
+  },
   scenes: [],
   logo: null,
   narrationAudio: null,

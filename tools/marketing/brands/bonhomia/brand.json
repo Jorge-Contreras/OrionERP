@@ -1,0 +1,60 @@
+{
+  "id": "bonhomia",
+  "name": "Bonhomia Suites",
+  "publicBaseUrl": "https://bonhomiasuites.com",
+  "repoProject": "src/OrionERP.Bonhomia.Web",
+  "tone": {
+    "language": "es-MX",
+    "style": "relaxed, warm, practical and fast-paced",
+    "avoid": [
+      "corporate formality",
+      "slow narration",
+      "over-zoomed website crops",
+      "unlicensed or placeholder-feeling music"
+    ]
+  },
+  "disclosures": {
+    "aiVoice": "Voz generada con IA."
+  },
+  "assets": {
+    "repoImages": {
+      "hero": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/hero-penthouse.jpg",
+      "landing": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/exterior-main.jpg",
+      "suites": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/suites/manhattan/01.jpg",
+      "services": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/gallery-kitchen.jpg",
+      "calendar": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/catalog-booking.png",
+      "suite": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/suites/penthouse/01.jpg",
+      "extras": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/catalog-extras.png",
+      "payment": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/catalog-rates.png",
+      "confirmation": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/welcome-detail.png",
+      "logo": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/logo-vertical.png"
+    }
+  },
+  "providers": {
+    "voice": {
+      "defaultProvider": "openai",
+      "openai": {
+        "model": "gpt-4o-mini-tts",
+        "voice": "nova",
+        "speed": 1.08,
+        "instructions": "Voz femenina en espanol mexicano, natural y relajada, como una amiga mostrando una app en un Reel. Ritmo rapido, energia amable, cero tono corporativo. Usa pausas cortas, sonrisa en la voz y una cadencia humana."
+      },
+      "elevenlabs": {
+        "modelId": "eleven_multilingual_v2",
+        "outputFormat": "mp3_44100_128",
+        "languageCode": "es",
+        "voiceSettings": {
+          "stability": 0.42,
+          "similarity_boost": 0.78,
+          "style": 0.35,
+          "use_speaker_boost": true
+        }
+      }
+    },
+    "music": {
+      "strategy": "curated-library-first",
+      "preferredMood": "house",
+      "fallback": "synthetic-house-placeholder"
+    }
+  }
+}

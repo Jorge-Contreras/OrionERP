@@ -6,22 +6,28 @@ import path from "node:path";
 import { chromium } from "playwright";
 import {
   addDays,
-  artifactRoot,
   cleanDir,
   ensureDir,
   formatDate,
-  readJson,
+  hasFlag,
+  loadCampaignContext,
   writeJson
 } from "./lib.mjs";
 
-const scenario = await readJson("config/scenario.json");
-const captureRoot = path.join(artifactRoot, "captures");
+const campaignContext = await loadCampaignContext();
+const { scenario } = campaignContext;
+const captureRoot = campaignContext.artifacts.captures;
 const videoRoot = path.join(captureRoot, "video");
 const screenshotRoot = path.join(captureRoot, "screenshots");
 
-const baseUrl = await resolveBaseUrl(process.env.BONHOMIA_BASE_URL || scenario.baseUrl);
-const headed = process.argv.includes("--headed");
-const skipPayPal = process.argv.includes("--skip-paypal");
+const baseUrl = await resolveBaseUrl(
+  process.env.BONHOMIA_BASE_URL
+    || process.env.MARKETING_BASE_URL
+    || scenario.baseUrl
+    || campaignContext.brand.publicBaseUrl
+);
+const headed = hasFlag("--headed");
+const skipPayPal = hasFlag("--skip-paypal");
 
 const checkIn = addDays(new Date(), scenario.stay.checkInOffsetDays);
 const checkOut = addDays(checkIn, scenario.stay.nights);
@@ -36,6 +42,8 @@ await ensureDir(videoRoot);
 await ensureDir(screenshotRoot);
 
 const manifest = {
+  campaignId: campaignContext.campaignId,
+  brandId: campaignContext.brandId,
   baseUrl,
   capturedAtUtc: new Date().toISOString(),
   viewport: scenario.viewport,
@@ -47,7 +55,7 @@ const manifest = {
 };
 
 const browser = await chromium.launch({ headless: !headed });
-const context = await browser.newContext({
+const browserContext = await browser.newContext({
   viewport: {
     width: scenario.viewport.width,
     height: scenario.viewport.height
@@ -65,7 +73,7 @@ const context = await browser.newContext({
   }
 });
 
-const page = await context.newPage();
+const page = await browserContext.newPage();
 let captureError = null;
 
 try {
@@ -101,7 +109,7 @@ try {
   await capture(page, "payment", "PayPal payment gate");
 
   if (!skipPayPal && scenario.paypal.attemptSandboxCompletion) {
-    await attemptPayPalSandboxCompletion(page, context, scenario.paypal);
+    await attemptPayPalSandboxCompletion(page, browserContext, scenario.paypal);
   } else {
     manifest.paymentOutcome = "skipped";
     manifest.notes.push("PayPal completion skipped by flag or scenario.");
@@ -122,7 +130,7 @@ try {
   manifest.notes.push(`Capture failed: ${error.message}`);
 } finally {
   const video = page.video();
-  await context.close();
+  await browserContext.close();
   if (video) {
     try {
       const videoPath = path.join(videoRoot, "bonhomia-flow.webm");

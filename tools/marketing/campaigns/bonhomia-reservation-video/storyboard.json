@@ -1,4 +1,21 @@
 {
+  "brandId": "bonhomia",
+  "campaign": {
+    "id": "bonhomia-reservation-video",
+    "compositionId": "BonhomiaPromo",
+    "outputName": "bonhomia-reservation-video.mp4",
+    "reviewTitle": "Bonhomia reservation flow video review package",
+    "captureAliases": {
+      "landing": "landing",
+      "suites": "suites",
+      "services": "services",
+      "reservation-dates": "reservation-dates-filled",
+      "reservation-suite": "reservation-suite",
+      "reservation-extras": "reservation-extras",
+      "payment": "payment",
+      "confirmation": "confirmation"
+    }
+  },
   "format": {
     "width": 1080,
     "height": 1920,
@@ -9,7 +26,13 @@
     "title": "Bonhomia Suites - Reserva directa en minutos",
     "language": "es-MX",
     "voiceDisclosure": "Voz generada con IA.",
-    "caption": "Reserva directa en bonhomiasuites.com. Voz generada con IA."
+    "caption": "Reserva directa en bonhomiasuites.com. Voz generada con IA.",
+    "hashtags": [
+      "#BonhomiaSuites",
+      "#Calpulalpan",
+      "#ReservaEnLinea",
+      "#ViajaTranquilo"
+    ]
   },
   "scenes": [
     {

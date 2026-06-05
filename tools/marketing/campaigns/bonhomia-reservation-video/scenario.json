@@ -1,4 +1,5 @@
 {
+  "brandId": "bonhomia",
   "baseUrl": "http://localhost:57474",
   "viewport": {
     "width": 390,

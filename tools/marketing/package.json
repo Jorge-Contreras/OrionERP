@@ -3,27 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Reusable marketing production workspace for OrionERP brands and campaigns.",
+  "description": "Bonhomia marketing intelligence and campaign planning workspace for OrionERP.",
   "scripts": {
-    "install:browsers": "playwright install chromium",
-    "capture": "node scripts/capture-flow.mjs",
-    "voice": "node scripts/generate-voice.mjs",
-    "music": "node scripts/generate-music.mjs",
-    "prepare:assets": "node scripts/prepare-assets.mjs",
-    "render": "node scripts/render.mjs",
-    "review": "node scripts/review.mjs",
-    "produce": "node scripts/produce.mjs",
+    "intelligence": "node scripts/intelligence.mjs",
+    "brief": "node scripts/brief.mjs",
+    "media": "node scripts/media.mjs",
+    "lessons": "node scripts/lessons.mjs",
     "validate": "node scripts/validate.mjs",
     "test": "node scripts/test.mjs"
   },
   "dependencies": {
-    "@remotion/bundler": "^4.0.421",
-    "@remotion/renderer": "^4.0.421",
     "dotenv": "^17.2.3",
+    "mssql": "^11.0.1",
     "openai": "^6.0.0",
-    "playwright": "^1.57.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "remotion": "^4.0.421"
+    "sharp": "^0.34.5"
   }
 }

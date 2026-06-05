@@ -3,6 +3,92 @@
   "name": "Bonhomia Suites",
   "publicBaseUrl": "https://bonhomiasuites.com",
   "repoProject": "src/OrionERP.Bonhomia.Web",
+  "strategy": {
+    "primaryKpi": {
+      "name": "overall_occupancy_rate",
+      "targetPct": 50,
+      "description": "Raise Bonhomia's overall occupancy rate to at least 50%."
+    },
+    "audiencePriority": [
+      {
+        "id": "business-travelers-companies",
+        "label": "Business travelers / companies",
+        "why": "Highest-priority market for predictable weekday demand and repeat stays."
+      },
+      {
+        "id": "bnb-travelers-tourists",
+        "label": "BnB travelers and tourists",
+        "why": "Useful for seasonal experiences, weekend demand, and destination discovery."
+      },
+      {
+        "id": "families",
+        "label": "Families",
+        "why": "Good secondary fit for spacious suites and local experiences."
+      },
+      {
+        "id": "couples",
+        "label": "Couples",
+        "why": "Good fit for short escapes, premium suite imagery, and romantic/local experience angles."
+      },
+      {
+        "id": "event-visitors",
+        "label": "Event visitors",
+        "why": "Timely spikes around Calpulalpan events, fairs, and regional gatherings."
+      }
+    ],
+    "platformPriority": [
+      "Google Search",
+      "Facebook",
+      "Instagram",
+      "TikTok"
+    ],
+    "knownDemandSignals": [
+      {
+        "id": "feria-calpulalpan-san-antonio",
+        "name": "Feria de Calpulalpan / San Antonio de Padua",
+        "timing": "Around June 13",
+        "audienceFit": [
+          "event-visitors",
+          "bnb-travelers-tourists",
+          "families"
+        ],
+        "strategyUse": "Use when the requested week is near June 13; pair local history/event context with direct-booking availability."
+      },
+      {
+        "id": "luciernagas",
+        "name": "Temporada de luciernagas",
+        "timing": "June 15 to August 15",
+        "audienceFit": [
+          "bnb-travelers-tourists",
+          "families",
+          "couples"
+        ],
+        "strategyUse": "Use before and during the season; connect nature experience content with suite comfort and easy reservation."
+      }
+    ],
+    "workflow": [
+      "Inspect aggregate sales, occupancy, revenue, RevPAR, ADR, suite performance, cash flow, and data quality.",
+      "Inspect public Bonhomia experiences available for the requested week.",
+      "Research local demand drivers such as Calpulalpan events, company travel, and seasonal attractions.",
+      "Recommend strategy before proposing media.",
+      "Generate media concepts, captions, hooks, specs, and review checklist before production."
+    ],
+    "financialSource": {
+      "officialUi": "src/OrionERP.Web/Features/ReportesFinancieros/SaludEmpresa/SaludEmpresaPage.razor",
+      "officialService": "IReportesFinancierosService.GetSaludEmpresaAsync",
+      "storedProcedure": "reporteFinanciero.Reporte_Salud_Empresa",
+      "defaultRfcConfigPath": "BonhomiaCheckout:AccountingRfc",
+      "defaultRfc": "OHM191112Q26",
+      "environmentOverride": "MARKETING_RFC",
+      "connectionSetting": "ASPNETCORE_ConnectionStrings__OrionDb",
+      "useProductionData": true,
+      "privacy": "Export aggregate marketing metrics only; do not write customer PII, credentials, connection strings, or payment data to artifacts."
+    },
+    "experienceSource": {
+      "officialService": "IReservacionExperiencesService.GetPublicExperienceCatalogAsync",
+      "scope": "Public active experiences overlapping the requested week."
+    }
+  },
   "tone": {
     "language": "es-MX",
     "style": "relaxed, warm, practical and fast-paced",
@@ -17,6 +103,38 @@
     "aiVoice": "Voz generada con IA."
   },
   "assets": {
+    "suiteImageRoot": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/suites",
+    "propertyImageRoot": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia",
+    "logoPath": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/logo-vertical.png",
+    "editorialSuitePhotos": [
+      "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/suites/penthouse/01.jpg",
+      "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/suites/penthouse/03.jpg",
+      "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/suites/berlin/02.jpg",
+      "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/suites/manhattan/02.jpg",
+      "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/suites/seul/01.jpg"
+    ],
+    "factualImagePolicy": {
+      "suitePhotosAreLocked": true,
+      "allowedSuitePhotoAdjustments": [
+        "crop",
+        "resize",
+        "brightness",
+        "contrast",
+        "exposure",
+        "saturation",
+        "sharpen"
+      ],
+      "forbiddenSuitePhotoChanges": [
+        "invented furniture",
+        "invented amenities",
+        "invented views",
+        "invented decor",
+        "invented objects",
+        "changed room layout",
+        "generated logo"
+      ],
+      "guidance": "OpenAI may create campaign visuals around Bonhomia suite photos, but real suite photos must remain a separate truthful module and must not imply features that do not exist."
+    },
     "repoImages": {
       "hero": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/hero-penthouse.jpg",
       "landing": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/exterior-main.jpg",
@@ -31,6 +149,28 @@
     }
   },
   "providers": {
+    "image": {
+      "defaultProvider": "openai",
+      "openai": {
+        "model": "gpt-image-2",
+        "fallbackModel": "gpt-image-1",
+        "quality": "medium",
+        "backgroundSize": "1024x1536"
+      },
+      "review": {
+        "model": "gpt-5-mini",
+        "minimumScore": 82,
+        "maxAttempts": 3,
+        "candidatesPerAsset": 2,
+        "strict": true,
+        "fallbackToHeuristicWhenUnavailable": true
+      },
+      "output": {
+        "format": "png",
+        "width": 1080,
+        "height": 1350
+      }
+    },
     "voice": {
       "defaultProvider": "openai",
       "openai": {

@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 export const toolRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 export const repoRoot = path.resolve(toolRoot, "..", "..");
 export const artifactRoot = path.join(toolRoot, "artifacts");
+export const defaultBrandId = "bonhomia";
 export const defaultCampaignId = "bonhomia-reservation-video";
 
 export async function ensureDir(dir) {
@@ -94,9 +95,34 @@ export function getCampaignId(args = process.argv.slice(2)) {
     || defaultCampaignId;
 }
 
+export function getBrandId(args = process.argv.slice(2)) {
+  return getArgValue("--brand", args)
+    || process.env.MARKETING_BRAND
+    || defaultBrandId;
+}
+
+export async function loadBrandContext(args = process.argv.slice(2)) {
+  const brandId = getBrandId(args);
+  const brandRoot = path.join(toolRoot, "brands", brandId);
+  const brand = await readJson(path.join(brandRoot, "brand.json"));
+
+  return {
+    brandId,
+    brandRoot,
+    brand,
+    artifacts: {
+      root: path.join(artifactRoot, brandId)
+    }
+  };
+}
+
 export async function loadCampaignContext(args = process.argv.slice(2)) {
   const campaignId = getCampaignId(args);
-  const campaignRoot = path.join(toolRoot, "campaigns", campaignId);
+  let campaignRoot = path.join(toolRoot, "campaigns", campaignId);
+  if (!(await fileExists(campaignRoot))) {
+    campaignRoot = path.join(toolRoot, "archive", campaignId);
+  }
+
   const storyboardPath = path.join(campaignRoot, "storyboard.json");
   const scenarioPath = path.join(campaignRoot, "scenario.json");
   const storyboard = await readJson(storyboardPath);
@@ -154,4 +180,92 @@ export function narrationFromStoryboard(storyboard) {
 
 export function hasFlag(name, args = process.argv.slice(2)) {
   return args.includes(name);
+}
+
+export function resolveWeek(args = process.argv.slice(2), now = new Date()) {
+  const requested = getArgValue("--week", args) || process.env.MARKETING_WEEK || "current";
+  let anchor;
+
+  if (requested === "current") {
+    anchor = now;
+  } else if (/^\d{4}-W\d{2}$/u.test(requested)) {
+    anchor = dateFromIsoWeek(requested);
+  } else if (/^\d{4}-\d{2}-\d{2}$/u.test(requested)) {
+    anchor = new Date(`${requested}T12:00:00`);
+  } else {
+    throw new Error(`Unsupported week value '${requested}'. Use 'current', YYYY-Www, or YYYY-MM-DD.`);
+  }
+
+  const start = startOfIsoWeek(anchor);
+  const endExclusive = addDays(start, 7);
+  const end = addDays(endExclusive, -1);
+  const iso = isoWeek(start);
+
+  return {
+    requested,
+    id: `${iso.year}-W${String(iso.week).padStart(2, "0")}`,
+    startDate: formatDate(start),
+    endDate: formatDate(end),
+    endDateExclusive: formatDate(endExclusive),
+    financialScope: {
+      yearStart: start.getFullYear(),
+      monthStart: start.getMonth() + 1,
+      yearEnd: end.getFullYear(),
+      monthEnd: end.getMonth() + 1,
+      granularity: "month",
+      note: "Salud Financiera is month-granular; weekly briefs use the overlapping financial month data plus week-specific public experiences."
+    }
+  };
+}
+
+export function getConfiguredConnectionString() {
+  return process.env.MARKETING_ORIONDB_CONNECTION_STRING
+    || process.env.ASPNETCORE_ConnectionStrings__OrionDb
+    || process.env.ConnectionStrings__OrionDb
+    || null;
+}
+
+export function getMarketingRfc(brand) {
+  return process.env.MARKETING_RFC
+    || brand?.strategy?.financialSource?.defaultRfc
+    || brand?.financialSource?.defaultRfc
+    || "OHM191112Q26";
+}
+
+export function redactConnectionString(value) {
+  if (!value) {
+    return "";
+  }
+
+  return value
+    .replace(/(Password|Pwd)\s*=\s*[^;]+/giu, "$1=<redacted>")
+    .replace(/(User Id|UserID|UID)\s*=\s*[^;]+/giu, "$1=<redacted>");
+}
+
+function startOfIsoWeek(date) {
+  const copy = new Date(date);
+  copy.setHours(12, 0, 0, 0);
+  const day = copy.getDay() || 7;
+  copy.setDate(copy.getDate() - day + 1);
+  return copy;
+}
+
+function isoWeek(date) {
+  const copy = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = copy.getUTCDay() || 7;
+  copy.setUTCDate(copy.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(copy.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((copy - yearStart) / 86400000) + 1) / 7);
+  return { year: copy.getUTCFullYear(), week };
+}
+
+function dateFromIsoWeek(value) {
+  const [yearText, weekText] = value.split("-W");
+  const year = Number(yearText);
+  const week = Number(weekText);
+  const simple = new Date(Date.UTC(year, 0, 1 + (week - 1) * 7));
+  const day = simple.getUTCDay() || 7;
+  const monday = new Date(simple);
+  monday.setUTCDate(simple.getUTCDate() + (day <= 4 ? 1 : 8) - day);
+  return new Date(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate(), 12);
 }

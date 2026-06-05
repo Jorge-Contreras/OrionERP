@@ -1,9 +1,9 @@
 {
-  "name": "@orionerp/bonhomia-video-marketing",
+  "name": "@orionerp/marketing",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Automated vertical promotional video pipeline for the public Bonhomia Suites reservation flow.",
+  "description": "Reusable marketing production workspace for OrionERP brands and campaigns.",
   "scripts": {
     "install:browsers": "playwright install chromium",
     "capture": "node scripts/capture-flow.mjs",
@@ -11,8 +11,10 @@
     "music": "node scripts/generate-music.mjs",
     "prepare:assets": "node scripts/prepare-assets.mjs",
     "render": "node scripts/render.mjs",
-    "produce": "npm run capture && npm run voice && npm run music && npm run render",
-    "validate": "node scripts/validate.mjs"
+    "review": "node scripts/review.mjs",
+    "produce": "node scripts/produce.mjs",
+    "validate": "node scripts/validate.mjs",
+    "test": "node scripts/test.mjs"
   },
   "dependencies": {
     "@remotion/bundler": "^4.0.421",

@@ -28,6 +28,7 @@ export function BonhomiaPromo({
   narrationAudio,
   musicAudio,
   metadata,
+  brand,
   paymentOutcome
 }) {
   const frame = useCurrentFrame();
@@ -40,7 +41,7 @@ export function BonhomiaPromo({
   return (
     <AbsoluteFill style={styles.root}>
       {scenes.map((scene) => (
-        <Scene key={scene.id} scene={scene} logo={logo} />
+        <Scene key={scene.id} scene={scene} logo={logo} brand={brand} />
       ))}
 
       <ProgressBar scenes={scenes} frame={frame} fps={fps} />
@@ -63,18 +64,18 @@ export function BonhomiaPromo({
   );
 }
 
-function Scene({ scene, logo }) {
+function Scene({ scene, logo, brand }) {
   const { fps } = useVideoConfig();
   const durationFrames = Math.round(scene.duration * fps);
 
   return (
     <Sequence from={Math.round(scene.start * fps)} durationInFrames={durationFrames}>
-      <SceneFrame scene={scene} logo={logo} durationFrames={durationFrames} />
+      <SceneFrame scene={scene} logo={logo} brand={brand} durationFrames={durationFrames} />
     </Sequence>
   );
 }
 
-function SceneFrame({ scene, logo, durationFrames }) {
+function SceneFrame({ scene, logo, brand, durationFrames }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const intro = spring({
@@ -89,7 +90,8 @@ function SceneFrame({ scene, logo, durationFrames }) {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp"
   });
-  const sourceBadge = scene.source === "capture" ? "Sitio real" : "Imagen Bonhomia";
+  const brandName = brand?.name || "Bonhomia Suites";
+  const sourceBadge = scene.source === "capture" ? "Sitio real" : `Imagen ${brandName}`;
   const isCapture = scene.source === "capture";
 
   return (
@@ -108,7 +110,7 @@ function SceneFrame({ scene, logo, durationFrames }) {
       <div style={styles.topBar}>
         {logo ? <Img src={staticFile(logo)} style={styles.logo} /> : <div style={styles.logoFallback}>B</div>}
         <div>
-          <div style={styles.brand}>Bonhomia Suites</div>
+          <div style={styles.brand}>{brandName}</div>
           <div style={styles.brandSub}>Reserva directa</div>
         </div>
         <div style={styles.badge}>{sourceBadge}</div>

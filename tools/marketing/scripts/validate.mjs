@@ -2,35 +2,88 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   fileExists,
-  loadCampaignContext,
+  loadBrandContext,
   repoPath,
   toolRoot
 } from "./lib.mjs";
 
-const context = await loadCampaignContext();
-const { storyboard, brand } = context;
-const duration = storyboard.scenes.reduce((total, scene) => total + scene.duration, 0);
 const errors = [];
+const context = await loadBrandContext();
+const brand = context.brand;
 
-if (storyboard.format.width !== 1080 || storyboard.format.height !== 1920) {
-  errors.push("Storyboard must be 1080x1920 for the vertical social master.");
+if (brand.id !== "bonhomia") {
+  errors.push("V1 marketing intelligence should be scoped to Bonhomia.");
 }
 
-if (storyboard.format.durationSeconds > 90 || duration > 90) {
-  errors.push(`Storyboard duration is too long: ${duration}s.`);
+if (brand.strategy?.primaryKpi?.targetPct !== 50) {
+  errors.push("Bonhomia primary KPI must target 50% occupancy.");
 }
 
-if (duration !== storyboard.format.durationSeconds) {
-  errors.push(`Scene durations (${duration}s) do not match format.durationSeconds (${storyboard.format.durationSeconds}s).`);
+if (brand.strategy?.audiencePriority?.[0]?.id !== "business-travelers-companies") {
+  errors.push("Business travelers / companies must be the first audience priority.");
 }
 
-if (context.brandId !== brand.id) {
-  errors.push(`Campaign brandId (${context.brandId}) does not match brand profile id (${brand.id}).`);
+if (brand.strategy?.financialSource?.officialService !== "IReportesFinancierosService.GetSaludEmpresaAsync") {
+  errors.push("Financial source must point to Salud Financiera's official service.");
 }
 
-for (const scene of storyboard.scenes) {
-  if (!scene.id || !scene.title || !scene.voiceover || !scene.assetKey) {
-    errors.push(`Scene ${scene.id || "<missing>"} is missing required copy or asset metadata.`);
+if (brand.strategy?.financialSource?.storedProcedure !== "reporteFinanciero.Reporte_Salud_Empresa") {
+  errors.push("Financial source must use the Salud Empresa stored procedure.");
+}
+
+if (brand.strategy?.financialSource?.useProductionData !== true) {
+  errors.push("Brand strategy should explicitly allow aggregate production data for marketing intelligence.");
+}
+
+if (brand.providers?.image?.defaultProvider !== "openai") {
+  errors.push("Brand image provider should default to OpenAI.");
+}
+
+if (!brand.providers?.image?.openai?.model || !brand.providers?.image?.openai?.fallbackModel) {
+  errors.push("Brand image provider must declare OpenAI model and fallbackModel.");
+}
+
+if (brand.providers?.image?.output?.width !== 1080 || brand.providers?.image?.output?.height !== 1350) {
+  errors.push("Brand image output must default to 1080x1350.");
+}
+
+const imageReview = brand.providers?.image?.review || {};
+if (!imageReview.model) {
+  errors.push("Brand image review provider must declare a vision-capable review model.");
+}
+
+if (typeof imageReview.minimumScore !== "number" || imageReview.minimumScore < 80) {
+  errors.push("Brand image review minimumScore should enforce editorial quality at 80+.");
+}
+
+if (
+  typeof imageReview.maxAttempts !== "number"
+  || typeof imageReview.candidatesPerAsset !== "number"
+  || imageReview.maxAttempts < imageReview.candidatesPerAsset
+  || imageReview.candidatesPerAsset < 1
+) {
+  errors.push("Brand image review must generate at least one candidate and allow enough attempts for regeneration.");
+}
+
+if (!brand.assets?.suiteImageRoot || !(await fileExists(repoPath(brand.assets.suiteImageRoot)))) {
+  errors.push("Brand suite image root is missing or invalid.");
+}
+
+if (!brand.assets?.logoPath || !(await fileExists(repoPath(brand.assets.logoPath)))) {
+  errors.push("Brand logoPath is missing or invalid.");
+}
+
+if (brand.assets?.factualImagePolicy?.suitePhotosAreLocked !== true) {
+  errors.push("Brand factual image policy must lock suite photos.");
+}
+
+if (!Array.isArray(brand.assets?.editorialSuitePhotos) || brand.assets.editorialSuitePhotos.length === 0) {
+  errors.push("Brand assets should declare editorialSuitePhotos for quality-first suite modules.");
+}
+
+for (const relativePath of brand.assets?.editorialSuitePhotos || []) {
+  if (!(await fileExists(repoPath(relativePath)))) {
+    errors.push(`Brand editorial suite photo does not exist: ${relativePath}`);
   }
 }
 
@@ -40,8 +93,48 @@ for (const [assetKey, relativePath] of Object.entries(brand.assets?.repoImages |
   }
 }
 
-if (!(await fileExists(path.join(toolRoot, "knowledge", "playbook.md")))) {
-  errors.push("Marketing knowledge playbook is missing.");
+const requiredFiles = [
+  "README.md",
+  "CODEX_PROJECT.md",
+  path.join("knowledge", "playbook.md"),
+  path.join("knowledge", "lesson-inbox", "README.md"),
+  path.join("docs", "tool-catalog.md"),
+  path.join("docs", "art-direction-references.md"),
+  path.join("docs", "visual-design-system.md"),
+  path.join("schemas", "media-plan.schema.json"),
+  path.join("scripts", "intelligence.mjs"),
+  path.join("scripts", "brief.mjs"),
+  path.join("scripts", "media.mjs"),
+  path.join("scripts", "lessons.mjs")
+];
+
+for (const relativePath of requiredFiles) {
+  if (!(await fileExists(path.join(toolRoot, relativePath)))) {
+    errors.push(`Required marketing file is missing: ${relativePath}`);
+  }
+}
+
+if (await fileExists(path.join(toolRoot, "campaigns", "bonhomia-reservation-video"))) {
+  errors.push("The fixed reservation video campaign must not remain in active campaigns/.");
+}
+
+if (!(await fileExists(path.join(toolRoot, "archive", "bonhomia-reservation-video")))) {
+  errors.push("The fixed reservation video campaign should be archived for reference.");
+}
+
+const packageJson = JSON.parse(await fs.readFile(path.join(toolRoot, "package.json"), "utf8"));
+const requiredScripts = ["intelligence", "brief", "media", "lessons", "validate", "test"];
+for (const script of requiredScripts) {
+  if (!packageJson.scripts?.[script]) {
+    errors.push(`package.json is missing npm script '${script}'.`);
+  }
+}
+
+const requiredDependencies = ["dotenv", "mssql", "openai", "sharp"];
+for (const dependency of requiredDependencies) {
+  if (!packageJson.dependencies?.[dependency]) {
+    errors.push(`package.json is missing dependency '${dependency}'.`);
+  }
 }
 
 const scannedFiles = await collectTextFiles(toolRoot);
@@ -59,7 +152,7 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
-console.log(`Campaign ${context.campaignId} valid: ${duration}s, ${storyboard.scenes.length} scenes, ${storyboard.format.width}x${storyboard.format.height}.`);
+console.log("Marketing intelligence workspace valid.");
 
 async function collectTextFiles(root) {
   const collected = [];
@@ -84,18 +177,18 @@ async function visit(dir, collected) {
       continue;
     }
 
-    if (/\.(json|md|mjs|jsx|example|txt)$/i.test(entry.name) || entry.name === ".env.example") {
+    if (/\.(json|md|mjs|jsx|example|txt)$/iu.test(entry.name) || entry.name === ".env.example") {
       collected.push(fullPath);
     }
   }
 }
 
 function containsSecretLikeValue(value) {
-  if (/(sk_live_|sk-proj-|xox[baprs]-|PAYPAL-[A-Z0-9]{10,})/im.test(value)) {
+  if (/(sk_live_|sk-proj-|xox[baprs]-|PAYPAL-[A-Z0-9]{10,})/imu.test(value)) {
     return true;
   }
 
-  if (/Password=(?!<redacted>|$)[^;\s]+/im.test(value)) {
+  if (/(Password|Pwd)=(?!<redacted>|$)[^;\s]+/imu.test(value)) {
     return true;
   }
 
@@ -103,18 +196,20 @@ function containsSecretLikeValue(value) {
     "OPENAI_API_KEY",
     "ELEVENLABS_API_KEY",
     "PAYPAL_SANDBOX_BUYER_PASSWORD",
-    "ASPNETCORE_BonhomiaCheckout__PayPalClientSecret"
+    "ASPNETCORE_BonhomiaCheckout__PayPalClientSecret",
+    "ASPNETCORE_ConnectionStrings__OrionDb",
+    "MARKETING_ORIONDB_CONNECTION_STRING"
   ];
 
   for (const line of value.split(/\r?\n/u)) {
     for (const key of assignmentKeys) {
-      const match = line.match(new RegExp(`${escapeRegex(key)}\\s*=\\s*(.+)$`, "i"));
+      const match = line.match(new RegExp(`${escapeRegex(key)}\\s*=\\s*(.+)$`, "iu"));
       if (!match) {
         continue;
       }
 
-      const assignedValue = match[1].trim().replace(/^["']|["']$/g, "");
-      if (assignedValue && !/^<[^>]+>$/u.test(assignedValue)) {
+      const assignedValue = match[1].trim().replace(/^["']|["']$/gu, "");
+      if (assignedValue && !isDocumentedPlaceholder(assignedValue)) {
         return true;
       }
     }
@@ -125,4 +220,10 @@ function containsSecretLikeValue(value) {
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isDocumentedPlaceholder(value) {
+  return /^<[^>]+>$/u.test(value)
+    || value.includes("<redacted>")
+    || value.includes("<production-or-sandbox-oriondb-connection-string>");
 }

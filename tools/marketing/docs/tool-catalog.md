@@ -1,77 +1,71 @@
-# Marketing Tool Catalog
+# Legacy Marketing Command Catalog
 
-This catalog explains the active `tools/marketing` commands, what each command reads, what it writes, and why it exists.
+This catalog documents the old `tools/marketing` npm commands. They are retained as reference helpers while the project transitions to a Codex-led workflow.
+
+Default production workflow: use Codex directly. Do not run `npm run media` or the project OpenAI image pipeline unless the user explicitly asks to inspect, test, or revive the legacy automation.
+
+For the active project workflow, see `docs/codex-workflow.md`.
 
 ## `npm run intelligence`
 
-Exports aggregate Bonhomia marketing intelligence from OrionERP.
+Legacy helper that exports aggregate Bonhomia marketing intelligence from OrionERP.
 
 - Reads: `ASPNETCORE_ConnectionStrings__OrionDb`, Bonhomia brand config, Salud Financiera stored procedure, public experience tables.
 - Writes: `artifacts/intelligence/<week>/marketing-data.json` and `research-checklist.md`.
-- Use when: starting a weekly strategy run or refreshing sales/occupancy context.
+- Safe use: refreshing aggregate sales/occupancy context when Codex needs a machine-readable data export.
 - Safety: aggregate metrics only; no customer PII or credentials.
 
 ## `npm run brief`
 
-Creates the weekly strategy brief and media plan.
+Legacy helper that creates a weekly strategy brief and media plan.
 
 - Reads: intelligence export, Bonhomia strategy config, public experiences, known demand signals.
 - Writes: `weekly-brief.md`, `media-plan.json`, and `review-checklist.md`.
-- Use when: deciding what market to target and what media to create.
+- Safe use: reference only. Codex should still own the actual strategy recommendation.
 - Rule: strategy before media.
 
 ## `npm run media`
 
-Generates supported media assets from the media plan.
+Deprecated production path. This command was an experiment in automated Facebook/Instagram image generation.
 
-- Reads: `media-plan.json`, Bonhomia logo and suite/property images from `src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia`, OpenAI image config, `docs/visual-design-system.md`, and `docs/art-direction-references.md`.
-- Writes: `media/images/*.png`, `media-manifest.json`, `media-generation-report.md`, and `lesson-proposals.md`.
-- Use when: the weekly plan asks for Facebook/Instagram image assets.
-- V1 support: Facebook/Instagram feed images.
-- V1 limitation: TikTok/Reels video is reported as `unsupported_v1`.
+- Reads: `media-plan.json`, Bonhomia logo and suite/property images, OpenAI image config, `docs/visual-design-system.md`, and `docs/art-direction-references.md`.
+- Writes: generated images, media manifest, generation report, rejected candidate evidence, and lesson proposals.
+- Former support: Facebook/Instagram feed images.
+- Former limitation: TikTok/Reels video reported as unsupported.
 
-Quality workflow:
+Do not use this command for normal creative production. The current preferred path is a Codex creative pass:
 
-- The generator produces multiple candidates per image.
-- A vision-capable review model scores hierarchy, readability, contrast, brand fit, composition, suite truthfulness, and whether the image feels amateur.
-- Candidates below `MARKETING_REVIEW_MIN_SCORE` or with critical failures are rejected.
-- The report lists selected candidates, scores, rejected candidates, and reasons.
-- Use `--mock-openai --mock-review` for offline tests without API calls.
+1. Research and plan.
+2. Choose distinct creative directions.
+3. Use local Bonhomia assets and current event sources.
+4. Compose/generate assets directly.
+5. Visually inspect the outputs.
+6. Report final paths, previews, sources, and quality notes.
 
-Image policy:
-
-- Codex decides whether each image should be logo-only, suite-card, or logo-and-suite-card.
-- Logo-only is valid when the strategy is event, destination, awareness, or brand focused.
-- Business/direct-booking assets may use a brand-led poster when no specific suite is named.
-- Suite photos are used when the strategy needs a lodging proof point, suite recommendation, or room-specific push that a real photo supports.
-- If no suite is named, the tool prefers approved editorial suite photos over automatically choosing a low-quality room photo from financial need alone.
-- OpenAI creates the campaign/background layer only.
-- Suite photos and logos are deterministic locked layers composed with `sharp`.
-- Suite photos must not be generatively edited or used in a way that implies false amenities, furniture, views, decor, objects, or layout.
-- Specific event names, dates, venues, history, or claims require user-provided details or cited research. When unverified, final image copy is generic and the report flags the claim for review.
+The old quality rules remain useful as review criteria: mobile readability, strong hierarchy, integrated logo, source-safe public copy, real factual suite/property imagery, no fake amenities, and no amateur template layouts.
 
 ## `npm run lessons`
 
-Lists lesson proposals or promotes a reviewed lesson into the playbook.
+Legacy helper that lists lesson proposals or promotes a reviewed lesson into the playbook.
 
 - Reads: `knowledge/lesson-inbox/*.md` or the file passed with `--promote`.
 - Writes: `knowledge/playbook.md` only when `--promote` is used.
-- Use when: a media or strategy run teaches something durable that should affect future work.
+- Safe use: optional. Codex may also edit lessons directly when the user asks.
 - Default: inbox first, promote after review.
 
 ## `npm run validate`
 
-Checks workspace configuration and secret hygiene.
+Legacy workspace validation.
 
-- Reads: brand config, schema, docs, scripts, playbook, and checked-in asset paths.
+- Reads: brand config, docs, scripts, playbook, and checked-in asset paths.
 - Writes: nothing.
-- Use when: validating the marketing workspace after edits.
+- Use when: validating that the checked-in marketing workspace still has required files and secret hygiene.
 
-## `npm run test`
+## `npm test`
 
-Runs offline tests for the marketing workspace.
+Legacy offline tests for the old tool workspace.
 
 - Reads: checked-in scripts/config.
 - Writes: ignored test artifacts under `artifacts/`.
 - Uses: mock OpenAI image output and mock visual review scoring.
-- Use when: verifying media generation without spending API calls or needing SQL Server.
+- Use when: maintaining the legacy scripts, not for normal Codex creative production.

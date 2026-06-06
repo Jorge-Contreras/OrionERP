@@ -15,7 +15,11 @@ When the user asks for marketing strategy or marketing material, work in this or
 3. Research or request confirmation for local demand drivers before making event-specific claims.
 4. Recommend strategy before proposing media.
 5. Produce media concepts, specs, captions, hooks, and a review checklist.
-6. Generate final images/videos only when the requested capability exists and the strategy is clear.
+6. Create the approved assets directly as a Codex creative pass, save them under ignored artifacts, inspect the outputs visually, and report strategy, file paths, sources, and quality notes.
+
+This is a regular Codex project, not an npm media-generation tool. Do not use `npm run media` or the project OpenAI image pipeline as the default production path. Use those scripts only when the user explicitly asks to inspect, test, or revive the legacy automation.
+
+In Plan Mode, provide a strategy plan first. A good plan should connect the performance read to timely local demand, for example Feria de Calpulalpan around San Antonio de Padua, Luciernagas season, business travel, weekend tourism, or configured public experiences. Recommend the number and type of posts/videos before producing them.
 
 ## Data Sources
 
@@ -49,12 +53,15 @@ Preserve these standing lessons:
 
 ## Image Generation
 
-Use `npm run media` for supported image generation. The command may use OpenAI to create campaign/event/destination visuals, but Bonhomia suite photos and logos must be deterministic locked layers from `src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia`.
+Create marketing images as a Codex-led creative workflow. Codex should research, choose the strategy, write the public copy, select real Bonhomia assets, compose or generate the final artwork with available creative tools, inspect the resulting files, and iterate before delivery.
+
+Do not default to the old npm media tool. The legacy scripts can remain as reference helpers, but production creative should be made by Codex unless the user explicitly asks otherwise.
 
 Use `docs/visual-design-system.md` as the art-direction source for Bonhomia images. Default toward bold editorial poster quality: one idea, short hook, strong type hierarchy, purposeful negative space, integrated logo placement, and strict mobile readability.
 
 Codex should choose the image treatment from the strategy:
 
+- Use event-first editorial art when the strategy is a local event hook and lodging proof is secondary.
 - Use logo-only when a suite photo is not strategically necessary.
 - Use a real suite-photo card when the strategy needs lodging proof, a suite recommendation, or a suite-specific push.
 - For generic business/direct-booking creative, use a brand-led editorial poster when no suite is named or when the available room photo does not prove the business-travel claim.
@@ -66,4 +73,4 @@ Do not imply that generated event props, artwork, furniture, amenities, views, d
 
 Specific event names, dates, venues, history, or claims need prompt-provided details or cited research before publishing. If not verified, keep the copy generic and flag it for review.
 
-Generate multiple candidates and reject weak outputs before saving finals. Critical rejection reasons include fake suite/property features, clipped or unreadable text, disconnected logo badges, generic dark text-card layouts, public claims without a source, and anything that feels amateur or childish.
+Generate or compose multiple directions when useful and reject weak outputs before saving finals. Avoid repeating the same picture with different text. Critical rejection reasons include fake suite/property features, clipped or unreadable text, disconnected logo badges, generic dark text-card layouts, public claims without a source, and anything that feels amateur or childish.

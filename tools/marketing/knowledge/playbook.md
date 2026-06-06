@@ -10,6 +10,8 @@ This file stores accepted, durable rules for marketing video editing, graphic de
 - V1 output is local-with-review: generate a complete review package, then get human approval before publishing.
 - Bonhomia is the active brand until the user explicitly resumes OrionERP or Grupo Orion marketing.
 - The primary Bonhomia KPI is overall occupancy, with a target of 50%.
+- This is now a Codex-led marketing project, not an npm media-generation tool. Codex should plan, research, create, inspect, and report directly.
+- Use legacy npm scripts only when the user explicitly asks to test, inspect, or revive old automation.
 
 ## Marketing Intelligence Rules
 
@@ -46,11 +48,13 @@ This file stores accepted, durable rules for marketing video editing, graphic de
 
 - Treat image quality as art direction plus QA, not only model choice. The default target is bold editorial poster quality.
 - Use `docs/visual-design-system.md` for Bonhomia image rules, templates, anti-patterns, and review gates.
+- Codex owns image production. Do not default to `npm run media` for publishable creative.
 - Final creative should have one dominant idea, a short public hook, clear hierarchy, strong negative space, and an integrated logo placement.
 - Do not put internal week dates, long brief copy, or strategy notes inside final creative.
-- Generate multiple candidates and reject weak outputs before saving finals. Track selected scores and rejection reasons in the run report.
+- Create distinct concepts and reject weak outputs before saving finals. Track quality notes and rejection reasons in the run report when useful.
+- Avoid producing the same picture with different text. Change the visual idea, composition family, asset choice, or medium when the strategy calls for multiple posts.
 - Reject amateur layouts: generic dark text cards, floating logo badges, disconnected suite tiles, clipped text, low contrast, or "kindergarten-style" block composition.
-- OpenAI can create campaign, event, destination, mood, and abstract marketing visuals around Bonhomia, but it must not redraw Bonhomia logos or invent suite interiors.
+- Available creative tools can create campaign, event, destination, mood, and abstract marketing visuals around Bonhomia, but they must not redraw Bonhomia logos or invent suite interiors.
 - Suite photos must come from the checked-in Bonhomia public site assets and remain factual locked modules.
 - Suite photos may be cropped, resized, brightened, color-corrected, sharpened, or placed in a card, but not generatively changed.
 - Codex may choose logo-only image treatments when the strategy does not need suite proof.
@@ -66,3 +70,4 @@ This file stores accepted, durable rules for marketing video editing, graphic de
 
 - If system `ffmpeg` or `ffprobe` is missing, use Remotion/Node metadata checks before blocking the workflow.
 - Keep provider integrations behind adapters so OpenAI, ElevenLabs, music libraries, or future APIs can be swapped without rewriting campaigns.
+- Treat provider integrations as helpers, not the creative owner. Codex remains responsible for strategy, facts, art direction, visual QA, and final delivery.

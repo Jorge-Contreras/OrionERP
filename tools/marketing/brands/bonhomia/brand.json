@@ -133,7 +133,7 @@
         "changed room layout",
         "generated logo"
       ],
-      "guidance": "OpenAI may create campaign visuals around Bonhomia suite photos, but real suite photos must remain a separate truthful module and must not imply features that do not exist."
+      "guidance": "Creative tools may create campaign visuals around Bonhomia suite photos, but real suite photos must remain a separate truthful module and must not imply features that do not exist."
     },
     "repoImages": {
       "hero": "src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia/hero-penthouse.jpg",
@@ -150,20 +150,33 @@
   },
   "providers": {
     "image": {
-      "defaultProvider": "openai",
+      "defaultProvider": "codex-manual",
+      "codexManual": {
+        "workflowDoc": "docs/codex-workflow.md",
+        "visualDesignSystem": "docs/visual-design-system.md",
+        "playbook": "knowledge/playbook.md",
+        "artifactRoot": "tools/marketing/artifacts",
+        "qualityPolicy": "Codex plans, researches, creates, visually inspects, iterates, and reports final Bonhomia marketing assets directly.",
+        "defaultOutput": {
+          "format": "png",
+          "width": 1080,
+          "height": 1350
+        }
+      },
       "openai": {
         "model": "gpt-image-2",
         "fallbackModel": "gpt-image-1",
-        "quality": "medium",
-        "backgroundSize": "1024x1536"
+        "quality": "high",
+        "photoMode": "deterministic",
+        "backgroundSize": "1280x1600"
       },
       "review": {
         "model": "gpt-5-mini",
         "minimumScore": 82,
-        "maxAttempts": 3,
-        "candidatesPerAsset": 2,
+        "maxAttempts": 6,
+        "candidatesPerAsset": 4,
         "strict": true,
-        "fallbackToHeuristicWhenUnavailable": true
+        "fallbackToHeuristicWhenUnavailable": false
       },
       "output": {
         "format": "png",

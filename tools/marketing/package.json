@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Bonhomia marketing intelligence and campaign planning workspace for OrionERP.",
+  "description": "Codex-led Bonhomia marketing strategy and creative workspace for OrionERP, with legacy npm helpers.",
   "scripts": {
     "intelligence": "node scripts/intelligence.mjs",
     "brief": "node scripts/brief.mjs",

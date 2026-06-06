@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import sharp from "sharp";
+import { __mediaTestHooks } from "./media.mjs";
 import {
   artifactRoot,
   fileExists,
@@ -61,6 +62,7 @@ await runNode(
   ["--brand", "bonhomia", "--week", week.id, "--use-existing", "--mock-openai", "--mock-review", "--media", "2 Facebook images, 1 TikTok video"]
 );
 await verifyMediaFixture(week, errors);
+await verifyReviewFallbackPolicy(errors);
 
 if (errors.length > 0) {
   for (const error of errors) {
@@ -192,6 +194,26 @@ async function verifyMediaFixture(week, errors) {
     errors.push(`Expected 3 generated image assets, got ${manifest.assets.length}.`);
   }
 
+  if (manifest.provider?.quality !== "high" || manifest.provider?.backgroundSize !== "1280x1600") {
+    errors.push("Media manifest should record high quality and the 1280x1600 production layer size.");
+  }
+
+  if (manifest.provider?.photoMode !== "deterministic") {
+    errors.push(`Media manifest should record deterministic photo mode by default, got ${manifest.provider?.photoMode}.`);
+  }
+
+  if (manifest.qualityGate?.candidatesPerAsset < 4 || manifest.qualityGate?.maxAttempts < 6) {
+    errors.push("Media manifest should record at least 4 candidates and 6 max attempts.");
+  }
+
+  if (!manifest.learning?.playbook?.hash || !manifest.learning?.designSystem?.hash) {
+    errors.push("Media manifest should record playbook and design-system hashes.");
+  }
+
+  if (!manifest.learning?.lessonArtifactPath || !manifest.learning?.lessonInboxPath) {
+    errors.push("Media manifest should record artifact and lesson-inbox proposal paths.");
+  }
+
   if (manifest.unsupported.length !== 1 || manifest.unsupported[0].status !== "unsupported_v1") {
     errors.push("Expected one unsupported_v1 TikTok asset.");
   }
@@ -201,14 +223,18 @@ async function verifyMediaFixture(week, errors) {
     errors.push("Logo-only fixture should not include a suite photo.");
   }
 
-  const suiteCard = manifest.assets.find((asset) => asset.id === "fb-business-penthouse");
-  if (!suiteCard?.sourceSuitePhoto || suiteCard.assetDecision !== "suite_card") {
-    errors.push("Suite-card fixture should include a real suite photo.");
+  if (logoOnly?.template !== "destination_brand_awareness") {
+    errors.push("Logo-only local awareness fixture should use the destination_brand_awareness template, not a business template.");
+  }
+
+  const suitePoster = manifest.assets.find((asset) => asset.id === "fb-business-penthouse");
+  if (!suitePoster?.sourceHeroPhoto || suitePoster.assetDecision !== "photo_led_poster" || suitePoster.sourceHeroKind !== "suite") {
+    errors.push("Named-suite fixture should use a photo-led poster with a real suite hero photo.");
   }
 
   const businessPoster = manifest.assets.find((asset) => asset.id === "fb-business-brand-poster");
-  if (businessPoster?.assetDecision !== "business_brand_poster" || businessPoster.sourceSuitePhoto !== null) {
-    errors.push("Business poster fixture should not force a suite photo when no suite is named.");
+  if (businessPoster?.assetDecision !== "photo_led_poster" || !businessPoster.sourceHeroPhoto || businessPoster.sourceHeroKind !== "property") {
+    errors.push("Business poster fixture should use a real property hero photo instead of forcing a suite module.");
   }
 
   if (businessPoster?.template !== "business_direct_booking") {
@@ -216,6 +242,18 @@ async function verifyMediaFixture(week, errors) {
   }
 
   for (const asset of manifest.assets) {
+    if (!asset.creativeFamily) {
+      errors.push(`Expected ${asset.id} to record a creativeFamily.`);
+    }
+
+    if (asset.assetDecision === "photo_led_poster" && !asset.openAi?.sourceMode) {
+      errors.push(`Expected ${asset.id} to record the image source mode.`);
+    }
+
+    if (!asset.learning?.playbookHash || !asset.learning?.designSystemHash) {
+      errors.push(`Expected ${asset.id} to record learning hashes.`);
+    }
+
     if (asset.status !== "generated") {
       errors.push(`Expected ${asset.id} to pass the mock quality gate, got ${asset.status}.`);
     }
@@ -226,6 +264,19 @@ async function verifyMediaFixture(week, errors) {
 
     if (!Array.isArray(asset.quality?.rejectedCandidates) || asset.quality.rejectedCandidates.length === 0) {
       errors.push(`Expected ${asset.id} to record at least one rejected candidate.`);
+    }
+
+    if (!Array.isArray(asset.quality?.candidates) || asset.quality.candidates.length < 4) {
+      errors.push(`Expected ${asset.id} to review at least 4 candidates.`);
+    }
+
+    if (!asset.quality?.candidates?.every((candidate) => candidate.reviewerMode && candidate.deterministicChecks && candidate.imageBase)) {
+      errors.push(`Expected ${asset.id} candidates to record reviewerMode, deterministicChecks, and imageBase evidence.`);
+    }
+
+    const selected = asset.quality?.candidates?.find((candidate) => candidate.candidateIndex === asset.quality.selectedCandidate);
+    if (!selected?.deterministicChecks?.passed) {
+      errors.push(`Expected selected candidate for ${asset.id} to pass deterministic checks.`);
     }
 
     if (!asset.quality?.rejectedCandidates?.some((candidate) => /kindergarten/iu.test(candidate.criticalFailures?.join(" ") || ""))) {
@@ -249,8 +300,94 @@ async function verifyMediaFixture(week, errors) {
     errors.push("Media run should write lesson-proposals.md.");
   }
 
+  const lessonInboxPath = path.join(repoRoot, manifest.learning.lessonInboxPath);
+  if (!(await fileExists(lessonInboxPath))) {
+    errors.push("Media run should write a deduplicated lesson-inbox proposal by default.");
+  }
+
   const report = await fs.readFile(path.join(mediaRoot, "media-generation-report.md"), "utf8");
-  if (!/Rejected Candidates/iu.test(report) || !/candidate 1/iu.test(report)) {
+  if (!/Rejected Candidates/iu.test(report) || !/candidate 1/iu.test(report) || !/Deterministic Review Evidence/iu.test(report)) {
     errors.push("Media report should include candidate rejection details.");
+  }
+}
+
+async function verifyReviewFallbackPolicy(errors) {
+  const localAwarenessAsset = {
+    id: "unit-local-awareness",
+    type: "facebook_image",
+    audience: "BnB travelers and tourists",
+    hook: "Calpulalpan tiene plan este fin.",
+    concept: "Local culture awareness image for Bonhomia.",
+    visualDirection: "Generated destination visual with Bonhomia logo only.",
+    caption: "Un plan local, una estancia comoda y reserva directa.",
+    cta: "Conoce Bonhomia"
+  };
+  const decision = __mediaTestHooks.decideAssetTreatment(localAwarenessAsset);
+  const template = __mediaTestHooks.selectEditorialTemplate(localAwarenessAsset, decision);
+
+  if (decision.name !== "logo_only") {
+    errors.push(`Expected generic destination CTA asset to remain logo_only, got ${decision.name}.`);
+  }
+
+  if (template.id !== "destination_brand_awareness") {
+    errors.push(`Expected generic destination CTA asset to use destination template, got ${template.id}.`);
+  }
+
+  const deterministicChecks = {
+    passed: true,
+    checks: [],
+    criticalFailures: [],
+    warnings: []
+  };
+  const reviewArgs = {
+    asset: localAwarenessAsset,
+    candidateIndex: 1,
+    candidatePath: "unused.png",
+    config: {
+      mock: false,
+      mockReview: false,
+      reviewModel: null,
+      minimumScore: 82,
+      allowHeuristicFinal: false
+    },
+    copy: {
+      headline: "CALPULALPAN",
+      subhead: "Tu estancia empieza aqui.",
+      cta: "Conoce Bonhomia"
+    },
+    decision,
+    deterministicChecks,
+    eventReview: {
+      mentionsEvent: false,
+      verified: false
+    },
+    sourceSuitePhoto: null,
+    template,
+    learningContext: {
+      playbookRules: [],
+      designRules: []
+    },
+    width: 1080,
+    height: 1350
+  };
+
+  try {
+    await __mediaTestHooks.reviewCandidate(reviewArgs);
+    errors.push("Expected production review to fail closed without OpenAI vision review.");
+  } catch (error) {
+    if (!/vision review is required/iu.test(error.message)) {
+      errors.push(`Unexpected fail-closed review error: ${error.message}`);
+    }
+  }
+
+  const overrideReview = await __mediaTestHooks.reviewCandidate({
+    ...reviewArgs,
+    config: {
+      ...reviewArgs.config,
+      allowHeuristicFinal: true
+    }
+  });
+  if (overrideReview.reviewerMode !== "heuristic-override" || overrideReview.accepted !== true) {
+    errors.push("Expected MARKETING_ALLOW_HEURISTIC_FINAL override path to use heuristic-override and accept the structurally valid fixture.");
   }
 }

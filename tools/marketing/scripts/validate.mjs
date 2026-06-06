@@ -35,12 +35,37 @@ if (brand.strategy?.financialSource?.useProductionData !== true) {
   errors.push("Brand strategy should explicitly allow aggregate production data for marketing intelligence.");
 }
 
-if (brand.providers?.image?.defaultProvider !== "openai") {
-  errors.push("Brand image provider should default to OpenAI.");
+if (brand.providers?.image?.defaultProvider !== "codex-manual") {
+  errors.push("Brand image provider should default to the Codex manual workflow.");
+}
+
+const codexManualImage = brand.providers?.image?.codexManual || {};
+if (codexManualImage.workflowDoc !== "docs/codex-workflow.md") {
+  errors.push("Brand image provider must point to docs/codex-workflow.md.");
+}
+
+if (codexManualImage.visualDesignSystem !== "docs/visual-design-system.md") {
+  errors.push("Brand image provider must point to docs/visual-design-system.md.");
+}
+
+if (codexManualImage.playbook !== "knowledge/playbook.md") {
+  errors.push("Brand image provider must point to knowledge/playbook.md.");
+}
+
+if (codexManualImage.defaultOutput?.width !== 1080 || codexManualImage.defaultOutput?.height !== 1350) {
+  errors.push("Codex manual image output must default to 1080x1350.");
 }
 
 if (!brand.providers?.image?.openai?.model || !brand.providers?.image?.openai?.fallbackModel) {
-  errors.push("Brand image provider must declare OpenAI model and fallbackModel.");
+  errors.push("Legacy OpenAI image helper must declare model and fallbackModel.");
+}
+
+if (brand.providers?.image?.openai?.quality !== "high") {
+  errors.push("Legacy OpenAI image helper should default to high quality for final marketing assets.");
+}
+
+if (brand.providers?.image?.openai?.backgroundSize !== "1280x1600") {
+  errors.push("Legacy OpenAI image helper should default to a 1280x1600 4:5-friendly image layer.");
 }
 
 if (brand.providers?.image?.output?.width !== 1080 || brand.providers?.image?.output?.height !== 1350) {
@@ -60,9 +85,14 @@ if (
   typeof imageReview.maxAttempts !== "number"
   || typeof imageReview.candidatesPerAsset !== "number"
   || imageReview.maxAttempts < imageReview.candidatesPerAsset
-  || imageReview.candidatesPerAsset < 1
+  || imageReview.maxAttempts < 6
+  || imageReview.candidatesPerAsset < 4
 ) {
-  errors.push("Brand image review must generate at least one candidate and allow enough attempts for regeneration.");
+  errors.push("Brand image review must generate at least 4 candidates and allow at least 6 attempts for regeneration.");
+}
+
+if (imageReview.fallbackToHeuristicWhenUnavailable !== false) {
+  errors.push("Legacy image review should fail closed when OpenAI vision review is unavailable.");
 }
 
 if (!brand.assets?.suiteImageRoot || !(await fileExists(repoPath(brand.assets.suiteImageRoot)))) {
@@ -98,6 +128,7 @@ const requiredFiles = [
   "CODEX_PROJECT.md",
   path.join("knowledge", "playbook.md"),
   path.join("knowledge", "lesson-inbox", "README.md"),
+  path.join("docs", "codex-workflow.md"),
   path.join("docs", "tool-catalog.md"),
   path.join("docs", "art-direction-references.md"),
   path.join("docs", "visual-design-system.md"),

@@ -14,7 +14,7 @@ The two user-provided Airbnb-style images are not brand references for Bonhomia.
 
 ## External Reference Rules
 
-- OpenAI GPT Image 2 remains the default generator for campaign layers, but the model should not be asked to solve logo placement, final text, or factual suite imagery. Source: https://developers.openai.com/api/docs/models/gpt-image-2
+- Codex may use available image-generation, editing, local composition, or screenshot tools, but no tool should be asked to solve final logo placement, final public text, or factual suite imagery without Codex review.
 - Meta photo ads are mobile-first and benefit from simple, clear imagery with concise messaging and a recognizable focal point. Source: https://www.facebook.com/business/ads/photo-ad-format
 - TikTok creative work should preserve the concept and hook even when video generation is unsupported in V1; future video should prioritize a fast hook, clear value, and direct CTA. Source: https://ads.tiktok.com/business/creativecenter/
 - Google's ABCD framework is useful for future video and animated media: attract attention, brand early, connect to the audience, and direct action. Source: https://www.thinkwithgoogle.com/marketing-strategies/video/youtube-abcds-effective-video-ads/
@@ -28,7 +28,7 @@ The two user-provided Airbnb-style images are not brand references for Bonhomia.
 - Event/experience ads may use generated atmosphere as the hero, then a real suite module only when the copy connects the event to staying at Bonhomia.
 - Destination/awareness ads may use the logo and graphic composition alone.
 - Financial strategy can identify which suites need promotion, but visual quality still matters. If a campaign does not name a specific suite, choose an approved editorial suite photo or omit room imagery.
-- The OpenAI layer must not show rooms, hotel exteriors, balconies, amenities, people, readable signage, or anything that could be mistaken for a Bonhomia property feature.
+- Generated event or atmosphere layers must not show rooms, hotel exteriors, balconies, amenities, people, readable signage, or anything that could be mistaken for a Bonhomia property feature unless the source is a real approved Bonhomia asset.
 
 ## Quality Questions
 

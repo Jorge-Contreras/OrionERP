@@ -1,20 +1,20 @@
-# Codex Project Handoff: Bonhomia Marketing Intelligence
+# Codex Project Handoff: Bonhomia Marketing
 
-Point the new Codex Project to the OrionERP repo root:
+Point the Codex Project to the OrionERP repo root:
 
 ```text
 C:\Users\Orion\Grupo Carpio Dropbox\Grupo Orion\Software\GitHubs\Development\OrionERP
 ```
 
-Do not point the project only to `tools/marketing`; the agent needs the OrionERP code, Bonhomia public site assets, Salud Financiera source, and SQL model context.
+Do not point the project only to `tools/marketing`; Codex needs the OrionERP code, Bonhomia public site assets, Salud Financiera source, and SQL model context.
 
 ## Mission
 
-Build a permanent marketing intelligence and generation platform for Bonhomia Suites. The business goal is to raise overall occupancy to 50%.
+Run Bonhomia Suites marketing strategy and creative production as a Codex-led workflow. The business goal is to raise overall occupancy to 50%.
 
-V1 is strategy-first. It reads aggregate production data, understands public experiences, recommends the weekly marketing strategy, produces media plans, and generates Facebook/Instagram feed images. TikTok/Reels video is still reported as unsupported in v1.
+This project is no longer centered on the npm media tool. Codex should do the work: inspect data, research demand, recommend strategy, create images or video concepts, inspect outputs, and report sources and quality.
 
-## Current Capabilities
+## Current Capability
 
 - Bonhomia is the active brand in `tools/marketing/brands/bonhomia/brand.json`.
 - The primary KPI is 50% overall occupancy.
@@ -24,45 +24,32 @@ V1 is strategy-first. It reads aggregate production data, understands public exp
   3. Families.
   4. Couples.
   5. Event visitors.
-- `npm run intelligence` exports aggregate-only Salud Financiera metrics and public experiences.
-- `npm run brief` produces a weekly strategy brief, media plan, and review checklist.
-- `npm run media` generates supported Facebook/Instagram images, reviews multiple candidates, saves accepted finals, and reports unsupported video assets.
-- `docs/visual-design-system.md` defines the editorial poster quality target, extracted reference rules, templates, anti-patterns, and quality gates.
-- `docs/art-direction-references.md` stores design-rule references and source links for professional hierarchy, mobile creative, grid discipline, and brand-safe composition.
-- `knowledge/playbook.md` preserves durable marketing lessons from prior video work.
-- The fixed Bonhomia reservation video campaign is archived, not active.
+- Codex knows the official financial source, public experience source, asset folders, image quality target, privacy boundaries, and learning workflow.
+- `docs/codex-workflow.md` defines the normal Codex project flow.
+- `docs/visual-design-system.md` defines the Bonhomia editorial poster quality target, templates, anti-patterns, and quality gates.
+- `docs/art-direction-references.md` stores design-rule references and source links for hierarchy, mobile creative, grid discipline, and brand-safe composition.
+- `knowledge/playbook.md` preserves durable marketing lessons.
+- The old npm scripts remain only as legacy/reference helpers.
 
-## How To Run
+## Recommended Prompt
 
-From the repo root:
-
-```powershell
-cd tools/marketing
-npm install
-npm run validate
-npm run test
-npm run intelligence -- --brand bonhomia --week current
-npm run brief -- --brand bonhomia --week current
-npm run media -- --brand bonhomia --week current --media "2 Facebook images, 1 TikTok video"
-```
-
-Artifacts are written to:
+Use Plan Mode for strategy prompts:
 
 ```text
-tools/marketing/artifacts/intelligence/<week>/
+Check how we are doing in sales and create a plan for today's marketing strategies or posts.
 ```
 
-## Required Local Environment
+Expected Codex plan:
 
-Use environment variables or a local `.env`; never commit secrets.
+- Explain occupancy status and the gap to 50%.
+- Compare against recent weeks or last year when data is available.
+- Identify the priority audience for the day/week.
+- Research timely local demand such as Feria de Calpulalpan, San Antonio de Padua, Luciernagas season, business travel, tourism, or configured Bonhomia experiences.
+- Recommend strategy before media.
+- Recommend the number and type of Facebook/Instagram images, story variants, TikTok/Reels concepts, captions, hooks, and review checks.
+- Flag public claims that need official confirmation before publishing.
 
-```powershell
-$env:ASPNETCORE_ConnectionStrings__OrionDb = "Server=bonhomia.ddns.net,1433;Database=grupocarpio;User Id=orion;Password=<redacted>;TrustServerCertificate=True;Encrypt=True;"
-$env:MARKETING_BRAND = "bonhomia"
-$env:MARKETING_WEEK = "current"
-```
-
-`MARKETING_RFC` can override the default Bonhomia RFC when needed. The default comes from `BonhomiaCheckout:AccountingRfc`.
+After approving the plan or asking Codex to create the assets, Codex should produce the deliverables directly and save them under `tools/marketing/artifacts/`.
 
 ## Official Data Sources
 
@@ -73,57 +60,53 @@ $env:MARKETING_WEEK = "current"
 
 Only aggregate marketing metrics may be exported. Do not write customer names, reservation-level rows, payment details, SQL credentials, API keys, or connection strings.
 
-## Recommended Prompt For The New Project
+## Local Environment
 
-```text
-Today we will work on this week's marketing strategy plan and media generation.
-Check how our sales are going, research what's coming this week, and tell me what market we can hit.
-Create this marketing material [2 Facebook images, 1 TikTok video].
+Use environment variables or a local ignored `.env` for database access. Never commit secrets.
+
+```powershell
+$env:ASPNETCORE_ConnectionStrings__OrionDb = "Server=bonhomia.ddns.net,1433;Database=grupocarpio;User Id=orion;Password=<redacted>;TrustServerCertificate=True;Encrypt=True;"
+$env:MARKETING_BRAND = "bonhomia"
+$env:MARKETING_WEEK = "current"
 ```
 
-Expected V1 response:
+`MARKETING_RFC` can override the default Bonhomia RFC when needed. The default comes from `BonhomiaCheckout:AccountingRfc`.
 
-- Explain occupancy status and the gap to 50%.
-- Identify the priority audience for the week.
-- Reference active or upcoming experiences such as Luciernagas when relevant.
-- Ask for or perform public research on Google/Facebook/Instagram before event-specific claims.
-- Recommend strategy before media.
-- Produce concepts, specs, captions, hooks, review checklist, and supported Facebook/Instagram image files.
-- Report TikTok/Reels video as unsupported in v1 while preserving the concept for future generation.
+## Creative Rules
 
-## Image Generation Rules
-
-- Use OpenAI for campaign/event/background visuals.
-- Use `sharp` to compose final images with deterministic text, logo, and optional suite-photo cards.
-- Generate multiple candidates per image and reject outputs that fail hierarchy, readability, contrast, brand fit, composition, suite truth, or the "not amateur" check.
-- Keep public image hooks short. Do not place internal week dates or long strategy copy in the creative.
-- Logo-only is valid when the strategy does not need suite imagery.
-- Suite photos are optional strategy assets, not mandatory decoration.
-- Business/direct-booking images can be brand-led posters when no suite is named or the available room photo does not support the claim.
-- Financial need may suggest what to promote, but visual quality and factual fit decide whether a room photo belongs in the ad.
-- When used, suite photos must come from `src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia`.
-- Suite photos may be cropped or lightly enhanced, but must not be generatively edited.
-- Generated visuals may appear around suite photos, but must not imply false suite amenities, objects, artwork, views, furniture, decor, or room layout.
+- Use `tools/marketing/docs/visual-design-system.md` and `tools/marketing/knowledge/playbook.md`.
+- Create visually distinct concepts, not the same layout with different text.
+- Keep image hooks short and mobile readable.
+- Do not place internal week dates or strategy notes inside public creative.
+- Use real Bonhomia photos from `src/OrionERP.Bonhomia.Web/wwwroot/Images/Bonhomia` when lodging proof matters.
+- Suite/property photos may be cropped, resized, brightened, color-corrected, sharpened, or placed in a layout, but must not be generatively changed in a way that alters facts.
+- Event-first editorial art is valid when the event is the hook and suite proof is secondary.
+- Generated visuals must not imply false amenities, objects, artwork, views, furniture, decor, room layouts, or property features.
 - Specific event claims require prompt-provided details or cited research before publishing.
-- When an event hook is not verified, keep final image copy generic and preserve the specific claim as a review risk in the report.
+- Inspect final media visually before delivery.
 
-## What Remains To Build
+## Legacy Scripts
 
-- Google/Facebook/Instagram/TikTok research connectors or approved manual research workflow.
-- More advanced image variants, platform-specific crops, and automated A/B creative testing.
-- Flexible TikTok/Reels video generator that can build different concepts, not repeat one fixed walkthrough.
-- Licensed music library selection and metadata management.
-- ElevenLabs voice provider production workflow.
-- Social publishing integrations after human approval.
-- Marketing analytics ingestion from Meta, TikTok, Google Search, and website conversions.
-- Budget recommendation logic based on occupancy gap, ADR, RevPAR, and cash flow.
+The old commands remain checked in but are not the default workflow:
+
+```powershell
+cd tools/marketing
+npm run intelligence
+npm run brief
+npm run media
+npm run lessons
+npm run validate
+npm test
+```
+
+Use them only when the user explicitly asks to inspect, test, or revive the old automation.
 
 ## Lessons Already Preserved
 
 - Do not over-zoom website screenshots; readability beats energetic crop.
 - Use phone-frame previews for browser captures.
 - PayPal iframe automation is unreliable; explain the handoff instead of implying access.
-- Bonhomia Spanish voice should be relaxed, faster, and less formal.
+- Bonhomia Spanish voice should be relaxed, fast, warm, and practical.
 - Synthetic music is placeholder quality unless explicitly approved.
 - Keep generated media and private assets out of git.
 - Preserve run/capture manifests after partial failures.

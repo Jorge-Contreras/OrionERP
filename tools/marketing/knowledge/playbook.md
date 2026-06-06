@@ -12,6 +12,7 @@ This file stores accepted, durable rules for marketing video editing, graphic de
 - The primary Bonhomia KPI is overall occupancy, with a target of 50%.
 - This is now a Codex-led marketing project, not an npm media-generation tool. Codex should plan, research, create, inspect, and report directly.
 - Use legacy npm scripts only when the user explicitly asks to test, inspect, or revive old automation.
+- After every implemented marketing plan, perform a lesson-capture pass. Promote durable guidance into this playbook when it should affect future campaigns, and put tentative or run-specific observations in `knowledge/lesson-inbox/` or the ignored artifact report.
 
 ## Marketing Intelligence Rules
 
@@ -50,6 +51,7 @@ This file stores accepted, durable rules for marketing video editing, graphic de
 - Use `docs/visual-design-system.md` for Bonhomia image rules, templates, anti-patterns, and review gates.
 - Codex owns image production. Do not default to `npm run media` for publishable creative.
 - Final creative should have one dominant idea, a short public hook, clear hierarchy, strong negative space, and an integrated logo placement.
+- Final delivery should include a review package with publishable assets, phone-scale preview, captions/scripts, schedule or boost notes when relevant, QA notes, source images, and link/dimension checks.
 - Do not put internal week dates, long brief copy, or strategy notes inside final creative.
 - Create distinct concepts and reject weak outputs before saving finals. Track quality notes and rejection reasons in the run report when useful.
 - Avoid producing the same picture with different text. Change the visual idea, composition family, asset choice, or medium when the strategy calls for multiple posts.
@@ -57,12 +59,15 @@ This file stores accepted, durable rules for marketing video editing, graphic de
 - Available creative tools can create campaign, event, destination, mood, and abstract marketing visuals around Bonhomia, but they must not redraw Bonhomia logos or invent suite interiors.
 - Suite photos must come from the checked-in Bonhomia public site assets and remain factual locked modules.
 - Suite photos may be cropped, resized, brightened, color-corrected, sharpened, or placed in a card, but not generatively changed.
+- Generated campaign artwork may live beside or on top of real suite/property photos as a separate poster layer. Split layouts, top/bottom compositions, transparent overlays, and event-art panels are allowed when the real photo remains unmodified and the generated art reads as graphic campaign material, not as a physical object, amenity, decor, or view inside the suite.
 - Codex may choose logo-only image treatments when the strategy does not need suite proof.
 - Use real suite-photo cards when the image recommends a stay, a business-travel benefit, or a specific suite.
 - Business/direct-booking ads do not have to show a room. If no suite is named and the available photo does not prove the business-travel claim, use a brand-led editorial poster instead.
 - Financial need can identify which suites deserve attention, but it should not force a weak photo into a public ad. If the creative does not name a specific suite, choose the strongest approved editorial suite photo or omit the suite module.
+- Rotate suite imagery across the full Bonhomia catalog over time. Penthouse is a strong hero suite, but do not overuse it as the default; deliberately include other suites such as Grecia, London, Berlin, Seul, Manhattan, Paris, and Moscu when their photos support the campaign.
 - Use external references as design principles: single focal point, visual hierarchy, concise mobile copy, grid/rail discipline, brand integration, and clear CTA.
 - If an image promotes an event, artwork, Feria, Luciernagas, or another local hook, generated visuals may represent that hook outside the suite-photo module.
+- For event hooks such as Feria de San Antonio Calpulalpan, generated event artwork can share the same final image with a suite photo, but keep a clear visual boundary: separate panel, poster overlay, transparent graphic layer, or deliberate collage system. Do not add shadows, reflections, perspective, or placement that makes generated event objects appear to be inside the real room.
 - Do not imply generated objects, amenities, art, furniture, views, decorations, or layouts exist inside a suite unless the real suite photo shows them.
 - Specific event claims require user-provided details or cited research before publishing; otherwise use generic local-event language and flag for review.
 

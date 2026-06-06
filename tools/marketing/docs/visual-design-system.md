@@ -36,6 +36,7 @@ Reference rule set:
 - Do not use a weak suite photo just because a suite needs demand. If the creative does not name that suite, choose a stronger approved photo or omit the room.
 - For business/direct-booking assets, prefer a real property photo-led poster when no specific suite is being sold.
 - Use generated or illustrated layers as atmosphere, texture, or campaign art only when a photo-led poster is not the right treatment. Do not let generation produce final typography, logo, or unsourced factual Bonhomia property imagery.
+- Generated event or campaign artwork may coexist with real Bonhomia photos in the same final asset when the real photo remains a factual locked module. Use clear poster composition devices such as split panels, collage grids, transparent graphic overlays, or top/bottom layouts so generated art reads as campaign art, not as an invented suite feature.
 
 ## Photo-Led Promotional Posters
 
@@ -59,7 +60,7 @@ Reference rule set:
 - Purpose: connect a verified local experience or event to staying at Bonhomia.
 - Main idea: event/experience first, suite as stay option second.
 - Preferred assets: event-inspired generated visual with a real suite module when relevant; use photo-led only when the message is primarily lodging/sales rather than event artwork.
-- Avoid: implying generated event objects or decor are inside the suite.
+- Avoid: implying generated event objects or decor are inside the suite. Generated Feria, Luciernagas, destination, or seasonal artwork can sit above, below, beside, or transparently over a suite photo as poster graphics, but should not use shadows, reflections, perspective, or room-anchored placement that makes the artwork look physically present in the real suite.
 
 ### `destination_brand_awareness`
 
@@ -94,6 +95,7 @@ Each final image should pass:
 - Composition: balanced, intentional, editorial.
 - Brand fit: premium, warm, practical, not generic.
 - Suite truth: no false suite/property implication.
+- Generated art boundary: generated event/campaign visuals are visually separated from real suite facts, even when they share one poster.
 - Public copy: short, source-safe, no private/internal details.
 - Not amateur: no kindergarten-style block layout, generic dark text-card overlay, disconnected logo badge, or pasted-on suite tile.
 - Manual checks: final dimensions, safe areas, text-fit risk, contrast, logo placement, suite-module bounds, and public-claim safety.

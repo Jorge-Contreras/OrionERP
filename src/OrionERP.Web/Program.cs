@@ -233,7 +233,22 @@ builder.Services.AddServerSideBlazor(options =>
 });
 builder.Services.Configure<OpenClawApiOptions>(builder.Configuration.GetSection(OpenClawApiOptions.SectionName));
 builder.Services.Configure<GraphMailOptions>(builder.Configuration.GetSection(GraphMailOptions.SectionName));
+builder.Services.Configure<BonhomiaGraphMailOptions>(builder.Configuration.GetSection(BonhomiaGraphMailOptions.SectionName));
 builder.Services.Configure<BonhomiaGraphCalendarSyncOptions>(builder.Configuration.GetSection(BonhomiaGraphCalendarSyncOptions.SectionName));
+builder.Services.PostConfigure<BonhomiaGraphCalendarSyncOptions>(options =>
+{
+  var sharedCredentials = builder.Configuration
+    .GetSection(BonhomiaGraphMailOptions.SectionName)
+    .Get<BonhomiaGraphMailOptions>();
+
+  if (sharedCredentials is not null)
+  {
+    options.ApplySharedGraphCredentials(
+      sharedCredentials.TenantId,
+      sharedCredentials.ClientId,
+      sharedCredentials.ClientSecret);
+  }
+});
 builder.Services.Configure<BonhomiaCheckoutOptions>(builder.Configuration.GetSection(BonhomiaCheckoutOptions.SectionName));
 builder.Services.Configure<ReservacionPdfOptions>(options =>
 {

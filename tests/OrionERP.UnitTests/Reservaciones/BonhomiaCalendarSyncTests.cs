@@ -106,6 +106,46 @@ public class BonhomiaCalendarSyncTests
   }
 
   [Fact]
+  public void CalendarOptions_UseSharedGraphCredentials_WhenClientIdMatches()
+  {
+    var options = new BonhomiaGraphCalendarSyncOptions
+    {
+      TenantId = "old-tenant",
+      ClientId = "6bfe945f-8423-4eef-b78c-934cc41876b7",
+      ClientSecret = "stale-secret"
+    };
+
+    options.ApplySharedGraphCredentials(
+      "aea961c0-7e15-4be8-9f81-2388eb2f9e96",
+      "6BFE945F-8423-4EEF-B78C-934CC41876B7",
+      "rotated-secret");
+
+    Assert.Equal("aea961c0-7e15-4be8-9f81-2388eb2f9e96", options.TenantId);
+    Assert.Equal("6BFE945F-8423-4EEF-B78C-934CC41876B7", options.ClientId);
+    Assert.Equal("rotated-secret", options.ClientSecret);
+  }
+
+  [Fact]
+  public void CalendarOptions_KeepCalendarCredentials_WhenClientIdDiffers()
+  {
+    var options = new BonhomiaGraphCalendarSyncOptions
+    {
+      TenantId = "calendar-tenant",
+      ClientId = "calendar-client",
+      ClientSecret = "calendar-secret"
+    };
+
+    options.ApplySharedGraphCredentials(
+      "shared-tenant",
+      "shared-client",
+      "shared-secret");
+
+    Assert.Equal("calendar-tenant", options.TenantId);
+    Assert.Equal("calendar-client", options.ClientId);
+    Assert.Equal("calendar-secret", options.ClientSecret);
+  }
+
+  [Fact]
   public void Reconciler_ReturnsCreate_WhenLocalBlockHasNoRemoteEvent()
   {
     var localBlock = CreateLocalBlock();

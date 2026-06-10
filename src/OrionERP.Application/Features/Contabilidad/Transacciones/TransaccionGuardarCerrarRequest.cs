@@ -7,7 +7,6 @@ public sealed class TransaccionGuardarCerrarRequest
   public DateTime Fecha { get; set; }
   public string? Cuenta { get; set; }
   public decimal Monto { get; set; }
-  public int Categoria { get; set; }
   public bool Facturado { get; set; }
   public string? Memo { get; set; }
   public int? ProyectoId { get; set; }

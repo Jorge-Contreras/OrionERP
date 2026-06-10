@@ -21,7 +21,6 @@ public sealed class TransaccionService : ITransaccionService
 {
   private readonly IConfiguration _cfg;
   private readonly string _cs;
-  private readonly IDbStoredProcService _storedProcService;
   private readonly IFacturamaApiClient _facturamaApiClient;
   private readonly ISatRfcProfileRepository _satRfcProfileRepository;
   private readonly ICfdiStampingService _cfdiStampingService;
@@ -30,7 +29,6 @@ public sealed class TransaccionService : ITransaccionService
 
   public TransaccionService(
       IConfiguration cfg,
-      IDbStoredProcService storedProcService,
       IFacturamaApiClient facturamaApiClient,
       ISatRfcProfileRepository satRfcProfileRepository,
       ICfdiStampingService cfdiStampingService,
@@ -40,7 +38,6 @@ public sealed class TransaccionService : ITransaccionService
     _cfg = cfg ?? throw new ArgumentNullException(nameof(cfg));
     _cs = _cfg.GetConnectionString("OrionDb")
          ?? throw new InvalidOperationException("Missing connection string: OrionDb");
-    _storedProcService = storedProcService ?? throw new ArgumentNullException(nameof(storedProcService));
     _facturamaApiClient = facturamaApiClient ?? throw new ArgumentNullException(nameof(facturamaApiClient));
     _satRfcProfileRepository = satRfcProfileRepository ?? throw new ArgumentNullException(nameof(satRfcProfileRepository));
     _cfdiStampingService = cfdiStampingService ?? throw new ArgumentNullException(nameof(cfdiStampingService));
@@ -57,7 +54,6 @@ public sealed class TransaccionService : ITransaccionService
     CAST(t.Monto AS decimal(18,4)) AS Monto,
     t.Cuenta            AS Cuenta,
     t.RFC               AS Rfc,
-    t.Categoria         AS Categoria,
     t.Facturado         AS Facturado,
     t.Referencia        AS Referencia,
     t.Memo              AS Memo,
@@ -396,23 +392,6 @@ ORDER BY rc.ID;";
     using var conn = new SqlConnection(_cs);
     var rows = await conn.QueryAsync<TransaccionMovimientoDto>(
         new CommandDefinition(sql, new { TransaccionId = transaccionId }, cancellationToken: ct));
-    return rows.AsList();
-  }
-
-  public async Task<IReadOnlyList<LookupInt32Dto>> GetCategoriasAsync(string rfc, CancellationToken ct = default)
-  {
-    const string sql = @"SELECT
-    p.CategoriaID AS Id,
-    p.Nombre      AS Description
-FROM dbo.PlantillaContable p
-WHERE p.Activa = 1
-  AND p.CategoriaID IS NOT NULL
-  AND (p.RFC = @Rfc OR p.RFC IS NULL)
-ORDER BY p.Nombre ASC;";
-
-    using var conn = new SqlConnection(_cs);
-    var rows = await conn.QueryAsync<LookupInt32Dto>(
-        new CommandDefinition(sql, new { Rfc = rfc }, cancellationToken: ct));
     return rows.AsList();
   }
 
@@ -1271,7 +1250,6 @@ SET Concepto = @Concepto,
     Fecha = @Fecha,
     Cuenta = @Cuenta,
     Monto = @Monto,
-    Categoria = @Categoria,
     Facturado = @Facturado,
     Memo = @Memo,
     ProyectoID = @ProyectoId,
@@ -1291,7 +1269,6 @@ WHERE ID = @TransaccionId;";
                 Fecha = effectiveFecha,
                 request.Cuenta,
                 request.Monto,
-                request.Categoria,
                 request.Facturado,
                 request.Memo,
                 request.ProyectoId,
@@ -1318,43 +1295,6 @@ WHERE ID = @TransaccionId;";
     {
       try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
       return TransaccionGuardarCerrarResult.Fail($"Error al guardar: {ex.Message}");
-    }
-  }
-
-  public async Task<TransaccionCommandResult> ApplyCategoriaPlantillaAsync(
-      int transaccionId,
-      int categoriaId,
-      CancellationToken ct = default)
-  {
-    var parameters = new Dictionary<string, object?>
-    {
-      ["@TransaccionID"] = transaccionId,
-      ["@CategoriaID"] = categoriaId
-    };
-
-    try
-    {
-      _logger.LogInformation(
-          "Applying accounting template {CategoriaId} to transaction {TransactionId}",
-          categoriaId,
-          transaccionId);
-
-      await _storedProcService.ExecuteAsync(
-          "dbo.AplicarPlantillaContable",
-          parameters,
-          ct);
-
-      return TransaccionCommandResult.Ok("Plantilla aplicada correctamente a la transacción seleccionada.");
-    }
-    catch (Exception ex)
-    {
-      _logger.LogError(
-          ex,
-          "Failed to apply accounting template {CategoriaId} to transaction {TransactionId}",
-          categoriaId,
-          transaccionId);
-
-      return TransaccionCommandResult.Fail("No se pudo aplicar la plantilla contable. Revisa los datos e inténtalo nuevamente.");
     }
   }
 
@@ -1597,33 +1537,13 @@ WHERE ID = @MovimientoId
   public async Task<TransaccionCreateResult> CreateTransaccionAsync(TransaccionCreateRequest request, CancellationToken ct = default)
   {
       const string sql = @"
-          INSERT INTO dbo.Transacciones (RFC, Fecha, Concepto, Monto, Tipo_Poliza, Forma_Pago, Categoria, Facturado, Memo, ProyectoID, CompraID, ServicioID, NominaID, Cuenta)
-          VALUES (@Rfc, @Fecha, @Concepto, @Monto, @TipoPoliza, @FormaPago, @CategoriaId, @Facturado, @Memo, @ProyectoId, @CompraId, @ServicioId, @NominaId, @Cuenta);
+          INSERT INTO dbo.Transacciones (RFC, Fecha, Concepto, Monto, Tipo_Poliza, Forma_Pago, Facturado, Memo, ProyectoID, CompraID, ServicioID, NominaID, Cuenta)
+          VALUES (@Rfc, @Fecha, @Concepto, @Monto, @TipoPoliza, @FormaPago, @Facturado, @Memo, @ProyectoId, @CompraId, @ServicioId, @NominaId, @Cuenta);
           SELECT CAST(SCOPE_IDENTITY() as int);";
-
-      const string defaultCategoriaSql = @"
-          SELECT TOP (1) p.CategoriaID
-          FROM dbo.PlantillaContable p
-          WHERE p.Activa = 1
-            AND p.CategoriaID IS NOT NULL
-            AND (p.RFC = @Rfc OR p.RFC IS NULL)
-          ORDER BY p.Nombre ASC;";
 
       try
       {
           using var conn = await OpenConnectionWithAuditContextAsync(ct);
-          var categoriaId = request.CategoriaId;
-
-          if (!categoriaId.HasValue)
-          {
-              categoriaId = await conn.ExecuteScalarAsync<int?>(
-                  new CommandDefinition(defaultCategoriaSql, new { request.Rfc }, cancellationToken: ct));
-
-              if (!categoriaId.HasValue)
-              {
-                  return TransaccionCreateResult.Fail("No se encontró una categoría válida para la transacción.");
-              }
-          }
 
           var newId = await conn.ExecuteScalarAsync<int>(
               new CommandDefinition(
@@ -1636,7 +1556,6 @@ WHERE ID = @MovimientoId
                       request.Monto,
                       request.TipoPoliza,
                       request.FormaPago,
-                      CategoriaId = categoriaId,
                       request.Facturado,
                       request.Memo,
                       request.ProyectoId,

@@ -95,33 +95,3 @@
   background: var(--orion-color-surface);
   box-shadow: 0 14px 28px rgba(15, 45, 78, 0.14);
 }
-
-.categoria-col {
-  flex: 1 1 28rem;
-  min-width: min(100%, 30rem);
-}
-
-.categoria-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.categoria-row > .form-select {
-  flex: 1 1 16rem;
-}
-
-.categoria-row > .btn {
-  flex: 0 0 auto;
-}
-
-@media (max-width: 767.98px) {
-  .categoria-row {
-    align-items: stretch;
-  }
-
-  .categoria-row > .btn {
-    width: 100%;
-  }
-}

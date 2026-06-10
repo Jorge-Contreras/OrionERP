@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
@@ -9,7 +10,7 @@ using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Contabilidad.Transacciones
 {
-    public partial class CreateTransaccionPage : ComponentBase
+    public partial class CreateTransaccionPage : ComponentBase, IDisposable
     {
         [Inject]
         public ITransaccionService TransaccionService { get; set; } = default!;
@@ -26,12 +27,15 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
 
         protected List<FormaPagoLookupDto> FormaPagoOptions { get; } = new();
         protected IReadOnlyList<string> TipoPolizaOptions { get; } = new[] { "INGRESO", "EGRESO", "DIARIO" };
+        private string? _lastAppliedRfc;
+        private bool _isDisposed;
 
-            protected override async Task OnInitializedAsync()
-            {
-                Model.Fecha = DateTime.Today;
-                Model.Rfc = RfcState.CurrentRfc ?? string.Empty;
-                EditContext = new EditContext(Model);
+        protected override async Task OnInitializedAsync()
+        {
+            Model.Fecha = DateTime.Today;
+            ApplyCurrentRfc(force: true);
+            EditContext = new EditContext(Model);
+            RfcState.Changed += OnRfcStateChanged;
 
             var formasPago = await TransaccionService.GetFormasPagoAsync();
             FormaPagoOptions.AddRange(formasPago);
@@ -61,6 +65,60 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
             {
                 IsSaving = false;
             }
+        }
+
+        private void ApplyCurrentRfc(bool force = false)
+        {
+            var nextRfc = NormalizeRfc(RfcState.CurrentRfc)
+                ?? NormalizeRfc(RfcState.AllowedRfcs.FirstOrDefault());
+
+            if (string.IsNullOrWhiteSpace(nextRfc))
+            {
+                return;
+            }
+
+            var currentRfc = NormalizeRfc(Model.Rfc);
+            var canReplace = force
+                || string.IsNullOrWhiteSpace(currentRfc)
+                || string.Equals(currentRfc, _lastAppliedRfc, StringComparison.OrdinalIgnoreCase);
+
+            if (!canReplace || string.Equals(currentRfc, nextRfc, StringComparison.OrdinalIgnoreCase))
+            {
+                _lastAppliedRfc = nextRfc;
+                return;
+            }
+
+            Model.Rfc = nextRfc;
+            _lastAppliedRfc = nextRfc;
+        }
+
+        private async void OnRfcStateChanged()
+        {
+            if (_isDisposed) return;
+
+            await InvokeAsync(() =>
+            {
+                var before = Model.Rfc;
+                ApplyCurrentRfc();
+
+                if (!string.Equals(before, Model.Rfc, StringComparison.OrdinalIgnoreCase))
+                {
+                    EditContext.NotifyFieldChanged(FieldIdentifier.Create(() => Model.Rfc));
+                }
+
+                StateHasChanged();
+            });
+        }
+
+        private static string? NormalizeRfc(string? rfc)
+            => string.IsNullOrWhiteSpace(rfc) ? null : rfc.Trim();
+
+        public void Dispose()
+        {
+            if (_isDisposed) return;
+
+            _isDisposed = true;
+            RfcState.Changed -= OnRfcStateChanged;
         }
     }
 }

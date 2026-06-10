@@ -754,9 +754,9 @@ WHERE ID = @ClienteId;
       new CommandDefinition(
         """
 INSERT INTO dbo.Transacciones
-(RFC, Fecha, Concepto, Monto, Tipo_Poliza, Forma_Pago, Categoria, Facturado, Memo, Cuenta)
+(RFC, Fecha, Concepto, Monto, Tipo_Poliza, Forma_Pago, Facturado, Memo, Cuenta)
 VALUES
-(@Rfc, @Fecha, @Concepto, @Monto, @TipoPoliza, @FormaPago, @Categoria, 0, @Memo, @Cuenta);
+(@Rfc, @Fecha, @Concepto, @Monto, @TipoPoliza, @FormaPago, 0, @Memo, @Cuenta);
 SELECT CAST(SCOPE_IDENTITY() AS int);
 """,
         new
@@ -767,7 +767,6 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
           Monto = amount,
           TipoPoliza = "INGRESO",
           FormaPago = _options.AccountingPaymentForm,
-          Categoria = _options.AccountingCategoryId,
           Memo = $"Bonhomia Web | PayPal Order: {payment.OrderId} | Capture: {payment.CaptureId} | Payer: {payment.PayerEmail}",
           Cuenta = _options.AccountingAccount
         },

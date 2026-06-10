@@ -720,7 +720,6 @@ WHEN NOT MATCHED THEN
       Rfc = issuerRfc,
       Fecha = DateTime.Now,
       Concepto = $"PAGO POR RESERVACION#{detail.Id} - {cliente}",
-      CategoriaId = 19,
       Monto = detail.TotalPrice,
       Cuenta = "ORION HABITAT DE MEXICO",
       TipoPoliza = "INGRESO",

@@ -8,7 +8,6 @@ public sealed class TransaccionHeaderDto
   public decimal Monto { get; set; }
   public string? Cuenta { get; set; }
   public string? Rfc { get; set; }
-  public int Categoria { get; set; }
   public bool? Facturado { get; set; }
   public string? Referencia { get; set; }
   public string? Memo { get; set; }

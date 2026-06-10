@@ -322,7 +322,6 @@
                           <td>
                             <div class="fw-semibold">@plantilla.Nombre</div>
                             <div class="d-flex flex-wrap gap-1 mt-1">
-                              <span class="badge text-bg-light">Codigo @plantilla.CategoriaId</span>
                               @if (!plantilla.Activa)
                               {
                                 <span class="badge text-bg-secondary">Inactiva</span>
@@ -353,10 +352,6 @@
             <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
               <div>
                 <h3 class="h5 mb-1">@(Editor.PlantillaContableId.HasValue ? "Editar plantilla" : "Nueva plantilla")</h3>
-                <div class="text-muted">
-                  Codigo interno:
-                  <span class="fw-semibold">@(Editor.CategoriaId?.ToString(CultureInfo.InvariantCulture) ?? "Se asignara al guardar")</span>
-                </div>
               </div>
               <div class="d-flex flex-wrap gap-2">
                 @if (Editor.PlantillaContableId.HasValue)
@@ -1396,7 +1391,6 @@
   private sealed class PlantillaEditorModel
   {
     public int? PlantillaContableId { get; set; }
-    public int? CategoriaId { get; set; }
 
     [Required(ErrorMessage = "Captura el nombre.")]
     public string Nombre { get; set; } = string.Empty;
@@ -1410,7 +1404,6 @@
       => new()
       {
         PlantillaContableId = dto.PlantillaContableId,
-        CategoriaId = dto.CategoriaId,
         Nombre = dto.Nombre,
         Descripcion = dto.Descripcion,
         Rfc = dto.Rfc,

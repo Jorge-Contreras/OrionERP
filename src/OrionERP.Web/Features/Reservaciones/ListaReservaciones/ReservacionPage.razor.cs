@@ -378,7 +378,6 @@ public partial class ReservacionPage : ComponentBase
         Rfc = RfcState.CurrentRfc!,
         Fecha = DateTime.Now,
         Concepto = $"PAGO POR RESERVACION#{Detail.Id} - {cliente}",
-        CategoriaId = 19,
         Monto = TotalReservacion,
         Cuenta = "ORION HABITAT DE MEXICO",
         TipoPoliza = "INGRESO",

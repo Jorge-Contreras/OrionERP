@@ -42,10 +42,6 @@ public interface ITransaccionService
   Task<CfdiPolizaLinkingWorkspaceDto> GetCfdiPolizaLinkingWorkspaceAsync(int comprobanteId, string? rfc, TransaccionFilter filter, CancellationToken ct = default);
   Task<Pago20PolizaLinkingWorkspaceDto> GetPago20PolizaLinkingWorkspaceAsync(int doctoRelacionadoId, string? rfc, TransaccionFilter filter, CancellationToken ct = default);
   Task<TransaccionCommandResult> LinkCfdiAsync(TransaccionCfdiLinkRequest request, CancellationToken ct = default);
-  Task<TransaccionCommandResult> ApplyCategoriaPlantillaAsync(
-      int transaccionId,
-      int categoriaId,
-      CancellationToken ct = default);
   Task<TransaccionCommandResult> TimbrarCfdiPublicoAsync(
       TransaccionTimbrarPublicoRequest request,
       CancellationToken ct = default);
@@ -61,7 +57,6 @@ public interface ITransaccionService
       int transaccionId,
       long comprobanteId,
       CancellationToken ct = default);
-  Task<IReadOnlyList<LookupInt32Dto>> GetCategoriasAsync(string rfc, CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> GetActividadesAsync(string rfc, CancellationToken ct = default);
   Task<IReadOnlyList<LookupInt32Dto>> SearchActividadesAsync(string rfc, string? search, int top = 25, CancellationToken ct = default);
   Task<LookupInt32Dto?> GetActividadByIdAsync(string rfc, int actividadId, CancellationToken ct = default);

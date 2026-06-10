@@ -188,28 +188,6 @@ else
           </div>
 
           <div class="d-flex flex-column flex-lg-row gap-3 align-items-stretch align-items-lg-end mt-4">
-                        <div class="categoria-col">
-                            <label class="form-label">Plantilla contable</label>
-                            <div class="categoria-row">
-                                <InputSelect class="form-select" @bind-Value="Header.CategoriaId">
-                                    <option value="">Selecciona una plantilla</option>
-                                    @foreach (var categoria in CategoriaOptions)
-                                    {
-                                        <option value="@categoria.Id">@categoria.Display</option>
-                                    }
-                                </InputSelect>
-                                <button type="button" class="btn btn-outline-secondary" @onclick="ApplyCategoriaPlantillaAsync" disabled="@IsApplyingPlantilla">
-                                    @if (IsApplyingPlantilla)
-                                    {
-                                        <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
-                                    }
-                                    Aplicar Plantilla
-                                </button>
-                            </div>
-                            <ValidationMessage For="() => Header.CategoriaId" />
-                        </div>
-
-
             <div class="d-flex flex-wrap gap-2 justify-content-end ms-lg-auto">
               <button type="button" class="btn btn-outline-secondary" @onclick="ResetHeaderAsync" disabled="@IsSavingHeader">
                 Deshacer

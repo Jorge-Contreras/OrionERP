@@ -81,7 +81,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected EditContext? HeaderEditContext { get; private set; }
   protected bool IsLoading { get; private set; } = true;
   protected bool IsSavingHeader { get; private set; }
-  protected bool IsApplyingPlantilla { get; private set; }
   protected string? ErrorMessage { get; private set; }
 
   protected MovimientoTotalsDto Totals { get; private set; } = new();
@@ -94,7 +93,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected List<TransaccionReservacionSearchItemDto> ReservacionCandidates { get; } = [];
   protected List<RecurrentApTransactionLinkDto> ApLinks { get; } = [];
   protected List<RecurrentApOccurrenceListItemDto> ApOccurrenceCandidates { get; } = [];
-  protected List<LookupInt32Dto> CategoriaOptions { get; } = [];
   protected List<LookupInt32Dto> ProyectoOptions { get; } = [];
   protected List<LookupInt32Dto> CompraOptions { get; } = [];
   protected List<LookupInt32Dto> ServicioOptions { get; } = [];
@@ -317,14 +315,12 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     if (!string.IsNullOrWhiteSpace(currentRfc))
     {
-      var categoriasTask = TransaccionService.GetCategoriasAsync(currentRfc, ct);
       var comprasTask = TransaccionService.GetComprasAsync(currentRfc, ct);
       var serviciosTask = TransaccionService.GetServiciosAsync(currentRfc, ct);
       var nominasTask = TransaccionService.GetNominasAsync(currentRfc, ct);
 
-      await Task.WhenAll(formasPagoTask, categoriasTask, comprasTask, serviciosTask, nominasTask);
+      await Task.WhenAll(formasPagoTask, comprasTask, serviciosTask, nominasTask);
 
-      CategoriaOptions.AddRange(await categoriasTask);
       _allCompraOptions.AddRange(await comprasTask);
       ServicioOptions.AddRange(await serviciosTask);
       NominaOptions.AddRange(await nominasTask);
@@ -338,7 +334,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   private void ResetLookupData()
   {
-    CategoriaOptions.Clear();
     ProyectoOptions.Clear();
     _allCompraOptions.Clear();
     CompraOptions.Clear();
@@ -734,7 +729,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       Cuenta = headerDto.Cuenta,
       Concepto = headerDto.Concepto,
       Monto = headerDto.Monto,
-      CategoriaId = headerDto.Categoria,
       Facturado = headerDto.Facturado ?? false,
       Referencia = headerDto.Referencia,
       Memo = headerDto.Memo,
@@ -775,12 +769,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     if (!HeaderEditContext.Validate())
       return;
 
-    if (Header.CategoriaId is null)
-    {
-      UiMessages.ShowError("Selecciona una plantilla contable.");
-      return;
-    }
-
     if (string.IsNullOrWhiteSpace(Header.TipoPoliza) || string.IsNullOrWhiteSpace(Header.FormaPago))
     {
       UiMessages.ShowError("Selecciona un tipo de póliza y una forma de pago.");
@@ -814,7 +802,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         Fecha = Header.Fecha,
         Cuenta = Header.Cuenta,
         Monto = Header.Monto,
-        Categoria = Header.CategoriaId.Value,
         Facturado = Header.Facturado,
         Memo = string.IsNullOrWhiteSpace(Header.Memo) ? null : Header.Memo.Trim(),
         ProyectoId = Header.ProyectoId,
@@ -909,48 +896,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   private static bool TryParseMonto(string? value, out decimal result)
     => decimal.TryParse(value, CurrencyNumberStyles, CurrencyInputCulture, out result);
-
-  protected async Task ApplyCategoriaPlantillaAsync()
-  {
-    if (Header is null)
-      return;
-
-    if (Header.CategoriaId is null)
-    {
-      UiMessages.ShowWarning("Selecciona una plantilla contable antes de aplicarla.");
-      return;
-    }
-
-    var confirm = await ConfirmAsync("¿Estás seguro que deseas aplicar esta plantilla a la póliza?");
-    if (!confirm)
-      return;
-
-    IsApplyingPlantilla = true;
-    await InvokeAsync(StateHasChanged);
-
-    try
-    {
-      var result = await TransaccionService.ApplyCategoriaPlantillaAsync(Header.Id, Header.CategoriaId.Value);
-      if (result.Success)
-      {
-        UiMessages.ShowSuccess(result.Message);
-        await ReloadMovimientosAsync();
-      }
-      else
-      {
-        UiMessages.ShowError(result.Message);
-      }
-    }
-    catch (Exception ex)
-    {
-      UiMessages.ShowError($"Error al aplicar la plantilla: {ex.Message}");
-    }
-    finally
-    {
-      IsApplyingPlantilla = false;
-      await InvokeAsync(StateHasChanged);
-    }
-  }
 
   protected async Task TimbrarCfdiPublicoAsync()
   {
@@ -2653,9 +2598,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Monto inválido.")]
     public decimal Monto { get; set; }
 
-    [Required(ErrorMessage = "Selecciona una plantilla contable.")]
-    public int? CategoriaId { get; set; }
-
     public bool Facturado { get; set; }
 
     public string? Referencia { get; set; }
@@ -2709,7 +2651,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       Cuenta = other.Cuenta;
       Concepto = other.Concepto;
       Monto = other.Monto;
-      CategoriaId = other.CategoriaId;
       Facturado = other.Facturado;
       Referencia = other.Referencia;
       Memo = other.Memo;

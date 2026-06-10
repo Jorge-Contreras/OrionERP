@@ -22,8 +22,6 @@ public class TransaccionCreateRequest
     [Required]
     public string FormaPago { get; set; } = string.Empty;
 
-    public int? CategoriaId { get; set; }
-
     public bool Facturado { get; set; }
     public string? Memo { get; set; }
     public int? ProyectoId { get; set; }

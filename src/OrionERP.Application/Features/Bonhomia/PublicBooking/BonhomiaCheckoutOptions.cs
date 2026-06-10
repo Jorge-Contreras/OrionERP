@@ -15,7 +15,6 @@ public sealed class BonhomiaCheckoutOptions
   public int MaxStayNights { get; set; } = 60;
   public string? PublicBaseUrl { get; set; }
   public string AccountingRfc { get; set; } = "OHM191112Q26";
-  public int AccountingCategoryId { get; set; } = 19;
   public string AccountingPaymentForm { get; set; } = "03";
   public string AccountingAccount { get; set; } = "ORION HABITAT DE MEXICO";
 

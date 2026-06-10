@@ -3,7 +3,6 @@ namespace OrionERP.Application.Features.Ajustes;
 public sealed record PlantillaContableListItemDto
 {
   public int PlantillaContableId { get; init; }
-  public int? CategoriaId { get; init; }
   public string Nombre { get; init; } = string.Empty;
   public string? Descripcion { get; init; }
   public string? Rfc { get; init; }
@@ -17,7 +16,6 @@ public sealed record PlantillaContableListItemDto
 public sealed record PlantillaContableDetailDto
 {
   public int PlantillaContableId { get; init; }
-  public int? CategoriaId { get; init; }
   public string Nombre { get; init; } = string.Empty;
   public string? Descripcion { get; init; }
   public string? Rfc { get; init; }

@@ -422,7 +422,6 @@ VALUES
     const string sql = @"
 SELECT
     p.PlantillaContableID AS PlantillaContableId,
-    p.CategoriaID AS CategoriaId,
     p.Nombre,
     p.Descripcion,
     p.RFC AS Rfc,
@@ -441,11 +440,9 @@ WHERE (@includeInactive = 1 OR p.Activa = 1)
       @search IS NULL
       OR p.Nombre LIKE @searchLike
       OR p.Descripcion LIKE @searchLike
-      OR CONVERT(varchar(20), p.CategoriaID) LIKE @searchLike
   )
 GROUP BY
     p.PlantillaContableID,
-    p.CategoriaID,
     p.Nombre,
     p.Descripcion,
     p.RFC,
@@ -482,7 +479,6 @@ ORDER BY
     const string sql = @"
 SELECT TOP (1)
     p.PlantillaContableID AS PlantillaContableId,
-    p.CategoriaID AS CategoriaId,
     p.Nombre,
     p.Descripcion,
     p.RFC AS Rfc,

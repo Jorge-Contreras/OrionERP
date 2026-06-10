@@ -27,6 +27,26 @@ public sealed class BonhomiaGraphCalendarSyncOptions
   public string TimeZone { get; set; } = "America/Mexico_City";
   public List<string> TargetCalendars { get; set; } = DefaultCalendars.ToList();
 
+  public void ApplySharedGraphCredentials(string? tenantId, string? clientId, string? clientSecret)
+  {
+    if (string.IsNullOrWhiteSpace(tenantId) ||
+        string.IsNullOrWhiteSpace(clientId) ||
+        string.IsNullOrWhiteSpace(clientSecret))
+    {
+      return;
+    }
+
+    if (!string.IsNullOrWhiteSpace(ClientId) &&
+        !string.Equals(ClientId.Trim(), clientId.Trim(), StringComparison.OrdinalIgnoreCase))
+    {
+      return;
+    }
+
+    TenantId = tenantId.Trim();
+    ClientId = clientId.Trim();
+    ClientSecret = clientSecret.Trim();
+  }
+
   public IReadOnlyList<string> GetTargetCalendars()
   {
     var values = TargetCalendars

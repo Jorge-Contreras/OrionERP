@@ -49,6 +49,39 @@ public class MicrosoftGraphEmailSenderTests
   }
 
   [Fact]
+  public async Task GraphMailClient_SerializesBccRecipients()
+  {
+    var handler = new RecordingHttpMessageHandler();
+    var client = new HttpClient(handler);
+    var sender = new MicrosoftGraphMailClient<GraphMailOptions>(
+      client,
+      Options.Create(new GraphMailOptions
+      {
+        TenantId = "tenant-id",
+        ClientId = "client-id",
+        ClientSecret = "client-secret",
+        SenderAddress = "info@orion.land"
+      }),
+      NullLogger<MicrosoftGraphMailClient<GraphMailOptions>>.Instance);
+
+    await sender.SendEmailAsync(new MicrosoftGraphMailMessage
+    {
+      ToRecipients = ["cliente@example.com"],
+      BccRecipients = ["recepcion@bonhomiasuites.com"],
+      Subject = "Confirmacion",
+      Message = "<p>Reserva confirmada</p>"
+    });
+
+    var mailRequest = Assert.Single(
+      handler.Requests,
+      request => request.Uri.Contains("/sendMail", StringComparison.Ordinal));
+    Assert.Contains("\"toRecipients\"", mailRequest.Body, StringComparison.Ordinal);
+    Assert.Contains("\"bccRecipients\"", mailRequest.Body, StringComparison.Ordinal);
+    Assert.Contains("\"address\":\"cliente@example.com\"", mailRequest.Body, StringComparison.Ordinal);
+    Assert.Contains("\"address\":\"recepcion@bonhomiasuites.com\"", mailRequest.Body, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public async Task GraphMailClient_ThrowsWhenGraphMailConfigIsIncomplete()
   {
     var sender = new MicrosoftGraphMailClient<GraphMailOptions>(
@@ -113,6 +146,18 @@ public class MicrosoftGraphEmailSenderTests
     public string LastEmail { get; private set; } = string.Empty;
     public string LastSubject { get; private set; } = string.Empty;
     public string LastMessage { get; private set; } = string.Empty;
+    public MicrosoftGraphMailMessage? LastMail { get; private set; }
+
+    public Task SendEmailAsync(
+      MicrosoftGraphMailMessage mail,
+      CancellationToken ct = default)
+    {
+      LastMail = mail;
+      LastEmail = mail.ToRecipients.FirstOrDefault() ?? string.Empty;
+      LastSubject = mail.Subject;
+      LastMessage = mail.Message;
+      return Task.CompletedTask;
+    }
 
     public Task SendEmailAsync(
       string email,
@@ -120,10 +165,14 @@ public class MicrosoftGraphEmailSenderTests
       string message,
       CancellationToken ct = default)
     {
-      LastEmail = email;
-      LastSubject = subject;
-      LastMessage = message;
-      return Task.CompletedTask;
+      return SendEmailAsync(
+        new MicrosoftGraphMailMessage
+        {
+          ToRecipients = [email],
+          Subject = subject,
+          Message = message
+        },
+        ct);
     }
   }
 

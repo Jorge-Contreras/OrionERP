@@ -13,6 +13,7 @@ public sealed class BonhomiaCheckoutOptions
   public int PdfTokenLifetimeMinutes { get; set; } = 30;
   public int AvailabilityDays { get; set; } = 60;
   public int MaxStayNights { get; set; } = 60;
+  public string TimeZone { get; set; } = BonhomiaBookingCutoffPolicy.DefaultTimeZone;
   public string? PublicBaseUrl { get; set; }
   public string AccountingRfc { get; set; } = "OHM191112Q26";
   public string AccountingPaymentForm { get; set; } = "03";

@@ -114,6 +114,9 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
   {
     ArgumentNullException.ThrowIfNull(request);
 
+    var nowUtc = DateTimeOffset.UtcNow;
+    BonhomiaBookingCutoffPolicy.EnsureCheckInIsAllowed(request.CheckIn, nowUtc, _options.TimeZone);
+
     var availability = await GetAvailabilityAsync(request.CheckIn, request.CheckOut, ct);
     var room = availability.Rooms.FirstOrDefault(item => NamesMatch(item.RoomName, request.RoomName));
     if (room is null)
@@ -126,7 +129,7 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
       room,
       availability.Extras,
       availability.Experiences,
-      DateTimeOffset.UtcNow.AddMinutes(Math.Max(_options.QuoteTokenLifetimeMinutes, 5)),
+      nowUtc.AddMinutes(Math.Max(_options.QuoteTokenLifetimeMinutes, 5)),
       _options.Currency,
       Math.Max(_options.MaxStayNights, 1));
 

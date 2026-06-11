@@ -111,7 +111,89 @@
             }
             else
             {
+                var visibleRows = VisibleRows.ToList();
+
                 <div id="balanza-print">
+                    <div class="balanza-summary-grid" aria-label="Resumen de la balanza">
+                        <div class="balanza-summary-card">
+                            <span>Saldo inicial</span>
+                            <strong>@FormatMonto(SummarySaldoInicial)</strong>
+                        </div>
+                        <div class="balanza-summary-card">
+                            <span>@DebeMesLabel</span>
+                            <strong>@FormatMonto(SummaryDebe)</strong>
+                        </div>
+                        <div class="balanza-summary-card">
+                            <span>@HaberMesLabel</span>
+                            <strong>@FormatMonto(SummaryHaber)</strong>
+                        </div>
+                        <div class="balanza-summary-card">
+                            <span>Saldo final</span>
+                            <strong>@FormatMonto(SummarySaldoFinal)</strong>
+                        </div>
+                    </div>
+
+                    <div class="balanza-review-toolbar no-print">
+                        <div class="balanza-search-field">
+                            <label class="form-label" for="balanza-search">Buscar cuenta</label>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text" aria-hidden="true">
+                                    <i class="bi bi-search"></i>
+                                </span>
+                                <input id="balanza-search"
+                                       class="form-control"
+                                       type="search"
+                                       placeholder="Código, cuenta o descripción"
+                                       @bind-value="SearchText"
+                                       @bind-value:event="oninput" />
+                                <button class="btn btn-outline-secondary"
+                                        type="button"
+                                        title="Limpiar búsqueda"
+                                        aria-label="Limpiar búsqueda"
+                                        disabled="@(!IsSearchActive)"
+                                        @onclick="ClearSearch">
+                                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="balanza-view-controls" aria-label="Profundidad de cuenta">
+                            <span class="balanza-view-controls__label">Vista</span>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Seleccionar profundidad visible">
+                                <button type="button"
+                                        class="@GetHierarchyDepthButtonClass(1)"
+                                        disabled="@IsSearchActive"
+                                        @onclick="() => SetHierarchyDepth(1)">
+                                    Nivel 1
+                                </button>
+                                <button type="button"
+                                        class="@GetHierarchyDepthButtonClass(2)"
+                                        disabled="@IsSearchActive"
+                                        @onclick="() => SetHierarchyDepth(2)">
+                                    Nivel 2
+                                </button>
+                                <button type="button"
+                                        class="@GetHierarchyDepthButtonClass(3)"
+                                        disabled="@IsSearchActive"
+                                        @onclick="() => SetHierarchyDepth(3)">
+                                    Todo
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="balanza-row-count" aria-live="polite">
+                            @visibleRows.Count de @Resultados.Count filas
+                        </div>
+                    </div>
+
+                    @if (!visibleRows.Any())
+                    {
+                        <div class="balanza-empty-state">
+                            No encontramos cuentas con esa búsqueda.
+                        </div>
+                    }
+                    else
+                    {
                     <div class="table-responsive report-table-shell">
                         <table id="balanza-comprobacion-table" class="table table-sm table-bordered align-middle compact-table report-table balanza-table">
                             <thead class="table-light">
@@ -124,16 +206,39 @@
                                     <th class="text-end">@HaberMesLabel.ToUpperInvariant()</th>
                                     <th class="text-end">@SaldoMesLabel.ToUpperInvariant()</th>
                                     <th class="text-end">SALDO FINAL</th>
+                                    <th class="text-center no-print balanza-table__action-col">REG.</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var row in OrderedRows)
+                                @foreach (var row in visibleRows)
                                 {
                                     <tr class="@($"{GetRowClass(row)} report-table__row-clickable".Trim())"
                                         @onclick="() => SelectRow(row)"
                                         @ondblclick="() => GoToContabilidadRegistros(row)">
-                                        <td class="@GetIndentClass(row)">
-                                            @GetCuentaDescripcion(row)
+                                        <td class="@($"{GetIndentClass(row)} balanza-table__account-cell").Trim()">
+                                            <div class="balanza-account-cell">
+                                                @if (HasChildren(row))
+                                                {
+                                                    <button type="button"
+                                                            class="balanza-tree-toggle"
+                                                            title="@GetToggleLabel(row)"
+                                                            aria-label="@GetToggleLabel(row)"
+                                                            aria-expanded="@GetAriaExpanded(row)"
+                                                            disabled="@IsSearchActive"
+                                                            @onclick="() => ToggleRowExpansion(row)"
+                                                            @onclick:stopPropagation="true"
+                                                            @ondblclick:stopPropagation="true">
+                                                        <i class="@GetToggleIconClass(row)" aria-hidden="true"></i>
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <span class="balanza-tree-spacer" aria-hidden="true"></span>
+                                                }
+
+                                                <span class="balanza-level-badge">N@(row.NivelJerarquia)</span>
+                                                <span class="balanza-account-label">@GetCuentaDisplayName(row)</span>
+                                            </div>
                                         </td>
                                         <td class="text-end">@FormatMonto(row.Debe_Ant)</td>
                                         <td class="text-end">@FormatMonto(row.Haber_Ant)</td>
@@ -142,11 +247,23 @@
                                         <td class="text-end">@FormatMonto(row.Haber_Mes)</td>
                                         <td class="text-end">@FormatMonto(row.Saldo_Mes)</td>
                                         <td class="text-end">@FormatMonto(row.Saldo_Final)</td>
+                                        <td class="text-center no-print">
+                                            <button type="button"
+                                                    class="balanza-open-button"
+                                                    title="Abrir registros contables"
+                                                    aria-label="@($"Abrir registros contables de {GetCuentaDisplayName(row)}")"
+                                                    @onclick="() => GoToContabilidadRegistros(row)"
+                                                    @onclick:stopPropagation="true"
+                                                    @ondblclick:stopPropagation="true">
+                                                <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
+                                            </button>
+                                        </td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
                     </div>
+                    }
                 </div>
             }
         </div>

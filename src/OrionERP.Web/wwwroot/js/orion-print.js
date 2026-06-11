@@ -70,6 +70,48 @@ window.orionPrintReport = (rootId, title, subtitle = "") => {
         padding-right: .5rem;
       }
 
+      .balanza-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+        margin-bottom: 10px;
+      }
+
+      .balanza-summary-card {
+        border: 1px solid #d0d0d0;
+        padding: 6px;
+      }
+
+      .balanza-summary-card span {
+        display: block;
+        color: #555;
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .balanza-summary-card strong {
+        display: block;
+        margin-top: 2px;
+        font-size: 11px;
+      }
+
+      .balanza-account-cell {
+        display: block;
+      }
+
+      .balanza-level-badge {
+        font-weight: 700;
+        margin-right: 4px;
+      }
+
+      .balanza-tree-toggle,
+      .balanza-tree-spacer,
+      .balanza-open-button,
+      .balanza-table__action-col {
+        display: none !important;
+      }
+
       .balanza-table td.balanza-indent-1 { padding-left: .25rem; }
       .balanza-table td.balanza-indent-2 { padding-left: 1.25rem; }
       .balanza-table td.balanza-indent-3 { padding-left: 2.25rem; }

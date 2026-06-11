@@ -32,10 +32,30 @@ public sealed class MicrosoftGraphMailClient<TOptions> : IMicrosoftGraphMailClie
     string subject,
     string message,
     CancellationToken ct = default)
+    => await SendEmailAsync(
+      new MicrosoftGraphMailMessage
+      {
+        ToRecipients = [email],
+        Subject = subject,
+        Message = message
+      },
+      ct);
+
+  public async Task SendEmailAsync(
+    MicrosoftGraphMailMessage mail,
+    CancellationToken ct = default)
   {
-    ArgumentException.ThrowIfNullOrWhiteSpace(email);
-    ArgumentException.ThrowIfNullOrWhiteSpace(subject);
-    ArgumentException.ThrowIfNullOrWhiteSpace(message);
+    ArgumentNullException.ThrowIfNull(mail);
+    ArgumentException.ThrowIfNullOrWhiteSpace(mail.Subject);
+    ArgumentException.ThrowIfNullOrWhiteSpace(mail.Message);
+
+    var toRecipients = NormalizeRecipients(mail.ToRecipients);
+    var ccRecipients = NormalizeRecipients(mail.CcRecipients);
+    var bccRecipients = NormalizeRecipients(mail.BccRecipients);
+    if (toRecipients.Count == 0)
+    {
+      throw new ArgumentException("At least one recipient is required.", nameof(mail));
+    }
 
     var options = _options.Value;
     EnsureConfigured(options);
@@ -50,9 +70,11 @@ public sealed class MicrosoftGraphMailClient<TOptions> : IMicrosoftGraphMailClie
     request.Content = JsonContent.Create(
       new GraphSendMailRequest(
         new GraphMessage(
-          subject,
-          new GraphItemBody(LooksLikeHtml(message) ? "HTML" : "Text", message),
-          [new GraphRecipient(new GraphEmailAddress(email))]),
+          mail.Subject,
+          new GraphItemBody(LooksLikeHtml(mail.Message) ? "HTML" : "Text", mail.Message),
+          BuildRecipients(toRecipients),
+          BuildRecipients(ccRecipients),
+          BuildRecipients(bccRecipients)),
         true),
       options: JsonOptions);
 
@@ -69,8 +91,25 @@ public sealed class MicrosoftGraphMailClient<TOptions> : IMicrosoftGraphMailClie
       throw new InvalidOperationException("No se pudo enviar el correo mediante Microsoft Graph.");
     }
 
-    _logger.LogInformation("Graph email queued from {SenderAddress} to {Recipient}.", options.SenderAddress, email);
+    _logger.LogInformation(
+      "Graph email queued from {SenderAddress} to {RecipientCount} recipient(s).",
+      options.SenderAddress,
+      toRecipients.Count + ccRecipients.Count + bccRecipients.Count);
   }
+
+  private static IReadOnlyList<string> NormalizeRecipients(IReadOnlyList<string>? recipients)
+    => recipients is null
+      ? Array.Empty<string>()
+      : recipients
+        .Where(recipient => !string.IsNullOrWhiteSpace(recipient))
+        .Select(recipient => recipient.Trim())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+  private static IReadOnlyList<GraphRecipient> BuildRecipients(IReadOnlyList<string> recipients)
+    => recipients
+      .Select(recipient => new GraphRecipient(new GraphEmailAddress(recipient)))
+      .ToArray();
 
   private async Task<string> RequestAccessTokenAsync(TOptions options, CancellationToken ct)
   {
@@ -138,7 +177,9 @@ public sealed class MicrosoftGraphMailClient<TOptions> : IMicrosoftGraphMailClie
   private sealed record GraphMessage(
     string Subject,
     GraphItemBody Body,
-    IReadOnlyList<GraphRecipient> ToRecipients);
+    IReadOnlyList<GraphRecipient> ToRecipients,
+    IReadOnlyList<GraphRecipient> CcRecipients,
+    IReadOnlyList<GraphRecipient> BccRecipients);
 
   private sealed record GraphItemBody(string ContentType, string Content);
 

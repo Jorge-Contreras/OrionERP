@@ -13,6 +13,7 @@ public interface IOrdenTrabajoService
   Task<OrdenTrabajoCommandResult> UpdateWorkOrderAsync(int id, OrdenTrabajoUpdateRequest request, CancellationToken ct = default);
   Task<OrdenTrabajoCommandResult> ReplaceWorkOrderStepsAsync(int id, OrdenTrabajoStepsSaveRequest request, CancellationToken ct = default);
   Task<OrdenTrabajoCommandResult> CancelWorkOrderAsync(int id, string reason, string actor, CancellationToken ct = default);
+  Task<OrdenTrabajoCommandResult> DeleteWorkOrderAsync(int id, string actor, CancellationToken ct = default);
   Task<OrdenTrabajoCommandResult> StartWorkOrderAsync(int id, string actor, int? actorEmployeeId = null, CancellationToken ct = default);
   Task<OrdenTrabajoCommandResult> UpdateStepAsync(int workOrderId, int stepId, OrdenTrabajoStepUpdateRequest request, CancellationToken ct = default);
   Task<OrdenTrabajoCommandResult> AddStepEvidenceAsync(int workOrderId, int stepId, OrdenTrabajoEvidenceCreateRequest request, CancellationToken ct = default);

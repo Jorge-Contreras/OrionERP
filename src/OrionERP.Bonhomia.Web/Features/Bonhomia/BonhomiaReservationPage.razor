@@ -723,9 +723,9 @@
     private BonhomiaSuiteGallery? ActiveGallery { get; set; }
     private string? QuoteToken { get; set; }
     private string SelectedRoomName { get; set; } = string.Empty;
-    private DateOnly Today { get; } = DateOnly.FromDateTime(DateTime.Today);
-    private DateOnly CheckIn { get; set; } = DateOnly.FromDateTime(DateTime.Today).AddDays(7);
-    private DateOnly CheckOut { get; set; } = DateOnly.FromDateTime(DateTime.Today).AddDays(9);
+    private DateOnly Today { get; set; }
+    private DateOnly CheckIn { get; set; }
+    private DateOnly CheckOut { get; set; }
     private int Guests { get; set; } = 2;
     private bool IncludeExperience { get; set; }
     private string SelectedExperienceCode { get; set; } = string.Empty;
@@ -745,7 +745,7 @@
     private string? CheckoutError { get; set; }
     private string? StatusMessage { get; set; }
     private CheckoutStep ActiveCheckoutStep { get; set; } = CheckoutStep.Dates;
-    private DateOnly VisibleCalendarMonth { get; set; } = BonhomiaBookingCalendarRules.GetMonthStart(DateOnly.FromDateTime(DateTime.Today));
+    private DateOnly VisibleCalendarMonth { get; set; }
     private BonhomiaCalendarSelectionTarget NextCalendarSelection { get; set; } = BonhomiaCalendarSelectionTarget.CheckIn;
     private string? _lastPayPalRenderKey;
     private string? _payPalRenderInFlightKey;
@@ -831,6 +831,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        InitializeBookingDates();
         await LoadAvailabilityAsync();
     }
 
@@ -849,6 +850,55 @@
             _focusPaymentConfirmationAfterRender = false;
             await FocusPaymentConfirmationAsync();
         }
+    }
+
+    private void InitializeBookingDates()
+    {
+        Today = BonhomiaBookingCutoffPolicy.GetEarliestCheckInDate(DateTimeOffset.UtcNow, CheckoutOptions.Value.TimeZone);
+        CheckIn = Today.AddDays(7);
+        CheckOut = Today.AddDays(9);
+        VisibleCalendarMonth = BonhomiaBookingCalendarRules.GetMonthStart(Today);
+    }
+
+    private bool RefreshBookableDateWindow()
+    {
+        var earliestCheckIn = BonhomiaBookingCutoffPolicy.GetEarliestCheckInDate(DateTimeOffset.UtcNow, CheckoutOptions.Value.TimeZone);
+        Today = earliestCheckIn;
+
+        var adjustedSelection = false;
+        if (CheckIn == default)
+        {
+            CheckIn = Today.AddDays(7);
+            adjustedSelection = true;
+        }
+        else if (CheckIn < Today)
+        {
+            CheckIn = Today;
+            adjustedSelection = true;
+        }
+
+        if (CheckOut == default || CheckOut <= CheckIn)
+        {
+            CheckOut = CheckIn.AddDays(1);
+            adjustedSelection = true;
+        }
+
+        VisibleCalendarMonth = VisibleCalendarMonth == default
+          ? BonhomiaBookingCalendarRules.GetMonthStart(Today)
+          : BonhomiaBookingCalendarRules.ClampCalendarStartMonth(
+              VisibleCalendarMonth,
+              Today,
+              CalendarMaxMonthOffset,
+              CalendarVisibleMonthCount);
+
+        if (adjustedSelection)
+        {
+            EnsureSelectedRoomAvailableForStay();
+            EnsureExperienceDefaults();
+            ClearQuoteState();
+        }
+
+        return adjustedSelection;
     }
 
     private async Task GoToStepAsync(CheckoutStep step)
@@ -974,6 +1024,7 @@
 
         try
         {
+            RefreshBookableDateWindow();
             var calendarEndDateExclusive = EarliestCalendarMonth.AddMonths(CalendarMaxMonthOffset + 1);
             var configuredEndDate = Today.AddDays(Math.Max(CheckoutOptions.Value.AvailabilityDays, 60));
             var endDate = configuredEndDate > calendarEndDateExclusive ? configuredEndDate : calendarEndDateExclusive;
@@ -998,6 +1049,14 @@
 
     private async Task GenerateQuoteAsync()
     {
+        if (RefreshBookableDateWindow())
+        {
+            ActiveCheckoutStep = CheckoutStep.Dates;
+            CheckoutError = "Las reservaciones para llegada el mismo dia solo estan disponibles antes de las 17:00 hrs. Selecciona una fecha posterior.";
+            await ScrollCheckoutIntoViewAsync();
+            return;
+        }
+
         if (SelectedRoom is not { } selectedRoom || !IsSuiteAvailableForStay(selectedRoom))
         {
             ActiveCheckoutStep = CheckoutStep.Suite;
@@ -1099,6 +1158,7 @@
 
     private void SelectCalendarDay(DateOnly day)
     {
+        RefreshBookableDateWindow();
         var nextSelection = BonhomiaBookingCalendarRules.SelectCalendarDay(day, Today, CurrentStaySelection);
         if (nextSelection == CurrentStaySelection)
         {
@@ -1128,6 +1188,7 @@
 
     private void OnCheckInChanged(ChangeEventArgs args)
     {
+        RefreshBookableDateWindow();
         if (TryParseDate(args.Value?.ToString(), out var parsed))
         {
             ApplyStaySelection(BonhomiaBookingCalendarRules.SetCheckIn(parsed, Today, CurrentStaySelection));
@@ -1136,6 +1197,7 @@
 
     private void OnCheckOutChanged(ChangeEventArgs args)
     {
+        RefreshBookableDateWindow();
         if (TryParseDate(args.Value?.ToString(), out var parsed))
         {
             ApplyStaySelection(BonhomiaBookingCalendarRules.SetCheckOut(parsed, CurrentStaySelection));
@@ -1549,6 +1611,7 @@
     {
         try
         {
+            RefreshBookableDateWindow();
             var result = await SessionStorage.GetAsync<StoredCheckout>(SessionKey);
             if (!result.Success || result.Value is null)
             {
@@ -1556,6 +1619,12 @@
             }
 
             var stored = result.Value;
+            if (stored.Request.CheckIn < Today)
+            {
+                await ClearStoredCheckoutAsync();
+                return;
+            }
+
             SelectedRoomName = stored.Request.RoomName;
             CheckIn = stored.Request.CheckIn;
             CheckOut = stored.Request.CheckOut;

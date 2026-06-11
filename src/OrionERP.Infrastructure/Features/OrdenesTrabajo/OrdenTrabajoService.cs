@@ -938,6 +938,66 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
     return OrdenTrabajoCommandResult.Ok("Orden cancelada correctamente.", id);
   }
 
+  public async Task<OrdenTrabajoCommandResult> DeleteWorkOrderAsync(int id, string actor, CancellationToken ct = default)
+  {
+    _ = NormalizeActor(actor);
+
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    using var tx = await conn.BeginTransactionAsync(ct);
+
+    try
+    {
+      var folio = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+        """
+        SELECT Folio
+        FROM dbo.OrdenTrabajo
+        WHERE Id = @Id;
+        """,
+        new { Id = id },
+        tx,
+        cancellationToken: ct));
+
+      if (string.IsNullOrWhiteSpace(folio))
+      {
+        await tx.RollbackAsync(ct);
+        return OrdenTrabajoCommandResult.Fail("La orden no existe.");
+      }
+
+      await conn.ExecuteAsync(new CommandDefinition(
+        """
+        DELETE FROM dbo.OrdenTrabajoTransaccion
+        WHERE OrdenTrabajoId = @Id;
+        """,
+        new { Id = id },
+        tx,
+        cancellationToken: ct));
+
+      var affected = await conn.ExecuteAsync(new CommandDefinition(
+        """
+        DELETE FROM dbo.OrdenTrabajo
+        WHERE Id = @Id;
+        """,
+        new { Id = id },
+        tx,
+        cancellationToken: ct));
+
+      if (affected == 0)
+      {
+        await tx.RollbackAsync(ct);
+        return OrdenTrabajoCommandResult.Fail("La orden no existe.");
+      }
+
+      await tx.CommitAsync(ct);
+      return OrdenTrabajoCommandResult.Ok($"Orden {folio} eliminada correctamente.", id);
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
   public async Task<OrdenTrabajoCommandResult> StartWorkOrderAsync(int id, string actor, int? actorEmployeeId = null, CancellationToken ct = default)
   {
     var safeActor = NormalizeActor(actor);

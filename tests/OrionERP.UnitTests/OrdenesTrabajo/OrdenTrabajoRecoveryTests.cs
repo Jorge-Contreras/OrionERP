@@ -138,6 +138,36 @@ public class OrdenTrabajoRecoveryTests
   }
 
   [Fact]
+  public async Task DeleteWorkOrderAsync_RemovesOrderWithoutStatusFilter()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ScalarResultFactory = static (commandText, _) =>
+        commandText.Contains("SELECT Folio", StringComparison.Ordinal) ? "OT-2026-000123" : null,
+      NonQueryResultFactory = static (_, _) => 1
+    };
+    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.DeleteWorkOrderAsync(42, "supervisor");
+
+    Assert.True(result.Success);
+    Assert.Contains("eliminada", result.Message, StringComparison.OrdinalIgnoreCase);
+
+    var transactionDelete = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("DELETE FROM dbo.OrdenTrabajoTransaccion", StringComparison.Ordinal));
+    Assert.Contains(transactionDelete.Parameters, parameter => string.Equals(parameter.Name, "Id", StringComparison.OrdinalIgnoreCase)
+      && Convert.ToInt32(parameter.Value) == 42);
+
+    var orderDelete = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("DELETE FROM dbo.OrdenTrabajo", StringComparison.Ordinal)
+        && !command.CommandText.Contains("OrdenTrabajoTransaccion", StringComparison.Ordinal));
+    Assert.DoesNotContain("Estado", orderDelete.CommandText, StringComparison.OrdinalIgnoreCase);
+    Assert.True(connection.LastTransaction?.WasCommitted);
+  }
+
+  [Fact]
   public async Task AddStepEvidenceAsync_StoresCaptureSource()
   {
     var connection = new FakeQueryDbConnection

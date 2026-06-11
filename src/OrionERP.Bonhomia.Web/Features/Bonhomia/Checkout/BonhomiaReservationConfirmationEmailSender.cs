@@ -7,6 +7,7 @@ namespace OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
 public sealed class BonhomiaReservationConfirmationEmailSender : IBonhomiaReservationConfirmationEmailSender
 {
+  private const string ReceptionEmail = "recepcion@bonhomiasuites.com";
   private static readonly CultureInfo MexicanCulture = CultureInfo.GetCultureInfo("es-MX");
 
   private readonly IMicrosoftGraphMailClient<BonhomiaGraphMailOptions> _mailClient;
@@ -28,7 +29,15 @@ public sealed class BonhomiaReservationConfirmationEmailSender : IBonhomiaReserv
 
     var subject = $"Confirmacion de reservacion Bonhomia #{confirmation.ReservationId:D6}";
     var html = BuildHtml(confirmation);
-    return _mailClient.SendEmailAsync(confirmation.Customer.Email, subject, html, ct);
+    return _mailClient.SendEmailAsync(
+      new MicrosoftGraphMailMessage
+      {
+        ToRecipients = [confirmation.Customer.Email],
+        BccRecipients = [ReceptionEmail],
+        Subject = subject,
+        Message = html
+      },
+      ct);
   }
 
   private static string BuildHtml(BonhomiaReservationConfirmationEmail confirmation)

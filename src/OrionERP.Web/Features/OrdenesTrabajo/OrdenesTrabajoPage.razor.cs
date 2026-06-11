@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.JSInterop;
 using OrionERP.Application.Features.OrdenesTrabajo;
 using OrionERP.Infrastructure.Auth;
 using OrionERP.Web.Services;
@@ -17,6 +18,7 @@ public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
   [Inject] private UserManager<ApplicationUser> UserManager { get; set; } = default!;
   [Inject] private IUserRfcState RfcState { get; set; } = default!;
+  [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
 
   protected CultureInfo CurrencyCulture { get; } = CultureInfo.GetCultureInfo("es-MX");
   protected List<OrdenTrabajoCategoriaDto> Categories { get; set; } = [];
@@ -31,10 +33,12 @@ public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
   protected bool IsPrivilegedUser { get; set; }
   protected bool IsLoading { get; set; }
   protected bool IsCreating { get; set; }
+  protected int? DeletingOrderId { get; set; }
   protected string? ErrorMessage { get; set; }
   private string? LoadedRfc { get; set; }
 
   protected bool CanCreate => IsPrivilegedUser;
+  protected bool CanDelete => IsPrivilegedUser;
   private string CurrentRfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault() ?? "OHM191112Q26";
 
   protected override async Task OnInitializedAsync()
@@ -151,6 +155,43 @@ public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
   protected void OpenOrder(int id)
     => Navigation.NavigateTo($"/ordenes-trabajo/{id}");
 
+  protected async Task DeleteOrderAsync(OrdenTrabajoListItemDto item)
+  {
+    if (!CanDelete || item is null)
+    {
+      return;
+    }
+
+    var confirmed = await ConfirmAsync($"Estas seguro que deseas eliminar la orden {item.Folio}? Esta accion no se puede deshacer.");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    DeletingOrderId = item.Id;
+    try
+    {
+      var result = await OrdenTrabajoService.DeleteWorkOrderAsync(item.Id, CurrentUserName);
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      await LoadDashboardAsync();
+      await LoadOrdersAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo eliminar la orden. {ex.Message}");
+    }
+    finally
+    {
+      DeletingOrderId = null;
+    }
+  }
+
   public static string GetStatusLabel(string? status)
     => status switch
     {
@@ -230,6 +271,18 @@ public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
 
     var appUser = await UserManager.GetUserAsync(user);
     CurrentEmployeeId = appUser?.EmployeeId;
+  }
+
+  private async Task<bool> ConfirmAsync(string message)
+  {
+    try
+    {
+      return await JSRuntime.InvokeAsync<bool>("confirm", message);
+    }
+    catch
+    {
+      return false;
+    }
   }
 
   private async void OnRfcStateChanged()

@@ -2602,7 +2602,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     public string? Referencia { get; set; }
 
-    [StringLength(500, ErrorMessage = "El memo no puede exceder 500 caracteres.")]
     public string? Memo { get; set; }
 
     public int? ProyectoId { get; set; }

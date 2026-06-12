@@ -1260,26 +1260,23 @@ SET Concepto = @Concepto,
     Forma_Pago = @FormaPago
 WHERE ID = @TransaccionId;";
 
+      var parameters = new DynamicParameters();
+      parameters.Add("@TransaccionId", request.TransaccionId);
+      parameters.Add("@Concepto", request.Concepto);
+      parameters.Add("@Fecha", effectiveFecha);
+      parameters.Add("@Cuenta", request.Cuenta);
+      parameters.Add("@Monto", request.Monto);
+      parameters.Add("@Facturado", request.Facturado);
+      parameters.Add("@Memo", request.Memo, DbType.String, size: -1);
+      parameters.Add("@ProyectoId", request.ProyectoId);
+      parameters.Add("@CompraId", request.CompraId);
+      parameters.Add("@ServicioId", request.ServicioId);
+      parameters.Add("@NominaId", request.NominaId);
+      parameters.Add("@TipoPoliza", request.TipoPoliza);
+      parameters.Add("@FormaPago", request.FormaPago);
+
       var affected = await conn.ExecuteAsync(
-          new CommandDefinition(sqlUpdate,
-              new
-              {
-                request.TransaccionId,
-                request.Concepto,
-                Fecha = effectiveFecha,
-                request.Cuenta,
-                request.Monto,
-                request.Facturado,
-                request.Memo,
-                request.ProyectoId,
-                request.CompraId,
-                request.ServicioId,
-                request.NominaId,
-                request.TipoPoliza,
-                request.FormaPago
-              },
-              tx,
-              cancellationToken: ct));
+          new CommandDefinition(sqlUpdate, parameters, tx, cancellationToken: ct));
 
       if (affected == 0)
       {
@@ -1545,25 +1542,25 @@ WHERE ID = @MovimientoId
       {
           using var conn = await OpenConnectionWithAuditContextAsync(ct);
 
+          var parameters = new DynamicParameters();
+          parameters.Add("@Rfc", request.Rfc);
+          parameters.Add("@Fecha", request.Fecha);
+          parameters.Add("@Concepto", request.Concepto);
+          parameters.Add("@Monto", request.Monto);
+          parameters.Add("@TipoPoliza", request.TipoPoliza);
+          parameters.Add("@FormaPago", request.FormaPago);
+          parameters.Add("@Facturado", request.Facturado);
+          parameters.Add("@Memo", request.Memo, DbType.String, size: -1);
+          parameters.Add("@ProyectoId", request.ProyectoId);
+          parameters.Add("@CompraId", request.CompraId);
+          parameters.Add("@ServicioId", request.ServicioId);
+          parameters.Add("@NominaId", request.NominaId);
+          parameters.Add("@Cuenta", request.Cuenta);
+
           var newId = await conn.ExecuteScalarAsync<int>(
               new CommandDefinition(
                   sql,
-                  new
-                  {
-                      request.Rfc,
-                      request.Fecha,
-                      request.Concepto,
-                      request.Monto,
-                      request.TipoPoliza,
-                      request.FormaPago,
-                      request.Facturado,
-                      request.Memo,
-                      request.ProyectoId,
-                      request.CompraId,
-                      request.ServicioId,
-                      request.NominaId,
-                      request.Cuenta
-                  },
+                  parameters,
                   cancellationToken: ct));
           return TransaccionCreateResult.Ok(newId, "Transacción creada correctamente.");
       }

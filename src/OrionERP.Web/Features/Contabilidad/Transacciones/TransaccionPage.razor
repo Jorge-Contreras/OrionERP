@@ -279,6 +279,35 @@ else
               Balance: @Totals.Balance.ToString("N2")
             </span>
             <div class="d-flex align-items-center gap-2 flex-wrap ms-auto">
+              <div class="d-flex align-items-center gap-2 flex-wrap plantilla-toolbar">
+                <label class="form-label mb-0 small text-muted" for="plantillaContableSelect">Plantilla</label>
+                <select id="plantillaContableSelect"
+                        class="form-select form-select-sm plantilla-select"
+                        @bind="SelectedPlantillaContableId"
+                        disabled="@(IsLoadingPlantillas || IsApplyingPlantilla || PlantillaOptions.Count == 0)">
+                  <option value="">
+                    @(IsLoadingPlantillas
+                      ? "Cargando plantillas..."
+                      : PlantillaOptions.Count == 0
+                        ? "Sin plantillas"
+                        : "Selecciona plantilla")
+                  </option>
+                  @foreach (var plantilla in PlantillaOptions)
+                  {
+                    <option value="@plantilla.PlantillaContableId">@GetPlantillaOptionLabel(plantilla)</option>
+                  }
+                </select>
+                <button class="btn btn-sm btn-outline-success"
+                        type="button"
+                        disabled="@(IsLoadingPlantillas || IsApplyingPlantilla || !SelectedPlantillaContableId.HasValue)"
+                        @onclick="ApplySelectedPlantillaAsync">
+                  @if (IsApplyingPlantilla)
+                  {
+                    <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                  }
+                  Aplicar plantilla
+                </button>
+              </div>
               <button class="btn btn-sm btn-outline-secondary"
                       type="button"
                       title="Copiar el concepto de la póliza a todos los movimientos"

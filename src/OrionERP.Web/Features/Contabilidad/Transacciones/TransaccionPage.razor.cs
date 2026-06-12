@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
+using OrionERP.Application.Features.Ajustes;
 using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
@@ -46,11 +47,13 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private long? _selectedComprobanteId;
   private long? _cancellingComprobanteId;
   private readonly List<LookupInt32Dto> _allCompraOptions = [];
+  private readonly HashSet<int> _persistedMovimientoIds = [];
   private CuentaContablePicker? CuentaPicker;
   private int _attachmentInputKey;
   private SectionPanel _activeSection = SectionPanel.Movimientos;
   private LookupInt32Dto? _selectedProyectoOption;
   private CancellationTokenSource? _proyectoSearchCts;
+  private int _nextDraftMovimientoId;
 
   private bool _isDisposed;
   private string _montoInput = string.Empty;
@@ -76,6 +79,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   [Inject] public IBancosService BancosService { get; set; } = default!;
   [Inject] public IDeclaracionPreviaService DeclaracionPreviaService { get; set; } = default!;
   [Inject] public IRecurrentApService RecurrentApService { get; set; } = default!;
+  [Inject] public IAjustesService AjustesService { get; set; } = default!;
 
   protected TransaccionHeaderModel? Header { get; private set; }
   protected EditContext? HeaderEditContext { get; private set; }
@@ -98,6 +102,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected List<LookupInt32Dto> ServicioOptions { get; } = [];
   protected List<LookupInt32Dto> NominaOptions { get; } = [];
   protected List<FormaPagoLookupDto> FormaPagoOptions { get; } = [];
+  protected List<PlantillaContableListItemDto> PlantillaOptions { get; } = [];
   protected IReadOnlyList<string> TipoPolizaOptions { get; } = new[] { "INGRESO", "EGRESO", "DIARIO" };
   protected IReadOnlyList<PublicoMonthOption> PublicoMonthOptions { get; } = CreatePublicoMonthOptions();
   protected IReadOnlyList<int> PublicoYearOptions { get; } = CreatePublicoYearOptions();
@@ -109,6 +114,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected decimal ReservacionAmountInput { get; set; }
   protected string SelectedPublicoMonthCode { get; set; } = DateTime.Today.Month.ToString("00", CultureInfo.InvariantCulture);
   protected int SelectedPublicoYear { get; set; } = DateTime.Today.Year;
+  protected int? SelectedPlantillaContableId { get; set; }
   protected bool ShowProyectoResults { get; private set; }
 
   protected bool ShowMovimientoModal { get; private set; }
@@ -158,6 +164,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected bool IsSearchingApOccurrences { get; private set; }
   protected bool IsLinkingApOccurrence { get; private set; }
   protected int? UnlinkingApPaymentId { get; private set; }
+  protected bool IsLoadingPlantillas { get; private set; }
+  protected bool IsApplyingPlantilla { get; private set; }
   protected bool IsRegeneratingMovimientos { get; private set; }
   protected bool IsTimbrandoPublico { get; private set; }
 
@@ -330,6 +338,37 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     await EnsureSelectedProyectoLoadedAsync(ct);
     SyncProyectoSearchTermWithSelection();
     EnsureSelectedCompraOption();
+  }
+
+  private async Task LoadPlantillasAsync(CancellationToken ct = default)
+  {
+    PlantillaOptions.Clear();
+    SelectedPlantillaContableId = null;
+    IsLoadingPlantillas = true;
+
+    try
+    {
+      var currentRfc = ResolveLookupRfc();
+      var rows = await AjustesService.GetPlantillasAsync(currentRfc, null, false, ct);
+      PlantillaOptions.AddRange(rows.Where(row =>
+      {
+        var plantillaRfc = Normalize(row.Rfc);
+        return plantillaRfc is null
+          || (currentRfc is not null && string.Equals(plantillaRfc, currentRfc, StringComparison.OrdinalIgnoreCase));
+      }));
+    }
+    catch (OperationCanceledException)
+    {
+      // ignored
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron cargar las plantillas contables: {ex.Message}");
+    }
+    finally
+    {
+      IsLoadingPlantillas = false;
+    }
   }
 
   private void ResetLookupData()
@@ -584,6 +623,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       Header = CreateHeaderModel(headerDto);
       UpdateMontoInputFromHeader();
       await LoadLookupDataAsync(ct);
+      await LoadPlantillasAsync(ct);
       _headerOriginal = Header.Clone();
       HeaderEditContext = new EditContext(Header);
 
@@ -618,6 +658,10 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     _selectedProyectoOption = null;
     _selectedComprobanteId = null;
     Movimientos.Clear();
+    PlantillaOptions.Clear();
+    SelectedPlantillaContableId = null;
+    _persistedMovimientoIds.Clear();
+    _nextDraftMovimientoId = 0;
     BancoMovimientos.Clear();
     Attachments.Clear();
     Comprobantes.Clear();
@@ -1103,7 +1147,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     if (_movimientoTarget is null)
     {
-      MovimientoDraft.Id = Movimientos.Count == 0 ? 1 : Movimientos.Max(m => m.Id) + 1;
+      MovimientoDraft.Id = CreateDraftMovimientoId();
       Movimientos.Add(MovimientoDraft.Clone());
     }
     else
@@ -1116,6 +1160,84 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     UiMessages.ShowSuccess("Movimiento guardado.");
     CloseMovimientoModal();
     await InvokeAsync(StateHasChanged);
+  }
+
+  protected async Task ApplySelectedPlantillaAsync()
+  {
+    if (Header is null || IsApplyingPlantilla)
+      return;
+
+    if (!SelectedPlantillaContableId.HasValue)
+    {
+      UiMessages.ShowWarning("Selecciona una plantilla contable antes de aplicarla.");
+      return;
+    }
+
+    var selectedName = PlantillaOptions
+        .FirstOrDefault(item => item.PlantillaContableId == SelectedPlantillaContableId.Value)
+        ?.Nombre
+      ?? "la plantilla seleccionada";
+
+    var confirmMessage = Movimientos.Count == 0
+      ? $"Aplicar {selectedName} creara los movimientos visibles. Guarda la poliza para persistirlos. ¿Deseas continuar?"
+      : $"Aplicar {selectedName} reemplazara los movimientos visibles. Guarda la poliza para persistirlos. ¿Deseas continuar?";
+
+    if (!await ConfirmAsync(confirmMessage))
+    {
+      return;
+    }
+
+    IsApplyingPlantilla = true;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      NormalizeHeaderConcepto(notify: false);
+
+      var detail = await AjustesService.GetPlantillaAsync(SelectedPlantillaContableId.Value);
+      if (detail is null)
+      {
+        UiMessages.ShowError("No se encontro la plantilla contable seleccionada.");
+        return;
+      }
+
+      var validationError = ValidatePlantillaForCurrentTransaction(detail);
+      if (validationError is not null)
+      {
+        UiMessages.ShowError(validationError);
+        return;
+      }
+
+      var activeLines = detail.Lineas
+          .Where(line => line.Activa)
+          .OrderBy(line => line.Orden)
+          .ThenBy(line => line.PlantillaContableLineaId)
+          .ToList();
+
+      var drafts = PlantillaContableMovimientoCalculator.CreateDrafts(
+          activeLines,
+          Header.Monto,
+          NormalizeConceptoValue(Header.Concepto));
+
+      Movimientos.Clear();
+      foreach (var draft in drafts)
+      {
+        Movimientos.Add(MapPlantillaMovimientoDraft(draft));
+      }
+
+      CloseMovimientoModal();
+      UpdateTotalsFromMovimientos();
+      UiMessages.ShowSuccess("Plantilla aplicada a los movimientos visibles. Guarda la poliza para persistir los cambios.");
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo aplicar la plantilla contable: {ex.Message}");
+    }
+    finally
+    {
+      IsApplyingPlantilla = false;
+      await InvokeAsync(StateHasChanged);
+    }
   }
 
   private async Task<TransaccionCommandResult> GuardarMovimientosAsync(IReadOnlyList<MovimientoModel>? movimientos = null)
@@ -1404,8 +1526,15 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private async Task ReloadMovimientosAsync(CancellationToken ct = default)
   {
     Movimientos.Clear();
+    _persistedMovimientoIds.Clear();
+    _nextDraftMovimientoId = 0;
+
     var movimientosDto = await TransaccionService.GetMovimientosAsync(Id, ct);
     Movimientos.AddRange(movimientosDto.Select(MapMovimiento));
+    foreach (var movimiento in Movimientos)
+    {
+      _persistedMovimientoIds.Add(movimiento.Id);
+    }
 
     Totals = await TransaccionService.GetMovimientoTotalsAsync(Id, ct);
     UpdateHeaderStatus();
@@ -1442,6 +1571,82 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       Debe = movimiento.Debe,
       Haber = movimiento.Haber
     };
+
+  private MovimientoModel MapPlantillaMovimientoDraft(PlantillaContableMovimientoDraft draft)
+    => new()
+    {
+      Id = CreateDraftMovimientoId(),
+      CuentaId = draft.CuentaContableId,
+      Nivel1 = draft.Nivel1,
+      Nivel2 = draft.Nivel2,
+      Nivel3 = draft.Nivel3,
+      NombreCuenta = draft.CuentaContable,
+      Descripcion = draft.CuentaContable,
+      Concepto = NormalizeConceptoValue(draft.Concepto),
+      Debe = draft.Debe,
+      Haber = draft.Haber
+    };
+
+  private string? ValidatePlantillaForCurrentTransaction(PlantillaContableDetailDto plantilla)
+  {
+    if (!plantilla.Activa)
+    {
+      return "La plantilla contable seleccionada no esta activa.";
+    }
+
+    var currentRfc = ResolveLookupRfc();
+    var plantillaRfc = Normalize(plantilla.Rfc);
+    if (plantillaRfc is not null
+      && (currentRfc is null || !string.Equals(plantillaRfc, currentRfc, StringComparison.OrdinalIgnoreCase)))
+    {
+      return "La plantilla contable seleccionada no corresponde al RFC de esta poliza.";
+    }
+
+    var plantillaTipoPoliza = Normalize(plantilla.TipoPoliza);
+    if (plantillaTipoPoliza is not null)
+    {
+      var currentTipoPoliza = Normalize(Header?.TipoPoliza);
+      if (currentTipoPoliza is null)
+      {
+        return "Selecciona el tipo de poliza antes de aplicar esta plantilla.";
+      }
+
+      if (!string.Equals(plantillaTipoPoliza, currentTipoPoliza, StringComparison.OrdinalIgnoreCase))
+      {
+        return $"La plantilla aplica a polizas {plantillaTipoPoliza}, pero esta poliza es {currentTipoPoliza}.";
+      }
+    }
+
+    var activeLines = plantilla.Lineas.Where(line => line.Activa).ToList();
+    if (activeLines.Count == 0)
+    {
+      return "La plantilla contable seleccionada no tiene lineas activas.";
+    }
+
+    if (activeLines.Any(line => line.CuentaContableId <= 0))
+    {
+      return "La plantilla contable seleccionada tiene lineas sin cuenta contable.";
+    }
+
+    if (activeLines.Any(line => string.Equals(line.ConceptoTipo, "TRANSACCION", StringComparison.OrdinalIgnoreCase))
+      && string.IsNullOrWhiteSpace(Header?.Concepto))
+    {
+      return "Captura el concepto de la poliza antes de aplicar esta plantilla.";
+    }
+
+    return null;
+  }
+
+  protected static string GetPlantillaOptionLabel(PlantillaContableListItemDto plantilla)
+  {
+    var tipo = string.IsNullOrWhiteSpace(plantilla.TipoPoliza) ? "Todas" : plantilla.TipoPoliza.Trim();
+    var scope = string.IsNullOrWhiteSpace(plantilla.Rfc) ? "Global" : plantilla.Rfc.Trim();
+    var lineLabel = plantilla.LineCount == 1 ? "1 linea" : $"{plantilla.LineCount} lineas";
+    return $"{plantilla.Nombre} - {tipo} - {lineLabel} - {scope}";
+  }
+
+  private int CreateDraftMovimientoId()
+    => --_nextDraftMovimientoId;
 
   private static AttachmentModel MapAttachment(TransaccionAttachmentDto attachment)
     => new()
@@ -2402,6 +2607,15 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     var confirm = await ConfirmAsync($"¿Deseas eliminar el movimiento '{movementName}'?");
     if (!confirm)
       return;
+
+    if (!_persistedMovimientoIds.Contains(movimiento.Id))
+    {
+      Movimientos.Remove(movimiento);
+      UpdateTotalsFromMovimientos();
+      UiMessages.ShowSuccess("Movimiento retirado de la poliza visible. Guarda la poliza para persistir los cambios.");
+      await InvokeAsync(StateHasChanged);
+      return;
+    }
 
     _movimientoDeletingId = movimiento.Id;
     await InvokeAsync(StateHasChanged);

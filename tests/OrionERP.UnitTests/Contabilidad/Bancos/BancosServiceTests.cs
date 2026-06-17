@@ -110,6 +110,27 @@ public class BancosServiceTests
   }
 
   [Fact]
+  public void MovimientosBancariosSql_UsesLastLinkedPolicyForMovementRunningBalance()
+  {
+    var source = ReadRepositoryFile(
+      "src",
+      "OrionERP.Infrastructure",
+      "Features",
+      "Contabilidad",
+      "Bancos",
+      "Sql",
+      "20260527_bancos_movimientos_many_to_many.sql");
+
+    Assert.Contains("BalanceLink AS", source, StringComparison.Ordinal);
+    Assert.Contains("DECLARE @backfillSql nvarchar(max)", source, StringComparison.Ordinal);
+    Assert.Contains("EXEC sp_executesql @backfillSql", source, StringComparison.Ordinal);
+    Assert.Contains("ORDER BY lp.AccountingSequence DESC", source, StringComparison.Ordinal);
+    Assert.Contains("LEFT JOIN BalanceLink AS bl", source, StringComparison.Ordinal);
+    Assert.Contains("bl.AccountingRunningBalance", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("AND lp.TransaccionID = t.ID", source, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public async Task GetPendingTransactionsAsync_MapsMatchingBankRegistroAmounts()
   {
     var connection = new FakeQueryDbConnection
@@ -312,6 +333,24 @@ public class BancosServiceTests
     var normalizedName = name.TrimStart('@');
     var parameter = Assert.Single(parameters, item => string.Equals(item.Name.TrimStart('@'), normalizedName, StringComparison.OrdinalIgnoreCase));
     Assert.Equal(expectedValue, parameter.Value);
+  }
+
+  private static string ReadRepositoryFile(params string[] pathSegments)
+  {
+    var path = Path.GetFullPath(Path.Combine(
+      AppContext.BaseDirectory,
+      "..",
+      "..",
+      "..",
+      "..",
+      ".."));
+
+    foreach (var segment in pathSegments)
+    {
+      path = Path.Combine(path, segment);
+    }
+
+    return File.ReadAllText(path);
   }
 
   private static DataTable CreateMovementValidationContext(

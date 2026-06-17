@@ -33,6 +33,7 @@ GO
 
 IF COL_LENGTH(N'bancos.Movimientos', N'Transaccion_ID') IS NOT NULL
 BEGIN
+    DECLARE @backfillSql nvarchar(max) = N'
     INSERT INTO bancos.Movimiento_Transaccion
         (Movimiento_ID, Transaccion_ID, Debe, Haber, CreatedAt, CreatedBy, UpdatedAt, UpdatedBy)
     SELECT
@@ -41,9 +42,9 @@ BEGIN
         CASE WHEN ISNULL(M.Cargo, 0) > 0 THEN ABS(M.Cargo) ELSE 0 END AS Debe,
         CASE WHEN ISNULL(M.Abono, 0) > 0 THEN ABS(M.Abono) ELSE 0 END AS Haber,
         SYSUTCDATETIME(),
-        N'backfill',
+        N''backfill'',
         SYSUTCDATETIME(),
-        N'backfill'
+        N''backfill''
     FROM bancos.Movimientos AS M
     WHERE M.Transaccion_ID IS NOT NULL
       AND NOT EXISTS (
@@ -55,7 +56,9 @@ BEGIN
       AND (
           (ISNULL(M.Cargo, 0) > 0 AND ISNULL(M.Abono, 0) = 0)
           OR (ISNULL(M.Abono, 0) > 0 AND ISNULL(M.Cargo, 0) = 0)
-      );
+      );';
+
+    EXEC sp_executesql @backfillSql;
 END;
 GO
 
@@ -248,6 +251,23 @@ BEGIN
         SELECT *
         FROM LinkRows
         WHERE LinkRank = 1
+    ),
+    BalanceLink AS
+    (
+        SELECT
+            lr.Movimiento_ID,
+            lp.AccountingSequence,
+            lp.AccountingRunningBalance,
+            ROW_NUMBER() OVER (
+                PARTITION BY lr.Movimiento_ID
+                ORDER BY lp.AccountingSequence DESC, lr.Fecha DESC, lr.OrdenBalance DESC, lr.Transaccion_ID DESC
+            ) AS BalanceRank
+        FROM LinkRows AS lr
+        INNER JOIN MovimientosBase AS m
+            ON m.Movimiento_ID = lr.Movimiento_ID
+        LEFT JOIN LedgerPolicy AS lp
+            ON lp.Cuenta_Banco_ID = m.Cuenta_Banco_ID
+           AND lp.TransaccionID = lr.Transaccion_ID
     )
     SELECT
         m.Movimiento_ID AS MovimientoId,
@@ -271,25 +291,25 @@ BEGIN
         COALESCE(NULLIF(LTRIM(RTRIM(iss.IssuesRaw)), N''), N'OK') AS Issues,
         t.Fecha AS PolicyDate,
         t.OrdenBalance,
-        lp.AccountingSequence,
+        bl.AccountingSequence,
         ISNULL(m.Nivel1, '') AS BankAccountNivel1,
         ISNULL(m.Nivel2, '') AS BankAccountNivel2,
         ISNULL(m.Nivel3, '') AS BankAccountNivel3,
         CAST(ISNULL(la.PolicyCount, 0) AS int) AS BankRegistroLineCount,
         CAST(ISNULL(la.LinkedDebe, 0) AS decimal(19,2)) AS BankRegistroDebe,
         CAST(ISNULL(la.LinkedHaber, 0) AS decimal(19,2)) AS BankRegistroHaber,
-        lp.AccountingRunningBalance,
+        bl.AccountingRunningBalance,
         CAST(
             CASE
-                WHEN m.Saldo IS NULL OR lp.AccountingRunningBalance IS NULL THEN NULL
-                ELSE m.Saldo - lp.AccountingRunningBalance
+                WHEN m.Saldo IS NULL OR bl.AccountingRunningBalance IS NULL THEN NULL
+                ELSE m.Saldo - bl.AccountingRunningBalance
             END
         AS decimal(19,2)) AS BankAccountingVariance,
         CAST(
             CASE
                 WHEN m.Saldo IS NOT NULL
-                 AND lp.AccountingRunningBalance IS NOT NULL
-                 AND ABS(m.Saldo - lp.AccountingRunningBalance) > @SaldoBancoTolerancia
+                 AND bl.AccountingRunningBalance IS NOT NULL
+                 AND ABS(m.Saldo - bl.AccountingRunningBalance) > @SaldoBancoTolerancia
                 THEN 1 ELSE 0
             END
         AS bit) AS HasBankAccountingDifference,
@@ -297,8 +317,8 @@ BEGIN
         CASE
             WHEN NULLIF(LTRIM(RTRIM(iss.IssuesRaw)), N'') IS NOT NULL THEN N'Hard'
             WHEN m.Saldo IS NOT NULL
-             AND lp.AccountingRunningBalance IS NOT NULL
-             AND ABS(m.Saldo - lp.AccountingRunningBalance) > @SaldoBancoTolerancia THEN N'Soft'
+             AND bl.AccountingRunningBalance IS NOT NULL
+             AND ABS(m.Saldo - bl.AccountingRunningBalance) > @SaldoBancoTolerancia THEN N'Soft'
             ELSE N'OK'
         END AS AuditSeverity
     FROM MovimientosBase AS m
@@ -308,9 +328,9 @@ BEGIN
         ON pl.Movimiento_ID = m.Movimiento_ID
     LEFT JOIN dbo.Transacciones AS t
         ON t.ID = pl.Transaccion_ID
-    LEFT JOIN LedgerPolicy AS lp
-        ON lp.Cuenta_Banco_ID = m.Cuenta_Banco_ID
-       AND lp.TransaccionID = t.ID
+    LEFT JOIN BalanceLink AS bl
+        ON bl.Movimiento_ID = m.Movimiento_ID
+       AND bl.BalanceRank = 1
     OUTER APPLY
     (
         SELECT

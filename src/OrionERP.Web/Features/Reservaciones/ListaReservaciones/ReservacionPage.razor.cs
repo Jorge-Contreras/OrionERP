@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
@@ -23,9 +24,10 @@ using OrionERP.Web.State;
 namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 
 [Authorize(Roles = "Administrador,SatOperator")]
-public partial class ReservacionPage : ComponentBase
+public partial class ReservacionPage : ComponentBase, IDisposable
 {
   private const int ClienteSuggestionLimit = 5;
+  private const int ClienteSearchDebounceMs = 300;
 
   private sealed record ReservationFormState(
     int? ClienteId,
@@ -40,6 +42,9 @@ public partial class ReservacionPage : ComponentBase
     string? Notes);
 
   [Parameter] public int ReservationId { get; set; }
+
+  private CancellationTokenSource? _clienteSearchDebounceCts;
+  private int _clienteSearchVersion;
 
   [Inject] public IListaReservacionesService ReservacionesService { get; set; } = default!;
   [Inject] public IReservacionExperiencesService ExperiencesService { get; set; } = default!;
@@ -600,7 +605,7 @@ public partial class ReservacionPage : ComponentBase
     await RefreshSuitesAsync();
   }
 
-  internal async Task OnClienteInputChangedAsync(ChangeEventArgs args)
+  internal Task OnClienteInputChangedAsync(ChangeEventArgs args)
   {
     ClienteSearchText = args.Value?.ToString() ?? string.Empty;
     if (!string.Equals(NormalizeClienteNombre(ClienteSearchText), NormalizeClienteNombre(SelectedClienteNombre), StringComparison.OrdinalIgnoreCase))
@@ -609,7 +614,8 @@ public partial class ReservacionPage : ComponentBase
       SelectedClienteNombre = string.Empty;
     }
 
-    await RefreshClienteMatchesAsync(allowEmptySearch: false);
+    QueueClienteMatchesRefresh(allowEmptySearch: false);
+    return Task.CompletedTask;
   }
 
   internal async Task OnClienteInputKeyDownAsync(KeyboardEventArgs args)
@@ -619,6 +625,7 @@ public partial class ReservacionPage : ComponentBase
       return;
     }
 
+    CancelPendingClienteMatchesRefresh();
     await RefreshClienteMatchesAsync(allowEmptySearch: true);
   }
 
@@ -1187,6 +1194,8 @@ public partial class ReservacionPage : ComponentBase
 
   private Task ApplyClienteSelectionAsync(ClienteOptionDto cliente, bool reloadMatches = true)
   {
+    CancelPendingClienteMatchesRefresh();
+
     var clienteNombre = NormalizeClienteNombre(cliente.Nombre);
 
     ClienteId = cliente.Id;
@@ -1201,6 +1210,12 @@ public partial class ReservacionPage : ComponentBase
   private async Task RefreshClienteMatchesAsync(bool allowEmptySearch)
   {
     var searchText = NormalizeClienteNombre(ClienteSearchText);
+    var searchVersion = Interlocked.Increment(ref _clienteSearchVersion);
+    await RefreshClienteMatchesAsync(searchText, allowEmptySearch, searchVersion);
+  }
+
+  private async Task RefreshClienteMatchesAsync(string searchText, bool allowEmptySearch, int searchVersion)
+  {
     if (!allowEmptySearch && string.IsNullOrWhiteSpace(searchText))
     {
       ShowClienteResults = false;
@@ -1208,8 +1223,72 @@ public partial class ReservacionPage : ComponentBase
       return;
     }
 
-    Clientes = await LoadClientesAsync(searchText);
+    var clientes = await LoadClientesAsync(searchText);
+    if (searchVersion != _clienteSearchVersion ||
+        !string.Equals(searchText, NormalizeClienteNombre(ClienteSearchText), StringComparison.OrdinalIgnoreCase))
+    {
+      return;
+    }
+
+    Clientes = clientes;
     ShowClienteResults = allowEmptySearch || !string.IsNullOrWhiteSpace(searchText);
+  }
+
+  private void QueueClienteMatchesRefresh(bool allowEmptySearch)
+  {
+    CancelPendingClienteMatchesRefresh();
+
+    var searchText = NormalizeClienteNombre(ClienteSearchText);
+    if (!allowEmptySearch && string.IsNullOrWhiteSpace(searchText))
+    {
+      ShowClienteResults = false;
+      Clientes.Clear();
+      return;
+    }
+
+    _clienteSearchDebounceCts = new CancellationTokenSource();
+    var localCts = _clienteSearchDebounceCts;
+    var searchVersion = Interlocked.Increment(ref _clienteSearchVersion);
+    _ = DebounceClienteMatchesRefreshAsync(searchText, allowEmptySearch, searchVersion, localCts);
+  }
+
+  private async Task DebounceClienteMatchesRefreshAsync(
+    string searchText,
+    bool allowEmptySearch,
+    int searchVersion,
+    CancellationTokenSource localCts)
+  {
+    try
+    {
+      await Task.Delay(TimeSpan.FromMilliseconds(ClienteSearchDebounceMs), localCts.Token);
+      await RefreshClienteMatchesAsync(searchText, allowEmptySearch, searchVersion);
+      await InvokeAsync(StateHasChanged);
+    }
+    catch (OperationCanceledException)
+    {
+      // A newer keystroke superseded this lookup.
+    }
+    catch (Exception ex)
+    {
+      await InvokeAsync(() => UiMessages.ShowError($"No se pudieron buscar clientes. {ex.Message}"));
+    }
+    finally
+    {
+      if (ReferenceEquals(_clienteSearchDebounceCts, localCts))
+      {
+        _clienteSearchDebounceCts = null;
+      }
+
+      localCts.Dispose();
+    }
+  }
+
+  private void CancelPendingClienteMatchesRefresh()
+  {
+    _clienteSearchDebounceCts?.Cancel();
+    _clienteSearchDebounceCts?.Dispose();
+    _clienteSearchDebounceCts = null;
+    Interlocked.Increment(ref _clienteSearchVersion);
   }
 
   private async Task<List<ClienteOptionDto>> LoadClientesAsync(string? searchText)
@@ -1241,11 +1320,7 @@ public partial class ReservacionPage : ComponentBase
 
   private static bool IsClienteSearchTriggerKey(KeyboardEventArgs args)
     => string.Equals(args.Key, "Enter", StringComparison.Ordinal)
-      || string.Equals(args.Key, "NumpadEnter", StringComparison.Ordinal)
-      || string.Equals(args.Key, " ", StringComparison.Ordinal)
-      || string.Equals(args.Key, "Space", StringComparison.Ordinal)
-      || string.Equals(args.Key, "Spacebar", StringComparison.Ordinal)
-      || string.Equals(args.Code, "Space", StringComparison.Ordinal);
+      || string.Equals(args.Key, "NumpadEnter", StringComparison.Ordinal);
 
   private static string NormalizeClienteNombre(string? clienteNombre)
   {
@@ -1258,6 +1333,11 @@ public partial class ReservacionPage : ComponentBase
     return string.Equals(normalized, "(Sin cliente)", StringComparison.OrdinalIgnoreCase)
       ? string.Empty
       : normalized;
+  }
+
+  public void Dispose()
+  {
+    CancelPendingClienteMatchesRefresh();
   }
 
   private ReservationFormState CaptureFormState()

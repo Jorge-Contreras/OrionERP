@@ -2,6 +2,9 @@
 @inherits SatDescargaPage
 @using OrionERP.Application.Features.Cfdi.DescargaMasiva.Contracts
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
+
+<PageTitle>Descarga Masiva SAT</PageTitle>
+
 <h3>Descarga Masiva SAT</h3>
 <RfcPicker @bind-SelectedRfc="RfcSolicitante"
            @bind-SelectedRfc:after="LoadSolicitudesAsync" />
@@ -259,4 +262,3 @@
         </div>
     </div>
 }
-

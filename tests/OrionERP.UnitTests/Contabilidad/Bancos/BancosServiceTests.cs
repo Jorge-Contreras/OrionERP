@@ -110,6 +110,58 @@ public class BancosServiceTests
   }
 
   [Fact]
+  public async Task GetPendingTransactionsAsync_MapsMatchingBankRegistroAmounts()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = static (_, _) =>
+      {
+        var table = new DataTable();
+        table.Columns.Add("TransaccionId", typeof(int));
+        table.Columns.Add("Fecha", typeof(DateTime));
+        table.Columns.Add("FormaPago", typeof(string));
+        table.Columns.Add("Concepto", typeof(string));
+        table.Columns.Add("Monto", typeof(decimal));
+        table.Columns.Add("BankRegistroLineCount", typeof(int));
+        table.Columns.Add("BankRegistroDebe", typeof(decimal));
+        table.Columns.Add("BankRegistroHaber", typeof(decimal));
+
+        table.Rows.Add(
+          9001,
+          new DateTime(2026, 5, 3),
+          "Transferencia",
+          "Pago cliente",
+          1250m,
+          2,
+          0m,
+          1180m);
+
+        return table;
+      }
+    };
+
+    var service = new BancosService(new FakeQueryConnectionFactory(connection));
+
+    var rows = await service.GetPendingTransactionsAsync("RFC123456789", 18, 2026, 5);
+
+    var pending = Assert.Single(rows);
+    Assert.Equal(9001, pending.TransaccionId);
+    Assert.Equal(1250m, pending.Monto);
+    Assert.Equal(2, pending.BankRegistroLineCount);
+    Assert.Equal(0m, pending.BankRegistroDebe);
+    Assert.Equal(1180m, pending.BankRegistroHaber);
+
+    var command = Assert.Single(connection.ExecutedCommands);
+    Assert.Contains("RegistroBancoPendiente", command.CommandText, StringComparison.Ordinal);
+    Assert.Contains("rb.BankRegistroDebe", command.CommandText, StringComparison.Ordinal);
+    Assert.Contains("rb.BankRegistroHaber", command.CommandText, StringComparison.Ordinal);
+    AssertParameter(command.Parameters, "@Rfc", "RFC123456789");
+    AssertParameter(command.Parameters, "@AccountId", 18);
+    AssertParameter(command.Parameters, "@StartDate", new DateTime(2026, 5, 1));
+    AssertParameter(command.Parameters, "@EndDate", new DateTime(2026, 6, 1));
+  }
+
+  [Fact]
   public async Task CreateAutoPoliciesAsync_UsesCandidateCountToIterateWholeBatch()
   {
     var connection = new FakeQueryDbConnection

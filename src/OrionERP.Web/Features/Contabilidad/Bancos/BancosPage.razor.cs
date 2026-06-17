@@ -225,6 +225,34 @@ public partial class BancosPage : ComponentBase, IDisposable
   protected string FormatDateTime(DateTime? value)
     => value.HasValue ? value.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) : "-";
 
+  protected string FormatPendingBankRegistro(PendingBankTransactionDto pending)
+  {
+    if (pending.BankRegistroLineCount <= 0)
+    {
+      return "-";
+    }
+
+    var hasDebe = pending.BankRegistroDebe != 0m;
+    var hasHaber = pending.BankRegistroHaber != 0m;
+
+    if (hasDebe && hasHaber)
+    {
+      return $"Debe {FormatCurrency(pending.BankRegistroDebe)} / Haber {FormatCurrency(pending.BankRegistroHaber)}";
+    }
+
+    if (hasDebe)
+    {
+      return $"Debe {FormatCurrency(pending.BankRegistroDebe)}";
+    }
+
+    if (hasHaber)
+    {
+      return $"Haber {FormatCurrency(pending.BankRegistroHaber)}";
+    }
+
+    return FormatCurrency(0m);
+  }
+
   protected string FormatAccountingLevels(BankMovementDto movement)
     => string.IsNullOrWhiteSpace(movement.BankAccountNivel1)
       ? "-"

@@ -85,7 +85,7 @@
         {
             <div class="card">
                 <div class="card-body p-0">
-                    <div class="calendar-grid-wrap">
+                    <div class="calendar-grid-wrap" @ref="CalendarGridWrap">
                         <table class="table table-bordered table-sm mb-0 calendar-grid-table">
                             <thead>
                                 <tr>
@@ -104,8 +104,8 @@
                                 {
                                     <tr>
                                         <th class="calendar-sticky-col calendar-room-col">
-                                            <div class="fw-semibold">@resource.RoomName</div>
-                                            <div class="text-muted small">@resource.RoomType</div>
+                                            <div class="calendar-room-name">@resource.RoomName</div>
+                                            <div class="calendar-room-type">@resource.RoomType</div>
                                         </th>
                                         @foreach (var day in VisibleDates)
                                         {
@@ -211,41 +211,6 @@
                                                 }
                                             </td>
                                         }
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card mt-3">
-                <div class="card-header">Bloques detectados</div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-sm table-striped mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Espacio</th>
-                                    <th>Tipo</th>
-                                    <th>Inicio</th>
-                                    <th>Fin exclusivo</th>
-                                    <th>Reservación</th>
-                                    <th>Detalle</th>
-                                    <th>Calidad</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var item in Timeline.Events)
-                                {
-                                    <tr>
-                                        <td>@item.RoomName</td>
-                                        <td>@GetStateLabel(item.EventType)</td>
-                                        <td>@item.StartDate.ToString("yyyy-MM-dd")</td>
-                                        <td>@item.EndDateExclusive.ToString("yyyy-MM-dd")</td>
-                                        <td>@(item.ReservationId.HasValue ? $"#{item.ReservationId}" : "-")</td>
-                                        <td>@(item.Subtitle ?? item.LockDescription ?? "-")</td>
-                                        <td>@(item.DataQualityFlag ?? "-")</td>
                                     </tr>
                                 }
                             </tbody>

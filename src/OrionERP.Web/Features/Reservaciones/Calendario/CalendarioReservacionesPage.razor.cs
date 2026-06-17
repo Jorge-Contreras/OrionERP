@@ -46,6 +46,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
   protected string? ErrorMessage { get; set; }
   protected string CurrentUserName { get; set; } = "OrionERP";
   protected int? CurrentEmployeeId { get; set; }
+  protected ElementReference CalendarGridWrap { get; set; }
   protected CultureInfo HeaderCulture { get; } = CultureInfo.GetCultureInfo("es-MX");
   protected IReadOnlyList<(string Value, string Label)> RoomTypeOptions { get; } = new[]
   {
@@ -61,6 +62,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
   protected string StartMonthValue => ToMonthInputValue(Filter.StartDate);
   protected string EndMonthValue => ToMonthInputValue(Filter.EndDateExclusive.AddDays(-1));
+  private bool _scrollCalendarToTodayAfterRender;
   private string CurrentRfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault() ?? "OHM191112Q26";
 
   protected override async Task OnInitializedAsync()
@@ -74,6 +76,25 @@ public partial class CalendarioReservacionesPage : ComponentBase
     await LoadCalendarAsync();
   }
 
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (!_scrollCalendarToTodayAfterRender)
+    {
+      return;
+    }
+
+    _scrollCalendarToTodayAfterRender = false;
+
+    try
+    {
+      await Js.InvokeVoidAsync("orionCalendar.scrollTodayIntoView", CalendarGridWrap);
+    }
+    catch (JSException)
+    {
+      // The calendar remains usable when JS is unavailable during a transient render.
+    }
+  }
+
   protected async Task LoadCalendarAsync()
   {
     if (!IsValidMonthRange(Filter))
@@ -83,6 +104,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
       VisibleDates.Clear();
       CellLookup.Clear();
       WorkOrderBadgesByRoomCalendar.Clear();
+      _scrollCalendarToTodayAfterRender = false;
       return;
     }
 
@@ -96,6 +118,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
       BuildLookup();
       PruneSelectionToVisibleCells();
       await LoadCalendarWorkOrderBadgesAsync();
+      _scrollCalendarToTodayAfterRender = VisibleDates.Any(IsToday);
     }
     catch (Exception ex)
     {
@@ -104,6 +127,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
       VisibleDates.Clear();
       CellLookup.Clear();
       WorkOrderBadgesByRoomCalendar.Clear();
+      _scrollCalendarToTodayAfterRender = false;
     }
     finally
     {

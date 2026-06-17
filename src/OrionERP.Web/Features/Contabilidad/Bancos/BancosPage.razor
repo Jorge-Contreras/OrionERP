@@ -296,7 +296,7 @@ else
                   <th scope="col">Fecha</th>
                   <th scope="col">Forma de pago</th>
                   <th scope="col">Concepto</th>
-                  <th scope="col" class="text-end">Monto</th>
+                  <th scope="col" class="text-end">Registro contable</th>
                 </tr>
               </thead>
               <tbody>
@@ -309,7 +309,13 @@ else
                     <td data-label="Fecha">@pending.Fecha.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
                     <td data-label="Forma de pago">@pending.FormaPago</td>
                     <td data-label="Concepto" class="text-wrap">@pending.Concepto</td>
-                    <td data-label="Monto" class="text-end">@FormatCurrency(pending.Monto)</td>
+                    <td data-label="Registro contable" class="text-end">
+                      <div>@FormatPendingBankRegistro(pending)</div>
+                      @if (pending.BankRegistroLineCount > 1)
+                      {
+                        <div class="small text-muted">@pending.BankRegistroLineCount línea(s)</div>
+                      }
+                    </td>
                   </tr>
                 }
               </tbody>

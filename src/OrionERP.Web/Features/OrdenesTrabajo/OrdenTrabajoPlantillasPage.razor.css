@@ -8,8 +8,69 @@
   min-width: 6rem;
 }
 
+.orden-template-steps {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.orden-template-step {
+  display: grid;
+  grid-template-columns: minmax(8rem, 11rem) minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--orion-color-border, #dee2e6);
+  border-radius: 8px;
+  background: var(--orion-color-surface, #fff);
+}
+
+.orden-template-step__meta,
+.orden-template-step__body {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.orden-template-step__meta {
+  align-content: start;
+}
+
+.orden-template-step .form-label {
+  margin-bottom: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--orion-color-text-muted, #6c757d);
+}
+
+.orden-template-step__title,
+.orden-template-step__description {
+  min-height: auto;
+  resize: vertical;
+}
+
+.orden-template-step__title {
+  min-height: 4.25rem;
+}
+
+.orden-template-step__description {
+  min-height: 7.5rem;
+}
+
 @media (max-width: 767.98px) {
   .orden-template-page .table-responsive {
     font-size: 0.88rem;
+  }
+
+  .orden-template-step {
+    grid-template-columns: 1fr;
+  }
+
+  .orden-template-step__meta {
+    grid-template-columns: minmax(5rem, 0.45fr) minmax(8rem, 1fr) auto;
+    align-items: end;
+  }
+}
+
+@media (max-width: 480px) {
+  .orden-template-step__meta {
+    grid-template-columns: 1fr;
   }
 }

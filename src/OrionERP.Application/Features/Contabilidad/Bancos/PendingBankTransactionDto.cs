@@ -9,4 +9,7 @@ public sealed class PendingBankTransactionDto
   public string FormaPago { get; init; } = string.Empty;
   public string Concepto { get; init; } = string.Empty;
   public decimal Monto { get; init; }
+  public int BankRegistroLineCount { get; init; }
+  public decimal BankRegistroDebe { get; init; }
+  public decimal BankRegistroHaber { get; init; }
 }

@@ -23,6 +23,96 @@
         <div class="alert alert-danger">@ErrorMessage</div>
     }
 
+    @if (SelectedTemplate is not null)
+    {
+        <section class="card shadow-sm mb-3">
+            <div class="card-body">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                    <div>
+                        <h2 class="h5 mb-1">Crear orden desde plantilla</h2>
+                        <div class="small text-muted">
+                            Se usara la version publicada de @SelectedTemplate.Nombre.
+                        </div>
+                    </div>
+                    @if (!CanCreateFromSelectedTemplate)
+                    {
+                        <span class="badge text-bg-warning">Requiere plantilla activa y publicada</span>
+                    }
+                </div>
+
+                @if (!CanCreateFromSelectedTemplate)
+                {
+                    <div class="alert alert-info mb-0">
+                        Publica la plantilla y mantenla activa para crear ordenes de trabajo reales desde ella.
+                    </div>
+                }
+                else
+                {
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Titulo</label>
+                            <InputText class="form-control" @bind-Value="CreateRequest.Titulo" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Prioridad</label>
+                            <select class="form-select" @bind="CreateRequest.Prioridad">
+                                <option value="NORMAL">Normal</option>
+                                <option value="BAJA">Baja</option>
+                                <option value="ALTA">Alta</option>
+                                <option value="URGENTE">Urgente</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Responsable</label>
+                            <select class="form-select" @bind="CreateRequest.OwnerEmployeeId">
+                                <option value="0">Selecciona responsable</option>
+                                @foreach (var employee in Employees)
+                                {
+                                    <option value="@employee.Id">@employee.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Fecha</label>
+                            <InputDate class="form-control" @bind-Value="CreateRequest.FechaProgramada" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Vence</label>
+                            <InputDate class="form-control" @bind-Value="CreateRequest.FechaVencimiento" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Ayudantes</label>
+                            <div class="d-flex flex-wrap gap-3">
+                                @foreach (var employee in Employees)
+                                {
+                                    <label class="form-check mb-0">
+                                        <input class="form-check-input" type="checkbox" checked="@CreateHelperIds.Contains(employee.Id)" @onchange="args => ToggleCreateHelper(employee.Id, args)" />
+                                        <span class="form-check-label">@employee.Name</span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Ubicacion</label>
+                            <InputText class="form-control" @bind-Value="CreateRequest.Ubicacion" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Costo estimado</label>
+                            <InputNumber class="form-control" @bind-Value="CreateRequest.EstimatedCost" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Descripcion</label>
+                            <InputTextArea class="form-control" rows="2" @bind-Value="CreateRequest.Descripcion" />
+                        </div>
+                    </div>
+                    <button class="btn btn-primary mt-3" type="button" @onclick="CreateFromTemplateAsync" disabled="@IsCreating">
+                        @(IsCreating ? "Creando..." : "Crear orden")
+                    </button>
+                }
+            </div>
+        </section>
+    }
+
     <div class="row g-3">
         <div class="col-12 col-xl-4">
             <section class="card shadow-sm">
@@ -162,44 +252,45 @@
                             </span>
                         }
                     </div>
-                    <div class="table-responsive mb-3">
-                        <table class="table table-sm align-middle">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width: 5rem;">Orden</th>
-                                    <th>Titulo</th>
-                                    <th>Descripcion</th>
-                                    <th style="width: 10rem;">Foto</th>
-                                    <th></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @if (Editor.Steps.Count == 0)
-                                {
-                                    <tr><td colspan="5" class="text-center text-muted py-3">Agrega al menos un paso.</td></tr>
-                                }
-                                else
-                                {
-                                    @for (var index = 0; index < Editor.Steps.Count; index++)
-                                    {
-                                        var step = Editor.Steps[index];
-                                        <tr>
-                                            <td><InputNumber class="form-control form-control-sm" @bind-Value="step.Secuencia" /></td>
-                                            <td><InputText class="form-control form-control-sm" @bind-Value="step.Titulo" /></td>
-                                            <td><InputText class="form-control form-control-sm" @bind-Value="step.Descripcion" /></td>
-                                            <td>
-                                                <select class="form-select form-select-sm" @bind="step.PoliticaFoto">
-                                                    <option value="NO_PERMITIDA">No permitida</option>
-                                                    <option value="OPCIONAL">Opcional</option>
-                                                    <option value="REQUERIDA">Requerida</option>
-                                                </select>
-                                            </td>
-                                            <td class="text-end"><button class="btn btn-sm btn-outline-danger" type="button" @onclick="() => RemoveStep(step)">Quitar</button></td>
-                                        </tr>
-                                    }
-                                }
-                            </tbody>
-                        </table>
+                    <div class="orden-template-steps mb-3">
+                        @if (Editor.Steps.Count == 0)
+                        {
+                            <div class="text-center text-muted py-3">Agrega al menos un paso.</div>
+                        }
+                        else
+                        {
+                            @for (var index = 0; index < Editor.Steps.Count; index++)
+                            {
+                                var step = Editor.Steps[index];
+                                <article class="orden-template-step">
+                                    <div class="orden-template-step__meta">
+                                        <div>
+                                            <label class="form-label">Orden</label>
+                                            <InputNumber class="form-control form-control-sm" @bind-Value="step.Secuencia" />
+                                        </div>
+                                        <div>
+                                            <label class="form-label">Foto</label>
+                                            <select class="form-select form-select-sm" @bind="step.PoliticaFoto">
+                                                <option value="NO_PERMITIDA">No permitida</option>
+                                                <option value="OPCIONAL">Opcional</option>
+                                                <option value="REQUERIDA">Requerida</option>
+                                            </select>
+                                        </div>
+                                        <button class="btn btn-sm btn-outline-danger" type="button" @onclick="() => RemoveStep(step)">Quitar</button>
+                                    </div>
+                                    <div class="orden-template-step__body">
+                                        <div>
+                                            <label class="form-label">Titulo</label>
+                                            <InputTextArea class="form-control form-control-sm orden-template-step__title" rows="2" @bind-Value="step.Titulo" />
+                                        </div>
+                                        <div>
+                                            <label class="form-label">Descripcion</label>
+                                            <InputTextArea class="form-control form-control-sm orden-template-step__description" rows="4" @bind-Value="step.Descripcion" />
+                                        </div>
+                                    </div>
+                                </article>
+                            }
+                        }
                     </div>
 
                     <div class="row g-2 align-items-end mb-3">
@@ -209,11 +300,11 @@
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Titulo</label>
-                            <InputText class="form-control" @bind-Value="NewStep.Titulo" />
+                            <InputTextArea class="form-control orden-template-step__title" rows="2" @bind-Value="NewStep.Titulo" />
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Descripcion</label>
-                            <InputText class="form-control" @bind-Value="NewStep.Descripcion" />
+                            <InputTextArea class="form-control orden-template-step__description" rows="4" @bind-Value="NewStep.Descripcion" />
                         </div>
                         <div class="col-md-2">
                             <label class="form-label">Foto</label>
@@ -237,93 +328,6 @@
 
             @if (SelectedTemplate is not null)
             {
-                <section class="card shadow-sm mb-3">
-                    <div class="card-body">
-                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
-                            <div>
-                                <h2 class="h5 mb-1">Crear orden desde plantilla</h2>
-                                <div class="small text-muted">
-                                    Se usara la version publicada de @SelectedTemplate.Nombre.
-                                </div>
-                            </div>
-                            @if (!CanCreateFromSelectedTemplate)
-                            {
-                                <span class="badge text-bg-warning">Requiere plantilla activa y publicada</span>
-                            }
-                        </div>
-
-                        @if (!CanCreateFromSelectedTemplate)
-                        {
-                            <div class="alert alert-info mb-0">
-                                Publica la plantilla y mantenla activa para crear ordenes de trabajo reales desde ella.
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="row g-3">
-                                <div class="col-md-8">
-                                    <label class="form-label">Titulo</label>
-                                    <InputText class="form-control" @bind-Value="CreateRequest.Titulo" />
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label">Prioridad</label>
-                                    <select class="form-select" @bind="CreateRequest.Prioridad">
-                                        <option value="NORMAL">Normal</option>
-                                        <option value="BAJA">Baja</option>
-                                        <option value="ALTA">Alta</option>
-                                        <option value="URGENTE">Urgente</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Responsable</label>
-                                    <select class="form-select" @bind="CreateRequest.OwnerEmployeeId">
-                                        <option value="0">Selecciona responsable</option>
-                                        @foreach (var employee in Employees)
-                                        {
-                                            <option value="@employee.Id">@employee.Name</option>
-                                        }
-                                    </select>
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label">Fecha</label>
-                                    <InputDate class="form-control" @bind-Value="CreateRequest.FechaProgramada" />
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label">Vence</label>
-                                    <InputDate class="form-control" @bind-Value="CreateRequest.FechaVencimiento" />
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label">Ayudantes</label>
-                                    <div class="d-flex flex-wrap gap-3">
-                                        @foreach (var employee in Employees)
-                                        {
-                                            <label class="form-check mb-0">
-                                                <input class="form-check-input" type="checkbox" checked="@CreateHelperIds.Contains(employee.Id)" @onchange="args => ToggleCreateHelper(employee.Id, args)" />
-                                                <span class="form-check-label">@employee.Name</span>
-                                            </label>
-                                        }
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Ubicacion</label>
-                                    <InputText class="form-control" @bind-Value="CreateRequest.Ubicacion" />
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Costo estimado</label>
-                                    <InputNumber class="form-control" @bind-Value="CreateRequest.EstimatedCost" />
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label">Descripcion</label>
-                                    <InputTextArea class="form-control" rows="2" @bind-Value="CreateRequest.Descripcion" />
-                                </div>
-                            </div>
-                            <button class="btn btn-primary mt-3" type="button" @onclick="CreateFromTemplateAsync" disabled="@IsCreating">
-                                @(IsCreating ? "Creando..." : "Crear orden")
-                            </button>
-                        }
-                    </div>
-                </section>
-
                 <section class="card shadow-sm">
                     <div class="card-body">
                         <h2 class="h5 mb-3">Mapeo de suites para limpieza</h2>

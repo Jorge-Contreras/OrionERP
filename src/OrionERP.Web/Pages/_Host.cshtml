@@ -92,6 +92,26 @@
         return true;
     };
 
+    window.orionCalendar = window.orionCalendar || {};
+    window.orionCalendar.scrollTodayIntoView = (container) => {
+        if (!container || typeof container.querySelector !== "function") {
+            return;
+        }
+
+        window.requestAnimationFrame(() => {
+            const todayHeader = container.querySelector("thead th.calendar-day-today");
+            if (!todayHeader) {
+                return;
+            }
+
+            const stickyColumn = container.querySelector(".calendar-room-col");
+            const stickyWidth = stickyColumn ? stickyColumn.getBoundingClientRect().width : 0;
+            const targetLeft = todayHeader.offsetLeft - stickyWidth - 12;
+            const maxLeft = Math.max(container.scrollWidth - container.clientWidth, 0);
+            container.scrollLeft = Math.min(Math.max(targetLeft, 0), maxLeft);
+        });
+    };
+
     window.pickBankFile = async () => {
         const readFileAsText = (file) => new Promise((resolve, reject) => {
             const reader = new FileReader();

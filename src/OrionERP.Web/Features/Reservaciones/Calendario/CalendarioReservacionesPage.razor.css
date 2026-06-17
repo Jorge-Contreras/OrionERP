@@ -131,8 +131,30 @@
 }
 
 .calendar-room-col {
-  min-width: 180px;
-  max-width: 180px;
+  width: 132px;
+  min-width: 132px;
+  max-width: 132px;
+  white-space: normal;
+}
+
+.calendar-room-name {
+  display: -webkit-box;
+  overflow: hidden;
+  font-weight: 600;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.calendar-room-type {
+  overflow: hidden;
+  margin-top: 0.1rem;
+  color: #6c757d;
+  font-size: 0.72rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .calendar-day-col {
@@ -375,5 +397,11 @@
 
   .calendar-header-actions .btn {
     width: 100%;
+  }
+
+  .calendar-room-col {
+    width: 108px;
+    min-width: 108px;
+    max-width: 108px;
   }
 }

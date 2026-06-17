@@ -363,37 +363,51 @@ WITH CuentasBancoFiltradas AS (
        AND cc.RFC = cb.RFC
     WHERE cb.RFC = @Rfc
       AND (@AccountId IS NULL OR cb.Cuenta_Banco_ID = @AccountId)
+),
+RegistroBancoPendienteLineas AS (
+    SELECT DISTINCT
+        rc.ID,
+        rc.TransaccionID,
+        rc.Debe,
+        rc.Haber
+    FROM dbo.Registro_Contable AS rc
+    INNER JOIN CuentasBancoFiltradas AS cbf
+        ON rc.Nivel1 = cbf.Nivel1
+       AND rc.Nivel2 = cbf.Nivel2
+       AND rc.Nivel3 = cbf.Nivel3
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM bancos.Movimiento_Transaccion AS mt
+        INNER JOIN bancos.Movimientos AS m
+            ON m.Movimiento_ID = mt.Movimiento_ID
+        WHERE mt.Transaccion_ID = rc.TransaccionID
+          AND m.Cuenta_Banco_ID = cbf.Cuenta_Banco_ID
+    )
+),
+RegistroBancoPendiente AS (
+    SELECT
+        TransaccionID,
+        CAST(COUNT(*) AS int) AS BankRegistroLineCount,
+        CAST(ISNULL(SUM(Debe), 0) AS decimal(19,2)) AS BankRegistroDebe,
+        CAST(ISNULL(SUM(Haber), 0) AS decimal(19,2)) AS BankRegistroHaber
+    FROM RegistroBancoPendienteLineas
+    GROUP BY TransaccionID
 )
 SELECT
     t.ID AS TransaccionId,
     t.Fecha,
     t.Forma_Pago AS FormaPago,
     t.Concepto,
-    CAST(ISNULL(t.Monto, 0) AS decimal(19,2)) AS Monto
+    CAST(ISNULL(t.Monto, 0) AS decimal(19,2)) AS Monto,
+    rb.BankRegistroLineCount,
+    rb.BankRegistroDebe,
+    rb.BankRegistroHaber
 FROM dbo.Transacciones AS t
+INNER JOIN RegistroBancoPendiente AS rb
+    ON rb.TransaccionID = t.ID
 WHERE t.RFC = @Rfc
   AND t.Fecha >= @StartDate
   AND t.Fecha < @EndDate
-  AND EXISTS (
-      SELECT 1
-      FROM CuentasBancoFiltradas AS cbf
-      WHERE EXISTS (
-          SELECT 1
-          FROM dbo.Registro_Contable AS rc
-          WHERE rc.TransaccionID = t.ID
-            AND rc.Nivel1 = cbf.Nivel1
-            AND rc.Nivel2 = cbf.Nivel2
-            AND rc.Nivel3 = cbf.Nivel3
-      )
-        AND NOT EXISTS (
-          SELECT 1
-          FROM bancos.Movimiento_Transaccion AS mt
-          INNER JOIN bancos.Movimientos AS m
-              ON m.Movimiento_ID = mt.Movimiento_ID
-          WHERE mt.Transaccion_ID = t.ID
-            AND m.Cuenta_Banco_ID = cbf.Cuenta_Banco_ID
-      )
-  )
 ORDER BY t.Fecha DESC, t.ID DESC;";
 
     var parameters = new

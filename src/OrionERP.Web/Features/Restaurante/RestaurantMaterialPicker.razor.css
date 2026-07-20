@@ -1,0 +1,181 @@
+.restaurant-material-picker {
+  display: grid;
+  gap: .35rem;
+  min-width: 0;
+  width: 100%;
+  color: #25322d;
+}
+
+.restaurant-material-picker > label {
+  color: #52615b;
+  font-size: .8rem;
+  font-weight: 800;
+}
+
+.restaurant-material-picker__control {
+  display: grid;
+  grid-template-columns: 1.7rem minmax(0, 1fr) auto auto;
+  align-items: center;
+  min-height: 2.75rem;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #bdccc5;
+  border-radius: .68rem;
+  background: #fff;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.restaurant-material-picker__control:focus-within,
+.restaurant-material-picker__control.is-open {
+  border-color: #2d8067;
+  box-shadow: 0 0 0 3px rgba(45, 128, 103, .16);
+}
+
+.restaurant-material-picker__control > .oi {
+  justify-self: end;
+  color: #668077;
+  font-size: .86rem;
+}
+
+.restaurant-material-picker__control input {
+  min-width: 0;
+  min-height: 2.65rem;
+  width: 100%;
+  padding: .55rem .4rem;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent;
+  color: #17221e;
+  text-overflow: ellipsis;
+}
+
+.restaurant-material-picker__control input::placeholder {
+  color: #71817a;
+}
+
+.restaurant-material-picker__clear,
+.restaurant-material-picker__toggle {
+  display: grid;
+  place-items: center;
+  min-width: 2.5rem;
+  min-height: 2.65rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #51665e;
+}
+
+.restaurant-material-picker__clear {
+  min-width: 2rem;
+  color: #8b3e32;
+  font-size: 1.25rem;
+}
+
+.restaurant-material-picker__clear:hover,
+.restaurant-material-picker__toggle:hover {
+  background: #edf4f1;
+}
+
+.restaurant-material-picker__results {
+  display: grid;
+  max-height: 19rem;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border: 1px solid #c8d5cf;
+  border-radius: .72rem;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(28, 54, 44, .14);
+  -webkit-overflow-scrolling: touch;
+}
+
+.restaurant-material-picker__summary {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .52rem .65rem;
+  border-bottom: 1px solid #dde6e2;
+  background: #f2f7f5;
+  color: #5c6c65;
+  font-size: .72rem;
+}
+
+.restaurant-material-picker__summary button {
+  min-height: 2rem;
+  border: 0;
+  background: transparent;
+  color: #276b56;
+  font-weight: 850;
+}
+
+.restaurant-material-picker__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  min-height: 3.15rem;
+  width: 100%;
+  padding: .58rem .7rem;
+  border: 0;
+  border-bottom: 1px solid #edf1ef;
+  background: #fff;
+  color: #25322d;
+  text-align: left;
+}
+
+.restaurant-material-picker__option:hover,
+.restaurant-material-picker__option:focus-visible {
+  outline: 0;
+  background: #edf7f3;
+}
+
+.restaurant-material-picker__option.is-selected {
+  background: #def0e8;
+}
+
+.restaurant-material-picker__option span {
+  display: grid;
+  min-width: 0;
+}
+
+.restaurant-material-picker__option strong {
+  overflow: hidden;
+  font-size: .84rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.restaurant-material-picker__option small,
+.restaurant-material-picker__option em {
+  color: #687a72;
+  font-size: .72rem;
+  font-style: normal;
+}
+
+.restaurant-material-picker__option em {
+  max-width: 45%;
+  text-align: right;
+}
+
+.restaurant-material-picker__empty {
+  margin: 0;
+  padding: 1rem;
+  color: #6f7d77;
+  text-align: center;
+}
+
+.restaurant-material-picker--compact .restaurant-material-picker__results {
+  max-height: 15rem;
+}
+
+@media (max-width: 600px) {
+  .restaurant-material-picker__option em {
+    display: none;
+  }
+}

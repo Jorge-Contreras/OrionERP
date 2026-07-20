@@ -1,0 +1,31 @@
+.restaurant-admin { padding: 1.25rem; max-width: 1440px; margin: 0 auto; color: #172033; }
+.restaurant-admin__hero { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:1.5rem; border-radius:1.4rem; background:linear-gradient(135deg,#132a25,#295b4d); color:white; box-shadow:0 18px 50px rgba(19,42,37,.18); }
+.restaurant-admin__hero h1 { margin:.15rem 0; font-size:clamp(1.6rem,3vw,2.5rem); }
+.restaurant-admin__hero p { margin:0; color:#d9eee8; }
+.restaurant-admin__hero .restaurant-admin__rfc-context { display:inline-flex; gap:.3rem; margin-top:.45rem; padding:.35rem .6rem; border:1px solid rgba(255,255,255,.28); border-radius:.55rem; background:rgba(0,0,0,.12); font-size:.82rem; letter-spacing:.02em; }
+.restaurant-admin__eyebrow,.restaurant-admin__panel-title span { text-transform:uppercase; letter-spacing:.13em; font-size:.72rem; font-weight:800; color:#9bd4c4; }
+.restaurant-admin__tabs { display:flex; gap:.5rem; margin:1rem 0; padding:.35rem; width:max-content; background:#e9efed; border-radius:999px; }
+.restaurant-admin__tabs button { border:0; background:transparent; padding:.7rem 1.2rem; border-radius:999px; font-weight:800; }
+.restaurant-admin__tabs button.is-active { background:white; color:#1d6b58; box-shadow:0 4px 12px rgba(0,0,0,.08); }
+.restaurant-admin__grid { display:grid; grid-template-columns:minmax(300px,.9fr) minmax(360px,1.1fr); gap:1rem; }
+.restaurant-admin__panel { background:white; border:1px solid #dce5e2; border-radius:1.25rem; padding:1.2rem; box-shadow:0 10px 30px rgba(23,32,51,.06); }
+.restaurant-admin__panel-title { display:flex; align-items:center; justify-content:space-between; gap:.75rem; margin-bottom:1rem; }
+.restaurant-admin__panel-title h2 { margin:.15rem 0 0; font-size:1.25rem; }
+.restaurant-admin__list { display:grid; gap:.55rem; max-height:64vh; overflow:auto; scrollbar-color:#8db4aa transparent; }
+.restaurant-admin__list-item,.restaurant-admin__product-row { width:100%; border:1px solid #e1e8e6; background:#f9fbfa; border-radius:.9rem; padding:.8rem; display:flex; align-items:center; justify-content:space-between; gap:.75rem; text-align:left; }
+.restaurant-admin__list-item:hover,.restaurant-admin__product-row:hover { border-color:#4d9c87; background:#f2faf7; }
+.restaurant-admin__list-item span:first-child,.restaurant-admin__product-row span:nth-child(2) { display:grid; flex:1; }
+.restaurant-admin__list-item small,.restaurant-admin__product-row small { color:#6b7788; }
+.restaurant-admin__thumb { width:3.5rem; height:3.5rem; border-radius:.8rem; display:grid; place-items:center; background:#dfe9e6; overflow:hidden; flex:none; }
+.restaurant-admin__thumb img { width:100%; height:100%; object-fit:cover; }
+.restaurant-admin__form { display:grid; gap:.9rem; align-content:start; }
+.restaurant-admin__form label { display:grid; gap:.35rem; font-weight:750; font-size:.87rem; color:#465264; }
+.restaurant-admin__form input,.restaurant-admin__form select,.restaurant-admin__form textarea { width:100%; min-height:2.8rem; border:1px solid #cbd7d3; border-radius:.75rem; padding:.65rem .75rem; background:white; color:#172033; }
+.restaurant-admin__form input:focus,.restaurant-admin__form select:focus,.restaurant-admin__form textarea:focus { outline:3px solid rgba(45,139,115,.18); border-color:#2d8b73; }
+.restaurant-admin__form-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; }
+.restaurant-admin__form .restaurant-admin__check { display:flex; align-items:center; gap:.55rem; }
+.restaurant-admin__form .restaurant-admin__check input { width:1.15rem; min-height:1.15rem; accent-color:#26745f; }
+.restaurant-admin__preview { width:100%; max-height:260px; object-fit:cover; border-radius:1rem; }
+.restaurant-admin__uploading { display:flex; align-items:center; gap:.55rem; padding:.65rem .75rem; border-radius:.7rem; background:#eef7f4; color:#236652; font-size:.85rem; font-weight:800; }
+.restaurant-admin__empty { color:#6b7788; padding:1rem; text-align:center; }
+@media(max-width:850px){.restaurant-admin__grid{grid-template-columns:1fr}.restaurant-admin__hero{align-items:flex-start;flex-direction:column}.restaurant-admin__form-row{grid-template-columns:1fr}}

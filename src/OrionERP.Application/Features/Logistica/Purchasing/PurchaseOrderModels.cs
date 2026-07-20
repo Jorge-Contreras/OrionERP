@@ -213,6 +213,11 @@ public sealed class PurchaseReceiptLineCreateRequest
 
   [Range(typeof(decimal), "0.0001", "999999999", ErrorMessage = "La cantidad recibida debe ser mayor a 0.")]
   public decimal Quantity { get; set; }
+
+  [StringLength(80)]
+  public string? LotCode { get; set; }
+
+  public DateTime? ExpiresAt { get; set; }
 }
 
 public sealed class PurchaseOrderCatalogDto

@@ -1,13 +1,16 @@
 using Microsoft.AspNetCore.Components;
 using OrionERP.Application.Features.Logistica.BusinessPartners;
 using OrionERP.Web.Services;
+using OrionERP.Application.Features.Logistica.Shared;
+using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Logistica.Vendors;
 
-public partial class ProveedoresLogisticaPage : ComponentBase
+public partial class ProveedoresLogisticaPage : ComponentBase, IDisposable
 {
   [Inject] private IBusinessPartnerService BusinessPartnerService { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
+  [Inject] private IUserRfcState RfcState { get; set; } = default!;
 
   protected BusinessPartnerFilter Filter { get; set; } = new() { VendorOnly = true };
   protected BusinessPartnerCatalogDto Catalog { get; set; } = new();
@@ -21,15 +24,27 @@ public partial class ProveedoresLogisticaPage : ComponentBase
 
   protected override async Task OnInitializedAsync()
   {
-    Catalog = await BusinessPartnerService.GetCatalogAsync();
+    RfcState.Changed += HandleRfcChanged;
+    Catalog = await BusinessPartnerService.GetCatalogAsync(CurrentRfc);
     await BuscarAsync();
   }
+
+  private void HandleRfcChanged() => _ = InvokeAsync(async () =>
+  {
+    NuevoRegistro();
+    Catalog = await BusinessPartnerService.GetCatalogAsync(CurrentRfc);
+    await BuscarAsync();
+    StateHasChanged();
+  });
+
+  public void Dispose() => RfcState.Changed -= HandleRfcChanged;
 
   protected async Task BuscarAsync()
   {
     IsBusy = true;
     try
     {
+      Filter.OwnerRfc = CurrentRfc;
       Partners = (await BusinessPartnerService.GetPartnersAsync(Filter)).ToList();
     }
     catch (Exception ex)
@@ -55,7 +70,7 @@ public partial class ProveedoresLogisticaPage : ComponentBase
   {
     try
     {
-      var detail = await BusinessPartnerService.GetPartnerAsync(businessPartnerId);
+      var detail = await BusinessPartnerService.GetPartnerAsync(CurrentRfc, businessPartnerId);
       if (detail is null)
       {
         UiMessages.ShowWarning("El socio seleccionado ya no existe.");
@@ -65,6 +80,7 @@ public partial class ProveedoresLogisticaPage : ComponentBase
       SelectedPartnerId = detail.Id;
       Editor = new BusinessPartnerUpsertRequest
       {
+        OwnerRfc = CurrentRfc,
         Id = detail.Id,
         LegacyProveedorId = detail.LegacyProveedorId,
         DisplayName = detail.DisplayName,
@@ -118,6 +134,7 @@ public partial class ProveedoresLogisticaPage : ComponentBase
     try
     {
       Editor.Roles = SelectedRoles.ToArray();
+      Editor.OwnerRfc = CurrentRfc;
       Editor.VendorProfile = VendorProfile;
 
       var result = await BusinessPartnerService.SavePartnerAsync(Editor);
@@ -157,4 +174,6 @@ public partial class ProveedoresLogisticaPage : ComponentBase
     {
       IsApproved = true
     };
+
+  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
 }

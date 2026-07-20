@@ -6,10 +6,11 @@ using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Purchasing;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Web.Services;
+using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Logistica.Purchasing;
 
-public partial class ComprasPage : ComponentBase
+public partial class ComprasPage : ComponentBase, IDisposable
 {
   private const int MaterialSearchTake = 25;
 
@@ -21,6 +22,7 @@ public partial class ComprasPage : ComponentBase
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private IJSRuntime Js { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
+  [Inject] private IUserRfcState RfcState { get; set; } = default!;
 
   protected PurchaseOrderFilter Filter { get; set; } = new() { OpenOnly = true };
   protected PurchaseOrderCatalogDto Catalog { get; set; } = new();
@@ -109,12 +111,23 @@ public partial class ComprasPage : ComponentBase
 
   protected override async Task OnInitializedAsync()
   {
+    RfcState.Changed += HandleRfcChanged;
     CurrentUserName = await ResolveCurrentUserAsync();
     Catalog = await PurchaseOrderService.GetCatalogAsync();
     ResetAutoPoRequest();
     await LoadOrdersAsync();
     NuevaOrden();
   }
+
+  private void HandleRfcChanged() => _ = InvokeAsync(async () =>
+  {
+    Catalog = await PurchaseOrderService.GetCatalogAsync();
+    NuevaOrden();
+    await LoadOrdersAsync();
+    StateHasChanged();
+  });
+
+  public void Dispose() => RfcState.Changed -= HandleRfcChanged;
 
   protected async Task BuscarOrdenesAsync()
   {
@@ -252,6 +265,7 @@ public partial class ComprasPage : ComponentBase
     {
       MaterialSearchResults = (await MaterialService.GetMaterialsAsync(new MaterialFilter
       {
+        Rfc = CurrentRfc,
         VendorId = Editor.BusinessPartnerId,
         SearchText = MaterialSearchText,
         Status = "ACTIVO",
@@ -286,7 +300,7 @@ public partial class ComprasPage : ComponentBase
 
     try
     {
-      var detail = await MaterialService.GetMaterialAsync(item.Id);
+      var detail = await MaterialService.GetMaterialAsync(CurrentRfc, item.Id);
       if (detail is null)
       {
         UiMessages.ShowWarning("El material seleccionado ya no existe.");
@@ -555,7 +569,9 @@ public partial class ComprasPage : ComponentBase
       .Select(item => new PurchaseReceiptLineCreateRequest
       {
         PurchaseOrderLineAllocationId = item.AllocationId,
-        Quantity = item.ReceiveNowQuantity
+        Quantity = item.ReceiveNowQuantity,
+        LotCode = item.LotCode,
+        ExpiresAt = item.ExpiresAt
       })
       .ToList();
 
@@ -1062,6 +1078,8 @@ public partial class ComprasPage : ComponentBase
   private static string FormatQuantity(decimal value)
     => value.ToString("N2", CultureInfo.CurrentCulture);
 
+  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+
   private static PurchaseOrderUpsertRequest CreateEditor()
     => new()
     {
@@ -1129,5 +1147,7 @@ public partial class ComprasPage : ComponentBase
     public decimal ReceivedQuantity { get; set; }
     public decimal RemainingQuantity => Math.Max(PlannedQuantity - ReceivedQuantity, 0m);
     public decimal ReceiveNowQuantity { get; set; }
+    public string? LotCode { get; set; }
+    public DateTime? ExpiresAt { get; set; }
   }
 }

@@ -28,6 +28,7 @@ using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 using OrionERP.Web.Configuration;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
 using OrionERP.Web.Features.Reservaciones.OpenClaw;
+using OrionERP.Web.Features.Restaurante;
 using OrionERP.Web.Identity;
 using OrionERP.Web.State;
 using OrionERP.Web.Services;
@@ -37,13 +38,26 @@ using OrionERP.Web.Services;
 var builder = WebApplication.CreateBuilder(args);
 ExcelPackage.License.SetNonCommercialOrganization("Orion Habitat de Mexico S.A. de C.V.");
 
-var appDataDirectory = Path.Combine(AppContext.BaseDirectory, "App_Data", "keys");
+var appDataDirectory = builder.Environment.IsDevelopment()
+  ? Path.Combine(
+      Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+      "Grupo Orion",
+      "OrionERP",
+      "DataProtectionKeys")
+  : Path.Combine(AppContext.BaseDirectory, "App_Data", "keys");
 Directory.CreateDirectory(appDataDirectory);
 
 builder.Services
     .AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(appDataDirectory))
     .SetApplicationName("OrionERP");
+
+builder.Services.AddAntiforgery(options =>
+{
+  // Cookies are scoped by host rather than port. A product-specific name keeps
+  // other ASP.NET apps running on localhost from replacing the login token.
+  options.Cookie.Name = ".OrionERP.Management.Antiforgery";
+});
 
 // --- CONFIG: JSON is source of truth; ignore arbitrary env vars -----------------
 builder.Configuration.Sources.Clear();
@@ -217,6 +231,8 @@ builder.Services.AddScoped<IUserRfcState, UserRfcState>();
 builder.Services.AddScoped<ICurrentRfcAccessor, UserRfcStateAccessor>();
 builder.Services.AddScoped<ProtectedLocalStorage>();
 builder.Services.AddScoped<ProtectedSessionStorage>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<RestaurantRealtimeClient>();
 builder.Services.AddScoped<IRfcContext, RfcContext>();
 builder.Services.AddScoped<IAuthorizationHandler, RoleForRfcHandler>();
 builder.Services.AddAuthorization(options =>
@@ -224,12 +240,31 @@ builder.Services.AddAuthorization(options =>
   options.AddPolicy(
       "RoleForSelectedRfc",
       policy => policy.Requirements.Add(new RoleForRfcRequirement("Administrador")));
+  options.AddPolicy(
+      "RestaurantAdmin",
+      policy => policy.Requirements.Add(new RoleForRfcRequirement("RestauranteAdmin", "RestauranteSupervisor")));
+  options.AddPolicy(
+      "RestaurantPos",
+      policy => policy.Requirements.Add(new RoleForRfcRequirement("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin")));
+  options.AddPolicy(
+      "RestaurantKitchen",
+      policy => policy.Requirements.Add(new RoleForRfcRequirement("RestauranteCocina", "RestauranteSupervisor", "RestauranteAdmin")));
+  options.AddPolicy(
+      "RestaurantDisplay",
+      policy => policy.Requirements.Add(new RoleForRfcRequirement("RestaurantePantalla", "RestauranteSupervisor", "RestauranteAdmin")));
+  options.AddPolicy(
+      "RestaurantCash",
+      policy => policy.Requirements.Add(new RoleForRfcRequirement("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin")));
 });
 
 builder.Services.AddRazorPages();      // Identity UI depends on Razor Pages
 builder.Services.AddServerSideBlazor(options =>
 {
   options.DisconnectedCircuitRetentionPeriod = disconnectedCircuitRetentionPeriod;
+  // BrowserFileStream comparte el tiempo límite de JS interop. Las fotografías se
+  // redimensionan en el navegador y pueden requerir más que el valor predeterminado
+  // en conexiones lentas, especialmente durante depuración.
+  options.JSInteropDefaultCallTimeout = TimeSpan.FromMinutes(2);
 });
 builder.Services.Configure<OpenClawApiOptions>(builder.Configuration.GetSection(OpenClawApiOptions.SectionName));
 builder.Services.Configure<GraphMailOptions>(builder.Configuration.GetSection(GraphMailOptions.SectionName));
@@ -259,6 +294,7 @@ builder.Services.Configure<ReservacionPdfOptions>(options =>
 builder.Services.AddCfdiCargarXmlSat();
 builder.Services.AddOrionServices();
 builder.Services.AddScoped<IUiMessageService, UiMessageService>();
+builder.Services.AddHostedService<RestaurantEventBroadcaster>();
 
 builder.Host.UseWindowsService();
 
@@ -309,11 +345,14 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
+app.UseMiddleware<LoginAntiforgeryRecoveryMiddleware>();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapRazorPages();
 app.MapBlazorHub();
+app.MapHub<RestaurantEventsHub>("/hubs/restaurante");
 app.MapOpenClawReservationsApi();
 app.MapGet("/bonhomia", (IOptions<BonhomiaCheckoutOptions> options) =>
 {

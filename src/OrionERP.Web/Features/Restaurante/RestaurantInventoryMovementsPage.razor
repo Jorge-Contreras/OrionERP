@@ -1,0 +1,196 @@
+@page "/restaurante/inventario"
+@attribute [Authorize(Policy = "RestaurantAdmin")]
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using OrionERP.Application.Features.Logistica.Shared
+@using OrionERP.Application.Features.Logistica.Stock
+@using OrionERP.Web.State
+@inject IInventoryMovementService MovementService
+@inject IUserRfcState RfcState
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Restaurante · Movimientos de inventario</PageTitle>
+
+<main class="movement-shell">
+  <header class="movement-hero">
+    <div><span>Inventario supervisado</span><h1>Traspasos, ajustes y merma</h1><p>Movimientos atómicos por RFC, ubicación y lote, con motivo y evidencia.</p></div>
+    <button type="button" @onclick="LoadAsync">Actualizar</button>
+  </header>
+  @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(isError ? "alert-danger" : "alert-success")">@message</div> }
+
+  <section class="movement-summary">
+    <div><span>Ubicaciones</span><strong>@workspace.Locations.Count</strong></div>
+    <div><span>Materiales con saldo</span><strong>@workspace.Balances.Count</strong></div>
+    <div><span>Lotes disponibles</span><strong>@workspace.Lots.Count</strong></div>
+    <div><span>Reservado</span><strong>@workspace.Balances.Sum(item => item.ReservedQuantity).ToString("0.##")</strong></div>
+  </section>
+
+  <section class="movement-grid">
+    <article class="movement-card">
+      <header><div><span>Entre ubicaciones</span><h2>Traspaso atómico</h2></div><span class="oi oi-transfer"></span></header>
+      <div class="movement-fields">
+        <label>Código<input @bind="transfer.TransferCode" /></label>
+        <label>Origen<select @bind="transfer.FromLocationId" @bind:after="ResetTransferLines"><option value="0">Seleccionar…</option>@foreach (var location in workspace.Locations) { <option value="@location.Id">@location.Code · @location.Name</option> }</select></label>
+        <label>Destino<select @bind="transfer.ToLocationId"><option value="0">Seleccionar…</option>@foreach (var location in workspace.Locations.Where(item => item.Id != transfer.FromLocationId)) { <option value="@location.Id">@location.Code · @location.Name</option> }</select></label>
+      </div>
+      <label>Motivo<textarea @bind="transfer.Reason" rows="2"></textarea></label>
+      <div class="movement-lines">
+        @foreach (var line in transfer.Lines)
+        {
+          <div class="movement-line">
+            <RestaurantMaterialPicker Options="@SourceMaterialOptions"
+                                      @bind-Value="line.MaterialId"
+                                      Changed="@(_ => ResetTransferLot(line))"
+                                      Compact="true"
+                                      Placeholder="Buscar material con existencia…" />
+            @if (RequiresLot(line.MaterialId))
+            {
+              <select @bind="line.MaterialLotId"><option value="">Lote…</option>@foreach (var lot in SourceLots(line.MaterialId)) { <option value="@lot.Id">@lot.LotCode · @lot.AvailableQuantity.ToString("0.####") @ExpirationLabel(lot)</option> }</select>
+            }
+            <input type="number" min="0.0001" step="0.0001" @bind="line.Quantity" aria-label="Cantidad" />
+            <button type="button" @onclick="() => transfer.Lines.Remove(line)" aria-label="Eliminar partida">×</button>
+          </div>
+        }
+        <button type="button" class="movement-add" @onclick="() => transfer.Lines.Add(new())">Agregar partida</button>
+      </div>
+      <button type="button" class="movement-submit" disabled="@isBusy" @onclick="PostTransferAsync">Aplicar traspaso</button>
+    </article>
+
+    <article class="movement-card movement-card--adjustment">
+      <header><div><span>Documento supervisado</span><h2>Ajuste o merma</h2></div><span class="oi oi-warning"></span></header>
+      <div class="movement-fields">
+        <label>Código<input @bind="adjustment.AdjustmentCode" /></label>
+        <label>Tipo<select @bind="adjustment.AdjustmentType"><option value="Adjustment">Ajuste</option><option value="Waste">Merma</option></select></label>
+        <label>Motivo corto<input @bind="adjustment.ReasonCode" placeholder="CADUCIDAD, ROTURA…" /></label>
+      </div>
+      <label>Justificación<textarea @bind="adjustment.Reason" rows="2"></textarea></label>
+      <label class="movement-evidence">Evidencia<InputFile OnChange="CaptureEvidenceAsync" accept="image/*,.pdf" /><span>@(string.IsNullOrWhiteSpace(adjustment.EvidenceFileName) ? "Imagen o PDF, máximo 10 MB" : adjustment.EvidenceFileName)</span></label>
+      <div class="movement-lines">
+        @foreach (var line in adjustment.Lines)
+        {
+          <div class="movement-line movement-line--adjustment">
+            <select @bind="line.LocationId" @bind:after="() => ResetAdjustmentMaterial(line)"><option value="0">Ubicación…</option>@foreach (var location in workspace.Locations) { <option value="@location.Id">@location.Code · @location.Name</option> }</select>
+            <RestaurantMaterialPicker Options="@AdjustmentMaterialOptions(line.LocationId)"
+                                      @bind-Value="line.MaterialId"
+                                      Changed="@(_ => ResetAdjustmentLot(line))"
+                                      Compact="true"
+                                      Disabled="@(line.LocationId <= 0)"
+                                      Placeholder="Buscar material en la ubicación…" />
+            @if (RequiresLot(line.MaterialId))
+            {
+              <select @bind="line.MaterialLotId"><option value="">Lote…</option>@foreach (var lot in AdjustmentLots(line.LocationId, line.MaterialId)) { <option value="@lot.Id">@lot.LotCode · @lot.AvailableQuantity.ToString("0.####")</option> }</select>
+            }
+            <input type="number" step="0.0001" @bind="line.QuantityDelta" aria-label="Diferencia; negativa para salida" />
+            <button type="button" @onclick="() => adjustment.Lines.Remove(line)" aria-label="Eliminar partida">×</button>
+          </div>
+        }
+        <button type="button" class="movement-add" @onclick="() => adjustment.Lines.Add(new())">Agregar partida</button>
+      </div>
+      <button type="button" class="movement-submit movement-submit--danger" disabled="@isBusy" @onclick="PostAdjustmentAsync">Aplicar con evidencia</button>
+    </article>
+  </section>
+</main>
+
+@code {
+  private const long MaxEvidenceBytes = 10 * 1024 * 1024;
+  private InventoryMovementWorkspaceDto workspace = new();
+  private InventoryTransferCreateRequest transfer = new();
+  private InventoryAdjustmentCreateRequest adjustment = new();
+  private bool isBusy;
+  private string? message;
+  private bool isError;
+  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private IEnumerable<InventoryBalanceOptionDto> SourceBalances => workspace.Balances
+    .Where(item => item.LocationId == transfer.FromLocationId && item.AvailableQuantity > 0)
+    .GroupBy(item => item.MaterialId).Select(group => group.First());
+  private IReadOnlyList<RestaurantMaterialOption> SourceMaterialOptions
+    => ToMaterialOptions(SourceBalances, includeAvailability: true);
+
+  protected override async Task OnInitializedAsync()
+  {
+    RfcState.Changed += OnRfcChanged;
+    ResetEditors();
+    await LoadAsync();
+  }
+
+  private async Task LoadAsync()
+  {
+    try { workspace = await MovementService.GetWorkspaceAsync(CurrentRfc); }
+    catch (Exception ex) { Show(ex.Message, true); }
+  }
+
+  private async Task PostTransferAsync()
+  {
+    await RunAsync(async userName => await MovementService.PostTransferAsync(transfer, userName));
+    if (!isError) { ResetEditors(); await LoadAsync(); }
+  }
+
+  private async Task PostAdjustmentAsync()
+  {
+    await RunAsync(async userName =>
+    {
+      adjustment.AuthorizedBy = userName;
+      return await MovementService.PostAdjustmentAsync(adjustment, userName);
+    });
+    if (!isError) { ResetEditors(); await LoadAsync(); }
+  }
+
+  private async Task RunAsync(Func<string, Task<LogisticsCommandResult>> action)
+  {
+    isBusy = true;
+    try
+    {
+      var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+      var result = await action(auth.User.Identity?.Name ?? "restaurante");
+      Show(result.Message, !result.Success);
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { isBusy = false; }
+  }
+
+  private async Task CaptureEvidenceAsync(InputFileChangeEventArgs args)
+  {
+    try
+    {
+      var file = args.File;
+      await using var stream = file.OpenReadStream(MaxEvidenceBytes);
+      using var memory = new MemoryStream();
+      await stream.CopyToAsync(memory);
+      adjustment.Evidence = memory.ToArray();
+      adjustment.EvidenceFileName = file.Name;
+    }
+    catch (Exception ex) { adjustment.Evidence = []; adjustment.EvidenceFileName = string.Empty; Show(ex.Message, true); }
+  }
+
+  private void ResetEditors()
+  {
+    var stamp = DateTime.Now.ToString("yyMMdd-HHmmss");
+    transfer = new() { Rfc = CurrentRfc, TransferCode = $"TR-{stamp}", Lines = [new()] };
+    adjustment = new() { Rfc = CurrentRfc, AdjustmentCode = $"AJ-{stamp}", AdjustmentType = "Adjustment", Lines = [new()] };
+  }
+  private void ResetTransferLines() { transfer.Lines = [new()]; }
+  private static void ResetTransferLot(InventoryTransferLineRequest line) { line.MaterialLotId = null; }
+  private static void ResetAdjustmentMaterial(InventoryAdjustmentLineRequest line) { line.MaterialId = 0; line.MaterialLotId = null; }
+  private static void ResetAdjustmentLot(InventoryAdjustmentLineRequest line) { line.MaterialLotId = null; }
+  private bool RequiresLot(int materialId) => workspace.Balances.Any(item => item.MaterialId == materialId && item.TrackLots);
+  private IEnumerable<InventoryLotOptionDto> SourceLots(int materialId) => workspace.Lots.Where(item => item.LocationId == transfer.FromLocationId && item.MaterialId == materialId);
+  private IEnumerable<InventoryBalanceOptionDto> AdjustmentBalances(int locationId) => workspace.Balances.Where(item => item.LocationId == locationId).GroupBy(item => item.MaterialId).Select(group => group.First());
+  private IReadOnlyList<RestaurantMaterialOption> AdjustmentMaterialOptions(int locationId)
+    => ToMaterialOptions(AdjustmentBalances(locationId), includeAvailability: true);
+  private IEnumerable<InventoryLotOptionDto> AdjustmentLots(int locationId, int materialId) => workspace.Lots.Where(item => item.LocationId == locationId && item.MaterialId == materialId);
+  private static IReadOnlyList<RestaurantMaterialOption> ToMaterialOptions(IEnumerable<InventoryBalanceOptionDto> balances, bool includeAvailability)
+    => balances
+      .Select(balance => new RestaurantMaterialOption(
+        balance.MaterialId,
+        balance.MaterialCode,
+        balance.MaterialName,
+        includeAvailability ? $"Disponible {balance.AvailableQuantity:0.####} {balance.UnitCode}" : null))
+      .OrderBy(material => material.Description, StringComparer.CurrentCultureIgnoreCase)
+      .ThenBy(material => material.Code, StringComparer.CurrentCultureIgnoreCase)
+      .ToList();
+  private static string ExpirationLabel(InventoryLotOptionDto lot) => lot.ExpirationDate.HasValue ? $"· cad. {lot.ExpirationDate:dd/MM/yy}" : string.Empty;
+  private void Show(string value, bool error) { message = value; isError = error; }
+  private void OnRfcChanged() => _ = InvokeAsync(async () => { ResetEditors(); await LoadAsync(); StateHasChanged(); });
+  public void Dispose() => RfcState.Changed -= OnRfcChanged;
+}

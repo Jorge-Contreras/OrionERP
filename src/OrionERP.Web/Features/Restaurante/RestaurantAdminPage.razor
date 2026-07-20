@@ -1,0 +1,378 @@
+@page "/restaurante/admin"
+@attribute [Authorize(Policy = "RestaurantAdmin")]
+@implements IDisposable
+@using OrionERP.Application.Features.Logistica.Materials
+@using OrionERP.Application.Features.Logistica.Shared
+@using OrionERP.Application.Features.Restaurante
+@using OrionERP.Web.State
+@inject IRestaurantCatalogService CatalogService
+@inject IMaterialService MaterialService
+@inject IUserRfcState RfcState
+
+<PageTitle>Restaurante · Administración</PageTitle>
+
+<main class="restaurant-admin">
+  <header class="restaurant-admin__hero">
+    <div>
+      <span class="restaurant-admin__eyebrow">Restaurante</span>
+      <h1>Catálogo y configuración</h1>
+      <p>Sedes, productos terminados, variantes, precio y disponibilidad por RFC.</p>
+      <p class="restaurant-admin__rfc-context"><strong>RFC activo:</strong> @RfcState.CurrentRfc</p>
+    </div>
+    <button type="button" class="btn btn-primary" @onclick="ReloadAsync" disabled="@isBusy">Actualizar</button>
+  </header>
+
+  @if (!string.IsNullOrWhiteSpace(message))
+  {
+    <div class="alert @(isError ? "alert-danger" : "alert-success")" role="status">@message</div>
+  }
+
+  <nav class="restaurant-admin__tabs" aria-label="Secciones administrativas">
+    <button type="button" class="@(tab == "sites" ? "is-active" : null)" @onclick='() => tab = "sites"'>Sedes</button>
+    <button type="button" class="@(tab == "products" ? "is-active" : null)" @onclick='() => tab = "products"'>Productos</button>
+  </nav>
+
+  @if (tab == "sites")
+  {
+    <section class="restaurant-admin__grid">
+      <article class="restaurant-admin__panel">
+        <div class="restaurant-admin__panel-title">
+          <div><span>Configuradas</span><h2>Sedes</h2></div>
+          <button type="button" class="btn btn-outline-primary btn-sm" @onclick="NewSite">Nueva sede</button>
+        </div>
+        <div class="restaurant-admin__list">
+          @foreach (var site in sites)
+          {
+            <button type="button" class="restaurant-admin__list-item" @onclick="() => EditSite(site)">
+              <span><strong>@site.Name</strong><small>@site.SiteCode · IVA @site.TaxRate.ToString("P0")</small></span>
+              <span class="badge @(site.IsEnabled ? "text-bg-success" : "text-bg-secondary")">@(site.IsEnabled ? "Habilitada" : "Deshabilitada")</span>
+            </button>
+          }
+          @if (sites.Count == 0)
+          {
+            <p class="restaurant-admin__empty">Crea la primera sede. Iniciará deshabilitada si no marcas la bandera operativa.</p>
+          }
+        </div>
+      </article>
+
+      <EditForm Model="siteEditor" OnValidSubmit="SaveSiteAsync" class="restaurant-admin__panel restaurant-admin__form">
+        <DataAnnotationsValidator />
+        <div class="restaurant-admin__panel-title"><div><span>Detalle</span><h2>@(siteEditor.Id.HasValue ? "Editar sede" : "Nueva sede")</h2></div></div>
+        <ValidationSummary />
+        <label>Código <InputText @bind-Value="siteEditor.SiteCode" /></label>
+        <label>Nombre <InputText @bind-Value="siteEditor.Name" /></label>
+        <label>Zona horaria <InputText @bind-Value="siteEditor.TimeZoneId" /></label>
+        <div class="restaurant-admin__form-row">
+          <label>IVA <InputNumber @bind-Value="siteEditor.TaxRate" step="0.01" /></label>
+          <label>Corte operativo <InputText @bind-Value="cutoffText" /></label>
+        </div>
+        <label class="restaurant-admin__check"><InputCheckbox @bind-Value="siteEditor.PricesIncludeTax" /> Los precios ya incluyen IVA</label>
+        <label class="restaurant-admin__check"><InputCheckbox @bind-Value="siteEditor.AllowSupervisorDeficit" /> Permitir venta con déficit supervisado</label>
+        <label class="restaurant-admin__check"><InputCheckbox @bind-Value="siteEditor.IsEnabled" /> Habilitar Restaurante en esta sede</label>
+        <label>Advertencia de alérgenos <InputTextArea @bind-Value="siteEditor.CrossContaminationWarning" /></label>
+        <button type="submit" class="btn btn-primary" disabled="@isSaving">@(isSaving ? "Guardando…" : "Guardar sede")</button>
+      </EditForm>
+    </section>
+  }
+  else
+  {
+    <section class="restaurant-admin__grid restaurant-admin__grid--products">
+      <article class="restaurant-admin__panel">
+        <div class="restaurant-admin__panel-title">
+          <div><span>Variantes y SKU</span><h2>Productos</h2></div>
+          <button type="button" class="btn btn-outline-primary btn-sm" @onclick="NewProduct">Nuevo producto</button>
+        </div>
+        <div class="restaurant-admin__list">
+          @foreach (var product in products)
+          {
+            <button type="button" class="restaurant-admin__product-row" @onclick="() => EditProduct(product)">
+              <span class="restaurant-admin__thumb">
+                @if (images.TryGetValue(product.Id, out var image)) { <img src="@image" alt="" /> } else { <span class="oi oi-image" aria-hidden="true"></span> }
+              </span>
+              <span><strong>@product.Name</strong><small>@product.Sku @(string.IsNullOrWhiteSpace(product.VariantName) ? null : $"· {product.VariantName}")</small></span>
+              <b>@product.Price.ToString("C")</b>
+            </button>
+          }
+          @if (products.Count == 0)
+          {
+            <p class="restaurant-admin__empty">No hay productos. Primero crea el material base en Logística y asígnalo aquí como SKU.</p>
+          }
+        </div>
+      </article>
+
+      <EditForm Model="productEditor" OnValidSubmit="SaveProductAsync" class="restaurant-admin__panel restaurant-admin__form">
+        <DataAnnotationsValidator />
+        <div class="restaurant-admin__panel-title"><div><span>Venta</span><h2>@(productEditor.Id.HasValue ? "Editar producto" : "Nuevo producto")</h2></div></div>
+        <ValidationSummary />
+        <RestaurantMaterialPicker Label="Material logístico"
+                                  Options="@materialOptions"
+                                  @bind-Value="productEditor.MaterialId"
+                                  Placeholder="Buscar material por código o nombre…" />
+        <div class="restaurant-admin__form-row">
+          <label>SKU <InputText @bind-Value="productEditor.Sku" /></label>
+          <label>Precio <InputNumber @bind-Value="productEditor.Price" /></label>
+        </div>
+        <label>Nombre comercial <InputText @bind-Value="productEditor.Name" /></label>
+        <label>Variante <InputText @bind-Value="productEditor.VariantName" placeholder="Ej. grande, sin azúcar" /></label>
+        <label>Descripción <InputTextArea @bind-Value="productEditor.Description" /></label>
+        <div class="restaurant-admin__form-row">
+          <label>Tipo
+            <InputSelect @bind-Value="productEditor.ProductType">
+              <option value="FinishedGood">Producto terminado</option>
+              <option value="SemiFinished">Semielaborado</option>
+              <option value="Resale">Reventa / snack</option>
+            </InputSelect>
+          </label>
+          <label>Modo
+            <InputSelect @bind-Value="productEditor.FulfillmentMode">
+              <option value="MakeToOrder">Preparado al ordenar</option>
+              <option value="MakeToStock">Producido por lote</option>
+              <option value="StockItem">Descontar existencia propia</option>
+            </InputSelect>
+          </label>
+        </div>
+        <label class="restaurant-admin__check"><InputCheckbox @bind-Value="productEditor.IsActive" /> Producto activo</label>
+        <label class="restaurant-admin__check"><InputCheckbox @bind-Value="productEditor.SoldOutOverride" /> Marcar agotado manualmente</label>
+        <label>Fotografía familiar (compartida por variantes)
+          <InputFile OnChange="OnImageSelectedAsync" accept="image/*" disabled="@isUploadingImage" />
+        </label>
+        @if (!string.IsNullOrWhiteSpace(imagePreview)) { <img class="restaurant-admin__preview" src="@imagePreview" alt="Vista previa del producto" /> }
+        <label>Fotografía exclusiva de esta variante
+          <InputFile OnChange="OnVariantImageSelectedAsync" accept="image/*" disabled="@isUploadingImage" />
+          @if (productEditor.Id.HasValue && selectedProductHasVariantImage && string.IsNullOrWhiteSpace(variantImagePreview)) { <small>Esta variante ya tiene una imagen propia; selecciona otra para reemplazarla.</small> }
+        </label>
+        @if (!string.IsNullOrWhiteSpace(variantImagePreview)) { <img class="restaurant-admin__preview" src="@variantImagePreview" alt="Vista previa de la variante" /> }
+        @if (isUploadingImage)
+        {
+          <div class="restaurant-admin__uploading" role="status" aria-live="polite"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Procesando fotografía…</div>
+        }
+        <button type="submit" class="btn btn-primary" disabled="@(isSaving || isUploadingImage)">@(isSaving ? "Guardando…" : isUploadingImage ? "Procesando fotografía…" : "Guardar producto")</button>
+      </EditForm>
+    </section>
+  }
+</main>
+
+@code {
+  private readonly MaterialFilter materialFilter = new() { Status = "ACTIVO", Take = 0 };
+  private List<RestaurantSiteDto> sites = [];
+  private List<RestaurantProductDto> products = [];
+  private List<MaterialListItemDto> materials = [];
+  private IReadOnlyList<RestaurantMaterialOption> materialOptions = [];
+  private Dictionary<long, string> images = [];
+  private RestaurantSiteUpsertRequest siteEditor = NewSiteEditor();
+  private RestaurantProductUpsertRequest productEditor = NewProductEditor();
+  private string cutoffText = "04:00";
+  private string tab = "sites";
+  private string? message;
+  private string? imagePreview;
+  private string? variantImagePreview;
+  private bool selectedProductHasVariantImage;
+  private bool isError;
+  private bool isBusy;
+  private bool isSaving;
+  private bool isUploadingImage;
+  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+
+  protected override async Task OnInitializedAsync()
+  {
+    RfcState.Changed += OnRfcChanged;
+    // El RFC forma parte del contexto de sesión, no es un dato editable. Debe estar
+    // presente antes de que DataAnnotations valide el primer envío del formulario.
+    NewSite();
+    NewProduct();
+    await ReloadAsync();
+  }
+
+  private async Task ReloadAsync()
+  {
+    isBusy = true;
+    message = null;
+    try
+    {
+      var rfc = CurrentRfc;
+      sites = (await CatalogService.GetSitesAsync(rfc)).ToList();
+      products = (await CatalogService.GetProductsAsync(rfc)).ToList();
+      materialFilter.Rfc = rfc;
+      materials = (await MaterialService.GetMaterialsAsync(materialFilter)).ToList();
+      materialOptions = RestaurantMaterialOption.FromMaterials(materials);
+      images = [];
+      foreach (var product in products.Where(item => item.HasImage).Take(100))
+      {
+        var image = await CatalogService.GetProductImageAsync(rfc, product.Id, true);
+        if (image.HasValue) images[product.Id] = $"data:{image.Value.ContentType};base64,{Convert.ToBase64String(image.Value.Bytes)}";
+      }
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { isBusy = false; }
+  }
+
+  private void NewSite()
+  {
+    siteEditor = NewSiteEditor();
+    siteEditor.Rfc = CurrentRfc;
+    cutoffText = "04:00";
+  }
+
+  private void EditSite(RestaurantSiteDto site)
+  {
+    siteEditor = new RestaurantSiteUpsertRequest
+    {
+      Rfc = CurrentRfc, Id = site.Id, SiteCode = site.SiteCode, Name = site.Name,
+      TimeZoneId = site.TimeZoneId, OperationalDayCutoff = site.OperationalDayCutoff,
+      TaxRate = site.TaxRate, PricesIncludeTax = site.PricesIncludeTax, IsEnabled = site.IsEnabled,
+      AllowSupervisorDeficit = site.AllowSupervisorDeficit, CrossContaminationWarning = site.CrossContaminationWarning
+    };
+    cutoffText = site.OperationalDayCutoff.ToString(@"hh\:mm");
+  }
+
+  private async Task SaveSiteAsync()
+  {
+    if (!TimeSpan.TryParse(cutoffText, out var cutoff)) { Show("El corte operativo debe usar formato HH:mm.", true); return; }
+    siteEditor.Rfc = CurrentRfc;
+    siteEditor.OperationalDayCutoff = cutoff;
+    await SaveAsync(() => CatalogService.SaveSiteAsync(siteEditor), "sites");
+  }
+
+  private void NewProduct()
+  {
+    productEditor = NewProductEditor();
+    productEditor.Rfc = CurrentRfc;
+    imagePreview = null;
+    variantImagePreview = null;
+    selectedProductHasVariantImage = false;
+  }
+
+  private void EditProduct(RestaurantProductDto product)
+  {
+    productEditor = new RestaurantProductUpsertRequest
+    {
+      Rfc = CurrentRfc, Id = product.Id, ProductCardId = product.ProductCardId, MaterialId = product.MaterialId,
+      Sku = product.Sku, Name = product.Name, Description = product.Description, VariantName = product.VariantName,
+      Price = product.Price, KitchenStationId = product.KitchenStationId, PreparationMinutes = product.PreparationMinutes,
+      IsActive = product.IsActive, SoldOutOverride = product.IsSoldOut,
+      ProductType = product.ProductType, FulfillmentMode = product.FulfillmentMode
+    };
+    imagePreview = images.GetValueOrDefault(product.Id);
+    variantImagePreview = product.HasVariantImage ? images.GetValueOrDefault(product.Id) : null;
+    selectedProductHasVariantImage = product.HasVariantImage;
+  }
+
+  private async Task SaveProductAsync()
+  {
+    productEditor.Rfc = CurrentRfc;
+    if (productEditor.MaterialId <= 0) { Show("Selecciona un material.", true); return; }
+    await SaveAsync(() => CatalogService.SaveProductAsync(productEditor), "products");
+  }
+
+  private async Task SaveAsync(Func<Task<RestaurantCommandResult>> action, string selectedTab)
+  {
+    isSaving = true;
+    try
+    {
+      var result = await action();
+      Show(result.Message, !result.Success);
+      if (result.Success) { tab = selectedTab; await ReloadAsync(); }
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { isSaving = false; }
+  }
+
+  private async Task OnImageSelectedAsync(InputFileChangeEventArgs args)
+  {
+    await ProcessSelectedImageAsync(args.File, isVariant: false);
+  }
+
+  private async Task OnVariantImageSelectedAsync(InputFileChangeEventArgs args)
+  {
+    await ProcessSelectedImageAsync(args.File, isVariant: true);
+  }
+
+  private async Task ProcessSelectedImageAsync(IBrowserFile file, bool isVariant)
+  {
+    if (isUploadingImage)
+    {
+      return;
+    }
+    if (!file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) || file.Size > 8 * 1024 * 1024)
+    {
+      Show(isVariant
+        ? "La fotografía de variante debe ser una imagen de hasta 8 MB."
+        : "La fotografía debe ser una imagen de hasta 8 MB.", true);
+      return;
+    }
+
+    isUploadingImage = true;
+    message = null;
+    await InvokeAsync(StateHasChanged);
+    using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+    try
+    {
+      // Cada BrowserFileStream debe consumirse y cerrarse antes de solicitar el
+      // siguiente. Dos streams remotos abiertos a la vez pueden dejar uno sin datos.
+      var fullBytes = await ReadResizedImageAsync(file, 1600, 8 * 1024 * 1024, timeout.Token);
+      var thumbnailBytes = await ReadResizedImageAsync(file, 480, 2 * 1024 * 1024, timeout.Token);
+      var preview = $"data:image/jpeg;base64,{Convert.ToBase64String(thumbnailBytes)}";
+
+      if (isVariant)
+      {
+        productEditor.VariantImage = fullBytes;
+        productEditor.VariantImageThumbnail = thumbnailBytes;
+        productEditor.VariantImageFileName = Path.ChangeExtension(file.Name, ".jpg");
+        productEditor.VariantImageContentType = "image/jpeg";
+        variantImagePreview = preview;
+        selectedProductHasVariantImage = true;
+      }
+      else
+      {
+        productEditor.FamilyImage = fullBytes;
+        productEditor.FamilyImageThumbnail = thumbnailBytes;
+        productEditor.ImageFileName = Path.ChangeExtension(file.Name, ".jpg");
+        productEditor.ImageContentType = "image/jpeg";
+        imagePreview = preview;
+      }
+    }
+    catch (TimeoutException)
+    {
+      Show("Se agotó el tiempo al transferir la fotografía. No se guardó una imagen incompleta; vuelve a seleccionarla y verifica la conexión.", true);
+    }
+    catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+    {
+      Show("La fotografía tardó más de dos minutos en procesarse. Vuelve a intentarlo con una imagen más pequeña o una conexión estable.", true);
+    }
+    catch (IOException ex) when (ex.InnerException is TimeoutException)
+    {
+      Show("Se interrumpió la transferencia de la fotografía. Vuelve a seleccionar el archivo para reintentar.", true);
+    }
+    catch (Exception ex)
+    {
+      Show($"No se pudo procesar la fotografía: {ex.Message}", true);
+    }
+    finally
+    {
+      isUploadingImage = false;
+    }
+  }
+
+  private static async Task<byte[]> ReadResizedImageAsync(
+    IBrowserFile source,
+    int maxPixels,
+    long maxBytes,
+    CancellationToken ct)
+  {
+    var resized = await source.RequestImageFileAsync("image/jpeg", maxPixels, maxPixels);
+    await using var stream = resized.OpenReadStream(maxBytes, ct);
+    using var buffer = new MemoryStream();
+    await stream.CopyToAsync(buffer, 64 * 1024, ct);
+    if (buffer.Length == 0)
+    {
+      throw new InvalidOperationException("El navegador devolvió una imagen vacía.");
+    }
+    return buffer.ToArray();
+  }
+
+  private void Show(string value, bool error) { message = value; isError = error; }
+  private void OnRfcChanged() => _ = InvokeAsync(async () => { NewSite(); NewProduct(); await ReloadAsync(); StateHasChanged(); });
+  public void Dispose() => RfcState.Changed -= OnRfcChanged;
+  private static RestaurantSiteUpsertRequest NewSiteEditor() => new();
+  private static RestaurantProductUpsertRequest NewProductEditor() => new() { IsActive = true };
+}

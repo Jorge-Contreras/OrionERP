@@ -1,0 +1,186 @@
+@page "/restaurante/cocina"
+@attribute [Authorize(Policy = "RestaurantKitchen")]
+@implements IAsyncDisposable
+@using Microsoft.AspNetCore.Components.Authorization
+@using OrionERP.Application.Features.Logistica.Shared
+@using OrionERP.Application.Features.Restaurante
+@using OrionERP.Web.State
+@inject IRestaurantCatalogService CatalogService
+@inject IRestaurantOrderService OrderService
+@inject IUserRfcState RfcState
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject RestaurantRealtimeClient Realtime
+
+<PageTitle>Restaurante · Cocina</PageTitle>
+
+<main class="kds-shell">
+  <header class="kds-header">
+    <div><span>KDS · cocina</span><h1>@(sites.FirstOrDefault(site => site.Id == selectedSiteId)?.Name ?? "Órdenes activas")</h1></div>
+    <div>
+      @if (sites.Count > 1) { <select aria-label="Sede" @onchange="ChangeSiteAsync">@foreach (var site in sites) { <option value="@site.Id" selected="@(site.Id == selectedSiteId)">@site.Name</option> }</select> }
+      <button type="button" @onclick="LoadBoardAsync"><span class="oi oi-reload"></span> Actualizar</button>
+    </div>
+  </header>
+
+  @if (!string.IsNullOrWhiteSpace(error)) { <div class="kds-alert">@error</div> }
+  @if (isLoading && board.Orders.Count == 0) { <section class="kds-empty"><span class="spinner-border"></span><h2>Cargando comandas…</h2></section> }
+  else if (board.Orders.Count == 0) { <section class="kds-empty"><span class="oi oi-check"></span><h2>Todo al día</h2><p>Las nuevas comandas aparecerán automáticamente.</p></section> }
+  else
+  {
+    <section class="kds-board">
+      @foreach (var order in board.Orders)
+      {
+        <article class="kds-ticket kds-ticket--@order.Status.ToLowerInvariant() @(order.Priority > 0 ? "kds-ticket--priority" : string.Empty)">
+          <header>
+            <div><span>@OrderTypeLabel(order.OrderType)</span><strong>@order.Folio.ToString("000")</strong>@if (!string.IsNullOrWhiteSpace(order.TableName)) { <b>@order.TableName</b> }@if (order.Priority > 0) { <mark>Prioridad</mark> }</div>
+            <time class="@TimerClass(order)">@Elapsed(order)</time>
+          </header>
+          @if (order.Priority > 0)
+          {
+            <div class="kds-priority-note"><span class="oi oi-warning"></span> @order.PriorityReason</div>
+          }
+          <div class="kds-lines">
+            @foreach (var line in order.Lines.Where(line => line.Status != "Cancelled"))
+            {
+              <section class="kds-line kds-line--@line.Status.ToLowerInvariant()">
+                <div class="kds-line__copy"><strong><b>@line.Quantity.ToString("0.##")×</b> @line.ProductName</strong>@if (line.Modifiers.Count > 0) { <small>@string.Join(" · ", line.Modifiers)</small> }@if (!string.IsNullOrWhiteSpace(line.Notes)) { <em>@line.Notes</em> }</div>
+                <div class="kds-line__action">
+                  @if (line.Status == "Pending") { <button type="button" class="is-start" disabled="@busyLineIds.Contains(line.Id)" @onclick='() => SetStatusAsync(line, "Preparing")'>Preparar</button> }
+                  else if (line.Status == "Preparing") { <button type="button" class="is-ready" disabled="@busyLineIds.Contains(line.Id)" @onclick='() => SetStatusAsync(line, "Ready")'>Listo</button> }
+                  else if (line.Status == "Ready")
+                  {
+                    <span class="kds-ready-label"><span class="oi oi-check"></span> Listo</span>
+                    @if (canSupervise) { <button type="button" class="is-undo" disabled="@busyLineIds.Contains(line.Id)" @onclick="() => RevertStatusAsync(line)">Deshacer</button> }
+                  }
+                  else { <span>@line.Status</span> }
+                </div>
+              </section>
+            }
+          </div>
+          <footer><span>@order.Status</span><span>@order.Lines.Count línea(s)</span></footer>
+          @if (canSupervise)
+          {
+            <div class="kds-supervisor">
+              @if (order.Priority == 0)
+              {
+                <input aria-label="Motivo de prioridad para orden @order.Folio" placeholder="Motivo para priorizar" value="@GetPriorityReason(order.Id)" @oninput="args => SetPriorityReason(order.Id, args.Value?.ToString())" />
+                <button type="button" disabled="@busyOrderIds.Contains(order.Id)" @onclick="() => SetPriorityAsync(order, 1)">Priorizar</button>
+              }
+              else
+              {
+                <small>Autorizó: @order.PrioritizedBy</small>
+                <button type="button" class="is-remove" disabled="@busyOrderIds.Contains(order.Id)" @onclick="() => SetPriorityAsync(order, 0)">Retirar prioridad</button>
+              }
+            </div>
+          }
+        </article>
+      }
+    </section>
+  }
+</main>
+
+@code {
+  private readonly CancellationTokenSource disposeCts = new();
+  private readonly HashSet<long> busyLineIds = [];
+  private readonly HashSet<Guid> busyOrderIds = [];
+  private readonly Dictionary<Guid, string> priorityReasons = [];
+  private List<RestaurantSiteDto> sites = [];
+  private RestaurantKitchenBoardDto board = new();
+  private int selectedSiteId;
+  private bool isLoading;
+  private bool canSupervise;
+  private string? error;
+  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+
+  protected override async Task OnInitializedAsync()
+  {
+    var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+    canSupervise = auth.User.IsInRole("Administrador") || auth.User.IsInRole("RestauranteAdmin") || auth.User.IsInRole("RestauranteSupervisor");
+    RfcState.Changed += OnRfcChanged;
+    Realtime.EventReceived += OnRealtimeEventAsync;
+    await LoadSitesAsync();
+    _ = RefreshLoopAsync(disposeCts.Token);
+  }
+
+  private async Task LoadSitesAsync()
+  {
+    try
+    {
+      sites = (await CatalogService.GetSitesAsync(CurrentRfc)).Where(site => site.IsEnabled).ToList();
+      if (!sites.Any(site => site.Id == selectedSiteId)) selectedSiteId = sites.FirstOrDefault()?.Id ?? 0;
+      await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId);
+      await LoadBoardAsync();
+    }
+    catch (Exception ex) { error = ex.Message; }
+  }
+
+  private async Task LoadBoardAsync()
+  {
+    if (selectedSiteId == 0) { board = new(); return; }
+    isLoading = true;
+    try { board = await OrderService.GetKitchenBoardAsync(CurrentRfc, selectedSiteId); error = null; }
+    catch (Exception ex) { error = ex.Message; }
+    finally { isLoading = false; }
+  }
+
+  private async Task SetStatusAsync(RestaurantOrderLineDto line, string status)
+  {
+    if (!busyLineIds.Add(line.Id)) return;
+    try
+    {
+      var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+      var result = await OrderService.UpdateLineStatusAsync(CurrentRfc, line.Id, status, auth.User.Identity?.Name ?? "cocina");
+      if (!result.Success) error = result.Message;
+      await LoadBoardAsync();
+    }
+    catch (Exception ex) { error = ex.Message; }
+    finally { busyLineIds.Remove(line.Id); }
+  }
+
+  private async Task RevertStatusAsync(RestaurantOrderLineDto line)
+  {
+    if (!canSupervise || !busyLineIds.Add(line.Id)) return;
+    try
+    {
+      var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+      var result = await OrderService.RevertLineStatusAsync(CurrentRfc, line.Id, auth.User.Identity?.Name ?? "supervisor");
+      if (!result.Success) error = result.Message;
+      await LoadBoardAsync();
+    }
+    catch (Exception ex) { error = ex.Message; }
+    finally { busyLineIds.Remove(line.Id); }
+  }
+
+  private async Task SetPriorityAsync(RestaurantOrderDto order, byte priority)
+  {
+    if (!canSupervise || !busyOrderIds.Add(order.Id)) return;
+    try
+    {
+      var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+      var reason = priority == 0 ? "Prioridad retirada desde KDS" : GetPriorityReason(order.Id);
+      var result = await OrderService.SetOrderPriorityAsync(CurrentRfc, order.Id, priority, reason, auth.User.Identity?.Name ?? "supervisor");
+      if (!result.Success) error = result.Message;
+      else { error = null; priorityReasons.Remove(order.Id); }
+      await LoadBoardAsync();
+    }
+    catch (Exception ex) { error = ex.Message; }
+    finally { busyOrderIds.Remove(order.Id); }
+  }
+
+  private string GetPriorityReason(Guid orderId) => priorityReasons.GetValueOrDefault(orderId, string.Empty);
+  private void SetPriorityReason(Guid orderId, string? value) => priorityReasons[orderId] = value?.TrimStart() ?? string.Empty;
+
+  private async Task ChangeSiteAsync(ChangeEventArgs args) { if (int.TryParse(args.Value?.ToString(), out var id)) { selectedSiteId = id; await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId); await LoadBoardAsync(); } }
+  private Task OnRealtimeEventAsync(RestaurantRealtimeEvent eventInfo) => InvokeAsync(async () => { await LoadBoardAsync(); StateHasChanged(); });
+  private async Task RefreshLoopAsync(CancellationToken ct)
+  {
+    using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+    try { while (await timer.WaitForNextTickAsync(ct)) await InvokeAsync(async () => { await LoadBoardAsync(); StateHasChanged(); }); }
+    catch (OperationCanceledException) { }
+  }
+  private string Elapsed(RestaurantOrderDto order) { var elapsed = DateTime.UtcNow - order.CreatedAt; return $"{Math.Max(0, (int)elapsed.TotalMinutes):00}:{Math.Abs(elapsed.Seconds):00}"; }
+  private string TimerClass(RestaurantOrderDto order) => (DateTime.UtcNow - order.CreatedAt).TotalMinutes switch { >= 20 => "is-late", >= 10 => "is-warning", _ => "" };
+  private static string OrderTypeLabel(string type) => type switch { "Pickup" => "Recoger", "Table" => "Mesa", "Delivery" => "Domicilio", _ => type };
+  private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; board = new(); await LoadSitesAsync(); StateHasChanged(); });
+  public ValueTask DisposeAsync() { RfcState.Changed -= OnRfcChanged; Realtime.EventReceived -= OnRealtimeEventAsync; disposeCts.Cancel(); disposeCts.Dispose(); return ValueTask.CompletedTask; }
+}

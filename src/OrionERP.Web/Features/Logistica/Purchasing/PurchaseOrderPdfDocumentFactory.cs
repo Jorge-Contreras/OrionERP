@@ -1,16 +1,20 @@
 using System.Globalization;
 using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Purchasing;
+using OrionERP.Application.Features.Logistica.Shared;
+using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Logistica.Purchasing;
 
 public sealed class PurchaseOrderPdfDocumentFactory : IPurchaseOrderPdfDocumentFactory
 {
   private readonly IMaterialService _materialService;
+  private readonly IUserRfcState _rfcState;
 
-  public PurchaseOrderPdfDocumentFactory(IMaterialService materialService)
+  public PurchaseOrderPdfDocumentFactory(IMaterialService materialService, IUserRfcState rfcState)
   {
     _materialService = materialService ?? throw new ArgumentNullException(nameof(materialService));
+    _rfcState = rfcState ?? throw new ArgumentNullException(nameof(rfcState));
   }
 
   public async Task<PurchaseOrderPdfDocumentModel> CreateFromDetailAsync(PurchaseOrderDetailDto detail, CancellationToken ct = default)
@@ -23,7 +27,7 @@ public sealed class PurchaseOrderPdfDocumentFactory : IPurchaseOrderPdfDocumentF
       .Distinct()
       .ToArray();
 
-    var thumbnails = (await _materialService.GetMaterialThumbnailsAsync(materialIds, ct))
+    var thumbnails = (await _materialService.GetMaterialThumbnailsAsync(LogisticsRfc.Require(_rfcState.CurrentRfc), materialIds, ct))
       .Where(thumbnail => thumbnail.Bytes.Length > 0)
       .ToDictionary(thumbnail => thumbnail.Id, thumbnail => thumbnail.Bytes);
 

@@ -14,6 +14,7 @@ public class MaterialServicePagingTests
 
     await service.GetMaterialsAsync(new MaterialFilter
     {
+      Rfc = "OHM191112Q26",
       SearchText = "aceite",
       CategoryId = 3,
       VendorId = 5,
@@ -50,6 +51,7 @@ public class MaterialServicePagingTests
 
     await service.GetMaterialsAsync(new MaterialFilter
     {
+      Rfc = "OHM191112Q26",
       SearchText = "filtro",
       Skip = 25,
       Take = 0

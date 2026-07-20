@@ -1,5 +1,5 @@
 using System.Linq;
-using System.Threading.Tasks;              // <- add if not present
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 
 
@@ -23,7 +23,8 @@ namespace OrionERP.Infrastructure.Auth
                 return Task.CompletedTask;
             }
 
-            if (!context.User.IsInRole(requirement.RequiredRole))
+            if (!context.User.IsInRole("Administrador") &&
+                !requirement.RequiredRoles.Any(context.User.IsInRole))
             {
                 return Task.CompletedTask;
             }

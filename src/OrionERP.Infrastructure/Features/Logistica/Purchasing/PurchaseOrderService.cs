@@ -354,15 +354,24 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         existingDraftId.Value);
     }
 
-    var candidateRows = (await LoadAutoReplenishmentRowsAsync(conn, request.BusinessPartnerId, roomScope.RoomIds, ct))
-      .Where(row => row.ProjectedQuantity <= row.MinQuantity && row.RawNeedQuantity > 0m)
+    var defaultLeadTimeDays = await GetVendorDefaultLeadTimeDaysAsync(conn, request.BusinessPartnerId, ct);
+    var replenishmentRows = await LoadAutoReplenishmentRowsAsync(conn, request.BusinessPartnerId, roomScope.RoomIds, ct);
+    foreach (var row in replenishmentRows)
+    {
+      var leadTimeDays = Math.Max(defaultLeadTimeDays ?? 0, 0);
+      var velocityReorderPoint = row.DailyConsumptionVelocity * leadTimeDays;
+      var targetQuantity = Math.Max(row.MaxQuantity, row.DailyConsumptionVelocity * (leadTimeDays + 7));
+      row.RawNeedQuantity = Math.Max(0, targetQuantity - row.ProjectedQuantity);
+      row.ShouldReorder = row.ProjectedQuantity <= Math.Max(row.MinQuantity, velocityReorderPoint);
+    }
+    var candidateRows = replenishmentRows
+      .Where(row => row.ShouldReorder && row.RawNeedQuantity > 0m)
       .ToList();
     if (candidateRows.Count == 0)
     {
       return LogisticsCommandResult.Fail("No hay materiales por reordenar para el proveedor seleccionado.");
     }
 
-    var defaultLeadTimeDays = await GetVendorDefaultLeadTimeDaysAsync(conn, request.BusinessPartnerId, ct);
     var draftRequest = BuildAutoDraftRequest(request, candidateRows, defaultLeadTimeDays);
     await using var tx = await conn.BeginTransactionAsync(ct);
 
@@ -528,11 +537,18 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       foreach (var item in groupedLines)
       {
         var allocation = allocationRows[item.Key];
+        var receiptInput = request.Lines.First(line => line.PurchaseOrderLineAllocationId == item.Key);
         var remainingQuantity = allocation.PlannedQuantity - allocation.ReceivedQuantity;
         if (item.Value > remainingQuantity)
         {
           await tx.RollbackAsync(ct);
           return LogisticsCommandResult.Fail($"La recepción excede la cantidad pendiente para {allocation.MaterialDescription} en {allocation.LocationName}.");
+        }
+
+        if (allocation.TrackLots && (string.IsNullOrWhiteSpace(receiptInput.LotCode) || !receiptInput.ExpiresAt.HasValue))
+        {
+          await tx.RollbackAsync(ct);
+          return LogisticsCommandResult.Fail($"{allocation.MaterialDescription} requiere lote y caducidad para su recepción.");
         }
       }
 
@@ -585,7 +601,9 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       foreach (var item in groupedLines)
       {
         var allocation = allocationRows[item.Key];
+        var receiptInput = request.Lines.First(line => line.PurchaseOrderLineAllocationId == item.Key);
         var quantity = item.Value;
+        var unitCost = allocation.UnitPrice.GetValueOrDefault();
 
         await conn.ExecuteAsync(
           new CommandDefinition(
@@ -633,6 +651,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                   LocationId,
                   MaterialId,
                   Quantity,
+                  AverageUnitCost,
                   LastPurchaseDate,
                   CreatedAt,
                   UpdatedAt
@@ -642,6 +661,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                   @LocationId,
                   @MaterialId,
                   @Quantity,
+                  @AverageUnitCost,
                   @LastPurchaseDate,
                   SYSUTCDATETIME(),
                   SYSUTCDATETIME()
@@ -654,6 +674,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                 allocation.LocationId,
                 allocation.MaterialId,
                 Quantity = quantity,
+                AverageUnitCost = unitCost,
                 LastPurchaseDate = request.ReceiptDate.Date
               },
               tx,
@@ -665,6 +686,9 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         {
           stockBalanceId = stockBalance.Id;
           quantityAfter = stockBalance.Quantity + quantity;
+          var weightedAverageCost = quantityAfter <= 0
+            ? unitCost
+            : ((stockBalance.Quantity * stockBalance.AverageUnitCost) + (quantity * unitCost)) / quantityAfter;
 
           if (stockBalance.IsRemoved)
           {
@@ -673,6 +697,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                 """
                 UPDATE logistica.StockBalance
                 SET Quantity = Quantity + @Quantity,
+                    AverageUnitCost = @AverageUnitCost,
                     LastPurchaseDate = @LastPurchaseDate,
                     IsRemoved = 0,
                     RemovedAt = NULL,
@@ -684,6 +709,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                 {
                   StockBalanceId = stockBalanceId,
                   Quantity = quantity,
+                  AverageUnitCost = weightedAverageCost,
                   LastPurchaseDate = request.ReceiptDate.Date
                 },
                 tx,
@@ -696,6 +722,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                 """
                 UPDATE logistica.StockBalance
                 SET Quantity = Quantity + @Quantity,
+                    AverageUnitCost = @AverageUnitCost,
                     LastPurchaseDate = @LastPurchaseDate,
                     UpdatedAt = SYSUTCDATETIME()
                 WHERE Id = @StockBalanceId;
@@ -704,11 +731,50 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                 {
                   StockBalanceId = stockBalanceId,
                   Quantity = quantity,
+                  AverageUnitCost = weightedAverageCost,
                   LastPurchaseDate = request.ReceiptDate.Date
                 },
                 tx,
                 cancellationToken: ct));
           }
+        }
+
+        long? materialLotId = null;
+        if (allocation.TrackLots)
+        {
+          materialLotId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            """
+            DECLARE @LotId bigint =
+            (
+              SELECT Id FROM logistica.MaterialLot WITH (UPDLOCK, HOLDLOCK)
+              WHERE MaterialId=@MaterialId AND LotCode=@LotCode
+            );
+            IF @LotId IS NULL
+            BEGIN
+              INSERT INTO logistica.MaterialLot
+                (Rfc, MaterialId, LotCode, ExpiresAt, UnitCost, SourceType, SourceId, CreatedBy)
+              VALUES
+                (CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')), @MaterialId, @LotCode, @ExpiresAt, @UnitCost, 'PurchaseReceipt', @ReceiptId, @CreatedBy);
+              SET @LotId = SCOPE_IDENTITY();
+            END;
+            MERGE logistica.LotBalance AS target
+            USING (SELECT @LotId AS MaterialLotId, @MaterialId AS MaterialId, @LocationId AS LocationId) AS source
+              ON target.MaterialLotId=source.MaterialLotId AND target.LocationId=source.LocationId
+            WHEN MATCHED THEN UPDATE SET Quantity=target.Quantity+@Quantity, UpdatedAt=SYSUTCDATETIME()
+            WHEN NOT MATCHED THEN INSERT (Rfc, MaterialLotId, MaterialId, LocationId, Quantity)
+              VALUES (CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')), source.MaterialLotId, source.MaterialId, source.LocationId, @Quantity);
+            SELECT @LotId;
+            """, new
+            {
+              allocation.MaterialId,
+              LotCode = receiptInput.LotCode!.Trim().ToUpperInvariant(),
+              ExpiresAt = receiptInput.ExpiresAt!.Value.Date,
+              UnitCost = unitCost,
+              ReceiptId = receiptId,
+              CreatedBy = actor,
+              allocation.LocationId,
+              Quantity = quantity
+            }, tx, cancellationToken: ct));
         }
 
         await conn.ExecuteAsync(
@@ -722,6 +788,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                 LocationId,
                 MaterialId,
                 Quantity,
+                MaterialLotId,
+                UnitCost,
                 CreatedAt
             )
             VALUES
@@ -732,6 +800,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                 @LocationId,
                 @MaterialId,
                 @Quantity,
+                @MaterialLotId,
+                @UnitCost,
                 SYSUTCDATETIME()
             );
             """,
@@ -742,7 +812,9 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
               allocation.PurchaseOrderLineId,
               allocation.LocationId,
               allocation.MaterialId,
-              Quantity = quantity
+              Quantity = quantity,
+              MaterialLotId = materialLotId,
+              UnitCost = unitCost
             },
             tx,
             cancellationToken: ct));
@@ -1543,6 +1615,17 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           WHERE po.BusinessPartnerId = @BusinessPartnerId
             AND po.[Status] IN @ProjectedStatuses
           GROUP BY line.MaterialId, allocation.LocationId
+      ),
+      RecentConsumption AS (
+          SELECT
+              transactionInfo.MaterialId,
+              transactionInfo.LocationId,
+              CAST(SUM(-transactionInfo.QuantityDelta) / 28.0 AS decimal(18,4)) AS DailyConsumptionVelocity
+          FROM logistica.StockTransaction transactionInfo
+          WHERE transactionInfo.OccurredAt >= DATEADD(day,-28,SYSUTCDATETIME())
+            AND transactionInfo.TransactionType IN ('RestaurantConsumption','ProductionConsumption')
+            AND transactionInfo.QuantityDelta < 0
+          GROUP BY transactionInfo.MaterialId,transactionInfo.LocationId
       )
       SELECT
           sb.MaterialId,
@@ -1560,11 +1643,13 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           location.LocationName,
           location.LocationCode,
           CAST(sb.Quantity AS decimal(18,4)) AS CurrentQuantity,
+          CAST(ISNULL(sb.ReservedQuantity,0) AS decimal(18,4)) AS ReservedQuantity,
           CAST(sb.MinQuantity AS decimal(18,4)) AS MinQuantity,
           CAST(sb.MaxQuantity AS decimal(18,4)) AS MaxQuantity,
           CAST(ISNULL(openAlloc.RemainingOpenQuantity, 0) AS decimal(18,4)) AS RemainingOpenQuantity,
-          CAST(sb.Quantity + ISNULL(openAlloc.RemainingOpenQuantity, 0) AS decimal(18,4)) AS ProjectedQuantity,
-          CAST(sb.MaxQuantity - (sb.Quantity + ISNULL(openAlloc.RemainingOpenQuantity, 0)) AS decimal(18,4)) AS RawNeedQuantity
+          CAST(sb.Quantity - ISNULL(sb.ReservedQuantity,0) + ISNULL(openAlloc.RemainingOpenQuantity, 0) AS decimal(18,4)) AS ProjectedQuantity,
+          CAST(ISNULL(recentConsumption.DailyConsumptionVelocity,0) AS decimal(18,4)) AS DailyConsumptionVelocity,
+          CAST(sb.MaxQuantity - (sb.Quantity - ISNULL(sb.ReservedQuantity,0) + ISNULL(openAlloc.RemainingOpenQuantity, 0)) AS decimal(18,4)) AS RawNeedQuantity
       FROM logistica.StockBalance sb
       JOIN logistica.Material m
         ON m.Id = sb.MaterialId
@@ -1577,6 +1662,9 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       LEFT JOIN OpenPurchaseAllocations openAlloc
         ON openAlloc.MaterialId = sb.MaterialId
        AND openAlloc.LocationId = sb.LocationId
+      LEFT JOIN RecentConsumption recentConsumption
+        ON recentConsumption.MaterialId=sb.MaterialId
+       AND recentConsumption.LocationId=sb.LocationId
       WHERE m.BusinessPartnerId = @BusinessPartnerId
         AND m.IsActive = 1
         AND location.IsActive = 1
@@ -1766,11 +1854,15 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             line.MaterialDescriptionSnapshot AS MaterialDescription,
             CAST(allocation.PlannedQuantity AS decimal(18,4)) AS PlannedQuantity,
             CAST(allocation.ReceivedQuantity AS decimal(18,4)) AS ReceivedQuantity
+            ,CAST(line.UnitPrice AS decimal(18,6)) AS UnitPrice
+            ,CAST(CASE WHEN material.TrackLots=1 OR material.IsPerishable=1 THEN 1 ELSE 0 END AS bit) AS TrackLots
         FROM logistica.PurchaseOrderLineAllocation allocation
         JOIN logistica.PurchaseOrderLine line
           ON line.Id = allocation.PurchaseOrderLineId
         JOIN logistica.Location location
           ON location.Id = allocation.LocationId
+        JOIN logistica.Material material
+          ON material.Id = line.MaterialId
         WHERE allocation.Id IN @AllocationIds
           AND line.PurchaseOrderId = @PurchaseOrderId;
         """,
@@ -1799,6 +1891,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             TOP (1)
             sb.Id,
             CAST(sb.Quantity AS decimal(18,4)) AS Quantity,
+            CAST(sb.AverageUnitCost AS decimal(18,6)) AS AverageUnitCost,
             CAST(ISNULL(sb.IsRemoved, 0) AS bit) AS IsRemoved
         FROM logistica.StockBalance sb
         WHERE sb.LocationId = @LocationId
@@ -2009,12 +2102,15 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     public string MaterialDescription { get; set; } = string.Empty;
     public decimal PlannedQuantity { get; set; }
     public decimal ReceivedQuantity { get; set; }
+    public decimal? UnitPrice { get; set; }
+    public bool TrackLots { get; set; }
   }
 
   private sealed class StockBalanceStateRow
   {
     public int Id { get; set; }
     public decimal Quantity { get; set; }
+    public decimal AverageUnitCost { get; set; }
     public bool IsRemoved { get; set; }
   }
 
@@ -2032,10 +2128,13 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     public string LocationName { get; set; } = string.Empty;
     public string? LocationCode { get; set; }
     public decimal CurrentQuantity { get; set; }
+    public decimal ReservedQuantity { get; set; }
     public decimal MinQuantity { get; set; }
     public decimal MaxQuantity { get; set; }
     public decimal RemainingOpenQuantity { get; set; }
     public decimal ProjectedQuantity { get; set; }
     public decimal RawNeedQuantity { get; set; }
+    public decimal DailyConsumptionVelocity { get; set; }
+    public bool ShouldReorder { get; set; }
   }
 }

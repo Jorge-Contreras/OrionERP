@@ -8,10 +8,11 @@ using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Logistica.Stock;
 using OrionERP.Web.Services;
+using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Logistica.Locations;
 
-public partial class UbicacionesPage : ComponentBase
+public partial class UbicacionesPage : ComponentBase, IDisposable
 {
   private const int PageSize = 50;
   private const int QueryTake = PageSize + 1;
@@ -25,6 +26,7 @@ public partial class UbicacionesPage : ComponentBase
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
   [Inject] private IJSRuntime Js { get; set; } = default!;
+  [Inject] private IUserRfcState RfcState { get; set; } = default!;
 
   protected StockFilter StockFilter { get; set; } = new() { IncludeZeroBalances = true };
   protected MaterialFilter MaterialPickerFilter { get; set; } = new() { Status = "ACTIVO" };
@@ -112,9 +114,21 @@ public partial class UbicacionesPage : ComponentBase
 
   protected override async Task OnInitializedAsync()
   {
+    RfcState.Changed += HandleRfcChanged;
     CurrentUserName = await ResolveCurrentUserAsync();
     await LoadLookupsAsync();
   }
+
+  private void HandleRfcChanged() => _ = InvokeAsync(async () =>
+  {
+    SelectedRoomId = null;
+    Locations = [];
+    ClearSelectedLocationContext();
+    await LoadLookupsAsync();
+    StateHasChanged();
+  });
+
+  public void Dispose() => RfcState.Changed -= HandleRfcChanged;
 
   protected async Task OnRoomChangedAsync(ChangeEventArgs args)
   {
@@ -670,7 +684,7 @@ public partial class UbicacionesPage : ComponentBase
 
     try
     {
-      var image = await MaterialService.GetMaterialImageAsync(item.MaterialId);
+      var image = await MaterialService.GetMaterialImageAsync(CurrentRfc, item.MaterialId);
       if (image is null)
       {
         if (MaterialImageModalDataUrl is null)
@@ -708,7 +722,7 @@ public partial class UbicacionesPage : ComponentBase
 
     try
     {
-      var image = await MaterialService.GetMaterialImageAsync(item.Id);
+      var image = await MaterialService.GetMaterialImageAsync(CurrentRfc, item.Id);
       if (image is null)
       {
         if (MaterialImageModalDataUrl is null)
@@ -742,7 +756,7 @@ public partial class UbicacionesPage : ComponentBase
   private async Task LoadLookupsAsync()
   {
     RoomOptions = (await LocationService.GetRoomLookupAsync(roomType: SuiteRoomType)).ToList();
-    MaterialCatalog = await MaterialService.GetCatalogAsync();
+    MaterialCatalog = await MaterialService.GetCatalogAsync(CurrentRfc);
   }
 
   private async Task LoadLocationsForSelectedRoomAsync(int? preferredLocationId = null)
@@ -827,7 +841,7 @@ public partial class UbicacionesPage : ComponentBase
 
     try
     {
-      var thumbnails = await MaterialService.GetMaterialThumbnailsAsync(materialIds);
+      var thumbnails = await MaterialService.GetMaterialThumbnailsAsync(CurrentRfc, materialIds);
       var thumbnailDataUrls = thumbnails
         .Where(thumbnail => thumbnail.Bytes.Length > 0)
         .ToDictionary(
@@ -878,7 +892,7 @@ public partial class UbicacionesPage : ComponentBase
 
     try
     {
-      var thumbnails = await MaterialService.GetMaterialThumbnailsAsync(materialIds);
+      var thumbnails = await MaterialService.GetMaterialThumbnailsAsync(CurrentRfc, materialIds);
       var thumbnailDataUrls = thumbnails
         .Where(thumbnail => thumbnail.Bytes.Length > 0)
         .ToDictionary(
@@ -925,6 +939,7 @@ public partial class UbicacionesPage : ComponentBase
   private MaterialFilter CreateMaterialPickerQueryFilter(int skip, int take)
     => new()
     {
+      Rfc = CurrentRfc,
       SearchText = MaterialPickerFilter.SearchText,
       CategoryId = MaterialPickerFilter.CategoryId,
       VendorId = MaterialPickerFilter.VendorId,
@@ -934,6 +949,8 @@ public partial class UbicacionesPage : ComponentBase
       Skip = skip,
       Take = take
     };
+
+  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
 
   private void ApplyThresholdsToSelection(decimal? minQuantity, decimal? maxQuantity)
   {

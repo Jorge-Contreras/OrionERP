@@ -23,6 +23,11 @@ namespace OrionERP.Web.Identity
                 "APAdmin",
                 "APOperator",
                 "APReadOnly"
+                ,"RestauranteAdmin"
+                ,"RestauranteSupervisor"
+                ,"RestauranteCaja"
+                ,"RestauranteCocina"
+                ,"RestaurantePantalla"
             ];
 
             foreach (var r in roles)

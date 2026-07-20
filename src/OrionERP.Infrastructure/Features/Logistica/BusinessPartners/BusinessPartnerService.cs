@@ -29,6 +29,7 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
   public async Task<IReadOnlyList<BusinessPartnerListItemDto>> GetPartnersAsync(BusinessPartnerFilter filter, CancellationToken ct = default)
   {
     filter ??= new BusinessPartnerFilter();
+    var ownerRfc = LogisticsRfc.Require(filter.OwnerRfc);
 
     var sql = new StringBuilder(
       """
@@ -60,14 +61,17 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
       FROM dbo.BusinessPartner bp
       LEFT JOIN PartnerRoles pr
         ON pr.BusinessPartnerId = bp.Id
+      JOIN dbo.BusinessPartnerRfcScope partnerScope
+        ON partnerScope.BusinessPartnerId = bp.Id AND partnerScope.Rfc = @OwnerRfc AND partnerScope.IsActive = 1
       LEFT JOIN logistica.VendorProfile vp
-        ON vp.BusinessPartnerId = bp.Id
+        ON vp.Rfc = @OwnerRfc AND vp.BusinessPartnerId = bp.Id
       LEFT JOIN MaterialCounts mc
         ON mc.BusinessPartnerId = bp.Id
       WHERE 1 = 1
       """);
 
     var parameters = new DynamicParameters();
+    parameters.Add("@OwnerRfc", ownerRfc, DbType.String);
 
     if (!filter.IncludeInactive)
     {
@@ -92,7 +96,7 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
         """
          AND (
              EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
-             OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp2 WHERE vp2.BusinessPartnerId = bp.Id)
+             OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp2 WHERE vp2.Rfc = @OwnerRfc AND vp2.BusinessPartnerId = bp.Id)
          )
         """);
     }
@@ -106,7 +110,7 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
     return rows.AsList();
   }
 
-  public async Task<BusinessPartnerDetailDto?> GetPartnerAsync(int businessPartnerId, CancellationToken ct = default)
+  public async Task<BusinessPartnerDetailDto?> GetPartnerAsync(string rfc, int businessPartnerId, CancellationToken ct = default)
   {
     const string sql =
       """
@@ -126,7 +130,8 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
           bp.Notes,
           bp.IsActive
       FROM dbo.BusinessPartner bp
-      WHERE bp.Id = @BusinessPartnerId;
+      WHERE bp.Id = @BusinessPartnerId
+        AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRfcScope scope WHERE scope.Rfc=@OwnerRfc AND scope.BusinessPartnerId=bp.Id AND scope.IsActive=1);
 
       SELECT r.RoleCode
       FROM dbo.BusinessPartnerRole r
@@ -140,12 +145,12 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
           vp.IsApproved,
           vp.Notes
       FROM logistica.VendorProfile vp
-      WHERE vp.BusinessPartnerId = @BusinessPartnerId;
+      WHERE vp.Rfc = @OwnerRfc AND vp.BusinessPartnerId = @BusinessPartnerId;
       """;
 
     using var conn = CreateConnection();
     using var multi = await conn.QueryMultipleAsync(
-      new CommandDefinition(sql, new { BusinessPartnerId = businessPartnerId }, cancellationToken: ct));
+      new CommandDefinition(sql, new { OwnerRfc = LogisticsRfc.Require(rfc), BusinessPartnerId = businessPartnerId }, cancellationToken: ct));
 
     var detail = await multi.ReadFirstOrDefaultAsync<BusinessPartnerDetailDto>();
     if (detail is null)
@@ -158,7 +163,7 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
     return detail;
   }
 
-  public async Task<IReadOnlyList<LookupOptionDto>> GetVendorLookupAsync(CancellationToken ct = default)
+  public async Task<IReadOnlyList<LookupOptionDto>> GetVendorLookupAsync(string rfc, CancellationToken ct = default)
   {
     const string sql =
       """
@@ -167,24 +172,28 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
           bp.PartnerName AS Name,
           bp.Rfc AS Code
       FROM dbo.BusinessPartner bp
+      JOIN dbo.BusinessPartnerRfcScope scope ON scope.BusinessPartnerId=bp.Id AND scope.Rfc=@OwnerRfc AND scope.IsActive=1
       WHERE bp.IsActive = 1
         AND (
             EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
-            OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.BusinessPartnerId = bp.Id)
+            OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.Rfc=@OwnerRfc AND vp.BusinessPartnerId = bp.Id)
         )
       ORDER BY bp.PartnerName, bp.Id;
       """;
 
     using var conn = CreateConnection();
-    var rows = await conn.QueryAsync<LookupOptionDto>(new CommandDefinition(sql, cancellationToken: ct));
+    var rows = await conn.QueryAsync<LookupOptionDto>(new CommandDefinition(sql, new { OwnerRfc = LogisticsRfc.Require(rfc) }, cancellationToken: ct));
     return rows.AsList();
   }
 
-  public Task<BusinessPartnerCatalogDto> GetCatalogAsync(CancellationToken ct = default)
-    => Task.FromResult(new BusinessPartnerCatalogDto
+  public Task<BusinessPartnerCatalogDto> GetCatalogAsync(string rfc, CancellationToken ct = default)
+  {
+    _ = LogisticsRfc.Require(rfc);
+    return Task.FromResult(new BusinessPartnerCatalogDto
     {
       Roles = DefaultRoles.Select(role => new LookupOptionDto { Name = role, Code = role }).ToArray()
     });
+  }
 
   public async Task<LogisticsCommandResult> SavePartnerAsync(BusinessPartnerUpsertRequest request, CancellationToken ct = default)
   {
@@ -193,6 +202,7 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
       throw new ArgumentNullException(nameof(request));
     }
 
+    var ownerRfc = LogisticsRfc.Require(request.OwnerRfc);
     var name = request.DisplayName?.Trim();
     if (string.IsNullOrWhiteSpace(name))
     {
@@ -236,15 +246,17 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
               Notes = @Notes,
               IsActive = @IsActive,
               UpdatedAt = SYSUTCDATETIME()
-          WHERE Id = @Id;
+          WHERE Id = @Id
+            AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRfcScope scope WHERE scope.Rfc=@OwnerRfc AND scope.BusinessPartnerId=Id AND scope.IsActive=1);
           """;
 
-        await conn.ExecuteAsync(
+        var affectedPartner = await conn.ExecuteAsync(
           new CommandDefinition(
             updateSql,
             new
             {
               Id = request.Id.Value,
+              OwnerRfc = ownerRfc,
               PartnerName = name,
               Rfc = NullIfWhiteSpace(request.Rfc),
               Email = NullIfWhiteSpace(request.Email),
@@ -260,6 +272,11 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
             },
             tx,
             cancellationToken: ct));
+        if (affectedPartner != 1)
+        {
+          await tx.RollbackAsync(ct);
+          return LogisticsCommandResult.Fail("El socio no pertenece al RFC seleccionado.");
+        }
       }
       else
       {
@@ -322,6 +339,10 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
             },
             tx,
             cancellationToken: ct));
+
+        await conn.ExecuteAsync(new CommandDefinition(
+          "INSERT INTO dbo.BusinessPartnerRfcScope (Rfc, BusinessPartnerId, CreatedBy) VALUES (@OwnerRfc, @BusinessPartnerId, 'BusinessPartnerService');",
+          new { OwnerRfc = ownerRfc, BusinessPartnerId = partnerId }, tx, cancellationToken: ct));
       }
 
       await conn.ExecuteAsync(
@@ -346,8 +367,8 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
         const string vendorSql =
           """
           MERGE logistica.VendorProfile AS target
-          USING (SELECT @BusinessPartnerId AS BusinessPartnerId) AS src
-          ON target.BusinessPartnerId = src.BusinessPartnerId
+          USING (SELECT @OwnerRfc AS Rfc, @BusinessPartnerId AS BusinessPartnerId) AS src
+          ON target.Rfc = src.Rfc AND target.BusinessPartnerId = src.BusinessPartnerId
           WHEN MATCHED THEN
               UPDATE SET
                   PaymentTerms = @PaymentTerms,
@@ -356,8 +377,8 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
                   Notes = @Notes,
                   UpdatedAt = SYSUTCDATETIME()
           WHEN NOT MATCHED THEN
-              INSERT (BusinessPartnerId, PaymentTerms, DefaultLeadTimeDays, IsApproved, Notes)
-              VALUES (@BusinessPartnerId, @PaymentTerms, @DefaultLeadTimeDays, @IsApproved, @Notes);
+              INSERT (Rfc, BusinessPartnerId, PaymentTerms, DefaultLeadTimeDays, IsApproved, Notes)
+              VALUES (@OwnerRfc, @BusinessPartnerId, @PaymentTerms, @DefaultLeadTimeDays, @IsApproved, @Notes);
           """;
 
         await conn.ExecuteAsync(
@@ -366,6 +387,7 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
             new
             {
               BusinessPartnerId = partnerId,
+              OwnerRfc = ownerRfc,
               PaymentTerms = NullIfWhiteSpace(request.VendorProfile?.PaymentTerms),
               request.VendorProfile?.DefaultLeadTimeDays,
               IsApproved = request.VendorProfile?.IsApproved ?? true,
@@ -378,8 +400,8 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
       {
         await conn.ExecuteAsync(
           new CommandDefinition(
-            "DELETE FROM logistica.VendorProfile WHERE BusinessPartnerId = @BusinessPartnerId;",
-            new { BusinessPartnerId = partnerId },
+            "DELETE FROM logistica.VendorProfile WHERE Rfc=@OwnerRfc AND BusinessPartnerId = @BusinessPartnerId;",
+            new { OwnerRfc = ownerRfc, BusinessPartnerId = partnerId },
             tx,
             cancellationToken: ct));
       }

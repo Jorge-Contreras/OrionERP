@@ -25,6 +25,7 @@ public sealed class MaterialService : IMaterialService
   public async Task<IReadOnlyList<MaterialListItemDto>> GetMaterialsAsync(MaterialFilter filter, CancellationToken ct = default)
   {
     filter ??= new MaterialFilter();
+    var rfc = LogisticsRfc.Require(filter.Rfc);
     var skip = Math.Max(filter.Skip, 0);
     var take = Math.Max(filter.Take, 0);
 
@@ -36,7 +37,8 @@ public sealed class MaterialService : IMaterialService
               SUM(sb.Quantity) AS TotalQuantity,
               COUNT(*) AS LocationCount
           FROM logistica.StockBalance sb
-          WHERE ISNULL(sb.IsRemoved, 0) = 0
+          WHERE sb.Rfc = @Rfc
+            AND ISNULL(sb.IsRemoved, 0) = 0
           GROUP BY sb.MaterialId
       )
       SELECT
@@ -55,17 +57,18 @@ public sealed class MaterialService : IMaterialService
           ISNULL(st.LocationCount, 0) AS LocationCount
       FROM logistica.Material m
       LEFT JOIN logistica.MaterialCategory mc
-        ON mc.Id = m.CategoryId
+        ON mc.Rfc = m.Rfc AND mc.Id = m.CategoryId
       LEFT JOIN logistica.UnitOfMeasure u
         ON u.Id = m.BaseUnitId
       LEFT JOIN dbo.BusinessPartner bp
         ON bp.Id = m.BusinessPartnerId
       LEFT JOIN StockTotals st
         ON st.MaterialId = m.Id
-      WHERE 1 = 1
+      WHERE m.Rfc = @Rfc
       """);
 
     var parameters = new DynamicParameters();
+    parameters.Add("@Rfc", rfc, DbType.String);
 
     if (!string.IsNullOrWhiteSpace(filter.SearchText))
     {
@@ -123,7 +126,7 @@ public sealed class MaterialService : IMaterialService
     return rows.AsList();
   }
 
-  public async Task<MaterialDetailDto?> GetMaterialAsync(int materialId, CancellationToken ct = default)
+  public async Task<MaterialDetailDto?> GetMaterialAsync(string rfc, int materialId, CancellationToken ct = default)
   {
     const string sql =
       """
@@ -161,21 +164,23 @@ public sealed class MaterialService : IMaterialService
         ON baseU.Id = m.BaseUnitId
       LEFT JOIN logistica.UnitOfMeasure purchaseU
         ON purchaseU.Id = m.PurchaseUnitId
-      WHERE m.Id = @MaterialId;
+      WHERE m.Rfc = @Rfc
+        AND m.Id = @MaterialId;
       """;
 
     using var conn = CreateConnection();
     return await conn.QueryFirstOrDefaultAsync<MaterialDetailDto>(
-      new CommandDefinition(sql, new { MaterialId = materialId }, cancellationToken: ct));
+      new CommandDefinition(sql, new { Rfc = LogisticsRfc.Require(rfc), MaterialId = materialId }, cancellationToken: ct));
   }
 
-  public async Task<MaterialCatalogDto> GetCatalogAsync(CancellationToken ct = default)
+  public async Task<MaterialCatalogDto> GetCatalogAsync(string rfc, CancellationToken ct = default)
   {
     const string sql =
       """
       SELECT Id, CategoryName AS Name, CategoryName AS Code
       FROM logistica.MaterialCategory
-      WHERE IsActive = 1
+      WHERE Rfc = @Rfc
+        AND IsActive = 1
       ORDER BY CategoryName, Id;
 
       SELECT Id, UnitName AS Name, Abbreviation AS Code
@@ -191,13 +196,14 @@ public sealed class MaterialService : IMaterialService
       WHERE bp.IsActive = 1
         AND (
             EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
-            OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.BusinessPartnerId = bp.Id)
+            OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.Rfc = @Rfc AND vp.BusinessPartnerId = bp.Id)
         )
+        AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRfcScope scope WHERE scope.Rfc = @Rfc AND scope.BusinessPartnerId = bp.Id AND scope.IsActive = 1)
       ORDER BY bp.PartnerName, bp.Id;
       """;
 
     using var conn = CreateConnection();
-    using var multi = await conn.QueryMultipleAsync(new CommandDefinition(sql, cancellationToken: ct));
+    using var multi = await conn.QueryMultipleAsync(new CommandDefinition(sql, new { Rfc = LogisticsRfc.Require(rfc) }, cancellationToken: ct));
 
     return new MaterialCatalogDto
     {
@@ -209,7 +215,7 @@ public sealed class MaterialService : IMaterialService
     };
   }
 
-  public async Task<LogisticsBinaryContent?> GetMaterialImageAsync(int materialId, CancellationToken ct = default)
+  public async Task<LogisticsBinaryContent?> GetMaterialImageAsync(string rfc, int materialId, CancellationToken ct = default)
   {
     const string sql =
       """
@@ -219,13 +225,14 @@ public sealed class MaterialService : IMaterialService
           m.PrimaryImageContentType AS ContentType,
           m.PrimaryImage AS Bytes
       FROM logistica.Material m
-      WHERE m.Id = @MaterialId
+      WHERE m.Rfc = @Rfc
+        AND m.Id = @MaterialId
         AND m.PrimaryImage IS NOT NULL;
       """;
 
     using var conn = CreateConnection();
     var row = await conn.QueryFirstOrDefaultAsync<LogisticsBinaryContent>(
-      new CommandDefinition(sql, new { MaterialId = materialId }, cancellationToken: ct));
+      new CommandDefinition(sql, new { Rfc = LogisticsRfc.Require(rfc), MaterialId = materialId }, cancellationToken: ct));
 
     if (row is null)
     {
@@ -236,7 +243,7 @@ public sealed class MaterialService : IMaterialService
     return row;
   }
 
-  public async Task<LogisticsBinaryContent?> GetMaterialThumbnailAsync(int materialId, CancellationToken ct = default)
+  public async Task<LogisticsBinaryContent?> GetMaterialThumbnailAsync(string rfc, int materialId, CancellationToken ct = default)
   {
     const string sql =
       """
@@ -246,13 +253,14 @@ public sealed class MaterialService : IMaterialService
           COALESCE(m.PrimaryImageThumbnailContentType, 'image/jpeg') AS ContentType,
           m.PrimaryImageThumbnail AS Bytes
       FROM logistica.Material m
-      WHERE m.Id = @MaterialId
+      WHERE m.Rfc = @Rfc
+        AND m.Id = @MaterialId
         AND m.PrimaryImageThumbnail IS NOT NULL;
       """;
 
     using var conn = CreateConnection();
     var row = await conn.QueryFirstOrDefaultAsync<LogisticsBinaryContent>(
-      new CommandDefinition(sql, new { MaterialId = materialId }, cancellationToken: ct));
+      new CommandDefinition(sql, new { Rfc = LogisticsRfc.Require(rfc), MaterialId = materialId }, cancellationToken: ct));
 
     if (row is null)
     {
@@ -263,7 +271,7 @@ public sealed class MaterialService : IMaterialService
     return row;
   }
 
-  public async Task<IReadOnlyList<LogisticsBinaryContent>> GetMaterialThumbnailsAsync(IEnumerable<int> materialIds, CancellationToken ct = default)
+  public async Task<IReadOnlyList<LogisticsBinaryContent>> GetMaterialThumbnailsAsync(string rfc, IEnumerable<int> materialIds, CancellationToken ct = default)
   {
     var ids = materialIds?
       .Where(id => id > 0)
@@ -283,13 +291,14 @@ public sealed class MaterialService : IMaterialService
           COALESCE(m.PrimaryImageThumbnailContentType, 'image/jpeg') AS ContentType,
           m.PrimaryImageThumbnail AS Bytes
       FROM logistica.Material m
-      WHERE m.Id IN @MaterialIds
+      WHERE m.Rfc = @Rfc
+        AND m.Id IN @MaterialIds
         AND m.PrimaryImageThumbnail IS NOT NULL;
       """;
 
     using var conn = CreateConnection();
     var rows = (await conn.QueryAsync<LogisticsBinaryContent>(
-      new CommandDefinition(sql, new { MaterialIds = ids }, cancellationToken: ct))).AsList();
+      new CommandDefinition(sql, new { Rfc = LogisticsRfc.Require(rfc), MaterialIds = ids }, cancellationToken: ct))).AsList();
 
     foreach (var row in rows)
     {
@@ -306,6 +315,7 @@ public sealed class MaterialService : IMaterialService
       throw new ArgumentNullException(nameof(request));
     }
 
+    var rfc = LogisticsRfc.Require(request.Rfc);
     var description = request.Description?.Trim();
     if (string.IsNullOrWhiteSpace(description))
     {
@@ -370,14 +380,15 @@ public sealed class MaterialService : IMaterialService
         }
 
         sql.AppendLine();
-        sql.AppendLine("WHERE Id = @Id;");
+        sql.AppendLine("WHERE Rfc = @Rfc AND Id = @Id;");
 
-        await conn.ExecuteAsync(
+        var affected = await conn.ExecuteAsync(
           new CommandDefinition(
             sql.ToString(),
             new
             {
               Id = request.Id.Value,
+              Rfc = rfc,
               Description = description,
               request.BaseUnitId,
               request.PurchaseQuantity,
@@ -405,6 +416,12 @@ public sealed class MaterialService : IMaterialService
             tx,
             cancellationToken: ct));
 
+        if (affected != 1)
+        {
+          await tx.RollbackAsync(ct);
+          return LogisticsCommandResult.Fail("El material no pertenece al RFC seleccionado.");
+        }
+
         materialId = request.Id.Value;
       }
       else
@@ -413,6 +430,7 @@ public sealed class MaterialService : IMaterialService
           """
           INSERT INTO logistica.Material
           (
+              Rfc,
               MaterialCode,
               [Description],
               BaseUnitId,
@@ -442,6 +460,7 @@ public sealed class MaterialService : IMaterialService
           )
           VALUES
           (
+              @Rfc,
               CONCAT('TMP-', LEFT(REPLACE(CONVERT(varchar(36), NEWID()), '-', ''), 16)),
               @Description,
               @BaseUnitId,
@@ -479,6 +498,7 @@ public sealed class MaterialService : IMaterialService
             new
             {
               Description = description,
+              Rfc = rfc,
               request.BaseUnitId,
               request.PurchaseQuantity,
               request.PurchaseUnitId,
@@ -510,9 +530,9 @@ public sealed class MaterialService : IMaterialService
             """
             UPDATE logistica.Material
             SET MaterialCode = CONCAT('MAT-', RIGHT(REPLICATE('0', 6) + CAST(@MaterialId AS varchar(20)), 6))
-            WHERE Id = @MaterialId;
+            WHERE Rfc = @Rfc AND Id = @MaterialId;
             """,
-            new { MaterialId = materialId },
+            new { Rfc = rfc, MaterialId = materialId },
             tx,
             cancellationToken: ct));
       }

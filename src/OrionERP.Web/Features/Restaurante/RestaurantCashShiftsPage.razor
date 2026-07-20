@@ -1,0 +1,172 @@
+@page "/restaurante/turnos"
+@attribute [Authorize(Policy = "RestaurantCash")]
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.Authorization
+@using OrionERP.Application.Features.Logistica.Shared
+@using OrionERP.Application.Features.Restaurante
+@using OrionERP.Web.State
+@inject IRestaurantCatalogService CatalogService
+@inject IRestaurantCashService CashService
+@inject IRestaurantQuickPinService QuickPinService
+@inject IUserRfcState RfcState
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Restaurante · Turnos de caja</PageTitle>
+
+<main class="cash-shell">
+  <header class="cash-hero"><div><span>Caja</span><h1>Turnos y cortes ciegos</h1><p>El efectivo esperado sólo aparece después de confirmar el conteo.</p></div><button type="button" class="btn btn-light" @onclick="LoadAsync">Actualizar</button></header>
+  @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(isError ? "alert-danger" : "alert-success")">@message</div> }
+
+  @if (sites.Count == 0) { <section class="cash-empty"><h2>No hay sedes habilitadas</h2></section> }
+  else
+  {
+    <section class="cash-toolbar">
+      <label>Sede<select @onchange="ChangeSiteAsync">@foreach (var site in sites) { <option value="@site.Id" selected="@(site.Id == selectedSiteId)">@site.Name</option> }</select></label>
+      <button type="button" class="btn btn-outline-primary" @onclick="() => showRegisterForm = !showRegisterForm">Nueva caja</button>
+    </section>
+
+    @if (showRegisterForm)
+    {
+      <EditForm Model="registerEditor" OnValidSubmit="SaveRegisterAsync" class="cash-register-form">
+        <DataAnnotationsValidator /><label>Código <InputText @bind-Value="registerEditor.Code" /></label><label>Nombre <InputText @bind-Value="registerEditor.Name" /></label><button type="submit" class="btn btn-primary">Crear caja</button>
+      </EditForm>
+    }
+
+    <section class="cash-pin-panel">
+      <div><span>Acceso rápido</span><h2>Configurar mi PIN</h2><p>El PIN queda ligado a tu usuario, RFC y caja. Nunca se almacena en texto.</p></div>
+      <EditForm Model="pinSetup" OnValidSubmit="SetOwnPinAsync" class="cash-pin-form">
+        <DataAnnotationsValidator />
+        <label>Caja<InputSelect @bind-Value="pinSetup.CashRegisterId"><option value="0">Seleccionar…</option>@foreach (var register in registers.Where(item => item.IsActive)) { <option value="@register.Id">@register.Name</option> }</InputSelect></label>
+        <label>PIN<InputText type="password" inputmode="numeric" autocomplete="new-password" @bind-Value="pinSetup.Pin" /></label>
+        <button type="submit" class="btn btn-outline-primary" disabled="@(pinSetup.CashRegisterId == 0 || isBusy)">Guardar PIN</button>
+      </EditForm>
+    </section>
+
+    <section class="cash-grid">
+      <article class="cash-panel cash-panel--open">
+        <header><div><span>Apertura</span><h2>Iniciar turno</h2></div><span class="oi oi-key"></span></header>
+        <EditForm Model="openRequest" OnValidSubmit="OpenShiftAsync" class="cash-form">
+          <DataAnnotationsValidator />
+          <label>Caja<InputSelect @bind-Value="openRequest.CashRegisterId"><option value="0">Seleccionar…</option>@foreach (var register in registers.Where(item => item.IsActive)) { <option value="@register.Id">@register.Name</option> }</InputSelect></label>
+          <label>Fondo inicial<InputNumber @bind-Value="openRequest.OpeningFloat" /></label>
+          <button type="submit" class="btn btn-primary" disabled="@(openRequest.CashRegisterId == 0 || isBusy)">Abrir turno</button>
+        </EditForm>
+      </article>
+
+      @foreach (var shift in shifts.Where(item => item.Status == "Open"))
+      {
+        <article class="cash-panel">
+          <header><div><span>Turno abierto</span><h2>@shift.RegisterName</h2></div><span class="cash-status cash-status--open">Abierto</span></header>
+          <dl><div><dt>Apertura</dt><dd>@shift.OpenedAt.ToLocalTime().ToString("g")</dd></div><div><dt>Fondo</dt><dd>@shift.OpeningFloat.ToString("C")</dd></div></dl>
+          <label class="cash-count">Efectivo contado<input type="number" min="0" step="0.01" value="@GetCount(shift.Id)" @onchange="args => SetCount(shift.Id, args.Value)" autocomplete="off" /></label>
+          <button type="button" class="btn btn-warning" disabled="@isBusy" @onclick="() => CloseShiftAsync(shift)">Confirmar conteo y cerrar</button>
+        </article>
+      }
+
+      @foreach (var shift in shifts.Where(item => item.Status != "Open").Take(12))
+      {
+        <article class="cash-panel cash-panel--closed">
+          <header><div><span>Corte</span><h2>@shift.RegisterName</h2></div><span class="cash-status @(shift.Status == "PendingApproval" ? "cash-status--warning" : "")">@shift.Status</span></header>
+          <dl><div><dt>Esperado</dt><dd>@shift.ExpectedCash?.ToString("C")</dd></div><div><dt>Contado</dt><dd>@shift.CountedCash?.ToString("C")</dd></div><div><dt>Diferencia</dt><dd class="@(shift.Difference != 0 ? "is-difference" : null)">@shift.Difference?.ToString("C")</dd></div></dl>
+          @if (shift.Status == "PendingApproval") { <button type="button" class="btn btn-danger" @onclick="() => RequestApproval(shift)">Aprobar diferencia</button> }
+        </article>
+      }
+    </section>
+
+    @if (approvalShift is not null)
+    {
+      <section class="cash-approval" role="dialog" aria-modal="true" aria-label="Autorización de supervisor">
+        <div class="cash-approval__card">
+          <header><div><span>Autorización requerida</span><h2>Aprobar diferencia de @approvalShift.Difference?.ToString("C")</h2></div><button type="button" @onclick="CancelApproval" aria-label="Cerrar">×</button></header>
+          <label>Supervisor<input @bind="supervisorIdentity" autocomplete="username" placeholder="Correo o usuario" /></label>
+          <label>PIN<input type="password" inputmode="numeric" autocomplete="current-password" @bind="supervisorPin" /></label>
+          <footer><button type="button" class="btn btn-outline-secondary" @onclick="CancelApproval">Cancelar</button><button type="button" class="btn btn-danger" disabled="@isBusy" @onclick="ConfirmApprovalAsync">Autorizar y cerrar</button></footer>
+        </div>
+      </section>
+    }
+  }
+</main>
+
+@code {
+  private List<RestaurantSiteDto> sites = [];
+  private List<RestaurantCashRegisterDto> registers = [];
+  private List<RestaurantCashShiftDto> shifts = [];
+  private readonly Dictionary<Guid, decimal> counts = [];
+  private RestaurantCashShiftOpenRequest openRequest = new();
+  private RestaurantCashRegisterUpsertRequest registerEditor = new();
+  private RestaurantQuickPinSetupRequest pinSetup = new();
+  private RestaurantCashShiftDto? approvalShift;
+  private string supervisorIdentity = string.Empty;
+  private string supervisorPin = string.Empty;
+  private int selectedSiteId;
+  private bool showRegisterForm;
+  private bool isBusy;
+  private string? message;
+  private bool isError;
+  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+
+  protected override async Task OnInitializedAsync() { RfcState.Changed += OnRfcChanged; await LoadAsync(); }
+  private async Task LoadAsync()
+  {
+    try
+    {
+      sites = (await CatalogService.GetSitesAsync(CurrentRfc)).Where(item => item.IsEnabled).ToList();
+      if (!sites.Any(item => item.Id == selectedSiteId)) selectedSiteId = sites.FirstOrDefault()?.Id ?? 0;
+      if (selectedSiteId > 0) { registers = (await CashService.GetRegistersAsync(CurrentRfc, selectedSiteId)).ToList(); shifts = (await CashService.GetShiftsAsync(CurrentRfc, selectedSiteId)).ToList(); }
+      else { registers = []; shifts = []; }
+      ResetEditors();
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+  }
+  private async Task ChangeSiteAsync(ChangeEventArgs args) { if (int.TryParse(args.Value?.ToString(), out var id)) { selectedSiteId = id; await LoadAsync(); } }
+  private async Task OpenShiftAsync() { await RunAsync(async user => { openRequest.Rfc = CurrentRfc; openRequest.SiteId = selectedSiteId; await CashService.OpenShiftAsync(openRequest, user); return "Turno abierto."; }); }
+  private async Task CloseShiftAsync(RestaurantCashShiftDto shift) { await RunAsync(async user => { await CashService.CloseShiftAsync(new() { Rfc = CurrentRfc, ShiftId = shift.Id, CountedCash = GetCount(shift.Id) }, user); return "Conteo registrado; ya puede revisar esperado y diferencia."; }); }
+  private void RequestApproval(RestaurantCashShiftDto shift) { approvalShift = shift; supervisorIdentity = string.Empty; supervisorPin = string.Empty; }
+  private void CancelApproval() { approvalShift = null; supervisorPin = string.Empty; }
+  private async Task ConfirmApprovalAsync()
+  {
+    if (approvalShift is null) return;
+    isBusy = true;
+    try
+    {
+      var verification = await QuickPinService.VerifySupervisorPinAsync(new()
+      {
+        Rfc = CurrentRfc,
+        CashRegisterId = approvalShift.CashRegisterId,
+        UserNameOrEmail = supervisorIdentity,
+        Pin = supervisorPin
+      });
+      if (!verification.Success) { Show(verification.Message, true); supervisorPin = string.Empty; return; }
+      var result = await CashService.ApproveShiftAsync(CurrentRfc, approvalShift.Id, verification.UserName!);
+      Show(result.Message, !result.Success);
+      if (result.Success) CancelApproval();
+      await LoadAsync();
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { isBusy = false; }
+  }
+  private async Task SetOwnPinAsync()
+  {
+    isBusy = true;
+    try
+    {
+      var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+      var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+      pinSetup.Rfc = CurrentRfc;
+      pinSetup.SiteId = selectedSiteId;
+      var result = await QuickPinService.SetOwnPinAsync(pinSetup, userId ?? string.Empty, auth.User.Identity?.Name ?? "caja");
+      Show(result.Message, !result.Success);
+      pinSetup.Pin = string.Empty;
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { isBusy = false; }
+  }
+  private async Task SaveRegisterAsync() { registerEditor.Rfc = CurrentRfc; registerEditor.SiteId = selectedSiteId; var result = await CashService.SaveRegisterAsync(registerEditor); Show(result.Message, !result.Success); if (result.Success) { showRegisterForm = false; await LoadAsync(); } }
+  private async Task RunAsync(Func<string, Task<string>> action) { isBusy = true; try { var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync(); Show(await action(auth.User.Identity?.Name ?? "caja"), false); await LoadAsync(); } catch (Exception ex) { Show(ex.Message, true); } finally { isBusy = false; } }
+  private decimal GetCount(Guid id) => counts.GetValueOrDefault(id);
+  private void SetCount(Guid id, object? value) { if (decimal.TryParse(value?.ToString(), out var amount)) counts[id] = amount; }
+  private void ResetEditors() { openRequest = new() { Rfc = CurrentRfc, SiteId = selectedSiteId }; registerEditor = new() { Rfc = CurrentRfc, SiteId = selectedSiteId }; pinSetup = new() { Rfc = CurrentRfc, SiteId = selectedSiteId, CashRegisterId = registers.FirstOrDefault(item => item.IsActive)?.Id ?? 0 }; }
+  private void Show(string value, bool error) { message = value; isError = error; }
+  private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; await LoadAsync(); StateHasChanged(); });
+  public void Dispose() => RfcState.Changed -= OnRfcChanged;
+}

@@ -336,11 +336,27 @@
                                                    @onkeydown="HandleCountedQuantityKeyDownAsync"
                                                    @ref="CountedQuantityInputRef" />
                                         </div>
-                                        <div class="col-12 col-md-4">
+                                         <div class="col-12 col-md-4">
                                             <label class="form-label">@GetQuantityFieldLabel("Varianza", SelectedLine.BaseUnitName)</label>
-                                            <input class="form-control" type="text" value="@CurrentVarianceText" disabled />
-                                        </div>
-                                        <div class="col-md-6">
+                                             <input class="form-control" type="text" value="@CurrentVarianceText" disabled />
+                                         </div>
+                                         @if (SelectedLine.Lots.Count > 0)
+                                         {
+                                             <div class="col-12">
+                                                 <div class="alert alert-info py-2 mb-2">Este material se controla por lote. La suma de lotes debe coincidir con el total contado.</div>
+                                                 <div class="row g-2">
+                                                     @foreach (var lot in SelectedLine.Lots)
+                                                     {
+                                                         var captureLot = LineCapture.Lots.Single(item => item.MaterialLotId == lot.MaterialLotId);
+                                                         <div class="col-12 col-md-6">
+                                                             <label class="form-label">Lote @lot.LotCode · esperado @lot.ExpectedQuantity.ToString("N2")@if (lot.ExpiresAt.HasValue) { <span> · vence @lot.ExpiresAt.Value.ToString("d")</span> }</label>
+                                                             <InputNumber class="form-control" min="0" step="0.0001" @bind-Value="captureLot.CountedQuantity" @bind-Value:after="UpdateTotalFromLots" />
+                                                         </div>
+                                                     }
+                                                 </div>
+                                             </div>
+                                         }
+                                         <div class="col-md-6">
                                             <div class="form-check mt-2 conteos-toggle-card">
                                                 <InputCheckbox class="form-check-input" @bind-Value="LineCapture.IsMissing" />
                                                 <label class="form-check-label">Faltante</label>

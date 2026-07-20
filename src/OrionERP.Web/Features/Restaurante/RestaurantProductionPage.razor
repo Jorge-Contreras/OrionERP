@@ -1,0 +1,144 @@
+@page "/restaurante/produccion"
+@attribute [Authorize(Policy = "RestaurantAdmin")]
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.Authorization
+@using OrionERP.Application.Features.Logistica.Shared
+@using OrionERP.Application.Features.Restaurante
+@using OrionERP.Web.State
+@inject IRestaurantCatalogService CatalogService
+@inject IRestaurantProductionService ProductionService
+@inject IUserRfcState RfcState
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Restaurante · Producción</PageTitle>
+
+<main class="production-shell">
+  <header class="production-hero">
+    <div><span>Preparación por lotes</span><h1>Producción</h1><p>Planea, reserva por FEFO, consume ingredientes y registra rendimiento, lote y merma reales.</p></div>
+    <button type="button" class="btn btn-light" @onclick="LoadAsync">Actualizar</button>
+  </header>
+
+  @if (!string.IsNullOrWhiteSpace(message))
+  {
+    <div class="alert @(isError ? "alert-danger" : "alert-success")">@message</div>
+  }
+
+  @if (sites.Count == 0)
+  {
+    <section class="production-empty"><h2>No hay sedes habilitadas</h2><p>Configura una sede desde Administración de Restaurante.</p></section>
+  }
+  else
+  {
+    <section class="production-toolbar">
+      <label>Sede<select @onchange="ChangeSiteAsync">@foreach (var site in sites) { <option value="@site.Id" selected="@(site.Id == selectedSiteId)">@site.Name</option> }</select></label>
+      <span>El costo teórico se congela al planear y el costo unitario real se calcula con el rendimiento obtenido.</span>
+    </section>
+
+    <section class="production-layout">
+      <EditForm Model="plan" OnValidSubmit="PlanAsync" class="production-plan">
+        <DataAnnotationsValidator />
+        <header><span>Nueva corrida</span><h2>Planear producción</h2></header>
+        <label>Producto y BOM activo<InputSelect @bind-Value="plan.BomVersionId"><option value="0">Seleccionar…</option>@foreach (var bom in workspace.ActiveBoms) { <option value="@bom.Id">@bom.Label</option> }</InputSelect></label>
+        <label>Cantidad planeada<InputNumber @bind-Value="plan.PlannedQuantity" /></label>
+        <label>Ubicación de salida<InputSelect @bind-Value="plan.OutputLocationId"><option value="0">Seleccionar…</option>@foreach (var location in workspace.OutputLocations) { <option value="@((int)location.Id)">@location.Label</option> }</InputSelect></label>
+        <button type="submit" class="btn btn-primary" disabled="@(isBusy || plan.BomVersionId == 0 || plan.OutputLocationId == 0)">Reservar y planear</button>
+        <small>Si falta un ingrediente, no se crea una orden parcial.</small>
+      </EditForm>
+
+      <section class="production-orders">
+        @foreach (var order in workspace.Orders)
+        {
+          <article class="production-card production-card--@order.Status.ToLowerInvariant()">
+            <header><div><span>@order.ProductionCode</span><h2>@order.ProductName</h2></div><b>@StatusLabel(order.Status)</b></header>
+            <dl>
+              <div><dt>Planeado</dt><dd>@order.PlannedQuantity.ToString("0.####") @order.UnitName</dd></div>
+              <div><dt>Real</dt><dd>@(order.ActualQuantity?.ToString("0.####") ?? "—")</dd></div>
+              <div><dt>Destino</dt><dd>@order.OutputLocationName</dd></div>
+              <div><dt>Costo congelado</dt><dd>@order.FrozenTheoreticalCost.ToString("C")</dd></div>
+            </dl>
+            @if (order.Status == "Planned")
+            {
+              <div class="production-card__actions"><button type="button" class="btn btn-success" disabled="@isBusy" @onclick="() => StartAsync(order)">Iniciar y consumir</button><button type="button" class="btn btn-outline-danger" disabled="@isBusy" @onclick="() => CancelAsync(order)">Cancelar</button></div>
+            }
+            else if (order.Status == "Started")
+            {
+              @if (complete.ProductionOrderId != order.Id)
+              {
+                <button type="button" class="btn btn-primary" @onclick="() => BeginComplete(order)">Registrar resultado</button>
+              }
+              else
+              {
+                <EditForm Model="complete" OnValidSubmit="CompleteAsync" class="production-complete">
+                  <DataAnnotationsValidator />
+                  <label>Rendimiento real<InputNumber @bind-Value="complete.ActualQuantity" /></label>
+                  <label>Merma<InputNumber @bind-Value="complete.WasteQuantity" /></label>
+                  <label>Lote de salida<InputText @bind-Value="complete.OutputLotCode" /></label>
+                  <label>Caducidad<InputDate @bind-Value="complete.ExpiresAt" /></label>
+                  <div><button type="submit" class="btn btn-success" disabled="@isBusy">Completar lote</button><button type="button" class="btn btn-link" @onclick="CancelComplete">Cerrar</button></div>
+                </EditForm>
+              }
+            }
+            else if (order.Status == "Completed")
+            {
+              <footer><span>Lote <strong>@order.OutputLotCode</strong></span><span>Merma: @(order.WasteQuantity?.ToString("0.####") ?? "0")</span></footer>
+            }
+          </article>
+        }
+        @if (workspace.Orders.Count == 0) { <div class="production-empty"><h2>Sin corridas</h2><p>Planea la primera producción almacenada de esta sede.</p></div> }
+      </section>
+    </section>
+  }
+</main>
+
+@code {
+  private List<RestaurantSiteDto> sites = [];
+  private RestaurantProductionWorkspaceDto workspace = new();
+  private RestaurantProductionPlanRequest plan = new() { PlannedQuantity = 1 };
+  private RestaurantProductionCompleteRequest complete = new();
+  private int selectedSiteId;
+  private bool isBusy;
+  private string? message;
+  private bool isError;
+  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+
+  protected override async Task OnInitializedAsync() { RfcState.Changed += OnRfcChanged; await LoadAsync(); }
+
+  private async Task LoadAsync()
+  {
+    isBusy = true;
+    try
+    {
+      sites = (await CatalogService.GetSitesAsync(CurrentRfc)).Where(item => item.IsEnabled).ToList();
+      if (!sites.Any(item => item.Id == selectedSiteId)) selectedSiteId = sites.FirstOrDefault()?.Id ?? 0;
+      workspace = selectedSiteId > 0 ? await ProductionService.GetWorkspaceAsync(CurrentRfc, selectedSiteId) : new();
+      plan = new() { Rfc = CurrentRfc, SiteId = selectedSiteId, PlannedQuantity = 1, IdempotencyKey = Guid.NewGuid().ToString("N") };
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { isBusy = false; }
+  }
+
+  private async Task ChangeSiteAsync(ChangeEventArgs args) { if (int.TryParse(args.Value?.ToString(), out var id)) { selectedSiteId = id; await LoadAsync(); } }
+  private async Task PlanAsync() => await RunAsync(user => ProductionService.PlanAsync(plan, user));
+  private async Task StartAsync(RestaurantProductionOrderDto order) => await RunAsync(user => ProductionService.StartAsync(CurrentRfc, order.Id, user));
+  private async Task CancelAsync(RestaurantProductionOrderDto order) => await RunAsync(user => ProductionService.CancelAsync(CurrentRfc, order.Id, user));
+  private async Task CompleteAsync() => await RunAsync(user => ProductionService.CompleteAsync(complete, user));
+  private void BeginComplete(RestaurantProductionOrderDto order) => complete = new() { Rfc = CurrentRfc, ProductionOrderId = order.Id, ActualQuantity = order.PlannedQuantity, OutputLotCode = $"{DateTime.Now:yyyyMMdd}-{order.ProductionCode[^6..]}" };
+  private void CancelComplete() => complete = new();
+  private async Task RunAsync(Func<string, Task<RestaurantCommandResult>> action)
+  {
+    isBusy = true;
+    try
+    {
+      var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+      var result = await action(auth.User.Identity?.Name ?? "produccion");
+      Show(result.Message, !result.Success);
+      if (result.Success) { complete = new(); await LoadAsync(); }
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { isBusy = false; }
+  }
+  private void Show(string value, bool error) { message = value; isError = error; }
+  private static string StatusLabel(string status) => status switch { "Planned" => "Planeada", "Started" => "En proceso", "Completed" => "Terminada", "Cancelled" => "Cancelada", _ => status };
+  private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; complete = new(); await LoadAsync(); StateHasChanged(); });
+  public void Dispose() => RfcState.Changed -= OnRfcChanged;
+}

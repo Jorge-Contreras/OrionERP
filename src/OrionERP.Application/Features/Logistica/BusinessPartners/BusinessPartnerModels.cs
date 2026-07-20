@@ -5,6 +5,8 @@ namespace OrionERP.Application.Features.Logistica.BusinessPartners;
 
 public sealed class BusinessPartnerFilter
 {
+  [Required]
+  public string OwnerRfc { get; set; } = string.Empty;
   public string? SearchText { get; set; }
   public string? Role { get; set; }
   public bool VendorOnly { get; set; }
@@ -56,6 +58,9 @@ public sealed class BusinessPartnerDetailDto
 
 public sealed class BusinessPartnerUpsertRequest
 {
+  [Required]
+  public string OwnerRfc { get; set; } = string.Empty;
+
   public int? Id { get; set; }
   public int? LegacyProveedorId { get; set; }
 

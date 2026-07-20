@@ -28,7 +28,9 @@ public class LoginModel : PageModel
   [TempData]
   public string? ErrorMessage { get; set; }
 
-  public async Task<IActionResult> OnGetAsync(string? returnUrl = null)
+  public async Task<IActionResult> OnGetAsync(
+    string? returnUrl = null,
+    bool securityTokenExpired = false)
   {
     ReturnUrl = GetSafeReturnUrl(returnUrl);
 
@@ -40,6 +42,13 @@ public class LoginModel : PageModel
     if (!string.IsNullOrWhiteSpace(ErrorMessage))
     {
       ModelState.AddModelError(string.Empty, ErrorMessage);
+    }
+
+    if (securityTokenExpired)
+    {
+      ModelState.AddModelError(
+        string.Empty,
+        "El formulario de acceso expiro o cambio. Por seguridad, vuelve a ingresar tus datos.");
     }
 
     await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);

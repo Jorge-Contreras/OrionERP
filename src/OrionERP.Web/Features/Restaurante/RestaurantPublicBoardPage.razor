@@ -1,0 +1,47 @@
+@page "/restaurante/pantalla"
+@attribute [Authorize(Policy = "RestaurantDisplay")]
+@implements IAsyncDisposable
+@using OrionERP.Application.Features.Logistica.Shared
+@using OrionERP.Application.Features.Restaurante
+@using OrionERP.Web.State
+@inject IRestaurantCatalogService CatalogService
+@inject IRestaurantOrderService OrderService
+@inject IUserRfcState RfcState
+@inject IJSRuntime Js
+@inject RestaurantRealtimeClient Realtime
+
+<PageTitle>Órdenes · Restaurante</PageTitle>
+
+<main class="pickup-board">
+  <header><div><span>Órdenes</span><h1>@(sites.FirstOrDefault(item => item.Id == selectedSiteId)?.Name ?? "Restaurante")</h1></div>@if (sites.Count > 1) { <select aria-label="Sede" @onchange="ChangeSiteAsync">@foreach (var site in sites) { <option value="@site.Id" selected="@(site.Id == selectedSiteId)">@site.Name</option> }</select> }</header>
+  <section class="pickup-columns">
+    <article class="pickup-column"><div class="pickup-column__title"><span class="oi oi-clock"></span><h2>En preparación</h2></div><div class="pickup-grid">@foreach (var order in orders.Where(item => item.Status is "Sent" or "Preparing")) { <div class="pickup-card"><strong>@order.Folio.ToString("000")</strong><span>@TypeLabel(order)</span><small>@StatusLabel(order.Status)</small></div> }@if (!orders.Any(item => item.Status is "Sent" or "Preparing")) { <p>Sin órdenes en preparación</p> }</div></article>
+    <article class="pickup-column pickup-column--ready"><div class="pickup-column__title"><span class="oi oi-bell"></span><h2>Listas</h2></div><div class="pickup-grid">@foreach (var order in orders.Where(item => item.Status is "Ready" or "Dispatched")) { <div class="pickup-card pickup-card--ready"><strong>@order.Folio.ToString("000")</strong><span>@TypeLabel(order)</span><small>@StatusLabel(order.Status)</small></div> }@if (!orders.Any(item => item.Status is "Ready" or "Dispatched")) { <p>Pronto aparecerán aquí</p> }</div></article>
+  </section>
+  <footer><span>Conserve su número de orden</span><time>@DateTime.Now.ToString("HH:mm")</time></footer>
+</main>
+
+@code {
+  private readonly CancellationTokenSource disposeCts = new();
+  private readonly HashSet<Guid> announced = [];
+  private List<RestaurantSiteDto> sites = [];
+  private List<RestaurantPublicOrderDto> orders = [];
+  private int selectedSiteId;
+  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  protected override async Task OnInitializedAsync() { RfcState.Changed += OnRfcChanged; Realtime.EventReceived += OnRealtimeEventAsync; await LoadSitesAsync(); _ = LoopAsync(disposeCts.Token); }
+  private async Task LoadSitesAsync() { sites = (await CatalogService.GetSitesAsync(CurrentRfc)).Where(item => item.IsEnabled).ToList(); if (!sites.Any(item => item.Id == selectedSiteId)) selectedSiteId = sites.FirstOrDefault()?.Id ?? 0; await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId); await LoadAsync(); }
+  private async Task LoadAsync()
+  {
+    if (selectedSiteId == 0) { orders = []; return; }
+    var next = (await OrderService.GetPublicBoardAsync(CurrentRfc, selectedSiteId)).ToList();
+    foreach (var ready in next.Where(item => item.Status == "Ready" && announced.Add(item.Id))) await Js.InvokeVoidAsync("restaurantUi.announceOrder", ready.Folio, ready.OrderType, ready.TableName);
+    orders = next;
+  }
+  private async Task ChangeSiteAsync(ChangeEventArgs args) { if (int.TryParse(args.Value?.ToString(), out var id)) { selectedSiteId = id; announced.Clear(); await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId); await LoadAsync(); } }
+  private Task OnRealtimeEventAsync(RestaurantRealtimeEvent eventInfo) => InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+  private async Task LoopAsync(CancellationToken ct) { using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5)); try { while (await timer.WaitForNextTickAsync(ct)) await InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); }); } catch (OperationCanceledException) { } }
+  private static string TypeLabel(RestaurantPublicOrderDto order) => order.OrderType switch { "Pickup" => "Recoger", "Table" => order.TableName ?? "Mesa", "Delivery" => "Domicilio", _ => order.OrderType };
+  private static string StatusLabel(string status) => status switch { "Sent" => "Recibida", "Preparing" => "Preparando", "Ready" => "Puede pasar", "Dispatched" => "Despachada", _ => status };
+  private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; announced.Clear(); await LoadSitesAsync(); StateHasChanged(); });
+  public ValueTask DisposeAsync() { RfcState.Changed -= OnRfcChanged; Realtime.EventReceived -= OnRealtimeEventAsync; disposeCts.Cancel(); disposeCts.Dispose(); return ValueTask.CompletedTask; }
+}

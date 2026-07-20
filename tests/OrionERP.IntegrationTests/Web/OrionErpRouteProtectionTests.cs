@@ -32,4 +32,29 @@ public class OrionErpRouteProtectionTests
 
     Assert.DoesNotContain("/bonhomia", routes);
   }
+
+  [Theory]
+  [InlineData("/restaurante/admin", "RestaurantAdmin")]
+  [InlineData("/restaurante/menus", "RestaurantAdmin")]
+  [InlineData("/restaurante/recetas", "RestaurantAdmin")]
+  [InlineData("/restaurante/produccion", "RestaurantAdmin")]
+  [InlineData("/restaurante/inventario", "RestaurantAdmin")]
+  [InlineData("/restaurante/reportes", "RestaurantAdmin")]
+  [InlineData("/restaurante/configuracion", "RestaurantAdmin")]
+  [InlineData("/restaurante/pos", "RestaurantPos")]
+  [InlineData("/restaurante/ordenes", "RestaurantPos")]
+  [InlineData("/restaurante/cocina", "RestaurantKitchen")]
+  [InlineData("/restaurante/turnos", "RestaurantCash")]
+  [InlineData("/restaurante/pantalla", "RestaurantDisplay")]
+  public void RestaurantRoutes_RequireTheirRfcAwarePolicy(string route, string policy)
+  {
+    var componentType = typeof(ListaReservacionesPage).Assembly
+      .GetTypes()
+      .Single(type => type.GetCustomAttributes<RouteAttribute>()
+        .Any(attribute => attribute.Template == route));
+
+    var authorizeAttributes = componentType.GetCustomAttributes<AuthorizeAttribute>().ToArray();
+
+    Assert.Contains(authorizeAttributes, attribute => attribute.Policy == policy);
+  }
 }

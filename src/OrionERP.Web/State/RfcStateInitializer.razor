@@ -29,6 +29,30 @@
     private string? _lastIdentityStamp;
     private string _storageKey = StorageKeyPrefix;
 
+    protected override async Task OnInitializedAsync()
+    {
+        // La autorización de rutas ocurre durante el prerender, antes de que sea
+        // posible consultar ProtectedLocalStorage en OnAfterRenderAsync. Cargamos
+        // primero el RFC predeterminado desde claims para que RoleForRfcRequirement
+        // pueda validar la ruta sin omitir el aislamiento por empresa. Después del
+        // primer render, InitializeCoreAsync restaura la selección persistida.
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        RfcState.InitializeFromClaims(user);
+        RfcContext.CurrentRfc = RfcState.CurrentRfc;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var identityStamp = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? user.FindFirst("sub")?.Value
+                ?? user.Identity.Name;
+
+            _storageKey = BuildStorageKey(identityStamp);
+            _lastIdentityStamp = identityStamp;
+        }
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)

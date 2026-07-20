@@ -17,12 +17,15 @@
             disabled="@(!CanSearchMain)">
       Buscar
     </button>
-    <button class="btn btn-outline-secondary"
-            type="button"
-            @onclick="ShowCreateNivel3Modal"
-            disabled="@(!CanOpenCreateModal)">
-      Crear Nivel 3
-    </button>
+    @if (AllowAccountManagement)
+    {
+      <button class="btn btn-outline-secondary"
+              type="button"
+              @onclick="ShowCreateNivel3Modal"
+              disabled="@(!CanOpenCreateModal)">
+        Crear Nivel 3
+      </button>
+    }
   </div>
 
   @if (string.IsNullOrWhiteSpace(currentRfc))
@@ -72,7 +75,7 @@
                 </td>
                 <td>@row.Nivel3Descripcion</td>
                 <td class="text-end">
-                  @if (row.IsSelectable && row.Account is not null)
+                  @if (AllowAccountManagement && row.IsSelectable && row.Account is not null)
                   {
                     <button class="btn btn-sm btn-outline-secondary"
                             type="button"
@@ -283,6 +286,7 @@
   [Parameter] public EventCallback<CuentaContableSelection?> SelectionChanged { get; set; }
   [Parameter] public EventCallback SearchRequested { get; set; }
   [Parameter] public EventCallback<string?> ErrorChanged { get; set; }
+  [Parameter] public bool AllowAccountManagement { get; set; } = true;
 
   private string? currentRfc;
   private string? lastLoadedRfc;
@@ -304,7 +308,7 @@
   private readonly List<CuentasContablesDto> createNivel3Results = new();
 
   private bool CanSearchMain => !string.IsNullOrWhiteSpace(currentRfc) && !string.IsNullOrWhiteSpace(searchTerm);
-  private bool CanOpenCreateModal => !string.IsNullOrWhiteSpace(currentRfc);
+  private bool CanOpenCreateModal => AllowAccountManagement && !string.IsNullOrWhiteSpace(currentRfc);
   private bool CanSearchCreateNivel2 => !string.IsNullOrWhiteSpace(currentRfc) && createSelection.HasNivel1;
 
   public bool RequiresDirectAccountResolution => false;
@@ -617,6 +621,11 @@
 
   private void ShowCreateNivel3Modal()
   {
+    if (!AllowAccountManagement)
+    {
+      return;
+    }
+
     isEditingNivel3 = false;
     nivel3Model = new CuentasContablesDto();
     ResetCreateWorkflow();
@@ -625,6 +634,11 @@
 
   private void ShowEditNivel3Modal(CuentasContablesDto item)
   {
+    if (!AllowAccountManagement)
+    {
+      return;
+    }
+
     isEditingNivel3 = true;
     nivel3Model = item with { };
     showNivel3Modal = true;

@@ -10,10 +10,11 @@ using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.PhysicalCounts;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Web.Services;
+using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Logistica.PhysicalCounts;
 
-public partial class ConteosFisicosPage : ComponentBase
+public partial class ConteosFisicosPage : ComponentBase, IDisposable
 {
   private static readonly CultureInfo QuantityInputCulture = CultureInfo.GetCultureInfo("es-MX");
   private static readonly NumberStyles QuantityInputNumberStyles = NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowThousands;
@@ -36,6 +37,7 @@ public partial class ConteosFisicosPage : ComponentBase
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private IJSRuntime Js { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
+  [Inject] private IUserRfcState RfcState { get; set; } = default!;
 
   protected List<LookupOptionDto> LocationOptions { get; set; } = [];
   protected List<PhysicalCountSessionSummaryDto> Sessions { get; set; } = [];
@@ -115,11 +117,22 @@ public partial class ConteosFisicosPage : ComponentBase
 
   protected override async Task OnInitializedAsync()
   {
+    RfcState.Changed += HandleRfcChanged;
     CurrentUserName = await ResolveCurrentUserAsync();
     LocationOptions = (await LocationService.GetLocationLookupAsync(inventoryOnly: true)).ToList();
     await CargarSesionesAsync();
     await ApplyQuerySessionSelectionAsync();
   }
+
+  private void HandleRfcChanged() => _ = InvokeAsync(async () =>
+  {
+    ClearSelectedSession();
+    LocationOptions = (await LocationService.GetLocationLookupAsync(inventoryOnly: true)).ToList();
+    await CargarSesionesAsync();
+    StateHasChanged();
+  });
+
+  public void Dispose() => RfcState.Changed -= HandleRfcChanged;
 
   protected override async Task OnParametersSetAsync()
   {
@@ -225,7 +238,12 @@ public partial class ConteosFisicosPage : ComponentBase
       Notes = line.Notes,
       IsMissing = line.IsMissing,
       IsDamaged = line.IsDamaged,
-      CapturedBy = CurrentUserName
+      CapturedBy = CurrentUserName,
+      Lots = line.Lots.Select(lot => new PhysicalCountLotCaptureRequest
+      {
+        MaterialLotId = lot.MaterialLotId,
+        CountedQuantity = lot.CountedQuantity
+      }).ToList()
     };
 
     PendingLineAttachmentBytes = null;
@@ -243,6 +261,13 @@ public partial class ConteosFisicosPage : ComponentBase
     }
 
     return string.Equals(line.CapturedBy.Trim(), CurrentUserName.Trim(), StringComparison.OrdinalIgnoreCase);
+  }
+
+  protected void UpdateTotalFromLots()
+  {
+    if (LineCapture.Lots.Count == 0) return;
+    LineCapture.CountedQuantity = LineCapture.Lots.Sum(lot => lot.CountedQuantity ?? 0m);
+    UpdateCountedQuantityInputFromCapture();
   }
 
   protected bool IsSelectedLine(PhysicalCountLineDto line)
@@ -680,7 +705,7 @@ public partial class ConteosFisicosPage : ComponentBase
 
     try
     {
-      var image = await MaterialService.GetMaterialImageAsync(line.MaterialId);
+      var image = await MaterialService.GetMaterialImageAsync(LogisticsRfc.Require(RfcState.CurrentRfc), line.MaterialId);
       if (image is null)
       {
         if (MaterialImageModalDataUrl is null)
@@ -777,7 +802,7 @@ public partial class ConteosFisicosPage : ComponentBase
 
     try
     {
-      var thumbnails = await MaterialService.GetMaterialThumbnailsAsync(SelectedSession.Lines.Select(line => line.MaterialId));
+      var thumbnails = await MaterialService.GetMaterialThumbnailsAsync(LogisticsRfc.Require(RfcState.CurrentRfc), SelectedSession.Lines.Select(line => line.MaterialId));
       MaterialThumbnailDataUrls = thumbnails
         .Where(thumbnail => thumbnail.Bytes.Length > 0)
         .ToDictionary(

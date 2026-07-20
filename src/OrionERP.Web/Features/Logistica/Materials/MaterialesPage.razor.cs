@@ -2,11 +2,13 @@ using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using OrionERP.Application.Features.Logistica.Materials;
+using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Web.Services;
+using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Logistica.Materials;
 
-public partial class MaterialesPage : ComponentBase
+public partial class MaterialesPage : ComponentBase, IDisposable
 {
   private const int ThumbnailMaxPixels = 240;
   private const int PageSize = 50;
@@ -14,6 +16,7 @@ public partial class MaterialesPage : ComponentBase
 
   [Inject] private IMaterialService MaterialService { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
+  [Inject] private IUserRfcState RfcState { get; set; } = default!;
 
   protected MaterialFilter Filter { get; set; } = new();
   protected MaterialCatalogDto Catalog { get; set; } = new();
@@ -43,6 +46,8 @@ public partial class MaterialesPage : ComponentBase
 
   protected override async Task OnInitializedAsync()
   {
+    RfcState.Changed += HandleRfcChanged;
+    Editor.Rfc = CurrentRfc;
     await LoadCatalogAsync();
   }
 
@@ -107,13 +112,14 @@ public partial class MaterialesPage : ComponentBase
     ImagePreviewDataUrl = null;
     CloseMaterialImageModal();
     Editor = CreateNewEditor();
+    Editor.Rfc = CurrentRfc;
   }
 
   protected async Task SeleccionarMaterialAsync(int materialId)
   {
     try
     {
-      var detail = await MaterialService.GetMaterialAsync(materialId);
+      var detail = await MaterialService.GetMaterialAsync(CurrentRfc, materialId);
       if (detail is null)
       {
         UiMessages.ShowWarning("El material seleccionado ya no existe.");
@@ -125,6 +131,7 @@ public partial class MaterialesPage : ComponentBase
       SelectedImageFileName = detail.PrimaryImageFileName;
       Editor = new MaterialUpsertRequest
       {
+        Rfc = CurrentRfc,
         Id = detail.Id,
         Description = detail.Description,
         BaseUnitId = detail.BaseUnitId,
@@ -159,6 +166,7 @@ public partial class MaterialesPage : ComponentBase
     IsSaving = true;
     try
     {
+      Editor.Rfc = CurrentRfc;
       var result = await MaterialService.SaveMaterialAsync(Editor);
       if (!result.Success)
       {
@@ -238,7 +246,7 @@ public partial class MaterialesPage : ComponentBase
         return;
       }
 
-      var image = await MaterialService.GetMaterialImageAsync(item.Id);
+      var image = await MaterialService.GetMaterialImageAsync(CurrentRfc, item.Id);
       if (image is null)
       {
         if (MaterialImageModalDataUrl is null)
@@ -271,7 +279,7 @@ public partial class MaterialesPage : ComponentBase
 
   private async Task LoadCatalogAsync()
   {
-    Catalog = await MaterialService.GetCatalogAsync();
+    Catalog = await MaterialService.GetCatalogAsync(CurrentRfc);
     if (Catalog.Units.Count > 0 && Editor.BaseUnitId == 0)
     {
       Editor.BaseUnitId = Catalog.Units[0].Id;
@@ -280,7 +288,7 @@ public partial class MaterialesPage : ComponentBase
 
   private async Task LoadImageAsync(int materialId)
   {
-    var image = await MaterialService.GetMaterialImageAsync(materialId);
+    var image = await MaterialService.GetMaterialImageAsync(CurrentRfc, materialId);
     ImagePreviewDataUrl = image is null
       ? null
       : BuildDataUrl(image.ContentType, image.Bytes);
@@ -319,7 +327,7 @@ public partial class MaterialesPage : ComponentBase
 
     try
     {
-      var thumbnails = await MaterialService.GetMaterialThumbnailsAsync(materialIds);
+      var thumbnails = await MaterialService.GetMaterialThumbnailsAsync(CurrentRfc, materialIds);
       var thumbnailDataUrls = thumbnails
         .Where(thumbnail => thumbnail.Bytes.Length > 0)
         .ToDictionary(
@@ -352,6 +360,7 @@ public partial class MaterialesPage : ComponentBase
   private MaterialFilter CreateQueryFilter(int skip, int take)
     => new()
     {
+      Rfc = CurrentRfc,
       SearchText = Filter.SearchText,
       CategoryId = Filter.CategoryId,
       VendorId = Filter.VendorId,
@@ -376,6 +385,23 @@ public partial class MaterialesPage : ComponentBase
       Status = "ACTIVO",
       IsActive = true
     };
+
+  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+
+  private void HandleRfcChanged()
+    => _ = InvokeAsync(async () =>
+    {
+      Materials = [];
+      MaterialThumbnailDataUrls = [];
+      HasExecutedSearch = false;
+      SelectedMaterialId = null;
+      NuevoMaterial();
+      await LoadCatalogAsync();
+      StateHasChanged();
+    });
+
+  public void Dispose()
+    => RfcState.Changed -= HandleRfcChanged;
 
   private static string BuildDataUrl(string? contentType, byte[] bytes)
   {

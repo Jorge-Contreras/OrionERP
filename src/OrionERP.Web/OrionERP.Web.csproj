@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\SatMassiveDownload\SatMassiveDownload\Sat.MassiveDownload.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="10.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>

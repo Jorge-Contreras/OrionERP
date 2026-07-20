@@ -5,6 +5,8 @@ namespace OrionERP.Application.Features.Logistica.Materials;
 
 public sealed class MaterialFilter
 {
+  [Required]
+  public string Rfc { get; set; } = string.Empty;
   public string? SearchText { get; set; }
   public int? CategoryId { get; set; }
   public int? VendorId { get; set; }
@@ -66,6 +68,9 @@ public sealed class MaterialDetailDto
 
 public sealed class MaterialUpsertRequest
 {
+  [Required]
+  public string Rfc { get; set; } = string.Empty;
+
   public int? Id { get; set; }
 
   [Required]

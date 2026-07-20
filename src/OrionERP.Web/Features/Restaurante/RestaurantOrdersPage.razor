@@ -1,0 +1,273 @@
+@page "/restaurante/ordenes"
+@attribute [Authorize(Policy = "RestaurantPos")]
+@implements IAsyncDisposable
+@using Microsoft.AspNetCore.Components.Authorization
+@using OrionERP.Application.Features.Logistica.Shared
+@using OrionERP.Application.Features.Restaurante
+@using OrionERP.Web.State
+@inject IRestaurantCatalogService CatalogService
+@inject IRestaurantOrderService OrderService
+@inject IRestaurantCashService CashService
+@inject IRestaurantQuickPinService QuickPinService
+@inject IRestaurantAccountingService AccountingService
+@inject IUserRfcState RfcState
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject RestaurantRealtimeClient Realtime
+
+<PageTitle>Restaurante · Órdenes y entregas</PageTitle>
+<main class="orders-shell">
+  <header class="orders-hero"><div><span>Barra y entrega</span><h1>Órdenes activas</h1><p>Despacha domicilio, entrega al comensal y completa órdenes pagadas.</p></div><div>@if(sites.Count>1){<select @onchange="ChangeSiteAsync">@foreach(var site in sites){<option value="@site.Id" selected="@(site.Id==selectedSiteId)">@site.Name</option>}</select>}<button type="button" @onclick="LoadAsync">Actualizar</button></div></header>
+  @if(!string.IsNullOrWhiteSpace(message)){<div class="alert @(isError?"alert-danger":"alert-success")">@message</div>}
+  <nav class="orders-filters">@foreach(var filter in new[]{"Active","Ready","Dispatched","Delivered","Completed"}){<button type="button" class="@(statusFilter==filter?"is-active":null)" @onclick="()=>statusFilter=filter">@FilterLabel(filter) <b>@Count(filter)</b></button>}</nav>
+  <section class="orders-grid">
+    @foreach(var order in FilteredOrders)
+    {
+      <article class="order-card order-card--@order.Status.ToLowerInvariant()"><header><div><span>@TypeLabel(order.OrderType)</span><strong>@order.Folio.ToString("000")</strong></div><b>@StatusLabel(order.Status)</b></header><div class="order-card__summary">@if(!string.IsNullOrWhiteSpace(order.TableName)){<span class="oi oi-map-marker"></span><strong>@order.TableName</strong>}<span>@order.Lines.Sum(x=>x.Quantity).ToString("0.##") producto(s)</span><span>@order.Total.ToString("C")</span></div><ul>@foreach(var line in order.Lines.Where(x=>x.Status!="Cancelled")){<li><b>@line.Quantity.ToString("0.##")×</b><span>@line.ProductName@if(line.Modifiers.Count>0){<small>@string.Join(" · ",line.Modifiers)</small>}</span><em>@StatusLabel(line.Status)</em></li>}</ul><footer><span class="payment payment--@order.PaymentStatus.ToLowerInvariant()">@PaymentLabel(order.PaymentStatus)</span><div>@if(order.CashRegisterId.HasValue){<button type="button" class="order-correction-button" @onclick="()=>OpenCorrectionsAsync(order)">Correcciones / CFDI</button>}@if(order.Status=="Ready"&&order.OrderType=="Delivery"){<button type="button" @onclick='()=>SetStatusAsync(order,"Dispatched")'>Despachar</button>}else if(order.Status=="Ready"){<button type="button" @onclick='()=>SetStatusAsync(order,"Delivered")'>Entregar</button>}else if(order.Status=="Dispatched"){<button type="button" @onclick='()=>SetStatusAsync(order,"Delivered")'>Confirmar entrega</button>}else if(order.Status=="Delivered"&&order.PaymentStatus=="Paid"){<button type="button" @onclick='()=>SetStatusAsync(order,"Completed")'>Completar</button>}</div></footer></article>
+    }
+    @if(!FilteredOrders.Any()){<div class="orders-empty"><h2>No hay órdenes en este estado</h2></div>}
+  </section>
+  @if(correctionOrder is not null)
+  {
+    <section class="order-correction" role="dialog" aria-modal="true" aria-label="Correcciones supervisadas">
+      <div class="order-correction__card">
+        <header><div><span>Orden @correctionOrder.Folio.ToString("000")</span><h2>Corrección supervisada</h2></div><button type="button" @onclick="CloseCorrections" aria-label="Cerrar">×</button></header>
+        <nav>@foreach(var mode in new[]{"Payment","Refund","Cancel","Cfdi"}){<button type="button" class="@(correctionMode==mode?"is-active":null)" @onclick="()=>correctionMode=mode">@CorrectionLabel(mode)</button>}</nav>
+        @if(correctionMode=="Payment")
+        {
+          <div class="order-correction__fields"><label>Forma de pago<select @bind="correctionPaymentMethod"><option value="Cash">Efectivo</option><option value="ExternalCard">Tarjeta externa</option><option value="Transfer">Transferencia</option></select></label><label>Importe<input type="number" min="0.01" step="0.01" @bind="correctionAmount" /></label><label>Propina<input type="number" min="0" step="0.01" @bind="correctionTip" /></label></div>
+        }
+        else if(correctionMode=="Refund")
+        {
+          <div class="order-correction__fields"><label>Pago<select @bind="selectedPaymentId"><option value="">Seleccionar…</option>@foreach(var payment in correctionPayments.Where(x=>x.RefundableAmount>0)){<option value="@payment.Id">@PaymentMethodLabel(payment.PaymentMethod) · @payment.RefundableAmount.ToString("C")</option>}</select></label><label>Importe a reembolsar<input type="number" min="0.01" step="0.01" @bind="correctionAmount" /></label></div>
+        }
+        else if(correctionMode=="Cancel")
+        {
+          <p class="order-correction__warning">Se liberará la reserva si aún no se consume. Si la preparación inició, la salida debe tratarse como merma. Los cobros se reembolsan por separado.</p>
+        }
+        else
+        {
+          <div class="order-correction__fields"><label>ID del comprobante CFDI<input type="number" min="1" @bind="correctionCfdiId" /></label></div><p class="order-correction__warning">Si la venta ya entró en una póliza diaria, se generará una reversión supervisada de su porción y después la póliza individual ligada a <code>Transaccion_Comprobante</code>.</p>
+        }
+        <label>Motivo<textarea @bind="correctionReason" rows="2"></textarea></label>
+        <div class="order-correction__supervisor"><label>Supervisor<input @bind="supervisorIdentity" autocomplete="username" placeholder="Correo o usuario" /></label><label>PIN<input type="password" inputmode="numeric" autocomplete="current-password" @bind="supervisorPin" /></label></div>
+        <footer><button type="button" class="btn btn-outline-secondary" @onclick="CloseCorrections">Cerrar</button><button type="button" class="btn btn-danger" disabled="@correctionBusy" @onclick="ApplyCorrectionAsync">Autorizar y aplicar</button></footer>
+      </div>
+    </section>
+  }
+</main>
+
+@code {
+  private readonly CancellationTokenSource disposeCts = new();
+  private List<RestaurantSiteDto> sites = [];
+  private List<RestaurantOrderDto> orders = [];
+  private int selectedSiteId;
+  private string statusFilter = "Active";
+  private string? message;
+  private bool isError;
+  private RestaurantOrderDto? correctionOrder;
+  private List<RestaurantPaymentDto> correctionPayments = [];
+  private List<RestaurantCashShiftDto> correctionShifts = [];
+  private string correctionMode = "Payment";
+  private string correctionPaymentMethod = "Cash";
+  private Guid? selectedPaymentId;
+  private decimal correctionAmount;
+  private decimal correctionTip;
+  private int correctionCfdiId;
+  private string correctionReason = string.Empty;
+  private string supervisorIdentity = string.Empty;
+  private string supervisorPin = string.Empty;
+  private bool correctionBusy;
+
+  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private IEnumerable<RestaurantOrderDto> FilteredOrders => statusFilter == "Active"
+    ? orders.Where(order => order.Status is not ("Completed" or "Cancelled"))
+    : orders.Where(order => order.Status == statusFilter);
+
+  protected override async Task OnInitializedAsync()
+  {
+    RfcState.Changed += OnRfcChanged;
+    Realtime.EventReceived += OnRealtimeEventAsync;
+    await LoadSitesAsync();
+    _ = RefreshLoopAsync(disposeCts.Token);
+  }
+
+  private async Task LoadSitesAsync()
+  {
+    sites = (await CatalogService.GetSitesAsync(CurrentRfc)).Where(site => site.IsEnabled).ToList();
+    if (!sites.Any(site => site.Id == selectedSiteId)) selectedSiteId = sites.FirstOrDefault()?.Id ?? 0;
+    await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId);
+    await LoadAsync();
+  }
+
+  private async Task LoadAsync()
+  {
+    try
+    {
+      orders = selectedSiteId > 0
+        ? (await OrderService.GetOperationalOrdersAsync(CurrentRfc, selectedSiteId)).ToList()
+        : [];
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+  }
+
+  private async Task SetStatusAsync(RestaurantOrderDto order, string status)
+  {
+    try
+    {
+      var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+      var result = await OrderService.UpdateOrderStatusAsync(CurrentRfc, order.Id, status, auth.User.Identity?.Name ?? "entrega");
+      Show(result.Message, !result.Success);
+      await LoadAsync();
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+  }
+
+  private async Task OpenCorrectionsAsync(RestaurantOrderDto order)
+  {
+    correctionOrder = order;
+    correctionPayments = (await OrderService.GetPaymentsAsync(CurrentRfc, order.Id)).ToList();
+    correctionShifts = (await CashService.GetShiftsAsync(CurrentRfc, selectedSiteId)).Where(shift => shift.Status == "Open").ToList();
+    correctionMode = order.BalanceDue > 0 ? "Payment" : "Refund";
+    selectedPaymentId = correctionPayments.FirstOrDefault(payment => payment.RefundableAmount > 0)?.Id;
+    correctionAmount = correctionMode == "Payment"
+      ? order.BalanceDue
+      : correctionPayments.FirstOrDefault(payment => payment.Id == selectedPaymentId)?.RefundableAmount ?? 0;
+    correctionTip = 0;
+    correctionCfdiId = 0;
+    correctionReason = string.Empty;
+    supervisorIdentity = string.Empty;
+    supervisorPin = string.Empty;
+  }
+
+  private void CloseCorrections()
+  {
+    correctionOrder = null;
+    correctionPayments = [];
+    supervisorPin = string.Empty;
+  }
+
+  private async Task ApplyCorrectionAsync()
+  {
+    if (correctionOrder is null || !correctionOrder.CashRegisterId.HasValue) return;
+    correctionBusy = true;
+    try
+    {
+      var verification = await QuickPinService.VerifySupervisorPinAsync(new()
+      {
+        Rfc = CurrentRfc,
+        CashRegisterId = correctionOrder.CashRegisterId.Value,
+        UserNameOrEmail = supervisorIdentity,
+        Pin = supervisorPin
+      });
+      if (!verification.Success)
+      {
+        Show(verification.Message, true);
+        supervisorPin = string.Empty;
+        return;
+      }
+
+      var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+      var requestedBy = auth.User.Identity?.Name ?? "caja";
+      RestaurantCommandResult result;
+      if (correctionMode == "Payment")
+      {
+        var shift = correctionShifts.FirstOrDefault(item => item.CashRegisterId == correctionOrder.CashRegisterId);
+        result = await OrderService.AddPaymentAsync(new()
+        {
+          Rfc = CurrentRfc,
+          OrderId = correctionOrder.Id,
+          CashShiftId = correctionPaymentMethod == "Cash" ? shift?.Id : null,
+          PaymentMethod = correctionPaymentMethod,
+          Amount = correctionAmount,
+          TipAmount = correctionTip,
+          IdempotencyKey = Guid.NewGuid().ToString("N"),
+          Reason = correctionReason,
+          SupervisorUserName = verification.UserName!
+        }, requestedBy);
+      }
+      else if (correctionMode == "Refund")
+      {
+        if (!selectedPaymentId.HasValue)
+        {
+          Show("Seleccione el pago a reembolsar.", true);
+          return;
+        }
+        result = await OrderService.RefundPaymentAsync(new()
+        {
+          Rfc = CurrentRfc,
+          PaymentId = selectedPaymentId.Value,
+          Amount = correctionAmount,
+          IdempotencyKey = Guid.NewGuid().ToString("N"),
+          Reason = correctionReason,
+          SupervisorUserName = verification.UserName!
+        }, requestedBy);
+      }
+      else if (correctionMode == "Cancel")
+      {
+        result = await OrderService.CancelOrderAsync(CurrentRfc, correctionOrder.Id, correctionReason, verification.UserName!);
+      }
+      else
+      {
+        result = await AccountingService.GenerateIndividualCfdiPolicyAsync(CurrentRfc, correctionOrder.Id, correctionCfdiId, verification.UserName!);
+      }
+      Show(result.Message, !result.Success);
+      if (result.Success) CloseCorrections();
+      await LoadAsync();
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { correctionBusy = false; }
+  }
+
+  private async Task ChangeSiteAsync(ChangeEventArgs args)
+  {
+    if (int.TryParse(args.Value?.ToString(), out var id))
+    {
+      selectedSiteId = id;
+      CloseCorrections();
+      await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId);
+      await LoadAsync();
+    }
+  }
+
+  private int Count(string filter) => filter == "Active"
+    ? orders.Count(order => order.Status is not ("Completed" or "Cancelled"))
+    : orders.Count(order => order.Status == filter);
+  private static string FilterLabel(string value) => value switch { "Active" => "Activas", "Ready" => "Listas", "Dispatched" => "Despachadas", "Delivered" => "Entregadas", "Completed" => "Completadas", _ => value };
+  private static string TypeLabel(string value) => value switch { "Pickup" => "Recoger", "Table" => "Mesa", "Delivery" => "Domicilio", _ => value };
+  private static string StatusLabel(string value) => value switch { "Sent" => "Pendiente", "Preparing" => "Preparando", "Ready" => "Lista", "Dispatched" => "Despachada", "Delivered" => "Entregada", "Completed" => "Completada", "Pending" => "Pendiente", _ => value };
+  private static string PaymentLabel(string value) => value switch { "Paid" => "Pagada", "PendingSettlement" => "Por liquidar", "Partial" => "Pago parcial", "PartiallyRefunded" => "Reembolso parcial", "Refunded" => "Reembolsada", _ => value };
+  private static string CorrectionLabel(string value) => value switch { "Payment" => "Cargo adicional", "Refund" => "Reembolso", "Cancel" => "Cancelar orden", "Cfdi" => "Ligar CFDI", _ => value };
+  private static string PaymentMethodLabel(string value) => value switch { "Cash" => "Efectivo", "ExternalCard" => "Tarjeta", "Transfer" => "Transferencia", "Platform" => "Plataforma", _ => value };
+  private void Show(string value, bool error) { message = value; isError = error; }
+  private Task OnRealtimeEventAsync(RestaurantRealtimeEvent eventInfo) => InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+
+  private async Task RefreshLoopAsync(CancellationToken ct)
+  {
+    using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+    try
+    {
+      while (await timer.WaitForNextTickAsync(ct))
+      {
+        await InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+      }
+    }
+    catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+  }
+
+  private void OnRfcChanged() => _ = InvokeAsync(async () =>
+  {
+    selectedSiteId = 0;
+    CloseCorrections();
+    await LoadSitesAsync();
+    StateHasChanged();
+  });
+
+  public ValueTask DisposeAsync()
+  {
+    RfcState.Changed -= OnRfcChanged;
+    Realtime.EventReceived -= OnRealtimeEventAsync;
+    disposeCts.Cancel();
+    disposeCts.Dispose();
+    return ValueTask.CompletedTask;
+  }
+}

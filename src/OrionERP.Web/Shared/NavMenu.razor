@@ -289,6 +289,26 @@
                 new("/logistica/conteos", "Conteos", "Conteos fisicos, ajustes y validacion de diferencias.", "oi-task", "Conteos fisicos", NavLinkMatch.Prefix, false, "Conteo", "conteos", "inventario", "fisico")
             }),
         new(
+            "Operacion",
+            "Restaurante",
+            "Venta táctil, cocina, recetas, turnos y seguimiento de órdenes.",
+            "oi-monitor",
+            new List<NavEntryDefinition>
+            {
+                new("/restaurante/pos", "POS táctil", "Captura, cobra y envía órdenes a cocina.", "oi-cart", "Punto de venta Restaurante", NavLinkMatch.Prefix, true, "Venta", "restaurante", "pos", "orden", "caja"),
+                new("/restaurante/cocina", "Cocina KDS", "Comandas por partida, tiempos y productos listos.", "oi-timer", "Pantalla de cocina", NavLinkMatch.Prefix, true, "KDS", "cocina", "comandas", "preparar"),
+                new("/restaurante/ordenes", "Órdenes y entregas", "Despacho, entrega y terminación por folio.", "oi-check", "Órdenes y entregas", NavLinkMatch.Prefix, true, "Barra", "órdenes", "entregas", "despacho"),
+                new("/restaurante/pantalla", "Pantalla de órdenes", "Folios en preparación y listos sin datos personales.", "oi-bell", "Pantalla pública de órdenes", NavLinkMatch.Prefix, false, "Turnos", "pantalla", "folio", "listo"),
+                new("/restaurante/turnos", "Turnos de caja", "Apertura, conteo ciego, diferencias y aprobación.", "oi-lock-unlocked", "Turnos y cortes de caja", NavLinkMatch.Prefix, false, "Caja", "turnos", "corte", "efectivo"),
+                new("/restaurante/recetas", "Recetas y BOM", "Ingredientes, rendimientos, subrecetas y versiones.", "oi-list-rich", "Recetas y BOM", NavLinkMatch.Prefix, false, "BOM", "recetas", "ingredientes", "merma"),
+                new("/restaurante/menus", "Menús", "Horarios, secciones, productos y modificadores.", "oi-grid-three-up", "Menús y modificadores", NavLinkMatch.Prefix, false, "Catálogo", "menús", "horarios", "modificadores"),
+                new("/restaurante/produccion", "Producción", "Reservas FEFO, consumo, lotes, rendimiento y merma.", "oi-loop", "Producción por lotes", NavLinkMatch.Prefix, false, "Lotes", "producción", "lotes", "rendimiento", "merma"),
+                new("/restaurante/inventario", "Movimientos de inventario", "Traspasos atómicos, ajustes y merma con evidencia.", "oi-transfer", "Inventario Restaurante", NavLinkMatch.Prefix, false, "Stock", "traspasos", "ajustes", "merma", "inventario"),
+                new("/restaurante/reportes", "Reportes Restaurante", "Ventas, margen, productos y liquidaciones externas.", "oi-bar-chart", "Reportes y liquidaciones", NavLinkMatch.Prefix, false, "KPIs", "reportes", "ventas", "margen", "liquidaciones"),
+                new("/restaurante/admin", "Administrar Restaurante", "Sedes, productos, variantes, precios y habilitación.", "oi-cog", "Administración de Restaurante", NavLinkMatch.Prefix, false, "Setup", "restaurante", "configuración", "productos"),
+                new("/restaurante/configuracion", "Configuración operativa", "Mesas, estaciones, proveedores, almacenes y cuentas.", "oi-settings", "Configuración operativa", NavLinkMatch.Prefix, false, "Setup", "mesas", "estaciones", "cuentas", "proveedores")
+            }),
+        new(
             "Analitica",
             "Reportes",
             "Lectura financiera para revision, balance y rentabilidad.",

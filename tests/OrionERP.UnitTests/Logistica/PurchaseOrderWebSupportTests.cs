@@ -5,6 +5,7 @@ using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Purchasing;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Web.Features.Logistica.Purchasing;
+using OrionERP.Web.State;
 
 namespace OrionERP.UnitTests.Logistica;
 
@@ -30,7 +31,7 @@ public class PurchaseOrderWebSupportTests
       ]
     };
 
-    var hydrator = new PurchaseMaterialThumbnailHydrator(materialService);
+    var hydrator = new PurchaseMaterialThumbnailHydrator(materialService, new FakeRfcState());
 
     var result = await hydrator.GetDataUrlsAsync([9, 9, 15]);
 
@@ -57,7 +58,7 @@ public class PurchaseOrderWebSupportTests
       ]
     };
 
-    var factory = new PurchaseOrderPdfDocumentFactory(materialService);
+    var factory = new PurchaseOrderPdfDocumentFactory(materialService, new FakeRfcState());
     var pdfService = new PurchaseOrderPdfService(new FakeWebHostEnvironment());
 
     var model = await factory.CreateFromDetailAsync(new PurchaseOrderDetailDto
@@ -128,7 +129,7 @@ public class PurchaseOrderWebSupportTests
   [Fact]
   public async Task PurchaseOrderPdfFactory_SortsAllocationsByLocationThenMaterial()
   {
-    var factory = new PurchaseOrderPdfDocumentFactory(new FakeMaterialService());
+    var factory = new PurchaseOrderPdfDocumentFactory(new FakeMaterialService(), new FakeRfcState());
 
     var model = await factory.CreateFromDetailAsync(new PurchaseOrderDetailDto
     {
@@ -233,19 +234,19 @@ public class PurchaseOrderWebSupportTests
     public Task<IReadOnlyList<MaterialListItemDto>> GetMaterialsAsync(MaterialFilter filter, CancellationToken ct = default)
       => throw new NotSupportedException();
 
-    public Task<MaterialDetailDto?> GetMaterialAsync(int materialId, CancellationToken ct = default)
+    public Task<MaterialDetailDto?> GetMaterialAsync(string rfc, int materialId, CancellationToken ct = default)
       => throw new NotSupportedException();
 
-    public Task<MaterialCatalogDto> GetCatalogAsync(CancellationToken ct = default)
+    public Task<MaterialCatalogDto> GetCatalogAsync(string rfc, CancellationToken ct = default)
       => throw new NotSupportedException();
 
-    public Task<LogisticsBinaryContent?> GetMaterialImageAsync(int materialId, CancellationToken ct = default)
+    public Task<LogisticsBinaryContent?> GetMaterialImageAsync(string rfc, int materialId, CancellationToken ct = default)
       => throw new NotSupportedException();
 
-    public Task<LogisticsBinaryContent?> GetMaterialThumbnailAsync(int materialId, CancellationToken ct = default)
+    public Task<LogisticsBinaryContent?> GetMaterialThumbnailAsync(string rfc, int materialId, CancellationToken ct = default)
       => Task.FromResult<LogisticsBinaryContent?>(Thumbnails.FirstOrDefault(thumbnail => thumbnail.Id == materialId));
 
-    public Task<IReadOnlyList<LogisticsBinaryContent>> GetMaterialThumbnailsAsync(IEnumerable<int> materialIds, CancellationToken ct = default)
+    public Task<IReadOnlyList<LogisticsBinaryContent>> GetMaterialThumbnailsAsync(string rfc, IEnumerable<int> materialIds, CancellationToken ct = default)
     {
       LastThumbnailIds = materialIds.Distinct().OrderBy(id => id).ToArray();
       return Task.FromResult<IReadOnlyList<LogisticsBinaryContent>>(Thumbnails.Where(thumbnail => LastThumbnailIds.Contains(thumbnail.Id)).ToList());
@@ -253,6 +254,16 @@ public class PurchaseOrderWebSupportTests
 
     public Task<LogisticsCommandResult> SaveMaterialAsync(MaterialUpsertRequest request, CancellationToken ct = default)
       => throw new NotSupportedException();
+  }
+
+  private sealed class FakeRfcState : IUserRfcState
+  {
+    public string? CurrentRfc => "OHM191112Q26";
+    public IReadOnlyList<string> AllowedRfcs => ["OHM191112Q26"];
+    public event Action? Changed { add { } remove { } }
+    public void InitializeFromClaims(System.Security.Claims.ClaimsPrincipal user) { }
+    public bool TrySet(string rfc) => string.Equals(rfc, CurrentRfc, StringComparison.OrdinalIgnoreCase);
+    public void ResetToDefault() { }
   }
 
   private sealed class FakeWebHostEnvironment : IWebHostEnvironment

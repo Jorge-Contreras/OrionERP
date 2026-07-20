@@ -4,11 +4,13 @@ namespace OrionERP.Infrastructure.Auth
 {
     public sealed class RoleForRfcRequirement : IAuthorizationRequirement
     {
-        public string RequiredRole { get; }
+        public IReadOnlySet<string> RequiredRoles { get; }
 
-        public RoleForRfcRequirement(string requiredRole)
+        public RoleForRfcRequirement(params string[] requiredRoles)
         {
-            RequiredRole = requiredRole;
+            RequiredRoles = requiredRoles
+                .Where(role => !string.IsNullOrWhiteSpace(role))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
     }
 }

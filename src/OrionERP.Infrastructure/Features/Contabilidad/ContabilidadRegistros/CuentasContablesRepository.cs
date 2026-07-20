@@ -227,6 +227,50 @@ WHERE id = @id;";
     return await connection.QuerySingleOrDefaultAsync<CuentasContablesDto>(sql, new { id });
   }
 
+  public async Task<CuentasContablesDto?> GetByCodeAsync(
+    string rfc,
+    string nivel1,
+    string nivel2,
+    string nivel3)
+  {
+    if (string.IsNullOrWhiteSpace(rfc) || string.IsNullOrWhiteSpace(nivel1) ||
+        string.IsNullOrWhiteSpace(nivel2) || string.IsNullOrWhiteSpace(nivel3))
+    {
+      return null;
+    }
+
+    const string sql = @"
+SELECT account.id          AS Id,
+       account.RFC         AS Rfc,
+       account.Nivel1,
+       account.Nivel2,
+       account.Nivel3,
+       account.Descripcion,
+       nivel1.id           AS Nivel1Id,
+       nivel1.Descripcion  AS Nivel1Descripcion,
+       nivel2.id           AS Nivel2Id,
+       nivel2.Descripcion  AS Nivel2Descripcion,
+       account.Descripcion AS Nivel3Descripcion
+FROM dbo.CuentasContables AS account
+LEFT JOIN dbo.CuentasContables AS nivel1
+  ON nivel1.RFC=account.RFC AND nivel1.Nivel1=account.Nivel1
+ AND nivel1.Nivel2='00' AND nivel1.Nivel3='00'
+LEFT JOIN dbo.CuentasContables AS nivel2
+  ON nivel2.RFC=account.RFC AND nivel2.Nivel1=account.Nivel1
+ AND nivel2.Nivel2=account.Nivel2 AND nivel2.Nivel3='00'
+WHERE account.RFC=@rfc AND account.Nivel1=@nivel1
+  AND account.Nivel2=@nivel2 AND account.Nivel3=@nivel3;";
+
+    using var connection = new SqlConnection(_connectionString);
+    return await connection.QuerySingleOrDefaultAsync<CuentasContablesDto>(sql, new
+    {
+      rfc = rfc.Trim().ToUpperInvariant(),
+      nivel1 = nivel1.Trim(),
+      nivel2 = NormalizeTwoDigits(nivel2),
+      nivel3 = NormalizeTwoDigits(nivel3)
+    });
+  }
+
   private static string NormalizeTwoDigits(string value)
   {
     if (string.IsNullOrWhiteSpace(value))

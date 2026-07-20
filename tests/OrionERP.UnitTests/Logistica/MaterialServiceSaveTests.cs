@@ -17,6 +17,7 @@ public class MaterialServiceSaveTests
 
     var result = await service.SaveMaterialAsync(new MaterialUpsertRequest
     {
+      Rfc = "OHM191112Q26",
       Id = 42,
       Description = "Aceite hidraulico",
       BaseUnitId = 1,
@@ -34,6 +35,6 @@ public class MaterialServiceSaveTests
 
     Assert.DoesNotContain("@IsActiveWHERE", updateCommand.CommandText, StringComparison.Ordinal);
     Assert.Contains("IsActive = @IsActive", updateCommand.CommandText, StringComparison.Ordinal);
-    Assert.Contains("WHERE Id = @Id;", updateCommand.CommandText, StringComparison.Ordinal);
+    Assert.Contains("WHERE Rfc = @Rfc AND Id = @Id;", updateCommand.CommandText, StringComparison.Ordinal);
   }
 }

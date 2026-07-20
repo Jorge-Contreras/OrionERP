@@ -1,0 +1,424 @@
+@page "/restaurante/configuracion"
+@attribute [Authorize(Policy = "RestaurantAdmin")]
+@implements IDisposable
+@using OrionERP.Application.Features.Logistica.Shared
+@using OrionERP.Application.Features.Contabilidad.ContabilidadRegistros
+@using OrionERP.Application.Features.Restaurante
+@using OrionERP.Web.State
+@inject IRestaurantCatalogService CatalogService
+@inject ICuentasContablesRepository AccountsRepository
+@inject IUserRfcState RfcState
+
+<PageTitle>Restaurante · Configuración operativa</PageTitle>
+
+<main class="restaurant-config">
+  <header class="restaurant-config__hero"><div><span>Sede y RFC</span><h1>Configuración operativa</h1><p>Mesas, estaciones, plataformas, prioridad de almacenes y cuentas contables sin valores codificados.</p></div><button type="button" class="btn btn-light" @onclick="LoadAsync">Actualizar</button></header>
+  @if(!string.IsNullOrWhiteSpace(message)){<div class="alert @(isError?"alert-danger":"alert-success")">@message</div>}
+  @if(sites.Count==0){<section class="config-card"><h2>Crea primero una sede</h2></section>}
+  else
+  {
+    <div class="config-site"><label>Sede<select @onchange="ChangeSiteAsync">@foreach(var site in sites){<option value="@site.Id" selected="@(site.Id==selectedSiteId)">@site.Name</option>}</select></label><span>Todos los identificadores se validan contra <strong>@CurrentRfc</strong>.</span></div>
+    <section class="config-grid">
+      <article class="config-card"><header><div><span>Servicio</span><h2>Mesas</h2></div><button type="button" @onclick="AddTable">Agregar</button></header>@foreach(var row in editor.Tables){<div class="config-row config-row--table"><input @bind="row.Code" placeholder="Código" /><input @bind="row.Name" placeholder="Nombre" /><input type="number" @bind="row.Capacity" placeholder="Cap." /><label><input type="checkbox" @bind="row.IsActive" /> Activa</label></div>}</article>
+      <article class="config-card"><header><div><span>KDS</span><h2>Estaciones</h2></div><button type="button" @onclick="AddStation">Agregar</button></header>@foreach(var row in editor.Stations){<div class="config-row"><input @bind="row.Code" placeholder="Código" /><input @bind="row.Name" placeholder="Nombre" /><input type="number" @bind="row.SortOrder" title="Orden" /><label><input type="checkbox" @bind="row.IsActive" /> Activa</label></div>}</article>
+      <article class="config-card"><header><div><span>Domicilio</span><h2>Proveedores externos</h2></div><button type="button" @onclick="AddProvider">Agregar</button></header>@foreach(var row in editor.ExternalProviders){<div class="config-row"><input @bind="row.Code" placeholder="Código" /><input @bind="row.Name" placeholder="Nombre" /><label>Comisión<input type="number" min="0" max="1" step="0.01" @bind="row.DefaultCommissionRate" /></label><label><input type="checkbox" @bind="row.IsActive" /> Activo</label></div>}</article>
+      <article class="config-card"><header><div><span>FEFO</span><h2>Prioridad de ubicaciones</h2></div><button type="button" @onclick="AddPriority">Agregar</button></header>@foreach(var row in editor.LocationPriorities){<div class="config-row"><select @bind="row.LocationId"><option value="0">Ubicación…</option>@foreach(var location in workspace.AvailableLocations){<option value="@((int)location.Id)">@location.Label</option>}</select><input @bind="row.StationCode" placeholder="GENERAL o estación" /><input type="number" min="0" @bind="row.Priority" title="Prioridad" /><button type="button" @onclick="()=>editor.LocationPriorities.Remove(row)">×</button></div>}</article>
+      <article class="config-card config-card--accounts">
+        <header>
+          <div><span>Contabilidad</span><h2>Cuentas por RFC</h2></div>
+          <label><input type="checkbox" @bind="editor.Accounting.DailyPolicyEnabled" /> Generar póliza diaria</label>
+        </header>
+        <p class="config-accounts__intro">Selecciona únicamente cuentas de nivel 3 del catálogo de <strong>@CurrentRfc</strong>. Los códigos no se capturan manualmente.</p>
+        <div class="config-accounts">
+          @foreach (var definition in AccountDefinitions)
+          {
+            var selection = GetAccountSelection(definition.Key);
+            var configuredCode = GetConfiguredAccount(definition.Key);
+            <section class="config-account @(selection is not null && selection.Id is null ? "is-invalid" : null)" @key="definition.Key">
+              <div class="config-account__heading">
+                <strong>@definition.Label</strong>
+                <small>@definition.Help</small>
+              </div>
+              @if (!string.IsNullOrWhiteSpace(configuredCode))
+              {
+                <div class="config-account__selection">
+                  <code>@configuredCode</code>
+                  <span>@(selection?.Descripcion ?? "Cuenta guardada sin descripción")</span>
+                </div>
+              }
+              else
+              {
+                <div class="config-account__empty">Sin cuenta seleccionada</div>
+              }
+              <div class="config-account__actions">
+                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenAccountPicker(definition)">
+                  @(string.IsNullOrWhiteSpace(configuredCode) ? "Seleccionar" : "Reemplazar")
+                </button>
+                @if (!string.IsNullOrWhiteSpace(configuredCode))
+                {
+                  <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => ClearAccount(definition.Key)">Limpiar</button>
+                }
+              </div>
+            </section>
+          }
+        </div>
+      </article>
+    </section>
+    <footer class="config-actions"><button type="button" class="btn btn-primary btn-lg" disabled="@isBusy" @onclick="SaveAsync">Guardar configuración</button></footer>
+  }
+</main>
+
+@if (activeAccountDefinition is not null)
+{
+  <div class="modal fade show config-account-modal" tabindex="-1" style="display:block" role="dialog" aria-modal="true" aria-labelledby="restaurant-account-picker-title">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <span class="config-account-modal__eyebrow">Cuenta para</span>
+            <h2 class="modal-title" id="restaurant-account-picker-title">@activeAccountDefinition.Label</h2>
+            <p>@activeAccountDefinition.Help</p>
+          </div>
+          <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CloseAccountPicker"></button>
+        </div>
+        <div class="modal-body">
+          @if (activeAccountSelection?.HasNivel3 == true)
+          {
+            <div class="config-account-modal__current">
+              <span>Selección actual</span>
+              <code>@FormatAccountCode(activeAccountSelection)</code>
+              <strong>@activeAccountSelection.Descripcion</strong>
+            </div>
+          }
+          <CuentaContablePicker
+            SelectedRfc="@CurrentRfc"
+            Selection="@activeAccountSelection"
+            SelectionChanged="OnAccountSelectedAsync"
+            ErrorChanged="OnAccountPickerErrorChangedAsync"
+            AllowAccountManagement="false" />
+          @if (!string.IsNullOrWhiteSpace(accountPickerError))
+          {
+            <div class="alert alert-danger mt-3 mb-0" role="alert">@accountPickerError</div>
+          }
+        </div>
+        <div class="modal-footer">
+          <span>La selección se aplica inmediatamente al elegir una cuenta de nivel 3.</span>
+          <button type="button" class="btn btn-secondary" @onclick="CloseAccountPicker">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <button type="button" class="modal-backdrop fade show config-account-backdrop" aria-label="Cerrar selector" @onclick="CloseAccountPicker"></button>
+}
+
+@code {
+  private static readonly IReadOnlyList<RestaurantAccountDefinition> AccountDefinitions =
+  [
+    new(nameof(RestaurantAccountingConfigurationDto.CashAccount), "Efectivo", "Cobros recibidos en caja."),
+    new(nameof(RestaurantAccountingConfigurationDto.CardBankAccount), "Banco / tarjetas", "Depósitos de terminal bancaria."),
+    new(nameof(RestaurantAccountingConfigurationDto.TransferBankAccount), "Transferencias", "Cobros recibidos por transferencia."),
+    new(nameof(RestaurantAccountingConfigurationDto.PlatformReceivableAccount), "CxC plataformas", "Saldo pendiente de liquidar por plataformas."),
+    new(nameof(RestaurantAccountingConfigurationDto.SalesAccount), "Ventas", "Ingreso por venta de alimentos y bebidas."),
+    new(nameof(RestaurantAccountingConfigurationDto.VatAccount), "IVA", "IVA trasladado de las ventas."),
+    new(nameof(RestaurantAccountingConfigurationDto.DiscountAccount), "Descuentos", "Descuentos otorgados a clientes."),
+    new(nameof(RestaurantAccountingConfigurationDto.TipsPayableAccount), "Propinas por pagar", "Pasivo de propinas cobradas para el personal."),
+    new(nameof(RestaurantAccountingConfigurationDto.PlatformCommissionAccount), "Comisiones", "Comisiones cobradas por plataformas externas."),
+    new(nameof(RestaurantAccountingConfigurationDto.InventoryAccount), "Inventario", "Activo de materias primas y productos."),
+    new(nameof(RestaurantAccountingConfigurationDto.CostOfSalesAccount), "Costo de venta", "Costo teórico de los productos vendidos."),
+    new(nameof(RestaurantAccountingConfigurationDto.WasteAccount), "Merma", "Costo de desperdicios y ajustes operativos.")
+  ];
+
+  private readonly Dictionary<string, CuentaContableSelection> accountSelections = new(StringComparer.Ordinal);
+  private List<RestaurantSiteDto> sites = [];
+  private RestaurantSiteOperationsDto workspace = new();
+  private RestaurantSiteOperationsSaveRequest editor = new();
+  private RestaurantAccountDefinition? activeAccountDefinition;
+  private CuentaContableSelection? activeAccountSelection;
+  private int selectedSiteId;
+  private bool isBusy;
+  private string? message;
+  private string? accountPickerError;
+  private bool isError;
+  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+
+  protected override async Task OnInitializedAsync()
+  {
+    RfcState.Changed += OnRfcChanged;
+    await LoadAsync();
+  }
+
+  private async Task LoadAsync()
+  {
+    isBusy = true;
+    try
+    {
+      sites = (await CatalogService.GetSitesAsync(CurrentRfc)).ToList();
+      if (!sites.Any(site => site.Id == selectedSiteId))
+      {
+        selectedSiteId = sites.FirstOrDefault()?.Id ?? 0;
+      }
+
+      activeAccountDefinition = null;
+      activeAccountSelection = null;
+      accountPickerError = null;
+      accountSelections.Clear();
+
+      if (selectedSiteId > 0)
+      {
+        workspace = await CatalogService.GetSiteOperationsAsync(CurrentRfc, selectedSiteId);
+        editor = new RestaurantSiteOperationsSaveRequest
+        {
+          Rfc = CurrentRfc,
+          SiteId = selectedSiteId,
+          Tables = workspace.Tables.Select(table => new RestaurantDiningTableSaveRequest
+          {
+            Id = table.Id, Code = table.Code, Name = table.Name,
+            Capacity = table.Capacity, IsActive = table.IsActive
+          }).ToList(),
+          Stations = workspace.Stations.Select(station => new RestaurantKitchenStationSaveRequest
+          {
+            Id = station.Id, Code = station.Code, Name = station.Name,
+            SortOrder = station.SortOrder, IsActive = station.IsActive
+          }).ToList(),
+          ExternalProviders = workspace.ExternalProviders.Select(provider => new RestaurantExternalProviderSaveRequest
+          {
+            Id = provider.Id, Code = provider.Code, Name = provider.Name,
+            DefaultCommissionRate = provider.DefaultCommissionRate, IsActive = provider.IsActive
+          }).ToList(),
+          LocationPriorities = workspace.LocationPriorities.Select(priority => new RestaurantLocationPrioritySaveRequest
+          {
+            LocationId = priority.LocationId, StationCode = priority.StationCode, Priority = priority.Priority
+          }).ToList(),
+          Accounting = workspace.Accounting
+        };
+        await LoadAccountSelectionsAsync();
+      }
+      else
+      {
+        workspace = new();
+        editor = new();
+      }
+    }
+    catch (Exception ex)
+    {
+      Show(ex.Message, true);
+    }
+    finally
+    {
+      isBusy = false;
+    }
+  }
+
+  private async Task LoadAccountSelectionsAsync()
+  {
+    foreach (var definition in AccountDefinitions)
+    {
+      var code = GetConfiguredAccount(definition.Key);
+      if (string.IsNullOrWhiteSpace(code))
+      {
+        continue;
+      }
+
+      var parts = ParseAccountCode(code);
+      if (parts is null)
+      {
+        accountSelections[definition.Key] = new CuentaContableSelection
+        {
+          Rfc = CurrentRfc,
+          Descripcion = "Código inválido; reemplázalo con una cuenta del catálogo."
+        };
+        continue;
+      }
+
+      var account = await AccountsRepository.GetByCodeAsync(CurrentRfc, parts[0], parts[1], parts[2]);
+      accountSelections[definition.Key] = account is not null && account.Nivel3 != "00"
+        ? ToSelection(account)
+        : new CuentaContableSelection
+        {
+          Rfc = CurrentRfc,
+          Nivel1 = parts[0], Nivel2 = parts[1], Nivel3 = parts[2],
+          Descripcion = "La cuenta guardada no existe como nivel 3 en el catálogo del RFC activo."
+        };
+    }
+  }
+
+  private async Task ChangeSiteAsync(ChangeEventArgs args)
+  {
+    if (int.TryParse(args.Value?.ToString(), out var id))
+    {
+      selectedSiteId = id;
+      await LoadAsync();
+    }
+  }
+
+  private void AddTable() => editor.Tables.Add(new RestaurantDiningTableSaveRequest
+  {
+    Code = $"M{editor.Tables.Count + 1:00}", Name = $"Mesa {editor.Tables.Count + 1}", IsActive = true
+  });
+
+  private void AddStation() => editor.Stations.Add(new RestaurantKitchenStationSaveRequest
+  {
+    Code = $"EST{editor.Stations.Count + 1:00}", Name = $"Estación {editor.Stations.Count + 1}",
+    SortOrder = editor.Stations.Count, IsActive = true
+  });
+
+  private void AddProvider() => editor.ExternalProviders.Add(new RestaurantExternalProviderSaveRequest
+  {
+    Code = $"EXT{editor.ExternalProviders.Count + 1:00}", Name = "Proveedor externo", IsActive = true
+  });
+
+  private void AddPriority() => editor.LocationPriorities.Add(new RestaurantLocationPrioritySaveRequest
+  {
+    LocationId = (int)(workspace.AvailableLocations.FirstOrDefault()?.Id ?? 0),
+    StationCode = "GENERAL", Priority = editor.LocationPriorities.Count + 1
+  });
+
+  private void OpenAccountPicker(RestaurantAccountDefinition definition)
+  {
+    activeAccountDefinition = definition;
+    activeAccountSelection = GetAccountSelection(definition.Key);
+    accountPickerError = null;
+  }
+
+  private void CloseAccountPicker()
+  {
+    activeAccountDefinition = null;
+    activeAccountSelection = null;
+    accountPickerError = null;
+  }
+
+  private Task OnAccountSelectedAsync(CuentaContableSelection? selection)
+  {
+    if (activeAccountDefinition is null || selection?.Id is null || !selection.HasNivel3)
+    {
+      return Task.CompletedTask;
+    }
+
+    if (!string.Equals(selection.Rfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
+    {
+      accountPickerError = "La cuenta seleccionada no pertenece al RFC activo.";
+      return Task.CompletedTask;
+    }
+
+    SetConfiguredAccount(activeAccountDefinition.Key, FormatAccountCode(selection));
+    accountSelections[activeAccountDefinition.Key] = selection;
+    CloseAccountPicker();
+    return Task.CompletedTask;
+  }
+
+  private Task OnAccountPickerErrorChangedAsync(string? value)
+  {
+    accountPickerError = value;
+    return Task.CompletedTask;
+  }
+
+  private void ClearAccount(string key)
+  {
+    SetConfiguredAccount(key, null);
+    accountSelections.Remove(key);
+  }
+
+  private CuentaContableSelection? GetAccountSelection(string key)
+    => accountSelections.GetValueOrDefault(key);
+
+  private string? GetConfiguredAccount(string key) => key switch
+  {
+    nameof(RestaurantAccountingConfigurationDto.CashAccount) => editor.Accounting.CashAccount,
+    nameof(RestaurantAccountingConfigurationDto.CardBankAccount) => editor.Accounting.CardBankAccount,
+    nameof(RestaurantAccountingConfigurationDto.TransferBankAccount) => editor.Accounting.TransferBankAccount,
+    nameof(RestaurantAccountingConfigurationDto.PlatformReceivableAccount) => editor.Accounting.PlatformReceivableAccount,
+    nameof(RestaurantAccountingConfigurationDto.SalesAccount) => editor.Accounting.SalesAccount,
+    nameof(RestaurantAccountingConfigurationDto.VatAccount) => editor.Accounting.VatAccount,
+    nameof(RestaurantAccountingConfigurationDto.DiscountAccount) => editor.Accounting.DiscountAccount,
+    nameof(RestaurantAccountingConfigurationDto.TipsPayableAccount) => editor.Accounting.TipsPayableAccount,
+    nameof(RestaurantAccountingConfigurationDto.PlatformCommissionAccount) => editor.Accounting.PlatformCommissionAccount,
+    nameof(RestaurantAccountingConfigurationDto.InventoryAccount) => editor.Accounting.InventoryAccount,
+    nameof(RestaurantAccountingConfigurationDto.CostOfSalesAccount) => editor.Accounting.CostOfSalesAccount,
+    nameof(RestaurantAccountingConfigurationDto.WasteAccount) => editor.Accounting.WasteAccount,
+    _ => throw new ArgumentOutOfRangeException(nameof(key))
+  };
+
+  private void SetConfiguredAccount(string key, string? value)
+  {
+    switch (key)
+    {
+      case nameof(RestaurantAccountingConfigurationDto.CashAccount): editor.Accounting.CashAccount = value; break;
+      case nameof(RestaurantAccountingConfigurationDto.CardBankAccount): editor.Accounting.CardBankAccount = value; break;
+      case nameof(RestaurantAccountingConfigurationDto.TransferBankAccount): editor.Accounting.TransferBankAccount = value; break;
+      case nameof(RestaurantAccountingConfigurationDto.PlatformReceivableAccount): editor.Accounting.PlatformReceivableAccount = value; break;
+      case nameof(RestaurantAccountingConfigurationDto.SalesAccount): editor.Accounting.SalesAccount = value; break;
+      case nameof(RestaurantAccountingConfigurationDto.VatAccount): editor.Accounting.VatAccount = value; break;
+      case nameof(RestaurantAccountingConfigurationDto.DiscountAccount): editor.Accounting.DiscountAccount = value; break;
+      case nameof(RestaurantAccountingConfigurationDto.TipsPayableAccount): editor.Accounting.TipsPayableAccount = value; break;
+      case nameof(RestaurantAccountingConfigurationDto.PlatformCommissionAccount): editor.Accounting.PlatformCommissionAccount = value; break;
+      case nameof(RestaurantAccountingConfigurationDto.InventoryAccount): editor.Accounting.InventoryAccount = value; break;
+      case nameof(RestaurantAccountingConfigurationDto.CostOfSalesAccount): editor.Accounting.CostOfSalesAccount = value; break;
+      case nameof(RestaurantAccountingConfigurationDto.WasteAccount): editor.Accounting.WasteAccount = value; break;
+      default: throw new ArgumentOutOfRangeException(nameof(key));
+    }
+  }
+
+  private async Task SaveAsync()
+  {
+    isBusy = true;
+    try
+    {
+      editor.Rfc = CurrentRfc;
+      editor.SiteId = selectedSiteId;
+      var result = await CatalogService.SaveSiteOperationsAsync(editor);
+      Show(result.Message, !result.Success);
+      if (result.Success)
+      {
+        await LoadAsync();
+      }
+    }
+    catch (Exception ex)
+    {
+      Show(ex.Message, true);
+    }
+    finally
+    {
+      isBusy = false;
+    }
+  }
+
+  private static string[]? ParseAccountCode(string value)
+  {
+    var parts = value.Split(['.', '-', '/', '>'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    return parts.Length == 3 && parts.All(part => !string.IsNullOrWhiteSpace(part)) ? parts : null;
+  }
+
+  private static string FormatAccountCode(CuentaContableSelection selection)
+    => $"{selection.Nivel1}.{selection.Nivel2}.{selection.Nivel3}";
+
+  private static CuentaContableSelection ToSelection(CuentasContablesDto account) => new()
+  {
+    Id = account.Id,
+    Rfc = account.Rfc,
+    Nivel1 = account.Nivel1,
+    Nivel2 = account.Nivel2,
+    Nivel3 = account.Nivel3,
+    Nivel1Descripcion = account.Nivel1Descripcion,
+    Nivel2Descripcion = account.Nivel2Descripcion,
+    Nivel3Descripcion = account.Nivel3Descripcion,
+    Descripcion = account.Descripcion
+  };
+
+  private void Show(string value, bool error)
+  {
+    message = value;
+    isError = error;
+  }
+
+  private void OnRfcChanged() => _ = InvokeAsync(async () =>
+  {
+    selectedSiteId = 0;
+    CloseAccountPicker();
+    await LoadAsync();
+    StateHasChanged();
+  });
+
+  public void Dispose() => RfcState.Changed -= OnRfcChanged;
+
+  private sealed record RestaurantAccountDefinition(string Key, string Label, string Help);
+}

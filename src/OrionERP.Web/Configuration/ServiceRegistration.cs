@@ -38,6 +38,7 @@ using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Purchasing;
 using OrionERP.Application.Features.Logistica.PhysicalCounts;
 using OrionERP.Application.Features.Logistica.Stock;
+using OrionERP.Application.Features.Restaurante;
 using OrionERP.Application.Features.OrdenesTrabajo;
 using OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper;
 using OrionERP.Infrastructure.Features.Logistica.BusinessPartners;
@@ -46,6 +47,7 @@ using OrionERP.Infrastructure.Features.Logistica.Materials;
 using OrionERP.Infrastructure.Features.Logistica.Purchasing;
 using OrionERP.Infrastructure.Features.Logistica.PhysicalCounts;
 using OrionERP.Infrastructure.Features.Logistica.Stock;
+using OrionERP.Infrastructure.Features.Restaurante;
 using OrionERP.Infrastructure.Features.OrdenesTrabajo;
 using OrionERP.Infrastructure.Features.Mail;
 using OrionERP.Infrastructure.Features.Reservaciones.Cfdi;
@@ -78,8 +80,8 @@ public static class ServiceRegistration
     services.AddHttpClient<ISatMassiveService, SatMassiveClient>();
     services.AddScoped<ISatRfcProfileRepository, SatRfcProfileRepository>();
 
-    services.AddSingleton<SqlConnectionFactory>();
-    services.AddSingleton<IDbConnectionFactory>(sp => sp.GetRequiredService<SqlConnectionFactory>());
+    services.AddScoped<SqlConnectionFactory>();
+    services.AddScoped<IDbConnectionFactory>(sp => sp.GetRequiredService<SqlConnectionFactory>());
     services.AddScoped<IDbStoredProcService, DbStoredProcService>();
     services.AddScoped<ICurrentUserAccessor, AuthenticationStateCurrentUserAccessor>();
 
@@ -115,8 +117,8 @@ public static class ServiceRegistration
   {
     services.AddHttpClient<ISatMassiveService, SatMassiveClient>();
 
-    services.AddSingleton<SqlConnectionFactory>();
-    services.AddSingleton<IDbConnectionFactory>(sp => sp.GetRequiredService<SqlConnectionFactory>());
+    services.AddScoped<SqlConnectionFactory>();
+    services.AddScoped<IDbConnectionFactory>(sp => sp.GetRequiredService<SqlConnectionFactory>());
     services.AddScoped<IDbStoredProcService, DbStoredProcService>();
     services.AddScoped<ICurrentUserAccessor, AuthenticationStateCurrentUserAccessor>();
     services.AddScoped<ISatRfcProfileRepository, SatRfcProfileRepository>();
@@ -140,7 +142,16 @@ public static class ServiceRegistration
     services.AddScoped<ILocationService, LocationService>();
     services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
     services.AddScoped<IStockService, StockService>();
+    services.AddScoped<IInventoryMovementService, InventoryMovementService>();
     services.AddScoped<IPhysicalCountService, PhysicalCountService>();
+    services.AddScoped<IRestaurantCatalogService, RestaurantCatalogService>();
+    services.AddScoped<IBomRecipeService, BomRecipeService>();
+    services.AddScoped<IRestaurantOrderService, RestaurantOrderService>();
+    services.AddScoped<IRestaurantCashService, RestaurantCashService>();
+    services.AddScoped<IRestaurantProductionService, RestaurantProductionService>();
+    services.AddScoped<IRestaurantBackofficeService, RestaurantBackofficeService>();
+    services.AddScoped<IRestaurantAccountingService, RestaurantAccountingService>();
+    services.AddScoped<IRestaurantQuickPinService, RestaurantQuickPinService>();
     services.AddScoped<IOrdenTrabajoService, OrdenTrabajoService>();
     services.AddScoped<IArrendadoresEstadoCuentaService, ArrendadoresEstadoCuentaService>();
     services.AddScoped<IPurchaseMaterialThumbnailHydrator, PurchaseMaterialThumbnailHydrator>();

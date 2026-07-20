@@ -578,6 +578,8 @@
                                             <th class="text-end">Recibido</th>
                                             <th class="text-end">Pendiente</th>
                                             <th class="text-end">Recibir ahora</th>
+                                            <th>Lote</th>
+                                            <th>Caducidad</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -615,6 +617,8 @@
                                                            value="@FormatNumberInput(GetReceiveNowDisplayQuantity(item))"
                                                            @onchange="args => UpdateReceiveNowDisplayQuantity(item, args)" />
                                                 </td>
+                                                <td><input class="form-control form-control-sm" placeholder="Si aplica" @bind="item.LotCode" /></td>
+                                                <td><InputDate class="form-control form-control-sm" @bind-Value="item.ExpiresAt" /></td>
                                             </tr>
                                         }
                                     </tbody>

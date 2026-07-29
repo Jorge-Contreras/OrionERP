@@ -50,8 +50,10 @@ public sealed class RestaurantCashService : IRestaurantCashService
   {
     const string sql =
       """
-      SELECT shiftInfo.Id, shiftInfo.CashRegisterId, registerInfo.[Name] AS RegisterName, shiftInfo.[Status],
-             shiftInfo.OpeningFloat, shiftInfo.OpenedAt, shiftInfo.ExpectedCash, shiftInfo.CountedCash, shiftInfo.Difference
+      SELECT shiftInfo.Id, shiftInfo.SiteId, shiftInfo.CashRegisterId, registerInfo.[Name] AS RegisterName, shiftInfo.[Status],
+             shiftInfo.OpeningFloat, shiftInfo.OpenedAt, shiftInfo.OpenedBy, shiftInfo.ClosedAt, shiftInfo.ClosedBy,
+             shiftInfo.ExpectedCash, shiftInfo.CountedCash, shiftInfo.Difference,
+             shiftInfo.ApprovedAt, shiftInfo.ApprovedBy, shiftInfo.ReopenedAt, shiftInfo.ReopenedBy
       FROM restaurante.CashShift shiftInfo
       JOIN restaurante.CashRegister registerInfo ON registerInfo.Rfc=shiftInfo.Rfc AND registerInfo.Id=shiftInfo.CashRegisterId
       WHERE shiftInfo.Rfc=@Rfc AND shiftInfo.SiteId=@SiteId
@@ -59,6 +61,234 @@ public sealed class RestaurantCashService : IRestaurantCashService
       """;
     using var conn = CreateConnection();
     return (await conn.QueryAsync<RestaurantCashShiftDto>(new CommandDefinition(sql, new { Rfc = LogisticsRfc.Require(rfc), SiteId = siteId }, cancellationToken: ct))).AsList();
+  }
+
+  public async Task<RestaurantCashShiftLogDto?> GetShiftLogAsync(string rfc, Guid shiftId, CancellationToken ct = default)
+  {
+    var normalizedRfc = LogisticsRfc.Require(rfc);
+    using var conn = CreateConnection();
+    var shift = await conn.QuerySingleOrDefaultAsync<RestaurantCashShiftDto>(new CommandDefinition(
+      """
+      SELECT shiftInfo.Id, shiftInfo.SiteId, shiftInfo.CashRegisterId, registerInfo.[Name] AS RegisterName, shiftInfo.[Status],
+             shiftInfo.OpeningFloat, shiftInfo.OpenedAt, shiftInfo.OpenedBy, shiftInfo.ClosedAt, shiftInfo.ClosedBy,
+             shiftInfo.ExpectedCash, shiftInfo.CountedCash, shiftInfo.Difference,
+             shiftInfo.ApprovedAt, shiftInfo.ApprovedBy, shiftInfo.ReopenedAt, shiftInfo.ReopenedBy
+      FROM restaurante.CashShift shiftInfo
+      JOIN restaurante.CashRegister registerInfo
+        ON registerInfo.Rfc=shiftInfo.Rfc AND registerInfo.Id=shiftInfo.CashRegisterId
+      WHERE shiftInfo.Rfc=@Rfc AND shiftInfo.Id=@ShiftId;
+      """, new { Rfc = normalizedRfc, ShiftId = shiftId }, cancellationToken: ct));
+    if (shift is null)
+    {
+      return null;
+    }
+
+    var endedAt = shift.ClosedAt ?? DateTime.UtcNow;
+    var paymentRows = (await conn.QueryAsync<ShiftPaymentRow>(new CommandDefinition(
+      """
+      SELECT paymentInfo.Id, paymentInfo.OrderId, orderInfo.Folio AS OrderFolio, orderInfo.CustomerName,
+             paymentInfo.PaymentMethod, paymentInfo.Amount, paymentInfo.TipAmount,
+             paymentInfo.ExternalReference, paymentInfo.PaidAt, paymentInfo.ReceivedBy
+      FROM restaurante.Payment paymentInfo
+      JOIN restaurante.[Order] orderInfo
+        ON orderInfo.Rfc=paymentInfo.Rfc AND orderInfo.Id=paymentInfo.OrderId
+      WHERE paymentInfo.Rfc=@Rfc
+        AND (orderInfo.CashShiftId=@ShiftId OR orderInfo.CashRegisterId=@CashRegisterId)
+        AND paymentInfo.PaidAt>=@OpenedAt AND paymentInfo.PaidAt<=@EndedAt
+      ORDER BY paymentInfo.PaidAt, paymentInfo.Id;
+      """, new
+      {
+        Rfc = normalizedRfc,
+        ShiftId = shift.Id,
+        shift.CashRegisterId,
+        shift.OpenedAt,
+        EndedAt = endedAt
+      }, cancellationToken: ct))).AsList();
+
+    var refundRows = (await conn.QueryAsync<ShiftRefundRow>(new CommandDefinition(
+      """
+      SELECT refundInfo.Id, paymentInfo.OrderId, orderInfo.Folio AS OrderFolio, orderInfo.CustomerName,
+             paymentInfo.PaymentMethod, refundInfo.Amount, refundInfo.Reason,
+             refundInfo.RefundedAt, refundInfo.RequestedBy, refundInfo.AuthorizedBy
+      FROM restaurante.PaymentRefund refundInfo
+      JOIN restaurante.Payment paymentInfo
+        ON paymentInfo.Rfc=refundInfo.Rfc AND paymentInfo.Id=refundInfo.PaymentId
+      JOIN restaurante.[Order] orderInfo
+        ON orderInfo.Rfc=paymentInfo.Rfc AND orderInfo.Id=paymentInfo.OrderId
+      WHERE refundInfo.Rfc=@Rfc
+        AND (orderInfo.CashShiftId=@ShiftId OR orderInfo.CashRegisterId=@CashRegisterId)
+        AND refundInfo.RefundedAt>=@OpenedAt AND refundInfo.RefundedAt<=@EndedAt
+      ORDER BY refundInfo.RefundedAt, refundInfo.Id;
+      """, new
+      {
+        Rfc = normalizedRfc,
+        ShiftId = shift.Id,
+        shift.CashRegisterId,
+        shift.OpenedAt,
+        EndedAt = endedAt
+      }, cancellationToken: ct))).AsList();
+
+    var movementRows = (await conn.QueryAsync<ShiftMovementRow>(new CommandDefinition(
+      """
+      SELECT movement.Id, movement.MovementType, movement.PaymentMethod, movement.Amount,
+             movement.OrderId, movement.Reason, movement.CreatedAt, movement.CreatedBy,
+             orderInfo.Folio AS OrderFolio, orderInfo.CustomerName
+      FROM restaurante.CashMovement movement
+      LEFT JOIN restaurante.[Order] orderInfo
+        ON orderInfo.Rfc=movement.Rfc AND orderInfo.Id=movement.OrderId
+      WHERE movement.Rfc=@Rfc AND movement.CashShiftId=@ShiftId
+        AND movement.MovementType NOT IN ('Sale','Refund')
+      ORDER BY movement.CreatedAt, movement.Id;
+      """, new { Rfc = normalizedRfc, ShiftId = shift.Id }, cancellationToken: ct))).AsList();
+
+    var orderEvents = (await conn.QueryAsync<ShiftOrderEventRow>(new CommandDefinition(
+      """
+      SELECT eventInfo.Id, eventInfo.OrderId, orderInfo.Folio AS OrderFolio, orderInfo.CustomerName,
+             eventInfo.EventType, eventInfo.Category, eventInfo.Title, eventInfo.[Description],
+             eventInfo.Actor, eventInfo.OccurredAt
+      FROM restaurante.OrderEvent eventInfo
+      JOIN restaurante.[Order] orderInfo
+        ON orderInfo.Rfc=eventInfo.Rfc AND orderInfo.Id=eventInfo.OrderId
+      WHERE eventInfo.Rfc=@Rfc
+        AND (orderInfo.CashShiftId=@ShiftId OR orderInfo.CashRegisterId=@CashRegisterId)
+        AND eventInfo.OccurredAt>=@OpenedAt AND eventInfo.OccurredAt<=@EndedAt
+        AND eventInfo.Category<>'Payment'
+      ORDER BY eventInfo.OccurredAt, eventInfo.Id;
+      """, new
+      {
+        Rfc = normalizedRfc,
+        ShiftId = shift.Id,
+        shift.CashRegisterId,
+        shift.OpenedAt,
+        EndedAt = endedAt
+      }, cancellationToken: ct))).AsList();
+
+    var entries = new List<RestaurantCashShiftLogEntryDto>
+    {
+      new()
+      {
+        Id = $"shift:{shift.Id}:opened",
+        OccurredAt = shift.OpenedAt,
+        EventType = "ShiftOpened",
+        Category = "Shift",
+        Title = "Turno abierto",
+        Description = $"Fondo inicial: {shift.OpeningFloat:C}.",
+        Actor = shift.OpenedBy,
+        Amount = shift.OpeningFloat,
+        PaymentMethod = "Cash"
+      }
+    };
+    entries.AddRange(paymentRows.Select(PaymentEntry));
+    entries.AddRange(refundRows.Select(RefundEntry));
+    entries.AddRange(movementRows
+      .Where(item => item.MovementType != "OpeningFloat")
+      .Select(MovementEntry));
+    entries.AddRange(orderEvents.Select(item => new RestaurantCashShiftLogEntryDto
+    {
+      Id = $"order-event:{item.Id}",
+      OccurredAt = item.OccurredAt,
+      EventType = item.EventType,
+      Category = item.Category,
+      Title = NormalizeLegacyText(item.Title) ?? item.Title,
+      Description = NormalizeLegacyText(item.Description),
+      Actor = item.Actor,
+      OrderId = item.OrderId,
+      OrderFolio = item.OrderFolio,
+      CustomerName = item.CustomerName
+    }));
+
+    if (shift.ClosedAt.HasValue)
+    {
+      entries.Add(new()
+      {
+        Id = $"shift:{shift.Id}:closed",
+        OccurredAt = shift.ClosedAt.Value,
+        EventType = "ShiftCounted",
+        Category = "Shift",
+        Title = "Conteo ciego confirmado",
+        Description = $"Contado: {shift.CountedCash:C} · Esperado: {shift.ExpectedCash:C} · Diferencia: {shift.Difference:C}.",
+        Actor = shift.ClosedBy,
+        Amount = shift.CountedCash
+      });
+    }
+    if (shift.ApprovedAt.HasValue)
+    {
+      entries.Add(new()
+      {
+        Id = $"shift:{shift.Id}:approved",
+        OccurredAt = shift.ApprovedAt.Value,
+        EventType = "ShiftDifferenceApproved",
+        Category = "Authorization",
+        Title = "Diferencia autorizada",
+        Description = $"Se autorizó la diferencia de {shift.Difference:C} y el turno quedó cerrado.",
+        Actor = shift.ApprovedBy,
+        AuthorizedBy = shift.ApprovedBy,
+        Amount = shift.Difference,
+        IsNegative = shift.Difference < 0
+      });
+    }
+    if (shift.ReopenedAt.HasValue)
+    {
+      entries.Add(new()
+      {
+        Id = $"shift:{shift.Id}:reopened",
+        OccurredAt = shift.ReopenedAt.Value,
+        EventType = "ShiftReopened",
+        Category = "Authorization",
+        Title = "Turno reabierto",
+        Description = "El corte fue reabierto después del conteo.",
+        Actor = shift.ReopenedBy,
+        AuthorizedBy = shift.ReopenedBy
+      });
+    }
+
+    var paymentMethods = paymentRows
+      .GroupBy(item => item.PaymentMethod, StringComparer.OrdinalIgnoreCase)
+      .Select(group => new RestaurantCashShiftPaymentSummaryDto
+      {
+        PaymentMethod = group.Key,
+        PaymentCount = group.Count(),
+        Sales = group.Sum(item => item.Amount),
+        Tips = group.Sum(item => item.TipAmount),
+        RefundCount = refundRows.Count(item => string.Equals(item.PaymentMethod, group.Key, StringComparison.OrdinalIgnoreCase)),
+        Refunds = refundRows.Where(item => string.Equals(item.PaymentMethod, group.Key, StringComparison.OrdinalIgnoreCase)).Sum(item => item.Amount)
+      })
+      .Concat(refundRows
+        .Where(refund => paymentRows.All(payment => !string.Equals(payment.PaymentMethod, refund.PaymentMethod, StringComparison.OrdinalIgnoreCase)))
+        .GroupBy(item => item.PaymentMethod, StringComparer.OrdinalIgnoreCase)
+        .Select(group => new RestaurantCashShiftPaymentSummaryDto
+        {
+          PaymentMethod = group.Key,
+          RefundCount = group.Count(),
+          Refunds = group.Sum(item => item.Amount)
+        }))
+      .OrderByDescending(item => item.NetTotal)
+      .ThenBy(item => item.PaymentMethod)
+      .ToList();
+
+    var orderCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+      """
+      SELECT COUNT(*)
+      FROM restaurante.[Order] orderInfo
+      WHERE orderInfo.Rfc=@Rfc AND orderInfo.CashShiftId=@ShiftId;
+      """, new { Rfc = normalizedRfc, ShiftId = shift.Id }, cancellationToken: ct));
+
+    return new()
+    {
+      Shift = shift,
+      OrderCount = orderCount,
+      PaymentCount = paymentRows.Count,
+      RefundCount = refundRows.Count,
+      GrossSales = paymentRows.Sum(item => item.Amount),
+      TipTotal = paymentRows.Sum(item => item.TipAmount),
+      RefundTotal = refundRows.Sum(item => item.Amount),
+      PaymentMethods = paymentMethods,
+      Entries = entries
+        .OrderBy(item => item.OccurredAt)
+        .ThenBy(item => EntryOrder(item.EventType))
+        .ThenBy(item => item.Id, StringComparer.Ordinal)
+        .ToList()
+    };
   }
 
   public async Task<RestaurantCashShiftDto> OpenShiftAsync(RestaurantCashShiftOpenRequest request, string userName, CancellationToken ct = default)
@@ -173,11 +403,192 @@ public sealed class RestaurantCashService : IRestaurantCashService
     => _connectionFactory.Create() as DbConnection
       ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
 
+  private static RestaurantCashShiftLogEntryDto PaymentEntry(ShiftPaymentRow payment)
+  {
+    var detail = $"{PaymentMethodLabel(payment.PaymentMethod)} · Venta {payment.Amount:C}";
+    if (payment.TipAmount > 0)
+    {
+      detail += $" · Propina {payment.TipAmount:C}";
+    }
+    if (!string.IsNullOrWhiteSpace(payment.ExternalReference))
+    {
+      detail += $" · Referencia {payment.ExternalReference}";
+    }
+    return new()
+    {
+      Id = $"payment:{payment.Id}",
+      OccurredAt = payment.PaidAt,
+      EventType = "PaymentReceived",
+      Category = "Payment",
+      Title = "Pago recibido",
+      Description = detail,
+      Actor = payment.ReceivedBy,
+      Amount = payment.Amount + payment.TipAmount,
+      PaymentMethod = payment.PaymentMethod,
+      OrderId = payment.OrderId,
+      OrderFolio = payment.OrderFolio,
+      CustomerName = payment.CustomerName
+    };
+  }
+
+  private static RestaurantCashShiftLogEntryDto RefundEntry(ShiftRefundRow refund)
+    => new()
+    {
+      Id = $"refund:{refund.Id}",
+      OccurredAt = refund.RefundedAt,
+      EventType = "PaymentRefunded",
+      Category = "Refund",
+      Title = "Devolución registrada",
+      Description = $"{PaymentMethodLabel(refund.PaymentMethod)} · {refund.Reason}",
+      Actor = refund.RequestedBy,
+      AuthorizedBy = refund.AuthorizedBy,
+      Amount = refund.Amount,
+      IsNegative = true,
+      PaymentMethod = refund.PaymentMethod,
+      OrderId = refund.OrderId,
+      OrderFolio = refund.OrderFolio,
+      CustomerName = refund.CustomerName
+    };
+
+  private static RestaurantCashShiftLogEntryDto MovementEntry(ShiftMovementRow movement)
+  {
+    var isNegative = movement.MovementType is "CashOut";
+    return new()
+    {
+      Id = $"movement:{movement.Id}",
+      OccurredAt = movement.CreatedAt,
+      EventType = movement.MovementType,
+      Category = "Cash",
+      Title = movement.MovementType switch
+      {
+        "CashIn" => "Entrada de efectivo",
+        "CashOut" => "Retiro de efectivo",
+        _ => "Movimiento de caja"
+      },
+      Description = movement.Reason,
+      Actor = movement.CreatedBy,
+      Amount = movement.Amount,
+      IsNegative = isNegative,
+      PaymentMethod = movement.PaymentMethod,
+      OrderId = movement.OrderId,
+      OrderFolio = movement.OrderFolio,
+      CustomerName = movement.CustomerName
+    };
+  }
+
+  private static int EntryOrder(string eventType)
+    => eventType switch
+    {
+      "ShiftOpened" => 0,
+      "PaymentReceived" => 20,
+      "PaymentRefunded" => 21,
+      "ShiftCounted" => 90,
+      "ShiftDifferenceApproved" => 91,
+      "ShiftReopened" => 92,
+      _ => 50
+    };
+
+  private static string? NormalizeLegacyText(string? value)
+  {
+    if (string.IsNullOrEmpty(value) || (!value.Contains('Ã') && !value.Contains('Â')))
+    {
+      return value;
+    }
+    for (var pass = 0; pass < 2 && (value.Contains('Ã') || value.Contains('Â')); pass++)
+    {
+      value = value
+        .Replace("Ãƒ", "Ã", StringComparison.Ordinal)
+        .Replace("Ã‚", "Â", StringComparison.Ordinal)
+        .Replace("Ã¡", "á", StringComparison.Ordinal)
+        .Replace("Ã©", "é", StringComparison.Ordinal)
+        .Replace("Ã­", "í", StringComparison.Ordinal)
+        .Replace("Ã³", "ó", StringComparison.Ordinal)
+        .Replace("Ãº", "ú", StringComparison.Ordinal)
+        .Replace("Ã±", "ñ", StringComparison.Ordinal)
+        .Replace("Ã", "Á", StringComparison.Ordinal)
+        .Replace("Ã‰", "É", StringComparison.Ordinal)
+        .Replace("Ã", "Í", StringComparison.Ordinal)
+        .Replace("Ã“", "Ó", StringComparison.Ordinal)
+        .Replace("Ãš", "Ú", StringComparison.Ordinal)
+        .Replace("Ã‘", "Ñ", StringComparison.Ordinal)
+        .Replace("Â·", "·", StringComparison.Ordinal)
+        .Replace("Â", string.Empty, StringComparison.Ordinal);
+    }
+    return value;
+  }
+
+  private static string PaymentMethodLabel(string value)
+    => value switch
+    {
+      "Cash" => "Efectivo",
+      "Card" => "Tarjeta",
+      "ExternalCard" => "Tarjeta externa",
+      "Transfer" => "Transferencia",
+      "DeliveryProvider" => "Plataforma",
+      _ => value
+    };
+
   private sealed class ShiftIdentityRow
   {
     public Guid Id { get; set; }
     public int SiteId { get; set; }
     public string Status { get; set; } = string.Empty;
     public decimal OpeningFloat { get; set; }
+  }
+
+  private sealed class ShiftPaymentRow
+  {
+    public Guid Id { get; set; }
+    public Guid OrderId { get; set; }
+    public int OrderFolio { get; set; }
+    public string? CustomerName { get; set; }
+    public string PaymentMethod { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public decimal TipAmount { get; set; }
+    public string? ExternalReference { get; set; }
+    public DateTime PaidAt { get; set; }
+    public string? ReceivedBy { get; set; }
+  }
+
+  private sealed class ShiftRefundRow
+  {
+    public Guid Id { get; set; }
+    public Guid OrderId { get; set; }
+    public int OrderFolio { get; set; }
+    public string? CustomerName { get; set; }
+    public string PaymentMethod { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public DateTime RefundedAt { get; set; }
+    public string RequestedBy { get; set; } = string.Empty;
+    public string AuthorizedBy { get; set; } = string.Empty;
+  }
+
+  private sealed class ShiftMovementRow
+  {
+    public long Id { get; set; }
+    public string MovementType { get; set; } = string.Empty;
+    public string? PaymentMethod { get; set; }
+    public decimal Amount { get; set; }
+    public Guid? OrderId { get; set; }
+    public string? Reason { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public string? CreatedBy { get; set; }
+    public int? OrderFolio { get; set; }
+    public string? CustomerName { get; set; }
+  }
+
+  private sealed class ShiftOrderEventRow
+  {
+    public long Id { get; set; }
+    public Guid OrderId { get; set; }
+    public int OrderFolio { get; set; }
+    public string? CustomerName { get; set; }
+    public string EventType { get; set; } = string.Empty;
+    public string Category { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string? Actor { get; set; }
+    public DateTime OccurredAt { get; set; }
   }
 }

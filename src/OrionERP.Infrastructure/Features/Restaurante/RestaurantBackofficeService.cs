@@ -114,6 +114,16 @@ public sealed class RestaurantBackofficeService : IRestaurantBackofficeService
           INSERT INTO restaurante.EventOutbox (Rfc,SiteId,EventType,AggregateId,Payload)
           VALUES (@Rfc,@SiteId,'OrderSettled',CONVERT(varchar(36),@OrderId),@Payload);
           """,new{Rfc=rfc,SettlementId=settlementId,OrderId=row.Id,Gross=row.GrossAmount,Commission=row.CommissionAmount,Net=row.GrossAmount-row.CommissionAmount,Code=request.SettlementCode.Trim(),UserName=userName,request.SiteId,Payload=JsonSerializer.Serialize(new{orderId=row.Id,settlementId})},tx,cancellationToken:ct));
+        await RestaurantOrderEventWriter.AddAsync(
+          conn,tx,rfc,request.SiteId,row.Id,
+          "PaymentReceived","Payment","Pago de plataforma recibido",
+          $"{request.SettlementCode.Trim()} · {row.GrossAmount:C}",userName,ct,
+          $"settlement:{settlementId}:{row.Id}:payment");
+        await RestaurantOrderEventWriter.AddAsync(
+          conn,tx,rfc,request.SiteId,row.Id,
+          "OrderSettled","Delivery","Liquidación de plataforma completada",
+          $"{request.SettlementCode.Trim()} · Comisión {row.CommissionAmount:C} · Neto {row.GrossAmount-row.CommissionAmount:C}",
+          userName,ct,$"settlement:{settlementId}:{row.Id}:completed");
       }
       await tx.CommitAsync(ct);return RestaurantCommandResult.Ok($"Liquidación registrada: {rows.Count} orden(es), neto {net:C}.");
     }

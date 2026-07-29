@@ -21,9 +21,14 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
     ArgumentNullException.ThrowIfNull(model);
 
     var sectionGroups = model.Lines
-      .Where(line => !line.IsCustom && !string.IsNullOrWhiteSpace(line.SectionName))
-      .OrderBy(line => line.SectionSortOrder)
-      .GroupBy(line => line.SectionName!.Trim(), StringComparer.OrdinalIgnoreCase)
+      .Select(line => new
+      {
+        Line = line,
+        SectionName = RestaurantReceiptPdfDocumentModel.GetTicketSectionName(line)
+      })
+      .Where(item => item.SectionName is not null)
+      .OrderBy(item => item.Line.IsCustom ? int.MaxValue : item.Line.SectionSortOrder)
+      .GroupBy(item => item.SectionName!, StringComparer.OrdinalIgnoreCase)
       .ToList();
 
     return Document.Create(document =>
@@ -39,7 +44,11 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
           document.Page(page =>
           {
             ConfigureThermalPage(page);
-            page.Content().Element(container => ComposeSectionTicket(container, model, section.Key, section.ToList()));
+            page.Content().Element(container => ComposeSectionTicket(
+              container,
+              model,
+              section.Key,
+              section.Select(item => item.Line).ToList()));
           });
         }
       })

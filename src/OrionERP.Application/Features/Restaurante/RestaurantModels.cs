@@ -166,7 +166,7 @@ public sealed class RestaurantOrderCreateRequest
   [Required] public string IdempotencyKey { get; set; } = string.Empty;
   [Required] public string OrderType { get; set; } = "Pickup";
   public int? DiningTableId { get; set; }
-  public string? CustomerName { get; set; }
+  [Required, StringLength(150)] public string CustomerName { get; set; } = string.Empty;
   public string? CustomerPhone { get; set; }
   public string? Notes { get; set; }
   public string? DeliveryAddress { get; set; }
@@ -185,7 +185,10 @@ public sealed class RestaurantOrderCreateRequest
 
 public sealed class RestaurantOrderLineCreateRequest
 {
-  public long ProductId { get; set; }
+  public long? ProductId { get; set; }
+  public bool IsCustom { get; set; }
+  [StringLength(180)] public string? CustomName { get; set; }
+  [Range(typeof(decimal), "0.01", "999999999")] public decimal? CustomUnitPrice { get; set; }
   [Range(typeof(decimal), "0.0001", "999999")] public decimal Quantity { get; set; } = 1;
   public decimal DiscountAmount { get; set; }
   public string? Notes { get; set; }
@@ -265,6 +268,7 @@ public sealed class RestaurantOrderResult
 {
   public Guid OrderId { get; set; }
   public int Folio { get; set; }
+  public string? CustomerName { get; set; }
   public DateTime OperationalDate { get; set; }
   public string Status { get; set; } = string.Empty;
   public string PaymentStatus { get; set; } = string.Empty;
@@ -283,6 +287,7 @@ public sealed class RestaurantOrderDto
   public string PaymentStatus { get; set; } = string.Empty;
   public string? CustomerName { get; set; }
   public string? TableName { get; set; }
+  public string? Notes { get; set; }
   public decimal Total { get; set; }
   public decimal BalanceDue { get; set; }
   public int? CashRegisterId { get; set; }
@@ -298,6 +303,7 @@ public sealed class RestaurantOrderLineDto
 {
   public long Id { get; set; }
   public string ProductName { get; set; } = string.Empty;
+  public bool IsCustom { get; set; }
   public decimal Quantity { get; set; }
   public string Status { get; set; } = string.Empty;
   public string? Notes { get; set; }
@@ -317,6 +323,7 @@ public sealed class RestaurantPublicOrderDto
 {
   public Guid Id { get; set; }
   public int Folio { get; set; }
+  public string? CustomerName { get; set; }
   public string OrderType { get; set; } = string.Empty;
   public string? TableName { get; set; }
   public string Status { get; set; } = string.Empty;

@@ -1,0 +1,37 @@
+@page "/menus"
+@model OrionERP.Web.Pages.MenusModel
+@inject Microsoft.AspNetCore.Mvc.ViewFeatures.IFileVersionProvider FileVersionProvider
+@{
+    Layout = null;
+    const string principalMenuPath = "/Images/Brunos/Menus/menu-principal.png";
+    const string beveragesMenuPath = "/Images/Brunos/Menus/menu-bebidas.png";
+    var principalMenuUrl = FileVersionProvider.AddFileVersionToPath(Model.HttpContext.Request.PathBase, principalMenuPath);
+    var beveragesMenuUrl = FileVersionProvider.AddFileVersionToPath(Model.HttpContext.Request.PathBase, beveragesMenuPath);
+}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Menús de Bruno's</title>
+    <link rel="stylesheet" href="/css/brunos-menus-signage.css" />
+    <script src="/js/brunos-menus-signage.js" defer></script>
+</head>
+<body>
+    <main class="menu-signage"
+          data-menu-signage
+          data-interval-ms="8000"
+          aria-label="Menús de Bruno's Garden & Snacks">
+        <img class="menu-signage__slide is-active"
+             src="@principalMenuUrl"
+             data-source="@principalMenuPath"
+             alt="Menú principal de alimentos de Bruno's Garden & Snacks"
+             fetchpriority="high" />
+        <img class="menu-signage__slide"
+             src="@beveragesMenuUrl"
+             data-source="@beveragesMenuPath"
+             alt="Menú de bebidas de Bruno's Garden & Snacks" />
+    </main>
+</body>
+</html>

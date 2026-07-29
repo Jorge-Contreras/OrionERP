@@ -15,8 +15,8 @@
 <main class="pickup-board">
   <header><div><span>Órdenes</span><h1>@(sites.FirstOrDefault(item => item.Id == selectedSiteId)?.Name ?? "Restaurante")</h1></div>@if (sites.Count > 1) { <select aria-label="Sede" @onchange="ChangeSiteAsync">@foreach (var site in sites) { <option value="@site.Id" selected="@(site.Id == selectedSiteId)">@site.Name</option> }</select> }</header>
   <section class="pickup-columns">
-    <article class="pickup-column"><div class="pickup-column__title"><span class="oi oi-clock"></span><h2>En preparación</h2></div><div class="pickup-grid">@foreach (var order in orders.Where(item => item.Status is "Sent" or "Preparing")) { <div class="pickup-card"><strong>@order.Folio.ToString("000")</strong><span>@TypeLabel(order)</span><small>@StatusLabel(order.Status)</small></div> }@if (!orders.Any(item => item.Status is "Sent" or "Preparing")) { <p>Sin órdenes en preparación</p> }</div></article>
-    <article class="pickup-column pickup-column--ready"><div class="pickup-column__title"><span class="oi oi-bell"></span><h2>Listas</h2></div><div class="pickup-grid">@foreach (var order in orders.Where(item => item.Status is "Ready" or "Dispatched")) { <div class="pickup-card pickup-card--ready"><strong>@order.Folio.ToString("000")</strong><span>@TypeLabel(order)</span><small>@StatusLabel(order.Status)</small></div> }@if (!orders.Any(item => item.Status is "Ready" or "Dispatched")) { <p>Pronto aparecerán aquí</p> }</div></article>
+    <article class="pickup-column"><div class="pickup-column__title"><span class="oi oi-clock"></span><h2>En preparación</h2></div><div class="pickup-grid">@foreach (var order in orders.Where(item => item.Status is "Sent" or "Preparing")) { <div class="pickup-card"><strong>@order.Folio.ToString("000")</strong>@if (!string.IsNullOrWhiteSpace(order.CustomerName)) { <b class="pickup-card__customer">@order.CustomerName</b> }<span>@TypeLabel(order)</span><small>@StatusLabel(order.Status)</small></div> }@if (!orders.Any(item => item.Status is "Sent" or "Preparing")) { <p>Sin órdenes en preparación</p> }</div></article>
+    <article class="pickup-column pickup-column--ready"><div class="pickup-column__title"><span class="oi oi-bell"></span><h2>Listas</h2></div><div class="pickup-grid">@foreach (var order in orders.Where(item => item.Status is "Ready" or "Dispatched")) { <div class="pickup-card pickup-card--ready"><strong>@order.Folio.ToString("000")</strong>@if (!string.IsNullOrWhiteSpace(order.CustomerName)) { <b class="pickup-card__customer">@order.CustomerName</b> }<span>@TypeLabel(order)</span><small>@StatusLabel(order.Status)</small></div> }@if (!orders.Any(item => item.Status is "Ready" or "Dispatched")) { <p>Pronto aparecerán aquí</p> }</div></article>
   </section>
   <footer><span>Conserve su número de orden</span><time>@DateTime.Now.ToString("HH:mm")</time></footer>
 </main>
@@ -34,7 +34,7 @@
   {
     if (selectedSiteId == 0) { orders = []; return; }
     var next = (await OrderService.GetPublicBoardAsync(CurrentRfc, selectedSiteId)).ToList();
-    foreach (var ready in next.Where(item => item.Status == "Ready" && announced.Add(item.Id))) await Js.InvokeVoidAsync("restaurantUi.announceOrder", ready.Folio, ready.OrderType, ready.TableName);
+    foreach (var ready in next.Where(item => item.Status == "Ready" && announced.Add(item.Id))) await Js.InvokeVoidAsync("restaurantUi.announceOrder", ready.Folio, ready.OrderType, ready.TableName, ready.CustomerName);
     orders = next;
   }
   private async Task ChangeSiteAsync(ChangeEventArgs args) { if (int.TryParse(args.Value?.ToString(), out var id)) { selectedSiteId = id; announced.Clear(); await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId); await LoadAsync(); } }

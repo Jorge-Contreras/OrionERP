@@ -22,7 +22,31 @@
   <section class="orders-grid">
     @foreach(var order in FilteredOrders)
     {
-      <article class="order-card order-card--@order.Status.ToLowerInvariant()"><header><div><span>@TypeLabel(order.OrderType)</span><strong>@order.Folio.ToString("000")</strong></div><b>@StatusLabel(order.Status)</b></header><div class="order-card__summary">@if(!string.IsNullOrWhiteSpace(order.TableName)){<span class="oi oi-map-marker"></span><strong>@order.TableName</strong>}<span>@order.Lines.Sum(x=>x.Quantity).ToString("0.##") producto(s)</span><span>@order.Total.ToString("C")</span></div><ul>@foreach(var line in order.Lines.Where(x=>x.Status!="Cancelled")){<li><b>@line.Quantity.ToString("0.##")×</b><span>@line.ProductName@if(line.Modifiers.Count>0){<small>@string.Join(" · ",line.Modifiers)</small>}</span><em>@StatusLabel(line.Status)</em></li>}</ul><footer><span class="payment payment--@order.PaymentStatus.ToLowerInvariant()">@PaymentLabel(order.PaymentStatus)</span><div>@if(order.CashRegisterId.HasValue){<button type="button" class="order-correction-button" @onclick="()=>OpenCorrectionsAsync(order)">Correcciones / CFDI</button>}@if(order.Status=="Ready"&&order.OrderType=="Delivery"){<button type="button" @onclick='()=>SetStatusAsync(order,"Dispatched")'>Despachar</button>}else if(order.Status=="Ready"){<button type="button" @onclick='()=>SetStatusAsync(order,"Delivered")'>Entregar</button>}else if(order.Status=="Dispatched"){<button type="button" @onclick='()=>SetStatusAsync(order,"Delivered")'>Confirmar entrega</button>}else if(order.Status=="Delivered"&&order.PaymentStatus=="Paid"){<button type="button" @onclick='()=>SetStatusAsync(order,"Completed")'>Completar</button>}</div></footer></article>
+      <article @key="order.Id" class="order-card @KitchenProgressClass(order)">
+        <header>
+          <div><span>@TypeLabel(order.OrderType)</span><strong>@order.Folio.ToString("000")</strong>@if(!string.IsNullOrWhiteSpace(order.CustomerName)){<em class="order-card__customer">@order.CustomerName</em>}</div>
+          <b>@StatusLabel(order.Status)</b>
+        </header>
+        <div class="order-card__summary">
+          @if(!string.IsNullOrWhiteSpace(order.TableName)){<span class="oi oi-map-marker"></span><strong>@order.TableName</strong>}
+          <span>@order.Lines.Sum(x=>x.Quantity).ToString("0.##") producto(s)</span>
+          <span>@order.Total.ToString("C")</span>
+        </div>
+        @if(!string.IsNullOrWhiteSpace(order.Notes))
+        {
+          <aside class="order-card__note" aria-label="Notas de la orden">
+            <span class="oi oi-comment-square" aria-hidden="true"></span>
+            <div><strong>Notas de la orden</strong><p>@order.Notes</p></div>
+          </aside>
+        }
+        <ul>
+          @foreach(var line in order.Lines.Where(x=>x.Status!="Cancelled"))
+          {
+            <li><b>@line.Quantity.ToString("0.##")×</b><span>@line.ProductName@if(line.IsCustom){<small>Cargo personalizado</small>}else if(line.Modifiers.Count>0){<small>@string.Join(" · ",line.Modifiers)</small>}</span><em>@StatusLabel(line.Status)</em></li>
+          }
+        </ul>
+        <footer><span class="payment payment--@order.PaymentStatus.ToLowerInvariant()">@PaymentLabel(order.PaymentStatus)</span><div>@if(order.CashRegisterId.HasValue){<button type="button" class="order-correction-button" @onclick="()=>OpenCorrectionsAsync(order)">Correcciones / CFDI</button>}@if(order.Status=="Ready"&&order.OrderType=="Delivery"){<button type="button" @onclick='()=>SetStatusAsync(order,"Dispatched")'>Despachar</button>}else if(order.Status=="Ready"){<button type="button" @onclick='()=>SetStatusAsync(order,"Delivered")'>Entregar</button>}else if(order.Status=="Dispatched"){<button type="button" @onclick='()=>SetStatusAsync(order,"Delivered")'>Confirmar entrega</button>}else if(order.Status=="Delivered"&&order.PaymentStatus=="Paid"){<button type="button" @onclick='()=>SetStatusAsync(order,"Completed")'>Completar</button>}</div></footer>
+      </article>
     }
     @if(!FilteredOrders.Any()){<div class="orders-empty"><h2>No hay órdenes en este estado</h2></div>}
   </section>
@@ -30,7 +54,7 @@
   {
     <section class="order-correction" role="dialog" aria-modal="true" aria-label="Correcciones supervisadas">
       <div class="order-correction__card">
-        <header><div><span>Orden @correctionOrder.Folio.ToString("000")</span><h2>Corrección supervisada</h2></div><button type="button" @onclick="CloseCorrections" aria-label="Cerrar">×</button></header>
+        <header><div><span>Orden @correctionOrder.Folio.ToString("000")@if(!string.IsNullOrWhiteSpace(correctionOrder.CustomerName)){<text> · @correctionOrder.CustomerName</text>}</span><h2>Corrección supervisada</h2></div><button type="button" @onclick="CloseCorrections" aria-label="Cerrar">×</button></header>
         <nav>@foreach(var mode in new[]{"Payment","Refund","Cancel","Cfdi"}){<button type="button" class="@(correctionMode==mode?"is-active":null)" @onclick="()=>correctionMode=mode">@CorrectionLabel(mode)</button>}</nav>
         @if(correctionMode=="Payment")
         {
@@ -79,9 +103,13 @@
   private bool correctionBusy;
 
   private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
-  private IEnumerable<RestaurantOrderDto> FilteredOrders => statusFilter == "Active"
-    ? orders.Where(order => order.Status is not ("Completed" or "Cancelled"))
-    : orders.Where(order => order.Status == statusFilter);
+  private IEnumerable<RestaurantOrderDto> FilteredOrders => (statusFilter == "Active"
+      ? orders.Where(order => order.Status is not ("Completed" or "Cancelled"))
+      : orders.Where(order => order.Status == statusFilter))
+    .OrderBy(order => order.OperationalDate)
+    .ThenBy(order => order.Folio)
+    .ThenBy(order => order.CreatedAt)
+    .ThenBy(order => order.Id);
 
   protected override async Task OnInitializedAsync()
   {
@@ -235,6 +263,12 @@
   private static string FilterLabel(string value) => value switch { "Active" => "Activas", "Ready" => "Listas", "Dispatched" => "Despachadas", "Delivered" => "Entregadas", "Completed" => "Completadas", _ => value };
   private static string TypeLabel(string value) => value switch { "Pickup" => "Recoger", "Table" => "Mesa", "Delivery" => "Domicilio", _ => value };
   private static string StatusLabel(string value) => value switch { "Sent" => "Pendiente", "Preparing" => "Preparando", "Ready" => "Lista", "Dispatched" => "Despachada", "Delivered" => "Entregada", "Completed" => "Completada", "Pending" => "Pendiente", _ => value };
+  private static string KitchenProgressClass(RestaurantOrderDto order) => RestaurantKitchenProgressRules.Classify(order) switch
+  {
+    RestaurantKitchenProgress.Ready => "order-card--complete",
+    RestaurantKitchenProgress.Preparing => "order-card--partial",
+    _ => "order-card--not-started"
+  };
   private static string PaymentLabel(string value) => value switch { "Paid" => "Pagada", "PendingSettlement" => "Por liquidar", "Partial" => "Pago parcial", "PartiallyRefunded" => "Reembolso parcial", "Refunded" => "Reembolsada", _ => value };
   private static string CorrectionLabel(string value) => value switch { "Payment" => "Cargo adicional", "Refund" => "Reembolso", "Cancel" => "Cancelar orden", "Cfdi" => "Ligar CFDI", _ => value };
   private static string PaymentMethodLabel(string value) => value switch { "Cash" => "Efectivo", "ExternalCard" => "Tarjeta", "Transfer" => "Transferencia", "Platform" => "Plataforma", _ => value };

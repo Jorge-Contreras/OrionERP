@@ -58,6 +58,7 @@ using OrionERP.Web.Features.Arrendadores;
 using OrionERP.Web.Features.Cfdi.HtmlCFDI;
 using OrionERP.Web.Features.Logistica.Purchasing;
 using OrionERP.Web.Features.ReportesFinancieros.SaludEmpresa;
+using OrionERP.Web.Features.Restaurante;
 using OrionERP.Web.Features.Reservaciones.OpenClaw;
 using OrionERP.Web.Identity;
 using OrionERP.Web.Services;
@@ -157,6 +158,8 @@ public static class ServiceRegistration
     services.AddScoped<IPurchaseMaterialThumbnailHydrator, PurchaseMaterialThumbnailHydrator>();
     services.AddScoped<IPurchaseOrderPdfDocumentFactory, PurchaseOrderPdfDocumentFactory>();
     services.AddScoped<IPurchaseOrderPdfService, PurchaseOrderPdfService>();
+    services.AddScoped<IRestaurantReceiptPdfService, RestaurantReceiptPdfService>();
+    services.AddSingleton<IRestaurantQzTraySigningService, RestaurantQzTraySigningService>();
 
     services.AddScoped<ContabITransaccionService, ContabTransaccionService>();
     services.AddHttpClient<IFacturamaApiClient, FacturamaApiClient>();

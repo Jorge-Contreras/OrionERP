@@ -22,6 +22,7 @@ public sealed class MaterialListItemDto
   public int Id { get; set; }
   public string MaterialCode { get; set; } = string.Empty;
   public string Description { get; set; } = string.Empty;
+  public int BaseUnitId { get; set; }
   public string MaterialClass { get; set; } = string.Empty;
   public string Status { get; set; } = string.Empty;
   public string? CategoryName { get; set; }

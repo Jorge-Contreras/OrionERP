@@ -28,19 +28,26 @@
   else
   {
     <section class="kds-board">
-      @foreach (var order in board.Orders)
+      @foreach (var order in OrderedOrders)
       {
-        <article class="kds-ticket kds-ticket--@order.Status.ToLowerInvariant() @(order.Priority > 0 ? "kds-ticket--priority" : string.Empty)">
+        <article @key="order.Id" class="kds-ticket @KitchenProgressClass(order) @(order.Priority > 0 ? "kds-ticket--priority" : string.Empty)">
           <header>
-            <div><span>@OrderTypeLabel(order.OrderType)</span><strong>@order.Folio.ToString("000")</strong>@if (!string.IsNullOrWhiteSpace(order.TableName)) { <b>@order.TableName</b> }@if (order.Priority > 0) { <mark>Prioridad</mark> }</div>
+            <div><span>@OrderTypeLabel(order.OrderType)</span><strong>@order.Folio.ToString("000")</strong>@if (!string.IsNullOrWhiteSpace(order.CustomerName)) { <b class="kds-customer">@order.CustomerName</b> }@if (!string.IsNullOrWhiteSpace(order.TableName)) { <b>@order.TableName</b> }@if (order.Priority > 0) { <mark>Prioridad</mark> }</div>
             <time class="@TimerClass(order)">@Elapsed(order)</time>
           </header>
           @if (order.Priority > 0)
           {
             <div class="kds-priority-note"><span class="oi oi-warning"></span> @order.PriorityReason</div>
           }
+          @if (!string.IsNullOrWhiteSpace(order.Notes))
+          {
+            <aside class="kds-order-note" aria-label="Nota de la orden">
+              <span class="oi oi-comment-square" aria-hidden="true"></span>
+              <div><strong>Nota de la orden</strong><p>@order.Notes</p></div>
+            </aside>
+          }
           <div class="kds-lines">
-            @foreach (var line in order.Lines.Where(line => line.Status != "Cancelled"))
+            @foreach (var line in order.Lines.Where(line => !line.IsCustom && line.Status != "Cancelled"))
             {
               <section class="kds-line kds-line--@line.Status.ToLowerInvariant()">
                 <div class="kds-line__copy"><strong><b>@line.Quantity.ToString("0.##")×</b> @line.ProductName</strong>@if (line.Modifiers.Count > 0) { <small>@string.Join(" · ", line.Modifiers)</small> }@if (!string.IsNullOrWhiteSpace(line.Notes)) { <em>@line.Notes</em> }</div>
@@ -57,7 +64,7 @@
               </section>
             }
           </div>
-          <footer><span>@order.Status</span><span>@order.Lines.Count línea(s)</span></footer>
+          <footer><span>@KitchenProgressLabel(order)</span><span>@order.Lines.Count(line => !line.IsCustom) línea(s) de cocina</span></footer>
           @if (canSupervise)
           {
             <div class="kds-supervisor">
@@ -91,6 +98,11 @@
   private bool canSupervise;
   private string? error;
   private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private IEnumerable<RestaurantOrderDto> OrderedOrders => board.Orders
+    .OrderBy(order => order.OperationalDate)
+    .ThenBy(order => order.Folio)
+    .ThenBy(order => order.CreatedAt)
+    .ThenBy(order => order.Id);
 
   protected override async Task OnInitializedAsync()
   {
@@ -180,6 +192,18 @@
   }
   private string Elapsed(RestaurantOrderDto order) { var elapsed = DateTime.UtcNow - order.CreatedAt; return $"{Math.Max(0, (int)elapsed.TotalMinutes):00}:{Math.Abs(elapsed.Seconds):00}"; }
   private string TimerClass(RestaurantOrderDto order) => (DateTime.UtcNow - order.CreatedAt).TotalMinutes switch { >= 20 => "is-late", >= 10 => "is-warning", _ => "" };
+  private static string KitchenProgressClass(RestaurantOrderDto order) => RestaurantKitchenProgressRules.Classify(order) switch
+  {
+    RestaurantKitchenProgress.Ready => "kds-ticket--complete",
+    RestaurantKitchenProgress.Preparing => "kds-ticket--partial",
+    _ => "kds-ticket--not-started"
+  };
+  private static string KitchenProgressLabel(RestaurantOrderDto order) => RestaurantKitchenProgressRules.Classify(order) switch
+  {
+    RestaurantKitchenProgress.Ready => "Listo",
+    RestaurantKitchenProgress.Preparing => "Preparando",
+    _ => "Sin iniciar"
+  };
   private static string OrderTypeLabel(string type) => type switch { "Pickup" => "Recoger", "Table" => "Mesa", "Delivery" => "Domicilio", _ => type };
   private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; board = new(); await LoadSitesAsync(); StateHasChanged(); });
   public ValueTask DisposeAsync() { RfcState.Changed -= OnRfcChanged; Realtime.EventReceived -= OnRealtimeEventAsync; disposeCts.Cancel(); disposeCts.Dispose(); return ValueTask.CompletedTask; }

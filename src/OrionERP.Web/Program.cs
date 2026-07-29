@@ -255,6 +255,12 @@ builder.Services.AddAuthorization(options =>
   options.AddPolicy(
       "RestaurantCash",
       policy => policy.Requirements.Add(new RoleForRfcRequirement("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin")));
+  // QZ calls these endpoints through a regular browser fetch, outside the
+  // Blazor circuit that owns the selected-RFC state. Keep the bridge limited
+  // to restaurant cash roles without relying on circuit-scoped state.
+  options.AddPolicy(
+      "RestaurantQzBridge",
+      policy => policy.RequireRole("Administrador", "RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin"));
 });
 
 builder.Services.AddRazorPages();      // Identity UI depends on Razor Pages
@@ -285,6 +291,8 @@ builder.Services.PostConfigure<BonhomiaGraphCalendarSyncOptions>(options =>
   }
 });
 builder.Services.Configure<BonhomiaCheckoutOptions>(builder.Configuration.GetSection(BonhomiaCheckoutOptions.SectionName));
+builder.Services.Configure<RestaurantQzTraySigningOptions>(
+  builder.Configuration.GetSection(RestaurantQzTraySigningOptions.SectionName));
 builder.Services.Configure<ReservacionPdfOptions>(options =>
 {
   var webRootPath = builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
@@ -353,6 +361,7 @@ app.UseAuthorization();
 app.MapRazorPages();
 app.MapBlazorHub();
 app.MapHub<RestaurantEventsHub>("/hubs/restaurante");
+app.MapRestaurantQzTraySigningApi();
 app.MapOpenClawReservationsApi();
 app.MapGet("/bonhomia", (IOptions<BonhomiaCheckoutOptions> options) =>
 {

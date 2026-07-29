@@ -45,6 +45,7 @@ public sealed class MaterialService : IMaterialService
           m.Id,
           m.MaterialCode,
           m.[Description],
+          m.BaseUnitId,
           m.MaterialClass,
           m.MaterialStatus AS [Status],
           mc.CategoryName,

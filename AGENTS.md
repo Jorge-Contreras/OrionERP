@@ -20,6 +20,20 @@ The two platforms share application, infrastructure, and SQL Server data model c
 
 Public base URLs are operational configuration and are not secrets. Keep public origins in appsettings when useful for local defaults or generated links, but keep passwords, API keys, PayPal secrets, Graph secrets, and SQL Server credentials in user secrets, environment variables, deployment configuration, or another approved private secret store.
 
+## Bruno's Menu Images
+
+The canonical Bruno's menu images live outside this repository under
+`C:\Users\Orion\Grupo Carpio Dropbox\Grupo Orion\Bruno's\assets\menus`, but the
+OrionERP `/menus` page serves its runtime copies from
+`src/OrionERP.Web/wwwroot/Images/Brunos/Menus`.
+
+Whenever the user asks to update a current Bruno's menu image, update both the
+canonical image and its matching repository copy in `wwwroot`. Preserve the
+stable filenames `menu-principal.png` and `menu-bebidas.png`, follow the
+canonical folder's archive procedure, and verify that the canonical and
+repository copies have matching hashes after the change. Do not rely solely on
+the build-time copy target to leave the working tree ready.
+
 ## UI Control Design Defaults
 
 When building or changing UI in either web platform, treat common controls as intentional product surfaces. Text fields, selectors, dropdowns, date/month inputs, toggles, checkboxes, scrollbars, tabs, buttons, and table controls should look modern, polished, and consistent with the surrounding app instead of falling back to dated raw browser defaults.

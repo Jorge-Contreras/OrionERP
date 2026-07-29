@@ -90,6 +90,10 @@ public sealed class BomRecipeService : IBomRecipeService
     {
       return RestaurantCommandResult.Fail("El rendimiento y al menos un componente son obligatorios.");
     }
+    if (request.ProductMaterialId <= 0 || request.YieldUnitId <= 0 || request.Components.Any(component => component.MaterialId <= 0 || component.UnitId <= 0))
+    {
+      return RestaurantCommandResult.Fail("Selecciona el producto, los ingredientes y sus unidades base.");
+    }
     if (request.Components.Any(component => component.Quantity <= 0) ||
         request.Components.Select(component => component.MaterialId).Distinct().Count() != request.Components.Count)
     {
@@ -110,36 +114,28 @@ public sealed class BomRecipeService : IBomRecipeService
     await using var tx = await conn.BeginTransactionAsync(ct);
     try
     {
-      var validMaterials = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
-        "SELECT COUNT(*) FROM logistica.Material WHERE Rfc = @Rfc AND Id IN @Ids;",
-        new { Rfc = rfc, Ids = request.Components.Select(item => item.MaterialId).Append(request.ProductMaterialId).Distinct().ToArray() }, tx, cancellationToken: ct));
-      if (validMaterials != request.Components.Select(item => item.MaterialId).Append(request.ProductMaterialId).Distinct().Count())
+      var requestedMaterialIds = request.Components.Select(item => item.MaterialId).Append(request.ProductMaterialId).Distinct().ToArray();
+      var materialBaseUnits = (await conn.QueryAsync<MaterialBaseUnitRow>(new CommandDefinition(
+        "SELECT Id, BaseUnitId FROM logistica.Material WHERE Rfc = @Rfc AND Id IN @Ids;",
+        new { Rfc = rfc, Ids = requestedMaterialIds }, tx, cancellationToken: ct)))
+        .ToDictionary(item => item.Id, item => item.BaseUnitId);
+      if (materialBaseUnits.Count != requestedMaterialIds.Length)
       {
         await tx.RollbackAsync(ct);
         return RestaurantCommandResult.Fail("Uno o más materiales no pertenecen al RFC seleccionado.");
       }
+      if (request.YieldUnitId != materialBaseUnits[request.ProductMaterialId])
+      {
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail("La unidad de rendimiento debe ser la unidad base del producto terminado.");
+      }
 
       foreach (var component in request.Components)
       {
-        var conversionExists = await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
-          """
-          SELECT CAST(CASE WHEN EXISTS
-          (
-            SELECT 1
-            FROM logistica.Material material
-            WHERE material.Rfc = @Rfc AND material.Id = @MaterialId
-              AND (material.BaseUnitId = @UnitId
-                   OR EXISTS (SELECT 1 FROM logistica.MaterialUnitConversion conversionInfo
-                              WHERE conversionInfo.Rfc = material.Rfc AND conversionInfo.MaterialId = material.Id
-                                AND conversionInfo.FromUnitId = @UnitId AND conversionInfo.ToUnitId = material.BaseUnitId AND conversionInfo.IsActive = 1)
-                   OR EXISTS (SELECT 1 FROM logistica.UnitConversion conversionInfo
-                              WHERE conversionInfo.FromUnitId = @UnitId AND conversionInfo.ToUnitId = material.BaseUnitId AND conversionInfo.IsActive = 1))
-          ) THEN 1 ELSE 0 END AS bit);
-          """, new { Rfc = rfc, component.MaterialId, component.UnitId }, tx, cancellationToken: ct));
-        if (!conversionExists)
+        if (component.UnitId != materialBaseUnits[component.MaterialId])
         {
           await tx.RollbackAsync(ct);
-          return RestaurantCommandResult.Fail($"Falta una conversión de unidad para el material {component.MaterialId}.");
+          return RestaurantCommandResult.Fail($"La unidad del ingrediente {component.MaterialId} debe ser su unidad base.");
         }
 
         var createsCycle = await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
@@ -547,6 +543,12 @@ public sealed class BomRecipeService : IBomRecipeService
     public long BomHeaderId { get; set; }
     public string Status { get; set; } = string.Empty;
     public int ProductMaterialId { get; set; }
+  }
+
+  private sealed class MaterialBaseUnitRow
+  {
+    public int Id { get; set; }
+    public int BaseUnitId { get; set; }
   }
 
   private sealed class AllergenAssignmentRow

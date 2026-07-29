@@ -215,7 +215,7 @@
                                     <tr class="@($"{GetRowClass(row)} report-table__row-clickable".Trim())"
                                         @onclick="() => SelectRow(row)"
                                         @ondblclick="() => GoToContabilidadRegistros(row)">
-                                        <td class="@($"{GetIndentClass(row)} balanza-table__account-cell").Trim()">
+                                        <td class="@($"{GetIndentClass(row)} balanza-table__account-cell".Trim())">
                                             <div class="balanza-account-cell">
                                                 @if (HasChildren(row))
                                                 {

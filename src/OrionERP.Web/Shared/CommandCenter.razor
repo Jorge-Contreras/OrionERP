@@ -1,0 +1,578 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+@inject NavigationManager Navigation
+
+<button type="button"
+        class="command-center-trigger"
+        aria-haspopup="dialog"
+        aria-controls="orion-command-center"
+        title="Abrir centro de comandos (Ctrl+K)"
+        @onclick="OpenAsync">
+    <span class="command-center-trigger__icon oi oi-magnifying-glass" aria-hidden="true"></span>
+    <span class="command-center-trigger__copy">
+        <span class="command-center-trigger__label">Ir a...</span>
+        <span class="command-center-trigger__description">Página o tarea</span>
+    </span>
+    <kbd>Ctrl K</kbd>
+</button>
+
+<dialog id="orion-command-center"
+        class="command-center"
+        aria-labelledby="command-center-title"
+        @ref="_dialog">
+    <div class="command-center__surface">
+        <header class="command-center__header">
+            <div class="command-center__title-row">
+                <div>
+                    <p class="command-center__eyebrow">Centro de comandos</p>
+                    <h2 id="command-center-title">¿A dónde quieres ir?</h2>
+                </div>
+
+                <button type="button"
+                        class="command-center__close"
+                        aria-label="Cerrar centro de comandos"
+                        title="Cerrar"
+                        @onclick="CloseAsync">
+                    <span class="oi oi-x" aria-hidden="true"></span>
+                </button>
+            </div>
+
+            <label class="command-center__search" for="command-center-search">
+                <span class="oi oi-magnifying-glass" aria-hidden="true"></span>
+                <input id="command-center-search"
+                       type="search"
+                       value="@_searchText"
+                       placeholder="Busca páginas, módulos o tareas..."
+                       autocomplete="off"
+                       spellcheck="false"
+                       aria-label="Buscar páginas, módulos o tareas"
+                       aria-controls="command-center-results"
+                       aria-activedescendant="@ActiveDescendantId"
+                       @ref="_searchInput"
+                       @oninput="HandleSearchInput"
+                       @onkeydown="HandleSearchKeyDown" />
+                @if (!string.IsNullOrWhiteSpace(_searchText))
+                {
+                    <button type="button" class="command-center__clear" @onclick="ClearSearchAsync">
+                        Limpiar
+                    </button>
+                }
+            </label>
+
+            <div class="command-center__context">
+                <span>@ContextLabel</span>
+                <span aria-hidden="true">•</span>
+                <span>@_availableDestinations.Count destinos disponibles</span>
+            </div>
+        </header>
+
+        <div id="command-center-results"
+             class="command-center__results"
+             role="listbox"
+             aria-label="Destinos"
+             aria-live="polite">
+            @if (VisibleGroups.Count == 0)
+            {
+                <div class="command-center__empty">
+                    <span class="oi oi-magnifying-glass" aria-hidden="true"></span>
+                    <h3>Sin coincidencias</h3>
+                    <p>Prueba con el nombre de una tarea: “cobrar”, “inventario”, “SAT” o “reservación”.</p>
+                </div>
+            }
+            else
+            {
+                @foreach (var group in VisibleGroups)
+                {
+                    <section class="command-center__group" aria-labelledby="@group.Id">
+                        <div class="command-center__group-heading">
+                            <h3 id="@group.Id">@group.Label</h3>
+                            @if (!string.IsNullOrWhiteSpace(group.Description))
+                            {
+                                <span>@group.Description</span>
+                            }
+                        </div>
+
+                        <div class="command-center__group-list">
+                            @foreach (var destination in group.Destinations)
+                            {
+                                var itemIndex = GetEntryIndex(destination);
+                                var isSelected = itemIndex == _selectedIndex;
+                                var isFavorite = IsFavorite(destination);
+
+                                <div id="@GetEntryId(itemIndex)"
+                                     class="@GetResultClass(isSelected)"
+                                     role="option"
+                                     aria-selected="@isSelected"
+                                     @key="destination.Entry.Href"
+                                     @onmouseenter="() => Select(destination)">
+                                    <button type="button"
+                                            class="command-center__result-main"
+                                            tabindex="-1"
+                                            @onclick="() => NavigateAsync(destination)">
+                                        <span class="command-center__result-icon">
+                                            <span class="oi @destination.Entry.Icon" aria-hidden="true"></span>
+                                        </span>
+
+                                        <span class="command-center__result-copy">
+                                            <span class="command-center__result-title">@destination.Entry.Label</span>
+                                            <span class="command-center__result-description">@destination.Entry.Description</span>
+                                        </span>
+
+                                        <span class="command-center__result-meta">
+                                            <span>@destination.Section.Kicker</span>
+                                            <span class="oi oi-chevron-right" aria-hidden="true"></span>
+                                        </span>
+                                    </button>
+
+                                    <button type="button"
+                                            class="@GetFavoriteButtonClass(isFavorite)"
+                                            aria-label="@GetFavoriteLabel(destination, isFavorite)"
+                                            title="@GetFavoriteLabel(destination, isFavorite)"
+                                            @onclick="() => ToggleFavoriteAsync(destination)">
+                                        <span class="oi oi-star" aria-hidden="true"></span>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    </section>
+                }
+            }
+        </div>
+
+        <footer class="command-center__footer">
+            <div class="command-center__key-help" aria-label="Ayuda de teclado">
+                <span><kbd>↑</kbd><kbd>↓</kbd> navegar</span>
+                <span><kbd>Enter</kbd> abrir</span>
+                <span><kbd>Esc</kbd> cerrar</span>
+            </div>
+            <span class="command-center__footer-note">
+                <span class="oi oi-star" aria-hidden="true"></span>
+                Fija tus páginas frecuentes
+            </span>
+        </footer>
+    </div>
+</dialog>
+
+@code {
+    private const string StorageKeyPrefix = "orionerp.command-center.v1";
+    private const int RecentLimit = 7;
+
+    private readonly List<NavigationDestination> _availableDestinations = [];
+    private readonly CommandCenterPreferences _preferences = new();
+    private DotNetObjectReference<CommandCenter>? _dotNetReference;
+    private ElementReference _dialog;
+    private ElementReference _searchInput;
+    private string _searchText = string.Empty;
+    private string _storageKey = StorageKeyPrefix;
+    private int _selectedIndex;
+    private bool _isInitialized;
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    private IReadOnlyList<PaletteGroup> VisibleGroups => BuildVisibleGroups();
+    private IReadOnlyList<NavigationDestination> KeyboardEntries =>
+        VisibleGroups.SelectMany(group => group.Destinations).ToArray();
+
+    private string? ActiveDescendantId =>
+        KeyboardEntries.Count == 0 ? null : GetEntryId(Math.Clamp(_selectedIndex, 0, KeyboardEntries.Count - 1));
+
+    private string ContextLabel => string.IsNullOrWhiteSpace(_searchText)
+        ? "Tus accesos"
+        : $"{KeyboardEntries.Count} coincidencia{(KeyboardEntries.Count == 1 ? string.Empty : "s")}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var user = AuthenticationStateTask is null
+            ? null
+            : (await AuthenticationStateTask).User;
+
+        var isAdmin = user?.Identity?.IsAuthenticated == true && user.IsInRole("Administrador");
+        var isArrendadoresOnly = user is not null && NavigationCatalog.IsArrendadoresOnly(user);
+
+        _availableDestinations.Clear();
+        _availableDestinations.AddRange(
+            NavigationCatalog.GetDestinations(isAdmin, isArrendadoresOnly));
+
+        var identityKey = user?.Identity?.Name?.Trim().ToLowerInvariant();
+        _storageKey = string.IsNullOrWhiteSpace(identityKey)
+            ? StorageKeyPrefix
+            : $"{StorageKeyPrefix}:{identityKey}";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _dotNetReference = DotNetObjectReference.Create(this);
+        await Js.InvokeVoidAsync(
+            "orionCommandCenter.initialize",
+            _dialog,
+            _searchInput,
+            _dotNetReference);
+
+        var stored = await Js.InvokeAsync<CommandCenterPreferences?>(
+            "orionCommandCenter.loadPreferences",
+            _storageKey);
+
+        if (stored is not null)
+        {
+            _preferences.Favorites.AddRange(SanitizePaths(stored.Favorites));
+            _preferences.Recent.AddRange(SanitizePaths(stored.Recent));
+        }
+
+        _isInitialized = true;
+        await RecordCurrentDestinationAsync();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public Task OpenFromShortcut()
+    {
+        return OpenAsync();
+    }
+
+    [JSInvokable]
+    public Task HandleDialogClosed()
+    {
+        _searchText = string.Empty;
+        _selectedIndex = 0;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OpenAsync()
+    {
+        if (!_isInitialized)
+        {
+            return;
+        }
+
+        _searchText = string.Empty;
+        _selectedIndex = 0;
+        StateHasChanged();
+        await Js.InvokeVoidAsync("orionCommandCenter.open", _dialog, _searchInput);
+    }
+
+    private async Task CloseAsync()
+    {
+        if (_isInitialized)
+        {
+            await Js.InvokeVoidAsync("orionCommandCenter.close", _dialog);
+        }
+    }
+
+    private void HandleSearchInput(ChangeEventArgs args)
+    {
+        _searchText = args.Value?.ToString() ?? string.Empty;
+        _selectedIndex = 0;
+    }
+
+    private async Task HandleSearchKeyDown(KeyboardEventArgs args)
+    {
+        var entries = KeyboardEntries;
+        if (entries.Count == 0)
+        {
+            return;
+        }
+
+        switch (args.Key)
+        {
+            case "ArrowDown":
+                _selectedIndex = (_selectedIndex + 1) % entries.Count;
+                await ScrollSelectionIntoViewAsync();
+                break;
+            case "ArrowUp":
+                _selectedIndex = (_selectedIndex - 1 + entries.Count) % entries.Count;
+                await ScrollSelectionIntoViewAsync();
+                break;
+            case "Enter":
+                await NavigateAsync(entries[Math.Clamp(_selectedIndex, 0, entries.Count - 1)]);
+                break;
+        }
+    }
+
+    private async Task ClearSearchAsync()
+    {
+        _searchText = string.Empty;
+        _selectedIndex = 0;
+        await Js.InvokeVoidAsync("orionCommandCenter.focusSearch", _searchInput);
+    }
+
+    private void Select(NavigationDestination destination)
+    {
+        var index = GetEntryIndex(destination);
+        if (index >= 0)
+        {
+            _selectedIndex = index;
+        }
+    }
+
+    private async Task NavigateAsync(NavigationDestination destination)
+    {
+        RecordRecent(destination);
+        await SavePreferencesAsync();
+        await CloseAsync();
+        Navigation.NavigateTo(destination.Entry.Href);
+    }
+
+    private async Task ToggleFavoriteAsync(NavigationDestination destination)
+    {
+        var path = NavigationCatalog.NormalizePath(destination.Entry.Href);
+        if (_preferences.Favorites.Contains(path, StringComparer.OrdinalIgnoreCase))
+        {
+            _preferences.Favorites.RemoveAll(item =>
+                string.Equals(item, path, StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            _preferences.Favorites.Insert(0, path);
+        }
+
+        await SavePreferencesAsync();
+    }
+
+    private async Task RecordCurrentDestinationAsync()
+    {
+        var currentPath = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var destination = NavigationCatalog.FindByPath(_availableDestinations, currentPath);
+        if (destination is null)
+        {
+            return;
+        }
+
+        RecordRecent(destination);
+        await SavePreferencesAsync();
+    }
+
+    private void RecordRecent(NavigationDestination destination)
+    {
+        var path = NavigationCatalog.NormalizePath(destination.Entry.Href);
+        _preferences.Recent.RemoveAll(item =>
+            string.Equals(item, path, StringComparison.OrdinalIgnoreCase));
+        _preferences.Recent.Insert(0, path);
+
+        if (_preferences.Recent.Count > RecentLimit)
+        {
+            _preferences.Recent.RemoveRange(RecentLimit, _preferences.Recent.Count - RecentLimit);
+        }
+    }
+
+    private async Task SavePreferencesAsync()
+    {
+        if (_isInitialized)
+        {
+            await Js.InvokeVoidAsync(
+                "orionCommandCenter.savePreferences",
+                _storageKey,
+                _preferences);
+        }
+    }
+
+    private IReadOnlyList<PaletteGroup> BuildVisibleGroups()
+    {
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            var searchResults = NavigationCatalog.Search(_availableDestinations, _searchText);
+            return searchResults.Count == 0
+                ? Array.Empty<PaletteGroup>()
+                : [new("command-results", "Resultados", "Ordenados por relevancia", searchResults)];
+        }
+
+        var groups = new List<PaletteGroup>();
+        var usedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var favorites = ResolvePaths(_preferences.Favorites, usedPaths, 6);
+        var recent = ResolvePaths(_preferences.Recent, usedPaths, 5);
+        var suggested = _availableDestinations
+            .Where(destination => destination.Entry.IsQuickAccess)
+            .Where(destination => usedPaths.Add(NavigationCatalog.NormalizePath(destination.Entry.Href)))
+            .Take(6)
+            .ToArray();
+
+        if (favorites.Count > 0)
+        {
+            groups.Add(new("command-favorites", "Favoritos", "Tus páginas fijadas", favorites));
+        }
+
+        if (recent.Count > 0)
+        {
+            groups.Add(new("command-recents", "Recientes", "Continúa donde estabas", recent));
+        }
+
+        if (suggested.Length > 0)
+        {
+            groups.Add(new("command-suggested", "Sugerencias", "Flujos frecuentes", suggested));
+        }
+
+        return groups;
+    }
+
+    private IReadOnlyList<NavigationDestination> ResolvePaths(
+        IEnumerable<string> paths,
+        HashSet<string> usedPaths,
+        int limit)
+    {
+        var resolved = new List<NavigationDestination>();
+
+        foreach (var path in paths)
+        {
+            var normalizedPath = NavigationCatalog.NormalizePath(path);
+            var destination = _availableDestinations.FirstOrDefault(candidate =>
+                string.Equals(
+                    NavigationCatalog.NormalizePath(candidate.Entry.Href),
+                    normalizedPath,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (destination is not null && usedPaths.Add(normalizedPath))
+            {
+                resolved.Add(destination);
+            }
+
+            if (resolved.Count == limit)
+            {
+                break;
+            }
+        }
+
+        return resolved;
+    }
+
+    private IEnumerable<string> SanitizePaths(IEnumerable<string>? paths)
+    {
+        if (paths is null)
+        {
+            return Array.Empty<string>();
+        }
+
+        var allowedPaths = _availableDestinations
+            .Select(destination => NavigationCatalog.NormalizePath(destination.Entry.Href))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return paths
+            .Select(NavigationCatalog.NormalizePath)
+            .Where(allowedPaths.Contains)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private bool IsFavorite(NavigationDestination destination)
+    {
+        var path = NavigationCatalog.NormalizePath(destination.Entry.Href);
+        return _preferences.Favorites.Contains(path, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private int GetEntryIndex(NavigationDestination destination)
+    {
+        var path = NavigationCatalog.NormalizePath(destination.Entry.Href);
+        var entries = KeyboardEntries;
+
+        for (var index = 0; index < entries.Count; index++)
+        {
+            if (string.Equals(
+                    NavigationCatalog.NormalizePath(entries[index].Entry.Href),
+                    path,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private async Task ScrollSelectionIntoViewAsync()
+    {
+        await Js.InvokeVoidAsync(
+            "orionCommandCenter.scrollActive",
+            _dialog,
+            GetEntryId(_selectedIndex));
+    }
+
+    private static string GetEntryId(int index) => $"command-center-item-{index}";
+
+    private static string GetResultClass(bool isSelected) =>
+        isSelected ? "command-center__result command-center__result--selected" : "command-center__result";
+
+    private static string GetFavoriteButtonClass(bool isFavorite) =>
+        isFavorite
+            ? "command-center__favorite command-center__favorite--active"
+            : "command-center__favorite";
+
+    private static string GetFavoriteLabel(
+        NavigationDestination destination,
+        bool isFavorite) =>
+        isFavorite
+            ? $"Quitar {destination.Entry.Label} de favoritos"
+            : $"Fijar {destination.Entry.Label} en favoritos";
+
+    private void HandleLocationChanged(
+        object? sender,
+        Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args)
+    {
+        if (!_isInitialized)
+        {
+            return;
+        }
+
+        _ = InvokeAsync(async () =>
+        {
+            await RecordCurrentDestinationAsync();
+            StateHasChanged();
+        });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Navigation.LocationChanged -= HandleLocationChanged;
+
+        if (_isInitialized)
+        {
+            try
+            {
+                await Js.InvokeVoidAsync("orionCommandCenter.dispose", _dialog);
+            }
+            catch (JSDisconnectedException)
+            {
+                // The circuit is already gone; browser cleanup is no longer necessary.
+            }
+            catch (InvalidOperationException)
+            {
+                // The component was disposed during prerendering.
+            }
+        }
+
+        _dotNetReference?.Dispose();
+    }
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += HandleLocationChanged;
+    }
+
+    private sealed class PaletteGroup
+    {
+        public PaletteGroup(
+            string id,
+            string label,
+            string description,
+            IReadOnlyList<NavigationDestination> destinations)
+        {
+            Id = id;
+            Label = label;
+            Description = description;
+            Destinations = destinations;
+        }
+
+        public string Id { get; }
+        public string Label { get; }
+        public string Description { get; }
+        public IReadOnlyList<NavigationDestination> Destinations { get; }
+    }
+
+    private sealed class CommandCenterPreferences
+    {
+        public List<string> Favorites { get; set; } = [];
+        public List<string> Recent { get; set; } = [];
+    }
+}

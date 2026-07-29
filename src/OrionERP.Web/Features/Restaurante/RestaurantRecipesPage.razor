@@ -26,7 +26,7 @@
       <header><strong>Versiones</strong><button type="button" @onclick="LoadAsync"><span class="oi oi-reload"></span></button></header>
       @foreach (var version in versions)
       {
-        <button type="button" class="@(editor.BomVersionId == version.Id ? "is-active" : null)" @onclick="() => EditAsync(version.Id)"><span><strong>@version.ProductName</strong><small>v@version.VersionNumber · @version.YieldQuantity.ToString("0.####")</small></span><b class="recipe-status recipe-status--@version.Status.ToLowerInvariant()">@version.Status</b></button>
+        <button type="button" class="@(editor.BomVersionId == version.Id ? "is-active" : null)" @onclick="() => EditAsync(version.Id)"><span><strong>@version.ProductName</strong><small>v@(version.VersionNumber) · @version.YieldQuantity.ToString("0.####")</small></span><b class="recipe-status recipe-status--@version.Status.ToLowerInvariant()">@version.Status</b></button>
       }
       @if (versions.Count == 0) { <p>Sin recetas. Crea la primera a partir de un producto terminado.</p> }
     </aside>
@@ -36,10 +36,11 @@
         <RestaurantMaterialPicker Label="Producto terminado"
                                   Options="@materialOptions"
                                   @bind-Value="editor.ProductMaterialId"
+                                  Changed="SetProductMaterial"
                                   Disabled="@editor.BomVersionId.HasValue"
                                   Placeholder="Buscar producto terminado…" />
         <label>Rendimiento<input type="number" min="0.0001" step="0.0001" @bind="editor.YieldQuantity" /></label>
-        <label>Unidad<select @bind="editor.YieldUnitId"><option value="0">Seleccionar…</option>@foreach (var unit in catalog.Units) { <option value="@unit.Id">@unit.Name</option> }</select></label>
+        <label>Unidad base<select @bind="editor.YieldUnitId" disabled><option value="0">Selecciona un producto…</option>@if (FindMaterial(editor.ProductMaterialId) is { } product) { <option value="@product.BaseUnitId">@UnitLabel(product)</option> }</select></label>
         <label>Merma esperada %<input type="number" min="0" max="100" step="0.1" @bind="editor.ExpectedWastePercent" /></label>
       </div>
       <label class="recipe-safety">Notas de seguridad<textarea rows="2" maxlength="2000" @bind="editor.SafetyNotes"></textarea></label>
@@ -50,7 +51,7 @@
           <div class="recipe-table__head"><span>Material</span><span>Cantidad</span><span>Unidad</span><span>Merma %</span><span></span></div>
           @foreach (var component in editor.Components)
           {
-            <div class="recipe-table__row"><RestaurantMaterialPicker Options="@materialOptions" @bind-Value="component.MaterialId" Compact="true" Placeholder="Buscar ingrediente…" /><input type="number" min="0.000001" step="0.0001" @bind="component.Quantity" /><select @bind="component.UnitId"><option value="0">Unidad…</option>@foreach (var unit in catalog.Units) { <option value="@unit.Id">@unit.Code</option> }</select><input type="number" min="0" max="100" step="0.1" @bind="component.ExpectedWastePercent" /><button type="button" aria-label="Eliminar" @onclick="() => editor.Components.Remove(component)">×</button></div>
+            <div class="recipe-table__row"><RestaurantMaterialPicker Options="@materialOptions" @bind-Value="component.MaterialId" Changed="@(materialId => SetComponentMaterial(component, materialId))" Compact="true" Placeholder="Buscar ingrediente…" /><input type="number" min="0.000001" step="0.0001" @bind="component.Quantity" /><select @bind="component.UnitId" disabled><option value="0">Selecciona un material…</option>@if (FindMaterial(component.MaterialId) is { } ingredient) { <option value="@ingredient.BaseUnitId">@UnitLabel(ingredient, true)</option> }</select><input type="number" min="0" max="100" step="0.1" @bind="component.ExpectedWastePercent" /><button type="button" aria-label="Eliminar" @onclick="() => editor.Components.Remove(component)">×</button></div>
           }
         </div>
       </article>
@@ -130,15 +131,24 @@
     catch (Exception ex) { Show(ex.Message, true); }
     finally { isBusy = false; }
   }
-  private void NewDraft() { editor = NewEditor(); editor.Rfc = CurrentRfc; editor.YieldUnitId = catalog.Units.FirstOrDefault()?.Id ?? 0; selectedStatus = "Draft"; }
+  private void NewDraft() { editor = NewEditor(); editor.Rfc = CurrentRfc; selectedStatus = "Draft"; }
   private async Task EditAsync(long id)
   {
     var detail = await BomService.GetBomVersionAsync(CurrentRfc, id); if (detail is null) return;
     if (detail.Status != "Draft") { Show("La versión seleccionada es de sólo lectura. Use Nueva receta para generar la siguiente versión.", false); }
-    editor = new() { Rfc = CurrentRfc, BomVersionId = detail.Status == "Draft" ? detail.Id : null, ProductMaterialId = detail.ProductMaterialId, YieldQuantity = detail.YieldQuantity, YieldUnitId = detail.YieldUnitId, ExpectedWastePercent = detail.ExpectedWastePercent, SafetyNotes = detail.SafetyNotes, Components = detail.Components.Select(item => new BomComponentSaveRequest { MaterialId = item.MaterialId, Quantity = item.Quantity, UnitId = item.UnitId, ExpectedWastePercent = item.ExpectedWastePercent }).ToList(), Steps = detail.Steps.Select(item => new RecipeStepSaveRequest { StepNumber = item.StepNumber, Instruction = item.Instruction, DurationMinutes = item.DurationMinutes, TemperatureC = item.TemperatureC, Equipment = item.Equipment, Image = item.Image, ImageFileName = item.ImageFileName, ImageContentType = item.ImageContentType }).ToList() };
+    editor = new() { Rfc = CurrentRfc, BomVersionId = detail.Status == "Draft" ? detail.Id : null, ProductMaterialId = detail.ProductMaterialId, YieldQuantity = detail.YieldQuantity, YieldUnitId = MaterialBaseUnitId(detail.ProductMaterialId), ExpectedWastePercent = detail.ExpectedWastePercent, SafetyNotes = detail.SafetyNotes, Components = detail.Components.Select(item => new BomComponentSaveRequest { MaterialId = item.MaterialId, Quantity = item.Quantity, UnitId = MaterialBaseUnitId(item.MaterialId), ExpectedWastePercent = item.ExpectedWastePercent }).ToList(), Steps = detail.Steps.Select(item => new RecipeStepSaveRequest { StepNumber = item.StepNumber, Instruction = item.Instruction, DurationMinutes = item.DurationMinutes, TemperatureC = item.TemperatureC, Equipment = item.Equipment, Image = item.Image, ImageFileName = item.ImageFileName, ImageContentType = item.ImageContentType }).ToList() };
     selectedStatus = detail.Status;
   }
-  private void AddComponent() => editor.Components.Add(new() { UnitId = catalog.Units.FirstOrDefault()?.Id ?? 0, Quantity = 1 });
+  private void AddComponent() => editor.Components.Add(new() { Quantity = 1 });
+  private void SetProductMaterial(int materialId) => editor.YieldUnitId = MaterialBaseUnitId(materialId);
+  private void SetComponentMaterial(BomComponentSaveRequest component, int materialId) => component.UnitId = MaterialBaseUnitId(materialId);
+  private MaterialListItemDto? FindMaterial(int materialId) => materials.FirstOrDefault(item => item.Id == materialId);
+  private int MaterialBaseUnitId(int materialId) => FindMaterial(materialId)?.BaseUnitId ?? 0;
+  private string UnitLabel(MaterialListItemDto material, bool codeOnly = false)
+  {
+    var unit = catalog.Units.FirstOrDefault(item => item.Id == material.BaseUnitId);
+    return codeOnly ? unit?.Code ?? material.BaseUnitName ?? "Unidad base" : unit?.Name ?? material.BaseUnitName ?? "Unidad base";
+  }
   private void AddStep() => editor.Steps.Add(new() { StepNumber = editor.Steps.Count == 0 ? 1 : editor.Steps.Max(item => item.StepNumber) + 1 });
   private async Task CaptureStepImageAsync(RecipeStepSaveRequest step, InputFileChangeEventArgs args) { var image = await args.File.RequestImageFileAsync("image/jpeg", 1200, 1200); await using var stream = image.OpenReadStream(5 * 1024 * 1024); using var memory = new MemoryStream(); await stream.CopyToAsync(memory); step.Image = memory.ToArray(); step.ImageFileName = Path.ChangeExtension(args.File.Name, ".jpg"); step.ImageContentType = "image/jpeg"; }
   private async Task SaveAsync() { await RunAsync(async () => await BomService.SaveDraftAsync(editor)); }

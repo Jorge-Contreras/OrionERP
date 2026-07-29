@@ -25,6 +25,25 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     {
       throw new InvalidOperationException("La orden requiere productos y una clave de idempotencia.");
     }
+    if (string.IsNullOrWhiteSpace(request.CustomerName))
+    {
+      throw new InvalidOperationException("El nombre del cliente es obligatorio.");
+    }
+    if (request.CustomerName.Trim().Length > 150)
+    {
+      throw new InvalidOperationException("El nombre del cliente no puede exceder 150 caracteres.");
+    }
+    foreach (var line in request.Lines)
+    {
+      if (line.IsCustom)
+      {
+        _ = RestaurantCustomItemRules.CreateSnapshot(line);
+      }
+      else
+      {
+        RestaurantCustomItemRules.ValidateCatalogLine(line);
+      }
+    }
     if (request.OrderDiscountAmount > 0 || request.Lines.Any(line => line.DiscountAmount > 0))
     {
       if (string.IsNullOrWhiteSpace(request.DiscountReason) || string.IsNullOrWhiteSpace(request.SupervisorAuthorizedBy))
@@ -81,31 +100,34 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       }
 
       await ValidateOperationalReferencesAsync(conn, tx, rfc, request, ct);
-      var productIds = request.Lines.Select(line => line.ProductId).Distinct().ToArray();
-      var products = (await conn.QueryAsync<ProductRow>(new CommandDefinition(
-        """
-        SELECT product.Id, product.MaterialId, product.Sku, card.[Name], product.VariantName,
-               product.Price, product.KitchenStationId, product.PreparationMinutes,
-               material.FulfillmentMode, material.BaseUnitId, material.TrackLots,
-               CAST(ISNULL(activeBom.FrozenTheoreticalCost, 0) AS decimal(18,6)) AS TheoreticalCost
-        FROM restaurante.Product product
-        JOIN restaurante.ProductCard card ON card.Rfc = product.Rfc AND card.Id = product.ProductCardId
-        JOIN logistica.Material material ON material.Rfc = product.Rfc AND material.Id = product.MaterialId
-        OUTER APPLY
-        (
-          SELECT TOP (1) bomVersion.FrozenTheoreticalCost
-          FROM logistica.BomHeader bomHeader
-          JOIN logistica.BomVersion bomVersion ON bomVersion.Rfc = bomHeader.Rfc AND bomVersion.BomHeaderId = bomHeader.Id
-          WHERE bomHeader.Rfc = product.Rfc AND bomHeader.ProductMaterialId = product.MaterialId AND bomVersion.[Status] = 'Active'
-        ) activeBom
-        WHERE product.Rfc = @Rfc AND product.Id IN @ProductIds AND product.IsActive = 1 AND product.SoldOutOverride = 0;
-        """, new { Rfc = rfc, ProductIds = productIds }, tx, cancellationToken: ct))).AsList();
+      var catalogLines = request.Lines.Where(line => !line.IsCustom).ToList();
+      var productIds = catalogLines.Select(line => line.ProductId!.Value).Distinct().ToArray();
+      var products = productIds.Length == 0
+        ? []
+        : (await conn.QueryAsync<ProductRow>(new CommandDefinition(
+          """
+          SELECT product.Id, product.MaterialId, product.Sku, card.[Name], product.VariantName,
+                 product.Price, product.KitchenStationId, product.PreparationMinutes,
+                 material.FulfillmentMode, material.BaseUnitId, material.TrackLots,
+                 CAST(ISNULL(activeBom.FrozenTheoreticalCost, 0) AS decimal(18,6)) AS TheoreticalCost
+          FROM restaurante.Product product
+          JOIN restaurante.ProductCard card ON card.Rfc = product.Rfc AND card.Id = product.ProductCardId
+          JOIN logistica.Material material ON material.Rfc = product.Rfc AND material.Id = product.MaterialId
+          OUTER APPLY
+          (
+            SELECT TOP (1) bomVersion.FrozenTheoreticalCost
+            FROM logistica.BomHeader bomHeader
+            JOIN logistica.BomVersion bomVersion ON bomVersion.Rfc = bomHeader.Rfc AND bomVersion.BomHeaderId = bomHeader.Id
+            WHERE bomHeader.Rfc = product.Rfc AND bomHeader.ProductMaterialId = product.MaterialId AND bomVersion.[Status] = 'Active'
+          ) activeBom
+          WHERE product.Rfc = @Rfc AND product.Id IN @ProductIds AND product.IsActive = 1 AND product.SoldOutOverride = 0;
+          """, new { Rfc = rfc, ProductIds = productIds }, tx, cancellationToken: ct))).AsList();
       if (products.Count != productIds.Length)
       {
         throw new InvalidOperationException("Uno o más productos están inactivos, agotados o pertenecen a otro RFC.");
       }
 
-      var requestedOptionIds = request.Lines.SelectMany(line => line.ModifierOptionIds).Distinct().ToArray();
+      var requestedOptionIds = catalogLines.SelectMany(line => line.ModifierOptionIds).Distinct().ToArray();
       var modifierRows = requestedOptionIds.Length == 0
         ? []
         : (await conn.QueryAsync<ModifierRow>(new CommandDefinition(
@@ -130,17 +152,40 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         {
           throw new InvalidOperationException("La cantidad de cada producto debe ser mayor que cero.");
         }
-        var product = products.Single(item => item.Id == line.ProductId);
-        var modifiers = modifierRows.Where(item => item.ProductId == line.ProductId && line.ModifierOptionIds.Contains(item.Id)).ToList();
-        var unitPrice = product.Price + modifiers.Sum(item => item.PriceDelta);
-        var gross = decimal.Round(unitPrice * line.Quantity, 2, MidpointRounding.AwayFromZero);
+        ProductRow? product = null;
+        List<ModifierRow> modifiers;
+        string productName;
+        string sku;
+        decimal unitPrice;
+        decimal gross;
+        if (line.IsCustom)
+        {
+          var custom = RestaurantCustomItemRules.CreateSnapshot(line);
+          modifiers = [];
+          productName = custom.Name;
+          sku = RestaurantCustomItemRules.SkuSnapshot;
+          unitPrice = custom.UnitPrice;
+          gross = custom.Gross;
+        }
+        else
+        {
+          var productId = line.ProductId!.Value;
+          product = products.Single(item => item.Id == productId);
+          modifiers = modifierRows.Where(item => item.ProductId == productId && line.ModifierOptionIds.Contains(item.Id)).ToList();
+          productName = string.IsNullOrWhiteSpace(product.VariantName)
+            ? product.Name
+            : $"{product.Name} · {product.VariantName}";
+          sku = product.Sku;
+          unitPrice = product.Price + modifiers.Sum(item => item.PriceDelta);
+          gross = decimal.Round(unitPrice * line.Quantity, 2, MidpointRounding.AwayFromZero);
+        }
         if (line.DiscountAmount < 0 || line.DiscountAmount > gross)
         {
           throw new InvalidOperationException("El descuento de una línea no puede exceder su importe.");
         }
         subtotalBeforeDiscount += gross;
         lineDiscount += line.DiscountAmount;
-        pricedLines.Add(new PricedLine(line, product, modifiers, unitPrice, gross));
+        pricedLines.Add(new PricedLine(line, product, modifiers, productName, sku, unitPrice, gross, line.IsCustom));
       }
       if (request.OrderDiscountAmount < 0 || request.OrderDiscountAmount > subtotalBeforeDiscount - lineDiscount)
       {
@@ -186,8 +231,10 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       var operationalDate = DateOnly.FromDateTime(localNow.TimeOfDay < site.OperationalDayCutoff ? localNow.AddDays(-1).Date : localNow.Date);
       var orderId = Guid.NewGuid();
       var requirements = await BuildRequirementsAsync(conn, tx, rfc, pricedLines, modifierRows, ct);
-      var reservation = await ReserveInventoryAsync(conn, tx, rfc, request.SiteId, orderId, request.IdempotencyKey.Trim(), requirements,
-        request.AllowInventoryDeficit, userName, ct);
+      var reservation = requirements.Count == 0
+        ? new ReservationResult(null, false)
+        : await ReserveInventoryAsync(conn, tx, rfc, request.SiteId, orderId, request.IdempotencyKey.Trim(), requirements,
+          request.AllowInventoryDeficit, userName, ct);
 
       var folioParameters = new DynamicParameters();
       folioParameters.Add("@Rfc", rfc);
@@ -201,10 +248,13 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         ? RestaurantPaymentStatuses.PendingSettlement
         : paymentAmount >= total ? RestaurantPaymentStatuses.Paid
         : paymentAmount > 0 ? RestaurantPaymentStatuses.Partial : RestaurantPaymentStatuses.Pending;
-      var status = paymentAmount >= total || externalCod ? RestaurantOrderStatuses.Sent : RestaurantOrderStatuses.AwaitingPayment;
+      var hasProductionLines = pricedLines.Any(line => !line.IsCustom);
+      var status = paymentAmount >= total || externalCod
+        ? hasProductionLines ? RestaurantOrderStatuses.Sent : RestaurantOrderStatuses.Ready
+        : RestaurantOrderStatuses.AwaitingPayment;
       var balanceDue = decimal.Round(total - paymentAmount, 2, MidpointRounding.AwayFromZero);
       var tips = request.Payments.Sum(payment => payment.TipAmount);
-      var theoreticalCost = pricedLines.Sum(line => line.Product.TheoreticalCost * line.Request.Quantity);
+      var theoreticalCost = pricedLines.Sum(line => (line.Product?.TheoreticalCost ?? 0) * line.Request.Quantity);
 
       await conn.ExecuteAsync(new CommandDefinition(
         """
@@ -260,31 +310,32 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           ? (site.TaxRate == 0 ? 0 : decimal.Round(discountedLine - discountedLine / (1 + site.TaxRate), 2, MidpointRounding.AwayFromZero))
           : decimal.Round(discountedLine * site.TaxRate, 2, MidpointRounding.AwayFromZero);
         var lineTotal = site.PricesIncludeTax ? discountedLine : discountedLine + lineTax;
-        var productName = string.IsNullOrWhiteSpace(pricedLine.Product.VariantName)
-          ? pricedLine.Product.Name
-          : $"{pricedLine.Product.Name} · {pricedLine.Product.VariantName}";
+        var lineStatus = pricedLine.IsCustom ? RestaurantOrderStatuses.Ready : "Pending";
         var lineId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
           """
           INSERT INTO restaurante.OrderLine
-            (Rfc, OrderId, ProductId, ProductNameSnapshot, SkuSnapshot, Quantity, UnitPrice,
-             DiscountAmount, TaxAmount, LineTotal, [Status], KitchenStationId, Notes)
+            (Rfc, OrderId, ProductId, IsCustom, ProductNameSnapshot, SkuSnapshot, Quantity, UnitPrice,
+             DiscountAmount, TaxAmount, LineTotal, [Status], KitchenStationId, Notes, ReadyAt)
           VALUES
-            (@Rfc, @OrderId, @ProductId, @ProductName, @Sku, @Quantity, @UnitPrice,
-             @DiscountAmount, @TaxAmount, @LineTotal, 'Pending', @KitchenStationId, @Notes);
+            (@Rfc, @OrderId, @ProductId, @IsCustom, @ProductName, @Sku, @Quantity, @UnitPrice,
+             @DiscountAmount, @TaxAmount, @LineTotal, @Status, @KitchenStationId, @Notes,
+             CASE WHEN @IsCustom = 1 THEN SYSUTCDATETIME() END);
           SELECT CAST(SCOPE_IDENTITY() AS bigint);
           """, new
           {
             Rfc = rfc,
             OrderId = orderId,
-            ProductId = pricedLine.Product.Id,
-            ProductName = productName,
-            Sku = pricedLine.Product.Sku,
+            ProductId = pricedLine.Product?.Id,
+            pricedLine.IsCustom,
+            ProductName = pricedLine.ProductName,
+            Sku = pricedLine.Sku,
             pricedLine.Request.Quantity,
             UnitPrice = pricedLine.UnitPrice,
             DiscountAmount = totalLineDiscount,
             TaxAmount = lineTax,
             LineTotal = lineTotal,
-            pricedLine.Product.KitchenStationId,
+            Status = lineStatus,
+            KitchenStationId = pricedLine.Product?.KitchenStationId,
             Notes = NullIfWhiteSpace(pricedLine.Request.Notes)
           }, tx, cancellationToken: ct));
         foreach (var modifier in pricedLine.Modifiers)
@@ -392,6 +443,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       {
         OrderId = orderId,
         Folio = folio,
+        CustomerName = NullIfWhiteSpace(request.CustomerName),
         OperationalDate = operationalDate.ToDateTime(TimeOnly.MinValue),
         Status = status,
         PaymentStatus = paymentStatus,
@@ -419,11 +471,18 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     using var conn = CreateConnection();
     const string sql =
       """
-      SELECT Id FROM restaurante.[Order]
-      WHERE Rfc = @Rfc AND SiteId = @SiteId
-        AND [Status] IN ('Sent', 'Preparing', 'Ready')
-        AND CreatedAt >= DATEADD(day, -1, SYSUTCDATETIME())
-      ORDER BY Priority DESC,CASE [Status] WHEN 'Preparing' THEN 0 WHEN 'Sent' THEN 1 ELSE 2 END,CreatedAt,Folio;
+      SELECT orderInfo.Id FROM restaurante.[Order] orderInfo
+      WHERE orderInfo.Rfc = @Rfc AND orderInfo.SiteId = @SiteId
+        AND orderInfo.[Status] IN ('Sent', 'Preparing', 'Ready')
+        AND orderInfo.CreatedAt >= DATEADD(day, -1, SYSUTCDATETIME())
+        AND EXISTS
+        (
+          SELECT 1 FROM restaurante.OrderLine lineInfo
+          WHERE lineInfo.Rfc = orderInfo.Rfc
+            AND lineInfo.OrderId = orderInfo.Id
+            AND lineInfo.IsCustom = 0
+        )
+      ORDER BY orderInfo.OperationalDate, orderInfo.Folio, orderInfo.CreatedAt, orderInfo.Id;
       """;
     var ids = (await conn.QueryAsync<Guid>(new CommandDefinition(sql, new { Rfc = normalizedRfc, SiteId = siteId }, cancellationToken: ct))).AsList();
     var orders = new List<RestaurantOrderDto>();
@@ -442,7 +501,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   {
     const string sql =
       """
-      SELECT orderInfo.Id, orderInfo.Folio, orderInfo.OrderType, diningTable.[Name] AS TableName, orderInfo.[Status]
+      SELECT orderInfo.Id, orderInfo.Folio, orderInfo.CustomerName, orderInfo.OrderType,
+             diningTable.[Name] AS TableName, orderInfo.[Status]
       FROM restaurante.[Order] orderInfo
       LEFT JOIN restaurante.DiningTable diningTable ON diningTable.Rfc = orderInfo.Rfc AND diningTable.Id = orderInfo.DiningTableId
       WHERE orderInfo.Rfc = @Rfc AND orderInfo.SiteId = @SiteId
@@ -464,10 +524,11 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     using var conn = CreateConnection();
     var ids = (await conn.QueryAsync<Guid>(new CommandDefinition(
       """
-      SELECT Id FROM restaurante.[Order]
-      WHERE Rfc=@Rfc AND SiteId=@SiteId AND CreatedAt>=DATEADD(day,-2,SYSUTCDATETIME())
-        AND [Status] NOT IN ('Draft','Cancelled')
-      ORDER BY CASE [Status] WHEN 'Ready' THEN 0 WHEN 'Dispatched' THEN 1 WHEN 'Delivered' THEN 2 WHEN 'Preparing' THEN 3 ELSE 4 END,CreatedAt DESC;
+      SELECT orderInfo.Id FROM restaurante.[Order] orderInfo
+      WHERE orderInfo.Rfc=@Rfc AND orderInfo.SiteId=@SiteId
+        AND orderInfo.CreatedAt>=DATEADD(day,-2,SYSUTCDATETIME())
+        AND orderInfo.[Status] NOT IN ('Draft','Cancelled')
+      ORDER BY orderInfo.OperationalDate, orderInfo.Folio, orderInfo.CreatedAt, orderInfo.Id;
       """, new { Rfc = normalizedRfc, SiteId = siteId }, cancellationToken: ct))).AsList();
     var result = new List<RestaurantOrderDto>();
     foreach (var id in ids)
@@ -543,7 +604,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     {
       var line = await conn.QuerySingleOrDefaultAsync<LineIdentityRow>(new CommandDefinition(
         """
-        SELECT lineInfo.Id, lineInfo.OrderId, lineInfo.[Status], orderInfo.SiteId, orderInfo.InventoryReservationId
+        SELECT lineInfo.Id, lineInfo.OrderId, lineInfo.IsCustom, lineInfo.[Status], orderInfo.SiteId, orderInfo.InventoryReservationId
         FROM restaurante.OrderLine lineInfo WITH (UPDLOCK, HOLDLOCK)
         JOIN restaurante.[Order] orderInfo ON orderInfo.Rfc = lineInfo.Rfc AND orderInfo.Id = lineInfo.OrderId
         WHERE lineInfo.Rfc = @Rfc AND lineInfo.Id = @LineId;
@@ -552,6 +613,11 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       {
         await tx.RollbackAsync(ct);
         return RestaurantCommandResult.Fail("La partida no existe en el RFC seleccionado.");
+      }
+      if (line.IsCustom)
+      {
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail("Un cargo personalizado no requiere transición de cocina.");
       }
       if (!IsLineTransitionAllowed(line.Status, normalizedStatus))
       {
@@ -598,12 +664,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     {
       var line = await conn.QuerySingleOrDefaultAsync<LineIdentityRow>(new CommandDefinition(
         """
-        SELECT lineInfo.Id,lineInfo.OrderId,lineInfo.[Status],orderInfo.SiteId,orderInfo.InventoryReservationId
+        SELECT lineInfo.Id,lineInfo.OrderId,lineInfo.IsCustom,lineInfo.[Status],orderInfo.SiteId,orderInfo.InventoryReservationId
         FROM restaurante.OrderLine lineInfo WITH (UPDLOCK,HOLDLOCK)
         JOIN restaurante.[Order] orderInfo ON orderInfo.Rfc=lineInfo.Rfc AND orderInfo.Id=lineInfo.OrderId
         WHERE lineInfo.Rfc=@Rfc AND lineInfo.Id=@LineId;
         """, new { Rfc = normalizedRfc, LineId = lineId }, tx, cancellationToken: ct));
-      if (line is null || line.Status != "Ready")
+      if (line is null || line.IsCustom || line.Status != "Ready")
       {
         await tx.RollbackAsync(ct);
         return RestaurantCommandResult.Fail("Sólo una partida marcada lista puede regresar a preparación.");
@@ -1055,7 +1121,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
 
   private static void ValidateModifiers(RestaurantOrderCreateRequest request, IReadOnlyList<ModifierRow> modifierRows)
   {
-    foreach (var line in request.Lines)
+    foreach (var line in request.Lines.Where(line => !line.IsCustom))
     {
       if (line.ModifierOptionIds.Count != line.ModifierOptionIds.Distinct().Count())
       {
@@ -1063,12 +1129,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       }
       foreach (var optionId in line.ModifierOptionIds)
       {
-        if (!modifierRows.Any(row => row.ProductId == line.ProductId && row.Id == optionId))
+        if (!modifierRows.Any(row => row.ProductId == line.ProductId!.Value && row.Id == optionId))
         {
           throw new InvalidOperationException("Un modificador no corresponde al producto o al RFC seleccionado.");
         }
       }
-      foreach (var group in modifierRows.Where(row => row.ProductId == line.ProductId).GroupBy(row => row.ModifierGroupId))
+      foreach (var group in modifierRows.Where(row => row.ProductId == line.ProductId!.Value).GroupBy(row => row.ModifierGroupId))
       {
         var selected = group.Count(row => line.ModifierOptionIds.Contains(row.Id));
         var definition = group.First();
@@ -1086,6 +1152,10 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     var requirements = new Dictionary<int, decimal>();
     foreach (var line in lines)
     {
+      if (line.IsCustom || line.Product is null)
+      {
+        continue;
+      }
       if (line.Product.FulfillmentMode == "MakeToOrder")
       {
         await ExpandMaterialAsync(conn, tx, rfc, line.Product.MaterialId, line.Request.Quantity, requirements, new HashSet<int>(), 0, ct);
@@ -1374,16 +1444,16 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     const string sql =
       """
       SELECT orderInfo.Id, orderInfo.Folio, orderInfo.OperationalDate, orderInfo.OrderType, orderInfo.[Status],
-             orderInfo.PaymentStatus, orderInfo.CustomerName, diningTable.[Name] AS TableName,
+             orderInfo.PaymentStatus, orderInfo.CustomerName, diningTable.[Name] AS TableName, orderInfo.Notes,
               orderInfo.Total, orderInfo.BalanceDue, orderInfo.CashRegisterId, orderInfo.CashShiftId,
               orderInfo.Priority,orderInfo.PriorityReason,orderInfo.PrioritizedBy,orderInfo.CreatedAt
       FROM restaurante.[Order] orderInfo
       LEFT JOIN restaurante.DiningTable diningTable ON diningTable.Rfc=orderInfo.Rfc AND diningTable.Id=orderInfo.DiningTableId
       WHERE orderInfo.Rfc=@Rfc AND orderInfo.Id=@OrderId;
-      SELECT lineInfo.Id, lineInfo.ProductNameSnapshot AS ProductName, lineInfo.Quantity, lineInfo.[Status],
+      SELECT lineInfo.Id, lineInfo.ProductNameSnapshot AS ProductName, lineInfo.IsCustom, lineInfo.Quantity, lineInfo.[Status],
              lineInfo.Notes, product.PreparationMinutes, lineInfo.StartedAt, lineInfo.ReadyAt
       FROM restaurante.OrderLine lineInfo
-      JOIN restaurante.Product product ON product.Rfc=lineInfo.Rfc AND product.Id=lineInfo.ProductId
+      LEFT JOIN restaurante.Product product ON product.Rfc=lineInfo.Rfc AND product.Id=lineInfo.ProductId
       WHERE lineInfo.Rfc=@Rfc AND lineInfo.OrderId=@OrderId ORDER BY lineInfo.Id;
       SELECT modifier.OrderLineId, modifier.[Name]
       FROM restaurante.OrderLineModifier modifier
@@ -1412,7 +1482,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   private static async Task<RestaurantOrderResult?> FindDuplicateAsync(DbConnection conn, DbTransaction tx, string rfc, int siteId, string key, CancellationToken ct)
     => await conn.QuerySingleOrDefaultAsync<RestaurantOrderResult>(new CommandDefinition(
       """
-      SELECT Id AS OrderId, Folio, OperationalDate, [Status], PaymentStatus, Total, BalanceDue
+      SELECT Id AS OrderId, Folio, CustomerName, OperationalDate, [Status], PaymentStatus, Total, BalanceDue
       FROM restaurante.[Order] WITH (UPDLOCK, HOLDLOCK)
       WHERE Rfc=@Rfc AND SiteId=@SiteId AND IdempotencyKey=@Key;
       """, new { Rfc = rfc, SiteId = siteId, Key = key }, tx, cancellationToken: ct));
@@ -1459,8 +1529,16 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     => _connectionFactory.Create() as DbConnection
       ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
 
-  private sealed record PricedLine(RestaurantOrderLineCreateRequest Request, ProductRow Product, List<ModifierRow> Modifiers, decimal UnitPrice, decimal Gross);
-  private sealed record ReservationResult(long ReservationId, bool HasDeficit);
+  private sealed record PricedLine(
+    RestaurantOrderLineCreateRequest Request,
+    ProductRow? Product,
+    List<ModifierRow> Modifiers,
+    string ProductName,
+    string Sku,
+    decimal UnitPrice,
+    decimal Gross,
+    bool IsCustom);
+  private sealed record ReservationResult(long? ReservationId, bool HasDeficit);
 
   private sealed class SiteRow
   {
@@ -1506,7 +1584,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   private sealed class BalanceAvailabilityRow { public int LocationId { get; set; } public decimal AvailableQuantity { get; set; } public decimal AverageUnitCost { get; set; } }
   private sealed class ReservationLineRow { public long Id { get; set; } public int MaterialId { get; set; } public int LocationId { get; set; } public long? MaterialLotId { get; set; } public decimal ReservedQuantity { get; set; } public decimal FrozenUnitCost { get; set; } }
   private sealed class StockBalanceRow { public int Id { get; set; } public decimal Quantity { get; set; } public decimal ReservedQuantity { get; set; } }
-  private sealed class LineIdentityRow { public long Id { get; set; } public Guid OrderId { get; set; } public string Status { get; set; } = string.Empty; public int SiteId { get; set; } public long? InventoryReservationId { get; set; } }
+  private sealed class LineIdentityRow { public long Id { get; set; } public Guid OrderId { get; set; } public bool IsCustom { get; set; } public string Status { get; set; } = string.Empty; public int SiteId { get; set; } public long? InventoryReservationId { get; set; } }
   private sealed class CancelOrderRow { public Guid Id { get; set; } public int SiteId { get; set; } public string Status { get; set; } = string.Empty; public long? InventoryReservationId { get; set; } }
   private sealed class OrderFulfillmentRow { public Guid Id { get; set; } public int SiteId { get; set; } public string OrderType { get; set; } = string.Empty; public string Status { get; set; } = string.Empty; public string PaymentStatus { get; set; } = string.Empty; }
   private sealed class PaymentOrderRow

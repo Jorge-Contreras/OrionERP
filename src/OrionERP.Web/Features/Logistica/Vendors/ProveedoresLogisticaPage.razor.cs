@@ -15,7 +15,7 @@ public partial class ProveedoresLogisticaPage : ComponentBase, IDisposable
   protected BusinessPartnerFilter Filter { get; set; } = new() { VendorOnly = true };
   protected BusinessPartnerCatalogDto Catalog { get; set; } = new();
   protected List<BusinessPartnerListItemDto> Partners { get; set; } = [];
-  protected BusinessPartnerUpsertRequest Editor { get; set; } = CreateNewEditor();
+  protected BusinessPartnerUpsertRequest Editor { get; set; } = CreateNewEditor(string.Empty);
   protected VendorProfileUpsertRequest VendorProfile { get; set; } = CreateVendorProfile();
   protected HashSet<string> SelectedRoles { get; set; } = new(StringComparer.OrdinalIgnoreCase) { "Vendor" };
   protected int? SelectedPartnerId { get; set; }
@@ -25,6 +25,7 @@ public partial class ProveedoresLogisticaPage : ComponentBase, IDisposable
   protected override async Task OnInitializedAsync()
   {
     RfcState.Changed += HandleRfcChanged;
+    Editor = CreateNewEditor(CurrentRfc);
     Catalog = await BusinessPartnerService.GetCatalogAsync(CurrentRfc);
     await BuscarAsync();
   }
@@ -61,7 +62,7 @@ public partial class ProveedoresLogisticaPage : ComponentBase, IDisposable
   protected void NuevoRegistro()
   {
     SelectedPartnerId = null;
-    Editor = CreateNewEditor();
+    Editor = CreateNewEditor(CurrentRfc);
     VendorProfile = CreateVendorProfile();
     SelectedRoles = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Vendor" };
   }
@@ -162,9 +163,10 @@ public partial class ProveedoresLogisticaPage : ComponentBase, IDisposable
     }
   }
 
-  private static BusinessPartnerUpsertRequest CreateNewEditor()
+  private static BusinessPartnerUpsertRequest CreateNewEditor(string ownerRfc)
     => new()
     {
+      OwnerRfc = ownerRfc,
       IsActive = true,
       DisplayName = string.Empty
     };

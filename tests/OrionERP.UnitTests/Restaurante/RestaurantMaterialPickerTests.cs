@@ -32,6 +32,7 @@ public sealed class RestaurantMaterialPickerTests
         Id = 1,
         MaterialCode = "A-01",
         Description = "Aceite",
+        BaseUnitId = 7,
         CategoryName = "Abarrotes",
         BaseUnitName = "Litro"
       }
@@ -63,6 +64,18 @@ public sealed class RestaurantMaterialPickerTests
     Assert.DoesNotContain("<select @bind=\"component.MaterialId\"", recipes, StringComparison.Ordinal);
     Assert.DoesNotContain("<select @bind=\"delta.MaterialId\"", menus, StringComparison.Ordinal);
     Assert.DoesNotContain("<select @bind=\"line.MaterialId\"", movements, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void RecipeEditor_DerivesYieldAndIngredientUnitsFromMaterialBaseUnits()
+  {
+    var recipes = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantRecipesPage.razor");
+
+    Assert.Contains("Changed=\"SetProductMaterial\"", recipes, StringComparison.Ordinal);
+    Assert.Contains("SetComponentMaterial(component, materialId)", recipes, StringComparison.Ordinal);
+    Assert.Contains("MaterialBaseUnitId(detail.ProductMaterialId)", recipes, StringComparison.Ordinal);
+    Assert.Contains("UnitId = MaterialBaseUnitId(item.MaterialId)", recipes, StringComparison.Ordinal);
+    Assert.DoesNotContain("UnitId = catalog.Units.FirstOrDefault()?.Id", recipes, StringComparison.Ordinal);
   }
 
   [Fact]

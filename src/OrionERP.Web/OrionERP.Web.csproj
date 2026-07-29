@@ -63,6 +63,20 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>69745113-6b83-4911-8ef8-2296396806a2</UserSecretsId>
     <NoWarn>$(NoWarn);NU1510</NoWarn>
+    <BrunosMenusSourcePath Condition="'$(BrunosMenusSourcePath)' == ''">C:\Users\Orion\Grupo Carpio Dropbox\Grupo Orion\Bruno%27s\assets\menus</BrunosMenusSourcePath>
   </PropertyGroup>
+
+  <Target Name="SyncBrunosMenus"
+          BeforeTargets="PrepareForBuild"
+          Condition="Exists('$(BrunosMenusSourcePath)')">
+    <ItemGroup>
+      <BrunosMenuSourceFiles Include="$(BrunosMenusSourcePath)\menu-principal.png" />
+      <BrunosMenuSourceFiles Include="$(BrunosMenusSourcePath)\menu-bebidas.png" />
+    </ItemGroup>
+    <MakeDir Directories="$(MSBuildProjectDirectory)\wwwroot\Images\Brunos\Menus" />
+    <Copy SourceFiles="@(BrunosMenuSourceFiles)"
+          DestinationFolder="$(MSBuildProjectDirectory)\wwwroot\Images\Brunos\Menus"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

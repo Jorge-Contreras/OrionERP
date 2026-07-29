@@ -133,9 +133,18 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
             WHERE existing.Rfc=orderInfo.Rfc AND existing.OrderId=orderInfo.Id
           );
         DECLARE @Linked int=@@ROWCOUNT;
+
+        INSERT INTO restaurante.OrderEvent
+          (Rfc,SiteId,OrderId,EventType,Category,Title,[Description],Actor,SourceKey)
+        SELECT linkInfo.Rfc,linkInfo.SiteId,linkInfo.OrderId,'AccountingLinked','Accounting',
+               N'Orden incluida en póliza diaria',CONCAT(N'Póliza ',@TransactionId),@UserName,
+               CONCAT('accounting:',CONVERT(varchar(36),linkInfo.OrderId),':DailyConsolidated:',@TransactionId)
+        FROM restaurante.AccountingOrderLink linkInfo
+        WHERE linkInfo.Rfc=@Rfc AND linkInfo.TransactionId=@TransactionId
+          AND linkInfo.LinkType='DailyConsolidated';
         COMMIT TRANSACTION;
         SELECT @Linked;
-        """, new { Rfc = normalizedRfc, SiteId = siteId, Date = date, TransactionId = transactionId }, cancellationToken: ct));
+        """, new { Rfc = normalizedRfc, SiteId = siteId, Date = date, TransactionId = transactionId, UserName = userName }, cancellationToken: ct));
       if (linkedOrders == 0) throw new InvalidOperationException("Las ventas fueron vinculadas por otro proceso.");
       return RestaurantCommandResult.Ok($"Póliza diaria {transactionId} generada y balanceada para {linkedOrders} venta(s).");
     }
@@ -229,6 +238,13 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
           ELSE
             INSERT INTO restaurante.AccountingOrderLink (Rfc,OrderId,SiteId,OperationalDate,LinkType,TransactionId,CfdiId)
             VALUES (@Rfc,@OrderId,@SiteId,@Date,'IndividualCfdi',@IndividualTransactionId,@CfdiId);
+
+          INSERT INTO restaurante.OrderEvent
+            (Rfc,SiteId,OrderId,EventType,Category,Title,[Description],Actor,SourceKey)
+          VALUES
+            (@Rfc,@SiteId,@OrderId,'CfdiLinked','Accounting',N'CFDI ligado a póliza individual',
+             CONCAT(N'Póliza ',@IndividualTransactionId,N' · CFDI ',@CfdiId),@UserName,
+             CONCAT('accounting:',CONVERT(varchar(36),@OrderId),':IndividualCfdi:',@IndividualTransactionId));
           COMMIT TRANSACTION;
           """, new
           {
@@ -238,7 +254,8 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
             Date = order.OperationalDate,
             ReversalTransactionId = reversalTransactionId,
             IndividualTransactionId = individualTransactionId,
-            CfdiId = comprobanteId
+            CfdiId = comprobanteId,
+            UserName = userName
           }, cancellationToken: ct));
         return reversalTransactionId.HasValue
           ? RestaurantCommandResult.Ok($"Se generó reversión {reversalTransactionId} y póliza individual {individualTransactionId} ligada al CFDI.")

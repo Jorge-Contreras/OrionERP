@@ -10,6 +10,7 @@
 @inject IRestaurantQuickPinService QuickPinService
 @inject IUserRfcState RfcState
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IAuthorizationService AuthorizationService
 
 <PageTitle>Restaurante · Turnos de caja</PageTitle>
 
@@ -59,16 +60,22 @@
           <header><div><span>Turno abierto</span><h2>@shift.RegisterName</h2></div><span class="cash-status cash-status--open">Abierto</span></header>
           <dl><div><dt>Apertura</dt><dd>@shift.OpenedAt.ToLocalTime().ToString("g")</dd></div><div><dt>Fondo</dt><dd>@shift.OpeningFloat.ToString("C")</dd></div></dl>
           <label class="cash-count">Efectivo contado<input type="number" min="0" step="0.01" value="@GetCount(shift.Id)" @onchange="args => SetCount(shift.Id, args.Value)" autocomplete="off" /></label>
-          <button type="button" class="btn btn-warning" disabled="@isBusy" @onclick="() => CloseShiftAsync(shift)">Confirmar conteo y cerrar</button>
+          <div class="cash-panel__actions">
+            <AuthorizeView Policy="RestaurantAdminOnly"><Authorized><button type="button" class="cash-log-button" @onclick="() => OpenShiftLogAsync(shift)"><span class="oi oi-list-rich" aria-hidden="true"></span>Bitácora</button></Authorized></AuthorizeView>
+            <button type="button" class="btn btn-warning" disabled="@isBusy" @onclick="() => CloseShiftAsync(shift)">Confirmar conteo y cerrar</button>
+          </div>
         </article>
       }
 
       @foreach (var shift in shifts.Where(item => item.Status != "Open").Take(12))
       {
         <article class="cash-panel cash-panel--closed">
-          <header><div><span>Corte</span><h2>@shift.RegisterName</h2></div><span class="cash-status @(shift.Status == "PendingApproval" ? "cash-status--warning" : "")">@shift.Status</span></header>
+          <header><div><span>Corte</span><h2>@shift.RegisterName</h2></div><span class="cash-status @(shift.Status == "PendingApproval" ? "cash-status--warning" : "")">@ShiftStatusLabel(shift.Status)</span></header>
           <dl><div><dt>Esperado</dt><dd>@shift.ExpectedCash?.ToString("C")</dd></div><div><dt>Contado</dt><dd>@shift.CountedCash?.ToString("C")</dd></div><div><dt>Diferencia</dt><dd class="@(shift.Difference != 0 ? "is-difference" : null)">@shift.Difference?.ToString("C")</dd></div></dl>
-          @if (shift.Status == "PendingApproval") { <button type="button" class="btn btn-danger" @onclick="() => RequestApproval(shift)">Aprobar diferencia</button> }
+          <div class="cash-panel__actions">
+            <AuthorizeView Policy="RestaurantAdminOnly"><Authorized><button type="button" class="cash-log-button" @onclick="() => OpenShiftLogAsync(shift)"><span class="oi oi-list-rich" aria-hidden="true"></span>Bitácora</button></Authorized></AuthorizeView>
+            @if (shift.Status == "PendingApproval") { <button type="button" class="btn btn-danger" @onclick="() => RequestApproval(shift)">Aprobar diferencia</button> }
+          </div>
         </article>
       }
     </section>
@@ -84,6 +91,107 @@
         </div>
       </section>
     }
+
+    @if (logShift is not null)
+    {
+      <section class="shift-log" role="dialog" aria-modal="true" aria-labelledby="shift-log-title">
+        <div class="shift-log__panel">
+          <header class="shift-log__header">
+            <div>
+              <span>@logShift.RegisterName · @logShift.OpenedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</span>
+              <h2 id="shift-log-title">Bitácora del turno</h2>
+              <p>Historia financiera, operativa y de autorizaciones</p>
+            </div>
+            <div class="shift-log__header-actions">
+              <button type="button" class="shift-log__refresh" disabled="@logBusy" @onclick="RefreshShiftLogAsync"><span class="oi oi-reload" aria-hidden="true"></span><span>Actualizar</span></button>
+              <button type="button" class="shift-log__close" @onclick="CloseShiftLog" aria-label="Cerrar bitácora">×</button>
+            </div>
+          </header>
+
+          @if (shiftLog is not null)
+          {
+            <div class="shift-log__summary">
+              <div><span>Estado</span><strong>@ShiftStatusLabel(shiftLog.Shift.Status)</strong></div>
+              <div><span>Órdenes</span><strong>@shiftLog.OrderCount</strong></div>
+              <div><span>Pagos</span><strong>@shiftLog.PaymentCount</strong></div>
+              <div><span>Venta + propina</span><strong>@((shiftLog.GrossSales + shiftLog.TipTotal).ToString("C"))</strong></div>
+              <div><span>Devoluciones</span><strong class="@(shiftLog.RefundTotal > 0 ? "is-negative" : null)">@shiftLog.RefundTotal.ToString("C")</strong></div>
+              <div><span>Duración</span><strong>@ShiftDurationLabel(shiftLog.Shift)</strong></div>
+            </div>
+
+            <div class="shift-log__accountability">
+              <div><span class="oi oi-account-login" aria-hidden="true"></span><p><small>Abrió</small><strong>@ActorLabel(shiftLog.Shift.OpenedBy)</strong><time>@shiftLog.Shift.OpenedAt.ToLocalTime().ToString("g")</time></p></div>
+              <div><span class="oi oi-pencil" aria-hidden="true"></span><p><small>Firmó el conteo</small><strong>@ActorLabel(shiftLog.Shift.ClosedBy)</strong><time>@NullableLocalTime(shiftLog.Shift.ClosedAt)</time></p></div>
+              <div class="@(shiftLog.Shift.Difference != 0 ? "has-difference" : null)"><span class="oi oi-shield" aria-hidden="true"></span><p><small>Autorizó diferencia</small><strong>@ActorLabel(shiftLog.Shift.ApprovedBy)</strong><time>@NullableLocalTime(shiftLog.Shift.ApprovedAt)</time></p></div>
+              <div><span class="oi oi-calculator" aria-hidden="true"></span><p><small>Esperado / contado</small><strong>@MoneyOrPending(shiftLog.Shift.ExpectedCash) / @MoneyOrPending(shiftLog.Shift.CountedCash)</strong><time>Diferencia @MoneyOrPending(shiftLog.Shift.Difference)</time></p></div>
+            </div>
+
+            @if (shiftLog.PaymentMethods.Count > 0)
+            {
+              <div class="shift-log__methods" aria-label="Resumen por forma de pago">
+                @foreach (var method in shiftLog.PaymentMethods)
+                {
+                  <article>
+                    <div><span class="oi @PaymentMethodIcon(method.PaymentMethod)" aria-hidden="true"></span><strong>@PaymentMethodLabel(method.PaymentMethod)</strong></div>
+                    <dl><div><dt>Venta</dt><dd>@((method.Sales + method.Tips).ToString("C"))</dd></div>@if(method.Refunds > 0){<div><dt>Devuelto</dt><dd class="is-negative">-@method.Refunds.ToString("C")</dd></div>}<div><dt>Neto</dt><dd>@method.NetTotal.ToString("C")</dd></div></dl>
+                  </article>
+                }
+              </div>
+            }
+
+            <nav class="shift-log__filters" aria-label="Filtrar bitácora">
+              @foreach (var filter in new[]{"All","Financial","Authorization","Operations"})
+              {
+                <button type="button" class="@(logFilter == filter ? "is-active" : null)" @onclick="() => logFilter = filter">@LogFilterLabel(filter)<span>@LogFilterCount(filter)</span></button>
+              }
+            </nav>
+          }
+
+          <div class="shift-log__body" aria-live="polite">
+            @if (logBusy)
+            {
+              <div class="shift-log__state"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><strong>Reconstruyendo la historia completa…</strong></div>
+            }
+            else if (!string.IsNullOrWhiteSpace(logError))
+            {
+              <div class="shift-log__state shift-log__state--error"><strong>No se pudo cargar la bitácora</strong><p>@logError</p><button type="button" @onclick="RefreshShiftLogAsync">Reintentar</button></div>
+            }
+            else if (shiftLog is null || !FilteredLogEntries.Any())
+            {
+              <div class="shift-log__state"><span class="oi oi-clock" aria-hidden="true"></span><strong>No hay eventos en este filtro.</strong></div>
+            }
+            else
+            {
+              <ol class="shift-log__timeline">
+                @foreach (var entry in FilteredLogEntries)
+                {
+                  <li @key="entry.Id" class="shift-log__event shift-log__event--@LogCategoryClass(entry.Category)">
+                    <div class="shift-log__marker"><span class="oi @LogCategoryIcon(entry.Category)" aria-hidden="true"></span></div>
+                    <article>
+                      <header>
+                        <div><span>@LogCategoryLabel(entry.Category)</span><h3>@entry.Title</h3></div>
+                        <div class="shift-log__event-time"><time datetime="@entry.OccurredAt.ToString("O")">@entry.OccurredAt.ToLocalTime().ToString("dd MMM · HH:mm:ss")</time>@if(entry.Amount.HasValue){<strong class="@(entry.IsNegative ? "is-negative" : null)">@(entry.IsNegative ? "-" : null)@Math.Abs(entry.Amount.Value).ToString("C")</strong>}</div>
+                      </header>
+                      @if (entry.OrderFolio.HasValue)
+                      {
+                        <div class="shift-log__order"><span class="oi oi-receipt" aria-hidden="true"></span>Orden @entry.OrderFolio.Value.ToString("000")@if(!string.IsNullOrWhiteSpace(entry.CustomerName)){<text> · @entry.CustomerName</text>}</div>
+                      }
+                      @if (!string.IsNullOrWhiteSpace(entry.Description)){<p>@entry.Description</p>}
+                      @if (!string.IsNullOrWhiteSpace(entry.Actor) || !string.IsNullOrWhiteSpace(entry.AuthorizedBy))
+                      {
+                        <footer>@if(!string.IsNullOrWhiteSpace(entry.Actor)){<span><span class="oi oi-person" aria-hidden="true"></span>@entry.Actor</span>}@if(!string.IsNullOrWhiteSpace(entry.AuthorizedBy)){<span class="shift-log__authorized"><span class="oi oi-shield" aria-hidden="true"></span>Autorizó @entry.AuthorizedBy</span>}</footer>
+                      }
+                    </article>
+                  </li>
+                }
+              </ol>
+            }
+          </div>
+
+          <footer class="shift-log__footer"><span>La bitácora se reconstruye desde los registros durables de caja, pagos, órdenes y autorizaciones.</span><button type="button" @onclick="CloseShiftLog">Cerrar</button></footer>
+        </div>
+      </section>
+    }
   }
 </main>
 
@@ -96,6 +204,11 @@
   private RestaurantCashRegisterUpsertRequest registerEditor = new();
   private RestaurantQuickPinSetupRequest pinSetup = new();
   private RestaurantCashShiftDto? approvalShift;
+  private RestaurantCashShiftDto? logShift;
+  private RestaurantCashShiftLogDto? shiftLog;
+  private bool logBusy;
+  private string? logError;
+  private string logFilter = "All";
   private string supervisorIdentity = string.Empty;
   private string supervisorPin = string.Empty;
   private int selectedSiteId;
@@ -104,6 +217,14 @@
   private string? message;
   private bool isError;
   private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private IEnumerable<RestaurantCashShiftLogEntryDto> FilteredLogEntries
+    => (shiftLog?.Entries ?? Array.Empty<RestaurantCashShiftLogEntryDto>()).Where(entry => logFilter switch
+    {
+      "Financial" => entry.Category is "Shift" or "Payment" or "Refund" or "Cash",
+      "Authorization" => entry.Category == "Authorization",
+      "Operations" => entry.Category is not ("Shift" or "Payment" or "Refund" or "Cash" or "Authorization"),
+      _ => true
+    });
 
   protected override async Task OnInitializedAsync() { RfcState.Changed += OnRfcChanged; await LoadAsync(); }
   private async Task LoadAsync()
@@ -123,6 +244,30 @@
   private async Task CloseShiftAsync(RestaurantCashShiftDto shift) { await RunAsync(async user => { await CashService.CloseShiftAsync(new() { Rfc = CurrentRfc, ShiftId = shift.Id, CountedCash = GetCount(shift.Id) }, user); return "Conteo registrado; ya puede revisar esperado y diferencia."; }); }
   private void RequestApproval(RestaurantCashShiftDto shift) { approvalShift = shift; supervisorIdentity = string.Empty; supervisorPin = string.Empty; }
   private void CancelApproval() { approvalShift = null; supervisorPin = string.Empty; }
+  private async Task OpenShiftLogAsync(RestaurantCashShiftDto shift) { logShift = shift; shiftLog = null; logFilter = "All"; await RefreshShiftLogAsync(); }
+  private async Task RefreshShiftLogAsync()
+  {
+    if (logShift is null) return;
+    logBusy = true;
+    logError = null;
+    try
+    {
+      var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+      var authorization = await AuthorizationService.AuthorizeAsync(auth.User, "RestaurantAdminOnly");
+      if (!authorization.Succeeded)
+      {
+        shiftLog = null;
+        logError = "La bitácora de turnos está disponible únicamente para administradores de Restaurante.";
+        return;
+      }
+      shiftLog = await CashService.GetShiftLogAsync(CurrentRfc, logShift.Id);
+      if (shiftLog is null) logError = "El turno ya no existe en el RFC seleccionado.";
+      else logShift = shiftLog.Shift;
+    }
+    catch (Exception ex) { logError = ex.Message; }
+    finally { logBusy = false; }
+  }
+  private void CloseShiftLog() { logShift = null; shiftLog = null; logError = null; logFilter = "All"; }
   private async Task ConfirmApprovalAsync()
   {
     if (approvalShift is null) return;
@@ -165,8 +310,25 @@
   private async Task RunAsync(Func<string, Task<string>> action) { isBusy = true; try { var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync(); Show(await action(auth.User.Identity?.Name ?? "caja"), false); await LoadAsync(); } catch (Exception ex) { Show(ex.Message, true); } finally { isBusy = false; } }
   private decimal GetCount(Guid id) => counts.GetValueOrDefault(id);
   private void SetCount(Guid id, object? value) { if (decimal.TryParse(value?.ToString(), out var amount)) counts[id] = amount; }
+  private int LogFilterCount(string filter) => shiftLog?.Entries.Count(entry => filter switch { "Financial" => entry.Category is "Shift" or "Payment" or "Refund" or "Cash", "Authorization" => entry.Category == "Authorization", "Operations" => entry.Category is not ("Shift" or "Payment" or "Refund" or "Cash" or "Authorization"), _ => true }) ?? 0;
+  private static string LogFilterLabel(string filter) => filter switch { "Financial" => "Caja y pagos", "Authorization" => "Autorizaciones", "Operations" => "Operación", _ => "Todo" };
+  private static string ShiftStatusLabel(string status) => status switch { "Open" => "Abierto", "PendingApproval" => "Por autorizar", "Closed" => "Cerrado", _ => status };
+  private static string LogCategoryLabel(string category) => category switch { "Shift" => "Turno", "Payment" => "Pago", "Refund" => "Devolución", "Cash" => "Caja", "Order" => "Orden", "Kitchen" => "Cocina", "Inventory" => "Inventario", "Delivery" => "Entrega", "Authorization" => "Autorización", "Accounting" => "Contabilidad", _ => category };
+  private static string LogCategoryClass(string category) => category.ToLowerInvariant() switch { "shift" => "shift", "payment" => "payment", "refund" => "refund", "cash" => "cash", "kitchen" => "kitchen", "inventory" => "inventory", "delivery" => "delivery", "authorization" => "authorization", "accounting" => "accounting", _ => "order" };
+  private static string LogCategoryIcon(string category) => category switch { "Shift" => "oi-clock", "Payment" => "oi-dollar", "Refund" => "oi-action-undo", "Cash" => "oi-briefcase", "Kitchen" => "oi-fire", "Inventory" => "oi-box", "Delivery" => "oi-location", "Authorization" => "oi-shield", "Accounting" => "oi-spreadsheet", _ => "oi-receipt" };
+  private static string PaymentMethodLabel(string method) => method switch { "Cash" => "Efectivo", "Card" => "Tarjeta", "ExternalCard" => "Tarjeta externa", "Transfer" => "Transferencia", "DeliveryProvider" => "Plataforma", _ => method };
+  private static string PaymentMethodIcon(string method) => method switch { "Cash" => "oi-briefcase", "Transfer" => "oi-data-transfer-upload", "DeliveryProvider" => "oi-globe", _ => "oi-credit-card" };
+  private static string ActorLabel(string? actor) => string.IsNullOrWhiteSpace(actor) ? "Pendiente" : actor;
+  private static string NullableLocalTime(DateTime? value) => value.HasValue ? value.Value.ToLocalTime().ToString("g") : "—";
+  private static string MoneyOrPending(decimal? value) => value.HasValue ? value.Value.ToString("C") : "Pendiente";
+  private static string ShiftDurationLabel(RestaurantCashShiftDto shift)
+  {
+    var duration = (shift.ClosedAt ?? DateTime.UtcNow) - shift.OpenedAt;
+    if (duration < TimeSpan.Zero) duration = TimeSpan.Zero;
+    return duration.TotalHours >= 1 ? $"{(int)duration.TotalHours} h {duration.Minutes} min" : $"{Math.Max(0, duration.Minutes)} min";
+  }
   private void ResetEditors() { openRequest = new() { Rfc = CurrentRfc, SiteId = selectedSiteId }; registerEditor = new() { Rfc = CurrentRfc, SiteId = selectedSiteId }; pinSetup = new() { Rfc = CurrentRfc, SiteId = selectedSiteId, CashRegisterId = registers.FirstOrDefault(item => item.IsActive)?.Id ?? 0 }; }
   private void Show(string value, bool error) { message = value; isError = error; }
-  private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; await LoadAsync(); StateHasChanged(); });
+  private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; CloseShiftLog(); await LoadAsync(); StateHasChanged(); });
   public void Dispose() => RfcState.Changed -= OnRfcChanged;
 }

@@ -7,15 +7,15 @@ namespace OrionERP.UnitTests.Restaurante;
 public sealed class RestaurantReceiptPdfServiceTests
 {
   [Fact]
-  public void DocumentModel_CountsOnlyUniqueOperationalSections()
+  public void DocumentModel_CountsMenuSectionsAndCustomItemTicket()
   {
     var model = CreateSampleModel();
 
-    Assert.Equal(2, model.SectionTicketCount);
+    Assert.Equal(3, model.SectionTicketCount);
   }
 
   [Fact]
-  public void Generate_CreatesCustomerTicketFollowedByOnePagePerSection()
+  public void Generate_CreatesCustomerMenuSectionAndCustomItemTickets()
   {
     var service = new RestaurantReceiptPdfService();
 
@@ -26,7 +26,7 @@ public sealed class RestaurantReceiptPdfServiceTests
 
     var pdfText = Encoding.Latin1.GetString(pdf);
     var pageObjects = Regex.Matches(pdfText, @"/Type\s*/Page(?!s)\b").Count;
-    Assert.Equal(3, pageObjects);
+    Assert.Equal(4, pageObjects);
   }
 
   internal static RestaurantReceiptPdfDocumentModel CreateSampleModel()

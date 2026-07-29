@@ -2,6 +2,8 @@ namespace OrionERP.Web.Features.Restaurante;
 
 public sealed class RestaurantReceiptPdfDocumentModel
 {
+  public const string CustomItemSectionName = "Cargo personalizado";
+
   public string SiteName { get; init; } = string.Empty;
   public int Folio { get; init; }
   public string CustomerName { get; init; } = string.Empty;
@@ -27,10 +29,15 @@ public sealed class RestaurantReceiptPdfDocumentModel
 
   public int SectionTicketCount
     => Lines
-      .Where(line => !line.IsCustom && !string.IsNullOrWhiteSpace(line.SectionName))
-      .Select(line => line.SectionName!.Trim())
+      .Select(GetTicketSectionName)
+      .OfType<string>()
       .Distinct(StringComparer.OrdinalIgnoreCase)
       .Count();
+
+  internal static string? GetTicketSectionName(RestaurantReceiptPdfLineModel line)
+    => line.IsCustom
+      ? CustomItemSectionName
+      : string.IsNullOrWhiteSpace(line.SectionName) ? null : line.SectionName.Trim();
 }
 
 public sealed class RestaurantReceiptPdfLineModel

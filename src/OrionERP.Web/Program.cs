@@ -244,6 +244,9 @@ builder.Services.AddAuthorization(options =>
       "RestaurantAdmin",
       policy => policy.Requirements.Add(new RoleForRfcRequirement("RestauranteAdmin", "RestauranteSupervisor")));
   options.AddPolicy(
+      "RestaurantAdminOnly",
+      policy => policy.Requirements.Add(new RoleForRfcRequirement("RestauranteAdmin")));
+  options.AddPolicy(
       "RestaurantPos",
       policy => policy.Requirements.Add(new RoleForRfcRequirement("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin")));
   options.AddPolicy(

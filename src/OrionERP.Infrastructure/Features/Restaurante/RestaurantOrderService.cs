@@ -301,6 +301,25 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           CreatedBy = userName
         }, tx, cancellationToken: ct));
 
+      await RestaurantOrderEventWriter.AddAsync(
+        conn, tx, rfc, request.SiteId, orderId,
+        "OrderCreated", "Order", "Orden generada",
+        $"{OrderTypeLabel(orderType)} · {pricedLines.Count} partida(s) · Total {total:C}",
+        userName, ct, $"order:{orderId}:created");
+
+      if (reservation.ReservationId.HasValue)
+      {
+        await RestaurantOrderEventWriter.AddAsync(
+          conn, tx, rfc, request.SiteId, orderId,
+          reservation.HasDeficit ? "InventoryDeficitReserved" : "InventoryReserved",
+          "Inventory",
+          reservation.HasDeficit ? "Inventario reservado con déficit" : "Inventario reservado",
+          reservation.HasDeficit
+            ? "La orden se autorizó aunque una o más existencias resultaron insuficientes."
+            : "Los insumos requeridos quedaron apartados para la preparación.",
+          userName, ct, $"reservation:{reservation.ReservationId.Value}:reserved");
+      }
+
       foreach (var pricedLine in pricedLines)
       {
         var allocatedOrderDiscount = subtotalBeforeDiscount == 0 ? 0 : decimal.Round(request.OrderDiscountAmount * pricedLine.Gross / subtotalBeforeDiscount, 2, MidpointRounding.AwayFromZero);
@@ -369,6 +388,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             IdempotencyKey = payment.IdempotencyKey.Trim(),
             ReceivedBy = userName
           }, tx, cancellationToken: ct));
+        await RestaurantOrderEventWriter.AddAsync(
+          conn, tx, rfc, request.SiteId, orderId,
+          "PaymentReceived", "Payment", "Pago recibido",
+          $"{PaymentMethodLabel(NormalizePaymentMethod(payment.PaymentMethod))} · {payment.Amount:C}" +
+          (payment.TipAmount > 0 ? $" · Propina {payment.TipAmount:C}" : string.Empty),
+          userName, ct, $"payment:{paymentId}");
         if (request.CashShiftId.HasValue)
         {
           await conn.ExecuteAsync(new CommandDefinition(
@@ -410,27 +435,61 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             request.DeliveryCost,
             request.CommissionAmount
           }, tx, cancellationToken: ct));
+        await RestaurantOrderEventWriter.AddAsync(
+          conn, tx, rfc, request.SiteId, orderId,
+          "DeliveryRequested", "Delivery", "Entrega a domicilio registrada",
+          $"{request.DeliveryAddress!.Trim()}" +
+          (!string.IsNullOrWhiteSpace(request.ExternalReference)
+            ? $" · Referencia {request.ExternalReference.Trim()}"
+            : string.Empty),
+          userName, ct, $"delivery:{orderId}:DeliveryRequested");
       }
 
-      if (!string.IsNullOrWhiteSpace(request.SupervisorAuthorizedBy) &&
-          (discountTotal > 0 || request.AllowInventoryDeficit))
+      if (!string.IsNullOrWhiteSpace(request.SupervisorAuthorizedBy))
       {
-        await conn.ExecuteAsync(new CommandDefinition(
-          """
-          INSERT INTO restaurante.SupervisorAuthorization
-            (Rfc, SiteId, ActionType, AggregateId, Reason, RequestedBy, AuthorizedBy)
-          VALUES
-            (@Rfc, @SiteId, @ActionType, @AggregateId, @Reason, @RequestedBy, @AuthorizedBy);
-          """, new
-          {
-            Rfc = rfc,
-            request.SiteId,
-            ActionType = request.AllowInventoryDeficit ? "InventoryDeficit" : "Discount",
-            AggregateId = orderId.ToString(),
-            Reason = NullIfWhiteSpace(request.DiscountReason) ?? "Venta autorizada con déficit de inventario.",
-            RequestedBy = userName,
-            AuthorizedBy = request.SupervisorAuthorizedBy
-          }, tx, cancellationToken: ct));
+        if (discountTotal > 0)
+        {
+          await AddSupervisorAuthorizationAsync(
+            conn, tx, rfc, request.SiteId, orderId, "Discount",
+            NullIfWhiteSpace(request.DiscountReason) ?? "Descuento aplicado a la orden.",
+            userName, request.SupervisorAuthorizedBy, ct);
+          await RestaurantOrderEventWriter.AddAsync(
+            conn, tx, rfc, request.SiteId, orderId,
+            "DiscountAuthorized", "Authorization", "Descuento autorizado",
+            $"{discountTotal:C} · {NullIfWhiteSpace(request.DiscountReason) ?? "Sin motivo capturado"}",
+            request.SupervisorAuthorizedBy, ct);
+        }
+
+        if (request.AllowInventoryDeficit)
+        {
+          await AddSupervisorAuthorizationAsync(
+            conn, tx, rfc, request.SiteId, orderId, "InventoryDeficit",
+            "Venta autorizada con déficit de inventario.",
+            userName, request.SupervisorAuthorizedBy, ct);
+          await RestaurantOrderEventWriter.AddAsync(
+            conn, tx, rfc, request.SiteId, orderId,
+            "InventoryDeficitAuthorized", "Authorization", "Déficit de inventario autorizado",
+            "Se autorizó continuar la venta con existencias insuficientes.",
+            request.SupervisorAuthorizedBy, ct);
+        }
+      }
+
+      var initialStateEvent = status switch
+      {
+        RestaurantOrderStatuses.Sent => ("SentToKitchen", "Kitchen", "Orden enviada a cocina", "La preparación puede comenzar."),
+        RestaurantOrderStatuses.Ready => ("OrderReady", "Kitchen", "Orden lista", "La orden no requiere preparación de cocina."),
+        _ => ("AwaitingPayment", "Payment", "Orden pendiente de pago", $"Saldo pendiente {balanceDue:C}.")
+      };
+      await RestaurantOrderEventWriter.AddAsync(
+        conn, tx, rfc, request.SiteId, orderId,
+        initialStateEvent.Item1, initialStateEvent.Item2, initialStateEvent.Item3, initialStateEvent.Item4,
+        userName, ct, $"order:{orderId}:{initialStateEvent.Item1}");
+      if (paymentStatus == RestaurantPaymentStatuses.Paid)
+      {
+        await RestaurantOrderEventWriter.AddAsync(
+          conn, tx, rfc, request.SiteId, orderId,
+          "OrderPaid", "Payment", "Orden pagada", "El saldo de la orden quedó cubierto.",
+          userName, ct, $"order:{orderId}:OrderPaid");
       }
 
       await AddOutboxEventAsync(conn, tx, rfc, request.SiteId, "OrderCreated", orderId.ToString(), new { orderId, folio, status, paymentStatus }, ct);
@@ -527,7 +586,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       SELECT orderInfo.Id FROM restaurante.[Order] orderInfo
       WHERE orderInfo.Rfc=@Rfc AND orderInfo.SiteId=@SiteId
         AND orderInfo.CreatedAt>=DATEADD(day,-2,SYSUTCDATETIME())
-        AND orderInfo.[Status] NOT IN ('Draft','Cancelled')
+        AND orderInfo.[Status]<>'Draft'
       ORDER BY orderInfo.OperationalDate, orderInfo.Folio, orderInfo.CreatedAt, orderInfo.Id;
       """, new { Rfc = normalizedRfc, SiteId = siteId }, cancellationToken: ct))).AsList();
     var result = new List<RestaurantOrderDto>();
@@ -537,6 +596,28 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       if (order is not null) result.Add(order);
     }
     return result;
+  }
+
+  public async Task<IReadOnlyList<RestaurantOrderEventDto>> GetOrderEventsAsync(
+    string rfc,
+    Guid orderId,
+    CancellationToken ct = default)
+  {
+    const string sql =
+      """
+      SELECT eventInfo.Id,eventInfo.EventType,eventInfo.Category,eventInfo.Title,
+             eventInfo.[Description],eventInfo.Actor,eventInfo.OccurredAt
+      FROM restaurante.OrderEvent eventInfo
+      JOIN restaurante.[Order] orderInfo
+        ON orderInfo.Rfc=eventInfo.Rfc AND orderInfo.Id=eventInfo.OrderId
+      WHERE eventInfo.Rfc=@Rfc AND eventInfo.OrderId=@OrderId
+      ORDER BY eventInfo.OccurredAt,eventInfo.Id;
+      """;
+    using var conn = CreateConnection();
+    return (await conn.QueryAsync<RestaurantOrderEventDto>(new CommandDefinition(
+      sql,
+      new { Rfc = LogisticsRfc.Require(rfc), OrderId = orderId },
+      cancellationToken: ct))).AsList();
   }
 
   public async Task<RestaurantCommandResult> UpdateOrderStatusAsync(string rfc, Guid orderId, string status, string userName, CancellationToken ct = default)
@@ -580,6 +661,23 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           DeliveredAt=CASE WHEN @Status IN ('Delivered','Completed') THEN COALESCE(DeliveredAt,SYSUTCDATETIME()) ELSE DeliveredAt END
         WHERE Rfc=@Rfc AND OrderId=@Id;
         """, new { Rfc = normalizedRfc, Id = orderId, Status = next }, tx, cancellationToken: ct));
+      await RestaurantOrderEventWriter.AddAsync(
+        conn, tx, normalizedRfc, current.SiteId, orderId,
+        next switch
+        {
+          "Dispatched" => "OrderDispatched",
+          "Delivered" => "OrderDelivered",
+          _ => "OrderCompleted"
+        },
+        next == "Completed" ? "Order" : "Delivery",
+        next switch
+        {
+          "Dispatched" => "Orden despachada",
+          "Delivered" => "Entrega confirmada",
+          _ => "Orden completada"
+        },
+        $"{OrderStatusLabel(current.Status)} → {OrderStatusLabel(next)}",
+        userName, ct);
       await AddOutboxEventAsync(conn, tx, normalizedRfc, current.SiteId, "OrderStatusChanged", orderId.ToString(), new { orderId, status = next, userName }, ct);
       await tx.CommitAsync(ct);
       return RestaurantCommandResult.Ok("El estado de entrega fue actualizado.");
@@ -604,7 +702,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     {
       var line = await conn.QuerySingleOrDefaultAsync<LineIdentityRow>(new CommandDefinition(
         """
-        SELECT lineInfo.Id, lineInfo.OrderId, lineInfo.IsCustom, lineInfo.[Status], orderInfo.SiteId, orderInfo.InventoryReservationId
+        SELECT lineInfo.Id, lineInfo.OrderId, lineInfo.ProductNameSnapshot, lineInfo.IsCustom,
+               lineInfo.[Status], orderInfo.SiteId, orderInfo.InventoryReservationId
         FROM restaurante.OrderLine lineInfo WITH (UPDLOCK, HOLDLOCK)
         JOIN restaurante.[Order] orderInfo ON orderInfo.Rfc = lineInfo.Rfc AND orderInfo.Id = lineInfo.OrderId
         WHERE lineInfo.Rfc = @Rfc AND lineInfo.Id = @LineId;
@@ -625,9 +724,11 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         return RestaurantCommandResult.Fail($"No se puede cambiar la partida de {line.Status} a {normalizedStatus}.");
       }
 
+      var inventoryConsumed = false;
       if (normalizedStatus == "Preparing" && line.InventoryReservationId.HasValue)
       {
-        await ConsumeReservationAsync(conn, tx, normalizedRfc, line.InventoryReservationId.Value, userName, ct);
+        inventoryConsumed = await ConsumeReservationAsync(
+          conn, tx, normalizedRfc, line.InventoryReservationId.Value, userName, ct);
       }
       var affected = await conn.ExecuteAsync(new CommandDefinition(
         """
@@ -642,7 +743,37 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       {
         throw new InvalidOperationException("La partida cambió mientras se procesaba la acción; recargue el tablero.");
       }
-      await RefreshOrderStatusAsync(conn, tx, normalizedRfc, line.OrderId, ct);
+      var orderTransition = await RefreshOrderStatusAsync(conn, tx, normalizedRfc, line.OrderId, ct);
+      await RestaurantOrderEventWriter.AddAsync(
+        conn, tx, normalizedRfc, line.SiteId, line.OrderId,
+        normalizedStatus switch
+        {
+          "Preparing" => "LinePreparing",
+          "Ready" => "LineReady",
+          _ => "LineDelivered"
+        },
+        "Kitchen",
+        normalizedStatus switch
+        {
+          "Preparing" => "Preparación iniciada",
+          "Ready" => "Partida lista",
+          _ => "Partida entregada"
+        },
+        line.ProductNameSnapshot,
+        userName, ct);
+      if (inventoryConsumed)
+      {
+        await RestaurantOrderEventWriter.AddAsync(
+          conn, tx, normalizedRfc, line.SiteId, line.OrderId,
+          "InventoryConsumed", "Inventory", "Inventario consumido",
+          "La reserva de insumos se descontó al iniciar la preparación.",
+          userName, ct, $"reservation:{line.InventoryReservationId!.Value}:consumed");
+      }
+      if (orderTransition is not null)
+      {
+        await AddOrderTransitionEventAsync(
+          conn, tx, normalizedRfc, line.SiteId, line.OrderId, orderTransition, userName, ct);
+      }
       await AddOutboxEventAsync(conn, tx, normalizedRfc, line.SiteId, "OrderLineStatusChanged", line.OrderId.ToString(), new { line.OrderId, lineId, status = normalizedStatus }, ct);
       await tx.CommitAsync(ct);
       return RestaurantCommandResult.Ok("El estado de la partida fue actualizado.", lineId);
@@ -664,7 +795,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     {
       var line = await conn.QuerySingleOrDefaultAsync<LineIdentityRow>(new CommandDefinition(
         """
-        SELECT lineInfo.Id,lineInfo.OrderId,lineInfo.IsCustom,lineInfo.[Status],orderInfo.SiteId,orderInfo.InventoryReservationId
+        SELECT lineInfo.Id,lineInfo.OrderId,lineInfo.ProductNameSnapshot,lineInfo.IsCustom,
+               lineInfo.[Status],orderInfo.SiteId,orderInfo.InventoryReservationId
         FROM restaurante.OrderLine lineInfo WITH (UPDLOCK,HOLDLOCK)
         JOIN restaurante.[Order] orderInfo ON orderInfo.Rfc=lineInfo.Rfc AND orderInfo.Id=lineInfo.OrderId
         WHERE lineInfo.Rfc=@Rfc AND lineInfo.Id=@LineId;
@@ -677,7 +809,16 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       await conn.ExecuteAsync(new CommandDefinition(
         "UPDATE restaurante.OrderLine SET [Status]='Preparing',ReadyAt=NULL WHERE Rfc=@Rfc AND Id=@LineId AND [Status]='Ready';",
         new { Rfc = normalizedRfc, LineId = lineId }, tx, cancellationToken: ct));
-      await RefreshOrderStatusAsync(conn, tx, normalizedRfc, line.OrderId, ct);
+      var orderTransition = await RefreshOrderStatusAsync(conn, tx, normalizedRfc, line.OrderId, ct);
+      await RestaurantOrderEventWriter.AddAsync(
+        conn, tx, normalizedRfc, line.SiteId, line.OrderId,
+        "LineReopened", "Kitchen", "Partida regresada a preparación",
+        line.ProductNameSnapshot, userName, ct);
+      if (orderTransition is not null)
+      {
+        await AddOrderTransitionEventAsync(
+          conn, tx, normalizedRfc, line.SiteId, line.OrderId, orderTransition, userName, ct);
+      }
       await AddOutboxEventAsync(conn, tx, normalizedRfc, line.SiteId, "OrderLineStatusReverted", line.OrderId.ToString(), new { line.OrderId, lineId, status = "Preparing", userName }, ct);
       await tx.CommitAsync(ct);
       return RestaurantCommandResult.Ok("La partida regresó a preparación.", lineId);
@@ -718,6 +859,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         INSERT INTO restaurante.SupervisorAuthorization (Rfc,SiteId,ActionType,AggregateId,Reason,RequestedBy,AuthorizedBy)
         VALUES (@Rfc,@SiteId,'KitchenPriority',CONVERT(varchar(36),@OrderId),@Reason,@Supervisor,@Supervisor);
         """, new { Rfc = normalizedRfc, OrderId = orderId, Priority = priority, Reason = normalizedReason, Supervisor = supervisorUserName.Trim(), SiteId = siteId.Value }, tx, cancellationToken: ct));
+      await RestaurantOrderEventWriter.AddAsync(
+        conn, tx, normalizedRfc, siteId.Value, orderId,
+        priority > 0 ? "PrioritySet" : "PriorityRemoved",
+        "Authorization",
+        priority > 0 ? "Orden priorizada" : "Prioridad retirada",
+        normalizedReason, supervisorUserName, ct);
       await AddOutboxEventAsync(conn, tx, normalizedRfc, siteId.Value, "OrderPriorityChanged", orderId.ToString(), new { orderId, priority, reason = normalizedReason }, ct);
       await tx.CommitAsync(ct);
       return RestaurantCommandResult.Ok(priority > 0 ? "Orden priorizada." : "Prioridad retirada.");
@@ -753,9 +900,11 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         await tx.RollbackAsync(ct);
         return RestaurantCommandResult.Fail("La orden ya está cerrada.");
       }
+      var inventoryReleased = false;
       if (order.InventoryReservationId.HasValue)
       {
-        await ReleaseReservationAsync(conn, tx, normalizedRfc, order.InventoryReservationId.Value, ct);
+        inventoryReleased = await ReleaseReservationAsync(
+          conn, tx, normalizedRfc, order.InventoryReservationId.Value, ct);
       }
       await conn.ExecuteAsync(new CommandDefinition(
         """
@@ -771,6 +920,18 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         VALUES
           (@Rfc, @SiteId, 'CancelOrder', CONVERT(varchar(36), @OrderId), @Reason, @Supervisor, @Supervisor);
         """, new { Rfc = normalizedRfc, OrderId = orderId, SiteId = order.SiteId, Supervisor = supervisorUserName, Reason = reason.Trim() }, tx, cancellationToken: ct));
+      if (inventoryReleased)
+      {
+        await RestaurantOrderEventWriter.AddAsync(
+          conn, tx, normalizedRfc, order.SiteId, orderId,
+          "InventoryReleased", "Inventory", "Inventario liberado",
+          "Los insumos apartados regresaron a disponibilidad por la cancelación.",
+          supervisorUserName, ct, $"reservation:{order.InventoryReservationId!.Value}:released");
+      }
+      await RestaurantOrderEventWriter.AddAsync(
+        conn, tx, normalizedRfc, order.SiteId, orderId,
+        "OrderCancelled", "Order", "Orden cancelada",
+        reason, supervisorUserName, ct);
       await AddOutboxEventAsync(conn, tx, normalizedRfc, order.SiteId, "OrderCancelled", orderId.ToString(), new { orderId, reason }, ct);
       await tx.CommitAsync(ct);
       return RestaurantCommandResult.Ok("La orden fue cancelada. Los cobros existentes requieren reembolso supervisado por separado.");
@@ -926,6 +1087,35 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             RequestedBy = requestedBy
           }, tx, cancellationToken: ct));
       }
+      await RestaurantOrderEventWriter.AddAsync(
+        conn, tx, rfc, order.SiteId, request.OrderId,
+        "PaymentReceived", "Payment", "Pago adicional recibido",
+        $"{PaymentMethodLabel(paymentMethod)} · {request.Amount:C}" +
+        (request.TipAmount > 0 ? $" · Propina {request.TipAmount:C}" : string.Empty) +
+         $" · {request.Reason.Trim()} · Autorizó: {request.SupervisorUserName.Trim()}",
+        requestedBy, ct, $"payment:{paymentId}");
+      await RestaurantOrderEventWriter.AddAsync(
+        conn, tx, rfc, order.SiteId, request.OrderId,
+        "AdditionalPaymentAuthorized", "Authorization", "Cargo adicional autorizado",
+        $"{request.Reason.Trim()} · Autorizó: {request.SupervisorUserName.Trim()}",
+        requestedBy, ct, $"payment:{paymentId}:authorization");
+      if (newPaymentStatus == RestaurantPaymentStatuses.Paid &&
+          order.PaymentStatus != RestaurantPaymentStatuses.Paid)
+      {
+        await RestaurantOrderEventWriter.AddAsync(
+          conn, tx, rfc, order.SiteId, request.OrderId,
+          "OrderPaid", "Payment", "Orden pagada", "El saldo de la orden quedó cubierto.",
+          requestedBy, ct, $"order:{request.OrderId}:OrderPaid");
+      }
+      if (newPaymentStatus == RestaurantPaymentStatuses.Paid &&
+          order.Status == RestaurantOrderStatuses.AwaitingPayment)
+      {
+        await RestaurantOrderEventWriter.AddAsync(
+          conn, tx, rfc, order.SiteId, request.OrderId,
+          "SentToKitchen", "Kitchen", "Orden enviada a cocina",
+          "El pago quedó cubierto y la preparación puede comenzar.",
+          requestedBy, ct, $"order:{request.OrderId}:SentToKitchen");
+      }
       await AddOutboxEventAsync(conn, tx, rfc, order.SiteId, "OrderPaymentAdded", request.OrderId.ToString(), new { request.OrderId, paymentId, request.Amount, paymentStatus = newPaymentStatus }, ct);
       await tx.CommitAsync(ct);
       return RestaurantCommandResult.Ok("El cargo adicional fue registrado.");
@@ -1071,6 +1261,16 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             RequestedBy = requestedBy
           }, tx, cancellationToken: ct));
       }
+      await RestaurantOrderEventWriter.AddAsync(
+        conn, tx, rfc, payment.SiteId, payment.OrderId,
+        "PaymentRefunded", "Payment", "Pago reembolsado",
+        $"{request.Amount:C} · {request.Reason.Trim()} · Autorizó: {request.SupervisorUserName.Trim()}",
+        requestedBy, ct, $"refund:{refundId}");
+      await RestaurantOrderEventWriter.AddAsync(
+        conn, tx, rfc, payment.SiteId, payment.OrderId,
+        "RefundAuthorized", "Authorization", "Reembolso autorizado",
+        $"{request.Reason.Trim()} · Autorizó: {request.SupervisorUserName.Trim()}",
+        requestedBy, ct, $"refund:{refundId}:authorization");
       await AddOutboxEventAsync(conn, tx, rfc, payment.SiteId, "OrderPaymentRefunded", payment.OrderId.ToString(), new { payment.OrderId, request.PaymentId, refundId, request.Amount, paymentStatus }, ct);
       await tx.CommitAsync(ct);
       return RestaurantCommandResult.Ok("El reembolso fue registrado y auditado.");
@@ -1345,12 +1545,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         (@Rfc, @ReservationId, @MaterialId, @LocationId, @LotId, @Required, @Reserved, @IsDeficit, @Cost);
       """, new { Rfc = rfc, ReservationId = reservationId, MaterialId = materialId, LocationId = locationId, LotId = lotId, Required = required, Reserved = reserved, IsDeficit = isDeficit, Cost = cost }, tx, cancellationToken: ct));
 
-  private static async Task ConsumeReservationAsync(DbConnection conn, DbTransaction tx, string rfc, long reservationId, string userName, CancellationToken ct)
+  private static async Task<bool> ConsumeReservationAsync(DbConnection conn, DbTransaction tx, string rfc, long reservationId, string userName, CancellationToken ct)
   {
     var status = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
       "SELECT [Status] FROM logistica.InventoryReservation WITH (UPDLOCK, HOLDLOCK) WHERE Rfc=@Rfc AND Id=@Id;",
       new { Rfc = rfc, Id = reservationId }, tx, cancellationToken: ct));
-    if (status == "Consumed") return;
+    if (status == "Consumed") return false;
     if (status != "Reserved") throw new InvalidOperationException("La reserva de inventario ya no está disponible.");
     var lines = (await conn.QueryAsync<ReservationLineRow>(new CommandDefinition(
       "SELECT Id, MaterialId, LocationId, MaterialLotId, ReservedQuantity, FrozenUnitCost FROM logistica.InventoryReservationLine WHERE Rfc=@Rfc AND ReservationId=@Id;",
@@ -1394,14 +1594,15 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     await conn.ExecuteAsync(new CommandDefinition(
       "UPDATE logistica.InventoryReservation SET [Status]='Consumed', ConsumedAt=SYSUTCDATETIME() WHERE Rfc=@Rfc AND Id=@Id;",
       new { Rfc = rfc, Id = reservationId }, tx, cancellationToken: ct));
+    return true;
   }
 
-  private static async Task ReleaseReservationAsync(DbConnection conn, DbTransaction tx, string rfc, long reservationId, CancellationToken ct)
+  private static async Task<bool> ReleaseReservationAsync(DbConnection conn, DbTransaction tx, string rfc, long reservationId, CancellationToken ct)
   {
     var status = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
       "SELECT [Status] FROM logistica.InventoryReservation WITH (UPDLOCK, HOLDLOCK) WHERE Rfc=@Rfc AND Id=@Id;",
       new { Rfc = rfc, Id = reservationId }, tx, cancellationToken: ct));
-    if (status != "Reserved") return;
+    if (status != "Reserved") return false;
     var lines = (await conn.QueryAsync<ReservationLineRow>(new CommandDefinition(
       "SELECT Id, MaterialId, LocationId, MaterialLotId, ReservedQuantity, FrozenUnitCost FROM logistica.InventoryReservationLine WHERE Rfc=@Rfc AND ReservationId=@Id;",
       new { Rfc = rfc, Id = reservationId }, tx, cancellationToken: ct))).AsList();
@@ -1420,10 +1621,20 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     await conn.ExecuteAsync(new CommandDefinition(
       "UPDATE logistica.InventoryReservation SET [Status]='Released', ReleasedAt=SYSUTCDATETIME() WHERE Rfc=@Rfc AND Id=@Id;",
       new { Rfc = rfc, Id = reservationId }, tx, cancellationToken: ct));
+    return true;
   }
 
-  private static async Task RefreshOrderStatusAsync(DbConnection conn, DbTransaction tx, string rfc, Guid orderId, CancellationToken ct)
+  private static async Task<OrderStatusTransition?> RefreshOrderStatusAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    string rfc,
+    Guid orderId,
+    CancellationToken ct)
   {
+    var current = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+      "SELECT [Status] FROM restaurante.[Order] WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND Id=@OrderId;",
+      new { Rfc = rfc, OrderId = orderId }, tx, cancellationToken: ct));
+    if (current is null || current is "Cancelled" or "Completed") return null;
     var statuses = (await conn.QueryAsync<string>(new CommandDefinition(
       "SELECT [Status] FROM restaurante.OrderLine WHERE Rfc=@Rfc AND OrderId=@OrderId;",
       new { Rfc = rfc, OrderId = orderId }, tx, cancellationToken: ct))).AsList();
@@ -1437,6 +1648,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           ReadyAt=CASE WHEN @Status='Ready' AND ReadyAt IS NULL THEN SYSUTCDATETIME() ELSE ReadyAt END
       WHERE Rfc=@Rfc AND Id=@OrderId AND [Status] NOT IN ('Cancelled','Completed');
       """, new { Rfc = rfc, OrderId = orderId, Status = next }, tx, cancellationToken: ct));
+    return string.Equals(current, next, StringComparison.Ordinal)
+      ? null
+      : new OrderStatusTransition(current, next);
   }
 
   private static async Task<RestaurantOrderDto?> LoadOrderAsync(DbConnection conn, DbTransaction? tx, string rfc, Guid orderId, CancellationToken ct)
@@ -1478,6 +1692,62 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     => conn.ExecuteAsync(new CommandDefinition(
       "INSERT INTO restaurante.EventOutbox (Rfc, SiteId, EventType, AggregateId, Payload) VALUES (@Rfc,@SiteId,@EventType,@AggregateId,@Payload);",
       new { Rfc = rfc, SiteId = siteId, EventType = eventType, AggregateId = aggregateId, Payload = JsonSerializer.Serialize(payload) }, tx, cancellationToken: ct));
+
+  private static Task AddSupervisorAuthorizationAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    string rfc,
+    int siteId,
+    Guid orderId,
+    string actionType,
+    string reason,
+    string requestedBy,
+    string authorizedBy,
+    CancellationToken ct)
+    => conn.ExecuteAsync(new CommandDefinition(
+      """
+      INSERT INTO restaurante.SupervisorAuthorization
+        (Rfc,SiteId,ActionType,AggregateId,Reason,RequestedBy,AuthorizedBy)
+      VALUES
+        (@Rfc,@SiteId,@ActionType,CONVERT(varchar(36),@OrderId),@Reason,@RequestedBy,@AuthorizedBy);
+      """,
+      new
+      {
+        Rfc = rfc,
+        SiteId = siteId,
+        OrderId = orderId,
+        ActionType = actionType,
+        Reason = reason,
+        RequestedBy = requestedBy,
+        AuthorizedBy = authorizedBy
+      },
+      tx,
+      cancellationToken: ct));
+
+  private static Task AddOrderTransitionEventAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    string rfc,
+    int siteId,
+    Guid orderId,
+    OrderStatusTransition transition,
+    string actor,
+    CancellationToken ct)
+    => RestaurantOrderEventWriter.AddAsync(
+      conn, tx, rfc, siteId, orderId,
+      transition.CurrentStatus == "Ready" && transition.NextStatus == "Preparing"
+        ? "OrderReopened"
+        : $"Order{transition.NextStatus}",
+      "Kitchen",
+      transition.NextStatus switch
+      {
+        "Preparing" when transition.CurrentStatus == "Ready" => "Orden regresada a preparación",
+        "Preparing" => "Preparación de la orden iniciada",
+        "Ready" => "Orden lista",
+        _ => "Estado de cocina actualizado"
+      },
+      $"{OrderStatusLabel(transition.CurrentStatus)} → {OrderStatusLabel(transition.NextStatus)}",
+      actor, ct);
 
   private static async Task<RestaurantOrderResult?> FindDuplicateAsync(DbConnection conn, DbTransaction tx, string rfc, int siteId, string key, CancellationToken ct)
     => await conn.QuerySingleOrDefaultAsync<RestaurantOrderResult>(new CommandDefinition(
@@ -1523,6 +1793,38 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       _ => throw new InvalidOperationException("Forma de pago no válida.")
     };
 
+  private static string OrderTypeLabel(string value)
+    => value switch
+    {
+      "Table" => "Mesa",
+      "Delivery" => "Domicilio",
+      _ => "Para recoger"
+    };
+
+  private static string PaymentMethodLabel(string value)
+    => value switch
+    {
+      "Cash" => "Efectivo",
+      "ExternalCard" => "Tarjeta",
+      "Transfer" => "Transferencia",
+      "Platform" => "Plataforma",
+      _ => value
+    };
+
+  private static string OrderStatusLabel(string value)
+    => value switch
+    {
+      "AwaitingPayment" => "Pendiente de pago",
+      "Sent" => "Enviada a cocina",
+      "Preparing" => "Preparando",
+      "Ready" => "Lista",
+      "Dispatched" => "Despachada",
+      "Delivered" => "Entregada",
+      "Completed" => "Completada",
+      "Cancelled" => "Cancelada",
+      _ => value
+    };
+
   private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
   private DbConnection CreateConnection()
@@ -1539,6 +1841,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     decimal Gross,
     bool IsCustom);
   private sealed record ReservationResult(long? ReservationId, bool HasDeficit);
+  private sealed record OrderStatusTransition(string CurrentStatus, string NextStatus);
 
   private sealed class SiteRow
   {
@@ -1584,7 +1887,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   private sealed class BalanceAvailabilityRow { public int LocationId { get; set; } public decimal AvailableQuantity { get; set; } public decimal AverageUnitCost { get; set; } }
   private sealed class ReservationLineRow { public long Id { get; set; } public int MaterialId { get; set; } public int LocationId { get; set; } public long? MaterialLotId { get; set; } public decimal ReservedQuantity { get; set; } public decimal FrozenUnitCost { get; set; } }
   private sealed class StockBalanceRow { public int Id { get; set; } public decimal Quantity { get; set; } public decimal ReservedQuantity { get; set; } }
-  private sealed class LineIdentityRow { public long Id { get; set; } public Guid OrderId { get; set; } public bool IsCustom { get; set; } public string Status { get; set; } = string.Empty; public int SiteId { get; set; } public long? InventoryReservationId { get; set; } }
+  private sealed class LineIdentityRow { public long Id { get; set; } public Guid OrderId { get; set; } public string ProductNameSnapshot { get; set; } = string.Empty; public bool IsCustom { get; set; } public string Status { get; set; } = string.Empty; public int SiteId { get; set; } public long? InventoryReservationId { get; set; } }
   private sealed class CancelOrderRow { public Guid Id { get; set; } public int SiteId { get; set; } public string Status { get; set; } = string.Empty; public long? InventoryReservationId { get; set; } }
   private sealed class OrderFulfillmentRow { public Guid Id { get; set; } public int SiteId { get; set; } public string OrderType { get; set; } = string.Empty; public string Status { get; set; } = string.Empty; public string PaymentStatus { get; set; } = string.Empty; }
   private sealed class PaymentOrderRow

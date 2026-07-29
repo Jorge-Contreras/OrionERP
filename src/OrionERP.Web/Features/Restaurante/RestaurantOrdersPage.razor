@@ -18,7 +18,7 @@
 <main class="orders-shell">
   <header class="orders-hero"><div><span>Barra y entrega</span><h1>Órdenes activas</h1><p>Despacha domicilio, entrega al comensal y completa órdenes pagadas.</p></div><div>@if(sites.Count>1){<select @onchange="ChangeSiteAsync">@foreach(var site in sites){<option value="@site.Id" selected="@(site.Id==selectedSiteId)">@site.Name</option>}</select>}<button type="button" @onclick="LoadAsync">Actualizar</button></div></header>
   @if(!string.IsNullOrWhiteSpace(message)){<div class="alert @(isError?"alert-danger":"alert-success")">@message</div>}
-  <nav class="orders-filters">@foreach(var filter in new[]{"Active","Ready","Dispatched","Delivered","Completed"}){<button type="button" class="@(statusFilter==filter?"is-active":null)" @onclick="()=>statusFilter=filter">@FilterLabel(filter) <b>@Count(filter)</b></button>}</nav>
+  <nav class="orders-filters">@foreach(var filter in new[]{"Active","Ready","Dispatched","Delivered","Completed","Cancelled"}){<button type="button" class="@(statusFilter==filter?"is-active":null)" @onclick="()=>statusFilter=filter">@FilterLabel(filter) <b>@Count(filter)</b></button>}</nav>
   <section class="orders-grid">
     @foreach(var order in FilteredOrders)
     {
@@ -45,7 +45,19 @@
             <li><b>@line.Quantity.ToString("0.##")×</b><span>@line.ProductName@if(line.IsCustom){<small>Cargo personalizado</small>}else if(line.Modifiers.Count>0){<small>@string.Join(" · ",line.Modifiers)</small>}</span><em>@StatusLabel(line.Status)</em></li>
           }
         </ul>
-        <footer><span class="payment payment--@order.PaymentStatus.ToLowerInvariant()">@PaymentLabel(order.PaymentStatus)</span><div>@if(order.CashRegisterId.HasValue){<button type="button" class="order-correction-button" @onclick="()=>OpenCorrectionsAsync(order)">Correcciones / CFDI</button>}@if(order.Status=="Ready"&&order.OrderType=="Delivery"){<button type="button" @onclick='()=>SetStatusAsync(order,"Dispatched")'>Despachar</button>}else if(order.Status=="Ready"){<button type="button" @onclick='()=>SetStatusAsync(order,"Delivered")'>Entregar</button>}else if(order.Status=="Dispatched"){<button type="button" @onclick='()=>SetStatusAsync(order,"Delivered")'>Confirmar entrega</button>}else if(order.Status=="Delivered"&&order.PaymentStatus=="Paid"){<button type="button" @onclick='()=>SetStatusAsync(order,"Completed")'>Completar</button>}</div></footer>
+        <footer>
+          <span class="payment payment--@order.PaymentStatus.ToLowerInvariant()">@PaymentLabel(order.PaymentStatus)</span>
+          <div>
+            <button type="button" class="order-log-button" @onclick="()=>OpenOrderLogAsync(order)">
+              <span class="oi oi-list-rich" aria-hidden="true"></span> Bitácora
+            </button>
+            @if(order.CashRegisterId.HasValue){<button type="button" class="order-correction-button" @onclick="()=>OpenCorrectionsAsync(order)">Correcciones / CFDI</button>}
+            @if(order.Status=="Ready"&&order.OrderType=="Delivery"){<button type="button" @onclick='()=>SetStatusAsync(order,"Dispatched")'>Despachar</button>}
+            else if(order.Status=="Ready"){<button type="button" @onclick='()=>SetStatusAsync(order,"Delivered")'>Entregar</button>}
+            else if(order.Status=="Dispatched"){<button type="button" @onclick='()=>SetStatusAsync(order,"Delivered")'>Confirmar entrega</button>}
+            else if(order.Status=="Delivered"&&order.PaymentStatus=="Paid"){<button type="button" @onclick='()=>SetStatusAsync(order,"Completed")'>Completar</button>}
+          </div>
+        </footer>
       </article>
     }
     @if(!FilteredOrders.Any()){<div class="orders-empty"><h2>No hay órdenes en este estado</h2></div>}
@@ -78,6 +90,78 @@
       </div>
     </section>
   }
+  @if(logOrder is not null)
+  {
+    <section class="order-log" role="dialog" aria-modal="true" aria-labelledby="order-log-title">
+      <div class="order-log__panel">
+        <header class="order-log__header">
+          <div>
+            <span>@TypeLabel(logOrder.OrderType) · Orden @logOrder.Folio.ToString("000")</span>
+            <h2 id="order-log-title">Bitácora de la orden</h2>
+            @if(!string.IsNullOrWhiteSpace(logOrder.CustomerName)){<p>@logOrder.CustomerName</p>}
+          </div>
+          <div class="order-log__header-actions">
+            <button type="button" class="order-log__refresh" disabled="@logBusy" @onclick="RefreshOrderLogAsync">
+              <span class="oi oi-reload" aria-hidden="true"></span><span>Actualizar</span>
+            </button>
+            <button type="button" class="order-log__close" @onclick="CloseOrderLog" aria-label="Cerrar bitácora">×</button>
+          </div>
+        </header>
+
+        <div class="order-log__summary">
+          <div><span>Estado actual</span><strong>@StatusLabel(logOrder.Status)</strong></div>
+          <div><span>Eventos</span><strong>@logEvents.Count</strong></div>
+          <div><span>Transcurrido</span><strong>@EventDurationLabel()</strong></div>
+        </div>
+
+        <div class="order-log__legend" aria-label="Tipos de evento">
+          @foreach(var category in logEvents.Select(item=>item.Category).Distinct(StringComparer.OrdinalIgnoreCase))
+          {
+            <span class="order-log__legend-item order-log__legend-item--@CategoryClass(category)">@CategoryLabel(category)</span>
+          }
+        </div>
+
+        <div class="order-log__body" aria-live="polite">
+          @if(logBusy)
+          {
+            <div class="order-log__state"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><strong>Cargando la historia completa…</strong></div>
+          }
+          else if(!string.IsNullOrWhiteSpace(logError))
+          {
+            <div class="order-log__state order-log__state--error"><strong>No se pudo cargar la bitácora</strong><p>@logError</p><button type="button" @onclick="RefreshOrderLogAsync">Reintentar</button></div>
+          }
+          else if(logEvents.Count==0)
+          {
+            <div class="order-log__state"><span class="oi oi-clock" aria-hidden="true"></span><strong>Aún no hay eventos registrados.</strong></div>
+          }
+          else
+          {
+            <ol class="order-log__timeline">
+              @foreach(var eventInfo in logEvents)
+              {
+                <li @key="eventInfo.Id" class="order-log__event order-log__event--@CategoryClass(eventInfo.Category)">
+                  <div class="order-log__marker"><span class="oi @CategoryIcon(eventInfo.Category)" aria-hidden="true"></span></div>
+                  <article>
+                    <header>
+                      <div><span>@CategoryLabel(eventInfo.Category)</span><h3>@eventInfo.Title</h3></div>
+                      <time datetime="@eventInfo.OccurredAt.ToString("O")">@FormatEventTime(eventInfo.OccurredAt)</time>
+                    </header>
+                    @if(!string.IsNullOrWhiteSpace(eventInfo.Description)){<p>@eventInfo.Description</p>}
+                    @if(!string.IsNullOrWhiteSpace(eventInfo.Actor)){<footer><span class="oi oi-person" aria-hidden="true"></span>@eventInfo.Actor</footer>}
+                  </article>
+                </li>
+              }
+            </ol>
+          }
+        </div>
+
+        <footer class="order-log__footer">
+          <span>Los eventos se conservan como auditoría operativa.</span>
+          <button type="button" @onclick="CloseOrderLog">Cerrar</button>
+        </footer>
+      </div>
+    </section>
+  }
 </main>
 
 @code {
@@ -101,6 +185,10 @@
   private string supervisorIdentity = string.Empty;
   private string supervisorPin = string.Empty;
   private bool correctionBusy;
+  private RestaurantOrderDto? logOrder;
+  private List<RestaurantOrderEventDto> logEvents = [];
+  private bool logBusy;
+  private string? logError;
 
   private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
   private IEnumerable<RestaurantOrderDto> FilteredOrders => (statusFilter == "Active"
@@ -152,6 +240,7 @@
 
   private async Task OpenCorrectionsAsync(RestaurantOrderDto order)
   {
+    CloseOrderLog();
     correctionOrder = order;
     correctionPayments = (await OrderService.GetPaymentsAsync(CurrentRfc, order.Id)).ToList();
     correctionShifts = (await CashService.GetShiftsAsync(CurrentRfc, selectedSiteId)).Where(shift => shift.Status == "Open").ToList();
@@ -172,6 +261,45 @@
     correctionOrder = null;
     correctionPayments = [];
     supervisorPin = string.Empty;
+  }
+
+  private async Task OpenOrderLogAsync(RestaurantOrderDto order)
+  {
+    CloseCorrections();
+    logOrder = order;
+    logEvents = [];
+    logError = null;
+    await LoadOrderLogAsync();
+  }
+
+  private Task RefreshOrderLogAsync() => LoadOrderLogAsync();
+
+  private async Task LoadOrderLogAsync(bool showLoading = true)
+  {
+    if (logOrder is null) return;
+    if (showLoading) logBusy = true;
+    logError = null;
+    try
+    {
+      logEvents = (await OrderService.GetOrderEventsAsync(CurrentRfc, logOrder.Id)).ToList();
+      logOrder = orders.FirstOrDefault(order => order.Id == logOrder.Id) ?? logOrder;
+    }
+    catch (Exception ex)
+    {
+      logError = ex.Message;
+    }
+    finally
+    {
+      logBusy = false;
+    }
+  }
+
+  private void CloseOrderLog()
+  {
+    logOrder = null;
+    logEvents = [];
+    logError = null;
+    logBusy = false;
   }
 
   private async Task ApplyCorrectionAsync()
@@ -252,6 +380,7 @@
     {
       selectedSiteId = id;
       CloseCorrections();
+      CloseOrderLog();
       await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId);
       await LoadAsync();
     }
@@ -260,9 +389,9 @@
   private int Count(string filter) => filter == "Active"
     ? orders.Count(order => order.Status is not ("Completed" or "Cancelled"))
     : orders.Count(order => order.Status == filter);
-  private static string FilterLabel(string value) => value switch { "Active" => "Activas", "Ready" => "Listas", "Dispatched" => "Despachadas", "Delivered" => "Entregadas", "Completed" => "Completadas", _ => value };
+  private static string FilterLabel(string value) => value switch { "Active" => "Activas", "Ready" => "Listas", "Dispatched" => "Despachadas", "Delivered" => "Entregadas", "Completed" => "Completadas", "Cancelled" => "Canceladas", _ => value };
   private static string TypeLabel(string value) => value switch { "Pickup" => "Recoger", "Table" => "Mesa", "Delivery" => "Domicilio", _ => value };
-  private static string StatusLabel(string value) => value switch { "Sent" => "Pendiente", "Preparing" => "Preparando", "Ready" => "Lista", "Dispatched" => "Despachada", "Delivered" => "Entregada", "Completed" => "Completada", "Pending" => "Pendiente", _ => value };
+  private static string StatusLabel(string value) => value switch { "AwaitingPayment" => "Pendiente de pago", "Sent" => "Pendiente", "Preparing" => "Preparando", "Ready" => "Lista", "Dispatched" => "Despachada", "Delivered" => "Entregada", "Completed" => "Completada", "Cancelled" => "Cancelada", "Pending" => "Pendiente", _ => value };
   private static string KitchenProgressClass(RestaurantOrderDto order) => RestaurantKitchenProgressRules.Classify(order) switch
   {
     RestaurantKitchenProgress.Ready => "order-card--complete",
@@ -272,8 +401,37 @@
   private static string PaymentLabel(string value) => value switch { "Paid" => "Pagada", "PendingSettlement" => "Por liquidar", "Partial" => "Pago parcial", "PartiallyRefunded" => "Reembolso parcial", "Refunded" => "Reembolsada", _ => value };
   private static string CorrectionLabel(string value) => value switch { "Payment" => "Cargo adicional", "Refund" => "Reembolso", "Cancel" => "Cancelar orden", "Cfdi" => "Ligar CFDI", _ => value };
   private static string PaymentMethodLabel(string value) => value switch { "Cash" => "Efectivo", "ExternalCard" => "Tarjeta", "Transfer" => "Transferencia", "Platform" => "Plataforma", _ => value };
+  private static string CategoryLabel(string value) => value switch { "Order" => "Orden", "Kitchen" => "Cocina", "Payment" => "Pago", "Delivery" => "Entrega", "Inventory" => "Inventario", "Authorization" => "Autorización", "Accounting" => "Contabilidad", _ => value };
+  private static string CategoryClass(string value) => value.Trim().ToLowerInvariant() switch { "order" => "order", "kitchen" => "kitchen", "payment" => "payment", "delivery" => "delivery", "inventory" => "inventory", "authorization" => "authorization", "accounting" => "accounting", _ => "other" };
+  private static string CategoryIcon(string value) => value switch { "Kitchen" => "oi-fire", "Payment" => "oi-dollar", "Delivery" => "oi-map-marker", "Inventory" => "oi-box", "Authorization" => "oi-shield", "Accounting" => "oi-spreadsheet", _ => "oi-check" };
+  private string FormatEventTime(DateTime utcDate)
+  {
+    var site = sites.FirstOrDefault(item => item.Id == selectedSiteId);
+    var utc = DateTime.SpecifyKind(utcDate, DateTimeKind.Utc);
+    if (site is null || string.IsNullOrWhiteSpace(site.TimeZoneId)) return utc.ToLocalTime().ToString("dd MMM yyyy · HH:mm:ss");
+    try { return TimeZoneInfo.ConvertTimeFromUtc(utc, TimeZoneInfo.FindSystemTimeZoneById(site.TimeZoneId)).ToString("dd MMM yyyy · HH:mm:ss"); }
+    catch (TimeZoneNotFoundException) { return utc.ToLocalTime().ToString("dd MMM yyyy · HH:mm:ss"); }
+    catch (InvalidTimeZoneException) { return utc.ToLocalTime().ToString("dd MMM yyyy · HH:mm:ss"); }
+  }
+  private string EventDurationLabel()
+  {
+    if (logEvents.Count < 2) return "Recién creada";
+    var duration = logEvents[^1].OccurredAt - logEvents[0].OccurredAt;
+    if (duration.TotalDays >= 1) return $"{(int)duration.TotalDays} d {duration.Hours} h";
+    if (duration.TotalHours >= 1) return $"{(int)duration.TotalHours} h {duration.Minutes} min";
+    if (duration.TotalMinutes >= 1) return $"{(int)duration.TotalMinutes} min";
+    return $"{Math.Max(0, (int)duration.TotalSeconds)} s";
+  }
   private void Show(string value, bool error) { message = value; isError = error; }
-  private Task OnRealtimeEventAsync(RestaurantRealtimeEvent eventInfo) => InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+  private Task OnRealtimeEventAsync(RestaurantRealtimeEvent eventInfo) => InvokeAsync(async () =>
+  {
+    await LoadAsync();
+    if (logOrder is not null && Guid.TryParse(eventInfo.AggregateId, out var eventOrderId) && eventOrderId == logOrder.Id)
+    {
+      await LoadOrderLogAsync(showLoading: false);
+    }
+    StateHasChanged();
+  });
 
   private async Task RefreshLoopAsync(CancellationToken ct)
   {
@@ -292,6 +450,7 @@
   {
     selectedSiteId = 0;
     CloseCorrections();
+    CloseOrderLog();
     await LoadSitesAsync();
     StateHasChanged();
   });

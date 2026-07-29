@@ -313,6 +313,17 @@ public sealed class RestaurantOrderLineDto
   public IReadOnlyList<string> Modifiers { get; set; } = Array.Empty<string>();
 }
 
+public sealed class RestaurantOrderEventDto
+{
+  public long Id { get; set; }
+  public string EventType { get; set; } = string.Empty;
+  public string Category { get; set; } = string.Empty;
+  public string Title { get; set; } = string.Empty;
+  public string? Description { get; set; }
+  public string? Actor { get; set; }
+  public DateTime OccurredAt { get; set; }
+}
+
 public sealed class RestaurantKitchenBoardDto
 {
   public DateTime ServerTimeUtc { get; set; }
@@ -332,14 +343,64 @@ public sealed class RestaurantPublicOrderDto
 public sealed class RestaurantCashShiftDto
 {
   public Guid Id { get; set; }
+  public int SiteId { get; set; }
   public int CashRegisterId { get; set; }
   public string RegisterName { get; set; } = string.Empty;
   public string Status { get; set; } = string.Empty;
   public decimal OpeningFloat { get; set; }
   public DateTime OpenedAt { get; set; }
+  public string OpenedBy { get; set; } = string.Empty;
+  public DateTime? ClosedAt { get; set; }
+  public string? ClosedBy { get; set; }
   public decimal? ExpectedCash { get; set; }
   public decimal? CountedCash { get; set; }
   public decimal? Difference { get; set; }
+  public DateTime? ApprovedAt { get; set; }
+  public string? ApprovedBy { get; set; }
+  public DateTime? ReopenedAt { get; set; }
+  public string? ReopenedBy { get; set; }
+}
+
+public sealed class RestaurantCashShiftLogDto
+{
+  public RestaurantCashShiftDto Shift { get; set; } = new();
+  public int OrderCount { get; set; }
+  public int PaymentCount { get; set; }
+  public int RefundCount { get; set; }
+  public decimal GrossSales { get; set; }
+  public decimal TipTotal { get; set; }
+  public decimal RefundTotal { get; set; }
+  public IReadOnlyList<RestaurantCashShiftPaymentSummaryDto> PaymentMethods { get; set; } = Array.Empty<RestaurantCashShiftPaymentSummaryDto>();
+  public IReadOnlyList<RestaurantCashShiftLogEntryDto> Entries { get; set; } = Array.Empty<RestaurantCashShiftLogEntryDto>();
+}
+
+public sealed class RestaurantCashShiftPaymentSummaryDto
+{
+  public string PaymentMethod { get; set; } = string.Empty;
+  public int PaymentCount { get; set; }
+  public int RefundCount { get; set; }
+  public decimal Sales { get; set; }
+  public decimal Tips { get; set; }
+  public decimal Refunds { get; set; }
+  public decimal NetTotal => Sales + Tips - Refunds;
+}
+
+public sealed class RestaurantCashShiftLogEntryDto
+{
+  public string Id { get; set; } = string.Empty;
+  public DateTime OccurredAt { get; set; }
+  public string EventType { get; set; } = string.Empty;
+  public string Category { get; set; } = string.Empty;
+  public string Title { get; set; } = string.Empty;
+  public string? Description { get; set; }
+  public string? Actor { get; set; }
+  public string? AuthorizedBy { get; set; }
+  public decimal? Amount { get; set; }
+  public bool IsNegative { get; set; }
+  public string? PaymentMethod { get; set; }
+  public Guid? OrderId { get; set; }
+  public int? OrderFolio { get; set; }
+  public string? CustomerName { get; set; }
 }
 
 public sealed class RestaurantCashRegisterDto

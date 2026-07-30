@@ -117,6 +117,17 @@
                     <i class="bi bi-arrow-right" aria-hidden="true"></i>
                 </button>
             </form>
+
+            <div class="auth-registration">
+                <span>¿Nuevo en OrionERP?</span>
+                <a class="auth-register"
+                   asp-area="Identity"
+                   asp-page="/Account/Register"
+                   asp-route-returnUrl="@Model.ReturnUrl">
+                    <i class="bi bi-person-plus" aria-hidden="true"></i>
+                    <span>Registrar nueva cuenta</span>
+                </a>
+            </div>
         </section>
     </main>
 </div>

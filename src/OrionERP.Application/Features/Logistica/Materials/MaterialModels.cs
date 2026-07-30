@@ -13,6 +13,8 @@ public sealed class MaterialFilter
   public string? MaterialClass { get; set; }
   public string? Status { get; set; }
   public bool? HasImage { get; set; }
+  public bool? HasStock { get; set; }
+  public bool NeedsAttention { get; set; }
   public int Skip { get; set; }
   public int Take { get; set; }
 }
@@ -117,6 +119,7 @@ public sealed class MaterialUpsertRequest
   public string MaterialClass { get; set; } = "Consumable";
 
   public bool IsActive { get; set; } = true;
+  public bool RemovePrimaryImage { get; set; }
   public byte[]? PrimaryImageBytes { get; set; }
   public string? PrimaryImageFileName { get; set; }
   public string? PrimaryImageContentType { get; set; }
@@ -131,4 +134,30 @@ public sealed class MaterialCatalogDto
   public IReadOnlyList<LookupOptionDto> Vendors { get; set; } = Array.Empty<LookupOptionDto>();
   public IReadOnlyList<string> MaterialClasses { get; set; } = Array.Empty<string>();
   public IReadOnlyList<string> Statuses { get; set; } = Array.Empty<string>();
+}
+
+public sealed class MaterialCategoryCreateRequest
+{
+  [Required]
+  public string Rfc { get; set; } = string.Empty;
+
+  [Required]
+  [StringLength(100)]
+  public string Name { get; set; } = string.Empty;
+
+  [StringLength(200)]
+  public string? Description { get; set; }
+}
+
+public sealed class UnitOfMeasureCreateRequest
+{
+  [Required]
+  [StringLength(50)]
+  public string Name { get; set; } = string.Empty;
+
+  [StringLength(10)]
+  public string? Abbreviation { get; set; }
+
+  [StringLength(200)]
+  public string? Description { get; set; }
 }

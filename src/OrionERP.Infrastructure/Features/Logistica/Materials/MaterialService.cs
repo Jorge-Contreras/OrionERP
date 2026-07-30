@@ -106,6 +106,27 @@ public sealed class MaterialService : IMaterialService
       sql.AppendLine(filter.HasImage.Value ? " AND m.PrimaryImage IS NOT NULL" : " AND m.PrimaryImage IS NULL");
     }
 
+    if (filter.HasStock.HasValue)
+    {
+      sql.AppendLine(filter.HasStock.Value
+        ? " AND ISNULL(st.TotalQuantity, 0) > 0"
+        : " AND ISNULL(st.TotalQuantity, 0) <= 0");
+    }
+
+    if (filter.NeedsAttention)
+    {
+      sql.AppendLine(
+        """
+         AND (
+              m.BusinessPartnerId IS NULL
+              OR m.CategoryId IS NULL
+              OR NULLIF(LTRIM(RTRIM(m.Barcode)), '') IS NULL
+              OR m.PrimaryImage IS NULL
+         )
+        """);
+    }
+
+    sql.AppendLine();
     sql.AppendLine("ORDER BY m.MaterialCode, m.[Description], m.Id");
 
     if (take > 0)
@@ -179,27 +200,64 @@ public sealed class MaterialService : IMaterialService
     const string sql =
       """
       SELECT Id, CategoryName AS Name, CategoryName AS Code
-      FROM logistica.MaterialCategory
-      WHERE Rfc = @Rfc
-        AND IsActive = 1
-      ORDER BY CategoryName, Id;
+      FROM logistica.MaterialCategory category
+      WHERE category.Rfc = @Rfc
+        AND
+        (
+            category.IsActive = 1
+            OR EXISTS
+            (
+                SELECT 1
+                FROM logistica.Material material
+                WHERE material.Rfc = @Rfc
+                  AND material.CategoryId = category.Id
+            )
+        )
+      ORDER BY category.CategoryName, category.Id;
 
       SELECT Id, UnitName AS Name, Abbreviation AS Code
-      FROM logistica.UnitOfMeasure
-      WHERE IsActive = 1
-      ORDER BY UnitName, Id;
+      FROM logistica.UnitOfMeasure unit
+      WHERE unit.IsActive = 1
+         OR EXISTS
+         (
+             SELECT 1
+             FROM logistica.Material material
+             WHERE material.Rfc = @Rfc
+               AND (material.BaseUnitId = unit.Id OR material.PurchaseUnitId = unit.Id)
+         )
+      ORDER BY unit.UnitName, unit.Id;
 
       SELECT
           bp.Id,
           bp.PartnerName AS Name,
           bp.Rfc AS Code
       FROM dbo.BusinessPartner bp
-      WHERE bp.IsActive = 1
-        AND (
-            EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
-            OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.Rfc = @Rfc AND vp.BusinessPartnerId = bp.Id)
+      WHERE EXISTS
+        (
+            SELECT 1
+            FROM dbo.BusinessPartnerRfcScope scope
+            WHERE scope.Rfc = @Rfc
+              AND scope.BusinessPartnerId = bp.Id
+              AND scope.IsActive = 1
         )
-        AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRfcScope scope WHERE scope.Rfc = @Rfc AND scope.BusinessPartnerId = bp.Id AND scope.IsActive = 1)
+        AND
+        (
+            (
+                bp.IsActive = 1
+                AND
+                (
+                    EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
+                    OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.Rfc = @Rfc AND vp.BusinessPartnerId = bp.Id)
+                )
+            )
+            OR EXISTS
+            (
+                SELECT 1
+                FROM logistica.Material material
+                WHERE material.Rfc = @Rfc
+                  AND material.BusinessPartnerId = bp.Id
+            )
+        )
       ORDER BY bp.PartnerName, bp.Id;
       """;
 
@@ -331,6 +389,7 @@ public sealed class MaterialService : IMaterialService
     {
       var materialId = request.Id ?? 0;
       var hasNewImage = request.PrimaryImageBytes is { Length: > 0 };
+      var updateImage = hasNewImage || request.RemovePrimaryImage;
       var imageContentType = LogisticsContentTypes.Normalize(
         request.PrimaryImageContentType,
         request.PrimaryImageFileName,
@@ -368,7 +427,7 @@ public sealed class MaterialService : IMaterialService
               IsActive = @IsActive
           """);
 
-        if (hasNewImage)
+        if (updateImage)
         {
           sql.AppendLine(
             """
@@ -408,9 +467,9 @@ public sealed class MaterialService : IMaterialService
               PurchaseLink = NullIfWhiteSpace(request.PurchaseLink),
               request.MaterialClass,
               request.IsActive,
-              PrimaryImage = request.PrimaryImageBytes,
-              PrimaryImageFileName = NullIfWhiteSpace(request.PrimaryImageFileName),
-              PrimaryImageContentType = imageContentType,
+              PrimaryImage = hasNewImage ? request.PrimaryImageBytes : null,
+              PrimaryImageFileName = hasNewImage ? NullIfWhiteSpace(request.PrimaryImageFileName) : null,
+              PrimaryImageContentType = hasNewImage ? imageContentType : null,
               PrimaryImageThumbnail = hasNewImage ? request.PrimaryImageThumbnailBytes : null,
               PrimaryImageThumbnailContentType = thumbnailContentType
             },
@@ -550,6 +609,121 @@ public sealed class MaterialService : IMaterialService
     {
       await tx.RollbackAsync(ct);
       throw;
+    }
+  }
+
+  public async Task<LogisticsCommandResult> CreateCategoryAsync(MaterialCategoryCreateRequest request, CancellationToken ct = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+
+    var rfc = LogisticsRfc.Require(request.Rfc);
+    var name = request.Name?.Trim();
+    if (string.IsNullOrWhiteSpace(name))
+    {
+      return LogisticsCommandResult.Fail("Escribe el nombre de la categoría.");
+    }
+
+    const string sql =
+      """
+      DECLARE @ExistingId int =
+      (
+          SELECT TOP (1) Id
+          FROM logistica.MaterialCategory
+          WHERE Rfc = @Rfc
+            AND CategoryName = @Name
+      );
+
+      IF @ExistingId IS NOT NULL
+      BEGIN
+          UPDATE logistica.MaterialCategory
+          SET IsActive = 1,
+              [Description] = COALESCE(@Description, [Description])
+          WHERE Rfc = @Rfc
+            AND Id = @ExistingId;
+
+          SELECT @ExistingId;
+          RETURN;
+      END;
+
+      INSERT INTO logistica.MaterialCategory (Rfc, CategoryName, [Description], IsActive)
+      VALUES (@Rfc, @Name, @Description, 1);
+
+      SELECT CAST(SCOPE_IDENTITY() AS int);
+      """;
+
+    try
+    {
+      using var conn = CreateConnection();
+      var categoryId = await conn.ExecuteScalarAsync<int>(
+        new CommandDefinition(
+          sql,
+          new { Rfc = rfc, Name = name, Description = NullIfWhiteSpace(request.Description) },
+          cancellationToken: ct));
+
+      return LogisticsCommandResult.Ok($"Categoría {name} lista para usar.", categoryId);
+    }
+    catch (SqlException ex) when (ex.Number is 2601 or 2627)
+    {
+      return LogisticsCommandResult.Fail("Ya existe una categoría con ese nombre.");
+    }
+  }
+
+  public async Task<LogisticsCommandResult> CreateUnitAsync(UnitOfMeasureCreateRequest request, CancellationToken ct = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+
+    var name = request.Name?.Trim();
+    if (string.IsNullOrWhiteSpace(name))
+    {
+      return LogisticsCommandResult.Fail("Escribe el nombre de la unidad.");
+    }
+
+    const string sql =
+      """
+      DECLARE @ExistingId int =
+      (
+          SELECT TOP (1) Id
+          FROM logistica.UnitOfMeasure
+          WHERE UnitName = @Name
+      );
+
+      IF @ExistingId IS NOT NULL
+      BEGIN
+          UPDATE logistica.UnitOfMeasure
+          SET IsActive = 1,
+              Abbreviation = COALESCE(@Abbreviation, Abbreviation),
+              [Description] = COALESCE(@Description, [Description])
+          WHERE Id = @ExistingId;
+
+          SELECT @ExistingId;
+          RETURN;
+      END;
+
+      INSERT INTO logistica.UnitOfMeasure (UnitName, Abbreviation, [Description], IsActive)
+      VALUES (@Name, @Abbreviation, @Description, 1);
+
+      SELECT CAST(SCOPE_IDENTITY() AS int);
+      """;
+
+    try
+    {
+      using var conn = CreateConnection();
+      var unitId = await conn.ExecuteScalarAsync<int>(
+        new CommandDefinition(
+          sql,
+          new
+          {
+            Name = name,
+            Abbreviation = NullIfWhiteSpace(request.Abbreviation),
+            Description = NullIfWhiteSpace(request.Description)
+          },
+          cancellationToken: ct));
+
+      return LogisticsCommandResult.Ok($"Unidad {name} lista para usar.", unitId);
+    }
+    catch (SqlException ex) when (ex.Number is 2601 or 2627)
+    {
+      return LogisticsCommandResult.Fail("Ya existe una unidad con ese nombre.");
     }
   }
 

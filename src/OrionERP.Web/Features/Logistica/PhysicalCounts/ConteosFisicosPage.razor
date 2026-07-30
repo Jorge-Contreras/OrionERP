@@ -2,7 +2,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using OrionERP.Application.Features.Logistica.PhysicalCounts
-@attribute [Authorize(Roles = "Administrador,Conteo")]
+@attribute [Authorize(Roles = "Administrador,Logistica,Conteo")]
 
 <PageTitle>Logística · Conteos físicos</PageTitle>
 
@@ -144,7 +144,7 @@
                                     </button>
                                 }
                                 <button class="btn btn-outline-primary conteos-session-action" type="button" @onclick="EnviarSesionAsync" disabled="@(!CanSubmit || IsMutatingSession)">Enviar</button>
-                                @if (IsAdministrator)
+                                @if (CanManageCounts)
                                 {
                                     <button class="btn btn-outline-warning conteos-session-action" type="button" @onclick="AbrirReconteo" disabled="@(!CanRequestRecount || IsMutatingSession)">Reconteo</button>
                                     <button class="btn btn-outline-success conteos-session-action" type="button" @onclick="AprobarSesionAsync" disabled="@(!CanApprove || IsMutatingSession)">Aprobar</button>

@@ -24,7 +24,23 @@
 
   @if (!string.IsNullOrWhiteSpace(error)) { <div class="kds-alert">@error</div> }
   @if (isLoading && board.Orders.Count == 0) { <section class="kds-empty"><span class="spinner-border"></span><h2>Cargando comandas…</h2></section> }
-  else if (board.Orders.Count == 0) { <section class="kds-empty"><span class="oi oi-check"></span><h2>Todo al día</h2><p>Las nuevas comandas aparecerán automáticamente.</p></section> }
+  else if (board.Orders.Count == 0)
+  {
+    <section class="kds-empty kds-empty--celebration" role="status" aria-live="polite" aria-labelledby="kds-empty-heading">
+      <div class="kds-empty__art" aria-hidden="true">
+        <img src="Images/Brunos/Kitchen/bruno-orders-complete.jpg"
+             alt=""
+             width="1254"
+             height="1254" />
+      </div>
+      <div class="kds-empty__message">
+        <span class="kds-empty__eyebrow">Cocina despejada</span>
+        <h2 id="kds-empty-heading">¡Excelente trabajo, equipo!</h2>
+        <p>Bruno está orgulloso de ustedes: atendieron todas las comandas.</p>
+        <small>Las nuevas comandas aparecerán automáticamente.</small>
+      </div>
+    </section>
+  }
   else
   {
     <section class="kds-board">

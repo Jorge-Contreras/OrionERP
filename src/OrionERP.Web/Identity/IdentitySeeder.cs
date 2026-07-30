@@ -23,6 +23,7 @@ namespace OrionERP.Web.Identity
                 "APAdmin",
                 "APOperator",
                 "APReadOnly"
+                ,"Logistica"
                 ,"RestauranteAdmin"
                 ,"RestauranteSupervisor"
                 ,"RestauranteCaja"

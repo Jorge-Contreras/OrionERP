@@ -604,7 +604,10 @@
     {
         var principal = authState.User;
         IsAuthenticated = principal.Identity?.IsAuthenticated == true;
-        HasConteoRole = IsAuthenticated && principal.IsInRole("Conteo");
+        HasConteoRole = IsAuthenticated
+            && (principal.IsInRole("Administrador")
+                || principal.IsInRole("Logistica")
+                || principal.IsInRole("Conteo"));
         HasCalendarioRole = IsAuthenticated
             && (principal.IsInRole("Administrador")
                 || principal.IsInRole("SatOperator")

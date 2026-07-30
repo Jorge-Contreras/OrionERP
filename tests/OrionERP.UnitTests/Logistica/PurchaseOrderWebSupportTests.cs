@@ -254,6 +254,12 @@ public class PurchaseOrderWebSupportTests
 
     public Task<LogisticsCommandResult> SaveMaterialAsync(MaterialUpsertRequest request, CancellationToken ct = default)
       => throw new NotSupportedException();
+
+    public Task<LogisticsCommandResult> CreateCategoryAsync(MaterialCategoryCreateRequest request, CancellationToken ct = default)
+      => throw new NotSupportedException();
+
+    public Task<LogisticsCommandResult> CreateUnitAsync(UnitOfMeasureCreateRequest request, CancellationToken ct = default)
+      => throw new NotSupportedException();
   }
 
   private sealed class FakeRfcState : IUserRfcState

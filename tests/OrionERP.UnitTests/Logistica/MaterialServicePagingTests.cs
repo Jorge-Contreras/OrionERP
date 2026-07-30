@@ -21,6 +21,8 @@ public class MaterialServicePagingTests
       MaterialClass = "Consumable",
       Status = "ACTIVO",
       HasImage = true,
+      HasStock = false,
+      NeedsAttention = true,
       Skip = 50,
       Take = 51
     });
@@ -33,6 +35,10 @@ public class MaterialServicePagingTests
     Assert.Contains("m.MaterialClass = @MaterialClass", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.Contains("m.MaterialStatus = @Status", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.Contains("m.PrimaryImage IS NOT NULL", connection.LastCommandText!, StringComparison.Ordinal);
+    Assert.Contains("ISNULL(st.TotalQuantity, 0) <= 0", connection.LastCommandText!, StringComparison.Ordinal);
+    Assert.Contains("m.BusinessPartnerId IS NULL", connection.LastCommandText!, StringComparison.Ordinal);
+    Assert.Contains("m.CategoryId IS NULL", connection.LastCommandText!, StringComparison.Ordinal);
+    Assert.Contains("NULLIF(LTRIM(RTRIM(m.Barcode)), '') IS NULL", connection.LastCommandText!, StringComparison.Ordinal);
 
     AssertParameter(connection.LastParameters, "@Search", "%aceite%");
     AssertParameter(connection.LastParameters, "@CategoryId", 3);
@@ -60,6 +66,7 @@ public class MaterialServicePagingTests
     Assert.NotNull(connection.LastCommandText);
     Assert.DoesNotContain("OFFSET @Skip ROWS", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.DoesNotContain("FETCH NEXT @Take ROWS ONLY;", connection.LastCommandText!, StringComparison.Ordinal);
+    Assert.DoesNotContain("@RfcORDER BY", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.DoesNotContain(connection.LastParameters, parameter => HasParameterName(parameter, "@Skip"));
     Assert.DoesNotContain(connection.LastParameters, parameter => HasParameterName(parameter, "@Take"));
   }

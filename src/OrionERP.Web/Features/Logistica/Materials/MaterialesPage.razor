@@ -3,354 +3,809 @@
 @using Microsoft.AspNetCore.Components.Forms
 @attribute [Authorize(Roles = "Administrador")]
 
-<PageTitle>Logística · Materiales</PageTitle>
+<PageTitle>Materiales · Logística</PageTitle>
 
-<div class="container-fluid py-3">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-        <div>
-            <h1 class="h3 mb-1">Materiales</h1>
-            <p class="text-muted mb-0">CRUD del maestro de materiales con código interno, imagen primaria y relación con proveedor.</p>
+<div class="container-fluid py-3 py-lg-4 materiales-page">
+    <header class="materiales-hero">
+        <div class="materiales-hero-copy">
+            <div class="materiales-eyebrow">
+                <i class="bi bi-box-seam" aria-hidden="true"></i>
+                Maestro de materiales
+            </div>
+            <h1>Materiales listos para operar</h1>
+            <p>Busca, completa y da de alta materiales sin abandonar tu flujo. Categorías, unidades y proveedores se crean justo cuando los necesitas.</p>
         </div>
-        <button type="button" class="btn btn-outline-primary" @onclick="NuevoMaterial">
-            Nuevo material
-        </button>
-    </div>
+        <div class="materiales-hero-actions">
+            <a class="btn btn-light materiales-hero-secondary" href="/logistica/proveedores">
+                <i class="bi bi-buildings" aria-hidden="true"></i>
+                Gestionar proveedores
+            </a>
+            <button type="button" class="btn btn-primary materiales-primary-action" @onclick="NuevoMaterial">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                Nuevo material
+            </button>
+        </div>
+        <div class="materiales-hero-metrics" aria-label="Resumen de la vista actual">
+            <div class="materiales-hero-metric">
+                <span>En esta vista</span>
+                <strong>@Materials.Count</strong>
+                <small>@(HasMoreMaterials ? "Hay más resultados" : "materiales cargados")</small>
+            </div>
+            <div class="materiales-hero-metric">
+                <span>Con existencia</span>
+                <strong>@LoadedWithStockCount</strong>
+                <small>listos para surtir</small>
+            </div>
+            <div class="materiales-hero-metric @(LoadedMissingVendorCount > 0 ? "needs-attention" : null)">
+                <span>Sin proveedor</span>
+                <strong>@LoadedMissingVendorCount</strong>
+                <small>requieren compra</small>
+            </div>
+            <div class="materiales-hero-metric @(LoadedMissingImageCount > 0 ? "needs-attention" : null)">
+                <span>Sin imagen</span>
+                <strong>@LoadedMissingImageCount</strong>
+                <small>por completar</small>
+            </div>
+        </div>
+    </header>
 
-    <div class="row g-3">
-        <div class="col-12 col-xl-5">
-            <section class="card shadow-sm">
-                <div class="card-body">
-                    <div class="row g-2 mb-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Buscar</label>
-                            <input class="form-control" type="search" placeholder="Código, descripción o barras" @bind="Filter.SearchText" @bind:event="oninput" />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Proveedor</label>
-                            <select class="form-select" @bind="Filter.VendorId">
-                                <option value="">Todos</option>
-                                @foreach (var option in Catalog.Vendors)
-                                {
-                                    <option value="@option.Id">@option.Name</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Categoría</label>
-                            <select class="form-select" @bind="Filter.CategoryId">
-                                <option value="">Todas</option>
-                                @foreach (var option in Catalog.Categories)
-                                {
-                                    <option value="@option.Id">@option.Name</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Clase</label>
-                            <select class="form-select" @bind="Filter.MaterialClass">
-                                <option value="">Todas</option>
-                                @foreach (var option in Catalog.MaterialClasses)
-                                {
-                                    <option value="@option">@option</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Estado</label>
-                            <select class="form-select" @bind="Filter.Status">
-                                <option value="">Todos</option>
-                                @foreach (var option in Catalog.Statuses)
-                                {
-                                    <option value="@option">@option</option>
-                                }
-                            </select>
-                        </div>
+    <div class="row g-3 g-xxl-4 materiales-workspace">
+        <div class="col-12 col-xl-5 col-xxl-4">
+            <section class="materiales-panel materiales-catalog-panel">
+                <div class="materiales-panel-heading">
+                    <div>
+                        <span class="materiales-step">1 · Encuentra</span>
+                        <h2>Catálogo</h2>
+                        <p>Los resultados se actualizan mientras escribes.</p>
                     </div>
+                    <button type="button"
+                            class="materiales-icon-button"
+                            title="Actualizar catálogo"
+                            aria-label="Actualizar catálogo"
+                            disabled="@IsListBusy"
+                            @onclick="BuscarAsync">
+                        <i class="bi bi-arrow-clockwise @(IsBusy ? "spin" : null)" aria-hidden="true"></i>
+                    </button>
+                </div>
 
-                    <div class="d-flex gap-2 mb-3">
-                        <button type="button" class="btn btn-primary" @onclick="BuscarAsync" disabled="@IsListBusy">
-                            @(IsBusy ? "Buscando..." : "Buscar")
-                        </button>
-                        <label class="form-check d-flex align-items-center gap-2 mb-0">
-                            <input class="form-check-input" type="checkbox" @bind="HasImageOnly" />
-                            <span class="form-check-label">Solo con imagen</span>
-                        </label>
-                    </div>
-
-                    <div class="table-responsive" style="max-height: 70vh;">
-                        <table class="table table-sm table-hover align-middle materiales-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="materiales-image-col">Foto</th>
-                                    <th>Código</th>
-                                    <th class="materiales-description-col">Material</th>
-                                    <th>Clase</th>
-                                    <th class="text-end">Existencia</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @if (!HasExecutedSearch)
-                                {
-                                    <tr>
-                                        <td colspan="5" class="text-center text-muted py-4">Usa los filtros y presiona Buscar para cargar materiales.</td>
-                                    </tr>
-                                }
-                                else if (IsBusy && Materials.Count == 0)
-                                {
-                                    <tr>
-                                        <td colspan="5" class="text-center text-muted py-4">Cargando materiales...</td>
-                                    </tr>
-                                }
-                                else if (Materials.Count == 0)
-                                {
-                                    <tr>
-                                        <td colspan="5" class="text-center text-muted py-4">No hay materiales para el filtro actual.</td>
-                                    </tr>
-                                }
-                                else
-                                {
-                                    @foreach (var item in Materials)
-                                    {
-                                        var thumbnailDataUrl = GetMaterialThumbnailDataUrl(item.Id);
-                                        var materialTitle = string.IsNullOrWhiteSpace(item.Description) ? item.MaterialCode : item.Description;
-                                        <tr class="@(item.Id == SelectedMaterialId ? "table-primary" : null)" style="cursor: pointer;" @onclick="() => SeleccionarMaterialAsync(item.Id)">
-                                            <td class="materiales-image-col">
-                                                @if (thumbnailDataUrl is not null)
-                                                {
-                                                    <button class="materiales-line-image-button" type="button" title="Ver imagen" aria-label="Ver imagen del material" @onclick="() => AbrirImagenMaterialAsync(item)" @onclick:stopPropagation="true">
-                                                        <img src="@thumbnailDataUrl" alt="Imagen de @materialTitle" class="materiales-line-image" />
-                                                    </button>
-                                                }
-                                                else
-                                                {
-                                                    <div class="materiales-line-image-placeholder">Sin foto</div>
-                                                }
-                                            </td>
-                                            <td>
-                                                <div class="fw-semibold">@item.MaterialCode</div>
-                                                <small class="text-muted">@item.Status</small>
-                                            </td>
-                                            <td class="materiales-description-col">
-                                                <div class="fw-semibold">@item.Description</div>
-                                                <small class="text-muted">@(string.IsNullOrWhiteSpace(item.VendorName) ? "Sin proveedor" : item.VendorName)</small>
-                                            </td>
-                                            <td>
-                                                <div>@item.MaterialClass</div>
-                                                <small class="text-muted">@(string.IsNullOrWhiteSpace(item.CategoryName) ? "Sin categoría" : item.CategoryName)</small>
-                                            </td>
-                                            <td class="text-end">
-                                                <div>@item.TotalQuantity.ToString("N2")</div>
-                                                <small class="text-muted">@item.LocationCount ubicaciones</small>
-                                            </td>
-                                        </tr>
-                                    }
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-
-                    @if (HasExecutedSearch && Materials.Count > 0)
+                <div class="materiales-search-shell">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    <input type="search"
+                           autocomplete="off"
+                           placeholder="Nombre, código, barras o código de proveedor"
+                           value="@Filter.SearchText"
+                           aria-label="Buscar materiales"
+                           @oninput="OnSearchInputAsync" />
+                    @if (!string.IsNullOrWhiteSpace(Filter.SearchText))
                     {
-                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
-                            <span class="text-muted small">Mostrando @Materials.Count materiales.</span>
-
-                            @if (HasMoreMaterials)
-                            {
-                                <button class="btn btn-outline-primary" type="button" @onclick="CargarMasAsync" disabled="@IsListBusy">
-                                    @(IsLoadingMore ? "Cargando..." : $"Cargar {PageSize} más")
-                                </button>
-                            }
-                        </div>
+                        <button type="button" title="Limpiar búsqueda" aria-label="Limpiar búsqueda" @onclick="ClearSearchAsync">
+                            <i class="bi bi-x-lg" aria-hidden="true"></i>
+                        </button>
+                    }
+                    @if (IsBusy)
+                    {
+                        <span class="materiales-search-progress" aria-label="Buscando"></span>
                     }
                 </div>
+
+                <div class="materiales-quick-filters" aria-label="Filtros rápidos">
+                    <button type="button"
+                            class="@GetFilterChipClass(string.Equals(Filter.Status, "ACTIVO", StringComparison.OrdinalIgnoreCase))"
+                            @onclick='() => ToggleStatusFilterAsync("ACTIVO")'>
+                        <i class="bi bi-check-circle" aria-hidden="true"></i>
+                        Activos
+                    </button>
+                    <button type="button"
+                            class="@GetFilterChipClass(Filter.HasStock == false)"
+                            @onclick="() => SetStockFilterAsync(false)">
+                        <i class="bi bi-0-circle" aria-hidden="true"></i>
+                        Sin existencia
+                    </button>
+                    <button type="button"
+                            class="@GetFilterChipClass(Filter.HasImage == false)"
+                            @onclick="() => SetImageFilterAsync(false)">
+                        <i class="bi bi-image" aria-hidden="true"></i>
+                        Sin foto
+                    </button>
+                    <button type="button"
+                            class="@GetFilterChipClass(Filter.NeedsAttention)"
+                            @onclick="ToggleNeedsAttentionAsync">
+                        <i class="bi bi-stars" aria-hidden="true"></i>
+                        Por completar
+                    </button>
+                </div>
+
+                <div class="materiales-filter-actions">
+                    <button type="button"
+                            class="materiales-filter-toggle"
+                            aria-expanded="@ShowAdvancedFilters"
+                            @onclick="ToggleAdvancedFilters">
+                        <i class="bi bi-sliders" aria-hidden="true"></i>
+                        Más filtros
+                        @if (ActiveFilterCount > 0)
+                        {
+                            <span>@ActiveFilterCount</span>
+                        }
+                        <i class="bi @(ShowAdvancedFilters ? "bi-chevron-up" : "bi-chevron-down") ms-auto" aria-hidden="true"></i>
+                    </button>
+                    @if (ActiveFilterCount > 0)
+                    {
+                        <button type="button" class="materiales-clear-filters" @onclick="ResetFiltersAsync">Limpiar todo</button>
+                    }
+                </div>
+
+                @if (ShowAdvancedFilters)
+                {
+                    <div class="materiales-advanced-filters">
+                        <div class="row g-2">
+                            <div class="col-12">
+                                <label class="form-label">Proveedor</label>
+                                <VendorCombobox Options="@Catalog.Vendors"
+                                                SelectedId="@Filter.VendorId"
+                                                SelectedIdChanged="OnVendorFilterChangedAsync"
+                                                AriaLabel="Filtrar por proveedor"
+                                                Placeholder="Nombre o RFC del proveedor" />
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label" for="material-category-filter">Categoría</label>
+                                <select id="material-category-filter" class="form-select" value="@Filter.CategoryId" @onchange="OnCategoryFilterChangedAsync">
+                                    <option value="">Todas las categorías</option>
+                                    @foreach (var option in Catalog.Categories)
+                                    {
+                                        <option value="@option.Id">@option.Name</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label" for="material-class-filter">Clase</label>
+                                <select id="material-class-filter" class="form-select" value="@Filter.MaterialClass" @onchange="OnMaterialClassFilterChangedAsync">
+                                    <option value="">Todas las clases</option>
+                                    @foreach (var option in Catalog.MaterialClasses)
+                                    {
+                                        <option value="@option">@GetMaterialClassLabel(option)</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label" for="material-status-filter">Estado</label>
+                                <select id="material-status-filter" class="form-select" value="@Filter.Status" @onchange="OnStatusFilterChangedAsync">
+                                    <option value="">Todos los estados</option>
+                                    @foreach (var option in Catalog.Statuses)
+                                    {
+                                        <option value="@option">@GetStatusLabel(option)</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label">Disponibilidad</label>
+                                <div class="materiales-segmented">
+                                    <button type="button" class="@(Filter.HasStock is null ? "is-active" : null)" @onclick="() => SetStockFilterAsync(null)">Todos</button>
+                                    <button type="button" class="@(Filter.HasStock == true ? "is-active" : null)" @onclick="() => SetStockFilterAsync(true)">Con stock</button>
+                                    <button type="button" class="@(Filter.HasStock == false ? "is-active" : null)" @onclick="() => SetStockFilterAsync(false)">Sin stock</button>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Imagen</label>
+                                <div class="materiales-segmented">
+                                    <button type="button" class="@(Filter.HasImage is null ? "is-active" : null)" @onclick="() => SetImageFilterAsync(null)">Todas</button>
+                                    <button type="button" class="@(Filter.HasImage == true ? "is-active" : null)" @onclick="() => SetImageFilterAsync(true)">Con foto</button>
+                                    <button type="button" class="@(Filter.HasImage == false ? "is-active" : null)" @onclick="() => SetImageFilterAsync(false)">Sin foto</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <div class="materiales-results-heading">
+                    <div>
+                        <strong>@(IsBusy && Materials.Count == 0 ? "Buscando…" : $"{Materials.Count} materiales")</strong>
+                        <span>@(HasMoreMaterials ? "Mostrando los primeros resultados" : "Resultado actual")</span>
+                    </div>
+                    @if (SelectedMaterialId.HasValue)
+                    {
+                        <button type="button" @onclick="NuevoMaterial">
+                            <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                            Crear otro
+                        </button>
+                    }
+                </div>
+
+                <div class="materiales-results" aria-live="polite">
+                    @if (!HasExecutedSearch || (IsBusy && Materials.Count == 0))
+                    {
+                        @for (var index = 0; index < 5; index++)
+                        {
+                            <div class="materiales-result-skeleton" aria-hidden="true">
+                                <span></span>
+                                <div><span></span><span></span><span></span></div>
+                            </div>
+                        }
+                    }
+                    else if (Materials.Count == 0)
+                    {
+                        <div class="materiales-empty-state">
+                            <span class="materiales-empty-icon"><i class="bi bi-search" aria-hidden="true"></i></span>
+                            <h3>No encontramos materiales</h3>
+                            <p>Prueba otro término o limpia los filtros. También puedes crear el material ahora mismo.</p>
+                            <div>
+                                @if (ActiveFilterCount > 0)
+                                {
+                                    <button type="button" class="btn btn-outline-secondary" @onclick="ResetFiltersAsync">Limpiar filtros</button>
+                                }
+                                <button type="button" class="btn btn-primary" @onclick="NuevoMaterial">Nuevo material</button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var item in Materials)
+                        {
+                            var thumbnailDataUrl = GetMaterialThumbnailDataUrl(item.Id);
+                            var materialTitle = string.IsNullOrWhiteSpace(item.Description) ? item.MaterialCode : item.Description;
+                            <article class="@GetMaterialRowClass(item)">
+                                <button class="materiales-result-image"
+                                        type="button"
+                                        title="Ver imagen de @materialTitle"
+                                        aria-label="Ver imagen de @materialTitle"
+                                        disabled="@(!item.HasImage)"
+                                        @onclick="() => AbrirImagenMaterialAsync(item)">
+                                    @if (thumbnailDataUrl is not null)
+                                    {
+                                        <img src="@thumbnailDataUrl" alt="" />
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-box-seam" aria-hidden="true"></i>
+                                    }
+                                </button>
+                                <button class="materiales-result-main"
+                                        type="button"
+                                        aria-label="@GetMaterialAriaLabel(item)"
+                                        @onclick="() => SeleccionarMaterialAsync(item.Id)">
+                                    <span class="materiales-result-topline">
+                                        <strong>@materialTitle</strong>
+                                        <span class="materiales-status @GetStatusBadgeClass(item.Status)">@GetStatusLabel(item.Status)</span>
+                                    </span>
+                                    <span class="materiales-result-code">@item.MaterialCode</span>
+                                    <span class="materiales-result-meta">
+                                        <span><i class="bi bi-tag" aria-hidden="true"></i>@(string.IsNullOrWhiteSpace(item.CategoryName) ? "Sin categoría" : item.CategoryName)</span>
+                                        <span><i class="bi bi-building" aria-hidden="true"></i>@(string.IsNullOrWhiteSpace(item.VendorName) ? "Sin proveedor" : item.VendorName)</span>
+                                    </span>
+                                    <span class="materiales-result-bottom">
+                                        <span class="materiales-stock @(item.TotalQuantity <= 0 ? "is-empty" : null)">
+                                            @item.TotalQuantity.ToString("N2") @(string.IsNullOrWhiteSpace(item.BaseUnitName) ? "unid." : item.BaseUnitName)
+                                        </span>
+                                        <span>@item.LocationCount ubic.</span>
+                                        @if (MaterialNeedsAttention(item))
+                                        {
+                                            <span class="materiales-attention"><i class="bi bi-stars" aria-hidden="true"></i> Completar</span>
+                                        }
+                                    </span>
+                                </button>
+                            </article>
+                        }
+                    }
+                </div>
+
+                @if (HasMoreMaterials)
+                {
+                    <button class="materiales-load-more" type="button" @onclick="CargarMasAsync" disabled="@IsListBusy">
+                        @if (IsLoadingMore)
+                        {
+                            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                            <span>Cargando más…</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-arrow-down-circle" aria-hidden="true"></i>
+                            <span>Cargar @PageSize más</span>
+                        }
+                    </button>
+                }
             </section>
         </div>
 
-        <div class="col-12 col-xl-7">
-            <section class="card shadow-sm">
-                <div class="card-body">
-                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
-                        <div>
-                            <h2 class="h5 mb-1">@(Editor.Id.HasValue ? "Editar material" : "Nuevo material")</h2>
-                            <div class="text-muted">Código interno: <span class="fw-semibold">@(CurrentMaterialCode ?? "Se asignará al guardar")</span></div>
+        <div class="col-12 col-xl-7 col-xxl-8">
+            <section id="material-editor" class="materiales-panel materiales-editor-panel">
+                <div class="materiales-editor-heading">
+                    <div class="materiales-editor-title">
+                        <span class="materiales-step">2 · Completa</span>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <h2>@(Editor.Id.HasValue ? "Editar material" : "Nuevo material")</h2>
+                            @if (Editor.Id.HasValue)
+                            {
+                                <span class="materiales-code-pill">@CurrentMaterialCode</span>
+                            }
                         </div>
-                        @if (ImagePreviewDataUrl is not null)
-                        {
-                            <img src="@ImagePreviewDataUrl" alt="Vista previa del material" class="img-thumbnail materiales-editor-preview" />
-                        }
+                        <p>@(Editor.Id.HasValue ? "Los cambios conservan el código interno y el historial de inventario." : "El código interno se asignará automáticamente al guardar.")</p>
                     </div>
+                    <div class="materiales-readiness" title="@MaterialReadinessLabel">
+                        <div class="materiales-readiness-copy">
+                            <span>Ficha @MaterialReadinessPercent%</span>
+                            <strong>@MaterialReadinessLabel</strong>
+                        </div>
+                        <div class="materiales-readiness-track" aria-label="Ficha completa al @MaterialReadinessPercent por ciento">
+                            <span style="width: @(MaterialReadinessPercent)%"></span>
+                        </div>
+                    </div>
+                </div>
 
-                    <EditForm Model="Editor" OnValidSubmit="GuardarAsync">
-                        <DataAnnotationsValidator />
-                        <ValidationSummary />
+                @if (IsLoadingEditor)
+                {
+                    <div class="materiales-editor-loading">
+                        <span class="spinner-border" aria-hidden="true"></span>
+                        <span>Cargando ficha del material…</span>
+                    </div>
+                }
+
+                <EditForm Model="Editor" OnValidSubmit="GuardarAsync" class="materiales-form">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary class="materiales-validation-summary" />
+
+                    <section class="materiales-form-section">
+                        <div class="materiales-section-heading">
+                            <span class="materiales-section-icon"><i class="bi bi-card-text" aria-hidden="true"></i></span>
+                            <div>
+                                <h3>Identidad del material</h3>
+                                <p>Lo mínimo para reconocerlo sin ambigüedad en compras e inventario.</p>
+                            </div>
+                        </div>
 
                         <div class="row g-3">
-                            <div class="col-md-8">
-                                <label class="form-label">Descripción</label>
-                                <InputText class="form-control" @bind-Value="Editor.Description" />
+                            <div class="col-lg-8">
+                                <label class="form-label" for="material-description">Descripción <span class="materiales-required">Obligatorio</span></label>
+                                <InputText id="material-description"
+                                           class="form-control form-control-lg"
+                                           placeholder="Ej. Toalla de baño blanca 70 × 140 cm"
+                                           @bind-Value="Editor.Description" />
+                                <ValidationMessage For="@(() => Editor.Description)" />
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Clase</label>
-                                <InputSelect class="form-select" @bind-Value="Editor.MaterialClass">
+                            <div class="col-sm-6 col-lg-4">
+                                <label class="form-label" for="material-class">Clase</label>
+                                <InputSelect id="material-class" class="form-select form-select-lg" @bind-Value="Editor.MaterialClass">
                                     @foreach (var option in Catalog.MaterialClasses)
                                     {
-                                        <option value="@option">@option</option>
+                                        <option value="@option">@GetMaterialClassLabel(option)</option>
                                     }
                                 </InputSelect>
                             </div>
 
-                            <div class="col-md-4">
-                                <label class="form-label">Categoría</label>
-                                <InputSelect class="form-select" @bind-Value="Editor.CategoryId">
-                                    <option value="">Sin categoría</option>
+                            <div class="col-md-6">
+                                <div class="materiales-field-label-row">
+                                    <label class="form-label" for="material-category">Categoría</label>
+                                    <button type="button" class="materiales-inline-create" @onclick="OpenCategoryDialog">
+                                        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                                        Nueva categoría
+                                    </button>
+                                </div>
+                                <InputSelect id="material-category" class="form-select" @bind-Value="Editor.CategoryId">
+                                    <option value="">Selecciona una categoría</option>
                                     @foreach (var option in Catalog.Categories)
                                     {
                                         <option value="@option.Id">@option.Name</option>
                                     }
                                 </InputSelect>
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Unidad base</label>
-                                <InputSelect class="form-select" @bind-Value="Editor.BaseUnitId">
+                            <div class="col-md-6">
+                                <div class="materiales-field-label-row">
+                                    <label class="form-label" for="material-base-unit">Unidad base <span class="materiales-required">Obligatorio</span></label>
+                                    <button type="button" class="materiales-inline-create" @onclick="() => OpenUnitDialog(UnitSelectionTarget.Base)">
+                                        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                                        Nueva UoM
+                                    </button>
+                                </div>
+                                <InputSelect id="material-base-unit" class="form-select" @bind-Value="Editor.BaseUnitId">
                                     @foreach (var option in Catalog.Units)
                                     {
-                                        <option value="@option.Id">@option.Name</option>
+                                        <option value="@option.Id">@GetUnitDisplay(option)</option>
                                     }
                                 </InputSelect>
+                                <div class="form-text">Unidad en la que se controla la existencia.</div>
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Unidad compra</label>
-                                <InputSelect class="form-select" @bind-Value="Editor.PurchaseUnitId">
-                                    <option value="">Sin unidad</option>
+
+                            <div class="col-12">
+                                <label class="form-label">Imagen del material</label>
+                                <div class="materiales-image-uploader @(ImagePreviewDataUrl is not null ? "has-image" : null)">
+                                    @if (ImagePreviewDataUrl is not null)
+                                    {
+                                        <img src="@ImagePreviewDataUrl" alt="Vista previa del material" />
+                                        <div class="materiales-image-copy">
+                                            <strong>@(string.IsNullOrWhiteSpace(SelectedImageFileName) ? "Imagen actual" : SelectedImageFileName)</strong>
+                                            <span>Selecciona otra imagen para reemplazarla.</span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="materiales-upload-icon"><i class="bi bi-cloud-arrow-up" aria-hidden="true"></i></span>
+                                        <div class="materiales-image-copy">
+                                            <strong>Agrega una foto clara</strong>
+                                            <span>JPG, PNG, WebP y otros formatos de imagen · máximo 8 MB</span>
+                                        </div>
+                                    }
+                                    <InputFile class="materiales-file-input"
+                                               OnChange="OnImageSelectedAsync"
+                                               Accept=".jpg,.jpeg,.png,.gif,.webp,.bmp"
+                                               aria-label="Seleccionar imagen del material" />
+                                    @if (ImagePreviewDataUrl is not null)
+                                    {
+                                        <button type="button" class="materiales-remove-image" @onclick="RemoveImage">
+                                            <i class="bi bi-trash3" aria-hidden="true"></i>
+                                            Quitar
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="materiales-form-section">
+                        <div class="materiales-section-heading">
+                            <span class="materiales-section-icon is-purchase"><i class="bi bi-cart3" aria-hidden="true"></i></span>
+                            <div>
+                                <h3>Abastecimiento</h3>
+                                <p>Proveedor, presentación y costo listos para una orden de compra.</p>
+                            </div>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <div class="materiales-field-label-row">
+                                    <label class="form-label">Proveedor preferido</label>
+                                    <button type="button" class="materiales-inline-create" @onclick="OpenVendorDialog">
+                                        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                                        Nuevo proveedor
+                                    </button>
+                                </div>
+                                <VendorCombobox Options="@Catalog.Vendors"
+                                                SelectedId="@Editor.BusinessPartnerId"
+                                                SelectedIdChanged="OnEditorVendorChangedAsync"
+                                                AriaLabel="Proveedor preferido"
+                                                Placeholder="Escribe nombre o RFC para encontrarlo" />
+                                <div class="form-text">Busca entre todos los proveedores activos del RFC seleccionado.</div>
+                            </div>
+
+                            <div class="col-md-6 col-xxl-4">
+                                <div class="materiales-field-label-row">
+                                    <label class="form-label" for="material-purchase-unit">Presentación de compra</label>
+                                    <button type="button" class="materiales-inline-create" @onclick="() => OpenUnitDialog(UnitSelectionTarget.Purchase)">
+                                        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                                        Nueva UoM
+                                    </button>
+                                </div>
+                                <InputSelect id="material-purchase-unit" class="form-select" @bind-Value="Editor.PurchaseUnitId">
+                                    <option value="">Sin presentación</option>
                                     @foreach (var option in Catalog.Units)
                                     {
-                                        <option value="@option.Id">@option.Name</option>
+                                        <option value="@option.Id">@GetUnitDisplay(option)</option>
                                     }
                                 </InputSelect>
                             </div>
-
-                            <div class="col-md-4">
-                                <label class="form-label">Cantidad por compra</label>
-                                <InputNumber class="form-control" @bind-Value="Editor.PurchaseQuantity" />
+                            <div class="col-md-3 col-xxl-2">
+                                <label class="form-label" for="material-purchase-quantity">Contenido</label>
+                                <InputNumber id="material-purchase-quantity" class="form-control" step="0.0001" @bind-Value="Editor.PurchaseQuantity" />
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Proveedor</label>
-                                <InputSelect class="form-select" @bind-Value="Editor.BusinessPartnerId">
-                                    <option value="">Sin proveedor</option>
-                                    @foreach (var option in Catalog.Vendors)
-                                    {
-                                        <option value="@option.Id">@option.Name</option>
-                                    }
-                                </InputSelect>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Precio</label>
-                                <InputNumber class="form-control" @bind-Value="Editor.Price" />
-                            </div>
-
-                            <div class="col-md-4">
-                                <label class="form-label">Marca</label>
-                                <InputText class="form-control" @bind-Value="Editor.Brand" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Modelo</label>
-                                <InputText class="form-control" @bind-Value="Editor.Model" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Estado</label>
-                                <InputSelect class="form-select" @bind-Value="Editor.Status">
-                                    @foreach (var option in Catalog.Statuses)
-                                    {
-                                        <option value="@option">@option</option>
-                                    }
-                                </InputSelect>
-                            </div>
-
-                            <div class="col-md-4">
-                                <label class="form-label">Código de barras</label>
-                                <InputText class="form-control" @bind-Value="Editor.Barcode" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Código proveedor</label>
-                                <InputText class="form-control" @bind-Value="Editor.VendorCode" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Liga de compra</label>
-                                <InputText class="form-control" @bind-Value="Editor.PurchaseLink" />
-                            </div>
-
-                            <div class="col-md-4">
-                                <div class="form-check mt-4">
-                                    <InputCheckbox class="form-check-input" @bind-Value="Editor.IsPerishable" />
-                                    <label class="form-check-label">Perecedero</label>
+                            <div class="col-md-3 col-xxl-2">
+                                <label class="form-label" for="material-price">Precio</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <InputNumber id="material-price" class="form-control" step="0.01" @bind-Value="Editor.Price" />
                                 </div>
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Días de caducidad</label>
-                                <InputNumber class="form-control" @bind-Value="Editor.ShelfLifeDays" />
-                            </div>
-                            <div class="col-md-4">
-                                <div class="form-check mt-4">
-                                    <InputCheckbox class="form-check-input" @bind-Value="Editor.RequiresRefrigeration" />
-                                    <label class="form-check-label">Requiere refrigeración</label>
+                            <div class="col-12 col-xxl-4">
+                                <label class="form-label">Conversión de compra</label>
+                                <div class="materiales-conversion-preview">
+                                    <i class="bi bi-arrow-left-right" aria-hidden="true"></i>
+                                    <span>@PurchaseConversionSummary</span>
                                 </div>
+                            </div>
+
+                            <div class="col-md-5">
+                                <label class="form-label" for="material-vendor-code">Código del proveedor</label>
+                                <InputText id="material-vendor-code" class="form-control" placeholder="SKU o referencia externa" @bind-Value="Editor.VendorCode" />
+                            </div>
+                            <div class="col-md-7">
+                                <label class="form-label" for="material-purchase-link">Liga de compra</label>
+                                <div class="materiales-input-with-icon">
+                                    <i class="bi bi-link-45deg" aria-hidden="true"></i>
+                                    <InputText id="material-purchase-link" class="form-control" placeholder="https://…" @bind-Value="Editor.PurchaseLink" />
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="materiales-form-section">
+                        <div class="materiales-section-heading">
+                            <span class="materiales-section-icon is-operation"><i class="bi bi-upc-scan" aria-hidden="true"></i></span>
+                            <div>
+                                <h3>Control operativo</h3>
+                                <p>Datos para identificar, recibir y manejar correctamente el material.</p>
+                            </div>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="material-barcode">Código de barras</label>
+                                <div class="materiales-input-with-icon">
+                                    <i class="bi bi-upc" aria-hidden="true"></i>
+                                    <InputText id="material-barcode" class="form-control" placeholder="Escanea o captura el código" @bind-Value="Editor.Barcode" />
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="material-brand">Marca</label>
+                                <InputText id="material-brand" class="form-control" @bind-Value="Editor.Brand" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="material-model">Modelo</label>
+                                <InputText id="material-model" class="form-control" @bind-Value="Editor.Model" />
                             </div>
 
                             <div class="col-md-6">
-                                <label class="form-label">Imagen primaria</label>
-                                <InputFile OnChange="OnImageSelectedAsync" Accept=".jpg,.jpeg,.png,.gif,.webp,.bmp" />
-                                @if (!string.IsNullOrWhiteSpace(SelectedImageFileName))
-                                {
-                                    <div class="form-text">@SelectedImageFileName</div>
-                                }
+                                <label class="materiales-toggle-card">
+                                    <InputCheckbox class="form-check-input" @bind-Value="Editor.IsPerishable" />
+                                    <span class="materiales-toggle-icon"><i class="bi bi-calendar2-week" aria-hidden="true"></i></span>
+                                    <span>
+                                        <strong>Material perecedero</strong>
+                                        <small>Controla caducidad y rotación.</small>
+                                    </span>
+                                </label>
                             </div>
-                            <div class="col-md-3">
-                                <div class="form-check mt-4">
-                                    <InputCheckbox class="form-check-input" @bind-Value="Editor.IsActive" />
-                                    <label class="form-check-label">Activo</label>
+                            <div class="col-md-6">
+                                <label class="materiales-toggle-card">
+                                    <InputCheckbox class="form-check-input" @bind-Value="Editor.RequiresRefrigeration" />
+                                    <span class="materiales-toggle-icon is-cold"><i class="bi bi-snow" aria-hidden="true"></i></span>
+                                    <span>
+                                        <strong>Requiere refrigeración</strong>
+                                        <small>Señala manejo con cadena fría.</small>
+                                    </span>
+                                </label>
+                            </div>
+                            @if (Editor.IsPerishable)
+                            {
+                                <div class="col-md-6">
+                                    <label class="form-label" for="material-shelf-life">Vida útil en días</label>
+                                    <InputNumber id="material-shelf-life" class="form-control" @bind-Value="Editor.ShelfLifeDays" />
                                 </div>
-                            </div>
+                            }
                         </div>
 
-                        <div class="d-flex gap-2 mt-4">
-                            <button type="submit" class="btn btn-primary" disabled="@IsSaving">
-                                @(IsSaving ? "Guardando..." : "Guardar material")
-                            </button>
-                            <button type="button" class="btn btn-outline-secondary" @onclick="NuevoMaterial" disabled="@IsSaving">Limpiar</button>
+                        <button type="button"
+                                class="materiales-more-toggle"
+                                aria-expanded="@ShowMoreFields"
+                                @onclick="() => ShowMoreFields = !ShowMoreFields">
+                            <i class="bi bi-three-dots" aria-hidden="true"></i>
+                            @(ShowMoreFields ? "Ocultar configuración avanzada" : "Mostrar configuración avanzada")
+                            <i class="bi @(ShowMoreFields ? "bi-chevron-up" : "bi-chevron-down") ms-auto" aria-hidden="true"></i>
+                        </button>
+
+                        @if (ShowMoreFields)
+                        {
+                            <div class="materiales-more-fields">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label" for="material-status">Estado logístico</label>
+                                        <InputSelect id="material-status" class="form-select" @bind-Value="Editor.Status">
+                                            @foreach (var option in Catalog.Statuses)
+                                            {
+                                                <option value="@option">@GetStatusLabel(option)</option>
+                                            }
+                                        </InputSelect>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="materiales-toggle-card is-compact">
+                                            <InputCheckbox class="form-check-input" @bind-Value="Editor.IsActive" />
+                                            <span>
+                                                <strong>Registro activo</strong>
+                                                <small>Disponible en selectores y operaciones.</small>
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </section>
+
+                    <div class="materiales-save-bar">
+                        <div class="materiales-save-context">
+                            <span class="materiales-status @GetStatusBadgeClass(Editor.Status)">@GetStatusLabel(Editor.Status)</span>
+                            <span>@(Editor.Id.HasValue ? CurrentMaterialCode : "Código automático")</span>
+                            @if (MaterialReadinessPercent < 65)
+                            {
+                                <span class="materiales-save-hint"><i class="bi bi-info-circle" aria-hidden="true"></i> Puedes guardar y completar después.</span>
+                            }
                         </div>
-                    </EditForm>
-                </div>
+                        <div class="materiales-save-actions">
+                            @if (Editor.Id.HasValue)
+                            {
+                                <button type="button" class="btn btn-outline-secondary" @onclick="NuevoMaterial" disabled="@IsSaving">Cancelar edición</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-outline-secondary" @onclick="NuevoMaterial" disabled="@IsSaving">Limpiar</button>
+                            }
+                            <button type="submit" class="btn btn-primary" disabled="@IsSaving">
+                                @if (IsSaving)
+                                {
+                                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                    <span>Guardando…</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-check2" aria-hidden="true"></i>
+                                    <span>@(Editor.Id.HasValue ? "Guardar cambios" : "Crear material")</span>
+                                }
+                            </button>
+                        </div>
+                    </div>
+                </EditForm>
             </section>
         </div>
     </div>
 </div>
 
+@if (ShowCategoryDialog)
+{
+    <div class="modal fade show d-block materiales-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="category-dialog-title">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content materiales-modal">
+                <EditForm Model="CategoryDraft" OnValidSubmit="SaveCategoryAsync">
+                    <DataAnnotationsValidator />
+                    <div class="modal-header">
+                        <div>
+                            <span class="materiales-modal-icon"><i class="bi bi-tags" aria-hidden="true"></i></span>
+                            <h2 id="category-dialog-title" class="modal-title h5">Nueva categoría</h2>
+                            <p>Quedará disponible de inmediato para el RFC activo.</p>
+                        </div>
+                        <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CloseCategoryDialog"></button>
+                    </div>
+                    <div class="modal-body">
+                        <ValidationSummary />
+                        <div class="mb-3">
+                            <label class="form-label" for="new-category-name">Nombre</label>
+                            <InputText id="new-category-name" class="form-control form-control-lg" placeholder="Ej. Blancos y textiles" @bind-Value="CategoryDraft.Name" />
+                        </div>
+                        <div>
+                            <label class="form-label" for="new-category-description">Descripción <span class="text-muted">(opcional)</span></label>
+                            <InputTextArea id="new-category-description" class="form-control" rows="3" @bind-Value="CategoryDraft.Description" />
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CloseCategoryDialog" disabled="@IsSavingMasterData">Cancelar</button>
+                        <button type="submit" class="btn btn-primary" disabled="@IsSavingMasterData">
+                            @(IsSavingMasterData ? "Creando…" : "Crear y seleccionar")
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+}
+
+@if (ShowUnitDialog)
+{
+    <div class="modal fade show d-block materiales-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="unit-dialog-title">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content materiales-modal">
+                <EditForm Model="UnitDraft" OnValidSubmit="SaveUnitAsync">
+                    <DataAnnotationsValidator />
+                    <div class="modal-header">
+                        <div>
+                            <span class="materiales-modal-icon is-unit"><i class="bi bi-rulers" aria-hidden="true"></i></span>
+                            <h2 id="unit-dialog-title" class="modal-title h5">Nueva unidad de medida</h2>
+                            <p>Se seleccionará como unidad @(PendingUnitTarget == UnitSelectionTarget.Base ? "base" : "de compra") al crearla.</p>
+                        </div>
+                        <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CloseUnitDialog"></button>
+                    </div>
+                    <div class="modal-body">
+                        <ValidationSummary />
+                        <div class="row g-3">
+                            <div class="col-sm-8">
+                                <label class="form-label" for="new-unit-name">Nombre</label>
+                                <InputText id="new-unit-name" class="form-control form-control-lg" placeholder="Ej. Caja de 12" @bind-Value="UnitDraft.Name" />
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label" for="new-unit-abbreviation">Abreviatura</label>
+                                <InputText id="new-unit-abbreviation" class="form-control form-control-lg" placeholder="CJ12" @bind-Value="UnitDraft.Abbreviation" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="new-unit-description">Descripción <span class="text-muted">(opcional)</span></label>
+                                <InputTextArea id="new-unit-description" class="form-control" rows="3" @bind-Value="UnitDraft.Description" />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CloseUnitDialog" disabled="@IsSavingMasterData">Cancelar</button>
+                        <button type="submit" class="btn btn-primary" disabled="@IsSavingMasterData">
+                            @(IsSavingMasterData ? "Creando…" : "Crear y seleccionar")
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+}
+
+@if (ShowVendorDialog)
+{
+    <div class="modal fade show d-block materiales-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="vendor-dialog-title">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content materiales-modal">
+                <EditForm Model="VendorDraft" OnValidSubmit="SaveVendorAsync">
+                    <DataAnnotationsValidator />
+                    <div class="modal-header">
+                        <div>
+                            <span class="materiales-modal-icon is-vendor"><i class="bi bi-building-add" aria-hidden="true"></i></span>
+                            <h2 id="vendor-dialog-title" class="modal-title h5">Nuevo proveedor</h2>
+                            <p>Crea el socio con rol de proveedor sin perder los datos del material.</p>
+                        </div>
+                        <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CloseVendorDialog"></button>
+                    </div>
+                    <div class="modal-body">
+                        <ValidationSummary />
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <label class="form-label" for="new-vendor-name">Nombre o razón social</label>
+                                <InputText id="new-vendor-name" class="form-control form-control-lg" placeholder="Proveedor" @bind-Value="VendorDraft.DisplayName" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="new-vendor-rfc">RFC</label>
+                                <InputText id="new-vendor-rfc" class="form-control form-control-lg text-uppercase" @bind-Value="VendorDraft.Rfc" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="new-vendor-email">Correo</label>
+                                <InputText id="new-vendor-email" class="form-control" type="email" @bind-Value="VendorDraft.Email" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="new-vendor-phone">Teléfono</label>
+                                <InputText id="new-vendor-phone" class="form-control" type="tel" @bind-Value="VendorDraft.Phone" />
+                            </div>
+                        </div>
+                        <div class="materiales-modal-note">
+                            <i class="bi bi-shield-check" aria-hidden="true"></i>
+                            <span>Se creará activo, aprobado y con alcance al RFC seleccionado. Puedes completar dirección y condiciones de pago desde Proveedores.</span>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CloseVendorDialog" disabled="@IsSavingMasterData">Cancelar</button>
+                        <button type="submit" class="btn btn-primary" disabled="@IsSavingMasterData">
+                            @(IsSavingMasterData ? "Creando…" : "Crear y seleccionar")
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+}
+
 @if (ShowMaterialImageModal)
 {
-    <div class="modal fade show d-block materiales-image-modal-backdrop" role="dialog" aria-modal="true">
+    <div class="modal fade show d-block materiales-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="material-image-title">
         <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content">
+            <div class="modal-content materiales-modal">
                 <div class="modal-header">
-                    <h5 class="modal-title">@(string.IsNullOrWhiteSpace(MaterialImageModalTitle) ? "Imagen del material" : MaterialImageModalTitle)</h5>
+                    <div>
+                        <span class="materiales-modal-icon is-image"><i class="bi bi-image" aria-hidden="true"></i></span>
+                        <h2 id="material-image-title" class="modal-title h5">@(string.IsNullOrWhiteSpace(MaterialImageModalTitle) ? "Imagen del material" : MaterialImageModalTitle)</h2>
+                    </div>
                     <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CloseMaterialImageModal"></button>
                 </div>
-                <div class="modal-body text-center">
+                <div class="modal-body text-center materiales-image-modal-body">
                     @if (MaterialImageModalDataUrl is not null)
                     {
                         <img src="@MaterialImageModalDataUrl" alt="Vista ampliada del material" class="materiales-image-modal-preview" />
                     }
                     else if (IsLoadingMaterialImage)
                     {
-                        <div class="py-5 text-muted">Cargando imagen...</div>
+                        <div class="materiales-image-loading">
+                            <span class="spinner-border" aria-hidden="true"></span>
+                            <span>Cargando imagen…</span>
+                        </div>
                     }
                     else
                     {
-                        <div class="py-5 text-muted">Sin imagen disponible.</div>
-                    }
-
-                    @if (IsLoadingMaterialImage && MaterialImageModalDataUrl is not null)
-                    {
-                        <div class="small text-muted mt-3">Cargando la imagen completa...</div>
+                        <div class="materiales-empty-state">
+                            <span class="materiales-empty-icon"><i class="bi bi-image" aria-hidden="true"></i></span>
+                            <p>Este material todavía no tiene imagen.</p>
+                        </div>
                     }
                 </div>
                 <div class="modal-footer">

@@ -361,6 +361,7 @@
 
 .auth-input__action:focus-visible,
 .auth-submit:focus-visible,
+.auth-register:focus-visible,
 .auth-check input:focus-visible {
   outline: 2px solid rgba(31, 138, 174, 0.54);
   outline-offset: 2px;
@@ -408,6 +409,44 @@
 
 .auth-submit:hover {
   box-shadow: 0 22px 36px rgba(15, 45, 78, 0.28);
+  transform: translateY(-1px);
+}
+
+.auth-registration {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #dfe6ee;
+  text-align: center;
+}
+
+.auth-registration > span {
+  color: #617187;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.auth-register {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  min-height: 3.1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #1f8aae;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #176b8a;
+  font-weight: 900;
+  text-decoration: none;
+  transition: background-color 0.16s ease, box-shadow 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.auth-register:hover {
+  background: #edf7fa;
+  color: #102b49;
+  box-shadow: 0 14px 28px rgba(31, 138, 174, 0.16);
   transform: translateY(-1px);
 }
 

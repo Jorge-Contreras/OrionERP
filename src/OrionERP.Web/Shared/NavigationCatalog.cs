@@ -19,6 +19,7 @@ public static class NavigationCatalog
         "APAdmin",
         "APOperator",
         "APReadOnly",
+        "Logistica",
         "Conteo"
     ];
 

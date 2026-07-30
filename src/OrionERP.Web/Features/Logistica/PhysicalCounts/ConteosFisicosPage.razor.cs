@@ -53,7 +53,7 @@ public partial class ConteosFisicosPage : ComponentBase, IDisposable
   protected bool IsMutatingSession { get; set; }
   protected bool IsCancelingSession { get; set; }
   protected bool IsRequestingRecount { get; set; }
-  protected bool IsAdministrator { get; set; }
+  protected bool CanManageCounts { get; set; }
   protected bool ShowCancelModal { get; set; }
   protected bool ShowRecountModal { get; set; }
   protected string CancelReason { get; set; } = string.Empty;
@@ -86,10 +86,10 @@ public partial class ConteosFisicosPage : ComponentBase, IDisposable
     .ToList();
 
   protected bool CanSubmit => SelectedSession is not null && (IsDraftStatus(SelectedSession.Status) || IsRecountStatus(SelectedSession.Status));
-  protected bool CanCancel => IsAdministrator && SelectedSession is not null && IsCancelableStatus(SelectedSession.Status);
-  protected bool CanRequestRecount => IsAdministrator && SelectedSession is not null && (IsSubmittedStatus(SelectedSession.Status) || IsApprovedStatus(SelectedSession.Status));
-  protected bool CanApprove => IsAdministrator && SelectedSession is not null && IsSubmittedStatus(SelectedSession.Status);
-  protected bool CanPost => IsAdministrator && SelectedSession is not null && IsApprovedStatus(SelectedSession.Status);
+  protected bool CanCancel => CanManageCounts && SelectedSession is not null && IsCancelableStatus(SelectedSession.Status);
+  protected bool CanRequestRecount => CanManageCounts && SelectedSession is not null && (IsSubmittedStatus(SelectedSession.Status) || IsApprovedStatus(SelectedSession.Status));
+  protected bool CanApprove => CanManageCounts && SelectedSession is not null && IsSubmittedStatus(SelectedSession.Status);
+  protected bool CanPost => CanManageCounts && SelectedSession is not null && IsApprovedStatus(SelectedSession.Status);
   protected bool CanCaptureLine => SelectedSession is not null
     && SelectedLine is not null
     && (IsDraftStatus(SelectedSession.Status) || IsRecountStatus(SelectedSession.Status));
@@ -784,7 +784,7 @@ public partial class ConteosFisicosPage : ComponentBase, IDisposable
   {
     var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
     var user = authState.User;
-    IsAdministrator = user.IsInRole("Administrador");
+    CanManageCounts = user.IsInRole("Administrador") || user.IsInRole("Logistica");
     return user.Identity?.Name?.Trim() switch
     {
       { Length: > 0 } name => name,

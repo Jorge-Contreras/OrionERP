@@ -1,0 +1,30 @@
+@page "/cuenta"
+@model OrionERP.Bruno.Web.Pages.Account.Member.IndexModel
+@{ ViewData["Title"] = "Mi cuenta · Club Bruno"; }
+<section class="member-dashboard">
+  <header class="member-dashboard__header"><div><span>Club Bruno · @Model.Profile.MembershipNumber</span><h1>Hola, @Model.Profile.FirstName</h1><p>@Model.Profile.MaskedEmail · @Model.Profile.MaskedPhone</p></div><div><a class="button" href="/cuenta/salir">Cerrar sesión</a></div></header>
+  @if (!string.IsNullOrWhiteSpace(Model.Message)) { <p class="@(Model.IsError ? "account-error" : "account-success")">@Model.Message</p> }
+  <div class="member-kpis"><article><span>Saldo actual</span><strong>@Model.Profile.PointsBalance</strong><small>puntos</small></article><article><span>Número de miembro</span><strong>@Model.Profile.MembershipNumber</strong><small>muéstralo en caja</small></article><article><span>Estado</span><strong>@(Model.Profile.Status == "Active" ? "Activa" : "Pendiente")</strong><small>@(Model.Profile.EmailVerified && Model.Profile.PhoneVerified ? "Contacto verificado" : "Falta verificar contacto")</small></article></div>
+  <div class="member-grid">
+    <article class="member-panel qr-card"><h2>QR temporal</h2><p>Genera un código, muéstralo en el POS y vincula tu compra antes de pagar. Expira en cinco minutos.</p>
+      @if (!string.IsNullOrWhiteSpace(Model.QrData)) { <img src="data:image/png;base64,@Model.QrData" alt="Código QR temporal de Club Bruno" /><small>Válido hasta @Model.QrExpiresAt?.ToLocalTime().ToString("HH:mm:ss")</small> }
+      <form method="post" asp-page-handler="GenerateQr"><button class="button button--accent" type="submit">Generar nuevo QR</button></form>
+    </article>
+    <article class="member-panel"><h2>Preferencias</h2><p>Las comunicaciones comerciales son opcionales y separadas por canal.</p>
+      <form method="post" asp-page-handler="Consents" class="account-form">
+        <label class="check"><input asp-for="EmailMarketingConsent" /> Novedades por correo</label>
+        <label class="check"><input asp-for="SmsMarketingConsent" /> Novedades por SMS</label>
+        <label class="check"><input asp-for="WhatsAppMarketingConsent" /> Novedades por WhatsApp</label>
+        <button class="button" type="submit">Guardar preferencias</button>
+      </form>
+      <hr /><a href="/cuenta/baja">Solicitar baja de membresía</a>
+    </article>
+    <article class="member-panel" style="grid-column:1/-1"><h2>Historial de puntos</h2>
+      @if (Model.Profile.PointHistory.Count == 0) { <p>Aún no hay movimientos. Identifícate antes de pagar en tu próxima visita.</p> }
+      else { <div style="overflow:auto"><table class="ledger"><thead><tr><th>Fecha</th><th>Movimiento</th><th>Motivo</th><th>Puntos</th><th>Saldo</th></tr></thead><tbody>@foreach (var row in Model.Profile.PointHistory) { <tr><td>@row.OccurredAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td><td>@EntryLabel(row.EntryType)</td><td>@row.Reason</td><td>@(row.PointsDelta > 0 ? "+" : "")@row.PointsDelta</td><td>@row.BalanceAfter</td></tr> }</tbody></table></div> }
+    </article>
+  </div>
+</section>
+@functions {
+  private static string EntryLabel(string value) => value switch { "Earn" => "Compra", "RefundReversal" => "Reembolso", "AdminAdjustment" => "Ajuste", _ => value };
+}

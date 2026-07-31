@@ -115,6 +115,7 @@
         <label>Nombre comercial <InputText @bind-Value="productEditor.Name" /></label>
         <label>Variante <InputText @bind-Value="productEditor.VariantName" placeholder="Ej. grande, sin azúcar" /></label>
         <label>Descripción <InputTextArea @bind-Value="productEditor.Description" /></label>
+        <label>Etiquetas de dieta <InputText @bind-Value="dietaryTagsText" placeholder="Vegetariano, sin gluten, vegano…" /><small>Separadas por coma. Verifica ingredientes y contacto cruzado antes de publicar.</small></label>
         <div class="restaurant-admin__form-row">
           <label>Tipo
             <InputSelect @bind-Value="productEditor.ProductType">
@@ -161,6 +162,7 @@
   private Dictionary<long, string> images = [];
   private RestaurantSiteUpsertRequest siteEditor = NewSiteEditor();
   private RestaurantProductUpsertRequest productEditor = NewProductEditor();
+  private string dietaryTagsText = string.Empty;
   private string cutoffText = "04:00";
   private string tab = "sites";
   private string? message;
@@ -240,6 +242,7 @@
     imagePreview = null;
     variantImagePreview = null;
     selectedProductHasVariantImage = false;
+    dietaryTagsText = string.Empty;
   }
 
   private void EditProduct(RestaurantProductDto product)
@@ -252,6 +255,7 @@
       IsActive = product.IsActive, SoldOutOverride = product.IsSoldOut,
       ProductType = product.ProductType, FulfillmentMode = product.FulfillmentMode
     };
+    dietaryTagsText = string.Join(", ", product.DietaryTags);
     imagePreview = images.GetValueOrDefault(product.Id);
     variantImagePreview = product.HasVariantImage ? images.GetValueOrDefault(product.Id) : null;
     selectedProductHasVariantImage = product.HasVariantImage;
@@ -261,6 +265,7 @@
   {
     productEditor.Rfc = CurrentRfc;
     if (productEditor.MaterialId <= 0) { Show("Selecciona un material.", true); return; }
+    productEditor.DietaryTags = dietaryTagsText.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     await SaveAsync(() => CatalogService.SaveProductAsync(productEditor), "products");
   }
 

@@ -1,0 +1,14 @@
+# Fusionar estas reglas en el túnel existente. Deben ir antes del catch-all.
+# No reemplazar tunnel ni credentials-file con valores inventados.
+ingress:
+  - hostname: brunosgarden.com
+    service: http://127.0.0.1:5020
+    originRequest:
+      httpHostHeader: brunosgarden.com
+  - hostname: www.brunosgarden.com
+    service: http://127.0.0.1:5020
+    originRequest:
+      httpHostHeader: www.brunosgarden.com
+  # Conservar aquí las reglas existentes de OrionERP y Bonhomia.
+  # Conservar el catch-all como última regla.
+  - service: http_status:404

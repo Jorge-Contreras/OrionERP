@@ -1,0 +1,34 @@
+@page "/promociones"
+@inject IBrunoPublicCatalogService CatalogService
+
+<PageTitle>Promociones · Bruno's Garden & Snacks</PageTitle>
+<section class="page-hero page-hero--promos"><span>Más Bruno's por tu visita</span><h1>Promociones</h1><p>Cada promoción publicada muestra sus condiciones completas y se aplica en el servidor al cobrar.</p></section>
+
+<section class="promotion-page">
+  @if (promotions.Count == 0)
+  {
+    <div class="state-card"><h2>No hay promociones publicadas</h2><p>Las promociones de ejemplo permanecen como borradores hasta que un administrador revise importe, vigencia, existencias, límites y condiciones.</p></div>
+  }
+  else
+  {
+    <div class="promotion-grid">
+      @foreach (var promotion in promotions)
+      {
+        <article><span>Promoción vigente</span><h2>@promotion.Name</h2><p>@promotion.Description</p>
+          @if (promotion.ValidFromLocal.HasValue || promotion.ValidToLocal.HasValue) { <div class="validity">Vigencia: @promotion.ValidFromLocal?.ToString("d MMM yyyy") — @promotion.ValidToLocal?.ToString("d MMM yyyy")</div> }
+          <details><summary>Ver condiciones</summary><p>@promotion.Terms</p></details>
+        </article>
+      }
+    </div>
+  }
+  <aside class="legal-callout"><strong>Antes de comprar</strong><p>Las promociones están sujetas a las condiciones publicadas, existencias y volumen disponible. Solo las marcadas como combinables pueden operar sobre unidades elegibles restantes.</p></aside>
+</section>
+
+@code {
+  private IReadOnlyList<BrunoPublicPromotionDto> promotions = [];
+  protected override async Task OnInitializedAsync()
+  {
+    try { promotions = (await CatalogService.GetCatalogAsync(BrunoSiteConstants.Rfc, BrunoSiteConstants.SiteCode, DateTimeOffset.Now))?.Promotions ?? []; }
+    catch { }
+  }
+}

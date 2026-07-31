@@ -1,0 +1,4 @@
+@page "/cuenta/confirmar-correo"
+@model OrionERP.Bruno.Web.Pages.Account.ConfirmEmailModel
+@{ ViewData["Title"] = "Confirmar correo · Club Bruno"; }
+<div class="account-shell"><div class="account-art"></div><section class="account-panel"><span>Club Bruno</span><h1>@Model.Title</h1><p class="@(Model.Success ? "account-success" : "account-error")">@Model.Message</p><div class="account-links"><a href="/cuenta/acceso">Ir a acceso</a><a href="/">Volver al sitio</a></div></section></div>

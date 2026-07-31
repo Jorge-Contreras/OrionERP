@@ -106,7 +106,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         ? []
         : (await conn.QueryAsync<ProductRow>(new CommandDefinition(
           """
-          SELECT product.Id, product.MaterialId, product.Sku, card.[Name], product.VariantName,
+          SELECT product.Id, product.MaterialId, material.CategoryId AS MaterialCategoryId,
+                 product.Sku, card.[Name], product.VariantName,
                  product.Price, product.KitchenStationId, product.PreparationMinutes,
                  material.FulfillmentMode, material.BaseUnitId, material.TrackLots,
                  CAST(ISNULL(activeBom.FrozenTheoreticalCost, 0) AS decimal(18,6)) AS TheoreticalCost
@@ -185,14 +186,103 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         }
         subtotalBeforeDiscount += gross;
         lineDiscount += line.DiscountAmount;
-        pricedLines.Add(new PricedLine(line, product, modifiers, productName, sku, unitPrice, gross, line.IsCustom));
+        pricedLines.Add(new PricedLine(
+          pricedLines.Count.ToString(),
+          line,
+          product,
+          modifiers,
+          productName,
+          sku,
+          unitPrice,
+          gross,
+          line.IsCustom));
       }
-      if (request.OrderDiscountAmount < 0 || request.OrderDiscountAmount > subtotalBeforeDiscount - lineDiscount)
+
+      var timeZone = TimeZoneInfo.FindSystemTimeZoneById(site.TimeZoneId);
+      var localNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, timeZone);
+      var member = await RestaurantLoyaltyTransaction.ValidateMemberAsync(conn, tx, rfc, request.MemberId, ct);
+      var promotionsEnabled = await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
+        """
+        SELECT CAST(ISNULL
+        (
+          (SELECT IsPromotionsEnabled FROM restaurante.PublicSiteSettings
+           WHERE Rfc=@Rfc AND SiteId=@SiteId),0
+        ) AS bit);
+        """,
+        new { Rfc = rfc, request.SiteId },
+        tx,
+        cancellationToken: ct));
+      var promotionRequest = new RestaurantPromotionQuoteRequest
+      {
+        Rfc = rfc,
+        SiteId = request.SiteId,
+        At = localNow,
+        Channel = string.IsNullOrWhiteSpace(request.SalesChannel)
+          ? RestaurantSalesChannels.Pos
+          : request.SalesChannel.Trim(),
+        OrderType = request.OrderType,
+        MemberId = member?.Id,
+        Code = request.PromotionCode,
+        Lines = pricedLines.Select(pricedLine => new RestaurantPromotionQuoteLineRequest
+        {
+          LineKey = pricedLine.LineKey,
+          ProductId = pricedLine.Product?.Id,
+          MaterialCategoryId = pricedLine.Product?.MaterialCategoryId,
+          Quantity = pricedLine.Request.Quantity,
+          UnitPrice = pricedLine.UnitPrice,
+          ManualDiscountAmount = pricedLine.Request.DiscountAmount,
+          IsCustom = pricedLine.IsCustom
+        }).ToList()
+      };
+      RestaurantPromotionQuoteDto promotionQuote;
+      if (promotionsEnabled)
+      {
+        var definitions = await RestaurantPromotionService.LoadDefinitionsAsync(
+          conn,
+          tx,
+          rfc,
+          request.SiteId,
+          member?.Id,
+          request.PromotionCode,
+          includeInactive: false,
+          ct);
+        promotionQuote = RestaurantPromotionEngine.Quote(promotionRequest, definitions, localNow);
+      }
+      else
+      {
+        promotionQuote = RestaurantPromotionEngine.Quote(promotionRequest, [], localNow);
+      }
+      if (!string.IsNullOrWhiteSpace(request.PromotionCode) && !promotionQuote.CodeAccepted)
+      {
+        throw new InvalidOperationException(promotionQuote.Message ?? "El código promocional no es elegible.");
+      }
+
+      var promotionDiscount = promotionQuote.PromotionDiscountTotal;
+      var promotionDiscountByLine = promotionQuote.LineAdjustments
+        .GroupBy(adjustment => adjustment.LineKey, StringComparer.Ordinal)
+        .ToDictionary(
+          group => group.Key,
+          group => decimal.Round(group.Sum(adjustment => adjustment.DiscountAmount), 2, MidpointRounding.AwayFromZero),
+          StringComparer.Ordinal);
+      foreach (var pricedLine in pricedLines)
+      {
+        var availableAfterPromotion = pricedLine.Gross - promotionDiscountByLine.GetValueOrDefault(pricedLine.LineKey);
+        if (pricedLine.Request.DiscountAmount > availableAfterPromotion)
+        {
+          throw new InvalidOperationException(
+            $"El descuento manual de {pricedLine.ProductName} excede el importe restante después de promociones.");
+        }
+      }
+      if (request.OrderDiscountAmount < 0 ||
+          request.OrderDiscountAmount > subtotalBeforeDiscount - lineDiscount - promotionDiscount)
       {
         throw new InvalidOperationException("El descuento de orden no puede exceder el subtotal disponible.");
       }
 
-      var discountTotal = decimal.Round(lineDiscount + request.OrderDiscountAmount, 2, MidpointRounding.AwayFromZero);
+      var discountTotal = decimal.Round(
+        lineDiscount + request.OrderDiscountAmount + promotionDiscount,
+        2,
+        MidpointRounding.AwayFromZero);
       var discountedMerchandise = decimal.Round(subtotalBeforeDiscount - discountTotal, 2, MidpointRounding.AwayFromZero);
       decimal subtotalSnapshot;
       decimal taxTotal;
@@ -226,8 +316,6 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         throw new InvalidOperationException("Las órdenes para recoger o mesa deben pagarse antes de enviarse a cocina.");
       }
 
-      var timeZone = TimeZoneInfo.FindSystemTimeZoneById(site.TimeZoneId);
-      var localNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, timeZone);
       var operationalDate = DateOnly.FromDateTime(localNow.TimeOfDay < site.OperationalDayCutoff ? localNow.AddDays(-1).Date : localNow.Date);
       var orderId = Guid.NewGuid();
       var requirements = await BuildRequirementsAsync(conn, tx, rfc, pricedLines, modifierRows, ct);
@@ -263,14 +351,16 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
            CustomerName, CustomerPhone, DiningTableId, CashRegisterId, CashShiftId,
            Subtotal, DiscountTotal, TaxTotal, TipTotal, Total, BalanceDue, TaxRateSnapshot,
            PricesIncludeTaxSnapshot, InventoryReservationId, TheoreticalCost, IdempotencyKey,
-           Notes, CreatedBy, PaidAt, SentToKitchenAt)
+           Notes, CreatedBy, PaidAt, SentToKitchenAt,MemberId,MembershipNumberSnapshot,
+           PromotionDiscountTotal,EligibleMerchandiseTotal,PointsEarned)
         VALUES
           (@Id, @Rfc, @SiteId, @Folio, @OperationalDate, @OrderType, @Status, @PaymentStatus,
            @CustomerName, @CustomerPhone, @DiningTableId, @CashRegisterId, @CashShiftId,
            @Subtotal, @DiscountTotal, @TaxTotal, @TipTotal, @Total, @BalanceDue, @TaxRate,
            @PricesIncludeTax, @ReservationId, @TheoreticalCost, @IdempotencyKey,
            @Notes, @CreatedBy, CASE WHEN @PaymentStatus = 'Paid' THEN SYSUTCDATETIME() END,
-           CASE WHEN @Status = 'Sent' THEN SYSUTCDATETIME() END);
+           CASE WHEN @Status = 'Sent' THEN SYSUTCDATETIME() END,@MemberId,@MembershipNumber,
+           @PromotionDiscountTotal,@EligibleMerchandiseTotal,0);
         """, new
         {
           Id = orderId,
@@ -298,7 +388,11 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           TheoreticalCost = theoreticalCost,
           IdempotencyKey = request.IdempotencyKey.Trim(),
           Notes = NullIfWhiteSpace(request.Notes),
-          CreatedBy = userName
+          CreatedBy = userName,
+          MemberId = member?.Id,
+          MembershipNumber = member?.MembershipNumber,
+          PromotionDiscountTotal = promotionDiscount,
+          EligibleMerchandiseTotal = discountedMerchandise
         }, tx, cancellationToken: ct));
 
       await RestaurantOrderEventWriter.AddAsync(
@@ -320,10 +414,27 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           userName, ct, $"reservation:{reservation.ReservationId.Value}:reserved");
       }
 
-      foreach (var pricedLine in pricedLines)
+      var lineIds = new Dictionary<string, long>(StringComparer.Ordinal);
+      var orderDiscountWeights = pricedLines.ToDictionary(
+        line => line.LineKey,
+        line => Math.Max(
+          0,
+          line.Gross -
+          promotionDiscountByLine.GetValueOrDefault(line.LineKey) -
+          line.Request.DiscountAmount),
+        StringComparer.Ordinal);
+      var orderDiscountAllocations = AllocateDiscount(
+        request.OrderDiscountAmount,
+        pricedLines.Select(line => (line.LineKey, orderDiscountWeights[line.LineKey])).ToList());
+      for (var lineIndex = 0; lineIndex < pricedLines.Count; lineIndex++)
       {
-        var allocatedOrderDiscount = subtotalBeforeDiscount == 0 ? 0 : decimal.Round(request.OrderDiscountAmount * pricedLine.Gross / subtotalBeforeDiscount, 2, MidpointRounding.AwayFromZero);
-        var totalLineDiscount = pricedLine.Request.DiscountAmount + allocatedOrderDiscount;
+        var pricedLine = pricedLines[lineIndex];
+        var promotionLineDiscount = promotionDiscountByLine.GetValueOrDefault(pricedLine.LineKey);
+        var allocatedOrderDiscount = orderDiscountAllocations.GetValueOrDefault(pricedLine.LineKey);
+        var totalLineDiscount = decimal.Round(
+          promotionLineDiscount + pricedLine.Request.DiscountAmount + allocatedOrderDiscount,
+          2,
+          MidpointRounding.AwayFromZero);
         var discountedLine = pricedLine.Gross - totalLineDiscount;
         var lineTax = site.PricesIncludeTax
           ? (site.TaxRate == 0 ? 0 : decimal.Round(discountedLine - discountedLine / (1 + site.TaxRate), 2, MidpointRounding.AwayFromZero))
@@ -357,6 +468,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             KitchenStationId = pricedLine.Product?.KitchenStationId,
             Notes = NullIfWhiteSpace(pricedLine.Request.Notes)
           }, tx, cancellationToken: ct));
+        lineIds[pricedLine.LineKey] = lineId;
         foreach (var modifier in pricedLine.Modifiers)
         {
           await conn.ExecuteAsync(new CommandDefinition(
@@ -366,6 +478,16 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             """, new { Rfc = rfc, OrderLineId = lineId, ModifierOptionId = modifier.Id, modifier.Name, modifier.PriceDelta }, tx, cancellationToken: ct));
         }
       }
+
+      await PersistPromotionSnapshotsAsync(
+        conn,
+        tx,
+        rfc,
+        orderId,
+        member?.Id,
+        promotionQuote,
+        lineIds,
+        ct);
 
       foreach (var payment in request.Payments)
       {
@@ -492,6 +614,28 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           userName, ct, $"order:{orderId}:OrderPaid");
       }
 
+      RestaurantLoyaltyTransaction.LoyaltyAwardResult? loyaltyAward = null;
+      if (paymentStatus == RestaurantPaymentStatuses.Paid)
+      {
+        loyaltyAward = await RestaurantLoyaltyTransaction.AwardPaidOrderAsync(
+          conn,
+          tx,
+          rfc,
+          orderId,
+          member?.Id,
+          discountedMerchandise,
+          userName,
+          ct);
+        if (loyaltyAward is { Points: > 0 })
+        {
+          await RestaurantOrderEventWriter.AddAsync(
+            conn, tx, rfc, request.SiteId, orderId,
+            "LoyaltyPointsEarned", "Loyalty", "Puntos acreditados",
+            $"{loyaltyAward.Points} punto(s) · Saldo {loyaltyAward.BalanceAfter}",
+            userName, ct, $"order:{orderId}:LoyaltyPointsEarned");
+        }
+      }
+
       await AddOutboxEventAsync(conn, tx, rfc, request.SiteId, "OrderCreated", orderId.ToString(), new { orderId, folio, status, paymentStatus }, ct);
       if (reservation.HasDeficit)
       {
@@ -507,7 +651,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         Status = status,
         PaymentStatus = paymentStatus,
         Total = total,
-        BalanceDue = balanceDue
+        BalanceDue = balanceDue,
+        PromotionDiscountTotal = promotionDiscount,
+        AppliedPromotions = promotionQuote.Adjustments,
+        MembershipNumber = member?.MembershipNumber,
+        PointsEarned = loyaltyAward?.Points ?? 0,
+        PointsBalance = loyaltyAward?.BalanceAfter ?? member?.PointsBalance
       };
     }
     catch
@@ -1106,6 +1255,21 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           conn, tx, rfc, order.SiteId, request.OrderId,
           "OrderPaid", "Payment", "Orden pagada", "El saldo de la orden quedó cubierto.",
           requestedBy, ct, $"order:{request.OrderId}:OrderPaid");
+        var loyaltyAward = await RestaurantLoyaltyTransaction.AwardExistingPaidOrderAsync(
+          conn,
+          tx,
+          rfc,
+          request.OrderId,
+          requestedBy,
+          ct);
+        if (loyaltyAward is { Points: > 0 })
+        {
+          await RestaurantOrderEventWriter.AddAsync(
+            conn, tx, rfc, order.SiteId, request.OrderId,
+            "LoyaltyPointsEarned", "Loyalty", "Puntos acreditados",
+            $"{loyaltyAward.Points} punto(s) · Saldo {loyaltyAward.BalanceAfter}",
+            requestedBy, ct, $"order:{request.OrderId}:LoyaltyPointsEarned");
+        }
       }
       if (newPaymentStatus == RestaurantPaymentStatuses.Paid &&
           order.Status == RestaurantOrderStatuses.AwaitingPayment)
@@ -1261,6 +1425,14 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             RequestedBy = requestedBy
           }, tx, cancellationToken: ct));
       }
+      var loyaltyReversal = await RestaurantLoyaltyTransaction.ReverseRefundAsync(
+        conn,
+        tx,
+        rfc,
+        payment.OrderId,
+        refundId,
+        requestedBy,
+        ct);
       await RestaurantOrderEventWriter.AddAsync(
         conn, tx, rfc, payment.SiteId, payment.OrderId,
         "PaymentRefunded", "Payment", "Pago reembolsado",
@@ -1271,6 +1443,14 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         "RefundAuthorized", "Authorization", "Reembolso autorizado",
         $"{request.Reason.Trim()} · Autorizó: {request.SupervisorUserName.Trim()}",
         requestedBy, ct, $"refund:{refundId}:authorization");
+      if (loyaltyReversal is { Points: < 0 })
+      {
+        await RestaurantOrderEventWriter.AddAsync(
+          conn, tx, rfc, payment.SiteId, payment.OrderId,
+          "LoyaltyPointsReversed", "Loyalty", "Puntos revertidos",
+          $"{Math.Abs(loyaltyReversal.Points)} punto(s) · Saldo {loyaltyReversal.BalanceAfter}",
+          requestedBy, ct, $"refund:{refundId}:LoyaltyPointsReversed");
+      }
       await AddOutboxEventAsync(conn, tx, rfc, payment.SiteId, "OrderPaymentRefunded", payment.OrderId.ToString(), new { payment.OrderId, request.PaymentId, refundId, request.Amount, paymentStatus }, ct);
       await tx.CommitAsync(ct);
       return RestaurantCommandResult.Ok("El reembolso fue registrado y auditado.");
@@ -1659,7 +1839,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       """
       SELECT orderInfo.Id, orderInfo.Folio, orderInfo.OperationalDate, orderInfo.OrderType, orderInfo.[Status],
              orderInfo.PaymentStatus, orderInfo.CustomerName, diningTable.[Name] AS TableName, orderInfo.Notes,
-              orderInfo.Total, orderInfo.BalanceDue, orderInfo.CashRegisterId, orderInfo.CashShiftId,
+              orderInfo.Total, orderInfo.BalanceDue,orderInfo.PromotionDiscountTotal,
+              orderInfo.MemberId,orderInfo.MembershipNumberSnapshot AS MembershipNumber,orderInfo.PointsEarned,
+              orderInfo.CashRegisterId, orderInfo.CashShiftId,
               orderInfo.Priority,orderInfo.PriorityReason,orderInfo.PrioritizedBy,orderInfo.CreatedAt
       FROM restaurante.[Order] orderInfo
       LEFT JOIN restaurante.DiningTable diningTable ON diningTable.Rfc=orderInfo.Rfc AND diningTable.Id=orderInfo.DiningTableId
@@ -1692,6 +1874,205 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     => conn.ExecuteAsync(new CommandDefinition(
       "INSERT INTO restaurante.EventOutbox (Rfc, SiteId, EventType, AggregateId, Payload) VALUES (@Rfc,@SiteId,@EventType,@AggregateId,@Payload);",
       new { Rfc = rfc, SiteId = siteId, EventType = eventType, AggregateId = aggregateId, Payload = JsonSerializer.Serialize(payload) }, tx, cancellationToken: ct));
+
+  private static async Task PersistPromotionSnapshotsAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    string rfc,
+    Guid orderId,
+    Guid? memberId,
+    RestaurantPromotionQuoteDto quote,
+    IReadOnlyDictionary<string, long> lineIds,
+    CancellationToken ct)
+  {
+    foreach (var adjustment in quote.Adjustments)
+    {
+      var promotionUpdated = await conn.ExecuteAsync(new CommandDefinition(
+        """
+        UPDATE restaurante.Promotion
+        SET RedemptionCount=RedemptionCount+1
+        WHERE Rfc=@Rfc AND Id=@PromotionId
+          AND (GlobalLimit IS NULL OR RedemptionCount<GlobalLimit);
+        """,
+        new { Rfc = rfc, PromotionId = adjustment.PromotionId },
+        tx,
+        cancellationToken: ct));
+      if (promotionUpdated != 1)
+      {
+        throw new InvalidOperationException(
+          $"La promoción {adjustment.PromotionName} alcanzó su límite mientras se cobraba la orden.");
+      }
+
+      long? codeId = null;
+      if (!string.IsNullOrWhiteSpace(adjustment.Code))
+      {
+        var code = await conn.QuerySingleOrDefaultAsync<PromotionCodeLimitRow>(new CommandDefinition(
+          """
+          SELECT Id,GlobalLimit,PerMemberLimit,RedemptionCount
+          FROM restaurante.PromotionCode WITH(UPDLOCK,HOLDLOCK)
+          WHERE Rfc=@Rfc AND PromotionId=@PromotionId AND Code=@Code AND IsActive=1;
+          """,
+          new
+          {
+            Rfc = rfc,
+            PromotionId = adjustment.PromotionId,
+            Code = adjustment.Code
+          },
+          tx,
+          cancellationToken: ct))
+          ?? throw new InvalidOperationException("El código promocional dejó de estar disponible.");
+        if (code.GlobalLimit.HasValue && code.RedemptionCount >= code.GlobalLimit.Value)
+        {
+          throw new InvalidOperationException("El código promocional alcanzó su límite global.");
+        }
+        if (code.PerMemberLimit.HasValue)
+        {
+          if (!memberId.HasValue)
+          {
+            throw new InvalidOperationException("El código requiere una membresía verificada.");
+          }
+          var memberUses = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+            """
+            SELECT COUNT(*) FROM restaurante.PromotionRedemption WITH(UPDLOCK,HOLDLOCK)
+            WHERE Rfc=@Rfc AND CodeId=@CodeId AND MemberId=@MemberId;
+            """,
+            new { Rfc = rfc, CodeId = code.Id, MemberId = memberId.Value },
+            tx,
+            cancellationToken: ct));
+          if (memberUses >= code.PerMemberLimit.Value)
+          {
+            throw new InvalidOperationException("La membresía ya alcanzó el límite de este código.");
+          }
+        }
+        var codeUpdated = await conn.ExecuteAsync(new CommandDefinition(
+          """
+          UPDATE restaurante.PromotionCode
+          SET RedemptionCount=RedemptionCount+1
+          WHERE Rfc=@Rfc AND Id=@Id
+            AND (GlobalLimit IS NULL OR RedemptionCount<GlobalLimit);
+          """,
+          new { Rfc = rfc, code.Id },
+          tx,
+          cancellationToken: ct));
+        if (codeUpdated != 1)
+        {
+          throw new InvalidOperationException("El código promocional alcanzó su límite mientras se cobraba la orden.");
+        }
+        codeId = code.Id;
+      }
+
+      var orderPromotionId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+        """
+        INSERT restaurante.OrderPromotion
+          (Rfc,OrderId,PromotionId,PromotionNameSnapshot,RuleTypeSnapshot,
+           CodeId,CodeSnapshot,DiscountAmount)
+        VALUES
+          (@Rfc,@OrderId,@PromotionId,@PromotionName,@RuleType,
+           @CodeId,@Code,@DiscountAmount);
+        SELECT CAST(SCOPE_IDENTITY() AS bigint);
+        """,
+        new
+        {
+          Rfc = rfc,
+          OrderId = orderId,
+          PromotionId = adjustment.PromotionId,
+          PromotionName = adjustment.PromotionName,
+          RuleType = adjustment.RuleType,
+          CodeId = codeId,
+          Code = adjustment.Code,
+          adjustment.DiscountAmount
+        },
+        tx,
+        cancellationToken: ct));
+
+      foreach (var lineAdjustment in quote.LineAdjustments.Where(item =>
+                 item.PromotionId == adjustment.PromotionId &&
+                 lineIds.ContainsKey(item.LineKey)))
+      {
+        await conn.ExecuteAsync(new CommandDefinition(
+          """
+          INSERT restaurante.OrderLinePromotion
+            (Rfc,OrderPromotionId,OrderLineId,AppliedQuantity,DiscountAmount)
+          VALUES
+            (@Rfc,@OrderPromotionId,@OrderLineId,@AppliedQuantity,@DiscountAmount);
+          """,
+          new
+          {
+            Rfc = rfc,
+            OrderPromotionId = orderPromotionId,
+            OrderLineId = lineIds[lineAdjustment.LineKey],
+            lineAdjustment.AppliedQuantity,
+            lineAdjustment.DiscountAmount
+          },
+          tx,
+          cancellationToken: ct));
+      }
+
+      await conn.ExecuteAsync(new CommandDefinition(
+        """
+        INSERT restaurante.PromotionRedemption
+          (Rfc,PromotionId,CodeId,OrderId,MemberId,DiscountAmount)
+        VALUES
+          (@Rfc,@PromotionId,@CodeId,@OrderId,@MemberId,@DiscountAmount);
+        """,
+        new
+        {
+          Rfc = rfc,
+          PromotionId = adjustment.PromotionId,
+          CodeId = codeId,
+          OrderId = orderId,
+          MemberId = memberId,
+          adjustment.DiscountAmount
+        },
+        tx,
+        cancellationToken: ct));
+    }
+  }
+
+  private static IReadOnlyDictionary<string, decimal> AllocateDiscount(
+    decimal amount,
+    IReadOnlyList<(string Key, decimal Weight)> weights)
+  {
+    var result = weights.ToDictionary(item => item.Key, _ => 0m, StringComparer.Ordinal);
+    var remainingAmount = decimal.Round(Math.Max(0, amount), 2, MidpointRounding.AwayFromZero);
+    var remainingWeight = weights.Sum(item => Math.Max(0, item.Weight));
+
+    foreach (var (key, rawWeight) in weights)
+    {
+      var weight = Math.Max(0, rawWeight);
+      if (remainingAmount <= 0 || remainingWeight <= 0 || weight <= 0)
+      {
+        remainingWeight -= weight;
+        continue;
+      }
+
+      var allocation = decimal.Round(
+        remainingAmount * weight / remainingWeight,
+        2,
+        MidpointRounding.AwayFromZero);
+      allocation = Math.Clamp(allocation, 0, Math.Min(weight, remainingAmount));
+      result[key] = allocation;
+      remainingAmount = decimal.Round(remainingAmount - allocation, 2, MidpointRounding.AwayFromZero);
+      remainingWeight -= weight;
+    }
+
+    if (remainingAmount > 0)
+    {
+      foreach (var (key, rawWeight) in weights.Reverse())
+      {
+        var capacity = Math.Max(0, rawWeight - result[key]);
+        var extra = Math.Min(capacity, remainingAmount);
+        result[key] += extra;
+        remainingAmount = decimal.Round(remainingAmount - extra, 2, MidpointRounding.AwayFromZero);
+        if (remainingAmount <= 0)
+        {
+          break;
+        }
+      }
+    }
+
+    return result;
+  }
 
   private static Task AddSupervisorAuthorizationAsync(
     DbConnection conn,
@@ -1752,7 +2133,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   private static async Task<RestaurantOrderResult?> FindDuplicateAsync(DbConnection conn, DbTransaction tx, string rfc, int siteId, string key, CancellationToken ct)
     => await conn.QuerySingleOrDefaultAsync<RestaurantOrderResult>(new CommandDefinition(
       """
-      SELECT Id AS OrderId, Folio, CustomerName, OperationalDate, [Status], PaymentStatus, Total, BalanceDue
+      SELECT Id AS OrderId,Folio,CustomerName,OperationalDate,[Status],PaymentStatus,Total,BalanceDue,
+             PromotionDiscountTotal,MembershipNumberSnapshot AS MembershipNumber,PointsEarned
       FROM restaurante.[Order] WITH (UPDLOCK, HOLDLOCK)
       WHERE Rfc=@Rfc AND SiteId=@SiteId AND IdempotencyKey=@Key;
       """, new { Rfc = rfc, SiteId = siteId, Key = key }, tx, cancellationToken: ct));
@@ -1832,6 +2214,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
 
   private sealed record PricedLine(
+    string LineKey,
     RestaurantOrderLineCreateRequest Request,
     ProductRow? Product,
     List<ModifierRow> Modifiers,
@@ -1858,6 +2241,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   {
     public long Id { get; set; }
     public int MaterialId { get; set; }
+    public int MaterialCategoryId { get; set; }
     public string Sku { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string? VariantName { get; set; }
@@ -1912,6 +2296,13 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     public int? CashRegisterId { get; set; }
     public decimal Total { get; set; }
     public string OrderStatus { get; set; } = string.Empty;
+  }
+  private sealed class PromotionCodeLimitRow
+  {
+    public long Id { get; set; }
+    public int? GlobalLimit { get; set; }
+    public int? PerMemberLimit { get; set; }
+    public int RedemptionCount { get; set; }
   }
   private sealed class OrderLineModifierRow { public long OrderLineId { get; set; } public string Name { get; set; } = string.Empty; }
 }

@@ -1,5 +1,7 @@
 namespace OrionERP.Web.Features.Restaurante;
 
+using OrionERP.Application.Features.Restaurante;
+
 public sealed class RestaurantReceiptPdfDocumentModel
 {
   public const string CustomItemSectionName = "Cargo personalizado";
@@ -25,6 +27,10 @@ public sealed class RestaurantReceiptPdfDocumentModel
   public decimal TransferAmount { get; init; }
   public decimal Change { get; init; }
   public decimal BalanceDue { get; init; }
+  public IReadOnlyList<RestaurantPromotionAdjustmentDto> Promotions { get; init; } = Array.Empty<RestaurantPromotionAdjustmentDto>();
+  public string? MembershipNumber { get; init; }
+  public int PointsEarned { get; init; }
+  public int? PointsBalance { get; init; }
   public IReadOnlyList<RestaurantReceiptPdfLineModel> Lines { get; init; } = Array.Empty<RestaurantReceiptPdfLineModel>();
 
   public int SectionTicketCount

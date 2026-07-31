@@ -1,0 +1,6 @@
+@page "/cuenta/verificar-telefono"
+@model OrionERP.Bruno.Web.Pages.Account.VerifyPhoneModel
+@{ ViewData["Title"] = "Verificar teléfono · Club Bruno"; }
+<div class="account-shell"><div class="account-art"></div><section class="account-panel"><span>Club Bruno</span><h1>Verifica tu teléfono</h1><p>Captura el código de seis dígitos enviado por SMS. En desarrollo sin Twilio configurado, usa 000000.</p>
+<form method="post" class="account-form"><input type="hidden" asp-for="UserId" /><input type="hidden" asp-for="ReturnUrl" /><div asp-validation-summary="ModelOnly"></div><label>Código <input asp-for="Code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" /><span asp-validation-for="Code"></span></label><button class="button button--accent" type="submit">Verificar</button></form>
+<div class="account-links"><a href="/cuenta/acceso">Ir a acceso</a></div></section></div><partial name="_ValidationScriptsPartial" />

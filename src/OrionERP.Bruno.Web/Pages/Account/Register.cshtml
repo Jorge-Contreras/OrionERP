@@ -1,0 +1,38 @@
+@page "/cuenta/registro"
+@model OrionERP.Bruno.Web.Pages.Account.RegisterModel
+@using Microsoft.Extensions.Options
+@using OrionERP.Bruno.Web.Configuration
+@inject IOptions<BrunoTurnstileOptions> Turnstile
+@{
+  ViewData["Title"] = "Crear cuenta · Club Bruno";
+}
+<div class="account-shell">
+  <div class="account-art" aria-hidden="true"></div>
+  <section class="account-panel">
+    <span>Club Bruno</span><h1>Crea tu cuenta</h1><p>Verifica tu correo y teléfono para identificarte antes de pagar y acumular puntos.</p>
+    <form method="post" class="account-form" asp-route-returnUrl="@Model.ReturnUrl">
+      <div asp-validation-summary="ModelOnly"></div>
+      <label>Nombre <input asp-for="Input.FirstName" autocomplete="given-name" /><span asp-validation-for="Input.FirstName"></span></label>
+      <label>Apellidos <input asp-for="Input.LastName" autocomplete="family-name" /><span asp-validation-for="Input.LastName"></span></label>
+      <label>Correo <input asp-for="Input.Email" autocomplete="email" /><span asp-validation-for="Input.Email"></span></label>
+      <label>Teléfono móvil <input asp-for="Input.Phone" autocomplete="tel" placeholder="+52 749 000 0000" /><span asp-validation-for="Input.Phone"></span></label>
+      <label>Contraseña <input asp-for="Input.Password" autocomplete="new-password" /><span asp-validation-for="Input.Password"></span></label>
+      <label>Confirmar contraseña <input asp-for="Input.ConfirmPassword" autocomplete="new-password" /><span asp-validation-for="Input.ConfirmPassword"></span></label>
+      <label class="check"><input asp-for="Input.IsAdultConfirmed" /> <span>Declaro que tengo al menos 18 años.</span></label>
+      <label class="check"><input asp-for="Input.AcceptDocuments" /> <span>He leído y acepto el <a href="/privacidad" target="_blank">aviso de privacidad</a> y los <a href="/terminos" target="_blank">términos</a>, versión @BrunoSiteConstants.TermsVersion.</span></label>
+      <fieldset>
+        <legend>Comunicaciones opcionales</legend>
+        <label class="check"><input asp-for="Input.EmailMarketingConsent" /> Novedades por correo</label>
+        <label class="check"><input asp-for="Input.SmsMarketingConsent" /> Novedades por SMS</label>
+        <label class="check"><input asp-for="Input.WhatsAppMarketingConsent" /> Novedades por WhatsApp</label>
+      </fieldset>
+      @if (Turnstile.Value.IsConfigured)
+      {
+        <div class="cf-turnstile" data-sitekey="@Turnstile.Value.SiteKey"></div>
+      }
+      <button class="button button--accent" type="submit">Crear membresía</button>
+    </form>
+    <div class="account-links"><a href="/cuenta/acceso">Ya tengo cuenta</a><a href="/">Volver al sitio</a></div>
+  </section>
+</div>
+<partial name="_ValidationScriptsPartial" />

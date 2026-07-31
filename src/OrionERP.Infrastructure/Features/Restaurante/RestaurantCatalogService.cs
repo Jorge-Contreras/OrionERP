@@ -112,7 +112,8 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     var normalizedRfc = LogisticsRfc.Require(rfc);
     const string sql =
       """
-      SELECT p.Id, p.ProductCardId, p.MaterialId, p.Sku, c.[Name], c.[Description], p.VariantName,
+      SELECT p.Id, p.ProductCardId, p.MaterialId,m.CategoryId AS MaterialCategoryId,
+             p.Sku, c.[Name], c.[Description], p.VariantName,
              p.Price, p.KitchenStationId, station.[Name] AS KitchenStationName, p.PreparationMinutes,
              p.IsActive, CAST(p.SoldOutOverride AS bit) AS IsSoldOut,
              CAST(CASE WHEN p.VariantImageThumbnail IS NOT NULL OR p.VariantImage IS NOT NULL OR c.FamilyImageThumbnail IS NOT NULL OR c.FamilyImage IS NOT NULL OR m.PrimaryImage IS NOT NULL THEN 1 ELSE 0 END AS bit) AS HasImage,
@@ -163,6 +164,11 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
       JOIN logistica.MaterialAllergen materialAllergen ON materialAllergen.Rfc = @Rfc AND materialAllergen.MaterialId = tree.MaterialId
       JOIN logistica.Allergen allergen ON allergen.Id = materialAllergen.AllergenId AND allergen.IsActive = 1
       OPTION (MAXRECURSION 32);
+
+      SELECT ProductId,Tag AS [Name]
+      FROM restaurante.ProductDietaryTag
+      WHERE Rfc=@Rfc
+      ORDER BY ProductId,Tag;
       """;
 
     using var conn = CreateConnection();
@@ -171,6 +177,7 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     var groups = (await multi.ReadAsync<ProductGroupRow>()).AsList();
     var options = (await multi.ReadAsync<ProductOptionRow>()).AsList();
     var allergens = (await multi.ReadAsync<ProductAllergenRow>()).AsList();
+    var dietaryTags = (await multi.ReadAsync<ProductAllergenRow>()).AsList();
 
     foreach (var product in products)
     {
@@ -186,6 +193,7 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
             .ToList()
         }).ToList();
       product.Allergens = allergens.Where(row => row.ProductId == product.Id).Select(row => row.Name).Distinct().ToList();
+      product.DietaryTags = dietaryTags.Where(row => row.ProductId == product.Id).Select(row => row.Name).Distinct().ToList();
     }
 
     return products;
@@ -344,6 +352,26 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
           ProductType = request.ProductType.Trim(),
           FulfillmentMode = request.FulfillmentMode.Trim()
         }, tx, cancellationToken: ct));
+
+      await conn.ExecuteAsync(new CommandDefinition(
+        """
+        DELETE restaurante.ProductDietaryTag WHERE Rfc=@Rfc AND ProductId=@ProductId;
+        INSERT restaurante.ProductDietaryTag(Rfc,ProductId,Tag)
+        SELECT @Rfc,@ProductId,valueInfo.Tag
+        FROM (SELECT DISTINCT TRIM(value) AS Tag FROM STRING_SPLIT(@Tags,'|')) valueInfo
+        WHERE valueInfo.Tag<>'';
+        """,
+        new
+        {
+          Rfc = rfc,
+          ProductId = productId,
+          Tags = string.Join("|", request.DietaryTags
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Select(tag => tag.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase))
+        },
+        tx,
+        cancellationToken: ct));
 
       await tx.CommitAsync(ct);
       return RestaurantCommandResult.Ok("El producto y su variante fueron guardados.", productId);

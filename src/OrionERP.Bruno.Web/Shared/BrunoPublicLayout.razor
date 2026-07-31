@@ -1,0 +1,36 @@
+@inherits LayoutComponentBase
+
+<div class="site-shell">
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="Bruno's Garden & Snacks, inicio">
+      <img src="/Images/Brunos/brunos-logo.png" alt="Bruno's Garden & Snacks" />
+    </a>
+    <button class="nav-toggle" type="button" aria-label="Abrir navegación" aria-expanded="@menuOpen" @onclick="() => menuOpen = !menuOpen"><span></span><span></span><span></span></button>
+    <nav class="@(menuOpen ? "is-open" : null)" aria-label="Navegación principal">
+      <NavLink href="/" Match="NavLinkMatch.All" @onclick="CloseMenu">Inicio</NavLink>
+      <NavLink href="/menu" @onclick="CloseMenu">Menú</NavLink>
+      <NavLink href="/promociones" @onclick="CloseMenu">Promociones</NavLink>
+      <NavLink href="/membresia" @onclick="CloseMenu">Club Bruno</NavLink>
+      <NavLink href="/visitanos" @onclick="CloseMenu">Visítanos</NavLink>
+      <AuthorizeView>
+        <Authorized><a class="account-link" href="/cuenta">Mi cuenta</a></Authorized>
+        <NotAuthorized><a class="account-link" href="/cuenta/acceso">Acceso</a></NotAuthorized>
+      </AuthorizeView>
+    </nav>
+  </header>
+
+  <main>@Body</main>
+
+  <footer class="site-footer">
+    <div class="footer-brand"><img src="/Images/Brunos/brunos-logo.png" alt="" /><p>Snacks, jardín y buenos momentos.</p></div>
+    <div><strong>Visítanos</strong><p>Calle Camino Nacional #5<br />Col. Francisco Sarabia<br />Calpulalpan, Tlaxcala · C.P. 90207</p></div>
+    <div><strong>Horario</strong><p>Martes a domingo<br />9:00 a 22:00<br />Lunes cerrado</p></div>
+    <div><strong>Información</strong><a href="/privacidad">Aviso de privacidad</a><a href="/terminos">Términos del sitio y membresía</a><a href="/cuenta/baja">Solicitud de baja</a></div>
+    <small>© @DateTime.Now.Year Bruno's Garden & Snacks S.A. de C.V. · Textos legales sujetos a revisión jurídica antes de producción.</small>
+  </footer>
+</div>
+
+@code {
+  private bool menuOpen;
+  private void CloseMenu() => menuOpen = false;
+}

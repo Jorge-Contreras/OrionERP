@@ -1,0 +1,21 @@
+@page "/visitanos"
+@inject IBrunoPublicCatalogService CatalogService
+
+<PageTitle>Visítanos · Bruno's Garden & Snacks</PageTitle>
+<section class="page-hero page-hero--visit"><span>Calpulalpan, Tlaxcala</span><h1>Ven al jardín</h1><p>Martes a domingo de 9:00 a 22:00. Lunes cerrado.</p></section>
+
+<section class="visit-grid">
+  <article><span>Ubicación</span><h2>@settings.AddressLine</h2><p>@settings.Neighborhood<br />C.P. @settings.PostalCode, @settings.City, @settings.StateName, @settings.CountryName</p><a class="button" href="@settings.MapsUrl" target="_blank" rel="noopener">Abrir navegación</a><small>El pin proporcionado se usa para navegación; el domicilio público y legal permanece como Calle Camino Nacional #5.</small></article>
+  <article><span>Contacto</span><h2>¿Tienes una pregunta?</h2><p>Escríbenos por WhatsApp durante el horario del restaurante.</p><a class="button button--accent" href="https://wa.me/@settings.WhatsAppPhone" target="_blank" rel="noopener">@settings.WhatsAppDisplay</a>
+    <div class="social-links">@if (!string.IsNullOrWhiteSpace(settings.FacebookUrl)) { <a href="@settings.FacebookUrl" target="_blank" rel="noopener">Facebook</a> }@if (!string.IsNullOrWhiteSpace(settings.InstagramUrl)) { <a href="@settings.InstagramUrl" target="_blank" rel="noopener">Instagram</a> }@if (!string.IsNullOrWhiteSpace(settings.TikTokUrl)) { <a href="@settings.TikTokUrl" target="_blank" rel="noopener">TikTok</a> }</div>
+  </article>
+  <article class="hours-card"><span>Horario</span><h2>Martes a domingo</h2><strong>09:00 — 22:00</strong><p>Lunes cerrado</p><small>Los horarios extraordinarios se publicarán en el inicio y nuestras redes oficiales.</small></article>
+</section>
+
+@code {
+  private BrunoPublicSiteSettingsDto settings = new() { AddressLine = "Calle Camino Nacional #5", Neighborhood = "Colonia Francisco Sarabia", PostalCode = "90207", City = "Calpulalpan", StateName = "Tlaxcala", CountryName = "México", WhatsAppPhone = "527491103026", WhatsAppDisplay = "+52 749 110 3026", MapsUrl = "https://maps.app.goo.gl/tC4YHTcM2ED13MwC8", FacebookUrl = "https://www.facebook.com/profile.php?id=61592059341008" };
+  protected override async Task OnInitializedAsync()
+  {
+    try { settings = await CatalogService.GetSettingsAsync(BrunoSiteConstants.Rfc) ?? settings; } catch { }
+  }
+}

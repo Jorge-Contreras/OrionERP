@@ -166,6 +166,7 @@ builder.Services
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<OrionIdentityDbContext>()
     .AddDefaultTokenProviders();
+builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, BrunoAdminClaimsPrincipalFactory>();
 
 builder.Services.ConfigureApplicationCookie(options =>
 {

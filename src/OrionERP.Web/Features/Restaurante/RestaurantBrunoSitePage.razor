@@ -1,0 +1,154 @@
+@page "/restaurante/sitio-brunos"
+@attribute [Authorize(Policy = "RestaurantAdmin")]
+@implements IDisposable
+@using OrionERP.Application.Features.Logistica.Shared
+@using OrionERP.Application.Features.Restaurante
+@using OrionERP.Infrastructure.Auth
+@inject IRestaurantCatalogService CatalogService
+@inject IBrunoPublicCatalogService PublicCatalogService
+@inject IUserRfcState RfcState
+@inject IRfcContext RfcContext
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Restaurante · Sitio de Bruno's</PageTitle>
+
+<main class="site-admin">
+  <header class="site-admin__hero">
+    <div><span>brunosgarden.com</span><h1>Contenido y lanzamiento</h1><p>Datos públicos, SEO, redes y banderas independientes de producción.</p></div>
+    <button type="button" class="btn btn-light" @onclick="LoadAsync" disabled="@isBusy">Actualizar</button>
+  </header>
+
+  @if (!string.IsNullOrWhiteSpace(message))
+  {
+    <div class="alert @(isError ? "alert-danger" : "alert-success")">@message</div>
+  }
+
+  @if (settings is not null)
+  {
+    <EditForm Model="settings" OnValidSubmit="SaveAsync" class="site-admin__grid">
+      <DataAnnotationsValidator />
+      <ValidationSummary />
+      <section class="site-panel site-panel--wide">
+        <header><div><span>Publicación gradual</span><h2>Banderas de lanzamiento</h2></div><button type="submit" class="btn btn-primary" disabled="@isBusy">Guardar cambios</button></header>
+        <div class="flag-grid">
+          <label><InputCheckbox @bind-Value="settings.IsWebsiteEnabled" /><span><strong>Sitio público</strong><small>Permite servir contenido después de configurar dominio y túnel.</small></span></label>
+          <label><InputCheckbox @bind-Value="settings.IsMembershipEnabled" /><span><strong>Registro y cuenta</strong><small>Habilita alta, verificación y acceso al Club Bruno.</small></span></label>
+          <label><InputCheckbox @bind-Value="settings.IsLoyaltyAccrualEnabled" /><span><strong>Acumulación de puntos</strong><small>Acredita 1 punto por cada $10 elegibles al pagar.</small></span></label>
+          <label><InputCheckbox @bind-Value="settings.IsPromotionsEnabled" /><span><strong>Promociones</strong><small>Activa cotización y aplicación en POS y sitio.</small></span></label>
+        </div>
+        <p class="rollout-note">Las cuatro banderas inician apagadas. El esquema, el ledger y la auditoría permanecen intactos al desactivar una función.</p>
+      </section>
+
+      <section class="site-panel">
+        <header><div><span>Portada</span><h2>Identidad pública</h2></div></header>
+        <label>Nombre público <InputText @bind-Value="settings.PublicName" /></label>
+        <label>Antetítulo <InputText @bind-Value="settings.HeroEyebrow" /></label>
+        <label>Título principal <InputText @bind-Value="settings.HeroTitle" /></label>
+        <label>Descripción <InputTextArea @bind-Value="settings.HeroDescription" /></label>
+        <label>Descripción SEO <InputTextArea @bind-Value="settings.SeoDescription" /></label>
+      </section>
+
+      <section class="site-panel">
+        <header><div><span>Visítanos</span><h2>Ubicación y contacto</h2></div></header>
+        <label>Razón social <InputText @bind-Value="settings.LegalName" /></label>
+        <label>Calle y número legal <InputText @bind-Value="settings.AddressLine" /></label>
+        <label>Colonia <InputText @bind-Value="settings.Neighborhood" /></label>
+        <div class="field-grid"><label>C.P. <InputText @bind-Value="settings.PostalCode" /></label><label>Ciudad <InputText @bind-Value="settings.City" /></label></div>
+        <div class="field-grid"><label>Estado <InputText @bind-Value="settings.StateName" /></label><label>País <InputText @bind-Value="settings.CountryName" /></label></div>
+        <div class="field-grid"><label>WhatsApp (dígitos) <InputText @bind-Value="settings.WhatsAppPhone" /></label><label>WhatsApp visible <InputText @bind-Value="settings.WhatsAppDisplay" /></label></div>
+        <label>Pin de navegación <InputText @bind-Value="settings.MapsUrl" /></label>
+      </section>
+
+      <section class="site-panel">
+        <header><div><span>Canales oficiales</span><h2>Redes sociales</h2></div></header>
+        <label>Facebook <InputText @bind-Value="settings.FacebookUrl" /></label>
+        <label>Instagram <InputText @bind-Value="settings.InstagramUrl" placeholder="Oculto mientras esté vacío" /></label>
+        <label>TikTok <InputText @bind-Value="settings.TikTokUrl" placeholder="Oculto mientras esté vacío" /></label>
+        <p class="rollout-note">El sitio nunca mostrará enlaces vacíos. Instagram y TikTok aparecerán al capturarlos aquí.</p>
+      </section>
+
+      <section class="site-panel">
+        <header><div><span>Fuente estructurada</span><h2>Horario semanal</h2></div></header>
+        <label>JSON de horarios <InputTextArea @bind-Value="settings.OpeningHoursJson" class="hours-json" /></label>
+        <p class="rollout-note">Formato por día en inglés. Los intervalos usan <code>opens</code> y <code>closes</code>. El lunes permanece con arreglo vacío.</p>
+      </section>
+    </EditForm>
+  }
+</main>
+
+@code {
+  private BrunoPublicSiteSettingsSaveRequest? settings;
+  private bool isBusy;
+  private string? message;
+  private bool isError;
+  private const string CurrentRfc = BrunoRestaurantConstants.Rfc;
+
+  protected override async Task OnInitializedAsync()
+  {
+    if (!RfcState.TrySet(CurrentRfc))
+    {
+      Show("Tu cuenta no tiene autorización para administrar el RFC interno de Bruno's.", true);
+      return;
+    }
+    RfcContext.CurrentRfc = CurrentRfc;
+    RfcState.Changed += OnRfcChanged;
+    await LoadAsync();
+  }
+
+  private async Task LoadAsync()
+  {
+    isBusy = true;
+    try
+    {
+      var sites = await CatalogService.GetSitesAsync(CurrentRfc);
+      var site = sites.FirstOrDefault(item => item.SiteCode == BrunoRestaurantConstants.SiteCode);
+      if (site is null) { settings = null; Show("No existe una sede de restaurante para el RFC activo.", true); return; }
+      var value = await PublicCatalogService.GetSettingsAsync(CurrentRfc, site.Id);
+      if (value is null) { settings = null; Show("Aplica primero la migración de promociones y sitio Bruno.", true); return; }
+      settings = new BrunoPublicSiteSettingsSaveRequest
+      {
+        Rfc = CurrentRfc, SiteId = value.SiteId, LegalName = value.LegalName, PublicName = value.PublicName,
+        HeroEyebrow = value.HeroEyebrow, HeroTitle = value.HeroTitle, HeroDescription = value.HeroDescription,
+        AddressLine = value.AddressLine, Neighborhood = value.Neighborhood, PostalCode = value.PostalCode,
+        City = value.City, StateName = value.StateName, CountryName = value.CountryName,
+        WhatsAppPhone = value.WhatsAppPhone, WhatsAppDisplay = value.WhatsAppDisplay, MapsUrl = value.MapsUrl,
+        FacebookUrl = value.FacebookUrl, InstagramUrl = value.InstagramUrl, TikTokUrl = value.TikTokUrl,
+        OpeningHoursJson = value.OpeningHoursJson, SeoDescription = value.SeoDescription,
+        IsWebsiteEnabled = value.IsWebsiteEnabled, IsMembershipEnabled = value.IsMembershipEnabled,
+        IsLoyaltyAccrualEnabled = value.IsLoyaltyAccrualEnabled, IsPromotionsEnabled = value.IsPromotionsEnabled
+      };
+      message = null;
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { isBusy = false; }
+  }
+
+  private async Task SaveAsync()
+  {
+    if (settings is null) return;
+    isBusy = true;
+    try
+    {
+      settings.Rfc = CurrentRfc;
+      var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+      var result = await PublicCatalogService.SaveSettingsAsync(settings, auth.User.Identity?.Name ?? "sitio-brunos");
+      Show(result.Message, !result.Success);
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { isBusy = false; }
+  }
+
+  private void Show(string value, bool error) { message = value; isError = error; }
+  private void OnRfcChanged() => _ = InvokeAsync(async () =>
+  {
+    if (!string.Equals(RfcState.CurrentRfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
+    {
+      RfcState.TrySet(CurrentRfc);
+      return;
+    }
+    RfcContext.CurrentRfc = CurrentRfc;
+    await LoadAsync();
+    StateHasChanged();
+  });
+  public void Dispose() => RfcState.Changed -= OnRfcChanged;
+}

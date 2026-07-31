@@ -60,6 +60,7 @@ public sealed class RestaurantProductDto
   public long Id { get; set; }
   public long ProductCardId { get; set; }
   public int MaterialId { get; set; }
+  public int MaterialCategoryId { get; set; }
   public string Sku { get; set; } = string.Empty;
   public string Name { get; set; } = string.Empty;
   public string? Description { get; set; }
@@ -76,6 +77,7 @@ public sealed class RestaurantProductDto
   public string FulfillmentMode { get; set; } = string.Empty;
   public decimal TheoreticalCost { get; set; }
   public IReadOnlyList<string> Allergens { get; set; } = Array.Empty<string>();
+  public IReadOnlyList<string> DietaryTags { get; set; } = Array.Empty<string>();
   public IReadOnlyList<RestaurantModifierGroupDto> ModifierGroups { get; set; } = Array.Empty<RestaurantModifierGroupDto>();
 }
 
@@ -104,6 +106,7 @@ public sealed class RestaurantProductUpsertRequest
   public byte[]? VariantImageThumbnail { get; set; }
   public string? VariantImageFileName { get; set; }
   public string? VariantImageContentType { get; set; }
+  public List<string> DietaryTags { get; set; } = [];
 }
 
 public sealed class RestaurantModifierGroupDto
@@ -178,6 +181,9 @@ public sealed class RestaurantOrderCreateRequest
   public decimal OrderDiscountAmount { get; set; }
   public string? DiscountReason { get; set; }
   public string? SupervisorAuthorizedBy { get; set; }
+  public Guid? MemberId { get; set; }
+  [StringLength(32)] public string? PromotionCode { get; set; }
+  [Required, StringLength(10)] public string SalesChannel { get; set; } = RestaurantSalesChannels.Pos;
   public bool AllowInventoryDeficit { get; set; }
   [MinLength(1)] public List<RestaurantOrderLineCreateRequest> Lines { get; set; } = [];
   public List<RestaurantPaymentCreateRequest> Payments { get; set; } = [];
@@ -274,6 +280,11 @@ public sealed class RestaurantOrderResult
   public string PaymentStatus { get; set; } = string.Empty;
   public decimal Total { get; set; }
   public decimal BalanceDue { get; set; }
+  public decimal PromotionDiscountTotal { get; set; }
+  public IReadOnlyList<RestaurantPromotionAdjustmentDto> AppliedPromotions { get; set; } = Array.Empty<RestaurantPromotionAdjustmentDto>();
+  public string? MembershipNumber { get; set; }
+  public int PointsEarned { get; set; }
+  public int? PointsBalance { get; set; }
   public bool WasDuplicate { get; set; }
 }
 
@@ -290,6 +301,10 @@ public sealed class RestaurantOrderDto
   public string? Notes { get; set; }
   public decimal Total { get; set; }
   public decimal BalanceDue { get; set; }
+  public decimal PromotionDiscountTotal { get; set; }
+  public Guid? MemberId { get; set; }
+  public string? MembershipNumber { get; set; }
+  public int PointsEarned { get; set; }
   public int? CashRegisterId { get; set; }
   public Guid? CashShiftId { get; set; }
   public byte Priority { get; set; }

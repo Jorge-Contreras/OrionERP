@@ -1,0 +1,5 @@
+@page "/cuenta/baja"
+@model OrionERP.Bruno.Web.Pages.Account.Member.ClosureModel
+@{ ViewData["Title"] = "Baja · Club Bruno"; }
+<div class="account-shell"><div class="account-art"></div><section class="account-panel"><span>Privacidad</span><h1>Solicitar baja</h1><p>La baja deshabilita inmediatamente el acceso y las comunicaciones de mercadotecnia. Anonimizaremos la información eliminable y conservaremos solo transacciones, puntos y auditoría exigibles.</p>
+<form method="post" class="account-form"><div asp-validation-summary="ModelOnly"></div><label>Motivo <textarea asp-for="Reason" rows="4" maxlength="500"></textarea><span asp-validation-for="Reason"></span></label><label>Escribe BAJA para confirmar <input asp-for="Confirmation" autocomplete="off" /><span asp-validation-for="Confirmation"></span></label><button class="button button--accent" type="submit">Desactivar y solicitar baja</button></form><div class="account-links"><a href="/cuenta">Conservar mi membresía</a><a href="/privacidad">Leer aviso de privacidad</a></div></section></div><partial name="_ValidationScriptsPartial" />

@@ -23,3 +23,14 @@ public sealed class BonhomiaGraphMailOptions : MicrosoftGraphMailOptions
     SenderAddress = "recepcion@bonhomiasuites.com";
   }
 }
+
+public sealed class BrunoGraphMailOptions : MicrosoftGraphMailOptions
+{
+  public const string SectionName = "BrunoGraphMail";
+
+  public BrunoGraphMailOptions()
+  {
+    SenderAddress = "hola@brunosgarden.com";
+    PublicBaseUrl = "https://brunosgarden.com";
+  }
+}

@@ -1,0 +1,64 @@
+@page "/"
+@inject IBrunoPublicCatalogService CatalogService
+
+<PageTitle>Bruno's Garden & Snacks · Calpulalpan</PageTitle>
+<HeadContent><meta name="description" content="@settings.SeoDescription" /></HeadContent>
+
+<section class="hero">
+  <div class="hero__shade"></div>
+  <div class="hero__content">
+    <span>@settings.HeroEyebrow</span>
+    <h1>@settings.HeroTitle</h1>
+    <p>@settings.HeroDescription</p>
+    <div class="hero__actions"><a class="button button--accent" href="/menu">Ver menú</a><a class="button button--ghost" href="/membresia">Conocer Club Bruno</a></div>
+  </div>
+  <a class="hero__hours" href="/visitanos"><span>Hoy</span><strong>@TodayHours</strong><small>Cómo llegar →</small></a>
+</section>
+
+<section class="intro-grid">
+  <article><span>01</span><h2>Antojo para todos</h2><p>Chicken fingers, hamburguesas, snacks, bebidas y opciones para compartir.</p><a href="/menu">Explorar el menú →</a></article>
+  <article><span>02</span><h2>Un jardín para quedarte</h2><p>Ambiente familiar y pet friendly para comer, conversar y pasarla bien.</p><a href="/visitanos">Planea tu visita →</a></article>
+  <article><span>03</span><h2>Tus visitas suman</h2><p>Regístrate en Club Bruno, identifícate antes de pagar y acumula puntos en compras elegibles.</p><a href="/membresia">Cómo funciona →</a></article>
+</section>
+
+<section class="featured">
+  <div><span>Desde nuestra cocina</span><h2>Elige tu próximo favorito</h2><p>El menú se actualiza directamente desde nuestro catálogo. Precios y disponibilidad pueden cambiar durante el día.</p></div>
+  <div class="featured__products">
+    @foreach (var product in featuredProducts)
+    {
+      <article>
+        @if (product.HasImage) { <img src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" /> }
+        <div><small>@product.Sku</small><h3>@product.Name</h3><p>@product.Description</p><strong>@product.Price.ToString("C0")</strong></div>
+      </article>
+    }
+  </div>
+</section>
+
+<section class="order-preview">
+  <div><span>Próximamente</span><h2>Ordena como te convenga</h2><p>La arquitectura ya contempla selección de ubicación, modo de entrega, catálogo y cotización del servidor. Carrito, pagos y creación de pedidos web permanecerán cerrados en esta primera versión.</p></div>
+  <div class="order-preview__steps"><span><b>1</b> Confirma ubicación</span><span><b>2</b> Elige recolección o entrega</span><span><b>3</b> Arma y paga tu orden</span></div>
+</section>
+
+@code {
+  private BrunoPublicSiteSettingsDto settings = new()
+  {
+    HeroEyebrow = "Jardín pet friendly en Calpulalpan",
+    HeroTitle = "Snacks, jardín y buenos momentos",
+    HeroDescription = "Un espacio familiar para disfrutar, convivir y venir con tu mascota.",
+    SeoDescription = "Bruno's Garden & Snacks en Calpulalpan."
+  };
+  private List<RestaurantProductDto> featuredProducts = [];
+  private string TodayHours => DateTime.Now.DayOfWeek == DayOfWeek.Monday ? "Cerrado" : "9:00–22:00";
+
+  protected override async Task OnInitializedAsync()
+  {
+    try
+    {
+      var catalog = await CatalogService.GetCatalogAsync(BrunoSiteConstants.Rfc, BrunoSiteConstants.SiteCode, DateTimeOffset.Now);
+      if (catalog is null) return;
+      settings = catalog.Settings;
+      featuredProducts = catalog.Menu.Sections.SelectMany(section => section.Products).Where(product => !product.IsSoldOut).Take(3).ToList();
+    }
+    catch { }
+  }
+}

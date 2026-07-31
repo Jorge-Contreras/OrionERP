@@ -100,6 +100,13 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
       {
         column.Item().Element(item => ComposeMoneyRow(item, "Descuento", -model.DiscountTotal));
       }
+      foreach (var promotion in model.Promotions)
+      {
+        var code = string.IsNullOrWhiteSpace(promotion.Code) ? string.Empty : $" · {promotion.Code}";
+        column.Item().PaddingLeft(4).Text($"Promo: {promotion.PromotionName}{code} (-{promotion.DiscountAmount:C})")
+          .FontSize(7)
+          .FontColor(MutedColor);
+      }
       column.Item().Element(item => ComposeMoneyRow(item, "Subtotal antes de IVA", model.SubtotalBeforeTax));
       column.Item().Element(item => ComposeMoneyRow(item, $"IVA ({model.TaxRate:P0})", model.Tax));
       if (model.Delivery > 0)
@@ -135,6 +142,17 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
       if (model.BalanceDue > 0)
       {
         column.Item().Element(item => ComposeMoneyRow(item, "Saldo pendiente", model.BalanceDue, emphasized: true));
+      }
+
+      if (!string.IsNullOrWhiteSpace(model.MembershipNumber))
+      {
+        column.Item().PaddingTop(4).LineHorizontal(1).LineColor(LightColor);
+        column.Item().PaddingTop(2).Text($"Membresía {model.MembershipNumber}").FontSize(8).SemiBold();
+        column.Item().Text($"Puntos de esta compra: {model.PointsEarned}").FontSize(8);
+        if (model.PointsBalance.HasValue)
+        {
+          column.Item().Text($"Saldo de puntos: {model.PointsBalance.Value}").FontSize(8).SemiBold();
+        }
       }
 
       column.Item().PaddingTop(5).LineHorizontal(1).LineColor(LightColor);

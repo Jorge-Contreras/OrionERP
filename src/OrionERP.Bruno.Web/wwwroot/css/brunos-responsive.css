@@ -1,0 +1,7 @@
+@media (max-width: 600px) {
+  .menu-section > header h2 {
+    font-size: 1.55rem;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}

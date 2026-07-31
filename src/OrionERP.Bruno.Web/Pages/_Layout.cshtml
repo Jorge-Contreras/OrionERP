@@ -1,0 +1,60 @@
+@using Microsoft.Extensions.Options
+@using Microsoft.AspNetCore.Components.Web
+@using OrionERP.Bruno.Web.Configuration
+@inject IOptions<BrunoTurnstileOptions> Turnstile
+@inject IOptions<BrunoSiteOptions> BrunoSite
+<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#171512" />
+  <meta name="description" content="Bruno's Garden & Snacks: jardín pet friendly, ambiente familiar, chicken fingers, hamburguesas, snacks y bebidas en Calpulalpan." />
+  <link rel="canonical" href="https://brunosgarden.com@(Context.Request.Path == "/" ? "" : Context.Request.Path)" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="es_MX" />
+  <meta property="og:site_name" content="Bruno's Garden & Snacks" />
+  <meta property="og:title" content="Bruno's Garden & Snacks" />
+  <meta property="og:description" content="Snacks, jardín y buenos momentos en Calpulalpan." />
+  <meta property="og:url" content="https://brunosgarden.com@(Context.Request.Path == "/" ? "" : Context.Request.Path)" />
+  <meta property="og:image" content="https://brunosgarden.com/Images/Brunos/og-brunos.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <title>@(ViewData["Title"] ?? "Bruno's Garden & Snacks")</title>
+  <base href="~/" />
+  <link rel="icon" type="image/png" href="~/Images/Brunos/brunos-logo.png" />
+  <link rel="stylesheet" href="~/css/brunos-site.css" asp-append-version="true" />
+  <link rel="stylesheet" href="~/css/brunos-responsive.css" asp-append-version="true" />
+  <link rel="stylesheet" href="~/OrionERP.Bruno.Web.styles.css" asp-append-version="true" />
+  <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
+  <script type="application/ld+json">
+  {
+    "@@context":"https://schema.org",
+    "@@type":"FoodEstablishment",
+    "name":"Bruno's Garden & Snacks",
+    "url":"https://brunosgarden.com",
+    "image":"https://brunosgarden.com/Images/Brunos/og-brunos.png",
+    "telephone":"+52 749 110 3026",
+    "servesCuisine":["Snacks","Chicken fingers","Hamburguesas","Bebidas"],
+    "priceRange":"$$",
+    "address":{"@@type":"PostalAddress","streetAddress":"Calle Camino Nacional #5","addressLocality":"Calpulalpan","addressRegion":"Tlaxcala","postalCode":"90207","addressCountry":"MX"},
+    "openingHoursSpecification":[
+      {"@@type":"OpeningHoursSpecification","dayOfWeek":["Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],"opens":"09:00","closes":"22:00"}
+    ],
+    "sameAs":["https://www.facebook.com/profile.php?id=61592059341008"]
+  }
+  </script>
+</head>
+<body>
+  @RenderBody()
+  <script src="~/_framework/blazor.server.js"></script>
+  @if (Turnstile.Value.IsConfigured)
+  {
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  }
+  @if (!string.IsNullOrWhiteSpace(BrunoSite.Value.CloudflareAnalyticsToken))
+  {
+    <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"@BrunoSite.Value.CloudflareAnalyticsToken"}'></script>
+  }
+  @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

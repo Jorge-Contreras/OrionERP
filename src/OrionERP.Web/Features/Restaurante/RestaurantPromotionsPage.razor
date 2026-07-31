@@ -1,0 +1,441 @@
+@page "/restaurante/promociones"
+@attribute [Authorize(Policy = "RestaurantAdmin")]
+@implements IDisposable
+@using System.Text
+@using OrionERP.Application.Features.Logistica.Shared
+@using OrionERP.Application.Features.Restaurante
+@using OrionERP.Infrastructure.Auth
+@inject IRestaurantPromotionService PromotionService
+@inject IRestaurantCatalogService CatalogService
+@inject ILoyaltyService LoyaltyService
+@inject IUserRfcState RfcState
+@inject IRfcContext RfcContext
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Restaurante · Promociones y Club Bruno</PageTitle>
+
+<main class="promo-admin">
+  <header class="promo-admin__hero">
+    <div>
+      <span>Venta y fidelidad</span>
+      <h1>Promociones y Club Bruno</h1>
+      <p>Reglas autoritativas, códigos, condiciones públicas, métricas y ajustes auditados.</p>
+    </div>
+    <button type="button" class="btn btn-light" @onclick="LoadAsync" disabled="@isBusy">Actualizar</button>
+  </header>
+
+  @if (!string.IsNullOrWhiteSpace(message))
+  {
+    <div class="alert @(isError ? "alert-danger" : "alert-success")" role="status">@message</div>
+  }
+
+  <nav class="promo-admin__tabs" aria-label="Secciones">
+    <button type="button" class="@(tab == "rules" ? "is-active" : null)" @onclick='() => tab = "rules"'>Promociones</button>
+    <button type="button" class="@(tab == "reports" ? "is-active" : null)" @onclick='() => tab = "reports"'>Reportes</button>
+    <button type="button" class="@(tab == "members" ? "is-active" : null)" @onclick='() => tab = "members"'>Membresías</button>
+  </nav>
+
+  @if (tab == "rules")
+  {
+    <section class="promo-admin__workspace">
+      <aside class="promo-admin__list panel">
+        <header>
+          <div><span>@promotions.Count reglas</span><h2>Promociones</h2></div>
+          <button type="button" @onclick="NewPromotion">Nueva</button>
+        </header>
+        @foreach (var promotion in promotions)
+        {
+          <button type="button" class="promo-row @(editor.Id == promotion.Id ? "is-selected" : null)" @onclick="() => EditPromotion(promotion)">
+            <span>
+              <strong>@promotion.Name</strong>
+              <small>@RuleLabel(promotion.RuleType) · prioridad @promotion.Priority</small>
+            </span>
+            <b class="status status--@promotion.Status.ToLowerInvariant()">@StatusLabel(promotion.Status)</b>
+          </button>
+        }
+        @if (promotions.Count == 0)
+        {
+          <p class="empty">Aplica la migración para cargar las dos promociones iniciales como borradores.</p>
+        }
+      </aside>
+
+      <EditForm Model="editor" OnValidSubmit="SavePromotionAsync" class="panel promo-editor">
+        <DataAnnotationsValidator />
+        <header>
+          <div><span>Regla comercial</span><h2>@(editor.Id.HasValue ? "Editar promoción" : "Nueva promoción")</h2></div>
+          <button type="submit" class="btn btn-primary" disabled="@isBusy">Guardar</button>
+        </header>
+        <ValidationSummary />
+
+        <div class="field-grid field-grid--3">
+          <label>Nombre <InputText @bind-Value="editor.Name" /></label>
+          <label>Estado
+            <InputSelect @bind-Value="editor.Status">
+              @foreach (var status in Statuses) { <option value="@status">@StatusLabel(status)</option> }
+            </InputSelect>
+          </label>
+          <label>Prioridad <InputNumber @bind-Value="editor.Priority" /></label>
+        </div>
+        <div class="field-grid">
+          <label>Descripción pública <InputTextArea @bind-Value="editor.PublicDescription" /></label>
+          <label>Condiciones públicas obligatorias <InputTextArea @bind-Value="editor.PublicTerms" /></label>
+        </div>
+        <div class="field-grid field-grid--3">
+          <label>Tipo de regla
+            <InputSelect @bind-Value="editor.RuleType">
+              @foreach (var type in RuleTypes) { <option value="@type">@RuleLabel(type)</option> }
+            </InputSelect>
+          </label>
+          <label>Sede
+            <InputSelect @bind-Value="editor.SiteId">
+              <option value="">Todas</option>
+              @foreach (var site in sites) { <option value="@site.Id">@site.Name</option> }
+            </InputSelect>
+          </label>
+          <label>Límite global <InputNumber @bind-Value="editor.GlobalLimit" /></label>
+        </div>
+
+        @if (editor.RuleType == RestaurantPromotionRuleTypes.BuyXPayY)
+        {
+          <div class="field-grid"><label>Compra X <InputNumber @bind-Value="editor.BuyQuantity" /></label><label>Paga Y <InputNumber @bind-Value="editor.PayQuantity" /></label></div>
+        }
+        else if (editor.RuleType == RestaurantPromotionRuleTypes.PercentOff)
+        {
+          <label>Porcentaje de descuento <InputNumber @bind-Value="editor.PercentOff" /></label>
+        }
+        else if (editor.RuleType == RestaurantPromotionRuleTypes.FixedAmountOff)
+        {
+          <label>Importe fijo de descuento <InputNumber @bind-Value="editor.FixedAmount" /></label>
+        }
+        else
+        {
+          <div class="field-grid"><label>Unidades del paquete <InputNumber @bind-Value="editor.BuyQuantity" /></label><label>Precio fijo del paquete <InputNumber @bind-Value="editor.BundlePrice" /></label></div>
+        }
+
+        <div class="field-grid field-grid--3">
+          <label>Cantidad mínima <InputNumber @bind-Value="editor.MinimumQuantity" /></label>
+          <label>Subtotal mínimo <InputNumber @bind-Value="editor.MinimumSubtotal" /></label>
+          <span></span>
+          <label>Válida desde <InputDate @bind-Value="editor.ValidFromLocal" /></label>
+          <label>Válida hasta <InputDate @bind-Value="editor.ValidToLocal" /></label>
+        </div>
+
+        <div class="checks">
+          <label><InputCheckbox @bind-Value="editor.PosEnabled" /> POS</label>
+          <label><InputCheckbox @bind-Value="editor.WebEnabled" /> Web</label>
+          <label><InputCheckbox @bind-Value="editor.MemberOnly" /> Solo miembros</label>
+          <label><InputCheckbox @bind-Value="editor.CodeRequired" /> Requiere código</label>
+          <label><InputCheckbox @bind-Value="editor.IsCombinable" /> Combinable sobre remanente</label>
+          <label><InputCheckbox @bind-Value="editor.IsPublic" /> Publicar condiciones</label>
+        </div>
+
+        <section class="subpanel">
+          <header><div><span>Alcance</span><h3>Productos y categorías elegibles</h3></div></header>
+          <div class="product-picks">
+            @foreach (var product in products)
+            {
+              <label>
+                <input type="checkbox" checked="@editor.ProductIds.Contains(product.Id)" @onchange="_ => ToggleProduct(product.Id)" />
+                <span><strong>@product.Name</strong><small>@product.Sku · @product.Price.ToString("C")</small></span>
+              </label>
+            }
+          </div>
+          <div class="category-picks">
+            @foreach (var categoryId in products.Select(product => product.MaterialCategoryId).Distinct().Order())
+            {
+              <label><input type="checkbox" checked="@editor.MaterialCategoryIds.Contains(categoryId)" @onchange="_ => ToggleCategory(categoryId)" /> Categoría logística #@categoryId</label>
+            }
+          </div>
+        </section>
+
+        <section class="subpanel">
+          <header><div><span>Horario local de la sede</span><h3>Días y franjas</h3></div><button type="button" @onclick="AddSchedule">Agregar</button></header>
+          @foreach (var schedule in editor.Schedules.Select((value, index) => (value, index)))
+          {
+            <div class="repeat-row">
+              <select value="@schedule.value.DayOfWeek" @onchange="eventArgs => SetScheduleDay(schedule.index, eventArgs)">
+                @foreach (var day in Days) { <option value="@day.Value">@day.Label</option> }
+              </select>
+              <input type="time" value="@FormatTime(schedule.value.StartsAt)" @onchange="eventArgs => SetScheduleTime(schedule.index, true, eventArgs)" />
+              <span>a</span>
+              <input type="time" value="@FormatTime(schedule.value.EndsAt)" @onchange="eventArgs => SetScheduleTime(schedule.index, false, eventArgs)" />
+              <button type="button" class="danger-link" @onclick="() => RemoveSchedule(schedule.index)">Quitar</button>
+            </div>
+          }
+          @if (editor.Schedules.Count == 0) { <p class="empty">Sin franjas: aplica cualquier día y hora dentro de la vigencia.</p> }
+        </section>
+
+        <section class="subpanel">
+          <header><div><span>Canje compartido</span><h3>Códigos promocionales</h3></div><button type="button" @onclick="AddCode">Agregar</button></header>
+          @foreach (var code in editor.Codes.Select((value, index) => (value, index)))
+          {
+            <div class="repeat-row repeat-row--code">
+              <InputText @bind-Value="code.value.Code" placeholder="CÓDIGO" />
+              <InputNumber @bind-Value="code.value.GlobalLimit" placeholder="Límite global" />
+              <InputNumber @bind-Value="code.value.PerMemberLimit" placeholder="Por miembro" />
+              <label><InputCheckbox @bind-Value="code.value.IsActive" /> Activo</label>
+              <button type="button" class="danger-link" @onclick="() => RemoveCode(code.index)">Quitar</button>
+            </div>
+          }
+        </section>
+
+        <section class="subpanel preview">
+          <header><div><span>Sin afectar ventas</span><h3>Vista previa de ahorro</h3></div><button type="button" @onclick="PreviewPromotion">Calcular</button></header>
+          <div class="field-grid field-grid--3">
+            <label>Producto
+              <select @bind="previewProductId">@foreach (var product in products) { <option value="@product.Id">@product.Name</option> }</select>
+            </label>
+            <label>Cantidad <input type="number" min="0.01" step="0.01" @bind="previewQuantity" /></label>
+            <label>Código <input @bind="previewCode" /></label>
+          </div>
+          @if (previewQuote is not null)
+          {
+            <div class="preview-result">
+              <span>Subtotal <strong>@previewQuote.MerchandiseSubtotal.ToString("C")</strong></span>
+              <span>Ahorro <strong>@previewQuote.PromotionDiscountTotal.ToString("C")</strong></span>
+              <span>Total mercancía <strong>@previewQuote.DiscountedMerchandise.ToString("C")</strong></span>
+              <small>@(previewQuote.Message ?? (previewQuote.Adjustments.Count > 0 ? "La regla aplica." : "La regla no aplica con estos datos."))</small>
+            </div>
+          }
+        </section>
+      </EditForm>
+    </section>
+  }
+  else if (tab == "reports")
+  {
+    <section class="panel reports">
+      <header>
+        <div><span>Auditoría comercial</span><h2>Desempeño de promociones</h2></div>
+        <div class="report-actions"><input type="date" @bind="from" /><input type="date" @bind="to" /><button type="button" @onclick="LoadReportsAsync">Aplicar</button><a href="@CsvHref" download="promociones.csv">Exportar CSV</a></div>
+      </header>
+      <div class="kpis">
+        <article><span>Venta bruta</span><strong>@promotionReport.GrossSales.ToString("C")</strong></article>
+        <article><span>Descuento</span><strong>@promotionReport.PromotionDiscount.ToString("C")</strong></article>
+        <article><span>Venta neta</span><strong>@promotionReport.NetSales.ToString("C")</strong></article>
+        <article><span>Órdenes</span><strong>@promotionReport.OrderCount</strong></article>
+        <article><span>Miembros activos</span><strong>@loyaltyReport.ActiveMembers</strong></article>
+        <article><span>Puntos en circulación</span><strong>@loyaltyReport.OutstandingPoints</strong></article>
+      </div>
+      <div class="data-table">
+        <div class="data-table__head"><span>Promoción / código</span><span>Usos</span><span>Órdenes</span><span>Bruta</span><span>Descuento</span><span>Neta</span></div>
+        @foreach (var row in promotionReport.Promotions)
+        {
+          <div><span><strong>@row.PromotionName</strong><small>@row.Code</small></span><span>@row.RedemptionCount</span><span>@row.OrderCount</span><span>@row.GrossSales.ToString("C")</span><span>@row.DiscountAmount.ToString("C")</span><span>@row.NetSales.ToString("C")</span></div>
+        }
+      </div>
+    </section>
+  }
+  else
+  {
+    <section class="member-workspace">
+      <article class="panel member-search">
+        <header><div><span>Búsqueda exacta y protegida</span><h2>Localizar membresía</h2></div></header>
+        <label>Correo, teléfono, número o QR <input @bind="memberIdentifier" @onkeydown="MemberSearchKeyDown" autocomplete="off" /></label>
+        <button type="button" @onclick="FindMemberAsync">Buscar</button>
+        <p class="empty">No se muestran listados completos de clientes. El POS y este panel solo aceptan búsquedas exactas.</p>
+      </article>
+      @if (member is not null)
+      {
+        <article class="panel member-card">
+          <header><div><span>@member.MembershipNumber</span><h2>@member.DisplayName</h2></div><strong>@member.PointsBalance puntos</strong></header>
+          <dl><dt>Correo</dt><dd>@member.MaskedEmail</dd><dt>Teléfono</dt><dd>@member.MaskedPhone</dd><dt>Estado</dt><dd>@member.Status</dd></dl>
+          <div class="field-grid">
+            <label>Ajuste de puntos <input type="number" @bind="pointsDelta" /></label>
+            <label>Motivo obligatorio <input @bind="adjustmentReason" maxlength="500" /></label>
+          </div>
+          <button type="button" class="btn btn-primary" @onclick="AdjustPointsAsync" disabled="@(pointsDelta == 0 || string.IsNullOrWhiteSpace(adjustmentReason))">Registrar ajuste auditado</button>
+        </article>
+      }
+    </section>
+  }
+</main>
+
+@code {
+  private static readonly string[] Statuses = [RestaurantPromotionStatuses.Draft, RestaurantPromotionStatuses.Scheduled, RestaurantPromotionStatuses.Active, RestaurantPromotionStatuses.Paused, RestaurantPromotionStatuses.Expired];
+  private static readonly string[] RuleTypes = [RestaurantPromotionRuleTypes.BuyXPayY, RestaurantPromotionRuleTypes.PercentOff, RestaurantPromotionRuleTypes.FixedAmountOff, RestaurantPromotionRuleTypes.FixedBundlePrice];
+  private static readonly (byte Value, string Label)[] Days = [(0, "Domingo"), (1, "Lunes"), (2, "Martes"), (3, "Miércoles"), (4, "Jueves"), (5, "Viernes"), (6, "Sábado")];
+  private List<RestaurantSiteDto> sites = [];
+  private List<RestaurantProductDto> products = [];
+  private List<RestaurantPromotionDto> promotions = [];
+  private RestaurantPromotionSaveRequest editor = NewEditor();
+  private RestaurantPromotionQuoteDto? previewQuote;
+  private RestaurantPromotionReportDto promotionReport = new();
+  private LoyaltyProgramReportDto loyaltyReport = new();
+  private LoyaltyMemberDto? member;
+  private string tab = "rules";
+  private bool isBusy;
+  private string? message;
+  private bool isError;
+  private long previewProductId;
+  private decimal previewQuantity = 2;
+  private string? previewCode;
+  private string memberIdentifier = string.Empty;
+  private int pointsDelta;
+  private string adjustmentReason = string.Empty;
+  private DateTime from = DateTime.Today.AddDays(-30);
+  private DateTime to = DateTime.Today;
+  private const string CurrentRfc = BrunoRestaurantConstants.Rfc;
+
+  protected override async Task OnInitializedAsync()
+  {
+    if (!RfcState.TrySet(CurrentRfc))
+    {
+      Show("Tu cuenta no tiene autorización para administrar el RFC interno de Bruno's.", true);
+      return;
+    }
+    RfcContext.CurrentRfc = CurrentRfc;
+    RfcState.Changed += OnRfcChanged;
+    await LoadAsync();
+  }
+
+  private async Task LoadAsync()
+  {
+    isBusy = true;
+    try
+    {
+      sites = (await CatalogService.GetSitesAsync(CurrentRfc)).ToList();
+      products = (await CatalogService.GetProductsAsync(CurrentRfc)).Where(item => item.IsActive).ToList();
+      promotions = (await PromotionService.GetPromotionsAsync(CurrentRfc)).ToList();
+      previewProductId = products.FirstOrDefault()?.Id ?? 0;
+      if (editor.SiteId is null) editor.SiteId = sites.FirstOrDefault()?.Id;
+      await LoadReportsAsync();
+      message = null;
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { isBusy = false; }
+  }
+
+  private void NewPromotion()
+  {
+    editor = NewEditor();
+    editor.Rfc = CurrentRfc;
+    editor.SiteId = sites.FirstOrDefault()?.Id;
+    previewQuote = null;
+  }
+
+  private void EditPromotion(RestaurantPromotionDto value)
+  {
+    editor = new RestaurantPromotionSaveRequest
+    {
+      Rfc = CurrentRfc, Id = value.Id, SiteId = value.SiteId, Name = value.Name,
+      PublicDescription = value.PublicDescription, PublicTerms = value.PublicTerms,
+      Status = value.Status, RuleType = value.RuleType, Priority = value.Priority,
+      ValidFromLocal = value.ValidFromLocal, ValidToLocal = value.ValidToLocal,
+      PosEnabled = value.PosEnabled, WebEnabled = value.WebEnabled, MemberOnly = value.MemberOnly,
+      CodeRequired = value.CodeRequired, IsCombinable = value.IsCombinable, IsPublic = value.IsPublic,
+      BuyQuantity = value.BuyQuantity, PayQuantity = value.PayQuantity, PercentOff = value.PercentOff,
+      FixedAmount = value.FixedAmount, BundlePrice = value.BundlePrice, MinimumQuantity = value.MinimumQuantity,
+      MinimumSubtotal = value.MinimumSubtotal, GlobalLimit = value.GlobalLimit,
+      ProductIds = value.ProductIds.ToList(), MaterialCategoryIds = value.MaterialCategoryIds.ToList(),
+      Schedules = value.Schedules.Select(item => new RestaurantPromotionScheduleSaveRequest { DayOfWeek = item.DayOfWeek, StartsAt = item.StartsAt, EndsAt = item.EndsAt }).ToList(),
+      Codes = value.Codes.Select(item => new RestaurantPromotionCodeSaveRequest { Code = item.Code, GlobalLimit = item.GlobalLimit, PerMemberLimit = item.PerMemberLimit, IsActive = item.IsActive }).ToList()
+    };
+    previewQuote = null;
+  }
+
+  private async Task SavePromotionAsync()
+  {
+    isBusy = true;
+    try
+    {
+      editor.Rfc = CurrentRfc;
+      var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+      var result = await PromotionService.SavePromotionAsync(editor, auth.User.Identity?.Name ?? "promociones");
+      Show(result.Message, !result.Success);
+      if (result.Success)
+      {
+        promotions = (await PromotionService.GetPromotionsAsync(CurrentRfc)).ToList();
+        var saved = editor.Id.HasValue ? promotions.FirstOrDefault(item => item.Id == editor.Id) : promotions.FirstOrDefault(item => item.Name == editor.Name);
+        if (saved is not null) EditPromotion(saved);
+      }
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { isBusy = false; }
+  }
+
+  private void PreviewPromotion()
+  {
+    var product = products.FirstOrDefault(item => item.Id == previewProductId);
+    if (product is null) return;
+    var definition = new RestaurantPromotionDefinition
+    {
+      Id = editor.Id ?? -1, Name = editor.Name, Status = RestaurantPromotionStatuses.Active,
+      RuleType = editor.RuleType, Priority = editor.Priority, ValidFromLocal = null, ValidToLocal = null,
+      PosEnabled = true, WebEnabled = true, MemberOnly = editor.MemberOnly, CodeRequired = editor.CodeRequired,
+      IsCombinable = editor.IsCombinable, BuyQuantity = editor.BuyQuantity, PayQuantity = editor.PayQuantity,
+      PercentOff = editor.PercentOff, FixedAmount = editor.FixedAmount, BundlePrice = editor.BundlePrice,
+      MinimumQuantity = editor.MinimumQuantity, MinimumSubtotal = editor.MinimumSubtotal,
+      ProductIds = editor.ProductIds.ToHashSet(), MaterialCategoryIds = editor.MaterialCategoryIds.ToHashSet(),
+      Schedules = [], Codes = editor.Codes.Select(item => new RestaurantPromotionCodeDto { Code = RestaurantPromotionEngine.NormalizeCode(item.Code) ?? string.Empty, GlobalLimit = item.GlobalLimit, PerMemberLimit = item.PerMemberLimit, IsActive = item.IsActive }).ToList()
+    };
+    previewQuote = RestaurantPromotionEngine.Quote(new RestaurantPromotionQuoteRequest
+    {
+      Rfc = CurrentRfc, SiteId = editor.SiteId ?? 0, At = DateTimeOffset.Now, Channel = RestaurantSalesChannels.Pos,
+      OrderType = "Pickup", MemberId = editor.MemberOnly ? Guid.NewGuid() : null, Code = previewCode,
+      Lines = [new() { LineKey = "preview", ProductId = product.Id, MaterialCategoryId = product.MaterialCategoryId, Quantity = previewQuantity, UnitPrice = product.Price }]
+    }, [definition], DateTimeOffset.Now);
+  }
+
+  private async Task LoadReportsAsync()
+  {
+    var siteId = editor.SiteId ?? sites.FirstOrDefault()?.Id ?? 0;
+    if (siteId == 0) return;
+    promotionReport = await PromotionService.GetReportAsync(CurrentRfc, siteId, from, to);
+    loyaltyReport = await LoyaltyService.GetReportAsync(CurrentRfc, from, to);
+  }
+
+  private async Task FindMemberAsync()
+  {
+    try
+    {
+      member = await LoyaltyService.FindMemberAsync(CurrentRfc, memberIdentifier);
+      Show(member is null ? "No se encontró una membresía activa y verificada." : "Membresía localizada.", member is null);
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+  }
+
+  private async Task AdjustPointsAsync()
+  {
+    if (member is null) return;
+    var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+    var result = await LoyaltyService.AdjustPointsAsync(new LoyaltyAdjustmentRequest { Rfc = CurrentRfc, MemberId = member.Id, PointsDelta = pointsDelta, Reason = adjustmentReason }, auth.User.Identity?.Name ?? "fidelidad");
+    Show(result.Message, !result.Success);
+    if (result.Success) { member = await LoyaltyService.FindMemberAsync(CurrentRfc, member.MembershipNumber); pointsDelta = 0; adjustmentReason = string.Empty; }
+  }
+
+  private async Task MemberSearchKeyDown(KeyboardEventArgs args) { if (args.Key == "Enter") await FindMemberAsync(); }
+  private void ToggleProduct(long id) { if (!editor.ProductIds.Remove(id)) editor.ProductIds.Add(id); }
+  private void ToggleCategory(int id) { if (!editor.MaterialCategoryIds.Remove(id)) editor.MaterialCategoryIds.Add(id); }
+  private void AddSchedule() => editor.Schedules.Add(new() { DayOfWeek = 2, StartsAt = new(10, 0, 0), EndsAt = new(12, 0, 0) });
+  private void RemoveSchedule(int index) => editor.Schedules.RemoveAt(index);
+  private void AddCode() => editor.Codes.Add(new() { IsActive = true });
+  private void RemoveCode(int index) => editor.Codes.RemoveAt(index);
+  private void SetScheduleDay(int index, ChangeEventArgs args) { if (byte.TryParse(args.Value?.ToString(), out var value)) editor.Schedules[index].DayOfWeek = value; }
+  private void SetScheduleTime(int index, bool starts, ChangeEventArgs args) { if (TimeSpan.TryParse(args.Value?.ToString(), out var value)) { if (starts) editor.Schedules[index].StartsAt = value; else editor.Schedules[index].EndsAt = value; } }
+  private static string FormatTime(TimeSpan value) => value.ToString(@"hh\:mm");
+  private static RestaurantPromotionSaveRequest NewEditor() => new() { Status = RestaurantPromotionStatuses.Draft, RuleType = RestaurantPromotionRuleTypes.BuyXPayY, BuyQuantity = 2, PayQuantity = 1, PosEnabled = true, IsPublic = true, PublicDescription = "Descripción para clientes.", PublicTerms = "Sujeta a disponibilidad. Consulta vigencia, productos participantes, límites y acumulación antes de publicar." };
+  private static string RuleLabel(string value) => value switch { RestaurantPromotionRuleTypes.BuyXPayY => "Compra X, paga Y", RestaurantPromotionRuleTypes.PercentOff => "Porcentaje", RestaurantPromotionRuleTypes.FixedAmountOff => "Descuento fijo", RestaurantPromotionRuleTypes.FixedBundlePrice => "Precio de paquete", _ => value };
+  private static string StatusLabel(string value) => value switch { RestaurantPromotionStatuses.Draft => "Borrador", RestaurantPromotionStatuses.Scheduled => "Programada", RestaurantPromotionStatuses.Active => "Activa", RestaurantPromotionStatuses.Paused => "Pausada", RestaurantPromotionStatuses.Expired => "Vencida", _ => value };
+  private string CsvHref => $"data:text/csv;charset=utf-8,{Uri.EscapeDataString(BuildCsv())}";
+  private string BuildCsv()
+  {
+    var csv = new StringBuilder("Promocion,Codigo,Usos,Ordenes,Venta bruta,Descuento,Venta neta\r\n");
+    foreach (var row in promotionReport.Promotions) csv.AppendLine($"{Csv(row.PromotionName)},{Csv(row.Code)},{row.RedemptionCount},{row.OrderCount},{row.GrossSales:0.00},{row.DiscountAmount:0.00},{row.NetSales:0.00}");
+    return csv.ToString();
+  }
+  private static string Csv(string? value) => $"\"{(value ?? string.Empty).Replace("\"", "\"\"")}\"";
+  private void Show(string value, bool error) { message = value; isError = error; }
+  private void OnRfcChanged() => _ = InvokeAsync(async () =>
+  {
+    if (!string.Equals(RfcState.CurrentRfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
+    {
+      RfcState.TrySet(CurrentRfc);
+      return;
+    }
+    RfcContext.CurrentRfc = CurrentRfc;
+    NewPromotion();
+    await LoadAsync();
+    StateHasChanged();
+  });
+  public void Dispose() => RfcState.Changed -= OnRfcChanged;
+}

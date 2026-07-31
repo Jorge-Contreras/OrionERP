@@ -8,6 +8,8 @@
 @using OrionERP.Web.State
 @inject IRestaurantCatalogService CatalogService
 @inject IRestaurantOrderService OrderService
+@inject IRestaurantPromotionService PromotionService
+@inject ILoyaltyService LoyaltyService
 @inject IRestaurantCashService CashService
 @inject IRestaurantQuickPinService QuickPinService
 @inject IRestaurantReceiptPdfService ReceiptPdfService
@@ -106,7 +108,7 @@
                 <button type="button" aria-label="Sumar" @onclick="() => ChangeQuantityAsync(line, 1)">+</button>
                 <span>@((line.UnitPrice * line.Quantity).ToString("C"))</span>
               </div>
-              <label>Descuento de línea <input type="number" min="0" step="0.01" max="@(line.UnitPrice * line.Quantity)" @bind="line.DiscountAmount" @bind:after="PersistCartAsync" /></label>
+              <label>Descuento de línea <input type="number" min="0" step="0.01" max="@(line.UnitPrice * line.Quantity)" @bind="line.DiscountAmount" @bind:after="OnCartDiscountChangedAsync" /></label>
             </article>
           }
           @if (cart.Count == 0) { <div class="pos-cart__empty"><span class="oi oi-cart"></span><p>Toca una fotografía para agregarla.</p></div> }
@@ -116,7 +118,7 @@
           <div class="pos-segmented" role="group" aria-label="Modalidad">
             @foreach (var type in new[] { ("Pickup", "Recoger"), ("Table", "Mesa"), ("Delivery", "Domicilio") })
             {
-              <button type="button" class="@(orderType == type.Item1 ? "is-active" : null)" @onclick="() => orderType = type.Item1">@type.Item2</button>
+              <button type="button" class="@(orderType == type.Item1 ? "is-active" : null)" @onclick="() => SetOrderTypeAsync(type.Item1)">@type.Item2</button>
             }
           </div>
           @if (orderType == "Table")
@@ -137,6 +139,39 @@
             </label>
             <label>Teléfono <input @bind="customerPhone" placeholder="Opcional" /></label>
           </div>
+          <section class="pos-membership" aria-label="Membresía y promociones">
+            <header><div><span>Club Bruno’s</span><strong>Identifica al miembro antes de cobrar</strong></div></header>
+            <div class="pos-membership__lookup">
+              <label>QR, número, correo o teléfono
+                <input @bind="memberIdentifier" @bind:event="oninput" autocomplete="off" placeholder="Escanea o captura el identificador" />
+              </label>
+              <button type="button" @onclick="FindMemberAsync" disabled="@(isLookingUpMember || string.IsNullOrWhiteSpace(memberIdentifier))">@(isLookingUpMember ? "Buscando…" : "Vincular")</button>
+            </div>
+            @if (selectedMember is not null)
+            {
+              <div class="pos-membership__member">
+                <span class="oi oi-person" aria-hidden="true"></span>
+                <div><strong>@selectedMember.DisplayName</strong><small>@selectedMember.MembershipNumber · @selectedMember.MaskedPhone · @selectedMember.PointsBalance puntos</small></div>
+                <button type="button" @onclick="ClearMember">Quitar</button>
+              </div>
+            }
+            <div class="pos-membership__lookup">
+              <label>Código promocional
+                <input @bind="promotionCode" @bind:event="oninput" maxlength="32" autocomplete="off" placeholder="Ej. MARTES2X1" />
+              </label>
+              <button type="button" @onclick="RefreshPromotionQuoteAsync" disabled="@(isQuotingPromotions || cart.Count == 0)">@(isQuotingPromotions ? "Calculando…" : "Aplicar")</button>
+            </div>
+            @if (promotionQuote is not null)
+            {
+              <div class="pos-membership__quote @(promotionQuote.CodeAccepted ? "is-valid" : "is-invalid")">
+                @foreach (var adjustment in promotionQuote.Adjustments)
+                {
+                  <span><strong>@adjustment.PromotionName</strong><b>-@adjustment.DiscountAmount.ToString("C")</b></span>
+                }
+                @if (!string.IsNullOrWhiteSpace(promotionQuote.Message)) { <small>@promotionQuote.Message</small> }
+              </div>
+            }
+          </section>
           @if (orderType == "Delivery")
           {
             <label>Dirección <textarea @bind="deliveryAddress" rows="2"></textarea></label>
@@ -342,6 +377,10 @@
   private Guid? selectedShiftId;
   private string? customerName;
   private string? customerPhone;
+  private string? memberIdentifier;
+  private LoyaltyMemberDto? selectedMember;
+  private string? promotionCode;
+  private RestaurantPromotionQuoteDto? promotionQuote;
   private string? deliveryAddress;
   private string? deliveryReferences;
   private string? externalReference;
@@ -362,6 +401,8 @@
   private string? drawerWarning;
   private bool isBusy;
   private bool isSubmitting;
+  private bool isLookingUpMember;
+  private bool isQuotingPromotions;
   private bool isPrinting;
   private bool isOpeningDrawer;
   private bool lastOrderReceivedCash;
@@ -372,8 +413,17 @@
   private IEnumerable<RestaurantProductDto> ActiveProducts => catalog?.Sections.FirstOrDefault(section => section.Id == activeSectionId)?.Products ?? [];
   private decimal CartSubtotal => cart.Sum(item => item.UnitPrice * item.Quantity);
   private decimal LineDiscountTotal => cart.Sum(item => Math.Min(Math.Max(0, item.DiscountAmount), item.UnitPrice * item.Quantity));
-  private decimal OrderDiscountAmount => decimal.Round(Math.Min(Math.Max(0, discountMode == "Percent" ? (CartSubtotal - LineDiscountTotal) * discountValue / 100m : discountValue), Math.Max(0, CartSubtotal - LineDiscountTotal)), 2);
-  private decimal DiscountTotal => LineDiscountTotal + OrderDiscountAmount;
+  private decimal PromotionDiscountTotal => promotionQuote?.PromotionDiscountTotal ?? 0;
+  private decimal OrderDiscountAmount => decimal.Round(
+    Math.Min(
+      Math.Max(
+        0,
+        discountMode == "Percent"
+          ? Math.Max(0, CartSubtotal - PromotionDiscountTotal - LineDiscountTotal) * discountValue / 100m
+          : discountValue),
+      Math.Max(0, CartSubtotal - PromotionDiscountTotal - LineDiscountTotal)),
+    2);
+  private decimal DiscountTotal => PromotionDiscountTotal + LineDiscountTotal + OrderDiscountAmount;
   private RestaurantPosTotalsBreakdown PosTotals => RestaurantPosTotalsCalculator.Calculate(
     CartSubtotal,
     DiscountTotal,
@@ -393,6 +443,7 @@
   private bool CanSubmit => cart.Count > 0
     && !isSubmitting
     && !IsCustomerNameMissing
+    && (string.IsNullOrWhiteSpace(promotionCode) || promotionQuote?.CodeAccepted == true)
     && ElectronicPaymentExcess <= 0.01m
     && (!RequiresFullPayment || PosCash.Shortfall <= 0.01m);
   private decimal SelectedProductPrice => selectedProduct is null ? 0 : selectedProduct.Price + selectedProduct.ModifierGroups.SelectMany(group => group.Options).Where(option => selectedModifierIds.Contains(option.Id)).Sum(option => option.PriceDelta);
@@ -421,6 +472,7 @@
       openShifts = (await CashService.GetShiftsAsync(CurrentRfc, selectedSiteId)).Where(shift => shift.Status == "Open").ToList();
       if (openShifts.Count == 1) selectedShiftId = openShifts[0].Id;
       await RestoreCartAsync();
+      await RefreshPromotionQuoteAsync();
       images = [];
       foreach (var product in catalog.Sections.SelectMany(section => section.Products).DistinctBy(item => item.Id).Where(item => item.HasImage))
       {
@@ -432,7 +484,7 @@
     finally { isBusy = false; }
   }
 
-  private async Task ChangeSiteAsync(ChangeEventArgs args) { if (int.TryParse(args.Value?.ToString(), out var id)) { selectedSiteId = id; cart = []; await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId); await LoadAsync(); } }
+  private async Task ChangeSiteAsync(ChangeEventArgs args) { if (int.TryParse(args.Value?.ToString(), out var id)) { selectedSiteId = id; cart = []; selectedMember = null; memberIdentifier = null; promotionQuote = null; promotionCode = null; await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId); await LoadAsync(); } }
   private void SelectProduct(RestaurantProductDto product) { selectedProduct = product; selectedModifierIds = []; if (product.ModifierGroups.Count == 0) _ = AddSelectedProductAsync(); }
   private void CloseProductModal() { selectedProduct = null; selectedModifierIds = []; }
   private void OpenCustomItem()
@@ -472,6 +524,7 @@
       isCustomItemOpen = false;
       error = null;
       await PersistCartAsync();
+      await RefreshPromotionQuoteAsync();
     }
     catch (Exception ex)
     {
@@ -503,16 +556,112 @@
     var existing = cart.FirstOrDefault(item => item.Key == key);
     if (existing is null) cart.Add(new CartLine { Key = key, ProductId = selectedProduct.Id, Name = string.IsNullOrWhiteSpace(selectedProduct.VariantName) ? selectedProduct.Name : $"{selectedProduct.Name} · {selectedProduct.VariantName}", Quantity = 1, UnitPrice = selectedProduct.Price + options.Sum(option => option.PriceDelta), ModifierIds = options.Select(option => option.Id).ToList(), ModifierNames = options.Select(option => option.Name).ToList() });
     else existing.Quantity++;
-    CloseProductModal(); error = null; await PersistCartAsync();
+    CloseProductModal(); error = null; await PersistCartAsync(); await RefreshPromotionQuoteAsync();
   }
 
-  private async Task ChangeQuantityAsync(CartLine line, int delta) { line.Quantity += delta; if (line.Quantity <= 0) cart.Remove(line); await PersistCartAsync(); }
-  private async Task ClearCartAsync() { cart = []; await PersistCartAsync(); }
+  private async Task ChangeQuantityAsync(CartLine line, int delta) { line.Quantity += delta; if (line.Quantity <= 0) cart.Remove(line); await PersistCartAsync(); await RefreshPromotionQuoteAsync(); }
+  private async Task ClearCartAsync() { cart = []; promotionQuote = null; await PersistCartAsync(); }
+  private async Task OnCartDiscountChangedAsync() { await PersistCartAsync(); await RefreshPromotionQuoteAsync(); }
+  private async Task SetOrderTypeAsync(string value) { orderType = value; await RefreshPromotionQuoteAsync(); }
   private void FillCash() { cardAmount = 0; transferAmount = 0; cashReceived = GrandTotal + Math.Max(0, tipAmount); }
+
+  private async Task FindMemberAsync()
+  {
+    if (string.IsNullOrWhiteSpace(memberIdentifier))
+    {
+      return;
+    }
+    isLookingUpMember = true;
+    error = null;
+    try
+    {
+      selectedMember = await LoyaltyService.FindMemberAsync(CurrentRfc, memberIdentifier);
+      if (selectedMember is null)
+      {
+        error = "No se encontró una membresía activa y verificada con ese identificador.";
+        return;
+      }
+      if (string.IsNullOrWhiteSpace(customerName))
+      {
+        customerName = selectedMember.DisplayName;
+      }
+      await RefreshPromotionQuoteAsync();
+    }
+    catch (Exception ex)
+    {
+      selectedMember = null;
+      error = ex.Message;
+    }
+    finally
+    {
+      isLookingUpMember = false;
+    }
+  }
+
+  private void ClearMember()
+  {
+    selectedMember = null;
+    memberIdentifier = null;
+    _ = RefreshPromotionQuoteAsync();
+  }
+
+  private async Task RefreshPromotionQuoteAsync()
+  {
+    if (catalog is null || cart.Count == 0)
+    {
+      promotionQuote = null;
+      return;
+    }
+    isQuotingPromotions = true;
+    try
+    {
+      var products = catalog.Sections
+        .SelectMany(section => section.Products)
+        .DistinctBy(product => product.Id)
+        .ToDictionary(product => product.Id);
+      promotionQuote = await PromotionService.QuoteAsync(new RestaurantPromotionQuoteRequest
+      {
+        Rfc = CurrentRfc,
+        SiteId = selectedSiteId,
+        At = DateTimeOffset.UtcNow,
+        Channel = RestaurantSalesChannels.Pos,
+        OrderType = orderType,
+        MemberId = selectedMember?.Id,
+        Code = promotionCode,
+        Lines = cart.Select(item => new RestaurantPromotionQuoteLineRequest
+        {
+          LineKey = item.Key,
+          ProductId = item.ProductId,
+          MaterialCategoryId = item.ProductId.HasValue && products.TryGetValue(item.ProductId.Value, out var product)
+            ? product.MaterialCategoryId
+            : null,
+          Quantity = item.Quantity,
+          UnitPrice = item.UnitPrice,
+          ManualDiscountAmount = item.DiscountAmount,
+          IsCustom = item.IsCustom
+        }).ToList()
+      });
+    }
+    catch (Exception ex)
+    {
+      promotionQuote = null;
+      error = $"No se pudieron calcular las promociones. {ex.Message}";
+    }
+    finally
+    {
+      isQuotingPromotions = false;
+    }
+  }
 
   private async Task SubmitAsync()
   {
     if (catalog is null || cart.Count == 0) return;
+    await RefreshPromotionQuoteAsync();
+    if (!string.IsNullOrWhiteSpace(promotionCode) && promotionQuote?.CodeAccepted != true)
+    {
+      error = promotionQuote?.Message ?? "El código promocional no es válido para esta orden.";
+      return;
+    }
     if (IsCustomerNameMissing) { error = "El nombre del cliente es obligatorio."; return; }
     if (ElectronicPaymentExcess > 0.01m) { error = "Los pagos electrónicos no pueden exceder el total de la orden."; return; }
     if (RequiresFullPayment && PosCash.Shortfall > 0.01m) { error = $"Falta cubrir {PosCash.Shortfall:C} para cobrar esta orden."; return; }
@@ -523,7 +672,7 @@
       var userName = auth.User.Identity?.Name ?? "restaurante";
       var shift = openShifts.FirstOrDefault(item => item.Id == selectedShiftId);
       string? supervisorAuthorizedBy = null;
-      if (DiscountTotal > 0 || allowInventoryDeficit)
+      if (LineDiscountTotal + OrderDiscountAmount > 0 || allowInventoryDeficit)
       {
         if (shift is null || string.IsNullOrWhiteSpace(supervisorIdentity) || string.IsNullOrWhiteSpace(supervisorPin))
           throw new InvalidOperationException("El descuento o déficit requiere turno, supervisor y PIN.");
@@ -547,7 +696,9 @@
         CustomerName = customerName!.Trim(), CustomerPhone = customerPhone, DeliveryAddress = deliveryAddress, DeliveryReferences = deliveryReferences,
         ExternalProviderId = externalProviderId, ExternalReference = externalReference, DeliveryCost = deliveryCost, CommissionAmount = commissionAmount,
         Notes = orderNotes, OrderDiscountAmount = OrderDiscountAmount, DiscountReason = discountReason,
-        SupervisorAuthorizedBy = supervisorAuthorizedBy, AllowInventoryDeficit = allowInventoryDeficit,
+        SupervisorAuthorizedBy = supervisorAuthorizedBy,MemberId=selectedMember?.Id,
+        PromotionCode=promotionCode,SalesChannel=RestaurantSalesChannels.Pos,
+        AllowInventoryDeficit = allowInventoryDeficit,
         Lines = cart.Select(item => new RestaurantOrderLineCreateRequest
         {
           ProductId = item.ProductId,
@@ -569,7 +720,7 @@
         await OpenCashDrawerAsync();
       }
       cart = []; await PersistCartAsync();
-      idempotencyKey = Guid.NewGuid().ToString("N"); cashReceived = cardAmount = transferAmount = tipAmount = 0; customerName = customerPhone = deliveryAddress = deliveryReferences = externalReference = orderNotes = discountReason = supervisorIdentity = supervisorPin = null; deliveryCost = commissionAmount = discountValue = 0; allowInventoryDeficit = false;
+      idempotencyKey = Guid.NewGuid().ToString("N"); cashReceived = cardAmount = transferAmount = tipAmount = 0; customerName = customerPhone = deliveryAddress = deliveryReferences = externalReference = orderNotes = discountReason = supervisorIdentity = supervisorPin = memberIdentifier = promotionCode = null; selectedMember = null; promotionQuote = null; deliveryCost = commissionAmount = discountValue = 0; allowInventoryDeficit = false;
     }
     catch (Exception ex) { error = ex.Message; }
     finally { isSubmitting = false; }
@@ -635,6 +786,10 @@
       TransferAmount = transferAmount,
       Change = PosCash.Change,
       BalanceDue = order.BalanceDue,
+      Promotions = order.AppliedPromotions,
+      MembershipNumber = order.MembershipNumber,
+      PointsEarned = order.PointsEarned,
+      PointsBalance = order.PointsBalance,
       Lines = receiptLines
     };
   }
@@ -709,7 +864,7 @@
   }
 
   private Task OnRealtimeEventAsync(RestaurantRealtimeEvent eventInfo) => eventInfo.EventType is "InventoryDeficit" or "ProductionCompleted" or "ProductAvailabilityChanged" ? InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); }) : Task.CompletedTask;
-  private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; cart = []; lastOrder = null; lastReceipt = null; drawerWarning = null; lastOrderReceivedCash = false; await LoadAsync(); StateHasChanged(); });
+  private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; cart = []; selectedMember = null; memberIdentifier = promotionCode = null; promotionQuote = null; lastOrder = null; lastReceipt = null; drawerWarning = null; lastOrderReceivedCash = false; await LoadAsync(); StateHasChanged(); });
   public void Dispose() { RfcState.Changed -= OnRfcChanged; Realtime.EventReceived -= OnRealtimeEventAsync; }
 
   public sealed class CartLine

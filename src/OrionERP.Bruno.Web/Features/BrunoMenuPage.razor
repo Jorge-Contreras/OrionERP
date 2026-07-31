@@ -1,0 +1,58 @@
+@page "/menu"
+@inject IBrunoPublicCatalogService CatalogService
+
+<PageTitle>Menú · Bruno's Garden & Snacks</PageTitle>
+<HeadContent><meta name="description" content="Consulta el menú, precios y disponibilidad de Bruno's Garden & Snacks en Calpulalpan." /></HeadContent>
+
+<section class="page-hero page-hero--menu"><span>Hecho para el antojo</span><h1>Nuestro menú</h1><p>Precios y disponibilidad se actualizan desde la operación del restaurante.</p></section>
+
+@if (isLoading)
+{
+  <section class="state-card"><h2>Cargando el menú…</h2></section>
+}
+else if (catalog is null)
+{
+  <section class="state-card"><h2>Estamos preparando el menú</h2><p>Vuelve pronto o escríbenos por WhatsApp para consultar disponibilidad.</p></section>
+}
+else
+{
+  <nav class="section-jump" aria-label="Secciones del menú">
+    @foreach (var section in catalog.Menu.Sections) { <a href="#@Slug(section.Name)">@section.Name</a> }
+  </nav>
+  <div class="menu-page">
+    @foreach (var section in catalog.Menu.Sections)
+    {
+      <section id="@Slug(section.Name)" class="menu-section">
+        <header><span>Bruno's</span><h2>@section.Name</h2></header>
+        <div class="menu-grid">
+          @foreach (var product in section.Products)
+          {
+            <article class="menu-card @(product.IsSoldOut ? "is-sold-out" : null)">
+              <div class="menu-card__image">
+                @if (product.HasImage) { <img src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" loading="lazy" /> }
+                else { <span>Bruno's</span> }
+                @if (product.IsSoldOut) { <b>Agotado por hoy</b> }
+              </div>
+              <div class="menu-card__copy"><h3>@product.Name</h3><strong>@product.Price.ToString("C0")</strong><p>@product.Description</p>
+                @if (product.Allergens.Count > 0) { <small>Alérgenos declarados: @string.Join(", ", product.Allergens).</small> }
+                @if (product.DietaryTags.Count > 0) { <small>Etiquetas: @string.Join(", ", product.DietaryTags). Consulta al personal para confirmar preparación y contacto cruzado.</small> }
+              </div>
+            </article>
+          }
+        </div>
+      </section>
+    }
+    <aside class="allergen-note"><strong>Información de alérgenos</strong><p>@catalog.Menu.Site.CrossContaminationWarning Consulta a nuestro personal antes de ordenar; ingredientes y procesos pueden cambiar y puede existir contacto cruzado.</p></aside>
+  </div>
+}
+
+@code {
+  private BrunoPublicCatalogDto? catalog;
+  private bool isLoading = true;
+  protected override async Task OnInitializedAsync()
+  {
+    try { catalog = await CatalogService.GetCatalogAsync(BrunoSiteConstants.Rfc, BrunoSiteConstants.SiteCode, DateTimeOffset.Now); }
+    finally { isLoading = false; }
+  }
+  private static string Slug(string value) => new(value.ToLowerInvariant().Select(character => char.IsLetterOrDigit(character) ? character : '-').ToArray());
+}

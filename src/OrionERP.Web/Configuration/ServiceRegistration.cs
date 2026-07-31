@@ -148,6 +148,10 @@ public static class ServiceRegistration
     services.AddScoped<IRestaurantCatalogService, RestaurantCatalogService>();
     services.AddScoped<IBomRecipeService, BomRecipeService>();
     services.AddScoped<IRestaurantOrderService, RestaurantOrderService>();
+    services.AddScoped<IRestaurantPromotionService, RestaurantPromotionService>();
+    services.AddScoped<ILoyaltyService, LoyaltyService>();
+    services.AddScoped<IBrunoMemberService>(sp => sp.GetRequiredService<ILoyaltyService>());
+    services.AddScoped<IBrunoPublicCatalogService, BrunoPublicCatalogService>();
     services.AddScoped<IRestaurantCashService, RestaurantCashService>();
     services.AddScoped<IRestaurantProductionService, RestaurantProductionService>();
     services.AddScoped<IRestaurantBackofficeService, RestaurantBackofficeService>();

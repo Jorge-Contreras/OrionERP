@@ -29,6 +29,6 @@ public sealed class ConfirmEmailModel : PageModel
     if (!result.Succeeded) { Message = "El enlace expiró o ya no es válido."; return; }
     var member = await _loyaltyService.GetMemberProfileByIdentityAsync(BrunoSiteConstants.Rfc, user.Id, ct);
     if (member is not null) await _loyaltyService.UpdateVerificationAsync(new LoyaltyMemberVerificationRequest { Rfc = BrunoSiteConstants.Rfc, MemberId = member.Id, EmailVerified = true }, ct);
-    Success = true; Title = "Correo confirmado"; Message = "Tu correo quedó confirmado. Si también verificaste tu teléfono, ya puedes acceder a Club Bruno.";
+    Success = true; Title = "Correo confirmado"; Message = "Tu correo quedó confirmado y tu membresía está activa. Ya puedes acceder a Club Bruno.";
   }
 }

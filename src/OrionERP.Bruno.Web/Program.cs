@@ -30,7 +30,14 @@ if (!builder.Environment.IsDevelopment())
 builder.Configuration.Sources.Clear();
 builder.Configuration
   .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-  .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
+  .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true);
+
+if (builder.Environment.IsDevelopment())
+{
+  builder.Configuration.AddUserSecrets<Program>(optional: true, reloadOnChange: true);
+}
+
+builder.Configuration
   .AddEnvironmentVariables(prefix: "ASPNETCORE_")
   .AddEnvironmentVariables(prefix: "DOTNET_");
 if (builder.Environment.IsDevelopment())
@@ -117,14 +124,28 @@ builder.Services.AddScoped<ILoyaltyService, LoyaltyService>();
 builder.Services.AddScoped<IBrunoMemberService>(sp => sp.GetRequiredService<ILoyaltyService>());
 builder.Services.AddScoped<IBrunoPublicCatalogService, BrunoPublicCatalogService>();
 
-builder.Services.Configure<BrunoGraphMailOptions>(builder.Configuration.GetSection(BrunoGraphMailOptions.SectionName));
+builder.Services
+  .AddOptions<BrunoGraphMailOptions>()
+  .Bind(builder.Configuration.GetSection(BrunoGraphMailOptions.SectionName))
+  .Validate(
+    options =>
+      !string.IsNullOrWhiteSpace(options.TenantId) &&
+      !string.IsNullOrWhiteSpace(options.ClientId) &&
+      !string.IsNullOrWhiteSpace(options.ClientSecret) &&
+      !string.IsNullOrWhiteSpace(options.SenderAddress),
+    "BrunoGraphMail requiere TenantId, ClientId, ClientSecret y SenderAddress.")
+  .Validate(
+    options => string.Equals(
+      options.SenderAddress,
+      "info@brunosgarden.com",
+      StringComparison.OrdinalIgnoreCase),
+    "BrunoGraphMail:SenderAddress debe ser info@brunosgarden.com.")
+  .ValidateOnStart();
 builder.Services.Configure<BrunoSiteOptions>(builder.Configuration.GetSection(BrunoSiteOptions.SectionName));
 builder.Services.Configure<BrunoTurnstileOptions>(builder.Configuration.GetSection(BrunoTurnstileOptions.SectionName));
-builder.Services.Configure<BrunoTwilioVerifyOptions>(builder.Configuration.GetSection(BrunoTwilioVerifyOptions.SectionName));
 builder.Services.AddHttpClient<IMicrosoftGraphMailClient<BrunoGraphMailOptions>, MicrosoftGraphMailClient<BrunoGraphMailOptions>>();
 builder.Services.AddScoped<IEmailSender<BrunoMemberUser>, BrunoEmailSender>();
 builder.Services.AddHttpClient<IBrunoTurnstileService, BrunoTurnstileService>();
-builder.Services.AddHttpClient<IBrunoPhoneVerificationService, BrunoTwilioPhoneVerificationService>();
 
 builder.Services.AddRateLimiter(options =>
 {

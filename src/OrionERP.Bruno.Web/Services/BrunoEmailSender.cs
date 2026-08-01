@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Options;
 using OrionERP.Infrastructure.Auth;
 using OrionERP.Infrastructure.Features.Mail;
 
@@ -8,17 +7,11 @@ namespace OrionERP.Bruno.Web.Services;
 public sealed class BrunoEmailSender : IEmailSender<BrunoMemberUser>
 {
   private readonly IMicrosoftGraphMailClient<BrunoGraphMailOptions> _mailClient;
-  private readonly IOptions<BrunoGraphMailOptions> _options;
-  private readonly IWebHostEnvironment _environment;
 
   public BrunoEmailSender(
-    IMicrosoftGraphMailClient<BrunoGraphMailOptions> mailClient,
-    IOptions<BrunoGraphMailOptions> options,
-    IWebHostEnvironment environment)
+    IMicrosoftGraphMailClient<BrunoGraphMailOptions> mailClient)
   {
     _mailClient = mailClient;
-    _options = options;
-    _environment = environment;
   }
 
   public Task SendConfirmationLinkAsync(BrunoMemberUser user, string email, string confirmationLink) =>
@@ -37,19 +30,7 @@ public sealed class BrunoEmailSender : IEmailSender<BrunoMemberUser>
     SendAsync(email, "Código de recuperación de Club Bruno", $"Tu código es: {resetCode}");
 
   private Task SendAsync(string email, string subject, string message)
-  {
-    var options = _options.Value;
-    var configured =
-      !string.IsNullOrWhiteSpace(options.TenantId) &&
-      !string.IsNullOrWhiteSpace(options.ClientId) &&
-      !string.IsNullOrWhiteSpace(options.ClientSecret) &&
-      !string.IsNullOrWhiteSpace(options.SenderAddress);
-    if (!configured && _environment.IsDevelopment())
-    {
-      return Task.CompletedTask;
-    }
-    return _mailClient.SendEmailAsync(email, subject, message);
-  }
+    => _mailClient.SendEmailAsync(email, subject, message);
 
   private static string BuildMessage(string title, string text, string url, string action) =>
     $"""

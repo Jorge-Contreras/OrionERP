@@ -5,12 +5,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
-using Microsoft.Extensions.Options;
 using OrionERP.Application.Features.Restaurante;
 using OrionERP.Bruno.Web.Configuration;
 using OrionERP.Bruno.Web.Services;
 using OrionERP.Infrastructure.Auth;
-using OrionERP.Infrastructure.Features.Mail;
 
 namespace OrionERP.Bruno.Web.Pages.Account;
 
@@ -22,8 +20,6 @@ public sealed class RegisterModel : PageModel
   private readonly ILoyaltyService _loyaltyService;
   private readonly IBrunoPublicCatalogService _publicCatalog;
   private readonly IBrunoTurnstileService _turnstile;
-  private readonly IBrunoPhoneVerificationService _phoneVerification;
-  private readonly IOptions<BrunoGraphMailOptions> _mailOptions;
   private readonly IWebHostEnvironment _environment;
 
   public RegisterModel(
@@ -32,8 +28,6 @@ public sealed class RegisterModel : PageModel
     ILoyaltyService loyaltyService,
     IBrunoPublicCatalogService publicCatalog,
     IBrunoTurnstileService turnstile,
-    IBrunoPhoneVerificationService phoneVerification,
-    IOptions<BrunoGraphMailOptions> mailOptions,
     IWebHostEnvironment environment)
   {
     _userManager = userManager;
@@ -41,8 +35,6 @@ public sealed class RegisterModel : PageModel
     _loyaltyService = loyaltyService;
     _publicCatalog = publicCatalog;
     _turnstile = turnstile;
-    _phoneVerification = phoneVerification;
-    _mailOptions = mailOptions;
     _environment = environment;
   }
 
@@ -112,28 +104,12 @@ public sealed class RegisterModel : PageModel
       throw;
     }
 
-    var emailConfigured = IsMailConfigured(_mailOptions.Value);
-    if (_environment.IsDevelopment() && !emailConfigured)
-    {
-      await _userManager.ConfirmEmailAsync(user, await _userManager.GenerateEmailConfirmationTokenAsync(user));
-      await _loyaltyService.UpdateVerificationAsync(new LoyaltyMemberVerificationRequest { Rfc = BrunoSiteConstants.Rfc, MemberId = member.Id, EmailVerified = true }, ct);
-    }
-    else
-    {
-      var token = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(await _userManager.GenerateEmailConfirmationTokenAsync(user)));
-      var confirmationUrl = Url.Page("/Account/ConfirmEmail", null, new { userId = user.Id, code = token }, Request.Scheme)
-        ?? throw new InvalidOperationException("No fue posible generar el enlace de confirmación.");
-      await _emailSender.SendConfirmationLinkAsync(user, email, confirmationUrl);
-    }
-    await _phoneVerification.SendAsync(phone, ct);
-    return RedirectToPage("/Account/VerifyPhone", new { userId = user.Id, returnUrl });
+    var token = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(await _userManager.GenerateEmailConfirmationTokenAsync(user)));
+    var confirmationUrl = Url.Page("/Account/ConfirmEmail", null, new { userId = user.Id, code = token }, Request.Scheme)
+      ?? throw new InvalidOperationException("No fue posible generar el enlace de confirmación.");
+    await _emailSender.SendConfirmationLinkAsync(user, email, confirmationUrl);
+    return RedirectToPage("/Account/RegisterConfirmation");
   }
-
-  private static bool IsMailConfigured(BrunoGraphMailOptions options) =>
-    !string.IsNullOrWhiteSpace(options.TenantId) &&
-    !string.IsNullOrWhiteSpace(options.ClientId) &&
-    !string.IsNullOrWhiteSpace(options.ClientSecret) &&
-    !string.IsNullOrWhiteSpace(options.SenderAddress);
 
   internal static string NormalizePhone(string value)
   {

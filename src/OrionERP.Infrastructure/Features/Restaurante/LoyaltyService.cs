@@ -3,6 +3,7 @@ using System.Data.Common;
 using System.Security.Cryptography;
 using System.Text;
 using Dapper;
+using Microsoft.Data.SqlClient;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Restaurante;
@@ -142,7 +143,7 @@ public sealed class LoyaltyService : ILoyaltyService
         },
         tx,
         cancellationToken: ct)))
-        throw new InvalidOperationException("El correo o teléfono ya pertenece a otra membresía.");
+        throw new LoyaltyMembershipConflictException("El correo o teléfono ya pertenece a otra membresía.");
 
       var memberId = Guid.NewGuid();
       string? membershipNumber = null;
@@ -195,6 +196,11 @@ public sealed class LoyaltyService : ILoyaltyService
       await tx.CommitAsync(ct);
       return await GetMemberProfileAsync(rfc, memberId, ct)
         ?? throw new InvalidOperationException("No fue posible recuperar la membresía creada.");
+    }
+    catch (SqlException ex) when (ex.Number is 2601 or 2627)
+    {
+      await tx.RollbackAsync(ct);
+      throw new LoyaltyMembershipConflictException("El correo o teléfono ya pertenece a otra membresía.", ex);
     }
     catch
     {

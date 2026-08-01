@@ -27,6 +27,11 @@ summary:focus-visible {
   outline-offset: 3px;
 }
 
+/* Blazor focuses the route heading after navigation for screen readers. */
+h1[tabindex="-1"]:focus {
+  outline: none;
+}
+
 .button,
 .site-header nav a,
 .section-jump a {

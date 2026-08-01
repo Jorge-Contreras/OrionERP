@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\OrionERP.Application\OrionERP.Application.csproj" />
     <ProjectReference Include="..\..\src\OrionERP.Bonhomia.Web\OrionERP.Bonhomia.Web.csproj" />
+    <ProjectReference Include="..\..\src\OrionERP.Bruno.Web\OrionERP.Bruno.Web.csproj" />
     <ProjectReference Include="..\..\src\OrionERP.Infrastructure\OrionERP.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\OrionERP.Web\OrionERP.Web.csproj" />
   </ItemGroup>

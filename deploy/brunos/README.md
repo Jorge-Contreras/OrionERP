@@ -22,7 +22,7 @@
 7. Agregar `brunosgarden.com` y `www.brunosgarden.com` al túnel existente con las reglas de `cloudflared-ingress.example.yml`, antes del catch-all. Validar la configuración y reiniciar cloudflared.
 8. Publicar los CNAME administrados por Tunnel y probar el hostname antes de cambiar nameservers cuando el flujo de Cloudflare lo permita.
 9. Crear en Microsoft 365 `info@brunosgarden.com` como la única dirección de correo de Bruno's Garden. Publicar y validar MX, SPF, DKIM y DMARC.
-10. Configurar Turnstile y Cloudflare Web Analytics. La verificación telefónica queda fuera de esta versión; la membresía se activa al confirmar el correo.
+10. Configurar Turnstile para `brunosgarden.com` con SiteKey y SecretKey, y después Cloudflare Web Analytics. La verificación telefónica queda fuera de esta versión; la membresía se activa al confirmar el correo.
 11. Cambiar nameservers en GoDaddy solo después de comparar la zona Cloudflare con el inventario original.
 12. Mantener apagadas las cuatro banderas. Activar en orden: sitio, membresía, acumulación y promociones.
 
@@ -38,6 +38,8 @@ New-Service -Name "OrionERP.Bruno" `
 ```
 
 La identidad del servicio debe tener lectura/escritura únicamente sobre su carpeta de publicación y `App_Data\bruno-keys`, además del acceso requerido a la configuración de entorno.
+
+El servicio se ejecuta como `LocalSystem`, por lo que los secretos de producción definidos como variables de entorno deben existir en el ámbito de máquina antes de reiniciarlo. Turnstile requiere ambas variables `ASPNETCORE_Turnstile__SiteKey` y `ASPNETCORE_Turnstile__SecretKey`; configurar solamente una impide el arranque. Cuando la membresía está habilitada, `/readyz` devuelve `503` si falta el par de llaves para impedir una publicación aparentemente saludable con registro e inicio de sesión inutilizables. `ASPNETCORE_Turnstile__ExpectedHostname` debe permanecer en `brunosgarden.com`.
 
 ## Correo en Development
 

@@ -3,13 +3,19 @@
 @using Microsoft.Extensions.Options
 @using OrionERP.Bruno.Web.Configuration
 @inject IOptions<BrunoTurnstileOptions> Turnstile
+@inject IWebHostEnvironment Environment
 @{
   ViewData["Title"] = "Crear cuenta · Club Bruno";
+  var canValidateRequest = Environment.IsDevelopment() || Turnstile.Value.IsConfigured;
 }
 <div class="account-shell">
   <div class="account-art" aria-hidden="true"></div>
   <section class="account-panel">
     <span>Club Bruno</span><h1>Crea tu cuenta</h1><p>Confirma tu correo para activar la membresía, identificarte antes de pagar y acumular puntos.</p>
+    @if (!canValidateRequest)
+    {
+      <p class="account-error account-error--notice" role="alert">El registro está temporalmente en mantenimiento. Intenta nuevamente más tarde.</p>
+    }
     <form method="post" class="account-form" asp-route-returnUrl="@Model.ReturnUrl">
       <div asp-validation-summary="ModelOnly"></div>
       <label>Nombre <input asp-for="Input.FirstName" autocomplete="given-name" /><span asp-validation-for="Input.FirstName"></span></label>
@@ -28,9 +34,9 @@
       </fieldset>
       @if (Turnstile.Value.IsConfigured)
       {
-        <div class="cf-turnstile" data-sitekey="@Turnstile.Value.SiteKey"></div>
+        <div class="cf-turnstile" data-sitekey="@Turnstile.Value.SiteKey" data-action="membership-register"></div>
       }
-      <button class="button button--accent" type="submit">Crear membresía</button>
+      <button class="button button--accent" type="submit" disabled="@(!canValidateRequest)">Crear membresía</button>
     </form>
     <div class="account-links"><a href="/cuenta/acceso">Ya tengo cuenta</a><a href="/">Volver al sitio</a></div>
   </section>

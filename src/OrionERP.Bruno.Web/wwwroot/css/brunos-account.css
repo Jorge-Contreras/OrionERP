@@ -1,0 +1,14 @@
+.account-error--notice {
+  padding: .75rem .85rem;
+  border: 1px solid #9d4e44;
+  border-radius: .4rem;
+  background: #3b211e;
+  line-height: 1.45;
+}
+
+.account-form button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+  transform: none;
+  box-shadow: none;
+}

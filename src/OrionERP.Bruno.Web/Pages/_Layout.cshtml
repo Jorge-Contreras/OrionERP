@@ -33,6 +33,10 @@
   <link rel="icon" type="image/png" href="~/Images/Brunos/brunos-logo.png" />
   <link rel="stylesheet" href="~/css/brunos-site.css" asp-append-version="true" />
   <link rel="stylesheet" href="~/css/brunos-responsive.css" asp-append-version="true" />
+  @if (isAccountPage)
+  {
+    <link rel="stylesheet" href="~/css/brunos-account.css" asp-append-version="true" />
+  }
   <link rel="stylesheet" href="~/OrionERP.Bruno.Web.styles.css" asp-append-version="true" />
   <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
   <script type="application/ld+json">

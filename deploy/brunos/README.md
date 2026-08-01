@@ -21,8 +21,8 @@
 6. Copiar todos los registros DNS actuales de GoDaddy y verificar, especialmente correo, verificaciones y registros de terceros.
 7. Agregar `brunosgarden.com` y `www.brunosgarden.com` al túnel existente con las reglas de `cloudflared-ingress.example.yml`, antes del catch-all. Validar la configuración y reiniciar cloudflared.
 8. Publicar los CNAME administrados por Tunnel y probar el hostname antes de cambiar nameservers cuando el flujo de Cloudflare lo permita.
-9. Crear en Microsoft 365 `hola@brunosgarden.com`, con alias `privacidad@brunosgarden.com` y `membresia@brunosgarden.com`. Publicar y validar MX, SPF, DKIM y DMARC.
-10. Configurar Turnstile, Twilio Verify y Cloudflare Web Analytics.
+9. Crear en Microsoft 365 `info@brunosgarden.com` como la única dirección de correo de Bruno's Garden. Publicar y validar MX, SPF, DKIM y DMARC.
+10. Configurar Turnstile y Cloudflare Web Analytics. La verificación telefónica queda fuera de esta versión; la membresía se activa al confirmar el correo.
 11. Cambiar nameservers en GoDaddy solo después de comparar la zona Cloudflare con el inventario original.
 12. Mantener apagadas las cuatro banderas. Activar en orden: sitio, membresía, acumulación y promociones.
 
@@ -39,6 +39,21 @@ New-Service -Name "OrionERP.Bruno" `
 
 La identidad del servicio debe tener lectura/escritura únicamente sobre su carpeta de publicación y `App_Data\bruno-keys`, además del acceso requerido a la configuración de entorno.
 
+## Correo en Development
+
+`OrionERP.Bruno.Web` carga las credenciales locales desde .NET User Secrets. Configurarlas desde la raíz del repositorio, reemplazando los marcadores con los valores de la aplicación de Microsoft Entra:
+
+```powershell
+$Project = "src\OrionERP.Bruno.Web\OrionERP.Bruno.Web.csproj"
+
+dotnet user-secrets set "BrunoGraphMail:TenantId" "<TENANT-ID>" --project $Project
+dotnet user-secrets set "BrunoGraphMail:ClientId" "<CLIENT-ID>" --project $Project
+dotnet user-secrets set "BrunoGraphMail:ClientSecret" "<CLIENT-SECRET-VALUE>" --project $Project
+dotnet user-secrets set "BrunoGraphMail:SenderAddress" "info@brunosgarden.com" --project $Project
+```
+
+Usar el valor del secreto, no su identificador. Las credenciales nunca deben guardarse en `appsettings.json` ni confirmarse en Git. La aplicación valida esta sección al arrancar y rechaza configuraciones incompletas o un remitente distinto de `info@brunosgarden.com`.
+
 ## DNS y correo
 
 Antes del corte, registrar para cada entrada: tipo, nombre, contenido, TTL, proxy y finalidad. Verificar:
@@ -48,7 +63,7 @@ Antes del corte, registrar para cada entrada: tipo, nombre, contenido, TTL, prox
 - TXT SPF con un único registro SPF válido;
 - los dos CNAME DKIM entregados por Microsoft 365;
 - DMARC inicial con reportes y política acordada;
-- verificaciones de Microsoft, Twilio, Cloudflare y Facebook si existieran;
+- verificaciones de Microsoft, Cloudflare y Facebook si existieran;
 - subdominios que hoy resuelvan desde GoDaddy.
 
 ## Pruebas de salida
@@ -56,7 +71,7 @@ Antes del corte, registrar para cada entrada: tipo, nombre, contenido, TTL, prox
 - `/healthz` local y público;
 - redirección HTTPS y `www` → apex;
 - encabezados reenviados sin aceptar proxies remotos;
-- registro, enlace Graph, SMS Twilio, bloqueo y recuperación;
+- registro, confirmación por enlace Graph, bloqueo y recuperación;
 - cookie de Bruno no visible en OrionERP ni Bonhomia;
 - menú, imágenes, alérgenos/dietas, promociones y condiciones;
 - canonical, Open Graph, sitemap, robots y `FoodEstablishment`;

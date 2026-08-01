@@ -14,15 +14,3 @@ public sealed class BrunoTurnstileOptions
   public string SecretKey { get; set; } = string.Empty;
   public bool IsConfigured => !string.IsNullOrWhiteSpace(SiteKey) && !string.IsNullOrWhiteSpace(SecretKey);
 }
-
-public sealed class BrunoTwilioVerifyOptions
-{
-  public const string SectionName = "TwilioVerify";
-  public string AccountSid { get; set; } = string.Empty;
-  public string AuthToken { get; set; } = string.Empty;
-  public string ServiceSid { get; set; } = string.Empty;
-  public bool IsConfigured =>
-    !string.IsNullOrWhiteSpace(AccountSid) &&
-    !string.IsNullOrWhiteSpace(AuthToken) &&
-    !string.IsNullOrWhiteSpace(ServiceSid);
-}

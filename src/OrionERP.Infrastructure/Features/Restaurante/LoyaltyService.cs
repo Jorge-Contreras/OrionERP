@@ -217,7 +217,6 @@ public sealed class LoyaltyService : ILoyaltyService
           PhoneVerified=CASE WHEN @PhoneVerified=1 THEN 1 ELSE PhoneVerified END,
           [Status]=CASE
             WHEN (EmailVerified=1 OR @EmailVerified=1)
-             AND (PhoneVerified=1 OR @PhoneVerified=1)
             THEN 'Active' ELSE [Status] END,
           UpdatedAt=SYSUTCDATETIME()
       WHERE Rfc=@Rfc AND Id=@MemberId AND [Status]<>'Closed';
@@ -252,7 +251,7 @@ public sealed class LoyaltyService : ILoyaltyService
       (
         SELECT 1 FROM fidelidad.MemberAccount
         WHERE Rfc=@Rfc AND Id=@MemberId AND [Status]='Active'
-          AND EmailVerified=1 AND PhoneVerified=1
+          AND EmailVerified=1
       );
       """,
       new
@@ -634,7 +633,7 @@ internal static class RestaurantLoyaltyTransaction
       SELECT Id,MembershipNumber,PointsBalance
       FROM fidelidad.MemberAccount WITH(UPDLOCK,HOLDLOCK)
       WHERE Rfc=@Rfc AND Id=@MemberId AND [Status]='Active'
-        AND EmailVerified=1 AND PhoneVerified=1;
+        AND EmailVerified=1;
       """,
       new { Rfc = rfc, MemberId = memberId.Value },
       tx,

@@ -7,8 +7,8 @@ public static class BrunoSiteConstants
 {
   public const string Rfc = BrunoRestaurantConstants.Rfc;
   public const string SiteCode = BrunoRestaurantConstants.SiteCode;
-  public const string PrivacyVersion = "2026-07-30";
-  public const string TermsVersion = "2026-07-30";
+  public const string PrivacyVersion = "2026-07-31";
+  public const string TermsVersion = "2026-07-31";
   public const string CanonicalBaseUrl = "https://brunosgarden.com";
 }
 

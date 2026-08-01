@@ -30,7 +30,7 @@ public sealed class BrunoGraphMailOptions : MicrosoftGraphMailOptions
 
   public BrunoGraphMailOptions()
   {
-    SenderAddress = "hola@brunosgarden.com";
+    SenderAddress = "info@brunosgarden.com";
     PublicBaseUrl = "https://brunosgarden.com";
   }
 }

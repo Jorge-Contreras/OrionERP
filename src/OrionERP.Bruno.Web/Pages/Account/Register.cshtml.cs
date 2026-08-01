@@ -21,6 +21,7 @@ public sealed class RegisterModel : PageModel
   private readonly IBrunoPublicCatalogService _publicCatalog;
   private readonly IBrunoTurnstileService _turnstile;
   private readonly IWebHostEnvironment _environment;
+  private readonly ILogger<RegisterModel> _logger;
 
   public RegisterModel(
     UserManager<BrunoMemberUser> userManager,
@@ -28,7 +29,8 @@ public sealed class RegisterModel : PageModel
     ILoyaltyService loyaltyService,
     IBrunoPublicCatalogService publicCatalog,
     IBrunoTurnstileService turnstile,
-    IWebHostEnvironment environment)
+    IWebHostEnvironment environment,
+    ILogger<RegisterModel> logger)
   {
     _userManager = userManager;
     _emailSender = emailSender;
@@ -36,6 +38,7 @@ public sealed class RegisterModel : PageModel
     _publicCatalog = publicCatalog;
     _turnstile = turnstile;
     _environment = environment;
+    _logger = logger;
   }
 
   [BindProperty] public InputModel Input { get; set; } = new();
@@ -56,7 +59,11 @@ public sealed class RegisterModel : PageModel
     if (!Input.IsAdultConfirmed) ModelState.AddModelError("Input.IsAdultConfirmed", "Debes confirmar que tienes al menos 18 años.");
     if (!Input.AcceptDocuments) ModelState.AddModelError("Input.AcceptDocuments", "Debes aceptar el aviso de privacidad y los términos.");
     var turnstileToken = Request.Form["cf-turnstile-response"].ToString();
-    if (!await _turnstile.ValidateAsync(turnstileToken, HttpContext.Connection.RemoteIpAddress?.ToString(), ct))
+    if (!await _turnstile.ValidateAsync(
+          turnstileToken,
+          HttpContext.Connection.RemoteIpAddress?.ToString(),
+          "membership-register",
+          ct))
       ModelState.AddModelError(string.Empty, "No fue posible validar la solicitud. Intenta nuevamente.");
     if (!ModelState.IsValid) return Page();
 
@@ -98,9 +105,19 @@ public sealed class RegisterModel : PageModel
         WhatsAppMarketingConsent = Input.WhatsAppMarketingConsent
       }, ct);
     }
+    catch (LoyaltyMembershipConflictException ex)
+    {
+      if (!await TryDeleteCreatedUserAsync(user))
+        throw new InvalidOperationException("No fue posible revertir la cuenta de acceso incompleta.", ex);
+
+      ModelState.AddModelError(
+        string.Empty,
+        "Ya existe una membresía con ese correo o teléfono. Inicia sesión con la cuenta registrada o usa datos distintos.");
+      return Page();
+    }
     catch
     {
-      await _userManager.DeleteAsync(user);
+      await TryDeleteCreatedUserAsync(user);
       throw;
     }
 
@@ -117,6 +134,26 @@ public sealed class RegisterModel : PageModel
     if (digits.Length == 10) digits = $"52{digits}";
     if (digits.Length is < 12 or > 15) throw new ValidationException("El teléfono no tiene un formato válido.");
     return $"+{digits}";
+  }
+
+  private async Task<bool> TryDeleteCreatedUserAsync(BrunoMemberUser user)
+  {
+    try
+    {
+      var result = await _userManager.DeleteAsync(user);
+      if (result.Succeeded) return true;
+
+      _logger.LogError(
+        "No se pudo eliminar la cuenta de acceso incompleta {UserId}. Errores: {Errors}",
+        user.Id,
+        string.Join(", ", result.Errors.Select(error => error.Code)));
+    }
+    catch (Exception ex)
+    {
+      _logger.LogError(ex, "No se pudo eliminar la cuenta de acceso incompleta {UserId}.", user.Id);
+    }
+
+    return false;
   }
 
   private static string TranslateIdentityError(IdentityError error) => error.Code switch

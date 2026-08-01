@@ -1,0 +1,41 @@
+@page "/cuenta/reenviar-confirmacion"
+@model OrionERP.Bruno.Web.Pages.Account.ResendConfirmationModel
+@using Microsoft.Extensions.Options
+@using OrionERP.Bruno.Web.Configuration
+@inject IOptions<BrunoTurnstileOptions> Turnstile
+@inject IWebHostEnvironment Environment
+@{
+  ViewData["Title"] = "Reenviar confirmación · Club Bruno";
+  var canValidateRequest = Environment.IsDevelopment() || Turnstile.Value.IsConfigured;
+}
+<div class="account-shell">
+  <div class="account-art" aria-hidden="true"></div>
+  <section class="account-panel">
+    <span>Club Bruno</span>
+    <h1>Reenvía tu confirmación</h1>
+    @if (Model.Sent)
+    {
+      <p class="account-success">Si existe una cuenta pendiente con ese correo, enviamos un nuevo enlace de confirmación.</p>
+      <p>Revisa también las carpetas de correo no deseado o promociones.</p>
+    }
+    else
+    {
+      <p>Escribe el correo que usaste al crear tu membresía.</p>
+      @if (!canValidateRequest)
+      {
+        <p class="account-error account-error--notice" role="alert">El reenvío está temporalmente en mantenimiento. Intenta nuevamente más tarde.</p>
+      }
+      <form method="post" class="account-form">
+        <div asp-validation-summary="ModelOnly"></div>
+        <label>Correo <input asp-for="Email" autocomplete="email" /><span asp-validation-for="Email"></span></label>
+        @if (Turnstile.Value.IsConfigured)
+        {
+          <div class="cf-turnstile" data-sitekey="@Turnstile.Value.SiteKey" data-action="resend-confirmation"></div>
+        }
+        <button class="button button--accent" type="submit" disabled="@(!canValidateRequest)">Enviar nuevo enlace</button>
+      </form>
+    }
+    <div class="account-links"><a href="/cuenta/acceso">Volver a acceso</a><a href="/">Volver al sitio</a></div>
+  </section>
+</div>
+<partial name="_ValidationScriptsPartial" />

@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting.WindowsServices;
+using Microsoft.Extensions.Options;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Restaurante;
 using OrionERP.Bruno.Web;
@@ -129,10 +130,22 @@ builder.Services
     "BrunoGraphMail:SenderAddress debe ser info@brunosgarden.com.")
   .ValidateOnStart();
 builder.Services.Configure<BrunoSiteOptions>(builder.Configuration.GetSection(BrunoSiteOptions.SectionName));
-builder.Services.Configure<BrunoTurnstileOptions>(builder.Configuration.GetSection(BrunoTurnstileOptions.SectionName));
+builder.Services
+  .AddOptions<BrunoTurnstileOptions>()
+  .Bind(builder.Configuration.GetSection(BrunoTurnstileOptions.SectionName))
+  .Validate(
+    options => options.HasConsistentKeyPair,
+    "Turnstile requiere SiteKey y SecretKey juntos; no configure solamente una de las dos llaves.")
+  .Validate(
+    options => !options.IsConfigured || !string.IsNullOrWhiteSpace(options.ExpectedHostname),
+    "Turnstile:ExpectedHostname es obligatorio cuando Turnstile está configurado.")
+  .ValidateOnStart();
 builder.Services.AddHttpClient<IMicrosoftGraphMailClient<BrunoGraphMailOptions>, MicrosoftGraphMailClient<BrunoGraphMailOptions>>();
 builder.Services.AddScoped<IEmailSender<BrunoMemberUser>, BrunoEmailSender>();
-builder.Services.AddHttpClient<IBrunoTurnstileService, BrunoTurnstileService>();
+builder.Services.AddHttpClient<IBrunoTurnstileService, BrunoTurnstileService>(client =>
+{
+  client.Timeout = TimeSpan.FromSeconds(10);
+});
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -249,12 +262,14 @@ app.UseAuthorization();
 app.MapGet("/healthz", () => Results.Text("OK", "text/plain"));
 app.MapGet("/readyz", async (
   IBrunoPublicCatalogService publicCatalog,
+  IOptions<BrunoTurnstileOptions> turnstile,
   CancellationToken ct) =>
 {
   try
   {
     var settings = await publicCatalog.GetSettingsAsync(BrunoSiteConstants.Rfc, ct: ct);
-    return settings is null
+    return settings is null ||
+           (settings.IsMembershipEnabled && !turnstile.Value.IsConfigured)
       ? Results.Text("NOT READY", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable)
       : Results.Text("OK", "text/plain");
   }

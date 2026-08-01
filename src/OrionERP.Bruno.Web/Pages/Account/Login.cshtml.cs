@@ -23,7 +23,11 @@ public sealed class LoginModel : PageModel
   public async Task<IActionResult> OnPostAsync(string? returnUrl = null, CancellationToken ct = default)
   {
     ReturnUrl = returnUrl;
-    if (!await _turnstile.ValidateAsync(Request.Form["cf-turnstile-response"].ToString(), HttpContext.Connection.RemoteIpAddress?.ToString(), ct))
+    if (!await _turnstile.ValidateAsync(
+          Request.Form["cf-turnstile-response"].ToString(),
+          HttpContext.Connection.RemoteIpAddress?.ToString(),
+          "member-login",
+          ct))
       ModelState.AddModelError(string.Empty, "No fue posible validar la solicitud.");
     if (!ModelState.IsValid) return Page();
     var user = await _userManager.FindByEmailAsync(Input.Email.Trim());

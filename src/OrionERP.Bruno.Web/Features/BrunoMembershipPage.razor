@@ -1,7 +1,19 @@
 @page "/membresia"
+@inject IBrunoPublicCatalogService CatalogService
+@inject IWebHostEnvironment Environment
 
 <PageTitle>Club Bruno · Membresía</PageTitle>
-<section class="page-hero page-hero--club"><span>Tus visitas suman</span><h1>Club Bruno</h1><p>Una membresía sencilla para reconocer cada compra elegible.</p><a class="button button--accent" href="/cuenta/registro">Crear mi cuenta</a></section>
+<section class="page-hero page-hero--club">
+  <span>Tus visitas suman</span><h1>Club Bruno</h1><p>Una membresía sencilla para reconocer cada compra elegible.</p>
+  @if (membershipEnabled)
+  {
+    <div class="page-hero__actions"><a class="button button--accent" href="/cuenta/registro" target="_top">Crear mi cuenta</a><a class="button button--ghost" href="/cuenta/acceso" target="_top">Ya soy miembro</a></div>
+  }
+  else
+  {
+    <div class="club-status" role="status"><strong>Registro disponible próximamente</strong><span>Estamos terminando de preparar Club Bruno. Aquí anunciaremos cuando puedas crear tu cuenta.</span></div>
+  }
+</section>
 
 <section class="club-explainer">
   <article><b>01</b><h2>Regístrate</h2><p>Crea tu cuenta con correo y teléfono, y confirma tu correo para activar la membresía.</p></article>
@@ -14,10 +26,35 @@
   <ul>
     <li>Los precios incluyen IVA y el cálculo se realiza sobre mercancía elegible ya descontada.</li>
     <li>Propinas y cargos de entrega no generan puntos.</li>
-    <li>Debes vincular tu membresía antes de pagar; v1 no admite reclamaciones posteriores.</li>
-    <li>Los puntos no tienen valor monetario, no son transferibles y no vencen en esta versión.</li>
+    <li>Debes vincular tu membresía antes de pagar; las compras anteriores no generan puntos retroactivos.</li>
+    <li>Los puntos no tienen valor monetario, no son transferibles y actualmente no vencen.</li>
     <li>Los reembolsos parciales o totales ajustan los puntos de forma proporcional y auditable.</li>
-    <li>En v1 puedes acumular y consultar; la redención de puntos llegará en una fase posterior.</li>
+    <li>Por ahora puedes acumular y consultar; el canje de puntos se anunciará más adelante.</li>
   </ul>
-  <div class="club-details__action"><strong>¿Ya eres miembro?</strong><a class="button" href="/cuenta/acceso">Entrar a Mi cuenta</a></div>
+  @if (membershipEnabled)
+  {
+    <div class="club-details__action"><strong>¿Ya eres miembro?</strong><a class="button" href="/cuenta/acceso" target="_top">Entrar a Mi cuenta</a></div>
+  }
 </section>
+
+@code {
+  private bool membershipEnabled;
+
+  protected override async Task OnInitializedAsync()
+  {
+    if (Environment.IsDevelopment())
+    {
+      membershipEnabled = true;
+      return;
+    }
+
+    try
+    {
+      membershipEnabled = (await CatalogService.GetSettingsAsync(BrunoSiteConstants.Rfc))?.IsMembershipEnabled == true;
+    }
+    catch
+    {
+      membershipEnabled = false;
+    }
+  }
+}

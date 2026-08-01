@@ -43,6 +43,7 @@ $arguments = @{
     ProjectPath = "src\OrionERP.Bruno.Web\OrionERP.Bruno.Web.csproj"
     OutputDirectory = "C:\Users\Orion\Grupo Carpio Dropbox\Grupo Orion\Software\GitHubs\Production\OrionERP.Bruno.Web"
     Runtime = $Runtime
+    HealthCheckUrl = "http://127.0.0.1:5020/readyz"
 }
 if ($SkipServiceControl) {
     $arguments.SkipServiceControl = $true

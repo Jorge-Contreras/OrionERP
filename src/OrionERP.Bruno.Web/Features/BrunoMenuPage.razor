@@ -42,7 +42,7 @@ else
         </div>
       </section>
     }
-    <aside class="allergen-note"><strong>Información de alérgenos</strong><p>@catalog.Menu.Site.CrossContaminationWarning Consulta a nuestro personal antes de ordenar; ingredientes y procesos pueden cambiar y puede existir contacto cruzado.</p></aside>
+    <aside class="allergen-note"><strong>Información de alérgenos</strong><p>@(string.IsNullOrWhiteSpace(catalog.Menu.Site.CrossContaminationWarning) ? "Consulta a nuestro personal antes de ordenar; los ingredientes y procesos pueden cambiar." : catalog.Menu.Site.CrossContaminationWarning)</p></aside>
   </div>
 }
 

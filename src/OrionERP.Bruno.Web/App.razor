@@ -4,7 +4,7 @@
       <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(BrunoPublicLayout)">
         <NotAuthorized>
           <LayoutView Layout="@typeof(BrunoPublicLayout)">
-            <section class="state-card"><h1>Inicia sesión</h1><p>Necesitas acceder a Club Bruno para ver esta página.</p><a class="button" href="/cuenta/acceso">Ir a acceso</a></section>
+            <section class="state-card"><h1>Inicia sesión</h1><p>Necesitas acceder a Club Bruno para ver esta página.</p><a class="button" href="/cuenta/acceso" target="_top">Ir a acceso</a></section>
           </LayoutView>
         </NotAuthorized>
       </AuthorizeRouteView>
@@ -12,6 +12,7 @@
     </Found>
     <NotFound>
       <LayoutView Layout="@typeof(BrunoPublicLayout)">
+        <PageTitle>Página no encontrada · Bruno's Garden & Snacks</PageTitle>
         <section class="state-card"><span>404</span><h1>Esta página no está en el jardín</h1><p>Vuelve al inicio para encontrar el menú, promociones y Club Bruno.</p><a class="button" href="/">Volver al inicio</a></section>
       </LayoutView>
     </NotFound>

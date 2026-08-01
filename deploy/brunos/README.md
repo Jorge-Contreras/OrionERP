@@ -16,8 +16,8 @@
 1. Respaldar `grupocarpio` antes de cualquier migración de producción.
 2. Aplicar `20260730_bruno_promotions_loyalty.sql` mediante `sqlcmd -f 65001`, primero con `ApplyChanges=0` y luego con `ApplyChanges=1`. En desarrollo usar exclusivamente `Orion_Sandbox`.
 3. Crear el servicio Windows apuntando al ejecutable publicado y configurar las variables de `production.env.example` en el almacén aprobado. No copiar secretos a Git.
-4. Ejecutar `Publish-Bruno-prod.ps1`.
-5. Confirmar `http://127.0.0.1:5020/healthz`.
+4. Ejecutar el lanzador canónico `Publish-All-prod.ps1 -Applications Bruno`; el script valida Git, publica, reinicia el servicio y comprueba la aplicación. `Publish-Bruno-prod.ps1` queda como herramienta interna para mantenimiento dirigido.
+5. Confirmar `http://127.0.0.1:5020/healthz` (proceso) y `http://127.0.0.1:5020/readyz` (base de datos y configuración pública).
 6. Copiar todos los registros DNS actuales de GoDaddy y verificar, especialmente correo, verificaciones y registros de terceros.
 7. Agregar `brunosgarden.com` y `www.brunosgarden.com` al túnel existente con las reglas de `cloudflared-ingress.example.yml`, antes del catch-all. Validar la configuración y reiniciar cloudflared.
 8. Publicar los CNAME administrados por Tunnel y probar el hostname antes de cambiar nameservers cuando el flujo de Cloudflare lo permita.
@@ -68,7 +68,7 @@ Antes del corte, registrar para cada entrada: tipo, nombre, contenido, TTL, prox
 
 ## Pruebas de salida
 
-- `/healthz` local y público;
+- `/healthz` y `/readyz` local; `/healthz` público;
 - redirección HTTPS y `www` → apex;
 - encabezados reenviados sin aceptar proxies remotos;
 - registro, confirmación por enlace Graph, bloqueo y recuperación;

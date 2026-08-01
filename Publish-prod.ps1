@@ -5,8 +5,12 @@ param(
     [string]$OutputDirectory = "C:\Users\Orion\Grupo Carpio Dropbox\Grupo Orion\Software\GitHubs\Production\OrionERP",
     [string]$Runtime = "win-x64",
     [string[]]$PreserveFilePatterns = @("appsettings*.json"),
+    [string[]]$PreserveDirectoryPatterns = @("App_Data"),
     [int]$CopyRetries = 5,
     [int]$CopyRetryWaitSeconds = 2,
+    [string]$HealthCheckUrl = "http://127.0.0.1:5000/",
+    [int]$HealthCheckAttempts = 15,
+    [int]$HealthCheckDelaySeconds = 2,
     [switch]$SkipServiceControl
 )
 
@@ -117,6 +121,7 @@ function Copy-Directory {
         [string]$Source,
         [string]$Destination,
         [string[]]$ExcludeFiles = @(),
+        [string[]]$ExcludeDirectories = @(),
         [int]$RetryCount = 5,
         [int]$RetryWaitSeconds = 2,
         [switch]$Mirror
@@ -157,7 +162,44 @@ function Copy-Directory {
         $arguments += $ExcludeFiles
     }
 
+    if ($ExcludeDirectories.Count -gt 0) {
+        $arguments += "/XD"
+        $arguments += $ExcludeDirectories
+    }
+
     Invoke-NativeCommand -FilePath "robocopy" -ArgumentList $arguments -SuccessExitCodes @(0, 1, 2, 3, 4, 5, 6, 7)
+}
+
+function Wait-ApplicationHealth {
+    param(
+        [string]$Url,
+        [int]$Attempts,
+        [int]$DelaySeconds
+    )
+
+    Write-Step "Verifying application health"
+    $lastFailure = $null
+
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        try {
+            $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 5
+            if ([int]$response.StatusCode -ge 200 -and [int]$response.StatusCode -lt 400) {
+                Write-Host ("Application health check passed: {0}" -f $Url)
+                return
+            }
+
+            $lastFailure = "HTTP $([int]$response.StatusCode)"
+        }
+        catch {
+            $lastFailure = $_.Exception.Message
+        }
+
+        if ($attempt -lt $Attempts) {
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+
+    throw ("Application health check failed after {0} attempts: {1}. Last failure: {2}" -f $Attempts, $Url, $lastFailure)
 }
 
 function Get-PreservePatternsToApply {
@@ -248,10 +290,29 @@ try {
 
     Write-Step "Copying staged build to production"
     $productionCopyStarted = $true
-    Copy-Directory -Source $stagingOutputPath -Destination $outputFullPath -ExcludeFiles $preservePatterns -RetryCount $CopyRetries -RetryWaitSeconds $CopyRetryWaitSeconds
+    Copy-Directory `
+        -Source $stagingOutputPath `
+        -Destination $outputFullPath `
+        -ExcludeFiles $preservePatterns `
+        -ExcludeDirectories $PreserveDirectoryPatterns `
+        -RetryCount $CopyRetries `
+        -RetryWaitSeconds $CopyRetryWaitSeconds `
+        -Mirror
 
     if ($serviceStoppedByScript) {
         Start-OrionService -Name $ServiceName
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($HealthCheckUrl)) {
+        if ($SkipServiceControl) {
+            Write-Warning "Skipping health verification because -SkipServiceControl was used."
+        }
+        elseif ($serviceWasRunning) {
+            Wait-ApplicationHealth -Url $HealthCheckUrl -Attempts $HealthCheckAttempts -DelaySeconds $HealthCheckDelaySeconds
+        }
+        else {
+            Write-Warning "Skipping health verification because service '$ServiceName' was not running before deployment."
+        }
     }
 
     Write-Step "Deployment completed successfully"
@@ -261,6 +322,13 @@ catch {
         Write-Warning "Deployment failed after production files were touched. Restoring the previous deployment."
 
         try {
+            if (-not $SkipServiceControl) {
+                $rollbackService = Get-OrionService -Name $ServiceName
+                if ($rollbackService -and $rollbackService.Status -ne "Stopped") {
+                    Stop-OrionService -Name $ServiceName | Out-Null
+                }
+            }
+
             Copy-Directory -Source $backupOutputPath -Destination $outputFullPath -RetryCount $CopyRetries -RetryWaitSeconds $CopyRetryWaitSeconds -Mirror
         }
         catch {
@@ -268,7 +336,7 @@ catch {
         }
     }
 
-    if ($serviceStoppedByScript) {
+    if ($serviceWasRunning -and -not $SkipServiceControl) {
         try {
             Start-OrionService -Name $ServiceName
         }

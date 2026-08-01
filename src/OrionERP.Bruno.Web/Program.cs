@@ -27,23 +27,10 @@ if (!builder.Environment.IsDevelopment())
   builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 5020));
 }
 
-builder.Configuration.Sources.Clear();
-builder.Configuration
-  .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-  .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true);
-
-if (builder.Environment.IsDevelopment())
-{
-  builder.Configuration.AddUserSecrets<Program>(optional: true, reloadOnChange: true);
-}
-
 builder.Configuration
   .AddEnvironmentVariables(prefix: "ASPNETCORE_")
-  .AddEnvironmentVariables(prefix: "DOTNET_");
-if (builder.Environment.IsDevelopment())
-{
-  builder.Configuration.AddUserSecrets<Program>(optional: true);
-}
+  .AddEnvironmentVariables(prefix: "DOTNET_")
+  .AddCommandLine(args);
 
 var connectionString = builder.Configuration.GetConnectionString("OrionDb");
 if (string.IsNullOrWhiteSpace(connectionString))
@@ -196,21 +183,20 @@ if (!app.Environment.IsDevelopment())
 {
   app.Use(async (context, next) =>
   {
-    if (context.Request.Path.Equals("/healthz", StringComparison.OrdinalIgnoreCase))
+    if (context.Request.Path.Equals("/healthz", StringComparison.OrdinalIgnoreCase) ||
+        context.Request.Path.Equals("/readyz", StringComparison.OrdinalIgnoreCase))
     {
       await next();
       return;
     }
 
-    var siteEnabled = false;
+    BrunoPublicSiteSettingsDto? settings = null;
     try
     {
-      await using var scope = context.RequestServices.CreateAsyncScope();
-      var publicCatalog = scope.ServiceProvider.GetRequiredService<IBrunoPublicCatalogService>();
-      var settings = await publicCatalog.GetSettingsAsync(
+      var publicCatalog = context.RequestServices.GetRequiredService<IBrunoPublicCatalogService>();
+      settings = await publicCatalog.GetSettingsAsync(
         BrunoSiteConstants.Rfc,
         ct: context.RequestAborted);
-      siteEnabled = settings?.IsWebsiteEnabled == true;
     }
     catch (Exception ex)
     {
@@ -218,11 +204,12 @@ if (!app.Environment.IsDevelopment())
       logger.LogError(ex, "Could not evaluate the Bruno public website feature flag.");
     }
 
-    if (!siteEnabled)
+    if (settings?.IsWebsiteEnabled != true)
     {
       context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
       context.Response.ContentType = "text/html; charset=utf-8";
       context.Response.Headers.RetryAfter = "300";
+      context.Response.Headers.CacheControl = "no-store";
       await context.Response.WriteAsync(
         """
         <!doctype html>
@@ -244,6 +231,13 @@ if (!app.Environment.IsDevelopment())
       return;
     }
 
+    if (context.Request.Path.StartsWithSegments("/cuenta") &&
+        !settings.IsMembershipEnabled)
+    {
+      context.Response.Redirect("/membresia?club=no-disponible");
+      return;
+    }
+
     await next();
   });
 }
@@ -253,6 +247,22 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGet("/healthz", () => Results.Text("OK", "text/plain"));
+app.MapGet("/readyz", async (
+  IBrunoPublicCatalogService publicCatalog,
+  CancellationToken ct) =>
+{
+  try
+  {
+    var settings = await publicCatalog.GetSettingsAsync(BrunoSiteConstants.Rfc, ct: ct);
+    return settings is null
+      ? Results.Text("NOT READY", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable)
+      : Results.Text("OK", "text/plain");
+  }
+  catch
+  {
+    return Results.Text("NOT READY", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
+  }
+});
 app.MapGet("/robots.txt", () => Results.Text(
   "User-agent: *\nAllow: /\nDisallow: /cuenta/\nSitemap: https://brunosgarden.com/sitemap.xml\n",
   "text/plain"));

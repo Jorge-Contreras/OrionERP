@@ -3,6 +3,11 @@
 @using OrionERP.Bruno.Web.Configuration
 @inject IOptions<BrunoTurnstileOptions> Turnstile
 @inject IOptions<BrunoSiteOptions> BrunoSite
+@{
+  var isAccountPage = Context.Request.Path.StartsWithSegments("/cuenta");
+  var canonicalPath = Context.Request.Path == "/" ? string.Empty : Context.Request.Path.Value;
+  var shouldNoIndex = isAccountPage || Context.Response.StatusCode >= 400;
+}
 <!DOCTYPE html>
 <html lang="es-MX">
 <head>
@@ -10,13 +15,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#171512" />
   <meta name="description" content="Bruno's Garden & Snacks: jardín pet friendly, ambiente familiar, chicken fingers, hamburguesas, snacks y bebidas en Calpulalpan." />
-  <link rel="canonical" href="https://brunosgarden.com@(Context.Request.Path == "/" ? "" : Context.Request.Path)" />
+  <link rel="canonical" href="https://brunosgarden.com@canonicalPath" />
+  @if (shouldNoIndex)
+  {
+    <meta name="robots" content="noindex,nofollow" />
+  }
   <meta property="og:type" content="website" />
   <meta property="og:locale" content="es_MX" />
   <meta property="og:site_name" content="Bruno's Garden & Snacks" />
   <meta property="og:title" content="Bruno's Garden & Snacks" />
   <meta property="og:description" content="Snacks, jardín y buenos momentos en Calpulalpan." />
-  <meta property="og:url" content="https://brunosgarden.com@(Context.Request.Path == "/" ? "" : Context.Request.Path)" />
+  <meta property="og:url" content="https://brunosgarden.com@canonicalPath" />
   <meta property="og:image" content="https://brunosgarden.com/Images/Brunos/og-brunos.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <title>@(ViewData["Title"] ?? "Bruno's Garden & Snacks")</title>
@@ -45,6 +54,10 @@
   </script>
 </head>
 <body>
+  @if (isAccountPage)
+  {
+    <a class="account-brand" href="/" aria-label="Volver a Bruno's Garden & Snacks"><img src="~/Images/Brunos/brunos-logo.png" alt="" /><span>Volver al sitio</span></a>
+  }
   @RenderBody()
   <script src="~/_framework/blazor.server.js"></script>
   @if (Turnstile.Value.IsConfigured)

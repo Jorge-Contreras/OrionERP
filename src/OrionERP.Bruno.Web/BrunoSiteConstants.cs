@@ -10,6 +10,16 @@ public static class BrunoSiteConstants
   public const string PrivacyVersion = "2026-07-31";
   public const string TermsVersion = "2026-07-31";
   public const string CanonicalBaseUrl = "https://brunosgarden.com";
+  public static IReadOnlySet<string> PublicRoutes { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+  {
+    "/",
+    "/menu",
+    "/promociones",
+    "/membresia",
+    "/visitanos",
+    "/privacidad",
+    "/terminos"
+  };
 }
 
 public sealed class BrunoRfcAccessor : ICurrentRfcAccessor

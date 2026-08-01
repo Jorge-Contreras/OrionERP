@@ -51,6 +51,7 @@ $arguments = @{
     ProjectPath = "src\OrionERP.Bonhomia.Web\OrionERP.Bonhomia.Web.csproj"
     OutputDirectory = "C:\Users\Orion\Grupo Carpio Dropbox\Grupo Orion\Software\GitHubs\Production\OrionERP.Bonhomia.Web"
     Runtime = $Runtime
+    HealthCheckUrl = "http://127.0.0.1:5010/healthz"
 }
 
 if ($SkipServiceControl) {

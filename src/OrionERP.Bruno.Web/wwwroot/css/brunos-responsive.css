@@ -1,4 +1,149 @@
+/* Shared interaction and accessibility refinements. */
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 100;
+  padding: 0.65rem 0.9rem;
+  border-radius: 0.35rem;
+  background: #fff7e9;
+  color: #171512;
+  font-weight: 800;
+  text-decoration: none;
+  transform: translateY(-180%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 3px solid #e8a247;
+  outline-offset: 3px;
+}
+
+.button,
+.site-header nav a,
+.section-jump a {
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.page-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  margin-top: 0.7rem;
+}
+
+.page-hero__actions .button {
+  margin-top: 0;
+}
+
+.club-status {
+  display: grid;
+  gap: 0.25rem;
+  width: min(100%, 38rem);
+  margin-top: 0.9rem;
+  padding: 1rem 1.1rem;
+  border-left: 4px solid #e8a247;
+  background: #171512d9;
+}
+
+.club-status strong {
+  color: #fff;
+}
+
+.club-status span {
+  color: #dfd7cc;
+  line-height: 1.5;
+}
+
+.account-brand {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.7rem 0.35rem 0.35rem;
+  border: 1px solid #ffffff2b;
+  border-radius: 999px;
+  background: #171512d9;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-decoration: none;
+  backdrop-filter: blur(12px);
+}
+
+.account-brand img {
+  width: 2.2rem;
+  height: 2.2rem;
+  object-fit: contain;
+}
+
+.account-form input,
+.account-form select,
+.account-form textarea {
+  width: 100%;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid #5b554e;
+  border-radius: 0.35rem;
+  background: #2b2723;
+  color: #fff;
+}
+
+.account-form input:hover,
+.account-form select:hover,
+.account-form textarea:hover {
+  border-color: #8a8177;
+}
+
+.account-form textarea {
+  resize: vertical;
+}
+
+.account-form small {
+  color: #aaa196;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.account-form .check input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #c44838;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @media (max-width: 600px) {
+  .account-brand {
+    position: absolute;
+  }
+
+  .account-panel {
+    padding-top: 6.5rem;
+  }
+
   .menu-section > header h2 {
     font-size: 1.55rem;
     overflow-wrap: anywhere;

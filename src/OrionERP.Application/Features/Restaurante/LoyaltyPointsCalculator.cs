@@ -31,6 +31,15 @@ public static class LoyaltyPointsCalculator
     var actualReversal = Math.Min(justifiedReversal, Math.Max(0, currentMemberBalance));
     return new LoyaltyRefundCalculation(retainedEligible, justifiedPoints, actualReversal);
   }
+
+  public static int CalculateCancellationReversal(
+    int originallyEarnedPoints,
+    int pointsAlreadyReversed,
+    int currentMemberBalance)
+  {
+    var outstandingPoints = Math.Max(0, originallyEarnedPoints - Math.Max(0, pointsAlreadyReversed));
+    return Math.Min(outstandingPoints, Math.Max(0, currentMemberBalance));
+  }
 }
 
 public sealed record LoyaltyRefundCalculation(

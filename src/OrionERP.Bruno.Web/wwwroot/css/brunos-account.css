@@ -12,3 +12,67 @@
   transform: none;
   box-shadow: none;
 }
+
+.member-panel--wide {
+  grid-column: 1 / -1;
+}
+
+.member-table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: .45rem;
+  background: #fffaf1;
+}
+
+.member-table-scroll .ledger th {
+  white-space: nowrap;
+  color: #62584d;
+  background: #efe2cf;
+  font-size: .7rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.member-orders td:nth-last-child(-n+2),
+.member-orders th:nth-last-child(-n+2) {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.member-orders__cancelled {
+  color: #776e65;
+  background: #f2ece3;
+}
+
+.order-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.65rem;
+  padding: .2rem .55rem;
+  border-radius: 999px;
+  background: #e9dfcf;
+  color: #403a34;
+  font-size: .72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.order-status--active {
+  background: #f5dfb7;
+  color: #704814;
+}
+
+.order-status--ready {
+  background: #dbe7cf;
+  color: #315333;
+}
+
+.order-status--completed {
+  background: #d4e8da;
+  color: #28533a;
+}
+
+.order-status--cancelled {
+  background: #ead5d1;
+  color: #7b2d25;
+}

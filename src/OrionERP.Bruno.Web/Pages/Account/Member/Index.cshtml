@@ -19,12 +19,19 @@
       </form>
       <hr /><a href="/cuenta/baja">Solicitar baja de membresía</a>
     </article>
-    <article class="member-panel" style="grid-column:1/-1"><h2>Historial de puntos</h2>
+    <article class="member-panel member-panel--wide"><h2>Mis órdenes</h2>
+      @if (Model.Profile.OrderHistory.Count == 0) { <p>Aún no hay órdenes vinculadas a tu membresía.</p> }
+      else { <div class="member-table-scroll"><table class="ledger member-orders"><thead><tr><th>Fecha</th><th>Orden</th><th>Estado</th><th>Pago</th><th>Total</th><th>Puntos</th></tr></thead><tbody>@foreach (var row in Model.Profile.OrderHistory) { <tr class="@(row.Status == "Cancelled" ? "member-orders__cancelled" : null)"><td>@row.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td><td>#@row.Folio.ToString("D4")</td><td><span class="order-status order-status--@StatusClass(row.Status)">@OrderStatusLabel(row.Status)</span></td><td>@PaymentStatusLabel(row.PaymentStatus)</td><td>@row.Total.ToString("C")</td><td>@(row.PointsEarned > 0 ? $"+{row.PointsEarned}" : "0")</td></tr> }</tbody></table></div> }
+    </article>
+    <article class="member-panel member-panel--wide"><h2>Historial de puntos</h2>
       @if (Model.Profile.PointHistory.Count == 0) { <p>Aún no hay movimientos. Identifícate antes de pagar en tu próxima visita.</p> }
-      else { <div style="overflow:auto"><table class="ledger"><thead><tr><th>Fecha</th><th>Movimiento</th><th>Motivo</th><th>Puntos</th><th>Saldo</th></tr></thead><tbody>@foreach (var row in Model.Profile.PointHistory) { <tr><td>@row.OccurredAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td><td>@EntryLabel(row.EntryType)</td><td>@row.Reason</td><td>@(row.PointsDelta > 0 ? "+" : "")@row.PointsDelta</td><td>@row.BalanceAfter</td></tr> }</tbody></table></div> }
+      else { <div class="member-table-scroll"><table class="ledger"><thead><tr><th>Fecha</th><th>Movimiento</th><th>Motivo</th><th>Puntos</th><th>Saldo</th></tr></thead><tbody>@foreach (var row in Model.Profile.PointHistory) { <tr><td>@row.OccurredAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td><td>@EntryLabel(row.EntryType)</td><td>@row.Reason</td><td>@(row.PointsDelta > 0 ? "+" : "")@row.PointsDelta</td><td>@row.BalanceAfter</td></tr> }</tbody></table></div> }
     </article>
   </div>
 </section>
 @functions {
-  private static string EntryLabel(string value) => value switch { "Earn" => "Compra", "RefundReversal" => "Reembolso", "AdminAdjustment" => "Ajuste", _ => value };
+  private static string EntryLabel(string value) => value switch { "Earn" => "Compra", "RefundReversal" => "Reembolso", "CancellationReversal" => "Cancelación", "AdminAdjustment" => "Ajuste", _ => value };
+  private static string OrderStatusLabel(string value) => value switch { "AwaitingPayment" => "Pendiente de pago", "Sent" => "Enviada", "Preparing" => "Preparando", "Ready" => "Lista", "Dispatched" => "Despachada", "Delivered" => "Entregada", "Completed" => "Completada", "Cancelled" => "Cancelada", _ => value };
+  private static string PaymentStatusLabel(string value) => value switch { "Pending" => "Pendiente", "Partial" => "Parcial", "Paid" => "Pagada", "PartiallyRefunded" => "Reembolso parcial", "Refunded" => "Reembolsada", "PendingSettlement" => "Por liquidar", _ => value };
+  private static string StatusClass(string value) => value switch { "Completed" => "completed", "Cancelled" => "cancelled", "Ready" or "Delivered" => "ready", _ => "active" };
 }

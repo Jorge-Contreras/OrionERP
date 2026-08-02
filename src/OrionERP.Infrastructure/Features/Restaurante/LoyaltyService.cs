@@ -470,7 +470,7 @@ public sealed class LoyaltyService : ILoyaltyService
         (SELECT COUNT(*) FROM fidelidad.MemberAccount WHERE Rfc=@Rfc AND CreatedAt>=@From AND CreatedAt<DATEADD(day,1,@To)) AS NewMembers,
         (SELECT ISNULL(SUM(CASE WHEN PointsDelta>0 THEN PointsDelta ELSE 0 END),0)
          FROM fidelidad.PointLedger WHERE Rfc=@Rfc AND OccurredAt>=@From AND OccurredAt<DATEADD(day,1,@To)) AS PointsIssued,
-        (SELECT ABS(ISNULL(SUM(CASE WHEN EntryType='RefundReversal' THEN PointsDelta ELSE 0 END),0))
+        (SELECT ABS(ISNULL(SUM(CASE WHEN EntryType IN ('RefundReversal','CancellationReversal') THEN PointsDelta ELSE 0 END),0))
          FROM fidelidad.PointLedger WHERE Rfc=@Rfc AND OccurredAt>=@From AND OccurredAt<DATEADD(day,1,@To)) AS PointsReversed,
         (SELECT ISNULL(SUM(PointsBalance),0) FROM fidelidad.MemberAccount WHERE Rfc=@Rfc) AS OutstandingPoints;
       """,
@@ -523,6 +523,18 @@ public sealed class LoyaltyService : ILoyaltyService
     profile.EmailMarketingConsent = consents.FirstOrDefault(row => row.ConsentType == "EmailMarketing")?.IsGranted ?? false;
     profile.SmsMarketingConsent = consents.FirstOrDefault(row => row.ConsentType == "SmsMarketing")?.IsGranted ?? false;
     profile.WhatsAppMarketingConsent = consents.FirstOrDefault(row => row.ConsentType == "WhatsAppMarketing")?.IsGranted ?? false;
+    profile.OrderHistory = (await conn.QueryAsync<LoyaltyMemberOrderDto>(new CommandDefinition(
+      """
+      SELECT TOP(100) orderInfo.Id,orderInfo.Folio,orderInfo.[Status],orderInfo.PaymentStatus,
+             orderInfo.Total,
+             CASE WHEN orderInfo.[Status]='Cancelled' THEN 0 ELSE orderInfo.PointsEarned END AS PointsEarned,
+             orderInfo.CreatedAt
+      FROM restaurante.[Order] orderInfo
+      WHERE orderInfo.Rfc=@Rfc AND orderInfo.MemberId=@MemberId
+      ORDER BY orderInfo.CreatedAt DESC,orderInfo.Id DESC;
+      """,
+      new { Rfc = rfc, MemberId = profile.Id },
+      cancellationToken: ct))).AsList();
     profile.PointHistory = (await conn.QueryAsync<LoyaltyPointLedgerDto>(new CommandDefinition(
       """
       SELECT TOP(100) Id,EntryType,PointsDelta,BalanceAfter,OrderId,RefundId,Reason,OccurredAt
@@ -747,7 +759,7 @@ internal static class RestaurantLoyaltyTransaction
       """
       SELECT MemberId,EligibleMerchandiseTotal
       FROM restaurante.[Order] WITH(UPDLOCK,HOLDLOCK)
-      WHERE Rfc=@Rfc AND Id=@OrderId AND PaymentStatus='Paid';
+      WHERE Rfc=@Rfc AND Id=@OrderId AND PaymentStatus='Paid' AND [Status]<>'Cancelled';
       """,
       new { Rfc = rfc, OrderId = orderId },
       tx,
@@ -756,6 +768,97 @@ internal static class RestaurantLoyaltyTransaction
       ? null
       : await AwardPaidOrderAsync(
         conn, tx, rfc, orderId, order.MemberId, order.EligibleMerchandiseTotal, createdBy, ct);
+  }
+
+  internal static async Task<LoyaltyAwardResult?> ReverseCancelledOrderAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    string rfc,
+    Guid orderId,
+    string createdBy,
+    CancellationToken ct)
+  {
+    var sourceKey = $"order:{orderId:N}:cancellation-points";
+    var existing = await conn.QuerySingleOrDefaultAsync<LoyaltyAwardResult>(new CommandDefinition(
+      "SELECT PointsDelta AS Points,BalanceAfter FROM fidelidad.PointLedger WHERE Rfc=@Rfc AND SourceKey=@SourceKey;",
+      new { Rfc = rfc, SourceKey = sourceKey },
+      tx,
+      cancellationToken: ct));
+    if (existing is not null)
+    {
+      await conn.ExecuteAsync(new CommandDefinition(
+        "UPDATE restaurante.[Order] SET PointsEarned=0 WHERE Rfc=@Rfc AND Id=@OrderId;",
+        new { Rfc = rfc, OrderId = orderId },
+        tx,
+        cancellationToken: ct));
+      return existing;
+    }
+
+    var order = await conn.QuerySingleOrDefaultAsync<CancelledOrderLoyaltyRow>(new CommandDefinition(
+      """
+      SELECT orderInfo.MemberId,orderInfo.PointsEarned,
+             CAST(ISNULL((SELECT SUM(CASE WHEN ledger.PointsDelta<0 THEN -ledger.PointsDelta ELSE 0 END)
+                          FROM fidelidad.PointLedger ledger
+                          WHERE ledger.Rfc=orderInfo.Rfc AND ledger.OrderId=orderInfo.Id
+                            AND ledger.EntryType IN ('RefundReversal','CancellationReversal')),0) AS int) AS ReversedPoints
+      FROM restaurante.[Order] orderInfo WITH(UPDLOCK,HOLDLOCK)
+      WHERE orderInfo.Rfc=@Rfc AND orderInfo.Id=@OrderId AND orderInfo.[Status]='Cancelled';
+      """,
+      new { Rfc = rfc, OrderId = orderId },
+      tx,
+      cancellationToken: ct));
+    if (order is null)
+    {
+      return null;
+    }
+    if (!order.MemberId.HasValue || order.PointsEarned <= 0)
+    {
+      await conn.ExecuteAsync(new CommandDefinition(
+        "UPDATE restaurante.[Order] SET PointsEarned=0 WHERE Rfc=@Rfc AND Id=@OrderId;",
+        new { Rfc = rfc, OrderId = orderId },
+        tx,
+        cancellationToken: ct));
+      return null;
+    }
+
+    var member = await conn.QuerySingleAsync<LoyaltyMemberSnapshot>(new CommandDefinition(
+      "SELECT Id,MembershipNumber,PointsBalance FROM fidelidad.MemberAccount WITH(UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND Id=@MemberId;",
+      new { Rfc = rfc, MemberId = order.MemberId.Value },
+      tx,
+      cancellationToken: ct));
+    var pointsToReverse = LoyaltyPointsCalculator.CalculateCancellationReversal(
+      order.PointsEarned,
+      order.ReversedPoints,
+      member.PointsBalance);
+    var balanceAfter = member.PointsBalance - pointsToReverse;
+    await conn.ExecuteAsync(new CommandDefinition(
+      """
+      UPDATE restaurante.[Order]
+      SET PointsEarned=0
+      WHERE Rfc=@Rfc AND Id=@OrderId;
+      UPDATE fidelidad.MemberAccount
+      SET PointsBalance=@BalanceAfter,UpdatedAt=SYSUTCDATETIME()
+      WHERE Rfc=@Rfc AND Id=@MemberId AND @PointsToReverse>0;
+      INSERT fidelidad.PointLedger
+        (Rfc,MemberId,EntryType,PointsDelta,BalanceAfter,EligibleMerchandiseAmount,
+         OrderId,SourceKey,Reason,CreatedBy)
+      SELECT @Rfc,@MemberId,'CancellationReversal',-@PointsToReverse,@BalanceAfter,0,
+             @OrderId,@SourceKey,N'Reversión por orden cancelada',@CreatedBy
+      WHERE @PointsToReverse>0;
+      """,
+      new
+      {
+        Rfc = rfc,
+        MemberId = order.MemberId.Value,
+        PointsToReverse = pointsToReverse,
+        BalanceAfter = balanceAfter,
+        OrderId = orderId,
+        SourceKey = sourceKey,
+        CreatedBy = createdBy
+      },
+      tx,
+      cancellationToken: ct));
+    return new LoyaltyAwardResult(-pointsToReverse, balanceAfter);
   }
 
   internal static async Task<LoyaltyAwardResult?> ReverseRefundAsync(
@@ -871,6 +974,12 @@ internal static class RestaurantLoyaltyTransaction
   {
     public Guid? MemberId { get; set; }
     public decimal EligibleMerchandiseTotal { get; set; }
+  }
+  private sealed class CancelledOrderLoyaltyRow
+  {
+    public Guid? MemberId { get; set; }
+    public int PointsEarned { get; set; }
+    public int ReversedPoints { get; set; }
   }
   private sealed class RefundLoyaltyRow
   {

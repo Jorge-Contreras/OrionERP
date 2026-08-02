@@ -52,10 +52,21 @@ public sealed class RestaurantCashService : IRestaurantCashService
       """
       SELECT shiftInfo.Id, shiftInfo.SiteId, shiftInfo.CashRegisterId, registerInfo.[Name] AS RegisterName, shiftInfo.[Status],
              shiftInfo.OpeningFloat, shiftInfo.OpenedAt, shiftInfo.OpenedBy, shiftInfo.ClosedAt, shiftInfo.ClosedBy,
-             shiftInfo.ExpectedCash, shiftInfo.CountedCash, shiftInfo.Difference,
+             salesInfo.GrossSales, shiftInfo.ExpectedCash, shiftInfo.CountedCash, shiftInfo.Difference,
              shiftInfo.ApprovedAt, shiftInfo.ApprovedBy, shiftInfo.ReopenedAt, shiftInfo.ReopenedBy
       FROM restaurante.CashShift shiftInfo
       JOIN restaurante.CashRegister registerInfo ON registerInfo.Rfc=shiftInfo.Rfc AND registerInfo.Id=shiftInfo.CashRegisterId
+      OUTER APPLY
+      (
+        SELECT CAST(ISNULL(SUM(paymentInfo.Amount), 0) AS decimal(18,2)) AS GrossSales
+        FROM restaurante.Payment paymentInfo
+        JOIN restaurante.[Order] orderInfo
+          ON orderInfo.Rfc=paymentInfo.Rfc AND orderInfo.Id=paymentInfo.OrderId
+        WHERE paymentInfo.Rfc=shiftInfo.Rfc
+          AND (orderInfo.CashShiftId=shiftInfo.Id OR orderInfo.CashRegisterId=shiftInfo.CashRegisterId)
+          AND paymentInfo.PaidAt>=shiftInfo.OpenedAt
+          AND paymentInfo.PaidAt<=ISNULL(shiftInfo.ClosedAt, SYSUTCDATETIME())
+      ) salesInfo
       WHERE shiftInfo.Rfc=@Rfc AND shiftInfo.SiteId=@SiteId
       ORDER BY CASE shiftInfo.[Status] WHEN 'Open' THEN 0 WHEN 'PendingApproval' THEN 1 ELSE 2 END, shiftInfo.OpenedAt DESC;
       """;
@@ -273,13 +284,15 @@ public sealed class RestaurantCashService : IRestaurantCashService
       WHERE orderInfo.Rfc=@Rfc AND orderInfo.CashShiftId=@ShiftId;
       """, new { Rfc = normalizedRfc, ShiftId = shift.Id }, cancellationToken: ct));
 
+    shift.GrossSales = paymentRows.Sum(item => item.Amount);
+
     return new()
     {
       Shift = shift,
       OrderCount = orderCount,
       PaymentCount = paymentRows.Count,
       RefundCount = refundRows.Count,
-      GrossSales = paymentRows.Sum(item => item.Amount),
+      GrossSales = shift.GrossSales,
       TipTotal = paymentRows.Sum(item => item.TipAmount),
       RefundTotal = refundRows.Sum(item => item.Amount),
       PaymentMethods = paymentMethods,

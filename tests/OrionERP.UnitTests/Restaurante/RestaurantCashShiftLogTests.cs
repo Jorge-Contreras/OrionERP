@@ -38,6 +38,22 @@ public sealed class RestaurantCashShiftLogTests
     Assert.Contains(".shift-log__accountability", styles, StringComparison.Ordinal);
   }
 
+  [Fact]
+  public void ShiftCards_ShowOpeningClosingAccountabilityAndSalesDetails()
+  {
+    var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantCashService.cs");
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantCashShiftsPage.razor");
+
+    Assert.Contains("AS GrossSales", service, StringComparison.Ordinal);
+    Assert.Contains("paymentInfo.PaidAt>=shiftInfo.OpenedAt", service, StringComparison.Ordinal);
+    Assert.Contains("<dt>Apertura</dt>", page, StringComparison.Ordinal);
+    Assert.Contains("<dt>Cierre</dt>", page, StringComparison.Ordinal);
+    Assert.Contains("<dt>Abrió</dt>", page, StringComparison.Ordinal);
+    Assert.Contains("<dt>Cerró</dt>", page, StringComparison.Ordinal);
+    Assert.Contains("<dt>Fondo inicial</dt>", page, StringComparison.Ordinal);
+    Assert.Contains("<dt>Ventas</dt>", page, StringComparison.Ordinal);
+  }
+
   private static int CountOccurrences(string value, string search)
   {
     var count = 0;

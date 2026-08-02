@@ -58,7 +58,11 @@
       {
         <article class="cash-panel">
           <header><div><span>Turno abierto</span><h2>@shift.RegisterName</h2></div><span class="cash-status cash-status--open">Abierto</span></header>
-          <dl><div><dt>Apertura</dt><dd>@shift.OpenedAt.ToLocalTime().ToString("g")</dd></div><div><dt>Fondo</dt><dd>@shift.OpeningFloat.ToString("C")</dd></div></dl>
+          <dl class="cash-panel__details">
+            <div><dt>Apertura</dt><dd><time datetime="@shift.OpenedAt.ToString("O")">@LocalDateTime(shift.OpenedAt)</time></dd></div>
+            <div><dt>Abrió</dt><dd class="cash-panel__actor" title="@ActorLabel(shift.OpenedBy)">@ActorLabel(shift.OpenedBy)</dd></div>
+            <div><dt>Fondo inicial</dt><dd>@shift.OpeningFloat.ToString("C")</dd></div>
+          </dl>
           <label class="cash-count">Efectivo contado<input type="number" min="0" step="0.01" value="@GetCount(shift.Id)" @onchange="args => SetCount(shift.Id, args.Value)" autocomplete="off" /></label>
           <div class="cash-panel__actions">
             <AuthorizeView Policy="RestaurantAdminOnly"><Authorized><button type="button" class="cash-log-button" @onclick="() => OpenShiftLogAsync(shift)"><span class="oi oi-list-rich" aria-hidden="true"></span>Bitácora</button></Authorized></AuthorizeView>
@@ -71,7 +75,17 @@
       {
         <article class="cash-panel cash-panel--closed">
           <header><div><span>Corte</span><h2>@shift.RegisterName</h2></div><span class="cash-status @(shift.Status == "PendingApproval" ? "cash-status--warning" : "")">@ShiftStatusLabel(shift.Status)</span></header>
-          <dl><div><dt>Esperado</dt><dd>@shift.ExpectedCash?.ToString("C")</dd></div><div><dt>Contado</dt><dd>@shift.CountedCash?.ToString("C")</dd></div><div><dt>Diferencia</dt><dd class="@(shift.Difference != 0 ? "is-difference" : null)">@shift.Difference?.ToString("C")</dd></div></dl>
+          <dl class="cash-panel__details">
+            <div><dt>Apertura</dt><dd><time datetime="@shift.OpenedAt.ToString("O")">@LocalDateTime(shift.OpenedAt)</time></dd></div>
+            <div><dt>Cierre</dt><dd><time datetime="@shift.ClosedAt?.ToString("O")">@NullableLocalDateTime(shift.ClosedAt)</time></dd></div>
+            <div><dt>Abrió</dt><dd class="cash-panel__actor" title="@ActorLabel(shift.OpenedBy)">@ActorLabel(shift.OpenedBy)</dd></div>
+            <div><dt>Cerró</dt><dd class="cash-panel__actor" title="@ActorLabel(shift.ClosedBy)">@ActorLabel(shift.ClosedBy)</dd></div>
+            <div><dt>Fondo inicial</dt><dd>@shift.OpeningFloat.ToString("C")</dd></div>
+            <div><dt>Ventas</dt><dd>@shift.GrossSales.ToString("C")</dd></div>
+            <div><dt>Esperado</dt><dd>@shift.ExpectedCash?.ToString("C")</dd></div>
+            <div><dt>Contado</dt><dd>@shift.CountedCash?.ToString("C")</dd></div>
+            <div><dt>Diferencia</dt><dd class="@(shift.Difference != 0 ? "is-difference" : null)">@shift.Difference?.ToString("C")</dd></div>
+          </dl>
           <div class="cash-panel__actions">
             <AuthorizeView Policy="RestaurantAdminOnly"><Authorized><button type="button" class="cash-log-button" @onclick="() => OpenShiftLogAsync(shift)"><span class="oi oi-list-rich" aria-hidden="true"></span>Bitácora</button></Authorized></AuthorizeView>
             @if (shift.Status == "PendingApproval") { <button type="button" class="btn btn-danger" @onclick="() => RequestApproval(shift)">Aprobar diferencia</button> }
@@ -319,6 +333,8 @@
   private static string PaymentMethodLabel(string method) => method switch { "Cash" => "Efectivo", "Card" => "Tarjeta", "ExternalCard" => "Tarjeta externa", "Transfer" => "Transferencia", "DeliveryProvider" => "Plataforma", _ => method };
   private static string PaymentMethodIcon(string method) => method switch { "Cash" => "oi-briefcase", "Transfer" => "oi-data-transfer-upload", "DeliveryProvider" => "oi-globe", _ => "oi-credit-card" };
   private static string ActorLabel(string? actor) => string.IsNullOrWhiteSpace(actor) ? "Pendiente" : actor;
+  private static string LocalDateTime(DateTime value) => value.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+  private static string NullableLocalDateTime(DateTime? value) => value.HasValue ? LocalDateTime(value.Value) : "—";
   private static string NullableLocalTime(DateTime? value) => value.HasValue ? value.Value.ToLocalTime().ToString("g") : "—";
   private static string MoneyOrPending(decimal? value) => value.HasValue ? value.Value.ToString("C") : "Pendiente";
   private static string ShiftDurationLabel(RestaurantCashShiftDto shift)

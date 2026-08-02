@@ -367,6 +367,7 @@ public sealed class RestaurantCashShiftDto
   public string OpenedBy { get; set; } = string.Empty;
   public DateTime? ClosedAt { get; set; }
   public string? ClosedBy { get; set; }
+  public decimal GrossSales { get; set; }
   public decimal? ExpectedCash { get; set; }
   public decimal? CountedCash { get; set; }
   public decimal? Difference { get; set; }

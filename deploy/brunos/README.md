@@ -26,6 +26,13 @@
 11. Cambiar nameservers en GoDaddy solo después de comparar la zona Cloudflare con el inventario original.
 12. Mantener apagadas las cuatro banderas. Activar en orden: sitio, membresía, acumulación y promociones.
 
+## Corrección de puntos en órdenes canceladas
+
+Al desplegar la corrección del 2 de agosto de 2026, ejecutar
+`20260802_cancelled_order_loyalty_reconciliation.sql` antes de reiniciar los servicios. El script conserva las órdenes, fija sus puntos acreditados en cero y retira del saldo únicamente los puntos todavía vigentes, sin permitir saldos negativos.
+
+Ejecutarlo con `sqlcmd -f 65001` y las variables `ExpectedDatabase` y `ApplyChanges`: primero `ApplyChanges=0` para revisar el resumen dentro de una transacción revertida y después `ApplyChanges=1` para confirmar. En desarrollo usar únicamente `ExpectedDatabase="Orion_Sandbox"`; producción requiere respaldo y autorización explícita con `ExpectedDatabase="grupocarpio"`.
+
 ## Servicio Windows
 
 Ejemplo de creación inicial en PowerShell elevado, ajustando la ruta final:

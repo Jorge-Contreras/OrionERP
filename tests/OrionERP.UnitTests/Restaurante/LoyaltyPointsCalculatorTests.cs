@@ -61,4 +61,24 @@ public sealed class LoyaltyPointsCalculatorTests
     var result = LoyaltyPointsCalculator.CalculateRefund(100, 100, 100, 10, 0, 3, 10);
     Assert.Equal(3, result.PointsToReverse);
   }
+
+  [Theory]
+  [InlineData(10, 0, 25, 10)]
+  [InlineData(10, 4, 25, 6)]
+  [InlineData(10, 0, 3, 3)]
+  [InlineData(0, 0, 25, 0)]
+  [InlineData(10, 10, 25, 0)]
+  public void Cancellation_ReversesOnlyOutstandingAvailablePoints(
+    int originallyEarned,
+    int alreadyReversed,
+    int currentBalance,
+    int expected)
+  {
+    Assert.Equal(
+      expected,
+      LoyaltyPointsCalculator.CalculateCancellationReversal(
+        originallyEarned,
+        alreadyReversed,
+        currentBalance));
+  }
 }

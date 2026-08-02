@@ -1069,6 +1069,13 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         VALUES
           (@Rfc, @SiteId, 'CancelOrder', CONVERT(varchar(36), @OrderId), @Reason, @Supervisor, @Supervisor);
         """, new { Rfc = normalizedRfc, OrderId = orderId, SiteId = order.SiteId, Supervisor = supervisorUserName, Reason = reason.Trim() }, tx, cancellationToken: ct));
+      var loyaltyReversal = await RestaurantLoyaltyTransaction.ReverseCancelledOrderAsync(
+        conn,
+        tx,
+        normalizedRfc,
+        orderId,
+        supervisorUserName,
+        ct);
       if (inventoryReleased)
       {
         await RestaurantOrderEventWriter.AddAsync(
@@ -1081,9 +1088,29 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         conn, tx, normalizedRfc, order.SiteId, orderId,
         "OrderCancelled", "Order", "Orden cancelada",
         reason, supervisorUserName, ct);
-      await AddOutboxEventAsync(conn, tx, normalizedRfc, order.SiteId, "OrderCancelled", orderId.ToString(), new { orderId, reason }, ct);
+      if (loyaltyReversal is { Points: < 0 })
+      {
+        await RestaurantOrderEventWriter.AddAsync(
+          conn, tx, normalizedRfc, order.SiteId, orderId,
+          "LoyaltyPointsReversed", "Loyalty", "Puntos retirados por cancelación",
+          $"{Math.Abs(loyaltyReversal.Points)} punto(s) · Saldo {loyaltyReversal.BalanceAfter}",
+          supervisorUserName, ct, $"order:{orderId}:LoyaltyPointsCancelled");
+      }
+      var pointsReversed = Math.Abs(loyaltyReversal?.Points ?? 0);
+      await AddOutboxEventAsync(
+        conn,
+        tx,
+        normalizedRfc,
+        order.SiteId,
+        "OrderCancelled",
+        orderId.ToString(),
+        new { orderId, reason, pointsReversed },
+        ct);
       await tx.CommitAsync(ct);
-      return RestaurantCommandResult.Ok("La orden fue cancelada. Los cobros existentes requieren reembolso supervisado por separado.");
+      var loyaltyMessage = pointsReversed > 0
+        ? $" Se retiraron {pointsReversed} punto(s) de la membresía vinculada."
+        : string.Empty;
+      return RestaurantCommandResult.Ok($"La orden fue cancelada.{loyaltyMessage} Los cobros existentes requieren reembolso supervisado por separado.");
     }
     catch
     {

@@ -14,6 +14,7 @@ public static class LoyaltyLedgerTypes
 {
   public const string Earn = "Earn";
   public const string RefundReversal = "RefundReversal";
+  public const string CancellationReversal = "CancellationReversal";
   public const string AdminAdjustment = "AdminAdjustment";
 }
 
@@ -40,7 +41,19 @@ public sealed class LoyaltyMemberProfileDto : LoyaltyMemberDto
   public bool EmailMarketingConsent { get; set; }
   public bool SmsMarketingConsent { get; set; }
   public bool WhatsAppMarketingConsent { get; set; }
+  public IReadOnlyList<LoyaltyMemberOrderDto> OrderHistory { get; set; } = Array.Empty<LoyaltyMemberOrderDto>();
   public IReadOnlyList<LoyaltyPointLedgerDto> PointHistory { get; set; } = Array.Empty<LoyaltyPointLedgerDto>();
+}
+
+public sealed class LoyaltyMemberOrderDto
+{
+  public Guid Id { get; set; }
+  public int Folio { get; set; }
+  public string Status { get; set; } = string.Empty;
+  public string PaymentStatus { get; set; } = string.Empty;
+  public decimal Total { get; set; }
+  public int PointsEarned { get; set; }
+  public DateTime CreatedAt { get; set; }
 }
 
 public sealed class LoyaltyPointLedgerDto

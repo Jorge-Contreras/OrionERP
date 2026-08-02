@@ -608,64 +608,96 @@
                     <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CerrarAgregarMaterialDialog"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="row g-2 mb-3">
-                        <div class="col-lg-4">
-                            <label class="form-label">Buscar material</label>
-                            <input class="form-control" type="search" placeholder="Código, descripción o barras" @bind="MaterialPickerFilter.SearchText" @bind:event="oninput" disabled="@(!SelectedLocationId.HasValue)" />
+                    <div class="ubicaciones-material-search-panel mb-3">
+                        <div class="row g-2">
+                            <div class="col-lg-4">
+                                <label class="form-label" for="material-picker-search">Buscar material</label>
+                                <div class="input-group">
+                                    <input id="material-picker-search"
+                                           class="form-control ubicaciones-material-search-input"
+                                           type="search"
+                                           placeholder="Código, descripción o barras"
+                                           autocomplete="off"
+                                           spellcheck="false"
+                                           enterkeyhint="search"
+                                           aria-describedby="material-picker-search-hint"
+                                           @bind="MaterialPickerFilter.SearchText"
+                                           @bind:event="oninput"
+                                           @onkeydown="HandleMaterialPickerSearchKeyDownAsync"
+                                           @ref="MaterialPickerSearchInput"
+                                           disabled="@(!SelectedLocationId.HasValue)" />
+                                    <button class="btn btn-primary ubicaciones-material-search-button"
+                                            type="button"
+                                            aria-keyshortcuts="Enter"
+                                            @onclick="BuscarMaterialesParaAgregarAsync"
+                                            disabled="@(IsMaterialPickerBusy || !SelectedLocationId.HasValue)">
+                                        @(IsLoadingMaterialPicker ? "Buscando..." : "Buscar")
+                                    </button>
+                                </div>
+                                <div id="material-picker-search-hint" class="form-text">Escribe y presiona Enter para buscar.</div>
+                            </div>
+                            <div class="col-sm-6 col-lg-2">
+                                <label class="form-label">Categoría</label>
+                                <select class="form-select" @bind="MaterialPickerFilter.CategoryId" disabled="@(!SelectedLocationId.HasValue)">
+                                    <option value="">Todas</option>
+                                    @foreach (var option in MaterialCatalog.Categories)
+                                    {
+                                        <option value="@option.Id">@option.Name</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-sm-6 col-lg-2">
+                                <label class="form-label">Proveedor</label>
+                                <select class="form-select" @bind="MaterialPickerFilter.VendorId" disabled="@(!SelectedLocationId.HasValue)">
+                                    <option value="">Todos</option>
+                                    @foreach (var option in MaterialCatalog.Vendors)
+                                    {
+                                        <option value="@option.Id">@option.Name</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-sm-6 col-lg-2">
+                                <label class="form-label">Clase</label>
+                                <select class="form-select" @bind="MaterialPickerFilter.MaterialClass" disabled="@(!SelectedLocationId.HasValue)">
+                                    <option value="">Todas</option>
+                                    @foreach (var option in MaterialCatalog.MaterialClasses)
+                                    {
+                                        <option value="@option">@option</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-sm-6 col-lg-2">
+                                <label class="form-label">Estado</label>
+                                <select class="form-select" @bind="MaterialPickerFilter.Status" disabled="@(!SelectedLocationId.HasValue)">
+                                    <option value="">Todos</option>
+                                    @foreach (var option in MaterialCatalog.Statuses)
+                                    {
+                                        <option value="@option">@option</option>
+                                    }
+                                </select>
+                            </div>
                         </div>
-                        <div class="col-sm-6 col-lg-2">
-                            <label class="form-label">Categoría</label>
-                            <select class="form-select" @bind="MaterialPickerFilter.CategoryId" disabled="@(!SelectedLocationId.HasValue)">
-                                <option value="">Todas</option>
-                                @foreach (var option in MaterialCatalog.Categories)
-                                {
-                                    <option value="@option.Id">@option.Name</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-sm-6 col-lg-2">
-                            <label class="form-label">Proveedor</label>
-                            <select class="form-select" @bind="MaterialPickerFilter.VendorId" disabled="@(!SelectedLocationId.HasValue)">
-                                <option value="">Todos</option>
-                                @foreach (var option in MaterialCatalog.Vendors)
-                                {
-                                    <option value="@option.Id">@option.Name</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-sm-6 col-lg-2">
-                            <label class="form-label">Clase</label>
-                            <select class="form-select" @bind="MaterialPickerFilter.MaterialClass" disabled="@(!SelectedLocationId.HasValue)">
-                                <option value="">Todas</option>
-                                @foreach (var option in MaterialCatalog.MaterialClasses)
-                                {
-                                    <option value="@option">@option</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-sm-6 col-lg-2">
-                            <label class="form-label">Estado</label>
-                            <select class="form-select" @bind="MaterialPickerFilter.Status" disabled="@(!SelectedLocationId.HasValue)">
-                                <option value="">Todos</option>
-                                @foreach (var option in MaterialCatalog.Statuses)
-                                {
-                                    <option value="@option">@option</option>
-                                }
-                            </select>
-                        </div>
-                    </div>
 
-                    <div class="d-flex flex-wrap gap-3 mb-3">
-                        <label class="form-check">
-                            <input class="form-check-input" type="checkbox" @bind="HasImageOnly" disabled="@(!SelectedLocationId.HasValue)" />
-                            <span class="form-check-label">Solo con imagen</span>
-                        </label>
-                        <div class="text-muted small ms-auto">Ubicación destino: <span class="fw-semibold">@SelectedLocationSummary</span></div>
+                        <div class="d-flex flex-wrap gap-3 mt-3">
+                            <label class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" @bind="HasImageOnly" disabled="@(!SelectedLocationId.HasValue)" />
+                                <span class="form-check-label">Solo con imagen</span>
+                            </label>
+                            <div class="text-muted small ms-auto">Ubicación destino: <span class="fw-semibold">@SelectedLocationSummary</span></div>
+                        </div>
                     </div>
 
                     @if (!SelectedLocationId.HasValue)
                     {
                         <div class="ubicaciones-empty-state mb-3">Selecciona una ubicación para agregarle materiales desde el catálogo.</div>
+                    }
+
+                    @if (HasExecutedMaterialPickerSearch && MaterialPickerRows.Count > 0)
+                    {
+                        <div class="ubicaciones-material-results-summary mb-2" aria-live="polite">
+                            <span>Mostrando <strong>@MaterialPickerRows.Count</strong> materiales.</span>
+                            <span>Después de agregar, solo escribe la siguiente búsqueda.</span>
+                        </div>
                     }
 
                     <div class="table-responsive ubicaciones-material-picker-wrap">
@@ -677,14 +709,14 @@
                                     <th>Clase</th>
                                     <th>Proveedor</th>
                                     <th class="text-end">Existencia</th>
-                                    <th class="text-end">Acción</th>
+                                    <th class="text-end ubicaciones-material-action-col">Acción</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @if (!HasExecutedMaterialPickerSearch)
                                 {
                                     <tr>
-                                        <td colspan="6" class="text-center text-muted py-3">Usa los filtros y presiona Buscar materiales.</td>
+                                        <td colspan="6" class="text-center text-muted py-3">Escribe un código, descripción o código de barras y presiona Enter.</td>
                                     </tr>
                                 }
                                 else if (IsLoadingMaterialPicker && MaterialPickerRows.Count == 0)
@@ -708,7 +740,7 @@
                                         var showMaterialCode = !string.IsNullOrWhiteSpace(item.MaterialCode) && !string.Equals(item.MaterialCode, materialTitle, StringComparison.OrdinalIgnoreCase);
                                         var alreadyVisible = IsMaterialAlreadyVisibleInSelectedLocation(item.Id);
                                         var isAddingThis = AddingMaterialId == item.Id;
-                                        var actionButtonClass = alreadyVisible ? "btn-outline-secondary" : "btn-outline-primary";
+                                        var actionButtonClass = alreadyVisible ? "btn-outline-secondary" : "btn-primary";
 
                                         <tr>
                                             <td class="ubicaciones-stock-image-col">
@@ -745,9 +777,11 @@
                                                 <div>@item.TotalQuantity.ToString("N2")</div>
                                                 <small class="text-muted">@item.LocationCount ubicaciones</small>
                                             </td>
-                                            <td class="text-end">
-                                                <button class="btn btn-sm @actionButtonClass"
+                                            <td class="text-end ubicaciones-material-action-col">
+                                                <button class="btn @actionButtonClass ubicaciones-material-add-button"
                                                         type="button"
+                                                        title="@(alreadyVisible ? "Este material ya está en la ubicación" : $"Agregar {materialTitle} a la ubicación")"
+                                                        aria-label="@(alreadyVisible ? $"{materialTitle} ya está agregado" : $"Agregar {materialTitle}")"
                                                         @onclick="() => AgregarMaterialAUbicacionAsync(item)"
                                                         disabled="@(alreadyVisible || IsMaterialPickerBusy || !SelectedLocationId.HasValue)">
                                                     @(alreadyVisible ? "Ya agregado" : isAddingThis ? "Agregando..." : "Agregar")
@@ -763,7 +797,7 @@
                 <div class="modal-footer">
                     @if (HasExecutedMaterialPickerSearch && MaterialPickerRows.Count > 0)
                     {
-                        <span class="text-muted small me-auto">Mostrando @MaterialPickerRows.Count materiales del catálogo.</span>
+                        <span class="text-muted small me-auto">La búsqueda queda seleccionada para reemplazarla al escribir.</span>
                     }
                     @if (HasMoreMaterialPickerRows)
                     {
@@ -771,9 +805,6 @@
                             @(IsLoadingMoreMaterialPicker ? "Cargando..." : $"Cargar {PageSize} más")
                         </button>
                     }
-                    <button class="btn btn-primary" type="button" @onclick="BuscarMaterialesParaAgregarAsync" disabled="@(IsMaterialPickerBusy || !SelectedLocationId.HasValue)">
-                        @(IsLoadingMaterialPicker ? "Buscando..." : "Buscar materiales")
-                    </button>
                     <button class="btn btn-outline-secondary" type="button" @onclick="CerrarAgregarMaterialDialog">Cerrar</button>
                 </div>
             </div>

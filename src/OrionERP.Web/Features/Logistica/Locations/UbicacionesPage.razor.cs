@@ -2,6 +2,7 @@ using System.IO;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Logistica.Locations;
 using OrionERP.Application.Features.Logistica.Materials;
@@ -17,6 +18,9 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
   private const int PageSize = 50;
   private const int QueryTake = PageSize + 1;
   private const string SuiteRoomType = "SUITE";
+
+  private ElementReference MaterialPickerSearchInput;
+  private bool _focusMaterialPickerSearchPending;
 
   protected static readonly string[] LocationTypes = ["Room", "Storage", "Disposal", "Service"];
 
@@ -119,6 +123,26 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
     await LoadLookupsAsync();
   }
 
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (!_focusMaterialPickerSearchPending || !ShowAddMaterialDialog || !SelectedLocationId.HasValue)
+    {
+      return;
+    }
+
+    _focusMaterialPickerSearchPending = false;
+    try
+    {
+      await Js.InvokeVoidAsync("focusAndSelectTextInput", MaterialPickerSearchInput);
+    }
+    catch (InvalidOperationException)
+    {
+    }
+    catch (JSDisconnectedException)
+    {
+    }
+  }
+
   private void HandleRfcChanged() => _ = InvokeAsync(async () =>
   {
     SelectedRoomId = null;
@@ -174,6 +198,11 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
 
   protected async Task BuscarMaterialesParaAgregarAsync()
   {
+    if (IsMaterialPickerBusy)
+    {
+      return;
+    }
+
     if (!SelectedLocationId.HasValue)
     {
       ClearMaterialPickerResults();
@@ -201,7 +230,16 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
     finally
     {
       IsLoadingMaterialPicker = false;
+      RequestMaterialPickerSearchFocus();
       StateHasChanged();
+    }
+  }
+
+  protected async Task HandleMaterialPickerSearchKeyDownAsync(KeyboardEventArgs args)
+  {
+    if (string.Equals(args.Key, "Enter", StringComparison.Ordinal))
+    {
+      await BuscarMaterialesParaAgregarAsync();
     }
   }
 
@@ -214,6 +252,7 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
     }
 
     ShowAddMaterialDialog = true;
+    RequestMaterialPickerSearchFocus();
 
     if (!HasExecutedMaterialPickerSearch && !IsLoadingMaterialPicker)
     {
@@ -224,6 +263,7 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
   protected void CerrarAgregarMaterialDialog()
   {
     ShowAddMaterialDialog = false;
+    _focusMaterialPickerSearchPending = false;
   }
 
   protected async Task CargarMasMaterialesParaAgregarAsync()
@@ -287,6 +327,7 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
     finally
     {
       AddingMaterialId = null;
+      RequestMaterialPickerSearchFocus();
       StateHasChanged();
     }
   }
@@ -1012,6 +1053,7 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
   private void ClearMaterialPickerResults()
   {
     ShowAddMaterialDialog = false;
+    _focusMaterialPickerSearchPending = false;
     HasExecutedMaterialPickerSearch = false;
     HasMoreMaterialPickerRows = false;
     IsLoadingMaterialPicker = false;
@@ -1019,6 +1061,14 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
     AddingMaterialId = null;
     MaterialPickerRows = [];
     MaterialPickerThumbnailDataUrls = [];
+  }
+
+  private void RequestMaterialPickerSearchFocus()
+  {
+    if (ShowAddMaterialDialog)
+    {
+      _focusMaterialPickerSearchPending = true;
+    }
   }
 
   private void ResetStockFilterForAddedMaterial()

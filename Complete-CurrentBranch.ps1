@@ -316,11 +316,11 @@ try {
         throw "The new pull request could not be resolved as an open pull request."
     }
 
-    Write-Step "Merge pull request without waiting for CI"
+    Write-Step "Squash merge pull request without waiting for CI"
     Invoke-NativeCommand -FilePath "gh" -ArgumentList @(
         "pr", "merge", $pullRequestUrl,
         "--repo", $expectedRepository,
-        "--merge",
+        "--squash",
         "--admin",
         "--match-head-commit", $commitSha
     )
@@ -349,11 +349,12 @@ try {
     Invoke-NativeCommand -FilePath "git" -ArgumentList @("pull", "--ff-only", $remoteName, $baseBranch)
 
     if (Test-GitReference -Reference "refs/heads/$sourceBranch") {
-        if (-not (Test-GitAncestor -Ancestor $sourceBranch -Descendant $baseBranch)) {
-            throw "The merged branch is not an ancestor of local '$baseBranch'; refusing to delete it."
+        $localSourceSha = Get-SingleNativeOutput -FilePath "git" -ArgumentList @("rev-parse", "refs/heads/$sourceBranch")
+        if ($localSourceSha -ne $commitSha) {
+            throw "Local branch '$sourceBranch' moved after the pull request was created; refusing to force-delete it."
         }
 
-        Invoke-NativeCommand -FilePath "git" -ArgumentList @("branch", "--delete", $sourceBranch)
+        Invoke-NativeCommand -FilePath "git" -ArgumentList @("branch", "--delete", "--force", $sourceBranch)
     }
 
     Invoke-NativeCommand -FilePath "git" -ArgumentList @("fetch", $remoteName, "--prune")

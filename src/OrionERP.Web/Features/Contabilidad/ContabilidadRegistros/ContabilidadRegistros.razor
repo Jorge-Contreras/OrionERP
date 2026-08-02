@@ -110,6 +110,7 @@
             <th>Poliza</th>
             <th>Fecha</th>
             <th>Concepto</th>
+            <th class="text-center" title="CFDIs y complementos de pago vinculados a la póliza">CFDIs</th>
             <th>Debe</th>
             <th>Haber</th>
             <th>Balance</th>
@@ -130,6 +131,10 @@
               </td>
               <td>@row.Fecha</td>
               <td>@row.Concepto</td>
+              <td class="text-center">
+                <span class="badge @(row.CfdiCount > 0 ? "text-bg-primary" : "text-bg-secondary")"
+                      title="@GetCfdiCountDescription(row.CfdiCount)">@row.CfdiCount</span>
+              </td>
               <td>@row.Debe</td>
               <td>@row.Haber</td>
               <td>@row.Balance</td>
@@ -460,6 +465,7 @@
         "Poliza",
         "Fecha",
         "Concepto",
+        "CFDIs vinculados",
         "Debe",
         "Haber",
         "Balance",
@@ -482,10 +488,11 @@
         worksheet.Cells[excelRow, 2].Value = row.Poliza;
         worksheet.Cells[excelRow, 3].Value = row.Fecha;
         worksheet.Cells[excelRow, 4].Value = row.Concepto;
-        worksheet.Cells[excelRow, 5].Value = row.Debe;
-        worksheet.Cells[excelRow, 6].Value = row.Haber;
-        worksheet.Cells[excelRow, 7].Value = row.Balance;
-        worksheet.Cells[excelRow, 8].Value = row.Revisado;
+        worksheet.Cells[excelRow, 5].Value = row.CfdiCount;
+        worksheet.Cells[excelRow, 6].Value = row.Debe;
+        worksheet.Cells[excelRow, 7].Value = row.Haber;
+        worksheet.Cells[excelRow, 8].Value = row.Balance;
+        worksheet.Cells[excelRow, 9].Value = row.Revisado;
       }
 
       if (worksheet.Dimension is not null)
@@ -531,6 +538,11 @@
 
   private static string GetPolizaUrl(int poliza)
     => $"/contabilidad/transacciones/{poliza}";
+
+  private static string GetCfdiCountDescription(int cfdiCount)
+    => cfdiCount == 1
+      ? "1 CFDI vinculado"
+      : $"{cfdiCount} CFDIs vinculados";
 
   private void UpdateTransaccionOrder()
   {

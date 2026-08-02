@@ -8,6 +8,8 @@ namespace OrionERP.Infrastructure.Features.Contabilidad.ContabilidadRegistros;
 
 public sealed class ContabilidadRegistrosService : IContabilidadRegistrosService
 {
+  private const int TransaccionIdBatchSize = 1000;
+
   private readonly string _connectionString;
 
   public ContabilidadRegistrosService(IConfiguration configuration)
@@ -45,10 +47,79 @@ public sealed class ContabilidadRegistrosService : IContabilidadRegistrosService
     parameters.Add("@Nivel3", NormalizeTwoDigits(nivel3), DbType.String);
 
     using var connection = new SqlConnection(_connectionString);
-    return await connection.QueryAsync<RegistrosContablesRow>(
+    var registros = (await connection.QueryAsync<RegistrosContablesRow>(
         "contabilidad.REGISTROS_CONTABLES_FECHA_NIVELES",
         parameters,
-        commandType: CommandType.StoredProcedure);
+        commandType: CommandType.StoredProcedure))
+      .AsList();
+
+    if (registros.Count == 0)
+    {
+      return registros;
+    }
+
+    var cfdiCounts = await GetCfdiCountsAsync(
+        connection,
+        registros.Select(row => row.Poliza).Distinct());
+
+    return registros
+      .Select(row => row with
+      {
+        CfdiCount = cfdiCounts.GetValueOrDefault(row.Poliza)
+      })
+      .ToList();
+  }
+
+  private static async Task<IReadOnlyDictionary<int, int>> GetCfdiCountsAsync(
+    SqlConnection connection,
+    IEnumerable<int> transaccionIds)
+  {
+    const string sql = @"WITH LinkedCfdis AS
+(
+  SELECT
+    tc.Transaccion_ID AS TransaccionId,
+    CAST(tc.Comprobante_ID AS bigint) AS ComprobanteId
+  FROM dbo.Transaccion_Comprobante AS tc
+  INNER JOIN cfdi.Comprobante AS c
+          ON c.Comprobante_Id = tc.Comprobante_ID
+  WHERE tc.Transaccion_ID IN @TransaccionIds
+
+  UNION
+
+  SELECT
+    td.Transaccion_ID AS TransaccionId,
+    CAST(p20.Comprobante_Id AS bigint) AS ComprobanteId
+  FROM dbo.Transaccion_DoctoRelacionado AS td
+  INNER JOIN cfdi.Pagos20_DoctoRelacionado AS dr
+          ON dr.DoctoRelacionado_Id = td.DoctoRelacionado_Id
+  INNER JOIN cfdi.Pagos20_Pago AS pago
+          ON pago.Pago_Id = dr.Pago_Id
+  INNER JOIN cfdi.Pagos20 AS p20
+          ON p20.Pagos20_Id = pago.Pagos20_Id
+  INNER JOIN cfdi.Comprobante AS c
+          ON c.Comprobante_Id = p20.Comprobante_Id
+  WHERE td.Transaccion_ID IN @TransaccionIds
+)
+SELECT
+  TransaccionId,
+  COUNT(*) AS CfdiCount
+FROM LinkedCfdis
+GROUP BY TransaccionId;";
+
+    var counts = new Dictionary<int, int>();
+    foreach (var batch in transaccionIds.Chunk(TransaccionIdBatchSize))
+    {
+      var rows = await connection.QueryAsync<TransaccionCfdiCountRow>(
+          sql,
+          new { TransaccionIds = batch });
+
+      foreach (var row in rows)
+      {
+        counts[row.TransaccionId] = row.CfdiCount;
+      }
+    }
+
+    return counts;
   }
 
   public async Task ReorderTransaccionAsync(
@@ -128,5 +199,11 @@ public sealed class ContabilidadRegistrosService : IContabilidadRegistrosService
     public int Id { get; init; }
     public DateTime Fecha { get; init; }
     public long OrdenBalance { get; init; }
+  }
+
+  private sealed record TransaccionCfdiCountRow
+  {
+    public int TransaccionId { get; init; }
+    public int CfdiCount { get; init; }
   }
 }

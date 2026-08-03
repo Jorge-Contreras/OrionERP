@@ -8,8 +8,25 @@ public sealed class BrunoEmailOnlyVerificationTests
     var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/LoyaltyService.cs");
 
     Assert.Contains("WHEN (EmailVerified=1 OR @EmailVerified=1)", service, StringComparison.Ordinal);
+    Assert.Contains(
+      "member.NormalizedPhone=@NormalizedPhone AND member.EmailVerified=1",
+      service,
+      StringComparison.Ordinal);
+    Assert.DoesNotContain(
+      "member.NormalizedPhone=@NormalizedPhone AND member.PhoneVerified=1",
+      service,
+      StringComparison.Ordinal);
     Assert.DoesNotContain("AND (PhoneVerified=1 OR @PhoneVerified=1)", service, StringComparison.Ordinal);
     Assert.DoesNotContain("AND EmailVerified=1 AND PhoneVerified=1", service, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void LoyaltyPhoneLookup_NormalizesLocalMexicanNumbers()
+  {
+    var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/LoyaltyService.cs");
+
+    Assert.Contains("if (digits.Length == 10) digits = $\"52{digits}\";", service, StringComparison.Ordinal);
+    Assert.Contains("return digits.Length is >= 12 and <= 15 ? digits : null;", service, StringComparison.Ordinal);
   }
 
   [Fact]

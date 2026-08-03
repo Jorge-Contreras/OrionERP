@@ -68,7 +68,7 @@ public sealed class LoyaltyService : ILoyaltyService
         (
           (@QrMemberId IS NOT NULL AND member.Id=@QrMemberId)
           OR (@NormalizedEmail IS NOT NULL AND member.NormalizedEmail=@NormalizedEmail AND member.EmailVerified=1)
-          OR (@NormalizedPhone IS NOT NULL AND member.NormalizedPhone=@NormalizedPhone AND member.PhoneVerified=1)
+          OR (@NormalizedPhone IS NOT NULL AND member.NormalizedPhone=@NormalizedPhone AND member.EmailVerified=1)
           OR member.MembershipNumber=@MembershipNumber
         )
       ORDER BY CASE WHEN member.Id=@QrMemberId THEN 0

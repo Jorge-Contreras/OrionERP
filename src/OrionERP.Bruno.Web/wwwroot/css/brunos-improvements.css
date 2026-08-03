@@ -1,14 +1,14 @@
-/* Real-photo surfaces */
+/* Bruno visual surfaces */
 .hero {
   isolation: isolate;
-  background-image: url("/Images/Brunos/brunos-real-hero.jpg");
-  background-position: center 52%;
+  background-image: url("/Images/Brunos/brunos-food-hero.jpg");
+  background-position: center;
 }
 
 .hero__shade {
   z-index: 0;
   background:
-    linear-gradient(90deg, #171512f2 0%, #171512d6 40%, #17151270 62%, #17151224 100%),
+    linear-gradient(90deg, #171512f2 0%, #171512d1 36%, #17151255 59%, #17151214 100%),
     linear-gradient(0deg, #171512de 0%, transparent 58%);
 }
 
@@ -21,9 +21,9 @@
   position: absolute;
   z-index: 1;
   top: 1.5rem;
-  right: clamp(2rem, 5vw, 6rem);
+  right: clamp(1rem, 3vw, 3rem);
   bottom: 0;
-  width: min(43vw, 40rem);
+  width: min(34vw, 33rem);
   pointer-events: none;
 }
 
@@ -42,7 +42,7 @@
   z-index: 1;
   right: clamp(1rem, 3vw, 3rem);
   bottom: -1.5rem;
-  width: min(100%, 39rem);
+  width: min(100%, 32rem);
   max-height: 88%;
   object-fit: contain;
   object-position: right bottom;
@@ -488,11 +488,11 @@
 
   .hero__brand-visual {
     top: 1rem;
-    right: -4.5rem;
+    right: -3.5rem;
     bottom: auto;
-    width: min(72vw, 31rem);
+    width: min(64vw, 27rem);
     height: 33rem;
-    opacity: .58;
+    opacity: .5;
   }
 
   .hero__logo-badge {
@@ -545,10 +545,10 @@
 
   .hero__brand-visual {
     top: .5rem;
-    right: -5.5rem;
-    width: 22rem;
+    right: -4.5rem;
+    width: 19rem;
     height: 27rem;
-    opacity: .46;
+    opacity: .44;
   }
 
   .hero__logo-badge {

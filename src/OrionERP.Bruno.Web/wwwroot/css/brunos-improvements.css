@@ -161,6 +161,20 @@
   font-size: .6rem;
 }
 
+/* Keep product media inside its card at every source aspect ratio. */
+.menu-card__image {
+  overflow: hidden;
+}
+
+.menu-card__image img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 /* Club Bruno conversion path */
 .club-cta {
   position: relative;

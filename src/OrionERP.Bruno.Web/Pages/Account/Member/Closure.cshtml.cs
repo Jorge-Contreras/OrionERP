@@ -15,8 +15,14 @@ public sealed class ClosureModel : PageModel
   private readonly SignInManager<BrunoMemberUser> _signInManager;
   private readonly ILoyaltyService _loyaltyService;
   public ClosureModel(UserManager<BrunoMemberUser> userManager, SignInManager<BrunoMemberUser> signInManager, ILoyaltyService loyaltyService) { _userManager = userManager; _signInManager = signInManager; _loyaltyService = loyaltyService; }
-  [BindProperty, Required, StringLength(500)] public string Reason { get; set; } = string.Empty;
-  [BindProperty, Required] public string Confirmation { get; set; } = string.Empty;
+  [BindProperty]
+  [Required(ErrorMessage = "El motivo es obligatorio.")]
+  [StringLength(500, ErrorMessage = "El motivo no puede exceder {1} caracteres.")]
+  public string Reason { get; set; } = string.Empty;
+
+  [BindProperty]
+  [Required(ErrorMessage = "Escribe BAJA para confirmar.")]
+  public string Confirmation { get; set; } = string.Empty;
   public void OnGet() { }
   public async Task<IActionResult> OnPostAsync(CancellationToken ct)
   {

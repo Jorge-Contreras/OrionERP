@@ -1,19 +1,53 @@
 @page "/"
 @inject IBrunoPublicCatalogService CatalogService
+@inject IWebHostEnvironment Environment
 
 <PageTitle>Bruno's Garden & Snacks · Calpulalpan</PageTitle>
 <HeadContent><meta name="description" content="@settings.SeoDescription" /></HeadContent>
 
 <section class="hero">
   <div class="hero__shade"></div>
+  <div class="hero__brand-visual" aria-hidden="true">
+    <img class="hero__logo-badge" src="/Images/Brunos/brunos-logo.png" alt="" />
+    <img class="hero__mascot" src="/Images/Brunos/bruno-hero-mascot.png" alt="" />
+  </div>
   <div class="hero__content">
     <span>@settings.HeroEyebrow</span>
     <h1>@settings.HeroTitle</h1>
     <p>@settings.HeroDescription</p>
-    <div class="hero__actions"><a class="button button--accent" href="/menu">Ver menú</a><a class="button button--ghost" href="/membresia">Conocer Club Bruno</a></div>
+    <div class="hero__actions">
+      @if (membershipEnabled)
+      {
+        <a class="button button--accent club-cta" href="/cuenta/registro" target="_top"><span>Únete gratis a Club Bruno</span><small>Crea tu cuenta</small></a>
+      }
+      <a class="button button--ghost" href="/menu">Ver menú</a>
+      @if (!membershipEnabled)
+      {
+        <a class="button button--ghost" href="/membresia">Conocer Club Bruno</a>
+      }
+    </div>
+    <small class="hero__authenticity">Fotografía real de nuestro jardín</small>
   </div>
   <a class="hero__hours" href="/visitanos"><span>Hoy</span><strong>@TodayHours</strong><small>Cómo llegar →</small></a>
 </section>
+
+@if (membershipEnabled)
+{
+  <section class="club-spotlight" aria-labelledby="club-spotlight-title">
+    <figure class="club-spotlight__visual">
+      <img class="club-spotlight__photo" src="/Images/Brunos/brunos-real-club.jpg" alt="Mesas y luces del jardín real de Bruno's Garden & Snacks" />
+      <img class="club-spotlight__logo" src="/Images/Brunos/brunos-logo.png" alt="" aria-hidden="true" />
+      <img class="club-spotlight__mascot" src="/Images/Brunos/bruno-club-mascot.png" alt="" aria-hidden="true" />
+    </figure>
+    <div class="club-spotlight__content">
+      <span>Club Bruno</span>
+      <h2 id="club-spotlight-title">Cada visita puede sumar</h2>
+      <p>Crea tu cuenta gratis, confirma tu correo e identifícate antes de pagar para acumular puntos en tus compras elegibles.</p>
+      <ul><li>Registro gratuito</li><li>Consulta tus puntos</li><li>QR temporal desde tu cuenta</li></ul>
+      <div class="club-spotlight__actions"><a class="button button--accent club-cta" href="/cuenta/registro" target="_top"><span>Crear mi cuenta gratis</span><small>Quiero ser miembro</small></a><a href="/membresia">Ver cómo funciona →</a></div>
+    </div>
+  </section>
+}
 
 <section class="intro-grid">
   <article><span>01</span><h2>Antojo para todos</h2><p>Chicken fingers, hamburguesas, snacks, bebidas y opciones para compartir.</p><a href="/menu">Explorar el menú →</a></article>
@@ -48,15 +82,18 @@
     SeoDescription = "Bruno's Garden & Snacks en Calpulalpan."
   };
   private List<RestaurantProductDto> featuredProducts = [];
+  private bool membershipEnabled;
   private string TodayHours => DateTime.Now.DayOfWeek == DayOfWeek.Monday ? "Cerrado" : "9:00–22:00";
 
   protected override async Task OnInitializedAsync()
   {
+    membershipEnabled = Environment.IsDevelopment();
     try
     {
       var catalog = await CatalogService.GetCatalogAsync(BrunoSiteConstants.Rfc, BrunoSiteConstants.SiteCode, DateTimeOffset.Now);
       if (catalog is null) return;
       settings = catalog.Settings;
+      membershipEnabled = catalog.Settings.IsMembershipEnabled || Environment.IsDevelopment();
       featuredProducts = catalog.Menu.Sections.SelectMany(section => section.Products).Where(product => !product.IsSoldOut).Take(3).ToList();
     }
     catch { }

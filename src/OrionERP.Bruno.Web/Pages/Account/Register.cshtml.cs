@@ -159,7 +159,7 @@ public sealed class RegisterModel : PageModel
   private static string TranslateIdentityError(IdentityError error) => error.Code switch
   {
     "DuplicateEmail" or "DuplicateUserName" => "Ya existe una cuenta con ese correo.",
-    "PasswordTooShort" => "La contraseña debe tener al menos 10 caracteres.",
+    "PasswordTooShort" => "La contraseña debe tener al menos 8 caracteres.",
     "PasswordRequiresUpper" => "La contraseña requiere una mayúscula.",
     "PasswordRequiresLower" => "La contraseña requiere una minúscula.",
     "PasswordRequiresDigit" => "La contraseña requiere un número.",
@@ -168,12 +168,33 @@ public sealed class RegisterModel : PageModel
 
   public sealed class InputModel
   {
-    [Required, StringLength(100)] public string FirstName { get; set; } = string.Empty;
-    [Required, StringLength(100)] public string LastName { get; set; } = string.Empty;
-    [Required, EmailAddress, StringLength(256)] public string Email { get; set; } = string.Empty;
-    [Required, Phone, StringLength(30)] public string Phone { get; set; } = string.Empty;
-    [Required, DataType(DataType.Password), StringLength(100, MinimumLength = 10)] public string Password { get; set; } = string.Empty;
-    [Required, DataType(DataType.Password), Compare(nameof(Password))] public string ConfirmPassword { get; set; } = string.Empty;
+    [Required(ErrorMessage = "El nombre es obligatorio.")]
+    [StringLength(100, ErrorMessage = "El nombre no puede exceder {1} caracteres.")]
+    public string FirstName { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Los apellidos son obligatorios.")]
+    [StringLength(100, ErrorMessage = "Los apellidos no pueden exceder {1} caracteres.")]
+    public string LastName { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "El correo es obligatorio.")]
+    [EmailAddress(ErrorMessage = "Escribe un correo válido.")]
+    [StringLength(256, ErrorMessage = "El correo no puede exceder {1} caracteres.")]
+    public string Email { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "El teléfono es obligatorio.")]
+    [Phone(ErrorMessage = "Escribe un teléfono válido.")]
+    [StringLength(30, ErrorMessage = "El teléfono no puede exceder {1} caracteres.")]
+    public string Phone { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "La contraseña es obligatoria.")]
+    [DataType(DataType.Password)]
+    [StringLength(100, MinimumLength = 8, ErrorMessage = "La contraseña debe tener entre {2} y {1} caracteres.")]
+    public string Password { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Confirma tu contraseña.")]
+    [DataType(DataType.Password)]
+    [Compare(nameof(Password), ErrorMessage = "Las contraseñas no coinciden.")]
+    public string ConfirmPassword { get; set; } = string.Empty;
     public bool IsAdultConfirmed { get; set; }
     public bool AcceptDocuments { get; set; }
     public bool EmailMarketingConsent { get; set; }

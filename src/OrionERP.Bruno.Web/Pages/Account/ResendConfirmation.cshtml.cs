@@ -30,7 +30,10 @@ public sealed class ResendConfirmationModel : PageModel
     _logger = logger;
   }
 
-  [BindProperty, Required, EmailAddress, StringLength(256)]
+  [BindProperty]
+  [Required(ErrorMessage = "El correo es obligatorio.")]
+  [EmailAddress(ErrorMessage = "Escribe un correo válido.")]
+  [StringLength(256, ErrorMessage = "El correo no puede exceder {1} caracteres.")]
   public string Email { get; set; } = string.Empty;
 
   public bool Sent { get; private set; }

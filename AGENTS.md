@@ -15,8 +15,23 @@ This repository contains two different web platforms that are publicly exposed t
 
 - OrionERP management console: `src/OrionERP.Web`, published by `Publish-prod.ps1` as the `OrionERP` service, publicly exposed at `https://orionerp.orion.land`. When the user says `OrionERP`, assume they mean this management console unless they explicitly mention another project.
 - Bonhomia public website: `src/OrionERP.Bonhomia.Web`, published by `Publish-Bonhomia-prod.ps1` as the `OrionERP.Bonhomia` service, publicly exposed at `https://bonhomiasuites.com`. When the user says `public website`, assume they mean this Bonhomia-facing website unless they explicitly say otherwise.
+- Bruno's public website: `src/OrionERP.Bruno.Web`, published through `Publish-All-prod.ps1 -Applications Bruno` as the `OrionERP.Bruno` service, publicly exposed at `https://brunosgarden.com`. When the user mentions Bruno's website, Club Bruno, or the Bruno's public experience, route the work to this project unless the request explicitly concerns the OrionERP management console.
 
-The two platforms share application, infrastructure, and SQL Server data model code, so route UI and configuration changes to the correct web project while keeping shared data/workflow changes consistent across both surfaces when needed.
+These platforms share application, infrastructure, and SQL Server data model code, so route UI and configuration changes to the correct web project while keeping shared data/workflow changes consistent across the affected surfaces when needed.
+
+## Bruno's Shared Reference Folder
+
+The official Dropbox folder used by Bruno's employees and agents is
+`C:\Users\Orion\Grupo Carpio Dropbox\Grupo Orion\Bruno's`.
+
+Use this folder as the authoritative reference source for Bruno's website work,
+including real venue photos, branding, menus, marketing material, and other
+business resources. Runtime website assets must still be copied into the
+appropriate repository `wwwroot` path so builds and deployments are
+self-contained. When real venue imagery is available, preserve the actual
+place and do not substitute imagined architecture or amenities; visual
+enhancements may adjust crop, exposure, brightness, contrast, and color, while
+invented elements must be unmistakably illustrated or cartoon-like.
 
 Public base URLs are operational configuration and are not secrets. Keep public origins in appsettings when useful for local defaults or generated links, but keep passwords, API keys, PayPal secrets, Graph secrets, and SQL Server credentials in user secrets, environment variables, deployment configuration, or another approved private secret store.
 

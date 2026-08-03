@@ -4,10 +4,14 @@
 
 <PageTitle>Club Bruno · Membresía</PageTitle>
 <section class="page-hero page-hero--club">
+  <div class="page-hero__brand-visual" aria-hidden="true">
+    <img class="page-hero__logo" src="/Images/Brunos/brunos-logo.png" alt="" />
+    <img class="page-hero__mascot" src="/Images/Brunos/bruno-club-mascot.png" alt="" />
+  </div>
   <span>Tus visitas suman</span><h1>Club Bruno</h1><p>Una membresía sencilla para reconocer cada compra elegible.</p>
   @if (membershipEnabled)
   {
-    <div class="page-hero__actions"><a class="button button--accent" href="/cuenta/registro" target="_top">Crear mi cuenta</a><a class="button button--ghost" href="/cuenta/acceso" target="_top">Ya soy miembro</a></div>
+    <div class="page-hero__actions"><a class="button button--accent club-cta" href="/cuenta/registro" target="_top"><span>Crear mi cuenta gratis</span><small>Únete a Club Bruno</small></a><a class="button button--ghost" href="/cuenta/acceso" target="_top">Ya soy miembro</a></div>
   }
   else
   {
@@ -33,7 +37,10 @@
   </ul>
   @if (membershipEnabled)
   {
-    <div class="club-details__action"><strong>¿Ya eres miembro?</strong><a class="button" href="/cuenta/acceso" target="_top">Entrar a Mi cuenta</a></div>
+    <AuthorizeView>
+      <Authorized><div class="club-details__action"><strong>Consulta tus puntos y genera tu QR.</strong><a class="button" href="/cuenta" target="_top">Entrar a Mi cuenta</a></div></Authorized>
+      <NotAuthorized><div class="club-details__action"><strong>Tu próxima visita ya puede sumar.</strong><a class="button button--accent club-cta" href="/cuenta/registro" target="_top"><span>Crear cuenta gratis</span><small>Empezar ahora</small></a></div></NotAuthorized>
+    </AuthorizeView>
   }
 </section>
 

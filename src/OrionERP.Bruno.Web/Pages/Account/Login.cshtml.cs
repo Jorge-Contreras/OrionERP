@@ -46,8 +46,13 @@ public sealed class LoginModel : PageModel
   }
   public sealed class InputModel
   {
-    [Required, EmailAddress] public string Email { get; set; } = string.Empty;
-    [Required, DataType(DataType.Password)] public string Password { get; set; } = string.Empty;
+    [Required(ErrorMessage = "El correo es obligatorio.")]
+    [EmailAddress(ErrorMessage = "Escribe un correo válido.")]
+    public string Email { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "La contraseña es obligatoria.")]
+    [DataType(DataType.Password)]
+    public string Password { get; set; } = string.Empty;
     public bool RememberMe { get; set; }
   }
 }

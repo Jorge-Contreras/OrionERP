@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @inject IBrunoPublicCatalogService CatalogService
 @inject IWebHostEnvironment Environment
+@inject NavigationManager Navigation
 
 <div class="site-shell">
   <a class="skip-link" href="#contenido-principal">Saltar al contenido</a>
@@ -19,13 +20,23 @@
       {
         <AuthorizeView>
           <Authorized><a class="account-link" href="/cuenta" target="_top">Mi cuenta</a></Authorized>
-          <NotAuthorized><a class="account-link" href="/cuenta/acceso" target="_top">Acceso</a></NotAuthorized>
+          <NotAuthorized>
+            <a class="account-login-link" href="/cuenta/acceso" target="_top">Ingresar</a>
+            <a class="club-join-link" href="/cuenta/registro" target="_top"><span>Club Bruno</span><strong>Únete gratis</strong></a>
+          </NotAuthorized>
         </AuthorizeView>
       }
     </nav>
   </header>
 
   <main id="contenido-principal">@Body</main>
+
+  @if (membershipEnabled && !IsHomePage)
+  {
+    <AuthorizeView>
+      <NotAuthorized><a class="club-fab" href="/cuenta/registro" target="_top" aria-label="Crear una cuenta gratis en Club Bruno"><span>Club Bruno</span><strong>Únete gratis</strong></a></NotAuthorized>
+    </AuthorizeView>
+  }
 
   <footer class="site-footer">
     <div class="footer-brand"><img src="/Images/Brunos/brunos-logo.png" alt="" /><p>Snacks, jardín y buenos momentos.</p></div>
@@ -39,6 +50,7 @@
 @code {
   private bool menuOpen;
   private bool membershipEnabled;
+  private bool IsHomePage => string.Equals(new Uri(Navigation.Uri).AbsolutePath, "/", StringComparison.Ordinal);
 
   protected override async Task OnInitializedAsync()
   {

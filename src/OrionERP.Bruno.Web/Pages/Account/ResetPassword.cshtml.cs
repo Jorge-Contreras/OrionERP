@@ -30,14 +30,37 @@ public sealed class ResetPasswordModel : PageModel
     try { token = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(Input.Code)); }
     catch { ModelState.AddModelError(string.Empty, "El enlace no es válido."); return Page(); }
     var result = await _userManager.ResetPasswordAsync(user, token, Input.Password);
-    if (!result.Succeeded) { foreach (var error in result.Errors) ModelState.AddModelError(string.Empty, error.Description); return Page(); }
+    if (!result.Succeeded) { foreach (var error in result.Errors) ModelState.AddModelError(string.Empty, TranslateIdentityError(error)); return Page(); }
     Completed = true; return Page();
   }
+
+  private static string TranslateIdentityError(IdentityError error) => error.Code switch
+  {
+    "PasswordTooShort" => "La contraseña debe tener al menos 8 caracteres.",
+    "PasswordRequiresUpper" => "La contraseña requiere una mayúscula.",
+    "PasswordRequiresLower" => "La contraseña requiere una minúscula.",
+    "PasswordRequiresDigit" => "La contraseña requiere un número.",
+    "InvalidToken" => "El enlace no es válido o ya expiró.",
+    _ => "No fue posible actualizar la contraseña. Solicita un enlace nuevo e intenta nuevamente."
+  };
+
   public sealed class InputModel
   {
-    [Required, EmailAddress] public string Email { get; set; } = string.Empty;
-    [Required] public string Code { get; set; } = string.Empty;
-    [Required, DataType(DataType.Password), StringLength(100, MinimumLength = 10)] public string Password { get; set; } = string.Empty;
-    [Required, DataType(DataType.Password), Compare(nameof(Password))] public string ConfirmPassword { get; set; } = string.Empty;
+    [Required(ErrorMessage = "El correo es obligatorio.")]
+    [EmailAddress(ErrorMessage = "Escribe un correo válido.")]
+    public string Email { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "El enlace de recuperación no es válido.")]
+    public string Code { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "La contraseña es obligatoria.")]
+    [DataType(DataType.Password)]
+    [StringLength(100, MinimumLength = 8, ErrorMessage = "La contraseña debe tener entre {2} y {1} caracteres.")]
+    public string Password { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Confirma tu contraseña.")]
+    [DataType(DataType.Password)]
+    [Compare(nameof(Password), ErrorMessage = "Las contraseñas no coinciden.")]
+    public string ConfirmPassword { get; set; } = string.Empty;
   }
 }

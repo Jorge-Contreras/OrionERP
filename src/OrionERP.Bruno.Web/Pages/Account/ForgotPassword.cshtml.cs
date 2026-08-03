@@ -15,7 +15,10 @@ public sealed class ForgotPasswordModel : PageModel
   private readonly UserManager<BrunoMemberUser> _userManager;
   private readonly IEmailSender<BrunoMemberUser> _emailSender;
   public ForgotPasswordModel(UserManager<BrunoMemberUser> userManager, IEmailSender<BrunoMemberUser> emailSender) { _userManager = userManager; _emailSender = emailSender; }
-  [BindProperty, Required, EmailAddress] public string Email { get; set; } = string.Empty;
+  [BindProperty]
+  [Required(ErrorMessage = "El correo es obligatorio.")]
+  [EmailAddress(ErrorMessage = "Escribe un correo válido.")]
+  public string Email { get; set; } = string.Empty;
   public bool Sent { get; private set; }
   public void OnGet() { }
   public async Task<IActionResult> OnPostAsync()

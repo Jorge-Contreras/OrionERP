@@ -6,6 +6,7 @@ public sealed class RestaurantReceiptPdfDocumentModel
 {
   public const string CustomItemSectionName = "Cargo personalizado";
 
+  public bool IsReprint { get; init; }
   public string SiteName { get; init; } = string.Empty;
   public int Folio { get; init; }
   public string CustomerName { get; init; } = string.Empty;
@@ -25,6 +26,7 @@ public sealed class RestaurantReceiptPdfDocumentModel
   public decimal CashReceived { get; init; }
   public decimal CardAmount { get; init; }
   public decimal TransferAmount { get; init; }
+  public decimal PlatformAmount { get; init; }
   public decimal Change { get; init; }
   public decimal BalanceDue { get; init; }
   public IReadOnlyList<RestaurantPromotionAdjustmentDto> Promotions { get; init; } = Array.Empty<RestaurantPromotionAdjustmentDto>();

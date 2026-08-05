@@ -673,6 +673,83 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     return await LoadOrderAsync(conn, null, normalizedRfc, orderId, ct);
   }
 
+  public async Task<RestaurantReceiptDto?> GetReceiptAsync(string rfc, Guid orderId, CancellationToken ct = default)
+  {
+    const string sql =
+      """
+      SELECT orderInfo.Id AS OrderId,orderInfo.SiteId,siteInfo.[Name] AS SiteName,
+             siteInfo.TimeZoneId AS SiteTimeZoneId,orderInfo.Folio,orderInfo.OrderType,
+             orderInfo.[Status],orderInfo.PaymentStatus,orderInfo.CustomerName,
+             diningTable.[Name] AS TableName,orderInfo.Notes,orderInfo.DiscountTotal,
+             orderInfo.TaxTotal,orderInfo.TipTotal,orderInfo.Total,orderInfo.BalanceDue,
+             orderInfo.TaxRateSnapshot AS TaxRate,
+             orderInfo.PricesIncludeTaxSnapshot AS PricesIncludeTax,
+             ISNULL(deliveryInfo.DeliveryCost,0) AS DeliveryCost,
+             orderInfo.MembershipNumberSnapshot AS MembershipNumber,orderInfo.PointsEarned,
+             orderInfo.CreatedAt
+      FROM restaurante.[Order] orderInfo
+      JOIN restaurante.Site siteInfo
+        ON siteInfo.Rfc=orderInfo.Rfc AND siteInfo.Id=orderInfo.SiteId
+      LEFT JOIN restaurante.DiningTable diningTable
+        ON diningTable.Rfc=orderInfo.Rfc AND diningTable.Id=orderInfo.DiningTableId
+      LEFT JOIN restaurante.Delivery deliveryInfo
+        ON deliveryInfo.Rfc=orderInfo.Rfc AND deliveryInfo.OrderId=orderInfo.Id
+      WHERE orderInfo.Rfc=@Rfc AND orderInfo.Id=@OrderId;
+
+      SELECT lineInfo.Id,lineInfo.ProductId,lineInfo.ProductNameSnapshot AS ProductName,
+             lineInfo.IsCustom,lineInfo.Quantity,lineInfo.UnitPrice,lineInfo.DiscountAmount,
+             lineInfo.Notes
+      FROM restaurante.OrderLine lineInfo
+      WHERE lineInfo.Rfc=@Rfc AND lineInfo.OrderId=@OrderId
+      ORDER BY lineInfo.Id;
+
+      SELECT modifier.OrderLineId,modifier.[Name]
+      FROM restaurante.OrderLineModifier modifier
+      JOIN restaurante.OrderLine lineInfo
+        ON lineInfo.Rfc=modifier.Rfc AND lineInfo.Id=modifier.OrderLineId
+      WHERE modifier.Rfc=@Rfc AND lineInfo.OrderId=@OrderId
+      ORDER BY modifier.Id;
+
+      SELECT paymentInfo.Id,paymentInfo.PaymentMethod,paymentInfo.Amount,paymentInfo.TipAmount,
+             paymentInfo.RefundedAmount,paymentInfo.[Status],paymentInfo.PaidAt
+      FROM restaurante.Payment paymentInfo
+      WHERE paymentInfo.Rfc=@Rfc AND paymentInfo.OrderId=@OrderId
+      ORDER BY paymentInfo.PaidAt,paymentInfo.Id;
+
+      SELECT PromotionId,PromotionNameSnapshot AS PromotionName,
+             RuleTypeSnapshot AS RuleType,CodeSnapshot AS Code,DiscountAmount
+      FROM restaurante.OrderPromotion
+      WHERE Rfc=@Rfc AND OrderId=@OrderId
+      ORDER BY Id;
+      """;
+
+    using var conn = CreateConnection();
+    using var multi = await conn.QueryMultipleAsync(new CommandDefinition(
+      sql,
+      new { Rfc = LogisticsRfc.Require(rfc), OrderId = orderId },
+      cancellationToken: ct));
+    var receipt = await multi.ReadSingleOrDefaultAsync<RestaurantReceiptDto>();
+    if (receipt is null)
+    {
+      return null;
+    }
+
+    var lines = (await multi.ReadAsync<RestaurantReceiptLineDto>()).AsList();
+    var modifiers = (await multi.ReadAsync<OrderLineModifierRow>()).AsList();
+    foreach (var line in lines)
+    {
+      line.Modifiers = modifiers
+        .Where(item => item.OrderLineId == line.Id)
+        .Select(item => item.Name)
+        .ToList();
+    }
+
+    receipt.Lines = lines;
+    receipt.Payments = (await multi.ReadAsync<RestaurantPaymentDto>()).AsList();
+    receipt.Promotions = (await multi.ReadAsync<RestaurantPromotionAdjustmentDto>()).AsList();
+    return receipt;
+  }
+
   public async Task<RestaurantKitchenBoardDto> GetKitchenBoardAsync(string rfc, int siteId, CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);

@@ -4,6 +4,7 @@ public interface IRestaurantOrderService
 {
   Task<RestaurantOrderResult> CreateOrderAsync(RestaurantOrderCreateRequest request, string userName, CancellationToken ct = default);
   Task<RestaurantOrderDto?> GetOrderAsync(string rfc, Guid orderId, CancellationToken ct = default);
+  Task<RestaurantReceiptDto?> GetReceiptAsync(string rfc, Guid orderId, CancellationToken ct = default);
   Task<RestaurantKitchenBoardDto> GetKitchenBoardAsync(string rfc, int siteId, CancellationToken ct = default);
   Task<IReadOnlyList<RestaurantPublicOrderDto>> GetPublicBoardAsync(string rfc, int siteId, CancellationToken ct = default);
   Task<RestaurantCommandResult> UpdateLineStatusAsync(string rfc, long lineId, string status, string userName, CancellationToken ct = default);

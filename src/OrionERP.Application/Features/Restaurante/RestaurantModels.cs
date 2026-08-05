@@ -314,6 +314,48 @@ public sealed class RestaurantOrderDto
   public IReadOnlyList<RestaurantOrderLineDto> Lines { get; set; } = Array.Empty<RestaurantOrderLineDto>();
 }
 
+public sealed class RestaurantReceiptDto
+{
+  public Guid OrderId { get; set; }
+  public int SiteId { get; set; }
+  public string SiteName { get; set; } = string.Empty;
+  public string SiteTimeZoneId { get; set; } = string.Empty;
+  public int Folio { get; set; }
+  public string OrderType { get; set; } = string.Empty;
+  public string Status { get; set; } = string.Empty;
+  public string PaymentStatus { get; set; } = string.Empty;
+  public string? CustomerName { get; set; }
+  public string? TableName { get; set; }
+  public string? Notes { get; set; }
+  public decimal DiscountTotal { get; set; }
+  public decimal TaxTotal { get; set; }
+  public decimal TipTotal { get; set; }
+  public decimal Total { get; set; }
+  public decimal BalanceDue { get; set; }
+  public decimal TaxRate { get; set; }
+  public bool PricesIncludeTax { get; set; }
+  public decimal DeliveryCost { get; set; }
+  public string? MembershipNumber { get; set; }
+  public int PointsEarned { get; set; }
+  public DateTime CreatedAt { get; set; }
+  public IReadOnlyList<RestaurantReceiptLineDto> Lines { get; set; } = Array.Empty<RestaurantReceiptLineDto>();
+  public IReadOnlyList<RestaurantPaymentDto> Payments { get; set; } = Array.Empty<RestaurantPaymentDto>();
+  public IReadOnlyList<RestaurantPromotionAdjustmentDto> Promotions { get; set; } = Array.Empty<RestaurantPromotionAdjustmentDto>();
+}
+
+public sealed class RestaurantReceiptLineDto
+{
+  public long Id { get; set; }
+  public long? ProductId { get; set; }
+  public string ProductName { get; set; } = string.Empty;
+  public bool IsCustom { get; set; }
+  public decimal Quantity { get; set; }
+  public decimal UnitPrice { get; set; }
+  public decimal DiscountAmount { get; set; }
+  public string? Notes { get; set; }
+  public IReadOnlyList<string> Modifiers { get; set; } = Array.Empty<string>();
+}
+
 public sealed class RestaurantOrderLineDto
 {
   public long Id { get; set; }

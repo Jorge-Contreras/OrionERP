@@ -71,7 +71,8 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
     {
       column.Spacing(3);
       column.Item().AlignCenter().Text(model.SiteName).FontSize(12).Bold();
-      column.Item().AlignCenter().Text("TICKET DE CLIENTE").FontSize(7).SemiBold().LetterSpacing(0.08f);
+      column.Item().AlignCenter().Text(model.IsReprint ? "REIMPRESIÓN · TICKET DE CLIENTE" : "TICKET DE CLIENTE")
+        .FontSize(7).SemiBold().LetterSpacing(0.08f);
       column.Item().AlignCenter().Text($"ORDEN {model.Folio:000}").FontSize(18).Bold();
       column.Item().AlignCenter().Text(model.CustomerName).FontSize(11).Bold();
       column.Item().AlignCenter().Text($"{OrderTypeLabel(model)}  |  {model.CreatedAt:dd/MM/yyyy HH:mm}")
@@ -115,13 +116,13 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
       }
       column.Item().PaddingTop(2).Element(item => ComposeMoneyRow(item, "TOTAL", model.Total, emphasized: true));
 
-      if (model.Tip > 0 || model.CashReceived > 0 || model.CardAmount > 0 || model.TransferAmount > 0 || model.BalanceDue > 0)
+      if (model.Tip > 0 || model.CashReceived > 0 || model.CardAmount > 0 || model.TransferAmount > 0 || model.PlatformAmount > 0 || model.BalanceDue > 0)
       {
         column.Item().PaddingTop(3).Text("PAGO").FontSize(7).SemiBold();
       }
       if (model.CashReceived > 0)
       {
-        column.Item().Element(item => ComposeMoneyRow(item, "Efectivo recibido", model.CashReceived));
+        column.Item().Element(item => ComposeMoneyRow(item, model.IsReprint ? "Efectivo aplicado" : "Efectivo recibido", model.CashReceived));
       }
       if (model.CardAmount > 0)
       {
@@ -130,6 +131,10 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
       if (model.TransferAmount > 0)
       {
         column.Item().Element(item => ComposeMoneyRow(item, "Transferencia", model.TransferAmount));
+      }
+      if (model.PlatformAmount > 0)
+      {
+        column.Item().Element(item => ComposeMoneyRow(item, "Plataforma", model.PlatformAmount));
       }
       if (model.Tip > 0)
       {
@@ -210,6 +215,10 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
     {
       column.Spacing(3);
       column.Item().AlignCenter().Text(model.SiteName).FontSize(9).Bold();
+      if (model.IsReprint)
+      {
+        column.Item().AlignCenter().Text("REIMPRESIÓN").FontSize(8).Bold().LetterSpacing(0.08f);
+      }
       column.Item().AlignCenter().Text($"SECCIÓN: {sectionName.ToUpper(MexicanCulture)}").FontSize(13).Bold();
       column.Item().AlignCenter().Text($"ORDEN {model.Folio:000}").FontSize(20).Bold();
       column.Item().AlignCenter().Text(model.CustomerName).FontSize(12).Bold();

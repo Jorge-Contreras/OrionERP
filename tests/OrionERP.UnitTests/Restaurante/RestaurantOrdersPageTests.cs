@@ -71,6 +71,25 @@ public sealed class RestaurantOrdersPageTests
   }
 
   [Fact]
+  public void OrdersPage_ReprintsCustomerAndSectionTicketsFromPersistedSnapshots()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantOrdersPage.razor");
+    var styles = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantOrdersPage.razor.css");
+    var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantOrderService.cs");
+    var pdfService = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantReceiptPdfService.cs");
+
+    Assert.Contains("OpenReprintAsync(order)", page, StringComparison.Ordinal);
+    Assert.Contains("Reimprimir tickets", page, StringComparison.Ordinal);
+    Assert.Contains("ReceiptPdfService.Generate(reprintReceipt)", page, StringComparison.Ordinal);
+    Assert.Contains("GetReceiptAsync(CurrentRfc, order.Id)", page, StringComparison.Ordinal);
+    Assert.Contains("public async Task<RestaurantReceiptDto?> GetReceiptAsync", service, StringComparison.Ordinal);
+    Assert.Contains("orderInfo.TaxRateSnapshot AS TaxRate", service, StringComparison.Ordinal);
+    Assert.Contains("FROM restaurante.OrderPromotion", service, StringComparison.Ordinal);
+    Assert.Contains("REIMPRESIÓN · TICKET DE CLIENTE", pdfService, StringComparison.Ordinal);
+    Assert.Contains(".order-reprint__card", styles, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public void OrderService_AuditsLifecycleAndRelatedFinancialEvents()
   {
     var orderService = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantOrderService.cs");

@@ -79,7 +79,13 @@
         <div class="order-reprint__summary">
           <span class="oi oi-print" aria-hidden="true"></span>
           <div>
-            <strong>1 ticket de cliente@if(reprintReceipt.SectionTicketCount>0){<text> + @reprintReceipt.SectionTicketCount por sección</text>}</strong>
+            <strong>
+              1 ticket de cliente
+              @if(reprintReceipt.SectionTicketCount>0)
+              {
+                <span> + @reprintReceipt.SectionTicketCount por sección</span>
+              }
+            </strong>
             <p>Las copias llevarán la leyenda <b>REIMPRESIÓN</b> para evitar confundirlas con una orden nueva.</p>
           </div>
         </div>

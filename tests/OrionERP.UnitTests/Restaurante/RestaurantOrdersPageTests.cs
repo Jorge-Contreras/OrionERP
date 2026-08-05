@@ -80,6 +80,7 @@ public sealed class RestaurantOrdersPageTests
 
     Assert.Contains("OpenReprintAsync(order)", page, StringComparison.Ordinal);
     Assert.Contains("Reimprimir tickets", page, StringComparison.Ordinal);
+    Assert.DoesNotContain("ticket de cliente@if", page, StringComparison.Ordinal);
     Assert.Contains("ReceiptPdfService.Generate(reprintReceipt)", page, StringComparison.Ordinal);
     Assert.Contains("GetReceiptAsync(CurrentRfc, order.Id)", page, StringComparison.Ordinal);
     Assert.Contains("public async Task<RestaurantReceiptDto?> GetReceiptAsync", service, StringComparison.Ordinal);

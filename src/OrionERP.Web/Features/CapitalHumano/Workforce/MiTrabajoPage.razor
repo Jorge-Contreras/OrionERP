@@ -1,0 +1,224 @@
+@page "/mi-trabajo"
+@attribute [Authorize(Policy = "CapitalHumanoEmployee")]
+@using OrionERP.Application.Features.CapitalHumano.Workforce
+@inject IAttendanceService Attendance
+@inject ILeaveManagementService Leave
+@inject IUserRfcState RfcState
+@inject ICurrentEmployeeAccessor CurrentEmployee
+@inject IJSRuntime Js
+
+<PageTitle>Mi trabajo</PageTitle>
+
+<div class="workforce-page py-3">
+  <header class="workforce-hero">
+    <div>
+      <div class="workforce-eyebrow">Panel del colaborador</div>
+      <h1>Mi trabajo</h1>
+      <p>Registra tu jornada, revisa incidencias y administra ausencias desde un solo lugar.</p>
+    </div>
+    @if (dashboard is not null)
+    {
+      <button class="workforce-punch" disabled="@(busy || dashboard.PrivacyNotice is { IsAcknowledged: false })" @onclick="PunchAsync">
+        <span class="oi oi-clock me-2"></span>@PunchLabel(dashboard.NextEventType)
+      </button>
+    }
+  </header>
+
+  @if (!string.IsNullOrWhiteSpace(message))
+  {
+    <div class="alert @(messageIsError ? "alert-danger" : "alert-success") workforce-alert">@message</div>
+  }
+  @if (loading)
+  {
+    <div class="workforce-card"><div class="workforce-card__body">Cargando tu panel…</div></div>
+  }
+  else if (dashboard is null)
+  {
+    <div class="alert alert-warning workforce-alert">No existe una asignación de trabajo vigente para este empleado. Capital Humano debe completar la configuración.</div>
+  }
+  else
+  {
+    @if (dashboard.PrivacyNotice is { IsAcknowledged: false } notice)
+    {
+      <section class="workforce-card mb-3" aria-labelledby="privacy-notice-title">
+        <div class="workforce-card__header"><h2 id="privacy-notice-title">@notice.Title</h2><span class="workforce-status workforce-status--warn">Versión @notice.Version</span></div>
+        <div class="workforce-card__body">
+          <p class="mb-3" style="white-space: pre-line">@notice.NoticeText</p>
+          <p class="workforce-label">La ubicación exacta se solicita únicamente al registrar una entrada, salida o descanso; no hay seguimiento continuo.</p>
+          <button class="btn btn-primary" disabled="@busy" @onclick="()=>AcknowledgePrivacyAsync(notice.Id)">He leído y acepto el aviso</button>
+        </div>
+      </section>
+    }
+    <div class="workforce-grid">
+      <section class="workforce-card workforce-span-4">
+        <div class="workforce-card__header"><h2>Estado actual</h2><span class="workforce-status">@StateLabel(dashboard.CurrentState)</span></div>
+        <div class="workforce-card__body">
+          <div class="fw-bold fs-5">@dashboard.EmployeeName</div>
+          <div class="workforce-label">@dashboard.Position</div>
+          <hr />
+          <div class="row g-3">
+            <div class="col-6"><div class="workforce-label">Sitio</div><div class="fw-semibold">@dashboard.SiteName</div></div>
+            <div class="col-6"><div class="workforce-label">Horario</div><div class="fw-semibold">@dashboard.ScheduleName</div></div>
+          </div>
+        </div>
+      </section>
+      <section class="workforce-card workforce-span-8">
+        <div class="workforce-card__header"><h2>Últimos 30 días</h2><span class="workforce-status @(dashboard.Period.PendingExceptions > 0 ? "workforce-status--warn" : "")">@dashboard.Period.PendingExceptions por revisar</span></div>
+        <div class="workforce-card__body">
+          <div class="row g-3 text-center">
+            <div class="col-6 col-md-3"><div class="workforce-stat">@Hours(dashboard.Period.ScheduledMinutes)</div><div class="workforce-label">Programadas</div></div>
+            <div class="col-6 col-md-3"><div class="workforce-stat">@Hours(dashboard.Period.WorkedMinutes)</div><div class="workforce-label">Trabajadas</div></div>
+            <div class="col-6 col-md-3"><div class="workforce-stat">@Hours(dashboard.Period.OvertimeApprovedMinutes)</div><div class="workforce-label">Extra aprobada</div></div>
+            <div class="col-6 col-md-3"><div class="workforce-stat">@dashboard.LeaveBalances.Sum(x => x.BalanceDays).ToString("0.##")</div><div class="workforce-label">Días disponibles</div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="workforce-card workforce-span-8">
+        <div class="workforce-card__header"><h2>Registros recientes</h2><span class="workforce-label">Hora del servidor</span></div>
+        <div class="table-responsive">
+          <table class="table table-hover workforce-table">
+            <thead><tr><th>Fecha</th><th>Evento</th><th>Origen</th><th>Ubicación</th></tr></thead>
+            <tbody>
+              @if (dashboard.RecentEvents.Count == 0) { <tr><td colspan="4" class="workforce-empty">Aún no hay registros.</td></tr> }
+              @foreach (var item in dashboard.RecentEvents)
+              {
+                <tr><td>@item.OccurredAtUtc.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td><td class="fw-semibold">@EventLabel(item.EventType)</td><td>@item.Source</td><td><span class="workforce-status @(item.LocationStatus == "INSIDE" ? "" : "workforce-status--warn")">@item.LocationStatus</span></td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="workforce-card workforce-span-4">
+        <div class="workforce-card__header"><h2>Saldos de ausencia</h2></div>
+        <div class="workforce-card__body">
+          @foreach (var balance in dashboard.LeaveBalances)
+          {
+            <div class="d-flex justify-content-between py-2 border-bottom"><span>@balance.LeaveTypeName</span><strong>@balance.BalanceDays.ToString("0.##") días</strong></div>
+          }
+        </div>
+      </section>
+
+      <section class="workforce-card workforce-span-6">
+        <div class="workforce-card__header"><h2>Solicitar corrección</h2></div>
+        <div class="workforce-card__body">
+          <div class="workforce-form">
+            <div><label class="form-label">Evento</label><select class="form-select" @bind="correction.EventType"><option value="IN">Entrada</option><option value="OUT">Salida</option><option value="BREAK_START">Inicio descanso</option><option value="BREAK_END">Fin descanso</option></select></div>
+            <div><label class="form-label">Fecha y hora</label><input type="datetime-local" class="form-control" @bind="correction.RequestedAtLocal" /></div>
+            <div class="span-2"><label class="form-label">Motivo</label><textarea class="form-control" rows="2" maxlength="500" @bind="correction.Reason"></textarea></div>
+            <div class="span-2"><button class="btn btn-outline-primary" disabled="@busy" @onclick="SubmitCorrectionAsync">Enviar a supervisor</button></div>
+          </div>
+          @if(dashboard.CorrectionRequests.Count>0){<hr/><div class="workforce-label mb-2">Solicitudes recientes</div>@foreach(var item in dashboard.CorrectionRequests.Take(5)){<div class="d-flex justify-content-between border-bottom py-2"><span>@EventLabel(item.EventType) · @item.RequestedAtUtc.ToLocalTime().ToString("dd MMM HH:mm") @if(!string.IsNullOrWhiteSpace(item.DecisionReason)){<small class="d-block workforce-label">@item.DecisionReason</small>}</span><span class="workforce-status @(item.Status is "PENDING" or "RETURNED"?"workforce-status--warn":"")">@item.Status</span></div>}}
+        </div>
+      </section>
+
+      <section class="workforce-card workforce-span-6">
+        <div class="workforce-card__header"><h2>Solicitar ausencia</h2></div>
+        <div class="workforce-card__body">
+          <div class="workforce-form">
+            <div><label class="form-label">Tipo</label><select class="form-select" @bind="leaveRequest.LeaveTypeId"><option value="0">Selecciona</option>@foreach (var type in leaveTypes){<option value="@type.Id">@type.Name</option>}</select></div>
+            <div><label class="form-label">Días</label><input type="number" min=".25" step=".25" class="form-control" @bind="leaveRequest.RequestedDays" /></div>
+            <div><label class="form-label">Inicio</label><input type="date" class="form-control" @bind="leaveRequest.StartDate" /></div>
+            <div><label class="form-label">Fin</label><input type="date" class="form-control" @bind="leaveRequest.EndDate" /></div>
+            <div class="span-2"><label class="form-label">Motivo</label><textarea class="form-control" rows="2" maxlength="500" @bind="leaveRequest.Reason"></textarea></div>
+            <div class="span-2"><button class="btn btn-outline-primary" disabled="@busy" @onclick="SubmitLeaveAsync">Enviar solicitud</button></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="workforce-card workforce-span-12">
+        <div class="workforce-card__header"><h2>Excepciones abiertas</h2></div>
+        <div class="table-responsive"><table class="table workforce-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Estado</th></tr></thead><tbody>
+          @if (dashboard.Exceptions.Count == 0){<tr><td colspan="4" class="workforce-empty">No tienes excepciones pendientes.</td></tr>}
+          @foreach(var item in dashboard.Exceptions){<tr><td>@item.WorkDate.ToString("dd MMM yyyy")</td><td>@item.ExceptionType</td><td>@item.Detail @if(!string.IsNullOrWhiteSpace(item.Resolution)){<small class="d-block workforce-label">@item.Resolution</small>}</td><td><span class="workforce-status workforce-status--warn">@item.Status</span></td></tr>}
+        </tbody></table></div>
+      </section>
+    </div>
+  }
+</div>
+
+@code {
+  private EmployeeAttendanceDashboardDto? dashboard;
+  private IReadOnlyList<LeaveTypeDto> leaveTypes = [];
+  private AttendanceCorrectionCreateRequest correction = new();
+  private LeaveRequestCreateRequest leaveRequest = new();
+  private bool loading = true;
+  private bool busy;
+  private bool messageIsError;
+  private string? message;
+  private string employeeRfc = string.Empty;
+  private string Rfc => employeeRfc;
+
+  protected override async Task OnInitializedAsync()
+  {
+    var current = await CurrentEmployee.GetCurrentAsync();
+    employeeRfc = current?.EmployeeRfc ?? RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault() ?? string.Empty;
+    await LoadAsync();
+  }
+
+  private async Task LoadAsync()
+  {
+    loading = true;
+    try
+    {
+      dashboard = await Attendance.GetMyDashboardAsync(Rfc);
+      leaveTypes = await Leave.GetLeaveTypesAsync(Rfc);
+      correction.Rfc = Rfc;
+      leaveRequest.Rfc = Rfc;
+      if (leaveRequest.LeaveTypeId == 0) leaveRequest.LeaveTypeId = leaveTypes.FirstOrDefault()?.Id ?? 0;
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { loading = false; }
+  }
+
+  private async Task PunchAsync()
+  {
+    if (dashboard is null) return;
+    busy = true;
+    try
+    {
+      var location = await Js.InvokeAsync<LocationEvidenceDto>("orionAttendance.captureLocation");
+      var result = await Attendance.PunchAsync(new AttendancePunchRequest { Rfc = Rfc, EventType = dashboard.NextEventType, IdempotencyKey = Guid.NewGuid().ToString("N"), Location = location });
+      Show(result.Message, !result.Success);
+      if (result.Success) await LoadAsync();
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { busy = false; }
+  }
+
+  private async Task AcknowledgePrivacyAsync(int privacyNoticeId)
+  {
+    busy = true;
+    try
+    {
+      var result = await Attendance.AcknowledgePrivacyNoticeAsync(privacyNoticeId, Rfc);
+      Show(result.Message, !result.Success);
+      if (result.Success) await LoadAsync();
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { busy = false; }
+  }
+
+  private async Task SubmitCorrectionAsync()
+  {
+    busy = true;
+    try { correction.Rfc = Rfc; var result = await Attendance.SubmitCorrectionAsync(correction); Show(result.Message, !result.Success); if (result.Success) correction = new() { Rfc = Rfc }; }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { busy = false; }
+  }
+
+  private async Task SubmitLeaveAsync()
+  {
+    busy = true;
+    try { leaveRequest.Rfc = Rfc; var result = await Leave.SubmitRequestAsync(leaveRequest); Show(result.Message, !result.Success); if (result.Success) { leaveRequest = new() { Rfc = Rfc, LeaveTypeId = leaveTypes.FirstOrDefault()?.Id ?? 0 }; await LoadAsync(); } }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { busy = false; }
+  }
+
+  private void Show(string text, bool error) { message = text; messageIsError = error; }
+  private static string Hours(int minutes) => $"{minutes / 60d:0.#} h";
+  private static string StateLabel(string value) => value switch { "IN" => "Trabajando", "BREAK_START" => "En descanso", "BREAK_END" => "Trabajando", _ => "Fuera de jornada" };
+  private static string EventLabel(string value) => value switch { "IN" => "Entrada", "OUT" => "Salida", "BREAK_START" => "Inicio descanso", "BREAK_END" => "Fin descanso", _ => value };
+  private static string PunchLabel(string value) => value switch { "IN" => "Registrar entrada", "OUT" => "Registrar salida", "BREAK_START" => "Iniciar descanso", "BREAK_END" => "Terminar descanso", _ => value };
+}

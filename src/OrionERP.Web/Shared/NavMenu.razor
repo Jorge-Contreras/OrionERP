@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @implements IDisposable
 @inject NavigationManager Navigation
+@inject IConfiguration Configuration
 
 @{
     var visibleSections = VisibleSections;
@@ -221,6 +222,11 @@
     private string searchText = string.Empty;
     private bool isArrendadoresOnly;
     private bool isAdmin;
+    private bool hasEmployee;
+    private bool isWorkforceSupervisor;
+    private bool isWorkforceAdmin;
+    private bool isWorkforcePayroll;
+    private bool attendanceEnabled;
 
     [Parameter] public EventCallback OnMenuItemSelected { get; set; }
     [CascadingParameter] private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
@@ -228,7 +234,7 @@
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
     private bool HasSearch => !string.IsNullOrWhiteSpace(searchText);
 
-    private IReadOnlyList<VisibleNavSection> VisibleSections => BuildVisibleSections(Sections, searchText, isArrendadoresOnly);
+    private IReadOnlyList<VisibleNavSection> VisibleSections => BuildVisibleSections(Sections, searchText, isArrendadoresOnly, attendanceEnabled, hasEmployee, isWorkforceSupervisor, isWorkforceAdmin, isWorkforcePayroll);
     private IReadOnlyList<NavEntryDefinition> VisibleAdminItems => BuildVisibleAdminItems(searchText, isAdmin);
 
     private NavEntryDefinition? CurrentEntry
@@ -259,12 +265,19 @@
         {
             isArrendadoresOnly = false;
             isAdmin = false;
+            hasEmployee = false;
+            attendanceEnabled = false;
             return;
         }
 
         var authState = await AuthenticationStateTask;
         var user = authState.User;
         isAdmin = user.Identity?.IsAuthenticated == true && user.IsInRole("Administrador");
+        hasEmployee = user.HasClaim(claim => claim.Type == "employee_id");
+        isWorkforceAdmin = isAdmin || user.IsInRole("CapitalHumanoAdmin");
+        isWorkforceSupervisor = isWorkforceAdmin || user.IsInRole("CapitalHumanoSupervisor");
+        isWorkforcePayroll = isAdmin || user.IsInRole("CapitalHumanoNomina");
+        attendanceEnabled = Configuration.GetValue<bool>("CapitalHumano:AttendanceEnabled");
         isArrendadoresOnly = NavigationCatalog.IsArrendadoresOnly(user);
     }
 
@@ -273,7 +286,7 @@
         Navigation.LocationChanged -= HandleLocationChanged;
     }
 
-    private static IReadOnlyList<VisibleNavSection> BuildVisibleSections(IReadOnlyList<NavSectionDefinition> source, string filter, bool arrendadoresOnly)
+    private static IReadOnlyList<VisibleNavSection> BuildVisibleSections(IReadOnlyList<NavSectionDefinition> source, string filter, bool arrendadoresOnly, bool featureEnabled, bool employee, bool supervisor, bool admin, bool payroll)
     {
         var query = filter.Trim();
         var sections = new List<VisibleNavSection>();
@@ -282,7 +295,7 @@
         {
             var availableItems = arrendadoresOnly
                 ? section.Items.Where(IsArrendadoresNavItem).ToList()
-                : section.Items;
+                : section.Items.Where(item => CanSeeWorkforceItem(item, featureEnabled, employee, supervisor, admin, payroll)).ToList();
 
             IReadOnlyList<NavEntryDefinition> items = string.IsNullOrWhiteSpace(query)
                 ? availableItems
@@ -295,6 +308,17 @@
         }
 
         return sections;
+    }
+
+    private static bool CanSeeWorkforceItem(NavEntryDefinition item, bool enabled, bool employee, bool supervisor, bool admin, bool payroll)
+    {
+        var path = NormalizePath(item.Href);
+        if (path == "mi-trabajo") return enabled && employee;
+        if (path == "mi-equipo") return enabled && supervisor;
+        if (path == "capital-humano/asistencia") return enabled && (supervisor || admin || payroll);
+        if (path == "capital-humano/pre-nomina") return enabled && (admin || payroll);
+        if (path == "capital-humano/configuracion-tiempo" || path == "capital-humano/ausencias") return enabled && admin;
+        return true;
     }
 
     private static IReadOnlyList<NavEntryDefinition> BuildVisibleAdminItems(string filter, bool isAdminUser)

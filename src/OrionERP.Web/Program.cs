@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting.WindowsServices;
@@ -19,8 +20,10 @@ using Microsoft.Extensions.Options;
 using OfficeOpenXml;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.CapitalHumano.Workforce;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using OrionERP.Infrastructure.Auth;
+using OrionERP.Infrastructure.Features.CapitalHumano.Workforce;
 using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
 using OrionERP.Infrastructure.Features.Mail;
 using OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
@@ -32,10 +35,12 @@ using OrionERP.Web.Features.Restaurante;
 using OrionERP.Web.Identity;
 using OrionERP.Web.State;
 using OrionERP.Web.Services;
+using System.Threading.RateLimiting;
 
 // using Microsoft.AspNetCore.Identity.UI; // <- not required unless you explicitly call AddDefaultUI()
 
 var builder = WebApplication.CreateBuilder(args);
+WorkforceDapperTypeHandlers.Register();
 ExcelPackage.License.SetNonCommercialOrganization("Orion Habitat de Mexico S.A. de C.V.");
 
 var appDataDirectory = builder.Environment.IsDevelopment()
@@ -236,8 +241,38 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<RestaurantRealtimeClient>();
 builder.Services.AddScoped<IRfcContext, RfcContext>();
 builder.Services.AddScoped<IAuthorizationHandler, RoleForRfcHandler>();
+builder.Services.AddRateLimiter(options =>
+{
+  options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+  options.AddFixedWindowLimiter("workforce-kiosk", limiter =>
+  {
+    limiter.PermitLimit = 20;
+    limiter.Window = TimeSpan.FromMinutes(1);
+    limiter.QueueLimit = 0;
+  });
+});
+builder.Services.Configure<WorkforceRetentionOptions>(builder.Configuration.GetSection("CapitalHumano"));
 builder.Services.AddAuthorization(options =>
 {
+  static bool AttendanceIsEnabled(AuthorizationHandlerContext context, IConfiguration configuration)
+    => configuration.GetValue<bool>("CapitalHumano:AttendanceEnabled");
+  options.AddPolicy("CapitalHumanoEmployee", policy => policy
+    .RequireAuthenticatedUser()
+    .RequireClaim("employee_id")
+    .RequireClaim("rfc")
+    .RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration)));
+  options.AddPolicy("CapitalHumanoAdmin", policy => policy
+    .RequireRole("Administrador", "CapitalHumanoAdmin")
+    .RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration)));
+  options.AddPolicy("CapitalHumanoSupervisor", policy => policy
+    .RequireRole("Administrador", "CapitalHumanoAdmin", "CapitalHumanoSupervisor")
+    .RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration)));
+  options.AddPolicy("CapitalHumanoNomina", policy => policy
+    .RequireRole("Administrador", "CapitalHumanoAdmin", "CapitalHumanoNomina")
+    .RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration)));
+  options.AddPolicy("CapitalHumanoManagement", policy => policy
+    .RequireRole("Administrador", "CapitalHumanoAdmin", "CapitalHumanoSupervisor", "CapitalHumanoNomina")
+    .RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration)));
   options.AddPolicy(
       "RoleForSelectedRfc",
       policy => policy.Requirements.Add(new RoleForRfcRequirement("Administrador")));
@@ -361,12 +396,64 @@ app.UseMiddleware<LoginAntiforgeryRecoveryMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapRazorPages();
 app.MapBlazorHub();
 app.MapHub<RestaurantEventsHub>("/hubs/restaurante");
 app.MapRestaurantQzTraySigningApi();
 app.MapOpenClawReservationsApi();
+app.MapPost("/api/workforce/kiosk/pair", async (
+  KioskPairApiRequest request,
+  IKioskAttendanceService service,
+  HttpContext context,
+  IConfiguration configuration,
+  IHostEnvironment hostEnvironment,
+  CancellationToken ct) =>
+{
+  if (!configuration.GetValue<bool>("CapitalHumano:AttendanceEnabled")) return Results.NotFound();
+  var result = await service.PairAsync(request.PairingCode, ct);
+  if (!result.Success || string.IsNullOrWhiteSpace(result.DeviceToken))
+    return Results.BadRequest(new { result.Message });
+  context.Response.Cookies.Append("orion-kiosk-device", result.DeviceToken, new CookieOptions
+  {
+    HttpOnly = true,
+    Secure = !hostEnvironment.IsDevelopment() || context.Request.IsHttps,
+    SameSite = SameSiteMode.Strict,
+    Path = "/api/workforce/kiosk",
+    MaxAge = TimeSpan.FromDays(90),
+    IsEssential = true
+  });
+  return Results.Ok(new { result.Message, result.DeviceName });
+}).RequireRateLimiting("workforce-kiosk");
+app.MapPost("/api/workforce/kiosk/punch", async (
+  KioskPunchRequest request,
+  IKioskAttendanceService service,
+  HttpContext context,
+  IConfiguration configuration,
+  CancellationToken ct) =>
+{
+  if (!configuration.GetValue<bool>("CapitalHumano:AttendanceEnabled")) return Results.NotFound();
+  var token = context.Request.Cookies["orion-kiosk-device"];
+  if (string.IsNullOrWhiteSpace(token)) return Results.Unauthorized();
+  var result = await service.PunchAsync(token, request, ct);
+  return result.Success ? Results.Ok(result) : Results.BadRequest(result);
+}).RequireRateLimiting("workforce-kiosk");
+app.MapGet("/api/workforce/prenomina/exports/{exportId:long}/{format}", async (
+  long exportId,
+  string format,
+  string rfc,
+  IPrenominaExportService service,
+  CancellationToken ct) =>
+{
+  var bundle = await service.GetAsync(exportId, rfc, ct);
+  if (bundle is null) return Results.NotFound();
+  return format.Equals("xlsx", StringComparison.OrdinalIgnoreCase)
+    ? Results.File(bundle.XlsxBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bundle.XlsxFileName)
+    : format.Equals("csv", StringComparison.OrdinalIgnoreCase) || format.Equals("zip", StringComparison.OrdinalIgnoreCase)
+      ? Results.File(bundle.ZipBytes, "application/zip", bundle.ZipFileName)
+      : Results.NotFound();
+}).RequireAuthorization("CapitalHumanoNomina");
 app.MapGet("/bonhomia", (IOptions<BonhomiaCheckoutOptions> options) =>
 {
   var publicBaseUrl = options.Value.PublicBaseUrl?.Trim();
@@ -396,3 +483,5 @@ app.Run();
 
 // Needed only if you enable AddUserSecrets<Program> above (partial to link with implicit Program class)
 public partial class Program { }
+
+public sealed record KioskPairApiRequest(string PairingCode);

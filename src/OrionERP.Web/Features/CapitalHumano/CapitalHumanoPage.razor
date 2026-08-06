@@ -181,6 +181,25 @@
                         <div class="capital-editor-sections">
                             <section class="capital-editor-section">
                                 <div class="capital-section-header">
+                                    <div>
+                                        <h3>Asignación normalizada de tiempo</h3>
+                                        <div class="small text-muted">Sitio, horario, política, grupo de pago y supervisor con vigencia.</div>
+                                    </div>
+                                    <span class="badge text-bg-info">Nuevo</span>
+                                </div>
+                                @if (Editor.Id.HasValue)
+                                {
+                                    <p class="mb-3">La asignación se enlaza al empleado ID <strong>@Editor.Id</strong> sin sobrescribir sede, jornada, contrato ni esquema de pago heredados.</p>
+                                    <a class="btn btn-outline-primary" href="/capital-humano/configuracion-tiempo">Abrir asignaciones de tiempo</a>
+                                }
+                                else
+                                {
+                                    <p class="text-muted mb-0">Guarda primero el colaborador para crear su asignación efectiva.</p>
+                                }
+                            </section>
+
+                            <section class="capital-editor-section">
+                                <div class="capital-section-header">
                                     <h3>Identidad</h3>
                                     @if (DerivedAge.HasValue)
                                     {

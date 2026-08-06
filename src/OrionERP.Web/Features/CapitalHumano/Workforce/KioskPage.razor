@@ -1,0 +1,59 @@
+@page "/asistencia/kiosco"
+@attribute [AllowAnonymous]
+@using OrionERP.Application.Features.CapitalHumano.Workforce
+@inject IJSRuntime Js
+
+<PageTitle>Kiosco de asistencia</PageTitle>
+
+<div class="workforce-kiosk">
+  <main class="workforce-kiosk__panel">
+    <div class="text-center mb-4">
+      <img src="/Images/OrionERP_Logo.svg" alt="OrionERP" style="height:3rem;max-width:100%" />
+      <div class="workforce-eyebrow mt-3">Asistencia en sitio</div>
+      <h1 class="h2 mt-1">Kiosco</h1>
+      <p class="text-muted">Escanea tu gafete, escribe tu PIN y selecciona el movimiento.</p>
+    </div>
+    @if (!string.IsNullOrWhiteSpace(message))
+    {
+      <div class="alert @(error ? "alert-danger" : "alert-success") workforce-alert" role="status">@message</div>
+    }
+    @if (pairMode)
+    {
+      <div class="mb-3"><label class="form-label">Código de vinculación de un solo uso</label><input class="form-control form-control-lg text-center" maxlength="8" inputmode="numeric" autocomplete="one-time-code" @bind="pairingCode" /></div>
+      <button class="btn btn-primary btn-lg w-100" disabled="@busy" @onclick="PairAsync">Vincular dispositivo</button>
+      <button class="btn btn-link w-100 mt-2" @onclick="() => pairMode=false">Volver al registro</button>
+    }
+    else
+    {
+      <div class="mb-3"><label class="form-label">Código de gafete</label><div class="input-group input-group-lg"><input class="form-control" autocomplete="off" @bind="badge" /><button class="btn btn-outline-secondary" @onclick="ScanAsync"><span class="oi oi-camera-slr"></span> QR</button></div></div>
+      <div class="mb-3"><label class="form-label">PIN</label><input type="password" class="form-control form-control-lg workforce-pin" inputmode="numeric" maxlength="12" autocomplete="off" @bind="pin" /></div>
+      <div class="row g-2">
+        @foreach (var option in options)
+        {
+          <div class="col-6"><button class="btn @(eventType==option.Value ? "btn-primary" : "btn-outline-primary") btn-lg w-100" @onclick="() => eventType=option.Value">@option.Label</button></div>
+        }
+      </div>
+      <button class="workforce-punch w-100 mt-3" disabled="@busy" @onclick="PunchAsync">@(busy ? "Registrando…" : "Confirmar registro")</button>
+      <div class="text-center mt-3"><button class="btn btn-sm btn-link text-muted" @onclick="() => pairMode=true">Vincular este dispositivo</button></div>
+    }
+    <div class="text-center workforce-label mt-4"><span class="oi oi-location me-1"></span>La ubicación se solicita únicamente al confirmar. No hay seguimiento continuo.</div>
+  </main>
+</div>
+
+@code {
+  private readonly (string Value,string Label)[] options=[("IN","Entrada"),("BREAK_START","Inicio descanso"),("BREAK_END","Fin descanso"),("OUT","Salida")];
+  private string pairingCode=string.Empty;
+  private string badge=string.Empty;
+  private string pin=string.Empty;
+  private string eventType=AttendanceEventTypes.In;
+  private string? message;
+  private bool pairMode;
+  private bool busy;
+  private bool error;
+  private async Task PairAsync(){busy=true;try{var result=await Js.InvokeAsync<KioskJsResult>("orionAttendance.pairKiosk",pairingCode);message=result.Message;error=false;pairMode=false;pairingCode=string.Empty;}catch(Exception ex){message=Clean(ex.Message);error=true;}finally{busy=false;}}
+  private async Task ScanAsync(){try{var result=await Js.InvokeAsync<string?>("orionAttendance.scanBadgeQr");if(!string.IsNullOrWhiteSpace(result))badge=result;}catch(Exception ex){message=Clean(ex.Message);error=true;}}
+  private async Task PunchAsync(){busy=true;message=null;try{var result=await Js.InvokeAsync<KioskPunchJsResult>("orionAttendance.kioskPunch",badge,pin,eventType);message=$"{result.Message} Ubicación: {result.LocationStatus}.";error=false;badge=string.Empty;pin=string.Empty;}catch(Exception ex){message=Clean(ex.Message);error=true;}finally{busy=false;}}
+  private static string Clean(string value)=>value.Replace("TypeError: ",string.Empty).Replace("Error: ",string.Empty);
+  private sealed class KioskJsResult{public string Message{get;set;}=string.Empty;public string DeviceName{get;set;}=string.Empty;}
+  private sealed class KioskPunchJsResult{public string Message{get;set;}=string.Empty;public string LocationStatus{get;set;}=string.Empty;}
+}

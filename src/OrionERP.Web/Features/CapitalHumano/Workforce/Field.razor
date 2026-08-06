@@ -1,0 +1,6 @@
+<label class="@CssClass"><span class="form-label d-block">@Label</span>@ChildContent</label>
+@code {
+  [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+  [Parameter] public string? CssClass { get; set; }
+  [Parameter] public RenderFragment? ChildContent { get; set; }
+}

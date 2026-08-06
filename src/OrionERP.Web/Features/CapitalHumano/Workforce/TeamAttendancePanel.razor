@@ -1,0 +1,94 @@
+@using OrionERP.Application.Features.CapitalHumano.Workforce
+@inject IAttendanceService Attendance
+@inject ILeaveManagementService Leave
+@inject IPrenominaService Prenomina
+@inject IUserRfcState RfcState
+
+<div class="workforce-page py-3">
+  <header class="workforce-hero">
+    <div><div class="workforce-eyebrow">@Eyebrow</div><h1>@Title</h1><p>@Description</p></div>
+    <div class="workforce-filterbar" aria-label="Rango de consulta">
+      <label><span class="form-label">Desde</span><input type="date" class="form-control" @bind="from" /></label>
+      <label><span class="form-label">Hasta</span><input type="date" class="form-control" @bind="to" /></label>
+      <button class="btn btn-primary workforce-filterbar__action" @onclick="LoadAsync" disabled="@busy">@(busy ? "Actualizando…" : "Actualizar")</button>
+    </div>
+  </header>
+  @if (!string.IsNullOrWhiteSpace(message)){<div class="alert @(messageIsError ? "alert-danger" : "alert-success") workforce-alert">@message</div>}
+  @if (dashboard is null){<div class="workforce-card"><div class="workforce-card__body">@(busy ? "Cargando asistencia del equipo…" : "No hay información para mostrar.")</div></div>}
+  else
+  {
+    <div class="workforce-grid">
+      <section class="workforce-card workforce-span-4"><div class="workforce-card__body"><div class="workforce-stat">@dashboard.EmployeesAtWork</div><div class="workforce-label">Personas trabajando ahora</div></div></section>
+      <section class="workforce-card workforce-span-4"><div class="workforce-card__body"><div class="workforce-stat">@dashboard.PendingActions</div><div class="workforce-label">Decisiones pendientes</div></div></section>
+      <section class="workforce-card workforce-span-4"><div class="workforce-card__body"><div class="workforce-stat">@dashboard.Days.Sum(x => x.OvertimeCandidateMinutes) min</div><div class="workforce-label">Tiempo extra candidato</div></div></section>
+
+      <section class="workforce-card workforce-span-12">
+        <div class="workforce-card__header"><h2>Excepciones</h2><span class="workforce-status @(dashboard.Exceptions.Count > 0 ? "workforce-status--warn" : "")">@dashboard.Exceptions.Count pendientes</span></div>
+        <div class="table-responsive"><table class="table table-hover workforce-table"><thead><tr><th>Empleado</th><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Decisión</th></tr></thead><tbody>
+          @if(dashboard.Exceptions.Count==0){<tr><td colspan="5" class="workforce-empty">Sin excepciones pendientes.</td></tr>}
+          @foreach(var item in dashboard.Exceptions){<tr><td class="fw-semibold">@item.EmployeeName</td><td>@item.WorkDate.ToString("dd MMM")</td><td>@item.ExceptionType</td><td>@item.Detail</td><td><div class="workforce-actions"><button class="btn btn-sm btn-success" @onclick="() => DecideExceptionAsync(item.Id,true)">Aprobar</button><button class="btn btn-sm btn-outline-secondary" @onclick="() => ReturnExceptionAsync(item.Id)">Devolver</button><button class="btn btn-sm btn-outline-danger" @onclick="() => DecideExceptionAsync(item.Id,false)">Rechazar</button></div></td></tr>}
+        </tbody></table></div>
+      </section>
+
+      <section class="workforce-card workforce-span-6">
+        <div class="workforce-card__header"><h2>Correcciones solicitadas</h2></div>
+        <div class="table-responsive"><table class="table workforce-table"><thead><tr><th>Empleado</th><th>Evento</th><th>Hora solicitada</th><th></th></tr></thead><tbody>
+          @if(dashboard.Corrections.Count==0){<tr><td colspan="4" class="workforce-empty">Sin correcciones pendientes.</td></tr>}
+          @foreach(var item in dashboard.Corrections){<tr><td><strong>@item.EmployeeName</strong><div class="workforce-label">@item.Reason</div></td><td>@item.EventType</td><td>@item.RequestedAtUtc.ToLocalTime().ToString("dd MMM HH:mm")</td><td><div class="workforce-actions"><button class="btn btn-sm btn-success" @onclick="() => DecideCorrectionAsync(item.Id,true)">Aprobar</button><button class="btn btn-sm btn-outline-secondary" @onclick="() => ReturnCorrectionAsync(item.Id)">Devolver</button><button class="btn btn-sm btn-outline-danger" @onclick="() => DecideCorrectionAsync(item.Id,false)">Rechazar</button></div></td></tr>}
+        </tbody></table></div>
+      </section>
+
+      <section class="workforce-card workforce-span-12">
+        <div class="workforce-card__header"><h2>Aprobaciones para pre-nómina</h2><span class="workforce-status @(prenominaApprovals.Count > 0 ? "workforce-status--warn" : "")">@prenominaApprovals.Count pendientes</span></div>
+        <div class="table-responsive"><table class="table workforce-table"><thead><tr><th>Empleado</th><th>Grupo</th><th>Periodo</th><th></th></tr></thead><tbody>
+          @if(prenominaApprovals.Count==0){<tr><td colspan="4" class="workforce-empty">No hay empleados pendientes de aprobación para pre-nómina.</td></tr>}
+          @foreach(var item in prenominaApprovals){<tr><td class="fw-semibold">@item.EmployeeName</td><td>@item.PayGroupName</td><td>@item.FromDate.ToString("dd MMM") – @item.ToDate.ToString("dd MMM yyyy")</td><td><button class="btn btn-sm btn-outline-primary" @onclick="()=>ApprovePrenominaAsync(item)">Aprobar asistencia</button></td></tr>}
+        </tbody></table></div>
+      </section>
+
+      <section class="workforce-card workforce-span-6">
+        <div class="workforce-card__header"><h2>Solicitudes de ausencia</h2></div>
+        <div class="table-responsive"><table class="table workforce-table"><thead><tr><th>Empleado</th><th>Ausencia</th><th>Días</th><th></th></tr></thead><tbody>
+          @if(dashboard.LeaveRequests.Count==0){<tr><td colspan="4" class="workforce-empty">Sin ausencias pendientes.</td></tr>}
+          @foreach(var item in dashboard.LeaveRequests){<tr><td><strong>@item.EmployeeName</strong><div class="workforce-label">@item.Reason</div></td><td>@item.LeaveTypeName<br/><small>@item.StartDate.ToString("dd MMM") – @item.EndDate.ToString("dd MMM")</small></td><td>@item.RequestedDays.ToString("0.##")</td><td><div class="workforce-actions"><button class="btn btn-sm btn-success" @onclick="() => DecideLeaveAsync(item.Id,true)">Aprobar</button><button class="btn btn-sm btn-outline-danger" @onclick="() => DecideLeaveAsync(item.Id,false)">Rechazar</button></div></td></tr>}
+        </tbody></table></div>
+      </section>
+
+      <section class="workforce-card workforce-span-12">
+        <div class="workforce-card__header"><h2>Calendario y horas extra</h2><span class="workforce-label">La aprobación parcial nunca modifica el registro original.</span></div>
+        <div class="table-responsive"><table class="table table-hover workforce-table"><thead><tr><th>Fecha</th><th>Empleado</th><th>Programado</th><th>Trabajado</th><th>Retardo</th><th>Extra candidata</th><th>Extra aprobada</th></tr></thead><tbody>
+          @if(dashboard.Days.Count==0){<tr><td colspan="7" class="workforce-empty">No hay días calculados en el rango.</td></tr>}
+          @foreach(var item in dashboard.Days){<tr><td>@item.WorkDate.ToString("dd MMM")</td><td class="fw-semibold">@item.EmployeeName</td><td>@item.ScheduledMinutes min</td><td>@item.WorkedMinutes min</td><td>@item.LateMinutes min</td><td>@item.OvertimeCandidateMinutes min</td><td><div class="input-group input-group-sm" style="min-width:13rem"><input type="number" min="0" max="@item.OvertimeCandidateMinutes" class="form-control" value="@OvertimeValue(item)" @onchange="e => SetOvertime(item.Id,e.Value)"/><button class="btn btn-outline-primary" @onclick="() => DecideOvertimeAsync(item)">Guardar</button></div></td></tr>}
+        </tbody></table></div>
+      </section>
+    </div>
+  }
+</div>
+
+@code {
+  [Parameter] public string Title { get; set; } = "Mi equipo";
+  [Parameter] public string Eyebrow { get; set; } = "Supervisión";
+  [Parameter] public string Description { get; set; } = "Quién está trabajando, incidencias y aprobaciones del equipo bajo tu alcance vigente.";
+  private TeamAttendanceDashboardDto? dashboard;
+  private IReadOnlyList<PrenominaEmployeeApprovalDto> prenominaApprovals = [];
+  private DateOnly from = DateOnly.FromDateTime(DateTime.Today.AddDays(-14));
+  private DateOnly to = DateOnly.FromDateTime(DateTime.Today);
+  private readonly Dictionary<long,int> overtime = [];
+  private bool busy;
+  private string? message;
+  private bool messageIsError;
+  private string Rfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault() ?? string.Empty;
+  protected override async Task OnInitializedAsync() => await LoadAsync();
+  private async Task LoadAsync(){busy=true;try{dashboard=await Attendance.GetTeamDashboardAsync(Rfc,from,to);prenominaApprovals=await Prenomina.GetPendingApprovalsAsync(Rfc);foreach(var d in dashboard.Days)overtime[d.Id]=d.OvertimeApprovedMinutes;}catch(Exception ex){Show(ex.Message,true);}finally{busy=false;}}
+  private async Task DecideExceptionAsync(long id,bool approve)=>await RunAsync(()=>Attendance.DecideExceptionAsync(id,Rfc,approve,approve?"Validado por supervisor":"Evidencia insuficiente"));
+  private async Task ReturnExceptionAsync(long id)=>await RunAsync(()=>Attendance.ReturnExceptionAsync(id,Rfc,"Devuelta para aclaracion o correccion del empleado"));
+  private async Task DecideCorrectionAsync(long id,bool approve)=>await RunAsync(()=>Attendance.DecideCorrectionAsync(id,Rfc,approve,approve?"Corrección validada":"Corrección rechazada"));
+  private async Task ReturnCorrectionAsync(long id)=>await RunAsync(()=>Attendance.ReturnCorrectionAsync(id,Rfc,"Se requiere aclaracion o una nueva solicitud"));
+  private async Task DecideLeaveAsync(long id,bool approve)=>await RunAsync(()=>Leave.DecideRequestAsync(id,Rfc,approve,approve?"Ausencia validada":"Ausencia rechazada"));
+  private async Task DecideOvertimeAsync(AttendanceDayDto day)=>await RunAsync(()=>Attendance.DecideOvertimeAsync(day.Id,Rfc,OvertimeValue(day),"Decisión de supervisor"));
+  private async Task ApprovePrenominaAsync(PrenominaEmployeeApprovalDto item)=>await RunAsync(()=>Prenomina.ApproveEmployeeAsync(item.PeriodId,item.EmployeeId,Rfc));
+  private async Task RunAsync(Func<Task<WorkforceCommandResult>> action){busy=true;try{var result=await action();Show(result.Message,!result.Success);if(result.Success)await LoadAsync();}catch(Exception ex){Show(ex.Message,true);}finally{busy=false;}}
+  private int OvertimeValue(AttendanceDayDto day)=>overtime.TryGetValue(day.Id,out var value)?value:day.OvertimeApprovedMinutes;
+  private void SetOvertime(long id,object? value){if(int.TryParse(Convert.ToString(value),out var parsed))overtime[id]=Math.Max(0,parsed);}
+  private void Show(string text,bool error){message=text;messageIsError=error;}
+}

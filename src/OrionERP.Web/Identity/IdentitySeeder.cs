@@ -29,6 +29,9 @@ namespace OrionERP.Web.Identity
                 ,"RestauranteCaja"
                 ,"RestauranteCocina"
                 ,"RestaurantePantalla"
+                ,"CapitalHumanoAdmin"
+                ,"CapitalHumanoSupervisor"
+                ,"CapitalHumanoNomina"
             ];
 
             foreach (var r in roles)
@@ -64,6 +67,33 @@ namespace OrionERP.Web.Identity
                     _ = await userMgr.ResetPasswordAsync(admin, resetToken, adminPass);
                 }
             }
+
+            var hostEnvironment = sp.GetService<IHostEnvironment>();
+            if (hostEnvironment?.IsDevelopment() == true)
+            {
+                await EnsureDevelopmentTestUserAsync(userMgr, "supervisor-test@orionerp.local", adminPass, "CapitalHumanoSupervisor");
+                await EnsureDevelopmentTestUserAsync(userMgr, "nomina-test@orionerp.local", adminPass, "CapitalHumanoNomina");
+            }
+        }
+
+        private static async Task EnsureDevelopmentTestUserAsync(
+            UserManager<ApplicationUser> userManager,
+            string email,
+            string password,
+            string role)
+        {
+            var user = await userManager.FindByEmailAsync(email);
+            if (user is null)
+            {
+                user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true };
+                var created = await userManager.CreateAsync(user, password);
+                if (!created.Succeeded) return;
+            }
+
+            if (!await userManager.IsInRoleAsync(user, role)) await userManager.AddToRoleAsync(user, role);
+            var claims = await userManager.GetClaimsAsync(user);
+            if (!claims.Any(claim => claim.Type == "rfc" && claim.Value == "OHM191112Q26"))
+                await userManager.AddClaimAsync(user, new System.Security.Claims.Claim("rfc", "OHM191112Q26"));
         }
     }
 }

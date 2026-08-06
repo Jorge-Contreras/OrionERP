@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
 using OrionERP.Web.Features.Auth.AdminPortal;
+using OrionERP.Web.Features.CapitalHumano.Workforce;
 using OrionERP.Web.Features.Logistica.Locations;
 using OrionERP.Web.Features.Logistica.Materials;
 using OrionERP.Web.Features.Logistica.PhysicalCounts;
@@ -78,5 +79,25 @@ public class OrionErpRouteProtectionTests
     var authorizeAttributes = componentType.GetCustomAttributes<AuthorizeAttribute>().ToArray();
 
     Assert.Contains(authorizeAttributes, attribute => attribute.Policy == policy);
+  }
+
+  [Theory]
+  [InlineData(typeof(MiTrabajoPage), "/mi-trabajo", "CapitalHumanoEmployee")]
+  [InlineData(typeof(MiEquipoPage), "/mi-equipo", "CapitalHumanoSupervisor")]
+  [InlineData(typeof(AttendanceAdminPage), "/capital-humano/asistencia", "CapitalHumanoManagement")]
+  [InlineData(typeof(WorkforceConfigurationPage), "/capital-humano/configuracion-tiempo", "CapitalHumanoAdmin")]
+  [InlineData(typeof(AbsencesAdminPage), "/capital-humano/ausencias", "CapitalHumanoAdmin")]
+  [InlineData(typeof(PrenominaPage), "/capital-humano/pre-nomina", "CapitalHumanoNomina")]
+  public void WorkforceRoutes_RequireTheirExplicitPolicy(Type componentType, string route, string policy)
+  {
+    Assert.Contains(componentType.GetCustomAttributes<RouteAttribute>(), attribute => attribute.Template == route);
+    Assert.Contains(componentType.GetCustomAttributes<AuthorizeAttribute>(), attribute => attribute.Policy == policy);
+  }
+
+  [Fact]
+  public void KioskRoute_IsExplicitlyAnonymous()
+  {
+    Assert.Contains(typeof(KioskPage).GetCustomAttributes<RouteAttribute>(), attribute => attribute.Template == "/asistencia/kiosco");
+    Assert.NotEmpty(typeof(KioskPage).GetCustomAttributes<AllowAnonymousAttribute>());
   }
 }

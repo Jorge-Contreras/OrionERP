@@ -2,7 +2,7 @@
 @namespace OrionERP.Web.Pages
 @addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
 @{
-    if (User.Identity?.IsAuthenticated != true)
+    if (User.Identity?.IsAuthenticated != true && !Request.Path.StartsWithSegments("/asistencia/kiosco"))
     {
         var returnUrl = $"{Request.PathBase}{Request.Path}{Request.QueryString}";
         if (string.IsNullOrWhiteSpace(returnUrl))
@@ -217,3 +217,4 @@
 </script>
 <script src="~/js/vendor/qz-tray-2.2.6.js" asp-append-version="true"></script>
 <script src="~/js/restaurant-ui.js" asp-append-version="true"></script>
+<script src="~/js/attendance-location.js" asp-append-version="true"></script>

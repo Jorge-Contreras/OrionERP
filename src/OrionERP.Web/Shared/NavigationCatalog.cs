@@ -67,6 +67,19 @@ public static class NavigationCatalog
                 new("/ordenes-trabajo/plantillas", "Plantillas OT", "Plantillas versionadas, pasos y mapeo por suite.", "oi-list-rich", "Plantillas de ordenes de trabajo", NavLinkMatch.Prefix, false, "Setup", "plantillas", "ruta critica", "pasos", "limpieza")
             ]),
         new(
+            "Personas",
+            "Capital Humano",
+            "Asistencia, ausencias, equipos y preparación de incidencias para nómina.",
+            "oi-people",
+            [
+                new("/mi-trabajo", "Mi trabajo", "Registro personal, historial, correcciones y saldos de ausencia.", "oi-clock", "Mi trabajo", NavLinkMatch.Prefix, true, "Personal", "asistencia", "entrada", "salida", "ausencias"),
+                new("/mi-equipo", "Mi equipo", "Quién está trabajando y colas de aprobación del supervisor.", "oi-people", "Mi equipo", NavLinkMatch.Prefix, true, "Equipo", "supervisor", "aprobaciones", "excepciones"),
+                new("/capital-humano/asistencia", "Asistencia", "Calendario RH, anomalías, auditoría y preparación del periodo.", "oi-calendar", "Control de asistencia", NavLinkMatch.Prefix, false, "RH", "asistencia", "incidencias", "horas extra"),
+                new("/capital-humano/configuracion-tiempo", "Configuración de tiempo", "Sitios, geocercas, horarios, políticas, responsables y kioscos.", "oi-cog", "Configuración de tiempo", NavLinkMatch.Prefix, false, "Setup", "sitios", "horarios", "geocercas", "kioscos"),
+                new("/capital-humano/ausencias", "Ausencias", "Políticas, saldos, solicitudes y ajustes auditados.", "oi-calendar", "Ausencias", NavLinkMatch.Prefix, false, "Leave", "vacaciones", "permisos", "saldos"),
+                new("/capital-humano/pre-nomina", "Pre-nómina", "Validación, aprobación, bloqueo y exportación de unidades de tiempo.", "oi-spreadsheet", "Pre-nómina", NavLinkMatch.Prefix, false, "Payroll", "nomina", "xlsx", "incidencias")
+            ]),
+        new(
             "Inventario",
             "Logistica",
             "Materiales, compras, ubicaciones y control fisico de existencias.",

@@ -127,6 +127,43 @@ public sealed class MaterialUpsertRequest
   public string? PrimaryImageThumbnailContentType { get; set; }
 }
 
+public sealed class MaterialDeletionAssessmentDto
+{
+  public bool Exists { get; set; }
+  public int MaterialId { get; set; }
+  public string MaterialCode { get; set; } = string.Empty;
+  public string Description { get; set; } = string.Empty;
+  public IReadOnlyList<MaterialDeletionBlockerDto> Blockers { get; set; } = Array.Empty<MaterialDeletionBlockerDto>();
+  public bool CanDelete => Exists && Blockers.Count == 0;
+  public long TotalReferences => Blockers.Sum(blocker => blocker.ReferenceCount);
+}
+
+public sealed class MaterialDeletionBlockerDto
+{
+  public string Code { get; set; } = string.Empty;
+  public string Title { get; set; } = string.Empty;
+  public string Explanation { get; set; } = string.Empty;
+  public long ReferenceCount { get; set; }
+  public IReadOnlyList<string> Examples { get; set; } = Array.Empty<string>();
+  public string? ResolutionLabel { get; set; }
+  public string? ResolutionUrl { get; set; }
+}
+
+public sealed class MaterialDeleteRequest
+{
+  [Required]
+  public string Rfc { get; set; } = string.Empty;
+
+  [Range(1, int.MaxValue)]
+  public int MaterialId { get; set; }
+
+  [Required]
+  public string ConfirmationText { get; set; } = string.Empty;
+
+  [StringLength(256)]
+  public string? DeletedBy { get; set; }
+}
+
 public sealed class MaterialCatalogDto
 {
   public IReadOnlyList<LookupOptionDto> Categories { get; set; } = Array.Empty<LookupOptionDto>();

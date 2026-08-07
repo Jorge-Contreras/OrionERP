@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
 using OrionERP.Application.Features.Logistica.BusinessPartners;
 using OrionERP.Application.Features.Logistica.Materials;
@@ -20,6 +21,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   [Inject] private IBusinessPartnerService BusinessPartnerService { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private IUserRfcState RfcState { get; set; } = default!;
+  [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
 
   protected MaterialFilter Filter { get; set; } = new();
   protected MaterialCatalogDto Catalog { get; set; } = new();
@@ -51,11 +53,23 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   protected bool IsLoadingMaterialImage { get; set; }
   protected string? MaterialImageModalTitle { get; set; }
   protected string? MaterialImageModalDataUrl { get; set; }
+  protected bool ShowDeletionDialog { get; set; }
+  protected bool IsLoadingDeletionAssessment { get; set; }
+  protected bool IsDeletingMaterial { get; set; }
+  protected bool CanPermanentlyDeleteMaterial { get; set; }
+  protected int? DeletionTargetMaterialId { get; set; }
+  protected MaterialDeletionAssessmentDto? DeletionAssessment { get; set; }
+  protected string? DeletionAssessmentError { get; set; }
+  protected string DeletionConfirmationText { get; set; } = string.Empty;
+  protected string CurrentUserName { get; set; } = "OrionERP";
   protected bool IsListBusy => IsBusy || IsLoadingMore;
+  protected bool DeletionConfirmationMatches
+    => string.Equals(DeletionConfirmationText, "Delete", StringComparison.Ordinal);
 
   private CancellationTokenSource? _searchDebounceCts;
   private CancellationTokenSource? _listRequestCts;
   private CancellationTokenSource? _rfcReloadCts;
+  private CancellationTokenSource? _deletionAssessmentCts;
   private string? _catalogRfc;
   private bool _catalogRetryPending;
   private string? _catalogRecoveryRfc;
@@ -124,6 +138,9 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   protected override async Task OnInitializedAsync()
   {
     RfcState.Changed += HandleRfcChanged;
+    var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+    CanPermanentlyDeleteMaterial = authenticationState.User.IsInRole("Administrador");
+    CurrentUserName = authenticationState.User.Identity?.Name ?? "OrionERP";
     Editor.Rfc = CurrentRfc;
     await LoadCatalogAsync();
     NuevoMaterial();
@@ -312,6 +329,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
 
   protected void NuevoMaterial()
   {
+    ResetDeletionReport();
     SelectedMaterialId = null;
     CurrentMaterialCode = null;
     SelectedImageFileName = null;
@@ -335,6 +353,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     }
 
     IsLoadingEditor = true;
+    ResetDeletionReport();
     try
     {
       var detail = await MaterialService.GetMaterialAsync(CurrentRfc, materialId);
@@ -417,6 +436,128 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     finally
     {
       IsSaving = false;
+    }
+  }
+
+  protected async Task OpenDeletionReportAsync()
+  {
+    if (!Editor.Id.HasValue || Editor.Id.Value <= 0 || IsSaving || IsDeletingMaterial)
+    {
+      return;
+    }
+
+    ResetDeletionReport();
+    DeletionTargetMaterialId = Editor.Id.Value;
+    ShowDeletionDialog = true;
+    await RefreshDeletionAssessmentAsync();
+  }
+
+  protected async Task RefreshDeletionAssessmentAsync()
+  {
+    if (!ShowDeletionDialog || !DeletionTargetMaterialId.HasValue)
+    {
+      return;
+    }
+
+    _deletionAssessmentCts?.Cancel();
+    _deletionAssessmentCts?.Dispose();
+    _deletionAssessmentCts = new CancellationTokenSource();
+    var token = _deletionAssessmentCts.Token;
+    var materialId = DeletionTargetMaterialId.Value;
+
+    IsLoadingDeletionAssessment = true;
+    DeletionAssessmentError = null;
+    DeletionAssessment = null;
+    DeletionConfirmationText = string.Empty;
+
+    try
+    {
+      var assessment = await MaterialService.GetMaterialDeletionAssessmentAsync(CurrentRfc, materialId, token);
+      token.ThrowIfCancellationRequested();
+      if (!ShowDeletionDialog || DeletionTargetMaterialId != materialId)
+      {
+        return;
+      }
+
+      DeletionAssessment = assessment;
+    }
+    catch (OperationCanceledException) when (token.IsCancellationRequested)
+    {
+      // The dialog closed, the RFC changed, or a newer assessment replaced this one.
+    }
+    catch (Exception ex)
+    {
+      DeletionAssessmentError = $"No se pudo revisar la seguridad de eliminación. {ex.Message}";
+    }
+    finally
+    {
+      if (_deletionAssessmentCts?.Token == token)
+      {
+        IsLoadingDeletionAssessment = false;
+        StateHasChanged();
+      }
+    }
+  }
+
+  protected void CloseDeletionReport()
+  {
+    if (!IsDeletingMaterial)
+    {
+      ResetDeletionReport();
+    }
+  }
+
+  protected async Task DeleteMaterialAsync()
+  {
+    if (IsDeletingMaterial
+        || DeletionAssessment is not { CanDelete: true, Exists: true }
+        || !DeletionTargetMaterialId.HasValue
+        || DeletionAssessment.MaterialId != DeletionTargetMaterialId.Value
+        || !DeletionConfirmationMatches)
+    {
+      return;
+    }
+
+    var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+    CanPermanentlyDeleteMaterial = authenticationState.User.IsInRole("Administrador");
+    CurrentUserName = authenticationState.User.Identity?.Name ?? CurrentUserName;
+    if (!CanPermanentlyDeleteMaterial)
+    {
+      UiMessages.ShowError("Solo un administrador puede eliminar materiales permanentemente.");
+      return;
+    }
+
+    IsDeletingMaterial = true;
+    try
+    {
+      var result = await MaterialService.DeleteMaterialAsync(new MaterialDeleteRequest
+      {
+        Rfc = CurrentRfc,
+        MaterialId = DeletionTargetMaterialId.Value,
+        ConfirmationText = DeletionConfirmationText,
+        DeletedBy = CurrentUserName
+      });
+
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        IsDeletingMaterial = false;
+        await RefreshDeletionAssessmentAsync();
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      ResetDeletionReport();
+      NuevoMaterial();
+      await BuscarAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo eliminar el material. {ex.Message}");
+    }
+    finally
+    {
+      IsDeletingMaterial = false;
     }
   }
 
@@ -861,6 +1002,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
 
   private void HandleRfcChanged()
   {
+    ResetDeletionReport();
     _rfcReloadCts?.Cancel();
     _rfcReloadCts?.Dispose();
     _rfcReloadCts = new CancellationTokenSource();
@@ -907,6 +1049,21 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     _listRequestCts?.Dispose();
     _rfcReloadCts?.Cancel();
     _rfcReloadCts?.Dispose();
+    _deletionAssessmentCts?.Cancel();
+    _deletionAssessmentCts?.Dispose();
+  }
+
+  private void ResetDeletionReport()
+  {
+    _deletionAssessmentCts?.Cancel();
+    _deletionAssessmentCts?.Dispose();
+    _deletionAssessmentCts = null;
+    ShowDeletionDialog = false;
+    IsLoadingDeletionAssessment = false;
+    DeletionTargetMaterialId = null;
+    DeletionAssessment = null;
+    DeletionAssessmentError = null;
+    DeletionConfirmationText = string.Empty;
   }
 
   private static int? ParseNullableInt(object? value)

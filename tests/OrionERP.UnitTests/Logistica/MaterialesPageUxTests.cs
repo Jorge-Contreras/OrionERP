@@ -48,6 +48,40 @@ public class MaterialesPageUxTests
     Assert.Contains("await BuscarAsync();", codeBehind, StringComparison.Ordinal);
   }
 
+  [Fact]
+  public void Page_ProvidesDetailedStrictDeletionReport()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor");
+    var styles = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor.css");
+
+    Assert.Contains("Revisar eliminación", page, StringComparison.Ordinal);
+    Assert.Contains("Revisión de eliminación permanente", page, StringComparison.Ordinal);
+    Assert.Contains("blockedAssessment.Blockers", page, StringComparison.Ordinal);
+    Assert.Contains("blocker.ReferenceCount", page, StringComparison.Ordinal);
+    Assert.Contains("blocker.Examples", page, StringComparison.Ordinal);
+    Assert.Contains("No se elimina ni se desvincula información automáticamente", page, StringComparison.Ordinal);
+    Assert.Contains("value=\"@DeletionConfirmationText\"", page, StringComparison.Ordinal);
+    Assert.Contains("Eliminar permanentemente", page, StringComparison.Ordinal);
+    Assert.Contains("materiales-delete-blockers", styles, StringComparison.Ordinal);
+    Assert.Contains("materiales-delete-confirmation", styles, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void Page_EnforcesAdministratorAndExactDeleteConfirmation()
+  {
+    var codeBehind = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor.cs");
+    var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Logistica/Materials/MaterialService.cs");
+
+    Assert.Contains("IsInRole(\"Administrador\")", codeBehind, StringComparison.Ordinal);
+    Assert.Contains("string.Equals(DeletionConfirmationText, \"Delete\", StringComparison.Ordinal)", codeBehind, StringComparison.Ordinal);
+    Assert.Contains("ConfirmationText = DeletionConfirmationText", codeBehind, StringComparison.Ordinal);
+    Assert.Contains("DeleteConfirmationText = \"Delete\"", service, StringComparison.Ordinal);
+    Assert.Contains("IsolationLevel.Serializable", service, StringComparison.Ordinal);
+    Assert.Contains("UPDLOCK, HOLDLOCK", service, StringComparison.Ordinal);
+    Assert.Contains("DELETE FROM logistica.Material WHERE Rfc = @Rfc AND Id = @MaterialId", service, StringComparison.Ordinal);
+    Assert.Contains("ResetDeletionReport();", codeBehind, StringComparison.Ordinal);
+  }
+
   private static string ReadRepoFile(string relativePath)
   {
     var current = new DirectoryInfo(AppContext.BaseDirectory);

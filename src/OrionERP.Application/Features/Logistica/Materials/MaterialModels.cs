@@ -12,6 +12,7 @@ public sealed class MaterialFilter
   public int? VendorId { get; set; }
   public string? MaterialClass { get; set; }
   public string? Status { get; set; }
+  public bool IncludeInactive { get; set; }
   public bool? HasImage { get; set; }
   public bool? HasStock { get; set; }
   public bool NeedsAttention { get; set; }
@@ -27,6 +28,7 @@ public sealed class MaterialListItemDto
   public int BaseUnitId { get; set; }
   public string MaterialClass { get; set; } = string.Empty;
   public string Status { get; set; } = string.Empty;
+  public bool IsActive { get; set; }
   public string? CategoryName { get; set; }
   public string? BaseUnitName { get; set; }
   public string? VendorName { get; set; }
@@ -118,7 +120,6 @@ public sealed class MaterialUpsertRequest
   [StringLength(50)]
   public string MaterialClass { get; set; } = "Consumable";
 
-  public bool IsActive { get; set; } = true;
   public bool RemovePrimaryImage { get; set; }
   public byte[]? PrimaryImageBytes { get; set; }
   public string? PrimaryImageFileName { get; set; }
@@ -127,20 +128,41 @@ public sealed class MaterialUpsertRequest
   public string? PrimaryImageThumbnailContentType { get; set; }
 }
 
-public sealed class MaterialDeletionAssessmentDto
+public static class MaterialDependencyKinds
+{
+  public const string Operational = "Operational";
+  public const string Historical = "Historical";
+  public const string Configuration = "Configuration";
+}
+
+public sealed class MaterialLifecycleAssessmentDto
 {
   public bool Exists { get; set; }
   public int MaterialId { get; set; }
   public string MaterialCode { get; set; } = string.Empty;
   public string Description { get; set; } = string.Empty;
-  public IReadOnlyList<MaterialDeletionBlockerDto> Blockers { get; set; } = Array.Empty<MaterialDeletionBlockerDto>();
-  public bool CanDelete => Exists && Blockers.Count == 0;
-  public long TotalReferences => Blockers.Sum(blocker => blocker.ReferenceCount);
+  public bool IsActive { get; set; }
+  public IReadOnlyList<MaterialDependencyDto> Dependencies { get; set; } = Array.Empty<MaterialDependencyDto>();
+  public IReadOnlyList<MaterialDependencyDto> OperationalBlockers
+    => Dependencies.Where(dependency => dependency.Kind == MaterialDependencyKinds.Operational).ToArray();
+  public IReadOnlyList<MaterialDependencyDto> HistoricalReferences
+    => Dependencies.Where(dependency => dependency.Kind == MaterialDependencyKinds.Historical).ToArray();
+  public IReadOnlyList<MaterialDependencyDto> ConfigurationReferences
+    => Dependencies.Where(dependency => dependency.Kind == MaterialDependencyKinds.Configuration).ToArray();
+  public bool HasHistory => HistoricalReferences.Count > 0;
+  public bool CanDelete => Exists && IsActive && Dependencies.Count == 0;
+  public bool CanDeactivate => Exists && IsActive && HasHistory && OperationalBlockers.Count == 0;
+  public bool CanReactivate => Exists && !IsActive;
+  public long TotalReferences => Dependencies.Sum(dependency => dependency.ReferenceCount);
+  public long OperationalReferenceCount => OperationalBlockers.Sum(dependency => dependency.ReferenceCount);
+  public long HistoricalReferenceCount => HistoricalReferences.Sum(dependency => dependency.ReferenceCount);
+  public long ConfigurationReferenceCount => ConfigurationReferences.Sum(dependency => dependency.ReferenceCount);
 }
 
-public sealed class MaterialDeletionBlockerDto
+public sealed class MaterialDependencyDto
 {
   public string Code { get; set; } = string.Empty;
+  public string Kind { get; set; } = string.Empty;
   public string Title { get; set; } = string.Empty;
   public string Explanation { get; set; } = string.Empty;
   public long ReferenceCount { get; set; }
@@ -162,6 +184,30 @@ public sealed class MaterialDeleteRequest
 
   [StringLength(256)]
   public string? DeletedBy { get; set; }
+}
+
+public sealed class MaterialDeactivateRequest
+{
+  [Required]
+  public string Rfc { get; set; } = string.Empty;
+
+  [Range(1, int.MaxValue)]
+  public int MaterialId { get; set; }
+
+  [StringLength(256)]
+  public string? DeactivatedBy { get; set; }
+}
+
+public sealed class MaterialReactivateRequest
+{
+  [Required]
+  public string Rfc { get; set; } = string.Empty;
+
+  [Range(1, int.MaxValue)]
+  public int MaterialId { get; set; }
+
+  [StringLength(256)]
+  public string? ReactivatedBy { get; set; }
 }
 
 public sealed class MaterialCatalogDto

@@ -362,6 +362,41 @@
   color: #0c617e;
 }
 
+.materiales-inactive-filter {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.48rem;
+  min-height: 2.1rem;
+  padding: 0.35rem 0.72rem;
+  border: 1px solid rgba(83, 92, 132, 0.2);
+  border-radius: 999px;
+  background: #f7f7fc;
+  color: #4d5678;
+  font-size: 0.75rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.materiales-inactive-filter:hover {
+  border-color: rgba(83, 92, 132, 0.36);
+  background: #f0f1fa;
+  color: #333c65;
+}
+
+.materiales-inactive-filter input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: #56629a;
+}
+
+.materiales-inactive-filter:has(input:focus-visible) {
+  outline: 3px solid rgba(86, 98, 154, 0.17);
+  outline-offset: 2px;
+}
+
 .materiales-filter-actions {
   display: flex;
   align-items: center;
@@ -1302,6 +1337,28 @@
   padding-block: 0.4rem;
 }
 
+.materiales-toggle-card.is-disabled {
+  border-color: rgba(83, 92, 132, 0.2);
+  background: #f7f7fa;
+  color: #4d5678;
+  cursor: default;
+  box-shadow: inset 3px 0 0 #727b9f;
+}
+
+.materiales-toggle-card.is-disabled:hover {
+  border-color: rgba(83, 92, 132, 0.2);
+  background: #f7f7fa;
+}
+
+.materiales-toggle-card > i {
+  color: var(--materials-accent);
+  font-size: 1.25rem;
+}
+
+.materiales-toggle-card.is-disabled > i {
+  color: #687294;
+}
+
 .materiales-more-toggle {
   display: flex;
   align-items: center;
@@ -1627,6 +1684,87 @@
   color: #217d53;
 }
 
+.materiales-delete-summary.is-retire {
+  border-color: rgba(169, 103, 0, 0.2);
+  background: #fffaf0;
+}
+
+.materiales-delete-summary.is-retire .materiales-delete-summary-icon {
+  background: #fff0ce;
+  color: #9a6100;
+}
+
+.materiales-delete-summary.is-retire > div > span {
+  color: #8c5a0b;
+}
+
+.materiales-delete-summary.is-inactive {
+  border-color: rgba(83, 92, 132, 0.2);
+  background: #f7f7fc;
+}
+
+.materiales-delete-summary.is-inactive .materiales-delete-summary-icon {
+  background: #e9eaf5;
+  color: #525d91;
+}
+
+.materiales-delete-summary.is-inactive > div > span {
+  color: #525d91;
+}
+
+.materiales-dependency-section {
+  margin-top: 1.1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(15, 45, 78, 0.09);
+}
+
+.materiales-dependency-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.materiales-dependency-heading > span {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.68rem;
+  background: #eef3f7;
+  color: #3b607d;
+}
+
+.materiales-dependency-heading h3 {
+  margin: 0;
+  color: #173955;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.materiales-dependency-heading p {
+  margin: 0.2rem 0 0;
+  color: #6b7a90;
+  font-size: 0.73rem;
+  line-height: 1.45;
+}
+
+.materiales-dependency-section.is-operational .materiales-dependency-heading > span {
+  background: #fde8ea;
+  color: #b4232f;
+}
+
+.materiales-dependency-section.is-historical .materiales-dependency-heading > span {
+  background: #e9eaf5;
+  color: #525d91;
+}
+
+.materiales-dependency-section.is-configuration .materiales-dependency-heading > span {
+  background: #fff0ce;
+  color: #9a6100;
+}
+
 .materiales-delete-blockers {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1667,7 +1805,8 @@
   color: #3b607d;
 }
 
-.materiales-delete-blocker h3 {
+.materiales-delete-blocker h3,
+.materiales-delete-blocker h4 {
   margin: 0;
   color: #173955;
   font-size: 0.9rem;
@@ -1746,6 +1885,23 @@
 .materiales-delete-resolution:focus-visible {
   color: #0e4f6a;
   text-decoration: underline;
+}
+
+.materiales-resolution-permission {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin-top: 0.65rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 0.55rem;
+  background: #f6f4fb;
+  color: #5d5879;
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.materiales-resolution-permission i {
+  flex: 0 0 auto;
 }
 
 .materiales-delete-checks {
@@ -1999,7 +2155,9 @@
     grid-template-columns: 1fr 1fr;
   }
 
-  .materiales-delete-footer .btn-danger {
+  .materiales-delete-footer .btn-danger,
+  .materiales-delete-footer .btn-warning,
+  .materiales-delete-footer .btn-success {
     grid-column: 1 / -1;
   }
 

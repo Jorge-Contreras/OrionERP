@@ -49,37 +49,63 @@ public class MaterialesPageUxTests
   }
 
   [Fact]
-  public void Page_ProvidesDetailedStrictDeletionReport()
+  public void Page_ProvidesHistoricalAwareLifecycleReport()
   {
     var page = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor");
     var styles = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor.css");
 
-    Assert.Contains("Revisar eliminación", page, StringComparison.Ordinal);
-    Assert.Contains("Revisión de eliminación permanente", page, StringComparison.Ordinal);
-    Assert.Contains("blockedAssessment.Blockers", page, StringComparison.Ordinal);
-    Assert.Contains("blocker.ReferenceCount", page, StringComparison.Ordinal);
-    Assert.Contains("blocker.Examples", page, StringComparison.Ordinal);
-    Assert.Contains("No se elimina ni se desvincula información automáticamente", page, StringComparison.Ordinal);
+    Assert.Contains("Revisar retiro", page, StringComparison.Ordinal);
+    Assert.Contains("Revisión de retiro seguro", page, StringComparison.Ordinal);
+    Assert.Contains("Vínculos operativos por resolver", ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor.cs"), StringComparison.Ordinal);
+    Assert.Contains("Historial que debe conservarse", ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor.cs"), StringComparison.Ordinal);
+    Assert.Contains("Configuración desvinculable", ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor.cs"), StringComparison.Ordinal);
+    Assert.Contains("dependency.ReferenceCount", page, StringComparison.Ordinal);
+    Assert.Contains("dependency.Examples", page, StringComparison.Ordinal);
+    Assert.Contains("Desactivación recomendada", page, StringComparison.Ordinal);
     Assert.Contains("value=\"@DeletionConfirmationText\"", page, StringComparison.Ordinal);
     Assert.Contains("Eliminar permanentemente", page, StringComparison.Ordinal);
+    Assert.Contains("Desactivar material", page, StringComparison.Ordinal);
+    Assert.Contains("Reactivar material", page, StringComparison.Ordinal);
     Assert.Contains("materiales-delete-blockers", styles, StringComparison.Ordinal);
+    Assert.Contains("materiales-dependency-section", styles, StringComparison.Ordinal);
     Assert.Contains("materiales-delete-confirmation", styles, StringComparison.Ordinal);
   }
 
   [Fact]
-  public void Page_EnforcesAdministratorAndExactDeleteConfirmation()
+  public void Page_EnforcesAdministratorLifecycleAndExactDeleteConfirmation()
   {
     var codeBehind = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor.cs");
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor");
     var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Logistica/Materials/MaterialService.cs");
 
     Assert.Contains("IsInRole(\"Administrador\")", codeBehind, StringComparison.Ordinal);
+    Assert.Contains("ShowInactiveMaterials", codeBehind, StringComparison.Ordinal);
+    Assert.Contains("IncludeInactive = IsAdministrator && ShowInactiveMaterials", codeBehind, StringComparison.Ordinal);
+    Assert.Contains("Mostrar materiales desactivados", page, StringComparison.Ordinal);
     Assert.Contains("string.Equals(DeletionConfirmationText, \"Delete\", StringComparison.Ordinal)", codeBehind, StringComparison.Ordinal);
     Assert.Contains("ConfirmationText = DeletionConfirmationText", codeBehind, StringComparison.Ordinal);
     Assert.Contains("DeleteConfirmationText = \"Delete\"", service, StringComparison.Ordinal);
     Assert.Contains("IsolationLevel.Serializable", service, StringComparison.Ordinal);
     Assert.Contains("UPDLOCK, HOLDLOCK", service, StringComparison.Ordinal);
     Assert.Contains("DELETE FROM logistica.Material WHERE Rfc = @Rfc AND Id = @MaterialId", service, StringComparison.Ordinal);
-    Assert.Contains("ResetDeletionReport();", codeBehind, StringComparison.Ordinal);
+    Assert.Contains("MaterialStatus = 'INACTIVO'", service, StringComparison.Ordinal);
+    Assert.Contains("MaterialStatus = 'ACTIVO'", service, StringComparison.Ordinal);
+    Assert.Contains("ResetLifecycleReport();", codeBehind, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void RecipePage_ExposesOnlyExplicitSafeCleanupActions()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantRecipesPage.razor");
+    var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/BomRecipeService.cs");
+
+    Assert.Contains("Eliminar borrador", page, StringComparison.Ordinal);
+    Assert.Contains("Retirar versión", page, StringComparison.Ordinal);
+    Assert.Contains("Eliminar conversión", page, StringComparison.Ordinal);
+    Assert.Contains("string.Equals(version.Status, \"Draft\"", service, StringComparison.Ordinal);
+    Assert.Contains("string.Equals(version.Status, \"Active\"", service, StringComparison.Ordinal);
+    Assert.Contains("[Status] IN ('Planned', 'Started')", service, StringComparison.Ordinal);
+    Assert.Contains("versionInfo.[Status] IN ('Draft', 'Active')", service, StringComparison.Ordinal);
   }
 
   private static string ReadRepoFile(string relativePath)

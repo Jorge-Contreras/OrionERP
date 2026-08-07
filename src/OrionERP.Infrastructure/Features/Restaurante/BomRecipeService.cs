@@ -1,3 +1,4 @@
+using System.Data;
 using System.Data.Common;
 using Dapper;
 using Microsoft.Data.SqlClient;
@@ -335,6 +336,149 @@ public sealed class BomRecipeService : IBomRecipeService
     }
   }
 
+  public async Task<RestaurantCommandResult> DeleteDraftAsync(string rfc, long bomVersionId, CancellationToken ct = default)
+  {
+    var normalizedRfc = LogisticsRfc.Require(rfc);
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    try
+    {
+      var version = await conn.QuerySingleOrDefaultAsync<VersionIdentityRow>(new CommandDefinition(
+        """
+        SELECT versionInfo.Id, versionInfo.BomHeaderId, versionInfo.[Status], headerInfo.ProductMaterialId
+        FROM logistica.BomVersion versionInfo WITH (UPDLOCK, HOLDLOCK)
+        JOIN logistica.BomHeader headerInfo WITH (UPDLOCK, HOLDLOCK)
+          ON headerInfo.Rfc = versionInfo.Rfc AND headerInfo.Id = versionInfo.BomHeaderId
+        WHERE versionInfo.Rfc = @Rfc AND versionInfo.Id = @Id;
+        """,
+        new { Rfc = normalizedRfc, Id = bomVersionId },
+        tx,
+        cancellationToken: ct));
+      if (version is null || !string.Equals(version.Status, "Draft", StringComparison.OrdinalIgnoreCase))
+      {
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail("Solo se pueden eliminar versiones que continúan en borrador.");
+      }
+
+      var hasProduction = await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
+        "SELECT CAST(CASE WHEN EXISTS(SELECT 1 FROM logistica.ProductionOrder WHERE Rfc=@Rfc AND BomVersionId=@Id) THEN 1 ELSE 0 END AS bit);",
+        new { Rfc = normalizedRfc, Id = bomVersionId },
+        tx,
+        cancellationToken: ct));
+      if (hasProduction)
+      {
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail("El borrador ya está relacionado con producción y no se puede eliminar.");
+      }
+
+      await conn.ExecuteAsync(new CommandDefinition(
+        """
+        DELETE stepInfo
+        FROM logistica.RecipeStep stepInfo
+        JOIN logistica.Recipe recipeInfo
+          ON recipeInfo.Rfc = stepInfo.Rfc AND recipeInfo.Id = stepInfo.RecipeId
+        WHERE recipeInfo.Rfc = @Rfc AND recipeInfo.BomVersionId = @Id;
+
+        DELETE FROM logistica.Recipe WHERE Rfc = @Rfc AND BomVersionId = @Id;
+        DELETE FROM logistica.BomComponent WHERE Rfc = @Rfc AND BomVersionId = @Id;
+        DELETE FROM logistica.BomVersion WHERE Rfc = @Rfc AND Id = @Id AND [Status] = 'Draft';
+
+        IF NOT EXISTS (SELECT 1 FROM logistica.BomVersion WHERE Rfc = @Rfc AND BomHeaderId = @HeaderId)
+          DELETE FROM logistica.BomHeader WHERE Rfc = @Rfc AND Id = @HeaderId;
+        ELSE IF NOT EXISTS
+        (
+          SELECT 1 FROM logistica.BomVersion
+          WHERE Rfc = @Rfc AND BomHeaderId = @HeaderId AND [Status] IN ('Draft', 'Active')
+        )
+          UPDATE logistica.BomHeader SET IsActive = 0 WHERE Rfc = @Rfc AND Id = @HeaderId;
+        """,
+        new { Rfc = normalizedRfc, Id = bomVersionId, HeaderId = version.BomHeaderId },
+        tx,
+        cancellationToken: ct));
+
+      await tx.CommitAsync(ct);
+      return RestaurantCommandResult.Ok("El borrador de BOM y sus datos no publicados fueron eliminados.", bomVersionId);
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
+  public async Task<RestaurantCommandResult> RetireAsync(string rfc, long bomVersionId, string userName, CancellationToken ct = default)
+  {
+    var normalizedRfc = LogisticsRfc.Require(rfc);
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    try
+    {
+      var version = await conn.QuerySingleOrDefaultAsync<VersionIdentityRow>(new CommandDefinition(
+        """
+        SELECT versionInfo.Id, versionInfo.BomHeaderId, versionInfo.[Status], headerInfo.ProductMaterialId
+        FROM logistica.BomVersion versionInfo WITH (UPDLOCK, HOLDLOCK)
+        JOIN logistica.BomHeader headerInfo WITH (UPDLOCK, HOLDLOCK)
+          ON headerInfo.Rfc = versionInfo.Rfc AND headerInfo.Id = versionInfo.BomHeaderId
+        WHERE versionInfo.Rfc = @Rfc AND versionInfo.Id = @Id;
+        """,
+        new { Rfc = normalizedRfc, Id = bomVersionId },
+        tx,
+        cancellationToken: ct));
+      if (version is null || !string.Equals(version.Status, "Active", StringComparison.OrdinalIgnoreCase))
+      {
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail("Solo se puede retirar una versión activa.");
+      }
+
+      var activeProduction = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+        """
+        SELECT COUNT(*) FROM logistica.ProductionOrder WITH (UPDLOCK, HOLDLOCK)
+        WHERE Rfc = @Rfc AND BomVersionId = @Id AND [Status] IN ('Planned', 'Started');
+        """,
+        new { Rfc = normalizedRfc, Id = bomVersionId },
+        tx,
+        cancellationToken: ct));
+      if (activeProduction > 0)
+      {
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail("Completa o cancela la producción pendiente antes de retirar este BOM.");
+      }
+
+      var affected = await conn.ExecuteAsync(new CommandDefinition(
+        """
+        UPDATE logistica.BomVersion
+        SET [Status] = 'Retired', RetiredAt = SYSUTCDATETIME()
+        WHERE Rfc = @Rfc AND Id = @Id AND [Status] = 'Active';
+
+        UPDATE logistica.BomHeader
+        SET IsActive = CASE WHEN EXISTS
+        (
+          SELECT 1 FROM logistica.BomVersion
+          WHERE Rfc = @Rfc AND BomHeaderId = @HeaderId AND [Status] IN ('Draft', 'Active')
+        ) THEN 1 ELSE 0 END
+        WHERE Rfc = @Rfc AND Id = @HeaderId;
+        """,
+        new { Rfc = normalizedRfc, Id = bomVersionId, HeaderId = version.BomHeaderId },
+        tx,
+        cancellationToken: ct));
+      if (affected == 0)
+      {
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail("El BOM cambió mientras se retiraba. Actualiza la página.");
+      }
+
+      await tx.CommitAsync(ct);
+      return RestaurantCommandResult.Ok($"La versión activa fue retirada por {NormalizeActor(userName)} y permanece en el historial.", bomVersionId);
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
   public async Task<IReadOnlyList<RestaurantAllergenDto>> GetAllergensAsync(string rfc, CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
@@ -488,6 +632,71 @@ public sealed class BomRecipeService : IBomRecipeService
     }
   }
 
+  public async Task<RestaurantCommandResult> DeleteMaterialUnitConversionAsync(string rfc, int conversionId, CancellationToken ct = default)
+  {
+    if (conversionId <= 0) return RestaurantCommandResult.Fail("Selecciona una conversión válida.");
+    var normalizedRfc = LogisticsRfc.Require(rfc);
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    try
+    {
+      var conversion = await conn.QuerySingleOrDefaultAsync<MaterialConversionIdentityRow>(new CommandDefinition(
+        """
+        SELECT Id, MaterialId, FromUnitId, ToUnitId
+        FROM logistica.MaterialUnitConversion WITH (UPDLOCK, HOLDLOCK)
+        WHERE Rfc = @Rfc AND Id = @Id;
+        """,
+        new { Rfc = normalizedRfc, Id = conversionId },
+        tx,
+        cancellationToken: ct));
+      if (conversion is null)
+      {
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail("La conversión no existe en el RFC seleccionado.");
+      }
+
+      var currentBomUses = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+        """
+        SELECT COUNT(*)
+        FROM logistica.BomComponent component
+        JOIN logistica.BomVersion versionInfo
+          ON versionInfo.Rfc = component.Rfc AND versionInfo.Id = component.BomVersionId
+        WHERE component.Rfc = @Rfc
+          AND component.ComponentMaterialId = @MaterialId
+          AND component.UnitId = @FromUnitId
+          AND versionInfo.[Status] IN ('Draft', 'Active');
+        """,
+        new { Rfc = normalizedRfc, conversion.MaterialId, conversion.FromUnitId },
+        tx,
+        cancellationToken: ct));
+      if (currentBomUses > 0)
+      {
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail("La conversión se usa en un BOM activo o en borrador. Retira primero esa configuración.");
+      }
+
+      var affected = await conn.ExecuteAsync(new CommandDefinition(
+        "DELETE FROM logistica.MaterialUnitConversion WHERE Rfc = @Rfc AND Id = @Id;",
+        new { Rfc = normalizedRfc, Id = conversionId },
+        tx,
+        cancellationToken: ct));
+      if (affected != 1)
+      {
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail("La conversión cambió mientras se eliminaba. Actualiza la página.");
+      }
+
+      await tx.CommitAsync(ct);
+      return RestaurantCommandResult.Ok("Conversión especial eliminada.", conversionId);
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
   private static async Task<decimal> CalculateTheoreticalCostAsync(DbConnection conn, DbTransaction tx, string rfc, long versionId, CancellationToken ct)
   {
     const string sql =
@@ -537,6 +746,9 @@ public sealed class BomRecipeService : IBomRecipeService
     => _connectionFactory.Create() as DbConnection
       ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
 
+  private static string NormalizeActor(string? value)
+    => string.IsNullOrWhiteSpace(value) ? "OrionERP" : value.Trim();
+
   private sealed class VersionIdentityRow
   {
     public long Id { get; set; }
@@ -549,6 +761,14 @@ public sealed class BomRecipeService : IBomRecipeService
   {
     public int Id { get; set; }
     public int BaseUnitId { get; set; }
+  }
+
+  private sealed class MaterialConversionIdentityRow
+  {
+    public int Id { get; set; }
+    public int MaterialId { get; set; }
+    public int FromUnitId { get; set; }
+    public int ToUnitId { get; set; }
   }
 
   private sealed class AllergenAssignmentRow

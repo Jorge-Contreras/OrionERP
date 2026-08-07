@@ -16,6 +16,7 @@
 <style>
   .recipe-safety{display:grid;gap:.35rem;margin:0 0 1rem;font-weight:800}.recipe-safety textarea{border:1px solid #cfd9d6;border-radius:.7rem;padding:.65rem}
   .recipe-master-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;min-width:0;margin-top:1rem}.recipe-master-fields{display:grid;gap:.65rem;min-width:0}.recipe-master-fields>label{display:grid;gap:.25rem;min-width:0;font-size:.8rem;font-weight:800}.recipe-master-fields input,.recipe-master-fields select{min-height:2.7rem;min-width:0;width:100%;border:1px solid #ccd7d3;border-radius:.65rem;padding:.5rem;background:#fff}.recipe-allergens{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:.4rem}.recipe-allergens label{display:flex;align-items:center;gap:.4rem;padding:.5rem;border-radius:.55rem;background:#f2f6f4}.recipe-master-list{display:grid;gap:.35rem;max-height:260px;overflow:auto;margin-top:.7rem}.recipe-master-list button{display:flex;justify-content:space-between;align-items:center;gap:.6rem;border:1px solid #dbe3e0;border-radius:.65rem;background:#fff;padding:.6rem;text-align:left}.recipe-master-list small{color:#687771}.recipe-card details{margin-top:.8rem}.recipe-card summary{cursor:pointer;font-weight:850;color:#246c58}@@media(max-width:900px){.recipe-master-grid{grid-template-columns:minmax(0,1fr)}}
+  .recipe-master-actions{display:flex;flex-wrap:wrap;gap:.55rem}.recipe-master-actions .btn{flex:1 1 10rem}
 </style>
 
 <main class="recipe-shell">
@@ -66,7 +67,19 @@
         </div>
       </article>
 
-      <footer class="recipe-actions"><button type="button" class="btn btn-primary" disabled="@isBusy" @onclick="SaveAsync">Guardar borrador</button>@if (selectedStatus == "Draft" && editor.BomVersionId.HasValue) { <button type="button" class="btn btn-success" disabled="@isBusy" @onclick="ActivateAsync">Activar versión</button> }<span>Las versiones activas no se editan; una corrección crea una nueva versión.</span></footer>
+      <footer class="recipe-actions">
+        <button type="button" class="btn btn-primary" disabled="@isBusy" @onclick="SaveAsync">Guardar borrador</button>
+        @if (selectedStatus == "Draft" && selectedVersionId.HasValue)
+        {
+          <button type="button" class="btn btn-success" disabled="@isBusy" @onclick="ActivateAsync">Activar versión</button>
+          <button type="button" class="btn btn-outline-danger" disabled="@isBusy" @onclick="DeleteDraftAsync">Eliminar borrador</button>
+        }
+        else if (selectedStatus == "Active" && selectedVersionId.HasValue)
+        {
+          <button type="button" class="btn btn-outline-warning" disabled="@isBusy" @onclick="RetireAsync">Retirar versión</button>
+        }
+        <span>Las versiones activas no se editan; una corrección crea una nueva versión.</span>
+      </footer>
     </section>
   </section>
 
@@ -99,7 +112,13 @@
         <label>Factor<input type="number" min="0.0000000001" step="0.0001" @bind="conversionEditor.Factor" /></label>
         <label>Notas<input @bind="conversionEditor.Notes" placeholder="Ej. una bolsa contiene 12 piezas" /></label>
         <label><input type="checkbox" @bind="conversionEditor.IsActive" /> Activa</label>
-        <button type="button" class="btn btn-primary" disabled="@isBusy" @onclick="SaveConversionAsync">Guardar conversión</button>
+        <div class="recipe-master-actions">
+          <button type="button" class="btn btn-primary" disabled="@isBusy" @onclick="SaveConversionAsync">Guardar conversión</button>
+          @if (conversionEditor.Id.HasValue)
+          {
+            <button type="button" class="btn btn-outline-danger" disabled="@isBusy" @onclick="DeleteConversionAsync">Eliminar conversión</button>
+          }
+        </div>
       </div>
       <div class="recipe-master-list">@foreach (var conversion in conversions) { <button type="button" @onclick="() => EditConversion(conversion)"><strong>@conversion.MaterialName</strong><small>1 @conversion.FromUnitCode = @conversion.Factor.ToString("0.########") @conversion.ToUnitCode · @(conversion.IsActive ? "Activa" : "Inactiva")</small></button> }</div>
     </article>
@@ -118,6 +137,7 @@
   private MaterialUnitConversionSaveRequest conversionEditor = new() { IsActive = true, Factor = 1 };
   private readonly HashSet<int> selectedAllergenIds = [];
   private int allergenMaterialId;
+  private long? selectedVersionId;
   private string? selectedStatus;
   private string? message;
   private bool isError;
@@ -131,12 +151,13 @@
     catch (Exception ex) { Show(ex.Message, true); }
     finally { isBusy = false; }
   }
-  private void NewDraft() { editor = NewEditor(); editor.Rfc = CurrentRfc; selectedStatus = "Draft"; }
+  private void NewDraft() { editor = NewEditor(); editor.Rfc = CurrentRfc; selectedVersionId = null; selectedStatus = "Draft"; }
   private async Task EditAsync(long id)
   {
     var detail = await BomService.GetBomVersionAsync(CurrentRfc, id); if (detail is null) return;
     if (detail.Status != "Draft") { Show("La versión seleccionada es de sólo lectura. Use Nueva receta para generar la siguiente versión.", false); }
     editor = new() { Rfc = CurrentRfc, BomVersionId = detail.Status == "Draft" ? detail.Id : null, ProductMaterialId = detail.ProductMaterialId, YieldQuantity = detail.YieldQuantity, YieldUnitId = MaterialBaseUnitId(detail.ProductMaterialId), ExpectedWastePercent = detail.ExpectedWastePercent, SafetyNotes = detail.SafetyNotes, Components = detail.Components.Select(item => new BomComponentSaveRequest { MaterialId = item.MaterialId, Quantity = item.Quantity, UnitId = MaterialBaseUnitId(item.MaterialId), ExpectedWastePercent = item.ExpectedWastePercent }).ToList(), Steps = detail.Steps.Select(item => new RecipeStepSaveRequest { StepNumber = item.StepNumber, Instruction = item.Instruction, DurationMinutes = item.DurationMinutes, TemperatureC = item.TemperatureC, Equipment = item.Equipment, Image = item.Image, ImageFileName = item.ImageFileName, ImageContentType = item.ImageContentType }).ToList() };
+    selectedVersionId = detail.Id;
     selectedStatus = detail.Status;
   }
   private void AddComponent() => editor.Components.Add(new() { Quantity = 1 });
@@ -152,8 +173,11 @@
   private void AddStep() => editor.Steps.Add(new() { StepNumber = editor.Steps.Count == 0 ? 1 : editor.Steps.Max(item => item.StepNumber) + 1 });
   private async Task CaptureStepImageAsync(RecipeStepSaveRequest step, InputFileChangeEventArgs args) { var image = await args.File.RequestImageFileAsync("image/jpeg", 1200, 1200); await using var stream = image.OpenReadStream(5 * 1024 * 1024); using var memory = new MemoryStream(); await stream.CopyToAsync(memory); step.Image = memory.ToArray(); step.ImageFileName = Path.ChangeExtension(args.File.Name, ".jpg"); step.ImageContentType = "image/jpeg"; }
   private async Task SaveAsync() { await RunAsync(async () => await BomService.SaveDraftAsync(editor)); }
-  private async Task ActivateAsync() { if (!editor.BomVersionId.HasValue) return; var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync(); await RunAsync(async () => await BomService.ActivateAsync(CurrentRfc, editor.BomVersionId.Value, auth.User.Identity?.Name ?? "restaurante")); }
+  private async Task ActivateAsync() { if (!selectedVersionId.HasValue) return; var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync(); await RunAsync(async () => await BomService.ActivateAsync(CurrentRfc, selectedVersionId.Value, auth.User.Identity?.Name ?? "restaurante")); }
+  private async Task DeleteDraftAsync() { if (!selectedVersionId.HasValue) return; await RunLifecycleAsync(() => BomService.DeleteDraftAsync(CurrentRfc, selectedVersionId.Value)); }
+  private async Task RetireAsync() { if (!selectedVersionId.HasValue) return; var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync(); await RunLifecycleAsync(() => BomService.RetireAsync(CurrentRfc, selectedVersionId.Value, auth.User.Identity?.Name ?? "restaurante")); }
   private async Task RunAsync(Func<Task<RestaurantCommandResult>> action) { isBusy = true; try { editor.Rfc = CurrentRfc; var result = await action(); Show(result.Message, !result.Success); if (result.Success) { await LoadAsync(); if (result.EntityId.HasValue) await EditAsync(result.EntityId.Value); } } catch (Exception ex) { Show(ex.Message, true); } finally { isBusy = false; } }
+  private async Task RunLifecycleAsync(Func<Task<RestaurantCommandResult>> action) { isBusy = true; try { var result = await action(); Show(result.Message, !result.Success); if (result.Success) { NewDraft(); await LoadAsync(); } } catch (Exception ex) { Show(ex.Message, true); } finally { isBusy = false; } }
   private void LoadMaterialAllergens() { selectedAllergenIds.Clear(); foreach (var allergen in allergens.Where(item => item.MaterialIds.Contains(allergenMaterialId))) selectedAllergenIds.Add(allergen.Id); }
   private void ToggleAllergen(int id) { if (!selectedAllergenIds.Remove(id)) selectedAllergenIds.Add(id); }
   private async Task SaveMaterialAllergensAsync() => await RunMasterAsync(() => BomService.SaveMaterialAllergensAsync(CurrentRfc, allergenMaterialId, selectedAllergenIds));
@@ -163,6 +187,7 @@
   private void NewConversion() => conversionEditor = new() { Rfc = CurrentRfc, IsActive = true, Factor = 1 };
   private void EditConversion(MaterialUnitConversionDto item) => conversionEditor = new() { Rfc = CurrentRfc, Id = item.Id, MaterialId = item.MaterialId, FromUnitId = item.FromUnitId, ToUnitId = item.ToUnitId, Factor = item.Factor, Notes = item.Notes, IsActive = item.IsActive };
   private async Task SaveConversionAsync() { conversionEditor.Rfc = CurrentRfc; await RunMasterAsync(() => BomService.SaveMaterialUnitConversionAsync(conversionEditor)); }
+  private async Task DeleteConversionAsync() { if (!conversionEditor.Id.HasValue) return; var conversionId = conversionEditor.Id.Value; await RunMasterAsync(() => BomService.DeleteMaterialUnitConversionAsync(CurrentRfc, conversionId)); if (!isError) NewConversion(); }
   private async Task RunMasterAsync(Func<Task<RestaurantCommandResult>> action) { isBusy = true; try { var result = await action(); Show(result.Message, !result.Success); if (result.Success) await LoadAsync(); } catch (Exception ex) { Show(ex.Message, true); } finally { isBusy = false; } }
   private void Show(string value, bool error) { message = value; isError = error; }
   private void OnRfcChanged() => _ = InvokeAsync(async () => { NewDraft(); await LoadAsync(); StateHasChanged(); });

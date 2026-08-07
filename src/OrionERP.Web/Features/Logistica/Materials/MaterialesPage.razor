@@ -113,6 +113,15 @@
                         <i class="bi bi-stars" aria-hidden="true"></i>
                         Por completar
                     </button>
+                    @if (IsAdministrator)
+                    {
+                        <label class="materiales-inactive-filter">
+                            <input type="checkbox"
+                                   checked="@ShowInactiveMaterials"
+                                   @onchange="async _ => await ToggleInactiveMaterialsAsync()" />
+                            <span>Mostrar materiales desactivados</span>
+                        </label>
+                    }
                 </div>
 
                 <div class="materiales-filter-actions">
@@ -170,7 +179,7 @@
                                 <label class="form-label" for="material-status-filter">Estado</label>
                                 <select id="material-status-filter" class="form-select" value="@Filter.Status" @onchange="OnStatusFilterChangedAsync">
                                     <option value="">Todos los estados</option>
-                                    @foreach (var option in Catalog.Statuses)
+                                    @foreach (var option in Catalog.Statuses.Where(option => !string.Equals(option, "INACTIVO", StringComparison.OrdinalIgnoreCase) || (IsAdministrator && ShowInactiveMaterials)))
                                     {
                                         <option value="@option">@GetStatusLabel(option)</option>
                                     }
@@ -264,7 +273,7 @@
                                         @onclick="() => SeleccionarMaterialAsync(item.Id)">
                                     <span class="materiales-result-topline">
                                         <strong>@materialTitle</strong>
-                                        <span class="materiales-status @GetStatusBadgeClass(item.Status)">@GetStatusLabel(item.Status)</span>
+                                        <span class="materiales-status @GetMaterialStatusBadgeClass(item)">@GetMaterialStatusLabel(item)</span>
                                     </span>
                                     <span class="materiales-result-code">@item.MaterialCode</span>
                                     <span class="materiales-result-meta">
@@ -584,20 +593,20 @@
                                     <div class="col-md-6">
                                         <label class="form-label" for="material-status">Estado logístico</label>
                                         <InputSelect id="material-status" class="form-select" @bind-Value="Editor.Status">
-                                            @foreach (var option in Catalog.Statuses)
+                                            @foreach (var option in EditableStatusOptions)
                                             {
                                                 <option value="@option">@GetStatusLabel(option)</option>
                                             }
                                         </InputSelect>
                                     </div>
                                     <div class="col-md-6">
-                                        <label class="materiales-toggle-card is-compact">
-                                            <InputCheckbox class="form-check-input" @bind-Value="Editor.IsActive" />
+                                        <div class="materiales-toggle-card is-compact @(SelectedMaterialIsActive ? null : "is-disabled")">
+                                            <i class="bi @(SelectedMaterialIsActive ? "bi-check-circle-fill" : "bi-archive-fill")" aria-hidden="true"></i>
                                             <span>
-                                                <strong>Registro activo</strong>
-                                                <small>Disponible en selectores y operaciones.</small>
+                                                <strong>@(SelectedMaterialIsActive ? "Registro activo" : "Material desactivado")</strong>
+                                                <small>@(SelectedMaterialIsActive ? "Disponible según su estado logístico." : "Solo un administrador puede reactivarlo desde la revisión de retiro.")</small>
                                             </span>
-                                        </label>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -606,7 +615,7 @@
 
                     <div class="materiales-save-bar">
                         <div class="materiales-save-context">
-                            <span class="materiales-status @GetStatusBadgeClass(Editor.Status)">@GetStatusLabel(Editor.Status)</span>
+                            <span class="materiales-status @GetStatusBadgeClass(Editor.Status)">@(SelectedMaterialIsActive ? GetStatusLabel(Editor.Status) : "Desactivado")</span>
                             <span>@(Editor.Id.HasValue ? CurrentMaterialCode : "Código automático")</span>
                             @if (MaterialReadinessPercent < 65)
                             {
@@ -618,10 +627,10 @@
                             {
                                 <button type="button"
                                         class="btn btn-outline-danger materiales-delete-trigger"
-                                        @onclick="OpenDeletionReportAsync"
-                                        disabled="@(IsSaving || IsDeletingMaterial)">
-                                    <i class="bi bi-trash3" aria-hidden="true"></i>
-                                    Revisar eliminación
+                                        @onclick="OpenLifecycleReportAsync"
+                                        disabled="@(IsSaving || IsProcessingLifecycle)">
+                                    <i class="bi bi-shield-check" aria-hidden="true"></i>
+                                    Revisar retiro
                                 </button>
                                 <button type="button" class="btn btn-outline-secondary" @onclick="NuevoMaterial" disabled="@IsSaving">Cancelar edición</button>
                             }
@@ -823,22 +832,22 @@
     </div>
 }
 
-@if (ShowDeletionDialog)
+@if (ShowLifecycleDialog)
 {
     <div class="modal fade show d-block materiales-modal-backdrop materiales-delete-backdrop"
          role="dialog"
          aria-modal="true"
-         aria-labelledby="material-delete-title">
+         aria-labelledby="material-lifecycle-title">
         <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content materiales-modal materiales-delete-modal">
                 <div class="modal-header">
                     <div>
-                        <span class="materiales-modal-icon is-delete"><i class="bi bi-shield-exclamation" aria-hidden="true"></i></span>
-                        <h2 id="material-delete-title" class="modal-title h5">Revisión de eliminación permanente</h2>
+                        <span class="materiales-modal-icon is-delete"><i class="bi bi-shield-check" aria-hidden="true"></i></span>
+                        <h2 id="material-lifecycle-title" class="modal-title h5">Revisión de retiro seguro</h2>
                         <p>
-                            @if (DeletionAssessment is { Exists: true })
+                            @if (LifecycleAssessment is { Exists: true })
                             {
-                                <span><strong>@DeletionAssessment.MaterialCode</strong> · @DeletionAssessment.Description</span>
+                                <span><strong>@LifecycleAssessment.MaterialCode</strong> · @LifecycleAssessment.Description</span>
                             }
                             else
                             {
@@ -849,12 +858,12 @@
                     <button type="button"
                             class="btn-close"
                             aria-label="Cerrar"
-                            @onclick="CloseDeletionReport"
-                            disabled="@IsDeletingMaterial"></button>
+                            @onclick="CloseLifecycleReport"
+                            disabled="@IsProcessingLifecycle"></button>
                 </div>
 
                 <div class="modal-body materiales-delete-body" aria-live="polite">
-                    @if (IsLoadingDeletionAssessment)
+                    @if (IsLoadingLifecycleAssessment)
                     {
                         <div class="materiales-delete-loading">
                             <span class="spinner-border" aria-hidden="true"></span>
@@ -864,18 +873,18 @@
                             </div>
                         </div>
                     }
-                    else if (!string.IsNullOrWhiteSpace(DeletionAssessmentError))
+                    else if (!string.IsNullOrWhiteSpace(LifecycleAssessmentError))
                     {
                         <div class="materiales-delete-state is-error">
                             <i class="bi bi-exclamation-octagon" aria-hidden="true"></i>
                             <div>
                                 <strong>No se pudo completar la revisión</strong>
-                                <p>@DeletionAssessmentError</p>
-                                <button type="button" class="btn btn-outline-danger btn-sm" @onclick="RefreshDeletionAssessmentAsync">Intentar de nuevo</button>
+                                <p>@LifecycleAssessmentError</p>
+                                <button type="button" class="btn btn-outline-danger btn-sm" @onclick="RefreshLifecycleAssessmentAsync">Intentar de nuevo</button>
                             </div>
                         </div>
                     }
-                    else if (DeletionAssessment is { Exists: false })
+                    else if (LifecycleAssessment is { Exists: false })
                     {
                         <div class="materiales-delete-state is-warning">
                             <i class="bi bi-box-seam" aria-hidden="true"></i>
@@ -885,131 +894,177 @@
                             </div>
                         </div>
                     }
-                    else if (DeletionAssessment is { CanDelete: false } blockedAssessment)
+                    else if (LifecycleAssessment is { Exists: true } assessment)
                     {
-                        <div class="materiales-delete-summary is-blocked">
-                            <span class="materiales-delete-summary-icon"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
-                            <div>
-                                <span>Eliminación bloqueada</span>
-                                <strong>@blockedAssessment.TotalReferences.ToString("N0") referencia(s) en @blockedAssessment.Blockers.Count.ToString("N0") grupo(s)</strong>
-                                <p>No se elimina ni se desvincula información automáticamente. Cada relación debe quedar completamente libre.</p>
+                        @if (!assessment.IsActive)
+                        {
+                            <div class="materiales-delete-summary is-inactive">
+                                <span class="materiales-delete-summary-icon"><i class="bi bi-archive-fill" aria-hidden="true"></i></span>
+                                <div>
+                                    <span>Material desactivado</span>
+                                    <strong>@assessment.MaterialCode está fuera de los flujos operativos</strong>
+                                    <p>Sus relaciones permanecen visibles para auditoría. Un administrador puede reactivarlo sin alterar el historial.</p>
+                                </div>
                             </div>
-                        </div>
+                        }
+                        else if (assessment.OperationalBlockers.Count > 0)
+                        {
+                            <div class="materiales-delete-summary is-blocked">
+                                <span class="materiales-delete-summary-icon"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
+                                <div>
+                                    <span>Retiro bloqueado</span>
+                                    <strong>@assessment.OperationalReferenceCount.ToString("N0") vínculo(s) operativo(s) deben resolverse</strong>
+                                    <p>Termina, retira o desactiva estas relaciones en su módulo y vuelve a revisar. No se desvincula información automáticamente.</p>
+                                </div>
+                            </div>
+                        }
+                        else if (assessment.CanDeactivate)
+                        {
+                            <div class="materiales-delete-summary is-retire">
+                                <span class="materiales-delete-summary-icon"><i class="bi bi-archive" aria-hidden="true"></i></span>
+                                <div>
+                                    <span>Desactivación recomendada</span>
+                                    <strong>@assessment.HistoricalReferenceCount.ToString("N0") referencia(s) históricas impiden eliminar @assessment.MaterialCode</strong>
+                                    <p>Los vínculos operativos ya están libres. Desactivar conserva conteos, movimientos y demás evidencia sin ofrecer el material en operaciones nuevas.</p>
+                                </div>
+                            </div>
+                        }
+                        else if (!assessment.CanDelete)
+                        {
+                            <div class="materiales-delete-summary is-blocked">
+                                <span class="materiales-delete-summary-icon"><i class="bi bi-link-45deg" aria-hidden="true"></i></span>
+                                <div>
+                                    <span>Configuración pendiente</span>
+                                    <strong>@assessment.TotalReferences.ToString("N0") referencia(s) deben desvincularse para eliminar</strong>
+                                    <p>No existe historial que justifique una baja. Libera toda la configuración y vuelve a revisar.</p>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="materiales-delete-summary is-clear">
+                                <span class="materiales-delete-summary-icon"><i class="bi bi-shield-check" aria-hidden="true"></i></span>
+                                <div>
+                                    <span>Todos los vínculos están libres</span>
+                                    <strong>@assessment.MaterialCode puede eliminarse</strong>
+                                    <p>La revisión no encontró inventario, historial, compras, recetas, productos ni configuración relacionada.</p>
+                                </div>
+                            </div>
+                            <div class="materiales-delete-checks" aria-label="Áreas verificadas sin relaciones">
+                                <span><i class="bi bi-check2-circle" aria-hidden="true"></i> Inventario y ubicaciones</span>
+                                <span><i class="bi bi-check2-circle" aria-hidden="true"></i> Compras y conteos</span>
+                                <span><i class="bi bi-check2-circle" aria-hidden="true"></i> BOM, recetas y producción</span>
+                                <span><i class="bi bi-check2-circle" aria-hidden="true"></i> Restaurante y configuración</span>
+                            </div>
+                        }
 
-                        <div class="materiales-delete-blockers">
-                            @foreach (var blocker in blockedAssessment.Blockers)
-                            {
-                                <article class="materiales-delete-blocker">
-                                    <header>
-                                        <div>
-                                            <span class="materiales-delete-blocker-icon"><i class="bi bi-link-45deg" aria-hidden="true"></i></span>
-                                            <h3>@blocker.Title</h3>
-                                        </div>
-                                        <span class="materiales-delete-count">@blocker.ReferenceCount.ToString("N0")</span>
-                                    </header>
-                                    <p>@blocker.Explanation</p>
-                                    @if (blocker.Examples.Count > 0)
+                        @foreach (var section in GetDependencySections(assessment))
+                        {
+                            <section class="materiales-dependency-section is-@section.CssClass">
+                                <header class="materiales-dependency-heading">
+                                    <span><i class="bi @section.IconClass" aria-hidden="true"></i></span>
+                                    <div><h3>@section.Title</h3><p>@section.Description</p></div>
+                                </header>
+                                <div class="materiales-delete-blockers">
+                                    @foreach (var dependency in section.Dependencies)
                                     {
-                                        <ul>
-                                            @foreach (var example in blocker.Examples)
+                                        <article class="materiales-delete-blocker">
+                                            <header>
+                                                <div>
+                                                    <span class="materiales-delete-blocker-icon"><i class="bi bi-link-45deg" aria-hidden="true"></i></span>
+                                                    <h4>@dependency.Title</h4>
+                                                </div>
+                                                <span class="materiales-delete-count">@dependency.ReferenceCount.ToString("N0")</span>
+                                            </header>
+                                            <p>@dependency.Explanation</p>
+                                            @if (dependency.Examples.Count > 0)
                                             {
-                                                <li>@example</li>
+                                                <ul>@foreach (var example in dependency.Examples) { <li>@example</li> }</ul>
                                             }
-                                        </ul>
+                                            @if (dependency.ReferenceCount > dependency.Examples.Count)
+                                            {
+                                                <div class="materiales-delete-more">+@((dependency.ReferenceCount - dependency.Examples.Count).ToString("N0")) referencia(s) adicional(es)</div>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(GetResolutionPermissionNote(dependency)))
+                                            {
+                                                <small class="materiales-resolution-permission"><i class="bi bi-person-lock" aria-hidden="true"></i>@GetResolutionPermissionNote(dependency)</small>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(dependency.ResolutionUrl))
+                                            {
+                                                <a class="materiales-delete-resolution" href="@dependency.ResolutionUrl">
+                                                    @(dependency.ResolutionLabel ?? "Revisar relación")
+                                                    <i class="bi bi-arrow-up-right" aria-hidden="true"></i>
+                                                </a>
+                                            }
+                                        </article>
                                     }
-                                    @if (blocker.ReferenceCount > blocker.Examples.Count)
-                                    {
-                                        <div class="materiales-delete-more">
-                                            +@((blocker.ReferenceCount - blocker.Examples.Count).ToString("N0")) referencia(s) adicional(es)
-                                        </div>
-                                    }
-                                    @if (!string.IsNullOrWhiteSpace(blocker.ResolutionUrl))
-                                    {
-                                        <a class="materiales-delete-resolution" href="@blocker.ResolutionUrl">
-                                            @(blocker.ResolutionLabel ?? "Revisar relación")
-                                            <i class="bi bi-arrow-up-right" aria-hidden="true"></i>
-                                        </a>
-                                    }
-                                </article>
-                            }
-                        </div>
-                    }
-                    else if (DeletionAssessment is { CanDelete: true } clearAssessment)
-                    {
-                        <div class="materiales-delete-summary is-clear">
-                            <span class="materiales-delete-summary-icon"><i class="bi bi-shield-check" aria-hidden="true"></i></span>
-                            <div>
-                                <span>Todos los vínculos están libres</span>
-                                <strong>@clearAssessment.MaterialCode puede eliminarse</strong>
-                                <p>La revisión no encontró inventario, historial, compras, recetas, productos ni configuración relacionada.</p>
-                            </div>
-                        </div>
+                                </div>
+                            </section>
+                        }
 
-                        <div class="materiales-delete-checks" aria-label="Áreas verificadas sin relaciones">
-                            <span><i class="bi bi-check2-circle" aria-hidden="true"></i> Inventario y ubicaciones</span>
-                            <span><i class="bi bi-check2-circle" aria-hidden="true"></i> Compras y conteos</span>
-                            <span><i class="bi bi-check2-circle" aria-hidden="true"></i> BOM, recetas y producción</span>
-                            <span><i class="bi bi-check2-circle" aria-hidden="true"></i> Restaurante y configuración</span>
-                        </div>
-
-                        @if (CanPermanentlyDeleteMaterial)
+                        @if (assessment.CanDelete && IsAdministrator)
                         {
                             <div class="materiales-delete-confirmation">
                                 <div class="materiales-delete-warning">
                                     <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
-                                    <div>
-                                        <strong>Esta acción es irreversible</strong>
-                                        <span>La ficha, imagen y datos propios del material se eliminarán permanentemente.</span>
-                                    </div>
+                                    <div><strong>Esta acción es irreversible</strong><span>La ficha, imagen y datos propios del material se eliminarán permanentemente.</span></div>
                                 </div>
-                                <label for="material-delete-confirmation">
-                                    Para confirmar, escribe <code>Delete</code> exactamente como aparece.
-                                </label>
-                                <input id="material-delete-confirmation"
-                                       class="form-control form-control-lg"
-                                       autocomplete="off"
-                                       spellcheck="false"
+                                <label for="material-delete-confirmation">Para confirmar, escribe <code>Delete</code> exactamente como aparece.</label>
+                                <input id="material-delete-confirmation" class="form-control form-control-lg" autocomplete="off" spellcheck="false"
                                        value="@DeletionConfirmationText"
                                        @oninput="args => DeletionConfirmationText = args.Value?.ToString() ?? string.Empty"
-                                       disabled="@IsDeletingMaterial" />
+                                       disabled="@IsProcessingLifecycle" />
                                 @if (!string.IsNullOrEmpty(DeletionConfirmationText) && !DeletionConfirmationMatches)
                                 {
                                     <small class="text-danger">La confirmación distingue mayúsculas y minúsculas.</small>
                                 }
                             </div>
                         }
-                        else
+                        else if (!IsAdministrator && (assessment.CanDelete || assessment.CanDeactivate || assessment.CanReactivate))
                         {
                             <div class="materiales-delete-state is-admin">
                                 <i class="bi bi-person-lock" aria-hidden="true"></i>
-                                <div>
-                                    <strong>Se requiere un administrador</strong>
-                                    <p>El material no tiene vínculos, pero solo el rol Administrador puede eliminarlo permanentemente.</p>
-                                </div>
+                                <div><strong>Se requiere un administrador</strong><p>La revisión está disponible para Logística, pero la acción final está reservada al rol Administrador.</p></div>
                             </div>
                         }
                     }
                 </div>
 
                 <div class="modal-footer materiales-delete-footer">
-                    <button type="button" class="btn btn-outline-secondary" @onclick="CloseDeletionReport" disabled="@IsDeletingMaterial">Cerrar</button>
-                    @if (!IsLoadingDeletionAssessment && DeletionAssessment is { Exists: true })
+                    <button type="button" class="btn btn-outline-secondary" @onclick="CloseLifecycleReport" disabled="@IsProcessingLifecycle">Cerrar</button>
+                    @if (!IsLoadingLifecycleAssessment && LifecycleAssessment is { Exists: true })
                     {
                         <button type="button"
                                 class="btn btn-outline-primary"
-                                @onclick="RefreshDeletionAssessmentAsync"
-                                disabled="@IsDeletingMaterial">
+                                @onclick="RefreshLifecycleAssessmentAsync"
+                                disabled="@IsProcessingLifecycle">
                             <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
                             Volver a revisar
                         </button>
                     }
-                    @if (DeletionAssessment is { CanDelete: true } && CanPermanentlyDeleteMaterial)
+                    @if (LifecycleAssessment is { CanReactivate: true } && IsAdministrator)
+                    {
+                        <button type="button" class="btn btn-success" @onclick="ReactivateMaterialAsync" disabled="@IsProcessingLifecycle">
+                            @if (IsProcessingLifecycle) { <span class="spinner-border spinner-border-sm" aria-hidden="true"></span> }
+                            <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+                            Reactivar material
+                        </button>
+                    }
+                    @if (LifecycleAssessment is { CanDeactivate: true } && IsAdministrator)
+                    {
+                        <button type="button" class="btn btn-warning" @onclick="DeactivateMaterialAsync" disabled="@IsProcessingLifecycle">
+                            @if (IsProcessingLifecycle) { <span class="spinner-border spinner-border-sm" aria-hidden="true"></span> }
+                            <i class="bi bi-archive-fill" aria-hidden="true"></i>
+                            Desactivar material
+                        </button>
+                    }
+                    @if (LifecycleAssessment is { CanDelete: true, IsActive: true } && IsAdministrator)
                     {
                         <button type="button"
                                 class="btn btn-danger"
                                 @onclick="DeleteMaterialAsync"
-                                disabled="@(!DeletionConfirmationMatches || IsDeletingMaterial)">
-                            @if (IsDeletingMaterial)
+                                disabled="@(!DeletionConfirmationMatches || IsProcessingLifecycle)">
+                            @if (IsProcessingLifecycle)
                             {
                                 <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
                                 <span>Eliminando…</span>

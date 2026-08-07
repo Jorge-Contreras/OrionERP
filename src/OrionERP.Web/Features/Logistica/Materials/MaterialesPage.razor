@@ -613,9 +613,16 @@
                                 <span class="materiales-save-hint"><i class="bi bi-info-circle" aria-hidden="true"></i> Puedes guardar y completar después.</span>
                             }
                         </div>
-                        <div class="materiales-save-actions">
+                        <div class="materiales-save-actions @(Editor.Id.HasValue ? "has-delete" : null)">
                             @if (Editor.Id.HasValue)
                             {
+                                <button type="button"
+                                        class="btn btn-outline-danger materiales-delete-trigger"
+                                        @onclick="OpenDeletionReportAsync"
+                                        disabled="@(IsSaving || IsDeletingMaterial)">
+                                    <i class="bi bi-trash3" aria-hidden="true"></i>
+                                    Revisar eliminación
+                                </button>
                                 <button type="button" class="btn btn-outline-secondary" @onclick="NuevoMaterial" disabled="@IsSaving">Cancelar edición</button>
                             }
                             else
@@ -810,6 +817,210 @@
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-outline-secondary" type="button" @onclick="CloseMaterialImageModal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (ShowDeletionDialog)
+{
+    <div class="modal fade show d-block materiales-modal-backdrop materiales-delete-backdrop"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="material-delete-title">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content materiales-modal materiales-delete-modal">
+                <div class="modal-header">
+                    <div>
+                        <span class="materiales-modal-icon is-delete"><i class="bi bi-shield-exclamation" aria-hidden="true"></i></span>
+                        <h2 id="material-delete-title" class="modal-title h5">Revisión de eliminación permanente</h2>
+                        <p>
+                            @if (DeletionAssessment is { Exists: true })
+                            {
+                                <span><strong>@DeletionAssessment.MaterialCode</strong> · @DeletionAssessment.Description</span>
+                            }
+                            else
+                            {
+                                <span>Validando el material seleccionado y todas sus relaciones.</span>
+                            }
+                        </p>
+                    </div>
+                    <button type="button"
+                            class="btn-close"
+                            aria-label="Cerrar"
+                            @onclick="CloseDeletionReport"
+                            disabled="@IsDeletingMaterial"></button>
+                </div>
+
+                <div class="modal-body materiales-delete-body" aria-live="polite">
+                    @if (IsLoadingDeletionAssessment)
+                    {
+                        <div class="materiales-delete-loading">
+                            <span class="spinner-border" aria-hidden="true"></span>
+                            <div>
+                                <strong>Revisando dependencias</strong>
+                                <span>Inventario, compras, conteos, lotes, BOM, recetas y restaurante.</span>
+                            </div>
+                        </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(DeletionAssessmentError))
+                    {
+                        <div class="materiales-delete-state is-error">
+                            <i class="bi bi-exclamation-octagon" aria-hidden="true"></i>
+                            <div>
+                                <strong>No se pudo completar la revisión</strong>
+                                <p>@DeletionAssessmentError</p>
+                                <button type="button" class="btn btn-outline-danger btn-sm" @onclick="RefreshDeletionAssessmentAsync">Intentar de nuevo</button>
+                            </div>
+                        </div>
+                    }
+                    else if (DeletionAssessment is { Exists: false })
+                    {
+                        <div class="materiales-delete-state is-warning">
+                            <i class="bi bi-box-seam" aria-hidden="true"></i>
+                            <div>
+                                <strong>El material ya no está disponible</strong>
+                                <p>Pudo ser eliminado por otro usuario o pertenecer a otro RFC. Actualiza el catálogo antes de continuar.</p>
+                            </div>
+                        </div>
+                    }
+                    else if (DeletionAssessment is { CanDelete: false } blockedAssessment)
+                    {
+                        <div class="materiales-delete-summary is-blocked">
+                            <span class="materiales-delete-summary-icon"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
+                            <div>
+                                <span>Eliminación bloqueada</span>
+                                <strong>@blockedAssessment.TotalReferences.ToString("N0") referencia(s) en @blockedAssessment.Blockers.Count.ToString("N0") grupo(s)</strong>
+                                <p>No se elimina ni se desvincula información automáticamente. Cada relación debe quedar completamente libre.</p>
+                            </div>
+                        </div>
+
+                        <div class="materiales-delete-blockers">
+                            @foreach (var blocker in blockedAssessment.Blockers)
+                            {
+                                <article class="materiales-delete-blocker">
+                                    <header>
+                                        <div>
+                                            <span class="materiales-delete-blocker-icon"><i class="bi bi-link-45deg" aria-hidden="true"></i></span>
+                                            <h3>@blocker.Title</h3>
+                                        </div>
+                                        <span class="materiales-delete-count">@blocker.ReferenceCount.ToString("N0")</span>
+                                    </header>
+                                    <p>@blocker.Explanation</p>
+                                    @if (blocker.Examples.Count > 0)
+                                    {
+                                        <ul>
+                                            @foreach (var example in blocker.Examples)
+                                            {
+                                                <li>@example</li>
+                                            }
+                                        </ul>
+                                    }
+                                    @if (blocker.ReferenceCount > blocker.Examples.Count)
+                                    {
+                                        <div class="materiales-delete-more">
+                                            +@((blocker.ReferenceCount - blocker.Examples.Count).ToString("N0")) referencia(s) adicional(es)
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(blocker.ResolutionUrl))
+                                    {
+                                        <a class="materiales-delete-resolution" href="@blocker.ResolutionUrl">
+                                            @(blocker.ResolutionLabel ?? "Revisar relación")
+                                            <i class="bi bi-arrow-up-right" aria-hidden="true"></i>
+                                        </a>
+                                    }
+                                </article>
+                            }
+                        </div>
+                    }
+                    else if (DeletionAssessment is { CanDelete: true } clearAssessment)
+                    {
+                        <div class="materiales-delete-summary is-clear">
+                            <span class="materiales-delete-summary-icon"><i class="bi bi-shield-check" aria-hidden="true"></i></span>
+                            <div>
+                                <span>Todos los vínculos están libres</span>
+                                <strong>@clearAssessment.MaterialCode puede eliminarse</strong>
+                                <p>La revisión no encontró inventario, historial, compras, recetas, productos ni configuración relacionada.</p>
+                            </div>
+                        </div>
+
+                        <div class="materiales-delete-checks" aria-label="Áreas verificadas sin relaciones">
+                            <span><i class="bi bi-check2-circle" aria-hidden="true"></i> Inventario y ubicaciones</span>
+                            <span><i class="bi bi-check2-circle" aria-hidden="true"></i> Compras y conteos</span>
+                            <span><i class="bi bi-check2-circle" aria-hidden="true"></i> BOM, recetas y producción</span>
+                            <span><i class="bi bi-check2-circle" aria-hidden="true"></i> Restaurante y configuración</span>
+                        </div>
+
+                        @if (CanPermanentlyDeleteMaterial)
+                        {
+                            <div class="materiales-delete-confirmation">
+                                <div class="materiales-delete-warning">
+                                    <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                                    <div>
+                                        <strong>Esta acción es irreversible</strong>
+                                        <span>La ficha, imagen y datos propios del material se eliminarán permanentemente.</span>
+                                    </div>
+                                </div>
+                                <label for="material-delete-confirmation">
+                                    Para confirmar, escribe <code>Delete</code> exactamente como aparece.
+                                </label>
+                                <input id="material-delete-confirmation"
+                                       class="form-control form-control-lg"
+                                       autocomplete="off"
+                                       spellcheck="false"
+                                       value="@DeletionConfirmationText"
+                                       @oninput="args => DeletionConfirmationText = args.Value?.ToString() ?? string.Empty"
+                                       disabled="@IsDeletingMaterial" />
+                                @if (!string.IsNullOrEmpty(DeletionConfirmationText) && !DeletionConfirmationMatches)
+                                {
+                                    <small class="text-danger">La confirmación distingue mayúsculas y minúsculas.</small>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="materiales-delete-state is-admin">
+                                <i class="bi bi-person-lock" aria-hidden="true"></i>
+                                <div>
+                                    <strong>Se requiere un administrador</strong>
+                                    <p>El material no tiene vínculos, pero solo el rol Administrador puede eliminarlo permanentemente.</p>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+
+                <div class="modal-footer materiales-delete-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="CloseDeletionReport" disabled="@IsDeletingMaterial">Cerrar</button>
+                    @if (!IsLoadingDeletionAssessment && DeletionAssessment is { Exists: true })
+                    {
+                        <button type="button"
+                                class="btn btn-outline-primary"
+                                @onclick="RefreshDeletionAssessmentAsync"
+                                disabled="@IsDeletingMaterial">
+                            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+                            Volver a revisar
+                        </button>
+                    }
+                    @if (DeletionAssessment is { CanDelete: true } && CanPermanentlyDeleteMaterial)
+                    {
+                        <button type="button"
+                                class="btn btn-danger"
+                                @onclick="DeleteMaterialAsync"
+                                disabled="@(!DeletionConfirmationMatches || IsDeletingMaterial)">
+                            @if (IsDeletingMaterial)
+                            {
+                                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                <span>Eliminando…</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-trash3-fill" aria-hidden="true"></i>
+                                <span>Eliminar permanentemente</span>
+                            }
+                        </button>
+                    }
                 </div>
             </div>
         </div>

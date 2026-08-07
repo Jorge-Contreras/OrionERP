@@ -252,10 +252,16 @@ public class PurchaseOrderWebSupportTests
       return Task.FromResult<IReadOnlyList<LogisticsBinaryContent>>(Thumbnails.Where(thumbnail => LastThumbnailIds.Contains(thumbnail.Id)).ToList());
     }
 
-    public Task<MaterialDeletionAssessmentDto> GetMaterialDeletionAssessmentAsync(string rfc, int materialId, CancellationToken ct = default)
+    public Task<MaterialLifecycleAssessmentDto> GetMaterialLifecycleAssessmentAsync(string rfc, int materialId, CancellationToken ct = default)
       => throw new NotSupportedException();
 
     public Task<LogisticsCommandResult> DeleteMaterialAsync(MaterialDeleteRequest request, CancellationToken ct = default)
+      => throw new NotSupportedException();
+
+    public Task<LogisticsCommandResult> DeactivateMaterialAsync(MaterialDeactivateRequest request, CancellationToken ct = default)
+      => throw new NotSupportedException();
+
+    public Task<LogisticsCommandResult> ReactivateMaterialAsync(MaterialReactivateRequest request, CancellationToken ct = default)
       => throw new NotSupportedException();
 
     public Task<LogisticsCommandResult> SaveMaterialAsync(MaterialUpsertRequest request, CancellationToken ct = default)

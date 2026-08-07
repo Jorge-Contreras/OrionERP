@@ -6,9 +6,12 @@ public interface IBomRecipeService
   Task<BomVersionDto?> GetBomVersionAsync(string rfc, long bomVersionId, CancellationToken ct = default);
   Task<RestaurantCommandResult> SaveDraftAsync(BomDraftSaveRequest request, CancellationToken ct = default);
   Task<RestaurantCommandResult> ActivateAsync(string rfc, long bomVersionId, string userName, CancellationToken ct = default);
+  Task<RestaurantCommandResult> DeleteDraftAsync(string rfc, long bomVersionId, CancellationToken ct = default);
+  Task<RestaurantCommandResult> RetireAsync(string rfc, long bomVersionId, string userName, CancellationToken ct = default);
   Task<IReadOnlyList<RestaurantAllergenDto>> GetAllergensAsync(string rfc, CancellationToken ct = default);
   Task<RestaurantCommandResult> SaveAllergenAsync(RestaurantAllergenSaveRequest request, CancellationToken ct = default);
   Task<RestaurantCommandResult> SaveMaterialAllergensAsync(string rfc, int materialId, IReadOnlyCollection<int> allergenIds, CancellationToken ct = default);
   Task<IReadOnlyList<MaterialUnitConversionDto>> GetMaterialUnitConversionsAsync(string rfc, CancellationToken ct = default);
   Task<RestaurantCommandResult> SaveMaterialUnitConversionAsync(MaterialUnitConversionSaveRequest request, CancellationToken ct = default);
+  Task<RestaurantCommandResult> DeleteMaterialUnitConversionAsync(string rfc, int conversionId, CancellationToken ct = default);
 }

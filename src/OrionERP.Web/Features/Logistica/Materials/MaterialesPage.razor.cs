@@ -53,13 +53,15 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   protected bool IsLoadingMaterialImage { get; set; }
   protected string? MaterialImageModalTitle { get; set; }
   protected string? MaterialImageModalDataUrl { get; set; }
-  protected bool ShowDeletionDialog { get; set; }
-  protected bool IsLoadingDeletionAssessment { get; set; }
-  protected bool IsDeletingMaterial { get; set; }
-  protected bool CanPermanentlyDeleteMaterial { get; set; }
-  protected int? DeletionTargetMaterialId { get; set; }
-  protected MaterialDeletionAssessmentDto? DeletionAssessment { get; set; }
-  protected string? DeletionAssessmentError { get; set; }
+  protected bool ShowLifecycleDialog { get; set; }
+  protected bool IsLoadingLifecycleAssessment { get; set; }
+  protected bool IsProcessingLifecycle { get; set; }
+  protected bool IsAdministrator { get; set; }
+  protected bool ShowInactiveMaterials { get; set; }
+  protected bool SelectedMaterialIsActive { get; set; } = true;
+  protected int? LifecycleTargetMaterialId { get; set; }
+  protected MaterialLifecycleAssessmentDto? LifecycleAssessment { get; set; }
+  protected string? LifecycleAssessmentError { get; set; }
   protected string DeletionConfirmationText { get; set; } = string.Empty;
   protected string CurrentUserName { get; set; } = "OrionERP";
   protected bool IsListBusy => IsBusy || IsLoadingMore;
@@ -69,7 +71,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   private CancellationTokenSource? _searchDebounceCts;
   private CancellationTokenSource? _listRequestCts;
   private CancellationTokenSource? _rfcReloadCts;
-  private CancellationTokenSource? _deletionAssessmentCts;
+  private CancellationTokenSource? _lifecycleAssessmentCts;
   private string? _catalogRfc;
   private bool _catalogRetryPending;
   private string? _catalogRecoveryRfc;
@@ -139,7 +141,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   {
     RfcState.Changed += HandleRfcChanged;
     var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-    CanPermanentlyDeleteMaterial = authenticationState.User.IsInRole("Administrador");
+    IsAdministrator = authenticationState.User.IsInRole("Administrador");
     CurrentUserName = authenticationState.User.Identity?.Name ?? "OrionERP";
     Editor.Rfc = CurrentRfc;
     await LoadCatalogAsync();
@@ -298,6 +300,21 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     await BuscarAsync();
   }
 
+  protected async Task ToggleInactiveMaterialsAsync()
+  {
+    if (!IsAdministrator) return;
+    ShowInactiveMaterials = !ShowInactiveMaterials;
+    if (!ShowInactiveMaterials && !SelectedMaterialIsActive)
+    {
+      NuevoMaterial();
+    }
+    if (!ShowInactiveMaterials && string.Equals(Filter.Status, "INACTIVO", StringComparison.OrdinalIgnoreCase))
+    {
+      Filter.Status = null;
+    }
+    await BuscarAsync();
+  }
+
   protected void ToggleAdvancedFilters()
     => ShowAdvancedFilters = !ShowAdvancedFilters;
 
@@ -329,12 +346,13 @@ public partial class MaterialesPage : ComponentBase, IDisposable
 
   protected void NuevoMaterial()
   {
-    ResetDeletionReport();
+    ResetLifecycleReport();
     SelectedMaterialId = null;
     CurrentMaterialCode = null;
     SelectedImageFileName = null;
     ImagePreviewDataUrl = null;
     HasPersistedImage = false;
+    SelectedMaterialIsActive = true;
     ShowMoreFields = false;
     CloseMaterialImageModal();
     Editor = CreateNewEditor();
@@ -353,7 +371,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     }
 
     IsLoadingEditor = true;
-    ResetDeletionReport();
+    ResetLifecycleReport();
     try
     {
       var detail = await MaterialService.GetMaterialAsync(CurrentRfc, materialId);
@@ -367,6 +385,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
       CurrentMaterialCode = detail.MaterialCode;
       SelectedImageFileName = detail.PrimaryImageFileName;
       HasPersistedImage = detail.HasImage;
+      SelectedMaterialIsActive = detail.IsActive;
       Editor = new MaterialUpsertRequest
       {
         Rfc = CurrentRfc,
@@ -387,8 +406,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
         Barcode = detail.Barcode,
         VendorCode = detail.VendorCode,
         PurchaseLink = detail.PurchaseLink,
-        MaterialClass = detail.MaterialClass,
-        IsActive = detail.IsActive
+        MaterialClass = detail.MaterialClass
       };
 
       await LoadImageAsync(detail.Id);
@@ -439,47 +457,47 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     }
   }
 
-  protected async Task OpenDeletionReportAsync()
+  protected async Task OpenLifecycleReportAsync()
   {
-    if (!Editor.Id.HasValue || Editor.Id.Value <= 0 || IsSaving || IsDeletingMaterial)
+    if (!Editor.Id.HasValue || Editor.Id.Value <= 0 || IsSaving || IsProcessingLifecycle)
     {
       return;
     }
 
-    ResetDeletionReport();
-    DeletionTargetMaterialId = Editor.Id.Value;
-    ShowDeletionDialog = true;
-    await RefreshDeletionAssessmentAsync();
+    ResetLifecycleReport();
+    LifecycleTargetMaterialId = Editor.Id.Value;
+    ShowLifecycleDialog = true;
+    await RefreshLifecycleAssessmentAsync();
   }
 
-  protected async Task RefreshDeletionAssessmentAsync()
+  protected async Task RefreshLifecycleAssessmentAsync()
   {
-    if (!ShowDeletionDialog || !DeletionTargetMaterialId.HasValue)
+    if (!ShowLifecycleDialog || !LifecycleTargetMaterialId.HasValue)
     {
       return;
     }
 
-    _deletionAssessmentCts?.Cancel();
-    _deletionAssessmentCts?.Dispose();
-    _deletionAssessmentCts = new CancellationTokenSource();
-    var token = _deletionAssessmentCts.Token;
-    var materialId = DeletionTargetMaterialId.Value;
+    _lifecycleAssessmentCts?.Cancel();
+    _lifecycleAssessmentCts?.Dispose();
+    _lifecycleAssessmentCts = new CancellationTokenSource();
+    var token = _lifecycleAssessmentCts.Token;
+    var materialId = LifecycleTargetMaterialId.Value;
 
-    IsLoadingDeletionAssessment = true;
-    DeletionAssessmentError = null;
-    DeletionAssessment = null;
+    IsLoadingLifecycleAssessment = true;
+    LifecycleAssessmentError = null;
+    LifecycleAssessment = null;
     DeletionConfirmationText = string.Empty;
 
     try
     {
-      var assessment = await MaterialService.GetMaterialDeletionAssessmentAsync(CurrentRfc, materialId, token);
+      var assessment = await MaterialService.GetMaterialLifecycleAssessmentAsync(CurrentRfc, materialId, token);
       token.ThrowIfCancellationRequested();
-      if (!ShowDeletionDialog || DeletionTargetMaterialId != materialId)
+      if (!ShowLifecycleDialog || LifecycleTargetMaterialId != materialId)
       {
         return;
       }
 
-      DeletionAssessment = assessment;
+      LifecycleAssessment = assessment;
     }
     catch (OperationCanceledException) when (token.IsCancellationRequested)
     {
@@ -487,53 +505,53 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      DeletionAssessmentError = $"No se pudo revisar la seguridad de eliminación. {ex.Message}";
+      LifecycleAssessmentError = $"No se pudo revisar el ciclo de vida del material. {ex.Message}";
     }
     finally
     {
-      if (_deletionAssessmentCts?.Token == token)
+      if (_lifecycleAssessmentCts?.Token == token)
       {
-        IsLoadingDeletionAssessment = false;
+        IsLoadingLifecycleAssessment = false;
         StateHasChanged();
       }
     }
   }
 
-  protected void CloseDeletionReport()
+  protected void CloseLifecycleReport()
   {
-    if (!IsDeletingMaterial)
+    if (!IsProcessingLifecycle)
     {
-      ResetDeletionReport();
+      ResetLifecycleReport();
     }
   }
 
   protected async Task DeleteMaterialAsync()
   {
-    if (IsDeletingMaterial
-        || DeletionAssessment is not { CanDelete: true, Exists: true }
-        || !DeletionTargetMaterialId.HasValue
-        || DeletionAssessment.MaterialId != DeletionTargetMaterialId.Value
+    if (IsProcessingLifecycle
+        || LifecycleAssessment is not { CanDelete: true, Exists: true }
+        || !LifecycleTargetMaterialId.HasValue
+        || LifecycleAssessment.MaterialId != LifecycleTargetMaterialId.Value
         || !DeletionConfirmationMatches)
     {
       return;
     }
 
     var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-    CanPermanentlyDeleteMaterial = authenticationState.User.IsInRole("Administrador");
+    IsAdministrator = authenticationState.User.IsInRole("Administrador");
     CurrentUserName = authenticationState.User.Identity?.Name ?? CurrentUserName;
-    if (!CanPermanentlyDeleteMaterial)
+    if (!IsAdministrator)
     {
       UiMessages.ShowError("Solo un administrador puede eliminar materiales permanentemente.");
       return;
     }
 
-    IsDeletingMaterial = true;
+    IsProcessingLifecycle = true;
     try
     {
       var result = await MaterialService.DeleteMaterialAsync(new MaterialDeleteRequest
       {
         Rfc = CurrentRfc,
-        MaterialId = DeletionTargetMaterialId.Value,
+        MaterialId = LifecycleTargetMaterialId.Value,
         ConfirmationText = DeletionConfirmationText,
         DeletedBy = CurrentUserName
       });
@@ -541,13 +559,13 @@ public partial class MaterialesPage : ComponentBase, IDisposable
       if (!result.Success)
       {
         UiMessages.ShowError(result.Message);
-        IsDeletingMaterial = false;
-        await RefreshDeletionAssessmentAsync();
+        IsProcessingLifecycle = false;
+        await RefreshLifecycleAssessmentAsync();
         return;
       }
 
       UiMessages.ShowSuccess(result.Message);
-      ResetDeletionReport();
+      ResetLifecycleReport();
       NuevoMaterial();
       await BuscarAsync();
     }
@@ -557,7 +575,93 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     }
     finally
     {
-      IsDeletingMaterial = false;
+      IsProcessingLifecycle = false;
+    }
+  }
+
+  protected async Task DeactivateMaterialAsync()
+  {
+    if (IsProcessingLifecycle
+        || LifecycleAssessment is not { CanDeactivate: true, Exists: true }
+        || !LifecycleTargetMaterialId.HasValue
+        || LifecycleAssessment.MaterialId != LifecycleTargetMaterialId.Value)
+    {
+      return;
+    }
+
+    if (!await RefreshAdministratorStateAsync("Solo un administrador puede desactivar materiales.")) return;
+    IsProcessingLifecycle = true;
+    try
+    {
+      var result = await MaterialService.DeactivateMaterialAsync(new MaterialDeactivateRequest
+      {
+        Rfc = CurrentRfc,
+        MaterialId = LifecycleTargetMaterialId.Value,
+        DeactivatedBy = CurrentUserName
+      });
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        IsProcessingLifecycle = false;
+        await RefreshLifecycleAssessmentAsync();
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      ResetLifecycleReport();
+      NuevoMaterial();
+      await BuscarAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo desactivar el material. {ex.Message}");
+    }
+    finally
+    {
+      IsProcessingLifecycle = false;
+    }
+  }
+
+  protected async Task ReactivateMaterialAsync()
+  {
+    if (IsProcessingLifecycle
+        || LifecycleAssessment is not { CanReactivate: true, Exists: true }
+        || !LifecycleTargetMaterialId.HasValue
+        || LifecycleAssessment.MaterialId != LifecycleTargetMaterialId.Value)
+    {
+      return;
+    }
+
+    if (!await RefreshAdministratorStateAsync("Solo un administrador puede reactivar materiales.")) return;
+    IsProcessingLifecycle = true;
+    try
+    {
+      var result = await MaterialService.ReactivateMaterialAsync(new MaterialReactivateRequest
+      {
+        Rfc = CurrentRfc,
+        MaterialId = LifecycleTargetMaterialId.Value,
+        ReactivatedBy = CurrentUserName
+      });
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        IsProcessingLifecycle = false;
+        await RefreshLifecycleAssessmentAsync();
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      ResetLifecycleReport();
+      NuevoMaterial();
+      await BuscarAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo reactivar el material. {ex.Message}");
+    }
+    finally
+    {
+      IsProcessingLifecycle = false;
     }
   }
 
@@ -808,6 +912,53 @@ public partial class MaterialesPage : ComponentBase, IDisposable
       _ => "is-inactive"
     };
 
+  protected string GetMaterialStatusLabel(MaterialListItemDto material)
+    => material.IsActive ? GetStatusLabel(material.Status) : "Desactivado";
+
+  protected string GetMaterialStatusBadgeClass(MaterialListItemDto material)
+    => material.IsActive ? GetStatusBadgeClass(material.Status) : "is-inactive";
+
+  protected IEnumerable<string> EditableStatusOptions
+    => SelectedMaterialIsActive
+      ? Catalog.Statuses.Where(status => !string.Equals(status, "INACTIVO", StringComparison.OrdinalIgnoreCase))
+      : Catalog.Statuses.Where(status => string.Equals(status, "INACTIVO", StringComparison.OrdinalIgnoreCase));
+
+  protected IEnumerable<MaterialDependencySection> GetDependencySections(MaterialLifecycleAssessmentDto assessment)
+  {
+    if (assessment.OperationalBlockers.Count > 0)
+    {
+      yield return new MaterialDependencySection(
+        "operational",
+        "Vínculos operativos por resolver",
+        "Estas relaciones deben cerrarse, retirarse o desactivarse antes de continuar.",
+        "bi-exclamation-diamond-fill",
+        assessment.OperationalBlockers);
+    }
+    if (assessment.HistoricalReferences.Count > 0)
+    {
+      yield return new MaterialDependencySection(
+        "historical",
+        "Historial que debe conservarse",
+        "Estas referencias son evidencia operativa. Nunca se eliminan desde el retiro del material.",
+        "bi-clock-history",
+        assessment.HistoricalReferences);
+    }
+    if (assessment.ConfigurationReferences.Count > 0)
+    {
+      yield return new MaterialDependencySection(
+        "configuration",
+        "Configuración desvinculable",
+        "Esta configuración inactiva todavía impide una eliminación física, pero no una baja respaldada por historial.",
+        "bi-sliders",
+        assessment.ConfigurationReferences);
+    }
+  }
+
+  protected string? GetResolutionPermissionNote(MaterialDependencyDto dependency)
+    => dependency.ResolutionUrl?.StartsWith("/restaurante/", StringComparison.OrdinalIgnoreCase) == true
+      ? "Requiere permisos de administración de Restaurante."
+      : null;
+
   protected string GetFilterChipClass(bool active)
     => active ? "materiales-filter-chip is-active" : "materiales-filter-chip";
 
@@ -963,6 +1114,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
       VendorId = Filter.VendorId,
       MaterialClass = Filter.MaterialClass,
       Status = Filter.Status,
+      IncludeInactive = IsAdministrator && ShowInactiveMaterials,
       HasImage = Filter.HasImage,
       HasStock = Filter.HasStock,
       NeedsAttention = Filter.NeedsAttention,
@@ -984,8 +1136,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     {
       PurchaseQuantity = 1m,
       MaterialClass = "Consumable",
-      Status = "ACTIVO",
-      IsActive = true
+      Status = "ACTIVO"
     };
 
   private static BusinessPartnerUpsertRequest CreateVendorDraft(string ownerRfc)
@@ -1002,7 +1153,8 @@ public partial class MaterialesPage : ComponentBase, IDisposable
 
   private void HandleRfcChanged()
   {
-    ResetDeletionReport();
+    ResetLifecycleReport();
+    ShowInactiveMaterials = false;
     _rfcReloadCts?.Cancel();
     _rfcReloadCts?.Dispose();
     _rfcReloadCts = new CancellationTokenSource();
@@ -1025,6 +1177,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
       MaterialThumbnailDataUrls = [];
       HasExecutedSearch = false;
       Filter = new MaterialFilter();
+      ShowInactiveMaterials = false;
       SelectedMaterialId = null;
       _catalogRecoveryRfc = null;
       await LoadCatalogAsync();
@@ -1049,21 +1202,31 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     _listRequestCts?.Dispose();
     _rfcReloadCts?.Cancel();
     _rfcReloadCts?.Dispose();
-    _deletionAssessmentCts?.Cancel();
-    _deletionAssessmentCts?.Dispose();
+    _lifecycleAssessmentCts?.Cancel();
+    _lifecycleAssessmentCts?.Dispose();
   }
 
-  private void ResetDeletionReport()
+  private void ResetLifecycleReport()
   {
-    _deletionAssessmentCts?.Cancel();
-    _deletionAssessmentCts?.Dispose();
-    _deletionAssessmentCts = null;
-    ShowDeletionDialog = false;
-    IsLoadingDeletionAssessment = false;
-    DeletionTargetMaterialId = null;
-    DeletionAssessment = null;
-    DeletionAssessmentError = null;
+    _lifecycleAssessmentCts?.Cancel();
+    _lifecycleAssessmentCts?.Dispose();
+    _lifecycleAssessmentCts = null;
+    ShowLifecycleDialog = false;
+    IsLoadingLifecycleAssessment = false;
+    LifecycleTargetMaterialId = null;
+    LifecycleAssessment = null;
+    LifecycleAssessmentError = null;
     DeletionConfirmationText = string.Empty;
+  }
+
+  private async Task<bool> RefreshAdministratorStateAsync(string failureMessage)
+  {
+    var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+    IsAdministrator = authenticationState.User.IsInRole("Administrador");
+    CurrentUserName = authenticationState.User.Identity?.Name ?? CurrentUserName;
+    if (IsAdministrator) return true;
+    UiMessages.ShowError(failureMessage);
+    return false;
   }
 
   private static int? ParseNullableInt(object? value)
@@ -1099,4 +1262,11 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     Base,
     Purchase
   }
+
+  protected sealed record MaterialDependencySection(
+    string CssClass,
+    string Title,
+    string Description,
+    string IconClass,
+    IReadOnlyList<MaterialDependencyDto> Dependencies);
 }

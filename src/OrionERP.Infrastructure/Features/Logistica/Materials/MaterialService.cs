@@ -16,10 +16,10 @@ public sealed class MaterialService : IMaterialService
   private static readonly string[] DefaultClasses = ["Consumable", "Reusable", "Installed", "AssetLike"];
   private static readonly string[] DefaultStatuses = ["ACTIVO", "OBSOLETO", "INACTIVO"];
   private const string DeleteConfirmationText = "Delete";
-  private const int DeletionExampleLimit = 5;
+  private const int LifecycleExampleLimit = 5;
 
-  private static readonly IReadOnlyDictionary<string, MaterialDeletionBlockerDefinition> DeletionBlockerDefinitions =
-    new MaterialDeletionBlockerDefinition[]
+  private static readonly IReadOnlyDictionary<string, MaterialDependencyDefinition> DependencyDefinitions =
+    new MaterialDependencyDefinition[]
     {
       new("StockBalance", "Inventario por ubicación", "El material todavía está asignado a una o más ubicaciones, incluso si la existencia es cero o el registro fue retirado.", "Revisar ubicaciones", "/logistica/ubicaciones"),
       new("StockTransaction", "Historial de inventario", "Existen movimientos que deben conservar su referencia al material.", "Revisar inventario", "/restaurante/inventario"),
@@ -76,6 +76,7 @@ public sealed class MaterialService : IMaterialService
           m.BaseUnitId,
           m.MaterialClass,
           m.MaterialStatus AS [Status],
+          m.IsActive,
           mc.CategoryName,
           u.UnitName AS BaseUnitName,
           bp.PartnerName AS VendorName,
@@ -98,6 +99,11 @@ public sealed class MaterialService : IMaterialService
 
     var parameters = new DynamicParameters();
     parameters.Add("@Rfc", rfc, DbType.String);
+
+    if (!filter.IncludeInactive)
+    {
+      sql.AppendLine(" AND m.IsActive = 1");
+    }
 
     if (!string.IsNullOrWhiteSpace(filter.SearchText))
     {
@@ -395,18 +401,18 @@ public sealed class MaterialService : IMaterialService
     return rows;
   }
 
-  public async Task<MaterialDeletionAssessmentDto> GetMaterialDeletionAssessmentAsync(
+  public async Task<MaterialLifecycleAssessmentDto> GetMaterialLifecycleAssessmentAsync(
     string rfc,
     int materialId,
     CancellationToken ct = default)
   {
     if (materialId <= 0)
     {
-      return new MaterialDeletionAssessmentDto();
+      return new MaterialLifecycleAssessmentDto();
     }
 
     using var conn = CreateConnection();
-    return await LoadMaterialDeletionAssessmentAsync(
+    return await LoadMaterialLifecycleAssessmentAsync(
       conn,
       transaction: null,
       LogisticsRfc.Require(rfc),
@@ -451,7 +457,7 @@ public sealed class MaterialService : IMaterialService
         return LogisticsCommandResult.Fail("El material ya no existe o no pertenece al RFC seleccionado.");
       }
 
-      var assessment = await LoadMaterialDeletionAssessmentAsync(
+      var assessment = await LoadMaterialLifecycleAssessmentAsync(
         conn,
         tx,
         rfc,
@@ -469,7 +475,7 @@ public sealed class MaterialService : IMaterialService
       {
         await tx.RollbackAsync(ct);
         return LogisticsCommandResult.Fail(
-          $"El material no se puede eliminar porque conserva {assessment.TotalReferences:N0} referencia(s) en {assessment.Blockers.Count:N0} grupo(s). Revisa el reporte actualizado.");
+          $"El material no se puede eliminar porque conserva {assessment.TotalReferences:N0} referencia(s) en {assessment.Dependencies.Count:N0} grupo(s). Revisa el reporte actualizado.");
       }
 
       var affected = await conn.ExecuteAsync(
@@ -499,6 +505,155 @@ public sealed class MaterialService : IMaterialService
     {
       await tx.RollbackAsync(ct);
       return LogisticsCommandResult.Fail("Se creó o detectó una referencia nueva mientras se eliminaba el material. Revisa el reporte actualizado.");
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
+  public async Task<LogisticsCommandResult> DeactivateMaterialAsync(MaterialDeactivateRequest request, CancellationToken ct = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+    if (request.MaterialId <= 0)
+    {
+      return LogisticsCommandResult.Fail("Selecciona un material válido para desactivar.");
+    }
+
+    var rfc = LogisticsRfc.Require(request.Rfc);
+    var deactivatedBy = NullIfWhiteSpace(request.DeactivatedBy) ?? "OrionERP";
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+
+    try
+    {
+      var assessment = await LoadMaterialLifecycleAssessmentAsync(conn, tx, rfc, request.MaterialId, lockMaterial: true, ct);
+      if (!assessment.Exists)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("El material ya no existe o no pertenece al RFC seleccionado.");
+      }
+
+      if (!assessment.IsActive)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("El material ya está desactivado.");
+      }
+
+      if (assessment.OperationalBlockers.Count > 0)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail(
+          $"El material conserva {assessment.OperationalReferenceCount:N0} vínculo(s) operativo(s). Resuélvelos y vuelve a revisar el reporte.");
+      }
+
+      if (!assessment.HasHistory)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("Este material no tiene historial conservado. Libera toda su configuración y elimínalo permanentemente.");
+      }
+
+      var affected = await conn.ExecuteAsync(new CommandDefinition(
+        """
+        UPDATE logistica.Material
+        SET IsActive = 0,
+            MaterialStatus = 'INACTIVO',
+            UpdatedDate = CONVERT(date, SYSUTCDATETIME())
+        WHERE Rfc = @Rfc AND Id = @MaterialId AND IsActive = 1;
+        """,
+        new { Rfc = rfc, MaterialId = request.MaterialId },
+        tx,
+        cancellationToken: ct));
+
+      if (affected != 1)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("El material cambió mientras se procesaba la solicitud. Vuelve a revisar el reporte.");
+      }
+
+      await tx.CommitAsync(ct);
+      _logger?.LogInformation(
+        "Material {MaterialCode} ({MaterialId}) deactivated for RFC {Rfc} by {DeactivatedBy}; {HistoricalReferences} historical references retained.",
+        assessment.MaterialCode,
+        assessment.MaterialId,
+        rfc,
+        deactivatedBy,
+        assessment.HistoricalReferenceCount);
+      return LogisticsCommandResult.Ok($"Material {assessment.MaterialCode} desactivado. Su historial permanece disponible.", assessment.MaterialId);
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
+  public async Task<LogisticsCommandResult> ReactivateMaterialAsync(MaterialReactivateRequest request, CancellationToken ct = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+    if (request.MaterialId <= 0)
+    {
+      return LogisticsCommandResult.Fail("Selecciona un material válido para reactivar.");
+    }
+
+    var rfc = LogisticsRfc.Require(request.Rfc);
+    var reactivatedBy = NullIfWhiteSpace(request.ReactivatedBy) ?? "OrionERP";
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+
+    try
+    {
+      var material = await conn.QuerySingleOrDefaultAsync<MaterialLifecycleStateRow>(new CommandDefinition(
+        """
+        SELECT Id, MaterialCode, [Description], IsActive
+        FROM logistica.Material WITH (UPDLOCK, HOLDLOCK)
+        WHERE Rfc = @Rfc AND Id = @MaterialId;
+        """,
+        new { Rfc = rfc, MaterialId = request.MaterialId },
+        tx,
+        cancellationToken: ct));
+
+      if (material is null)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("El material ya no existe o no pertenece al RFC seleccionado.");
+      }
+
+      if (material.IsActive)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("El material ya está activo.");
+      }
+
+      var affected = await conn.ExecuteAsync(new CommandDefinition(
+        """
+        UPDATE logistica.Material
+        SET IsActive = 1,
+            MaterialStatus = 'ACTIVO',
+            UpdatedDate = CONVERT(date, SYSUTCDATETIME())
+        WHERE Rfc = @Rfc AND Id = @MaterialId AND IsActive = 0;
+        """,
+        new { Rfc = rfc, MaterialId = request.MaterialId },
+        tx,
+        cancellationToken: ct));
+
+      if (affected != 1)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("El material cambió mientras se procesaba la solicitud. Actualiza el catálogo.");
+      }
+
+      await tx.CommitAsync(ct);
+      _logger?.LogInformation(
+        "Material {MaterialCode} ({MaterialId}) reactivated for RFC {Rfc} by {ReactivatedBy}.",
+        material.MaterialCode,
+        material.Id,
+        rfc,
+        reactivatedBy);
+      return LogisticsCommandResult.Ok($"Material {material.MaterialCode} reactivado.", material.Id);
     }
     catch
     {
@@ -543,6 +698,24 @@ public sealed class MaterialService : IMaterialService
 
       if (request.Id.HasValue && request.Id.Value > 0)
       {
+        var lifecycleState = await conn.QuerySingleOrDefaultAsync<MaterialLifecycleStateRow>(new CommandDefinition(
+          "SELECT Id, MaterialCode, [Description], IsActive FROM logistica.Material WITH (UPDLOCK, HOLDLOCK) WHERE Rfc = @Rfc AND Id = @Id;",
+          new { Rfc = rfc, Id = request.Id.Value },
+          tx,
+          cancellationToken: ct));
+        if (lifecycleState is null)
+        {
+          await tx.RollbackAsync(ct);
+          return LogisticsCommandResult.Fail("El material no pertenece al RFC seleccionado.");
+        }
+
+        var materialStatus = lifecycleState.IsActive ? request.Status?.Trim() : "INACTIVO";
+        if (lifecycleState.IsActive && string.Equals(materialStatus, "INACTIVO", StringComparison.OrdinalIgnoreCase))
+        {
+          await tx.RollbackAsync(ct);
+          return LogisticsCommandResult.Fail("Usa la revisión de retiro para desactivar un material.");
+        }
+
         var sql = new StringBuilder(
           """
           UPDATE logistica.Material
@@ -563,8 +736,7 @@ public sealed class MaterialService : IMaterialService
               Barcode = @Barcode,
               VendorCode = @VendorCode,
               PurchaseLink = @PurchaseLink,
-              MaterialClass = @MaterialClass,
-              IsActive = @IsActive
+              MaterialClass = @MaterialClass
           """);
 
         if (updateImage)
@@ -600,13 +772,12 @@ public sealed class MaterialService : IMaterialService
               request.IsPerishable,
               request.ShelfLifeDays,
               request.RequiresRefrigeration,
-              request.Status,
+              Status = materialStatus,
               request.CategoryId,
               Barcode = NullIfWhiteSpace(request.Barcode),
               VendorCode = NullIfWhiteSpace(request.VendorCode),
               PurchaseLink = NullIfWhiteSpace(request.PurchaseLink),
               request.MaterialClass,
-              request.IsActive,
               PrimaryImage = hasNewImage ? request.PrimaryImageBytes : null,
               PrimaryImageFileName = hasNewImage ? NullIfWhiteSpace(request.PrimaryImageFileName) : null,
               PrimaryImageContentType = hasNewImage ? imageContentType : null,
@@ -626,6 +797,12 @@ public sealed class MaterialService : IMaterialService
       }
       else
       {
+        if (string.Equals(request.Status?.Trim(), "INACTIVO", StringComparison.OrdinalIgnoreCase))
+        {
+          await tx.RollbackAsync(ct);
+          return LogisticsCommandResult.Fail("Los materiales nuevos deben crearse activos.");
+        }
+
         const string insertSql =
           """
           INSERT INTO logistica.Material
@@ -686,7 +863,7 @@ public sealed class MaterialService : IMaterialService
               @PrimaryImageThumbnailContentType,
               @PurchaseLink,
               @MaterialClass,
-              @IsActive
+              1
           );
 
           SELECT CAST(SCOPE_IDENTITY() AS int);
@@ -719,8 +896,7 @@ public sealed class MaterialService : IMaterialService
               PrimaryImageThumbnail = hasNewImage ? request.PrimaryImageThumbnailBytes : null,
               PrimaryImageThumbnailContentType = thumbnailContentType,
               PurchaseLink = NullIfWhiteSpace(request.PurchaseLink),
-              request.MaterialClass,
-              request.IsActive
+              request.MaterialClass
             },
             tx,
             cancellationToken: ct));
@@ -867,7 +1043,7 @@ public sealed class MaterialService : IMaterialService
     }
   }
 
-  private async Task<MaterialDeletionAssessmentDto> LoadMaterialDeletionAssessmentAsync(
+  private async Task<MaterialLifecycleAssessmentDto> LoadMaterialLifecycleAssessmentAsync(
     DbConnection connection,
     DbTransaction? transaction,
     string rfc,
@@ -875,43 +1051,45 @@ public sealed class MaterialService : IMaterialService
     bool lockMaterial,
     CancellationToken ct)
   {
-    var sql = MaterialDeletionAssessmentSql.Replace(
+    var sql = MaterialLifecycleAssessmentSql.Replace(
       "/*MATERIAL_LOCK*/",
       lockMaterial ? "WITH (UPDLOCK, HOLDLOCK)" : string.Empty,
       StringComparison.Ordinal);
 
-    var rows = (await connection.QueryAsync<MaterialDeletionAssessmentRow>(
+    var rows = (await connection.QueryAsync<MaterialLifecycleAssessmentRow>(
       new CommandDefinition(
         sql,
-        new { Rfc = rfc, MaterialId = materialId, ExampleLimit = DeletionExampleLimit },
+        new { Rfc = rfc, MaterialId = materialId, ExampleLimit = LifecycleExampleLimit },
         transaction,
         cancellationToken: ct))).AsList();
 
     if (rows.Count == 0)
     {
-      return new MaterialDeletionAssessmentDto();
+      return new MaterialLifecycleAssessmentDto();
     }
 
     var material = rows[0];
-    var blockers = rows
+    var dependencies = rows
       .Where(row => !string.IsNullOrWhiteSpace(row.BlockerCode))
-      .GroupBy(row => row.BlockerCode!, StringComparer.Ordinal)
-      .OrderBy(group => group.Min(row => row.BlockerSortOrder))
+      .GroupBy(row => (Code: row.BlockerCode!, row.DependencyKind))
+      .OrderBy(group => DependencyKindSortOrder(group.Key.DependencyKind))
+      .ThenBy(group => group.Min(row => row.BlockerSortOrder))
       .Select(group =>
       {
-        var definition = DeletionBlockerDefinitions[group.Key];
-        return new MaterialDeletionBlockerDto
+        var definition = DependencyDefinitions[group.Key.Code];
+        return new MaterialDependencyDto
         {
           Code = definition.Code,
+          Kind = group.Key.DependencyKind,
           Title = definition.Title,
-          Explanation = definition.Explanation,
+          Explanation = GetDependencyExplanation(definition, group.Key.DependencyKind),
           ReferenceCount = group.Max(row => row.ReferenceCount),
           Examples = group
             .Select(row => row.Example)
             .Where(example => !string.IsNullOrWhiteSpace(example))
             .Select(example => example!)
             .Distinct(StringComparer.Ordinal)
-            .Take(DeletionExampleLimit)
+            .Take(LifecycleExampleLimit)
             .ToArray(),
           ResolutionLabel = definition.ResolutionLabel,
           ResolutionUrl = definition.ResolutionUrl
@@ -919,22 +1097,29 @@ public sealed class MaterialService : IMaterialService
       })
       .ToArray();
 
-    return new MaterialDeletionAssessmentDto
+    return new MaterialLifecycleAssessmentDto
     {
       Exists = true,
       MaterialId = material.MaterialId,
       MaterialCode = material.MaterialCode,
       Description = material.Description,
-      Blockers = blockers
+      IsActive = material.IsActive,
+      Dependencies = dependencies
     };
   }
 
-  private const string MaterialDeletionAssessmentSql =
+  private const string MaterialLifecycleAssessmentSql =
     """
     ;WITH DependencyRows AS
     (
       SELECT
         N'StockBalance' AS BlockerCode,
+        CASE
+          WHEN ISNULL(balance.IsRemoved, 0) = 1
+            AND balance.Quantity = 0
+            AND ISNULL(balance.ReservedQuantity, 0) = 0 THEN N'Historical'
+          ELSE N'Operational'
+        END AS DependencyKind,
         10 AS BlockerSortOrder,
         CONVERT(nvarchar(100), balance.Id) AS ReferenceKey,
         balance.UpdatedAt AS SortDate,
@@ -953,7 +1138,7 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'StockTransaction', 20, CONVERT(nvarchar(100), movement.Id), movement.OccurredAt,
+        N'StockTransaction', N'Historical', 20, CONVERT(nvarchar(100), movement.Id), movement.OccurredAt,
         CAST(CONCAT(
           'Movimiento #', movement.Id, ' · ', movement.TransactionType,
           ' · Cambio: ', CONVERT(varchar(40), CAST(movement.QuantityDelta AS decimal(18,4))),
@@ -969,7 +1154,9 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'LocationMaterialAttachment', 30, CONVERT(nvarchar(100), attachmentInfo.Id), attachmentInfo.CreatedAt,
+        N'LocationMaterialAttachment',
+        CASE WHEN ISNULL(attachmentInfo.IsDeleted, 0) = 1 THEN N'Historical' ELSE N'Operational' END,
+        30, CONVERT(nvarchar(100), attachmentInfo.Id), attachmentInfo.CreatedAt,
         CAST(CONCAT(
           COALESCE(NULLIF(attachmentInfo.FileName, ''), CONCAT('Adjunto #', attachmentInfo.Id)),
           CASE WHEN NULLIF(locationInfo.LocationName, '') IS NULL THEN '' ELSE CONCAT(' · ', locationInfo.LocationName) END,
@@ -983,7 +1170,9 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'PhysicalCountLine', 40, CONVERT(nvarchar(100), countLine.Id), countLine.CapturedAt,
+        N'PhysicalCountLine',
+        CASE WHEN countSession.Status IN ('Posted', 'Canceled') THEN N'Historical' ELSE N'Operational' END,
+        40, CONVERT(nvarchar(100), countLine.Id), countLine.CapturedAt,
         CAST(CONCAT(
           COALESCE(NULLIF(countSession.SessionCode, ''), CONCAT('Conteo #', countLine.SessionId)),
           CASE WHEN NULLIF(countSession.Status, '') IS NULL THEN '' ELSE CONCAT(' · ', countSession.Status) END,
@@ -1001,7 +1190,7 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'MaterialLot', 50, CONVERT(nvarchar(100), materialLot.Id), materialLot.CreatedAt,
+        N'MaterialLot', N'Historical', 50, CONVERT(nvarchar(100), materialLot.Id), materialLot.CreatedAt,
         CAST(CONCAT(
           'Lote ', materialLot.LotCode,
           CASE WHEN materialLot.ExpiresAt IS NULL THEN '' ELSE CONCAT(' · Vence: ', CONVERT(varchar(10), materialLot.ExpiresAt, 23)) END,
@@ -1013,7 +1202,9 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'LotBalance', 60, CONVERT(nvarchar(100), lotBalance.Id), lotBalance.UpdatedAt,
+        N'LotBalance',
+        CASE WHEN lotBalance.Quantity = 0 AND lotBalance.ReservedQuantity = 0 THEN N'Historical' ELSE N'Operational' END,
+        60, CONVERT(nvarchar(100), lotBalance.Id), lotBalance.UpdatedAt,
         CAST(CONCAT(
           COALESCE(CONCAT('Lote ', materialLot.LotCode), CONCAT('Saldo de lote #', lotBalance.Id)),
           CASE WHEN NULLIF(locationInfo.LocationName, '') IS NULL THEN '' ELSE CONCAT(' · ', locationInfo.LocationName) END,
@@ -1030,7 +1221,9 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'InventoryReservationLine', 70, CONVERT(nvarchar(100), reservationLine.Id), reservationInfo.CreatedAt,
+        N'InventoryReservationLine',
+        CASE WHEN reservationInfo.Status IN ('Released', 'Consumed') THEN N'Historical' ELSE N'Operational' END,
+        70, CONVERT(nvarchar(100), reservationLine.Id), reservationInfo.CreatedAt,
         CAST(CONCAT(
           'Reserva #', reservationInfo.Id,
           CASE WHEN NULLIF(reservationInfo.ReferenceType, '') IS NULL THEN '' ELSE CONCAT(' · ', reservationInfo.ReferenceType, ' ', reservationInfo.ReferenceId) END,
@@ -1050,7 +1243,9 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'InventoryTransferLine', 80, CONVERT(nvarchar(100), transferLine.Id), transferInfo.CreatedAt,
+        N'InventoryTransferLine',
+        CASE WHEN transferInfo.Status = 'Posted' THEN N'Historical' ELSE N'Operational' END,
+        80, CONVERT(nvarchar(100), transferLine.Id), transferInfo.CreatedAt,
         CAST(CONCAT(
           COALESCE(NULLIF(transferInfo.TransferCode, ''), CONCAT('Transferencia #', transferInfo.Id)),
           ' · ', transferInfo.Status,
@@ -1070,7 +1265,9 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'InventoryAdjustmentLine', 90, CONVERT(nvarchar(100), adjustmentLine.Id), adjustmentInfo.CreatedAt,
+        N'InventoryAdjustmentLine',
+        CASE WHEN adjustmentInfo.Status = 'Approved' THEN N'Historical' ELSE N'Operational' END,
+        90, CONVERT(nvarchar(100), adjustmentLine.Id), adjustmentInfo.CreatedAt,
         CAST(CONCAT(
           COALESCE(NULLIF(adjustmentInfo.AdjustmentCode, ''), CONCAT('Ajuste #', adjustmentInfo.Id)),
           ' · ', adjustmentInfo.Status,
@@ -1088,7 +1285,9 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'PurchaseOrderLine', 100, CONVERT(nvarchar(100), purchaseLine.Id), purchaseOrder.UpdatedAt,
+        N'PurchaseOrderLine',
+        CASE WHEN purchaseOrder.Status IN ('Completed', 'Cancelled') THEN N'Historical' ELSE N'Operational' END,
+        100, CONVERT(nvarchar(100), purchaseLine.Id), purchaseOrder.UpdatedAt,
         CAST(CONCAT(
           COALESCE(NULLIF(purchaseOrder.PurchaseOrderCode, ''), CONCAT('Orden #', purchaseOrder.Id)),
           ' · ', purchaseOrder.Status,
@@ -1104,7 +1303,7 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'PurchaseReceiptLine', 110, CONVERT(nvarchar(100), receiptLine.Id), receiptLine.CreatedAt,
+        N'PurchaseReceiptLine', N'Historical', 110, CONVERT(nvarchar(100), receiptLine.Id), receiptLine.CreatedAt,
         CAST(CONCAT(
           COALESCE(NULLIF(receiptInfo.ReceiptCode, ''), CONCAT('Recepción #', receiptInfo.Id)),
           CASE WHEN NULLIF(purchaseOrder.PurchaseOrderCode, '') IS NULL THEN '' ELSE CONCAT(' · ', purchaseOrder.PurchaseOrderCode) END,
@@ -1124,7 +1323,32 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'BomHeader', 120, CONVERT(nvarchar(100), bomHeader.Id), bomHeader.CreatedAt,
+        N'BomHeader',
+        CASE
+          WHEN EXISTS
+          (
+            SELECT 1 FROM logistica.BomVersion unknownVersion
+            WHERE unknownVersion.Rfc = bomHeader.Rfc
+              AND unknownVersion.BomHeaderId = bomHeader.Id
+              AND (unknownVersion.Status IS NULL OR unknownVersion.Status NOT IN ('Draft', 'Active', 'Retired'))
+          ) THEN N'Operational'
+          WHEN EXISTS
+          (
+            SELECT 1 FROM logistica.BomVersion currentVersion
+            WHERE currentVersion.Rfc = bomHeader.Rfc
+              AND currentVersion.BomHeaderId = bomHeader.Id
+              AND currentVersion.Status IN ('Draft', 'Active')
+          ) THEN N'Operational'
+          WHEN EXISTS
+          (
+            SELECT 1 FROM logistica.BomVersion retiredVersion
+            WHERE retiredVersion.Rfc = bomHeader.Rfc
+              AND retiredVersion.BomHeaderId = bomHeader.Id
+              AND retiredVersion.Status = 'Retired'
+          ) THEN N'Historical'
+          ELSE N'Configuration'
+        END,
+        120, CONVERT(nvarchar(100), bomHeader.Id), bomHeader.CreatedAt,
         CAST(CONCAT(
           COALESCE(NULLIF(bomHeader.BomCode, ''), CONCAT('BOM #', bomHeader.Id)),
           CASE WHEN NULLIF(bomHeader.Name, '') IS NULL THEN '' ELSE CONCAT(' · ', bomHeader.Name) END,
@@ -1150,7 +1374,9 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'BomComponent', 130, CONVERT(nvarchar(100), bomComponent.Id), bomVersion.CreatedAt,
+        N'BomComponent',
+        CASE WHEN bomVersion.Status = 'Retired' THEN N'Historical' ELSE N'Operational' END,
+        130, CONVERT(nvarchar(100), bomComponent.Id), bomVersion.CreatedAt,
         CAST(CONCAT(
           COALESCE(NULLIF(bomHeader.BomCode, ''), CONCAT('BOM #', bomHeader.Id)),
           ' · Versión ', bomVersion.VersionNumber, ' (', bomVersion.Status, ')',
@@ -1177,7 +1403,9 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'ProductionOrder', 140, CONVERT(nvarchar(100), productionOrder.Id), productionOrder.PlannedAt,
+        N'ProductionOrder',
+        CASE WHEN productionOrder.Status IN ('Completed', 'Cancelled') THEN N'Historical' ELSE N'Operational' END,
+        140, CONVERT(nvarchar(100), productionOrder.Id), productionOrder.PlannedAt,
         CAST(CONCAT(
           COALESCE(NULLIF(productionOrder.ProductionCode, ''), CONCAT('Producción ', productionOrder.Id)),
           ' · ', productionOrder.Status,
@@ -1190,7 +1418,9 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'RestaurantProduct', 150, CONVERT(nvarchar(100), restaurantProduct.Id), CAST(NULL AS datetime2),
+        N'RestaurantProduct',
+        CASE WHEN restaurantProduct.IsActive = 1 THEN N'Operational' ELSE N'Historical' END,
+        150, CONVERT(nvarchar(100), restaurantProduct.Id), CAST(NULL AS datetime2),
         CAST(CONCAT(
           productCard.Name,
           CASE WHEN NULLIF(restaurantProduct.VariantName, '') IS NULL THEN '' ELSE CONCAT(' · ', restaurantProduct.VariantName) END,
@@ -1205,7 +1435,9 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'ModifierIngredientDelta', 160, CONVERT(nvarchar(100), ingredientDelta.Id), CAST(NULL AS datetime2),
+        N'ModifierIngredientDelta',
+        CASE WHEN modifierOption.IsActive = 1 AND modifierGroup.IsActive = 1 THEN N'Operational' ELSE N'Configuration' END,
+        160, CONVERT(nvarchar(100), ingredientDelta.Id), CAST(NULL AS datetime2),
         CAST(CONCAT(
           modifierGroup.Name, ' · ', modifierOption.Name,
           ' · Cambio: ', CONVERT(varchar(40), CAST(ingredientDelta.QuantityDelta AS decimal(18,4))),
@@ -1224,7 +1456,9 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'MaterialAllergen', 170, CONVERT(nvarchar(100), allergenAssignment.AllergenId), CAST(NULL AS datetime2),
+        N'MaterialAllergen',
+        CASE WHEN allergenInfo.IsActive = 1 THEN N'Operational' ELSE N'Configuration' END,
+        170, CONVERT(nvarchar(100), allergenAssignment.AllergenId), CAST(NULL AS datetime2),
         CAST(CONCAT(
           allergenInfo.Name, ' · ', allergenInfo.Code,
           CASE WHEN allergenInfo.IsActive = 1 THEN ' · Activo' ELSE ' · Inactivo' END
@@ -1237,7 +1471,9 @@ public sealed class MaterialService : IMaterialService
       UNION ALL
 
       SELECT
-        N'MaterialUnitConversion', 180, CONVERT(nvarchar(100), conversionInfo.Id), CAST(NULL AS datetime2),
+        N'MaterialUnitConversion',
+        CASE WHEN conversionInfo.IsActive = 1 THEN N'Operational' ELSE N'Configuration' END,
+        180, CONVERT(nvarchar(100), conversionInfo.Id), CAST(NULL AS datetime2),
         CAST(CONCAT(
           COALESCE(NULLIF(fromUnit.Abbreviation, ''), fromUnit.UnitName),
           ' → ', COALESCE(NULLIF(toUnit.Abbreviation, ''), toUnit.UnitName),
@@ -1253,12 +1489,13 @@ public sealed class MaterialService : IMaterialService
     (
       SELECT
         BlockerCode,
+        DependencyKind,
         BlockerSortOrder,
         Example,
-        COUNT_BIG(*) OVER (PARTITION BY BlockerCode) AS ReferenceCount,
+        COUNT_BIG(*) OVER (PARTITION BY BlockerCode, DependencyKind) AS ReferenceCount,
         ROW_NUMBER() OVER
         (
-          PARTITION BY BlockerCode
+          PARTITION BY BlockerCode, DependencyKind
           ORDER BY CASE WHEN SortDate IS NULL THEN 1 ELSE 0 END, SortDate DESC, ReferenceKey DESC
         ) AS ExampleOrdinal
       FROM DependencyRows
@@ -1267,7 +1504,9 @@ public sealed class MaterialService : IMaterialService
       material.Id AS MaterialId,
       material.MaterialCode,
       material.[Description],
+      material.IsActive,
       dependency.BlockerCode,
+      dependency.DependencyKind,
       dependency.BlockerSortOrder,
       dependency.ReferenceCount,
       dependency.Example
@@ -1276,7 +1515,10 @@ public sealed class MaterialService : IMaterialService
       ON dependency.ExampleOrdinal <= @ExampleLimit
     WHERE material.Rfc = @Rfc
       AND material.Id = @MaterialId
-    ORDER BY dependency.BlockerSortOrder, dependency.ExampleOrdinal;
+    ORDER BY
+      CASE dependency.DependencyKind WHEN 'Operational' THEN 0 WHEN 'Historical' THEN 1 ELSE 2 END,
+      dependency.BlockerSortOrder,
+      dependency.ExampleOrdinal;
     """;
 
   private DbConnection CreateConnection()
@@ -1286,21 +1528,76 @@ public sealed class MaterialService : IMaterialService
   private static string? NullIfWhiteSpace(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-  private sealed record MaterialDeletionBlockerDefinition(
+  private static int DependencyKindSortOrder(string kind)
+    => kind switch
+    {
+      MaterialDependencyKinds.Operational => 0,
+      MaterialDependencyKinds.Historical => 1,
+      _ => 2
+    };
+
+  private static string GetDependencyExplanation(MaterialDependencyDefinition definition, string kind)
+    => (definition.Code, kind) switch
+    {
+      ("StockBalance", MaterialDependencyKinds.Operational) => "La ubicación sigue activa para este material o conserva existencia/reserva. Retira la asignación y deja ambos saldos en cero.",
+      ("StockBalance", MaterialDependencyKinds.Historical) => "La asignación ya fue retirada con saldos en cero y se conserva como evidencia de inventario.",
+      ("LocationMaterialAttachment", MaterialDependencyKinds.Operational) => "Hay evidencia activa del material en una ubicación. Archívala o resuelve la asignación desde Ubicaciones.",
+      ("LocationMaterialAttachment", MaterialDependencyKinds.Historical) => "El archivo ya está archivado y debe permanecer vinculado como evidencia.",
+      ("PhysicalCountLine", MaterialDependencyKinds.Operational) => "El conteo todavía no está publicado ni cancelado. Termina su flujo antes de retirar el material.",
+      ("PhysicalCountLine", MaterialDependencyKinds.Historical) => "El conteo fue publicado o cancelado y debe conservar la identidad del material auditado.",
+      ("LotBalance", MaterialDependencyKinds.Operational) => "Existe un saldo o reserva de lote distinto de cero que debe consumirse, liberarse o ajustarse.",
+      ("LotBalance", MaterialDependencyKinds.Historical) => "El saldo de lote llegó a cero y se conserva como trazabilidad.",
+      ("InventoryReservationLine", MaterialDependencyKinds.Operational) => "La reserva no está liberada ni consumida. Completa o libera la operación que la originó.",
+      ("InventoryReservationLine", MaterialDependencyKinds.Historical) => "La reserva fue liberada o consumida y permanece como historial.",
+      ("InventoryTransferLine", MaterialDependencyKinds.Operational) => "La transferencia aún no está publicada o usa un estado no reconocido. Complétala antes de continuar.",
+      ("InventoryTransferLine", MaterialDependencyKinds.Historical) => "La transferencia publicada debe conservar el material movilizado.",
+      ("InventoryAdjustmentLine", MaterialDependencyKinds.Operational) => "El ajuste aún no está aprobado o usa un estado no reconocido. Resuelve su autorización.",
+      ("InventoryAdjustmentLine", MaterialDependencyKinds.Historical) => "El ajuste aprobado forma parte del historial de inventario.",
+      ("PurchaseOrderLine", MaterialDependencyKinds.Operational) => "La orden de compra aún no está completada o cancelada. Termina su flujo antes de retirar el material.",
+      ("PurchaseOrderLine", MaterialDependencyKinds.Historical) => "La orden completada o cancelada debe conservar la línea del material.",
+      ("BomHeader", MaterialDependencyKinds.Operational) => "El material tiene una versión de BOM activa, en borrador o con estado no reconocido. Elimina el borrador o retira la versión activa.",
+      ("BomHeader", MaterialDependencyKinds.Historical) => "El BOM retirado debe conservar el producto terminado al que perteneció.",
+      ("BomHeader", MaterialDependencyKinds.Configuration) => "La cabecera de BOM no tiene versiones operativas ni retiradas y puede limpiarse desde Recetas.",
+      ("BomComponent", MaterialDependencyKinds.Operational) => "El material se usa en una versión de BOM activa, en borrador o con estado no reconocido. Retira o elimina esa versión.",
+      ("BomComponent", MaterialDependencyKinds.Historical) => "Una versión de BOM retirada conserva este material como ingrediente histórico.",
+      ("ProductionOrder", MaterialDependencyKinds.Operational) => "La producción aún no está completada o cancelada. Termina su flujo antes de retirar el material.",
+      ("ProductionOrder", MaterialDependencyKinds.Historical) => "La producción completada o cancelada debe conservar el material producido.",
+      ("RestaurantProduct", MaterialDependencyKinds.Operational) => "El material está ligado a un producto activo del restaurante. Desactiva o desvincula el producto.",
+      ("RestaurantProduct", MaterialDependencyKinds.Historical) => "El producto del restaurante está inactivo y conserva el material que utilizó.",
+      ("ModifierIngredientDelta", MaterialDependencyKinds.Operational) => "Un grupo y opción activos agregan o retiran este ingrediente. Desvincula el ajuste desde Menús.",
+      ("ModifierIngredientDelta", MaterialDependencyKinds.Configuration) => "El ajuste pertenece a un modificador inactivo y puede eliminarse desde Menús.",
+      ("MaterialAllergen", MaterialDependencyKinds.Operational) => "El material conserva un alérgeno activo. Quita la asignación desde Recetas.",
+      ("MaterialAllergen", MaterialDependencyKinds.Configuration) => "La asignación apunta a un alérgeno inactivo y puede quitarse desde Recetas.",
+      ("MaterialUnitConversion", MaterialDependencyKinds.Operational) => "La conversión especial está activa. Elimínala cuando ningún BOM actual dependa de ella.",
+      ("MaterialUnitConversion", MaterialDependencyKinds.Configuration) => "La conversión especial está inactiva, pero todavía debe eliminarse para borrar físicamente el material.",
+      _ => definition.Explanation
+    };
+
+  private sealed record MaterialDependencyDefinition(
     string Code,
     string Title,
     string Explanation,
     string? ResolutionLabel,
     string? ResolutionUrl);
 
-  private sealed class MaterialDeletionAssessmentRow
+  private sealed class MaterialLifecycleAssessmentRow
   {
     public int MaterialId { get; set; }
     public string MaterialCode { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+    public bool IsActive { get; set; }
     public string? BlockerCode { get; set; }
+    public string DependencyKind { get; set; } = string.Empty;
     public int BlockerSortOrder { get; set; }
     public long ReferenceCount { get; set; }
     public string? Example { get; set; }
+  }
+
+  private sealed class MaterialLifecycleStateRow
+  {
+    public int Id { get; set; }
+    public string MaterialCode { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public bool IsActive { get; set; }
   }
 }

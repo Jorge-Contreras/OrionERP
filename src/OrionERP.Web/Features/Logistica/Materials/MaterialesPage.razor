@@ -481,7 +481,12 @@
                                         Nueva UoM
                                     </button>
                                 </div>
-                                <InputSelect id="material-purchase-unit" class="form-select" @bind-Value="Editor.PurchaseUnitId">
+                                <InputSelect TValue="int?"
+                                             id="material-purchase-unit"
+                                             class="form-select"
+                                             Value="@Editor.PurchaseUnitId"
+                                             ValueChanged="OnPurchaseUnitChanged"
+                                             ValueExpression="@(() => Editor.PurchaseUnitId)">
                                     <option value="">Sin presentación</option>
                                     @foreach (var option in Catalog.Units)
                                     {
@@ -491,16 +496,51 @@
                             </div>
                             <div class="col-md-3 col-xxl-2">
                                 <label class="form-label" for="material-purchase-quantity">Contenido</label>
-                                <InputNumber id="material-purchase-quantity" class="form-control" step="0.0001" @bind-Value="Editor.PurchaseQuantity" />
+                                <input type="number"
+                                       id="material-purchase-quantity"
+                                       name="Editor.PurchaseQuantity"
+                                       class="form-control"
+                                       min="0.0001"
+                                       step="0.0001"
+                                       inputmode="decimal"
+                                       value="@_purchaseQuantityInputText"
+                                       @oninput="OnPurchaseQuantityChanged" />
                             </div>
-                            <div class="col-md-3 col-xxl-2">
-                                <label class="form-label" for="material-price">Precio</label>
+                            <div class="col-md-6 col-xxl-3">
+                                <label class="form-label" for="material-base-unit-price">@BaseUnitPriceLabel</label>
                                 <div class="input-group">
                                     <span class="input-group-text">$</span>
-                                    <InputNumber id="material-price" class="form-control" step="0.01" @bind-Value="Editor.Price" />
+                                    <input type="number"
+                                           id="material-base-unit-price"
+                                           name="Editor.BaseUnitPrice"
+                                           class="form-control"
+                                           min="0"
+                                           step="0.000001"
+                                           inputmode="decimal"
+                                           value="@_baseUnitPriceInputText"
+                                           @oninput="OnBaseUnitPriceChanged" />
                                 </div>
+                                <ValidationMessage For="@(() => Editor.BaseUnitPrice)" />
+                                <div class="form-text">Costo de referencia almacenado; el costo real de inventario proviene de recepciones y promedio ponderado.</div>
                             </div>
-                            <div class="col-12 col-xxl-4">
+                            <div class="col-md-6 col-xxl-3">
+                                <label class="form-label" for="material-presentation-price">@PurchasePresentationPriceLabel</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number"
+                                           id="material-presentation-price"
+                                           name="PurchasePresentationPrice"
+                                           class="form-control"
+                                           min="0"
+                                           step="0.01"
+                                           inputmode="decimal"
+                                           disabled="@(!CanCalculatePurchasePresentationPrice)"
+                                           value="@_purchasePresentationPriceInputText"
+                                           @oninput="OnPurchasePresentationPriceChanged" />
+                                </div>
+                                <div class="form-text">Calculado como precio base × contenido. También puedes capturarlo para recalcular el precio base.</div>
+                            </div>
+                            <div class="col-12">
                                 <label class="form-label">Conversión de compra</label>
                                 <div class="materiales-conversion-preview">
                                     <i class="bi bi-arrow-left-right" aria-hidden="true"></i>

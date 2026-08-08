@@ -28,7 +28,7 @@ public class PurchaseOrderServiceTests
               MaterialCode: "MAT-000011",
               MaterialDescription: "Papel higienico",
               PurchaseQuantity: 24m,
-              UnitPrice: 160m,
+              BaseUnitPrice: 160m,
               LocationId: 3,
               LocationName: "Almacen principal",
               RawNeedQuantity: 40m,
@@ -98,6 +98,7 @@ public class PurchaseOrderServiceTests
       && !command.CommandText.Contains("PurchaseOrderLineAllocation", StringComparison.Ordinal));
     AssertParameter(lineInsert.Parameters, "@PurchaseQuantitySnapshot", 24m);
     AssertParameter(lineInsert.Parameters, "@PurchaseUnitNameSnapshot", "Paquete");
+    AssertParameter(lineInsert.Parameters, "@BaseUnitPrice", 160m);
     AssertParameter(lineInsert.Parameters, "@OrderedQuantity", 48m);
   }
 
@@ -122,7 +123,7 @@ public class PurchaseOrderServiceTests
               MaterialCode: "MAT-000011",
               MaterialDescription: "Papel higienico",
               PurchaseQuantity: 24m,
-              UnitPrice: 160m,
+              BaseUnitPrice: 160m,
               LocationId: 3,
               LocationName: "Almacen principal",
               RawNeedQuantity: 20m,
@@ -136,7 +137,7 @@ public class PurchaseOrderServiceTests
               MaterialCode: "MAT-000011",
               MaterialDescription: "Papel higienico",
               PurchaseQuantity: 24m,
-              UnitPrice: 160m,
+              BaseUnitPrice: 160m,
               LocationId: 4,
               LocationName: "Bodega",
               RawNeedQuantity: 5m,
@@ -236,7 +237,7 @@ public class PurchaseOrderServiceTests
               MaterialCode: "MAT-000097",
               MaterialDescription: "Servilletas",
               PurchaseQuantity: 1m,
-              UnitPrice: 10m,
+              BaseUnitPrice: 10m,
               LocationId: 20,
               LocationName: "LONDON-GABINETE-SALA",
               RawNeedQuantity: 1.5m,
@@ -333,7 +334,7 @@ public class PurchaseOrderServiceTests
               MaterialCode: "MAT-005094",
               MaterialDescription: "PAPEL HIGIENICO GREAT VALUE",
               PurchaseQuantity: 32m,
-              UnitPrice: 160m,
+              BaseUnitPrice: 160m,
               LocationId: 112,
               LocationName: "GRECIA",
               RawNeedQuantity: 32m,
@@ -348,7 +349,7 @@ public class PurchaseOrderServiceTests
               MaterialCode: "MAT-005094",
               MaterialDescription: "PAPEL HIGIENICO GREAT VALUE",
               PurchaseQuantity: 32m,
-              UnitPrice: 160m,
+              BaseUnitPrice: 160m,
               LocationId: 18,
               LocationName: "MOSCU",
               RawNeedQuantity: 26m,
@@ -487,7 +488,7 @@ public class PurchaseOrderServiceTests
               MaterialCode: "MAT-000011",
               MaterialDescription: "Papel higienico",
               PurchaseQuantity: 24m,
-              UnitPrice: 160m,
+              BaseUnitPrice: 160m,
               LocationId: 3,
               LocationName: "Almacen principal",
               RawNeedQuantity: 35m,
@@ -552,7 +553,7 @@ public class PurchaseOrderServiceTests
               MaterialCode: "MAT-000081",
               MaterialDescription: "Agua",
               PurchaseQuantity: 12m,
-              UnitPrice: 84m,
+              BaseUnitPrice: 84m,
               LocationId: 3,
               LocationName: "Minibar ALFA",
               RawNeedQuantity: 12m,
@@ -648,7 +649,7 @@ public class PurchaseOrderServiceTests
               MaterialCode: "MAT-000091",
               MaterialDescription: "Amenidades",
               PurchaseQuantity: 6m,
-              UnitPrice: 150m,
+              BaseUnitPrice: 150m,
               LocationId: 7,
               LocationName: "Closet BETA",
               RawNeedQuantity: 6m,
@@ -837,7 +838,7 @@ public class PurchaseOrderServiceTests
               MaterialCode: "MAT-000101",
               MaterialDescription: "Toallas",
               PurchaseQuantity: 8m,
-              UnitPrice: 220m,
+              BaseUnitPrice: 220m,
               LocationId: 9,
               LocationName: "Laundry GAMMA",
               RawNeedQuantity: 8m,
@@ -932,7 +933,7 @@ public class PurchaseOrderServiceTests
               MaterialCode: "MAT-000111",
               MaterialDescription: "Café",
               PurchaseQuantity: 4m,
-              UnitPrice: 96m,
+              BaseUnitPrice: 96m,
               LocationId: 5,
               LocationName: "Kitchen ALFA",
               RawNeedQuantity: 4m,
@@ -1240,6 +1241,32 @@ public class PurchaseOrderServiceTests
   }
 
   [Fact]
+  public async Task SaveDraftAsync_RejectsNegativeBaseUnitPrice()
+  {
+    var connection = new FakeQueryDbConnection();
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.SaveDraftAsync(new PurchaseOrderUpsertRequest
+    {
+      BusinessPartnerId = 7,
+      OrderDate = new DateTime(2026, 4, 17),
+      Lines =
+      [
+        new PurchaseOrderLineUpsertRequest
+        {
+          MaterialId = 11,
+          BaseUnitPrice = -0.01m,
+          Allocations = [new PurchaseOrderAllocationUpsertRequest { LocationId = 3, PlannedQuantity = 1m }]
+        }
+      ]
+    }, "Ana");
+
+    Assert.False(result.Success);
+    Assert.Contains("unidad base", result.Message, StringComparison.OrdinalIgnoreCase);
+    Assert.Empty(connection.ExecutedCommands);
+  }
+
+  [Fact]
   public async Task ReceiveAsync_Fails_WhenQuantityExceedsRemaining()
   {
     var connection = new FakeQueryDbConnection
@@ -1365,10 +1392,12 @@ public class PurchaseOrderServiceTests
       && command.CommandText.Contains("IsRemoved = 0", StringComparison.Ordinal));
     AssertParameter(stockUpdate.Parameters, "@StockBalanceId", 41);
     AssertParameter(stockUpdate.Parameters, "@Quantity", 2m);
+    AssertParameter(stockUpdate.Parameters, "@AverageUnitCost", 2.205m);
 
     var receiptLineInsert = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO logistica.PurchaseReceiptLine", StringComparison.Ordinal));
     AssertParameter(receiptLineInsert.Parameters, "@PurchaseReceiptId", 70);
     AssertParameter(receiptLineInsert.Parameters, "@PurchaseOrderLineAllocationId", 11);
+    AssertParameter(receiptLineInsert.Parameters, "@UnitCost", 2.82m);
 
     var auditInsert = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO logistica.StockTransaction", StringComparison.Ordinal));
     Assert.Contains("'PurchaseReceipt'", auditInsert.CommandText, StringComparison.Ordinal);
@@ -1434,7 +1463,8 @@ public class PurchaseOrderServiceTests
     int materialId,
     string materialDescription,
     decimal plannedQuantity,
-    decimal receivedQuantity)
+    decimal receivedQuantity,
+    decimal baseUnitPrice = 2.82m)
   {
     var table = new DataTable();
     table.Columns.Add("AllocationId", typeof(int));
@@ -1445,17 +1475,19 @@ public class PurchaseOrderServiceTests
     table.Columns.Add("MaterialDescription", typeof(string));
     table.Columns.Add("PlannedQuantity", typeof(decimal));
     table.Columns.Add("ReceivedQuantity", typeof(decimal));
-    table.Rows.Add(allocationId, purchaseOrderLineId, locationId, locationName, materialId, materialDescription, plannedQuantity, receivedQuantity);
+    table.Columns.Add("BaseUnitPrice", typeof(decimal));
+    table.Rows.Add(allocationId, purchaseOrderLineId, locationId, locationName, materialId, materialDescription, plannedQuantity, receivedQuantity, baseUnitPrice);
     return table;
   }
 
-  private static DataTable CreateStockBalanceStateTable(int id, decimal quantity, bool isRemoved)
+  private static DataTable CreateStockBalanceStateTable(int id, decimal quantity, bool isRemoved, decimal averageUnitCost = 2m)
   {
     var table = new DataTable();
     table.Columns.Add("Id", typeof(int));
     table.Columns.Add("Quantity", typeof(decimal));
+    table.Columns.Add("AverageUnitCost", typeof(decimal));
     table.Columns.Add("IsRemoved", typeof(bool));
-    table.Rows.Add(id, quantity, isRemoved);
+    table.Rows.Add(id, quantity, averageUnitCost, isRemoved);
     return table;
   }
 
@@ -1510,7 +1542,7 @@ public class PurchaseOrderServiceTests
     table.Columns.Add("BaseUnitName", typeof(string));
     table.Columns.Add("PurchaseUnitName", typeof(string));
     table.Columns.Add("PurchaseQuantity", typeof(decimal));
-    table.Columns.Add("UnitPrice", typeof(decimal));
+    table.Columns.Add("BaseUnitPrice", typeof(decimal));
     table.Columns.Add("LocationId", typeof(int));
     table.Columns.Add("LocationName", typeof(string));
     table.Columns.Add("LocationCode", typeof(string));
@@ -1531,7 +1563,7 @@ public class PurchaseOrderServiceTests
         row.BaseUnitName,
         row.PurchaseUnitName,
         row.PurchaseQuantity,
-        row.UnitPrice,
+        row.BaseUnitPrice,
         row.LocationId,
         row.LocationName,
         row.LocationCode,
@@ -1556,7 +1588,7 @@ public class PurchaseOrderServiceTests
     table.Columns.Add("BaseUnitName", typeof(string));
     table.Columns.Add("PurchaseUnitName", typeof(string));
     table.Columns.Add("PurchaseQuantity", typeof(decimal));
-    table.Columns.Add("Price", typeof(decimal));
+    table.Columns.Add("BaseUnitPrice", typeof(decimal));
 
     foreach (var row in rows)
     {
@@ -1568,7 +1600,7 @@ public class PurchaseOrderServiceTests
         row.BaseUnitName,
         row.PurchaseUnitName,
         row.PurchaseQuantity,
-        row.Price);
+        row.BaseUnitPrice);
     }
 
     return table;
@@ -1594,7 +1626,7 @@ public class PurchaseOrderServiceTests
     string MaterialCode,
     string MaterialDescription,
     decimal PurchaseQuantity,
-    decimal? UnitPrice,
+    decimal? BaseUnitPrice,
     int LocationId,
     string LocationName,
     decimal RawNeedQuantity,
@@ -1616,7 +1648,7 @@ public class PurchaseOrderServiceTests
     string? BaseUnitName,
     string? PurchaseUnitName,
     decimal PurchaseQuantity,
-    decimal? Price);
+    decimal? BaseUnitPrice);
 
   private sealed record LocationTestRow(int Id, string LocationName, string LocationCode);
   private sealed record RoomLookupTestRow(int Id, string Name, string Code);

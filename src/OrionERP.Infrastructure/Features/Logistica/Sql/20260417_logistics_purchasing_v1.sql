@@ -54,7 +54,7 @@ BEGIN
         MaterialDescriptionSnapshot varchar(800) NOT NULL,
         VendorCodeSnapshot varchar(100) NULL,
         BaseUnitNameSnapshot varchar(50) NULL,
-        UnitPrice decimal(18,4) NULL,
+        BaseUnitPrice decimal(18,6) NULL,
         OrderedQuantity decimal(18,4) NOT NULL CONSTRAINT DF_PurchaseOrderLine_OrderedQuantity DEFAULT (0),
         ReceivedQuantity decimal(18,4) NOT NULL CONSTRAINT DF_PurchaseOrderLine_ReceivedQuantity DEFAULT (0),
         CreatedAt datetime2(0) NOT NULL CONSTRAINT DF_PurchaseOrderLine_CreatedAt DEFAULT (SYSUTCDATETIME()),

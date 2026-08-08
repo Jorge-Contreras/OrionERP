@@ -218,7 +218,7 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
         header.Cell().Element(TableHeaderCell).Text("Foto").SemiBold();
         header.Cell().Element(TableHeaderCell).Text("Material").SemiBold();
         header.Cell().Element(TableHeaderCell).Text("Unidad").SemiBold();
-        header.Cell().Element(TableHeaderCell).Text("Precio").SemiBold();
+        header.Cell().Element(TableHeaderCell).Text("Precio por unidad base").SemiBold();
         header.Cell().Element(TableHeaderCell).AlignRight().Text("Ordenado").SemiBold();
         header.Cell().Element(TableHeaderCell).AlignRight().Text("Recibido").SemiBold();
         header.Cell().Element(TableHeaderCell).AlignRight().Text("Pendiente").SemiBold();
@@ -243,7 +243,7 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
           }
         });
         table.Cell().Element(TableBodyCell).Text(row.UnitName);
-        table.Cell().Element(TableBodyCell).AlignRight().Text(row.UnitPrice);
+        table.Cell().Element(TableBodyCell).AlignRight().Text(row.BaseUnitPrice);
         table.Cell().Element(TableBodyCell).AlignRight().Text(row.OrderedQuantity);
         table.Cell().Element(TableBodyCell).AlignRight().Text(row.ReceivedQuantity);
         table.Cell().Element(TableBodyCell).AlignRight().Text(row.RemainingQuantity);

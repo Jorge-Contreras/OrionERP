@@ -88,6 +88,7 @@ public class PurchaseOrderWebSupportTests
           BaseUnitName = "Pieza",
           PurchaseQuantity = 24m,
           PurchaseUnitName = "Paquete",
+          BaseUnitPrice = 2.82m,
           OrderedQuantity = 48m,
           ReceivedQuantity = 0m,
           RemainingQuantity = 48m,
@@ -117,6 +118,7 @@ public class PurchaseOrderWebSupportTests
     Assert.Equal("1", model.AllocationCount);
     Assert.Equal("1", model.PendingAllocationCount);
     Assert.Equal("Paquete", model.Lines[0].UnitName);
+    Assert.Equal(PurchaseQuantityDisplay.FormatBaseUnitPrice(2.82m, "Pieza", CultureInfo.CurrentCulture), model.Lines[0].BaseUnitPrice);
     Assert.Equal(PurchaseQuantityDisplay.FormatQuantity(48m, 24m, "Pieza", "Paquete", CultureInfo.CurrentCulture), model.Lines[0].OrderedQuantity);
     Assert.Equal(PurchaseQuantityDisplay.FormatQuantity(48m, 24m, "Pieza", "Paquete", CultureInfo.CurrentCulture), model.Allocations[0].PlannedQuantity);
 
@@ -220,10 +222,37 @@ public class PurchaseOrderWebSupportTests
     var formatted = PurchaseQuantityDisplay.FormatQuantity(3m, 3m, "Pieza", "Paquete", culture);
     var summary = PurchaseQuantityDisplay.BuildPresentationSummary("Pieza", 3m, "Paquete", culture);
     var baseQuantity = PurchaseQuantityDisplay.ToBaseQuantity(2m, 3m, "Paquete");
+    var basePrice = PurchaseQuantityDisplay.FormatBaseUnitPrice(0.054267m, "Gramo", culture);
+    var presentationPrice = PurchaseQuantityDisplay.BuildPurchasePresentationPriceEquivalent(0.054267m, 2027m, "Bolsa", culture);
 
     Assert.Equal("1.00 Paquete", formatted);
     Assert.Equal("Internamente: 1 Paquete = 3.00 Pieza", summary);
     Assert.Equal(6m, baseQuantity);
+    Assert.Equal("$0.054267 / Gramo", basePrice);
+    Assert.Equal("Equivale a $110.00 / Bolsa", presentationPrice);
+  }
+
+  [Fact]
+  public void PurchaseOrderSurfaces_LabelPriceAsBaseUnitPrice()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Purchasing/ComprasPage.razor");
+    var pdf = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Purchasing/PurchaseOrderPdfService.cs");
+
+    Assert.Contains("Precio por unidad base", page, StringComparison.Ordinal);
+    Assert.Contains("precio se captura por unidad base", page, StringComparison.Ordinal);
+    Assert.Contains("Precio por unidad base", pdf, StringComparison.Ordinal);
+  }
+
+  private static string ReadRepoFile(string relativePath)
+  {
+    var current = new DirectoryInfo(AppContext.BaseDirectory);
+    while (current is not null && !File.Exists(Path.Combine(current.FullName, "OrionERP.sln")))
+    {
+      current = current.Parent;
+    }
+
+    Assert.NotNull(current);
+    return File.ReadAllText(Path.Combine(current!.FullName, relativePath));
   }
 
   private sealed class FakeMaterialService : IMaterialService

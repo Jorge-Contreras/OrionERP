@@ -5,6 +5,7 @@ using System.Text;
 using System.Globalization;
 using Dapper;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Purchasing;
 using OrionERP.Application.Features.Logistica.Shared;
 
@@ -174,7 +175,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           line.BaseUnitNameSnapshot AS BaseUnitName,
           CAST(line.PurchaseQuantitySnapshot AS decimal(18,4)) AS PurchaseQuantity,
           line.PurchaseUnitNameSnapshot AS PurchaseUnitName,
-          CAST(line.UnitPrice AS decimal(18,4)) AS UnitPrice,
+          CAST(line.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice,
           CAST(line.OrderedQuantity AS decimal(18,4)) AS OrderedQuantity,
           CAST(line.ReceivedQuantity AS decimal(18,4)) AS ReceivedQuantity,
           CAST(line.OrderedQuantity - line.ReceivedQuantity AS decimal(18,4)) AS RemainingQuantity
@@ -603,7 +604,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         var allocation = allocationRows[item.Key];
         var receiptInput = request.Lines.First(line => line.PurchaseOrderLineAllocationId == item.Key);
         var quantity = item.Value;
-        var unitCost = allocation.UnitPrice.GetValueOrDefault();
+        var unitCost = allocation.BaseUnitPrice.GetValueOrDefault();
 
         await conn.ExecuteAsync(
           new CommandDefinition(
@@ -1021,6 +1022,11 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     CancellationToken ct,
     IReadOnlyCollection<int>? roomScopeIds = null)
   {
+    if (request.Lines.Any(line => line.BaseUnitPrice < 0m))
+    {
+      return LogisticsCommandResult.Fail("El precio por unidad base no puede ser negativo.");
+    }
+
     if (!await VendorExistsAsync(conn, tx, request.BusinessPartnerId, ct))
     {
       return LogisticsCommandResult.Fail("El proveedor seleccionado no existe o no está activo.");
@@ -1240,7 +1246,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
               BaseUnitNameSnapshot,
               PurchaseQuantitySnapshot,
               PurchaseUnitNameSnapshot,
-              UnitPrice,
+              BaseUnitPrice,
               OrderedQuantity,
               ReceivedQuantity,
               CreatedAt,
@@ -1256,7 +1262,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
               @BaseUnitNameSnapshot,
               @PurchaseQuantitySnapshot,
               @PurchaseUnitNameSnapshot,
-              @UnitPrice,
+              @BaseUnitPrice,
               @OrderedQuantity,
               0,
               SYSUTCDATETIME(),
@@ -1275,7 +1281,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             BaseUnitNameSnapshot = NullIfWhiteSpace(material.BaseUnitName),
             PurchaseQuantitySnapshot = NormalizePurchaseQuantity(lineRequest.PurchaseQuantitySnapshot, material.PurchaseQuantity),
             PurchaseUnitNameSnapshot = ResolvePurchaseUnitName(lineRequest.PurchaseUnitNameSnapshot, material.PurchaseUnitName),
-            lineRequest.UnitPrice,
+            BaseUnitPrice = MaterialPriceCalculator.NormalizeBaseUnitPrice(lineRequest.BaseUnitPrice),
             OrderedQuantity = orderedQuantity
           },
           tx,
@@ -1575,7 +1581,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         return new PurchaseOrderLineUpsertRequest
         {
           MaterialId = first.MaterialId,
-          UnitPrice = first.UnitPrice,
+          BaseUnitPrice = first.BaseUnitPrice,
           PurchaseQuantitySnapshot = packSize,
           PurchaseUnitNameSnapshot = purchaseUnitName,
           Allocations = allocations
@@ -1638,7 +1644,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
               WHEN m.PurchaseQuantity IS NULL OR m.PurchaseQuantity <= 0 THEN 1
               ELSE m.PurchaseQuantity
           END AS decimal(18,4)) AS PurchaseQuantity,
-          CAST(m.Price AS decimal(18,4)) AS UnitPrice,
+          CAST(m.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice,
           sb.LocationId,
           location.LocationName,
           location.LocationCode,
@@ -1741,7 +1747,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                 WHEN m.PurchaseQuantity IS NULL OR m.PurchaseQuantity <= 0 THEN 1
                 ELSE m.PurchaseQuantity
             END AS decimal(18,4)) AS PurchaseQuantity,
-            CAST(m.Price AS decimal(18,4)) AS Price
+            CAST(m.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice
         FROM logistica.Material m
         LEFT JOIN logistica.UnitOfMeasure baseU
           ON baseU.Id = m.BaseUnitId
@@ -1854,7 +1860,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             line.MaterialDescriptionSnapshot AS MaterialDescription,
             CAST(allocation.PlannedQuantity AS decimal(18,4)) AS PlannedQuantity,
             CAST(allocation.ReceivedQuantity AS decimal(18,4)) AS ReceivedQuantity
-            ,CAST(line.UnitPrice AS decimal(18,6)) AS UnitPrice
+            ,CAST(line.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice
             ,CAST(CASE WHEN material.TrackLots=1 OR material.IsPerishable=1 THEN 1 ELSE 0 END AS bit) AS TrackLots
         FROM logistica.PurchaseOrderLineAllocation allocation
         JOIN logistica.PurchaseOrderLine line
@@ -2082,7 +2088,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     public string? BaseUnitName { get; set; }
     public string? PurchaseUnitName { get; set; }
     public decimal PurchaseQuantity { get; set; }
-    public decimal? Price { get; set; }
+    public decimal? BaseUnitPrice { get; set; }
   }
 
   private sealed class LocationRow
@@ -2102,7 +2108,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     public string MaterialDescription { get; set; } = string.Empty;
     public decimal PlannedQuantity { get; set; }
     public decimal ReceivedQuantity { get; set; }
-    public decimal? UnitPrice { get; set; }
+    public decimal? BaseUnitPrice { get; set; }
     public bool TrackLots { get; set; }
   }
 
@@ -2123,7 +2129,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     public string? BaseUnitName { get; set; }
     public string? PurchaseUnitName { get; set; }
     public decimal PurchaseQuantity { get; set; }
-    public decimal? UnitPrice { get; set; }
+    public decimal? BaseUnitPrice { get; set; }
     public int LocationId { get; set; }
     public string LocationName { get; set; } = string.Empty;
     public string? LocationCode { get; set; }

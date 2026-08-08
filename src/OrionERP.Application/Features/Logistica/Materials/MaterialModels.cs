@@ -32,7 +32,7 @@ public sealed class MaterialListItemDto
   public string? CategoryName { get; set; }
   public string? BaseUnitName { get; set; }
   public string? VendorName { get; set; }
-  public decimal? Price { get; set; }
+  public decimal? BaseUnitPrice { get; set; }
   public bool HasImage { get; set; }
   public string? Barcode { get; set; }
   public decimal TotalQuantity { get; set; }
@@ -51,7 +51,7 @@ public sealed class MaterialDetailDto
   public int? PurchaseUnitId { get; set; }
   public string? PurchaseUnitName { get; set; }
   public int? BusinessPartnerId { get; set; }
-  public decimal? Price { get; set; }
+  public decimal? BaseUnitPrice { get; set; }
   public DateTime? CreatedDate { get; set; }
   public DateTime? UpdatedDate { get; set; }
   public string? Brand { get; set; }
@@ -90,7 +90,9 @@ public sealed class MaterialUpsertRequest
 
   public int? PurchaseUnitId { get; set; }
   public int? BusinessPartnerId { get; set; }
-  public decimal? Price { get; set; }
+
+  [Range(typeof(decimal), "0", "999999999", ErrorMessage = "El precio por unidad base no puede ser negativo.")]
+  public decimal? BaseUnitPrice { get; set; }
 
   [StringLength(50)]
   public string? Brand { get; set; }

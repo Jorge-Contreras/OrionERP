@@ -159,7 +159,7 @@ BEGIN
         PurchaseQuantity decimal(18,4) NOT NULL CONSTRAINT DF_Material_PurchaseQuantity DEFAULT (1),
         PurchaseUnitId int NULL,
         BusinessPartnerId int NULL,
-        Price decimal(18,4) NULL,
+        BaseUnitPrice decimal(18,6) NULL,
         CreatedDate date NOT NULL CONSTRAINT DF_Material_CreatedDate DEFAULT (CONVERT(date, SYSUTCDATETIME())),
         UpdatedDate date NOT NULL CONSTRAINT DF_Material_UpdatedDate DEFAULT (CONVERT(date, SYSUTCDATETIME())),
         Brand varchar(50) NULL,

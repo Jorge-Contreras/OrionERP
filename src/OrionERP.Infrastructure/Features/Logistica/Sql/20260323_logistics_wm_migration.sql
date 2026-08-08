@@ -290,7 +290,7 @@ USING (
         CAST(ISNULL(legacy.CANTIDAD_UNIDAD_COMPRA, 1) AS decimal(18,4)) AS PurchaseQuantity,
         COALESCE(purchaseUnit.Id, baseUnit.Id, fallbackUnit.Id) AS PurchaseUnitId,
         bp.Id AS BusinessPartnerId,
-        CAST(legacy.PRECIO AS decimal(18,4)) AS Price,
+        CAST(legacy.PRECIO AS decimal(18,6)) AS BaseUnitPrice,
         legacy.FECHA_CREADO AS CreatedDate,
         legacy.FECHA_ACTUALIZADO AS UpdatedDate,
         NULLIF(LTRIM(RTRIM(legacy.MARCA)), '') AS Brand,
@@ -334,7 +334,7 @@ WHEN MATCHED THEN
         PurchaseQuantity = src.PurchaseQuantity,
         PurchaseUnitId = src.PurchaseUnitId,
         BusinessPartnerId = src.BusinessPartnerId,
-        Price = src.Price,
+        BaseUnitPrice = src.BaseUnitPrice,
         CreatedDate = ISNULL(src.CreatedDate, target.CreatedDate),
         UpdatedDate = ISNULL(src.UpdatedDate, target.UpdatedDate),
         Brand = src.Brand,
@@ -356,14 +356,14 @@ WHEN NOT MATCHED THEN
     INSERT
     (
         Id, MaterialCode, LegacyMaterialId, [Description], BaseUnitId, PurchaseQuantity, PurchaseUnitId,
-        BusinessPartnerId, Price, CreatedDate, UpdatedDate, Brand, Model, IsPerishable, ShelfLifeDays,
+        BusinessPartnerId, BaseUnitPrice, CreatedDate, UpdatedDate, Brand, Model, IsPerishable, ShelfLifeDays,
         RequiresRefrigeration, MaterialStatus, CategoryId, Barcode, VendorCode, PrimaryImage,
         PrimaryImageFileName, PrimaryImageContentType, PurchaseLink, MaterialClass, IsActive
     )
     VALUES
     (
         src.MaterialId, src.MaterialCode, src.LegacyMaterialId, src.[Description], src.BaseUnitId, src.PurchaseQuantity, src.PurchaseUnitId,
-        src.BusinessPartnerId, src.Price, ISNULL(src.CreatedDate, CONVERT(date, SYSUTCDATETIME())), ISNULL(src.UpdatedDate, CONVERT(date, SYSUTCDATETIME())),
+        src.BusinessPartnerId, src.BaseUnitPrice, ISNULL(src.CreatedDate, CONVERT(date, SYSUTCDATETIME())), ISNULL(src.UpdatedDate, CONVERT(date, SYSUTCDATETIME())),
         src.Brand, src.Model, src.IsPerishable, src.ShelfLifeDays, src.RequiresRefrigeration, src.MaterialStatus, src.CategoryId,
         src.Barcode, src.VendorCode, src.PrimaryImage, src.PrimaryImageFileName, src.PrimaryImageContentType, src.PurchaseLink, src.MaterialClass, 1
     );

@@ -186,7 +186,7 @@ public partial class ComprasPage : ComponentBase, IDisposable
           BaseUnitName = line.BaseUnitName,
           PurchaseQuantity = NormalizePurchaseQuantity(line.PurchaseQuantity),
           PurchaseUnitName = line.PurchaseUnitName,
-          UnitPrice = line.UnitPrice,
+          BaseUnitPrice = line.BaseUnitPrice,
           ReceivedQuantity = line.ReceivedQuantity,
           Allocations = line.Allocations
             .Select(allocation => new EditablePurchaseAllocation
@@ -316,7 +316,7 @@ public partial class ComprasPage : ComponentBase, IDisposable
         BaseUnitName = detail.BaseUnitName ?? item.BaseUnitName,
         PurchaseQuantity = NormalizePurchaseQuantity(detail.PurchaseQuantity),
         PurchaseUnitName = detail.PurchaseUnitName,
-        UnitPrice = detail.Price,
+        BaseUnitPrice = detail.BaseUnitPrice,
         ReceivedQuantity = 0
       };
 
@@ -778,6 +778,19 @@ public partial class ComprasPage : ComponentBase, IDisposable
       line.PurchaseUnitName,
       CultureInfo.CurrentCulture);
 
+  protected string FormatBaseUnitPrice(EditablePurchaseLine line)
+    => PurchaseQuantityDisplay.FormatBaseUnitPrice(
+      line.BaseUnitPrice,
+      line.BaseUnitName,
+      CultureInfo.CurrentCulture);
+
+  protected string? GetPurchasePresentationPriceEquivalent(EditablePurchaseLine line)
+    => PurchaseQuantityDisplay.BuildPurchasePresentationPriceEquivalent(
+      line.BaseUnitPrice,
+      line.PurchaseQuantity,
+      line.PurchaseUnitName,
+      CultureInfo.CurrentCulture);
+
   protected string FormatPurchaseQuantity(EditablePurchaseLine line, decimal quantity)
     => PurchaseQuantityDisplay.FormatQuantity(
       quantity,
@@ -949,7 +962,7 @@ public partial class ComprasPage : ComponentBase, IDisposable
         {
           Id = line.Id,
           MaterialId = line.MaterialId,
-          UnitPrice = line.UnitPrice,
+          BaseUnitPrice = line.BaseUnitPrice,
           PurchaseQuantitySnapshot = NormalizePurchaseQuantity(line.PurchaseQuantity),
           PurchaseUnitNameSnapshot = line.PurchaseUnitName,
           Allocations = line.Allocations
@@ -1112,7 +1125,7 @@ public partial class ComprasPage : ComponentBase, IDisposable
     public string? BaseUnitName { get; set; }
     public decimal PurchaseQuantity { get; set; } = 1m;
     public string? PurchaseUnitName { get; set; }
-    public decimal? UnitPrice { get; set; }
+    public decimal? BaseUnitPrice { get; set; }
     public decimal ReceivedQuantity { get; set; }
     public List<EditablePurchaseAllocation> Allocations { get; set; } = [];
     public decimal OrderedQuantity => Allocations.Sum(allocation => allocation.PlannedQuantity);

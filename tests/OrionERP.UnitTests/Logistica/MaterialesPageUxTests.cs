@@ -28,6 +28,28 @@ public class MaterialesPageUxTests
   }
 
   [Fact]
+  public void Page_SeparatesCanonicalBasePriceFromDerivedPurchasePresentationPrice()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor");
+    var codeBehind = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor.cs");
+    var materialService = ReadRepoFile("src/OrionERP.Infrastructure/Features/Logistica/Materials/MaterialService.cs");
+    var bomService = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/BomRecipeService.cs");
+
+    Assert.Contains("material-base-unit-price", page, StringComparison.Ordinal);
+    Assert.Contains("material-presentation-price", page, StringComparison.Ordinal);
+    Assert.Contains("Precio por unidad base", codeBehind, StringComparison.Ordinal);
+    Assert.Contains("Precio por presentación", codeBehind, StringComparison.Ordinal);
+    Assert.Contains("OnBaseUnitPriceChanged", codeBehind, StringComparison.Ordinal);
+    Assert.Contains("OnPurchasePresentationPriceChanged", codeBehind, StringComparison.Ordinal);
+    Assert.Contains("@oninput=\"OnBaseUnitPriceChanged\"", page, StringComparison.Ordinal);
+    Assert.Contains("@oninput=\"OnPurchasePresentationPriceChanged\"", page, StringComparison.Ordinal);
+    Assert.Contains("BaseUnitPrice = @BaseUnitPrice", materialService, StringComparison.Ordinal);
+    Assert.Contains("material.BaseUnitPrice", bomService, StringComparison.Ordinal);
+    Assert.DoesNotContain("Editor.Price", page, StringComparison.Ordinal);
+    Assert.DoesNotContain("Editor.Price", codeBehind, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public void Catalog_KeepsLegacyLinkedMasterDataAvailableDuringEdit()
   {
     var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Logistica/Materials/MaterialService.cs");

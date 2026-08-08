@@ -95,7 +95,7 @@ public sealed class PurchaseOrderLineDto
   public string? BaseUnitName { get; set; }
   public decimal PurchaseQuantity { get; set; } = 1m;
   public string? PurchaseUnitName { get; set; }
-  public decimal? UnitPrice { get; set; }
+  public decimal? BaseUnitPrice { get; set; }
   public decimal OrderedQuantity { get; set; }
   public decimal ReceivedQuantity { get; set; }
   public decimal RemainingQuantity { get; set; }
@@ -169,8 +169,8 @@ public sealed class PurchaseOrderLineUpsertRequest
   [Range(1, int.MaxValue, ErrorMessage = "Selecciona un material válido.")]
   public int MaterialId { get; set; }
 
-  [Range(typeof(decimal), "0", "999999999", ErrorMessage = "El precio unitario no puede ser negativo.")]
-  public decimal? UnitPrice { get; set; }
+  [Range(typeof(decimal), "0", "999999999", ErrorMessage = "El precio por unidad base no puede ser negativo.")]
+  public decimal? BaseUnitPrice { get; set; }
 
   [Range(typeof(decimal), "0.0001", "999999999", ErrorMessage = "La cantidad por compra debe ser mayor a 0.")]
   public decimal PurchaseQuantitySnapshot { get; set; } = 1m;

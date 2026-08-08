@@ -1,4 +1,5 @@
 using System.Globalization;
+using OrionERP.Application.Features.Logistica.Materials;
 
 namespace OrionERP.Web.Features.Logistica.Purchasing;
 
@@ -76,5 +77,34 @@ public static class PurchaseQuantityDisplay
     }
 
     return $"Internamente: 1 {purchaseUnitText} = {normalizedPurchaseQuantity.ToString("N2", culture)} {baseUnitText}";
+  }
+
+  public static string FormatBaseUnitPrice(decimal? baseUnitPrice, string? baseUnitName, CultureInfo culture)
+  {
+    if (!baseUnitPrice.HasValue)
+    {
+      return "-";
+    }
+
+    var formattedPrice = baseUnitPrice.Value.ToString("#,0.00####", culture);
+    var unitSuffix = string.IsNullOrWhiteSpace(baseUnitName) ? "unidad base" : baseUnitName.Trim();
+    return $"{culture.NumberFormat.CurrencySymbol}{formattedPrice} / {unitSuffix}";
+  }
+
+  public static string? BuildPurchasePresentationPriceEquivalent(
+    decimal? baseUnitPrice,
+    decimal purchaseQuantity,
+    string? purchaseUnitName,
+    CultureInfo culture)
+  {
+    if (!UsesPurchaseUnit(purchaseUnitName))
+    {
+      return null;
+    }
+
+    var presentationPrice = MaterialPriceCalculator.CalculatePurchasePresentationPrice(baseUnitPrice, purchaseQuantity);
+    return presentationPrice.HasValue
+      ? $"Equivale a {presentationPrice.Value.ToString("C2", culture)} / {purchaseUnitName!.Trim()}"
+      : null;
   }
 }

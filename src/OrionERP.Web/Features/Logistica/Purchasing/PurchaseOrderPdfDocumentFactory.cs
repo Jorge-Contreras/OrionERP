@@ -60,7 +60,7 @@ public sealed class PurchaseOrderPdfDocumentFactory : IPurchaseOrderPdfDocumentF
           Safe(line.VendorCode),
           PurchaseQuantityDisplay.GetPrimaryUnitName(line.BaseUnitName, line.PurchaseUnitName),
           BuildPurchasePresentation(line, culture),
-          line.UnitPrice.HasValue ? line.UnitPrice.Value.ToString("C", culture) : "-",
+          PurchaseQuantityDisplay.FormatBaseUnitPrice(line.BaseUnitPrice, line.BaseUnitName, culture),
           FormatPurchaseQuantity(line.OrderedQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture),
           FormatPurchaseQuantity(line.ReceivedQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture),
           FormatPurchaseQuantity(line.RemainingQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture)))

@@ -24,7 +24,7 @@ public sealed record PurchaseOrderPdfLineRow(
   string VendorCode,
   string UnitName,
   string PurchasePresentation,
-  string UnitPrice,
+  string BaseUnitPrice,
   string OrderedQuantity,
   string ReceivedQuantity,
   string RemainingQuantity);

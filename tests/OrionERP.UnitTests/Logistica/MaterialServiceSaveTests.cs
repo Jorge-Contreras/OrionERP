@@ -24,6 +24,7 @@ public class MaterialServiceSaveTests
       Description = "Aceite hidraulico",
       BaseUnitId = 1,
       PurchaseQuantity = 1m,
+      BaseUnitPrice = 12.3456789m,
       Status = "ACTIVO",
       MaterialClass = "Consumable"
     });
@@ -36,6 +37,29 @@ public class MaterialServiceSaveTests
 
     Assert.DoesNotContain("IsActive =", updateCommand.CommandText, StringComparison.Ordinal);
     Assert.Contains("WHERE Rfc = @Rfc AND Id = @Id;", updateCommand.CommandText, StringComparison.Ordinal);
+    Assert.Contains(updateCommand.Parameters, parameter => parameter.Name.TrimStart('@') == "BaseUnitPrice" && Equals(parameter.Value, 12.345679m));
+  }
+
+  [Fact]
+  public async Task SaveMaterialAsync_RejectsNegativeBaseUnitPriceBeforeOpeningConnection()
+  {
+    var connection = new FakeQueryDbConnection();
+    var service = new MaterialService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.SaveMaterialAsync(new MaterialUpsertRequest
+    {
+      Rfc = "OHM191112Q26",
+      Description = "Aceite hidraulico",
+      BaseUnitId = 1,
+      PurchaseQuantity = 1m,
+      BaseUnitPrice = -0.01m,
+      Status = "ACTIVO",
+      MaterialClass = "Consumable"
+    });
+
+    Assert.False(result.Success);
+    Assert.Contains("unidad base", result.Message, StringComparison.OrdinalIgnoreCase);
+    Assert.Empty(connection.ExecutedCommands);
   }
 
   [Fact]

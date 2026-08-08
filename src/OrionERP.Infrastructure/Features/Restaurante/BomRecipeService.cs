@@ -705,7 +705,7 @@ public sealed class BomRecipeService : IBomRecipeService
         component.Quantity
         * (1 + component.ExpectedWastePercent / 100.0)
         * COALESCE(materialConversion.Factor, globalConversion.Factor, CASE WHEN component.UnitId = material.BaseUnitId THEN 1 END)
-        * COALESCE(subBom.FrozenTheoreticalCost / NULLIF(subBom.YieldQuantity, 0), stockCost.AverageUnitCost, material.Price, 0)
+        * COALESCE(subBom.FrozenTheoreticalCost / NULLIF(subBom.YieldQuantity, 0), stockCost.AverageUnitCost, material.BaseUnitPrice, 0)
       ), 0) / NULLIF(versionInfo.YieldQuantity, 0) AS decimal(18,6))
       FROM logistica.BomVersion versionInfo
       JOIN logistica.BomComponent component ON component.Rfc = versionInfo.Rfc AND component.BomVersionId = versionInfo.Id

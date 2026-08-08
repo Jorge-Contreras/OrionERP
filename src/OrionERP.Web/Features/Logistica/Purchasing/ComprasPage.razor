@@ -305,7 +305,10 @@
                 <section class="card shadow-sm mb-3">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h3 class="h5 mb-0">Líneas de la orden</h3>
+                            <div>
+                                <h3 class="h5 mb-0">Líneas de la orden</h3>
+                                <p class="text-muted small mb-0">Las cantidades se muestran en presentación de compra; el precio se captura por unidad base para conservar el costo de inventario.</p>
+                            </div>
                             <span class="text-muted small">@Lines.Count materiales</span>
                         </div>
 
@@ -316,7 +319,7 @@
                                         <th class="compras-thumb-col">Foto</th>
                                         <th>Material</th>
                                         <th>Unidad compra</th>
-                                        <th class="text-end">Precio</th>
+                                        <th class="text-end">Precio por unidad base</th>
                                         <th class="text-end">Ordenado</th>
                                         <th class="text-end">Recibido</th>
                                         <th class="text-end">Pendiente</th>
@@ -362,11 +365,19 @@
                                                 <td class="text-end">
                                                     @if (IsDraftMode)
                                                     {
-                                                        <InputNumber class="form-control form-control-sm compras-inline-number" @bind-Value="line.UnitPrice" />
+                                                        <InputNumber class="form-control form-control-sm compras-inline-number"
+                                                                     step="0.000001"
+                                                                     aria-label="Precio por unidad base"
+                                                                     @bind-Value="line.BaseUnitPrice" />
+                                                        <div class="small text-muted">por @(string.IsNullOrWhiteSpace(line.BaseUnitName) ? "unidad base" : line.BaseUnitName)</div>
                                                     }
                                                     else
                                                     {
-                                                        @(line.UnitPrice.HasValue ? line.UnitPrice.Value.ToString("C") : "-")
+                                                        @FormatBaseUnitPrice(line)
+                                                    }
+                                                    @if (GetPurchasePresentationPriceEquivalent(line) is { } priceEquivalent)
+                                                    {
+                                                        <div class="small text-muted">@priceEquivalent</div>
                                                     }
                                                 </td>
                                                 <td class="text-end">@FormatPurchaseQuantity(line, line.OrderedQuantity)</td>

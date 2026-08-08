@@ -80,7 +80,7 @@ public sealed class MaterialService : IMaterialService
           mc.CategoryName,
           u.UnitName AS BaseUnitName,
           bp.PartnerName AS VendorName,
-          CAST(m.Price AS decimal(18,4)) AS Price,
+          CAST(m.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice,
           CAST(CASE WHEN m.PrimaryImage IS NULL THEN 0 ELSE 1 END AS bit) AS HasImage,
           m.Barcode,
           CAST(ISNULL(st.TotalQuantity, 0) AS decimal(18,4)) AS TotalQuantity,
@@ -197,7 +197,7 @@ public sealed class MaterialService : IMaterialService
           m.PurchaseUnitId,
           purchaseU.UnitName AS PurchaseUnitName,
           m.BusinessPartnerId,
-          CAST(m.Price AS decimal(18,4)) AS Price,
+          CAST(m.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice,
           m.CreatedDate,
           m.UpdatedDate,
           m.Brand,
@@ -676,6 +676,13 @@ public sealed class MaterialService : IMaterialService
       return LogisticsCommandResult.Fail("La descripción del material es obligatoria.");
     }
 
+    if (request.BaseUnitPrice < 0m)
+    {
+      return LogisticsCommandResult.Fail("El precio por unidad base no puede ser negativo.");
+    }
+
+    var baseUnitPrice = MaterialPriceCalculator.NormalizeBaseUnitPrice(request.BaseUnitPrice);
+
     using var conn = CreateConnection();
     await conn.OpenAsync(ct);
     using var tx = await conn.BeginTransactionAsync(ct);
@@ -724,7 +731,7 @@ public sealed class MaterialService : IMaterialService
               PurchaseQuantity = @PurchaseQuantity,
               PurchaseUnitId = @PurchaseUnitId,
               BusinessPartnerId = @BusinessPartnerId,
-              Price = @Price,
+              BaseUnitPrice = @BaseUnitPrice,
               UpdatedDate = CONVERT(date, SYSUTCDATETIME()),
               Brand = @Brand,
               Model = @Model,
@@ -766,7 +773,7 @@ public sealed class MaterialService : IMaterialService
               request.PurchaseQuantity,
               request.PurchaseUnitId,
               request.BusinessPartnerId,
-              request.Price,
+              BaseUnitPrice = baseUnitPrice,
               Brand = NullIfWhiteSpace(request.Brand),
               Model = NullIfWhiteSpace(request.Model),
               request.IsPerishable,
@@ -814,7 +821,7 @@ public sealed class MaterialService : IMaterialService
               PurchaseQuantity,
               PurchaseUnitId,
               BusinessPartnerId,
-              Price,
+              BaseUnitPrice,
               CreatedDate,
               UpdatedDate,
               Brand,
@@ -844,7 +851,7 @@ public sealed class MaterialService : IMaterialService
               @PurchaseQuantity,
               @PurchaseUnitId,
               @BusinessPartnerId,
-              @Price,
+              @BaseUnitPrice,
               CONVERT(date, SYSUTCDATETIME()),
               CONVERT(date, SYSUTCDATETIME()),
               @Brand,
@@ -880,7 +887,7 @@ public sealed class MaterialService : IMaterialService
               request.PurchaseQuantity,
               request.PurchaseUnitId,
               request.BusinessPartnerId,
-              request.Price,
+              BaseUnitPrice = baseUnitPrice,
               Brand = NullIfWhiteSpace(request.Brand),
               Model = NullIfWhiteSpace(request.Model),
               request.IsPerishable,

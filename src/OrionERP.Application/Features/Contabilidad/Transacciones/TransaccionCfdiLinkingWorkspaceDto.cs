@@ -12,6 +12,8 @@ public sealed class TransaccionCfdiLinkingWorkspaceDto
 
 public sealed class TransaccionRegularCfdiLinkCandidateDto
 {
+  public bool CanLink { get; set; } = true;
+  public string? BlockReason { get; set; }
   public long ComprobanteId { get; set; }
   public DateTime Fecha { get; set; }
   public string? Tipo { get; set; }
@@ -47,6 +49,8 @@ public sealed class TransaccionRegularCfdiLinkCandidateDto
 
 public sealed class TransaccionPago20LinkCandidateDto
 {
+  public bool CanLink { get; set; } = true;
+  public string? BlockReason { get; set; }
   public int DoctoRelacionadoId { get; set; }
   public long ComprobanteId { get; set; }
   public string? ComprobanteUuid { get; set; }

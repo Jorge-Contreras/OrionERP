@@ -49,6 +49,7 @@ public sealed class CfdiPolizaLinkedPolizaDto
   public string? Concepto { get; set; }
   public decimal TransaccionMonto { get; set; }
   public decimal MontoAsignado { get; set; }
+  public decimal TransaccionAsignadoPago20 { get; set; }
   public string? TipoPoliza { get; set; }
   public string? FormaPago { get; set; }
   public decimal IvaEsperado { get; set; }
@@ -60,6 +61,8 @@ public sealed class CfdiPolizaLinkedPolizaDto
 
 public sealed class CfdiPolizaCandidateDto
 {
+  public bool CanLink { get; set; } = true;
+  public string? BlockReason { get; set; }
   public int Id { get; set; }
   public DateTime Fecha { get; set; }
   public string? Concepto { get; set; }

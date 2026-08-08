@@ -187,7 +187,15 @@ else
                   <td>@poliza.TipoPoliza</td>
                   <td>@poliza.FormaPago</td>
                   <td class="text-end">
-                    <a href="/contabilidad/transacciones/@poliza.TransaccionId" class="btn btn-sm btn-primary">Ver/Editar</a>
+                    <div class="d-inline-flex gap-1">
+                      <a href="/contabilidad/transacciones/@poliza.TransaccionId" class="btn btn-sm btn-primary">Ver/Editar</a>
+                      <button type="button"
+                              class="btn btn-sm btn-outline-warning"
+                              disabled="@(IsUnlinking(poliza) || IsSavingLinkedMonto(poliza))"
+                              @onclick="() => DesligarAsync(poliza)">
+                        @(IsUnlinking(poliza) ? "Desligando..." : "Desligar")
+                      </button>
+                    </div>
                   </td>
                 </tr>
               }
@@ -302,7 +310,10 @@ else
             <tbody>
               @foreach (var candidate in Candidates)
               {
-                <tr class="@GetCandidateRowClass(candidate)" @onclick="() => SeleccionarCandidate(candidate)">
+                <tr class="@GetCandidateRowClass(candidate)"
+                    aria-disabled="@(!candidate.CanLink)"
+                    title="@candidate.BlockReason"
+                    @onclick="() => SeleccionarCandidate(candidate)">
                   <td>
                     <span class="badge @GetStatusBadgeClass(candidate.MatchStatus)">@FormatStatus(candidate.MatchStatus)</span>
                     <div class="linking-subtle">@candidate.MatchScore pts</div>

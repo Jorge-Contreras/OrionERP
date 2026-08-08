@@ -23,11 +23,15 @@ public sealed class AjustesService : IAjustesService
     "HABER"
   };
 
-  private static readonly HashSet<string> ValidMontoTipos = new(StringComparer.OrdinalIgnoreCase)
+  private static readonly HashSet<string> ValidMontoTipos = PlantillaContableMontoTipos.TransaccionTipos
+      .Concat(PlantillaContableMontoTipos.Pago20Tipos)
+      .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+  private static readonly HashSet<string> ValidContextos = new(StringComparer.OrdinalIgnoreCase)
   {
-    "MONTO_TOTAL",
-    "SUBTOTAL_IVA_16",
-    "IVA_16"
+    PlantillaContableContextos.Transaccion,
+    PlantillaContableContextos.Pago20Recibido,
+    PlantillaContableContextos.Pago20Emitido
   };
 
   private static readonly HashSet<string> ValidConceptoTipos = new(StringComparer.OrdinalIgnoreCase)
@@ -426,6 +430,7 @@ SELECT
     p.Descripcion,
     p.RFC AS Rfc,
     p.TipoPoliza,
+    p.Contexto,
     p.Activa,
     p.Origen,
     COUNT(CASE WHEN l.Activa = 1 THEN 1 END) AS LineCount,
@@ -447,6 +452,7 @@ GROUP BY
     p.Descripcion,
     p.RFC,
     p.TipoPoliza,
+    p.Contexto,
     p.Activa,
     p.Origen,
     p.ActualizadaEn
@@ -483,6 +489,7 @@ SELECT TOP (1)
     p.Descripcion,
     p.RFC AS Rfc,
     p.TipoPoliza,
+    p.Contexto,
     p.Activa,
     p.Origen,
     p.CreadaEn,
@@ -631,6 +638,7 @@ INSERT INTO dbo.PlantillaContable
     CategoriaID,
     RFC,
     TipoPoliza,
+    Contexto,
     Activa,
     Origen
 )
@@ -642,6 +650,7 @@ VALUES
     @CategoriaID,
     @rfc,
     @tipoPoliza,
+    @contexto,
     @activa,
     N'Manual'
 );";
@@ -655,6 +664,7 @@ VALUES
               descripcion = NormalizeNullable(request.Descripcion),
               rfc = NormalizeNullable(request.Rfc),
               tipoPoliza = NormalizeNullable(request.TipoPoliza),
+              contexto = NormalizeRequired(request.Contexto).ToUpperInvariant(),
               activa = request.Activa
             },
             tx,
@@ -674,6 +684,7 @@ SET Nombre = @nombre,
     Descripcion = @descripcion,
     RFC = @rfc,
     TipoPoliza = @tipoPoliza,
+    Contexto = @contexto,
     Activa = @activa,
     ActualizadaEn = SYSDATETIME()
 WHERE PlantillaContableID = @plantillaId;";
@@ -688,6 +699,7 @@ WHERE PlantillaContableID = @plantillaId;";
               descripcion = NormalizeNullable(request.Descripcion),
               rfc = NormalizeNullable(request.Rfc),
               tipoPoliza = NormalizeNullable(request.TipoPoliza),
+              contexto = NormalizeRequired(request.Contexto).ToUpperInvariant(),
               activa = request.Activa
             },
             tx,
@@ -842,6 +854,12 @@ WHERE PlantillaContableLineaID = @plantillaContableLineaId
       return "Captura el nombre de la plantilla.";
     }
 
+    var contexto = NormalizeRequired(request.Contexto).ToUpperInvariant();
+    if (!ValidContextos.Contains(contexto))
+    {
+      return "El contexto de la plantilla no es valido.";
+    }
+
     if (request.Lineas.Count == 0)
     {
       return "Agrega al menos una linea a la plantilla.";
@@ -868,6 +886,14 @@ WHERE PlantillaContableLineaID = @plantillaContableLineaId
       if (!ValidMontoTipos.Contains(montoTipo))
       {
         return "El tipo de monto de una linea no es valido.";
+      }
+
+      var allowedMontoTipos = PlantillaContableContextos.IsPago20(contexto)
+          ? PlantillaContableMontoTipos.Pago20Tipos
+          : PlantillaContableMontoTipos.TransaccionTipos;
+      if (!allowedMontoTipos.Contains(montoTipo, StringComparer.OrdinalIgnoreCase))
+      {
+        return "El tipo de monto no corresponde al contexto de la plantilla.";
       }
 
       if (!ValidConceptoTipos.Contains(conceptoTipo))

@@ -40,6 +40,7 @@ public sealed class TransaccionCfdiLinkedSummaryDto
 public sealed class TransaccionCfdiLinkedPolizaDto
 {
   public long ComprobanteId { get; set; }
+  public int? DoctoRelacionadoId { get; set; }
   public int TransaccionId { get; set; }
   public DateTime Fecha { get; set; }
   public string? Concepto { get; set; }
@@ -67,6 +68,7 @@ public sealed class TransaccionPago20LinkedSummaryDto
   public string? MonedaP { get; set; }
   public decimal MontoPago { get; set; }
   public decimal ImpPagado { get; set; }
+  public decimal MontoAsignado { get; set; }
   public decimal CompIva { get; set; }
   public decimal IvaContable { get; set; }
   public decimal IvaDiferencia { get; set; }
@@ -81,19 +83,41 @@ public sealed class TransaccionPago20LinkedSummaryDto
 public sealed class TransaccionPago20DoctoRelacionadoDto
 {
   public long ComprobanteId { get; set; }
+  public int PagoId { get; set; }
   public int DoctoRelacionadoId { get; set; }
   public Guid? UuidDoctoRelacionado { get; set; }
   public string? Folio { get; set; }
   public int? NumParcialidad { get; set; }
   public string? MonedaDr { get; set; }
+  public string? MonedaP { get; set; }
+  public DateTime? FechaPago { get; set; }
+  public string? FormaDePagoP { get; set; }
+  public decimal MontoPago { get; set; }
   public decimal ImpSaldoAnt { get; set; }
   public decimal ImpPagado { get; set; }
   public decimal ImpSaldoInsoluto { get; set; }
   public decimal CompIva { get; set; }
+  public decimal MontoAsignado { get; set; }
+  public decimal IvaEsperado { get; set; }
+  public int PolizasCount { get; set; }
+  public List<TransaccionCfdiLinkedPolizaDto> Polizas { get; } = [];
+}
+
+public sealed class TransaccionPago20LegacyLinkDto
+{
+  public long ComprobanteId { get; set; }
+  public string? ComprobanteUuid { get; set; }
+  public string? EmisorRfc { get; set; }
+  public string? ReceptorRfc { get; set; }
+  public decimal MontoAsignado { get; set; }
+  public int RelatedDocumentsCount { get; set; }
+  public string? LegacyReason { get; set; }
+  public int? XmlAttachmentId { get; set; }
 }
 
 public sealed class TransaccionCfdiLinkedDataDto
 {
   public List<TransaccionCfdiLinkedSummaryDto> Comprobantes { get; } = [];
   public List<TransaccionPago20LinkedSummaryDto> ComplementosPago { get; } = [];
+  public List<TransaccionPago20LegacyLinkDto> LegacyComplementosPago { get; } = [];
 }

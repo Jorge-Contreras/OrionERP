@@ -10,6 +10,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Ajustes;
 using OrionERP.Application.Features.Cfdi.Facturama;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Application.Features.Rfcs.Contracts;
@@ -201,6 +202,7 @@ WHERE TD.Transaccion_ID = @Id;";
     var complementos = (await multi.ReadAsync<TransaccionPago20LinkedSummaryDto>()).AsList();
     var documentos = (await multi.ReadAsync<TransaccionPago20DoctoRelacionadoDto>()).AsList();
     var complementoPolizas = (await multi.ReadAsync<TransaccionCfdiLinkedPolizaDto>()).AsList();
+    var legacyComplementos = (await multi.ReadAsync<TransaccionPago20LegacyLinkDto>()).AsList();
 
     var data = new TransaccionCfdiLinkedDataDto();
 
@@ -212,10 +214,18 @@ WHERE TD.Transaccion_ID = @Id;";
 
     foreach (var complemento in complementos)
     {
-      complemento.Documentos.AddRange(documentos.Where(item => item.ComprobanteId == complemento.ComprobanteId));
+      var linkedDocuments = documentos.Where(item => item.ComprobanteId == complemento.ComprobanteId).ToList();
+      foreach (var document in linkedDocuments)
+      {
+        document.Polizas.AddRange(complementoPolizas.Where(item => item.DoctoRelacionadoId == document.DoctoRelacionadoId));
+      }
+
+      complemento.Documentos.AddRange(linkedDocuments);
       complemento.Polizas.AddRange(complementoPolizas.Where(item => item.ComprobanteId == complemento.ComprobanteId));
       data.ComplementosPago.Add(complemento);
     }
+
+    data.LegacyComplementosPago.AddRange(legacyComplementos);
 
     return data;
   }
@@ -239,6 +249,12 @@ WHERE TD.Transaccion_ID = @Id;";
     parameters.Add("@Renglones", request.Renglones <= 0 ? 50 : request.Renglones);
 
     using var conn = new SqlConnection(_cs);
+    var transactionAmount = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
+        @"SELECT CAST(ABS(ISNULL(Monto, 0)) AS decimal(19,4))
+FROM dbo.Transacciones
+WHERE ID = @TransaccionId;",
+        new { TransaccionId = transaccionId },
+        cancellationToken: ct));
     using var multi = await conn.QueryMultipleAsync(
         new CommandDefinition(
             "cfdi.Transaccion_CFDI_Linking_Candidates",
@@ -249,8 +265,66 @@ WHERE TD.Transaccion_ID = @Id;";
     var data = new TransaccionCfdiLinkingWorkspaceDto();
     data.Linked.Comprobantes.AddRange(linked.Comprobantes);
     data.Linked.ComplementosPago.AddRange(linked.ComplementosPago);
+    data.Linked.LegacyComplementosPago.AddRange(linked.LegacyComplementosPago);
     data.RegularCandidates.AddRange((await multi.ReadAsync<TransaccionRegularCfdiLinkCandidateDto>()).AsList());
     data.Pago20Candidates.AddRange((await multi.ReadAsync<TransaccionPago20LinkCandidateDto>()).AsList());
+
+    var hasRegularLinks = data.Linked.Comprobantes.Count > 0;
+    var hasPaymentLinks = data.Linked.ComplementosPago.Count > 0 || data.Linked.LegacyComplementosPago.Count > 0;
+    var regularRemaining = Math.Max(0m, transactionAmount - data.Linked.Comprobantes.Sum(item => item.AsignadoCfdi));
+    var pago20Remaining = Math.Max(
+        0m,
+        transactionAmount
+          - data.Linked.ComplementosPago.Sum(item => item.MontoAsignado)
+          - data.Linked.LegacyComplementosPago.Sum(item => item.MontoAsignado));
+    foreach (var candidate in data.RegularCandidates)
+    {
+      candidate.Pendiente = Math.Max(0m, candidate.Total - candidate.AsignadoCfdi);
+      candidate.MontoSugerido = Math.Min(candidate.MontoSugerido, Math.Min(candidate.Pendiente, regularRemaining));
+
+      if (hasPaymentLinks)
+      {
+        candidate.CanLink = false;
+        candidate.BlockReason = "La póliza ya contiene vínculos de complementos de pago.";
+      }
+      else if (candidate.Pendiente <= 0.01m)
+      {
+        candidate.CanLink = false;
+        candidate.BlockReason = "El CFDI ya está totalmente asignado.";
+      }
+      else if (regularRemaining <= 0.01m)
+      {
+        candidate.CanLink = false;
+        candidate.BlockReason = "La póliza no tiene monto disponible.";
+      }
+    }
+
+    foreach (var candidate in data.Pago20Candidates)
+    {
+      candidate.Pendiente = Math.Max(0m, candidate.ImpPagado - candidate.AsignadoComplemento);
+      candidate.MontoSugerido = Math.Min(candidate.MontoSugerido, Math.Min(candidate.Pendiente, pago20Remaining));
+
+      if (hasRegularLinks)
+      {
+        candidate.CanLink = false;
+        candidate.BlockReason = "La póliza ya contiene vínculos de CFDI regular.";
+      }
+      else if (!IsMxn(candidate.MonedaP) || !IsMxn(candidate.MonedaDr))
+      {
+        candidate.CanLink = false;
+        candidate.BlockReason = "La asignación Pago20 solo está habilitada cuando MonedaP y MonedaDR son MXN.";
+      }
+      else if (candidate.Pendiente <= 0m)
+      {
+        candidate.CanLink = false;
+        candidate.BlockReason = "El documento relacionado ya está totalmente asignado.";
+      }
+      else if (pago20Remaining <= 0.01m)
+      {
+        candidate.CanLink = false;
+        candidate.BlockReason = "La póliza no tiene monto disponible.";
+      }
+    }
 
     return data;
   }
@@ -306,51 +380,216 @@ WHERE TD.Transaccion_ID = @Id;";
     data.Documentos.AddRange((await multi.ReadAsync<Pago20PolizaDoctoRelacionadoDto>()).AsList());
     data.Polizas.AddRange((await multi.ReadAsync<CfdiPolizaLinkedPolizaDto>()).AsList());
     data.Candidates.AddRange((await multi.ReadAsync<CfdiPolizaCandidateDto>()).AsList());
+    multi.Dispose();
+
+    if (data.Polizas.Count > 0)
+    {
+      var assignedByTransaction = (await conn.QueryAsync<(int TransaccionId, decimal Monto)>(new CommandDefinition(
+          @"SELECT Transaccion_ID AS TransaccionId,
+    CAST(ISNULL(SUM(Monto), 0) AS decimal(19,4)) AS Monto
+FROM dbo.Transaccion_DoctoRelacionado
+WHERE Transaccion_ID IN @Ids
+GROUP BY Transaccion_ID;",
+          new { Ids = data.Polizas.Select(item => item.TransaccionId).Distinct().ToArray() },
+          cancellationToken: ct)))
+        .ToDictionary(item => item.TransaccionId, item => item.Monto);
+
+      foreach (var poliza in data.Polizas)
+        poliza.TransaccionAsignadoPago20 = assignedByTransaction.GetValueOrDefault(poliza.TransaccionId);
+    }
+
+    if (data.Summary is not null)
+    {
+      data.Summary.Pendiente = Math.Max(0m, data.Summary.ImpPagado - data.Summary.AsignadoComplemento);
+      var currencyAllowed = IsMxn(data.Summary.MonedaP) && IsMxn(data.Summary.MonedaDr);
+      var blockedTransactionIds = await GetTransactionsWithDirectCfdiLinksAsync(conn, data.Candidates.Select(item => item.Id), ct);
+      foreach (var candidate in data.Candidates)
+      {
+        if (!currencyAllowed)
+        {
+          candidate.CanLink = false;
+          candidate.BlockReason = "La asignación Pago20 solo está habilitada cuando MonedaP y MonedaDR son MXN.";
+        }
+        else if (data.Summary.Pendiente <= 0m)
+        {
+          candidate.CanLink = false;
+          candidate.BlockReason = "El documento relacionado ya está totalmente asignado.";
+        }
+        else if (candidate.Disponible <= 0m)
+        {
+          candidate.CanLink = false;
+          candidate.BlockReason = "La póliza no tiene monto disponible.";
+        }
+        else if (blockedTransactionIds.Contains(candidate.Id))
+        {
+          candidate.CanLink = false;
+          candidate.BlockReason = "La póliza ya contiene un vínculo de CFDI regular o Pago20 legado.";
+        }
+      }
+    }
 
     return data;
   }
 
-  public async Task<TransaccionCommandResult> LinkCfdiAsync(
-      TransaccionCfdiLinkRequest request,
+  public Task<TransaccionCommandResult> LinkRegularCfdiAsync(
+      TransaccionRegularCfdiLinkRequest request,
       CancellationToken ct = default)
   {
     if (request is null)
       throw new ArgumentNullException(nameof(request));
 
-    using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    return WriteRegularCfdiLinkAsync(
+        request.TransaccionId,
+        request.ComprobanteId,
+        request.Monto,
+        updateExisting: false,
+        relinkPlaceholder: true,
+        reassignAttachment: true,
+        ct);
+  }
 
-    try
-    {
-      await conn.ExecuteAsync(
-          new CommandDefinition(
-              "contabilidad.Ligar_CFDI_Poliza",
-              new
-              {
-                TransaccionId = request.TransaccionId,
-                ComprobanteId = request.ComprobanteId,
-                Monto = request.Monto,
-                UseDoctoRelacionadoTable = request.UseDoctoRelacionadoTable
-              },
-              commandType: CommandType.StoredProcedure,
-              cancellationToken: ct));
+  public Task<TransaccionCommandResult> LinkPago20DoctoRelacionadoAsync(
+      TransaccionPago20LinkRequest request,
+      CancellationToken ct = default)
+  {
+    if (request is null)
+      throw new ArgumentNullException(nameof(request));
 
-      return TransaccionCommandResult.Ok("Transacción ligada correctamente.");
-    }
-    catch (SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
-    {
-      return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
-    }
-    catch (Exception ex)
-    {
-      _logger.LogError(
-          ex,
-          "Failed to link CFDI {ComprobanteId} to transaction {TransaccionId}",
-          request.ComprobanteId,
-          request.TransaccionId);
+    return WritePago20AllocationAsync(
+        request.TransaccionId,
+        request.DoctoRelacionadoId,
+        request.Monto,
+        updateExisting: false,
+        ct);
+  }
 
-      return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
-    }
+  public async Task<Pago20AccountingBasisResult> GetPago20AccountingBasisAsync(
+      int transaccionId,
+      CancellationToken ct = default)
+  {
+    const string sql = @"
+SELECT TOP (1)
+    t.ID AS TransaccionId,
+    CAST(t.Monto AS decimal(19,4)) AS TransaccionMonto,
+    LTRIM(RTRIM(t.RFC)) AS Rfc,
+    (
+        SELECT COUNT(*)
+        FROM dbo.Transaccion_Comprobante AS tc
+        JOIN cfdi.Comprobante AS legacyCfdi
+          ON legacyCfdi.Comprobante_Id = tc.Comprobante_ID
+        WHERE tc.Transaccion_ID = t.ID
+          AND legacyCfdi.TipoDeComprobante = 'P'
+    ) AS LegacyPaymentLinks
+FROM dbo.Transacciones AS t
+WHERE t.ID = @TransaccionId;
+
+SELECT
+    td.DoctoRelacionado_Id AS DoctoRelacionadoId,
+    CAST(td.Monto AS decimal(19,6)) AS MontoAsignado,
+    CAST(dr.ImpPagado AS decimal(19,6)) AS ImpPagado,
+    dr.MonedaDR AS MonedaDr,
+    p.MonedaP,
+    c.TipoDeComprobante,
+    cd.RFC_EMISOR AS EmisorRfc,
+    cd.RFC_RECEPTOR AS ReceptorRfc,
+    CAST(ISNULL((
+        SELECT SUM(CAST(allocation.Monto AS decimal(19,6)))
+        FROM dbo.Transaccion_DoctoRelacionado AS allocation
+        WHERE allocation.DoctoRelacionado_Id = td.DoctoRelacionado_Id
+    ), 0) AS decimal(19,6)) AS DocumentAssigned
+FROM dbo.Transaccion_DoctoRelacionado AS td
+JOIN cfdi.Pagos20_DoctoRelacionado AS dr
+  ON dr.DoctoRelacionado_Id = td.DoctoRelacionado_Id
+JOIN cfdi.Pagos20_Pago AS p
+  ON p.Pago_Id = dr.Pago_Id
+JOIN cfdi.Pagos20 AS p20
+  ON p20.Pagos20_Id = p.Pagos20_Id
+JOIN cfdi.Comprobante AS c
+  ON c.Comprobante_Id = p20.Comprobante_Id
+JOIN cfdi.Comprobante_Detalle AS cd
+  ON cd.Comprobante_Id = c.Comprobante_Id
+WHERE td.Transaccion_ID = @TransaccionId;
+
+SELECT
+    td.DoctoRelacionado_Id AS DoctoRelacionadoId,
+    traslado.ImpuestoDR,
+    CAST(ISNULL(traslado.ImporteDR, 0) AS decimal(19,6)) AS Importe
+FROM dbo.Transaccion_DoctoRelacionado AS td
+JOIN cfdi.Pagos20_TrasladoDR AS traslado
+  ON traslado.DoctoRelacionado_Id = td.DoctoRelacionado_Id
+WHERE td.Transaccion_ID = @TransaccionId;
+
+SELECT
+    td.DoctoRelacionado_Id AS DoctoRelacionadoId,
+    retencion.ImpuestoDR,
+    CAST(retencion.ImporteDR AS decimal(19,6)) AS Importe
+FROM dbo.Transaccion_DoctoRelacionado AS td
+JOIN cfdi.Pagos20_RetencionDR AS retencion
+  ON retencion.DoctoRelacionado_Id = td.DoctoRelacionado_Id
+WHERE td.Transaccion_ID = @TransaccionId;";
+
+    await using var conn = new SqlConnection(_cs);
+    using var multi = await conn.QueryMultipleAsync(new CommandDefinition(sql, new { TransaccionId = transaccionId }, cancellationToken: ct));
+    var header = await multi.ReadFirstOrDefaultAsync<Pago20AccountingHeaderRow>();
+    var documents = (await multi.ReadAsync<Pago20AccountingDocumentRow>()).AsList();
+    var transfers = (await multi.ReadAsync<Pago20AccountingTaxRow>()).AsList();
+    var retentions = (await multi.ReadAsync<Pago20AccountingTaxRow>()).AsList();
+
+    if (header is null)
+      return Pago20AccountingBasisResult.Fail("No se encontró la póliza.");
+    if (header.LegacyPaymentLinks > 0)
+      return Pago20AccountingBasisResult.Fail("La póliza contiene vínculos Pago20 legados. Migra o desliga esos vínculos antes de generar movimientos.");
+    if (documents.Count == 0)
+      return Pago20AccountingBasisResult.Fail("La póliza no tiene documentos Pago20 ligados.");
+    if (documents.Any(item => !string.Equals(item.TipoDeComprobante, "P", StringComparison.OrdinalIgnoreCase)))
+      return Pago20AccountingBasisResult.Fail("Uno de los documentos ligados no pertenece a un CFDI de tipo P.");
+    if (documents.Any(item => !IsMxn(item.MonedaP) || !IsMxn(item.MonedaDr)))
+      return Pago20AccountingBasisResult.Fail("La generación contable Pago20 solo admite MonedaP y MonedaDR en MXN.");
+    if (documents.Any(item => item.MontoAsignado <= 0m || item.ImpPagado <= 0m))
+      return Pago20AccountingBasisResult.Fail("Todos los vínculos Pago20 deben tener un monto e ImpPagado mayores que cero.");
+    if (documents.Any(item => item.DocumentAssigned - item.ImpPagado > 0.01m))
+      return Pago20AccountingBasisResult.Fail("Existe un documento Pago20 asignado por encima de su ImpPagado.");
+
+    var directions = documents
+        .Select(item => ResolvePago20Direction(header.Rfc, item.EmisorRfc, item.ReceptorRfc))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    if (directions.Length != 1 || string.Equals(directions[0], "Otro", StringComparison.OrdinalIgnoreCase))
+      return Pago20AccountingBasisResult.Fail("Los complementos ligados no comparten una dirección válida para el RFC de la póliza.");
+
+    var unsupportedTaxes = transfers.Concat(retentions)
+        .Where(item => item.Importe != 0m && item.ImpuestoDR is not ("001" or "002" or "003"))
+        .Select(item => item.ImpuestoDR ?? "(vacío)")
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    if (unsupportedTaxes.Length > 0)
+      return Pago20AccountingBasisResult.Fail($"Impuestos Pago20 no soportados: {string.Join(", ", unsupportedTaxes)}.");
+
+    var calculated = Pago20AccountingCalculator.Calculate(
+        documents.Select(item => new Pago20AccountingDocumentInput(item.DoctoRelacionadoId, item.MontoAsignado, item.ImpPagado)).ToArray(),
+        transfers.Select(item => new Pago20AccountingTaxInput(item.DoctoRelacionadoId, item.ImpuestoDR, item.Importe)).ToArray(),
+        retentions.Select(item => new Pago20AccountingTaxInput(item.DoctoRelacionadoId, item.ImpuestoDR, item.Importe)).ToArray());
+    if (calculated.Subtotal < 0m)
+      return Pago20AccountingBasisResult.Fail("Los impuestos prorrateados producen un subtotal negativo.");
+
+    var direction = directions[0];
+    return Pago20AccountingBasisResult.Ok(new Pago20AccountingBasisDto
+    {
+      TransaccionId = transaccionId,
+      Contexto = string.Equals(direction, "Recibido", StringComparison.OrdinalIgnoreCase)
+          ? PlantillaContableContextos.Pago20Recibido
+          : PlantillaContableContextos.Pago20Emitido,
+      Direccion = direction,
+      TransaccionMonto = header.TransaccionMonto,
+      TotalAsignado = calculated.TotalAsignado,
+      Subtotal = calculated.Subtotal,
+      TrasladoIsr = calculated.TrasladoIsr,
+      TrasladoIva = calculated.TrasladoIva,
+      TrasladoIeps = calculated.TrasladoIeps,
+      RetencionIsr = calculated.RetencionIsr,
+      RetencionIva = calculated.RetencionIva,
+      RetencionIeps = calculated.RetencionIeps
+    });
   }
 
   public async Task<IReadOnlyList<TransaccionMovimientoDto>> GetMovimientosAsync(int transaccionId, CancellationToken ct = default)
@@ -988,238 +1227,122 @@ WHERE TransaccionID = @TransaccionId
       decimal monto,
       CancellationToken ct = default)
   {
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
-    await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
-
-    try
-    {
-      await UpsertTransaccionComprobanteAsync(conn, tx, transaccionId, comprobanteId, monto, ct);
-      await ReassignXmlAttachmentAsync(conn, tx, comprobanteId, transaccionId, ct);
-
-      await tx.CommitAsync(ct);
-      return TransaccionCommandResult.Ok("Transacción ligada correctamente.");
-    }
-    catch (SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
-    {
-      await tx.RollbackAsync(ct);
-      return TransaccionCommandResult.Fail("Ya existe un vínculo entre esta transacción y el CFDI.");
-    }
-    catch (Exception ex)
-    {
-      await tx.RollbackAsync(ct);
-      _logger.LogError(
-          ex,
-          "Error al ligar transacción {TransaccionId} con comprobante {ComprobanteId}",
-          transaccionId,
-          comprobanteId);
-      return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
-    }
+    return await WriteRegularCfdiLinkAsync(
+        transaccionId,
+        comprobanteId,
+        monto,
+        updateExisting: false,
+        relinkPlaceholder: true,
+        reassignAttachment: true,
+        ct);
   }
 
   public async Task<TransaccionCommandResult> InsertTransaccionComprobanteAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default)
   {
-    try
-    {
-      await using var conn = new SqlConnection(_cs);
-      await conn.OpenAsync(ct);
-      await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
-
-      const string sql = @"INSERT INTO dbo.Transaccion_Comprobante (Transaccion_ID, Comprobante_ID, Monto)
-VALUES (@TransaccionId, @ComprobanteId, @Monto);";
-
-      await conn.ExecuteAsync(
-          new CommandDefinition(
-              sql,
-              new { TransaccionId = transaccionId, ComprobanteId = comprobanteId, Monto = monto },
-              tx,
-              cancellationToken: ct));
-
-      await ReassignXmlAttachmentAsync(conn, tx, comprobanteId, transaccionId, ct);
-      await tx.CommitAsync(ct);
-      return TransaccionCommandResult.Ok("Transacción ligada correctamente.");
-    }
-    catch (SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
-    {
-      return TransaccionCommandResult.Fail("Ya existe un vínculo entre esta transacción y el CFDI.");
-    }
-    catch (Exception ex)
-    {
-      _logger.LogError(ex, "Error al ligar transacción {TransaccionId} con comprobante {ComprobanteId}", transaccionId, comprobanteId);
-      return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
-    }
+    return await WriteRegularCfdiLinkAsync(
+        transaccionId,
+        comprobanteId,
+        monto,
+        updateExisting: false,
+        relinkPlaceholder: false,
+        reassignAttachment: true,
+        ct);
   }
 
   public async Task<TransaccionCommandResult> UpdateComprobanteMontoAsync(int transaccionId, int comprobanteId, decimal monto, CancellationToken ct = default)
   {
-    if (monto <= 0m)
-    {
-      return TransaccionCommandResult.Fail("El monto asignado debe ser mayor que cero.");
-    }
-
-    const string sql = @"UPDATE dbo.Transaccion_Comprobante
-SET Monto = @Monto
-WHERE Transaccion_ID = @TransaccionId
-  AND Comprobante_ID = @ComprobanteId;";
-
-    try
-    {
-      await using var conn = new SqlConnection(_cs);
-      var affected = await conn.ExecuteAsync(
-          new CommandDefinition(
-              sql,
-              new
-              {
-                TransaccionId = transaccionId,
-                ComprobanteId = comprobanteId,
-                Monto = monto
-              },
-              cancellationToken: ct));
-
-      return affected > 0
-          ? TransaccionCommandResult.Ok("Monto asignado actualizado correctamente.")
-          : TransaccionCommandResult.Fail("No se encontró el vínculo CFDI-póliza a actualizar.");
-    }
-    catch (Exception ex)
-    {
-      _logger.LogError(
-          ex,
-          "Error al actualizar monto del comprobante {ComprobanteId} en la transacción {TransaccionId}",
-          comprobanteId,
-          transaccionId);
-
-      return TransaccionCommandResult.Fail("No se pudo actualizar el monto asignado.");
-    }
+    return await WriteRegularCfdiLinkAsync(
+        transaccionId,
+        comprobanteId,
+        monto,
+        updateExisting: true,
+        relinkPlaceholder: false,
+        reassignAttachment: false,
+        ct);
   }
 
   public async Task ToggleComprobanteAsync(int transaccionId, int comprobanteId, bool vincular, CancellationToken ct = default)
   {
-    using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
-    using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
-
-    try
+    if (vincular)
     {
-      if (vincular)
+      await using var lookupConnection = new SqlConnection(_cs);
+      var total = await lookupConnection.ExecuteScalarAsync<decimal?>(new CommandDefinition(
+          "SELECT CAST(Total AS decimal(19,4)) FROM cfdi.Comprobante WHERE Comprobante_Id = @ComprobanteId;",
+          new { ComprobanteId = comprobanteId },
+          cancellationToken: ct));
+      if (!total.HasValue)
       {
-        const string sqlTotal = @"SELECT CAST(c.Total AS decimal(18,4))
-FROM cfdi.Comprobante c
-WHERE c.Comprobante_Id = @ComprobanteId;";
-
-        var total = await conn.ExecuteScalarAsync<decimal?>(
-            new CommandDefinition(sqlTotal, new { ComprobanteId = comprobanteId }, tx, cancellationToken: ct));
-
-        if (total is null)
-        {
-          await tx!.RollbackAsync(ct);
-          throw new InvalidOperationException("Comprobante no encontrado.");
-        }
-
-        await UpsertTransaccionComprobanteAsync(conn, tx, transaccionId, comprobanteId, total.Value, ct);
-        await ReassignXmlAttachmentAsync(conn, tx, comprobanteId, transaccionId, ct);
-      }
-      else
-      {
-        const string sqlDelete = @"DELETE FROM dbo.Transaccion_Comprobante
-WHERE Transaccion_ID = @TransaccionId
-  AND Comprobante_ID = @ComprobanteId;";
-
-        var deleted = await conn.ExecuteAsync(
-            new CommandDefinition(sqlDelete,
-                new { TransaccionId = transaccionId, ComprobanteId = comprobanteId },
-                tx,
-                cancellationToken: ct));
-
-        if (deleted > 0)
-        {
-          var nextTransaccionId = await GetPreferredLinkedTransaccionIdAsync(conn, tx, comprobanteId, ct);
-          await ReassignXmlAttachmentAsync(conn, tx, comprobanteId, nextTransaccionId, ct);
-        }
+        throw new InvalidOperationException("Comprobante no encontrado.");
       }
 
-      await tx!.CommitAsync(ct);
+      var result = await WriteRegularCfdiLinkAsync(
+          transaccionId,
+          comprobanteId,
+          total.Value,
+          updateExisting: true,
+          relinkPlaceholder: false,
+          reassignAttachment: true,
+          ct);
+      if (!result.Success)
+      {
+        throw new InvalidOperationException(result.Message);
+      }
+
+      return;
     }
-    catch
+
+    var unlinkResult = await UnlinkRegularCfdiAsync(transaccionId, comprobanteId, ct);
+    if (!unlinkResult.Success)
     {
-      try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
-      throw;
+      throw new InvalidOperationException(unlinkResult.Message);
     }
+
+    return;
   }
 
-  public async Task<TransaccionCommandResult> UnlinkComprobanteAsync(TransaccionComprobanteUnlinkRequest request, CancellationToken ct = default)
-  {
-    if (request is null)
-      throw new ArgumentNullException(nameof(request));
+  public Task<TransaccionCommandResult> UnlinkRegularCfdiAsync(
+      int transaccionId,
+      long comprobanteId,
+      CancellationToken ct = default)
+    => UnlinkDirectCfdiAsync(transaccionId, comprobanteId, requirePaymentType: false, ct);
 
+  public Task<TransaccionCommandResult> UnlinkLegacyPago20Async(
+      int transaccionId,
+      long comprobanteId,
+      CancellationToken ct = default)
+    => UnlinkDirectCfdiAsync(transaccionId, comprobanteId, requirePaymentType: true, ct);
+
+  public async Task<TransaccionCommandResult> UnlinkPago20DoctoRelacionadoAsync(
+      int transaccionId,
+      int doctoRelacionadoId,
+      CancellationToken ct = default)
+  {
     using var conn = new SqlConnection(_cs);
     await conn.OpenAsync(ct);
-    using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
 
     try
     {
-      var isComplemento = string.Equals(request.Tipo, "COMP", StringComparison.OrdinalIgnoreCase);
-      var updated = 0;
+      const string sql = @"DELETE FROM dbo.Transaccion_DoctoRelacionado
+WHERE Transaccion_ID = @TransaccionId
+  AND DoctoRelacionado_ID = @DoctoRelacionadoId;";
+      var updated = await conn.ExecuteAsync(new CommandDefinition(
+          sql,
+          new { TransaccionId = transaccionId, DoctoRelacionadoId = doctoRelacionadoId },
+          cancellationToken: ct));
 
-      if (isComplemento)
-      {
-        const string sqlDeleteDoctoRelacionado = @"DELETE FROM dbo.Transaccion_DoctoRelacionado
-WHERE Transaccion_ID = @CurrentTransaccionId
-  AND DoctoRelacionado_ID = @ComprobanteId;";
-
-        updated = await conn.ExecuteAsync(
-            new CommandDefinition(
-                sqlDeleteDoctoRelacionado,
-                new
-                {
-                  request.CurrentTransaccionId,
-                  request.ComprobanteId
-                },
-                tx,
-                cancellationToken: ct));
-      }
-      else
-      {
-        const string sqlDeleteLink = @"DELETE FROM dbo.Transaccion_Comprobante
-WHERE Transaccion_ID = @CurrentTransaccionId
-  AND Comprobante_ID = @ComprobanteId;";
-
-        updated = await conn.ExecuteAsync(
-            new CommandDefinition(
-                sqlDeleteLink,
-                new
-                {
-                  request.CurrentTransaccionId,
-                  request.ComprobanteId
-                },
-                tx,
-                cancellationToken: ct));
-
-        if (updated > 0)
-        {
-          var nextTransaccionId = await GetPreferredLinkedTransaccionIdAsync(conn, tx, request.ComprobanteId, ct);
-          await ReassignXmlAttachmentAsync(conn, tx, request.ComprobanteId, nextTransaccionId, ct);
-        }
-      }
-
-      if (updated == 0)
-      {
-        await tx!.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("No se encontró el vínculo de este comprobante con la póliza actual.");
-      }
-
-      await tx!.CommitAsync(ct);
-      return TransaccionCommandResult.Ok("Comprobante desligado correctamente.");
+      return updated > 0
+          ? TransaccionCommandResult.Ok("Documento Pago20 desligado correctamente.")
+          : TransaccionCommandResult.Fail("No se encontró el vínculo de este documento Pago20 con la póliza actual.");
     }
     catch (Exception ex)
     {
-      try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
       _logger.LogError(
           ex,
-          "Failed to unlink Comprobante {ComprobanteId} from Transaccion {TransaccionId}",
-          request.ComprobanteId,
-          request.CurrentTransaccionId);
+          "Failed to unlink Pago20 document {DoctoRelacionadoId} from Transaccion {TransaccionId}",
+          doctoRelacionadoId,
+          transaccionId);
 
-      return TransaccionCommandResult.Fail("No se pudo desligar el comprobante. Inténtalo de nuevo.");
+      return TransaccionCommandResult.Fail("No se pudo desligar el documento Pago20. Inténtalo de nuevo.");
     }
   }
 
@@ -1430,40 +1553,6 @@ WHERE ID = @TransaccionId;";
           transaccionId);
 
       return TransaccionCommandResult.Fail($"No se pudieron regenerar los movimientos desde el comprobante: {ex.Message}");
-    }
-  }
-
-  public async Task<TransaccionCommandResult> RegenerarPolizaDesdeComplementoEnTransaccionAsync(
-      int transaccionId,
-      long comprobanteId,
-      CancellationToken ct = default)
-  {
-    using var conn = await OpenConnectionWithAuditContextAsync(ct);
-
-    try
-    {
-      await conn.ExecuteAsync(
-          new CommandDefinition(
-              "[contabilidad].[Regenerar_Poliza_Desde_Complemento_En_Transaccion]",
-              new
-              {
-                Comprobante_Id = comprobanteId,
-                Transaccion_ID = transaccionId
-              },
-              commandType: CommandType.StoredProcedure,
-              cancellationToken: ct));
-
-      return TransaccionCommandResult.Ok("Movimientos regenerados correctamente.");
-    }
-    catch (Exception ex)
-    {
-      _logger.LogError(
-          ex,
-          "Failed to regenerate poliza movements from complemento {ComprobanteId} for transaccion {TransaccionId}",
-          comprobanteId,
-          transaccionId);
-
-      return TransaccionCommandResult.Fail("No se pudieron regenerar los movimientos desde el complemento.");
     }
   }
 
@@ -1749,49 +1838,12 @@ ORDER BY T.Fecha, T.OrdenBalance, T.ID;";
 
   public async Task<TransaccionCommandResult> InsertTransaccionDoctoRelacionadoAsync(int transaccionId, int doctoRelacionadoId, decimal monto, CancellationToken ct = default)
   {
-    const string sql = @"INSERT INTO dbo.Transaccion_DoctoRelacionado (Transaccion_ID, DoctoRelacionado_ID, Monto)
-VALUES (@TransaccionId, @DoctoRelacionadoId, @Monto);";
-
-    try
-    {
-      using var conn = new SqlConnection(_cs);
-      await conn.ExecuteAsync(
-        new CommandDefinition(sql, new { TransaccionId = transaccionId, DoctoRelacionadoId = doctoRelacionadoId, Monto = monto }, cancellationToken: ct));
-      return TransaccionCommandResult.Ok("Transacción ligada correctamente.");
-    }
-    catch (SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
-    {
-      return TransaccionCommandResult.Fail("Ya existe un vínculo entre esta transacción y el complemento.");
-    }
-    catch (Exception ex)
-    {
-      _logger.LogError(ex, "Error al ligar transacción {TransaccionId} con docto relacionado {DoctoRelacionadoId}", transaccionId, doctoRelacionadoId);
-      return TransaccionCommandResult.Fail("No se pudo ligar la transacción. Revisa duplicados o restricciones.");
-    }
+    return await WritePago20AllocationAsync(transaccionId, doctoRelacionadoId, monto, updateExisting: false, ct);
   }
 
   public async Task<TransaccionCommandResult> UpdateDoctoRelacionadoMontoAsync(int transaccionId, int doctoRelacionadoId, decimal monto, CancellationToken ct = default)
   {
-    const string sql = @"UPDATE dbo.Transaccion_DoctoRelacionado
-SET Monto = @Monto
-WHERE Transaccion_ID = @TransaccionId
-  AND DoctoRelacionado_ID = @DoctoRelacionadoId;";
-
-    try
-    {
-      using var conn = new SqlConnection(_cs);
-      var affected = await conn.ExecuteAsync(
-        new CommandDefinition(sql, new { TransaccionId = transaccionId, DoctoRelacionadoId = doctoRelacionadoId, Monto = monto }, cancellationToken: ct));
-
-      return affected > 0
-        ? TransaccionCommandResult.Ok("Monto ligado actualizado correctamente.")
-        : TransaccionCommandResult.Fail("No se encontró el vínculo del complemento con la transacción.");
-    }
-    catch (Exception ex)
-    {
-      _logger.LogError(ex, "Error al actualizar monto de transacción {TransaccionId} con docto relacionado {DoctoRelacionadoId}", transaccionId, doctoRelacionadoId);
-      return TransaccionCommandResult.Fail("No se pudo actualizar el monto ligado.");
-    }
+    return await WritePago20AllocationAsync(transaccionId, doctoRelacionadoId, monto, updateExisting: true, ct);
   }
 
   public async Task<TransaccionCommandResult> GuardarMovimientosAsync(TransaccionMovimientosUpdateRequest request, CancellationToken ct = default)
@@ -1981,6 +2033,73 @@ EXEC sys.sp_set_session_context @key = N'OrionERP.Application', @value = N'Orion
     public int? XML_Attachment_ID { get; set; }
   }
 
+  private sealed class RegularCfdiLinkContextRow
+  {
+    public decimal TransaccionTotal { get; set; }
+    public string? TransaccionRfc { get; set; }
+    public string? TipoDeComprobante { get; set; }
+    public decimal CfdiTotal { get; set; }
+    public string? EmisorRfc { get; set; }
+    public string? ReceptorRfc { get; set; }
+  }
+
+  private sealed class RegularCfdiLinkStateRow
+  {
+    public decimal CfdiAssignedOther { get; set; }
+    public decimal TransaccionAssignedOther { get; set; }
+    public bool CurrentLinkExists { get; set; }
+    public bool HasPaymentLinks { get; set; }
+    public bool PlaceholderExists { get; set; }
+  }
+
+  private sealed class Pago20LinkContextRow
+  {
+    public decimal TransaccionTotal { get; set; }
+    public string? TransaccionRfc { get; set; }
+    public decimal ImpPagado { get; set; }
+    public string? MonedaDr { get; set; }
+    public string? MonedaP { get; set; }
+    public string? TipoDeComprobante { get; set; }
+    public string? EmisorRfc { get; set; }
+    public string? ReceptorRfc { get; set; }
+  }
+
+  private sealed class Pago20LinkStateRow
+  {
+    public decimal DocumentAssignedOther { get; set; }
+    public decimal TransaccionAssignedOther { get; set; }
+    public bool CurrentLinkExists { get; set; }
+    public bool HasDirectCfdiLinks { get; set; }
+  }
+
+  private sealed class Pago20AccountingHeaderRow
+  {
+    public int TransaccionId { get; set; }
+    public decimal TransaccionMonto { get; set; }
+    public string? Rfc { get; set; }
+    public int LegacyPaymentLinks { get; set; }
+  }
+
+  private sealed class Pago20AccountingDocumentRow
+  {
+    public int DoctoRelacionadoId { get; set; }
+    public decimal MontoAsignado { get; set; }
+    public decimal ImpPagado { get; set; }
+    public string? MonedaDr { get; set; }
+    public string? MonedaP { get; set; }
+    public string? TipoDeComprobante { get; set; }
+    public string? EmisorRfc { get; set; }
+    public string? ReceptorRfc { get; set; }
+    public decimal DocumentAssigned { get; set; }
+  }
+
+  private sealed class Pago20AccountingTaxRow
+  {
+    public int DoctoRelacionadoId { get; set; }
+    public string? ImpuestoDR { get; set; }
+    public decimal Importe { get; set; }
+  }
+
   private async Task<int> InsertAttachmentAsync(
       SqlConnection conn,
       SqlTransaction? transaction,
@@ -2028,43 +2147,411 @@ SELECT CAST(SCOPE_IDENTITY() AS int);";
             cancellationToken: ct));
   }
 
-  private static async Task UpsertTransaccionComprobanteAsync(
-      SqlConnection conn,
-      SqlTransaction? transaction,
+  private async Task<TransaccionCommandResult> WriteRegularCfdiLinkAsync(
       int transaccionId,
       long comprobanteId,
       decimal monto,
+      bool updateExisting,
+      bool relinkPlaceholder,
+      bool reassignAttachment,
       CancellationToken ct)
   {
-    const string sql = @"IF EXISTS (
-    SELECT 1
-    FROM dbo.Transaccion_Comprobante
-    WHERE Transaccion_ID = @TransaccionId
-      AND Comprobante_ID = @ComprobanteId
-)
-BEGIN
-    UPDATE dbo.Transaccion_Comprobante
-    SET Monto = @Monto
-    WHERE Transaccion_ID = @TransaccionId
-      AND Comprobante_ID = @ComprobanteId;
-END
-ELSE
-BEGIN
-    INSERT INTO dbo.Transaccion_Comprobante (Transaccion_ID, Comprobante_ID, Monto)
-    VALUES (@TransaccionId, @ComprobanteId, @Monto);
-END;";
+    if (monto <= 0m)
+      return TransaccionCommandResult.Fail("El monto asignado debe ser mayor que cero.");
 
-    await conn.ExecuteAsync(
-        new CommandDefinition(
-            sql,
-            new
-            {
-              TransaccionId = transaccionId,
-              ComprobanteId = comprobanteId,
-              Monto = monto
-            },
-            transaction,
+    await using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+
+    try
+    {
+      const string contextSql = @"
+SELECT TOP (1)
+    CAST(ABS(t.Monto) AS decimal(19,4)) AS TransaccionTotal,
+    LTRIM(RTRIM(t.RFC)) AS TransaccionRfc,
+    c.TipoDeComprobante,
+    CAST(ABS(c.Total) AS decimal(19,4)) AS CfdiTotal,
+    cd.RFC_EMISOR AS EmisorRfc,
+    cd.RFC_RECEPTOR AS ReceptorRfc
+FROM dbo.Transacciones AS t WITH (UPDLOCK, HOLDLOCK)
+CROSS JOIN cfdi.Comprobante AS c WITH (UPDLOCK, HOLDLOCK)
+LEFT JOIN cfdi.Comprobante_Detalle AS cd
+  ON cd.Comprobante_Id = c.Comprobante_Id
+WHERE t.ID = @TransaccionId
+  AND c.Comprobante_Id = @ComprobanteId;";
+      var context = await conn.QueryFirstOrDefaultAsync<RegularCfdiLinkContextRow>(new CommandDefinition(
+          contextSql,
+          new { TransaccionId = transaccionId, ComprobanteId = comprobanteId },
+          tx,
+          cancellationToken: ct));
+
+      if (context is null)
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("No se encontró la póliza o el CFDI.");
+      }
+      if (string.Equals(context.TipoDeComprobante, "P", StringComparison.OrdinalIgnoreCase))
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("Los CFDI tipo P deben ligarse por DoctoRelacionado, no por comprobante.");
+      }
+      if (context.TipoDeComprobante is not ("I" or "N" or "E"))
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("El tipo de CFDI no es compatible con el ligado contable regular.");
+      }
+      if (!RfcMatches(context.TransaccionRfc, context.EmisorRfc, context.ReceptorRfc))
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("El RFC de la póliza no corresponde al emisor ni al receptor del CFDI.");
+      }
+
+      const string stateSql = @"
+SELECT
+    CAST(ISNULL(SUM(CASE
+        WHEN tc.Transaccion_ID = @TransaccionId AND tc.Comprobante_ID = @ComprobanteId THEN 0
+        WHEN @RelinkPlaceholder = 1 AND tc.Transaccion_ID = 5505 THEN 0
+        ELSE tc.Monto END), 0) AS decimal(19,4)) AS CfdiAssignedOther,
+    CAST(ISNULL((
+        SELECT SUM(tc2.Monto)
+        FROM dbo.Transaccion_Comprobante AS tc2 WITH (UPDLOCK, HOLDLOCK)
+        JOIN cfdi.Comprobante AS c2 ON c2.Comprobante_Id = tc2.Comprobante_ID
+        WHERE tc2.Transaccion_ID = @TransaccionId
+          AND c2.TipoDeComprobante IN ('I','N','E')
+          AND NOT (tc2.Comprobante_ID = @ComprobanteId)
+    ), 0) AS decimal(19,4)) AS TransaccionAssignedOther,
+    CAST(CASE WHEN EXISTS (
+        SELECT 1 FROM dbo.Transaccion_Comprobante AS currentLink WITH (UPDLOCK, HOLDLOCK)
+        WHERE currentLink.Transaccion_ID = @TransaccionId AND currentLink.Comprobante_ID = @ComprobanteId
+    ) THEN 1 ELSE 0 END AS bit) AS CurrentLinkExists,
+    CAST(CASE WHEN EXISTS (
+        SELECT 1 FROM dbo.Transaccion_Comprobante AS paymentLink WITH (UPDLOCK, HOLDLOCK)
+        JOIN cfdi.Comprobante AS paymentCfdi ON paymentCfdi.Comprobante_Id = paymentLink.Comprobante_ID
+        WHERE paymentLink.Transaccion_ID = @TransaccionId AND paymentCfdi.TipoDeComprobante = 'P'
+    ) OR EXISTS (
+        SELECT 1 FROM dbo.Transaccion_DoctoRelacionado AS paymentDocumentLink WITH (UPDLOCK, HOLDLOCK)
+        WHERE paymentDocumentLink.Transaccion_ID = @TransaccionId
+    ) THEN 1 ELSE 0 END AS bit) AS HasPaymentLinks,
+    CAST(CASE WHEN EXISTS (
+        SELECT 1 FROM dbo.Transaccion_Comprobante AS placeholder WITH (UPDLOCK, HOLDLOCK)
+        WHERE placeholder.Transaccion_ID = 5505 AND placeholder.Comprobante_ID = @ComprobanteId
+    ) THEN 1 ELSE 0 END AS bit) AS PlaceholderExists
+FROM dbo.Transaccion_Comprobante AS tc WITH (UPDLOCK, HOLDLOCK)
+WHERE tc.Comprobante_ID = @ComprobanteId;";
+      var state = await conn.QuerySingleAsync<RegularCfdiLinkStateRow>(new CommandDefinition(
+          stateSql,
+          new { TransaccionId = transaccionId, ComprobanteId = comprobanteId, RelinkPlaceholder = relinkPlaceholder },
+          tx,
+          cancellationToken: ct));
+
+      if (state.HasPaymentLinks)
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("La póliza ya contiene vínculos de complementos de pago.");
+      }
+      if (updateExisting != state.CurrentLinkExists)
+      {
+        await tx.RollbackAsync(ct);
+        return updateExisting
+            ? TransaccionCommandResult.Fail("No se encontró el vínculo CFDI-póliza a actualizar.")
+            : TransaccionCommandResult.Fail("Ya existe un vínculo entre esta póliza y el CFDI.");
+      }
+      if (monto - (context.CfdiTotal - state.CfdiAssignedOther) > 0.01m)
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("El monto excede el saldo disponible del CFDI.");
+      }
+      if (monto - (context.TransaccionTotal - state.TransaccionAssignedOther) > 0.01m)
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("El monto excede el saldo disponible de la póliza.");
+      }
+
+      int affected;
+      if (updateExisting)
+      {
+        affected = await conn.ExecuteAsync(new CommandDefinition(
+            @"UPDATE dbo.Transaccion_Comprobante SET Monto = @Monto
+WHERE Transaccion_ID = @TransaccionId AND Comprobante_ID = @ComprobanteId;",
+            new { TransaccionId = transaccionId, ComprobanteId = comprobanteId, Monto = monto },
+            tx,
             cancellationToken: ct));
+      }
+      else if (relinkPlaceholder && state.PlaceholderExists)
+      {
+        affected = await conn.ExecuteAsync(new CommandDefinition(
+            @"UPDATE dbo.Transaccion_Comprobante SET Transaccion_ID = @TransaccionId, Monto = @Monto
+WHERE Transaccion_ID = 5505 AND Comprobante_ID = @ComprobanteId;",
+            new { TransaccionId = transaccionId, ComprobanteId = comprobanteId, Monto = monto },
+            tx,
+            cancellationToken: ct));
+      }
+      else
+      {
+        affected = await conn.ExecuteAsync(new CommandDefinition(
+            @"INSERT INTO dbo.Transaccion_Comprobante (Transaccion_ID, Comprobante_ID, Monto)
+VALUES (@TransaccionId, @ComprobanteId, @Monto);",
+            new { TransaccionId = transaccionId, ComprobanteId = comprobanteId, Monto = monto },
+            tx,
+            cancellationToken: ct));
+      }
+
+      if (affected == 0)
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("No se pudo guardar el vínculo CFDI-póliza.");
+      }
+
+      if (reassignAttachment)
+        await ReassignXmlAttachmentAsync(conn, tx, comprobanteId, transaccionId, ct);
+
+      await tx.CommitAsync(ct);
+      return TransaccionCommandResult.Ok(updateExisting
+          ? "Monto asignado actualizado correctamente."
+          : "Transacción ligada correctamente.");
+    }
+    catch (SqlException ex) when (ex.Number is 2601 or 2627)
+    {
+      await RollbackQuietlyAsync(tx, ct);
+      return TransaccionCommandResult.Fail("Ya existe un vínculo entre esta póliza y el CFDI.");
+    }
+    catch (Exception ex)
+    {
+      await RollbackQuietlyAsync(tx, ct);
+      _logger.LogError(ex, "Error al guardar vínculo regular {TransaccionId}/{ComprobanteId}", transaccionId, comprobanteId);
+      return TransaccionCommandResult.Fail("No se pudo guardar el vínculo CFDI-póliza.");
+    }
+  }
+
+  private async Task<TransaccionCommandResult> WritePago20AllocationAsync(
+      int transaccionId,
+      int doctoRelacionadoId,
+      decimal monto,
+      bool updateExisting,
+      CancellationToken ct)
+  {
+    if (monto <= 0m)
+      return TransaccionCommandResult.Fail("El monto asignado debe ser mayor que cero.");
+
+    await using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+
+    try
+    {
+      const string contextSql = @"
+SELECT TOP (1)
+    CAST(ABS(t.Monto) AS decimal(19,4)) AS TransaccionTotal,
+    LTRIM(RTRIM(t.RFC)) AS TransaccionRfc,
+    CAST(dr.ImpPagado AS decimal(19,4)) AS ImpPagado,
+    dr.MonedaDR AS MonedaDr,
+    p.MonedaP,
+    c.TipoDeComprobante,
+    cd.RFC_EMISOR AS EmisorRfc,
+    cd.RFC_RECEPTOR AS ReceptorRfc
+FROM dbo.Transacciones AS t WITH (UPDLOCK, HOLDLOCK)
+CROSS JOIN cfdi.Pagos20_DoctoRelacionado AS dr WITH (UPDLOCK, HOLDLOCK)
+JOIN cfdi.Pagos20_Pago AS p WITH (UPDLOCK, HOLDLOCK) ON p.Pago_Id = dr.Pago_Id
+JOIN cfdi.Pagos20 AS p20 WITH (UPDLOCK, HOLDLOCK) ON p20.Pagos20_Id = p.Pagos20_Id
+JOIN cfdi.Comprobante AS c WITH (UPDLOCK, HOLDLOCK) ON c.Comprobante_Id = p20.Comprobante_Id
+JOIN cfdi.Comprobante_Detalle AS cd ON cd.Comprobante_Id = c.Comprobante_Id
+WHERE t.ID = @TransaccionId
+  AND dr.DoctoRelacionado_Id = @DoctoRelacionadoId;";
+      var context = await conn.QueryFirstOrDefaultAsync<Pago20LinkContextRow>(new CommandDefinition(
+          contextSql,
+          new { TransaccionId = transaccionId, DoctoRelacionadoId = doctoRelacionadoId },
+          tx,
+          cancellationToken: ct));
+
+      if (context is null)
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("No se encontró la póliza o el documento Pago20.");
+      }
+      if (!string.Equals(context.TipoDeComprobante, "P", StringComparison.OrdinalIgnoreCase))
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("El documento relacionado no pertenece a un CFDI tipo P.");
+      }
+      if (!IsMxn(context.MonedaP) || !IsMxn(context.MonedaDr))
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("La asignación Pago20 solo admite MonedaP y MonedaDR en MXN.");
+      }
+      if (!RfcMatches(context.TransaccionRfc, context.EmisorRfc, context.ReceptorRfc))
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("El RFC de la póliza no corresponde al emisor ni al receptor del complemento.");
+      }
+
+      const string stateSql = @"
+SELECT
+    CAST(ISNULL(SUM(CASE WHEN td.Transaccion_ID = @TransaccionId THEN 0 ELSE td.Monto END), 0) AS decimal(19,4)) AS DocumentAssignedOther,
+    CAST(ISNULL((
+        SELECT SUM(CASE WHEN currentAllocation.DoctoRelacionado_Id = @DoctoRelacionadoId THEN 0 ELSE currentAllocation.Monto END)
+        FROM dbo.Transaccion_DoctoRelacionado AS currentAllocation WITH (UPDLOCK, HOLDLOCK)
+        WHERE currentAllocation.Transaccion_ID = @TransaccionId
+    ), 0) AS decimal(19,4)) AS TransaccionAssignedOther,
+    CAST(CASE WHEN EXISTS (
+        SELECT 1 FROM dbo.Transaccion_DoctoRelacionado AS currentLink WITH (UPDLOCK, HOLDLOCK)
+        WHERE currentLink.Transaccion_ID = @TransaccionId AND currentLink.DoctoRelacionado_Id = @DoctoRelacionadoId
+    ) THEN 1 ELSE 0 END AS bit) AS CurrentLinkExists,
+    CAST(CASE WHEN EXISTS (
+        SELECT 1 FROM dbo.Transaccion_Comprobante AS directLink WITH (UPDLOCK, HOLDLOCK)
+        WHERE directLink.Transaccion_ID = @TransaccionId
+    ) THEN 1 ELSE 0 END AS bit) AS HasDirectCfdiLinks
+FROM dbo.Transaccion_DoctoRelacionado AS td WITH (UPDLOCK, HOLDLOCK)
+WHERE td.DoctoRelacionado_Id = @DoctoRelacionadoId;";
+      var state = await conn.QuerySingleAsync<Pago20LinkStateRow>(new CommandDefinition(
+          stateSql,
+          new { TransaccionId = transaccionId, DoctoRelacionadoId = doctoRelacionadoId },
+          tx,
+          cancellationToken: ct));
+
+      if (state.HasDirectCfdiLinks)
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("La póliza ya contiene un vínculo de CFDI regular o Pago20 legado.");
+      }
+      if (updateExisting != state.CurrentLinkExists)
+      {
+        await tx.RollbackAsync(ct);
+        return updateExisting
+            ? TransaccionCommandResult.Fail("No se encontró el vínculo Pago20 a actualizar.")
+            : TransaccionCommandResult.Fail("Ya existe un vínculo entre esta póliza y el documento Pago20.");
+      }
+      if (monto - (context.ImpPagado - state.DocumentAssignedOther) > 0.01m)
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("El monto excede el saldo disponible del documento Pago20.");
+      }
+      if (monto - (context.TransaccionTotal - state.TransaccionAssignedOther) > 0.01m)
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("El monto excede el saldo disponible de la póliza.");
+      }
+
+      var affected = updateExisting
+          ? await conn.ExecuteAsync(new CommandDefinition(
+              @"UPDATE dbo.Transaccion_DoctoRelacionado SET Monto = @Monto
+WHERE Transaccion_ID = @TransaccionId AND DoctoRelacionado_Id = @DoctoRelacionadoId;",
+              new { TransaccionId = transaccionId, DoctoRelacionadoId = doctoRelacionadoId, Monto = monto },
+              tx,
+              cancellationToken: ct))
+          : await conn.ExecuteAsync(new CommandDefinition(
+              @"INSERT INTO dbo.Transaccion_DoctoRelacionado (Transaccion_ID, DoctoRelacionado_Id, Monto)
+VALUES (@TransaccionId, @DoctoRelacionadoId, @Monto);",
+              new { TransaccionId = transaccionId, DoctoRelacionadoId = doctoRelacionadoId, Monto = monto },
+              tx,
+              cancellationToken: ct));
+
+      if (affected == 0)
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("No se pudo guardar el vínculo Pago20.");
+      }
+
+      await tx.CommitAsync(ct);
+      return TransaccionCommandResult.Ok(updateExisting
+          ? "Monto Pago20 actualizado correctamente."
+          : "Documento Pago20 ligado correctamente.");
+    }
+    catch (SqlException ex) when (ex.Number is 2601 or 2627)
+    {
+      await RollbackQuietlyAsync(tx, ct);
+      return TransaccionCommandResult.Fail("Ya existe un vínculo entre esta póliza y el documento Pago20.");
+    }
+    catch (Exception ex)
+    {
+      await RollbackQuietlyAsync(tx, ct);
+      _logger.LogError(ex, "Error al guardar vínculo Pago20 {TransaccionId}/{DoctoRelacionadoId}", transaccionId, doctoRelacionadoId);
+      return TransaccionCommandResult.Fail("No se pudo guardar el vínculo Pago20.");
+    }
+  }
+
+  private async Task<TransaccionCommandResult> UnlinkDirectCfdiAsync(
+      int transaccionId,
+      long comprobanteId,
+      bool requirePaymentType,
+      CancellationToken ct)
+  {
+    await using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+
+    try
+    {
+      const string sql = @"
+DELETE tc
+FROM dbo.Transaccion_Comprobante AS tc
+JOIN cfdi.Comprobante AS c ON c.Comprobante_Id = tc.Comprobante_ID
+WHERE tc.Transaccion_ID = @TransaccionId
+  AND tc.Comprobante_ID = @ComprobanteId
+  AND ((@RequirePaymentType = 1 AND c.TipoDeComprobante = 'P')
+    OR (@RequirePaymentType = 0 AND c.TipoDeComprobante IN ('I','N','E')));";
+      var updated = await conn.ExecuteAsync(new CommandDefinition(
+          sql,
+          new { TransaccionId = transaccionId, ComprobanteId = comprobanteId, RequirePaymentType = requirePaymentType },
+          tx,
+          cancellationToken: ct));
+
+      if (updated == 0)
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("No se encontró el vínculo solicitado con la póliza actual.");
+      }
+
+      var nextTransaccionId = await GetPreferredLinkedTransaccionIdAsync(conn, tx, comprobanteId, ct);
+      await ReassignXmlAttachmentAsync(conn, tx, comprobanteId, nextTransaccionId, ct);
+      await tx.CommitAsync(ct);
+      return TransaccionCommandResult.Ok(requirePaymentType
+          ? "Vínculo Pago20 legado desligado correctamente."
+          : "Comprobante desligado correctamente.");
+    }
+    catch (Exception ex)
+    {
+      await RollbackQuietlyAsync(tx, ct);
+      _logger.LogError(ex, "Error al desligar vínculo directo {TransaccionId}/{ComprobanteId}", transaccionId, comprobanteId);
+      return TransaccionCommandResult.Fail("No se pudo desligar el comprobante.");
+    }
+  }
+
+  private static async Task<HashSet<int>> GetTransactionsWithDirectCfdiLinksAsync(
+      SqlConnection conn,
+      IEnumerable<int> transaccionIds,
+      CancellationToken ct)
+  {
+    var ids = transaccionIds.Distinct().ToArray();
+    if (ids.Length == 0)
+      return [];
+
+    var rows = await conn.QueryAsync<int>(new CommandDefinition(
+        "SELECT DISTINCT Transaccion_ID FROM dbo.Transaccion_Comprobante WHERE Transaccion_ID IN @Ids;",
+        new { Ids = ids },
+        cancellationToken: ct));
+    return rows.ToHashSet();
+  }
+
+  private static bool IsMxn(string? currency)
+    => string.Equals(currency?.Trim(), "MXN", StringComparison.OrdinalIgnoreCase);
+
+  private static bool RfcMatches(string? transactionRfc, string? emisorRfc, string? receptorRfc)
+    => !string.IsNullOrWhiteSpace(transactionRfc)
+      && (string.Equals(transactionRfc.Trim(), emisorRfc?.Trim(), StringComparison.OrdinalIgnoreCase)
+        || string.Equals(transactionRfc.Trim(), receptorRfc?.Trim(), StringComparison.OrdinalIgnoreCase));
+
+  private static string ResolvePago20Direction(string? transactionRfc, string? emisorRfc, string? receptorRfc)
+  {
+    if (string.Equals(transactionRfc?.Trim(), emisorRfc?.Trim(), StringComparison.OrdinalIgnoreCase))
+      return "Emitido";
+    if (string.Equals(transactionRfc?.Trim(), receptorRfc?.Trim(), StringComparison.OrdinalIgnoreCase))
+      return "Recibido";
+    return "Otro";
+  }
+
+  private static async Task RollbackQuietlyAsync(SqlTransaction tx, CancellationToken ct)
+  {
+    try { await tx.RollbackAsync(ct); } catch { /* ignored */ }
   }
 
   private static async Task<int?> GetXmlAttachmentIdAsync(

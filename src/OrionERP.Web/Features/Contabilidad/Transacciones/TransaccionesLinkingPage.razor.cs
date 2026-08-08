@@ -32,15 +32,24 @@ public partial class TransaccionesLinkingPage : ComponentBase
   protected bool IsLoading { get; private set; } = true;
   protected bool IsRefreshingWorkspace { get; private set; }
   protected bool IsLinking { get; private set; }
+  protected int? UnlinkingPago20DocumentId { get; private set; }
+  protected long? UnlinkingLegacyPago20Id { get; private set; }
   protected string? ErrorMessage { get; private set; }
 
-  protected int LinkedCount => Workspace.Linked.Comprobantes.Count + Workspace.Linked.ComplementosPago.Count;
+  protected int LinkedCount => Workspace.Linked.Comprobantes.Count
+    + Workspace.Linked.ComplementosPago.Sum(item => item.Documentos.Count)
+    + Workspace.Linked.LegacyComplementosPago.Count;
   protected int CandidateCount => Workspace.RegularCandidates.Count + Workspace.Pago20Candidates.Count;
   protected bool HasSelection => SelectedKind != CandidateSelectionKind.None;
-  protected bool CanLink => Header is not null && HasSelection && LinkMonto > 0m && !IsLinking;
+  protected bool CanLink => Header is not null
+    && HasSelection
+    && LinkMonto > 0m
+    && !IsLinking
+    && (SelectedRegularCandidate?.CanLink ?? SelectedPago20Candidate?.CanLink ?? false);
   protected decimal HeaderMontoAbs => Header is null ? 0m : Math.Abs(Header.Monto);
   protected decimal RegularAsignado => Workspace.Linked.Comprobantes.Sum(item => item.AsignadoCfdi);
-  protected decimal Pago20Asignado => Workspace.Linked.ComplementosPago.Sum(item => item.ImpPagado);
+  protected decimal Pago20Asignado => Workspace.Linked.ComplementosPago.Sum(item => item.MontoAsignado)
+    + Workspace.Linked.LegacyComplementosPago.Sum(item => item.MontoAsignado);
   protected decimal RegularPendiente => HeaderMontoAbs - RegularAsignado;
   protected decimal Pago20Pendiente => HeaderMontoAbs - Pago20Asignado;
 
@@ -51,6 +60,11 @@ public partial class TransaccionesLinkingPage : ComponentBase
 
   protected string FormatCurrency(decimal value)
     => value.ToString("C2", CurrencyCulture);
+
+  protected string FormatRemaining(decimal value)
+    => value < -0.01m
+      ? $"Excedido {FormatCurrency(Math.Abs(value))}"
+      : $"Pendiente {FormatCurrency(Math.Max(0m, value))}";
 
   protected static string FormatStatus(string? status)
     => status switch
@@ -84,6 +98,12 @@ public partial class TransaccionesLinkingPage : ComponentBase
 
   protected void SelectRegularCandidate(TransaccionRegularCfdiLinkCandidateDto candidate)
   {
+    if (!candidate.CanLink)
+    {
+      UiMessages.ShowWarning(candidate.BlockReason ?? "Este CFDI no se puede ligar a la póliza.");
+      return;
+    }
+
     SelectedKind = CandidateSelectionKind.Regular;
     SelectedRegularCandidate = candidate;
     SelectedPago20Candidate = null;
@@ -92,6 +112,12 @@ public partial class TransaccionesLinkingPage : ComponentBase
 
   protected void SelectPago20Candidate(TransaccionPago20LinkCandidateDto candidate)
   {
+    if (!candidate.CanLink)
+    {
+      UiMessages.ShowWarning(candidate.BlockReason ?? "Este documento Pago20 no se puede ligar a la póliza.");
+      return;
+    }
+
     SelectedKind = CandidateSelectionKind.Pago20;
     SelectedPago20Candidate = candidate;
     SelectedRegularCandidate = null;
@@ -156,14 +182,20 @@ public partial class TransaccionesLinkingPage : ComponentBase
 
     try
     {
-      var request = BuildLinkRequest();
-      if (request is null)
+      var result = SelectedKind switch
       {
-        UiMessages.ShowWarning("Selecciona un CFDI o complemento antes de ligar.");
-        return;
-      }
-
-      var result = await TransaccionService.LinkCfdiAsync(request);
+        CandidateSelectionKind.Regular when SelectedRegularCandidate is not null
+          => await TransaccionService.LinkRegularCfdiAsync(new TransaccionRegularCfdiLinkRequest(
+              Header.Id,
+              SelectedRegularCandidate.ComprobanteId,
+              LinkMonto)),
+        CandidateSelectionKind.Pago20 when SelectedPago20Candidate is not null
+          => await TransaccionService.LinkPago20DoctoRelacionadoAsync(new TransaccionPago20LinkRequest(
+              Header.Id,
+              SelectedPago20Candidate.DoctoRelacionadoId,
+              LinkMonto)),
+        _ => TransaccionCommandResult.Fail("Selecciona un CFDI o complemento antes de ligar.")
+      };
 
       if (result.Success)
       {
@@ -187,6 +219,68 @@ public partial class TransaccionesLinkingPage : ComponentBase
     }
   }
 
+  protected async Task UnlinkPago20DocumentAsync(TransaccionPago20DoctoRelacionadoDto document)
+  {
+    if (Header is null || UnlinkingPago20DocumentId.HasValue)
+      return;
+
+    var confirmed = await JsRuntime.InvokeAsync<bool>(
+        "confirm",
+        $"¿Desligar únicamente el documento relacionado {document.DoctoRelacionadoId} de la póliza {Header.Id}?");
+    if (!confirmed)
+      return;
+
+    UnlinkingPago20DocumentId = document.DoctoRelacionadoId;
+    try
+    {
+      var result = await TransaccionService.UnlinkPago20DoctoRelacionadoAsync(Header.Id, document.DoctoRelacionadoId);
+      if (result.Success)
+      {
+        UiMessages.ShowSuccess(result.Message);
+        await LoadWorkspaceAsync();
+      }
+      else
+      {
+        UiMessages.ShowError(result.Message);
+      }
+    }
+    finally
+    {
+      UnlinkingPago20DocumentId = null;
+    }
+  }
+
+  protected async Task UnlinkLegacyPago20Async(TransaccionPago20LegacyLinkDto legacy)
+  {
+    if (Header is null || UnlinkingLegacyPago20Id.HasValue)
+      return;
+
+    var confirmed = await JsRuntime.InvokeAsync<bool>(
+        "confirm",
+        $"¿Desligar el vínculo Pago20 legado al comprobante {legacy.ComprobanteId}? Esta acción no afecta vínculos por documento.");
+    if (!confirmed)
+      return;
+
+    UnlinkingLegacyPago20Id = legacy.ComprobanteId;
+    try
+    {
+      var result = await TransaccionService.UnlinkLegacyPago20Async(Header.Id, legacy.ComprobanteId);
+      if (result.Success)
+      {
+        UiMessages.ShowSuccess(result.Message);
+        await LoadWorkspaceAsync();
+      }
+      else
+      {
+        UiMessages.ShowError(result.Message);
+      }
+    }
+    finally
+    {
+      UnlinkingLegacyPago20Id = null;
+    }
+  }
+
   protected async Task OpenCfdiAsync(int? xmlAttachmentId)
   {
     if (!xmlAttachmentId.HasValue)
@@ -204,33 +298,6 @@ public partial class TransaccionesLinkingPage : ComponentBase
     {
       Nav.NavigateTo(url);
     }
-  }
-
-  private TransaccionCfdiLinkRequest? BuildLinkRequest()
-  {
-    if (Header is null)
-    {
-      return null;
-    }
-
-    return SelectedKind switch
-    {
-      CandidateSelectionKind.Regular when SelectedRegularCandidate is not null => new TransaccionCfdiLinkRequest
-      {
-        TransaccionId = Header.Id,
-        ComprobanteId = SelectedRegularCandidate.ComprobanteId,
-        Monto = LinkMonto,
-        UseDoctoRelacionadoTable = false
-      },
-      CandidateSelectionKind.Pago20 when SelectedPago20Candidate is not null => new TransaccionCfdiLinkRequest
-      {
-        TransaccionId = Header.Id,
-        ComprobanteId = SelectedPago20Candidate.DoctoRelacionadoId,
-        Monto = LinkMonto,
-        UseDoctoRelacionadoTable = true
-      },
-      _ => null
-    };
   }
 
   private async Task LoadAsync()

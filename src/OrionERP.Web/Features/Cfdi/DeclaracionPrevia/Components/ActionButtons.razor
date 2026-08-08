@@ -26,10 +26,10 @@
 </td>
 <td>
     <button class="btn btn-sm @(IsUnassignedPoliza ? "btn-outline-danger" : "btn-outline-success")"
-            title="@(IsUnassignedPoliza ? "Buscar Póliza" : "Ir a Transacción")"
+            title="@(IsComplemento ? "Administrar pólizas del documento Pago20" : IsUnassignedPoliza ? "Buscar Póliza" : "Ir a Transacción")"
             @onclick:stopPropagation="true"
             @onclick="HandlePolizaClick">
-        @(IsUnassignedPoliza ? "Buscar" : ItemPoliza)
+        @PolizaActionLabel
     </button>
 </td>
 
@@ -46,7 +46,22 @@
 
     private string? ItemPoliza => Item.Poliza;
 
-    private bool IsUnassignedPoliza => string.IsNullOrWhiteSpace(ItemPoliza);
+    private DeclaracionComplementoBase? Complemento => Item as DeclaracionComplementoBase;
+
+    private bool IsComplemento => Complemento?.DoctoRelacionado_Id.HasValue == true;
+
+    private bool IsUnassignedPoliza => IsComplemento
+        ? Complemento!.Polizas.GetValueOrDefault() <= 0
+        : string.IsNullOrWhiteSpace(ItemPoliza);
+
+    private string PolizaActionLabel => IsComplemento
+        ? Complemento!.Polizas.GetValueOrDefault() switch
+        {
+            <= 0 => "Buscar",
+            1 => "1 póliza",
+            var count => $"{count} pólizas"
+        }
+        : IsUnassignedPoliza ? "Buscar" : ItemPoliza!;
 
     private async Task OpenDetails()
     {
@@ -77,24 +92,31 @@
 
     private async Task HandlePolizaClick()
     {
+        if (IsComplemento)
+        {
+            await OpenUrlAsync($"/cfdi/LigarComplemento_Poliza/{Complemento!.DoctoRelacionado_Id!.Value}");
+            return;
+        }
+
         if (IsUnassignedPoliza)
         {
-            var url = Item is DeclaracionComplementoBase complemento && complemento.DoctoRelacionado_Id.HasValue
-                ? $"/cfdi/LigarComplemento_Poliza/{complemento.DoctoRelacionado_Id.Value}"
-                : $"/cfdi/LigarCFDI_Poliza/{Item.Comprobante_Id}";
-
-            try
-            {
-                await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
-            }
-            catch
-            {
-                Nav.NavigateTo(url);
-            }
+            await OpenUrlAsync($"/cfdi/LigarCFDI_Poliza/{Item.Comprobante_Id}");
         }
         else
         {
             await OpenLinkedTransaction();
+        }
+    }
+
+    private async Task OpenUrlAsync(string url)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+        }
+        catch
+        {
+            Nav.NavigateTo(url);
         }
     }
 

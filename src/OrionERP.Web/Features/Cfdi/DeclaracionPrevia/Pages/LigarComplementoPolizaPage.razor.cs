@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
@@ -45,9 +46,14 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
   protected int? HighlightedTransaccionId { get; set; }
   private readonly Dictionary<int, LinkedMontoEditor> _linkedMontoEditors = new();
   private int? _savingLinkedMontoTransaccionId;
+  private int? _unlinkingTransaccionId;
   private bool _disposed;
 
-  protected bool CanLigar => Summary is not null && SelectedCandidate is not null && LinkMonto > 0m;
+  protected bool CanLigar => Summary is not null
+    && Summary.Pendiente > 0m
+    && SelectedCandidate is not null
+    && SelectedCandidate.CanLink
+    && LinkMonto > 0m;
 
   protected override async Task OnInitializedAsync()
   {
@@ -87,11 +93,30 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
 
     try
     {
-      Filter.Rfc = RfcState.CurrentRfc;
+      var workspaceRfc = RfcState.CurrentRfc;
+      Filter.Rfc = workspaceRfc;
       Workspace = await TransaccionService.GetPago20PolizaLinkingWorkspaceAsync(
         DoctoRelacionado_Id,
-        RfcState.CurrentRfc,
+        workspaceRfc,
         Filter);
+
+      if (Workspace.Summary is { Direccion: "Otro" } summary)
+      {
+        var documentRfc = RfcState.AllowedRfcs.FirstOrDefault(allowed =>
+            string.Equals(allowed, summary.EmisorRfc, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(allowed, summary.ReceptorRfc, StringComparison.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(documentRfc)
+            && !string.Equals(documentRfc, workspaceRfc, StringComparison.OrdinalIgnoreCase))
+        {
+          workspaceRfc = documentRfc;
+          Filter.Rfc = workspaceRfc;
+          Workspace = await TransaccionService.GetPago20PolizaLinkingWorkspaceAsync(
+            DoctoRelacionado_Id,
+            workspaceRfc,
+            Filter);
+        }
+      }
 
       if (Workspace.Summary is not null && Filter.Monto is null)
       {
@@ -131,6 +156,12 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
       return;
     }
 
+    if (!item.CanLink)
+    {
+      UiMessages.ShowWarning(item.BlockReason ?? "Esta póliza no se puede ligar al documento Pago20.");
+      return;
+    }
+
     SelectedCandidate = item;
     LinkMonto = GetSuggestedMonto(item);
     InlineError = null;
@@ -148,6 +179,11 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
     if (HighlightedTransaccionId == item.Id)
     {
       classes.Add("linking-row-highlight");
+    }
+
+    if (!item.CanLink)
+    {
+      classes.Add("table-secondary");
     }
 
     return string.Join(" ", classes);
@@ -232,7 +268,7 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
       return 0m;
     }
 
-    return Summary.Pendiente > 0m ? Summary.Pendiente : Summary.ImpPagado;
+    return Math.Max(0m, Summary.Pendiente);
   }
 
   protected decimal GetSuggestedMonto(CfdiPolizaCandidateDto? candidate)
@@ -252,8 +288,8 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
       return 0m;
     }
 
-    var complementoRemaining = Summary.Pendiente > 0m ? Summary.Pendiente : Summary.ImpPagado;
-    var candidateAvailable = candidate.Disponible > 0m ? candidate.Disponible : decimal.Abs(candidate.Monto);
+    var complementoRemaining = Math.Max(0m, Summary.Pendiente);
+    var candidateAvailable = Math.Max(0m, candidate.Disponible);
 
     return decimal.Min(complementoRemaining, candidateAvailable);
   }
@@ -288,7 +324,10 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
       return;
     }
 
-    var maxMonto = decimal.Max(Summary.ImpPagado, decimal.Abs(poliza.TransaccionMonto));
+    var documentRemainingIncludingCurrent = Summary.ImpPagado - (Summary.AsignadoComplemento - poliza.MontoAsignado);
+    var transactionRemainingIncludingCurrent = decimal.Abs(poliza.TransaccionMonto)
+      - (poliza.TransaccionAsignadoPago20 - poliza.MontoAsignado);
+    var maxMonto = Math.Max(0m, decimal.Min(documentRemainingIncludingCurrent, transactionRemainingIncludingCurrent));
     if (monto > maxMonto)
     {
       InlineError = $"El monto asignado para la póliza {poliza.TransaccionId} no puede exceder {FormatCurrency(maxMonto)}.";
@@ -325,6 +364,40 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
     finally
     {
       _savingLinkedMontoTransaccionId = null;
+    }
+  }
+
+  protected bool IsUnlinking(CfdiPolizaLinkedPolizaDto poliza)
+    => _unlinkingTransaccionId == poliza.TransaccionId;
+
+  protected async Task DesligarAsync(CfdiPolizaLinkedPolizaDto poliza)
+  {
+    if (Summary is null || _unlinkingTransaccionId.HasValue)
+      return;
+
+    var confirm = await Js.InvokeAsync<bool>(
+        "confirm",
+        $"¿Desligar la póliza {poliza.TransaccionId} únicamente del documento Pago20 {Summary.DoctoRelacionadoId}?");
+    if (!confirm)
+      return;
+
+    _unlinkingTransaccionId = poliza.TransaccionId;
+    try
+    {
+      var result = await TransaccionService.UnlinkPago20DoctoRelacionadoAsync(poliza.TransaccionId, Summary.DoctoRelacionadoId);
+      if (result.Success)
+      {
+        UiMessages.ShowSuccess(result.Message);
+        await LoadWorkspaceAsync();
+      }
+      else
+      {
+        UiMessages.ShowError(result.Message);
+      }
+    }
+    finally
+    {
+      _unlinkingTransaccionId = null;
     }
   }
 

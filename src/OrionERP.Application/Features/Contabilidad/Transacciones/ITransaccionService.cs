@@ -26,7 +26,9 @@ public interface ITransaccionService
   Task<TransaccionCommandResult> UpsertReservacionLinkAsync(TransaccionReservacionLinkUpsertRequest request, CancellationToken ct = default);
   Task<TransaccionCommandResult> DeleteReservacionLinkAsync(int transaccionId, int reservationId, CancellationToken ct = default);
   Task ToggleComprobanteAsync(int transaccionId, int comprobanteId, bool vincular, CancellationToken ct = default);
-  Task<TransaccionCommandResult> UnlinkComprobanteAsync(TransaccionComprobanteUnlinkRequest request, CancellationToken ct = default);
+  Task<TransaccionCommandResult> UnlinkRegularCfdiAsync(int transaccionId, long comprobanteId, CancellationToken ct = default);
+  Task<TransaccionCommandResult> UnlinkPago20DoctoRelacionadoAsync(int transaccionId, int doctoRelacionadoId, CancellationToken ct = default);
+  Task<TransaccionCommandResult> UnlinkLegacyPago20Async(int transaccionId, long comprobanteId, CancellationToken ct = default);
   Task<TransaccionGuardarCerrarResult> GuardarYCerrarAsync(TransaccionGuardarCerrarRequest request, CancellationToken ct = default);
   Task<IReadOnlyList<TransaccionListItem>> GetCandidatesAsync(
       DateTime fechaXml,
@@ -41,7 +43,9 @@ public interface ITransaccionService
   Task<TransaccionCfdiLinkingWorkspaceDto> GetTransaccionCfdiLinkingWorkspaceAsync(int transaccionId, TransaccionCfdiSearchRequest request, CancellationToken ct = default);
   Task<CfdiPolizaLinkingWorkspaceDto> GetCfdiPolizaLinkingWorkspaceAsync(int comprobanteId, string? rfc, TransaccionFilter filter, CancellationToken ct = default);
   Task<Pago20PolizaLinkingWorkspaceDto> GetPago20PolizaLinkingWorkspaceAsync(int doctoRelacionadoId, string? rfc, TransaccionFilter filter, CancellationToken ct = default);
-  Task<TransaccionCommandResult> LinkCfdiAsync(TransaccionCfdiLinkRequest request, CancellationToken ct = default);
+  Task<TransaccionCommandResult> LinkRegularCfdiAsync(TransaccionRegularCfdiLinkRequest request, CancellationToken ct = default);
+  Task<TransaccionCommandResult> LinkPago20DoctoRelacionadoAsync(TransaccionPago20LinkRequest request, CancellationToken ct = default);
+  Task<Pago20AccountingBasisResult> GetPago20AccountingBasisAsync(int transaccionId, CancellationToken ct = default);
   Task<TransaccionCommandResult> TimbrarCfdiPublicoAsync(
       TransaccionTimbrarPublicoRequest request,
       CancellationToken ct = default);
@@ -50,10 +54,6 @@ public interface ITransaccionService
       int transaccionId,
       CancellationToken ct = default);
   Task<TransaccionCommandResult> RegenerarPolizaDesdeComprobanteEnTransaccionAsync(
-      int transaccionId,
-      long comprobanteId,
-      CancellationToken ct = default);
-  Task<TransaccionCommandResult> RegenerarPolizaDesdeComplementoEnTransaccionAsync(
       int transaccionId,
       long comprobanteId,
       CancellationToken ct = default);

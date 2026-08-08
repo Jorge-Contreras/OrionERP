@@ -43,6 +43,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   private int? _selectedReservacionId;
   private int? _unlinkingReservacionId;
   private long? _unlinkingComprobanteId;
+  private int? _unlinkingDoctoRelacionadoId;
+  private long? _unlinkingLegacyPago20Id;
   private long? _unlinkingBancoMovimientoId;
   private long? _selectedComprobanteId;
   private long? _cancellingComprobanteId;
@@ -93,6 +95,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected List<AttachmentModel> Attachments { get; } = [];
   protected List<TransaccionCfdiLinkedSummaryDto> Comprobantes { get; } = [];
   protected List<TransaccionPago20LinkedSummaryDto> ComplementosPago { get; } = [];
+  protected List<TransaccionPago20LegacyLinkDto> LegacyComplementosPago { get; } = [];
   protected List<TransaccionReservacionLinkDto> ReservacionLinks { get; } = [];
   protected List<TransaccionReservacionSearchItemDto> ReservacionCandidates { get; } = [];
   protected List<RecurrentApTransactionLinkDto> ApLinks { get; } = [];
@@ -153,7 +156,16 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string ReservacionActionLabel => SelectedReservacionHasExistingLink
     ? "Actualizar asignacion"
     : "Asignar reservacion";
-  protected int ComprobantesVinculadosCount => Comprobantes.Count + ComplementosPago.Count;
+  protected int ComprobantesVinculadosCount => Comprobantes.Count
+    + ComplementosPago.Sum(item => item.Documentos.Count)
+    + LegacyComplementosPago.Count;
+  protected bool HasCanonicalPago20Links => ComplementosPago.Any(item => item.Documentos.Count > 0);
+  protected string ActiveTemplateContext => HasCanonicalPago20Links
+      ? ResolvePago20TemplateContext() ?? "PAGO20_INVALIDO"
+      : PlantillaContableContextos.Transaccion;
+  protected string ApplyTemplateButtonLabel => PlantillaContableContextos.IsPago20(ActiveTemplateContext)
+      ? "Aplicar Pago20"
+      : "Aplicar plantilla";
   protected bool SelectedReservacionHasExistingLink => _selectedReservacionId.HasValue
     && ReservacionLinks.Any(item => item.ReservationId == _selectedReservacionId.Value);
   protected bool IsUploadingAttachment { get; private set; }
@@ -353,8 +365,10 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       PlantillaOptions.AddRange(rows.Where(row =>
       {
         var plantillaRfc = Normalize(row.Rfc);
-        return plantillaRfc is null
+        var rfcMatches = plantillaRfc is null
           || (currentRfc is not null && string.Equals(plantillaRfc, currentRfc, StringComparison.OrdinalIgnoreCase));
+        return rfcMatches
+          && string.Equals(row.Contexto, ActiveTemplateContext, StringComparison.OrdinalIgnoreCase);
       }));
     }
     catch (OperationCanceledException)
@@ -623,13 +637,13 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       Header = CreateHeaderModel(headerDto);
       UpdateMontoInputFromHeader();
       await LoadLookupDataAsync(ct);
-      await LoadPlantillasAsync(ct);
       _headerOriginal = Header.Clone();
       HeaderEditContext = new EditContext(Header);
 
       await ReloadMovimientosAsync(ct);
       await ReloadAttachmentsAsync(ct);
       await ReloadComprobantesAsync(ct);
+      await LoadPlantillasAsync(ct);
       await ReloadBancoMovimientosAsync(ct);
       await ReloadReservacionLinksAsync(ct);
       await ReloadApLinksAsync(ct);
@@ -665,6 +679,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     BancoMovimientos.Clear();
     Attachments.Clear();
     Comprobantes.Clear();
+    ComplementosPago.Clear();
+    LegacyComplementosPago.Clear();
     ReservacionLinks.Clear();
     ReservacionCandidates.Clear();
     ApLinks.Clear();
@@ -1003,6 +1019,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
       await ReloadComprobantesAsync();
       await ReloadAttachmentsAsync();
+      await LoadPlantillasAsync();
       UiMessages.ShowSuccess(result.Message ?? "La factura al público en general se generó correctamente.");
     }
     catch (Exception ex)
@@ -1173,20 +1190,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
     }
 
-    var selectedName = PlantillaOptions
-        .FirstOrDefault(item => item.PlantillaContableId == SelectedPlantillaContableId.Value)
-        ?.Nombre
-      ?? "la plantilla seleccionada";
-
-    var confirmMessage = Movimientos.Count == 0
-      ? $"Aplicar {selectedName} creara los movimientos visibles. Guarda la poliza para persistirlos. ¿Deseas continuar?"
-      : $"Aplicar {selectedName} reemplazara los movimientos visibles. Guarda la poliza para persistirlos. ¿Deseas continuar?";
-
-    if (!await ConfirmAsync(confirmMessage))
-    {
-      return;
-    }
-
     IsApplyingPlantilla = true;
     await InvokeAsync(StateHasChanged);
 
@@ -1214,10 +1217,49 @@ public partial class TransaccionPage : ComponentBase, IDisposable
           .ThenBy(line => line.PlantillaContableLineaId)
           .ToList();
 
-      var drafts = PlantillaContableMovimientoCalculator.CreateDrafts(
-          activeLines,
-          Header.Monto,
-          NormalizeConceptoValue(Header.Concepto));
+      IReadOnlyList<PlantillaContableMovimientoDraft> drafts;
+      string? amountWarning = null;
+      if (PlantillaContableContextos.IsPago20(detail.Contexto))
+      {
+        var basisResult = await TransaccionService.GetPago20AccountingBasisAsync(Header.Id);
+        if (!basisResult.Success || basisResult.Basis is null)
+        {
+          UiMessages.ShowError(basisResult.Message);
+          return;
+        }
+
+        var basis = basisResult.Basis;
+        if (!string.Equals(detail.Contexto, basis.Contexto, StringComparison.OrdinalIgnoreCase))
+        {
+          UiMessages.ShowError($"La plantilla es {detail.Contexto}, pero los complementos ligados requieren {basis.Contexto}.");
+          return;
+        }
+
+        if (basis.RequiresAmountOverride)
+        {
+          amountWarning = $"Advertencia: el total Pago20 asignado ({FormatCurrency(basis.TotalAsignado)}) no coincide con el monto absoluto de la póliza ({FormatCurrency(decimal.Abs(basis.TransaccionMonto))}). ";
+        }
+
+        drafts = PlantillaContableMovimientoCalculator.CreatePago20Drafts(
+            activeLines,
+            basis.ToAmountDictionary(),
+            NormalizeConceptoValue(Header.Concepto));
+      }
+      else
+      {
+        drafts = PlantillaContableMovimientoCalculator.CreateDrafts(
+            activeLines,
+            Header.Monto,
+            NormalizeConceptoValue(Header.Concepto));
+      }
+
+      var selectedName = detail.Nombre;
+      var replaceText = Movimientos.Count == 0 ? "creará" : "reemplazará";
+      var confirmMessage = $"{amountWarning}Aplicar {selectedName} {replaceText} los movimientos visibles. Guarda la póliza para persistirlos. ¿Deseas continuar?";
+      if (!await ConfirmAsync(confirmMessage))
+      {
+        return;
+      }
 
       Movimientos.Clear();
       foreach (var draft in drafts)
@@ -1227,7 +1269,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
       CloseMovimientoModal();
       UpdateTotalsFromMovimientos();
-      UiMessages.ShowSuccess("Plantilla aplicada a los movimientos visibles. Guarda la poliza para persistir los cambios.");
+      UiMessages.ShowSuccess("Plantilla aplicada a los movimientos visibles. Guarda la póliza para persistir los cambios.");
     }
     catch (Exception ex)
     {
@@ -1594,6 +1636,13 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return "La plantilla contable seleccionada no esta activa.";
     }
 
+    if (!string.Equals(plantilla.Contexto, ActiveTemplateContext, StringComparison.OrdinalIgnoreCase))
+    {
+      return PlantillaContableContextos.IsPago20(ActiveTemplateContext)
+          ? "Selecciona una plantilla compatible con la dirección de los complementos Pago20 ligados."
+          : "Selecciona una plantilla de contexto TRANSACCION.";
+    }
+
     var currentRfc = ResolveLookupRfc();
     var plantillaRfc = Normalize(plantilla.Rfc);
     if (plantillaRfc is not null
@@ -1645,6 +1694,25 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     return $"{plantilla.Nombre} - {tipo} - {lineLabel} - {scope}";
   }
 
+  private string? ResolvePago20TemplateContext()
+  {
+    var directions = ComplementosPago
+        .Select(item => item.Direccion?.Trim())
+        .Where(item => !string.IsNullOrWhiteSpace(item))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    if (directions.Length != 1)
+      return null;
+
+    return directions[0] switch
+    {
+      "Recibido" => PlantillaContableContextos.Pago20Recibido,
+      "Emitido" => PlantillaContableContextos.Pago20Emitido,
+      _ => null
+    };
+  }
+
   private int CreateDraftMovimientoId()
     => --_nextDraftMovimientoId;
 
@@ -1661,6 +1729,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   {
     Comprobantes.Clear();
     ComplementosPago.Clear();
+    LegacyComplementosPago.Clear();
 
     if (Header is null)
     {
@@ -1672,6 +1741,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       var data = await TransaccionService.GetLinkedCfdiSummaryAsync(Header.Id, ct);
       Comprobantes.AddRange(data.Comprobantes);
       ComplementosPago.AddRange(data.ComplementosPago);
+      LegacyComplementosPago.AddRange(data.LegacyComplementosPago);
     }
     catch (OperationCanceledException)
     {
@@ -2161,8 +2231,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected bool IsComprobanteUnlinking(TransaccionCfdiLinkedSummaryDto comprobante)
     => comprobante is not null && comprobante.ComprobanteId == _unlinkingComprobanteId;
 
-  protected bool IsComplementoPagoUnlinking(TransaccionPago20LinkedSummaryDto complemento)
-    => complemento is not null && complemento.ComprobanteId == _unlinkingComprobanteId;
+  protected bool IsPago20DocumentUnlinking(TransaccionPago20DoctoRelacionadoDto document)
+    => document is not null && document.DoctoRelacionadoId == _unlinkingDoctoRelacionadoId;
+
+  protected bool IsLegacyPago20Unlinking(TransaccionPago20LegacyLinkDto legacy)
+    => legacy is not null && legacy.ComprobanteId == _unlinkingLegacyPago20Id;
 
   protected bool IsComprobanteCancelling(TransaccionCfdiLinkedSummaryDto comprobante)
     => comprobante is not null && comprobante.ComprobanteId == _cancellingComprobanteId;
@@ -2209,7 +2282,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   }
 
   protected bool CanRegenerarMovimientos()
-    => !IsRegeneratingMovimientos && ComprobantesVinculadosCount > 0;
+    => !IsRegeneratingMovimientos && Comprobantes.Count > 0;
 
   protected async Task RegenerarMovimientosDesdeComprobanteAsync()
   {
@@ -2218,7 +2291,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
     }
 
-    if (ComprobantesVinculadosCount == 0)
+    if (Comprobantes.Count == 0)
     {
       UiMessages.ShowWarning("No hay comprobantes vinculados para regenerar los movimientos.");
       return;
@@ -2231,8 +2304,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
 
     var comprobante = Comprobantes.FirstOrDefault(item => item.ComprobanteId == _selectedComprobanteId);
-    var complemento = ComplementosPago.FirstOrDefault(item => item.ComprobanteId == _selectedComprobanteId);
-    if (comprobante is null && complemento is null)
+    if (comprobante is null)
     {
       UiMessages.ShowWarning("Selecciona un comprobante antes de regenerar los movimientos.");
       return;
@@ -2243,24 +2315,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     try
     {
-      TransaccionCommandResult result;
-      if (comprobante is not null)
-      {
-        result = await TransaccionService.RegenerarPolizaDesdeComprobanteEnTransaccionAsync(
-            Header.Id,
-            comprobante.ComprobanteId);
-      }
-      else if (complemento is not null)
-      {
-        result = await TransaccionService.RegenerarPolizaDesdeComplementoEnTransaccionAsync(
-            Header.Id,
-            complemento.ComprobanteId);
-      }
-      else
-      {
-        UiMessages.ShowWarning("Tipo de comprobante no soportado.");
-        return;
-      }
+      var result = await TransaccionService.RegenerarPolizaDesdeComprobanteEnTransaccionAsync(
+          Header.Id,
+          comprobante.ComprobanteId);
 
       if (!result.Success)
       {
@@ -2283,12 +2340,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   }
 
   protected Task UnlinkComprobanteAsync(TransaccionCfdiLinkedSummaryDto comprobante)
-    => UnlinkComprobanteCoreAsync(comprobante.ComprobanteId, comprobante.Tipo);
+    => UnlinkRegularCfdiCoreAsync(comprobante.ComprobanteId);
 
-  protected Task UnlinkComplementoPagoAsync(TransaccionPago20LinkedSummaryDto complemento)
-    => UnlinkComprobanteCoreAsync(complemento.ComprobanteId, "P");
-
-  private async Task UnlinkComprobanteCoreAsync(long comprobanteId, string? tipo)
+  private async Task UnlinkRegularCfdiCoreAsync(long comprobanteId)
   {
     if (Header is null)
     {
@@ -2306,14 +2360,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     try
     {
-      var request = new TransaccionComprobanteUnlinkRequest
-      {
-        CurrentTransaccionId = Header.Id,
-        ComprobanteId = comprobanteId,
-        Tipo = tipo
-      };
-
-      var result = await TransaccionService.UnlinkComprobanteAsync(request);
+      var result = await TransaccionService.UnlinkRegularCfdiAsync(Header.Id, comprobanteId);
       if (!result.Success)
       {
         UiMessages.ShowWarning(result.Message ?? "No se encontró el vínculo de este comprobante con la póliza actual.");
@@ -2333,6 +2380,65 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     finally
     {
       _unlinkingComprobanteId = null;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected async Task UnlinkPago20DocumentAsync(TransaccionPago20DoctoRelacionadoDto document)
+  {
+    if (Header is null || _unlinkingDoctoRelacionadoId.HasValue)
+      return;
+
+    var confirmed = await ConfirmAsync($"¿Desligar únicamente el documento Pago20 {document.DoctoRelacionadoId} de esta póliza?");
+    if (!confirmed)
+      return;
+
+    _unlinkingDoctoRelacionadoId = document.DoctoRelacionadoId;
+    try
+    {
+      var result = await TransaccionService.UnlinkPago20DoctoRelacionadoAsync(Header.Id, document.DoctoRelacionadoId);
+      if (result.Success)
+        UiMessages.ShowSuccess(result.Message);
+      else
+        UiMessages.ShowWarning(result.Message);
+
+      await ReloadComprobantesAsync();
+      await LoadPlantillasAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo desligar el documento Pago20: {ex.Message}");
+    }
+    finally
+    {
+      _unlinkingDoctoRelacionadoId = null;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  protected async Task UnlinkLegacyPago20Async(TransaccionPago20LegacyLinkDto legacy)
+  {
+    if (Header is null || _unlinkingLegacyPago20Id.HasValue)
+      return;
+
+    if (!await ConfirmAsync($"¿Desligar el vínculo Pago20 legado al comprobante {legacy.ComprobanteId}?"))
+      return;
+
+    _unlinkingLegacyPago20Id = legacy.ComprobanteId;
+    try
+    {
+      var result = await TransaccionService.UnlinkLegacyPago20Async(Header.Id, legacy.ComprobanteId);
+      if (result.Success)
+        UiMessages.ShowSuccess(result.Message);
+      else
+        UiMessages.ShowWarning(result.Message);
+
+      await ReloadComprobantesAsync();
+      await LoadPlantillasAsync();
+    }
+    finally
+    {
+      _unlinkingLegacyPago20Id = null;
       await InvokeAsync(StateHasChanged);
     }
   }
@@ -2363,12 +2469,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     try
     {
       await DeclaracionPreviaService.CancelEmitidaAsync(comprobante.Uuid!, (int)comprobante.ComprobanteId);
-      var unlinkResult = await TransaccionService.UnlinkComprobanteAsync(new TransaccionComprobanteUnlinkRequest
-      {
-        CurrentTransaccionId = Header.Id,
-        ComprobanteId = comprobante.ComprobanteId,
-        Tipo = comprobante.Tipo
-      });
+      var unlinkResult = await TransaccionService.UnlinkRegularCfdiAsync(Header.Id, comprobante.ComprobanteId);
 
       if (!unlinkResult.Success)
       {

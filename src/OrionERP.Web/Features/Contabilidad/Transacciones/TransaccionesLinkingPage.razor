@@ -43,17 +43,17 @@ else if (Header is not null)
       <div class="transaction-linking-metric @(RegularPendiente < 0 ? "is-danger" : string.Empty)">
         <span>CFDI regular asignado</span>
         <strong>@FormatCurrency(RegularAsignado)</strong>
-        <small>Pendiente @FormatCurrency(RegularPendiente)</small>
+        <small>@FormatRemaining(RegularPendiente)</small>
       </div>
       <div class="transaction-linking-metric @(Pago20Pendiente < 0 ? "is-danger" : string.Empty)">
         <span>Pago20 asignado</span>
         <strong>@FormatCurrency(Pago20Asignado)</strong>
-        <small>Pendiente @FormatCurrency(Pago20Pendiente)</small>
+        <small>@FormatRemaining(Pago20Pendiente)</small>
       </div>
       <div class="transaction-linking-metric">
         <span>Ligados</span>
         <strong>@LinkedCount</strong>
-        <small>@Workspace.Linked.Comprobantes.Count CFDI · @Workspace.Linked.ComplementosPago.Count Pago20</small>
+        <small>@Workspace.Linked.Comprobantes.Count CFDI · @Workspace.Linked.ComplementosPago.Sum(item => item.Documentos.Count) Pago20</small>
       </div>
     </section>
 
@@ -151,11 +151,13 @@ else if (Header is not null)
               <table class="table table-sm align-middle transaction-linking-table">
                 <thead>
                   <tr>
+                    <th>Docto</th>
                     <th>Complemento</th>
                     <th>Fecha pago</th>
                     <th>Dirección</th>
                     <th>UUID</th>
                     <th>Forma</th>
+                    <th class="text-end">Asignado</th>
                     <th class="text-end">Imp. pagado</th>
                     <th class="text-end">Comp. IVA</th>
                     <th class="text-end">IVA contable</th>
@@ -166,22 +168,78 @@ else if (Header is not null)
                 <tbody>
                   @foreach (var linked in Workspace.Linked.ComplementosPago)
                   {
+                    @foreach (var document in linked.Documentos)
+                    {
+                      <tr>
+                        <td class="fw-semibold">
+                          <a href="/cfdi/LigarComplemento_Poliza/@document.DoctoRelacionadoId">@document.DoctoRelacionadoId</a>
+                        </td>
+                        <td>@linked.ComprobanteId</td>
+                        <td>@(document.FechaPago.HasValue ? document.FechaPago.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "-")</td>
+                        <td>@linked.Direccion</td>
+                        <td class="transaction-linking-uuid">@document.UuidDoctoRelacionado</td>
+                        <td>@document.FormaDePagoP</td>
+                        <td class="text-end">@FormatCurrency(document.MontoAsignado)</td>
+                        <td class="text-end">@FormatCurrency(document.ImpPagado)</td>
+                        <td class="text-end">@FormatCurrency(document.IvaEsperado)</td>
+                        <td class="text-end">@FormatCurrency(linked.IvaContable)</td>
+                        <td><span class="badge @GetStatusBadgeClass(linked.IvaStatus)">IVA @FormatStatus(linked.IvaStatus)</span></td>
+                        <td class="text-end">
+                          <div class="d-inline-flex gap-1">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-primary"
+                                    disabled="@(!linked.XmlAttachmentId.HasValue)"
+                                    @onclick="() => OpenCfdiAsync(linked.XmlAttachmentId)">
+                              Ver XML
+                            </button>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-warning"
+                                    disabled="@(UnlinkingPago20DocumentId.HasValue)"
+                                    @onclick="() => UnlinkPago20DocumentAsync(document)">
+                              @(UnlinkingPago20DocumentId == document.DoctoRelacionadoId ? "Desligando..." : "Desligar")
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    }
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        }
+
+        @if (Workspace.Linked.LegacyComplementosPago.Count > 0)
+        {
+          <div class="transaction-linking-subsection mt-3">
+            <div class="alert alert-warning" role="alert">
+              <strong>Pago20 legado:</strong> estos vínculos directos al CFDI de pago deben revisarse antes de generar movimientos.
+            </div>
+            <div class="table-responsive transaction-linking-table-wrapper">
+              <table class="table table-sm align-middle transaction-linking-table">
+                <thead>
+                  <tr>
+                    <th>Complemento</th>
+                    <th>UUID</th>
+                    <th class="text-end">Monto</th>
+                    <th>Motivo</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach (var legacy in Workspace.Linked.LegacyComplementosPago)
+                  {
                     <tr>
-                      <td class="fw-semibold">@linked.ComprobanteId</td>
-                      <td>@(linked.FechaPago.HasValue ? linked.FechaPago.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "-")</td>
-                      <td>@linked.Direccion</td>
-                      <td class="transaction-linking-uuid">@linked.ComprobanteUuid</td>
-                      <td>@linked.FormaDePagoP</td>
-                      <td class="text-end">@FormatCurrency(linked.ImpPagado)</td>
-                      <td class="text-end">@FormatCurrency(linked.CompIva)</td>
-                      <td class="text-end">@FormatCurrency(linked.IvaContable)</td>
-                      <td><span class="badge @GetStatusBadgeClass(linked.IvaStatus)">IVA @FormatStatus(linked.IvaStatus)</span></td>
+                      <td>@legacy.ComprobanteId</td>
+                      <td class="transaction-linking-uuid">@legacy.ComprobanteUuid</td>
+                      <td class="text-end">@FormatCurrency(legacy.MontoAsignado)</td>
+                      <td>@legacy.LegacyReason</td>
                       <td class="text-end">
                         <button type="button"
-                                class="btn btn-sm btn-outline-primary"
-                                disabled="@(!linked.XmlAttachmentId.HasValue)"
-                                @onclick="() => OpenCfdiAsync(linked.XmlAttachmentId)">
-                          Ver XML
+                                class="btn btn-sm btn-outline-warning"
+                                disabled="@UnlinkingLegacyPago20Id.HasValue"
+                                @onclick="() => UnlinkLegacyPago20Async(legacy)">
+                          @(UnlinkingLegacyPago20Id == legacy.ComprobanteId ? "Desligando..." : "Desligar")
                         </button>
                       </td>
                     </tr>
@@ -312,14 +370,17 @@ else if (Header is not null)
                       <th class="text-end">Asignado</th>
                       <th class="text-end">Sugerido</th>
                       <th>IVA</th>
+                      <th>Disponibilidad</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
                     @foreach (var candidate in Workspace.RegularCandidates)
                     {
-                      <tr class="@(IsRegularCandidateSelected(candidate) ? "table-primary" : string.Empty)"
+                      <tr class="@(IsRegularCandidateSelected(candidate) ? "table-primary" : !candidate.CanLink ? "table-secondary" : string.Empty)"
                           aria-selected="@(IsRegularCandidateSelected(candidate) ? "true" : "false")"
+                          aria-disabled="@(!candidate.CanLink)"
+                          title="@candidate.BlockReason"
                           @onclick="() => SelectRegularCandidate(candidate)">
                         <td>
                           <span class="badge @GetStatusBadgeClass(candidate.MatchStatus)">@FormatStatus(candidate.MatchStatus)</span>
@@ -333,6 +394,16 @@ else if (Header is not null)
                         <td class="text-end">@FormatCurrency(candidate.AsignadoCfdi)</td>
                         <td class="text-end">@FormatCurrency(candidate.MontoSugerido)</td>
                         <td><span class="badge @GetStatusBadgeClass(candidate.IvaStatus)">@FormatStatus(candidate.IvaStatus)</span></td>
+                        <td>
+                          @if (candidate.CanLink)
+                          {
+                            <span class="badge text-bg-success">Disponible</span>
+                          }
+                          else
+                          {
+                            <span class="transaction-linking-block-reason">@candidate.BlockReason</span>
+                          }
+                        </td>
                         <td class="text-end">
                           <button type="button"
                                   class="btn btn-sm btn-outline-primary"
@@ -375,14 +446,17 @@ else if (Header is not null)
                       <th class="text-end">Asignado</th>
                       <th class="text-end">Sugerido</th>
                       <th>IVA</th>
+                      <th>Disponibilidad</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
                     @foreach (var candidate in Workspace.Pago20Candidates)
                     {
-                      <tr class="@(IsPago20CandidateSelected(candidate) ? "table-primary" : string.Empty)"
+                      <tr class="@(IsPago20CandidateSelected(candidate) ? "table-primary" : !candidate.CanLink ? "table-secondary" : string.Empty)"
                           aria-selected="@(IsPago20CandidateSelected(candidate) ? "true" : "false")"
+                          aria-disabled="@(!candidate.CanLink)"
+                          title="@candidate.BlockReason"
                           @onclick="() => SelectPago20Candidate(candidate)">
                         <td>
                           <span class="badge @GetStatusBadgeClass(candidate.MatchStatus)">@FormatStatus(candidate.MatchStatus)</span>
@@ -396,6 +470,16 @@ else if (Header is not null)
                         <td class="text-end">@FormatCurrency(candidate.AsignadoComplemento)</td>
                         <td class="text-end">@FormatCurrency(candidate.MontoSugerido)</td>
                         <td><span class="badge @GetStatusBadgeClass(candidate.IvaStatus)">@FormatStatus(candidate.IvaStatus)</span></td>
+                        <td>
+                          @if (candidate.CanLink)
+                          {
+                            <span class="badge text-bg-success">Disponible</span>
+                          }
+                          else
+                          {
+                            <span class="transaction-linking-block-reason">@candidate.BlockReason</span>
+                          }
+                        </td>
                         <td class="text-end">
                           <button type="button"
                                   class="btn btn-sm btn-outline-primary"

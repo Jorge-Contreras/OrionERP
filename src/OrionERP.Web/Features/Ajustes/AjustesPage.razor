@@ -330,6 +330,7 @@
                               {
                                 <span class="badge text-bg-info">@plantilla.TipoPoliza</span>
                               }
+                              <span class="badge text-bg-light border">@GetContextoLabel(plantilla.Contexto)</span>
                             </div>
                           </td>
                           <td class="text-end">
@@ -371,11 +372,19 @@
               <ValidationSummary />
 
               <div class="row g-3">
-                <div class="col-md-8">
+                <div class="col-md-6">
                   <label class="form-label">Nombre</label>
                   <InputText class="form-control" @bind-Value="Editor.Nombre" />
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
+                  <label class="form-label">Contexto</label>
+                  <InputSelect class="form-select" @bind-Value="Editor.Contexto">
+                    <option value="TRANSACCION">Transacción regular</option>
+                    <option value="PAGO20_RECIBIDO">Pago20 recibido</option>
+                    <option value="PAGO20_EMITIDO">Pago20 emitido</option>
+                  </InputSelect>
+                </div>
+                <div class="col-md-3">
                   <label class="form-label">Tipo de poliza</label>
                   <InputSelect class="form-select" @bind-Value="Editor.TipoPoliza">
                     <option value="">Sin tipo fijo</option>
@@ -518,7 +527,7 @@
                 <div class="col-md-6">
                   <label class="form-label">Monto</label>
                   <InputSelect class="form-select" @bind-Value="LineEditor.MontoTipo">
-                    @foreach (var option in MontoTipoOptions)
+                    @foreach (var option in CurrentMontoTipoOptions)
                     {
                       <option value="@option.Value">@option.Label</option>
                     }
@@ -566,11 +575,22 @@
 
 @code {
   private static readonly IReadOnlyList<string> TipoPolizaOptions = ["INGRESO", "EGRESO", "DIARIO"];
-  private static readonly IReadOnlyList<SelectOption> MontoTipoOptions =
+  private static readonly IReadOnlyList<SelectOption> TransaccionMontoTipoOptions =
   [
     new("MONTO_TOTAL", "Monto total"),
     new("SUBTOTAL_IVA_16", "Subtotal IVA 16%"),
     new("IVA_16", "IVA 16%")
+  ];
+  private static readonly IReadOnlyList<SelectOption> Pago20MontoTipoOptions =
+  [
+    new("PAGO20_TOTAL_ASIGNADO", "Pago20 total asignado"),
+    new("PAGO20_SUBTOTAL", "Pago20 subtotal"),
+    new("PAGO20_TRASLADO_ISR", "Pago20 traslado ISR"),
+    new("PAGO20_TRASLADO_IVA", "Pago20 traslado IVA"),
+    new("PAGO20_TRASLADO_IEPS", "Pago20 traslado IEPS"),
+    new("PAGO20_RETENCION_ISR", "Pago20 retención ISR"),
+    new("PAGO20_RETENCION_IVA", "Pago20 retención IVA"),
+    new("PAGO20_RETENCION_IEPS", "Pago20 retención IEPS")
   ];
 
   private readonly List<ExtraCatalogItemDto> ExtraCatalogItems = [];
@@ -600,6 +620,10 @@
 
   private int? SelectedExtraId => ExtraEditor.ExtraId;
   private int? SelectedPlantillaId => Editor.PlantillaContableId;
+  private IReadOnlyList<SelectOption> CurrentMontoTipoOptions
+    => PlantillaContableContextos.IsPago20(Editor.Contexto)
+      ? Pago20MontoTipoOptions
+      : TransaccionMontoTipoOptions;
   private IReadOnlyList<PlantillaLineEditorModel> ActiveLines => Editor.Lines.OrderBy(line => line.Orden).ToList();
 
   protected override async Task OnInitializedAsync()
@@ -897,6 +921,7 @@
     Editor = new PlantillaEditorModel
     {
       Rfc = selectedRfc,
+      Contexto = PlantillaContableContextos.Transaccion,
       Activa = true
     };
   }
@@ -1003,7 +1028,9 @@
     {
       Orden = ActiveLines.Count + 1,
       Naturaleza = "DEBE",
-      MontoTipo = "MONTO_TOTAL",
+      MontoTipo = PlantillaContableContextos.IsPago20(Editor.Contexto)
+          ? PlantillaContableMontoTipos.Pago20TotalAsignado
+          : PlantillaContableMontoTipos.MontoTotal,
       Factor = 1m,
       ConceptoTipo = "TRANSACCION"
     };
@@ -1209,7 +1236,17 @@
   }
 
   private static string GetMontoTipoLabel(string montoTipo)
-    => MontoTipoOptions.FirstOrDefault(option => option.Value == montoTipo)?.Label ?? montoTipo;
+    => TransaccionMontoTipoOptions
+        .Concat(Pago20MontoTipoOptions)
+        .FirstOrDefault(option => option.Value == montoTipo)?.Label ?? montoTipo;
+
+  private static string GetContextoLabel(string? contexto)
+    => contexto switch
+    {
+      PlantillaContableContextos.Pago20Recibido => "Pago20 recibido",
+      PlantillaContableContextos.Pago20Emitido => "Pago20 emitido",
+      _ => "Transacción"
+    };
 
   private static string GetConceptoLabel(PlantillaLineEditorModel line)
     => line.ConceptoTipo == "FIJO"
@@ -1397,6 +1434,7 @@
     public string? Descripcion { get; set; }
     public string? Rfc { get; set; }
     public string? TipoPoliza { get; set; }
+    public string Contexto { get; set; } = PlantillaContableContextos.Transaccion;
     public bool Activa { get; set; } = true;
     public List<PlantillaLineEditorModel> Lines { get; set; } = [];
 
@@ -1408,6 +1446,7 @@
         Descripcion = dto.Descripcion,
         Rfc = dto.Rfc,
         TipoPoliza = dto.TipoPoliza,
+        Contexto = dto.Contexto,
         Activa = dto.Activa,
         Lines = dto.Lineas.Select(PlantillaLineEditorModel.FromDto).ToList()
       };
@@ -1420,6 +1459,7 @@
         Descripcion = Descripcion,
         Rfc = Rfc,
         TipoPoliza = TipoPoliza,
+        Contexto = Contexto,
         Activa = Activa,
         Lineas = Lines.OrderBy(line => line.Orden).Select(line => line.ToRequest()).ToList()
       };

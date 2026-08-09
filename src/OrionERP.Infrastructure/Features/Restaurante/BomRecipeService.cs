@@ -286,7 +286,7 @@ public sealed class BomRecipeService : IBomRecipeService
     var normalizedRfc = LogisticsRfc.Require(rfc);
     using var conn = CreateConnection();
     await conn.OpenAsync(ct);
-    await using var tx = await conn.BeginTransactionAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
       var version = await conn.QuerySingleOrDefaultAsync<VersionIdentityRow>(new CommandDefinition(
@@ -308,6 +308,72 @@ public sealed class BomRecipeService : IBomRecipeService
       {
         await tx.RollbackAsync(ct);
         return RestaurantCommandResult.Fail("No se puede activar un BOM sin componentes.");
+      }
+
+      var incompleteSubassembly = await conn.QuerySingleOrDefaultAsync<IncompleteBomMaterialRow>(new CommandDefinition(
+        """
+        WITH MaterialTree AS
+        (
+          SELECT component.ComponentMaterialId AS MaterialId,
+                 1 AS Depth,
+                 CAST(CONCAT('/', @ProductMaterialId, '/', component.ComponentMaterialId, '/') AS varchar(max)) AS MaterialPath
+          FROM logistica.BomComponent component
+          WHERE component.Rfc = @Rfc AND component.BomVersionId = @Id
+
+          UNION ALL
+
+          SELECT childComponent.ComponentMaterialId,
+                 tree.Depth + 1,
+                 CAST(CONCAT(tree.MaterialPath, childComponent.ComponentMaterialId, '/') AS varchar(max))
+          FROM MaterialTree tree
+          JOIN logistica.Material treeMaterial
+            ON treeMaterial.Rfc = @Rfc AND treeMaterial.Id = tree.MaterialId
+          JOIN logistica.BomHeader childHeader
+            ON childHeader.Rfc = treeMaterial.Rfc AND childHeader.ProductMaterialId = treeMaterial.Id
+          JOIN logistica.BomVersion childVersion
+            ON childVersion.Rfc = childHeader.Rfc AND childVersion.BomHeaderId = childHeader.Id
+           AND childVersion.[Status] = 'Active'
+          JOIN logistica.BomComponent childComponent
+            ON childComponent.Rfc = childVersion.Rfc AND childComponent.BomVersionId = childVersion.Id
+          WHERE treeMaterial.FulfillmentMode = 'MakeToOrder'
+            AND tree.Depth < 31
+            AND tree.MaterialPath NOT LIKE CONCAT('%/', childComponent.ComponentMaterialId, '/%')
+        )
+        SELECT TOP (1) tree.MaterialId, material.[Description]
+        FROM MaterialTree tree
+        JOIN logistica.Material material
+          ON material.Rfc = @Rfc AND material.Id = tree.MaterialId
+        WHERE material.FulfillmentMode = 'MakeToOrder'
+          AND NOT EXISTS
+          (
+            SELECT 1
+            FROM logistica.BomHeader requiredHeader
+            JOIN logistica.BomVersion requiredVersion
+              ON requiredVersion.Rfc = requiredHeader.Rfc
+             AND requiredVersion.BomHeaderId = requiredHeader.Id
+             AND requiredVersion.[Status] = 'Active'
+            JOIN logistica.BomComponent requiredComponent
+              ON requiredComponent.Rfc = requiredVersion.Rfc
+             AND requiredComponent.BomVersionId = requiredVersion.Id
+            WHERE requiredHeader.Rfc = material.Rfc
+              AND requiredHeader.ProductMaterialId = material.Id
+          )
+        ORDER BY tree.Depth, tree.MaterialId
+        OPTION (MAXRECURSION 32);
+        """,
+        new
+        {
+          Rfc = normalizedRfc,
+          Id = bomVersionId,
+          version.ProductMaterialId
+        },
+        tx,
+        cancellationToken: ct));
+      if (incompleteSubassembly is not null)
+      {
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail(
+          $"El ingrediente {incompleteSubassembly.Description} (material {incompleteSubassembly.MaterialId}) está configurado para fabricación bajo pedido y no tiene un BOM activo con componentes. Activa su BOM o cambia el material a inventario antes de publicar esta versión.");
       }
 
       await conn.ExecuteAsync(new CommandDefinition(
@@ -444,6 +510,36 @@ public sealed class BomRecipeService : IBomRecipeService
       {
         await tx.RollbackAsync(ct);
         return RestaurantCommandResult.Fail("Completa o cancela la producción pendiente antes de retirar este BOM.");
+      }
+
+      var activeParent = await conn.QuerySingleOrDefaultAsync<ActiveParentBomRow>(new CommandDefinition(
+        """
+        SELECT TOP (1)
+               parentHeader.ProductMaterialId,
+               parentMaterial.[Description]
+        FROM logistica.Material childMaterial WITH (UPDLOCK, HOLDLOCK)
+        JOIN logistica.BomComponent component WITH (UPDLOCK, HOLDLOCK)
+          ON component.Rfc = childMaterial.Rfc AND component.ComponentMaterialId = childMaterial.Id
+        JOIN logistica.BomVersion parentVersion WITH (UPDLOCK, HOLDLOCK)
+          ON parentVersion.Rfc = component.Rfc AND parentVersion.Id = component.BomVersionId
+         AND parentVersion.[Status] = 'Active'
+        JOIN logistica.BomHeader parentHeader WITH (UPDLOCK, HOLDLOCK)
+          ON parentHeader.Rfc = parentVersion.Rfc AND parentHeader.Id = parentVersion.BomHeaderId
+        JOIN logistica.Material parentMaterial WITH (UPDLOCK, HOLDLOCK)
+          ON parentMaterial.Rfc = parentHeader.Rfc AND parentMaterial.Id = parentHeader.ProductMaterialId
+        WHERE childMaterial.Rfc = @Rfc
+          AND childMaterial.Id = @ProductMaterialId
+          AND childMaterial.FulfillmentMode = 'MakeToOrder'
+        ORDER BY parentHeader.ProductMaterialId;
+        """,
+        new { Rfc = normalizedRfc, version.ProductMaterialId },
+        tx,
+        cancellationToken: ct));
+      if (activeParent is not null)
+      {
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail(
+          $"No se puede retirar este BOM porque el material todavía se usa como subproducto del BOM activo de {activeParent.Description} (material {activeParent.ProductMaterialId}). Reemplázalo en el BOM padre antes de retirarlo.");
       }
 
       var affected = await conn.ExecuteAsync(new CommandDefinition(
@@ -755,6 +851,16 @@ public sealed class BomRecipeService : IBomRecipeService
     public long BomHeaderId { get; set; }
     public string Status { get; set; } = string.Empty;
     public int ProductMaterialId { get; set; }
+  }
+  private sealed class IncompleteBomMaterialRow
+  {
+    public int MaterialId { get; set; }
+    public string Description { get; set; } = string.Empty;
+  }
+  private sealed class ActiveParentBomRow
+  {
+    public int ProductMaterialId { get; set; }
+    public string Description { get; set; } = string.Empty;
   }
 
   private sealed class MaterialBaseUnitRow

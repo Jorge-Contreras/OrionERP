@@ -1642,7 +1642,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       }
       if (line.Product.FulfillmentMode == "MakeToOrder")
       {
-        await ExpandMaterialAsync(conn, tx, rfc, line.Product.MaterialId, line.Request.Quantity, requirements, new HashSet<int>(), 0, ct);
+        await ExpandMaterialAsync(conn, tx, rfc, line.Product.MaterialId, line.Product.Sku, line.Request.Quantity, requirements, new HashSet<int>(), 0, ct);
       }
       else
       {
@@ -1676,7 +1676,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     return requirements.Where(item => item.Value > 0).ToDictionary(item => item.Key, item => item.Value);
   }
 
-  private static async Task ExpandMaterialAsync(DbConnection conn, DbTransaction tx, string rfc, int materialId, decimal multiplier,
+  private static async Task ExpandMaterialAsync(DbConnection conn, DbTransaction tx, string rfc, int materialId, string rootProductSku, decimal multiplier,
     IDictionary<int, decimal> requirements, ISet<int> path, int depth, CancellationToken ct)
   {
     if (depth >= 32 || !path.Add(materialId))
@@ -1703,7 +1703,18 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       """, new { Rfc = rfc, MaterialId = materialId }, tx, cancellationToken: ct))).AsList();
     if (components.Count == 0)
     {
-      throw new InvalidOperationException($"El producto {materialId} no tiene un BOM activo.");
+      var materialDescription = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+        "SELECT [Description] FROM logistica.Material WHERE Rfc = @Rfc AND Id = @MaterialId;",
+        new { Rfc = rfc, MaterialId = materialId }, tx, cancellationToken: ct));
+      var materialLabel = string.IsNullOrWhiteSpace(materialDescription)
+        ? $"material {materialId}"
+        : $"{materialDescription} (material {materialId})";
+      if (depth == 0)
+      {
+        throw new InvalidOperationException($"El producto {rootProductSku} ({materialLabel}) no tiene un BOM activo.");
+      }
+      throw new InvalidOperationException(
+        $"El ingrediente {materialLabel} del producto {rootProductSku} está configurado para fabricación bajo pedido y no tiene un BOM activo.");
     }
     foreach (var component in components)
     {
@@ -1714,7 +1725,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       var required = component.QuantityPerYield.Value * multiplier;
       if (component.FulfillmentMode == "MakeToOrder")
       {
-        await ExpandMaterialAsync(conn, tx, rfc, component.MaterialId, required, requirements, new HashSet<int>(path), depth + 1, ct);
+        await ExpandMaterialAsync(conn, tx, rfc, component.MaterialId, rootProductSku, required, requirements, new HashSet<int>(path), depth + 1, ct);
       }
       else
       {

@@ -75,6 +75,28 @@ public sealed class BomRecipeServiceTests
   }
 
   [Fact]
+  public async Task ActivateAsync_BlocksMakeToOrderIngredientWithoutActiveBom()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) => commandText.Contains("WITH MaterialTree", StringComparison.Ordinal)
+        ? CreateIncompleteBomMaterialTable()
+        : CreateVersionTable("Draft"),
+      ScalarResultFactory = (_, _) => 1
+    };
+
+    var result = await new BomRecipeService(new FakeQueryConnectionFactory(connection))
+      .ActivateAsync("OHM191112Q26", 88, "admin@orionerp.local");
+
+    Assert.False(result.Success);
+    Assert.Contains("CARNE DE SIRLOIN", result.Message, StringComparison.Ordinal);
+    Assert.Contains("material 6938", result.Message, StringComparison.Ordinal);
+    Assert.True(connection.LastTransaction!.WasRolledBack);
+    Assert.Equal(IsolationLevel.Serializable, connection.LastTransaction.IsolationLevel);
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("SET [Status] = 'Active'", StringComparison.Ordinal));
+  }
+
+  [Fact]
   public async Task RetireAsync_BlocksPlannedProduction_AndRetiresWhenClear()
   {
     var blockedConnection = new FakeQueryDbConnection
@@ -91,7 +113,9 @@ public sealed class BomRecipeServiceTests
 
     var clearConnection = new FakeQueryDbConnection
     {
-      ReaderResultFactory = (_, _) => CreateVersionTable("Active"),
+      ReaderResultFactory = (commandText, _) => commandText.Contains("parentVersion", StringComparison.Ordinal)
+        ? new DataTable()
+        : CreateVersionTable("Active"),
       ScalarResultFactory = (_, _) => 0,
       NonQueryResultFactory = (_, _) => 1
     };
@@ -100,9 +124,30 @@ public sealed class BomRecipeServiceTests
 
     Assert.True(retired.Success);
     Assert.True(clearConnection.LastTransaction!.WasCommitted);
-    Assert.Contains("[Status] = 'Retired'", clearConnection.ExecutedCommands[2].CommandText, StringComparison.Ordinal);
-    Assert.Contains("[Status] IN ('Draft', 'Active')", clearConnection.ExecutedCommands[2].CommandText, StringComparison.Ordinal);
+    Assert.Contains("[Status] = 'Retired'", clearConnection.ExecutedCommands[3].CommandText, StringComparison.Ordinal);
+    Assert.Contains("[Status] IN ('Draft', 'Active')", clearConnection.ExecutedCommands[3].CommandText, StringComparison.Ordinal);
     Assert.Contains("admin@orionerp.local", retired.Message, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public async Task RetireAsync_BlocksBomStillUsedByActiveParent()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) => commandText.Contains("parentVersion", StringComparison.Ordinal)
+        ? CreateActiveParentBomTable()
+        : CreateVersionTable("Active"),
+      ScalarResultFactory = (_, _) => 0
+    };
+
+    var result = await new BomRecipeService(new FakeQueryConnectionFactory(connection))
+      .RetireAsync("OHM191112Q26", 88, "admin@orionerp.local");
+
+    Assert.False(result.Success);
+    Assert.Contains("HAMBURGUESA DE SIRLOIN", result.Message, StringComparison.Ordinal);
+    Assert.Contains("material 7066", result.Message, StringComparison.Ordinal);
+    Assert.True(connection.LastTransaction!.WasRolledBack);
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("SET [Status] = 'Retired'", StringComparison.Ordinal));
   }
 
   [Fact]
@@ -156,6 +201,24 @@ public sealed class BomRecipeServiceTests
     table.Columns.Add("FromUnitId", typeof(int));
     table.Columns.Add("ToUnitId", typeof(int));
     table.Rows.Add(7, 42, 2, 1);
+    return table;
+  }
+
+  private static DataTable CreateIncompleteBomMaterialTable()
+  {
+    var table = new DataTable();
+    table.Columns.Add("MaterialId", typeof(int));
+    table.Columns.Add("Description", typeof(string));
+    table.Rows.Add(6938, "CARNE DE SIRLOIN");
+    return table;
+  }
+
+  private static DataTable CreateActiveParentBomTable()
+  {
+    var table = new DataTable();
+    table.Columns.Add("ProductMaterialId", typeof(int));
+    table.Columns.Add("Description", typeof(string));
+    table.Rows.Add(7066, "HAMBURGUESA DE SIRLOIN");
     return table;
   }
 

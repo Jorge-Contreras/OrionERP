@@ -67,69 +67,178 @@
   }
   else
   {
-    <div class="pos-layout">
-      <section class="pos-catalog" aria-label="Menú de productos">
-        <nav class="pos-categories">
-          @foreach (var section in catalog.Sections)
-          {
-            <button type="button" class="@(activeSectionId == section.Id ? "is-active" : null)" @onclick="() => activeSectionId = section.Id">@section.Name</button>
-          }
-        </nav>
+    <div class="pos-workspace">
+      <nav class="pos-workspace-tabs" role="tablist" aria-label="Orden y secciones del menú">
+        <button type="button"
+                id="pos-order-tab"
+                class="pos-workspace-tab pos-workspace-tab--order @(!isMenuOpen ? "is-active" : null)"
+                role="tab"
+                aria-selected="@(!isMenuOpen)"
+                aria-controls="pos-order-panel"
+                @onclick="ShowOrder">
+          <span class="oi oi-cart" aria-hidden="true"></span>
+          <span>
+            <strong>Orden actual</strong>
+            <small aria-live="polite">@CartItemCount producto(s) · @CartSubtotal.ToString("C")</small>
+          </span>
+        </button>
+        @foreach (var section in catalog.Sections)
+        {
+          <button type="button"
+                  id="@($"pos-menu-tab-{section.Id}")"
+                  class="pos-workspace-tab @(isMenuOpen && activeSectionId == section.Id ? "is-active" : null)"
+                  role="tab"
+                  aria-selected="@(isMenuOpen && activeSectionId == section.Id)"
+                  aria-controls="pos-menu-panel"
+                  @onclick="() => ShowMenuSection(section.Id)">
+            @section.Name
+          </button>
+        }
+      </nav>
 
-        <div class="pos-products">
-          @foreach (var product in ActiveProducts)
-          {
-            <button type="button"
-                    class="pos-product @(product.IsSoldOut ? "is-sold-out" : null)"
-                    aria-label="@($"{ProductDisplayName(product)}, {product.Price:C}")"
-                    disabled="@product.IsSoldOut"
-                    @onclick="() => SelectProduct(product, activeSectionId)">
-              <span class="pos-product__image">
-                @if (images.TryGetValue(product.Id, out var image)) { <img src="@image" alt="@product.Name" /> }
-                else { <span class="oi oi-image" aria-hidden="true"></span> }
-                @if (product.IsSoldOut) { <b>Agotado</b> }
-              </span>
-              <span class="pos-product__copy">
-                <strong title="@ProductDisplayName(product)">@ProductDisplayName(product)</strong>
-                <b>@product.Price.ToString("C")</b>
-              </span>
-              @if (product.Allergens.Count > 0) { <span class="pos-product__allergen" title="@string.Join(", ", product.Allergens)">!</span> }
-            </button>
-          }
-          @if (!ActiveProducts.Any()) { <p class="pos-products__empty">Esta sección no tiene productos disponibles.</p> }
-        </div>
-      </section>
+      @if (isMenuOpen)
+      {
+        <section id="pos-menu-panel"
+                 class="pos-catalog"
+                 role="tabpanel"
+                 aria-label="Menú de productos">
+          <header class="pos-catalog__heading">
+            <div>
+              <span>Agregar productos</span>
+              <h2>@ActiveSectionName</h2>
+            </div>
+            @if (cart.Count > 0)
+            {
+              <button type="button" class="pos-return-order" @onclick="ShowOrder">
+                Ver orden <strong>@CartItemCount</strong>
+              </button>
+            }
+          </header>
 
-      <aside class="pos-cart" aria-label="Orden actual">
-        <div class="pos-cart__heading">
-          <div><span>Orden actual</span><h2>@cart.Sum(item => item.Quantity) producto(s)</h2></div>
-          <div class="pos-cart__heading-actions">
-            <button type="button" class="pos-custom-open" @onclick="OpenCustomItem"><span aria-hidden="true">＋</span> Cargo personalizado</button>
-            <button type="button" @onclick="ClearCartAsync" disabled="@(cart.Count == 0)">Limpiar</button>
+          <div class="pos-products">
+            @foreach (var product in ActiveProducts)
+            {
+              <button type="button"
+                      class="pos-product @(product.IsSoldOut ? "is-sold-out" : null)"
+                      aria-label="@($"{ProductDisplayName(product)}, {product.Price:C}")"
+                      disabled="@product.IsSoldOut"
+                      @onclick="() => SelectProduct(product, activeSectionId)">
+                <span class="pos-product__image">
+                  @if (images.TryGetValue(product.Id, out var image)) { <img src="@image" alt="@product.Name" /> }
+                  else { <span class="oi oi-image" aria-hidden="true"></span> }
+                  @if (product.IsSoldOut) { <b>Agotado</b> }
+                </span>
+                <span class="pos-product__copy">
+                  <strong title="@ProductDisplayName(product)">@ProductDisplayName(product)</strong>
+                  <b>@product.Price.ToString("C")</b>
+                </span>
+                @if (product.Allergens.Count > 0) { <span class="pos-product__allergen" title="@string.Join(", ", product.Allergens)">!</span> }
+              </button>
+            }
+            @if (!ActiveProducts.Any()) { <p class="pos-products__empty">Esta sección no tiene productos disponibles.</p> }
           </div>
-        </div>
-        <div class="pos-cart__items">
-          @foreach (var line in cart)
-          {
-            <article class="pos-cart-line @(line.IsCustom ? "is-custom" : null)">
+        </section>
+      }
+      else
+      {
+        <div id="pos-order-panel"
+             class="pos-order-layout"
+             role="tabpanel"
+             aria-labelledby="pos-order-tab">
+          <section class="pos-order-review" aria-label="Partidas de la orden actual">
+            <header class="pos-order-review__heading">
               <div>
-                <strong>@line.Name @if (line.IsCustom) { <span class="pos-custom-badge">Personalizado</span> }</strong>
-                @if (line.ModifierNames.Count > 0) { <small>@string.Join(" · ", line.ModifierNames)</small> }
-                @if (!string.IsNullOrWhiteSpace(line.Notes)) { <small>@line.Notes</small> }
+                <span>Orden actual</span>
+                <h2>@CartItemCount producto(s)</h2>
+                <p>Revisa cantidades, detalles y descuentos antes de cobrar.</p>
               </div>
-              <div class="pos-cart-line__controls">
-                <button type="button" aria-label="Restar" @onclick="() => ChangeQuantityAsync(line, -1)">−</button>
-                <b>@line.Quantity</b>
-                <button type="button" aria-label="Sumar" @onclick="() => ChangeQuantityAsync(line, 1)">+</button>
-                <span>@((line.UnitPrice * line.Quantity).ToString("C"))</span>
+              <div class="pos-order-review__actions">
+                <button type="button" class="pos-add-products" @onclick="ShowMenu">
+                  <span class="oi oi-plus" aria-hidden="true"></span> Agregar productos
+                </button>
+                <button type="button" class="pos-custom-open" @onclick="OpenCustomItem">
+                  <span aria-hidden="true">＋</span> Cargo personalizado
+                </button>
+                <button type="button" class="pos-clear-order" @onclick="ClearCartAsync" disabled="@(cart.Count == 0)">Limpiar</button>
               </div>
-              <label>Descuento de línea <input type="number" min="0" step="0.01" max="@(line.UnitPrice * line.Quantity)" @bind="line.DiscountAmount" @bind:after="OnCartDiscountChangedAsync" /></label>
-            </article>
-          }
-          @if (cart.Count == 0) { <div class="pos-cart__empty"><span class="oi oi-cart"></span><p>Toca una fotografía para agregarla.</p></div> }
-        </div>
+            </header>
 
-        <section class="pos-order-options">
+            <div class="pos-cart__items">
+              @foreach (var line in cart)
+              {
+                <article class="pos-cart-line @(line.IsCustom ? "is-custom" : null)">
+                  <div class="pos-cart-line__thumbnail">
+                    @if (!line.IsCustom && line.ProductId is long productId && images.TryGetValue(productId, out var lineImage))
+                    {
+                      <img src="@lineImage" alt="" />
+                    }
+                    else if (line.IsCustom)
+                    {
+                      <span class="oi oi-plus" aria-hidden="true"></span>
+                    }
+                    else
+                    {
+                      <span class="oi oi-image" aria-hidden="true"></span>
+                    }
+                  </div>
+                  <div class="pos-cart-line__details">
+                    <div class="pos-cart-line__title">
+                      <strong>@line.Name</strong>
+                      @if (line.IsCustom) { <span class="pos-custom-badge">Personalizado</span> }
+                      else if (!string.IsNullOrWhiteSpace(line.MenuSectionName)) { <span class="pos-section-badge">@line.MenuSectionName</span> }
+                    </div>
+                    @if (line.ModifierNames.Count > 0) { <small><b>Opciones:</b> @string.Join(" · ", line.ModifierNames)</small> }
+                    @if (!string.IsNullOrWhiteSpace(line.Notes)) { <small class="pos-cart-line__notes"><b>Nota:</b> @line.Notes</small> }
+                    <span class="pos-cart-line__unit">@line.UnitPrice.ToString("C") por unidad</span>
+                    <label class="pos-line-discount">
+                      <span>Descuento de línea</span>
+                      <input type="number"
+                             min="0"
+                             step="0.01"
+                             max="@(line.UnitPrice * line.Quantity)"
+                             aria-label="@($"Descuento de línea para {line.Name}")"
+                             @bind="line.DiscountAmount"
+                             @bind:after="OnCartDiscountChangedAsync" />
+                    </label>
+                  </div>
+                  <div class="pos-cart-line__summary">
+                    <div class="pos-cart-line__amount">
+                      <small>Total de línea</small>
+                      <strong>@LineNetTotal(line).ToString("C")</strong>
+                      @if (line.DiscountAmount > 0)
+                      {
+                        <span>Antes @((line.UnitPrice * line.Quantity).ToString("C"))</span>
+                      }
+                    </div>
+                    <div class="pos-cart-line__controls" aria-label="Cantidad de @line.Name">
+                      <button type="button" aria-label="Restar una unidad de @line.Name" @onclick="() => ChangeQuantityAsync(line, -1)">−</button>
+                      <b aria-label="Cantidad">@line.Quantity</b>
+                      <button type="button" aria-label="Sumar una unidad de @line.Name" @onclick="() => ChangeQuantityAsync(line, 1)">+</button>
+                    </div>
+                    <button type="button" class="pos-cart-line__remove" aria-label="Eliminar @line.Name de la orden" @onclick="() => RemoveLineAsync(line)">
+                      <span class="oi oi-trash" aria-hidden="true"></span> Eliminar
+                    </button>
+                  </div>
+                </article>
+              }
+              @if (cart.Count == 0)
+              {
+                <div class="pos-cart__empty">
+                  <span class="oi oi-cart" aria-hidden="true"></span>
+                  <h3>La orden está vacía</h3>
+                  <p>Selecciona una sección del menú para agregar el primer producto.</p>
+                  <button type="button" class="pos-add-products" @onclick="ShowMenu">Abrir menú</button>
+                </div>
+              }
+            </div>
+          </section>
+
+          <aside class="pos-checkout" aria-label="Datos y cobro de la orden">
+            <header class="pos-checkout__heading">
+              <span>Finalizar orden</span>
+              <strong>Datos, pago y total</strong>
+            </header>
+            <section class="pos-order-options">
           <div class="pos-segmented" role="group" aria-label="Modalidad">
             @foreach (var type in new[] { ("Pickup", "Recoger"), ("Table", "Mesa"), ("Delivery", "Domicilio") })
             {
@@ -206,9 +315,9 @@
             <label><input type="checkbox" @bind="allowInventoryDeficit" /> Autorizar venta excepcional sin existencia</label>
             <div class="pos-form-row"><label>Supervisor <input @bind="supervisorIdentity" autocomplete="username" /></label><label>PIN <input type="password" inputmode="numeric" @bind="supervisorPin" autocomplete="current-password" /></label></div>
           </details>
-        </section>
+            </section>
 
-        <section class="pos-payments">
+            <section class="pos-payments">
           <div class="pos-payments__title"><strong>Pago combinado</strong><button type="button" @onclick="FillCash">Todo efectivo</button></div>
           <div class="pos-payment-grid">
             <label>Recibido en efectivo <input type="number" min="0" step="0.01" inputmode="decimal" @bind="cashReceived" @bind:event="oninput" /></label>
@@ -235,9 +344,9 @@
           {
             <label>Turno de caja<select @bind="selectedShiftId">@if(openShifts.Count > 1){<option value="">Seleccionar turno…</option>}@foreach (var shift in openShifts) { <option value="@shift.Id">@shift.RegisterName · @shift.OpenedAt.ToLocalTime().ToString("t")</option> }</select></label>
           }
-        </section>
+            </section>
 
-        <footer class="pos-cart__total">
+            <footer class="pos-cart__total">
           @if (DiscountTotal > 0)
           {
             <div><span>Productos</span><b>@CartSubtotal.ToString("C")</b></div>
@@ -264,8 +373,10 @@
             <p class="pos-submit-hint">Falta cubrir @PosCash.Shortfall.ToString("C") para cobrar esta orden.</p>
           }
           <button type="button" class="pos-submit" disabled="@(!CanSubmit)" @onclick="SubmitAsync">@(isSubmitting ? "Generando orden…" : "Cobrar y enviar a cocina")</button>
-        </footer>
-      </aside>
+            </footer>
+          </aside>
+        </div>
+      }
     </div>
   }
 </main>
@@ -386,6 +497,8 @@
   private List<CartLine> cart = [];
   private Dictionary<long, string> images = [];
   private long activeSectionId;
+  private bool isMenuOpen = true;
+  private bool hasInitializedWorkspace;
   private int selectedSiteId;
   private RestaurantProductDto? selectedProduct;
   private RestaurantMenuSectionDto? selectedMenuSection;
@@ -436,6 +549,8 @@
   private RestaurantReceiptPdfDocumentModel? lastReceipt;
   private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
   private IEnumerable<RestaurantProductDto> ActiveProducts => catalog?.Sections.FirstOrDefault(section => section.Id == activeSectionId)?.Products ?? [];
+  private string ActiveSectionName => catalog?.Sections.FirstOrDefault(section => section.Id == activeSectionId)?.Name ?? "Menú";
+  private int CartItemCount => cart.Sum(item => item.Quantity);
   private decimal CartSubtotal => cart.Sum(item => item.UnitPrice * item.Quantity);
   private decimal LineDiscountTotal => cart.Sum(item => Math.Min(Math.Max(0, item.DiscountAmount), item.UnitPrice * item.Quantity));
   private decimal PromotionDiscountTotal => promotionQuote?.PromotionDiscountTotal ?? 0;
@@ -482,6 +597,11 @@
   private string StorageKey => $"orion.restaurant.cart:{CurrentRfc}:{selectedSiteId}";
   private static string ProductDisplayName(RestaurantProductDto product)
     => string.IsNullOrWhiteSpace(product.VariantName) ? product.Name : $"{product.Name} · {product.VariantName}";
+  private static decimal LineNetTotal(CartLine line)
+  {
+    var gross = line.UnitPrice * line.Quantity;
+    return decimal.Round(gross - Math.Min(Math.Max(0, line.DiscountAmount), gross), 2, MidpointRounding.AwayFromZero);
+  }
 
   protected override async Task OnInitializedAsync() { RfcState.Changed += OnRfcChanged; Realtime.EventReceived += OnRealtimeEventAsync; await LoadAsync(); }
 
@@ -495,10 +615,15 @@
       if (!sites.Any(site => site.Id == selectedSiteId)) selectedSiteId = sites[0].Id;
       await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId);
       catalog = await CatalogService.GetPosCatalogAsync(CurrentRfc, selectedSiteId, DateTimeOffset.UtcNow);
-      activeSectionId = catalog.Sections.FirstOrDefault()?.Id ?? 0;
+      if (!catalog.Sections.Any(section => section.Id == activeSectionId)) activeSectionId = catalog.Sections.FirstOrDefault()?.Id ?? 0;
       openShifts = (await CashService.GetShiftsAsync(CurrentRfc, selectedSiteId)).Where(shift => shift.Status == "Open").ToList();
       if (!openShifts.Any(shift => shift.Id == selectedShiftId)) selectedShiftId = openShifts.Count == 1 ? openShifts[0].Id : null;
       await RestoreCartAsync();
+      if (!hasInitializedWorkspace)
+      {
+        isMenuOpen = cart.Count == 0;
+        hasInitializedWorkspace = true;
+      }
       await RefreshPromotionQuoteAsync();
       images = [];
       foreach (var product in catalog.Sections.SelectMany(section => section.Products).DistinctBy(item => item.Id).Where(item => item.HasImage))
@@ -511,7 +636,35 @@
     finally { isBusy = false; }
   }
 
-  private async Task ChangeSiteAsync(ChangeEventArgs args) { if (int.TryParse(args.Value?.ToString(), out var id)) { selectedSiteId = id; cart = []; selectedMember = null; memberIdentifier = null; promotionQuote = null; promotionCode = null; await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId); await LoadAsync(); } }
+  private async Task ChangeSiteAsync(ChangeEventArgs args)
+  {
+    if (!int.TryParse(args.Value?.ToString(), out var id)) return;
+    selectedSiteId = id;
+    cart = [];
+    selectedMember = null;
+    memberIdentifier = null;
+    promotionQuote = null;
+    promotionCode = null;
+    isMenuOpen = true;
+    hasInitializedWorkspace = true;
+    await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId);
+    await LoadAsync();
+  }
+
+  private void ShowOrder() => isMenuOpen = false;
+  private void ShowMenu()
+  {
+    if (catalog is not null && !catalog.Sections.Any(section => section.Id == activeSectionId))
+    {
+      activeSectionId = catalog.Sections.FirstOrDefault()?.Id ?? 0;
+    }
+    isMenuOpen = true;
+  }
+  private void ShowMenuSection(long sectionId)
+  {
+    activeSectionId = sectionId;
+    isMenuOpen = true;
+  }
 
   private async Task DownloadSaleReadinessAsync()
   {
@@ -535,7 +688,13 @@
     }
   }
 
-  private void SelectProduct(RestaurantProductDto product, long menuSectionId) { selectedProduct = product; selectedMenuSection = catalog?.Sections.FirstOrDefault(section => section.Id == menuSectionId); selectedModifierIds = []; if (product.ModifierGroups.Count == 0) _ = AddSelectedProductAsync(); }
+  private async Task SelectProduct(RestaurantProductDto product, long menuSectionId)
+  {
+    selectedProduct = product;
+    selectedMenuSection = catalog?.Sections.FirstOrDefault(section => section.Id == menuSectionId);
+    selectedModifierIds = [];
+    if (product.ModifierGroups.Count == 0) await AddSelectedProductAsync();
+  }
   private void CloseProductModal() { selectedProduct = null; selectedMenuSection = null; selectedModifierIds = []; }
   private void OpenCustomItem()
   {
@@ -573,6 +732,7 @@
         Notes = string.IsNullOrWhiteSpace(customItemNotes) ? null : customItemNotes.Trim()
       });
       isCustomItemOpen = false;
+      isMenuOpen = false;
       error = null;
       await PersistCartAsync();
       await RefreshPromotionQuoteAsync();
@@ -608,11 +768,25 @@
     var existing = cart.FirstOrDefault(item => item.Key == key);
     if (existing is null) cart.Add(new CartLine { Key = key, ProductId = selectedProduct.Id, MenuSectionId = sectionId, MenuSectionName = selectedMenuSection?.Name, MenuSectionSortOrder = selectedMenuSection?.SortOrder, Name = string.IsNullOrWhiteSpace(selectedProduct.VariantName) ? selectedProduct.Name : $"{selectedProduct.Name} · {selectedProduct.VariantName}", Quantity = 1, UnitPrice = selectedProduct.Price + options.Sum(option => option.PriceDelta), ModifierIds = options.Select(option => option.Id).ToList(), ModifierNames = options.Select(option => option.Name).ToList() });
     else existing.Quantity++;
-    CloseProductModal(); error = null; await PersistCartAsync(); await RefreshPromotionQuoteAsync();
+    CloseProductModal(); isMenuOpen = false; error = null; await PersistCartAsync(); await RefreshPromotionQuoteAsync();
   }
 
-  private async Task ChangeQuantityAsync(CartLine line, int delta) { line.Quantity += delta; if (line.Quantity <= 0) cart.Remove(line); await PersistCartAsync(); await RefreshPromotionQuoteAsync(); }
-  private async Task ClearCartAsync() { cart = []; promotionQuote = null; await PersistCartAsync(); }
+  private async Task ChangeQuantityAsync(CartLine line, int delta)
+  {
+    line.Quantity += delta;
+    if (line.Quantity <= 0) cart.Remove(line);
+    if (cart.Count == 0) ShowMenu();
+    await PersistCartAsync();
+    await RefreshPromotionQuoteAsync();
+  }
+  private async Task RemoveLineAsync(CartLine line)
+  {
+    cart.Remove(line);
+    if (cart.Count == 0) ShowMenu();
+    await PersistCartAsync();
+    await RefreshPromotionQuoteAsync();
+  }
+  private async Task ClearCartAsync() { cart = []; promotionQuote = null; ShowMenu(); await PersistCartAsync(); }
   private async Task OnCartDiscountChangedAsync() { await PersistCartAsync(); await RefreshPromotionQuoteAsync(); }
   private async Task SetOrderTypeAsync(string value) { orderType = value; await RefreshPromotionQuoteAsync(); }
   private void FillCash() { cardAmount = 0; transferAmount = 0; cashReceived = GrandTotal + Math.Max(0, tipAmount); }
@@ -918,6 +1092,7 @@
     lastReceipt = null;
     drawerWarning = null;
     lastOrderReceivedCash = false;
+    ShowMenu();
   }
 
   private static DateTimeOffset GetReceiptLocalTime(string timeZoneId)
@@ -937,7 +1112,7 @@
   }
 
   private Task OnRealtimeEventAsync(RestaurantRealtimeEvent eventInfo) => eventInfo.EventType is "InventoryDeficit" or "ProductionCompleted" or "ProductAvailabilityChanged" ? InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); }) : Task.CompletedTask;
-  private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; cart = []; selectedMember = null; memberIdentifier = promotionCode = null; promotionQuote = null; lastOrder = null; lastReceipt = null; drawerWarning = null; lastOrderReceivedCash = false; await LoadAsync(); StateHasChanged(); });
+  private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; cart = []; selectedMember = null; memberIdentifier = promotionCode = null; promotionQuote = null; lastOrder = null; lastReceipt = null; drawerWarning = null; lastOrderReceivedCash = false; isMenuOpen = true; hasInitializedWorkspace = true; await LoadAsync(); StateHasChanged(); });
   public void Dispose() { RfcState.Changed -= OnRfcChanged; Realtime.EventReceived -= OnRealtimeEventAsync; }
 
   public sealed class CartLine

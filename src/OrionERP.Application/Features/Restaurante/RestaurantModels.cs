@@ -192,6 +192,7 @@ public sealed class RestaurantOrderCreateRequest
 public sealed class RestaurantOrderLineCreateRequest
 {
   public long? ProductId { get; set; }
+  public long? MenuSectionId { get; set; }
   public bool IsCustom { get; set; }
   [StringLength(180)] public string? CustomName { get; set; }
   [Range(typeof(decimal), "0.01", "999999999")] public decimal? CustomUnitPrice { get; set; }
@@ -347,6 +348,9 @@ public sealed class RestaurantReceiptLineDto
 {
   public long Id { get; set; }
   public long? ProductId { get; set; }
+  public long? MenuSectionId { get; set; }
+  public string? MenuSectionName { get; set; }
+  public int? MenuSectionSortOrder { get; set; }
   public string ProductName { get; set; } = string.Empty;
   public bool IsCustom { get; set; }
   public decimal Quantity { get; set; }
@@ -359,6 +363,10 @@ public sealed class RestaurantReceiptLineDto
 public sealed class RestaurantOrderLineDto
 {
   public long Id { get; set; }
+  public long? ProductId { get; set; }
+  public long? MenuSectionId { get; set; }
+  public string? MenuSectionName { get; set; }
+  public int? MenuSectionSortOrder { get; set; }
   public string ProductName { get; set; } = string.Empty;
   public bool IsCustom { get; set; }
   public decimal Quantity { get; set; }
@@ -410,6 +418,7 @@ public sealed class RestaurantCashShiftDto
   public DateTime? ClosedAt { get; set; }
   public string? ClosedBy { get; set; }
   public decimal GrossSales { get; set; }
+  public IReadOnlyList<RestaurantCashShiftPaymentSummaryDto> PaymentMethods { get; set; } = Array.Empty<RestaurantCashShiftPaymentSummaryDto>();
   public decimal? ExpectedCash { get; set; }
   public decimal? CountedCash { get; set; }
   public decimal? Difference { get; set; }

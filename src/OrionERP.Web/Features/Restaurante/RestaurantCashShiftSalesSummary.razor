@@ -1,0 +1,90 @@
+@using OrionERP.Application.Features.Restaurante
+
+<section class="shift-sales" aria-label="Ventas del turno">
+  <header>
+    <div>
+      <span>Ingresos por forma de pago</span>
+      <h3>Ventas del turno</h3>
+    </div>
+    @if (IsLive)
+    {
+      <strong class="shift-sales__live"><i aria-hidden="true"></i>En vivo</strong>
+    }
+  </header>
+
+  <div class="shift-sales__totals">
+    <div class="shift-sales__net-sale"><span>Venta neta</span><strong>@NetSales.ToString("C")</strong></div>
+    <div><span>Venta bruta</span><strong>@Shift.GrossSales.ToString("C")</strong></div>
+    <div><span>Reembolsos</span><strong class="@(RefundTotal > 0 ? "is-negative" : null)">@RefundTotal.ToString("C")</strong></div>
+    <div><span>Propinas</span><strong>@TipTotal.ToString("C")</strong></div>
+    <div class="shift-sales__net"><span>Neto recibido</span><strong>@NetReceived.ToString("C")</strong></div>
+  </div>
+
+  @if (Shift.PaymentMethods.Count == 0)
+  {
+    <p class="shift-sales__empty">Todavía no hay pagos registrados en este turno.</p>
+  }
+  else
+  {
+    <div class="shift-sales__methods" aria-label="Desglose por forma de pago">
+      @foreach (var method in Shift.PaymentMethods)
+      {
+        <article class="shift-sales__method shift-sales__method--@MethodClass(method.PaymentMethod)">
+          <div class="shift-sales__method-name">
+            <span class="oi @PaymentMethodIcon(method.PaymentMethod)" aria-hidden="true"></span>
+            <span><strong>@PaymentMethodLabel(method.PaymentMethod)</strong><small>@method.PaymentCount pago(s)</small></span>
+          </div>
+          <div class="shift-sales__method-net"><strong>@method.NetTotal.ToString("C")</strong><span>Neto</span></div>
+          <dl>
+            <div><dt>Venta</dt><dd>@method.Sales.ToString("C")</dd></div>
+            @if (method.Tips > 0)
+            {
+              <div><dt>Propina</dt><dd>+@method.Tips.ToString("C")</dd></div>
+            }
+            @if (method.Refunds > 0)
+            {
+              <div><dt>Devuelto</dt><dd class="is-negative">-@method.Refunds.ToString("C")</dd></div>
+            }
+          </dl>
+        </article>
+      }
+    </div>
+  }
+</section>
+
+@code {
+  [Parameter, EditorRequired] public RestaurantCashShiftDto Shift { get; set; } = new();
+  [Parameter] public bool IsLive { get; set; }
+
+  private decimal TipTotal => Shift.PaymentMethods.Sum(method => method.Tips);
+  private decimal RefundTotal => Shift.PaymentMethods.Sum(method => method.Refunds);
+  private decimal NetSales => Shift.GrossSales - RefundTotal;
+  private decimal NetReceived => Shift.PaymentMethods.Sum(method => method.NetTotal);
+
+  private static string PaymentMethodLabel(string method) => method switch
+  {
+    "Cash" => "Efectivo",
+    "ExternalCard" => "Tarjeta",
+    "Transfer" => "Transferencia",
+    "Platform" => "Plataforma",
+    "Sin especificar" => "Sin especificar",
+    _ => method
+  };
+
+  private static string PaymentMethodIcon(string method) => method switch
+  {
+    "Cash" => "oi-briefcase",
+    "Transfer" => "oi-data-transfer-upload",
+    "Platform" => "oi-globe",
+    _ => "oi-credit-card"
+  };
+
+  private static string MethodClass(string method) => method switch
+  {
+    "Cash" => "cash",
+    "ExternalCard" => "card",
+    "Transfer" => "transfer",
+    "Platform" => "platform",
+    _ => "other"
+  };
+}

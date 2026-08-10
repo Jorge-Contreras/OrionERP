@@ -13,22 +13,26 @@ public static class RestaurantKitchenProgressRules
   {
     ArgumentNullException.ThrowIfNull(order);
 
-    var activeLines = order.Lines
+    return Classify(order.Lines);
+  }
+
+  public static RestaurantKitchenProgress Classify(IEnumerable<RestaurantOrderLineDto> lines)
+  {
+    ArgumentNullException.ThrowIfNull(lines);
+
+    var activeLines = lines
       .Where(line => line.Status != "Cancelled")
       .ToList();
-    var kitchenLines = activeLines.Where(line => !line.IsCustom).ToList();
-    if (kitchenLines.Count == 0)
+    if (activeLines.Count == 0)
     {
-      return activeLines.Count > 0 && activeLines.All(line => line.Status is "Ready" or "Delivered")
-        ? RestaurantKitchenProgress.Ready
-        : RestaurantKitchenProgress.NotStarted;
+      return RestaurantKitchenProgress.NotStarted;
     }
-    if (kitchenLines.All(line => line.Status is "Ready" or "Delivered"))
+    if (activeLines.All(line => line.Status is "Ready" or "Delivered"))
     {
       return RestaurantKitchenProgress.Ready;
     }
 
-    return kitchenLines.Any(line => line.Status is "Preparing" or "Ready" or "Delivered")
+    return activeLines.Any(line => line.Status is "Preparing" or "Ready" or "Delivered")
       ? RestaurantKitchenProgress.Preparing
       : RestaurantKitchenProgress.NotStarted;
   }

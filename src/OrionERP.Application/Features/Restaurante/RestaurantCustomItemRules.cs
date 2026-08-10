@@ -21,6 +21,10 @@ public static class RestaurantCustomItemRules
     {
       throw new InvalidOperationException("Un cargo personalizado no puede referenciar un producto del catálogo.");
     }
+    if (line.MenuSectionId.HasValue)
+    {
+      throw new InvalidOperationException("Un cargo personalizado usa su propia sección de cocina.");
+    }
     var name = line.CustomName?.Trim();
     if (string.IsNullOrWhiteSpace(name))
     {
@@ -58,6 +62,10 @@ public static class RestaurantCustomItemRules
     if (!line.ProductId.HasValue || line.ProductId.Value <= 0)
     {
       throw new InvalidOperationException("Cada partida de catálogo requiere un producto válido.");
+    }
+    if (line.MenuSectionId is <= 0)
+    {
+      throw new InvalidOperationException("La sección de menú seleccionada no es válida.");
     }
     if (!string.IsNullOrWhiteSpace(line.CustomName) || line.CustomUnitPrice.HasValue)
     {

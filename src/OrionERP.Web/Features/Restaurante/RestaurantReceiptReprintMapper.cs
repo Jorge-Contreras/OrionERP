@@ -33,8 +33,8 @@ public static class RestaurantReceiptReprintMapper
         Notes = line.Notes,
         Modifiers = line.Modifiers,
         IsCustom = line.IsCustom,
-        SectionName = section?.Name,
-        SectionSortOrder = section?.SortOrder ?? int.MaxValue
+        SectionName = line.MenuSectionName ?? section?.Name,
+        SectionSortOrder = line.MenuSectionSortOrder ?? section?.SortOrder ?? int.MaxValue
       };
     }).ToList();
 

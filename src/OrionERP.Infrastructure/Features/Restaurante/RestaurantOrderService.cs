@@ -128,6 +128,11 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         throw new InvalidOperationException("Uno o más productos están inactivos, agotados o pertenecen a otro RFC.");
       }
 
+      var timeZone = TimeZoneInfo.FindSystemTimeZoneById(site.TimeZoneId);
+      var localNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, timeZone);
+      var menuSections = await LoadMenuSectionSnapshotsAsync(
+        conn, tx, rfc, request.SiteId, productIds, localNow, ct);
+
       var requestedOptionIds = catalogLines.SelectMany(line => line.ModifierOptionIds).Distinct().ToArray();
       var modifierRows = requestedOptionIds.Length == 0
         ? []
@@ -159,6 +164,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         string sku;
         decimal unitPrice;
         decimal gross;
+        MenuSectionSnapshotRow? menuSection = null;
         if (line.IsCustom)
         {
           var custom = RestaurantCustomItemRules.CreateSnapshot(line);
@@ -172,6 +178,16 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         {
           var productId = line.ProductId!.Value;
           product = products.Single(item => item.Id == productId);
+          var productSections = menuSections.Where(item => item.ProductId == productId).ToList();
+          if (line.MenuSectionId.HasValue)
+          {
+            menuSection = productSections.SingleOrDefault(item => item.MenuSectionId == line.MenuSectionId.Value)
+              ?? throw new InvalidOperationException("La sección seleccionada no contiene el producto en el menú activo.");
+          }
+          else
+          {
+            menuSection = productSections.FirstOrDefault();
+          }
           modifiers = modifierRows.Where(item => item.ProductId == productId && line.ModifierOptionIds.Contains(item.Id)).ToList();
           productName = string.IsNullOrWhiteSpace(product.VariantName)
             ? product.Name
@@ -195,11 +211,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           sku,
           unitPrice,
           gross,
-          line.IsCustom));
+          line.IsCustom,
+          menuSection?.MenuSectionId,
+          menuSection?.MenuSectionName,
+          menuSection?.MenuSectionSortOrder));
       }
 
-      var timeZone = TimeZoneInfo.FindSystemTimeZoneById(site.TimeZoneId);
-      var localNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, timeZone);
       var member = await RestaurantLoyaltyTransaction.ValidateMemberAsync(conn, tx, rfc, request.MemberId, ct);
       var promotionsEnabled = await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
         """
@@ -336,7 +353,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         ? RestaurantPaymentStatuses.PendingSettlement
         : paymentAmount >= total ? RestaurantPaymentStatuses.Paid
         : paymentAmount > 0 ? RestaurantPaymentStatuses.Partial : RestaurantPaymentStatuses.Pending;
-      var hasProductionLines = pricedLines.Any(line => !line.IsCustom);
+      var hasProductionLines = pricedLines.Count > 0;
       var status = paymentAmount >= total || externalCod
         ? hasProductionLines ? RestaurantOrderStatuses.Sent : RestaurantOrderStatuses.Ready
         : RestaurantOrderStatuses.AwaitingPayment;
@@ -440,16 +457,17 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           ? (site.TaxRate == 0 ? 0 : decimal.Round(discountedLine - discountedLine / (1 + site.TaxRate), 2, MidpointRounding.AwayFromZero))
           : decimal.Round(discountedLine * site.TaxRate, 2, MidpointRounding.AwayFromZero);
         var lineTotal = site.PricesIncludeTax ? discountedLine : discountedLine + lineTax;
-        var lineStatus = pricedLine.IsCustom ? RestaurantOrderStatuses.Ready : "Pending";
+        const string lineStatus = "Pending";
         var lineId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
           """
           INSERT INTO restaurante.OrderLine
             (Rfc, OrderId, ProductId, IsCustom, ProductNameSnapshot, SkuSnapshot, Quantity, UnitPrice,
-             DiscountAmount, TaxAmount, LineTotal, [Status], KitchenStationId, Notes, ReadyAt)
+             DiscountAmount, TaxAmount, LineTotal, [Status], KitchenStationId, Notes,
+             MenuSectionIdSnapshot, MenuSectionNameSnapshot, MenuSectionSortOrderSnapshot)
           VALUES
             (@Rfc, @OrderId, @ProductId, @IsCustom, @ProductName, @Sku, @Quantity, @UnitPrice,
              @DiscountAmount, @TaxAmount, @LineTotal, @Status, @KitchenStationId, @Notes,
-             CASE WHEN @IsCustom = 1 THEN SYSUTCDATETIME() END);
+             @MenuSectionId, @MenuSectionName, @MenuSectionSortOrder);
           SELECT CAST(SCOPE_IDENTITY() AS bigint);
           """, new
           {
@@ -466,7 +484,10 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             LineTotal = lineTotal,
             Status = lineStatus,
             KitchenStationId = pricedLine.Product?.KitchenStationId,
-            Notes = NullIfWhiteSpace(pricedLine.Request.Notes)
+            Notes = NullIfWhiteSpace(pricedLine.Request.Notes),
+            pricedLine.MenuSectionId,
+            pricedLine.MenuSectionName,
+            pricedLine.MenuSectionSortOrder
           }, tx, cancellationToken: ct));
         lineIds[pricedLine.LineKey] = lineId;
         foreach (var modifier in pricedLine.Modifiers)
@@ -698,7 +719,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
 
       SELECT lineInfo.Id,lineInfo.ProductId,lineInfo.ProductNameSnapshot AS ProductName,
              lineInfo.IsCustom,lineInfo.Quantity,lineInfo.UnitPrice,lineInfo.DiscountAmount,
-             lineInfo.Notes
+             lineInfo.Notes,lineInfo.MenuSectionIdSnapshot AS MenuSectionId,
+             lineInfo.MenuSectionNameSnapshot AS MenuSectionName,
+             lineInfo.MenuSectionSortOrderSnapshot AS MenuSectionSortOrder
       FROM restaurante.OrderLine lineInfo
       WHERE lineInfo.Rfc=@Rfc AND lineInfo.OrderId=@OrderId
       ORDER BY lineInfo.Id;
@@ -765,7 +788,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           SELECT 1 FROM restaurante.OrderLine lineInfo
           WHERE lineInfo.Rfc = orderInfo.Rfc
             AND lineInfo.OrderId = orderInfo.Id
-            AND lineInfo.IsCustom = 0
+            AND lineInfo.[Status] <> 'Cancelled'
         )
       ORDER BY orderInfo.OperationalDate, orderInfo.Folio, orderInfo.CreatedAt, orderInfo.Id;
       """;
@@ -939,11 +962,6 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         await tx.RollbackAsync(ct);
         return RestaurantCommandResult.Fail("La partida no existe en el RFC seleccionado.");
       }
-      if (line.IsCustom)
-      {
-        await tx.RollbackAsync(ct);
-        return RestaurantCommandResult.Fail("Un cargo personalizado no requiere transición de cocina.");
-      }
       if (!IsLineTransitionAllowed(line.Status, normalizedStatus))
       {
         await tx.RollbackAsync(ct);
@@ -951,7 +969,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       }
 
       var inventoryConsumed = false;
-      if (normalizedStatus == "Preparing" && line.InventoryReservationId.HasValue)
+      if (!line.IsCustom && normalizedStatus == "Preparing" && line.InventoryReservationId.HasValue)
       {
         inventoryConsumed = await ConsumeReservationAsync(
           conn, tx, normalizedRfc, line.InventoryReservationId.Value, userName, ct);
@@ -1027,7 +1045,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         JOIN restaurante.[Order] orderInfo ON orderInfo.Rfc=lineInfo.Rfc AND orderInfo.Id=lineInfo.OrderId
         WHERE lineInfo.Rfc=@Rfc AND lineInfo.Id=@LineId;
         """, new { Rfc = normalizedRfc, LineId = lineId }, tx, cancellationToken: ct));
-      if (line is null || line.IsCustom || line.Status != "Ready")
+      if (line is null || line.Status != "Ready")
       {
         await tx.RollbackAsync(ct);
         return RestaurantCommandResult.Fail("Sólo una partida marcada lista puede regresar a preparación.");
@@ -1566,9 +1584,88 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     }
   }
 
+  private static async Task<IReadOnlyList<MenuSectionSnapshotRow>> LoadMenuSectionSnapshotsAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    string rfc,
+    int siteId,
+    IReadOnlyCollection<long> productIds,
+    DateTimeOffset localNow,
+    CancellationToken ct)
+  {
+    if (productIds.Count == 0)
+    {
+      return [];
+    }
+
+    const string sql =
+      """
+      DECLARE @MenuId bigint =
+      (
+        SELECT TOP (1) menuInfo.Id
+        FROM restaurante.Menu menuInfo
+        LEFT JOIN restaurante.MenuSchedule scheduleInfo
+          ON scheduleInfo.Rfc=menuInfo.Rfc
+         AND scheduleInfo.MenuId=menuInfo.Id
+         AND scheduleInfo.SiteId=@SiteId
+        WHERE menuInfo.Rfc=@Rfc
+          AND menuInfo.IsActive=1
+          AND menuInfo.IsPublished=1
+          AND
+          (
+            scheduleInfo.Id IS NULL
+            OR
+            (
+              scheduleInfo.DayOfWeek=@DayOfWeek
+              AND
+              (
+                (scheduleInfo.StartsAt<scheduleInfo.EndsAt AND @LocalTime>=scheduleInfo.StartsAt AND @LocalTime<scheduleInfo.EndsAt)
+                OR
+                (scheduleInfo.StartsAt>scheduleInfo.EndsAt AND (@LocalTime>=scheduleInfo.StartsAt OR @LocalTime<scheduleInfo.EndsAt))
+              )
+            )
+          )
+        ORDER BY CASE WHEN scheduleInfo.Id IS NULL THEN 1 ELSE 0 END,menuInfo.Id
+      );
+
+      SELECT item.ProductId,
+             sectionInfo.Id AS MenuSectionId,
+             sectionInfo.[Name] AS MenuSectionName,
+             sectionInfo.SortOrder AS MenuSectionSortOrder
+      FROM restaurante.MenuItem item
+      JOIN restaurante.MenuSection sectionInfo
+        ON sectionInfo.Rfc=item.Rfc AND sectionInfo.Id=item.MenuSectionId
+      WHERE item.Rfc=@Rfc
+        AND sectionInfo.MenuId=@MenuId
+        AND item.ProductId IN @ProductIds
+      ORDER BY sectionInfo.SortOrder,sectionInfo.Id,item.SortOrder,item.ProductId;
+      """;
+
+    return (await conn.QueryAsync<MenuSectionSnapshotRow>(new CommandDefinition(
+      sql,
+      new
+      {
+        Rfc = rfc,
+        SiteId = siteId,
+        DayOfWeek = (byte)localNow.DayOfWeek,
+        LocalTime = localNow.TimeOfDay,
+        ProductIds = productIds
+      },
+      tx,
+      cancellationToken: ct))).AsList();
+  }
+
   private static async Task ValidateOperationalReferencesAsync(DbConnection conn, DbTransaction tx, string rfc, RestaurantOrderCreateRequest request, CancellationToken ct)
   {
     var orderType = NormalizeOrderType(request.OrderType);
+    var salesChannel = string.IsNullOrWhiteSpace(request.SalesChannel)
+      ? RestaurantSalesChannels.Pos
+      : request.SalesChannel.Trim();
+    if (string.Equals(salesChannel, RestaurantSalesChannels.Pos, StringComparison.OrdinalIgnoreCase) &&
+        (!request.CashRegisterId.HasValue || !request.CashShiftId.HasValue))
+    {
+      throw new InvalidOperationException("Las ventas de Punto de Venta requieren seleccionar un turno de caja abierto.");
+    }
     if (orderType == "Table" && !request.DiningTableId.HasValue)
     {
       throw new InvalidOperationException("La modalidad mesa requiere seleccionar una mesa.");
@@ -1590,10 +1687,21 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       throw new InvalidOperationException("La caja no pertenece a la sede y RFC seleccionados.");
     }
     if (request.CashShiftId.HasValue && !await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
-          "SELECT CAST(CASE WHEN EXISTS (SELECT 1 FROM restaurante.CashShift WHERE Rfc=@Rfc AND SiteId=@SiteId AND Id=@Id AND [Status]='Open') THEN 1 ELSE 0 END AS bit);",
-          new { Rfc = rfc, request.SiteId, Id = request.CashShiftId }, tx, cancellationToken: ct)))
+          """
+          SELECT CAST(CASE WHEN EXISTS
+          (
+            SELECT 1
+            FROM restaurante.CashShift shiftInfo
+            JOIN restaurante.CashRegister registerInfo
+              ON registerInfo.Rfc=shiftInfo.Rfc AND registerInfo.Id=shiftInfo.CashRegisterId
+            WHERE shiftInfo.Rfc=@Rfc AND shiftInfo.SiteId=@SiteId AND shiftInfo.Id=@Id
+              AND shiftInfo.[Status]='Open' AND registerInfo.IsActive=1
+              AND (@CashRegisterId IS NULL OR shiftInfo.CashRegisterId=@CashRegisterId)
+          ) THEN 1 ELSE 0 END AS bit);
+          """,
+          new { Rfc = rfc, request.SiteId, Id = request.CashShiftId, request.CashRegisterId }, tx, cancellationToken: ct)))
     {
-      throw new InvalidOperationException("El turno de caja no está abierto en la sede y RFC seleccionados.");
+      throw new InvalidOperationException("El turno y la caja seleccionados no coinciden o ya no están abiertos en la sede y RFC seleccionados.");
     }
     if (request.ExternalProviderId.HasValue && !await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
           "SELECT CAST(CASE WHEN EXISTS (SELECT 1 FROM restaurante.ExternalProvider WHERE Rfc=@Rfc AND SiteId=@SiteId AND Id=@Id AND IsActive=1) THEN 1 ELSE 0 END AS bit);",
@@ -1883,8 +1991,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       FROM restaurante.[Order] orderInfo
       LEFT JOIN restaurante.DiningTable diningTable ON diningTable.Rfc=orderInfo.Rfc AND diningTable.Id=orderInfo.DiningTableId
       WHERE orderInfo.Rfc=@Rfc AND orderInfo.Id=@OrderId;
-      SELECT lineInfo.Id, lineInfo.ProductNameSnapshot AS ProductName, lineInfo.IsCustom, lineInfo.Quantity, lineInfo.[Status],
-             lineInfo.Notes, product.PreparationMinutes, lineInfo.StartedAt, lineInfo.ReadyAt
+      SELECT lineInfo.Id,lineInfo.ProductId,lineInfo.ProductNameSnapshot AS ProductName,
+             lineInfo.IsCustom,lineInfo.Quantity,lineInfo.[Status],lineInfo.Notes,
+             product.PreparationMinutes,lineInfo.StartedAt,lineInfo.ReadyAt,
+             lineInfo.MenuSectionIdSnapshot AS MenuSectionId,
+             lineInfo.MenuSectionNameSnapshot AS MenuSectionName,
+             lineInfo.MenuSectionSortOrderSnapshot AS MenuSectionSortOrder
       FROM restaurante.OrderLine lineInfo
       LEFT JOIN restaurante.Product product ON product.Rfc=lineInfo.Rfc AND product.Id=lineInfo.ProductId
       WHERE lineInfo.Rfc=@Rfc AND lineInfo.OrderId=@OrderId ORDER BY lineInfo.Id;
@@ -2259,7 +2371,17 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     string Sku,
     decimal UnitPrice,
     decimal Gross,
-    bool IsCustom);
+    bool IsCustom,
+    long? MenuSectionId,
+    string? MenuSectionName,
+    int? MenuSectionSortOrder);
+  private sealed class MenuSectionSnapshotRow
+  {
+    public long ProductId { get; set; }
+    public long MenuSectionId { get; set; }
+    public string MenuSectionName { get; set; } = string.Empty;
+    public int MenuSectionSortOrder { get; set; }
+  }
   private sealed record ReservationResult(long? ReservationId, bool HasDeficit);
   private sealed record OrderStatusTransition(string CurrentStatus, string NextStatus);
 

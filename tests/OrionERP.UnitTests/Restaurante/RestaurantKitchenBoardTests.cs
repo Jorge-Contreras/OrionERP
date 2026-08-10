@@ -39,7 +39,7 @@ public sealed class RestaurantKitchenBoardTests
   }
 
   [Fact]
-  public void KitchenProgress_IgnoresCustomAndCancelledLines()
+  public void KitchenProgress_IncludesCustomAndIgnoresCancelledLines()
   {
     var order = OrderWithKitchenStatuses("Ready");
     order.Lines = order.Lines.Concat(
@@ -50,23 +50,26 @@ public sealed class RestaurantKitchenBoardTests
 
     var progress = RestaurantKitchenProgressRules.Classify(order);
 
-    Assert.Equal(RestaurantKitchenProgress.Ready, progress);
+    Assert.Equal(RestaurantKitchenProgress.Preparing, progress);
   }
 
-  [Fact]
-  public void KitchenProgress_IsReadyForCustomOnlyReadyOrder()
+  [Theory]
+  [InlineData("Pending", RestaurantKitchenProgress.NotStarted)]
+  [InlineData("Preparing", RestaurantKitchenProgress.Preparing)]
+  [InlineData("Ready", RestaurantKitchenProgress.Ready)]
+  public void KitchenProgress_ClassifiesCustomOnlyOrder(string status, RestaurantKitchenProgress expected)
   {
     var order = new RestaurantOrderDto
     {
       Lines =
       [
-        new RestaurantOrderLineDto { IsCustom = true, Status = "Ready" }
+        new RestaurantOrderLineDto { IsCustom = true, Status = status }
       ]
     };
 
     var progress = RestaurantKitchenProgressRules.Classify(order);
 
-    Assert.Equal(RestaurantKitchenProgress.Ready, progress);
+    Assert.Equal(expected, progress);
   }
 
   [Fact]
@@ -88,6 +91,8 @@ public sealed class RestaurantKitchenBoardTests
       StringComparison.Ordinal);
     Assert.DoesNotContain("ORDER BY orderInfo.Priority", kitchenQuery, StringComparison.Ordinal);
     Assert.DoesNotContain("CASE orderInfo.[Status]", kitchenQuery, StringComparison.Ordinal);
+    Assert.Contains("AND lineInfo.[Status] <> 'Cancelled'", kitchenQuery, StringComparison.Ordinal);
+    Assert.DoesNotContain("lineInfo.IsCustom = 0", kitchenQuery, StringComparison.Ordinal);
   }
 
   [Fact]
@@ -96,7 +101,8 @@ public sealed class RestaurantKitchenBoardTests
     var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantKitchenPage.razor");
     var styles = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantKitchenPage.razor.css");
 
-    Assert.Contains("@foreach (var order in OrderedOrders)", page, StringComparison.Ordinal);
+    Assert.Contains("@foreach (var sectionGroup in VisibleSectionGroups)", page, StringComparison.Ordinal);
+    Assert.Contains("@foreach (var card in sectionGroup.Cards)", page, StringComparison.Ordinal);
     Assert.Contains(".ThenBy(order => order.Folio)", page, StringComparison.Ordinal);
     Assert.Contains("RestaurantKitchenProgress.Ready => \"kds-ticket--complete\"", page, StringComparison.Ordinal);
     Assert.Contains("RestaurantKitchenProgress.Preparing => \"kds-ticket--partial\"", page, StringComparison.Ordinal);
@@ -104,6 +110,31 @@ public sealed class RestaurantKitchenBoardTests
     Assert.Contains(".kds-ticket--complete", styles, StringComparison.Ordinal);
     Assert.Contains(".kds-ticket--partial", styles, StringComparison.Ordinal);
     Assert.Contains(".kds-ticket--not-started", styles, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void KitchenPage_GroupsSectionsAndPersistsDisabledFiltersPerRfcAndSite()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantKitchenPage.razor");
+
+    Assert.Contains("Cargo Personalizado", page, StringComparison.Ordinal);
+    Assert.Contains("GroupBy(line => SectionForLine(line).Key", page, StringComparison.Ordinal);
+    Assert.Contains("orion.restaurant.kds.sections:{CurrentRfc}:{selectedSiteId}", page, StringComparison.Ordinal);
+    Assert.Contains("localStorage.setItem", page, StringComparison.Ordinal);
+    Assert.Contains("localStorage.getItem", page, StringComparison.Ordinal);
+    Assert.Contains("disabledSectionKeys", page, StringComparison.Ordinal);
+    Assert.DoesNotContain("line => !line.IsCustom", page, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void Pos_CapturesTheSelectedMenuSectionAndSendsCustomChargesToKitchen()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantPosPage.razor");
+
+    Assert.Contains("SelectProduct(product, activeSectionId)", page, StringComparison.Ordinal);
+    Assert.Contains("MenuSectionId = sectionId", page, StringComparison.Ordinal);
+    Assert.Contains("MenuSectionId = item.MenuSectionId is > 0 ? item.MenuSectionId : null", page, StringComparison.Ordinal);
+    Assert.Contains("se enviará a Cocina en la sección Cargo Personalizado", page, StringComparison.Ordinal);
   }
 
   private static string ReadRepoFile(string relativePath)

@@ -1350,6 +1350,8 @@ WHERE id = @RegistroId;";
       NumeroCuenta = GetString(record, "Numero_Cuenta"),
       ArchivoHash = GetString(record, "ArchivoHash"),
       BalanceWarnings = GetInt32(record, "Balance_Warnings"),
+      CoincidenciasExistentes = GetInt32(record, "Coincidencias_Existentes"),
+      CambiosSaldoHistorico = GetInt32(record, "Cambios_Saldo_Historico"),
     };
   }
 

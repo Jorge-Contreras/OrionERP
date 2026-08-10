@@ -55,9 +55,17 @@ public sealed class RestaurantCustomItemTests
       CustomUnitPrice = 25,
       ModifierOptionIds = [5]
     };
+    var withMenuSection = new RestaurantOrderLineCreateRequest
+    {
+      IsCustom = true,
+      MenuSectionId = 8,
+      CustomName = "Cargo",
+      CustomUnitPrice = 25
+    };
 
     Assert.Throws<InvalidOperationException>(() => RestaurantCustomItemRules.CreateSnapshot(withProduct));
     Assert.Throws<InvalidOperationException>(() => RestaurantCustomItemRules.CreateSnapshot(withModifier));
+    Assert.Throws<InvalidOperationException>(() => RestaurantCustomItemRules.CreateSnapshot(withMenuSection));
   }
 
   [Fact]
@@ -99,6 +107,30 @@ public sealed class RestaurantCustomItemTests
     Assert.Contains("IsCustom bit NOT NULL", sql, StringComparison.OrdinalIgnoreCase);
     Assert.Contains("CK_OrderLine_CustomProduct", sql, StringComparison.Ordinal);
     Assert.Contains("FOREIGN KEY (Rfc, ProductId)", sql, StringComparison.OrdinalIgnoreCase);
+  }
+
+  [Fact]
+  public void KitchenSectionMigration_AddsSnapshotsAndBackfillsCatalogLines()
+  {
+    var sql = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260810_restaurant_kitchen_menu_sections.sql");
+
+    Assert.Contains("MenuSectionIdSnapshot bigint NULL", sql, StringComparison.OrdinalIgnoreCase);
+    Assert.Contains("MenuSectionNameSnapshot varchar(100) NULL", sql, StringComparison.OrdinalIgnoreCase);
+    Assert.Contains("MenuSectionSortOrderSnapshot int NULL", sql, StringComparison.OrdinalIgnoreCase);
+    Assert.Contains("WHERE lineInfo.IsCustom=0", sql, StringComparison.OrdinalIgnoreCase);
+    Assert.Contains("ORDER BY menuInfo.IsActive DESC,menuInfo.IsPublished DESC", sql, StringComparison.OrdinalIgnoreCase);
+  }
+
+  [Fact]
+  public void CustomCharge_UsesKitchenLifecycleWithoutConsumingInventory()
+  {
+    var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantOrderService.cs");
+
+    Assert.Contains("const string lineStatus = \"Pending\"", service, StringComparison.Ordinal);
+    Assert.Contains("var hasProductionLines = pricedLines.Count > 0", service, StringComparison.Ordinal);
+    Assert.Contains("!line.IsCustom && normalizedStatus == \"Preparing\"", service, StringComparison.Ordinal);
+    Assert.DoesNotContain("Un cargo personalizado no requiere transición de cocina", service, StringComparison.Ordinal);
+    Assert.DoesNotContain("line is null || line.IsCustom || line.Status != \"Ready\"", service, StringComparison.Ordinal);
   }
 
   private static string ReadRepoFile(string relativePath)

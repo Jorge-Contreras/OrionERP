@@ -83,7 +83,7 @@
                     class="pos-product @(product.IsSoldOut ? "is-sold-out" : null)"
                     aria-label="@($"{ProductDisplayName(product)}, {product.Price:C}")"
                     disabled="@product.IsSoldOut"
-                    @onclick="() => SelectProduct(product)">
+                    @onclick="() => SelectProduct(product, activeSectionId)">
               <span class="pos-product__image">
                 @if (images.TryGetValue(product.Id, out var image)) { <img src="@image" alt="@product.Name" /> }
                 else { <span class="oi oi-image" aria-hidden="true"></span> }
@@ -227,9 +227,13 @@
               <div class="pos-cash-summary__change"><span>Cambio a entregar</span><strong>@PosCash.Change.ToString("C")</strong></div>
             }
           </div>
-          @if (openShifts.Count > 0)
+          @if (openShifts.Count == 0)
           {
-            <label>Turno de caja<select @bind="selectedShiftId"><option value="">Sin turno</option>@foreach (var shift in openShifts) { <option value="@shift.Id">@shift.RegisterName · @shift.OpenedAt.ToLocalTime().ToString("t")</option> }</select></label>
+            <div class="pos-shift-required" role="alert"><span class="oi oi-warning-sign" aria-hidden="true"></span><span><strong>Se requiere un turno abierto</strong><small>Abre un turno de caja antes de registrar ventas.</small></span></div>
+          }
+          else
+          {
+            <label>Turno de caja<select @bind="selectedShiftId">@if(openShifts.Count > 1){<option value="">Seleccionar turno…</option>}@foreach (var shift in openShifts) { <option value="@shift.Id">@shift.RegisterName · @shift.OpenedAt.ToLocalTime().ToString("t")</option> }</select></label>
           }
         </section>
 
@@ -243,7 +247,11 @@
           <div><span>IVA (@catalog.Site.TaxRate.ToString("P0"))</span><b>@PosTotals.Tax.ToString("C")</b></div>
           @if (PosTotals.Delivery > 0) { <div><span>Entrega</span><b>@PosTotals.Delivery.ToString("C")</b></div> }
           <div class="is-total"><span>Total</span><b>@GrandTotal.ToString("C")</b></div>
-          @if (IsCustomerNameMissing)
+          @if (SelectedShift is null)
+          {
+            <p class="pos-submit-hint">Selecciona un turno de caja abierto para cobrar esta venta.</p>
+          }
+          else if (IsCustomerNameMissing)
           {
             <p class="pos-submit-hint">Captura el nombre del cliente para continuar.</p>
           }
@@ -275,7 +283,7 @@
         <button type="button" @onclick="CloseCustomItem" aria-label="Cerrar">×</button>
       </header>
       <p class="pos-custom-explanation">
-        Se guardará como una partida auditable de la orden. No descuenta inventario ni se envía a cocina.
+        Se guardará como una partida auditable de la orden. No descuenta inventario y se enviará a Cocina en la sección Cargo Personalizado.
       </p>
       <div class="pos-custom-fields">
         <label class="pos-custom-fields__name">
@@ -380,6 +388,7 @@
   private long activeSectionId;
   private int selectedSiteId;
   private RestaurantProductDto? selectedProduct;
+  private RestaurantMenuSectionDto? selectedMenuSection;
   private HashSet<long> selectedModifierIds = [];
   private bool isCustomItemOpen;
   private string? customItemName;
@@ -456,8 +465,10 @@
   private decimal ElectronicPaymentExcess => decimal.Round(Math.Max(0, cardAmount + transferAmount - GrandTotal), 2, MidpointRounding.AwayFromZero);
   private bool IsCustomerNameMissing => string.IsNullOrWhiteSpace(customerName);
   private bool RequiresFullPayment => orderType is "Pickup" or "Table";
+  private RestaurantCashShiftDto? SelectedShift => openShifts.FirstOrDefault(shift => shift.Id == selectedShiftId);
   private bool CanSubmit => cart.Count > 0
     && !isSubmitting
+    && SelectedShift is not null
     && !IsCustomerNameMissing
     && (string.IsNullOrWhiteSpace(promotionCode) || promotionQuote?.CodeAccepted == true)
     && ElectronicPaymentExcess <= 0.01m
@@ -486,7 +497,7 @@
       catalog = await CatalogService.GetPosCatalogAsync(CurrentRfc, selectedSiteId, DateTimeOffset.UtcNow);
       activeSectionId = catalog.Sections.FirstOrDefault()?.Id ?? 0;
       openShifts = (await CashService.GetShiftsAsync(CurrentRfc, selectedSiteId)).Where(shift => shift.Status == "Open").ToList();
-      if (openShifts.Count == 1) selectedShiftId = openShifts[0].Id;
+      if (!openShifts.Any(shift => shift.Id == selectedShiftId)) selectedShiftId = openShifts.Count == 1 ? openShifts[0].Id : null;
       await RestoreCartAsync();
       await RefreshPromotionQuoteAsync();
       images = [];
@@ -524,11 +535,12 @@
     }
   }
 
-  private void SelectProduct(RestaurantProductDto product) { selectedProduct = product; selectedModifierIds = []; if (product.ModifierGroups.Count == 0) _ = AddSelectedProductAsync(); }
-  private void CloseProductModal() { selectedProduct = null; selectedModifierIds = []; }
+  private void SelectProduct(RestaurantProductDto product, long menuSectionId) { selectedProduct = product; selectedMenuSection = catalog?.Sections.FirstOrDefault(section => section.Id == menuSectionId); selectedModifierIds = []; if (product.ModifierGroups.Count == 0) _ = AddSelectedProductAsync(); }
+  private void CloseProductModal() { selectedProduct = null; selectedMenuSection = null; selectedModifierIds = []; }
   private void OpenCustomItem()
   {
     selectedProduct = null;
+    selectedMenuSection = null;
     selectedModifierIds = [];
     customItemName = customItemNotes = null;
     customItemQuantity = 1;
@@ -591,9 +603,10 @@
       if (count < group.MinSelections || count > group.MaxSelections) { error = $"{group.Name}: selecciona entre {group.MinSelections} y {group.MaxSelections}."; return; }
     }
     var options = selectedProduct.ModifierGroups.SelectMany(group => group.Options).Where(option => selectedModifierIds.Contains(option.Id)).ToList();
-    var key = $"{selectedProduct.Id}:{string.Join('-', options.Select(option => option.Id).Order())}";
+    var sectionId = selectedMenuSection?.Id;
+    var key = $"{selectedProduct.Id}:{sectionId?.ToString() ?? "unassigned"}:{string.Join('-', options.Select(option => option.Id).Order())}";
     var existing = cart.FirstOrDefault(item => item.Key == key);
-    if (existing is null) cart.Add(new CartLine { Key = key, ProductId = selectedProduct.Id, Name = string.IsNullOrWhiteSpace(selectedProduct.VariantName) ? selectedProduct.Name : $"{selectedProduct.Name} · {selectedProduct.VariantName}", Quantity = 1, UnitPrice = selectedProduct.Price + options.Sum(option => option.PriceDelta), ModifierIds = options.Select(option => option.Id).ToList(), ModifierNames = options.Select(option => option.Name).ToList() });
+    if (existing is null) cart.Add(new CartLine { Key = key, ProductId = selectedProduct.Id, MenuSectionId = sectionId, MenuSectionName = selectedMenuSection?.Name, MenuSectionSortOrder = selectedMenuSection?.SortOrder, Name = string.IsNullOrWhiteSpace(selectedProduct.VariantName) ? selectedProduct.Name : $"{selectedProduct.Name} · {selectedProduct.VariantName}", Quantity = 1, UnitPrice = selectedProduct.Price + options.Sum(option => option.PriceDelta), ModifierIds = options.Select(option => option.Id).ToList(), ModifierNames = options.Select(option => option.Name).ToList() });
     else existing.Quantity++;
     CloseProductModal(); error = null; await PersistCartAsync(); await RefreshPromotionQuoteAsync();
   }
@@ -702,6 +715,8 @@
       return;
     }
     if (IsCustomerNameMissing) { error = "El nombre del cliente es obligatorio."; return; }
+    var shift = SelectedShift;
+    if (shift is null) { error = "Selecciona un turno de caja abierto para registrar la venta."; return; }
     if (ElectronicPaymentExcess > 0.01m) { error = "Los pagos electrónicos no pueden exceder el total de la orden."; return; }
     if (RequiresFullPayment && PosCash.Shortfall > 0.01m) { error = $"Falta cubrir {PosCash.Shortfall:C} para cobrar esta orden."; return; }
     isSubmitting = true; error = null; drawerWarning = null;
@@ -709,11 +724,10 @@
     {
       var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
       var userName = auth.User.Identity?.Name ?? "restaurante";
-      var shift = openShifts.FirstOrDefault(item => item.Id == selectedShiftId);
       string? supervisorAuthorizedBy = null;
       if (LineDiscountTotal + OrderDiscountAmount > 0 || allowInventoryDeficit)
       {
-        if (shift is null || string.IsNullOrWhiteSpace(supervisorIdentity) || string.IsNullOrWhiteSpace(supervisorPin))
+        if (string.IsNullOrWhiteSpace(supervisorIdentity) || string.IsNullOrWhiteSpace(supervisorPin))
           throw new InvalidOperationException("El descuento o déficit requiere turno, supervisor y PIN.");
         var verification = await QuickPinService.VerifySupervisorPinAsync(new()
         {
@@ -730,7 +744,7 @@
       if (transferAmount > 0) payments.Add(new() { PaymentMethod = "Transfer", Amount = transferAmount, IdempotencyKey = $"{idempotencyKey}:transfer" });
       var request = new RestaurantOrderCreateRequest
       {
-        Rfc = CurrentRfc, SiteId = selectedSiteId, CashRegisterId = shift?.CashRegisterId, CashShiftId = shift?.Id,
+        Rfc = CurrentRfc, SiteId = selectedSiteId, CashRegisterId = shift.CashRegisterId, CashShiftId = shift.Id,
         IdempotencyKey = idempotencyKey, OrderType = orderType, DiningTableId = diningTableId,
         CustomerName = customerName!.Trim(), CustomerPhone = customerPhone, DeliveryAddress = deliveryAddress, DeliveryReferences = deliveryReferences,
         ExternalProviderId = externalProviderId, ExternalReference = externalReference, DeliveryCost = deliveryCost, CommissionAmount = commissionAmount,
@@ -741,6 +755,7 @@
         Lines = cart.Select(item => new RestaurantOrderLineCreateRequest
         {
           ProductId = item.ProductId,
+          MenuSectionId = item.MenuSectionId is > 0 ? item.MenuSectionId : null,
           IsCustom = item.IsCustom,
           CustomName = item.IsCustom ? item.Name : null,
           CustomUnitPrice = item.IsCustom ? item.UnitPrice : null,
@@ -766,7 +781,26 @@
   }
 
   private async Task PersistCartAsync() { try { await Js.InvokeVoidAsync("localStorage.setItem", StorageKey, JsonSerializer.Serialize(cart)); } catch { } }
-  private async Task RestoreCartAsync() { try { var json = await Js.InvokeAsync<string?>("localStorage.getItem", StorageKey); if (!string.IsNullOrWhiteSpace(json)) cart = JsonSerializer.Deserialize<List<CartLine>>(json) ?? []; } catch { cart = []; } }
+  private async Task RestoreCartAsync()
+  {
+    try
+    {
+      var json = await Js.InvokeAsync<string?>("localStorage.getItem", StorageKey);
+      if (!string.IsNullOrWhiteSpace(json)) cart = JsonSerializer.Deserialize<List<CartLine>>(json) ?? [];
+      if (catalog is null) return;
+      foreach (var line in cart.Where(line => !line.IsCustom && !line.MenuSectionId.HasValue && line.ProductId.HasValue))
+      {
+        var productId = line.ProductId.GetValueOrDefault();
+        var section = catalog.Sections.FirstOrDefault(section => section.Products.Any(product => product.Id == productId));
+        if (section is null) continue;
+        line.MenuSectionId = section.Id;
+        line.MenuSectionName = section.Name;
+        line.MenuSectionSortOrder = section.SortOrder;
+        line.Key = $"{line.ProductId}:{section.Id}:{string.Join('-', line.ModifierIds.Order())}";
+      }
+    }
+    catch { cart = []; }
+  }
 
   private RestaurantReceiptPdfDocumentModel BuildReceiptModel(RestaurantOrderResult order)
   {
@@ -797,8 +831,8 @@
         Notes = item.Notes,
         Modifiers = item.ModifierNames.ToList(),
         IsCustom = item.IsCustom,
-        SectionName = section?.Name,
-        SectionSortOrder = section?.SortOrder ?? int.MaxValue
+        SectionName = item.MenuSectionName ?? section?.Name,
+        SectionSortOrder = item.MenuSectionSortOrder ?? section?.SortOrder ?? int.MaxValue
       };
     }).ToList();
 
@@ -910,6 +944,9 @@
   {
     public string Key { get; set; } = string.Empty;
     public long? ProductId { get; set; }
+    public long? MenuSectionId { get; set; }
+    public string? MenuSectionName { get; set; }
+    public int? MenuSectionSortOrder { get; set; }
     public bool IsCustom { get; set; }
     public string Name { get; set; } = string.Empty;
     public int Quantity { get; set; }

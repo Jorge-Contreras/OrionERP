@@ -1,6 +1,7 @@
 @page "/restaurante/cocina"
 @attribute [Authorize(Policy = "RestaurantKitchen")]
 @implements IAsyncDisposable
+@using System.Text.Json
 @using Microsoft.AspNetCore.Components.Authorization
 @using OrionERP.Application.Features.Logistica.Shared
 @using OrionERP.Application.Features.Restaurante
@@ -9,6 +10,7 @@
 @inject IRestaurantOrderService OrderService
 @inject IUserRfcState RfcState
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime Js
 @inject RestaurantRealtimeClient Realtime
 
 <PageTitle>Restaurante · Cocina</PageTitle>
@@ -18,9 +20,31 @@
     <div><span>KDS · cocina</span><h1>@(sites.FirstOrDefault(site => site.Id == selectedSiteId)?.Name ?? "Órdenes activas")</h1></div>
     <div>
       @if (sites.Count > 1) { <select aria-label="Sede" @onchange="ChangeSiteAsync">@foreach (var site in sites) { <option value="@site.Id" selected="@(site.Id == selectedSiteId)">@site.Name</option> }</select> }
-      <button type="button" @onclick="LoadBoardAsync"><span class="oi oi-reload"></span> Actualizar</button>
+      <button type="button" @onclick="RefreshAllAsync"><span class="oi oi-reload"></span> Actualizar</button>
     </div>
   </header>
+
+  @if (AvailableSections.Count > 0)
+  {
+    <section class="kds-section-filter" aria-labelledby="kds-section-filter-heading">
+      <header>
+        <div><span>Vista de esta pantalla</span><strong id="kds-section-filter-heading">Secciones visibles</strong></div>
+        <button type="button" disabled="@(disabledSectionKeys.Count == 0)" @onclick="ShowAllSectionsAsync">Mostrar todas</button>
+      </header>
+      <div class="kds-section-filter__options" role="group" aria-label="Secciones visibles en cocina">
+        @foreach (var section in AvailableSections)
+        {
+          <label class="kds-section-toggle @(IsSectionEnabled(section.Key) ? "is-active" : null)" style="--section-accent:@section.Color">
+            <input type="checkbox"
+                   checked="@IsSectionEnabled(section.Key)"
+                   @onchange="args => ToggleSectionAsync(section.Key, args.Value is true)" />
+            <span class="kds-section-toggle__swatch" aria-hidden="true"></span>
+            <span>@section.Name</span>
+          </label>
+        }
+      </div>
+    </section>
+  }
 
   @if (!string.IsNullOrWhiteSpace(error)) { <div class="kds-alert">@error</div> }
   @if (isLoading && board.Orders.Count == 0) { <section class="kds-empty"><span class="spinner-border"></span><h2>Cargando comandas…</h2></section> }
@@ -41,84 +65,125 @@
       </div>
     </section>
   }
+  else if (VisibleSectionGroups.Count == 0)
+  {
+    <section class="kds-empty kds-empty--filtered" role="status">
+      <span class="oi oi-eye"></span>
+      <h2>No hay secciones visibles</h2>
+      <p>Activa una sección para volver a mostrar sus comandas.</p>
+      <button type="button" @onclick="ShowAllSectionsAsync">Mostrar todas</button>
+    </section>
+  }
   else
   {
-    <section class="kds-board">
-      @foreach (var order in OrderedOrders)
+    <div class="kds-sections">
+      @foreach (var sectionGroup in VisibleSectionGroups)
       {
-        <article @key="order.Id" class="kds-ticket @KitchenProgressClass(order) @(order.Priority > 0 ? "kds-ticket--priority" : string.Empty)">
-          <header>
-            <div><span>@OrderTypeLabel(order.OrderType)</span><strong>@order.Folio.ToString("000")</strong>@if (!string.IsNullOrWhiteSpace(order.CustomerName)) { <b class="kds-customer">@order.CustomerName</b> }@if (!string.IsNullOrWhiteSpace(order.TableName)) { <b>@order.TableName</b> }@if (order.Priority > 0) { <mark>Prioridad</mark> }</div>
-            <time class="@TimerClass(order)">@Elapsed(order)</time>
+        <section class="kds-section-group" style="--section-accent:@sectionGroup.Section.Color" aria-labelledby="@($"kds-section-{SectionDomId(sectionGroup.Section.Key)}")">
+          <header class="kds-section-group__header">
+            <div><span class="kds-section-group__swatch" aria-hidden="true"></span><h2 id="@($"kds-section-{SectionDomId(sectionGroup.Section.Key)}")">@sectionGroup.Section.Name</h2></div>
+            <span>@sectionGroup.Cards.Count comanda(s)</span>
           </header>
-          @if (order.Priority > 0)
-          {
-            <div class="kds-priority-note"><span class="oi oi-warning"></span> @order.PriorityReason</div>
-          }
-          @if (!string.IsNullOrWhiteSpace(order.Notes))
-          {
-            <aside class="kds-order-note" aria-label="Nota de la orden">
-              <span class="oi oi-comment-square" aria-hidden="true"></span>
-              <div><strong>Nota de la orden</strong><p>@order.Notes</p></div>
-            </aside>
-          }
-          <div class="kds-lines">
-            @foreach (var line in order.Lines.Where(line => !line.IsCustom && line.Status != "Cancelled"))
+          <div class="kds-board">
+            @foreach (var card in sectionGroup.Cards)
             {
-              <section class="kds-line kds-line--@line.Status.ToLowerInvariant()">
-                <div class="kds-line__copy"><strong><b>@line.Quantity.ToString("0.##")×</b> @line.ProductName</strong>@if (line.Modifiers.Count > 0) { <small>@string.Join(" · ", line.Modifiers)</small> }@if (!string.IsNullOrWhiteSpace(line.Notes)) { <em>@line.Notes</em> }</div>
-                <div class="kds-line__action">
-                  @if (line.Status == "Pending") { <button type="button" class="is-start" disabled="@busyLineIds.Contains(line.Id)" @onclick='() => SetStatusAsync(line, "Preparing")'>Preparar</button> }
-                  else if (line.Status == "Preparing") { <button type="button" class="is-ready" disabled="@busyLineIds.Contains(line.Id)" @onclick='() => SetStatusAsync(line, "Ready")'>Listo</button> }
-                  else if (line.Status == "Ready")
+              var order = card.Order;
+              <article @key="(card.Section.Key, order.Id)" class="kds-ticket @KitchenProgressClass(card.Lines) @(order.Priority > 0 ? "kds-ticket--priority" : string.Empty)">
+                <header>
+                  <div>
+                    <span>@OrderTypeLabel(order.OrderType)</span>
+                    <strong>@order.Folio.ToString("000")</strong>
+                    <span class="kds-ticket__section" style="--section-accent:@card.Section.Color"><i aria-hidden="true"></i>@card.Section.Name</span>
+                    @if (!string.IsNullOrWhiteSpace(order.CustomerName)) { <b class="kds-customer">@order.CustomerName</b> }
+                    @if (!string.IsNullOrWhiteSpace(order.TableName)) { <b>@order.TableName</b> }
+                    @if (order.Priority > 0) { <mark>Prioridad</mark> }
+                  </div>
+                  <time class="@TimerClass(order)">@Elapsed(order)</time>
+                </header>
+                @if (order.Priority > 0)
+                {
+                  <div class="kds-priority-note"><span class="oi oi-warning"></span> @order.PriorityReason</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(order.Notes))
+                {
+                  <aside class="kds-order-note" aria-label="Nota de la orden">
+                    <span class="oi oi-comment-square" aria-hidden="true"></span>
+                    <div><strong>Nota de la orden</strong><p>@order.Notes</p></div>
+                  </aside>
+                }
+                <div class="kds-lines">
+                  @foreach (var line in card.Lines)
                   {
-                    <span class="kds-ready-label"><span class="oi oi-check"></span> Listo</span>
-                    @if (canSupervise) { <button type="button" class="is-undo" disabled="@busyLineIds.Contains(line.Id)" @onclick="() => RevertStatusAsync(line)">Deshacer</button> }
+                    <section class="kds-line kds-line--@line.Status.ToLowerInvariant()">
+                      <div class="kds-line__copy">
+                        <strong><b>@line.Quantity.ToString("0.##")×</b> @line.ProductName</strong>
+                        @if (line.IsCustom) { <small class="kds-custom-label">Cargo personalizado</small> }
+                        @if (line.Modifiers.Count > 0) { <small>@string.Join(" · ", line.Modifiers)</small> }
+                        @if (!string.IsNullOrWhiteSpace(line.Notes)) { <em>@line.Notes</em> }
+                      </div>
+                      <div class="kds-line__action">
+                        @if (line.Status == "Pending") { <button type="button" class="is-start" disabled="@busyLineIds.Contains(line.Id)" @onclick='() => SetStatusAsync(line, "Preparing")'>Preparar</button> }
+                        else if (line.Status == "Preparing") { <button type="button" class="is-ready" disabled="@busyLineIds.Contains(line.Id)" @onclick='() => SetStatusAsync(line, "Ready")'>Listo</button> }
+                        else if (line.Status == "Ready")
+                        {
+                          <span class="kds-ready-label"><span class="oi oi-check"></span> Listo</span>
+                          @if (canSupervise) { <button type="button" class="is-undo" disabled="@busyLineIds.Contains(line.Id)" @onclick="() => RevertStatusAsync(line)">Deshacer</button> }
+                        }
+                        else { <span>@line.Status</span> }
+                      </div>
+                    </section>
                   }
-                  else { <span>@line.Status</span> }
                 </div>
-              </section>
+                <footer><span>@KitchenProgressLabel(card.Lines)</span><span>@card.Lines.Count partida(s)</span></footer>
+                @if (canSupervise)
+                {
+                  <div class="kds-supervisor">
+                    @if (order.Priority == 0)
+                    {
+                      <input aria-label="Motivo de prioridad para orden @order.Folio" placeholder="Motivo para priorizar" value="@GetPriorityReason(order.Id)" @oninput="args => SetPriorityReason(order.Id, args.Value?.ToString())" />
+                      <button type="button" disabled="@busyOrderIds.Contains(order.Id)" @onclick="() => SetPriorityAsync(order, 1)">Priorizar</button>
+                    }
+                    else
+                    {
+                      <small>Autorizó: @order.PrioritizedBy</small>
+                      <button type="button" class="is-remove" disabled="@busyOrderIds.Contains(order.Id)" @onclick="() => SetPriorityAsync(order, 0)">Retirar prioridad</button>
+                    }
+                  </div>
+                }
+              </article>
             }
           </div>
-          <footer><span>@KitchenProgressLabel(order)</span><span>@order.Lines.Count(line => !line.IsCustom) línea(s) de cocina</span></footer>
-          @if (canSupervise)
-          {
-            <div class="kds-supervisor">
-              @if (order.Priority == 0)
-              {
-                <input aria-label="Motivo de prioridad para orden @order.Folio" placeholder="Motivo para priorizar" value="@GetPriorityReason(order.Id)" @oninput="args => SetPriorityReason(order.Id, args.Value?.ToString())" />
-                <button type="button" disabled="@busyOrderIds.Contains(order.Id)" @onclick="() => SetPriorityAsync(order, 1)">Priorizar</button>
-              }
-              else
-              {
-                <small>Autorizó: @order.PrioritizedBy</small>
-                <button type="button" class="is-remove" disabled="@busyOrderIds.Contains(order.Id)" @onclick="() => SetPriorityAsync(order, 0)">Retirar prioridad</button>
-              }
-            </div>
-          }
-        </article>
+        </section>
       }
-    </section>
+    </div>
   }
 </main>
 
 @code {
+  private const string CustomSectionKey = "custom";
+  private const string UnassignedSectionKey = "unassigned";
+  private static readonly string[] SectionPalette = ["#f2bd4c", "#5aa9ff", "#b993ff", "#46c8e6", "#ff9f5a", "#d88cff"];
   private readonly CancellationTokenSource disposeCts = new();
   private readonly HashSet<long> busyLineIds = [];
   private readonly HashSet<Guid> busyOrderIds = [];
+  private readonly HashSet<string> disabledSectionKeys = new(StringComparer.Ordinal);
   private readonly Dictionary<Guid, string> priorityReasons = [];
   private List<RestaurantSiteDto> sites = [];
+  private RestaurantPosCatalogDto? catalog;
   private RestaurantKitchenBoardDto board = new();
   private int selectedSiteId;
   private bool isLoading;
   private bool canSupervise;
   private string? error;
   private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private string SectionStorageKey => $"orion.restaurant.kds.sections:{CurrentRfc}:{selectedSiteId}";
   private IEnumerable<RestaurantOrderDto> OrderedOrders => board.Orders
     .OrderBy(order => order.OperationalDate)
     .ThenBy(order => order.Folio)
     .ThenBy(order => order.CreatedAt)
     .ThenBy(order => order.Id);
+  private IReadOnlyList<KitchenSectionDefinition> AvailableSections => BuildAvailableSections();
+  private IReadOnlyList<KitchenSectionGroup> VisibleSectionGroups => BuildVisibleSectionGroups();
 
   protected override async Task OnInitializedAsync()
   {
@@ -130,16 +195,30 @@
     _ = RefreshLoopAsync(disposeCts.Token);
   }
 
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (!firstRender) return;
+    await RestoreSectionPreferencesAsync();
+    StateHasChanged();
+  }
+
   private async Task LoadSitesAsync()
   {
     try
     {
       sites = (await CatalogService.GetSitesAsync(CurrentRfc)).Where(site => site.IsEnabled).ToList();
       if (!sites.Any(site => site.Id == selectedSiteId)) selectedSiteId = sites.FirstOrDefault()?.Id ?? 0;
-      await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId);
-      await LoadBoardAsync();
+      await LoadSiteDataAsync();
     }
     catch (Exception ex) { error = ex.Message; }
+  }
+
+  private async Task LoadSiteDataAsync()
+  {
+    if (selectedSiteId == 0) { catalog = null; board = new(); return; }
+    await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId);
+    catalog = await CatalogService.GetPosCatalogAsync(CurrentRfc, selectedSiteId, DateTimeOffset.UtcNow);
+    await LoadBoardAsync();
   }
 
   private async Task LoadBoardAsync()
@@ -149,6 +228,22 @@
     try { board = await OrderService.GetKitchenBoardAsync(CurrentRfc, selectedSiteId); error = null; }
     catch (Exception ex) { error = ex.Message; }
     finally { isLoading = false; }
+  }
+
+  private async Task RefreshAllAsync()
+  {
+    try
+    {
+      if (selectedSiteId == 0)
+      {
+        await LoadSitesAsync();
+        await RestoreSectionPreferencesAsync();
+        return;
+      }
+      catalog = await CatalogService.GetPosCatalogAsync(CurrentRfc, selectedSiteId, DateTimeOffset.UtcNow);
+      await LoadBoardAsync();
+    }
+    catch (Exception ex) { error = ex.Message; }
   }
 
   private async Task SetStatusAsync(RestaurantOrderLineDto line, string status)
@@ -195,10 +290,115 @@
     finally { busyOrderIds.Remove(order.Id); }
   }
 
+  private IReadOnlyList<KitchenSectionDefinition> BuildAvailableSections()
+  {
+    var result = new Dictionary<string, KitchenSectionDefinition>(StringComparer.Ordinal);
+    foreach (var section in catalog?.Sections.Where(section => section.Id > 0) ?? [])
+    {
+      var key = MenuSectionKey(section.Id);
+      result[key] = new(key, section.Id, section.Name, section.SortOrder, SectionColor(key));
+    }
+
+    result[CustomSectionKey] = new(CustomSectionKey, null, "Cargo Personalizado", int.MaxValue - 1, SectionColor(CustomSectionKey));
+    foreach (var line in board.Orders.SelectMany(order => order.Lines).Where(line => line.Status != "Cancelled"))
+    {
+      var section = SectionForLine(line);
+      result[section.Key] = section;
+    }
+
+    return result.Values.OrderBy(section => section.SortOrder).ThenBy(section => section.Name, StringComparer.OrdinalIgnoreCase).ToList();
+  }
+
+  private IReadOnlyList<KitchenSectionGroup> BuildVisibleSectionGroups()
+  {
+    var sections = BuildAvailableSections().ToDictionary(section => section.Key, StringComparer.Ordinal);
+    var cards = new List<KitchenSectionCard>();
+    foreach (var order in OrderedOrders)
+    {
+      foreach (var lineGroup in order.Lines
+        .Where(line => line.Status != "Cancelled")
+        .GroupBy(line => SectionForLine(line).Key, StringComparer.Ordinal))
+      {
+        if (disabledSectionKeys.Contains(lineGroup.Key)) continue;
+        var section = sections.GetValueOrDefault(lineGroup.Key) ?? SectionForLine(lineGroup.First());
+        cards.Add(new(order, section, lineGroup.OrderBy(line => line.Id).ToList()));
+      }
+    }
+
+    return cards
+      .GroupBy(card => card.Section.Key, StringComparer.Ordinal)
+      .Select(group => new KitchenSectionGroup(group.First().Section, group.ToList()))
+      .OrderBy(group => group.Section.SortOrder)
+      .ThenBy(group => group.Section.Name, StringComparer.OrdinalIgnoreCase)
+      .ToList();
+  }
+
+  private static KitchenSectionDefinition SectionForLine(RestaurantOrderLineDto line)
+  {
+    if (line.IsCustom)
+    {
+      return new(CustomSectionKey, null, "Cargo Personalizado", int.MaxValue - 1, SectionColor(CustomSectionKey));
+    }
+    if (line.MenuSectionId.HasValue)
+    {
+      var key = MenuSectionKey(line.MenuSectionId.Value);
+      return new(key, line.MenuSectionId, line.MenuSectionName ?? "Sin sección", line.MenuSectionSortOrder ?? int.MaxValue - 2, SectionColor(key));
+    }
+    return new(UnassignedSectionKey, null, "Sin sección", int.MaxValue, SectionColor(UnassignedSectionKey));
+  }
+
+  private bool IsSectionEnabled(string key) => !disabledSectionKeys.Contains(key);
+
+  private async Task ToggleSectionAsync(string key, bool enabled)
+  {
+    if (enabled) disabledSectionKeys.Remove(key);
+    else disabledSectionKeys.Add(key);
+    await PersistSectionPreferencesAsync();
+  }
+
+  private async Task ShowAllSectionsAsync()
+  {
+    disabledSectionKeys.Clear();
+    await PersistSectionPreferencesAsync();
+  }
+
+  private async Task PersistSectionPreferencesAsync()
+  {
+    try
+    {
+      await Js.InvokeVoidAsync("localStorage.setItem", SectionStorageKey, JsonSerializer.Serialize(disabledSectionKeys.Order()));
+    }
+    catch { }
+  }
+
+  private async Task RestoreSectionPreferencesAsync()
+  {
+    disabledSectionKeys.Clear();
+    if (selectedSiteId == 0) return;
+    try
+    {
+      var json = await Js.InvokeAsync<string?>("localStorage.getItem", SectionStorageKey);
+      if (string.IsNullOrWhiteSpace(json)) return;
+      foreach (var key in JsonSerializer.Deserialize<string[]>(json) ?? [])
+      {
+        if (!string.IsNullOrWhiteSpace(key)) disabledSectionKeys.Add(key);
+      }
+    }
+    catch { disabledSectionKeys.Clear(); }
+  }
+
   private string GetPriorityReason(Guid orderId) => priorityReasons.GetValueOrDefault(orderId, string.Empty);
   private void SetPriorityReason(Guid orderId, string? value) => priorityReasons[orderId] = value?.TrimStart() ?? string.Empty;
 
-  private async Task ChangeSiteAsync(ChangeEventArgs args) { if (int.TryParse(args.Value?.ToString(), out var id)) { selectedSiteId = id; await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId); await LoadBoardAsync(); } }
+  private async Task ChangeSiteAsync(ChangeEventArgs args)
+  {
+    if (!int.TryParse(args.Value?.ToString(), out var id)) return;
+    selectedSiteId = id;
+    disabledSectionKeys.Clear();
+    await LoadSiteDataAsync();
+    await RestoreSectionPreferencesAsync();
+  }
+
   private Task OnRealtimeEventAsync(RestaurantRealtimeEvent eventInfo) => InvokeAsync(async () => { await LoadBoardAsync(); StateHasChanged(); });
   private async Task RefreshLoopAsync(CancellationToken ct)
   {
@@ -208,19 +408,31 @@
   }
   private string Elapsed(RestaurantOrderDto order) { var elapsed = DateTime.UtcNow - order.CreatedAt; return $"{Math.Max(0, (int)elapsed.TotalMinutes):00}:{Math.Abs(elapsed.Seconds):00}"; }
   private string TimerClass(RestaurantOrderDto order) => (DateTime.UtcNow - order.CreatedAt).TotalMinutes switch { >= 20 => "is-late", >= 10 => "is-warning", _ => "" };
-  private static string KitchenProgressClass(RestaurantOrderDto order) => RestaurantKitchenProgressRules.Classify(order) switch
+  private static string KitchenProgressClass(IEnumerable<RestaurantOrderLineDto> lines) => RestaurantKitchenProgressRules.Classify(lines) switch
   {
     RestaurantKitchenProgress.Ready => "kds-ticket--complete",
     RestaurantKitchenProgress.Preparing => "kds-ticket--partial",
     _ => "kds-ticket--not-started"
   };
-  private static string KitchenProgressLabel(RestaurantOrderDto order) => RestaurantKitchenProgressRules.Classify(order) switch
+  private static string KitchenProgressLabel(IEnumerable<RestaurantOrderLineDto> lines) => RestaurantKitchenProgressRules.Classify(lines) switch
   {
     RestaurantKitchenProgress.Ready => "Listo",
     RestaurantKitchenProgress.Preparing => "Preparando",
     _ => "Sin iniciar"
   };
+  private static string MenuSectionKey(long id) => $"menu:{id}";
+  private static string SectionColor(string key)
+  {
+    uint hash = 2166136261;
+    foreach (var character in key) hash = (hash ^ character) * 16777619;
+    return SectionPalette[(int)(hash % (uint)SectionPalette.Length)];
+  }
+  private static string SectionDomId(string key) => key.Replace(':', '-');
   private static string OrderTypeLabel(string type) => type switch { "Pickup" => "Recoger", "Table" => "Mesa", "Delivery" => "Domicilio", _ => type };
-  private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; board = new(); await LoadSitesAsync(); StateHasChanged(); });
+  private void OnRfcChanged() => _ = InvokeAsync(async () => { await Task.Yield(); selectedSiteId = 0; catalog = null; board = new(); disabledSectionKeys.Clear(); await LoadSitesAsync(); await RestoreSectionPreferencesAsync(); StateHasChanged(); });
   public ValueTask DisposeAsync() { RfcState.Changed -= OnRfcChanged; Realtime.EventReceived -= OnRealtimeEventAsync; disposeCts.Cancel(); disposeCts.Dispose(); return ValueTask.CompletedTask; }
+
+  private sealed record KitchenSectionDefinition(string Key, long? Id, string Name, int SortOrder, string Color);
+  private sealed record KitchenSectionCard(RestaurantOrderDto Order, KitchenSectionDefinition Section, IReadOnlyList<RestaurantOrderLineDto> Lines);
+  private sealed record KitchenSectionGroup(KitchenSectionDefinition Section, IReadOnlyList<KitchenSectionCard> Cards);
 }

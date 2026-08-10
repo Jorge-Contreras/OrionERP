@@ -7,6 +7,48 @@ namespace OrionERP.UnitTests.Restaurante;
 public sealed class RestaurantReceiptReprintMapperTests
 {
   [Fact]
+  public void Create_PrefersSaleTimeSectionSnapshotOverCurrentCatalog()
+  {
+    var receipt = new RestaurantReceiptDto
+    {
+      SiteName = "Bruno's",
+      SiteTimeZoneId = "UTC",
+      CreatedAt = DateTime.UtcNow,
+      Lines =
+      [
+        new()
+        {
+          ProductId = 100,
+          ProductName = "Hamburguesa",
+          Quantity = 1,
+          UnitPrice = 100,
+          MenuSectionId = 10,
+          MenuSectionName = "Cena",
+          MenuSectionSortOrder = 4
+        }
+      ]
+    };
+    var catalog = new RestaurantPosCatalogDto
+    {
+      Sections =
+      [
+        new()
+        {
+          Id = 11,
+          Name = "Menú actualizado",
+          Products = [new() { Id = 100 }]
+        }
+      ]
+    };
+
+    var model = RestaurantReceiptReprintMapper.Create(receipt, catalog);
+
+    var line = Assert.Single(model.Lines);
+    Assert.Equal("Cena", line.SectionName);
+    Assert.Equal(4, line.SectionSortOrder);
+  }
+
+  [Fact]
   public void Create_UsesPersistedReceiptValuesAndMarksEveryCopyAsAReprint()
   {
     var createdAt = new DateTime(2026, 8, 5, 18, 30, 0, DateTimeKind.Unspecified);

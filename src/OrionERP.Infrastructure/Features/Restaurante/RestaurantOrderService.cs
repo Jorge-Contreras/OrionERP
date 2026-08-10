@@ -318,7 +318,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
 
       var operationalDate = DateOnly.FromDateTime(localNow.TimeOfDay < site.OperationalDayCutoff ? localNow.AddDays(-1).Date : localNow.Date);
       var orderId = Guid.NewGuid();
-      var requirements = await BuildRequirementsAsync(conn, tx, rfc, pricedLines, modifierRows, ct);
+      var requirements = await BuildRequirementsAsync(conn, tx, rfc, pricedLines, ct);
       var reservation = requirements.Count == 0
         ? new ReservationResult(null, false)
         : await ReserveInventoryAsync(conn, tx, rfc, request.SiteId, orderId, request.IdempotencyKey.Trim(), requirements,
@@ -1631,8 +1631,10 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   }
 
   private static async Task<Dictionary<int, decimal>> BuildRequirementsAsync(DbConnection conn, DbTransaction tx, string rfc,
-    IReadOnlyList<PricedLine> lines, IReadOnlyList<ModifierRow> modifiers, CancellationToken ct)
+    IReadOnlyList<PricedLine> lines, CancellationToken ct)
   {
+    var selectedOptionIds = lines.SelectMany(line => line.Modifiers).Select(modifier => modifier.Id).Distinct().ToArray();
+    var graph = await RestaurantRequirementGraphLoader.LoadAsync(conn, tx, rfc, selectedOptionIds, ct);
     var requirements = new Dictionary<int, decimal>();
     foreach (var line in lines)
     {
@@ -1640,98 +1642,18 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       {
         continue;
       }
-      if (line.Product.FulfillmentMode == "MakeToOrder")
-      {
-        await ExpandMaterialAsync(conn, tx, rfc, line.Product.MaterialId, line.Product.Sku, line.Request.Quantity, requirements, new HashSet<int>(), 0, ct);
-      }
-      else
-      {
-        AddRequirement(requirements, line.Product.MaterialId, line.Request.Quantity);
-      }
-      if (line.Modifiers.Count > 0)
-      {
-        var deltas = (await conn.QueryAsync<ModifierDeltaRow>(new CommandDefinition(
-          """
-          SELECT delta.MaterialId, delta.QuantityDelta,
-                 COALESCE(materialConversion.Factor, globalConversion.Factor, CASE WHEN delta.UnitId = material.BaseUnitId THEN 1 END) AS Factor
-          FROM restaurante.ModifierIngredientDelta delta
-          JOIN logistica.Material material ON material.Rfc = delta.Rfc AND material.Id = delta.MaterialId
-          OUTER APPLY (SELECT TOP (1) Factor FROM logistica.MaterialUnitConversion conversionInfo
-                       WHERE conversionInfo.Rfc=delta.Rfc AND conversionInfo.MaterialId=delta.MaterialId
-                         AND conversionInfo.FromUnitId=delta.UnitId AND conversionInfo.ToUnitId=material.BaseUnitId AND conversionInfo.IsActive=1) materialConversion
-          OUTER APPLY (SELECT TOP (1) Factor FROM logistica.UnitConversion conversionInfo
-                       WHERE conversionInfo.FromUnitId=delta.UnitId AND conversionInfo.ToUnitId=material.BaseUnitId AND conversionInfo.IsActive=1) globalConversion
-          WHERE delta.Rfc = @Rfc AND delta.ModifierOptionId IN @OptionIds;
-          """, new { Rfc = rfc, OptionIds = line.Modifiers.Select(item => item.Id).ToArray() }, tx, cancellationToken: ct))).AsList();
-        if (deltas.Any(delta => !delta.Factor.HasValue))
-        {
-          throw new InvalidOperationException("Falta una conversión para los ingredientes de un modificador.");
-        }
-        foreach (var delta in deltas)
-        {
-          AddRequirement(requirements, delta.MaterialId, delta.QuantityDelta * delta.Factor!.Value * line.Request.Quantity);
-        }
-      }
+      var calculation = RestaurantSaleRequirementCalculator.Calculate(
+        graph,
+        line.Product.MaterialId,
+        line.Product.Sku,
+        line.Request.Quantity,
+        line.Modifiers.Select(modifier => modifier.Id).ToArray());
+      var issue = calculation.Issues.FirstOrDefault();
+      if (issue is not null) throw new InvalidOperationException(issue.Message);
+      foreach (var requirement in calculation.Requirements)
+        AddRequirement(requirements, requirement.Key, requirement.Value);
     }
     return requirements.Where(item => item.Value > 0).ToDictionary(item => item.Key, item => item.Value);
-  }
-
-  private static async Task ExpandMaterialAsync(DbConnection conn, DbTransaction tx, string rfc, int materialId, string rootProductSku, decimal multiplier,
-    IDictionary<int, decimal> requirements, ISet<int> path, int depth, CancellationToken ct)
-  {
-    if (depth >= 32 || !path.Add(materialId))
-    {
-      throw new InvalidOperationException("El BOM contiene un ciclo o excede 32 niveles.");
-    }
-    var components = (await conn.QueryAsync<BomRequirementRow>(new CommandDefinition(
-      """
-      SELECT component.ComponentMaterialId AS MaterialId,
-             component.Quantity * (1 + component.ExpectedWastePercent / 100.0)
-               * COALESCE(materialConversion.Factor, globalConversion.Factor, CASE WHEN component.UnitId = material.BaseUnitId THEN 1 END)
-               / NULLIF(versionInfo.YieldQuantity, 0) AS QuantityPerYield,
-             material.FulfillmentMode
-      FROM logistica.BomHeader headerInfo
-      JOIN logistica.BomVersion versionInfo ON versionInfo.Rfc = headerInfo.Rfc AND versionInfo.BomHeaderId = headerInfo.Id AND versionInfo.[Status] = 'Active'
-      JOIN logistica.BomComponent component ON component.Rfc = versionInfo.Rfc AND component.BomVersionId = versionInfo.Id
-      JOIN logistica.Material material ON material.Rfc = component.Rfc AND material.Id = component.ComponentMaterialId
-      OUTER APPLY (SELECT TOP (1) Factor FROM logistica.MaterialUnitConversion conversionInfo
-                   WHERE conversionInfo.Rfc=component.Rfc AND conversionInfo.MaterialId=component.ComponentMaterialId
-                     AND conversionInfo.FromUnitId=component.UnitId AND conversionInfo.ToUnitId=material.BaseUnitId AND conversionInfo.IsActive=1) materialConversion
-      OUTER APPLY (SELECT TOP (1) Factor FROM logistica.UnitConversion conversionInfo
-                   WHERE conversionInfo.FromUnitId=component.UnitId AND conversionInfo.ToUnitId=material.BaseUnitId AND conversionInfo.IsActive=1) globalConversion
-      WHERE headerInfo.Rfc = @Rfc AND headerInfo.ProductMaterialId = @MaterialId;
-      """, new { Rfc = rfc, MaterialId = materialId }, tx, cancellationToken: ct))).AsList();
-    if (components.Count == 0)
-    {
-      var materialDescription = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
-        "SELECT [Description] FROM logistica.Material WHERE Rfc = @Rfc AND Id = @MaterialId;",
-        new { Rfc = rfc, MaterialId = materialId }, tx, cancellationToken: ct));
-      var materialLabel = string.IsNullOrWhiteSpace(materialDescription)
-        ? $"material {materialId}"
-        : $"{materialDescription} (material {materialId})";
-      if (depth == 0)
-      {
-        throw new InvalidOperationException($"El producto {rootProductSku} ({materialLabel}) no tiene un BOM activo.");
-      }
-      throw new InvalidOperationException(
-        $"El ingrediente {materialLabel} del producto {rootProductSku} está configurado para fabricación bajo pedido y no tiene un BOM activo.");
-    }
-    foreach (var component in components)
-    {
-      if (!component.QuantityPerYield.HasValue)
-      {
-        throw new InvalidOperationException($"Falta una conversión de unidad para el material {component.MaterialId}.");
-      }
-      var required = component.QuantityPerYield.Value * multiplier;
-      if (component.FulfillmentMode == "MakeToOrder")
-      {
-        await ExpandMaterialAsync(conn, tx, rfc, component.MaterialId, rootProductSku, required, requirements, new HashSet<int>(path), depth + 1, ct);
-      }
-      else
-      {
-        AddRequirement(requirements, component.MaterialId, required);
-      }
-    }
   }
 
   private static async Task<ReservationResult> ReserveInventoryAsync(DbConnection conn, DbTransaction tx, string rfc, int siteId,
@@ -2379,8 +2301,6 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     public string Name { get; set; } = string.Empty;
     public decimal PriceDelta { get; set; }
   }
-  private sealed class ModifierDeltaRow { public int MaterialId { get; set; } public decimal QuantityDelta { get; set; } public decimal? Factor { get; set; } }
-  private sealed class BomRequirementRow { public int MaterialId { get; set; } public decimal? QuantityPerYield { get; set; } public string FulfillmentMode { get; set; } = string.Empty; }
   private sealed class MaterialInventoryRow { public int Id { get; set; } public bool TrackLots { get; set; } }
   private sealed class LotAvailabilityRow { public long MaterialLotId { get; set; } public int LocationId { get; set; } public decimal AvailableQuantity { get; set; } public decimal UnitCost { get; set; } }
   private sealed class BalanceAvailabilityRow { public int LocationId { get; set; } public decimal AvailableQuantity { get; set; } public decimal AverageUnitCost { get; set; } }

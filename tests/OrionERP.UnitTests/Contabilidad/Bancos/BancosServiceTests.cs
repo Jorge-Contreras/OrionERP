@@ -131,6 +131,89 @@ public class BancosServiceTests
   }
 
   [Fact]
+  public void BbvaImportSql_UsesStableUidWithoutStatementBalance()
+  {
+    var source = ReadRepositoryFile(
+      "src",
+      "OrionERP.Infrastructure",
+      "Features",
+      "Contabilidad",
+      "Bancos",
+      "Sql",
+      "20260809_bancos_procesar_movimientos_bbva_stable_uid.sql");
+
+    Assert.Contains("WithOrdinal AS", source, StringComparison.Ordinal);
+    Assert.Contains("OccurrenceNo = ROW_NUMBER()", source, StringComparison.Ordinal);
+    Assert.Contains("PARTITION BY Dia, Concepto, MontoBase, TipoDer", source, StringComparison.Ordinal);
+    Assert.Contains("OccurrenceNo, '|'", source, StringComparison.Ordinal);
+    Assert.Contains("Saldo se excluye intencionalmente", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("CONVERT(VARCHAR(32), CAST(Saldo", source, StringComparison.Ordinal);
+    Assert.Contains("NOT EXISTS", source, StringComparison.Ordinal);
+    Assert.Contains("MERGE bancos.Movimientos WITH (HOLDLOCK)", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("T.ArchivoHash", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("T.Fecha_Carga", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("T.Saldo = S.Saldo", source, StringComparison.Ordinal);
+    Assert.Contains("Cambios_Saldo_Historico", source, StringComparison.Ordinal);
+    Assert.Contains("Coincidencias_Existentes", source, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public async Task ProcessBbvaFileAsync_MapsHistoricalBalanceGuardCounts()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = static (_, _) =>
+      {
+        var table = new DataTable();
+        table.Columns.Add("Insertados", typeof(int));
+        table.Columns.Add("Actualizados", typeof(int));
+        table.Columns.Add("Cuenta_Banco_ID", typeof(int));
+        table.Columns.Add("Nombre_Banco", typeof(string));
+        table.Columns.Add("Numero_Cuenta", typeof(string));
+        table.Columns.Add("ArchivoHash", typeof(string));
+        table.Columns.Add("Balance_Warnings", typeof(int));
+        table.Columns.Add("Coincidencias_Existentes", typeof(int));
+        table.Columns.Add("Cambios_Saldo_Historico", typeof(int));
+        table.Rows.Add(10, 0, 1, "BBVA", "0120047376", "HASH", 24, 26, 26);
+        return table;
+      }
+    };
+
+    var service = new BancosService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.ProcessBbvaFileAsync("archivo", 1, 0m);
+
+    Assert.NotNull(result);
+    Assert.Equal(26, result.CoincidenciasExistentes);
+    Assert.Equal(26, result.CambiosSaldoHistorico);
+  }
+
+  [Fact]
+  public void BancosPage_BlocksAutoPoliciesUntilHistoricalBalanceWarningIsAcknowledged()
+  {
+    var markup = ReadRepositoryFile(
+      "src",
+      "OrionERP.Web",
+      "Features",
+      "Contabilidad",
+      "Bancos",
+      "BancosPage.razor");
+    var codeBehind = ReadRepositoryFile(
+      "src",
+      "OrionERP.Web",
+      "Features",
+      "Contabilidad",
+      "Bancos",
+      "BancosPage.razor.cs");
+
+    Assert.Contains("BBVA cambió saldos de movimientos históricos", markup, StringComparison.Ordinal);
+    Assert.Contains("Entiendo, habilitar pólizas auto", markup, StringComparison.Ordinal);
+    Assert.Contains("disabled=\"@AutoPolizasDisabled\"", markup, StringComparison.Ordinal);
+    Assert.Contains("RequiresBankImportWarningAcknowledgement", codeBehind, StringComparison.Ordinal);
+    Assert.Contains("AcknowledgeBankImportWarning", codeBehind, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public async Task GetPendingTransactionsAsync_MapsMatchingBankRegistroAmounts()
   {
     var connection = new FakeQueryDbConnection

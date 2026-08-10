@@ -216,9 +216,44 @@ else
           <div class="card bg-light bancos-process-summary">
             <div class="card-body">
               <h3 class="h6">Resumen del procesamiento</h3>
+              @if (LastProcessResult.CambiosSaldoHistorico > 0)
+              {
+                <div class="alert alert-warning bancos-import-warning" role="alert">
+                  <div>
+                    <span class="badge text-bg-warning mb-2">Revisión requerida</span>
+                    <h4 class="h6 mb-2">BBVA cambió saldos de movimientos históricos</h4>
+                    <p class="mb-2">
+                      OrionERP reconoció <strong>@LastProcessResult.CambiosSaldoHistorico</strong> movimiento(s) ya existentes
+                      con un saldo distinto. No se duplicaron y se conservaron los saldos previamente guardados.
+                    </p>
+                    <p class="mb-0 small">
+                      El archivo insertó <strong>@LastProcessResult.Insertados</strong> movimiento(s) nuevo(s).
+                      Revisa el resultado antes de crear pólizas automáticas.
+                    </p>
+                  </div>
+                  @if (RequiresBankImportWarningAcknowledgement)
+                  {
+                    <button type="button" class="btn btn-warning btn-sm" @onclick="AcknowledgeBankImportWarning">
+                      Entiendo, habilitar pólizas auto
+                    </button>
+                  }
+                  else
+                  {
+                    <span class="badge text-bg-success">Advertencia revisada</span>
+                  }
+                </div>
+              }
+              else if (LastProcessResult.CoincidenciasExistentes > 0)
+              {
+                <div class="alert alert-info py-2" role="status">
+                  Se reconocieron @LastProcessResult.CoincidenciasExistentes movimiento(s) ya cargados; no se duplicaron.
+                </div>
+              }
               <dl class="row mb-0">
                 <dt class="col-sm-4">Insertados</dt>
                 <dd class="col-sm-8">@LastProcessResult.Insertados</dd>
+                <dt class="col-sm-4">Ya existentes</dt>
+                <dd class="col-sm-8">@LastProcessResult.CoincidenciasExistentes</dd>
                 <dt class="col-sm-4">Actualizados</dt>
                 <dd class="col-sm-8">@LastProcessResult.Actualizados</dd>
                 <dt class="col-sm-4">Cuenta</dt>
@@ -357,10 +392,14 @@ else
               <span>Alinear pólizas al banco</span>
             }
           </button>
-          <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="OnAutoPolizasClicked" disabled="@HasPendingTransactions" title="@AutoPolizasTooltip">Crear pólizas auto</button>
+          <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="OnAutoPolizasClicked" disabled="@AutoPolizasDisabled" title="@AutoPolizasTooltip">Crear pólizas auto</button>
           @if (HasPendingTransactions)
           {
             <span class="text-muted small" role="note">Disponible cuando no haya transacciones pendientes por ligar.</span>
+          }
+          else if (RequiresBankImportWarningAcknowledgement)
+          {
+            <span class="text-warning-emphasis small" role="note">Confirma primero la advertencia de saldos históricos.</span>
           }
         </div>
       </div>

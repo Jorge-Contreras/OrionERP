@@ -48,6 +48,7 @@ public partial class BancosPage : ComponentBase, IDisposable
   private readonly HashSet<int> _expandedPolicyIds = new();
   private readonly HashSet<int> _loadingPolicyDetailIds = new();
   private readonly HashSet<int> _reorderingPolicyIds = new();
+  private bool _bankImportWarningAcknowledged;
 
   [Inject] public IBancosService BancosService { get; set; } = default!;
   [Inject] public ITransaccionService TransaccionService { get; set; } = default!;
@@ -151,8 +152,18 @@ public partial class BancosPage : ComponentBase, IDisposable
 
   protected bool HasPendingTransactions => PendingTransactions.Count > 0;
 
+  protected bool RequiresBankImportWarningAcknowledgement
+    => LastProcessResult is { CambiosSaldoHistorico: > 0 } && !_bankImportWarningAcknowledged;
+
+  protected bool AutoPolizasDisabled
+    => HasPendingTransactions || RequiresBankImportWarningAcknowledgement;
+
   protected string? AutoPolizasTooltip
-    => HasPendingTransactions ? "Disponible cuando no haya transacciones pendientes por ligar." : null;
+    => HasPendingTransactions
+      ? "Disponible cuando no haya transacciones pendientes por ligar."
+      : RequiresBankImportWarningAcknowledgement
+        ? "Revisa y confirma la advertencia de saldos históricos antes de crear pólizas."
+        : null;
 
   protected string SelectedAccountLabel
     => Accounts.FirstOrDefault(a => a.CuentaBancoId == SelectedAccountId) is { } account
@@ -850,6 +861,12 @@ public partial class BancosPage : ComponentBase, IDisposable
       return;
     }
 
+    if (RequiresBankImportWarningAcknowledgement)
+    {
+      UiMessages.ShowWarning("Revisa y confirma la advertencia de saldos históricos antes de crear pólizas automáticas.");
+      return;
+    }
+
     if (string.IsNullOrWhiteSpace(_currentRfc))
     {
       UiMessages.ShowWarning("Selecciona un RFC válido antes de continuar.");
@@ -1069,7 +1086,17 @@ public partial class BancosPage : ComponentBase, IDisposable
       else
       {
         LastProcessResult = result;
-        UiMessages.ShowSuccess("Archivo procesado correctamente.");
+        _bankImportWarningAcknowledged = false;
+
+        if (result.CambiosSaldoHistorico > 0)
+        {
+          UiMessages.ShowWarning(
+            $"Se reconocieron {result.CambiosSaldoHistorico} movimiento(s) con cambios de saldo histórico. No se duplicaron ni se sobrescribieron sus saldos guardados.");
+        }
+        else
+        {
+          UiMessages.ShowSuccess("Archivo procesado correctamente.");
+        }
       }
 
       await LoadMovementsAsync();
@@ -1092,6 +1119,17 @@ public partial class BancosPage : ComponentBase, IDisposable
       IsProcessingFile = false;
       await InvokeAsync(StateHasChanged);
     }
+  }
+
+  protected void AcknowledgeBankImportWarning()
+  {
+    if (LastProcessResult is not { CambiosSaldoHistorico: > 0 })
+    {
+      return;
+    }
+
+    _bankImportWarningAcknowledged = true;
+    UiMessages.ShowInfo("Advertencia revisada. Ya puedes crear las pólizas automáticas cuando estés listo.");
   }
 
   private async Task InitializeAsync()

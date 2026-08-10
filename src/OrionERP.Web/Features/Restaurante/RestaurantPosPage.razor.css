@@ -5,6 +5,8 @@
 .pos-ticket__copies{margin:.35rem auto 0;padding:.45rem .65rem;border-radius:.6rem;background:#eff7f4;color:#285c4e;font-weight:750}.pos-ticket__error{margin:.35rem auto 0;padding:.45rem .65rem;border-radius:.6rem;background:#fee9e7;color:#962e25;font-weight:750}.pos-ticket button:disabled{cursor:wait;opacity:.6}
 .pos-ticket__drawer-warning{display:grid;gap:.25rem;margin:.35rem auto 0;padding:.45rem .65rem;border-radius:.6rem;background:#fff4d8;color:#805600;font-weight:750}.pos-ticket__drawer-warning a{color:#684500;text-decoration:underline}
 
+.pos-header__actions .pos-readiness-download{min-height:2.65rem;padding:.5rem .7rem;border-style:dashed;background:#f8faf9;color:#53615c;font-size:.78rem;font-weight:750;opacity:.82}.pos-header__actions .pos-readiness-download:hover:not(:disabled){border-color:#7ea99c;background:#eff7f4;color:#17634f;opacity:1}.pos-header__actions .pos-readiness-download:focus-visible{outline:3px solid rgba(38,116,95,.25);outline-offset:2px}.pos-header__actions .pos-readiness-download:disabled{cursor:wait;opacity:.5}
+
 /* Keep the product photo and copy in separate, non-overlapping card rows. */
 .pos-product{
   display:grid;

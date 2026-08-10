@@ -8,6 +8,8 @@
 @using OrionERP.Web.State
 @inject IRestaurantCatalogService CatalogService
 @inject IRestaurantOrderService OrderService
+@inject IRestaurantSaleReadinessService SaleReadinessService
+@inject IRestaurantSaleReadinessWorkbookService SaleReadinessWorkbookService
 @inject IRestaurantPromotionService PromotionService
 @inject ILoyaltyService LoyaltyService
 @inject IRestaurantCashService CashService
@@ -33,6 +35,19 @@
           @foreach (var site in sites) { <option value="@site.Id" selected="@(site.Id == selectedSiteId)">@site.Name</option> }
         </select>
       }
+      <AuthorizeView Policy="RestaurantAdmin">
+        <Authorized>
+          <button type="button"
+                  class="pos-readiness-download"
+                  title="Descargar diagnóstico preventivo de venta"
+                  aria-label="Descargar diagnóstico preventivo de venta"
+                  @onclick="DownloadSaleReadinessAsync"
+                  disabled="@(isBusy || isDownloadingReadiness || catalog is null)">
+            <span class="@(isDownloadingReadiness ? "spinner-border spinner-border-sm" : "oi oi-data-transfer-download")" aria-hidden="true"></span>
+            @(isDownloadingReadiness ? "Generando…" : "Diagnóstico")
+          </button>
+        </Authorized>
+      </AuthorizeView>
       <button type="button" @onclick="LoadAsync" disabled="@isBusy"><span class="oi oi-reload"></span> Actualizar</button>
     </div>
   </header>
@@ -405,6 +420,7 @@
   private bool isQuotingPromotions;
   private bool isPrinting;
   private bool isOpeningDrawer;
+  private bool isDownloadingReadiness;
   private bool lastOrderReceivedCash;
   private string idempotencyKey = Guid.NewGuid().ToString("N");
   private RestaurantOrderResult? lastOrder;
@@ -485,6 +501,29 @@
   }
 
   private async Task ChangeSiteAsync(ChangeEventArgs args) { if (int.TryParse(args.Value?.ToString(), out var id)) { selectedSiteId = id; cart = []; selectedMember = null; memberIdentifier = null; promotionQuote = null; promotionCode = null; await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId); await LoadAsync(); } }
+
+  private async Task DownloadSaleReadinessAsync()
+  {
+    if (catalog is null || selectedSiteId <= 0 || isDownloadingReadiness) return;
+    isDownloadingReadiness = true;
+    error = null;
+    try
+    {
+      var report = await SaleReadinessService.AnalyzeAsync(CurrentRfc, selectedSiteId, DateTimeOffset.UtcNow);
+      var workbook = SaleReadinessWorkbookService.Create(report);
+      var dataUrl = $"data:{workbook.ContentType};base64,{Convert.ToBase64String(workbook.Bytes)}";
+      await Js.InvokeVoidAsync("triggerFileDownload", workbook.FileName, dataUrl);
+    }
+    catch (Exception ex)
+    {
+      error = $"No se pudo generar el diagnóstico de venta: {ex.Message}";
+    }
+    finally
+    {
+      isDownloadingReadiness = false;
+    }
+  }
+
   private void SelectProduct(RestaurantProductDto product) { selectedProduct = product; selectedModifierIds = []; if (product.ModifierGroups.Count == 0) _ = AddSelectedProductAsync(); }
   private void CloseProductModal() { selectedProduct = null; selectedModifierIds = []; }
   private void OpenCustomItem()

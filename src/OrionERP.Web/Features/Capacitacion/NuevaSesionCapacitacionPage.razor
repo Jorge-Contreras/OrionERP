@@ -1,0 +1,151 @@
+@page "/capacitacion/sesiones/nueva"
+@attribute [Authorize(Policy = "CapacitacionInstructor")]
+@inherits CapacitacionPageBase
+
+<PageTitle>Nueva sesión de capacitación</PageTitle>
+
+<CapacitacionShell Title="Preparar una sesión guiada"
+                   Eyebrow="Herramientas del instructor"
+                   Description="Elige un curso publicado, reúne a los colaboradores y deja listo el recorrido antes de comenzar.">
+  <HeroActions><a class="cap-btn cap-btn--ghost" href="/capacitacion"><span class="oi oi-arrow-left" aria-hidden="true"></span>Volver al panel</a></HeroActions>
+  <ChildContent>
+    @if (!string.IsNullOrWhiteSpace(PageError))
+    {
+      <div class="cap-alert cap-alert--error" role="alert"><span class="oi oi-warning" aria-hidden="true"></span><p>@PageError</p></div>
+    }
+    @if (!string.IsNullOrWhiteSpace(PageMessage))
+    {
+      <div class="cap-alert @(MessageIsError ? "cap-alert--error" : "cap-alert--success")" role="status"><span class="oi @(MessageIsError ? "oi-warning" : "oi-check")" aria-hidden="true"></span><p>@PageMessage</p></div>
+    }
+    @if (loading)
+    {
+      <CapacitacionLoading />
+    }
+    else
+    {
+      <div class="cap-create-layout">
+        <section class="cap-card" aria-labelledby="cap-session-form-title">
+          <div class="cap-card__header"><div><h2 id="cap-session-form-title">Datos de la sesión</h2><p>La sesión creará automáticamente una asignación para cada participante que aún no la tenga.</p></div><span class="cap-badge cap-badge--info">Paso 1 de 2</span></div>
+          <div class="cap-card__body">
+            <div class="cap-form-grid">
+              <div class="cap-field--wide"><label class="cap-label" for="cap-course">Curso publicado</label><select id="cap-course" class="cap-select" @bind="selectedCourseVersionId" @bind:after="CourseChanged"><option value="0">Selecciona un curso</option>@foreach(var item in courses){<option value="@item.CursoVersionId">@item.Nombre · v@item.NumeroVersion</option>}</select></div>
+              <div class="cap-field--wide"><label class="cap-label" for="cap-session-name">Nombre de la sesión</label><input id="cap-session-name" class="cap-input" maxlength="160" placeholder="Ej. Inducción CFDI · equipo de Reservaciones" @bind="sessionName" /><span class="cap-hint">Usa un nombre que el grupo pueda reconocer después.</span></div>
+              <div><label class="cap-label" for="cap-session-date">Fecha y hora</label><input id="cap-session-date" type="datetime-local" class="cap-input" @bind="scheduledAt" @bind:format="yyyy-MM-ddTHH:mm" /><span class="cap-hint">Zona horaria local del instructor.</span></div>
+              <div><span class="cap-label">Instructor</span><div class="cap-readonly-field"><span class="oi oi-person" aria-hidden="true"></span><span><strong>@Actor?.UserName</strong><small>Colaborador #@Actor?.EmployeeId</small></span></div></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="cap-card" aria-labelledby="cap-participants-title">
+          <div class="cap-card__header"><div><h2 id="cap-participants-title">Participantes</h2><p>Selecciona a quienes recibirán esta capacitación.</p></div><span class="cap-badge @(selectedEmployeeIds.Count > 0 ? "cap-badge--success" : "cap-badge--warn")">@selectedEmployeeIds.Count seleccionados</span></div>
+          <div class="cap-card__body">
+            <div class="cap-participant-tools"><label><span class="oi oi-magnifying-glass" aria-hidden="true"></span><span class="visually-hidden">Buscar colaboradores</span><input class="cap-input" type="search" placeholder="Nombre, puesto o correo" @bind="employeeSearch" @bind:event="oninput" /></label><button class="cap-btn cap-btn--light" type="button" @onclick="SelectVisible">Seleccionar visibles</button><button class="cap-btn cap-btn--light" type="button" disabled="@(selectedEmployeeIds.Count == 0)" @onclick="ClearSelection">Limpiar</button></div>
+            <div class="cap-employee-list" role="group" aria-label="Colaboradores disponibles">
+              @if (VisibleEmployees.Count == 0)
+              {
+                <div class="cap-empty py-4"><span class="cap-empty__icon"><span class="oi oi-magnifying-glass" aria-hidden="true"></span></span><h3>Sin coincidencias</h3><p>Prueba otra búsqueda.</p></div>
+              }
+              @foreach (var employee in VisibleEmployees)
+              {
+                var selected = selectedEmployeeIds.Contains(employee.EmployeeId);
+                <label class="cap-employee @(selected ? "selected" : null)">
+                  <input type="checkbox" checked="@selected" @onchange="() => ToggleEmployee(employee.EmployeeId)" />
+                  <span class="cap-employee__avatar" aria-hidden="true">@Initials(employee.Nombre)</span>
+                  <span class="cap-employee__copy"><strong>@employee.Nombre</strong><small>@(employee.Puesto ?? "Sin puesto") @if(!string.IsNullOrWhiteSpace(employee.Email)){<span> · @employee.Email</span>}</small></span>
+                  @if (!employee.TieneUsuario) { <span class="cap-badge cap-badge--warn" title="Necesita una cuenta vinculada para entrar a la sesión">Sin usuario</span> }
+                </label>
+              }
+            </div>
+          </div>
+        </section>
+
+        <aside class="cap-card cap-session-review" aria-labelledby="cap-review-title">
+          <div class="cap-card__header"><div><h2 id="cap-review-title">Revisión</h2><p>Confirma antes de crear.</p></div><span class="cap-badge cap-badge--info">Paso 2 de 2</span></div>
+          <div class="cap-card__body">
+            @if (SelectedCourse is { } selectedCourse)
+            {
+              <span class="cap-session-review__icon"><span class="oi @CapacitacionUi.IconForModule(selectedCourse.Categoria)" aria-hidden="true"></span></span>
+              <div class="cap-eyebrow-dark">@selectedCourse.Categoria</div><h3>@selectedCourse.Nombre</h3><p>@selectedCourse.Descripcion</p>
+              <dl><div><dt>Duración</dt><dd>@selectedCourse.DuracionMinutos min</dd></div><div><dt>Lecciones</dt><dd>@selectedCourse.LeccionCount</dd></div><div><dt>Participantes</dt><dd>@selectedEmployeeIds.Count</dd></div><div><dt>Programada</dt><dd>@scheduledAt.ToString("dd MMM · HH:mm")</dd></div></dl>
+              <div class="cap-session-review__flow"><FlujoCapacitacion CurrentStep="0" MaximumStep="0" /></div>
+            }
+            else
+            {
+              <div class="cap-empty py-4"><span class="cap-empty__icon"><span class="oi oi-book" aria-hidden="true"></span></span><h3>Selecciona un curso</h3><p>Aquí verás el resumen de la sesión.</p></div>
+            }
+            <div class="cap-alert"><span class="oi oi-shield" aria-hidden="true"></span><p>Las prácticas abrirán OrionERP Training con datos simulados; evita usar ejemplos de clientes o documentos reales.</p></div>
+            <button class="cap-btn cap-btn--teal w-100" type="button" disabled="@(!CanCreate || saving)" @onclick="CreateSessionAsync"><span class="oi oi-people" aria-hidden="true"></span>@(saving ? "Creando sesión…" : "Crear sesión guiada")</button>
+          </div>
+        </aside>
+      </div>
+    }
+  </ChildContent>
+</CapacitacionShell>
+
+@code {
+  [SupplyParameterFromQuery(Name = "cursoVersionId")] public int? RequestedCourseVersionId { get; set; }
+
+  private IReadOnlyList<CapacitacionCursoResumenDto> courses = [];
+  private IReadOnlyList<CapacitacionEmpleadoDto> employees = [];
+  private readonly HashSet<int> selectedEmployeeIds = [];
+  private int selectedCourseVersionId;
+  private string sessionName = string.Empty;
+  private string employeeSearch = string.Empty;
+  private DateTime scheduledAt = DateTime.Now.AddHours(1);
+  private bool loading = true;
+  private bool saving;
+  private CapacitacionCursoResumenDto? SelectedCourse => courses.FirstOrDefault(x => x.CursoVersionId == selectedCourseVersionId);
+  private List<CapacitacionEmpleadoDto> VisibleEmployees => employees.Where(x => x.EmployeeId != Actor?.EmployeeId && (string.IsNullOrWhiteSpace(employeeSearch) || x.Nombre.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) || (x.Puesto?.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) ?? false) || (x.Email?.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) ?? false))).OrderBy(x => x.Nombre).ToList();
+  private bool CanCreate => selectedCourseVersionId > 0 && !string.IsNullOrWhiteSpace(sessionName) && selectedEmployeeIds.Count > 0 && scheduledAt > DateTime.Now.AddMinutes(-1);
+
+  protected override async Task OnInitializedAsync()
+  {
+    if (!await InitializeActorAsync()) { loading = false; return; }
+    try
+    {
+      var catalogTask = Capacitacion.GetCatalogoAsync(Rfc, LifetimeToken);
+      var employeesTask = Capacitacion.GetEmpleadosAsignablesAsync(Rfc, null, LifetimeToken);
+      await Task.WhenAll(catalogTask, employeesTask);
+      courses = await catalogTask; employees = await employeesTask;
+      selectedCourseVersionId = RequestedCourseVersionId is { } requested && courses.Any(x => x.CursoVersionId == requested) ? requested : 0;
+      CourseChanged();
+    }
+    catch (Exception exception) { ShowPageException(exception, "No fue posible preparar el formulario."); }
+    finally { loading = false; }
+  }
+
+  private void CourseChanged()
+  {
+    var selected = SelectedCourse;
+    if (selected is not null && string.IsNullOrWhiteSpace(sessionName)) sessionName = $"{selected.Nombre} · {DateTime.Today:dd MMM yyyy}";
+  }
+
+  private void ToggleEmployee(int id) { if (!selectedEmployeeIds.Add(id)) selectedEmployeeIds.Remove(id); }
+  private void SelectVisible() { foreach (var employee in VisibleEmployees.Where(x => x.TieneUsuario)) selectedEmployeeIds.Add(employee.EmployeeId); }
+  private void ClearSelection() => selectedEmployeeIds.Clear();
+
+  private async Task CreateSessionAsync()
+  {
+    if (!CanCreate || Actor?.EmployeeId is null) return;
+    saving = true; PageMessage = null;
+    try
+    {
+      var result = await Capacitacion.CrearSesionAsync(new()
+      {
+        Rfc = Rfc, CursoVersionId = selectedCourseVersionId, Nombre = sessionName.Trim(),
+        InstructorEmployeeId = Actor.EmployeeId.Value, ParticipantEmployeeIds = selectedEmployeeIds.ToArray(),
+        ProgramadaEn = scheduledAt.ToUniversalTime(), ActorEmployeeId = Actor.EmployeeId.Value, Actor = Actor.UserName
+      }, LifetimeToken);
+      ShowResult(result);
+      if (result.Success && result.EntityId.HasValue) Navigation.NavigateTo($"/capacitacion/sesiones/{result.EntityId.Value}");
+    }
+    catch (Exception exception) { ShowException(exception, "No fue posible crear la sesión."); }
+    finally { saving = false; }
+  }
+
+  private static string Initials(string name)
+  {
+    var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    return string.Concat(parts.Take(2).Select(x => char.ToUpperInvariant(x[0])));
+  }
+}

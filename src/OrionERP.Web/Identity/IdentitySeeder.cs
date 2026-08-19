@@ -9,6 +9,16 @@ namespace OrionERP.Web.Identity
     {
         public static async Task RunAsync(IServiceProvider sp)
         {
+            var hostEnvironment = sp.GetRequiredService<IHostEnvironment>();
+
+            // Training identity is provisioned and attested by the guarded
+            // Orion_Training sanitization workflow. Startup must not mutate that
+            // closed synthetic manifest after its safety checks have passed.
+            if (hostEnvironment.IsEnvironment("Training"))
+            {
+                return;
+            }
+
             var roleMgr = sp.GetRequiredService<RoleManager<IdentityRole>>();
             var userMgr = sp.GetRequiredService<UserManager<ApplicationUser>>();
             string[] roles =
@@ -16,6 +26,8 @@ namespace OrionERP.Web.Identity
                 "Administrador",
                 "Operador",
                 "Lectura",
+                "SatOperator",
+                "Conteo",
                 "Arrendadores",
                 "OrdenTrabajoAdmin",
                 "OrdenTrabajoSupervisor",
@@ -32,6 +44,9 @@ namespace OrionERP.Web.Identity
                 ,"CapitalHumanoAdmin"
                 ,"CapitalHumanoSupervisor"
                 ,"CapitalHumanoNomina"
+                ,"CapacitacionAdmin"
+                ,"CapacitacionInstructor"
+                ,"CapacitacionAuditor"
             ];
 
             foreach (var r in roles)
@@ -42,35 +57,30 @@ namespace OrionERP.Web.Identity
                 }
             }
 
-            const string adminEmail = "admin@orionerp.local";
-            const string adminPass = "Orion2021";
+            if (hostEnvironment.IsDevelopment())
+            {
+                const string adminEmail = "admin@orionerp.local";
+                const string adminPass = "Orion2021";
 
-            var admin = await userMgr.Users.SingleOrDefaultAsync(u => u.Email == adminEmail);
-            if (admin is null)
-            {
-                admin = new ApplicationUser { UserName = adminEmail, Email = adminEmail };
-                var created = await userMgr.CreateAsync(admin, adminPass);
-                if (created.Succeeded)
+                var admin = await userMgr.Users.SingleOrDefaultAsync(u => u.Email == adminEmail);
+                if (admin is null)
                 {
-                    await userMgr.AddToRoleAsync(admin, "Administrador");
-                    await userMgr.AddClaimAsync(
-                        admin,
-                        new System.Security.Claims.Claim("rfc", "XAXX010101000"));
+                    admin = new ApplicationUser { UserName = adminEmail, Email = adminEmail };
+                    var created = await userMgr.CreateAsync(admin, adminPass);
+                    if (created.Succeeded)
+                    {
+                        await userMgr.AddToRoleAsync(admin, "Administrador");
+                        await userMgr.AddClaimAsync(
+                            admin,
+                            new System.Security.Claims.Claim("rfc", "XAXX010101000"));
+                    }
                 }
-            }
-            else
-            {
-                var environment = sp.GetService<IHostEnvironment>();
-                if (environment?.IsDevelopment() == true && !await userMgr.CheckPasswordAsync(admin, adminPass))
+                else if (!await userMgr.CheckPasswordAsync(admin, adminPass))
                 {
                     var resetToken = await userMgr.GeneratePasswordResetTokenAsync(admin);
                     _ = await userMgr.ResetPasswordAsync(admin, resetToken, adminPass);
                 }
-            }
 
-            var hostEnvironment = sp.GetService<IHostEnvironment>();
-            if (hostEnvironment?.IsDevelopment() == true)
-            {
                 await EnsureDevelopmentTestUserAsync(userMgr, "supervisor-test@orionerp.local", adminPass, "CapitalHumanoSupervisor");
                 await EnsureDevelopmentTestUserAsync(userMgr, "nomina-test@orionerp.local", adminPass, "CapitalHumanoNomina");
             }

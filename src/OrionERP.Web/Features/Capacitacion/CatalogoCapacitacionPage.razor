@@ -1,0 +1,118 @@
+@page "/capacitacion/catalogo"
+@attribute [Authorize(Policy = "CapacitacionEmployee")]
+@inherits CapacitacionPageBase
+
+<PageTitle>Catálogo de capacitación</PageTitle>
+
+<CapacitacionShell Title="Catálogo de aprendizaje"
+                   Eyebrow="Rutas y módulos"
+                   Description="Encuentra la teoría, las demostraciones y las prácticas que necesitas para operar OrionERP con seguridad.">
+  <ChildContent>
+    @if (!string.IsNullOrWhiteSpace(PageError))
+    {
+      <div class="cap-alert cap-alert--error" role="alert"><span class="oi oi-warning" aria-hidden="true"></span><p>@PageError</p></div>
+    }
+    @if (loading)
+    {
+      <CapacitacionLoading />
+    }
+    else if (selectedCourse is not null)
+    {
+      <section class="cap-catalog-detail" aria-labelledby="cap-detail-title">
+        <button type="button" class="cap-btn cap-btn--light" @onclick="CloseDetails"><span class="oi oi-arrow-left" aria-hidden="true"></span>Volver al catálogo</button>
+        <div class="cap-detail-hero">
+          <span class="cap-detail-hero__icon"><span class="oi @CapacitacionUi.IconForModule(selectedCourse.Categoria)" aria-hidden="true"></span></span>
+          <div><div class="cap-eyebrow-dark">@selectedCourse.Categoria · @selectedCourse.Clave</div><h2 id="cap-detail-title">@selectedCourse.Nombre</h2><p>@selectedCourse.Descripcion</p>
+            <div class="cap-detail-meta"><span><span class="oi oi-clock" aria-hidden="true"></span>@selectedCourse.DuracionMinutos min</span><span><span class="oi oi-list-rich" aria-hidden="true"></span>@selectedCourse.LeccionCount lecciones</span><span><span class="oi oi-badge" aria-hidden="true"></span>@selectedCourse.CalificacionMinima.ToString("0")% mínimo</span><span>Versión @selectedCourse.NumeroVersion</span></div>
+          </div>
+          <AuthorizeView Policy="CapacitacionInstructor"><Authorized><a class="cap-btn cap-btn--teal" href="/capacitacion/sesiones/nueva?cursoVersionId=@selectedCourse.CursoVersionId"><span class="oi oi-people" aria-hidden="true"></span>Impartir este curso</a></Authorized></AuthorizeView>
+        </div>
+
+        <div class="cap-grid mt-3">
+          <section class="cap-card cap-span-8">
+            <div class="cap-card__header"><div><h3>Lo que aprenderás</h3><p>Objetivos de la versión publicada.</p></div></div>
+            <div class="cap-card__body cap-safe-text">@foreach(var paragraph in Lines(selectedCourse.Objetivos)){<p>@paragraph</p>}</div>
+          </section>
+          <aside class="cap-card cap-card--soft cap-span-4">
+            <div class="cap-card__header"><div><h3>Antes de comenzar</h3><p>Requisitos recomendados.</p></div></div>
+            <div class="cap-card__body"><p>@(string.IsNullOrWhiteSpace(selectedCourse.Prerequisitos) ? "No requiere conocimientos previos." : selectedCourse.Prerequisitos)</p><span class="cap-badge cap-badge--success"><span class="oi oi-check" aria-hidden="true"></span>Contenido publicado</span></div>
+          </aside>
+        </div>
+
+        <section class="cap-card mt-3" aria-labelledby="cap-program-title">
+          <div class="cap-card__header"><div><h3 id="cap-program-title">Programa del curso</h3><p>Un flujo consistente de teoría, demostración, práctica y evaluación.</p></div><span class="cap-badge cap-badge--info">@selectedCourse.BloqueCount bloques</span></div>
+          <div class="cap-card__body">
+            <div class="cap-detail-flow"><FlujoCapacitacion CurrentStep="0" MaximumStep="0" /></div>
+            <ol class="cap-syllabus">
+              @foreach (var lesson in selectedCourse.Lecciones.OrderBy(x => x.Orden))
+              {
+                <li><span class="cap-syllabus__number">@lesson.Orden</span><div><h4>@lesson.Titulo @if(lesson.Requerida){<span class="cap-badge cap-badge--warn">Requerida</span>}</h4><p>@lesson.Objetivo</p><div class="cap-syllabus__meta"><span>@lesson.DuracionMinutos min</span><span>@lesson.Bloques.Count bloques</span></div></div>
+                  <div class="cap-block-chips">@foreach(var type in lesson.Bloques.Select(x => x.Tipo).Distinct()){<span>@BlockTypeLabel(type)</span>}</div>
+                </li>
+              }
+            </ol>
+          </div>
+        </section>
+      </section>
+    }
+    else
+    {
+      <div class="cap-catalog-toolbar">
+        <label class="cap-catalog-search"><span class="oi oi-magnifying-glass" aria-hidden="true"></span><span class="visually-hidden">Buscar cursos</span><input type="search" class="cap-input" placeholder="Buscar por curso, clave o tema" @bind="search" @bind:event="oninput" /></label>
+        <label><span class="cap-label">Módulo</span><select class="cap-select" @bind="category"><option value="">Todos los módulos</option>@foreach(var item in Categories){<option value="@item">@item</option>}</select></label>
+        <div class="cap-catalog-count"><strong>@VisibleCourses.Count</strong><span>@(VisibleCourses.Count == 1 ? "curso disponible" : "cursos disponibles")</span></div>
+      </div>
+
+      @if (VisibleCourses.Count == 0)
+      {
+        <div class="cap-card"><div class="cap-empty"><span class="cap-empty__icon"><span class="oi oi-magnifying-glass" aria-hidden="true"></span></span><h2>No encontramos cursos</h2><p>Cambia el texto de búsqueda o selecciona otro módulo.</p><button type="button" class="cap-btn cap-btn--light" @onclick="ClearFilters">Limpiar filtros</button></div></div>
+      }
+      else
+      {
+        <div class="cap-catalog-grid">
+          @foreach (var item in VisibleCourses)
+          {
+            <article class="cap-catalog-card">
+              <div class="cap-catalog-card__cover cap-cover--@CoverClass(item.Categoria)"><span class="oi @CapacitacionUi.IconForModule(item.Categoria)" aria-hidden="true"></span><span>@item.Categoria</span><svg viewBox="0 0 280 100" aria-hidden="true"><path d="M-15 80C45 15 96 132 160 54s102 12 142-23" fill="none" stroke="currentColor" stroke-width="22" opacity=".12" /></svg></div>
+              <div class="cap-catalog-card__body"><div class="cap-card-kicker"><span>@item.Clave</span><span>v@item.NumeroVersion</span></div><h2>@item.Nombre</h2><p>@item.Descripcion</p><div class="cap-catalog-card__meta"><span><span class="oi oi-clock" aria-hidden="true"></span>@item.DuracionMinutos min</span><span><span class="oi oi-list-rich" aria-hidden="true"></span>@item.LeccionCount lecciones</span></div></div>
+              <footer><button type="button" class="cap-btn cap-btn--primary" disabled="@detailsLoading" @onclick="() => OpenDetailsAsync(item)">Ver programa <span class="oi oi-chevron-right" aria-hidden="true"></span></button><span class="cap-badge cap-badge--success">Publicado</span></footer>
+            </article>
+          }
+        </div>
+      }
+    }
+  </ChildContent>
+</CapacitacionShell>
+
+@code {
+  private IReadOnlyList<CapacitacionCursoResumenDto> courses = [];
+  private CapacitacionCursoDetalleDto? selectedCourse;
+  private bool loading = true;
+  private bool detailsLoading;
+  private string search = string.Empty;
+  private string category = string.Empty;
+  private List<string> Categories => courses.Select(x => x.Categoria).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+  private List<CapacitacionCursoResumenDto> VisibleCourses => courses.Where(x => (string.IsNullOrWhiteSpace(category) || x.Categoria.Equals(category, StringComparison.OrdinalIgnoreCase)) && (string.IsNullOrWhiteSpace(search) || x.Nombre.Contains(search, StringComparison.OrdinalIgnoreCase) || x.Clave.Contains(search, StringComparison.OrdinalIgnoreCase) || x.Descripcion.Contains(search, StringComparison.OrdinalIgnoreCase))).OrderBy(x => x.Categoria).ThenBy(x => x.Nombre).ToList();
+
+  protected override async Task OnInitializedAsync()
+  {
+    if (!await InitializeActorAsync()) { loading = false; return; }
+    try { courses = await Capacitacion.GetCatalogoAsync(Rfc, LifetimeToken); }
+    catch (Exception exception) { ShowPageException(exception, "No fue posible cargar el catálogo."); }
+    finally { loading = false; }
+  }
+
+  private async Task OpenDetailsAsync(CapacitacionCursoResumenDto item)
+  {
+    detailsLoading = true;
+    try { selectedCourse = await Capacitacion.GetCursoAsync(item.CursoVersionId, Rfc, LifetimeToken); if(selectedCourse is null) PageError = "La versión seleccionada ya no está disponible."; }
+    catch (Exception exception) { ShowPageException(exception, "No fue posible abrir el programa."); }
+    finally { detailsLoading = false; }
+  }
+
+  private void CloseDetails() => selectedCourse = null;
+  private void ClearFilters() { search = string.Empty; category = string.Empty; }
+  private static IEnumerable<string> Lines(string value) => value.Split(['\r','\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+  private static string CoverClass(string category) => ((StringComparer.OrdinalIgnoreCase.GetHashCode(category) & int.MaxValue) % 4) switch { 1 => "teal", 2 => "gold", 3 => "violet", _ => "blue" };
+  private static string BlockTypeLabel(string type) => type switch { CapacitacionCodes.BloqueTeoria => "Teoría", CapacitacionCodes.BloqueObjetivos => "Objetivos", CapacitacionCodes.BloqueImagen => "Visual", CapacitacionCodes.BloquePasos => "Pasos", CapacitacionCodes.BloqueDemostracion => "Demo", CapacitacionCodes.BloquePractica => "Práctica", CapacitacionCodes.BloqueEvaluacion => "Evaluación", CapacitacionCodes.BloqueResumen => "Resumen", CapacitacionCodes.BloqueAlerta => "Alerta", _ => type };
+}

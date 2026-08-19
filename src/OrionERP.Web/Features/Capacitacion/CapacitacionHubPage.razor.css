@@ -1,0 +1,15 @@
+.cap-session-list { display: grid; gap: .55rem; }
+.cap-session-link { align-items: center; background: #fff; border: 1px solid #dce5ec; border-radius: .7rem; color: #18324a; display: grid; gap: .65rem; grid-template-columns: auto minmax(0,1fr) auto; padding: .65rem; text-decoration: none; }
+.cap-session-link:hover { border-color: #8ebcca; box-shadow: 0 5px 14px rgba(24,50,74,.08); color: #126b8f; }
+.cap-session-link__date { align-items: center; background: #e5f3f3; border-radius: .55rem; color: #096b68; display: flex; flex-direction: column; height: 2.8rem; justify-content: center; line-height: 1; width: 2.8rem; }
+.cap-session-link__date strong { font-size: 1rem; }
+.cap-session-link__date small { font-size: .62rem; text-transform: uppercase; }
+.cap-session-link > span:nth-child(2) { min-width: 0; }
+.cap-session-link > span:nth-child(2) strong, .cap-session-link > span:nth-child(2) small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cap-session-link > span:nth-child(2) strong { font-size: .83rem; }
+.cap-session-link > span:nth-child(2) small { color: #607489; font-size: .7rem; margin-top: .2rem; }
+.cap-learning-principles { align-items: center; background: linear-gradient(120deg,#f0f8f7,#edf4f8); border: 1px solid #d5e6e8; border-radius: 1rem; display: grid; gap: 2rem; grid-template-columns: minmax(15rem,.7fr) minmax(30rem,1.3fr); margin-top: 1rem; padding: 1.3rem; }
+.cap-learning-principles h2 { font-size: 1.2rem; margin: .65rem 0 .35rem; }
+.cap-learning-principles p { color: #607489; line-height: 1.55; margin: 0; }
+@media (max-width: 991.98px) { .cap-learning-principles { grid-template-columns: 1fr; } }
+@media (max-width: 575.98px) { .cap-learning-principles { overflow-x: auto; } .cap-learning-principles ::deep .cap-flow { min-width: 32rem; } }

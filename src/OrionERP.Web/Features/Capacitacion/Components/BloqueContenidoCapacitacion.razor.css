@@ -1,0 +1,30 @@
+.cap-block { background: #fff; border: 1px solid #dce5ec; border-radius: 1rem; overflow: hidden; }
+.cap-block__header { align-items: center; background: #f7fafb; border-bottom: 1px solid #e1e9ee; display: flex; gap: .8rem; padding: 1rem 1.2rem; }
+.cap-block__icon { align-items: center; background: #e3f1f6; border-radius: .65rem; color: #126b8f; display: inline-flex; flex: 0 0 auto; font-size: 1.1rem; height: 2.6rem; justify-content: center; width: 2.6rem; }
+.cap-block__kind { color: #607489; font-size: .66rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.cap-block h2 { font-size: 1.08rem; font-weight: 760; margin: .1rem 0 0; }
+.cap-block__time { color: #607489; display: inline-flex; font-size: .74rem; gap: .35rem; margin-left: auto; white-space: nowrap; }
+.cap-block__body { color: #334e63; line-height: 1.7; padding: 1.2rem; }
+.cap-block__body p:last-of-type { margin-bottom: 1rem; }
+.cap-block__body ul { padding-left: 1.25rem; }
+.cap-block__body li + li { margin-top: .35rem; }
+.cap-block--visual .cap-block__icon { background: #e8f5f2; color: #0c857b; }
+.cap-block--demo .cap-block__icon { background: #eeeafb; color: #5e51a4; }
+.cap-block--practica { border-color: #bcded7; }
+.cap-block--practica .cap-block__icon { background: #e1f3ed; color: #087162; }
+.cap-block--evaluacion { border-color: #ead7b0; }
+.cap-block--evaluacion .cap-block__icon { background: #fff2d8; color: #8a651b; }
+.cap-block--resumen { border-color: #bcd6e1; }
+.cap-block--pasos .cap-block__icon { background: #e8f1fa; color: #315f8b; }
+.cap-block--alerta { background: #fffaf0; border-color: #e7ca91; }
+.cap-block--alerta .cap-block__header { background: #fff4dc; border-color: #ead19a; }
+.cap-block--alerta .cap-block__icon { background: #f6d99d; color: #795612; }
+.cap-visual { background: linear-gradient(145deg,#f6fafb,#edf6f5); border: 1px solid #d9e9eb; border-radius: .8rem; margin-bottom: 1rem; overflow: hidden; padding: .5rem; }
+.cap-visual svg { display: block; height: auto; max-height: 12rem; width: 100%; }
+.cap-resource-image { background: #edf3f5; border: 1px solid #d9e5ea; border-radius: .8rem; margin: 0 0 1rem; overflow: hidden; }
+.cap-resource-image img { display: block; height: auto; max-height: 32rem; object-fit: contain; width: 100%; }
+.cap-resource-image figcaption { color: #607489; font-size: .72rem; padding: .55rem .7rem; text-align: center; }
+.cap-task-list { display: grid; gap: .55rem; list-style: none; padding: 0 !important; }
+.cap-task-list li { align-items: flex-start; background: #f2f8f6; border-radius: .55rem; display: flex; gap: .55rem; padding: .65rem .75rem; }
+.cap-task-list .oi { color: #0c857b; margin-top: .22rem; }
+.cap-block__complete { align-items: center; background: #dcf3eb; border-radius: 999px; color: #086958; display: inline-flex; font-size: .78rem; font-weight: 800; gap: .35rem; padding: .5rem .75rem; }

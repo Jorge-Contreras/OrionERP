@@ -7,7 +7,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="App_Data\rfc-register.aes.key">
+    <Content Include="App_Data\rfc-register.aes.key" Condition="'$(ExcludeProductionEncryptionKey)' != 'true'">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Pages\Index.razor.css" />

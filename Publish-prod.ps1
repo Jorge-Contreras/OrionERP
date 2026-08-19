@@ -11,6 +11,8 @@ param(
     [string]$HealthCheckUrl = "http://127.0.0.1:5000/",
     [int]$HealthCheckAttempts = 15,
     [int]$HealthCheckDelaySeconds = 2,
+    [scriptblock]$HealthCheckValidator = $null,
+    [string[]]$AdditionalPublishArguments = @(),
     [switch]$SkipServiceControl
 )
 
@@ -174,7 +176,8 @@ function Wait-ApplicationHealth {
     param(
         [string]$Url,
         [int]$Attempts,
-        [int]$DelaySeconds
+        [int]$DelaySeconds,
+        [scriptblock]$Validator
     )
 
     Write-Step "Verifying application health"
@@ -184,6 +187,13 @@ function Wait-ApplicationHealth {
         try {
             $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 5
             if ([int]$response.StatusCode -ge 200 -and [int]$response.StatusCode -lt 400) {
+                if ($null -ne $Validator) {
+                    $isValid = & $Validator $response
+                    if (-not $isValid) {
+                        throw "The health response did not satisfy the application-specific safety contract."
+                    }
+                }
+
                 Write-Host ("Application health check passed: {0}" -f $Url)
                 return
             }
@@ -251,7 +261,7 @@ try {
     New-Item -ItemType Directory -Path $stagingOutputPath -Force | Out-Null
 
     Write-Step "Publishing project to staging"
-    Invoke-NativeCommand -FilePath "dotnet" -ArgumentList @(
+    $publishArguments = @(
         "publish",
         $projectFullPath,
         "-c", "Release",
@@ -261,6 +271,8 @@ try {
         "--verbosity", "minimal",
         "-o", $stagingOutputPath
     )
+    $publishArguments += $AdditionalPublishArguments
+    Invoke-NativeCommand -FilePath "dotnet" -ArgumentList $publishArguments
 
     if (-not $SkipServiceControl) {
         if ($serviceWasRunning) {
@@ -308,7 +320,11 @@ try {
             Write-Warning "Skipping health verification because -SkipServiceControl was used."
         }
         elseif ($serviceWasRunning) {
-            Wait-ApplicationHealth -Url $HealthCheckUrl -Attempts $HealthCheckAttempts -DelaySeconds $HealthCheckDelaySeconds
+            Wait-ApplicationHealth `
+                -Url $HealthCheckUrl `
+                -Attempts $HealthCheckAttempts `
+                -DelaySeconds $HealthCheckDelaySeconds `
+                -Validator $HealthCheckValidator
         }
         else {
             Write-Warning "Skipping health verification because service '$ServiceName' was not running before deployment."

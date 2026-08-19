@@ -1,0 +1,419 @@
+@page "/capacitacion/sesiones/{Id:long}"
+@attribute [Authorize(Policy = "CapacitacionEmployee")]
+@inherits CapacitacionPageBase
+
+<PageTitle>@(session is null ? "Sesión de capacitación" : session.Nombre)</PageTitle>
+
+<div class="cap-live @(presentationMode ? "cap-live--presentation" : null)" tabindex="-1" @onkeydown="HandleKeyDown">
+  <CapacitacionShell Title="@(session?.Nombre ?? "Sesión guiada")"
+                     Eyebrow="Sesión en vivo"
+                     Description="@(session is null ? "Cargando el espacio de aprendizaje…" : $"{session.Curso.Nombre} · instructor {session.InstructorName}")"
+                     ShowNavigation="@(!presentationMode)">
+    <HeroActions>
+      @if (session is not null)
+      {
+        <span class="cap-live-code" title="Código para identificar esta sesión"><small>Código</small><strong>@session.CodigoAcceso</strong></span>
+        <span class="cap-live-sync @(pollingHealthy ? "healthy" : "degraded")"><span aria-hidden="true"></span>@(pollingHealthy ? "Sincronizada" : "Reconectando")</span>
+        <button class="cap-btn cap-btn--ghost" type="button" @onclick="TogglePresentation"><span class="oi @(presentationMode ? "oi-fullscreen-exit" : "oi-fullscreen-enter")" aria-hidden="true"></span>@(presentationMode ? "Salir de presentación" : "Modo presentación")</button>
+      }
+    </HeroActions>
+    <ChildContent>
+      @if (!string.IsNullOrWhiteSpace(PageError))
+      {
+        <div class="cap-alert cap-alert--error" role="alert"><span class="oi oi-warning" aria-hidden="true"></span><p>@PageError</p></div>
+      }
+      @if (!string.IsNullOrWhiteSpace(PageMessage))
+      {
+        <div class="cap-alert @(MessageIsError ? "cap-alert--error" : "cap-alert--success")" role="status"><span class="oi @(MessageIsError ? "oi-warning" : "oi-check")" aria-hidden="true"></span><p>@PageMessage</p></div>
+      }
+
+      @if (loading)
+      {
+        <CapacitacionLoading />
+      }
+      else if (session is null)
+      {
+        <div class="cap-card"><div class="cap-empty"><span class="cap-empty__icon"><span class="oi oi-warning" aria-hidden="true"></span></span><h2>Sesión no disponible</h2><p>No se encontró la sesión o tu colaborador no forma parte de ella.</p><a class="cap-btn cap-btn--primary" href="/capacitacion">Volver a Capacitación</a></div></div>
+      }
+      else if (session.Estado == CapacitacionCodes.SesionProgramada)
+      {
+        <section class="cap-lobby" aria-labelledby="cap-lobby-title">
+          <div class="cap-lobby__visual" aria-hidden="true"><span class="oi oi-people"></span><i></i><i></i><i></i></div>
+          <span class="cap-badge cap-badge--warn"><span class="oi oi-clock" aria-hidden="true"></span>Sesión programada</span>
+          <h2 id="cap-lobby-title">@session.Curso.Nombre</h2>
+          @if (IsInstructor)
+          {
+            <p>Todo está listo. Revisa que el grupo esté presente y comienza cuando quieras mostrar el primer bloque.</p>
+            <button type="button" class="cap-btn cap-btn--teal" disabled="@busy" @onclick="StartSessionAsync"><span class="oi oi-media-play" aria-hidden="true"></span>@(busy ? "Iniciando…" : "Iniciar sesión")</button>
+          }
+          else
+          {
+            <p>Ya estás dentro. El contenido aparecerá automáticamente cuando <strong>@session.InstructorName</strong> inicie la sesión.</p>
+            <div class="cap-waiting"><span></span><span></span><span></span><small>Esperando al instructor</small></div>
+          }
+          <div class="cap-lobby__people"><strong>@session.ParticipanteCount participantes</strong><span>Programada @session.ProgramadaEn.ToLocalTime().ToString("dd MMM yyyy · HH:mm")</span></div>
+        </section>
+      }
+      else
+      {
+        <div class="cap-live__flow"><FlujoCapacitacion CurrentStep="@CurrentFlowStep" MaximumStep="@(IsInstructor ? 5 : CurrentFlowStep)" AllowNavigation="@IsInstructor" StepSelected="GoToFlowStepAsync" /></div>
+
+        <div class="cap-live__layout @(IsInstructor && showPeople ? "cap-live__layout--people" : null)">
+          <main class="cap-live__stage" aria-live="polite">
+            <header class="cap-live__stagebar">
+              <div><span class="cap-badge @CapacitacionUi.StatusCss(session.Estado)">@CapacitacionUi.StatusLabel(session.Estado)</span><span class="cap-stage-count">Bloque @(CurrentBlockIndex + 1) de @Blocks.Count</span></div>
+              <div>
+                @if (IsInstructor) { <button type="button" class="cap-btn cap-btn--light" aria-expanded="@showPeople" @onclick="() => showPeople = !showPeople"><span class="oi oi-people" aria-hidden="true"></span>@session.ParticipanteCount</button> }
+                @if (presentationMode) { <span class="cap-hint">Presiona Esc para salir</span> }
+              </div>
+            </header>
+
+            @if (session.Estado == CapacitacionCodes.SesionFinalizada)
+            {
+              <section class="cap-session-close" aria-labelledby="cap-close-title">
+                <span class="cap-session-close__mark"><span class="oi oi-flag" aria-hidden="true"></span></span>
+                <div class="cap-eyebrow-dark">Cierre de sesión</div><h2 id="cap-close-title">La presentación terminó</h2>
+                <p>Completa las validaciones pendientes para que la capacitación quede registrada. La asistencia por sí sola no equivale a aprobar el curso.</p>
+                <div class="cap-close-requirements"><span><i class="oi oi-check"></i>Bloques requeridos</span><span><i class="oi oi-pencil"></i>Evaluación mínima</span><span><i class="oi oi-wrench"></i>Práctica aprobada</span><span><i class="oi oi-badge"></i>Firma y acuse</span></div>
+                @if (IsInstructor)
+                {
+                  <div class="cap-signoff-list">
+                    <h3>Firma del instructor</h3>
+                    @foreach (var participant in Trainees)
+                    {
+                      <div><span class="cap-person-avatar">@Initials(participant.Nombre)</span><span><strong>@participant.Nombre</strong><small>@CapacitacionUi.ClampPercent(participant.Porcentaje)% de contenido confirmado</small></span>
+                        @if (participant.EstadoAsignacion is CapacitacionCodes.AsignacionEsperaAcuse or CapacitacionCodes.AsignacionCompletada)
+                        {
+                          <span class="cap-badge cap-badge--success"><span class="oi oi-check" aria-hidden="true"></span>Firmada</span>
+                        }
+                        else
+                        {
+                          <button type="button" class="cap-btn cap-btn--light" title="La firma se habilita al completar contenido, evaluación y práctica." disabled="@(busy || !participant.AsignacionId.HasValue || participant.EstadoAsignacion != CapacitacionCodes.AsignacionEsperaFirma)" @onclick="() => SignAsync(participant)"><span class="oi oi-pen" aria-hidden="true"></span>Firmar</button>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+                else if (CurrentParticipant?.AsignacionId is { } assignmentId)
+                {
+                  @if (session.BloqueActual is { } finalBlock && !CurrentParticipant.BloqueActualCompletado)
+                  {
+                    <div class="cap-alert cap-alert--warn"><span class="oi oi-info" aria-hidden="true"></span><p>Confirma el último bloque para completar la evidencia de contenido de esta sesión.</p></div>
+                    <button type="button" class="cap-btn cap-btn--primary" disabled="@busy" @onclick="() => ConfirmBlockAsync(finalBlock.BloqueId, assignmentId)"><span class="oi oi-check" aria-hidden="true"></span>@(busy ? "Guardando…" : "Confirmar último bloque revisado")</button>
+                  }
+                  else if (CurrentParticipant.EstadoAsignacion == CapacitacionCodes.AsignacionEsperaAcuse)
+                  {
+                    <label class="cap-check cap-ack"><input type="checkbox" @bind="acknowledgementChecked" /><span>Confirmo que recibí la teoría, realicé la práctica indicada y conozco dónde consultar este material.</span></label>
+                    <button type="button" class="cap-btn cap-btn--teal" disabled="@(busy || !acknowledgementChecked)" @onclick="() => AcknowledgeAsync(assignmentId)"><span class="oi oi-check" aria-hidden="true"></span>Registrar mi acuse</button>
+                  }
+                  else if (CurrentParticipant.EstadoAsignacion == CapacitacionCodes.AsignacionCompletada)
+                  {
+                    <span class="cap-badge cap-badge--success"><span class="oi oi-badge" aria-hidden="true"></span>Capacitación completada</span>
+                  }
+                  else
+                  {
+                    <div class="cap-alert cap-alert--warn"><span class="oi oi-clock" aria-hidden="true"></span><p>Faltan la evaluación, la práctica o la firma del instructor. Puedes completar las actividades pendientes desde Mi capacitación.</p></div>
+                  }
+                }
+                <a class="cap-btn cap-btn--light" href="/capacitacion/mi-plan">Revisar mi plan</a>
+              </section>
+            }
+            else if (session.BloqueActual is { } block)
+            {
+              <div @key="block.BloqueId" class="cap-live__block">
+                <BloqueContenidoCapacitacion Block="@ToViewModel(block)" />
+
+                @if (IsInstructor && !string.IsNullOrWhiteSpace(CapacitacionUi.GetInstructorNotes(block.ConfiguracionJson)))
+                {
+                  <details class="cap-trainer-notes">
+                    <summary><span class="oi oi-lock-locked" aria-hidden="true"></span>Notas privadas para el instructor</summary>
+                    <p>@CapacitacionUi.GetInstructorNotes(block.ConfiguracionJson)</p>
+                  </details>
+                }
+
+                @if (block.Tipo == CapacitacionCodes.BloqueEvaluacion && CurrentEvaluation is not null)
+                {
+                  @if (IsInstructor)
+                  {
+                    <div class="cap-instructor-cue"><span class="oi oi-lightbulb" aria-hidden="true"></span><p>Da tiempo al grupo para responder de manera individual. Las respuestas y el resultado pertenecen a cada colaborador.</p></div>
+                  }
+                  else
+                  {
+                    <section class="cap-live-assessment" aria-labelledby="cap-live-eval-title">
+                      <div><h2 id="cap-live-eval-title">@CurrentEvaluation.Titulo</h2><p>@CurrentEvaluation.Instrucciones</p><span class="cap-badge cap-badge--warn">Mínimo @CurrentEvaluation.CalificacionMinima.ToString("0")%</span></div>
+                      @foreach(var question in CurrentEvaluation.Preguntas.OrderBy(x => x.Orden))
+                      {
+                        <fieldset><legend>@question.Orden. @question.Texto @if(question.Critica){<span class="cap-badge cap-badge--danger">Crítica</span>}</legend>@foreach(var option in question.Opciones.OrderBy(x => x.Orden)){<label><input type="radio" name="session-question-@question.PreguntaId" checked="@(SelectedOption(question.PreguntaId) == option.OpcionId)" @onchange="() => SelectOption(question.PreguntaId, option.OpcionId)"/><span>@option.Texto</span></label>}</fieldset>
+                      }
+                      <button class="cap-btn cap-btn--primary" type="button" disabled="@(busy || !AllQuestionsAnswered)" @onclick="SubmitEvaluationAsync">@(busy ? "Evaluando…" : "Enviar respuestas")</button>
+                      @if(evaluationResult is not null){<div class="cap-alert @(evaluationResult.Aprobada ? "cap-alert--success" : "cap-alert--error") mt-3"><span class="oi @(evaluationResult.Aprobada ? "oi-check" : "oi-warning")" aria-hidden="true"></span><p><strong>@evaluationResult.Calificacion.ToString("0")%</strong> · @evaluationResult.Message</p></div>}
+                    </section>
+                  }
+                }
+
+                @if (block.Tipo == CapacitacionCodes.BloquePractica && CurrentPractice is not null)
+                {
+                  <section class="cap-live-practice" aria-labelledby="cap-live-practice-title">
+                    <div class="cap-practice-env"><span class="oi oi-shield" aria-hidden="true"></span><div><strong>ENTORNO DE PRÁCTICA · DATOS SIMULADOS</strong><small>Las integraciones y efectos externos están bloqueados.</small></div></div>
+                    <h2 id="cap-live-practice-title">@CurrentPractice.Titulo</h2><p>@CurrentPractice.Instrucciones</p>
+                    @if (BuildSandboxUrl(CurrentPractice.RutaSandbox) is { } sandboxUrl)
+                    {
+                      <a class="cap-btn cap-btn--teal" href="@sandboxUrl" target="_blank" rel="noopener noreferrer"><span class="oi oi-external-link" aria-hidden="true"></span>Abrir práctica en OrionERP Training</a>
+                    }
+                    else { <button type="button" class="cap-btn cap-btn--light" disabled><span class="oi oi-lock-locked" aria-hidden="true"></span>Sandbox no configurado</button> }
+
+                    @if (IsInstructor)
+                    {
+                      <div class="cap-practice-review">
+                        <label class="cap-label" for="cap-practice-person">Validar práctica de</label>
+                        <select id="cap-practice-person" class="cap-select" @bind="practiceEmployeeId" @bind:after="ResetPracticeReview"><option value="0">Selecciona un colaborador</option>@foreach(var person in Trainees){<option value="@person.EmployeeId">@person.Nombre</option>}</select>
+                        @if (practiceEmployeeId > 0)
+                        {
+                          <div class="cap-practice-checks">
+                            @foreach(var step in CurrentPractice.Pasos.OrderBy(x => x.Orden))
+                            {
+                              <label><input type="checkbox" checked="@PracticeApproved(step.PracticaPasoId)" @onchange="() => TogglePracticeStep(step.PracticaPasoId)"/><span><strong>@step.Orden. @step.Descripcion</strong>@if(step.Critico){<small>Paso crítico</small>}</span></label>
+                            }
+                          </div>
+                          <label class="cap-label" for="cap-practice-notes">Observaciones</label><textarea id="cap-practice-notes" class="cap-textarea" rows="3" maxlength="1000" @bind="practiceNotes"></textarea>
+                          <button type="button" class="cap-btn cap-btn--primary" disabled="@busy" @onclick="SubmitPracticeAsync">Guardar validación práctica</button>
+                        }
+                      </div>
+                    }
+                    else
+                    {
+                      <ol class="cap-practice-view">@foreach(var step in CurrentPractice.Pasos.OrderBy(x => x.Orden)){<li><span>@step.Orden</span><div>@step.Descripcion @if(step.Critico){<span class="cap-badge cap-badge--danger">Crítico</span>}</div></li>}</ol>
+                    }
+                  </section>
+                }
+
+                @if (!IsInstructor && CurrentParticipant?.AsignacionId is { } currentAssignmentId)
+                {
+                  @if (CurrentParticipant.BloqueActualCompletado)
+                  {
+                    <span class="cap-block__complete"><span class="oi oi-check" aria-hidden="true"></span>Bloque confirmado</span>
+                  }
+                  else
+                  {
+                    <button type="button" class="cap-btn cap-btn--light cap-confirm-block" disabled="@busy" @onclick="() => ConfirmBlockAsync(block.BloqueId, currentAssignmentId)"><span class="oi oi-check" aria-hidden="true"></span>@(busy ? "Guardando…" : "Confirmar que revisé este bloque")</button>
+                  }
+                }
+              </div>
+            }
+
+            @if (IsInstructor && session.Estado != CapacitacionCodes.SesionFinalizada)
+            {
+              <nav class="cap-instructor-controls" aria-label="Controles de presentación">
+                <button type="button" class="cap-btn cap-btn--light" disabled="@(busy || CurrentBlockIndex <= 0)" @onclick="PreviousAsync"><span class="oi oi-chevron-left" aria-hidden="true"></span>Anterior</button>
+                <span><strong>@CapacitacionUi.FlowSteps[CurrentFlowStep]</strong><small>Tú controlas lo que ve el grupo</small></span>
+                @if (CurrentBlockIndex < Blocks.Count - 1)
+                {
+                  <button type="button" class="cap-btn cap-btn--primary" disabled="@busy" @onclick="NextAsync">Siguiente <span class="oi oi-chevron-right" aria-hidden="true"></span></button>
+                }
+                else
+                {
+                  <button type="button" class="cap-btn cap-btn--teal" disabled="@busy" @onclick="FinishSessionAsync"><span class="oi oi-flag" aria-hidden="true"></span>Finalizar sesión</button>
+                }
+              </nav>
+            }
+          </main>
+
+          @if (IsInstructor && showPeople)
+          {
+            <aside class="cap-live__people" aria-labelledby="cap-people-title">
+              <header><div><h2 id="cap-people-title">Participantes</h2><p>Progreso confirmado por cada persona.</p></div><button type="button" aria-label="Cerrar participantes" @onclick="() => showPeople = false"><span class="oi oi-x" aria-hidden="true"></span></button></header>
+              <div class="cap-live__people-list">
+                @foreach(var participant in session.Participantes.OrderByDescending(x => x.Rol == "INSTRUCTOR").ThenBy(x => x.Nombre))
+                {
+                  <div><span class="cap-person-avatar">@Initials(participant.Nombre)</span><span><strong>@participant.Nombre</strong><small>@(participant.Rol == "INSTRUCTOR" ? "Instructor" : $"{CapacitacionUi.ClampPercent(participant.Porcentaje)}% confirmado")</small></span>@if(participant.UnidoEn.HasValue){<i title="Conectado" aria-label="Conectado"></i>}else{<i class="offline" title="Aún no se ha unido" aria-label="Aún no se ha unido"></i>}</div>
+                }
+              </div>
+              <div class="cap-people-tip"><span class="oi oi-info" aria-hidden="true"></span><p>Pide a cada colaborador que confirme los bloques desde su propia pantalla. La evidencia es personal.</p></div>
+            </aside>
+          }
+        </div>
+      }
+    </ChildContent>
+  </CapacitacionShell>
+</div>
+
+@code {
+  [Parameter] public long Id { get; set; }
+  private CapacitacionSesionDto? session;
+  private Task? pollingTask;
+  private bool loading = true;
+  private bool busy;
+  private bool pollingHealthy = true;
+  private bool presentationMode;
+  private bool showPeople;
+  private bool acknowledgementChecked;
+  private int practiceEmployeeId;
+  private string practiceNotes = string.Empty;
+  private readonly HashSet<int> approvedPracticeSteps = [];
+  private readonly Dictionary<int,int> selectedOptions = [];
+  private CapacitacionEvaluacionResultadoDto? evaluationResult;
+
+  private bool IsInstructor => Actor?.EmployeeId == session?.InstructorEmployeeId;
+  private List<CapacitacionBloqueDto> Blocks => session?.Curso.Lecciones.OrderBy(x => x.Orden).SelectMany(x => x.Bloques.OrderBy(b => b.Orden)).ToList() ?? [];
+  private int CurrentBlockIndex => session?.BloqueActualId is { } blockId ? Math.Max(0, Blocks.FindIndex(x => x.BloqueId == blockId)) : 0;
+  private CapacitacionSesionParticipanteDto? CurrentParticipant => session?.Participantes.FirstOrDefault(x => x.EmployeeId == Actor?.EmployeeId);
+  private List<CapacitacionSesionParticipanteDto> Trainees => session?.Participantes.Where(x => !x.Rol.Equals("INSTRUCTOR", StringComparison.OrdinalIgnoreCase)).OrderBy(x => x.Nombre).ToList() ?? [];
+  private CapacitacionEvaluacionDto? CurrentEvaluation => session?.Curso.Evaluaciones.FirstOrDefault();
+  private CapacitacionPracticaDto? CurrentPractice => session?.Curso.Practicas.FirstOrDefault();
+  private bool AllQuestionsAnswered => CurrentEvaluation?.Preguntas.All(x => selectedOptions.ContainsKey(x.PreguntaId)) == true;
+  private int CurrentFlowStep => session?.Estado == CapacitacionCodes.SesionFinalizada
+    ? 5
+    : session?.BloqueActual?.Tipo switch { CapacitacionCodes.BloqueObjetivos => 0, CapacitacionCodes.BloqueDemostracion => 2, CapacitacionCodes.BloquePractica => 3, CapacitacionCodes.BloqueEvaluacion => 4, CapacitacionCodes.BloqueResumen => 5, _ => 1 };
+
+  protected override async Task OnInitializedAsync()
+  {
+    if (!await InitializeActorAsync()) { loading = false; return; }
+    await LoadSessionAsync(showError: true);
+    loading = false;
+    if (session is not null) pollingTask = PollSessionAsync();
+  }
+
+  private async Task LoadSessionAsync(bool showError = false)
+  {
+    if (Actor?.EmployeeId is null) return;
+    try
+    {
+      var updated = await Capacitacion.GetSesionAsync(Id, Rfc, Actor.EmployeeId.Value, LifetimeToken);
+      session = updated; pollingHealthy = true;
+    }
+    catch (OperationCanceledException) when (LifetimeToken.IsCancellationRequested) { }
+    catch (Exception exception)
+    {
+      if (pollingHealthy)
+        LogException(exception, "No fue posible sincronizar la sesión.");
+      pollingHealthy = false;
+      if (showError) PageError = "No fue posible cargar la sesión.";
+    }
+  }
+
+  private async Task PollSessionAsync()
+  {
+    using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+    try
+    {
+      while (await timer.WaitForNextTickAsync(LifetimeToken))
+        await InvokeAsync(async () => { await LoadSessionAsync(); StateHasChanged(); });
+    }
+    catch (OperationCanceledException) when (LifetimeToken.IsCancellationRequested) { }
+  }
+
+  private async Task StartSessionAsync() => await MoveAsync(session?.BloqueActualId, false);
+  private async Task NextAsync() => await MoveAsync(CurrentBlockIndex + 1 < Blocks.Count ? Blocks[CurrentBlockIndex + 1].BloqueId : null, CurrentBlockIndex + 1 >= Blocks.Count);
+  private async Task PreviousAsync() { if(CurrentBlockIndex > 0) await MoveAsync(Blocks[CurrentBlockIndex - 1].BloqueId, false); }
+  private async Task FinishSessionAsync() => await MoveAsync(null, true);
+
+  private async Task MoveAsync(int? blockId, bool finish)
+  {
+    if (!IsInstructor || Actor?.EmployeeId is null) return;
+    busy = true; PageMessage = null;
+    try
+    {
+      var result = await Capacitacion.AvanzarSesionAsync(new() { Rfc = Rfc, SesionId = Id, BloqueId = blockId, Finalizar = finish, ActorEmployeeId = Actor.EmployeeId.Value, Actor = Actor.UserName }, LifetimeToken);
+      ShowResult(result); if(result.Success) await LoadSessionAsync(true);
+    }
+    catch(Exception exception){ ShowException(exception, "No fue posible actualizar la sesión."); }
+    finally{ busy = false; }
+  }
+
+  private async Task GoToFlowStepAsync(int step)
+  {
+    if (!IsInstructor) return;
+    var block = Blocks.FirstOrDefault(x => FlowStep(x.Tipo) == step);
+    if(block is not null) await MoveAsync(block.BloqueId, false);
+  }
+
+  private async Task ConfirmBlockAsync(int blockId, long assignmentId)
+  {
+    if (Actor?.EmployeeId is null) return; busy = true;
+    try
+    {
+      var result = await Capacitacion.RegistrarProgresoBloqueAsync(new() { Rfc = Rfc, AsignacionId = assignmentId, SesionId = Id, BloqueId = blockId, EmployeeId = Actor.EmployeeId.Value, ActorEmployeeId = Actor.EmployeeId.Value, Actor = Actor.UserName }, LifetimeToken);
+      ShowResult(result); if(result.Success) await LoadSessionAsync();
+    }
+    catch(Exception exception){ ShowException(exception, "No fue posible confirmar el bloque."); }
+    finally{ busy = false; }
+  }
+
+  private void SelectOption(int questionId, int optionId){ selectedOptions[questionId] = optionId; evaluationResult = null; }
+  private int? SelectedOption(int questionId) => selectedOptions.TryGetValue(questionId, out var value) ? value : null;
+  private async Task SubmitEvaluationAsync()
+  {
+    if(CurrentEvaluation is null || CurrentParticipant?.AsignacionId is not { } assignmentId || Actor?.EmployeeId is null || !AllQuestionsAnswered) return;
+    busy = true;
+    try
+    {
+      evaluationResult = await Capacitacion.RegistrarEvaluacionAsync(new() { Rfc = Rfc, AsignacionId = assignmentId, SesionId = Id, EvaluacionId = CurrentEvaluation.EvaluacionId, EmployeeId = Actor.EmployeeId.Value, OpcionIds = selectedOptions.Values.ToArray(), ActorEmployeeId = Actor.EmployeeId.Value, Actor = Actor.UserName }, LifetimeToken);
+      PageMessage = evaluationResult.Message; MessageIsError = !evaluationResult.Aprobada;
+    }
+    catch(Exception exception){ ShowException(exception, "No fue posible evaluar tus respuestas."); }
+    finally{ busy = false; }
+  }
+
+  private void ResetPracticeReview(){ approvedPracticeSteps.Clear(); practiceNotes = string.Empty; }
+  private bool PracticeApproved(int id) => approvedPracticeSteps.Contains(id);
+  private void TogglePracticeStep(int id){ if(!approvedPracticeSteps.Add(id)) approvedPracticeSteps.Remove(id); }
+  private async Task SubmitPracticeAsync()
+  {
+    if(!IsInstructor || CurrentPractice is null || practiceEmployeeId <= 0 || Actor?.EmployeeId is null) return;
+    var participant = Trainees.FirstOrDefault(x => x.EmployeeId == practiceEmployeeId);
+    if(participant?.AsignacionId is not { } assignmentId) return;
+    busy = true;
+    try
+    {
+      var steps = CurrentPractice.Pasos.Select(x => new CapacitacionPracticaPasoResultadoRequest { PracticaPasoId = x.PracticaPasoId, Aprobado = approvedPracticeSteps.Contains(x.PracticaPasoId) }).ToArray();
+      var result = await Capacitacion.RegistrarResultadoPracticoAsync(new() { Rfc = Rfc, AsignacionId = assignmentId, SesionId = Id, PracticaId = CurrentPractice.PracticaId, EmployeeId = participant.EmployeeId, Pasos = steps, Observaciones = practiceNotes, ActorEmployeeId = Actor.EmployeeId.Value, Actor = Actor.UserName }, LifetimeToken);
+      ShowResult(result); if(result.Success){ ResetPracticeReview(); practiceEmployeeId = 0; await LoadSessionAsync(); }
+    }
+    catch(Exception exception){ ShowException(exception, "No fue posible registrar la práctica."); }
+    finally{ busy = false; }
+  }
+
+  private async Task SignAsync(CapacitacionSesionParticipanteDto participant)
+  {
+    if(!IsInstructor || participant.AsignacionId is not { } assignmentId || Actor?.EmployeeId is null) return; busy = true;
+    try
+    {
+      var result = await Capacitacion.FirmarFinalizacionAsync(new() { Rfc = Rfc, AsignacionId = assignmentId, InstructorEmployeeId = Actor.EmployeeId.Value, Actor = Actor.UserName, Comentarios = $"Finalización validada en la sesión {session?.CodigoAcceso}." }, LifetimeToken);
+      ShowResult(result); if(result.Success) await LoadSessionAsync();
+    }
+    catch(Exception exception){ ShowException(exception, "No fue posible firmar la finalización."); }
+    finally{ busy = false; }
+  }
+
+  private async Task AcknowledgeAsync(long assignmentId)
+  {
+    if(Actor?.EmployeeId is null) return; busy = true;
+    try
+    {
+      var result = await Capacitacion.AcusarFinalizacionAsync(new() { Rfc = Rfc, AsignacionId = assignmentId, EmployeeId = Actor.EmployeeId.Value, Actor = Actor.UserName }, LifetimeToken);
+      ShowResult(result); if(result.Success){ acknowledgementChecked = false; await LoadSessionAsync(); }
+    }
+    catch(Exception exception){ ShowException(exception, "No fue posible registrar el acuse."); }
+    finally{ busy = false; }
+  }
+
+  private CapacitacionContentViewModel ToViewModel(CapacitacionBloqueDto block)
+  {
+    var resource = block.Recursos.OrderBy(x => x.Orden).FirstOrDefault();
+    return new(block.BloqueId, block.Tipo, block.Titulo, block.Contenido,
+      CapacitacionUi.GetStructuredItems(block.Tipo, block.Contenido, block.ConfiguracionJson),
+      resource?.Titulo, BuildResourceUrl(resource?.Ruta), 0, block.Requerido, false,
+      resource?.Tipo, resource?.TextoAlternativo);
+  }
+
+  private static int FlowStep(string type) => type switch { CapacitacionCodes.BloqueObjetivos => 0, CapacitacionCodes.BloqueDemostracion => 2, CapacitacionCodes.BloquePractica => 3, CapacitacionCodes.BloqueEvaluacion => 4, CapacitacionCodes.BloqueResumen => 5, _ => 1 };
+  private static string Initials(string name) => string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(2).Select(x => char.ToUpperInvariant(x[0])));
+  private void TogglePresentation() => presentationMode = !presentationMode;
+  private void HandleKeyDown(KeyboardEventArgs args){ if(args.Key == "Escape" && presentationMode) presentationMode = false; }
+
+  public override async ValueTask DisposeAsync()
+  {
+    await base.DisposeAsync();
+    if(pollingTask is not null) try { await pollingTask; } catch(OperationCanceledException) { }
+  }
+}

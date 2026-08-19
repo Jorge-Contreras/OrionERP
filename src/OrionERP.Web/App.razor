@@ -7,7 +7,22 @@
             <Found Context="routeData">
                 <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
                     <NotAuthorized>
-                        <RedirectToLogin />
+                        @* NotAuthorized covers two different situations. The inner
+                           AuthorizeView declares no roles, so it only tests whether
+                           anyone is signed in: a signed-in visitor who simply lacks
+                           the page's role must be told so, not sent to the login
+                           page, which would bounce them straight back and loop. *@
+                        @* Context is named explicitly: without it the inner child
+                           content collides with the enclosing NotAuthorized's own
+                           implicit 'context' parameter and Razor refuses to build. *@
+                        <AuthorizeView Context="signedInState">
+                            <Authorized>
+                                <AccessDenied />
+                            </Authorized>
+                            <NotAuthorized>
+                                <RedirectToLogin />
+                            </NotAuthorized>
+                        </AuthorizeView>
                     </NotAuthorized>
                 </AuthorizeRouteView>
 

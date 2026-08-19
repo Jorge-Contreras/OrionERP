@@ -1,0 +1,52 @@
+@using Microsoft.AspNetCore.Components
+
+<div class="cap-shell">
+  <a class="cap-skip-link" href="#cap-main">Saltar al contenido de capacitación</a>
+
+  <header class="cap-hero">
+    <div class="cap-hero__copy">
+      <div class="cap-eyebrow">@Eyebrow</div>
+      <h1>@Title</h1>
+      @if (!string.IsNullOrWhiteSpace(Description))
+      {
+        <p>@Description</p>
+      }
+    </div>
+    @if (HeroActions is not null)
+    {
+      <div class="cap-hero__actions">@HeroActions</div>
+    }
+  </header>
+
+  @if (ShowNavigation)
+  {
+    <nav class="cap-local-nav" aria-label="Navegación de Capacitación">
+      <NavLink href="/capacitacion" Match="NavLinkMatch.All"><span class="oi oi-home" aria-hidden="true"></span>Inicio</NavLink>
+      <NavLink href="/capacitacion/mi-plan"><span class="oi oi-task" aria-hidden="true"></span>Mi plan</NavLink>
+      <NavLink href="/capacitacion/catalogo"><span class="oi oi-book" aria-hidden="true"></span>Catálogo</NavLink>
+      <AuthorizeView Policy="CapacitacionInstructor">
+        <Authorized>
+          <NavLink href="/capacitacion/sesiones/nueva"><span class="oi oi-people" aria-hidden="true"></span>Impartir</NavLink>
+        </Authorized>
+      </AuthorizeView>
+      <AuthorizeView Policy="CapacitacionAdmin">
+        <Authorized>
+          <NavLink href="/capacitacion/admin"><span class="oi oi-cog" aria-hidden="true"></span>Administrar</NavLink>
+        </Authorized>
+      </AuthorizeView>
+    </nav>
+  }
+
+  <main id="cap-main" tabindex="-1">
+    @ChildContent
+  </main>
+</div>
+
+@code {
+  [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+  [Parameter] public string Eyebrow { get; set; } = "Capacitación OrionERP";
+  [Parameter] public string? Description { get; set; }
+  [Parameter] public bool ShowNavigation { get; set; } = true;
+  [Parameter] public RenderFragment? HeroActions { get; set; }
+  [Parameter, EditorRequired] public RenderFragment? ChildContent { get; set; }
+}

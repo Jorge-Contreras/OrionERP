@@ -318,7 +318,7 @@ SELECT TOP (1)
     [Actos_16]             AS Actos_16,
     [Actos_0]              AS Actos_0,
     [Total]                AS Total
-FROM [grupocarpio].[cfdi].[Comprobante_Detalle]
+FROM [cfdi].[Comprobante_Detalle]
 WHERE Comprobante_Id = @Comprobante_Id;";
 
     using var conn = new SqlConnection(_connectionString);

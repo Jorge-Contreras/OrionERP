@@ -81,7 +81,11 @@ $targets = @{
         ServiceName = "OrionERP"
         ProjectPath = "src\OrionERP.Web\OrionERP.Web.csproj"
         OutputDirectory = "C:\Users\Orion\Grupo Carpio Dropbox\Grupo Orion\Software\GitHubs\Production\OrionERP"
-        HealthCheckUrl = "http://127.0.0.1:5000/"
+        # A dedicated readiness endpoint, matching Bonhomia and Bruno. Probing "/"
+        # follows a redirect to the login page, and rendering that form over plain
+        # HTTP fails once antiforgery cookies require a secure request, which would
+        # fail the health check and roll back a perfectly good deployment.
+        HealthCheckUrl = "http://127.0.0.1:5000/readyz"
     }
     Bonhomia = [pscustomobject]@{
         DisplayName = "Bonhomia public website"

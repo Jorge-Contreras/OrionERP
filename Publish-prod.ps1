@@ -8,7 +8,10 @@ param(
     [string[]]$PreserveDirectoryPatterns = @("App_Data"),
     [int]$CopyRetries = 5,
     [int]$CopyRetryWaitSeconds = 2,
-    [string]$HealthCheckUrl = "http://127.0.0.1:5000/",
+    # Probe a readiness endpoint rather than "/", which redirects to the login page.
+    # Rendering that form over plain HTTP fails once antiforgery cookies require a
+    # secure request, failing the health check and rolling back a good deployment.
+    [string]$HealthCheckUrl = "http://127.0.0.1:5000/readyz",
     [int]$HealthCheckAttempts = 15,
     [int]$HealthCheckDelaySeconds = 2,
     [scriptblock]$HealthCheckValidator = $null,

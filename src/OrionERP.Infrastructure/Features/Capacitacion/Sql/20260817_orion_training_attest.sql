@@ -387,6 +387,8 @@ VALUES
   (N'capacitacion', N'OpcionPregunta'),
   (N'capacitacion', N'Practica'),
   (N'capacitacion', N'PracticaPaso'),
+  (N'capacitacion', N'RutaAprendizaje'),
+  (N'capacitacion', N'RutaCurso'),
   (N'capacitacion', N'Asignacion');
 
 DECLARE @QualifiedName nvarchar(517);
@@ -463,21 +465,26 @@ IF (SELECT COUNT(*) FROM auth.AspNetUsers) <> 4
            OR userInfo.ArrendadorProveedorId IS NOT NULL
            OR NULLIF(userInfo.PasswordHash, N'') IS NULL
       )
-   OR (SELECT COUNT(*) FROM auth.AspNetRoles) <> 6
+   OR (SELECT COUNT(*) FROM auth.AspNetRoles) <> 12
    OR EXISTS
       (
         SELECT 1 FROM auth.AspNetRoles
         WHERE Name NOT IN
-          (N'CapacitacionAdmin', N'CapacitacionInstructor', N'CapacitacionAuditor', N'Lectura', N'SatOperator', N'Logistica')
+          (N'CapacitacionAdmin', N'CapacitacionInstructor', N'CapacitacionAuditor', N'Lectura', N'SatOperator', N'Logistica',
+           N'Administrador', N'Arrendadores', N'OrdenTrabajoSupervisor', N'APOperator', N'CapitalHumanoAdmin', N'RestauranteSupervisor')
       )
    OR (SELECT COUNT(*) FROM auth.AspNetUserClaims WHERE ClaimType = N'rfc' AND ClaimValue = N'XAXX010101000') <> 4
-   OR (SELECT COUNT(*) FROM auth.AspNetUserRoles) <> 11
+   OR (SELECT COUNT(*) FROM auth.AspNetUserRoles) <> 22
    OR EXISTS
       (
         SELECT trainee.UserId, expectedRole.RoleName
         FROM
           (VALUES (N'training-user-trainee01-v1'), (N'training-user-trainee02-v1')) trainee(UserId)
-        CROSS JOIN (VALUES (N'Lectura'), (N'SatOperator'), (N'Logistica')) expectedRole(RoleName)
+        CROSS JOIN
+          (
+            VALUES (N'Lectura'), (N'SatOperator'), (N'Logistica'), (N'Arrendadores'),
+                   (N'OrdenTrabajoSupervisor'), (N'APOperator'), (N'CapitalHumanoAdmin'), (N'RestauranteSupervisor')
+          ) expectedRole(RoleName)
         WHERE NOT EXISTS
         (
           SELECT 1
@@ -492,8 +499,11 @@ IF (SELECT COUNT(*) FROM auth.AspNetUsers) <> 4
         SELECT 1
         FROM auth.AspNetUserRoles membership
         JOIN auth.AspNetRoles roleInfo ON roleInfo.Id = membership.RoleId
+        -- Los participantes practican todos los módulos, pero nunca administran
+        -- el entorno: Administrador y CapacitacionAdmin quedan fuera de su
+        -- alcance, igual que la nómina.
         WHERE membership.UserId IN (N'training-user-trainee01-v1', N'training-user-trainee02-v1')
-          AND roleInfo.Name IN (N'Administrador', N'CapacitacionAdmin', N'CapitalHumanoAdmin', N'CapitalHumanoNomina')
+          AND roleInfo.Name IN (N'Administrador', N'CapacitacionAdmin', N'CapitalHumanoNomina', N'Conteo')
       )
    OR EXISTS
       (
@@ -502,7 +512,7 @@ IF (SELECT COUNT(*) FROM auth.AspNetUsers) <> 4
         JOIN auth.AspNetRoles roleInfo ON roleInfo.Id = membership.RoleId
         WHERE membership.UserId = N'training-user-instructor-v1'
           AND roleInfo.Name IN
-            (N'Administrador', N'CapitalHumanoAdmin', N'CapitalHumanoNomina', N'CapitalHumanoSupervisor', N'Conteo')
+            (N'CapitalHumanoNomina', N'CapitalHumanoSupervisor', N'Conteo')
       )
   THROW 51756, 'ATTESTATION BLOCKED: the fictional Identity manifest does not match.', 1;
 
@@ -516,12 +526,23 @@ IF EXISTS
       (N'training-user-instructor-v1', N'CapacitacionInstructor'),
       (N'training-user-instructor-v1', N'SatOperator'),
       (N'training-user-instructor-v1', N'Logistica'),
+      (N'training-user-instructor-v1', N'Administrador'),
       (N'training-user-trainee01-v1', N'Lectura'),
       (N'training-user-trainee01-v1', N'SatOperator'),
       (N'training-user-trainee01-v1', N'Logistica'),
+      (N'training-user-trainee01-v1', N'Arrendadores'),
+      (N'training-user-trainee01-v1', N'OrdenTrabajoSupervisor'),
+      (N'training-user-trainee01-v1', N'APOperator'),
+      (N'training-user-trainee01-v1', N'CapitalHumanoAdmin'),
+      (N'training-user-trainee01-v1', N'RestauranteSupervisor'),
       (N'training-user-trainee02-v1', N'Lectura'),
       (N'training-user-trainee02-v1', N'SatOperator'),
       (N'training-user-trainee02-v1', N'Logistica'),
+      (N'training-user-trainee02-v1', N'Arrendadores'),
+      (N'training-user-trainee02-v1', N'OrdenTrabajoSupervisor'),
+      (N'training-user-trainee02-v1', N'APOperator'),
+      (N'training-user-trainee02-v1', N'CapitalHumanoAdmin'),
+      (N'training-user-trainee02-v1', N'RestauranteSupervisor'),
       (N'training-user-auditor-v1', N'CapacitacionAuditor')
   ) expectedMembership(UserId, RoleName)
   WHERE NOT EXISTS
@@ -720,25 +741,88 @@ IF (SELECT COUNT(*) FROM rh.LeaveType) <> 2
            OR CreatedBy <> N'OrionERP Training scenario v1')
   THROW 51837, 'ATTESTATION BLOCKED: the fictional RH leave/privacy manifest does not match.', 1;
 
-IF (SELECT COUNT(*) FROM capacitacion.Curso) <> 5
+-- Reviewed curriculum manifest: the five pilot courses authored by the schema
+-- installer plus one course per OrionERP module authored by the curriculum
+-- script. A table variable cannot carry a named constraint; only the inline,
+-- unnamed form parses.
+DECLARE @CursoManifiesto TABLE
+(
+  Clave nvarchar(64) NOT NULL,
+  Autor nvarchar(256) NOT NULL,
+  PRIMARY KEY (Clave)
+);
+
+INSERT @CursoManifiesto (Clave, Autor)
+VALUES
+  (N'ORION-FUNDAMENTOS', N'OrionERP.Capacitacion.Seed.v1'),
+  (N'RES-END-TO-END', N'OrionERP.Capacitacion.Seed.v1'),
+  (N'CFDI-CONTABILIDAD', N'OrionERP.Capacitacion.Seed.v1'),
+  (N'LOGISTICA-OPERACION', N'OrionERP.Capacitacion.Seed.v1'),
+  (N'RH-CAPITAL-HUMANO', N'OrionERP.Capacitacion.Seed.v1'),
+  (N'CAPACITACION-MODULO', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'RESERVAS-CALENDARIO', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'ARRENDADORES-ESTADO', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'OT-OPERACION', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'CFDI-SAT-OPERACION', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'CFDI-DECLARACION-PREVIA', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'CONTA-POLIZAS', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'BANCOS-CONCILIACION', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'CXP-RECURRENTES', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'REPORTES-FINANCIEROS', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'LOGISTICA-COMPRAS', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'LOGISTICA-INVENTARIO', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'REST-POS-SERVICIO', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'REST-COCINA-PRODUCCION', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'REST-INVENTARIO-TURNOS', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'REST-CATALOGO-CONFIG', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'REST-COMERCIAL', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'RH-ASISTENCIA', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'RH-CONFIG-TIEMPO', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'RH-AUSENCIAS', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'RH-PRENOMINA', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'RH-EXPEDIENTES', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'AJUSTES-PLANTILLAS', N'OrionERP.Capacitacion.Curriculum.v2'),
+  (N'ADMIN-SEGURIDAD', N'OrionERP.Capacitacion.Curriculum.v2');
+
+DECLARE @CursosEsperados int = (SELECT COUNT(*) FROM @CursoManifiesto);
+
+IF (SELECT COUNT(*) FROM capacitacion.Curso) <> @CursosEsperados
    OR EXISTS
       (
-        SELECT 1 FROM capacitacion.Curso
-        WHERE Rfc <> N'*'
-           OR Clave NOT IN
-             (N'ORION-FUNDAMENTOS', N'RES-END-TO-END', N'CFDI-CONTABILIDAD', N'LOGISTICA-OPERACION', N'RH-CAPITAL-HUMANO')
-           OR CreadoPor <> N'OrionERP.Capacitacion.Seed.v1'
+        SELECT 1
+        FROM capacitacion.Curso courseInfo
+        LEFT JOIN @CursoManifiesto manifest ON manifest.Clave = courseInfo.Clave
+        WHERE courseInfo.Rfc <> N'*'
+           OR manifest.Clave IS NULL
+           OR courseInfo.CreadoPor <> manifest.Autor
       )
-   OR (SELECT COUNT(*) FROM capacitacion.CursoVersion) <> 5
+   OR (SELECT COUNT(*) FROM capacitacion.CursoVersion) <> @CursosEsperados
    OR EXISTS
       (
-        SELECT 1 FROM capacitacion.CursoVersion
-        WHERE NumeroVersion <> 1
-           OR Estado <> N'PUBLICADA'
-           OR CreadaPor <> N'OrionERP.Capacitacion.Seed.v1'
-           OR PublicadaPor <> N'OrionERP.Capacitacion.Seed.v1'
+        SELECT 1
+        FROM capacitacion.CursoVersion versionInfo
+        JOIN capacitacion.Curso courseInfo ON courseInfo.CursoId = versionInfo.CursoId
+        LEFT JOIN @CursoManifiesto manifest ON manifest.Clave = courseInfo.Clave
+        WHERE versionInfo.NumeroVersion <> 1
+           OR versionInfo.Estado <> N'PUBLICADA'
+           OR manifest.Clave IS NULL
+           OR versionInfo.CreadaPor <> manifest.Autor
+           OR versionInfo.PublicadaPor <> manifest.Autor
       )
-   OR (SELECT COUNT(*) FROM capacitacion.Asignacion) <> 10
+   OR (SELECT COUNT(*) FROM capacitacion.RutaAprendizaje) <> 1
+   OR NOT EXISTS
+      (
+        SELECT 1 FROM capacitacion.RutaAprendizaje
+        WHERE Rfc = N'*'
+          AND Clave = N'ORION-EXPERTO'
+          AND Activa = 1
+          AND CreadaPor = N'OrionERP.Capacitacion.Curriculum.v2'
+      )
+   OR (SELECT COUNT(*) FROM capacitacion.RutaCurso) <> @CursosEsperados
+   -- trainee01 carries the complete program and trainee02 the five pilot courses.
+   OR (SELECT COUNT(*) FROM capacitacion.Asignacion) <> (@CursosEsperados + 5)
+   OR (SELECT COUNT(*) FROM capacitacion.Asignacion WHERE EmployeeId = 990002) <> @CursosEsperados
+   OR (SELECT COUNT(*) FROM capacitacion.Asignacion WHERE EmployeeId = 990003) <> 5
    OR EXISTS
       (
         SELECT 1 FROM capacitacion.Asignacion
@@ -757,8 +841,7 @@ IF EXISTS
   JOIN capacitacion.CursoVersion versionInfo ON versionInfo.CursoVersionId = lesson.CursoVersionId
   JOIN capacitacion.Curso courseInfo ON courseInfo.CursoId = versionInfo.CursoId
   WHERE courseInfo.Rfc <> N'*'
-     OR courseInfo.Clave NOT IN
-       (N'ORION-FUNDAMENTOS', N'RES-END-TO-END', N'CFDI-CONTABILIDAD', N'LOGISTICA-OPERACION', N'RH-CAPITAL-HUMANO')
+     OR NOT EXISTS (SELECT 1 FROM @CursoManifiesto manifest WHERE manifest.Clave = courseInfo.Clave)
 )
    OR EXISTS
    (
@@ -768,8 +851,7 @@ IF EXISTS
      JOIN capacitacion.CursoVersion versionInfo ON versionInfo.CursoVersionId = lesson.CursoVersionId
      JOIN capacitacion.Curso courseInfo ON courseInfo.CursoId = versionInfo.CursoId
      WHERE courseInfo.Rfc <> N'*'
-        OR courseInfo.Clave NOT IN
-          (N'ORION-FUNDAMENTOS', N'RES-END-TO-END', N'CFDI-CONTABILIDAD', N'LOGISTICA-OPERACION', N'RH-CAPITAL-HUMANO')
+        OR NOT EXISTS (SELECT 1 FROM @CursoManifiesto manifest WHERE manifest.Clave = courseInfo.Clave)
    )
    OR EXISTS
    (
@@ -778,8 +860,7 @@ IF EXISTS
      JOIN capacitacion.CursoVersion versionInfo ON versionInfo.CursoVersionId = assessment.CursoVersionId
      JOIN capacitacion.Curso courseInfo ON courseInfo.CursoId = versionInfo.CursoId
      WHERE courseInfo.Rfc <> N'*'
-        OR courseInfo.Clave NOT IN
-          (N'ORION-FUNDAMENTOS', N'RES-END-TO-END', N'CFDI-CONTABILIDAD', N'LOGISTICA-OPERACION', N'RH-CAPITAL-HUMANO')
+        OR NOT EXISTS (SELECT 1 FROM @CursoManifiesto manifest WHERE manifest.Clave = courseInfo.Clave)
    )
    OR EXISTS
    (
@@ -788,8 +869,16 @@ IF EXISTS
      JOIN capacitacion.CursoVersion versionInfo ON versionInfo.CursoVersionId = practiceInfo.CursoVersionId
      JOIN capacitacion.Curso courseInfo ON courseInfo.CursoId = versionInfo.CursoId
      WHERE courseInfo.Rfc <> N'*'
-        OR courseInfo.Clave NOT IN
-          (N'ORION-FUNDAMENTOS', N'RES-END-TO-END', N'CFDI-CONTABILIDAD', N'LOGISTICA-OPERACION', N'RH-CAPITAL-HUMANO')
+        OR NOT EXISTS (SELECT 1 FROM @CursoManifiesto manifest WHERE manifest.Clave = courseInfo.Clave)
+   )
+   OR EXISTS
+   (
+     SELECT 1
+     FROM capacitacion.RutaCurso pathCourse
+     JOIN capacitacion.CursoVersion versionInfo ON versionInfo.CursoVersionId = pathCourse.CursoVersionId
+     JOIN capacitacion.Curso courseInfo ON courseInfo.CursoId = versionInfo.CursoId
+     WHERE courseInfo.Rfc <> N'*'
+        OR NOT EXISTS (SELECT 1 FROM @CursoManifiesto manifest WHERE manifest.Clave = courseInfo.Clave)
    )
   THROW 51763, 'ATTESTATION BLOCKED: authored training content is not wholly owned by the reviewed seed courses.', 1;
 

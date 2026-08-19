@@ -211,7 +211,7 @@
   private bool LastBlockCompleted => activeBlockIndex == Blocks.Count - 1 && lastCompletedBlockIndex >= activeBlockIndex;
   private List<CapacitacionAsignacionDto> VisibleAssignments => assignments.Where(MatchesFilter).OrderBy(x => x.FechaLimite ?? DateTime.MaxValue).ToList();
 
-  protected override async Task OnInitializedAsync()
+  protected override async Task LoadPageDataAsync()
   {
     if (!await InitializeActorAsync()) { loading = false; return; }
     await LoadPlanAsync();

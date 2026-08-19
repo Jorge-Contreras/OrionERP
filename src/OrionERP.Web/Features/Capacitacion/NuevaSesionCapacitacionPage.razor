@@ -28,7 +28,7 @@
           <div class="cap-card__header"><div><h2 id="cap-session-form-title">Datos de la sesión</h2><p>La sesión creará automáticamente una asignación para cada participante que aún no la tenga.</p></div><span class="cap-badge cap-badge--info">Paso 1 de 2</span></div>
           <div class="cap-card__body">
             <div class="cap-form-grid">
-              <div class="cap-field--wide"><label class="cap-label" for="cap-course">Curso publicado</label><select id="cap-course" class="cap-select" @bind="selectedCourseVersionId" @bind:after="CourseChanged"><option value="0">Selecciona un curso</option>@foreach(var item in courses){<option value="@item.CursoVersionId">@item.Nombre · v@item.NumeroVersion</option>}</select></div>
+              <div class="cap-field--wide"><label class="cap-label" for="cap-course">Curso publicado</label><select id="cap-course" class="cap-select" @bind="selectedCourseVersionId" @bind:after="CourseChanged"><option value="0">Selecciona un curso</option>@foreach(var item in courses){<option value="@item.CursoVersionId">@item.Nombre · v@(item.NumeroVersion)</option>}</select></div>
               <div class="cap-field--wide"><label class="cap-label" for="cap-session-name">Nombre de la sesión</label><input id="cap-session-name" class="cap-input" maxlength="160" placeholder="Ej. Inducción CFDI · equipo de Reservaciones" @bind="sessionName" /><span class="cap-hint">Usa un nombre que el grupo pueda reconocer después.</span></div>
               <div><label class="cap-label" for="cap-session-date">Fecha y hora</label><input id="cap-session-date" type="datetime-local" class="cap-input" @bind="scheduledAt" @bind:format="yyyy-MM-ddTHH:mm" /><span class="cap-hint">Zona horaria local del instructor.</span></div>
               <div><span class="cap-label">Instructor</span><div class="cap-readonly-field"><span class="oi oi-person" aria-hidden="true"></span><span><strong>@Actor?.UserName</strong><small>Colaborador #@Actor?.EmployeeId</small></span></div></div>
@@ -98,7 +98,7 @@
   private List<CapacitacionEmpleadoDto> VisibleEmployees => employees.Where(x => x.EmployeeId != Actor?.EmployeeId && (string.IsNullOrWhiteSpace(employeeSearch) || x.Nombre.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) || (x.Puesto?.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) ?? false) || (x.Email?.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) ?? false))).OrderBy(x => x.Nombre).ToList();
   private bool CanCreate => selectedCourseVersionId > 0 && !string.IsNullOrWhiteSpace(sessionName) && selectedEmployeeIds.Count > 0 && scheduledAt > DateTime.Now.AddMinutes(-1);
 
-  protected override async Task OnInitializedAsync()
+  protected override async Task LoadPageDataAsync()
   {
     if (!await InitializeActorAsync()) { loading = false; return; }
     try

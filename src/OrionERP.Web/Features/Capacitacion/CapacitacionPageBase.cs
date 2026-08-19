@@ -9,6 +9,7 @@ public abstract class CapacitacionPageBase : ComponentBase, IAsyncDisposable
 {
   private readonly CancellationTokenSource _lifetime = new();
   private bool _subscribedToRfcChanges;
+  private bool _initialLoadStarted;
 
   [Inject] protected ICapacitacionService Capacitacion { get; set; } = default!;
   [Inject] protected ICurrentEmployeeAccessor CurrentEmployeeAccessor { get; set; } = default!;
@@ -23,6 +24,28 @@ public abstract class CapacitacionPageBase : ComponentBase, IAsyncDisposable
   protected string? PageError { get; set; }
   protected string? PageMessage { get; set; }
   protected bool MessageIsError { get; set; }
+
+  /// <summary>
+  /// Cada página carga aquí sus datos. La base la invoca después del primer render —cuando
+  /// el RFC guardado ya se restauró desde ProtectedLocalStorage— y otra vez cada que el
+  /// usuario cambia de empresa. Cargar durante OnInitializedAsync no sirve: en el prerender
+  /// todavía no hay interop de JavaScript, así que el RFC seleccionado aún no se conoce.
+  /// </summary>
+  protected virtual Task LoadPageDataAsync() => Task.CompletedTask;
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (!firstRender || _initialLoadStarted) return;
+    _initialLoadStarted = true;
+    await ReloadPageDataAsync();
+  }
+
+  protected async Task ReloadPageDataAsync()
+  {
+    try { await LoadPageDataAsync(); }
+    catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+    if (!_lifetime.IsCancellationRequested) StateHasChanged();
+  }
 
   protected async Task<bool> InitializeActorAsync()
   {
@@ -45,6 +68,17 @@ public abstract class CapacitacionPageBase : ComponentBase, IAsyncDisposable
     if (string.IsNullOrWhiteSpace(Rfc))
     {
       PageError = "No hay una empresa activa para consultar Capacitación.";
+      return false;
+    }
+
+    // Capacitación siempre se cursa en la empresa donde el usuario está dado de alta como
+    // colaborador. Si el selector apunta a otra, hay que decirlo con claridad en vez de
+    // dejar que el servicio truene con un error genérico.
+    if (!string.IsNullOrWhiteSpace(Actor.EmployeeRfc)
+        && !string.Equals(Actor.EmployeeRfc, Rfc, StringComparison.OrdinalIgnoreCase))
+    {
+      PageError = $"Tu registro de colaborador pertenece a la empresa {Actor.EmployeeRfc}, "
+        + $"no a {Rfc}. Cambia la empresa en el selector RFC para usar Capacitación.";
       return false;
     }
 
@@ -155,7 +189,16 @@ public abstract class CapacitacionPageBase : ComponentBase, IAsyncDisposable
 
   private void HandleRfcChanged()
   {
-    if (_lifetime.IsCancellationRequested) return;
-    _ = InvokeAsync(() => Navigation.NavigateTo(Navigation.Uri, forceLoad: true));
+    // Recargar los datos en su lugar. Un NavigateTo(forceLoad: true) reinicia el circuito,
+    // el RFC vuelve al primero de los claims y, si el usuario tenía otro guardado, la
+    // restauración vuelve a disparar este evento: un ciclo infinito de recargas.
+    if (_lifetime.IsCancellationRequested || !_initialLoadStarted) return;
+    _ = InvokeAsync(async () =>
+    {
+      if (_lifetime.IsCancellationRequested) return;
+      PageError = null;
+      PageMessage = null;
+      await ReloadPageDataAsync();
+    });
   }
 }

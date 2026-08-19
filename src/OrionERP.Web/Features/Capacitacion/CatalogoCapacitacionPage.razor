@@ -74,7 +74,7 @@
           {
             <article class="cap-catalog-card">
               <div class="cap-catalog-card__cover cap-cover--@CoverClass(item.Categoria)"><span class="oi @CapacitacionUi.IconForModule(item.Categoria)" aria-hidden="true"></span><span>@item.Categoria</span><svg viewBox="0 0 280 100" aria-hidden="true"><path d="M-15 80C45 15 96 132 160 54s102 12 142-23" fill="none" stroke="currentColor" stroke-width="22" opacity=".12" /></svg></div>
-              <div class="cap-catalog-card__body"><div class="cap-card-kicker"><span>@item.Clave</span><span>v@item.NumeroVersion</span></div><h2>@item.Nombre</h2><p>@item.Descripcion</p><div class="cap-catalog-card__meta"><span><span class="oi oi-clock" aria-hidden="true"></span>@item.DuracionMinutos min</span><span><span class="oi oi-list-rich" aria-hidden="true"></span>@item.LeccionCount lecciones</span></div></div>
+              <div class="cap-catalog-card__body"><div class="cap-card-kicker"><span>@item.Clave</span><span>v@(item.NumeroVersion)</span></div><h2>@item.Nombre</h2><p>@item.Descripcion</p><div class="cap-catalog-card__meta"><span><span class="oi oi-clock" aria-hidden="true"></span>@item.DuracionMinutos min</span><span><span class="oi oi-list-rich" aria-hidden="true"></span>@item.LeccionCount lecciones</span></div></div>
               <footer><button type="button" class="cap-btn cap-btn--primary" disabled="@detailsLoading" @onclick="() => OpenDetailsAsync(item)">Ver programa <span class="oi oi-chevron-right" aria-hidden="true"></span></button><span class="cap-badge cap-badge--success">Publicado</span></footer>
             </article>
           }
@@ -94,7 +94,7 @@
   private List<string> Categories => courses.Select(x => x.Categoria).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
   private List<CapacitacionCursoResumenDto> VisibleCourses => courses.Where(x => (string.IsNullOrWhiteSpace(category) || x.Categoria.Equals(category, StringComparison.OrdinalIgnoreCase)) && (string.IsNullOrWhiteSpace(search) || x.Nombre.Contains(search, StringComparison.OrdinalIgnoreCase) || x.Clave.Contains(search, StringComparison.OrdinalIgnoreCase) || x.Descripcion.Contains(search, StringComparison.OrdinalIgnoreCase))).OrderBy(x => x.Categoria).ThenBy(x => x.Nombre).ToList();
 
-  protected override async Task OnInitializedAsync()
+  protected override async Task LoadPageDataAsync()
   {
     if (!await InitializeActorAsync()) { loading = false; return; }
     try { courses = await Capacitacion.GetCatalogoAsync(Rfc, LifetimeToken); }

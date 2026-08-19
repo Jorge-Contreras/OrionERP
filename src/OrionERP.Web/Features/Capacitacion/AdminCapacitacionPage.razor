@@ -55,7 +55,7 @@
             <div class="cap-card__header"><div><h2>Crear asignaciones</h2><p>La misma versión se asignará a todas las personas seleccionadas.</p></div><span class="cap-badge cap-badge--info">@selectedEmployeeIds.Count personas</span></div>
             <div class="cap-card__body">
               <div class="cap-form-grid">
-                <div class="cap-field--wide"><label class="cap-label" for="cap-admin-course">Curso publicado</label><select id="cap-admin-course" class="cap-select" @bind="courseVersionId"><option value="0">Selecciona un curso</option>@foreach(var item in courses){<option value="@item.CursoVersionId">@item.Nombre · v@item.NumeroVersion</option>}</select></div>
+                <div class="cap-field--wide"><label class="cap-label" for="cap-admin-course">Curso publicado</label><select id="cap-admin-course" class="cap-select" @bind="courseVersionId"><option value="0">Selecciona un curso</option>@foreach(var item in courses){<option value="@item.CursoVersionId">@item.Nombre · v@(item.NumeroVersion)</option>}</select></div>
                 <div><label class="cap-label" for="cap-admin-instructor">Instructor responsable</label><select id="cap-admin-instructor" class="cap-select" @bind="instructorEmployeeId"><option value="0">Sin instructor asignado</option>@foreach(var item in employees.Where(x => x.TieneUsuario)){<option value="@item.EmployeeId">@item.Nombre</option>}</select></div>
                 <div><label class="cap-label" for="cap-admin-due">Fecha límite</label><input id="cap-admin-due" type="date" class="cap-input" @bind="dueDate" @bind:format="yyyy-MM-dd" /></div>
               </div>
@@ -78,7 +78,7 @@
         <section class="cap-card" aria-labelledby="cap-content-title">
           <div class="cap-card__header"><div><h2 id="cap-content-title">Versiones publicadas</h2><p>Las asignaciones quedan fijadas a la versión que recibió el colaborador.</p></div><span class="cap-badge cap-badge--success">@courses.Count activas</span></div>
           <div class="cap-table-wrap"><table class="cap-table"><thead><tr><th>Clave</th><th>Curso</th><th>Módulo</th><th>Versión</th><th>Estructura</th><th>Duración</th><th>Calificación</th><th></th></tr></thead><tbody>
-            @foreach(var item in courses.OrderBy(x => x.Categoria).ThenBy(x => x.Nombre)){<tr><td><code>@item.Clave</code></td><td><strong>@item.Nombre</strong><small class="d-block text-muted">@Trim(item.Descripcion, 80)</small></td><td>@item.Categoria</td><td><span class="cap-badge cap-badge--success">v@item.NumeroVersion · @item.EstadoVersion</span></td><td>@item.LeccionCount lecciones · @item.BloqueCount bloques</td><td>@item.DuracionMinutos min</td><td>@item.CalificacionMinima.ToString("0")%</td><td><a class="cap-btn cap-btn--light" href="/capacitacion/catalogo">Revisar</a></td></tr>}
+            @foreach(var item in courses.OrderBy(x => x.Categoria).ThenBy(x => x.Nombre)){<tr><td><code>@item.Clave</code></td><td><strong>@item.Nombre</strong><small class="d-block text-muted">@Trim(item.Descripcion, 80)</small></td><td>@item.Categoria</td><td><span class="cap-badge cap-badge--success">v@(item.NumeroVersion) · @item.EstadoVersion</span></td><td>@item.LeccionCount lecciones · @item.BloqueCount bloques</td><td>@item.DuracionMinutos min</td><td>@item.CalificacionMinima.ToString("0")%</td><td><a class="cap-btn cap-btn--light" href="/capacitacion/catalogo">Revisar</a></td></tr>}
           </tbody></table></div>
           <div class="cap-content-note"><span class="oi oi-info" aria-hidden="true"></span><p>El contenido publicado es inmutable para preservar la evidencia. Las correcciones se publican como una versión nueva mediante el proceso de datos controlado.</p></div>
         </section>
@@ -101,7 +101,7 @@
   private bool saving;
   private List<CapacitacionEmpleadoDto> VisibleEmployees => employees.Where(x => string.IsNullOrWhiteSpace(employeeSearch) || x.Nombre.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) || (x.Puesto?.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) ?? false) || (x.Email?.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) ?? false)).OrderBy(x => x.Nombre).ToList();
 
-  protected override async Task OnInitializedAsync()
+  protected override async Task LoadPageDataAsync()
   {
     if(!await InitializeActorAsync()){ loading = false; return; }
     try

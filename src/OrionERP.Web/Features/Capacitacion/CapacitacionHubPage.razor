@@ -129,7 +129,7 @@
   private CapacitacionDashboardDto? dashboard;
   private bool loading = true;
 
-  protected override async Task OnInitializedAsync()
+  protected override async Task LoadPageDataAsync()
   {
     if (!await InitializeActorAsync()) { loading = false; return; }
     try { dashboard = await Capacitacion.GetDashboardAsync(CreateActorContext(), LifetimeToken); }

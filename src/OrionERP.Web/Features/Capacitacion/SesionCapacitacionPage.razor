@@ -265,12 +265,13 @@
     ? 5
     : session?.BloqueActual?.Tipo switch { CapacitacionCodes.BloqueObjetivos => 0, CapacitacionCodes.BloqueDemostracion => 2, CapacitacionCodes.BloquePractica => 3, CapacitacionCodes.BloqueEvaluacion => 4, CapacitacionCodes.BloqueResumen => 5, _ => 1 };
 
-  protected override async Task OnInitializedAsync()
+  protected override async Task LoadPageDataAsync()
   {
     if (!await InitializeActorAsync()) { loading = false; return; }
     await LoadSessionAsync(showError: true);
     loading = false;
-    if (session is not null) pollingTask = PollSessionAsync();
+    // Una recarga por cambio de RFC vuelve a entrar aquí; el sondeo se inicia una sola vez.
+    if (session is not null && pollingTask is null) pollingTask = PollSessionAsync();
   }
 
   private async Task LoadSessionAsync(bool showError = false)

@@ -36,6 +36,7 @@ $requiredDatabase = 'Orion_Training'
 $sessionGuard = '20260817-v1'
 $connectionEnvironmentVariable = 'ORION_TRAINING_SANITIZER_CONNECTION_STRING'
 $capacitacionInstaller = Join-Path $PSScriptRoot 'src\OrionERP.Infrastructure\Features\Capacitacion\Sql\20260817_capacitacion_v1.sql'
+$curriculumInstaller = Join-Path $PSScriptRoot 'src\OrionERP.Infrastructure\Features\Capacitacion\Sql\20260819_capacitacion_curriculum_v2.sql'
 $sanitizeScript = Join-Path $PSScriptRoot 'src\OrionERP.Infrastructure\Features\Capacitacion\Sql\20260817_orion_training_sanitize.sql'
 $provisionScript = Join-Path $PSScriptRoot 'src\OrionERP.Infrastructure\Features\Capacitacion\Sql\20260817_orion_training_provision.sql'
 $scenarioScript = Join-Path $PSScriptRoot 'src\OrionERP.Infrastructure\Features\Capacitacion\Sql\20260817_orion_training_scenarios.sql'
@@ -717,6 +718,9 @@ try {
       # the reviewed capacitacion triggers near the end of that script.
       Set-TrainingDmlTriggersEnabled -Connection $connection -Enabled $false
       Invoke-SqlFile -Connection $connection -Path $capacitacionInstaller -SqlCmdVariables @{ ExpectedDatabase = $requiredDatabase }
+      # The full module curriculum is authored on top of the reviewed schema and
+      # publishes each new course version only after its content exists.
+      Invoke-SqlFile -Connection $connection -Path $curriculumInstaller -SqlCmdVariables @{ ExpectedDatabase = $requiredDatabase }
       Invoke-SqlFile -Connection $connection -Path $reviewedTriggerScript
       Invoke-SqlFile -Connection $connection -Path $trainingCfdiParserScript
       Set-TrainingDmlTriggersEnabled -Connection $connection -Enabled $false

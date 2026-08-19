@@ -66,6 +66,16 @@ if (-not (Test-Path -LiteralPath $schemaScript -PathType Leaf)) {
     throw "Capacitacion schema script was not found."
 }
 
+$curriculumScript = Join-Path $PSScriptRoot "src\OrionERP.Infrastructure\Features\Capacitacion\Sql\20260819_capacitacion_curriculum_v2.sql"
+if (-not (Test-Path -LiteralPath $curriculumScript -PathType Leaf)) {
+    throw "Capacitacion curriculum script was not found."
+}
+
+# The schema installer seeds the pilot catalog; the curriculum script adds the
+# course per OrionERP module and the complete learning path. They are applied in
+# order and both are idempotent.
+$scriptsToApply = @($schemaScript, $curriculumScript)
+
 $sqlcmdArguments = @(
     "-S", $server,
     "-d", $ExpectedDatabase,
@@ -90,27 +100,32 @@ try {
     }
 
     if ($Apply) {
-        if (-not $PSCmdlet.ShouldProcess($ExpectedDatabase, "Apply Capacitacion schema version 1")) {
+        if (-not $PSCmdlet.ShouldProcess($ExpectedDatabase, "Apply Capacitacion schema version 1 and the module curriculum")) {
             return
         }
 
-        & sqlcmd @sqlcmdArguments -i $schemaScript
+        foreach ($scriptPath in $scriptsToApply) {
+            & sqlcmd @sqlcmdArguments -i $scriptPath
+            if ($LASTEXITCODE -ne 0) {
+                throw "sqlcmd failed with exit code $LASTEXITCODE."
+            }
+        }
     }
     else {
         $temporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) ("orion-capacitacion-preview-" + [Guid]::NewGuid().ToString("N"))
         New-Item -ItemType Directory -Path $temporaryDirectory | Out-Null
         $wrapperPath = Join-Path $temporaryDirectory "preview.sql"
-        $escapedScriptPath = $schemaScript.Replace('"', '""')
+        $includeStatements = ($scriptsToApply | ForEach-Object { ':r "' + $_.Replace('"', '""') + '"' }) -join "`n"
         @"
 :ON ERROR EXIT
 BEGIN TRANSACTION;
 GO
-:r "$escapedScriptPath"
+$includeStatements
 IF XACT_STATE() <> 0 ROLLBACK TRANSACTION;
 GO
 "@ | Set-Content -LiteralPath $wrapperPath -Encoding utf8NoBOM
 
-        Write-Host "Validating the complete schema inside a transaction that will be rolled back."
+        Write-Host "Validating the complete schema and curriculum inside a transaction that will be rolled back."
         & sqlcmd @sqlcmdArguments -i $wrapperPath
     }
 
@@ -119,10 +134,10 @@ GO
     }
 
     if ($Apply) {
-        Write-Host "Capacitacion schema applied successfully."
+        Write-Host "Capacitacion schema and module curriculum applied successfully."
     }
     else {
-        Write-Host "Capacitacion schema preview passed; no changes were committed."
+        Write-Host "Capacitacion schema and curriculum preview passed; no changes were committed."
     }
 }
 finally {

@@ -34,15 +34,18 @@ El flujo aplicado:
 5. dentro de una transacción, desactiva temporalmente triggers y constraints,
    borra filas de todas las tablas salvo dos referencias revisadas, vuelve a
    habilitar y validar los constraints, y comprueba que el borrado fue total;
-6. reinstala el catálogo español versionado de Capacitación y sustituye el
-   importador CFDI por uno exclusivo de Training que sólo acepta el XML ficticio
-   publicado por el repositorio;
+6. reinstala el catálogo español versionado de Capacitación, agrega el currículo
+   completo con un curso por cada módulo de OrionERP y la ruta de aprendizaje
+   `ORION-EXPERTO`, y sustituye el importador CFDI por uno exclusivo de Training
+   que sólo acepta el XML ficticio publicado por el repositorio;
 7. crea cuatro empleados y usuarios inequívocamente ficticios, una reservación,
    inventario mínimo y referencias RH ficticias (sitio, horario, política de
    asistencia sin ubicación, saldos de permiso y aviso de privacidad);
-8. crea diez asignaciones iniciales (cinco cursos para cada participante),
-   incluyendo Fundamentos, Reservaciones, CFDI/contabilidad, Logística y Capital
-   Humano;
+8. asigna el programa completo a `trainee01@training.orion.local` (un curso por
+   cada entrada de la ruta `ORION-EXPERTO`) y las cinco asignaciones del piloto a
+   `trainee02@training.orion.local`, siempre con
+   `instructor@training.orion.local` como instructor y responsable de la
+   asignación;
 9. reinicia identidades, secuencias y estadísticas, limpia Query Store y bloquea
    RLS, Broker, replicación, claves, permisos/principales clonados y módulos con
    efectos externos;

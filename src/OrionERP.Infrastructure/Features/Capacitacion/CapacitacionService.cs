@@ -31,10 +31,10 @@ public sealed class CapacitacionService : ICapacitacionService
     const string sql =
       """
       SELECT
-        SUM(CASE WHEN a.Estado = 'ASIGNADA' THEN 1 ELSE 0 END) AS Pendientes,
-        SUM(CASE WHEN a.Estado IN ('EN_CURSO','ESPERA_FIRMA','ESPERA_ACUSE') THEN 1 ELSE 0 END) AS EnCurso,
-        SUM(CASE WHEN a.Estado = 'COMPLETADA' THEN 1 ELSE 0 END) AS Completadas,
-        SUM(CASE WHEN a.FechaLimite < SYSUTCDATETIME() AND a.Estado NOT IN ('COMPLETADA','CANCELADA') THEN 1 ELSE 0 END) AS Vencidas,
+        COUNT(CASE WHEN a.Estado = 'ASIGNADA' THEN 1 END) AS Pendientes,
+        COUNT(CASE WHEN a.Estado IN ('EN_CURSO','ESPERA_FIRMA','ESPERA_ACUSE') THEN 1 END) AS EnCurso,
+        COUNT(CASE WHEN a.Estado = 'COMPLETADA' THEN 1 END) AS Completadas,
+        COUNT(CASE WHEN a.FechaLimite < SYSUTCDATETIME() AND a.Estado NOT IN ('COMPLETADA','CANCELADA') THEN 1 END) AS Vencidas,
         CAST(ISNULL(AVG(CASE WHEN a.Estado <> 'CANCELADA' THEN a.Porcentaje END), 0) AS decimal(5,2)) AS ProgresoPromedio
       FROM capacitacion.Asignacion a
       WHERE a.Rfc = @Rfc AND a.EmployeeId = @EmployeeId;
@@ -1680,7 +1680,9 @@ public sealed class CapacitacionService : ICapacitacionService
       FROM capacitacion.Finalizacion finalRow
       WHERE finalRow.AsignacionId = a.AsignacionId
     ) finalInfo
-    """;
+    """
+    // El salto de línea final separa este fragmento del WHERE que le concatenan las consultas.
+    + "\n";
 
   private const string SessionSelectSql =
     """
@@ -1703,7 +1705,9 @@ public sealed class CapacitacionService : ICapacitacionService
     JOIN capacitacion.CursoVersion cv ON cv.CursoVersionId = s.CursoVersionId
     JOIN capacitacion.Curso c ON c.CursoId = cv.CursoId
     JOIN dbo.Capital_Humano instructorInfo ON instructorInfo.ID = s.InstructorEmployeeId AND instructorInfo.RFC = s.Rfc
-    """;
+    """
+    // El salto de línea final separa este fragmento del WHERE que le concatenan las consultas.
+    + "\n";
 
   private sealed class SessionStateRow
   {

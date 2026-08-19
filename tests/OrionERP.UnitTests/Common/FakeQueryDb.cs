@@ -31,6 +31,12 @@ internal sealed class FakeQueryDbConnection : DbConnection
   public IReadOnlyList<FakeQueryCommandLog> ExecutedCommands => _executedCommands;
   public FakeQueryDbTransaction? LastTransaction { get; private set; }
   public Func<string, IReadOnlyList<FakeQueryParameter>, DataTable>? ReaderResultFactory { get; set; }
+
+  /// <summary>
+  /// Devuelve varios conjuntos de resultados para consultas que usan QueryMultiple.
+  /// Tiene prioridad sobre <see cref="ReaderResultFactory"/> cuando está definido.
+  /// </summary>
+  public Func<string, IReadOnlyList<FakeQueryParameter>, DataSet>? MultiResultReaderFactory { get; set; }
   public Func<string, IReadOnlyList<FakeQueryParameter>, int>? NonQueryResultFactory { get; set; }
   public Func<string, IReadOnlyList<FakeQueryParameter>, object?>? ScalarResultFactory { get; set; }
 
@@ -61,6 +67,10 @@ internal sealed class FakeQueryDbConnection : DbConnection
   internal DbDataReader ExecuteReader(string commandText, IReadOnlyList<FakeQueryParameter> parameters)
   {
     RecordCommand(commandText, parameters);
+    var multi = MultiResultReaderFactory?.Invoke(commandText, parameters);
+    if (multi is not null)
+      return multi.CreateDataReader();
+
     var table = ReaderResultFactory?.Invoke(commandText, parameters) ?? new DataTable();
     return table.CreateDataReader();
   }

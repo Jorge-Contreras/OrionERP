@@ -49,7 +49,7 @@ BEGIN TRY
         (
           N'EsquemaVersion', N'EntornoSeguridad', N'Curso', N'CursoVersion', N'Leccion',
           N'BloqueContenido', N'Recurso', N'Evaluacion', N'Pregunta', N'OpcionPregunta',
-          N'Practica', N'PracticaPaso'
+          N'Practica', N'PracticaPaso', N'RutaAprendizaje', N'RutaCurso'
         )
       )
   )
@@ -80,6 +80,14 @@ BEGIN TRY
       N'TRAINING-AUDITOR', N'Auditor de capacitación', CONVERT(date, '2026-01-05'), 'CAPACITACIÓN', 'ENTORNO FICTICIO',
       'SINTÉTICO', 'NO-ES-CREDENCIAL', 'auditor@training.orion.local', @TrainingRfc);
 
+  -- Los cinco roles de módulo cubren, con el mínimo posible, todas las pantallas
+  -- de práctica del currículo: Arrendadores, órdenes de trabajo (supervisor
+  -- cubre tablero y plantillas), cuentas por pagar, Capital Humano (admin cubre
+  -- asistencia, ausencias, configuración de tiempo, pre-nómina y mi equipo) y
+  -- Restaurante (supervisor cubre POS, cocina, pantalla, caja y administración).
+  -- Administrador existe únicamente para el instructor: es el único acceso a
+  -- reportes financieros, ajustes, expediente y portal de seguridad, y es la
+  -- cuenta con la que se administran roles dentro del entorno de capacitación.
   INSERT auth.AspNetRoles (Id, Name, NormalizedName, ConcurrencyStamp)
   VALUES
     (N'training-role-cap-admin', N'CapacitacionAdmin', N'CAPACITACIONADMIN', N'training-role-cap-admin-v1'),
@@ -87,7 +95,13 @@ BEGIN TRY
     (N'training-role-cap-auditor', N'CapacitacionAuditor', N'CAPACITACIONAUDITOR', N'training-role-cap-auditor-v1'),
     (N'training-role-read', N'Lectura', N'LECTURA', N'training-role-read-v1'),
     (N'training-role-sat-operator', N'SatOperator', N'SATOPERATOR', N'training-role-sat-operator-v1'),
-    (N'training-role-logistica', N'Logistica', N'LOGISTICA', N'training-role-logistica-v1');
+    (N'training-role-logistica', N'Logistica', N'LOGISTICA', N'training-role-logistica-v1'),
+    (N'training-role-administrador', N'Administrador', N'ADMINISTRADOR', N'training-role-administrador-v1'),
+    (N'training-role-arrendadores', N'Arrendadores', N'ARRENDADORES', N'training-role-arrendadores-v1'),
+    (N'training-role-ot-supervisor', N'OrdenTrabajoSupervisor', N'ORDENTRABAJOSUPERVISOR', N'training-role-ot-supervisor-v1'),
+    (N'training-role-ap-operator', N'APOperator', N'APOPERATOR', N'training-role-ap-operator-v1'),
+    (N'training-role-ch-admin', N'CapitalHumanoAdmin', N'CAPITALHUMANOADMIN', N'training-role-ch-admin-v1'),
+    (N'training-role-rest-supervisor', N'RestauranteSupervisor', N'RESTAURANTESUPERVISOR', N'training-role-rest-supervisor-v1');
 
   INSERT auth.AspNetUsers
   (
@@ -116,12 +130,23 @@ BEGIN TRY
     (N'training-user-instructor-v1', N'training-role-cap-instructor'),
     (N'training-user-instructor-v1', N'training-role-sat-operator'),
     (N'training-user-instructor-v1', N'training-role-logistica'),
+    (N'training-user-instructor-v1', N'training-role-administrador'),
     (N'training-user-trainee01-v1', N'training-role-read'),
     (N'training-user-trainee01-v1', N'training-role-sat-operator'),
     (N'training-user-trainee01-v1', N'training-role-logistica'),
+    (N'training-user-trainee01-v1', N'training-role-arrendadores'),
+    (N'training-user-trainee01-v1', N'training-role-ot-supervisor'),
+    (N'training-user-trainee01-v1', N'training-role-ap-operator'),
+    (N'training-user-trainee01-v1', N'training-role-ch-admin'),
+    (N'training-user-trainee01-v1', N'training-role-rest-supervisor'),
     (N'training-user-trainee02-v1', N'training-role-read'),
     (N'training-user-trainee02-v1', N'training-role-sat-operator'),
     (N'training-user-trainee02-v1', N'training-role-logistica'),
+    (N'training-user-trainee02-v1', N'training-role-arrendadores'),
+    (N'training-user-trainee02-v1', N'training-role-ot-supervisor'),
+    (N'training-user-trainee02-v1', N'training-role-ap-operator'),
+    (N'training-user-trainee02-v1', N'training-role-ch-admin'),
+    (N'training-user-trainee02-v1', N'training-role-rest-supervisor'),
     (N'training-user-auditor-v1', N'training-role-cap-auditor');
 
   DECLARE @TrainingClientId int;
@@ -209,14 +234,58 @@ BEGIN TRY
       (N'ORION-FUNDAMENTOS', N'RES-END-TO-END', N'CFDI-CONTABILIDAD', N'LOGISTICA-OPERACION', N'RH-CAPITAL-HUMANO')) <> 5
     THROW 51727, 'PROVISIONING FAILED: the expected seeded course catalog is incomplete.', 1;
 
+  -- The complete module curriculum is the manifest of what a trainee must master.
+  -- Its learning path enumerates every published course exactly once, so it is
+  -- also the list used below to assign the full program.
+  IF NOT EXISTS (SELECT 1 FROM capacitacion.RutaAprendizaje WHERE Rfc = N'*' AND Clave = N'ORION-EXPERTO' AND Activa = 1)
+    THROW 51728, 'PROVISIONING FAILED: the complete OrionERP learning path is missing.', 1;
+
+  IF EXISTS
+  (
+    SELECT 1
+    FROM capacitacion.Curso courseInfo
+    JOIN capacitacion.CursoVersion versionInfo
+      ON versionInfo.CursoId = courseInfo.CursoId AND versionInfo.NumeroVersion = 1
+    WHERE courseInfo.Rfc = N'*'
+      AND
+      (
+        versionInfo.Estado <> N'PUBLICADA'
+        OR NOT EXISTS
+        (
+          SELECT 1
+          FROM capacitacion.RutaCurso pathCourse
+          JOIN capacitacion.RutaAprendizaje pathInfo ON pathInfo.RutaId = pathCourse.RutaId
+          WHERE pathInfo.Rfc = N'*'
+            AND pathInfo.Clave = N'ORION-EXPERTO'
+            AND pathCourse.CursoVersionId = versionInfo.CursoVersionId
+        )
+      )
+  )
+    THROW 51729, 'PROVISIONING FAILED: a seeded course is unpublished or missing from the complete learning path.', 1;
+
+  -- trainee01 receives the whole program: completing it is what makes the
+  -- synthetic trainee an expert across every OrionERP module. trainee02 keeps
+  -- the shorter pilot cohort so both shapes stay exercised.
   INSERT capacitacion.Asignacion
     (Rfc, EmployeeId, CursoVersionId, InstructorEmployeeId, Estado, Porcentaje,
      FechaLimite, AsignadaPorEmployeeId, AsignadaPor)
-  SELECT CONVERT(nvarchar(50), @TrainingRfc), trainee.EmployeeId, versionInfo.CursoVersionId,
+  SELECT CONVERT(nvarchar(50), @TrainingRfc), 990002, versionInfo.CursoVersionId,
          990001, N'ASIGNADA', 0, DATEADD(day, 30, SYSUTCDATETIME()),
          990001, N'instructor@training.orion.local'
-  FROM (VALUES (990002), (990003)) trainee(EmployeeId)
-  CROSS JOIN capacitacion.Curso courseInfo
+  FROM capacitacion.RutaAprendizaje pathInfo
+  JOIN capacitacion.RutaCurso pathCourse ON pathCourse.RutaId = pathInfo.RutaId
+  JOIN capacitacion.CursoVersion versionInfo ON versionInfo.CursoVersionId = pathCourse.CursoVersionId
+  WHERE pathInfo.Rfc = N'*'
+    AND pathInfo.Clave = N'ORION-EXPERTO'
+    AND versionInfo.Estado = N'PUBLICADA';
+
+  INSERT capacitacion.Asignacion
+    (Rfc, EmployeeId, CursoVersionId, InstructorEmployeeId, Estado, Porcentaje,
+     FechaLimite, AsignadaPorEmployeeId, AsignadaPor)
+  SELECT CONVERT(nvarchar(50), @TrainingRfc), 990003, versionInfo.CursoVersionId,
+         990001, N'ASIGNADA', 0, DATEADD(day, 30, SYSUTCDATETIME()),
+         990001, N'instructor@training.orion.local'
+  FROM capacitacion.Curso courseInfo
   JOIN capacitacion.CursoVersion versionInfo ON versionInfo.CursoId = courseInfo.CursoId
   WHERE courseInfo.Rfc = N'*'
     AND courseInfo.Clave IN

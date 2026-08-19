@@ -213,7 +213,25 @@ public sealed class TrainingSanitizationScriptTests
     Assert.Contains("N'LOGISTICA-OPERACION'", ProvisionSql, StringComparison.Ordinal);
     Assert.Contains("N'RH-CAPITAL-HUMANO'", ProvisionSql, StringComparison.Ordinal);
     Assert.Contains(") <> 5", ProvisionSql, StringComparison.Ordinal);
-    Assert.Contains(") <> 10", AttestSql, StringComparison.Ordinal);
+
+    // trainee01 is assigned the complete module program through the reviewed
+    // learning path; trainee02 keeps the five-course pilot cohort. The
+    // attestation counts both shapes instead of a single fixed total.
+    Assert.Contains("N'ORION-EXPERTO'", ProvisionSql, StringComparison.Ordinal);
+    Assert.Contains("@CursoManifiesto", AttestSql, StringComparison.Ordinal);
+    Assert.Contains("@CursosEsperados int = (SELECT COUNT(*) FROM @CursoManifiesto)", AttestSql, StringComparison.Ordinal);
+    Assert.Contains(
+      "(SELECT COUNT(*) FROM capacitacion.Asignacion) <> (@CursosEsperados + 5)",
+      AttestSql,
+      StringComparison.Ordinal);
+    Assert.Contains(
+      "(SELECT COUNT(*) FROM capacitacion.Asignacion WHERE EmployeeId = 990002) <> @CursosEsperados",
+      AttestSql,
+      StringComparison.Ordinal);
+    Assert.Contains(
+      "(SELECT COUNT(*) FROM capacitacion.Asignacion WHERE EmployeeId = 990003) <> 5",
+      AttestSql,
+      StringComparison.Ordinal);
     Assert.Contains("N'SatOperator'", ProvisionSql, StringComparison.Ordinal);
     Assert.Contains("N'Logistica'", ProvisionSql, StringComparison.Ordinal);
     Assert.Contains("N'Lectura'", ProvisionSql, StringComparison.Ordinal);
@@ -225,10 +243,30 @@ public sealed class TrainingSanitizationScriptTests
       "(N'training-user-instructor-v1', N'training-role-logistica')",
       ProvisionSql,
       StringComparison.Ordinal);
-    Assert.Contains("AspNetUserRoles) <> 11", AttestSql, StringComparison.Ordinal);
-    Assert.DoesNotContain("N'Administrador'", ProvisionSql, StringComparison.Ordinal);
-    Assert.DoesNotContain("N'CapitalHumanoAdmin'", ProvisionSql, StringComparison.Ordinal);
+    Assert.Contains("AspNetUserRoles) <> 22", AttestSql, StringComparison.Ordinal);
+
+    // Los participantes reciben los roles de módulo necesarios para practicar
+    // todo el currículo, pero Administrador queda reservado al instructor: es la
+    // única cuenta que administra el entorno y la que abre el portal de
+    // seguridad. La nómina sigue fuera del alcance de la capacitación.
+    Assert.Contains(
+      "(N'training-user-instructor-v1', N'training-role-administrador')",
+      ProvisionSql,
+      StringComparison.Ordinal);
+    foreach (var trainee in new[] { "trainee01", "trainee02" })
+    {
+      Assert.DoesNotContain(
+        $"(N'training-user-{trainee}-v1', N'training-role-administrador')",
+        ProvisionSql,
+        StringComparison.Ordinal);
+      Assert.DoesNotContain(
+        $"(N'training-user-{trainee}-v1', N'training-role-cap-admin')",
+        ProvisionSql,
+        StringComparison.Ordinal);
+    }
+
     Assert.DoesNotContain("N'CapitalHumanoNomina'", ProvisionSql, StringComparison.Ordinal);
+    Assert.DoesNotContain("N'Conteo'", ProvisionSql, StringComparison.Ordinal);
     Assert.DoesNotContain("INSERT cfdi.", ProvisionSql, StringComparison.OrdinalIgnoreCase);
     Assert.DoesNotContain("INSERT bancos.", ProvisionSql, StringComparison.OrdinalIgnoreCase);
     Assert.DoesNotContain("CREATE LOGIN", ProvisionSql, StringComparison.OrdinalIgnoreCase);

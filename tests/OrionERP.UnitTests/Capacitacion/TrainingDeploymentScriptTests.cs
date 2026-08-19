@@ -7,6 +7,7 @@ public sealed class TrainingDeploymentScriptTests
   private static readonly string ProvisionRuntime = ReadRepoFile("Provision-TrainingRuntimeSqlLogin.ps1");
   private static readonly string Configure = ReadRepoFile("Configure-TrainingService.ps1");
   private static readonly string Publish = ReadRepoFile("Publish-Training.ps1");
+  private static readonly string SanitizerLauncher = ReadRepoFile("Run-TrainingSanitizer.ps1");
   private static readonly string AttestSql = ReadRepoFile(
     "src/OrionERP.Infrastructure/Features/Capacitacion/Sql/20260817_orion_training_attest.sql");
   private static readonly string DatabaseSafetyVerifier = ReadRepoFile(
@@ -15,6 +16,63 @@ public sealed class TrainingDeploymentScriptTests
     "src/OrionERP.Web/appsettings.Training.json");
   private static readonly string SanitizationDocs = ReadRepoFile(
     "docs/orion-training-sanitization.md");
+
+  [Fact]
+  public void SanitizerLauncher_ElevatesPreviewsAndConfirmsBeforeTheDestructiveReset()
+  {
+    Assert.Contains("IsInRole(", SanitizerLauncher, StringComparison.Ordinal);
+    Assert.Contains("-Verb RunAs", SanitizerLauncher, StringComparison.Ordinal);
+
+    // El servicio debe estar detenido antes de la vista previa: el preflight del
+    // sanitizador rechaza cualquier otra sesión conectada al catálogo.
+    var stopService = SanitizerLauncher.IndexOf("Stop-Service -Name $ServiceName", StringComparison.Ordinal);
+    var sessionSweep = SanitizerLauncher.IndexOf(
+      "$blocking = Get-TrainingBlockingSession",
+      StringComparison.Ordinal);
+    var preview = SanitizerLauncher.IndexOf(
+      "& $sanitizer -ConnectionString $connectionString",
+      StringComparison.Ordinal);
+
+    // Detener el servicio no basta: una ventana ociosa de SSMS con el catálogo
+    // seleccionado también dispara el bloqueo 51904 del neutralizador.
+    Assert.InRange(sessionSweep, stopService + 1, preview - 1);
+    Assert.Contains("DB_ID(@Database)", SanitizerLauncher, StringComparison.Ordinal);
+    Assert.Contains("session_id <> @@SPID", SanitizerLauncher, StringComparison.Ordinal);
+
+    // El diagnóstico y el cierre se hacen desde master para no contarse a sí
+    // mismos, y KILL se arma con un entero ya validado contra el catálogo.
+    Assert.Equal(2, CountOccurrences(SanitizerLauncher, "$builder['Initial Catalog'] = 'master'"));
+    // EXECUTE (cadena) no admite una llamada a función dentro del paréntesis:
+    // la sentencia se arma en una variable y se ejecuta con sp_executesql.
+    Assert.Contains("EXEC sys.sp_executesql @KillStatement", SanitizerLauncher, StringComparison.Ordinal);
+    Assert.DoesNotContain("EXEC(N'KILL", SanitizerLauncher, StringComparison.Ordinal);
+    var confirmation = SanitizerLauncher.IndexOf("SANITIZAR", preview, StringComparison.Ordinal);
+    var apply = SanitizerLauncher.IndexOf("-Apply `", StringComparison.Ordinal);
+
+    Assert.InRange(stopService, 0, preview - 1);
+    Assert.InRange(preview, stopService + 1, confirmation - 1);
+    Assert.InRange(confirmation, preview + 1, apply - 1);
+    Assert.Contains("-ConfirmDatabase $requiredDatabase", SanitizerLauncher, StringComparison.Ordinal);
+    Assert.Contains("$requiredDatabase = 'Orion_Training'", SanitizerLauncher, StringComparison.Ordinal);
+
+    // Nunca materializa credenciales: las contraseñas viajan como SecureString y
+    // la cadena de conexión se arma en memoria, jamás se persiste.
+    Assert.Contains("-AsSecureString", SanitizerLauncher, StringComparison.Ordinal);
+    Assert.DoesNotContain("ConvertFrom-SecureString", SanitizerLauncher, StringComparison.Ordinal);
+    Assert.DoesNotContain("PtrToStringBSTR", SanitizerLauncher, StringComparison.Ordinal);
+    Assert.DoesNotContain("Set-Content", SanitizerLauncher, StringComparison.Ordinal);
+    Assert.DoesNotContain("Password=", SanitizerLauncher, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain("User Id=", SanitizerLauncher, StringComparison.OrdinalIgnoreCase);
+
+    // Sólo recuerda el nombre del servidor, que no es un secreto, y nunca a nivel máquina.
+    Assert.Contains("ORION_TRAINING_SANITIZER_SERVER", SanitizerLauncher, StringComparison.Ordinal);
+    Assert.DoesNotContain("'Machine'", SanitizerLauncher, StringComparison.Ordinal);
+
+    // Un reinicio incompleto deja el servicio abajo a propósito.
+    var failureBranch = SanitizerLauncher.IndexOf("EL REINICIO NO SE COMPLETÓ", StringComparison.Ordinal);
+    var keepStopped = SanitizerLauncher.IndexOf("queda DETENIDO", failureBranch, StringComparison.Ordinal);
+    Assert.True(keepStopped > failureBranch);
+  }
 
   [Fact]
   public void RuntimeProvisioning_UsesFixedParameterizedSqlAuthAndRealConnectionChecks()
@@ -121,6 +179,19 @@ public sealed class TrainingDeploymentScriptTests
     Assert.Contains(origin, TrainingSettings, StringComparison.Ordinal);
     Assert.Contains(host, SanitizationDocs, StringComparison.Ordinal);
     Assert.Contains(origin, SanitizationDocs, StringComparison.Ordinal);
+  }
+
+  private static int CountOccurrences(string value, string fragment)
+  {
+    var count = 0;
+    var offset = 0;
+    while ((offset = value.IndexOf(fragment, offset, StringComparison.Ordinal)) >= 0)
+    {
+      count++;
+      offset += fragment.Length;
+    }
+
+    return count;
   }
 
   private static string ReadRepoFile(string relativePath)

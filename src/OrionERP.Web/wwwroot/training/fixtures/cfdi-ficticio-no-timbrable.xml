@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  EXCLUSIVO PARA ORION_TRAINING.
+  CFDI FICTICIO, SIN VALIDEZ FISCAL Y NO TIMBRABLE.
+  Los RFC son genéricos y los certificados, sellos y timbre son marcadores inválidos.
+  Este archivo nunca debe enviarse al SAT, a un PAC ni a un servicio de producción.
+-->
+<cfdi:Comprobante
+    xmlns:cfdi="http://www.sat.gob.mx/cfd/4"
+    xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital"
+    xmlns:training="urn:orionerp:training-only"
+    training:Ficticio="true"
+    training:NoValidoFiscal="true"
+    Version="4.0"
+    Serie="TRN"
+    Folio="NO-TIMBRABLE-001"
+    Fecha="2026-01-15T12:00:00"
+    Sello="NO_VALIDO_ENTRENAMIENTO"
+    FormaPago="99"
+    NoCertificado="00000000000000000000"
+    Certificado="NO_VALIDO_ENTRENAMIENTO"
+    CondicionesDePago="SIMULACION SIN EFECTOS"
+    SubTotal="1000.00"
+    Descuento="0.00"
+    Moneda="MXN"
+    TipoCambio="1.000000"
+    Total="1160.00"
+    TipoDeComprobante="I"
+    Exportacion="01"
+    MetodoPago="PPD"
+    LugarExpedicion="00000"
+    Confirmacion="TRN">
+  <cfdi:Emisor
+      Rfc="XAXX010101000"
+      Nombre="EMISOR FICTICIO ORION TRAINING"
+      RegimenFiscal="616"
+      FacAtrAdquirente="NO_APLICA" />
+  <cfdi:Receptor
+      Rfc="XAXX010101000"
+      Nombre="RECEPTOR FICTICIO ORION TRAINING"
+      DomicilioFiscalReceptor="00000"
+      ResidenciaFiscalReceptor="MEX"
+      NumRegIdTrib="TRAINING-NO-FISCAL"
+      RegimenFiscalReceptor="616"
+      UsoCFDI="G03" />
+  <cfdi:Conceptos>
+    <cfdi:Concepto
+        ClaveProdServ="01010101"
+        NoIdentificacion="TRN-SERVICIO-001"
+        Cantidad="1.000000"
+        ClaveUnidad="E48"
+        Unidad="SERVICIO FICTICIO"
+        Descripcion="EJERCICIO CONTABLE SIN EFECTOS FISCALES"
+        ValorUnitario="1000.000000"
+        Importe="1000.000000"
+        Descuento="0.000000"
+        ObjetoImp="02">
+      <cfdi:Impuestos>
+        <cfdi:Traslados>
+          <cfdi:Traslado
+              Base="1000.000000"
+              Impuesto="002"
+              TipoFactor="Tasa"
+              TasaOCuota="0.160000"
+              Importe="160.000000" />
+        </cfdi:Traslados>
+      </cfdi:Impuestos>
+    </cfdi:Concepto>
+  </cfdi:Conceptos>
+  <cfdi:Impuestos TotalImpuestosTrasladados="160.00">
+    <cfdi:Traslados>
+      <cfdi:Traslado
+          Base="1000.000000"
+          Impuesto="002"
+          TipoFactor="Tasa"
+          TasaOCuota="0.160000"
+          Importe="160.000000" />
+    </cfdi:Traslados>
+  </cfdi:Impuestos>
+  <cfdi:Complemento>
+    <tfd:TimbreFiscalDigital
+        training:Ficticio="true"
+        Version="1.1"
+        UUID="00000000-0000-4000-8000-000000000001"
+        FechaTimbrado="2026-01-15T12:00:01"
+        RfcProvCertif="XAXX010101000"
+        Leyenda="TIMBRE FICTICIO SIN VALIDEZ FISCAL"
+        SelloCFD="NO_VALIDO_ENTRENAMIENTO"
+        NoCertificadoSAT="00000000000000000000"
+        SelloSAT="NO_VALIDO_ENTRENAMIENTO" />
+  </cfdi:Complemento>
+</cfdi:Comprobante>

@@ -1,0 +1,337 @@
+@page "/capacitacion/mi-plan"
+@attribute [Authorize(Policy = "CapacitacionEmployee")]
+@inherits CapacitacionPageBase
+
+<PageTitle>Mi plan de capacitación</PageTitle>
+
+<CapacitacionShell Title="Mi plan de capacitación"
+                   Eyebrow="Ruta personal"
+                   Description="Consulta tus asignaciones, continúa una lección y conserva evidencia de lo que ya dominas.">
+  <HeroActions>
+    <a class="cap-btn cap-btn--ghost" href="/capacitacion/catalogo"><span class="oi oi-book" aria-hidden="true"></span>Ver catálogo</a>
+  </HeroActions>
+  <ChildContent>
+    @if (!string.IsNullOrWhiteSpace(PageError))
+    {
+      <div class="cap-alert cap-alert--error" role="alert"><span class="oi oi-warning" aria-hidden="true"></span><p>@PageError</p></div>
+    }
+    @if (!string.IsNullOrWhiteSpace(PageMessage))
+    {
+      <div class="cap-alert @(MessageIsError ? "cap-alert--error" : "cap-alert--success")" role="status"><span class="oi @(MessageIsError ? "oi-warning" : "oi-check")" aria-hidden="true"></span><p>@PageMessage</p></div>
+    }
+
+    @if (loading)
+    {
+      <CapacitacionLoading />
+    }
+    else if (course is not null && selectedAssignment is not null)
+    {
+      <section class="cap-player" aria-labelledby="cap-course-title">
+        <div class="cap-player__topbar">
+          <button class="cap-btn cap-btn--light" type="button" @onclick="CloseCourse"><span class="oi oi-arrow-left" aria-hidden="true"></span>Volver a mi plan</button>
+          <div class="cap-player__identity"><span class="cap-badge cap-badge--info">@course.Categoria</span><strong id="cap-course-title">@course.Nombre</strong><small>Versión @course.NumeroVersion · @course.DuracionMinutos min</small></div>
+          <span class="cap-badge @CapacitacionUi.StatusCss(selectedAssignment.Estado)">@CapacitacionUi.StatusLabel(selectedAssignment.Estado)</span>
+        </div>
+
+        <div class="cap-player__flow"><FlujoCapacitacion CurrentStep="@CurrentFlowStep" MaximumStep="@CurrentFlowStep" /></div>
+
+        <div class="cap-player__layout">
+          <aside class="cap-player__outline" aria-label="Contenido del curso">
+            @foreach (var lesson in course.Lecciones.OrderBy(x => x.Orden))
+            {
+              <div class="cap-outline__lesson">
+                <strong><span>@lesson.Orden</span>@lesson.Titulo</strong>
+                <small>@lesson.DuracionMinutos min · @lesson.Bloques.Count bloques</small>
+                <ol>
+                  @foreach (var block in lesson.Bloques.OrderBy(x => x.Orden))
+                  {
+                    var index = Blocks.IndexOf(block);
+                    <li class="@(index == activeBlockIndex ? "active" : index <= lastCompletedBlockIndex ? "complete" : null)">
+                      <button type="button" disabled="@(index > activeBlockIndex)" @onclick="() => SelectBlock(index)"><span class="oi @(index < activeBlockIndex ? "oi-check" : BlockIcon(block.Tipo))" aria-hidden="true"></span>@block.Titulo</button>
+                    </li>
+                  }
+                </ol>
+              </div>
+            }
+          </aside>
+
+          <div class="cap-player__content">
+            @if (ActiveBlock is not null)
+            {
+              <BloqueContenidoCapacitacion Block="@ToViewModel(ActiveBlock)" />
+
+              <AuthorizeView Policy="CapacitacionInstructor">
+                <Authorized>
+                  @if (!string.IsNullOrWhiteSpace(CapacitacionUi.GetInstructorNotes(ActiveBlock.ConfiguracionJson)))
+                  {
+                    <details class="cap-trainer-notes">
+                      <summary><span class="oi oi-lock-locked" aria-hidden="true"></span>Notas privadas para el instructor</summary>
+                      <p>@CapacitacionUi.GetInstructorNotes(ActiveBlock.ConfiguracionJson)</p>
+                    </details>
+                  }
+                </Authorized>
+              </AuthorizeView>
+
+              @if (ActiveBlock.Tipo == CapacitacionCodes.BloqueEvaluacion && CurrentEvaluation is not null)
+              {
+                <section class="cap-assessment" aria-labelledby="cap-eval-title">
+                  <div class="cap-assessment__intro"><span class="oi oi-pencil" aria-hidden="true"></span><div><h2 id="cap-eval-title">@CurrentEvaluation.Titulo</h2><p>@CurrentEvaluation.Instrucciones</p></div><span class="cap-badge cap-badge--warn">Mínimo @CurrentEvaluation.CalificacionMinima.ToString("0")%</span></div>
+                  @foreach (var question in CurrentEvaluation.Preguntas.OrderBy(x => x.Orden))
+                  {
+                    <fieldset class="cap-question">
+                      <legend>@question.Orden. @question.Texto @if (question.Critica) { <span class="cap-badge cap-badge--danger">Crítica</span> }</legend>
+                      @foreach (var option in question.Opciones.OrderBy(x => x.Orden))
+                      {
+                        <label><input type="radio" name="question-@question.PreguntaId" value="@option.OpcionId" checked="@(SelectedOption(question.PreguntaId) == option.OpcionId)" @onchange="() => SelectOption(question.PreguntaId, option.OpcionId)" /><span>@option.Texto</span></label>
+                      }
+                    </fieldset>
+                  }
+                  <button type="button" class="cap-btn cap-btn--primary" disabled="@(busy || !AllQuestionsAnswered)" @onclick="SubmitEvaluationAsync">@(busy ? "Evaluando…" : "Enviar evaluación")</button>
+                  @if (evaluationResult is not null)
+                  {
+                    <div class="cap-alert @(evaluationResult.Aprobada ? "cap-alert--success" : "cap-alert--error") mt-3" role="status"><span class="oi @(evaluationResult.Aprobada ? "oi-check" : "oi-warning")" aria-hidden="true"></span><p><strong>@evaluationResult.Calificacion.ToString("0")%</strong> · @evaluationResult.Message</p></div>
+                  }
+                </section>
+              }
+
+              @if (ActiveBlock.Tipo == CapacitacionCodes.BloquePractica && CurrentPractice is not null)
+              {
+                <section class="cap-practice" aria-labelledby="cap-practice-title">
+                  <div class="cap-practice__banner"><span class="oi oi-shield" aria-hidden="true"></span><div><strong>Práctica aislada</strong><p>Trabaja únicamente con datos simulados. Ninguna acción de este escenario debe ejecutarse en producción.</p></div></div>
+                  <h2 id="cap-practice-title">@CurrentPractice.Titulo</h2>
+                  <p>@CurrentPractice.Instrucciones</p>
+                  <ol class="cap-practice__steps">
+                    @foreach (var step in CurrentPractice.Pasos.OrderBy(x => x.Orden))
+                    {
+                      <li><span>@step.Orden</span><div>@step.Descripcion @if(step.Critico){<span class="cap-badge cap-badge--danger">Paso crítico</span>}</div></li>
+                    }
+                  </ol>
+                  @if (SandboxUrl(CurrentPractice) is { } sandboxUrl)
+                  {
+                    <a class="cap-btn cap-btn--teal" href="@sandboxUrl" target="_blank" rel="noopener noreferrer"><span class="oi oi-external-link" aria-hidden="true"></span>Abrir OrionERP Training</a>
+                  }
+                  else
+                  {
+                    <button type="button" class="cap-btn cap-btn--light" disabled title="Configura Capacitacion:SandboxBaseUrl para habilitar la práctica"><span class="oi oi-lock-locked" aria-hidden="true"></span>Sandbox no configurado</button>
+                  }
+                  <p class="cap-hint">Un instructor validará tu lista práctica antes de firmar la capacitación.</p>
+                </section>
+              }
+
+              <div class="cap-player__controls">
+                <button type="button" class="cap-btn cap-btn--light" disabled="@(activeBlockIndex == 0 || busy)" @onclick="PreviousBlock"><span class="oi oi-chevron-left" aria-hidden="true"></span>Anterior</button>
+                <div><span class="cap-hint">Bloque @(activeBlockIndex + 1) de @Blocks.Count</span></div>
+                @if (activeBlockIndex < Blocks.Count - 1)
+                {
+                  <button type="button" class="cap-btn cap-btn--primary" disabled="@(busy || !CanContinue)" @onclick="CompleteAndNextAsync">@(busy ? "Guardando…" : "Guardar y continuar")<span class="oi oi-chevron-right" aria-hidden="true"></span></button>
+                }
+                else if (!LastBlockCompleted)
+                {
+                  <button type="button" class="cap-btn cap-btn--primary" disabled="@(busy || !CanContinue)" @onclick="CompleteAndNextAsync"><span class="oi oi-check" aria-hidden="true"></span>@(busy ? "Guardando…" : "Guardar y completar contenido")</button>
+                }
+                else if (selectedAssignment.Estado == CapacitacionCodes.AsignacionEsperaAcuse && !selectedAssignment.AcuseColaborador)
+                {
+                  <button type="button" class="cap-btn cap-btn--teal" disabled="@busy" @onclick="AcknowledgeAsync"><span class="oi oi-check" aria-hidden="true"></span>Confirmar que recibí la capacitación</button>
+                }
+                else if (selectedAssignment.Estado == CapacitacionCodes.AsignacionCompletada)
+                {
+                  <span class="cap-badge cap-badge--success"><span class="oi oi-badge" aria-hidden="true"></span>Capacitación completada</span>
+                }
+                else
+                {
+                  <span class="cap-badge cap-badge--warn"><span class="oi oi-clock" aria-hidden="true"></span>Pendiente de validaciones</span>
+                }
+              </div>
+            }
+          </div>
+        </div>
+      </section>
+    }
+    else
+    {
+      <div class="cap-toolbar" aria-label="Filtros del plan">
+        <div class="cap-toolbar__group cap-filter-tabs" role="group" aria-label="Filtrar asignaciones">
+          @foreach (var filter in Filters)
+          {
+            <button type="button" class="@(activeFilter == filter.Key ? "active" : null)" aria-pressed="@(activeFilter == filter.Key)" @onclick="() => activeFilter = filter.Key">@filter.Label <span>@FilterCount(filter.Key)</span></button>
+          }
+        </div>
+        <label class="cap-search"><span class="visually-hidden">Buscar en mi plan</span><span class="oi oi-magnifying-glass" aria-hidden="true"></span><input type="search" class="cap-input" placeholder="Buscar curso o módulo" @bind="search" @bind:event="oninput" /></label>
+      </div>
+
+      @if (VisibleAssignments.Count == 0)
+      {
+        <div class="cap-card"><div class="cap-empty"><span class="cap-empty__icon"><span class="oi oi-task" aria-hidden="true"></span></span><h2>No hay asignaciones con este filtro</h2><p>Prueba otro estado o explora el catálogo de capacitación.</p><a class="cap-btn cap-btn--primary" href="/capacitacion/catalogo">Explorar catálogo</a></div></div>
+      }
+      else
+      {
+        <div class="cap-plan-grid">
+          @foreach (var assignment in VisibleAssignments)
+          {
+            <article class="cap-plan-card">
+              <header><span class="cap-plan-card__icon"><span class="oi @CapacitacionUi.IconForModule(assignment.Categoria)" aria-hidden="true"></span></span><span class="cap-badge @CapacitacionUi.StatusCss(assignment.Estado)">@CapacitacionUi.StatusLabel(assignment.Estado)</span></header>
+              <div class="cap-plan-card__body"><div class="cap-eyebrow-dark">@assignment.Categoria</div><h2>@assignment.CursoNombre</h2><p>@assignment.CursoClave · versión @assignment.NumeroVersion</p>
+                <div class="cap-progress" role="progressbar" aria-label="Progreso de @assignment.CursoNombre" aria-valuenow="@CapacitacionUi.ClampPercent(assignment.Porcentaje)" aria-valuemin="0" aria-valuemax="100"><span style="width:@CapacitacionUi.ClampPercent(assignment.Porcentaje)%"></span></div>
+                <div class="cap-progress-meta"><span>@CapacitacionUi.ClampPercent(assignment.Porcentaje)% completado</span><span>@DueText(assignment.FechaLimite)</span></div>
+                <dl><div><dt>Instructor</dt><dd>@(assignment.InstructorName ?? "Por asignar")</dd></div><div><dt>Calificación</dt><dd>@(assignment.Calificacion.HasValue ? $"{assignment.Calificacion:0}%" : "Pendiente")</dd></div></dl>
+              </div>
+              <footer>
+                <button type="button" class="cap-btn cap-btn--primary" disabled="@busy" @onclick="() => OpenCourseAsync(assignment)"><span class="oi @(assignment.Porcentaje > 0 ? "oi-media-play" : "oi-book")" aria-hidden="true"></span>@(assignment.Porcentaje > 0 ? "Continuar" : "Comenzar")</button>
+                @if (assignment.CompletadaEn.HasValue) { <span class="cap-hint">Completado @assignment.CompletadaEn.Value.ToString("dd MMM yyyy")</span> }
+              </footer>
+            </article>
+          }
+        </div>
+      }
+    }
+  </ChildContent>
+</CapacitacionShell>
+
+@code {
+  private static readonly (string Key, string Label)[] Filters = [("ALL", "Todo"), (CapacitacionCodes.AsignacionEnCurso, "En curso"), (CapacitacionCodes.AsignacionAsignada, "Pendiente"), (CapacitacionCodes.AsignacionCompletada, "Completado")];
+  private IReadOnlyList<CapacitacionAsignacionDto> assignments = [];
+  private CapacitacionAsignacionDto? selectedAssignment;
+  private CapacitacionCursoDetalleDto? course;
+  private int activeBlockIndex;
+  private int lastCompletedBlockIndex = -1;
+  private bool loading = true;
+  private bool busy;
+  private string activeFilter = "ALL";
+  private string search = string.Empty;
+  private readonly Dictionary<int, int> selectedOptions = [];
+  private CapacitacionEvaluacionResultadoDto? evaluationResult;
+
+  private List<CapacitacionBloqueDto> Blocks => course?.Lecciones.OrderBy(x => x.Orden).SelectMany(x => x.Bloques.OrderBy(b => b.Orden)).ToList() ?? [];
+  private CapacitacionBloqueDto? ActiveBlock => activeBlockIndex >= 0 && activeBlockIndex < Blocks.Count ? Blocks[activeBlockIndex] : null;
+  private CapacitacionEvaluacionDto? CurrentEvaluation => course?.Evaluaciones.FirstOrDefault();
+  private CapacitacionPracticaDto? CurrentPractice => course?.Practicas.FirstOrDefault();
+  private int CurrentFlowStep => ActiveBlock?.Tipo switch { CapacitacionCodes.BloqueObjetivos => 0, CapacitacionCodes.BloqueDemostracion => 2, CapacitacionCodes.BloquePractica => 3, CapacitacionCodes.BloqueEvaluacion => 4, CapacitacionCodes.BloqueResumen => 5, _ => 1 };
+  private bool AllQuestionsAnswered => CurrentEvaluation?.Preguntas.All(x => selectedOptions.ContainsKey(x.PreguntaId)) == true;
+  private bool CanContinue => ActiveBlock?.Tipo != CapacitacionCodes.BloqueEvaluacion || evaluationResult?.Aprobada == true;
+  private bool LastBlockCompleted => activeBlockIndex == Blocks.Count - 1 && lastCompletedBlockIndex >= activeBlockIndex;
+  private List<CapacitacionAsignacionDto> VisibleAssignments => assignments.Where(MatchesFilter).OrderBy(x => x.FechaLimite ?? DateTime.MaxValue).ToList();
+
+  protected override async Task OnInitializedAsync()
+  {
+    if (!await InitializeActorAsync()) { loading = false; return; }
+    await LoadPlanAsync();
+  }
+
+  private async Task LoadPlanAsync()
+  {
+    loading = true;
+    try { assignments = await Capacitacion.GetMiPlanAsync(Rfc, Actor!.EmployeeId!.Value, LifetimeToken); }
+    catch (OperationCanceledException) when (LifetimeToken.IsCancellationRequested) { }
+    catch (Exception exception) { ShowPageException(exception, "No fue posible cargar tu plan."); }
+    finally { loading = false; }
+  }
+
+  private bool MatchesFilter(CapacitacionAsignacionDto item)
+  {
+    var statusMatches = activeFilter == "ALL" || item.Estado.Equals(activeFilter, StringComparison.OrdinalIgnoreCase);
+    var textMatches = string.IsNullOrWhiteSpace(search) || item.CursoNombre.Contains(search, StringComparison.OrdinalIgnoreCase) || item.Categoria.Contains(search, StringComparison.OrdinalIgnoreCase);
+    return statusMatches && textMatches;
+  }
+
+  private int FilterCount(string key) => key == "ALL" ? assignments.Count : assignments.Count(x => x.Estado.Equals(key, StringComparison.OrdinalIgnoreCase));
+
+  private async Task OpenCourseAsync(CapacitacionAsignacionDto assignment)
+  {
+    busy = true; PageMessage = null; selectedAssignment = assignment; activeBlockIndex = 0; lastCompletedBlockIndex = -1; evaluationResult = null; selectedOptions.Clear();
+    try
+    {
+      course = await Capacitacion.GetCursoAsignadoAsync(assignment.AsignacionId, Rfc, Actor!.EmployeeId!.Value, LifetimeToken);
+      if (course is null) { PageMessage = "Esta versión del curso ya no está disponible."; MessageIsError = true; selectedAssignment = null; }
+      else if (assignment.UltimoBloqueCompletadoId is { } lastBlockId)
+      {
+        lastCompletedBlockIndex = Blocks.FindIndex(block => block.BloqueId == lastBlockId);
+        activeBlockIndex = Math.Clamp(lastCompletedBlockIndex + 1, 0, Math.Max(0, Blocks.Count - 1));
+      }
+    }
+    catch (Exception exception) { ShowException(exception, "No fue posible abrir el curso."); selectedAssignment = null; }
+    finally { busy = false; }
+  }
+
+  private void CloseCourse() { course = null; selectedAssignment = null; activeBlockIndex = 0; lastCompletedBlockIndex = -1; selectedOptions.Clear(); evaluationResult = null; PageMessage = null; }
+  private void SelectBlock(int index) { if (index >= 0 && index <= activeBlockIndex) activeBlockIndex = index; }
+  private void PreviousBlock() { if (activeBlockIndex > 0) activeBlockIndex--; }
+
+  private async Task CompleteAndNextAsync()
+  {
+    if (ActiveBlock is null || selectedAssignment is null || Actor?.EmployeeId is null) return;
+    busy = true; PageMessage = null;
+    try
+    {
+      var result = await Capacitacion.RegistrarProgresoBloqueAsync(new()
+      {
+        Rfc = Rfc, AsignacionId = selectedAssignment.AsignacionId, BloqueId = ActiveBlock.BloqueId,
+        EmployeeId = Actor.EmployeeId.Value, ActorEmployeeId = Actor.EmployeeId.Value, Actor = Actor.UserName
+      }, LifetimeToken);
+      ShowResult(result);
+      if (result.Success)
+      {
+        lastCompletedBlockIndex = Math.Max(lastCompletedBlockIndex, activeBlockIndex);
+        if (activeBlockIndex < Blocks.Count - 1) activeBlockIndex++;
+        else await RefreshSelectedAssignmentAsync();
+      }
+    }
+    catch (Exception exception) { ShowException(exception, "No fue posible guardar tu avance."); }
+    finally { busy = false; }
+  }
+
+  private async Task RefreshSelectedAssignmentAsync()
+  {
+    if (selectedAssignment is null || Actor?.EmployeeId is null) return;
+    var assignmentId = selectedAssignment.AsignacionId;
+    assignments = await Capacitacion.GetMiPlanAsync(Rfc, Actor.EmployeeId.Value, LifetimeToken);
+    selectedAssignment = assignments.FirstOrDefault(item => item.AsignacionId == assignmentId);
+  }
+
+  private void SelectOption(int questionId, int optionId) { selectedOptions[questionId] = optionId; evaluationResult = null; }
+  private int? SelectedOption(int questionId) => selectedOptions.TryGetValue(questionId, out var value) ? value : null;
+
+  private async Task SubmitEvaluationAsync()
+  {
+    if (CurrentEvaluation is null || selectedAssignment is null || Actor?.EmployeeId is null || !AllQuestionsAnswered) return;
+    busy = true;
+    try
+    {
+      evaluationResult = await Capacitacion.RegistrarEvaluacionAsync(new()
+      {
+        Rfc = Rfc, AsignacionId = selectedAssignment.AsignacionId, EvaluacionId = CurrentEvaluation.EvaluacionId,
+        EmployeeId = Actor.EmployeeId.Value, OpcionIds = selectedOptions.Values.ToArray(), ActorEmployeeId = Actor.EmployeeId.Value, Actor = Actor.UserName
+      }, LifetimeToken);
+      PageMessage = evaluationResult.Message; MessageIsError = !evaluationResult.Aprobada;
+    }
+    catch (Exception exception) { ShowException(exception, "No fue posible evaluar tus respuestas."); }
+    finally { busy = false; }
+  }
+
+  private async Task AcknowledgeAsync()
+  {
+    if (selectedAssignment is null || Actor?.EmployeeId is null) return;
+    busy = true;
+    try
+    {
+      var result = await Capacitacion.AcusarFinalizacionAsync(new() { Rfc = Rfc, AsignacionId = selectedAssignment.AsignacionId, EmployeeId = Actor.EmployeeId.Value, Actor = Actor.UserName }, LifetimeToken);
+      ShowResult(result);
+      if (result.Success) { await LoadPlanAsync(); CloseCourse(); }
+    }
+    catch (Exception exception) { ShowException(exception, "No fue posible registrar tu acuse."); }
+    finally { busy = false; }
+  }
+
+  private CapacitacionContentViewModel ToViewModel(CapacitacionBloqueDto block)
+  {
+    var resource = block.Recursos.OrderBy(x => x.Orden).FirstOrDefault();
+    return new(block.BloqueId, block.Tipo, block.Titulo, block.Contenido,
+      CapacitacionUi.GetStructuredItems(block.Tipo, block.Contenido, block.ConfiguracionJson),
+      resource?.Titulo, BuildResourceUrl(resource?.Ruta), 0, block.Requerido,
+      Blocks.IndexOf(block) <= lastCompletedBlockIndex, resource?.Tipo, resource?.TextoAlternativo);
+  }
+
+  private string? SandboxUrl(CapacitacionPracticaDto practice) => BuildSandboxUrl(practice.RutaSandbox);
+  private static string BlockIcon(string type) => type switch { CapacitacionCodes.BloqueDemostracion => "oi-monitor", CapacitacionCodes.BloquePractica => "oi-wrench", CapacitacionCodes.BloqueEvaluacion => "oi-pencil", CapacitacionCodes.BloqueResumen => "oi-flag", _ => "oi-book" };
+  private static string DueText(DateTime? due) => due is null ? "Sin fecha límite" : due.Value.Date < DateTime.Today ? $"Venció {due.Value:dd MMM}" : $"Hasta {due.Value:dd MMM}";
+
+}

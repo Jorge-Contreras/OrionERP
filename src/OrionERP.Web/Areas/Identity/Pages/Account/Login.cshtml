@@ -1,5 +1,6 @@
 @page
 @model OrionERP.Web.Areas.Identity.Pages.Account.LoginModel
+@inject Microsoft.Extensions.Hosting.IHostEnvironment HostEnvironment
 @{
     ViewData["Title"] = "Iniciar sesion";
 }
@@ -118,16 +119,19 @@
                 </button>
             </form>
 
-            <div class="auth-registration">
-                <span>¿Nuevo en OrionERP?</span>
-                <a class="auth-register"
-                   asp-area="Identity"
-                   asp-page="/Account/Register"
-                   asp-route-returnUrl="@Model.ReturnUrl">
-                    <i class="bi bi-person-plus" aria-hidden="true"></i>
-                    <span>Registrar nueva cuenta</span>
-                </a>
-            </div>
+            @if (!HostEnvironment.IsEnvironment("Training"))
+            {
+                <div class="auth-registration">
+                    <span>¿Nuevo en OrionERP?</span>
+                    <a class="auth-register"
+                       asp-area="Identity"
+                       asp-page="/Account/Register"
+                       asp-route-returnUrl="@Model.ReturnUrl">
+                        <i class="bi bi-person-plus" aria-hidden="true"></i>
+                        <span>Registrar nueva cuenta</span>
+                    </a>
+                </div>
+            }
         </section>
     </main>
 </div>

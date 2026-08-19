@@ -16,8 +16,6 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
 {
   private const string ProductionBaseUrl = "https://api.facturama.mx";
   private const string SandboxBaseUrl = "https://apisandbox.facturama.mx";
-  private const string SandboxUser = "jorgecontreras";
-  private const string SandboxPassword = "Orion2020";
   private static readonly JsonSerializerOptions JsonOptions = new()
   {
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
@@ -329,12 +327,8 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
 
     var useSandboxDefaults = ShouldUseSandboxDefaults(configuration, configuredBaseUrl);
     var defaultBaseUrl = useSandboxDefaults ? SandboxBaseUrl : ProductionBaseUrl;
-    var user = string.IsNullOrWhiteSpace(configuredUser)
-        ? (useSandboxDefaults ? SandboxUser : null)
-        : configuredUser;
-    var password = string.IsNullOrWhiteSpace(configuredPassword)
-        ? (useSandboxDefaults ? SandboxPassword : null)
-        : configuredPassword;
+    var user = configuredUser?.Trim();
+    var password = configuredPassword;
 
     if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(password))
     {

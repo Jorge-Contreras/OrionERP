@@ -1,0 +1,64 @@
+.cap-filter-tabs { background: #edf3f6; border-radius: .7rem; flex: 0 1 auto; padding: .25rem; }
+.cap-filter-tabs button { background: transparent; border: 0; border-radius: .5rem; color: #607489; font-size: .8rem; font-weight: 750; padding: .55rem .7rem; }
+.cap-filter-tabs button.active { background: #fff; box-shadow: 0 2px 8px rgba(24,50,74,.1); color: #126b8f; }
+.cap-filter-tabs button span { background: rgba(96,116,137,.12); border-radius: 999px; display: inline-block; font-size: .66rem; margin-left: .25rem; min-width: 1.3rem; padding: .15rem .3rem; }
+.cap-search { align-items: center; display: flex; max-width: 22rem; min-width: 16rem; position: relative; }
+.cap-search > .oi { color: #607489; left: .8rem; position: absolute; z-index: 1; }
+.cap-search ::deep input { padding-left: 2.35rem; }
+.cap-plan-grid { display: grid; gap: 1rem; grid-template-columns: repeat(3,minmax(0,1fr)); }
+.cap-plan-card { background: #fff; border: 1px solid #dce5ec; border-radius: 1rem; box-shadow: 0 8px 24px rgba(24,50,74,.06); display: flex; flex-direction: column; min-height: 20rem; overflow: hidden; }
+.cap-plan-card > header { align-items: center; background: linear-gradient(120deg,#f1f8f8,#edf4f8); display: flex; justify-content: space-between; padding: 1rem; }
+.cap-plan-card__icon { align-items: center; background: #fff; border-radius: .7rem; box-shadow: 0 4px 12px rgba(24,50,74,.08); color: #126b8f; display: flex; font-size: 1.2rem; height: 3rem; justify-content: center; width: 3rem; }
+.cap-plan-card__body { flex: 1; padding: 1.1rem; }
+.cap-eyebrow-dark { color: #0c857b; font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.cap-plan-card h2 { font-size: 1.12rem; margin: .4rem 0 .25rem; }
+.cap-plan-card p { color: #607489; font-size: .8rem; margin-bottom: 1rem; }
+.cap-plan-card dl { border-top: 1px solid #e2e9ee; display: grid; gap: .8rem; grid-template-columns: 1fr 1fr; margin: 1rem 0 0; padding-top: .85rem; }
+.cap-plan-card dl div { min-width: 0; }
+.cap-plan-card dt { color: #607489; font-size: .68rem; font-weight: 650; }
+.cap-plan-card dd { font-size: .8rem; font-weight: 750; margin: .15rem 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cap-plan-card > footer { align-items: center; border-top: 1px solid #e2e9ee; display: flex; gap: .7rem; justify-content: space-between; padding: .9rem 1.1rem; }
+.cap-player { background: #f5f8fa; border: 1px solid #dce5ec; border-radius: 1rem; overflow: hidden; }
+.cap-player__topbar { align-items: center; background: #fff; border-bottom: 1px solid #dce5ec; display: grid; gap: 1rem; grid-template-columns: auto minmax(0,1fr) auto; padding: .85rem 1rem; }
+.cap-player__identity { min-width: 0; text-align: center; }
+.cap-player__identity strong, .cap-player__identity small { display: block; }
+.cap-player__identity strong { font-size: .95rem; margin: .2rem 0; }
+.cap-player__identity small { color: #607489; font-size: .72rem; }
+.cap-player__flow { background: #fff; border-bottom: 1px solid #dce5ec; padding: 1rem clamp(.5rem,5vw,5rem); }
+.cap-player__layout { display: grid; grid-template-columns: minmax(14rem,18rem) minmax(0,1fr); min-height: 36rem; }
+.cap-player__outline { background: #fff; border-right: 1px solid #dce5ec; padding: 1rem; }
+.cap-outline__lesson + .cap-outline__lesson { border-top: 1px solid #e2e9ee; margin-top: 1rem; padding-top: 1rem; }
+.cap-outline__lesson > strong { align-items: center; display: flex; font-size: .8rem; gap: .5rem; }
+.cap-outline__lesson > strong > span { align-items: center; background: #e5f3f3; border-radius: 50%; color: #096b68; display: inline-flex; flex: 0 0 auto; height: 1.5rem; justify-content: center; width: 1.5rem; }
+.cap-outline__lesson > small { color: #607489; display: block; font-size: .68rem; margin: .3rem 0 .5rem 2rem; }
+.cap-outline__lesson ol { list-style: none; margin: 0; padding: 0; }
+.cap-outline__lesson li button { align-items: center; background: transparent; border: 0; border-radius: .45rem; color: #607489; display: flex; font-size: .73rem; gap: .45rem; padding: .45rem .55rem; text-align: left; width: 100%; }
+.cap-outline__lesson li.active button { background: #e8f3f7; color: #126b8f; font-weight: 750; }
+.cap-outline__lesson li.complete button { color: #0c756b; }
+.cap-outline__lesson li button:disabled { color: #9aa9b4; }
+.cap-player__content { display: grid; gap: 1rem; margin: 0 auto; max-width: 58rem; padding: clamp(1rem,3vw,2rem); width: 100%; }
+.cap-player__controls { align-items: center; background: #fff; border: 1px solid #dce5ec; border-radius: .8rem; display: flex; gap: 1rem; justify-content: space-between; padding: .8rem; }
+.cap-trainer-notes { background: #fff8e8; border: 1px solid #ead19a; border-radius: .7rem; color: #664d19; padding: .8rem 1rem; }
+.cap-trainer-notes summary { cursor: pointer; font-size: .8rem; font-weight: 800; }
+.cap-trainer-notes summary .oi { margin-right: .4rem; }
+.cap-trainer-notes p { line-height: 1.6; margin: .75rem 0 0; white-space: pre-line; }
+.cap-assessment, .cap-practice { background: #fff; border: 1px solid #dce5ec; border-radius: 1rem; padding: 1.2rem; }
+.cap-assessment__intro { align-items: flex-start; display: flex; gap: .75rem; }
+.cap-assessment__intro > .oi { align-items: center; background: #fff2d8; border-radius: .6rem; color: #8a651b; display: flex; flex: 0 0 auto; height: 2.5rem; justify-content: center; width: 2.5rem; }
+.cap-assessment__intro div { flex: 1; }
+.cap-assessment h2, .cap-practice h2 { font-size: 1.05rem; margin: 0; }
+.cap-assessment p, .cap-practice p { color: #607489; margin: .3rem 0 0; }
+.cap-question { border: 0; border-top: 1px solid #e2e9ee; margin: 1rem 0; padding: 1rem 0 0; }
+.cap-question legend { float: none; font-size: .88rem; font-weight: 750; margin-bottom: .7rem; width: 100%; }
+.cap-question label { align-items: flex-start; border: 1px solid #dce5ec; border-radius: .55rem; cursor: pointer; display: flex; gap: .55rem; padding: .65rem .75rem; }
+.cap-question label + label { margin-top: .45rem; }
+.cap-question label:has(input:checked) { background: #eaf5f6; border-color: #73b4b2; }
+.cap-question input { accent-color: #0c857b; margin-top: .2rem; }
+.cap-practice__banner { align-items: flex-start; background: #e6f5f1; border: 1px solid #b9dfd6; border-radius: .7rem; color: #0a5f54; display: flex; gap: .7rem; margin-bottom: 1rem; padding: .8rem; }
+.cap-practice__banner p { color: inherit; font-size: .78rem; }
+.cap-practice__steps { counter-reset: practice; list-style: none; padding: 0; }
+.cap-practice__steps li { align-items: flex-start; border-top: 1px solid #e2e9ee; display: flex; gap: .75rem; padding: .75rem 0; }
+.cap-practice__steps li > span { align-items: center; background: #e5f3f3; border-radius: 50%; color: #096b68; display: flex; flex: 0 0 auto; font-size: .72rem; font-weight: 800; height: 1.7rem; justify-content: center; width: 1.7rem; }
+@media (max-width: 1100px) { .cap-plan-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 800px) { .cap-player__layout { grid-template-columns: 1fr; } .cap-player__outline { border-bottom: 1px solid #dce5ec; border-right: 0; max-height: 15rem; overflow-y: auto; } }
+@media (max-width: 650px) { .cap-plan-grid { grid-template-columns: 1fr; } .cap-search { max-width: none; width: 100%; } .cap-player__topbar { grid-template-columns: 1fr auto; } .cap-player__identity { grid-column: 1/-1; grid-row: 1; } .cap-player__topbar > button { grid-row: 2; } .cap-player__controls { align-items: stretch; flex-direction: column; } .cap-player__controls > * { width: 100%; } }

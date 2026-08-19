@@ -80,6 +80,16 @@ public static class NavigationCatalog
                 new("/capital-humano/pre-nomina", "Pre-nómina", "Validación, aprobación, bloqueo y exportación de unidades de tiempo.", "oi-spreadsheet", "Pre-nómina", NavLinkMatch.Prefix, false, "Payroll", "nomina", "xlsx", "incidencias")
             ]),
         new(
+            "Personas",
+            "Capacitación",
+            "Rutas de aprendizaje, sesiones guiadas, práctica segura y evidencia de dominio.",
+            "oi-book",
+            [
+                new("/capacitacion", "Centro de capacitación", "Inicia sesiones, revisa asignaciones y consulta el avance del equipo.", "oi-book", "Centro de capacitación", NavLinkMatch.All, true, "Aprender", "capacitacion", "entrenamiento", "cursos", "sesiones"),
+                new("/capacitacion/mi-plan", "Mi capacitación", "Consulta tus cursos asignados, práctica y resultados.", "oi-person", "Mi capacitación", NavLinkMatch.Prefix, true, "Mi plan", "capacitacion", "progreso", "asignaciones", "cursos"),
+                new("/capacitacion/catalogo", "Catálogo", "Explora los cursos y rutas de aprendizaje publicados.", "oi-list-rich", "Catálogo de capacitación", NavLinkMatch.Prefix, false, "Cursos", "catalogo", "capacitacion", "modulos", "rutas")
+            ]),
+        new(
             "Inventario",
             "Logistica",
             "Materiales, compras, ubicaciones y control fisico de existencias.",

@@ -1,8 +1,10 @@
 @inherits LayoutComponentBase
 @using OrionERP.Web.Services
+@using OrionERP.Web.Features.TrainingSafety
 @inject IUiMessageService MessageService
+@inject ITrainingEnvironmentState TrainingEnvironment
 
-<PageTitle>OrionERP</PageTitle>
+<PageTitle>@(TrainingEnvironment.IsTraining ? "CAPACITACIÓN · OrionERP" : "OrionERP")</PageTitle>
 
 <div class="@AppShellCssClass">
     <div id="layout-nav-sidebar" class="sidebar app-shell__sidebar">
@@ -28,6 +30,7 @@
             </div>
         </div>
 
+        <TrainingEnvironmentBanner />
         <NotificationBanner />
         <article class="app-shell__content">
             <ErrorBoundary>

@@ -1,0 +1,156 @@
+@using Microsoft.AspNetCore.Components
+
+<article class="cap-block cap-block--@CssType" aria-labelledby="cap-block-title-@Block.Id">
+  <header class="cap-block__header">
+    <span class="cap-block__icon"><span class="oi @Icon" aria-hidden="true"></span></span>
+    <div>
+      <div class="cap-block__kind">@TypeLabel</div>
+      <h2 id="cap-block-title-@Block.Id">@Block.Title</h2>
+    </div>
+    @if (Block.EstimatedMinutes > 0)
+    {
+      <span class="cap-block__time"><span class="oi oi-clock" aria-hidden="true"></span>@Block.EstimatedMinutes min</span>
+    }
+  </header>
+
+  <div class="cap-block__body">
+    @if (CssType == "visual" && IsImageResource)
+    {
+      <figure class="cap-resource-image">
+        <img src="@Block.ActionUrl" alt="@(Block.ResourceAlt ?? Block.Title)" loading="lazy" />
+        @if (!string.IsNullOrWhiteSpace(Block.ActionLabel)) { <figcaption>@Block.ActionLabel</figcaption> }
+      </figure>
+    }
+    else if (CssType == "visual")
+    {
+      <div class="cap-visual" role="img" aria-label="Diagrama: @Block.Title">
+        <svg viewBox="0 0 720 180" aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient id="cap-flow-gradient-@Block.Id" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#126b8f" />
+              <stop offset="1" stop-color="#0c857b" />
+            </linearGradient>
+          </defs>
+          <path d="M112 90 H608" stroke="#c5d8e1" stroke-width="8" stroke-linecap="round" />
+          <path d="M112 90 H608" stroke="url(#cap-flow-gradient-@Block.Id)" stroke-width="3" stroke-linecap="round" />
+          <circle cx="112" cy="90" r="42" fill="#e4f1f5" stroke="#126b8f" stroke-width="3" />
+          <circle cx="360" cy="90" r="42" fill="#e8f5f2" stroke="#0c857b" stroke-width="3" />
+          <circle cx="608" cy="90" r="42" fill="#fff2d8" stroke="#d89a2b" stroke-width="3" />
+          <path d="M595 78l18 12-18 12" fill="none" stroke="#8a651b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M346 90l10 10 20-23" fill="none" stroke="#0c857b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M98 90h28M112 76v28" stroke="#126b8f" stroke-width="5" stroke-linecap="round" />
+        </svg>
+      </div>
+    }
+
+    @foreach (var paragraph in Paragraphs)
+    {
+      <p>@paragraph</p>
+    }
+
+    @if (DisplayItems.Count > 0)
+    {
+      @if (CssType is "practica" or "pasos")
+      {
+        <ul class="cap-task-list">
+          @foreach (var item in DisplayItems)
+          {
+            <li><span class="oi oi-circle-check" aria-hidden="true"></span><span>@item</span></li>
+          }
+        </ul>
+      }
+      else
+      {
+        <ul>
+          @foreach (var item in DisplayItems) { <li>@item</li> }
+        </ul>
+      }
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Block.ActionUrl))
+    {
+      <a class="cap-btn cap-btn--primary" href="@Block.ActionUrl" target="@ActionTarget" rel="@ActionRel" download="@ActionDownload">
+        <span class="oi oi-external-link" aria-hidden="true"></span>@(Block.ActionLabel ?? "Abrir recurso")
+      </a>
+    }
+
+    @if (ShowCompleteAction && !Block.IsCompleted)
+    {
+      <button type="button" class="cap-btn cap-btn--teal" disabled="@IsBusy" @onclick="CompleteAsync">
+        <span class="oi oi-check" aria-hidden="true"></span>@(IsBusy ? "Guardando…" : "Marcar bloque como revisado")
+      </button>
+    }
+    else if (Block.IsCompleted)
+    {
+      <span class="cap-block__complete"><span class="oi oi-check" aria-hidden="true"></span>Revisado</span>
+    }
+  </div>
+</article>
+
+@code {
+  [Parameter, EditorRequired] public CapacitacionContentViewModel Block { get; set; } = default!;
+  [Parameter] public bool ShowCompleteAction { get; set; }
+  [Parameter] public bool IsBusy { get; set; }
+  [Parameter] public EventCallback<long> OnComplete { get; set; }
+
+  private IReadOnlyList<string> ContentLines => Block.Content
+    .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+  private IReadOnlyList<string> DisplayItems => Block.Items.Count > 0
+    ? Block.Items
+    : CssType is "pasos" or "practica" ? ContentLines : [];
+  private IEnumerable<string> Paragraphs => CssType is "pasos" or "practica" ? [] : ContentLines;
+
+  private string CssType => Block.Type.Trim().ToUpperInvariant() switch
+  {
+    "TEORIA" or "THEORY" or "OBJETIVOS" => "teoria",
+    "VISUAL" or "AID" or "IMAGEN" => "visual",
+    "PASOS" or "STEPS" => "pasos",
+    "DEMO" or "DEMONSTRATION" or "DEMOSTRACION" => "demo",
+    "PRACTICE" or "PRACTICA" => "practica",
+    "QUIZ" or "EVALUATION" or "EVALUACION" => "evaluacion",
+    "SUMMARY" or "RESUMEN" or "CLOSE" => "resumen",
+    "ALERTA" or "WARNING" => "alerta",
+    _ => "teoria"
+  };
+
+  private string Icon => CssType switch
+  {
+    "visual" => "oi-image",
+    "demo" => "oi-monitor",
+    "pasos" => "oi-list-rich",
+    "practica" => "oi-wrench",
+    "evaluacion" => "oi-pencil",
+    "resumen" => "oi-flag",
+    "alerta" => "oi-warning",
+    _ => "oi-lightbulb"
+  };
+
+  private string TypeLabel => Block.Type.Trim().Equals("OBJETIVOS", StringComparison.OrdinalIgnoreCase)
+    ? "Objetivos de aprendizaje"
+    : CssType switch
+  {
+    "visual" => "Apoyo visual",
+    "demo" => "Demostración guiada",
+    "pasos" => "Proceso paso a paso",
+    "practica" => "Práctica en sandbox",
+    "evaluacion" => "Evaluación",
+    "resumen" => "Cierre y resumen",
+    "alerta" => "Punto de control",
+    _ => "Teoría"
+  };
+
+  private string ActionTarget => Uri.TryCreate(Block.ActionUrl, UriKind.Absolute, out var uri)
+    && uri.Scheme is "http" or "https" ? "_blank" : "_self";
+  private string? ActionRel => ActionTarget == "_blank" ? "noopener noreferrer" : null;
+  private string? ActionDownload => Block.ResourceType?.Equals("ARCHIVO", StringComparison.OrdinalIgnoreCase) == true
+    && Uri.TryCreate(Block.ActionUrl, UriKind.Relative, out _)
+      ? Path.GetFileName(Block.ActionUrl)
+      : null;
+  private bool IsImageResource => !string.IsNullOrWhiteSpace(Block.ActionUrl)
+    && (Block.ResourceType?.Equals("IMAGEN", StringComparison.OrdinalIgnoreCase) == true
+      || Block.ActionUrl.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+      || Block.ActionUrl.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
+      || Block.ActionUrl.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)
+      || Block.ActionUrl.EndsWith(".webp", StringComparison.OrdinalIgnoreCase));
+  private Task CompleteAsync() => OnComplete.InvokeAsync(Block.Id);
+}

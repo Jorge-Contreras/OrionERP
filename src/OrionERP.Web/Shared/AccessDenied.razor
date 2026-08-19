@@ -1,0 +1,36 @@
+@inject NavigationManager Navigation
+
+@* Shown when the visitor IS signed in but lacks the role a page requires.
+   Sending this case to the login page instead produces an infinite redirect
+   loop, because the login page bounces an already-authenticated user straight
+   back to the page that rejected them. *@
+
+<div class="access-denied" role="alert">
+    <h1 class="access-denied__title">
+        <i class="bi bi-shield-lock" aria-hidden="true"></i>
+        No tienes permiso para ver esta página
+    </h1>
+    <p class="access-denied__body">
+        Tu sesión está iniciada correctamente, pero tu cuenta no tiene el rol
+        necesario para abrir <code>@CurrentPath</code>.
+    </p>
+    <p class="access-denied__body">
+        Si necesitas este acceso, solicítalo a quien administre tu entorno.
+    </p>
+    <div class="access-denied__actions">
+        <a class="btn btn-primary btn-sm" href="/">Ir al inicio</a>
+    </div>
+</div>
+
+@code {
+    private string CurrentPath
+    {
+        get
+        {
+            var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+            var path = string.IsNullOrWhiteSpace(relative) ? string.Empty : $"/{relative}";
+            var query = path.IndexOf('?', StringComparison.Ordinal);
+            return query >= 0 ? path[..query] : path;
+        }
+    }
+}

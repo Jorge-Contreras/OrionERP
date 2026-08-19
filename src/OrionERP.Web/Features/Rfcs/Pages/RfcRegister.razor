@@ -2,9 +2,22 @@
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 @inherits OrionERP.Web.Features.Rfcs.Pages.RfcRegisterBase
 @using Microsoft.AspNetCore.Components.Forms
+@using OrionERP.Web.Features.TrainingSafety
 
 <PageTitle>Registrar RFC</PageTitle>
 
+@if (TrainingEnvironmentState.IsTraining)
+{
+    <section class="alert alert-warning m-3" role="alert">
+        <h3 class="h5">Credenciales fiscales bloqueadas en Capacitación</h3>
+        <p class="mb-0">
+            Orion_Training no recibe archivos FIEL, contraseñas, certificados ni datos fiscales reales.
+            Usa únicamente el material ficticio incluido en el curso.
+        </p>
+    </section>
+}
+else
+{
 <h3>Registrar RFC</h3>
 @if (!string.IsNullOrWhiteSpace(UiMessage))
 {
@@ -156,3 +169,4 @@
         }
     </div>
 </EditForm>
+}

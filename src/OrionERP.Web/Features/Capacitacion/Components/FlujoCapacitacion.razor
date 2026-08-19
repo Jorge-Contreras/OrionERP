@@ -1,0 +1,29 @@
+@using Microsoft.AspNetCore.Components
+
+<ol class="cap-flow" aria-label="Flujo de capacitación">
+  @for (var index = 0; index < Steps.Length; index++)
+  {
+    var itemIndex = index;
+    var state = itemIndex < CurrentStep ? "complete" : itemIndex == CurrentStep ? "current" : "pending";
+    <li class="cap-flow__step cap-flow__step--@state" aria-current="@(state == "current" ? "step" : null)">
+      <button type="button" disabled="@(!AllowNavigation || itemIndex > MaximumStep)" @onclick="() => SelectAsync(itemIndex)">
+        <span class="cap-flow__marker">
+          @if (state == "complete") { <span class="oi oi-check" aria-hidden="true"></span> }
+          else { <span>@(itemIndex + 1)</span> }
+        </span>
+        <span class="cap-flow__label">@Steps[itemIndex]</span>
+      </button>
+    </li>
+  }
+</ol>
+
+@code {
+  private static readonly string[] Steps = ["Preparar", "Explicar", "Demostrar", "Practicar", "Evaluar", "Cerrar"];
+
+  [Parameter] public int CurrentStep { get; set; }
+  [Parameter] public int MaximumStep { get; set; } = 5;
+  [Parameter] public bool AllowNavigation { get; set; }
+  [Parameter] public EventCallback<int> StepSelected { get; set; }
+
+  private Task SelectAsync(int index) => AllowNavigation && index <= MaximumStep ? StepSelected.InvokeAsync(index) : Task.CompletedTask;
+}

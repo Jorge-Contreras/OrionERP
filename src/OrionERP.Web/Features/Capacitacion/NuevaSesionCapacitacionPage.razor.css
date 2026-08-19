@@ -1,0 +1,33 @@
+.cap-create-layout { align-items: start; display: grid; gap: 1rem; grid-template-columns: minmax(0,1fr) minmax(17rem,.4fr); }
+.cap-create-layout > section:nth-of-type(2) { grid-column: 1; }
+.cap-session-review { grid-column: 2; grid-row: 1 / span 2; position: sticky; top: 1rem; }
+.cap-readonly-field { align-items: center; background: #f3f7f9; border: 1px solid #d7e1e8; border-radius: .6rem; display: flex; gap: .65rem; min-height: 2.65rem; padding: .45rem .7rem; }
+.cap-readonly-field > .oi { color: #126b8f; }
+.cap-readonly-field strong, .cap-readonly-field small { display: block; }
+.cap-readonly-field strong { font-size: .8rem; }
+.cap-readonly-field small { color: #607489; font-size: .68rem; }
+.cap-participant-tools { align-items: center; display: flex; gap: .5rem; margin-bottom: .8rem; }
+.cap-participant-tools label { align-items: center; display: flex; flex: 1; position: relative; }
+.cap-participant-tools label > .oi { color: #607489; left: .8rem; position: absolute; z-index: 1; }
+.cap-participant-tools label ::deep input { padding-left: 2.3rem; }
+.cap-employee-list { border: 1px solid #dce5ec; border-radius: .7rem; max-height: 26rem; overflow-y: auto; }
+.cap-employee { align-items: center; cursor: pointer; display: grid; gap: .65rem; grid-template-columns: auto auto minmax(0,1fr) auto; padding: .7rem .8rem; }
+.cap-employee + .cap-employee { border-top: 1px solid #e2e9ee; }
+.cap-employee:hover { background: #f7fafb; }
+.cap-employee.selected { background: #eaf6f3; }
+.cap-employee input { accent-color: #0c857b; height: 1.05rem; width: 1.05rem; }
+.cap-employee__avatar { align-items: center; background: #e4f1f5; border-radius: 50%; color: #126b8f; display: flex; font-size: .7rem; font-weight: 800; height: 2.2rem; justify-content: center; width: 2.2rem; }
+.cap-employee__copy { min-width: 0; }
+.cap-employee__copy strong, .cap-employee__copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cap-employee__copy strong { font-size: .8rem; }
+.cap-employee__copy small { color: #607489; font-size: .68rem; margin-top: .2rem; }
+.cap-session-review__icon { align-items: center; background: linear-gradient(145deg,#126b8f,#0c857b); border-radius: .8rem; color: #fff; display: flex; font-size: 1.4rem; height: 3.5rem; justify-content: center; margin-bottom: .8rem; width: 3.5rem; }
+.cap-session-review h3 { font-size: 1.05rem; margin: .4rem 0; }
+.cap-session-review > ::deep .cap-card__body > p { color: #607489; font-size: .78rem; line-height: 1.5; }
+.cap-session-review dl { display: grid; gap: .7rem; grid-template-columns: 1fr 1fr; margin: 1rem 0; }
+.cap-session-review dt { color: #607489; font-size: .67rem; font-weight: 650; }
+.cap-session-review dd { font-size: .8rem; font-weight: 750; margin: .15rem 0 0; }
+.cap-session-review__flow { border-bottom: 1px solid #e2e9ee; border-top: 1px solid #e2e9ee; margin: 1rem 0; overflow-x: auto; padding: 1rem 0; }
+.cap-session-review__flow ::deep .cap-flow { min-width: 24rem; }
+@media (max-width: 1050px) { .cap-create-layout { grid-template-columns: 1fr; } .cap-create-layout > section:nth-of-type(2), .cap-session-review { grid-column: 1; grid-row: auto; } .cap-session-review { position: static; } }
+@media (max-width: 650px) { .cap-participant-tools { align-items: stretch; flex-wrap: wrap; } .cap-participant-tools label { flex-basis: 100%; } .cap-employee { grid-template-columns: auto auto minmax(0,1fr); } .cap-employee > .cap-badge { grid-column: 3; justify-self: start; } }

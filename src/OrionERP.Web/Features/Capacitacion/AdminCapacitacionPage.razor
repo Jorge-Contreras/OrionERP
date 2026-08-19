@@ -1,0 +1,140 @@
+@page "/capacitacion/admin"
+@attribute [Authorize(Policy = "CapacitacionAdmin")]
+@inherits CapacitacionPageBase
+
+<PageTitle>Administrar capacitación</PageTitle>
+
+<CapacitacionShell Title="Administración de capacitación"
+                   Eyebrow="Gobierno y seguimiento"
+                   Description="Asigna rutas, consulta versiones publicadas y da seguimiento a la adopción de OrionERP por empresa.">
+  <HeroActions><a class="cap-btn cap-btn--ghost" href="/capacitacion/sesiones/nueva"><span class="oi oi-people" aria-hidden="true"></span>Nueva sesión</a></HeroActions>
+  <ChildContent>
+    @if (!string.IsNullOrWhiteSpace(PageError)) { <div class="cap-alert cap-alert--error" role="alert"><span class="oi oi-warning" aria-hidden="true"></span><p>@PageError</p></div> }
+    @if (!string.IsNullOrWhiteSpace(PageMessage)) { <div class="cap-alert @(MessageIsError ? "cap-alert--error" : "cap-alert--success")" role="status"><span class="oi @(MessageIsError ? "oi-warning" : "oi-check")" aria-hidden="true"></span><p>@PageMessage</p></div> }
+    @if (loading)
+    {
+      <CapacitacionLoading />
+    }
+    else
+    {
+      <nav class="cap-admin-tabs" aria-label="Secciones administrativas">
+        <button type="button" class="@(tab == "overview" ? "active" : null)" aria-pressed="@(tab == "overview")" @onclick="ShowOverview"><span class="oi oi-dashboard" aria-hidden="true"></span>Resumen</button>
+        <button type="button" class="@(tab == "assign" ? "active" : null)" aria-pressed="@(tab == "assign")" @onclick="ShowAssign"><span class="oi oi-task" aria-hidden="true"></span>Asignar</button>
+        <button type="button" class="@(tab == "content" ? "active" : null)" aria-pressed="@(tab == "content")" @onclick="ShowContent"><span class="oi oi-book" aria-hidden="true"></span>Contenido publicado</button>
+      </nav>
+
+      @if (tab == "overview")
+      {
+        <section aria-labelledby="cap-admin-summary-title">
+          <div class="cap-section-title"><div><h2 id="cap-admin-summary-title">Tu actividad de capacitación</h2><p>Asignaciones y sesiones en las que participas dentro del RFC activo.</p></div><span class="cap-badge cap-badge--info">@Rfc</span></div>
+          <div class="cap-grid">
+            <article class="cap-card cap-span-3 cap-stat"><span class="cap-stat__icon"><span class="oi oi-clock" aria-hidden="true"></span></span><strong>@dashboard?.Pendientes</strong><span>Pendientes</span></article>
+            <article class="cap-card cap-span-3 cap-stat"><span class="cap-stat__icon"><span class="oi oi-media-play" aria-hidden="true"></span></span><strong>@dashboard?.EnCurso</strong><span>En curso</span></article>
+            <article class="cap-card cap-span-3 cap-stat"><span class="cap-stat__icon"><span class="oi oi-badge" aria-hidden="true"></span></span><strong>@dashboard?.Completadas</strong><span>Completadas</span></article>
+            <article class="cap-card cap-span-3 cap-stat"><span class="cap-stat__icon"><span class="oi oi-warning" aria-hidden="true"></span></span><strong>@dashboard?.Vencidas</strong><span>Vencidas</span></article>
+          </div>
+          <div class="cap-grid mt-3">
+            <section class="cap-card cap-span-8">
+              <div class="cap-card__header"><div><h3>Sesiones vinculadas a tu usuario</h3><p>Programadas o activas en el panel actual.</p></div><a class="cap-btn cap-btn--light" href="/capacitacion/sesiones/nueva">Preparar sesión</a></div>
+              <div class="cap-table-wrap"><table class="cap-table"><thead><tr><th>Sesión</th><th>Curso</th><th>Instructor</th><th>Participantes</th><th>Estado</th><th></th></tr></thead><tbody>
+                @if (dashboard?.Sesiones.Count is null or 0) { <tr><td colspan="6"><div class="cap-empty py-4">No hay sesiones para mostrar.</div></td></tr> }
+                @foreach (var item in dashboard?.Sesiones ?? []) { <tr><td><strong>@item.Nombre</strong><small class="d-block text-muted">@item.ProgramadaEn.ToLocalTime().ToString("dd MMM · HH:mm")</small></td><td>@item.CursoNombre</td><td>@item.InstructorName</td><td>@item.ParticipanteCount</td><td><span class="cap-badge @CapacitacionUi.StatusCss(item.Estado)">@CapacitacionUi.StatusLabel(item.Estado)</span></td><td><a class="cap-btn cap-btn--light" href="/capacitacion/sesiones/@item.SesionId">Abrir</a></td></tr> }
+              </tbody></table></div>
+            </section>
+            <aside class="cap-card cap-card--soft cap-span-4">
+              <div class="cap-card__header"><div><h3>Calidad del programa</h3><p>Reglas del registro de finalización.</p></div></div>
+              <div class="cap-card__body"><div class="cap-quality-score"><strong>@CapacitacionUi.ClampPercent(dashboard?.ProgresoPromedio ?? 0)%</strong><span>progreso promedio</span></div><ul class="cap-quality-list"><li><span class="oi oi-check" aria-hidden="true"></span>Contenido anclado a versión</li><li><span class="oi oi-check" aria-hidden="true"></span>Evaluación y preguntas críticas</li><li><span class="oi oi-check" aria-hidden="true"></span>Validación práctica</li><li><span class="oi oi-check" aria-hidden="true"></span>Firma y acuse personales</li></ul></div>
+            </aside>
+          </div>
+        </section>
+      }
+      else if (tab == "assign")
+      {
+        <div class="cap-admin-assign">
+          <section class="cap-card">
+            <div class="cap-card__header"><div><h2>Crear asignaciones</h2><p>La misma versión se asignará a todas las personas seleccionadas.</p></div><span class="cap-badge cap-badge--info">@selectedEmployeeIds.Count personas</span></div>
+            <div class="cap-card__body">
+              <div class="cap-form-grid">
+                <div class="cap-field--wide"><label class="cap-label" for="cap-admin-course">Curso publicado</label><select id="cap-admin-course" class="cap-select" @bind="courseVersionId"><option value="0">Selecciona un curso</option>@foreach(var item in courses){<option value="@item.CursoVersionId">@item.Nombre · v@item.NumeroVersion</option>}</select></div>
+                <div><label class="cap-label" for="cap-admin-instructor">Instructor responsable</label><select id="cap-admin-instructor" class="cap-select" @bind="instructorEmployeeId"><option value="0">Sin instructor asignado</option>@foreach(var item in employees.Where(x => x.TieneUsuario)){<option value="@item.EmployeeId">@item.Nombre</option>}</select></div>
+                <div><label class="cap-label" for="cap-admin-due">Fecha límite</label><input id="cap-admin-due" type="date" class="cap-input" @bind="dueDate" @bind:format="yyyy-MM-dd" /></div>
+              </div>
+              <hr />
+              <div class="cap-participant-tools"><label><span class="oi oi-magnifying-glass" aria-hidden="true"></span><span class="visually-hidden">Buscar colaboradores</span><input class="cap-input" type="search" placeholder="Buscar nombre, puesto o correo" @bind="employeeSearch" @bind:event="oninput" /></label><button type="button" class="cap-btn cap-btn--light" @onclick="SelectVisible">Seleccionar visibles</button><button type="button" class="cap-btn cap-btn--light" @onclick="ClearSelection">Limpiar</button></div>
+              <div class="cap-admin-employee-grid">
+                @foreach(var employee in VisibleEmployees)
+                {
+                  var selected = selectedEmployeeIds.Contains(employee.EmployeeId);
+                  <label class="@(selected ? "selected" : null)"><input type="checkbox" checked="@selected" @onchange="() => ToggleEmployee(employee.EmployeeId)"/><span class="cap-admin-avatar">@Initials(employee.Nombre)</span><span><strong>@employee.Nombre</strong><small>@(employee.Puesto ?? "Sin puesto")</small></span>@if(!employee.TieneUsuario){<span class="cap-badge cap-badge--warn">Sin usuario</span>}</label>
+                }
+              </div>
+              <div class="cap-assign-footer"><p><strong>@selectedEmployeeIds.Count</strong> asignaciones por crear. Las existentes se conservarán sin duplicarse.</p><button type="button" class="cap-btn cap-btn--teal" disabled="@(saving || courseVersionId <= 0 || selectedEmployeeIds.Count == 0)" @onclick="CreateAssignmentsAsync"><span class="oi oi-task" aria-hidden="true"></span>@(saving ? "Asignando…" : "Crear asignaciones")</button></div>
+            </div>
+          </section>
+        </div>
+      }
+      else
+      {
+        <section class="cap-card" aria-labelledby="cap-content-title">
+          <div class="cap-card__header"><div><h2 id="cap-content-title">Versiones publicadas</h2><p>Las asignaciones quedan fijadas a la versión que recibió el colaborador.</p></div><span class="cap-badge cap-badge--success">@courses.Count activas</span></div>
+          <div class="cap-table-wrap"><table class="cap-table"><thead><tr><th>Clave</th><th>Curso</th><th>Módulo</th><th>Versión</th><th>Estructura</th><th>Duración</th><th>Calificación</th><th></th></tr></thead><tbody>
+            @foreach(var item in courses.OrderBy(x => x.Categoria).ThenBy(x => x.Nombre)){<tr><td><code>@item.Clave</code></td><td><strong>@item.Nombre</strong><small class="d-block text-muted">@Trim(item.Descripcion, 80)</small></td><td>@item.Categoria</td><td><span class="cap-badge cap-badge--success">v@item.NumeroVersion · @item.EstadoVersion</span></td><td>@item.LeccionCount lecciones · @item.BloqueCount bloques</td><td>@item.DuracionMinutos min</td><td>@item.CalificacionMinima.ToString("0")%</td><td><a class="cap-btn cap-btn--light" href="/capacitacion/catalogo">Revisar</a></td></tr>}
+          </tbody></table></div>
+          <div class="cap-content-note"><span class="oi oi-info" aria-hidden="true"></span><p>El contenido publicado es inmutable para preservar la evidencia. Las correcciones se publican como una versión nueva mediante el proceso de datos controlado.</p></div>
+        </section>
+      }
+    }
+  </ChildContent>
+</CapacitacionShell>
+
+@code {
+  private CapacitacionDashboardDto? dashboard;
+  private IReadOnlyList<CapacitacionCursoResumenDto> courses = [];
+  private IReadOnlyList<CapacitacionEmpleadoDto> employees = [];
+  private readonly HashSet<int> selectedEmployeeIds = [];
+  private string tab = "overview";
+  private string employeeSearch = string.Empty;
+  private int courseVersionId;
+  private int instructorEmployeeId;
+  private DateTime dueDate = DateTime.Today.AddDays(30);
+  private bool loading = true;
+  private bool saving;
+  private List<CapacitacionEmpleadoDto> VisibleEmployees => employees.Where(x => string.IsNullOrWhiteSpace(employeeSearch) || x.Nombre.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) || (x.Puesto?.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) ?? false) || (x.Email?.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) ?? false)).OrderBy(x => x.Nombre).ToList();
+
+  protected override async Task OnInitializedAsync()
+  {
+    if(!await InitializeActorAsync()){ loading = false; return; }
+    try
+    {
+      var dashboardTask = Capacitacion.GetDashboardAsync(CreateActorContext(), LifetimeToken);
+      var catalogTask = Capacitacion.GetCatalogoAsync(Rfc, LifetimeToken);
+      var employeeTask = Capacitacion.GetEmpleadosAsignablesAsync(Rfc, null, LifetimeToken);
+      await Task.WhenAll(dashboardTask, catalogTask, employeeTask);
+      dashboard = await dashboardTask; courses = await catalogTask; employees = await employeeTask;
+      instructorEmployeeId = Actor?.EmployeeId ?? 0;
+    }
+    catch(Exception exception){ ShowPageException(exception, "No fue posible cargar la administración de capacitación."); }
+    finally{ loading = false; }
+  }
+
+  private void ToggleEmployee(int id){ if(!selectedEmployeeIds.Add(id)) selectedEmployeeIds.Remove(id); }
+  private void ShowOverview() => tab = "overview";
+  private void ShowAssign() => tab = "assign";
+  private void ShowContent() => tab = "content";
+  private void SelectVisible(){ foreach(var employee in VisibleEmployees.Where(x => x.TieneUsuario)) selectedEmployeeIds.Add(employee.EmployeeId); }
+  private void ClearSelection() => selectedEmployeeIds.Clear();
+  private async Task CreateAssignmentsAsync()
+  {
+    if(courseVersionId <= 0 || selectedEmployeeIds.Count == 0 || Actor?.EmployeeId is null) return; saving = true;
+    try
+    {
+      var result = await Capacitacion.CrearAsignacionesAsync(new() { Rfc = Rfc, CursoVersionId = courseVersionId, EmployeeIds = selectedEmployeeIds.ToArray(), InstructorEmployeeId = instructorEmployeeId > 0 ? instructorEmployeeId : null, FechaLimite = dueDate.Date.AddDays(1).ToUniversalTime(), ActorEmployeeId = Actor.EmployeeId.Value, Actor = Actor.UserName }, LifetimeToken);
+      ShowResult(result); if(result.Success){ selectedEmployeeIds.Clear(); tab = "overview"; dashboard = await Capacitacion.GetDashboardAsync(CreateActorContext(), LifetimeToken); }
+    }
+    catch(Exception exception){ ShowException(exception, "No fue posible crear las asignaciones."); }
+    finally{ saving = false; }
+  }
+
+  private static string Initials(string name) => string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(2).Select(x => char.ToUpperInvariant(x[0])));
+  private static string Trim(string value, int length) => value.Length <= length ? value : value[..length].TrimEnd() + "…";
+}

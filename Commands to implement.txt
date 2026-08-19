@@ -1,15 +1,16 @@
-
 Install hosting bundle:
 
 winget install -e --id Microsoft.DotNet.HostingBundle.9 --source winget `
 >>   --accept-package-agreements --accept-source-agreements --silent
 
 
-Set Connection String
+Configure the production connection string outside source control. Use a
+service-scoped environment variable, user secret, or approved secret store:
 
-setx /M ConnectionStrings__OrionDb "Server=bonhomia.ddns.net,1433;Database=grupocarpio;User Id=orion;Password=Orion82;TrustServerCertificate=True;Encrypt=True;"
+ASPNETCORE_ConnectionStrings__OrionDb=Server=<server>;Database=grupocarpio;User Id=<user>;Password=<secret>;TrustServerCertificate=True;Encrypt=True;
 
-Command to publish
+
+Command to publish:
 
 dotnet clean .\src\OrionERP.Web\OrionERP.Web.csproj
 dotnet publish .\src\OrionERP.Web\OrionERP.Web.csproj -c Release -r win-x64 --self-contained false -o "C:\Users\jc_ca\Grupo Carpio Dropbox\Grupo Orion\Software\GitHubs\Production\OrionERP"

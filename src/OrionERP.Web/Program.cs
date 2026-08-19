@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Data.SqlClient;
@@ -32,9 +33,11 @@ using OrionERP.Web.Configuration;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
 using OrionERP.Web.Features.Reservaciones.OpenClaw;
 using OrionERP.Web.Features.Restaurante;
+using OrionERP.Web.Features.TrainingSafety;
 using OrionERP.Web.Identity;
 using OrionERP.Web.State;
 using OrionERP.Web.Services;
+using System.Net;
 using System.Threading.RateLimiting;
 
 // using Microsoft.AspNetCore.Identity.UI; // <- not required unless you explicitly call AddDefaultUI()
@@ -43,26 +46,21 @@ var builder = WebApplication.CreateBuilder(args);
 WorkforceDapperTypeHandlers.Register();
 ExcelPackage.License.SetNonCommercialOrganization("Orion Habitat de Mexico S.A. de C.V.");
 
-var appDataDirectory = builder.Environment.IsDevelopment()
-  ? Path.Combine(
-      Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-      "Grupo Orion",
-      "OrionERP",
-      "DataProtectionKeys")
-  : Path.Combine(AppContext.BaseDirectory, "App_Data", "keys");
-Directory.CreateDirectory(appDataDirectory);
-
-builder.Services
-    .AddDataProtection()
-    .PersistKeysToFileSystem(new DirectoryInfo(appDataDirectory))
-    .SetApplicationName("OrionERP");
-
-builder.Services.AddAntiforgery(options =>
+// A service-scoped marker makes environment precedence fail closed. If a
+// machine-wide DOTNET_ENVIRONMENT ever overrides the service's intended
+// ASPNETCORE_ENVIRONMENT, the Training process must stop before reading any
+// production configuration or registering external integrations.
+var isMarkedTrainingService = string.Equals(
+  Environment.GetEnvironmentVariable(TrainingEnvironment.ServiceMarkerVariable),
+  "1",
+  StringComparison.Ordinal);
+if (isMarkedTrainingService && !builder.Environment.IsEnvironment(TrainingEnvironment.Name))
 {
-  // Cookies are scoped by host rather than port. A product-specific name keeps
-  // other ASP.NET apps running on localhost from replacing the login token.
-  options.Cookie.Name = ".OrionERP.Management.Antiforgery";
-});
+  throw new InvalidOperationException(
+    $"Training startup blocked: {TrainingEnvironment.ServiceMarkerVariable}=1 requires " +
+    $"the host environment to be exactly '{TrainingEnvironment.Name}', but it resolved to " +
+    $"'{builder.Environment.EnvironmentName}'.");
+}
 
 // --- CONFIG: JSON is source of truth; ignore arbitrary env vars -----------------
 builder.Configuration.Sources.Clear();
@@ -71,23 +69,37 @@ builder.Configuration
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true);
 
-// Allow explicit machine-level overrides only via ASPNETCORE_* / DOTNET_*.
-// Examples:
-// - ASPNETCORE_ConnectionStrings__OrionDb
-// - ASPNETCORE_OpenClawApi__ApiKey
-// - ASPNETCORE_GraphMail__ClientSecret
-builder.Configuration
-    .AddEnvironmentVariables(prefix: "ASPNETCORE_")
-    .AddEnvironmentVariables(prefix: "DOTNET_");
-
-if (builder.Environment.IsDevelopment())
+if (builder.Environment.IsEnvironment(TrainingEnvironment.Name))
 {
-  // Load after prefixed env vars so local sandbox secrets can safely override
-  // machine-scoped production settings on shared developer machines.
-  builder.Configuration.AddUserSecrets<Program>(optional: true);
+  // Training intentionally ignores the normal ASPNETCORE_* and DOTNET_* value
+  // providers after the host environment has been selected. This prevents a
+  // machine-wide production connection string or integration secret from being
+  // inherited by the disposable training service. Only explicitly training-
+  // scoped overrides are accepted.
+  builder.Configuration.AddEnvironmentVariables(prefix: TrainingEnvironment.ConfigurationPrefix);
+}
+else
+{
+  // Allow explicit machine-level overrides only via ASPNETCORE_* / DOTNET_*.
+  // Examples:
+  // - ASPNETCORE_ConnectionStrings__OrionDb
+  // - ASPNETCORE_OpenClawApi__ApiKey
+  // - ASPNETCORE_GraphMail__ClientSecret
+  builder.Configuration
+      .AddEnvironmentVariables(prefix: "ASPNETCORE_")
+      .AddEnvironmentVariables(prefix: "DOTNET_");
+
+  if (builder.Environment.IsDevelopment())
+  {
+    // Load after prefixed env vars so local sandbox secrets can safely override
+    // machine-scoped production settings on shared developer machines.
+    builder.Configuration.AddUserSecrets<Program>(optional: true);
+  }
 }
 
 // -------------------------------------------------------------------------------
+
+var platformIsolation = PlatformIsolationOptions.FromConfiguration(builder.Configuration);
 
 // Resolve and validate the connection string from the configured sources.
 var conn = builder.Configuration.GetConnectionString("OrionDb");
@@ -112,6 +124,40 @@ if (!string.IsNullOrWhiteSpace(conn))
     // Leave validation/error reporting to the existing connection-string checks below.
   }
 }
+
+TrainingSafetyValidator.ValidateStartup(
+  builder.Environment.EnvironmentName,
+  conn,
+  platformIsolation,
+  builder.Configuration["Hosting:WindowsServiceUrl"],
+  isMarkedTrainingService,
+  builder.Configuration["AllowedHosts"],
+  builder.Configuration["Capacitacion:SandboxBaseUrl"]);
+
+var dataProtectionKeyDirectory = platformIsolation.ResolveDataProtectionKeyDirectory(AppContext.BaseDirectory);
+Directory.CreateDirectory(dataProtectionKeyDirectory);
+
+var dataProtectionBuilder = builder.Services
+    .AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyDirectory))
+    .SetApplicationName(platformIsolation.DataProtectionApplicationName);
+if (OperatingSystem.IsWindows() && builder.Environment.IsEnvironment(TrainingEnvironment.Name))
+{
+  // The Training key ring lives outside the Dropbox-synced publish tree and
+  // is encrypted for the dedicated Windows service identity at rest.
+  dataProtectionBuilder.ProtectKeysWithDpapi();
+}
+
+builder.Services.AddAntiforgery(options =>
+{
+  // Cookies are scoped by host rather than port. The Training environment uses
+  // its own configured name so it can never replace a production login token.
+  options.Cookie.Name = platformIsolation.AntiforgeryCookieName;
+  options.Cookie.HttpOnly = true;
+  options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+    ? CookieSecurePolicy.SameAsRequest
+    : CookieSecurePolicy.Always;
+});
 
 if (!string.IsNullOrWhiteSpace(conn))
 {
@@ -149,6 +195,15 @@ if (string.IsNullOrWhiteSpace(conn))
       "a local appsettings.Development.json, or ConnectionStrings__OrionDb. In Production, " +
       "use ASPNETCORE_ConnectionStrings__OrionDb.");
 
+var trainingDatabaseSafety = TrainingDatabaseSafetyAttestation.NotApplicable;
+if (builder.Environment.IsEnvironment(TrainingEnvironment.Name))
+{
+  trainingDatabaseSafety = await TrainingDatabaseSafetyVerifier.VerifyOrThrowAsync(conn);
+  Console.WriteLine(
+    $"[BOOT] Training database safety verified; schema v{trainingDatabaseSafety.SchemaVersion}, " +
+    "sanitized synthetic data, isolated least-privilege login.");
+}
+
 var userSessionTimeout = TimeSpan.FromHours(8);
 var disconnectedCircuitRetentionPeriod = TimeSpan.FromHours(2);
 
@@ -175,6 +230,12 @@ builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, BrunoAd
 
 builder.Services.ConfigureApplicationCookie(options =>
 {
+  options.Cookie.Name = platformIsolation.IdentityCookieName;
+  options.Cookie.HttpOnly = true;
+  options.Cookie.SameSite = SameSiteMode.Lax;
+  options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+    ? CookieSecurePolicy.SameAsRequest
+    : CookieSecurePolicy.Always;
   options.ExpireTimeSpan = userSessionTimeout;
   options.SlidingExpiration = true;
 
@@ -251,6 +312,13 @@ builder.Services.AddRateLimiter(options =>
     limiter.QueueLimit = 0;
   });
 });
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+  options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+  options.ForwardLimit = 1;
+  options.KnownProxies.Add(IPAddress.Loopback);
+  options.KnownProxies.Add(IPAddress.IPv6Loopback);
+});
 builder.Services.Configure<WorkforceRetentionOptions>(builder.Configuration.GetSection("CapitalHumano"));
 builder.Services.AddAuthorization(options =>
 {
@@ -273,6 +341,25 @@ builder.Services.AddAuthorization(options =>
   options.AddPolicy("CapitalHumanoManagement", policy => policy
     .RequireRole("Administrador", "CapitalHumanoAdmin", "CapitalHumanoSupervisor", "CapitalHumanoNomina")
     .RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration)));
+  options.AddPolicy("CapacitacionEmployee", policy => policy
+    .RequireAuthenticatedUser()
+    .RequireClaim("employee_id")
+    .RequireClaim("rfc"));
+  options.AddPolicy("CapacitacionInstructor", policy => policy
+    .RequireAuthenticatedUser()
+    .RequireClaim("employee_id")
+    .RequireClaim("rfc")
+    .RequireRole("Administrador", "CapacitacionAdmin", "CapacitacionInstructor"));
+  options.AddPolicy("CapacitacionAdmin", policy => policy
+    .RequireAuthenticatedUser()
+    .RequireClaim("employee_id")
+    .RequireClaim("rfc")
+    .RequireRole("Administrador", "CapacitacionAdmin"));
+  options.AddPolicy("CapacitacionAuditor", policy => policy
+    .RequireAuthenticatedUser()
+    .RequireClaim("employee_id")
+    .RequireClaim("rfc")
+    .RequireRole("Administrador", "CapacitacionAdmin", "CapacitacionInstructor", "CapacitacionAuditor"));
   options.AddPolicy(
       "RoleForSelectedRfc",
       policy => policy.Requirements.Add(new RoleForRfcRequirement("Administrador")));
@@ -340,18 +427,57 @@ builder.Services.Configure<ReservacionPdfOptions>(options =>
 
 builder.Services.AddCfdiCargarXmlSat();
 builder.Services.AddOrionServices();
+builder.Services.AddTrainingSafety(
+  builder.Environment.EnvironmentName,
+  conn,
+  platformIsolation,
+  builder.Configuration["Hosting:WindowsServiceUrl"],
+  isMarkedTrainingService,
+  trainingDatabaseSafety,
+  builder.Configuration["AllowedHosts"]);
 builder.Services.AddScoped<IUiMessageService, UiMessageService>();
 builder.Services.AddHostedService<RestaurantEventBroadcaster>();
 
 builder.Host.UseWindowsService();
 
-// Only force a specific URL when actually running as a Windows Service
-if (OperatingSystem.IsWindows() && WindowsServiceHelpers.IsWindowsService())
+// A marked Training process always binds its validated loopback URL, including
+// command-line smoke tests. Production keeps its historical Windows-service
+// behavior.
+if (isMarkedTrainingService || (OperatingSystem.IsWindows() && WindowsServiceHelpers.IsWindowsService()))
 {
-  builder.WebHost.UseUrls("http://localhost:5000");
+  var windowsServiceUrl = builder.Configuration["Hosting:WindowsServiceUrl"];
+  if (string.IsNullOrWhiteSpace(windowsServiceUrl))
+  {
+    windowsServiceUrl = "http://localhost:5000";
+  }
+
+  builder.WebHost.UseUrls(windowsServiceUrl);
 }
 
 var app = builder.Build();
+
+app.UseForwardedHeaders();
+
+if (app.Environment.IsEnvironment(TrainingEnvironment.Name))
+{
+  app.Use(async (context, next) =>
+  {
+    context.Response.Headers.ContentSecurityPolicy =
+      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; " +
+      "form-action 'self'; connect-src 'self'; img-src 'self' data: blob:; " +
+      "font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'";
+    context.Response.Headers["Permissions-Policy"] =
+      "camera=(), geolocation=(), microphone=(), payment=(), usb=(), serial=(), bluetooth=()";
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    if (context.Request.Path.StartsWithSegments("/Identity/Account/Register"))
+    {
+      context.Response.StatusCode = StatusCodes.Status404NotFound;
+      return;
+    }
+    await next();
+  });
+}
 
 if (app.Environment.IsDevelopment())
 {
@@ -401,8 +527,16 @@ app.UseRateLimiter();
 app.MapRazorPages();
 app.MapBlazorHub();
 app.MapHub<RestaurantEventsHub>("/hubs/restaurante");
-app.MapRestaurantQzTraySigningApi();
-app.MapOpenClawReservationsApi();
+app.MapTrainingReadiness();
+if (app.Environment.IsEnvironment(TrainingEnvironment.Name))
+{
+  app.MapTrainingBlockedExternalEffectEndpoints();
+}
+else
+{
+  app.MapRestaurantQzTraySigningApi();
+  app.MapOpenClawReservationsApi();
+}
 app.MapPost("/api/workforce/kiosk/pair", async (
   KioskPairApiRequest request,
   IKioskAttendanceService service,
@@ -415,7 +549,7 @@ app.MapPost("/api/workforce/kiosk/pair", async (
   var result = await service.PairAsync(request.PairingCode, ct);
   if (!result.Success || string.IsNullOrWhiteSpace(result.DeviceToken))
     return Results.BadRequest(new { result.Message });
-  context.Response.Cookies.Append("orion-kiosk-device", result.DeviceToken, new CookieOptions
+  context.Response.Cookies.Append(platformIsolation.KioskDeviceCookieName, result.DeviceToken, new CookieOptions
   {
     HttpOnly = true,
     Secure = !hostEnvironment.IsDevelopment() || context.Request.IsHttps,
@@ -434,7 +568,7 @@ app.MapPost("/api/workforce/kiosk/punch", async (
   CancellationToken ct) =>
 {
   if (!configuration.GetValue<bool>("CapitalHumano:AttendanceEnabled")) return Results.NotFound();
-  var token = context.Request.Cookies["orion-kiosk-device"];
+  var token = context.Request.Cookies[platformIsolation.KioskDeviceCookieName];
   if (string.IsNullOrWhiteSpace(token)) return Results.Unauthorized();
   var result = await service.PunchAsync(token, request, ct);
   return result.Success ? Results.Ok(result) : Results.BadRequest(result);
@@ -454,8 +588,16 @@ app.MapGet("/api/workforce/prenomina/exports/{exportId:long}/{format}", async (
       ? Results.File(bundle.ZipBytes, "application/zip", bundle.ZipFileName)
       : Results.NotFound();
 }).RequireAuthorization("CapitalHumanoNomina");
-app.MapGet("/bonhomia", (IOptions<BonhomiaCheckoutOptions> options) =>
+app.MapGet("/bonhomia", (IOptions<BonhomiaCheckoutOptions> options, ITrainingEnvironmentState trainingState) =>
 {
+  if (trainingState.IsTraining)
+  {
+    return Results.Problem(
+      title: "Acción externa bloqueada",
+      detail: TrainingExternalEffectsPolicy.BlockedMessage("reservaciones públicas y PayPal"),
+      statusCode: StatusCodes.Status409Conflict);
+  }
+
   var publicBaseUrl = options.Value.PublicBaseUrl?.Trim();
   if (!string.IsNullOrWhiteSpace(publicBaseUrl)
       && Uri.TryCreate(publicBaseUrl, UriKind.Absolute, out var baseUri))

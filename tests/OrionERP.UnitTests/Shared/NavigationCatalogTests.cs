@@ -27,6 +27,19 @@ public class NavigationCatalogTests
     }
 
     [Fact]
+    public void Catalog_ExposesTheSpanishTrainingDestinations()
+    {
+        var paths = StandardDestinations.Select(item => item.Entry.Href).ToArray();
+
+        Assert.Contains("/capacitacion", paths);
+        Assert.Contains("/capacitacion/mi-plan", paths);
+        Assert.Contains("/capacitacion/catalogo", paths);
+
+        var results = NavigationCatalog.Search(StandardDestinations, "entrenamiento cursos");
+        Assert.Contains(results, item => item.Entry.Href == "/capacitacion");
+    }
+
+    [Fact]
     public void GetDestinations_DoesNotExposeAdminPagesToStandardUsers()
     {
         var standardPaths = StandardDestinations.Select(item => item.Entry.Href);

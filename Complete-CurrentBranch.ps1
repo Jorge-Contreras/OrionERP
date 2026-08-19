@@ -1,5 +1,15 @@
 [CmdletBinding()]
-param()
+param(
+    # This workflow squash-merges with --admin, so GitHub Actions never gates the
+    # change: a local Release build and the full test suites are the only
+    # verification that runs before the code reaches main. Skip only when that same
+    # verification has just been completed by hand.
+    [switch]$SkipVerification,
+
+    # Proceed even when the staged changes contain credential-shaped text. The scan
+    # reports what it matched so it can be reviewed rather than silently trusted.
+    [switch]$AllowSuspiciousContent
+)
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
@@ -54,6 +64,81 @@ function Get-SingleNativeOutput {
 
     $output = @(Invoke-NativeCommand -FilePath $FilePath -ArgumentList $ArgumentList -CaptureOutput)
     return (($output | ForEach-Object { [string]$_ }) -join "`n").Trim()
+}
+
+function Get-OptionalGitConfig {
+    param([Parameter(Mandatory)][string]$Name)
+
+    # git config exits 1 when a key is simply absent. Routing this through
+    # Invoke-NativeCommand would turn that into a generic "command failed" error and
+    # hide the specific guidance below.
+    $value = & git config --get $Name
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -notin @(0, 1)) {
+        throw "Unable to read Git configuration '$Name' (exit code $exitCode)."
+    }
+
+    return ((@($value) | ForEach-Object { [string]$_ }) -join "").Trim()
+}
+
+function Assert-NoSuspiciousStagedContent {
+    param([switch]$Allow)
+
+    # Only added lines are inspected: existing history is not this script's problem,
+    # but a new secret entering main without review is.
+    $addedLines = @(Invoke-NativeCommand -FilePath "git" -ArgumentList @(
+        "diff", "--cached", "--unified=0", "--no-color"
+    ) -CaptureOutput) | Where-Object { $_ -match '^\+' -and $_ -notmatch '^\+\+\+' }
+
+    # Aimed at credential *literals*. Variable assignments such as
+    # "var password = configuredPassword" are code, not secrets, and must not
+    # trigger: a scanner that cries wolf gets bypassed reflexively.
+    $rules = @(
+        # A password inside a connection-string-shaped line. This is exactly the
+        # shape that put a live production credential into this repository.
+        @{ Name = "connection string password"
+           Pattern = '(?i)(?:server|data source|initial catalog|user id)\s*=[^\r\n]*?(?:password|pwd)\s*=\s*(?![\s;"'']|\$|<|\{|%)[^\s;"'']{3,}' },
+        @{ Name = "quoted password literal"
+           Pattern = '(?i)(?:password|pwd)\s*[:=]\s*["''][^"''\s$<{%][^"'']{2,}["'']' },
+        @{ Name = "private key block"; Pattern = '-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----' },
+        @{ Name = "tunnel secret"; Pattern = '(?i)"TunnelSecret"\s*:\s*"[^"]+"' },
+        @{ Name = "api token literal"
+           Pattern = '(?i)(?:api[_-]?key|access[_-]?token|client[_-]?secret)\s*[:=]\s*["''][^"''\s$<{%][^"'']{7,}["'']' }
+    )
+
+    $findings = [System.Collections.Generic.List[string]]::new()
+    foreach ($line in $addedLines) {
+        foreach ($rule in $rules) {
+            if ($line -match $rule.Pattern) {
+                $trimmed = $line.Trim()
+                if ($trimmed.Length -gt 120) { $trimmed = $trimmed.Substring(0, 120) + "..." }
+                $findings.Add("[$($rule.Name)] $trimmed")
+                break
+            }
+        }
+    }
+
+    if ($findings.Count -eq 0) {
+        Write-Host "No credential-shaped text found in the staged changes."
+        return
+    }
+
+    Write-Host ""
+    Write-Host "Credential-shaped text found in the staged changes:" -ForegroundColor Yellow
+    $findings | Select-Object -First 20 | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+    if ($findings.Count -gt 20) {
+        Write-Host "  ... and $($findings.Count - 20) more." -ForegroundColor Yellow
+    }
+    Write-Host ""
+
+    if ($Allow) {
+        Write-Host "Continuing because -AllowSuspiciousContent was supplied." -ForegroundColor Yellow
+        return
+    }
+
+    throw ("Refusing to commit credential-shaped content. Review the lines above. " +
+        "Test fixtures and placeholders are fine: re-run with -AllowSuspiciousContent to proceed.")
 }
 
 function Test-GitReference {
@@ -250,14 +335,32 @@ try {
         throw "An open pull request already exists for '$sourceBranch': $existingPullRequestUrl"
     }
 
-    $gitUserName = Get-SingleNativeOutput -FilePath "git" -ArgumentList @("config", "user.name")
-    $gitUserEmail = Get-SingleNativeOutput -FilePath "git" -ArgumentList @("config", "user.email")
+    $gitUserName = Get-OptionalGitConfig -Name "user.name"
+    $gitUserEmail = Get-OptionalGitConfig -Name "user.email"
     if ([string]::IsNullOrWhiteSpace($gitUserName) -or [string]::IsNullOrWhiteSpace($gitUserEmail)) {
         throw "Configure Git user.name and user.email before committing."
     }
 
+    if ($SkipVerification) {
+        Write-Step "Local verification SKIPPED by request"
+        Write-Host "Nothing will check this change before it reaches '$baseBranch'." -ForegroundColor Yellow
+    }
+    else {
+        Write-Step "Local verification (this workflow bypasses CI)"
+        Invoke-NativeCommand -FilePath "dotnet" -ArgumentList @("build", "-c", "Release", "--nologo")
+        Invoke-NativeCommand -FilePath "dotnet" -ArgumentList @("test", "-c", "Release", "--nologo")
+    }
+
     Write-Step "Pending changes on '$sourceBranch'"
     Invoke-NativeCommand -FilePath "git" -ArgumentList @("status", "--short")
+
+    $changeStat = Get-SingleNativeOutput -FilePath "git" -ArgumentList @("diff", "HEAD", "--shortstat")
+    $untrackedCount = @(Invoke-NativeCommand -FilePath "git" -ArgumentList @(
+        "ls-files", "--others", "--exclude-standard"
+    ) -CaptureOutput).Count
+    Write-Host ""
+    Write-Host "Tracked changes : $(if ($changeStat) { $changeStat } else { 'none' })"
+    Write-Host "New files       : $untrackedCount"
 
     $commitTitle = ([string](Read-Host -Prompt "Commit title for branch '$sourceBranch'")).Trim()
     if ([string]::IsNullOrWhiteSpace($commitTitle)) {
@@ -275,6 +378,9 @@ try {
     if ($stagedDiffExitCode -ne 1) {
         throw "Unable to inspect the staged changes (exit code $stagedDiffExitCode)."
     }
+
+    Write-Step "Scan staged changes for credential-shaped text"
+    Assert-NoSuspiciousStagedContent -Allow:$AllowSuspiciousContent
 
     Invoke-NativeCommand -FilePath "git" -ArgumentList @("commit", "-m", $commitTitle)
     $commitSha = Get-SingleNativeOutput -FilePath "git" -ArgumentList @("rev-parse", "HEAD")
@@ -314,6 +420,19 @@ try {
     $pullRequestUrl = [string]$pullRequest.url
     if ([string]::IsNullOrWhiteSpace($pullRequestUrl) -or $pullRequest.state -ne "OPEN") {
         throw "The new pull request could not be resolved as an open pull request."
+    }
+
+    Write-Step "Confirm the immediate merge"
+    Write-Host "This squash-merges $pullRequestUrl into '$baseBranch' using --admin," -ForegroundColor Yellow
+    Write-Host "bypassing branch protection and without waiting for CI, then deletes" -ForegroundColor Yellow
+    Write-Host "both the local and remote '$sourceBranch'." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Answering anything else leaves the pull request open for review," -ForegroundColor DarkGray
+    Write-Host "with the branch already pushed. Nothing is lost." -ForegroundColor DarkGray
+    Write-Host ""
+    $mergeAnswer = ([string](Read-Host -Prompt "Type MERGE to merge now")).Trim()
+    if (-not [string]::Equals($mergeAnswer, "MERGE", [StringComparison]::Ordinal)) {
+        throw "Merge not confirmed. The pull request remains open at $pullRequestUrl."
     }
 
     Write-Step "Squash merge pull request without waiting for CI"

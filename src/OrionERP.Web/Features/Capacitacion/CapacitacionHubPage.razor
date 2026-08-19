@@ -1,0 +1,147 @@
+@page "/capacitacion"
+@attribute [Authorize(Policy = "CapacitacionEmployee")]
+@inherits CapacitacionPageBase
+
+<PageTitle>Capacitación</PageTitle>
+
+<CapacitacionShell Title="Aprender OrionERP, paso a paso"
+                   Description="Rutas guiadas, práctica segura y evidencia clara para dominar cada proceso que necesitas en tu puesto.">
+  <HeroActions>
+    <a class="cap-btn cap-btn--ghost" href="/capacitacion/catalogo"><span class="oi oi-book" aria-hidden="true"></span>Explorar catálogo</a>
+    <a class="cap-btn cap-btn--light" href="/capacitacion/mi-plan"><span class="oi oi-task" aria-hidden="true"></span>Continuar mi plan</a>
+  </HeroActions>
+  <ChildContent>
+    @if (!string.IsNullOrWhiteSpace(PageError))
+    {
+      <div class="cap-alert cap-alert--error" role="alert"><span class="oi oi-warning" aria-hidden="true"></span><p>@PageError</p></div>
+    }
+    else if (loading)
+    {
+      <CapacitacionLoading />
+    }
+    else if (dashboard is not null)
+    {
+      <section aria-labelledby="cap-resumen-title">
+        <div class="cap-section-title">
+          <div><h2 id="cap-resumen-title">Tu avance</h2><p>Un vistazo a tu ruta de aprendizaje actual.</p></div>
+          <span class="cap-badge cap-badge--info">Empresa @Rfc</span>
+        </div>
+        <div class="cap-grid">
+          <article class="cap-card cap-span-3 cap-stat">
+            <span class="cap-stat__icon"><span class="oi oi-media-play" aria-hidden="true"></span></span>
+            <strong>@dashboard.EnCurso</strong><span>Cursos en progreso</span>
+          </article>
+          <article class="cap-card cap-span-3 cap-stat">
+            <span class="cap-stat__icon"><span class="oi oi-clock" aria-hidden="true"></span></span>
+            <strong>@dashboard.Pendientes</strong><span>Asignaciones pendientes</span>
+          </article>
+          <article class="cap-card cap-span-3 cap-stat">
+            <span class="cap-stat__icon"><span class="oi oi-badge" aria-hidden="true"></span></span>
+            <strong>@dashboard.Completadas</strong><span>Capacitaciones completadas</span>
+          </article>
+          <article class="cap-card cap-span-3 cap-stat">
+            <span class="cap-stat__icon"><span class="oi oi-graph" aria-hidden="true"></span></span>
+            <strong>@CapacitacionUi.ClampPercent(dashboard.ProgresoPromedio)%</strong><span>Progreso promedio</span>
+          </article>
+        </div>
+      </section>
+
+      @if (dashboard.Vencidas > 0)
+      {
+        <div class="cap-alert cap-alert--error mt-3" role="alert">
+          <span class="oi oi-warning" aria-hidden="true"></span>
+          <p><strong>@dashboard.Vencidas @(dashboard.Vencidas == 1 ? "asignación vencida" : "asignaciones vencidas").</strong> Revisa tu plan y acuerda una nueva fecha con tu instructor.</p>
+        </div>
+      }
+
+      <div class="cap-grid mt-3">
+        <section class="cap-card cap-span-8" aria-labelledby="cap-proximos-title">
+          <div class="cap-card__header">
+            <div><h2 id="cap-proximos-title">Siguiente en tu plan</h2><p>Continúa desde el punto en el que te quedaste.</p></div>
+            <a class="cap-btn cap-btn--light" href="/capacitacion/mi-plan">Ver todo</a>
+          </div>
+          <div class="cap-card__body">
+            @if (dashboard.MisAsignaciones.Count == 0)
+            {
+              <div class="cap-empty">
+                <span class="cap-empty__icon"><span class="oi oi-check" aria-hidden="true"></span></span>
+                <h3>Tu plan está al día</h3>
+                <p>No tienes cursos asignados por ahora. Puedes explorar el catálogo para conocer las rutas disponibles.</p>
+                <a class="cap-btn cap-btn--primary" href="/capacitacion/catalogo">Explorar catálogo</a>
+              </div>
+            }
+            else
+            {
+              <div class="cap-course-list">
+                @foreach (var assignment in dashboard.MisAsignaciones.OrderBy(x => x.FechaLimite ?? DateTime.MaxValue).Take(4))
+                {
+                  <article class="cap-course-row">
+                    <span class="cap-course-row__icon"><span class="oi @CapacitacionUi.IconForModule(assignment.Categoria)" aria-hidden="true"></span></span>
+                    <div><h3>@assignment.CursoNombre</h3><p>@assignment.Categoria · versión @assignment.NumeroVersion</p></div>
+                    <div>
+                      <div class="cap-progress" role="progressbar" aria-label="Progreso de @assignment.CursoNombre" aria-valuenow="@CapacitacionUi.ClampPercent(assignment.Porcentaje)" aria-valuemin="0" aria-valuemax="100"><span style="width:@CapacitacionUi.ClampPercent(assignment.Porcentaje)%"></span></div>
+                      <div class="cap-progress-meta"><span>@CapacitacionUi.ClampPercent(assignment.Porcentaje)%</span><span>@DueLabel(assignment.FechaLimite)</span></div>
+                    </div>
+                    <span class="cap-badge @CapacitacionUi.StatusCss(assignment.Estado)">@CapacitacionUi.StatusLabel(assignment.Estado)</span>
+                  </article>
+                }
+              </div>
+            }
+          </div>
+        </section>
+
+        <aside class="cap-card cap-card--soft cap-span-4" aria-labelledby="cap-sesiones-title">
+          <div class="cap-card__header"><div><h2 id="cap-sesiones-title">Sesiones guiadas</h2><p>En vivo con un instructor.</p></div><span class="cap-badge cap-badge--success">@dashboard.SesionesActivas activas</span></div>
+          <div class="cap-card__body">
+            @if (dashboard.Sesiones.Count == 0)
+            {
+              <div class="cap-empty py-4"><span class="cap-empty__icon"><span class="oi oi-calendar" aria-hidden="true"></span></span><h3>Sin sesiones próximas</h3><p>Cuando un instructor programe una sesión, aparecerá aquí.</p></div>
+            }
+            else
+            {
+              <div class="cap-session-list">
+                @foreach (var session in dashboard.Sesiones.OrderBy(x => x.ProgramadaEn).Take(4))
+                {
+                  <a class="cap-session-link" href="/capacitacion/sesiones/@session.SesionId">
+                    <span class="cap-session-link__date"><strong>@session.ProgramadaEn.ToString("dd")</strong><small>@session.ProgramadaEn.ToString("MMM")</small></span>
+                    <span><strong>@session.Nombre</strong><small>@session.InstructorName · @session.ProgramadaEn.ToString("HH:mm")</small></span>
+                    <span class="oi oi-chevron-right" aria-hidden="true"></span>
+                  </a>
+                }
+              </div>
+            }
+            <AuthorizeView Policy="CapacitacionInstructor">
+              <Authorized><a class="cap-btn cap-btn--teal w-100 mt-3" href="/capacitacion/sesiones/nueva"><span class="oi oi-plus" aria-hidden="true"></span>Preparar una sesión</a></Authorized>
+            </AuthorizeView>
+          </div>
+        </aside>
+      </div>
+
+      <section class="cap-learning-principles" aria-labelledby="cap-metodo-title">
+        <div><span class="cap-badge cap-badge--success">Método OrionERP</span><h2 id="cap-metodo-title">Comprender, practicar y demostrar</h2><p>Cada tema conecta el porqué del proceso con una demostración y una práctica segura antes de trabajar con información real.</p></div>
+        <FlujoCapacitacion CurrentStep="0" MaximumStep="0" />
+      </section>
+    }
+  </ChildContent>
+</CapacitacionShell>
+
+@code {
+  private CapacitacionDashboardDto? dashboard;
+  private bool loading = true;
+
+  protected override async Task OnInitializedAsync()
+  {
+    if (!await InitializeActorAsync()) { loading = false; return; }
+    try { dashboard = await Capacitacion.GetDashboardAsync(CreateActorContext(), LifetimeToken); }
+    catch (OperationCanceledException) when (LifetimeToken.IsCancellationRequested) { }
+    catch (Exception exception) { ShowPageException(exception, "No fue posible cargar tu panel de capacitación."); }
+    finally { loading = false; }
+  }
+
+  private static string DueLabel(DateTime? due) => due switch
+  {
+    null => "Sin fecha límite",
+    var date when date.Value.Date < DateTime.Today => $"Venció {date.Value:dd MMM}",
+    var date => $"Hasta {date.Value:dd MMM}"
+  };
+}

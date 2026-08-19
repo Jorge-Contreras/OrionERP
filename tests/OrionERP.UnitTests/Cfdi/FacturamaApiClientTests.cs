@@ -10,7 +10,7 @@ namespace OrionERP.UnitTests.Cfdi;
 public class FacturamaApiClientTests
 {
   [Fact]
-  public async Task CreateIssuedCfdiAsync_UsesSandboxDefaults_InDevelopment()
+  public async Task CreateIssuedCfdiAsync_UsesSandboxUrlAndConfiguredCredentials_InDevelopment()
   {
     var handler = new RecordingHttpMessageHandler();
     var client = CreateClient(
@@ -24,11 +24,11 @@ public class FacturamaApiClientTests
 
     Assert.Equal("sandbox-id", id);
     Assert.Equal(new Uri("https://apisandbox.facturama.mx/3/cfdis"), handler.LastRequest?.RequestUri);
-    Assert.Equal(CreateBasicAuthHeader("jorgecontreras", "Orion2020"), handler.LastRequest?.Headers.Authorization);
+    Assert.Equal(CreateBasicAuthHeader("test-sandbox-user", "test-sandbox-password"), handler.LastRequest?.Headers.Authorization);
   }
 
   [Fact]
-  public async Task CreateIssuedCfdiAsync_UsesSandboxCredentials_WhenSandboxBaseUrlIsExplicitlyConfigured()
+  public async Task CreateIssuedCfdiAsync_UsesConfiguredCredentials_WhenSandboxBaseUrlIsExplicitlyConfigured()
   {
     var handler = new RecordingHttpMessageHandler();
     var client = CreateClient(
@@ -42,7 +42,7 @@ public class FacturamaApiClientTests
 
     Assert.Equal("sandbox-id", id);
     Assert.Equal(new Uri("https://apisandbox.facturama.mx/3/cfdis"), handler.LastRequest?.RequestUri);
-    Assert.Equal(CreateBasicAuthHeader("jorgecontreras", "Orion2020"), handler.LastRequest?.Headers.Authorization);
+    Assert.Equal(CreateBasicAuthHeader("test-sandbox-user", "test-sandbox-password"), handler.LastRequest?.Headers.Authorization);
   }
 
   [Fact]
@@ -359,8 +359,19 @@ public class FacturamaApiClientTests
 
   private static FacturamaApiClient CreateClient(HttpMessageHandler handler, IDictionary<string, string?> values)
   {
+    var testValues = new Dictionary<string, string?>(values, StringComparer.OrdinalIgnoreCase);
+    var usesSandbox = testValues.TryGetValue("Facturama:BaseUrl", out var baseUrl)
+        && baseUrl?.Contains("sandbox", StringComparison.OrdinalIgnoreCase) == true;
+    usesSandbox |= testValues.TryGetValue("ENVIRONMENT", out var environment)
+        && string.Equals(environment, "Development", StringComparison.OrdinalIgnoreCase);
+    if (usesSandbox)
+    {
+      testValues.TryAdd("Facturama:User", "test-sandbox-user");
+      testValues.TryAdd("Facturama:Password", "test-sandbox-password");
+    }
+
     var configuration = new ConfigurationBuilder()
-        .AddInMemoryCollection(values)
+        .AddInMemoryCollection(testValues)
         .Build();
 
     return new FacturamaApiClient(new HttpClient(handler), configuration);

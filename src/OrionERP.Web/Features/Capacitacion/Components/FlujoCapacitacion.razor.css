@@ -1,0 +1,14 @@
+.cap-flow { counter-reset: cap-step; display: grid; gap: 0; grid-template-columns: repeat(6, minmax(0,1fr)); list-style: none; margin: 0; padding: 0; }
+.cap-flow__step { min-width: 0; position: relative; }
+.cap-flow__step::after { background: #dce5ec; content: ""; height: 2px; left: calc(50% + 1rem); position: absolute; right: calc(-50% + 1rem); top: 1rem; z-index: 0; }
+.cap-flow__step:last-child::after { display: none; }
+.cap-flow__step--complete::after { background: #0c857b; }
+.cap-flow button { align-items: center; background: transparent; border: 0; color: #607489; display: flex; flex-direction: column; font: inherit; gap: .35rem; padding: 0 .2rem; position: relative; width: 100%; z-index: 1; }
+.cap-flow button:not(:disabled) { cursor: pointer; }
+.cap-flow button:disabled { opacity: 1; }
+.cap-flow__marker { align-items: center; background: #eef3f6; border: 2px solid #d2dde5; border-radius: 50%; display: inline-flex; font-size: .72rem; font-weight: 800; height: 2rem; justify-content: center; width: 2rem; }
+.cap-flow__label { font-size: .7rem; font-weight: 750; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
+.cap-flow__step--complete .cap-flow__marker { background: #0c857b; border-color: #0c857b; color: #fff; }
+.cap-flow__step--current .cap-flow__marker { background: #126b8f; border-color: #126b8f; box-shadow: 0 0 0 .25rem rgba(18,107,143,.14); color: #fff; }
+.cap-flow__step--current .cap-flow__label { color: #126b8f; }
+@media (max-width: 650px) { .cap-flow__label { font-size: .58rem; } .cap-flow__marker { height: 1.7rem; width: 1.7rem; } .cap-flow__step::after { left: calc(50% + .85rem); right: calc(-50% + .85rem); top: .85rem; } }

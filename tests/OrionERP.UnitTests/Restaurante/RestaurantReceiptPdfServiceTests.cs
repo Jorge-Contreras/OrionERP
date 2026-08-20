@@ -15,7 +15,7 @@ public sealed class RestaurantReceiptPdfServiceTests
   }
 
   [Fact]
-  public void Generate_CreatesCustomerMenuSectionAndCustomItemTickets()
+  public void Generate_CreatesOrderNumberCustomerMenuSectionAndCustomItemTickets()
   {
     var service = new RestaurantReceiptPdfService();
 
@@ -26,7 +26,7 @@ public sealed class RestaurantReceiptPdfServiceTests
 
     var pdfText = Encoding.Latin1.GetString(pdf);
     var pageObjects = Regex.Matches(pdfText, @"/Type\s*/Page(?!s)\b").Count;
-    Assert.Equal(4, pageObjects);
+    Assert.Equal(5, pageObjects);
   }
 
   internal static RestaurantReceiptPdfDocumentModel CreateSampleModel()

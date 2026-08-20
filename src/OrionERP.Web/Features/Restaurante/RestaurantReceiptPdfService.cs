@@ -10,6 +10,12 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
   private static readonly CultureInfo MexicanCulture = CultureInfo.GetCultureInfo("es-MX");
   private const string MutedColor = "#3F3F3F";
   private const string LightColor = "#D5D5D5";
+  private const float ThermalWidthMillimetres = 80f;
+  private const float ThermalMarginMillimetres = 4f;
+  private const float PointsPerMillimetre = 72f / 25.4f;
+  private const float ThermalContentWidthPoints = (ThermalWidthMillimetres - (2 * ThermalMarginMillimetres)) * PointsPerMillimetre;
+  // Ancho de avance por digito de la fuente base: mantiene el folio dentro de los 72 mm imprimibles.
+  private const float OrderNumberDigitWidthRatio = 0.58f;
 
   public RestaurantReceiptPdfService()
   {
@@ -36,6 +42,12 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
         document.Page(page =>
         {
           ConfigureThermalPage(page);
+          page.Content().Element(container => ComposeOrderNumberTicket(container, model));
+        });
+
+        document.Page(page =>
+        {
+          ConfigureThermalPage(page);
           page.Content().Element(container => ComposeCustomerTicket(container, model));
         });
 
@@ -57,13 +69,40 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
 
   private static void ConfigureThermalPage(PageDescriptor page)
   {
-    page.ContinuousSize(80, Unit.Millimetre);
-    page.Margin(4, Unit.Millimetre);
+    page.ContinuousSize(ThermalWidthMillimetres, Unit.Millimetre);
+    page.Margin(ThermalMarginMillimetres, Unit.Millimetre);
     page.DefaultTextStyle(style => style
       .FontSize(8)
       .FontColor(Colors.Black)
       .LineHeight(1.15f));
   }
+
+  private static void ComposeOrderNumberTicket(IContainer container, RestaurantReceiptPdfDocumentModel model)
+  {
+    var folio = model.Folio.ToString("000", MexicanCulture);
+
+    container.Column(column =>
+    {
+      column.Spacing(2);
+      column.Item().AlignCenter().Text(model.IsReprint ? "REIMPRESIÓN · ORDEN" : "ORDEN")
+        .FontSize(9).SemiBold().LetterSpacing(0.12f);
+      column.Item().AlignCenter().Text(folio)
+        .FontSize(OrderNumberFontSize(folio.Length))
+        .Bold()
+        .LineHeight(1f);
+      if (!string.IsNullOrWhiteSpace(model.CustomerName))
+      {
+        column.Item().PaddingTop(2).AlignCenter().Text(model.CustomerName).FontSize(11).Bold();
+      }
+      column.Item().AlignCenter().Text($"{OrderTypeLabel(model)}  |  {model.CreatedAt:dd/MM/yyyy HH:mm}")
+        .FontSize(7)
+        .FontColor(MutedColor);
+      column.Item().Height(3, Unit.Millimetre);
+    });
+  }
+
+  private static float OrderNumberFontSize(int digitCount)
+    => ThermalContentWidthPoints / (Math.Max(1, digitCount) * OrderNumberDigitWidthRatio);
 
   private static void ComposeCustomerTicket(IContainer container, RestaurantReceiptPdfDocumentModel model)
   {

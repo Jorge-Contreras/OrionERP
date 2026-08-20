@@ -433,6 +433,59 @@ public sealed class TrainingSanitizationScriptTests
   }
 
   [Fact]
+  public void AppliedReset_RestoresTheRuntimeDatabaseUserOnlyAfterAPositiveAttestation()
+  {
+    var attest = PowerShell.IndexOf(
+      "Invoke-SqlFile -Connection $connection -Path $attestScript",
+      StringComparison.Ordinal);
+    var attestationGate = PowerShell.IndexOf(
+      "$finalInventory.DataAttestation -ne 'ATTESTED'",
+      StringComparison.Ordinal);
+    var restore = PowerShell.IndexOf(
+      "Restore-TrainingRuntimeDatabaseUser -Connection $connection",
+      StringComparison.Ordinal);
+
+    // A reset that ended halfway must leave the environment unreachable rather
+    // than handing a runtime principal to half-sanitized data.
+    Assert.InRange(attestationGate, attest + 1, restore - 1);
+
+    // The sanitizer drops every SQL database user, so the runtime mapping has to
+    // come back or OrionERP.Training cannot open Orion_Training (SQL error 4060).
+    // This manifest must stay identical to 20260817_training_runtime_login.sql,
+    // because TrainingDatabaseSafetyVerifier refuses to boot when it drifts.
+    Assert.Contains(
+      "CREATE USER [orion_training_runtime] FOR LOGIN [orion_training_runtime];",
+      PowerShell,
+      StringComparison.Ordinal);
+    Assert.Contains(
+      "ALTER ROLE [db_datareader] ADD MEMBER [orion_training_runtime];",
+      PowerShell,
+      StringComparison.Ordinal);
+    Assert.Contains(
+      "ALTER ROLE [db_datawriter] ADD MEMBER [orion_training_runtime];",
+      PowerShell,
+      StringComparison.Ordinal);
+    Assert.Contains(
+      "GRANT VIEW DATABASE STATE TO [orion_training_runtime];",
+      PowerShell,
+      StringComparison.Ordinal);
+    Assert.Contains(
+      "ON OBJECT::capacitacion.EntornoSeguridad",
+      PowerShell,
+      StringComparison.Ordinal);
+    Assert.Contains(
+      "ON OBJECT::capacitacion.EsquemaVersion",
+      PowerShell,
+      StringComparison.Ordinal);
+
+    // Restoring the mapping needs no secret, so the login and its password stay
+    // owned by the separate least-privilege provisioning workflow.
+    Assert.DoesNotContain("CREATE LOGIN", PowerShell, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain("ALTER LOGIN", PowerShell, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain("WITH PASSWORD", PowerShell, StringComparison.OrdinalIgnoreCase);
+  }
+
+  [Fact]
   public void AppliedReset_SuppressesOldTriggersAndRebuildsSensitiveMetadataBeforeAttestation()
   {
     var firstDisable = PowerShell.IndexOf(

@@ -401,6 +401,226 @@ public sealed class MaterialService : IMaterialService
     return rows;
   }
 
+  public async Task<MaterialInventorySnapshotDto> GetMaterialInventoryAsync(
+    string rfc,
+    int materialId,
+    CancellationToken ct = default)
+  {
+    if (materialId <= 0)
+    {
+      return new MaterialInventorySnapshotDto();
+    }
+
+    const string sql =
+      """
+      SELECT
+          balance.Id AS StockBalanceId,
+          balance.LocationId,
+          locationInfo.LocationCode,
+          locationInfo.LocationName,
+          locationInfo.LocationType,
+          parentInfo.LocationName AS ParentLocationName,
+          room.ROOM_NAME AS RoomName,
+          CAST(locationInfo.IsActive AS bit) AS IsLocationActive,
+          CAST(locationInfo.IsInventoryEnabled AS bit) AS IsInventoryEnabled,
+          CAST(balance.Quantity AS decimal(18,4)) AS Quantity,
+          CAST(ISNULL(balance.ReservedQuantity, 0) AS decimal(18,4)) AS ReservedQuantity,
+          CAST(balance.MinQuantity AS decimal(18,4)) AS MinQuantity,
+          CAST(balance.MaxQuantity AS decimal(18,4)) AS MaxQuantity,
+          CAST(ISNULL(balance.AverageUnitCost, 0) AS decimal(18,6)) AS AverageUnitCost,
+          CAST(CASE
+              WHEN balance.MinQuantity IS NOT NULL AND balance.Quantity <= balance.MinQuantity THEN 1
+              ELSE 0
+          END AS bit) AS IsLowStock,
+          CAST(CASE
+              WHEN balance.MaxQuantity IS NOT NULL AND balance.Quantity > balance.MaxQuantity THEN 1
+              ELSE 0
+          END AS bit) AS IsOverStock,
+          CAST(CASE
+              WHEN balance.CountFrequencyDays IS NULL THEN 0
+              WHEN balance.LastCountedAt IS NULL THEN 1
+              WHEN DATEADD(day, balance.CountFrequencyDays, balance.LastCountedAt) <= SYSUTCDATETIME() THEN 1
+              ELSE 0
+          END AS bit) AS IsCountDue,
+          balance.LastCountedAt,
+          balance.CountFrequencyDays,
+          balance.LastPurchaseDate,
+          balance.Notes,
+          CAST(ISNULL(balance.IsRemoved, 0) AS bit) AS IsRemoved,
+          balance.RemovedAt,
+          balance.RemovedBy,
+          balance.UpdatedAt,
+          ISNULL(movementInfo.MovementCount, 0) AS MovementCount,
+          movementInfo.LastMovementAt,
+          ISNULL(attachmentInfo.AttachmentCount, 0) AS AttachmentCount
+      FROM logistica.StockBalance balance
+      JOIN logistica.Location locationInfo
+        ON locationInfo.Rfc = balance.Rfc AND locationInfo.Id = balance.LocationId
+      LEFT JOIN logistica.Location parentInfo
+        ON parentInfo.Rfc = locationInfo.Rfc AND parentInfo.Id = locationInfo.ParentLocationId
+      LEFT JOIN dbo.ROOM room
+        ON room.ID = locationInfo.RoomId
+      OUTER APPLY
+      (
+          SELECT
+              COUNT(*) AS MovementCount,
+              MAX(movement.OccurredAt) AS LastMovementAt
+          FROM logistica.StockTransaction movement
+          WHERE movement.Rfc = balance.Rfc
+            AND movement.StockBalanceId = balance.Id
+      ) movementInfo
+      OUTER APPLY
+      (
+          SELECT COUNT(*) AS AttachmentCount
+          FROM logistica.LocationMaterialAttachment attachmentRow
+          WHERE attachmentRow.Rfc = balance.Rfc
+            AND attachmentRow.LocationId = balance.LocationId
+            AND attachmentRow.MaterialId = balance.MaterialId
+            AND ISNULL(attachmentRow.IsDeleted, 0) = 0
+      ) attachmentInfo
+      WHERE balance.Rfc = @Rfc
+        AND balance.MaterialId = @MaterialId
+      ORDER BY
+          ISNULL(balance.IsRemoved, 0),
+          room.ROOM_NAME,
+          locationInfo.LocationName,
+          locationInfo.LocationCode,
+          balance.Id;
+
+      SELECT
+          movement.TransactionType,
+          COUNT(*) AS MovementCount,
+          MAX(movement.OccurredAt) AS LastOccurredAt
+      FROM logistica.StockTransaction movement
+      WHERE movement.Rfc = @Rfc
+        AND movement.MaterialId = @MaterialId
+      GROUP BY movement.TransactionType
+      ORDER BY COUNT(*) DESC, movement.TransactionType;
+      """;
+
+    using var conn = CreateConnection();
+    using var reader = await conn.QueryMultipleAsync(
+      new CommandDefinition(
+        sql,
+        new { Rfc = LogisticsRfc.Require(rfc), MaterialId = materialId },
+        cancellationToken: ct));
+
+    var locations = (await reader.ReadAsync<MaterialStockLocationDto>()).AsList();
+    var movementTypes = (await reader.ReadAsync<MaterialMovementTypeOptionDto>()).AsList();
+
+    return new MaterialInventorySnapshotDto
+    {
+      MaterialId = materialId,
+      Locations = locations,
+      MovementTypes = movementTypes
+    };
+  }
+
+  public async Task<IReadOnlyList<MaterialMovementDto>> GetMaterialMovementsAsync(
+    MaterialMovementFilter filter,
+    CancellationToken ct = default)
+  {
+    filter ??= new MaterialMovementFilter();
+    if (filter.MaterialId <= 0)
+    {
+      return Array.Empty<MaterialMovementDto>();
+    }
+
+    var skip = Math.Max(filter.Skip, 0);
+    var take = Math.Max(filter.Take, 0);
+
+    var sql = new StringBuilder(
+      """
+      SELECT
+          movement.Id,
+          movement.OccurredAt,
+          movement.TransactionType,
+          CAST(movement.QuantityDelta AS decimal(18,4)) AS QuantityDelta,
+          CAST(movement.QuantityAfter AS decimal(18,4)) AS QuantityAfter,
+          movement.LocationId,
+          locationInfo.LocationCode,
+          locationInfo.LocationName,
+          room.ROOM_NAME AS RoomName,
+          movement.ReferenceType,
+          movement.ReferenceId,
+          movement.Notes,
+          movement.PerformedBy
+      FROM logistica.StockTransaction movement
+      LEFT JOIN logistica.Location locationInfo
+        ON locationInfo.Rfc = movement.Rfc AND locationInfo.Id = movement.LocationId
+      LEFT JOIN dbo.ROOM room
+        ON room.ID = locationInfo.RoomId
+      WHERE movement.Rfc = @Rfc
+        AND movement.MaterialId = @MaterialId
+      """);
+
+    var parameters = new DynamicParameters();
+    parameters.Add("@Rfc", LogisticsRfc.Require(filter.Rfc), DbType.String);
+    parameters.Add("@MaterialId", filter.MaterialId, DbType.Int32);
+
+    if (filter.LocationId.HasValue)
+    {
+      sql.AppendLine(" AND movement.LocationId = @LocationId");
+      parameters.Add("@LocationId", filter.LocationId.Value, DbType.Int32);
+    }
+
+    if (!string.IsNullOrWhiteSpace(filter.TransactionType))
+    {
+      sql.AppendLine(" AND movement.TransactionType = @TransactionType");
+      parameters.Add("@TransactionType", filter.TransactionType.Trim(), DbType.String);
+    }
+
+    if (filter.OccurredFromUtc.HasValue)
+    {
+      sql.AppendLine(" AND movement.OccurredAt >= @OccurredFromUtc");
+      parameters.Add("@OccurredFromUtc", filter.OccurredFromUtc.Value, DbType.DateTime2);
+    }
+
+    if (filter.OccurredToUtc.HasValue)
+    {
+      sql.AppendLine(" AND movement.OccurredAt < @OccurredToUtc");
+      parameters.Add("@OccurredToUtc", filter.OccurredToUtc.Value, DbType.DateTime2);
+    }
+
+    if (!string.IsNullOrWhiteSpace(filter.SearchText))
+    {
+      sql.AppendLine(
+        """
+         AND (
+             movement.TransactionType LIKE @Search
+             OR movement.Notes LIKE @Search
+             OR movement.PerformedBy LIKE @Search
+             OR movement.ReferenceType LIKE @Search
+             OR locationInfo.LocationCode LIKE @Search
+             OR locationInfo.LocationName LIKE @Search
+             OR room.ROOM_NAME LIKE @Search
+         )
+        """);
+      parameters.Add("@Search", $"%{filter.SearchText.Trim()}%", DbType.String);
+    }
+
+    sql.AppendLine();
+    sql.AppendLine("ORDER BY movement.OccurredAt DESC, movement.Id DESC");
+
+    if (take > 0)
+    {
+      sql.AppendLine("OFFSET @Skip ROWS");
+      sql.AppendLine("FETCH NEXT @Take ROWS ONLY;");
+      parameters.Add("@Skip", skip, DbType.Int32);
+      parameters.Add("@Take", take, DbType.Int32);
+    }
+    else
+    {
+      sql.AppendLine(";");
+    }
+
+    using var conn = CreateConnection();
+    var rows = await conn.QueryAsync<MaterialMovementDto>(
+      new CommandDefinition(sql.ToString(), parameters, cancellationToken: ct));
+
+    return rows.AsList();
+  }
+
   public async Task<MaterialLifecycleAssessmentDto> GetMaterialLifecycleAssessmentAsync(
     string rfc,
     int materialId,

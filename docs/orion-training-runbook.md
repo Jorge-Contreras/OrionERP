@@ -176,6 +176,16 @@ Si no, el proceso terminó a medias: los triggers DML quedan deshabilitados a
 propósito y el servicio `OrionERP.Training` **debe permanecer detenido** hasta
 completar un reinicio limpio.
 
+El sanitizado borra **todos** los usuarios de base de datos, incluido el que usa
+la aplicación para conectarse. Por eso, y sólo después de leer una atestación
+positiva, el orquestador vuelve a crear el usuario `orion_training_runtime` con
+`db_datareader`/`db_datawriter` y el manifiesto revisado de diez permisos; debe
+imprimir `Runtime database user orion_training_runtime restored...`. El login de
+servidor y su contraseña siguen siendo responsabilidad del flujo aparte de mínimo
+privilegio: si el script advierte que ese login no existe, corre primero
+`Provision-TrainingRuntimeSqlLogin.ps1` o el servicio fallará al arrancar con
+`SQL 4060: Cannot open database "Orion_Training" requested by the login`.
+
 ```bash
 Start-Service OrionERP.Training
 ```

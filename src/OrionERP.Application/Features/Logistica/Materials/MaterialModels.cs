@@ -246,3 +246,136 @@ public sealed class UnitOfMeasureCreateRequest
   [StringLength(200)]
   public string? Description { get; set; }
 }
+
+public sealed class MaterialStockLocationDto
+{
+  public int StockBalanceId { get; set; }
+  public int LocationId { get; set; }
+  public string LocationCode { get; set; } = string.Empty;
+  public string LocationName { get; set; } = string.Empty;
+  public string LocationType { get; set; } = string.Empty;
+  public string? ParentLocationName { get; set; }
+  public string? RoomName { get; set; }
+  public bool IsLocationActive { get; set; }
+  public bool IsInventoryEnabled { get; set; }
+  public decimal Quantity { get; set; }
+  public decimal ReservedQuantity { get; set; }
+  public decimal? MinQuantity { get; set; }
+  public decimal? MaxQuantity { get; set; }
+  public decimal AverageUnitCost { get; set; }
+  public bool IsLowStock { get; set; }
+  public bool IsOverStock { get; set; }
+  public bool IsCountDue { get; set; }
+  public DateTime? LastCountedAt { get; set; }
+  public int? CountFrequencyDays { get; set; }
+  public DateTime? LastPurchaseDate { get; set; }
+  public DateTime? LastMovementAt { get; set; }
+  public DateTime? UpdatedAt { get; set; }
+  public int MovementCount { get; set; }
+  public int AttachmentCount { get; set; }
+  public string? Notes { get; set; }
+  public bool IsRemoved { get; set; }
+  public DateTime? RemovedAt { get; set; }
+  public string? RemovedBy { get; set; }
+
+  public decimal AvailableQuantity => Quantity - ReservedQuantity;
+  public decimal InventoryValue => Quantity * AverageUnitCost;
+  public bool HasThresholds => MinQuantity.HasValue || MaxQuantity.HasValue;
+
+  public DateTime? NextCountDueAt
+    => CountFrequencyDays.HasValue && LastCountedAt.HasValue
+      ? LastCountedAt.Value.AddDays(CountFrequencyDays.Value)
+      : null;
+
+  /// <summary>Units required to bring the balance back up to the configured maximum.</summary>
+  public decimal? SuggestedRefillQuantity
+    => MaxQuantity.HasValue && MaxQuantity.Value > Quantity ? MaxQuantity.Value - Quantity : null;
+
+  /// <summary>Units above the configured maximum.</summary>
+  public decimal? ExcessQuantity
+    => MaxQuantity.HasValue && Quantity > MaxQuantity.Value ? Quantity - MaxQuantity.Value : null;
+
+  public string CoverageState
+    => !HasThresholds ? "unset"
+      : IsLowStock ? "low"
+      : IsOverStock ? "over"
+      : "ok";
+}
+
+public sealed class MaterialMovementTypeOptionDto
+{
+  public string TransactionType { get; set; } = string.Empty;
+  public int MovementCount { get; set; }
+  public DateTime? LastOccurredAt { get; set; }
+}
+
+public sealed class MaterialInventorySnapshotDto
+{
+  public int MaterialId { get; set; }
+  public IReadOnlyList<MaterialStockLocationDto> Locations { get; set; } = Array.Empty<MaterialStockLocationDto>();
+  public IReadOnlyList<MaterialMovementTypeOptionDto> MovementTypes { get; set; } = Array.Empty<MaterialMovementTypeOptionDto>();
+
+  public IReadOnlyList<MaterialStockLocationDto> StoredLocations
+    => Locations.Where(location => !location.IsRemoved).ToArray();
+  public IReadOnlyList<MaterialStockLocationDto> RemovedLocations
+    => Locations.Where(location => location.IsRemoved).ToArray();
+
+  public decimal TotalQuantity => StoredLocations.Sum(location => location.Quantity);
+  public decimal TotalReservedQuantity => StoredLocations.Sum(location => location.ReservedQuantity);
+  public decimal TotalAvailableQuantity => TotalQuantity - TotalReservedQuantity;
+  public decimal TotalInventoryValue => StoredLocations.Sum(location => location.InventoryValue);
+  public decimal TotalMinQuantity => StoredLocations.Sum(location => location.MinQuantity ?? 0m);
+  public decimal TotalMaxQuantity => StoredLocations.Sum(location => location.MaxQuantity ?? 0m);
+  public int LowStockCount => StoredLocations.Count(location => location.IsLowStock);
+  public int OverStockCount => StoredLocations.Count(location => location.IsOverStock);
+  public int CountDueCount => StoredLocations.Count(location => location.IsCountDue);
+  public int MissingThresholdCount => StoredLocations.Count(location => !location.HasThresholds);
+  public int TotalMovementCount => MovementTypes.Sum(option => option.MovementCount);
+
+  public DateTime? LastMovementAt => MovementTypes.Max(option => option.LastOccurredAt);
+
+  public bool HasLocations => Locations.Count > 0;
+}
+
+public sealed class MaterialMovementFilter
+{
+  [Required]
+  public string Rfc { get; set; } = string.Empty;
+
+  [Range(1, int.MaxValue)]
+  public int MaterialId { get; set; }
+
+  public int? LocationId { get; set; }
+  public string? TransactionType { get; set; }
+
+  /// <summary>Inclusive lower bound, expressed in UTC.</summary>
+  public DateTime? OccurredFromUtc { get; set; }
+
+  /// <summary>Exclusive upper bound, expressed in UTC.</summary>
+  public DateTime? OccurredToUtc { get; set; }
+
+  public string? SearchText { get; set; }
+  public int Skip { get; set; }
+  public int Take { get; set; }
+}
+
+public sealed class MaterialMovementDto
+{
+  public int Id { get; set; }
+  public DateTime OccurredAt { get; set; }
+  public string TransactionType { get; set; } = string.Empty;
+  public decimal QuantityDelta { get; set; }
+  public decimal QuantityAfter { get; set; }
+  public int LocationId { get; set; }
+  public string? LocationCode { get; set; }
+  public string? LocationName { get; set; }
+  public string? RoomName { get; set; }
+  public string? ReferenceType { get; set; }
+  public int? ReferenceId { get; set; }
+  public string? Notes { get; set; }
+  public string? PerformedBy { get; set; }
+
+  public decimal QuantityBefore => QuantityAfter - QuantityDelta;
+  public bool IsInbound => QuantityDelta > 0m;
+  public bool IsOutbound => QuantityDelta < 0m;
+}

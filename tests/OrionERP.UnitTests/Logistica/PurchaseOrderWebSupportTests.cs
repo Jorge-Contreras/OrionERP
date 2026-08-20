@@ -281,6 +281,12 @@ public class PurchaseOrderWebSupportTests
       return Task.FromResult<IReadOnlyList<LogisticsBinaryContent>>(Thumbnails.Where(thumbnail => LastThumbnailIds.Contains(thumbnail.Id)).ToList());
     }
 
+    public Task<MaterialInventorySnapshotDto> GetMaterialInventoryAsync(string rfc, int materialId, CancellationToken ct = default)
+      => throw new NotSupportedException();
+
+    public Task<IReadOnlyList<MaterialMovementDto>> GetMaterialMovementsAsync(MaterialMovementFilter filter, CancellationToken ct = default)
+      => throw new NotSupportedException();
+
     public Task<MaterialLifecycleAssessmentDto> GetMaterialLifecycleAssessmentAsync(string rfc, int materialId, CancellationToken ct = default)
       => throw new NotSupportedException();
 

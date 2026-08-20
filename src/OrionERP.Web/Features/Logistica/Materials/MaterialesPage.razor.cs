@@ -15,6 +15,8 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   private const int ThumbnailMaxPixels = 320;
   private const int PageSize = 50;
   private const int QueryTake = PageSize + 1;
+  private const int MovementPageSize = 25;
+  private const int MovementQueryTake = MovementPageSize + 1;
   private const int SearchDebounceMilliseconds = 320;
   private const long MaxImageBytes = 8 * 1024 * 1024;
 
@@ -73,6 +75,8 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   private CancellationTokenSource? _listRequestCts;
   private CancellationTokenSource? _rfcReloadCts;
   private CancellationTokenSource? _lifecycleAssessmentCts;
+  private CancellationTokenSource? _inventoryRequestCts;
+  private CancellationTokenSource? _movementRequestCts;
   private string? _catalogRfc;
   private bool _catalogRetryPending;
   private string? _catalogRecoveryRfc;
@@ -377,6 +381,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   protected void NuevoMaterial()
   {
     ResetLifecycleReport();
+    ResetInventoryPanels();
     SelectedMaterialId = null;
     CurrentMaterialCode = null;
     SelectedImageFileName = null;
@@ -404,6 +409,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
 
     IsLoadingEditor = true;
     ResetLifecycleReport();
+    ResetInventoryPanels();
     try
     {
       var detail = await MaterialService.GetMaterialAsync(CurrentRfc, materialId);
@@ -444,6 +450,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
       SyncPurchasePresentationPriceFromBase();
 
       await LoadImageAsync(detail.Id);
+      await LoadInventoryAsync(detail.Id);
     }
     catch (Exception ex)
     {
@@ -1076,6 +1083,458 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   protected string? GetMaterialThumbnailDataUrl(int materialId)
     => TryGetMaterialThumbnailDataUrl(materialId, out var dataUrl) ? dataUrl : null;
 
+  protected MaterialInventorySnapshotDto? Inventory { get; set; }
+  protected bool IsLoadingInventory { get; set; }
+  protected string? InventoryError { get; set; }
+  protected bool ShowRemovedStockLocations { get; set; }
+
+  protected List<MaterialMovementDto> Movements { get; set; } = [];
+  protected bool IsLoadingMovements { get; set; }
+  protected bool IsLoadingMoreMovements { get; set; }
+  protected bool HasMoreMovements { get; set; }
+  protected string? MovementsError { get; set; }
+  protected bool ShowMovementFilters { get; set; }
+  protected int? MovementLocationFilter { get; set; }
+  protected string? MovementTypeFilter { get; set; }
+  protected DateTime? MovementFromDate { get; set; }
+  protected DateTime? MovementToDate { get; set; }
+  protected string MovementSearchText { get; set; } = string.Empty;
+
+  protected bool HasInventoryContext => SelectedMaterialId.HasValue;
+
+  protected int ActiveMovementFilterCount
+  {
+    get
+    {
+      var count = 0;
+      if (MovementLocationFilter.HasValue) count++;
+      if (!string.IsNullOrWhiteSpace(MovementTypeFilter)) count++;
+      if (MovementFromDate.HasValue) count++;
+      if (MovementToDate.HasValue) count++;
+      if (!string.IsNullOrWhiteSpace(MovementSearchText)) count++;
+      return count;
+    }
+  }
+
+  protected string BaseUnitShortName
+  {
+    get
+    {
+      var unit = FindUnit(Editor.BaseUnitId);
+      return unit is null ? "unid." : GetUnitShortName(unit);
+    }
+  }
+
+  protected IReadOnlyList<MaterialStockLocationDto> VisibleStockLocations
+    => Inventory is null
+      ? Array.Empty<MaterialStockLocationDto>()
+      : ShowRemovedStockLocations
+        ? Inventory.Locations
+        : Inventory.StoredLocations;
+
+  protected async Task RefreshInventoryAsync()
+  {
+    if (!SelectedMaterialId.HasValue)
+    {
+      return;
+    }
+
+    await LoadInventoryAsync(SelectedMaterialId.Value, resetFilters: false);
+  }
+
+  protected void ToggleRemovedStockLocations()
+    => ShowRemovedStockLocations = !ShowRemovedStockLocations;
+
+  protected void ToggleMovementFilters()
+    => ShowMovementFilters = !ShowMovementFilters;
+
+  protected Task ApplyMovementFiltersAsync()
+    => LoadMovementsAsync(reset: true);
+
+  protected async Task ResetMovementFiltersAsync()
+  {
+    ResetMovementFilters();
+    await LoadMovementsAsync(reset: true);
+  }
+
+  protected async Task FilterMovementsByLocationAsync(int locationId)
+  {
+    MovementLocationFilter = MovementLocationFilter == locationId ? null : locationId;
+    ShowMovementFilters = true;
+    await LoadMovementsAsync(reset: true);
+  }
+
+  protected async Task LoadMoreMovementsAsync()
+  {
+    if (IsLoadingMovements || IsLoadingMoreMovements || !HasMoreMovements)
+    {
+      return;
+    }
+
+    await LoadMovementsAsync(reset: false);
+  }
+
+  private async Task LoadInventoryAsync(int materialId, bool resetFilters = true)
+  {
+    _inventoryRequestCts?.Cancel();
+    _inventoryRequestCts?.Dispose();
+    _inventoryRequestCts = new CancellationTokenSource();
+    var inventoryToken = _inventoryRequestCts.Token;
+
+    if (resetFilters)
+    {
+      ResetMovementFilters();
+      ShowRemovedStockLocations = false;
+    }
+
+    IsLoadingInventory = true;
+    InventoryError = null;
+
+    try
+    {
+      Inventory = await MaterialService.GetMaterialInventoryAsync(CurrentRfc, materialId, inventoryToken);
+      DropUnavailableMovementFilters();
+    }
+    catch (OperationCanceledException) when (inventoryToken.IsCancellationRequested)
+    {
+      return;
+    }
+    catch (Exception ex)
+    {
+      Inventory = null;
+      InventoryError = $"No se pudo cargar el inventario del material. {ex.Message}";
+    }
+    finally
+    {
+      IsLoadingInventory = false;
+    }
+
+    await LoadMovementsAsync(reset: true);
+  }
+
+  private async Task LoadMovementsAsync(bool reset)
+  {
+    if (!SelectedMaterialId.HasValue)
+    {
+      Movements = [];
+      HasMoreMovements = false;
+      return;
+    }
+
+    _movementRequestCts?.Cancel();
+    _movementRequestCts?.Dispose();
+    _movementRequestCts = new CancellationTokenSource();
+    var movementToken = _movementRequestCts.Token;
+
+    if (reset)
+    {
+      Movements = [];
+      HasMoreMovements = false;
+      IsLoadingMovements = true;
+    }
+    else
+    {
+      IsLoadingMoreMovements = true;
+    }
+
+    MovementsError = null;
+
+    try
+    {
+      var page = await MaterialService.GetMaterialMovementsAsync(
+        BuildMovementFilter(Movements.Count),
+        movementToken);
+
+      HasMoreMovements = page.Count > MovementPageSize;
+      Movements.AddRange(page.Take(MovementPageSize));
+    }
+    catch (OperationCanceledException) when (movementToken.IsCancellationRequested)
+    {
+      // A newer history request replaced this one.
+    }
+    catch (Exception ex)
+    {
+      MovementsError = $"No se pudo cargar el historial de movimientos. {ex.Message}";
+    }
+    finally
+    {
+      IsLoadingMovements = false;
+      IsLoadingMoreMovements = false;
+    }
+  }
+
+  private MaterialMovementFilter BuildMovementFilter(int skip)
+    => new()
+    {
+      Rfc = CurrentRfc,
+      MaterialId = SelectedMaterialId ?? 0,
+      LocationId = MovementLocationFilter,
+      TransactionType = NullIfWhiteSpace(MovementTypeFilter),
+      OccurredFromUtc = ToUtcRangeStart(MovementFromDate),
+      OccurredToUtc = ToUtcRangeEndExclusive(MovementToDate),
+      SearchText = NullIfWhiteSpace(MovementSearchText),
+      Skip = skip,
+      Take = MovementQueryTake
+    };
+
+  private void DropUnavailableMovementFilters()
+  {
+    if (Inventory is null)
+    {
+      return;
+    }
+
+    if (MovementLocationFilter.HasValue
+        && !Inventory.Locations.Any(location => location.LocationId == MovementLocationFilter.Value))
+    {
+      MovementLocationFilter = null;
+    }
+
+    if (!string.IsNullOrWhiteSpace(MovementTypeFilter)
+        && !Inventory.MovementTypes.Any(option =>
+          string.Equals(option.TransactionType, MovementTypeFilter, StringComparison.OrdinalIgnoreCase)))
+    {
+      MovementTypeFilter = null;
+    }
+  }
+
+  private void ResetMovementFilters()
+  {
+    MovementLocationFilter = null;
+    MovementTypeFilter = null;
+    MovementFromDate = null;
+    MovementToDate = null;
+    MovementSearchText = string.Empty;
+  }
+
+  private void ResetInventoryPanels()
+  {
+    _inventoryRequestCts?.Cancel();
+    _inventoryRequestCts?.Dispose();
+    _inventoryRequestCts = null;
+    _movementRequestCts?.Cancel();
+    _movementRequestCts?.Dispose();
+    _movementRequestCts = null;
+    Inventory = null;
+    InventoryError = null;
+    IsLoadingInventory = false;
+    Movements = [];
+    MovementsError = null;
+    IsLoadingMovements = false;
+    IsLoadingMoreMovements = false;
+    HasMoreMovements = false;
+    ShowRemovedStockLocations = false;
+    ShowMovementFilters = false;
+    ResetMovementFilters();
+  }
+
+  private static DateTime? ToUtcRangeStart(DateTime? localDate)
+    => localDate.HasValue
+      ? DateTime.SpecifyKind(localDate.Value.Date, DateTimeKind.Local).ToUniversalTime()
+      : null;
+
+  private static DateTime? ToUtcRangeEndExclusive(DateTime? localDate)
+    => localDate.HasValue
+      ? DateTime.SpecifyKind(localDate.Value.Date.AddDays(1), DateTimeKind.Local).ToUniversalTime()
+      : null;
+
+  protected string FormatQuantity(decimal value)
+    => value.ToString("N2", CultureInfo.CurrentCulture);
+
+  protected string FormatQuantityWithUnit(decimal value)
+    => $"{FormatQuantity(value)} {BaseUnitShortName}";
+
+  protected string FormatOptionalQuantity(decimal? value)
+    => value.HasValue ? FormatQuantity(value.Value) : "—";
+
+  protected string FormatSignedQuantity(decimal value)
+    => value > 0m
+      ? $"+{FormatQuantity(value)}"
+      : FormatQuantity(value);
+
+  protected static string FormatMoney(decimal value)
+    => value.ToString("C2", CultureInfo.CurrentCulture);
+
+  protected static string FormatMoment(DateTime? value)
+    => value.HasValue ? value.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm") : "—";
+
+  protected static string FormatDay(DateTime? value)
+    => value.HasValue ? value.Value.ToString("dd/MM/yyyy") : "—";
+
+  protected static string FormatRelativeMoment(DateTime? value)
+  {
+    if (!value.HasValue)
+    {
+      return "Sin registro";
+    }
+
+    var elapsed = DateTime.UtcNow - DateTime.SpecifyKind(value.Value, DateTimeKind.Utc);
+    return elapsed switch
+    {
+      { TotalMinutes: < 1 } => "Hace un momento",
+      { TotalMinutes: < 60 } => $"Hace {(int)elapsed.TotalMinutes} min",
+      { TotalHours: < 24 } => $"Hace {(int)elapsed.TotalHours} h",
+      { TotalDays: < 31 } => $"Hace {(int)elapsed.TotalDays} d",
+      _ => FormatMoment(value)
+    };
+  }
+
+  protected string GetStockLocationTitle(MaterialStockLocationDto location)
+    => string.IsNullOrWhiteSpace(location.LocationName)
+      ? location.LocationCode
+      : location.LocationName;
+
+  protected string GetStockLocationPath(MaterialStockLocationDto location)
+  {
+    var segments = new List<string>();
+    if (!string.IsNullOrWhiteSpace(location.RoomName)) segments.Add(location.RoomName!.Trim());
+    if (!string.IsNullOrWhiteSpace(location.ParentLocationName)) segments.Add(location.ParentLocationName!.Trim());
+    return segments.Count == 0 ? "Sin agrupación" : string.Join(" › ", segments);
+  }
+
+  protected static string GetLocationTypeLabel(string? locationType)
+    => locationType switch
+    {
+      "Warehouse" => "Almacén",
+      "Storage" => "Almacenaje",
+      "Disposal" => "Baja / desecho",
+      "Room" => "Habitación",
+      "Area" => "Área",
+      "Shelf" => "Estante",
+      "Rack" => "Rack",
+      "Bin" => "Contenedor",
+      "Kitchen" => "Cocina",
+      "Bar" => "Barra",
+      _ => string.IsNullOrWhiteSpace(locationType) ? "Ubicación" : locationType
+    };
+
+  protected static string GetCoverageLabel(MaterialStockLocationDto location)
+    => location.CoverageState switch
+    {
+      "low" => "Bajo mínimo",
+      "over" => "Sobre máximo",
+      "ok" => "En rango",
+      _ => "Sin parámetros"
+    };
+
+  protected static string GetCoverageCssClass(MaterialStockLocationDto location)
+    => $"is-{location.CoverageState}";
+
+  protected static int GetStockFillPercent(MaterialStockLocationDto location)
+  {
+    var reference = location.MaxQuantity ?? 0m;
+    if (reference <= 0m)
+    {
+      return location.Quantity > 0m ? 100 : 0;
+    }
+
+    return ClampPercent(location.Quantity / reference * 100m);
+  }
+
+  protected static int GetStockMinimumMarkerPercent(MaterialStockLocationDto location)
+  {
+    var reference = location.MaxQuantity ?? 0m;
+    var minimum = location.MinQuantity ?? 0m;
+    if (reference <= 0m || minimum <= 0m)
+    {
+      return 0;
+    }
+
+    return ClampPercent(minimum / reference * 100m);
+  }
+
+  private static int ClampPercent(decimal value)
+    => (int)Math.Clamp(Math.Round(value, MidpointRounding.AwayFromZero), 0m, 100m);
+
+  protected static string GetMovementTypeLabel(string? transactionType)
+    => transactionType switch
+    {
+      "OpeningBalance" => "Saldo inicial",
+      "Added" => "Alta en ubicación",
+      "Removed" => "Retiro de ubicación",
+      "Reactivated" => "Reactivación",
+      "PurchaseReceipt" => "Recepción de compra",
+      "CountAdjustment" => "Ajuste por conteo",
+      "TransferIn" => "Traspaso entrante",
+      "TransferOut" => "Traspaso saliente",
+      "Transfer" => "Traspaso",
+      "Adjustment" => "Ajuste de inventario",
+      "Waste" => "Merma",
+      "RestaurantConsumption" => "Consumo de restaurante",
+      "ProductionConsumption" => "Consumo de producción",
+      "ProductionOutput" => "Producción terminada",
+      _ => string.IsNullOrWhiteSpace(transactionType) ? "Movimiento" : transactionType
+    };
+
+  protected static string GetMovementTypeIcon(string? transactionType)
+    => transactionType switch
+    {
+      "OpeningBalance" => "bi-flag",
+      "Added" => "bi-plus-circle",
+      "Removed" => "bi-dash-circle",
+      "Reactivated" => "bi-arrow-counterclockwise",
+      "PurchaseReceipt" => "bi-box-arrow-in-down",
+      "CountAdjustment" => "bi-clipboard-check",
+      "TransferIn" => "bi-box-arrow-in-right",
+      "TransferOut" => "bi-box-arrow-right",
+      "Transfer" => "bi-arrow-left-right",
+      "Adjustment" => "bi-sliders",
+      "Waste" => "bi-trash3",
+      "RestaurantConsumption" => "bi-cup-hot",
+      "ProductionConsumption" => "bi-gear",
+      "ProductionOutput" => "bi-boxes",
+      _ => "bi-arrow-left-right"
+    };
+
+  protected static string GetMovementDirectionCssClass(MaterialMovementDto movement)
+    => movement.IsInbound ? "is-in" : movement.IsOutbound ? "is-out" : "is-flat";
+
+  protected static string GetMovementLocationLabel(MaterialMovementDto movement)
+  {
+    var name = string.IsNullOrWhiteSpace(movement.LocationName) ? movement.LocationCode : movement.LocationName;
+    if (string.IsNullOrWhiteSpace(name))
+    {
+      return $"Ubicación #{movement.LocationId}";
+    }
+
+    return string.IsNullOrWhiteSpace(movement.RoomName) ? name!.Trim() : $"{movement.RoomName!.Trim()} › {name!.Trim()}";
+  }
+
+  protected static string? GetMovementReferenceLabel(MaterialMovementDto movement)
+  {
+    var referenceType = GetReferenceTypeLabel(movement.ReferenceType);
+    if (referenceType is null)
+    {
+      return movement.ReferenceId.HasValue ? $"#{movement.ReferenceId.Value}" : null;
+    }
+
+    return movement.ReferenceId.HasValue ? $"{referenceType} #{movement.ReferenceId.Value}" : referenceType;
+  }
+
+  private static string? GetReferenceTypeLabel(string? referenceType)
+  {
+    var normalized = referenceType?.Trim();
+    if (string.IsNullOrEmpty(normalized))
+    {
+      return null;
+    }
+
+    return normalized switch
+    {
+      "PurchaseReceipt" => "Recepción",
+      "InventoryReservation" => "Reserva",
+      "LegacyInventory" => "Inventario heredado",
+      "StockBalance" => "Asignación de ubicación",
+      "PurchaseOrder" => "Orden de compra",
+      "PhysicalCountSession" => "Conteo físico",
+      "InventoryTransfer" => "Traspaso",
+      "InventoryAdjustment" => "Ajuste",
+      "RestaurantOrder" => "Comanda",
+      "ProductionOrder" => "Orden de producción",
+      _ => normalized
+    };
+  }
+
   private async Task LoadCatalogAsync(bool allowEmptyRetry = true)
   {
     var rfc = CurrentRfc;
@@ -1318,6 +1777,10 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     _rfcReloadCts?.Dispose();
     _lifecycleAssessmentCts?.Cancel();
     _lifecycleAssessmentCts?.Dispose();
+    _inventoryRequestCts?.Cancel();
+    _inventoryRequestCts?.Dispose();
+    _movementRequestCts?.Cancel();
+    _movementRequestCts?.Dispose();
   }
 
   private void ResetLifecycleReport()

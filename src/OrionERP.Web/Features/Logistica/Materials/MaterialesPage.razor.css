@@ -2247,3 +2247,699 @@
     transition: none;
   }
 }
+
+/* ============================================================
+   3 · Ubica — existencias por ubicación
+   4 · Audita — historial de movimientos
+   ============================================================ */
+
+.materiales-inventory-panel,
+.materiales-history-panel {
+  margin-top: 1rem;
+  padding: 1.2rem 1.25rem 1.35rem;
+}
+
+.materiales-inventory-panel .materiales-panel-heading,
+.materiales-history-panel .materiales-panel-heading {
+  flex-wrap: wrap;
+  margin-bottom: 1.1rem;
+}
+
+.materiales-panel-tools {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.materiales-panel-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 0.72rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.materiales-filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--materials-accent);
+  color: #fff;
+  font-size: 0.63rem;
+  font-weight: 800;
+}
+
+.materiales-inventory-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  padding: 2.2rem 1rem;
+  border: 1px dashed rgba(15, 45, 78, 0.14);
+  border-radius: 1rem;
+  background: #fafbfc;
+  color: var(--materials-muted);
+  font-size: 0.82rem;
+}
+
+.materiales-inventory-loading .spinner-border {
+  width: 1.15rem;
+  height: 1.15rem;
+  border-width: 0.16em;
+  color: var(--materials-accent);
+}
+
+.materiales-inventory-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(190, 62, 62, 0.22);
+  border-radius: 0.9rem;
+  background: #fdf1f1;
+  color: #8e2a2a;
+  font-size: 0.8rem;
+}
+
+.materiales-inventory-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2.1rem 1.25rem;
+  border: 1px dashed rgba(15, 45, 78, 0.15);
+  border-radius: 1rem;
+  background: linear-gradient(180deg, #fbfdfe, #f5f8fa);
+  text-align: center;
+}
+
+.materiales-inventory-empty > i {
+  margin-bottom: 0.55rem;
+  color: rgba(31, 138, 174, 0.55);
+  font-size: 1.9rem;
+}
+
+.materiales-inventory-empty h3 {
+  margin: 0 0 0.3rem;
+  color: var(--materials-ink);
+  font-size: 0.98rem;
+  font-weight: 750;
+}
+
+.materiales-inventory-empty p {
+  max-width: 34rem;
+  margin: 0 0 0.9rem;
+  color: var(--materials-muted);
+  font-size: 0.79rem;
+}
+
+.materiales-inventory-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 1.05rem;
+}
+
+.materiales-inventory-metric {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(15, 45, 78, 0.09);
+  border-radius: 0.9rem;
+  background: linear-gradient(180deg, #fff, #f8fafb);
+}
+
+.materiales-inventory-metric.needs-attention {
+  border-color: rgba(214, 146, 16, 0.28);
+  background: linear-gradient(180deg, #fffaf0, #fff5e2);
+}
+
+.materiales-inventory-metric span,
+.materiales-inventory-metric small {
+  overflow: hidden;
+  color: var(--materials-muted);
+  font-size: 0.69rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.materiales-inventory-metric span {
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.materiales-inventory-metric strong {
+  margin: 0.12rem 0 0.04rem;
+  color: var(--materials-ink);
+  font-size: 1.12rem;
+  line-height: 1.15;
+}
+
+.materiales-inventory-metric.needs-attention strong {
+  color: #8b5a00;
+}
+
+.materiales-stock-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+}
+
+.materiales-stock-card {
+  position: relative;
+  padding: 0.95rem 1rem 0.85rem;
+  overflow: hidden;
+  border: 1px solid rgba(15, 45, 78, 0.1);
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(15, 45, 78, 0.05);
+}
+
+.materiales-stock-card::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 4px;
+  background: rgba(15, 45, 78, 0.12);
+  content: "";
+}
+
+.materiales-stock-card.is-ok::before {
+  background: #35a06a;
+}
+
+.materiales-stock-card.is-low::before {
+  background: #d2564b;
+}
+
+.materiales-stock-card.is-over::before {
+  background: #d69210;
+}
+
+.materiales-stock-card.is-unset::before {
+  background: #9aa9bb;
+}
+
+.materiales-stock-card.is-removed {
+  border-style: dashed;
+  background: #fbfcfd;
+  opacity: 0.86;
+}
+
+.materiales-stock-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.9rem;
+}
+
+.materiales-stock-identity {
+  min-width: 0;
+}
+
+.materiales-stock-path {
+  display: block;
+  overflow: hidden;
+  color: var(--materials-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.materiales-stock-identity h3 {
+  margin: 0.12rem 0 0.35rem;
+  color: var(--materials-ink);
+  font-size: 0.98rem;
+  font-weight: 760;
+  letter-spacing: -0.01em;
+}
+
+.materiales-stock-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.materiales-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.13rem 0.45rem;
+  border-radius: 999px;
+  background: #eef2f6;
+  color: #55677d;
+  font-size: 0.63rem;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.materiales-chip.is-warning {
+  background: #fff2d8;
+  color: #8b5a00;
+}
+
+.materiales-chip.is-danger {
+  background: #fbe3e1;
+  color: #8e2a2a;
+}
+
+.materiales-stock-quantity {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+
+.materiales-stock-quantity strong {
+  color: var(--materials-ink);
+  font-size: 1.35rem;
+  font-weight: 780;
+  line-height: 1;
+}
+
+.materiales-stock-quantity > span:first-of-type {
+  color: var(--materials-muted);
+  font-size: 0.7rem;
+}
+
+.materiales-stock-state {
+  margin-top: 0.2rem;
+  padding: 0.14rem 0.48rem;
+  border-radius: 999px;
+  background: #eef2f6;
+  color: #55677d;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.materiales-stock-state.is-ok {
+  background: #dff4e8;
+  color: #237348;
+}
+
+.materiales-stock-state.is-low {
+  background: #fbe3e1;
+  color: #8e2a2a;
+}
+
+.materiales-stock-state.is-over {
+  background: #fff0cf;
+  color: #8b5a00;
+}
+
+.materiales-stock-gauge {
+  margin: 0.85rem 0 0.75rem;
+}
+
+.materiales-stock-gauge-track {
+  position: relative;
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eaeff4;
+}
+
+.materiales-stock-gauge-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2f9fbf, #1f8aae);
+  transition: width 220ms ease;
+}
+
+.materiales-stock-card.is-low .materiales-stock-gauge-fill {
+  background: linear-gradient(90deg, #e0796f, #d2564b);
+}
+
+.materiales-stock-card.is-over .materiales-stock-gauge-fill {
+  background: linear-gradient(90deg, #f0b64a, #d69210);
+}
+
+.materiales-stock-card.is-ok .materiales-stock-gauge-fill {
+  background: linear-gradient(90deg, #4fb987, #35a06a);
+}
+
+.materiales-stock-gauge-marker {
+  position: absolute;
+  top: -0.16rem;
+  width: 2px;
+  height: calc(100% + 0.32rem);
+  background: #0f2d4e;
+  opacity: 0.55;
+}
+
+.materiales-stock-gauge-legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.32rem;
+  color: var(--materials-muted);
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.materiales-stock-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.45rem 0.7rem;
+  margin: 0;
+  padding: 0.7rem 0.75rem;
+  border-radius: 0.8rem;
+  background: #f7f9fb;
+}
+
+.materiales-stock-facts > div {
+  min-width: 0;
+}
+
+.materiales-stock-facts dt {
+  overflow: hidden;
+  color: var(--materials-muted);
+  font-size: 0.64rem;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.materiales-stock-facts dd {
+  margin: 0.06rem 0 0;
+  color: var(--materials-ink);
+  font-size: 0.79rem;
+  font-weight: 650;
+}
+
+.materiales-stock-facts > div.is-flagged dd {
+  color: #8e2a2a;
+}
+
+.materiales-stock-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.7rem;
+  background: #eef4f8;
+  color: #43566b;
+  font-size: 0.75rem;
+}
+
+.materiales-stock-hint.is-low {
+  background: #fbe9e7;
+  color: #8e2a2a;
+}
+
+.materiales-stock-hint.is-over,
+.materiales-stock-hint.is-count {
+  background: #fff5e1;
+  color: #8b5a00;
+}
+
+.materiales-stock-hint.is-removed {
+  background: #eff2f5;
+  color: #55677d;
+}
+
+.materiales-stock-notes {
+  margin: 0.6rem 0 0;
+  padding-left: 0.6rem;
+  border-left: 3px solid rgba(31, 138, 174, 0.25);
+  color: var(--materials-muted);
+  font-size: 0.76rem;
+  white-space: pre-line;
+}
+
+.materiales-stock-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(15, 45, 78, 0.07);
+}
+
+.materiales-stock-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--materials-border);
+  border-radius: 0.65rem;
+  background: #fff;
+  color: var(--materials-ink);
+  font-size: 0.72rem;
+  font-weight: 700;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.materiales-stock-action:hover,
+.materiales-stock-action:focus-visible {
+  border-color: rgba(31, 138, 174, 0.45);
+  background: rgba(31, 138, 174, 0.08);
+  color: var(--materials-accent);
+}
+
+.materiales-stock-action.is-active {
+  border-color: var(--materials-accent);
+  background: var(--materials-accent);
+  color: #fff;
+}
+
+.materiales-stock-updated {
+  color: var(--materials-muted);
+  font-size: 0.68rem;
+}
+
+.materiales-history-filters {
+  margin-bottom: 1rem;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid rgba(15, 45, 78, 0.08);
+  border-radius: 0.95rem;
+  background: #f8fafb;
+}
+
+.materiales-history-filters .form-label {
+  margin-bottom: 0.25rem;
+  color: var(--materials-muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.materiales-movement-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.materiales-movement {
+  display: grid;
+  align-items: start;
+  gap: 0.7rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(15, 45, 78, 0.09);
+  border-radius: 0.9rem;
+  background: #fff;
+}
+
+.materiales-movement-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.68rem;
+  background: #eef2f6;
+  color: #55677d;
+  font-size: 0.92rem;
+}
+
+.materiales-movement.is-in .materiales-movement-icon {
+  background: #dff4e8;
+  color: #237348;
+}
+
+.materiales-movement.is-out .materiales-movement-icon {
+  background: #fbe3e1;
+  color: #8e2a2a;
+}
+
+.materiales-movement-body {
+  min-width: 0;
+}
+
+.materiales-movement-headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.materiales-movement-headline strong {
+  color: var(--materials-ink);
+  font-size: 0.85rem;
+  font-weight: 750;
+}
+
+.materiales-movement-delta {
+  font-size: 0.82rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.materiales-movement.is-in .materiales-movement-delta {
+  color: #237348;
+}
+
+.materiales-movement.is-out .materiales-movement-delta {
+  color: #b23c33;
+}
+
+.materiales-movement.is-flat .materiales-movement-delta {
+  color: var(--materials-muted);
+}
+
+.materiales-movement-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.8rem;
+  margin-top: 0.2rem;
+  color: var(--materials-muted);
+  font-size: 0.71rem;
+}
+
+.materiales-movement-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.materiales-movement-notes {
+  margin: 0.35rem 0 0;
+  color: #43566b;
+  font-size: 0.74rem;
+  white-space: pre-line;
+}
+
+.materiales-movement-balance {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  padding-left: 0.7rem;
+  border-left: 1px solid rgba(15, 45, 78, 0.07);
+  text-align: right;
+}
+
+.materiales-movement-balance span {
+  color: var(--materials-muted);
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.materiales-movement-balance strong {
+  color: var(--materials-ink);
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 780;
+  line-height: 1.15;
+}
+
+.materiales-movement-balance small {
+  color: var(--materials-muted);
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.materiales-history-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgba(15, 45, 78, 0.07);
+  color: var(--materials-muted);
+  font-size: 0.72rem;
+}
+
+.materiales-history-footer .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 0.7rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .materiales-inventory-panel,
+  .materiales-history-panel {
+    padding: 1rem 0.9rem 1.1rem;
+  }
+
+  .materiales-panel-tools {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .materiales-stock-header {
+    flex-direction: column;
+  }
+
+  .materiales-stock-quantity {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.4rem;
+  }
+
+  .materiales-movement {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .materiales-movement-balance {
+    align-items: flex-start;
+    grid-column: 1 / -1;
+    padding-top: 0.5rem;
+    padding-left: 0;
+    border-top: 1px solid rgba(15, 45, 78, 0.07);
+    border-left: 0;
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .materiales-stock-gauge-fill,
+  .materiales-stock-action {
+    transition: none;
+  }
+}

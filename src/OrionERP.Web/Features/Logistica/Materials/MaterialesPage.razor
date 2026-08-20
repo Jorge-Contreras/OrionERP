@@ -694,6 +694,449 @@
                     </div>
                 </EditForm>
             </section>
+
+            @if (HasInventoryContext)
+            {
+                <section id="material-inventory" class="materiales-panel materiales-inventory-panel">
+                    <div class="materiales-panel-heading">
+                        <div>
+                            <span class="materiales-step">3 · Ubica</span>
+                            <h2>Dónde está almacenado</h2>
+                            <p>Existencia por ubicación con mínimos, máximos y control de conteo.</p>
+                        </div>
+                        <div class="materiales-panel-tools">
+                            <a class="btn btn-sm btn-outline-secondary materiales-panel-link" href="/logistica/ubicaciones">
+                                <i class="bi bi-geo-alt" aria-hidden="true"></i>
+                                <span>Administrar ubicaciones</span>
+                            </a>
+                            <button type="button"
+                                    class="materiales-icon-button"
+                                    title="Actualizar inventario"
+                                    aria-label="Actualizar inventario"
+                                    @onclick="RefreshInventoryAsync"
+                                    disabled="@IsLoadingInventory">
+                                <i class="bi bi-arrow-clockwise @(IsLoadingInventory ? "spin" : null)" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    @if (IsLoadingInventory)
+                    {
+                        <div class="materiales-inventory-loading">
+                            <span class="spinner-border" aria-hidden="true"></span>
+                            <span>Consultando existencias…</span>
+                        </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(InventoryError))
+                    {
+                        <div class="materiales-inventory-alert" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                            <span>@InventoryError</span>
+                        </div>
+                    }
+                    else if (Inventory is null || !Inventory.HasLocations)
+                    {
+                        <div class="materiales-inventory-empty">
+                            <i class="bi bi-inboxes" aria-hidden="true"></i>
+                            <h3>Este material aún no vive en ninguna ubicación</h3>
+                            <p>Asigna el material a un almacén, estante o área desde Ubicaciones para empezar a controlar mínimos, máximos y conteos.</p>
+                            <a class="btn btn-outline-primary" href="/logistica/ubicaciones">
+                                <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                                Asignar a una ubicación
+                            </a>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="materiales-inventory-metrics" aria-label="Resumen de existencias">
+                            <div class="materiales-inventory-metric">
+                                <span>Existencia total</span>
+                                <strong>@FormatQuantityWithUnit(Inventory.TotalQuantity)</strong>
+                                <small>@Inventory.StoredLocations.Count @(Inventory.StoredLocations.Count == 1 ? "ubicación activa" : "ubicaciones activas")</small>
+                            </div>
+                            <div class="materiales-inventory-metric">
+                                <span>Disponible</span>
+                                <strong>@FormatQuantityWithUnit(Inventory.TotalAvailableQuantity)</strong>
+                                <small>@FormatQuantity(Inventory.TotalReservedQuantity) reservado</small>
+                            </div>
+                            <div class="materiales-inventory-metric @(Inventory.LowStockCount > 0 ? "needs-attention" : null)">
+                                <span>Bajo mínimo</span>
+                                <strong>@Inventory.LowStockCount</strong>
+                                <small>mín. total @FormatQuantity(Inventory.TotalMinQuantity)</small>
+                            </div>
+                            <div class="materiales-inventory-metric @(Inventory.OverStockCount > 0 ? "needs-attention" : null)">
+                                <span>Sobre máximo</span>
+                                <strong>@Inventory.OverStockCount</strong>
+                                <small>máx. total @FormatQuantity(Inventory.TotalMaxQuantity)</small>
+                            </div>
+                            <div class="materiales-inventory-metric @(Inventory.CountDueCount > 0 ? "needs-attention" : null)">
+                                <span>Conteo vencido</span>
+                                <strong>@Inventory.CountDueCount</strong>
+                                <small>@Inventory.MissingThresholdCount sin parámetros</small>
+                            </div>
+                            <div class="materiales-inventory-metric">
+                                <span>Valor estimado</span>
+                                <strong>@FormatMoney(Inventory.TotalInventoryValue)</strong>
+                                <small>a costo promedio</small>
+                            </div>
+                        </div>
+
+                        @if (Inventory.RemovedLocations.Count > 0)
+                        {
+                            <button type="button"
+                                    class="materiales-more-toggle"
+                                    aria-expanded="@ShowRemovedStockLocations"
+                                    @onclick="ToggleRemovedStockLocations">
+                                <i class="bi bi-archive" aria-hidden="true"></i>
+                                @(ShowRemovedStockLocations
+                                    ? "Ocultar ubicaciones retiradas"
+                                    : $"Mostrar {Inventory.RemovedLocations.Count} ubicación(es) retirada(s)")
+                                <i class="bi @(ShowRemovedStockLocations ? "bi-chevron-up" : "bi-chevron-down") ms-auto" aria-hidden="true"></i>
+                            </button>
+                        }
+
+                        <div class="materiales-stock-list">
+                            @foreach (var location in VisibleStockLocations)
+                            {
+                                <article class="materiales-stock-card @GetCoverageCssClass(location) @(location.IsRemoved ? "is-removed" : null)">
+                                    <header class="materiales-stock-header">
+                                        <div class="materiales-stock-identity">
+                                            <span class="materiales-stock-path">@GetStockLocationPath(location)</span>
+                                            <h3>@GetStockLocationTitle(location)</h3>
+                                            <div class="materiales-stock-tags">
+                                                <span class="materiales-result-code">@location.LocationCode</span>
+                                                <span class="materiales-chip">@GetLocationTypeLabel(location.LocationType)</span>
+                                                @if (!location.IsLocationActive)
+                                                {
+                                                    <span class="materiales-chip is-warning">Ubicación inactiva</span>
+                                                }
+                                                @if (!location.IsInventoryEnabled)
+                                                {
+                                                    <span class="materiales-chip is-warning">Sin inventario</span>
+                                                }
+                                                @if (location.IsRemoved)
+                                                {
+                                                    <span class="materiales-chip is-danger">Asignación retirada</span>
+                                                }
+                                            </div>
+                                        </div>
+                                        <div class="materiales-stock-quantity">
+                                            <strong>@FormatQuantity(location.Quantity)</strong>
+                                            <span>@BaseUnitShortName</span>
+                                            <span class="materiales-stock-state @GetCoverageCssClass(location)">@GetCoverageLabel(location)</span>
+                                        </div>
+                                    </header>
+
+                                    <div class="materiales-stock-gauge">
+                                        <div class="materiales-stock-gauge-track"
+                                             role="img"
+                                             aria-label="Existencia @FormatQuantity(location.Quantity) con mínimo @FormatOptionalQuantity(location.MinQuantity) y máximo @FormatOptionalQuantity(location.MaxQuantity)">
+                                            <span class="materiales-stock-gauge-fill" style="width: @(GetStockFillPercent(location))%"></span>
+                                            @if (location.MinQuantity.HasValue && location.MaxQuantity.HasValue)
+                                            {
+                                                <span class="materiales-stock-gauge-marker" style="left: @(GetStockMinimumMarkerPercent(location))%"></span>
+                                            }
+                                        </div>
+                                        <div class="materiales-stock-gauge-legend">
+                                            <span><i class="bi bi-arrow-down-short" aria-hidden="true"></i> Mín @FormatOptionalQuantity(location.MinQuantity)</span>
+                                            <span>Máx @FormatOptionalQuantity(location.MaxQuantity) <i class="bi bi-arrow-up-short" aria-hidden="true"></i></span>
+                                        </div>
+                                    </div>
+
+                                    <dl class="materiales-stock-facts">
+                                        <div>
+                                            <dt>Reservado</dt>
+                                            <dd>@FormatQuantity(location.ReservedQuantity)</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Disponible</dt>
+                                            <dd>@FormatQuantity(location.AvailableQuantity)</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Costo promedio</dt>
+                                            <dd>@FormatMoney(location.AverageUnitCost)</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Valor en piso</dt>
+                                            <dd>@FormatMoney(location.InventoryValue)</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Último conteo</dt>
+                                            <dd>@FormatMoment(location.LastCountedAt)</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Frecuencia de conteo</dt>
+                                            <dd>@(location.CountFrequencyDays.HasValue ? $"Cada {location.CountFrequencyDays.Value} días" : "Sin programa")</dd>
+                                        </div>
+                                        <div class="@(location.IsCountDue ? "is-flagged" : null)">
+                                            <dt>Próximo conteo</dt>
+                                            <dd>@FormatMoment(location.NextCountDueAt)</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Última compra</dt>
+                                            <dd>@FormatDay(location.LastPurchaseDate)</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Último movimiento</dt>
+                                            <dd>@FormatRelativeMoment(location.LastMovementAt)</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Movimientos</dt>
+                                            <dd>@location.MovementCount</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Adjuntos</dt>
+                                            <dd>@location.AttachmentCount</dd>
+                                        </div>
+                                    </dl>
+
+                                    @if (location.IsLowStock && location.SuggestedRefillQuantity.HasValue)
+                                    {
+                                        <div class="materiales-stock-hint is-low">
+                                            <i class="bi bi-cart-plus" aria-hidden="true"></i>
+                                            <span>Resurte @FormatQuantityWithUnit(location.SuggestedRefillQuantity.Value) para volver al máximo configurado.</span>
+                                        </div>
+                                    }
+                                    else if (location.ExcessQuantity.HasValue)
+                                    {
+                                        <div class="materiales-stock-hint is-over">
+                                            <i class="bi bi-box-arrow-up" aria-hidden="true"></i>
+                                            <span>Hay @FormatQuantityWithUnit(location.ExcessQuantity.Value) por encima del máximo. Considera un traspaso.</span>
+                                        </div>
+                                    }
+                                    else if (!location.HasThresholds)
+                                    {
+                                        <div class="materiales-stock-hint is-unset">
+                                            <i class="bi bi-sliders" aria-hidden="true"></i>
+                                            <span>Sin mínimo ni máximo configurado. Defínelos en Ubicaciones para activar alertas de reorden.</span>
+                                        </div>
+                                    }
+
+                                    @if (location.IsCountDue)
+                                    {
+                                        <div class="materiales-stock-hint is-count">
+                                            <i class="bi bi-clipboard-check" aria-hidden="true"></i>
+                                            <span>El conteo cíclico de esta ubicación está vencido.</span>
+                                        </div>
+                                    }
+
+                                    @if (location.IsRemoved)
+                                    {
+                                        <div class="materiales-stock-hint is-removed">
+                                            <i class="bi bi-archive" aria-hidden="true"></i>
+                                            <span>Retirada el @FormatMoment(location.RemovedAt)@(string.IsNullOrWhiteSpace(location.RemovedBy) ? "." : $" por {location.RemovedBy}.") El historial se conserva.</span>
+                                        </div>
+                                    }
+
+                                    @if (!string.IsNullOrWhiteSpace(location.Notes))
+                                    {
+                                        <p class="materiales-stock-notes">@location.Notes</p>
+                                    }
+
+                                    <footer class="materiales-stock-footer">
+                                        <button type="button"
+                                                class="materiales-stock-action @(MovementLocationFilter == location.LocationId ? "is-active" : null)"
+                                                @onclick="() => FilterMovementsByLocationAsync(location.LocationId)">
+                                            <i class="bi bi-clock-history" aria-hidden="true"></i>
+                                            @(MovementLocationFilter == location.LocationId ? "Quitar filtro del historial" : "Ver su historial")
+                                        </button>
+                                        <span class="materiales-stock-updated">Actualizado @FormatRelativeMoment(location.UpdatedAt)</span>
+                                    </footer>
+                                </article>
+                            }
+                        </div>
+                    }
+                </section>
+
+                <section id="material-history" class="materiales-panel materiales-history-panel">
+                    <div class="materiales-panel-heading">
+                        <div>
+                            <span class="materiales-step">4 · Audita</span>
+                            <h2>Historial de inventario</h2>
+                            <p>
+                                Cada entrada, salida, traspaso, ajuste y conteo que ha tocado este material.
+                                @if (Inventory is not null && Inventory.TotalMovementCount > 0)
+                                {
+                                    <span>@Inventory.TotalMovementCount movimiento(s) registrados · último @FormatRelativeMoment(Inventory.LastMovementAt).</span>
+                                }
+                            </p>
+                        </div>
+                        <div class="materiales-panel-tools">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary materiales-panel-link"
+                                    aria-expanded="@ShowMovementFilters"
+                                    @onclick="ToggleMovementFilters">
+                                <i class="bi bi-funnel" aria-hidden="true"></i>
+                                <span>Filtros</span>
+                                @if (ActiveMovementFilterCount > 0)
+                                {
+                                    <span class="materiales-filter-count">@ActiveMovementFilterCount</span>
+                                }
+                            </button>
+                        </div>
+                    </div>
+
+                    @if (ShowMovementFilters)
+                    {
+                        <div class="materiales-history-filters">
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <label class="form-label" for="movement-location">Ubicación</label>
+                                    <select id="movement-location" class="form-select" @bind="MovementLocationFilter" @bind:after="ApplyMovementFiltersAsync">
+                                        <option value="">Todas las ubicaciones</option>
+                                        @if (Inventory is not null)
+                                        {
+                                            @foreach (var location in Inventory.Locations)
+                                            {
+                                                <option value="@location.LocationId">@GetStockLocationTitle(location) (@location.LocationCode)</option>
+                                            }
+                                        }
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label" for="movement-type">Tipo de movimiento</label>
+                                    <select id="movement-type" class="form-select" @bind="MovementTypeFilter" @bind:after="ApplyMovementFiltersAsync">
+                                        <option value="">Todos los tipos</option>
+                                        @if (Inventory is not null)
+                                        {
+                                            @foreach (var option in Inventory.MovementTypes)
+                                            {
+                                                <option value="@option.TransactionType">@GetMovementTypeLabel(option.TransactionType) (@option.MovementCount)</option>
+                                            }
+                                        }
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label" for="movement-from">Desde</label>
+                                    <input id="movement-from" class="form-control" type="date" @bind="MovementFromDate" @bind:format="yyyy-MM-dd" @bind:after="ApplyMovementFiltersAsync" />
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label" for="movement-to">Hasta</label>
+                                    <input id="movement-to" class="form-control" type="date" @bind="MovementToDate" @bind:format="yyyy-MM-dd" @bind:after="ApplyMovementFiltersAsync" />
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label" for="movement-search">Buscar</label>
+                                    <div class="materiales-input-with-icon">
+                                        <i class="bi bi-search" aria-hidden="true"></i>
+                                        <input id="movement-search"
+                                               class="form-control"
+                                               type="search"
+                                               placeholder="Notas, usuario, referencia o ubicación"
+                                               @bind="MovementSearchText"
+                                               @bind:after="ApplyMovementFiltersAsync" />
+                                    </div>
+                                </div>
+                                <div class="col-12 d-flex justify-content-end">
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-secondary"
+                                            @onclick="ResetMovementFiltersAsync"
+                                            disabled="@(ActiveMovementFilterCount == 0)">
+                                        <i class="bi bi-x-lg" aria-hidden="true"></i>
+                                        Limpiar filtros
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    @if (IsLoadingMovements)
+                    {
+                        <div class="materiales-inventory-loading">
+                            <span class="spinner-border" aria-hidden="true"></span>
+                            <span>Cargando movimientos…</span>
+                        </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(MovementsError))
+                    {
+                        <div class="materiales-inventory-alert" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                            <span>@MovementsError</span>
+                        </div>
+                    }
+                    else if (Movements.Count == 0)
+                    {
+                        <div class="materiales-inventory-empty">
+                            <i class="bi bi-clock-history" aria-hidden="true"></i>
+                            <h3>@(ActiveMovementFilterCount > 0 ? "Ningún movimiento coincide con los filtros" : "Todavía no hay movimientos")</h3>
+                            <p>
+                                @(ActiveMovementFilterCount > 0
+                                    ? "Ajusta el rango de fechas, la ubicación o el tipo para ampliar la búsqueda."
+                                    : "Las recepciones de compra, traspasos, ajustes, mermas y conteos aparecerán aquí en cuanto ocurran.")
+                            </p>
+                            @if (ActiveMovementFilterCount > 0)
+                            {
+                                <button type="button" class="btn btn-outline-primary" @onclick="ResetMovementFiltersAsync">
+                                    <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+                                    Limpiar filtros
+                                </button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <ol class="materiales-movement-list">
+                            @foreach (var movement in Movements)
+                            {
+                                var referenceLabel = GetMovementReferenceLabel(movement);
+                                <li class="materiales-movement @GetMovementDirectionCssClass(movement)">
+                                    <span class="materiales-movement-icon">
+                                        <i class="bi @GetMovementTypeIcon(movement.TransactionType)" aria-hidden="true"></i>
+                                    </span>
+                                    <div class="materiales-movement-body">
+                                        <div class="materiales-movement-headline">
+                                            <strong>@GetMovementTypeLabel(movement.TransactionType)</strong>
+                                            <span class="materiales-movement-delta">@FormatSignedQuantity(movement.QuantityDelta) @BaseUnitShortName</span>
+                                        </div>
+                                        <div class="materiales-movement-meta">
+                                            <span><i class="bi bi-geo-alt" aria-hidden="true"></i> @GetMovementLocationLabel(movement)</span>
+                                            <span><i class="bi bi-clock" aria-hidden="true"></i> @FormatMoment(movement.OccurredAt)</span>
+                                            @if (!string.IsNullOrWhiteSpace(movement.PerformedBy))
+                                            {
+                                                <span><i class="bi bi-person" aria-hidden="true"></i> @movement.PerformedBy</span>
+                                            }
+                                            @if (referenceLabel is not null)
+                                            {
+                                                <span><i class="bi bi-link-45deg" aria-hidden="true"></i> @referenceLabel</span>
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(movement.Notes))
+                                        {
+                                            <p class="materiales-movement-notes">@movement.Notes</p>
+                                        }
+                                    </div>
+                                    <div class="materiales-movement-balance">
+                                        <span>Saldo</span>
+                                        <strong>@FormatQuantity(movement.QuantityAfter)</strong>
+                                        <small>antes @FormatQuantity(movement.QuantityBefore)</small>
+                                    </div>
+                                </li>
+                            }
+                        </ol>
+
+                        <div class="materiales-history-footer">
+                            <span>@Movements.Count movimiento(s) en pantalla</span>
+                            @if (HasMoreMovements)
+                            {
+                                <button type="button"
+                                        class="btn btn-outline-primary btn-sm"
+                                        @onclick="LoadMoreMovementsAsync"
+                                        disabled="@IsLoadingMoreMovements">
+                                    @if (IsLoadingMoreMovements)
+                                    {
+                                        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                        <span>Cargando…</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-arrow-down-circle" aria-hidden="true"></i>
+                                        <span>Cargar más</span>
+                                    }
+                                </button>
+                            }
+                        </div>
+                    }
+                </section>
+            }
         </div>
     </div>
 </div>

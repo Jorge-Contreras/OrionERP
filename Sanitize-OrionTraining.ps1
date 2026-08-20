@@ -643,6 +643,146 @@ DEALLOCATE StatisticsCursor;
   }
 }
 
+function Restore-TrainingRuntimeDatabaseUser {
+  # The sanitizer drops every SQL database user, including the runtime principal
+  # the application signs in with, so a freshly sanitized catalog has no user to
+  # map orion_training_runtime onto and OrionERP.Training cannot start (SQL 4060).
+  # The server login and its password stay owned by the separate least-privilege
+  # workflow; only the database user mapping is restored here, which needs no
+  # password. The grant manifest below must stay identical to the one in
+  # 20260817_training_runtime_login.sql, because TrainingDatabaseSafetyVerifier
+  # refuses to boot when it drifts.
+  param([System.Data.SqlClient.SqlConnection]$Connection)
+
+  $probe = $Connection.CreateCommand()
+  try {
+    $probe.CommandText = @'
+SELECT CONVERT(int, CASE WHEN SUSER_ID(N'orion_training_runtime') IS NULL THEN 0 ELSE 1 END);
+'@
+    $loginExists = [int]$probe.ExecuteScalar() -eq 1
+  }
+  finally {
+    $probe.Dispose()
+  }
+
+  if (-not $loginExists) {
+    Write-Warning 'The server login orion_training_runtime does not exist, so the sanitized catalog has no runtime user. OrionERP.Training stays unable to start until Provision-TrainingRuntimeSqlLogin.ps1 recreates the login.'
+    return
+  }
+
+  $command = $Connection.CreateCommand()
+  try {
+    $command.CommandText = @'
+IF DB_NAME() COLLATE Latin1_General_100_BIN2 <> N'Orion_Training' COLLATE Latin1_General_100_BIN2
+  THROW 51805, 'RUNTIME USER GUARD BLOCKED: the connected catalog is not exactly Orion_Training.', 1;
+
+DECLARE @ExistingUser sysname =
+(
+  SELECT TOP (1) name
+  FROM sys.database_principals
+  WHERE sid = SUSER_SID(N'orion_training_runtime')
+     OR name = N'orion_training_runtime'
+  ORDER BY CASE WHEN name = N'orion_training_runtime' THEN 0 ELSE 1 END
+);
+
+IF @ExistingUser IS NOT NULL
+BEGIN
+  IF EXISTS (SELECT 1 FROM sys.schemas WHERE principal_id = USER_ID(@ExistingUser))
+     OR EXISTS (SELECT 1 FROM sys.database_principals
+                WHERE owning_principal_id = USER_ID(@ExistingUser))
+    THROW 51806, 'RUNTIME USER GUARD BLOCKED: the surviving runtime user owns schemas or principals; remediate manually.', 1;
+
+  DECLARE @DropExistingUserDdl nvarchar(max) =
+    N'DROP USER ' + QUOTENAME(@ExistingUser) + N';';
+  EXEC sys.sp_executesql @DropExistingUserDdl;
+END;
+
+CREATE USER [orion_training_runtime] FOR LOGIN [orion_training_runtime];
+ALTER ROLE [db_datareader] ADD MEMBER [orion_training_runtime];
+ALTER ROLE [db_datawriter] ADD MEMBER [orion_training_runtime];
+GRANT CONNECT TO [orion_training_runtime];
+GRANT EXECUTE TO [orion_training_runtime];
+GRANT VIEW DEFINITION TO [orion_training_runtime];
+GRANT VIEW DATABASE STATE TO [orion_training_runtime];
+
+DENY INSERT, UPDATE, DELETE
+  ON OBJECT::capacitacion.EntornoSeguridad
+  TO [orion_training_runtime];
+DENY INSERT, UPDATE, DELETE
+  ON OBJECT::capacitacion.EsquemaVersion
+  TO [orion_training_runtime];
+
+-- dbo belongs to db_owner in every SQL Server database, so only non-built-in
+-- memberships (principal ids above 4) describe the two runtime roles.
+IF IS_ROLEMEMBER(N'db_datareader', N'orion_training_runtime') <> 1
+   OR IS_ROLEMEMBER(N'db_datawriter', N'orion_training_runtime') <> 1
+   OR IS_ROLEMEMBER(N'db_owner', N'orion_training_runtime') <> 0
+   OR IS_ROLEMEMBER(N'db_ddladmin', N'orion_training_runtime') <> 0
+   OR IS_ROLEMEMBER(N'db_securityadmin', N'orion_training_runtime') <> 0
+   OR (SELECT COUNT(*) FROM sys.database_role_members
+       WHERE member_principal_id > 4) <> 2
+  THROW 51807, 'RUNTIME USER GUARD BLOCKED: the restored runtime roles do not match the Training least-privilege contract.', 1;
+
+IF (SELECT COUNT(*)
+    FROM sys.database_permissions permissionInfo
+    JOIN sys.database_principals grantee
+      ON grantee.principal_id = permissionInfo.grantee_principal_id
+    WHERE grantee.name = N'orion_training_runtime') <> 10
+   OR EXISTS
+   (
+     SELECT 1
+     FROM sys.database_permissions permissionInfo
+     JOIN sys.database_principals grantee
+       ON grantee.principal_id = permissionInfo.grantee_principal_id
+     WHERE grantee.name = N'orion_training_runtime'
+       AND NOT
+       (
+         (
+           permissionInfo.class = 0
+           AND permissionInfo.major_id = 0
+           AND permissionInfo.minor_id = 0
+           AND permissionInfo.state = N'G'
+           AND permissionInfo.permission_name IN
+             (N'CONNECT', N'EXECUTE', N'VIEW DEFINITION', N'VIEW DATABASE STATE')
+         )
+         OR
+         (
+           permissionInfo.class = 1
+           AND permissionInfo.major_id IN
+             (OBJECT_ID(N'capacitacion.EntornoSeguridad'), OBJECT_ID(N'capacitacion.EsquemaVersion'))
+           AND permissionInfo.minor_id = 0
+           AND permissionInfo.state = N'D'
+           AND permissionInfo.permission_name IN (N'INSERT', N'UPDATE', N'DELETE')
+         )
+       )
+   )
+  THROW 51808, 'RUNTIME USER GUARD BLOCKED: the restored runtime grants do not match the reviewed ten-permission manifest.', 1;
+
+IF EXISTS
+(
+  SELECT 1
+  FROM sys.database_principals principalInfo
+  WHERE principalInfo.principal_id > 4
+    AND principalInfo.is_fixed_role = 0
+    AND
+    (
+      principalInfo.name <> N'orion_training_runtime'
+      OR principalInfo.type <> N'S'
+      OR principalInfo.authentication_type <> 1
+      OR principalInfo.sid <> SUSER_SID(N'orion_training_runtime')
+    )
+)
+  THROW 51809, 'RUNTIME USER GUARD BLOCKED: a principal other than the runtime user survived in Orion_Training.', 1;
+'@
+    [void]$command.ExecuteNonQuery()
+  }
+  finally {
+    $command.Dispose()
+  }
+
+  Write-Host 'Runtime database user orion_training_runtime restored with db_datareader/db_datawriter and the reviewed ten-permission manifest.'
+}
+
 $effectiveConnectionString = Get-RequiredConnectionString -ExplicitConnectionString $ConnectionString
 $connection = [System.Data.SqlClient.SqlConnection]::new($effectiveConnectionString)
 
@@ -754,10 +894,15 @@ try {
     throw 'The final data attestation could not be read back. OrionERP.Training must remain stopped.'
   }
 
+  # Only a positively attested catalog gets a runtime principal back, so a reset
+  # that ended halfway leaves the environment unreachable rather than serving
+  # half-sanitized data.
+  Restore-TrainingRuntimeDatabaseUser -Connection $connection
+
   Write-Output $finalInventory
   Write-Host 'Orion_Training now contains only the reviewed reference rows and fictional v1 cohort/scenarios.'
   Write-Host 'Synthetic accounts: instructor, trainee01, trainee02, and auditor @training.orion.local.'
-  Write-Host 'The application runtime SQL principal is intentionally provisioned by the separate least-privilege workflow.'
+  Write-Host 'The runtime SQL login and its password remain owned by the separate least-privilege workflow; only its database user mapping is restored here.'
 }
 finally {
   $connection.Dispose()

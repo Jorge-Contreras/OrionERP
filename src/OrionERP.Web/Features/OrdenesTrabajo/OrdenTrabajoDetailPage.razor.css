@@ -23,6 +23,22 @@
   font-weight: 700;
 }
 
+/* Disabled buttons swallow pointer events, so the tooltip lives on this wrapper. */
+.orden-action-wrap {
+  display: grid;
+  cursor: not-allowed;
+}
+
+.orden-action-hint {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(154, 103, 0, 0.24);
+  border-radius: 0.5rem;
+  background: #fff8e8;
+  color: #7a5200;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .orden-helper-list {
   max-height: 12rem;
   overflow: auto;

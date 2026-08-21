@@ -74,6 +74,13 @@ namespace OrionERP.Application.Features.Auth.AdminPortal
 
     public sealed record IdentityUserReference(string Id, string UserName, string? Email);
 
+    public sealed record IdentityEmployeeOption(
+        int Id,
+        string DisplayName,
+        string? Rfc,
+        string? Puesto,
+        bool IsActive);
+
     public sealed record IdentityUserUpsertRequest(
         string? Id,
         string? ActorUserId,

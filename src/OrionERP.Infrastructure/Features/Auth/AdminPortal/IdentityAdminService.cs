@@ -184,6 +184,85 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
             return new IdentityAdminPortalSnapshot(metrics, userSummaries, roleSummaries);
         }
 
+        public async Task<IReadOnlyList<IdentityEmployeeOption>> GetEmployeeOptionsAsync(CancellationToken cancellationToken = default)
+        {
+            if (!_db.Database.IsRelational())
+            {
+                return Array.Empty<IdentityEmployeeOption>();
+            }
+
+            var connection = _db.Database.GetDbConnection();
+            var shouldClose = connection.State == ConnectionState.Closed;
+            if (shouldClose)
+            {
+                await connection.OpenAsync(cancellationToken);
+            }
+
+            try
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText =
+                    """
+                    SELECT
+                        ch.ID,
+                        NULLIF(LTRIM(RTRIM(ch.NombreCorto)), '') AS NombreCorto,
+                        NULLIF(LTRIM(RTRIM(CONCAT(
+                            ISNULL(ch.Nombre, ''),
+                            ' ',
+                            ISNULL(ch.ApellidoPaterno, ''),
+                            ' ',
+                            ISNULL(ch.ApellidoMaterno, '')))), '') AS NombreCompleto,
+                        NULLIF(LTRIM(RTRIM(ch.RFC)), '') AS Rfc,
+                        NULLIF(LTRIM(RTRIM(ch.Puesto)), '') AS Puesto,
+                        CAST(CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(ch.[Status], '')))) = 'ACTIVO' THEN 1 ELSE 0 END AS bit) AS IsActive
+                    FROM dbo.Capital_Humano ch
+                    WHERE UPPER(LTRIM(RTRIM(ISNULL(ch.[Status], '')))) = 'ACTIVO'
+                       OR EXISTS (
+                            SELECT 1
+                            FROM auth.AspNetUsers u
+                            WHERE u.EmployeeId = ch.ID
+                       )
+                    ORDER BY
+                        COALESCE(NULLIF(LTRIM(RTRIM(ch.NombreCorto)), ''), CONCAT(ch.Nombre, ' ', ch.ApellidoPaterno)),
+                        ch.ID;
+                    """;
+
+                var options = new List<IdentityEmployeeOption>();
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var employeeId = reader.GetInt32(reader.GetOrdinal("ID"));
+                    var shortName = ReadNullableString(reader, "NombreCorto");
+                    var fullName = ReadNullableString(reader, "NombreCompleto");
+
+                    options.Add(new IdentityEmployeeOption(
+                        employeeId,
+                        !string.IsNullOrWhiteSpace(shortName)
+                            ? shortName
+                            : !string.IsNullOrWhiteSpace(fullName)
+                                ? fullName
+                                : $"ID {employeeId}",
+                        ReadNullableString(reader, "Rfc"),
+                        ReadNullableString(reader, "Puesto"),
+                        reader.GetBoolean(reader.GetOrdinal("IsActive"))));
+                }
+
+                return options;
+            }
+            catch (DbException)
+            {
+                // El portal debe seguir usable aunque Capital Humano no responda.
+                return Array.Empty<IdentityEmployeeOption>();
+            }
+            finally
+            {
+                if (shouldClose)
+                {
+                    await connection.CloseAsync();
+                }
+            }
+        }
+
         public async Task<IdentityUserEditor?> GetUserAsync(string userId, CancellationToken cancellationToken = default)
         {
             var user = await _userManager.Users

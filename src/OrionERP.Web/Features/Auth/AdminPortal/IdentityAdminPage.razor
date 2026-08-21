@@ -243,9 +243,20 @@
                                             <span>Teléfono</span>
                                             <input class="form-control" type="tel" @bind="UserForm.PhoneNumber" />
                                         </label>
-                                        <label class="field">
-                                            <span>EmployeeId</span>
-                                            <input class="form-control" type="number" @bind="UserForm.EmployeeIdInput" />
+                                        <label class="field field-span-2">
+                                            <span>Empleado ligado (Capital Humano)</span>
+                                            <select class="form-select" @bind="UserForm.EmployeeIdInput">
+                                                <option value="">Sin empleado ligado</option>
+                                                @if (SelectedEmployeeIsUnlisted)
+                                                {
+                                                    <option value="@UserForm.EmployeeIdInput">ID @UserForm.EmployeeIdInput · empleado inactivo o inexistente</option>
+                                                }
+                                                @foreach (var employee in EmployeeOptions)
+                                                {
+                                                    <option value="@employee.Id">@FormatEmployeeOption(employee)</option>
+                                                }
+                                            </select>
+                                            <small class="field-help">Solo se listan empleados activos. El empleado ligado define el RFC del usuario y habilita ejecutar órdenes de trabajo asignadas a él.</small>
                                         </label>
                                         <label class="field field-span-2">
                                             <span>Arrendador (Proveedor)</span>

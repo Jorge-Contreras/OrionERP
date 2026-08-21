@@ -2974,6 +2974,13 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
       p.Add("@ParticipantEmployeeId", filter.ParticipantEmployeeId.Value);
     }
 
+    var createdByActor = NullIfWhiteSpace(filter.CreatedByActor);
+    if (createdByActor is not null)
+    {
+      sql.AppendLine(" AND LTRIM(RTRIM(ot.CreadaPor)) = @CreatedByActor");
+      p.Add("@CreatedByActor", createdByActor);
+    }
+
     if (filter.ScheduledFrom.HasValue)
     {
       sql.AppendLine(" AND ot.FechaProgramada >= @ScheduledFrom");

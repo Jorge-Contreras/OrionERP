@@ -63,13 +63,9 @@
                 {
                     <div class="home-empty">Inicia sesion para ver tus ordenes activas.</div>
                 }
-                else if (!CurrentEmployeeId.HasValue)
-                {
-                    <div class="home-empty">Tu usuario no tiene un EmployeeId ligado en Capital Humano.</div>
-                }
                 else if (WorkOrders.Count == 0)
                 {
-                    <div class="home-empty">No tienes ordenes activas asignadas.</div>
+                    <div class="home-empty">@EmptyWorkOrdersMessage</div>
                 }
                 else
                 {
@@ -87,6 +83,10 @@
 
                                     <div class="home-order-card__meta">
                                         <span class="@GetStatusClass(item.Estado)">@GetStatusLabel(item.Estado)</span>
+                                        @if (IsCreatedByMeOnly(item))
+                                        {
+                                            <span class="home-status home-status--authored">Creada por ti</span>
+                                        }
                                         <span>@item.CategoriaNombre</span>
                                         <span>@FormatTarget(item)</span>
                                     </div>
@@ -423,7 +423,9 @@
     private List<RecurrentApOccurrenceListItemDto> ApOccurrences { get; set; } = [];
     private List<PhysicalCountPendingRecountDto> PendingRecounts { get; set; } = [];
     private List<ListaReservacionItemDto> UpcomingPaidReservations { get; set; } = [];
+    private HashSet<int> CreatedByMeReviewIds { get; } = [];
     private string CurrentUserName { get; set; } = "OrionERP";
+    private string? CurrentUserActor { get; set; }
     private int? CurrentEmployeeId { get; set; }
     private bool IsAuthenticated { get; set; }
     private bool HasConteoRole { get; set; }
@@ -438,6 +440,10 @@
     private string DashboardSubtitle => IsAuthenticated
         ? $"{CurrentUserName} · {CurrentRfc}"
         : "Acceso personal";
+
+    private string EmptyWorkOrdersMessage => CurrentEmployeeId.HasValue
+        ? "No tienes ordenes activas asignadas ni ordenes tuyas esperando revision."
+        : "Tu usuario no tiene un EmployeeId ligado en Capital Humano, asi que solo veras las ordenes que tu creaste y estan en revision.";
 
     private int OverdueCount => WorkOrders.Count(item => item.IsOverdue);
     private int ReviewCount => WorkOrders.Count(item => string.Equals(item.Estado, OrdenTrabajoCodes.EstadoEnRevision, StringComparison.OrdinalIgnoreCase));
@@ -498,28 +504,61 @@
 
     private async Task LoadWorkOrdersForCurrentUserAsync()
     {
-        if (!IsAuthenticated || !CurrentEmployeeId.HasValue)
+        CreatedByMeReviewIds.Clear();
+
+        if (!IsAuthenticated)
         {
             WorkOrders.Clear();
             return;
         }
 
-        var orders = await OrdenTrabajoService.SearchWorkOrdersAsync(new OrdenTrabajoSearchFilter
-        {
-            Rfc = CurrentRfc,
-            ParticipantEmployeeId = CurrentEmployeeId,
-            IncludeClosed = false,
-            Take = 100
-        });
+        IReadOnlyList<OrdenTrabajoListItemDto> assigned = CurrentEmployeeId.HasValue
+            ? await OrdenTrabajoService.SearchWorkOrdersAsync(new OrdenTrabajoSearchFilter
+            {
+                Rfc = CurrentRfc,
+                ParticipantEmployeeId = CurrentEmployeeId,
+                IncludeClosed = false,
+                Take = 100
+            })
+            : Array.Empty<OrdenTrabajoListItemDto>();
 
-        WorkOrders = orders
-            .Where(item => ActiveStatuses.Contains(item.Estado))
+        // Ordenes que este usuario creo y ya estan esperando revision: no las ejecuta el,
+        // pero sigue siendo el responsable de que avancen.
+        IReadOnlyList<OrdenTrabajoListItemDto> createdPendingReview = CurrentUserActor is null
+            ? Array.Empty<OrdenTrabajoListItemDto>()
+            : await OrdenTrabajoService.SearchWorkOrdersAsync(new OrdenTrabajoSearchFilter
+            {
+                Rfc = CurrentRfc,
+                CreatedByActor = CurrentUserActor,
+                Estado = OrdenTrabajoCodes.EstadoEnRevision,
+                IncludeClosed = false,
+                Take = 100
+            });
+
+        var merged = new Dictionary<int, OrdenTrabajoListItemDto>();
+        foreach (var item in assigned.Where(item => ActiveStatuses.Contains(item.Estado)))
+        {
+            merged[item.Id] = item;
+        }
+
+        foreach (var item in createdPendingReview)
+        {
+            if (merged.TryAdd(item.Id, item))
+            {
+                CreatedByMeReviewIds.Add(item.Id);
+            }
+        }
+
+        WorkOrders = merged.Values
             .OrderByDescending(item => item.IsOverdue)
             .ThenBy(item => item.FechaVencimiento ?? item.FechaProgramada)
             .ThenBy(item => GetPriorityRank(item.Prioridad))
             .ThenBy(item => item.Folio)
             .ToList();
     }
+
+    private bool IsCreatedByMeOnly(OrdenTrabajoListItemDto item)
+        => CreatedByMeReviewIds.Contains(item.Id);
 
     private async Task LoadApOccurrencesAsync()
     {
@@ -613,16 +652,19 @@
                 || principal.IsInRole("SatOperator")
                 || principal.IsInRole("OrdenTrabajoOperador")
                 || principal.IsInRole("Arrendadores"));
-        CurrentUserName = principal.Identity?.Name?.Trim() switch
+        CurrentUserActor = principal.Identity?.Name?.Trim() switch
         {
             { Length: > 0 } name => name,
-            _ => "OrionERP"
+            _ => null
         };
+        CurrentUserName = CurrentUserActor ?? "OrionERP";
 
         if (!IsAuthenticated)
         {
             CurrentEmployeeId = null;
+            CurrentUserActor = null;
             HasCalendarioRole = false;
+            CreatedByMeReviewIds.Clear();
             WorkOrders.Clear();
             ApOccurrences.Clear();
             PendingRecounts.Clear();

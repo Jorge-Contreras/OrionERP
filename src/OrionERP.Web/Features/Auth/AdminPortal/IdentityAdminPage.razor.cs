@@ -33,6 +33,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
 
         private IdentityAdminPortalSnapshot? Snapshot { get; set; }
         private IReadOnlyList<ArrendadorListItemDto> ArrendadorOptions { get; set; } = Array.Empty<ArrendadorListItemDto>();
+        private IReadOnlyList<IdentityEmployeeOption> EmployeeOptions { get; set; } = Array.Empty<IdentityEmployeeOption>();
         private UserEditorModel UserForm { get; set; } = CreateEmptyUserModel();
         private RoleEditorModel RoleForm { get; set; } = CreateEmptyRoleModel();
         private IdentityAdminTab ActiveTab { get; set; } = IdentityAdminTab.Users;
@@ -443,6 +444,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
             {
                 Snapshot = await IdentityAdminService.GetPortalSnapshotAsync();
                 ArrendadorOptions = await ArrendadoresService.GetArrendadoresAsync();
+                EmployeeOptions = await IdentityAdminService.GetEmployeeOptionsAsync();
                 LastRefreshedAt = DateTimeOffset.Now;
 
                 preferredUserId = ResolveExistingUserId(preferredUserId) ?? ResolveDefaultUserId();
@@ -699,6 +701,42 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
             }
 
             return role.Name.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool SelectedEmployeeIsUnlisted
+        {
+            get
+            {
+                var employeeId = ParseNullableInt(UserForm.EmployeeIdInput);
+                return employeeId.HasValue
+                    && !EmployeeOptions.Any(employee => employee.Id == employeeId.Value);
+            }
+        }
+
+        private static string FormatEmployeeOption(IdentityEmployeeOption employee)
+        {
+            var parts = new List<string>
+            {
+                employee.DisplayName,
+                $"ID {employee.Id.ToString(CultureInfo.InvariantCulture)}"
+            };
+
+            if (!string.IsNullOrWhiteSpace(employee.Rfc))
+            {
+                parts.Add(employee.Rfc);
+            }
+
+            if (!string.IsNullOrWhiteSpace(employee.Puesto))
+            {
+                parts.Add(employee.Puesto);
+            }
+
+            if (!employee.IsActive)
+            {
+                parts.Add("baja en Capital Humano");
+            }
+
+            return string.Join(" · ", parts);
         }
 
         private string FormatArrendadorProveedor(int? proveedorId)

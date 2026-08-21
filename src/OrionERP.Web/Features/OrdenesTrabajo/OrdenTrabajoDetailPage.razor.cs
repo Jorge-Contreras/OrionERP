@@ -68,6 +68,33 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
     && IsCurrentUserAssigned();
   protected bool CanRemoveEvidence => CanExecute && Order?.HasBeenSubmittedForReview == false;
 
+  protected string? ExecutionBlockedReason
+  {
+    get
+    {
+      if (Order is null || CanExecute)
+      {
+        return null;
+      }
+
+      if (!IsExecutableStatus(Order.Estado))
+      {
+        return $"La orden esta en estado {OrdenesTrabajoPage.GetStatusLabel(Order.Estado)}; solo se puede trabajar en ordenes en borrador, asignadas, en proceso o rechazadas.";
+      }
+
+      if (!CurrentEmployeeId.HasValue)
+      {
+        return "Tu usuario no tiene un empleado de Capital Humano ligado (EmployeeId). Pide a un administrador que lo ligue en /admin/seguridad y vuelve a iniciar sesion.";
+      }
+
+      return $"Solo el responsable ({Order.OwnerName}) y sus ayudantes pueden ejecutar esta orden. Los roles no habilitan la ejecucion: hay que agregarte como responsable o ayudante.";
+    }
+  }
+
+  protected string? ReviewBlockedReason => Order is null || IsInReview
+    ? null
+    : "Solo puedes aprobar y cerrar una orden que este en revision.";
+
   private int? ActorEmployeeIdForExecution => CurrentEmployeeId;
   private IJSObjectReference? CameraModule { get; set; }
   private bool PendingCameraStart { get; set; }

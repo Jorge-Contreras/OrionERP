@@ -82,13 +82,24 @@
                         }
 
                         <div class="d-grid gap-2 mt-3">
-                            <button class="btn btn-outline-primary" type="button" @onclick="StartAsync" disabled="@(!CanExecute || IsMutating)">Iniciar</button>
-                            <button class="btn btn-warning" type="button" @onclick="SubmitAsync" disabled="@(!CanExecute || IsMutating)">Enviar a revision</button>
+                            <span class="orden-action-wrap" title="@ExecutionBlockedReason">
+                                <button class="btn btn-outline-primary" type="button" @onclick="StartAsync" disabled="@(!CanExecute || IsMutating)">Iniciar</button>
+                            </span>
+                            <span class="orden-action-wrap" title="@ExecutionBlockedReason">
+                                <button class="btn btn-warning" type="button" @onclick="SubmitAsync" disabled="@(!CanExecute || IsMutating)">Enviar a revision</button>
+                            </span>
                             @if (CanReview)
                             {
-                                <button class="btn btn-success" type="button" @onclick="ApproveAsync" disabled="@(!IsInReview || IsMutating)">Aprobar y cerrar</button>
+                                <span class="orden-action-wrap" title="@ReviewBlockedReason">
+                                    <button class="btn btn-success" type="button" @onclick="ApproveAsync" disabled="@(!IsInReview || IsMutating)">Aprobar y cerrar</button>
+                                </span>
                             }
                         </div>
+
+                        @if (ExecutionBlockedReason is not null)
+                        {
+                            <p class="orden-action-hint mt-2 mb-0">@ExecutionBlockedReason</p>
+                        }
                     </div>
                 </section>
 

@@ -90,6 +90,7 @@ public sealed class OrdenTrabajoSearchFilter
   public string? CategoriaCodigo { get; set; }
   public int? OwnerEmployeeId { get; set; }
   public int? ParticipantEmployeeId { get; set; }
+  public string? CreatedByActor { get; set; }
   public DateTime? ScheduledFrom { get; set; }
   public DateTime? ScheduledTo { get; set; }
   public bool IncludeClosed { get; set; }

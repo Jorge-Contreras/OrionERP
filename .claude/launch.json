@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "orionerp-web",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/OrionERP.Web/OrionERP.Web.csproj", "--launch-profile", "OrionERP.Web", "--urls", "http://localhost:5221"],
+      "port": 5221
+    }
+  ]
+}

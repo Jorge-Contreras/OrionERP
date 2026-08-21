@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -6,6 +7,7 @@ namespace OrionERP.Application.Features.Auth.AdminPortal
     public interface IIdentityAdminService
     {
         Task<IdentityAdminPortalSnapshot> GetPortalSnapshotAsync(CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<IdentityEmployeeOption>> GetEmployeeOptionsAsync(CancellationToken cancellationToken = default);
         Task<IdentityUserEditor?> GetUserAsync(string userId, CancellationToken cancellationToken = default);
         Task<IdentityRoleEditor?> GetRoleAsync(string roleId, CancellationToken cancellationToken = default);
         Task<IdentityAdminCommandResult> SaveUserAsync(IdentityUserUpsertRequest request, CancellationToken cancellationToken = default);

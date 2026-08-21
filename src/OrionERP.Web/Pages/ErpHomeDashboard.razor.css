@@ -455,6 +455,11 @@
   color: #b42318;
 }
 
+.home-status--authored {
+  background: #f0ebff;
+  color: #5b3fbf;
+}
+
 .home-status--paid {
   background: #d9f4ef;
   color: #0f766e;

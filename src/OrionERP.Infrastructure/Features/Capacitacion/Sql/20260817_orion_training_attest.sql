@@ -389,7 +389,58 @@ VALUES
   (N'capacitacion', N'PracticaPaso'),
   (N'capacitacion', N'RutaAprendizaje'),
   (N'capacitacion', N'RutaCurso'),
-  (N'capacitacion', N'Asignacion');
+  (N'capacitacion', N'Asignacion'),
+  -- The reviewed reference catalog preserved by the sanitizer. Its contents are
+  -- pinned to the canonical SAT manifest by guard 51769 below.
+  (N'dbo', N'Formas_Pago'),
+  -- Synthetic catalogs written by 20260821_orion_training_catalogos.sql. Every
+  -- table the seed touches must appear here, or the sweep below throws 51753.
+  -- A unit test diffs the seed's targets against this list so the two cannot
+  -- drift apart.
+  (N'dbo', N'CuentasContables'),
+  (N'dbo', N'CfdiPolizaCuentaDefault'),
+  (N'dbo', N'PlantillaContable'),
+  (N'dbo', N'PlantillaContableLinea'),
+  (N'dbo', N'Actividad'),
+  (N'dbo', N'Compra'),
+  (N'dbo', N'Servicios'),
+  (N'dbo', N'Proveedores'),
+  (N'dbo', N'PARAMETROS_CONFIGURACION'),
+  (N'dbo', N'OrdenTrabajoCategoria'),
+  (N'dbo', N'Extra'),
+  (N'dbo', N'ExperienceProvider'),
+  (N'dbo', N'Experience'),
+  (N'dbo', N'ExperiencePackage'),
+  (N'dbo', N'ExperienceAddOn'),
+  (N'dbo', N'BusinessPartner'),
+  (N'dbo', N'BusinessPartnerRfcScope'),
+  (N'dbo', N'BusinessPartnerRole'),
+  (N'dbo', N'SatRfcProfile'),
+  (N'bancos', N'Cuentas_Banco'),
+  (N'logistica', N'Allergen'),
+  (N'logistica', N'UnitConversion'),
+  (N'rh', N'Holiday'),
+  -- Restaurant configuration only. The transactional tables of this schema
+  -- (Order, OrderLine, Payment, CashShift, CashMovement, QuickPin,
+  -- SupervisorAuthorization, EventOutbox, DailySequence) stay off this list on
+  -- purpose: a trainee creates those by working, and their emptiness is what
+  -- makes this manifest worth checking.
+  (N'restaurante', N'Site'),
+  (N'restaurante', N'SiteLocationPriority'),
+  (N'restaurante', N'DiningTable'),
+  (N'restaurante', N'KitchenStation'),
+  (N'restaurante', N'CashRegister'),
+  (N'restaurante', N'ExternalProvider'),
+  (N'restaurante', N'AccountingConfiguration'),
+  (N'restaurante', N'ProductCard'),
+  (N'restaurante', N'Product'),
+  (N'restaurante', N'ModifierGroup'),
+  (N'restaurante', N'ModifierOption'),
+  (N'restaurante', N'ProductModifierGroup'),
+  (N'restaurante', N'Menu'),
+  (N'restaurante', N'MenuSection'),
+  (N'restaurante', N'MenuItem'),
+  (N'restaurante', N'MenuSchedule');
 
 DECLARE @QualifiedName nvarchar(517);
 DECLARE @HasRows bit = 0;
@@ -574,17 +625,89 @@ IF (SELECT COUNT(*) FROM dbo.Clientes) <> 1
    OR EXISTS (SELECT 1 FROM dbo.RESERVATION_DETAIL WHERE NOTES <> 'DATOS SINTÉTICOS')
   THROW 51757, 'ATTESTATION BLOCKED: the fictional reservations scenario does not match.', 1;
 
-IF (SELECT COUNT(*) FROM logistica.UnitOfMeasure) <> 2
+/*
+  Provisioning creates two units, two categories, two locations, three
+  housekeeping materials and six stock balances. The catalog seed then adds four
+  units (GR/KG/ML/LT), one ALIMENTOS category and three made-to-order menu
+  materials, because restaurante.Product requires a material per product and the
+  housekeeping rows cannot double as menu items.
+
+  Only the counts move. Every naming predicate below still holds, which is the
+  point: the seed keeps the TRAINING and TRN- prefixes precisely so this guard
+  stays as strict as it was. StockBalance stays at six because a made-to-order
+  finished good gets no stock row.
+*/
+IF (SELECT COUNT(*) FROM logistica.UnitOfMeasure) <> 6
    OR EXISTS (SELECT 1 FROM logistica.UnitOfMeasure WHERE UnitName NOT LIKE 'TRAINING %')
-   OR (SELECT COUNT(*) FROM logistica.MaterialCategory) <> 2
+   OR (SELECT COUNT(*) FROM logistica.MaterialCategory) <> 3
    OR EXISTS (SELECT 1 FROM logistica.MaterialCategory WHERE Rfc <> 'XAXX010101000' OR CategoryName NOT LIKE 'TRAINING %')
    OR (SELECT COUNT(*) FROM logistica.Location) <> 2
    OR EXISTS (SELECT 1 FROM logistica.Location WHERE Rfc <> 'XAXX010101000' OR LocationCode NOT LIKE 'TRN-%')
-   OR (SELECT COUNT(*) FROM logistica.Material) <> 3
+   OR (SELECT COUNT(*) FROM logistica.Material) <> 6
    OR EXISTS (SELECT 1 FROM logistica.Material WHERE Rfc <> 'XAXX010101000' OR MaterialCode NOT LIKE 'TRN-%')
    OR (SELECT COUNT(*) FROM logistica.StockBalance) <> 6
    OR EXISTS (SELECT 1 FROM logistica.StockBalance WHERE Rfc <> 'XAXX010101000' OR Notes <> 'DATOS SINTÉTICOS')
   THROW 51758, 'ATTESTATION BLOCKED: the fictional logistics scenario does not match.', 1;
+
+/*
+  The preserved reference catalog, verified at the end of the run.
+
+  dbo.Formas_Pago is the one table whose rows may survive the erase, so this is
+  the guard that makes that exception auditable: exactly the twenty-two SAT
+  c_FormaPago claves, nothing more. It is the attestation-side mirror of the
+  clamp in 20260817_orion_training_sanitize.sql and of the MERGE in
+  20260821_orion_training_catalogos.sql; a unit test compares all three lists so
+  they cannot drift apart and quietly widen what survives.
+
+  The description length bound is the second half of the check. Even a canonical
+  clave must not carry text longer than SAT wording, which is what a smuggled
+  production value would look like.
+*/
+IF (SELECT COUNT(*) FROM dbo.Formas_Pago) <> 22
+   OR EXISTS
+      (
+        SELECT 1
+        FROM dbo.Formas_Pago
+        WHERE Clave COLLATE Latin1_General_100_BIN2 NOT IN
+          (N'01', N'02', N'03', N'04', N'05', N'06', N'08', N'12', N'13', N'14',
+           N'15', N'17', N'23', N'24', N'25', N'26', N'27', N'28', N'29', N'30',
+           N'31', N'99')
+      )
+   OR EXISTS (SELECT 1 FROM dbo.Formas_Pago WHERE LEN(ISNULL(Descripcion, N'')) > 100)
+  THROW 51769, 'ATTESTATION BLOCKED: the preserved reference catalog is outside its canonical SAT manifest.', 1;
+
+/*
+  The synthetic catalogs. Every RFC-bearing table the catalog seed writes must
+  belong wholly to the fictional tenant, and the restaurant configuration must
+  carry its TRN- markers. A cloned row surviving inside one of these catalogs
+  would be invisible to the emptiness sweep above, because these tables are now
+  allowed to be non-empty; this is the guard that closes that gap.
+*/
+IF EXISTS (SELECT 1 FROM dbo.CuentasContables WHERE RFC <> 'XAXX010101000')
+   OR EXISTS (SELECT 1 FROM dbo.Actividad WHERE RFC <> 'XAXX010101000')
+   OR EXISTS (SELECT 1 FROM dbo.Compra WHERE RFC <> 'XAXX010101000')
+   OR EXISTS (SELECT 1 FROM dbo.Servicios WHERE RFC <> 'XAXX010101000')
+   OR EXISTS (SELECT 1 FROM dbo.CfdiPolizaCuentaDefault WHERE Rfc <> 'XAXX010101000')
+   OR EXISTS (SELECT 1 FROM dbo.PlantillaContable WHERE RFC <> 'XAXX010101000')
+   OR EXISTS (SELECT 1 FROM bancos.Cuentas_Banco WHERE RFC <> 'XAXX010101000')
+   OR EXISTS (SELECT 1 FROM dbo.BusinessPartnerRfcScope WHERE Rfc <> 'XAXX010101000')
+   OR EXISTS (SELECT 1 FROM rh.Holiday WHERE Rfc <> 'XAXX010101000')
+   OR EXISTS (SELECT 1 FROM dbo.SatRfcProfile WHERE Rfc <> 'XAXX010101000')
+   OR EXISTS
+      (
+        SELECT 1 FROM dbo.SatRfcProfile
+        WHERE SATFielCertificate IS NOT NULL
+           OR SATFielKey IS NOT NULL
+           OR SATFielPfx IS NOT NULL
+           OR SATFielPasswordEnc IS NOT NULL
+      )
+   OR EXISTS (SELECT 1 FROM restaurante.Site WHERE Rfc <> 'XAXX010101000' OR SiteCode NOT LIKE 'TRN-%')
+   OR EXISTS (SELECT 1 FROM restaurante.DiningTable WHERE Rfc <> 'XAXX010101000')
+   OR EXISTS (SELECT 1 FROM restaurante.KitchenStation WHERE Rfc <> 'XAXX010101000')
+   OR EXISTS (SELECT 1 FROM restaurante.CashRegister WHERE Rfc <> 'XAXX010101000' OR DeviceKeyHash IS NOT NULL)
+   OR EXISTS (SELECT 1 FROM restaurante.Menu WHERE Rfc <> 'XAXX010101000' OR MenuCode NOT LIKE 'TRN-%')
+   OR EXISTS (SELECT 1 FROM restaurante.Product WHERE Rfc <> 'XAXX010101000' OR Sku NOT LIKE 'TRN-%')
+  THROW 51770, 'ATTESTATION BLOCKED: the synthetic catalog manifest is not wholly fictional.', 1;
 
 IF (SELECT COUNT(*) FROM rh.WorkSite) <> 1
    OR EXISTS

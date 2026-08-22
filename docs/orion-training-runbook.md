@@ -63,17 +63,27 @@ ambos, y fallan si se abren sueltos en SSMS. Los ejecuta
 | # | Archivo | Papel |
 | --- | --- | --- |
 | 1 | `20260818_orion_training_neutralize_clone.sql` | Neutraliza por manifiesto exacto los objetos heredados del clon (RLS, sinónimos, módulos) |
-| 2 | `20260817_orion_training_sanitize.sql` | Borra todas las filas salvo `__EFMigrationsHistory` y `DateDimension`, reinicia identidades y secuencias |
+| 2 | `20260817_orion_training_sanitize.sql` | Borra todas las filas salvo `__EFMigrationsHistory`, `DateDimension` y el catálogo de referencia revisado `Formas_Pago`, reinicia identidades y secuencias |
 | 3 | `20260817_capacitacion_v1.sql` | Reinstala esquema, triggers de inmutabilidad y los 5 cursos piloto |
 | 4 | `20260819_capacitacion_curriculum_v2.sql` | Agrega los 24 cursos por módulo y la ruta `ORION-EXPERTO` |
 | 5 | `20260817_orion_training_reviewed_triggers.sql` | Instala los triggers revisados de mantenimiento |
 | 6 | `20260818_orion_training_cfdi_fixture_parser.sql` | Sustituye el importador CFDI por el exclusivo de Training |
 | 7 | `20260817_orion_training_provision.sql` | Crea la cohorte sintética y las asignaciones (requiere los 4 hashes de contraseña) |
 | 8 | `20260817_orion_training_scenarios.sql` | Siembra los escenarios RH ficticios |
-| 9 | `20260817_orion_training_attest.sql` | Revisa el manifiesto completo y sólo entonces marca la atestación positiva |
+| 9 | `20260821_orion_training_catalogos.sql` | Siembra los catálogos de referencia y sintéticos que alimentan los desplegables de todos los módulos |
+| 10 | `20260817_orion_training_attest.sql` | Revisa el manifiesto completo y sólo entonces marca la atestación positiva |
 
-Los archivos 3 y 4 son los únicos que además se aplican fuera de Training, a
-través de `Install-CapacitacionSchema.ps1`. Ambos son idempotentes.
+Los archivos 3 y 4 se aplican además fuera de Training a través de
+`Install-CapacitacionSchema.ps1`; el 9 puede ejecutarse por separado contra
+Training con `Seed-OrionTrainingCatalogos.ps1` (ver §5). Los tres son
+idempotentes.
+
+El archivo 9 ocupa una posición obligada: **después** de 7 y 8, porque depende de
+`RazonSocial`, `Capital_Humano`, `dbo.ROOM`, `logistica.*` y `rh.WorkSite`;
+**dentro** de la ventana con triggers deshabilitados, para que ningún trigger
+clonado observe sus escrituras; y **antes** del recálculo de estadísticas, porque
+la atestación exige que toda estadística sea posterior al reinicio y con contador
+de modificaciones en cero (error 51846).
 
 ## 4. Cuándo sanitizar
 
@@ -196,6 +206,50 @@ No intentes reparar a mano ni ejecutar los `.sql` sueltos. Corrige la causa que
 reportó el error y vuelve a correr el flujo completo desde la vista previa: todos
 los pasos son idempotentes o transaccionales.
 
+### Reparar catálogos sin reiniciar
+
+Caso único: una base `Orion_Training` sanitizada **antes** de que existiera el
+paso 9, que por lo tanto está atestada pero sin catálogos. Sembrarlos no exige un
+reinicio completo.
+
+Volver a atestar no hace falta y tampoco es posible.
+`TrainingDatabaseSafetyVerifier` sólo revisa las banderas de
+`capacitacion.EntornoSeguridad` y la versión de esquema; no cuenta filas ni
+verifica manifiestos, y nada salvo el sanitizador borra esa atestación. Ejecutar
+`20260817_orion_training_attest.sql` suelto lanza 51752, porque exige el estado
+previo no atestado.
+
+```bash
+Stop-Service OrionERP.Training
+```
+
+```bash
+$env:ORION_TRAINING_SANITIZER_CONNECTION_STRING = '<conexión sysadmin a Orion_Training;Encrypt=True>'
+```
+
+```bash
+.\Seed-OrionTrainingCatalogos.ps1
+```
+
+```bash
+.\Seed-OrionTrainingCatalogos.ps1 -Apply -ConfirmDatabase Orion_Training
+```
+
+```bash
+Remove-Item Env:ORION_TRAINING_SANITIZER_CONNECTION_STRING
+```
+
+```bash
+Start-Service OrionERP.Training
+```
+
+La vista previa corre la siembra dentro de una transacción que se revierte. Un
+`ROLLBACK` **no** restaura los contadores de identidad, así que la vista previa
+deja un hueco de identidad. Es inofensivo mientras siga vigente la atestación
+actual —el siguiente reinicio completo reinicia todas las identidades—, pero si
+prefieres evitarlo por completo, omite la vista previa sobre una base de la que
+tengas respaldo.
+
 ## 6. Aplicar cambios de currículo a cada entorno
 
 | Entorno | Cómo |
@@ -215,4 +269,11 @@ pruebas de `CapacitacionCurriculumSqlTests` fallan si falta alguno.
 - Ningún dato real entra a Training: ni XML timbrados, ni documentos personales, ni RFC reales, ni contraseñas de producción.
 - Una versión de curso publicada **no se edita**: se publica una versión nueva.
 - Las contraseñas sintéticas se entregan por un canal controlado y se regeneran en cada reinicio.
+- **Los catálogos sembrados se reinician en cada sanitizado.** Un instructor puede
+  agregar formas de pago, cuentas contables, proyectos o categorías desde
+  `/ajustes/catalogos`, pero eso dura hasta el siguiente reinicio. Para que un
+  catálogo sea permanente se edita `20260821_orion_training_catalogos.sql`, se
+  agrega su tabla a `@AllowedNonEmpty` en la atestación —y a la exención del
+  error 51726 en el aprovisionamiento, si además se preserva— y se reinicia el
+  entorno. `TrainingCatalogSeedScriptTests` falla si falta alguno.
 - **Los roles se cambian en el aprovisionamiento, no en la interfaz.** `auth.AspNetUserRoles` se borra en cada reinicio, así que cualquier asignación hecha a mano dura hasta el siguiente sanitizado. Para un ajuste permanente se edita `20260817_orion_training_provision.sql`, se actualizan los conteos de la atestación (`AspNetRoles) <> 12`, `AspNetUserRoles) <> 22`) y sus pruebas, y se reinicia el entorno. Para un ajuste temporal a media sesión, usa `instructor@training.orion.local` en `/admin/seguridad`.

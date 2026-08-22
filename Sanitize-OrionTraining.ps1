@@ -40,6 +40,7 @@ $curriculumInstaller = Join-Path $PSScriptRoot 'src\OrionERP.Infrastructure\Feat
 $sanitizeScript = Join-Path $PSScriptRoot 'src\OrionERP.Infrastructure\Features\Capacitacion\Sql\20260817_orion_training_sanitize.sql'
 $provisionScript = Join-Path $PSScriptRoot 'src\OrionERP.Infrastructure\Features\Capacitacion\Sql\20260817_orion_training_provision.sql'
 $scenarioScript = Join-Path $PSScriptRoot 'src\OrionERP.Infrastructure\Features\Capacitacion\Sql\20260817_orion_training_scenarios.sql'
+$catalogSeedScript = Join-Path $PSScriptRoot 'src\OrionERP.Infrastructure\Features\Capacitacion\Sql\20260821_orion_training_catalogos.sql'
 $reviewedTriggerScript = Join-Path $PSScriptRoot 'src\OrionERP.Infrastructure\Features\Capacitacion\Sql\20260817_orion_training_reviewed_triggers.sql'
 $attestScript = Join-Path $PSScriptRoot 'src\OrionERP.Infrastructure\Features\Capacitacion\Sql\20260817_orion_training_attest.sql'
 $neutralizeCloneScript = Join-Path $PSScriptRoot 'src\OrionERP.Infrastructure\Features\Capacitacion\Sql\20260818_orion_training_neutralize_clone.sql'
@@ -867,6 +868,14 @@ try {
       Assert-TrainingPreProvisionSafety -Connection $connection
       Invoke-SqlFile -Connection $connection -Path $provisionScript -Parameters $passwordHashes
       Invoke-SqlFile -Connection $connection -Path $scenarioScript
+      # The reference and synthetic catalogs every module reads from its
+      # dropdowns. This slot is load-bearing three ways: after provisioning and
+      # the scenarios, because it depends on RazonSocial, Capital_Humano,
+      # dbo.ROOM, logistica.* and rh.WorkSite; inside the disabled-trigger
+      # window, so no cloned trigger observes these writes; and before the
+      # statistics rebuild, because attestation requires every statistic to
+      # postdate the reset with a zero modification counter.
+      Invoke-SqlFile -Connection $connection -Path $catalogSeedScript
       Update-TrainingStatisticsFullScan -Connection $connection
       $safeToEnableTriggers = $true
     }

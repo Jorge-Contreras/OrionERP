@@ -21,6 +21,9 @@
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2">
       <RfcPicker @bind-SelectedRfc="selectedRfc" @bind-SelectedRfc:after="OnRfcChangedAsync" />
+      <a class="btn btn-outline-secondary" href="/ajustes/catalogos">
+        Catálogos
+      </a>
       <button type="button" class="btn btn-outline-primary" @onclick="NewPlantilla">
         Nueva plantilla
       </button>

@@ -138,6 +138,57 @@ IF OBJECT_ID(N'dbo.DateDimension', N'U') IS NULL
       )
   THROW 51707, 'SANITIZATION BLOCKED: DateDimension no longer has its expected safe shape.', 1;
 
+/*
+  A third category of preserved table: a reference catalog whose row set is
+  published by an external authority rather than chosen by this business.
+  dbo.Formas_Pago holds SAT c_FormaPago, the twenty-two payment-method claves
+  every Mexican taxpayer shares. Six properties must hold before a table may
+  join this category, and the guards below fail closed on each of them:
+
+    1. no tenant column, so the rows cannot describe one company's books;
+    2. an exact, reviewed column manifest;
+    3. no identity, computed, rowversion, sparse or non-text column, because
+       an identity high-water mark is itself production-derived state;
+    4. no outgoing foreign key to an erased table (THROW 51709, below);
+    5. a row set defined externally, not by a business decision;
+    6. a content manifest in this script, so preservation keeps only what the
+       repository already knows rather than whatever the clone happened to hold.
+
+  Rules 1 through 3 are checked here. Rule 6 is the clamp inside the
+  transaction; 20260821_orion_training_catalogos.sql then restates every
+  description, so after a full reset no production byte survives in this table.
+*/
+IF OBJECT_ID(N'dbo.Formas_Pago', N'U') IS NULL
+   OR (SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.Formas_Pago')) <> 2
+   OR EXISTS
+      (
+        SELECT 1
+        FROM sys.columns
+        WHERE object_id = OBJECT_ID(N'dbo.Formas_Pago')
+          AND name NOT IN (N'Clave', N'Descripcion')
+      )
+  THROW 51730, 'SANITIZATION BLOCKED: Formas_Pago no longer has its expected safe shape.', 1;
+
+IF EXISTS
+(
+  SELECT 1
+  FROM sys.columns columnInfo
+  JOIN sys.types typeInfo ON typeInfo.user_type_id = columnInfo.user_type_id
+  WHERE columnInfo.object_id = OBJECT_ID(N'dbo.Formas_Pago')
+    AND (columnInfo.is_identity = 1
+         OR columnInfo.is_computed = 1
+         OR columnInfo.is_rowguidcol = 1
+         OR columnInfo.is_sparse = 1
+         OR columnInfo.is_filestream = 1
+         OR typeInfo.name NOT IN (N'char', N'varchar', N'nchar', N'nvarchar')
+         OR columnInfo.max_length NOT BETWEEN 1 AND 400)
+)
+  THROW 51731, 'SANITIZATION BLOCKED: a preserved reference catalog carries a generated or non-text column.', 1;
+
+IF COL_LENGTH(N'dbo.Formas_Pago', N'RFC') IS NOT NULL
+   OR COL_LENGTH(N'dbo.Formas_Pago', N'Rfc') IS NOT NULL
+  THROW 51732, 'SANITIZATION BLOCKED: a preserved reference catalog is tenant-scoped.', 1;
+
 DECLARE @ApplicationLockResult int;
 EXEC @ApplicationLockResult = sys.sp_getapplock
   @Resource = N'OrionERP:Orion_Training:Sanitize:v1',
@@ -386,9 +437,16 @@ BEGIN TRY
     ObjectId int NOT NULL PRIMARY KEY
   );
 
+  -- Any table added here must also be exempted from THROW 51726 in
+  -- 20260817_orion_training_provision.sql, or the reset aborts immediately
+  -- after this erase succeeds.
   INSERT @Preserved (ObjectId)
   VALUES (OBJECT_ID(N'dbo.__EFMigrationsHistory')),
-         (OBJECT_ID(N'dbo.DateDimension'));
+         (OBJECT_ID(N'dbo.DateDimension')),
+         -- SAT c_FormaPago: externally published, no tenant column, no identity,
+         -- no foreign key. The clamp below reduces it to the canonical manifest
+         -- before this transaction commits.
+         (OBJECT_ID(N'dbo.Formas_Pago'));
 
   IF EXISTS
   (
@@ -399,6 +457,26 @@ BEGIN TRY
     WHERE referencedKept.ObjectId IS NULL
   )
     THROW 51709, 'SANITIZATION BLOCKED: a preserved table now references a table scheduled for erasure.', 1;
+
+  /*
+    Rule 6 of the preserved reference catalog contract. Preservation keeps only
+    claves the repository already publishes; a clone row outside the canonical
+    SAT manifest is erased like any other production row, and a description too
+    long to be SAT wording stops the reset outright.
+
+    This list is mirrored by the seed in 20260821_orion_training_catalogos.sql
+    and by attestation guard 51769. A unit test compares all three, because a
+    drift between them would quietly widen what survives the erase.
+  */
+  DELETE formaPago
+  FROM dbo.Formas_Pago formaPago
+  WHERE formaPago.Clave COLLATE Latin1_General_100_BIN2 NOT IN
+    (N'01', N'02', N'03', N'04', N'05', N'06', N'08', N'12', N'13', N'14',
+     N'15', N'17', N'23', N'24', N'25', N'26', N'27', N'28', N'29', N'30',
+     N'31', N'99');
+
+  IF EXISTS (SELECT 1 FROM dbo.Formas_Pago WHERE LEN(ISNULL(Descripcion, N'')) > 100)
+    THROW 51733, 'SANITIZATION BLOCKED: a preserved reference catalog row is outside its canonical manifest.', 1;
 
   DECLARE @QualifiedName nvarchar(517);
   DECLARE @Statement nvarchar(max);

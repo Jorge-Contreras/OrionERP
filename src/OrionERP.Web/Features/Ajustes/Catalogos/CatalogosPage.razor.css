@@ -1,0 +1,181 @@
+/*
+  Scoped styles for the catalog hub. Built on the shared --orion-color-* tokens
+  from wwwroot/css/utilities.css and the .compact-table rules in tables.css, so
+  the hub reads as part of Ajustes rather than a page of its own.
+
+  Every interactive surface here defines its default, hover, focus-visible,
+  active and disabled states explicitly; the tab strip in particular is a set of
+  real <button> elements, so without this it would render as raw browser
+  buttons.
+*/
+
+.catalogos-page {
+  color: var(--orion-color-text);
+}
+
+/* ---------- Tab strip ---------- */
+
+.catalogos-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--orion-color-border);
+  border-radius: 0.6rem;
+  background-color: var(--orion-color-surface-alt);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.catalogos-tab {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+  color: var(--orion-color-text-muted);
+  background-color: transparent;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.catalogos-tab:hover {
+  color: var(--orion-color-text);
+  background-color: var(--orion-color-surface);
+  border-color: var(--orion-color-border);
+}
+
+.catalogos-tab:focus-visible {
+  outline: 2px solid var(--orion-color-primary);
+  outline-offset: 2px;
+}
+
+.catalogos-tab:active {
+  transform: translateY(1px);
+}
+
+.catalogos-tab.is-active {
+  color: var(--orion-color-primary);
+  background-color: var(--orion-color-surface);
+  border-color: var(--orion-color-primary-soft);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+}
+
+.catalogos-tab:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ---------- Cards and list ---------- */
+
+.catalogos-section .card {
+  border: 1px solid var(--orion-color-border);
+  border-radius: 0.75rem;
+}
+
+/*
+  The list scrolls on its own rather than growing the page, so the editor beside
+  it stays in view while a long catalog is browsed.
+*/
+.catalogos-list {
+  max-height: 26rem;
+  overflow-y: auto;
+  border: 1px solid var(--orion-color-border);
+  border-radius: 0.5rem;
+  scrollbar-width: thin;
+}
+
+.catalogos-list::-webkit-scrollbar {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+.catalogos-list::-webkit-scrollbar-thumb {
+  background-color: var(--orion-color-border-strong);
+  border-radius: 999px;
+}
+
+.catalogos-list::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+.catalogos-list thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background-color: var(--orion-color-surface-alt);
+  border-bottom: 1px solid var(--orion-color-border);
+}
+
+.catalogos-list tbody tr {
+  cursor: pointer;
+  transition: background-color 100ms ease;
+}
+
+.catalogos-list tbody tr:hover {
+  background-color: var(--orion-color-highlight);
+}
+
+/* Rows are clickable, so the keyboard focus ring has to be obvious. */
+.catalogos-list tbody tr:focus-visible {
+  outline: 2px solid var(--orion-color-primary);
+  outline-offset: -2px;
+}
+
+/* ---------- Chart of accounts ---------- */
+
+/*
+  Indentation is the only thing distinguishing a header from a leaf at a glance,
+  so it carries real meaning here rather than being decoration.
+*/
+.catalogos-nivel-1 td:first-child {
+  font-weight: 600;
+}
+
+.catalogos-nivel-2 td:first-child {
+  padding-left: 1.5rem;
+}
+
+.catalogos-nivel-3 td:first-child {
+  padding-left: 3rem;
+}
+
+.catalogos-clave {
+  display: inline-block;
+  min-width: 5.5rem;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  color: var(--orion-color-text-muted);
+}
+
+.catalogos-descripcion {
+  margin-left: 0.25rem;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 575.98px) {
+  .catalogos-tabs {
+    flex-wrap: nowrap;
+  }
+
+  .catalogos-list {
+    max-height: 18rem;
+  }
+
+  .catalogos-nivel-2 td:first-child {
+    padding-left: 0.9rem;
+  }
+
+  .catalogos-nivel-3 td:first-child {
+    padding-left: 1.8rem;
+  }
+
+  .catalogos-clave {
+    min-width: 4.5rem;
+  }
+}

@@ -41,7 +41,10 @@ BEGIN TRY
     ) rowInfo
     WHERE tableInfo.is_ms_shipped = 0
       AND rowInfo.TableRowCount > 0
-      AND NOT (schemaInfo.name = N'dbo' AND tableInfo.name IN (N'__EFMigrationsHistory', N'DateDimension'))
+      -- This list must mirror @Preserved in 20260817_orion_training_sanitize.sql
+      -- exactly. A table the sanitizer keeps but this guard does not exempt
+      -- aborts the reset here, immediately after a successful erase.
+      AND NOT (schemaInfo.name = N'dbo' AND tableInfo.name IN (N'__EFMigrationsHistory', N'DateDimension', N'Formas_Pago'))
       AND NOT
       (
         schemaInfo.name = N'capacitacion'

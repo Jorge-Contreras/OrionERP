@@ -1,0 +1,336 @@
+@page "/ajustes/catalogos"
+@using OrionERP.Application.Features.Ajustes.Catalogos
+@using OrionERP.Web.Shared
+@attribute [Authorize(Roles = "Administrador")]
+
+<PageTitle>Catálogos</PageTitle>
+
+<div class="container-fluid py-3 catalogos-page">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-1">Catálogos</h1>
+      <p class="text-muted mb-0">
+        Listas de referencia que alimentan los selectores de OrionERP. Hasta ahora sólo podían editarse directamente en la base de datos.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      @if (ActiveDescriptor?.EsPorRfc == true)
+      {
+        <RfcPicker @bind-SelectedRfc="selectedRfc" @bind-SelectedRfc:after="OnRfcChangedAsync" />
+      }
+      <a class="btn btn-outline-secondary" href="/ajustes">Volver a Ajustes</a>
+    </div>
+  </div>
+
+  <nav class="catalogos-tabs mb-3" aria-label="Catálogos disponibles">
+    @foreach (var descriptor in Descriptors)
+    {
+      var key = TabKey(descriptor.Key);
+      <button type="button"
+              class="catalogos-tab @(tab == key ? "is-active" : null)"
+              aria-current="@(tab == key ? "page" : null)"
+              @onclick="() => SelectTabAsync(key)">
+        @descriptor.Titulo
+      </button>
+    }
+    <button type="button"
+            class="catalogos-tab @(tab == CuentasTab ? "is-active" : null)"
+            aria-current="@(tab == CuentasTab ? "page" : null)"
+            @onclick="() => SelectTabAsync(CuentasTab)">
+      Cuentas contables
+    </button>
+  </nav>
+
+  @if (tab == CuentasTab)
+  {
+    <section class="catalogos-section">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+            <div>
+              <h2 class="h5 mb-1">Cuentas contables</h2>
+              <p class="text-muted mb-0">
+                Catálogo de cuentas de tres niveles. Un encabezado de Nivel 1 es <code>00-00</code>, uno de Nivel 2 termina en <code>00</code>, y cualquier otra cuenta es imputable.
+              </p>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <RfcPicker @bind-SelectedRfc="selectedRfc" @bind-SelectedRfc:after="OnRfcChangedAsync" />
+              <button type="button" class="btn btn-outline-primary" @onclick="NewCuenta">Nueva cuenta</button>
+            </div>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-12 col-xl-6">
+              <label class="form-label" for="cuentas-buscar">Buscar</label>
+              <input id="cuentas-buscar"
+                     class="form-control mb-3"
+                     type="search"
+                     placeholder="Clave o descripción"
+                     @bind="cuentaSearchText"
+                     @bind:event="oninput"
+                     @bind:after="LoadCuentasAsync" />
+
+              <div class="table-responsive catalogos-list">
+                <table class="table table-sm table-hover align-middle mb-0 compact-table">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Cuenta</th>
+                      <th class="text-end">Uso</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @if (isLoading && Cuentas.Count == 0)
+                    {
+                      <tr><td colspan="2" class="text-center text-muted py-4">Cargando cuentas...</td></tr>
+                    }
+                    else if (string.IsNullOrWhiteSpace(selectedRfc))
+                    {
+                      <tr><td colspan="2" class="text-center text-muted py-4">Selecciona un RFC para ver su catálogo de cuentas.</td></tr>
+                    }
+                    else if (Cuentas.Count == 0)
+                    {
+                      <tr><td colspan="2" class="text-center text-muted py-4">No hay cuentas para los filtros actuales.</td></tr>
+                    }
+                    else
+                    {
+                      @foreach (var cuenta in Cuentas)
+                      {
+                        <tr class="@(cuenta.Id == selectedCuentaId ? "table-primary" : null) catalogos-nivel-@cuenta.Nivel"
+                            role="button"
+                            tabindex="0"
+                            @onclick="() => SelectCuenta(cuenta)"
+                            @onkeydown="@(args => OnRowKeyDown(args, () => SelectCuenta(cuenta)))">
+                          <td>
+                            <span class="catalogos-clave">@cuenta.Clave</span>
+                            <span class="catalogos-descripcion">@cuenta.Descripcion</span>
+                            @if (cuenta.EsEncabezado)
+                            {
+                              <span class="badge text-bg-light ms-1">Encabezado</span>
+                            }
+                          </td>
+                          <td class="text-end num">
+                            @(cuenta.EsEncabezado ? cuenta.Hijos : cuenta.Referencias)
+                          </td>
+                        </tr>
+                      }
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="col-12 col-xl-6">
+              <EditForm Model="CuentaEditor" OnValidSubmit="SaveCuentaAsync">
+                <DataAnnotationsValidator />
+                <ValidationSummary class="text-danger small" />
+
+                <div class="row g-2">
+                  <div class="col-4">
+                    <label class="form-label" for="cuenta-n1">Nivel 1</label>
+                    <InputText id="cuenta-n1" class="form-control" @bind-Value="CuentaEditor.Nivel1" disabled="@(!isNewCuenta)" />
+                  </div>
+                  <div class="col-4">
+                    <label class="form-label" for="cuenta-n2">Nivel 2</label>
+                    <InputText id="cuenta-n2" class="form-control" @bind-Value="CuentaEditor.Nivel2" disabled="@(!isNewCuenta)" />
+                  </div>
+                  <div class="col-4">
+                    <label class="form-label" for="cuenta-n3">Nivel 3</label>
+                    <InputText id="cuenta-n3" class="form-control" @bind-Value="CuentaEditor.Nivel3" disabled="@(!isNewCuenta)" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label" for="cuenta-desc">Descripción</label>
+                    <InputText id="cuenta-desc" class="form-control" @bind-Value="CuentaEditor.Descripcion" />
+                  </div>
+                </div>
+
+                @if (!isNewCuenta)
+                {
+                  <p class="text-muted small mt-2 mb-0">
+                    La clave no se edita: cambiarla re-apuntaría en silencio cada póliza que la usa. Para reclasificar, crea la cuenta nueva y elimina la anterior.
+                  </p>
+                }
+
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                  <button type="submit" class="btn btn-primary" disabled="@isSaving">
+                    @(isSaving ? "Guardando..." : "Guardar cuenta")
+                  </button>
+                  @if (!isNewCuenta && selectedCuentaId is int cuentaId)
+                  {
+                    <button type="button" class="btn btn-outline-danger" disabled="@isSaving" @onclick="() => DeleteCuentaAsync(cuentaId)">
+                      Eliminar
+                    </button>
+                  }
+                  <button type="button" class="btn btn-outline-secondary" disabled="@isSaving" @onclick="NewCuenta">
+                    Cancelar
+                  </button>
+                </div>
+              </EditForm>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  }
+  else if (ActiveDescriptor is { } descriptor)
+  {
+    <section class="catalogos-section">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+            <div>
+              <h2 class="h5 mb-1">@descriptor.Titulo</h2>
+              <p class="text-muted mb-0">@descriptor.Descripcion</p>
+            </div>
+            <button type="button" class="btn btn-outline-primary" @onclick="NewItem">Nuevo registro</button>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-12 col-xl-5">
+              <label class="form-label" for="catalogo-buscar">Buscar</label>
+              <input id="catalogo-buscar"
+                     class="form-control"
+                     type="search"
+                     placeholder="@(descriptor.TieneCodigo ? $"{descriptor.CodigoEtiqueta} o {descriptor.NombreEtiqueta.ToLowerInvariant()}" : descriptor.NombreEtiqueta)"
+                     @bind="searchText"
+                     @bind:event="oninput"
+                     @bind:after="LoadItemsAsync" />
+
+              @if (descriptor.TieneActivo)
+              {
+                <label class="form-check d-flex align-items-center gap-2 mt-2 mb-0">
+                  <input class="form-check-input" type="checkbox" @bind="includeInactive" @bind:after="LoadItemsAsync" />
+                  <span class="form-check-label">Incluir inactivos</span>
+                </label>
+              }
+
+              <div class="table-responsive catalogos-list mt-3">
+                <table class="table table-sm table-hover align-middle mb-0 compact-table">
+                  <thead class="table-light">
+                    <tr>
+                      <th>@(descriptor.TieneCodigo ? descriptor.CodigoEtiqueta : descriptor.NombreEtiqueta)</th>
+                      @if (descriptor.TieneCodigo)
+                      {
+                        <th>@descriptor.NombreEtiqueta</th>
+                      }
+                      <th class="text-end">Uso</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @if (isLoading && Items.Count == 0)
+                    {
+                      <tr><td colspan="3" class="text-center text-muted py-4">Cargando registros...</td></tr>
+                    }
+                    else if (descriptor.EsPorRfc && string.IsNullOrWhiteSpace(selectedRfc))
+                    {
+                      <tr><td colspan="3" class="text-center text-muted py-4">Selecciona un RFC para ver este catálogo.</td></tr>
+                    }
+                    else if (Items.Count == 0)
+                    {
+                      <tr><td colspan="3" class="text-center text-muted py-4">No hay registros para los filtros actuales.</td></tr>
+                    }
+                    else
+                    {
+                      @foreach (var item in Items)
+                      {
+                        <tr class="@(item.Id == selectedItemId ? "table-primary" : null)"
+                            role="button"
+                            tabindex="0"
+                            @onclick="() => SelectItem(item)"
+                            @onkeydown="@(args => OnRowKeyDown(args, () => SelectItem(item)))">
+                          <td>
+                            <span class="fw-semibold">@(descriptor.TieneCodigo ? item.Codigo : item.Nombre)</span>
+                            @if (item.EsProtegido)
+                            {
+                              <span class="badge text-bg-light ms-1" title="Publicada por el SAT: puede corregirse su descripción, no eliminarse.">SAT</span>
+                            }
+                            @if (descriptor.TieneActivo && !item.Activo)
+                            {
+                              <span class="badge text-bg-secondary ms-1">Inactivo</span>
+                            }
+                          </td>
+                          @if (descriptor.TieneCodigo)
+                          {
+                            <td>@item.Nombre</td>
+                          }
+                          <td class="text-end num">@item.Referencias</td>
+                        </tr>
+                      }
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="col-12 col-xl-7">
+              <EditForm Model="ItemEditor" OnValidSubmit="SaveItemAsync">
+                <DataAnnotationsValidator />
+                <ValidationSummary class="text-danger small" />
+
+                <div class="row g-2">
+                  @if (descriptor.TieneCodigo)
+                  {
+                    <div class="col-12 col-sm-4">
+                      <label class="form-label" for="item-codigo">@descriptor.CodigoEtiqueta</label>
+                      <InputText id="item-codigo"
+                                 class="form-control"
+                                 @bind-Value="ItemEditor.Codigo"
+                                 disabled="@(descriptor.CodigoEsLlave && !isNewItem)" />
+                      <ValidationMessage For="() => ItemEditor.Codigo" class="text-danger small" />
+                    </div>
+                  }
+                  <div class="@(descriptor.TieneCodigo ? "col-12 col-sm-8" : "col-12")">
+                    <label class="form-label" for="item-nombre">@descriptor.NombreEtiqueta</label>
+                    <InputText id="item-nombre" class="form-control" @bind-Value="ItemEditor.Nombre" />
+                    <ValidationMessage For="() => ItemEditor.Nombre" class="text-danger small" />
+                  </div>
+                  @if (descriptor.TieneOrden)
+                  {
+                    <div class="col-12 col-sm-4">
+                      <label class="form-label" for="item-orden">Orden</label>
+                      <InputNumber id="item-orden" class="form-control" @bind-Value="ItemEditor.Orden" />
+                    </div>
+                  }
+                  @if (descriptor.TieneActivo)
+                  {
+                    <div class="col-12 d-flex align-items-end">
+                      <label class="form-check d-flex align-items-center gap-2 mb-0">
+                        <InputCheckbox class="form-check-input" @bind-Value="ItemEditor.Activo" />
+                        <span class="form-check-label">Activo</span>
+                      </label>
+                    </div>
+                  }
+                </div>
+
+                @if (SelectedItem is { EsProtegido: true })
+                {
+                  <p class="text-muted small mt-2 mb-0">
+                    Esta clave pertenece al catálogo SAT <code>c_FormaPago</code>. Puedes corregir su descripción, pero no eliminarla ni renumerarla.
+                  </p>
+                }
+
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                  <button type="submit" class="btn btn-primary" disabled="@isSaving">
+                    @(isSaving ? "Guardando..." : "Guardar")
+                  </button>
+                  @if (!isNewItem && SelectedItem is { } selected)
+                  {
+                    <button type="button"
+                            class="btn btn-outline-danger"
+                            disabled="@(isSaving || selected.EsProtegido)"
+                            title="@(selected.EsProtegido ? "Las claves del catálogo SAT no pueden eliminarse." : null)"
+                            @onclick="() => DeleteItemAsync(selected)">
+                      @(descriptor.TieneActivo ? "Desactivar" : "Eliminar")
+                    </button>
+                  }
+                  <button type="button" class="btn btn-outline-secondary" disabled="@isSaving" @onclick="NewItem">
+                    Cancelar
+                  </button>
+                </div>
+              </EditForm>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  }
+</div>

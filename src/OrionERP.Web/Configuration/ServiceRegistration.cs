@@ -15,9 +15,11 @@ using OrionERP.Application.Features.Rfcs.Contracts;
 using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Application.Features.Contabilidad.ContabilidadRegistros;
 using OrionERP.Application.Features.Ajustes;
+using OrionERP.Application.Features.Ajustes.Catalogos;
 using OrionERP.Infrastructure.Common;
 using OrionERP.Infrastructure.Features.Arrendadores;
 using OrionERP.Infrastructure.Features.Ajustes;
+using OrionERP.Infrastructure.Features.Ajustes.Catalogos;
 using OrionERP.Infrastructure.Features.Auth.AdminPortal;
 using OrionERP.Infrastructure.Features.CapitalHumano;
 using OrionERP.Infrastructure.Features.CapitalHumano.Workforce;
@@ -133,6 +135,7 @@ public static class ServiceRegistration
 
     services.AddScoped<ICuentasContablesRepository, CuentasContablesRepository>();
     services.AddScoped<IAjustesService, AjustesService>();
+    services.AddScoped<ICatalogoService, CatalogoService>();
     services.AddScoped<ICapitalHumanoService, CapitalHumanoService>();
     services.AddScoped<ICurrentEmployeeAccessor, CurrentEmployeeAccessor>();
     services.AddScoped<IGpsLocationProtector, GpsLocationProtector>();

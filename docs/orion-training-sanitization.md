@@ -32,8 +32,9 @@ El flujo aplicado:
    remoto;
 4. invalida cualquier atestación previa;
 5. dentro de una transacción, desactiva temporalmente triggers y constraints,
-   borra filas de todas las tablas salvo dos referencias revisadas, vuelve a
-   habilitar y validar los constraints, y comprueba que el borrado fue total;
+   borra filas de todas las tablas salvo el catálogo de referencia revisado,
+   vuelve a habilitar y validar los constraints, y comprueba que el borrado fue
+   total;
 6. reinstala el catálogo español versionado de Capacitación, agrega el currículo
    completo con un curso por cada módulo de OrionERP y la ruta de aprendizaje
    `ORION-EXPERTO`, y sustituye el importador CFDI por uno exclusivo de Training
@@ -46,19 +47,40 @@ El flujo aplicado:
    `trainee02@training.orion.local`, siempre con
    `instructor@training.orion.local` como instructor y responsable de la
    asignación;
-9. reinicia identidades, secuencias y estadísticas, limpia Query Store y bloquea
+9. siembra los catálogos de referencia y sintéticos que alimentan los desplegables
+   de cada módulo (`20260821_orion_training_catalogos.sql`): el catálogo SAT
+   `c_FormaPago`, un catálogo de cuentas contables ficticio de tres niveles,
+   proyectos/compras/servicios, plantillas contables balanceadas, cuenta bancaria,
+   arrendador, extras, experiencias, alérgenos, socios de negocio, días festivos y
+   la configuración completa de un restaurante ficticio;
+10. reinicia identidades, secuencias y estadísticas, limpia Query Store y bloquea
    RLS, Broker, replicación, claves, permisos/principales clonados y módulos con
    efectos externos;
-10. revisa una lista cerrada de tablas y marcadores sintéticos; sólo entonces
+11. revisa una lista cerrada de tablas y marcadores sintéticos; sólo entonces
    cambia la atestación a `DatosSanitizados=1` y `DatosSinteticos=1`.
 
 Las únicas filas clonadas que se conservan son:
 
 - `dbo.__EFMigrationsHistory`, limitada a sus dos columnas estándar;
-- `dbo.DateDimension`, limitada a sus 34 columnas derivadas de fechas.
+- `dbo.DateDimension`, limitada a sus 34 columnas derivadas de fechas;
+- `dbo.Formas_Pago`, el catálogo SAT `c_FormaPago`.
 
-CFDI, contabilidad, bancos, pagos, adjuntos, membresías, restaurante, Capital
-Humano real, reservaciones reales, logs y tablas `codex_recovery` quedan vacíos.
+`dbo.Formas_Pago` es la única tabla de negocio preservada y su excepción está
+acotada por escrito. Para calificar como catálogo de referencia preservado una
+tabla debe cumplir las seis reglas que el sanitizador verifica (errores
+51730-51733): sin columna de RFC, con un manifiesto exacto de columnas, sin
+columnas generadas o no textuales, sin llaves foráneas hacia tablas borradas, con
+un conjunto de filas definido por una autoridad externa y no por una decisión de
+negocio, y con un manifiesto de contenido dentro del propio script. El clamp del
+paso 5 borra cualquier clave fuera de las 22 canónicas del SAT y el `MERGE` del
+paso 9 reescribe todas las descripciones con el texto del repositorio: tras un
+reinicio completo **no sobrevive ningún byte de producción en esa tabla**. La
+atestación lo vuelve a verificar al final (error 51769), y una prueba unitaria
+compara las tres listas para que no se separen.
+
+CFDI, pólizas, movimientos bancarios, pagos, adjuntos, membresías, órdenes de
+restaurante, Capital Humano real, reservaciones reales, logs y tablas
+`codex_recovery` quedan vacíos.
 No se fabrica un CFDI timbrado ni se guarda una póliza o movimiento bancario. El
 curso usa un XML local, inequívocamente inválido/no timbrable, y limita la parte
 contable a explicar una propuesta ficticia de 1,000 + 160 = 1,160; así ninguna
@@ -212,3 +234,16 @@ revisados antes de volverlos a habilitar.
 - Los cambios de esquema futuros son fail-closed: una tabla nueva se vacía y no
   puede contener filas al atestar hasta que se revise y agregue explícitamente al
   manifiesto sintético.
+- Agregar un catálogo nuevo toca tres lugares, y el orden importa: la siembra en
+  `20260821_orion_training_catalogos.sql`, la entrada en `@AllowedNonEmpty` de la
+  atestación y —sólo si además se preserva del clon— la exención del error 51726
+  en `20260817_orion_training_provision.sql`. Omitir el segundo aborta el reinicio
+  con 51753 *después* del borrado; omitir el tercero lo aborta con 51726. Una
+  prueba unitaria compara la siembra contra el manifiesto para que no se olvide.
+- La preservación de un catálogo de referencia es la única grieta deliberada en la
+  regla de que ninguna fila de producción sobrevive al borrado, y hoy la ocupa una
+  sola tabla. Vale la pena notar que, como el `MERGE` de la siembra reescribe todas
+  las descripciones, quitar la preservación y quedarse sólo con la siembra daría un
+  estado final idéntico con una invariante estrictamente más fuerte: el mecanismo
+  existe porque generaliza a futuros catálogos globales, no porque `Formas_Pago` lo
+  necesite. Si algún día estorba, esto es lo seguro de recortar.

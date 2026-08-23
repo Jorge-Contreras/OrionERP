@@ -13,6 +13,8 @@ public static class LoyaltyMemberStatuses
 public static class LoyaltyLedgerTypes
 {
   public const string Earn = "Earn";
+  public const string Redeem = "Redeem";
+  public const string Expiration = "Expiration";
   public const string RefundReversal = "RefundReversal";
   public const string CancellationReversal = "CancellationReversal";
   public const string AdminAdjustment = "AdminAdjustment";
@@ -130,5 +132,72 @@ public sealed class LoyaltyProgramReportDto
   public int NewMembers { get; set; }
   public int PointsIssued { get; set; }
   public int PointsReversed { get; set; }
+  public int PointsRedeemed { get; set; }
+  public int PointsExpired { get; set; }
+  public decimal RedeemedValue { get; set; }
   public int OutstandingPoints { get; set; }
+  public decimal OutstandingLiability { get; set; }
+}
+
+public sealed class LoyaltyProgramSettingsDto
+{
+  public decimal PesosPerPoint { get; set; } = 10m;
+  public bool IsAccrualEnabled { get; set; }
+  public bool PointsExpire { get; set; }
+  public decimal PointValueMxn { get; set; } = 1m;
+  public int MinimumRedeemPoints { get; set; } = 100;
+  public int PointsValidityMonths { get; set; } = 12;
+  public DateTime UpdatedAt { get; set; }
+  public string? UpdatedBy { get; set; }
+}
+
+public sealed class LoyaltyProgramSettingsSaveRequest
+{
+  [Required] public string Rfc { get; set; } = string.Empty;
+  [Range(typeof(decimal), "0.01", "100000")] public decimal PesosPerPoint { get; set; } = 10m;
+  public bool IsAccrualEnabled { get; set; }
+  public bool PointsExpire { get; set; }
+  [Range(typeof(decimal), "0.01", "1000")] public decimal PointValueMxn { get; set; } = 1m;
+  [Range(1, 1000000)] public int MinimumRedeemPoints { get; set; } = 100;
+  [Range(1, 240)] public int PointsValidityMonths { get; set; } = 12;
+}
+
+public sealed class LoyaltyRedeemRequest
+{
+  [Required] public string Rfc { get; set; } = string.Empty;
+  public Guid MemberId { get; set; }
+  [Range(1, 1000000)] public int Points { get; set; }
+  [StringLength(500)] public string? Reason { get; set; }
+  /// <summary>Clave idempotente opcional. Si se repite, el canje no se duplica.</summary>
+  [StringLength(120)] public string? IdempotencyKey { get; set; }
+}
+
+public sealed class LoyaltyRedeemResultDto
+{
+  public bool Success { get; set; }
+  public string Message { get; set; } = string.Empty;
+  public int PointsRedeemed { get; set; }
+  public decimal ValueMxn { get; set; }
+  public int BalanceAfter { get; set; }
+  public string? VoucherCode { get; set; }
+}
+
+public sealed class LoyaltyRedeemablePreviewDto
+{
+  public int PointsBalance { get; set; }
+  public int MinimumRedeemPoints { get; set; }
+  public decimal PointValueMxn { get; set; }
+  public bool CanRedeem { get; set; }
+  public int RedeemablePoints { get; set; }
+  public decimal RedeemableValue { get; set; }
+  public int PointsExpiringSoon { get; set; }
+  public DateTime? NextExpirationDate { get; set; }
+}
+
+public sealed class LoyaltyExpirationRunDto
+{
+  public DateTime CutoffUtc { get; set; }
+  public int MembersAffected { get; set; }
+  public int PointsExpired { get; set; }
+  public bool WasApplied { get; set; }
 }

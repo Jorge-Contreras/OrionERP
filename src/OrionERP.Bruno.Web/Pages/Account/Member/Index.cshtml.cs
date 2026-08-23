@@ -15,6 +15,7 @@ public sealed class IndexModel : PageModel
   private readonly ILoyaltyService _loyaltyService;
   public IndexModel(UserManager<BrunoMemberUser> userManager, ILoyaltyService loyaltyService) { _userManager = userManager; _loyaltyService = loyaltyService; }
   public LoyaltyMemberProfileDto Profile { get; private set; } = new();
+  public LoyaltyRedeemablePreviewDto? Redeemable { get; private set; }
   [BindProperty] public bool EmailMarketingConsent { get; set; }
   [BindProperty] public bool SmsMarketingConsent { get; set; }
   [BindProperty] public bool WhatsAppMarketingConsent { get; set; }
@@ -69,6 +70,14 @@ public sealed class IndexModel : PageModel
     var profile = await _loyaltyService.GetMemberProfileByIdentityAsync(BrunoSiteConstants.Rfc, user.Id, ct);
     if (profile is null || profile.Status == LoyaltyMemberStatuses.Closed) return false;
     Profile = profile;
+    try
+    {
+      Redeemable = await _loyaltyService.GetRedeemablePreviewAsync(BrunoSiteConstants.Rfc, profile.Id, ct);
+    }
+    catch
+    {
+      Redeemable = null;
+    }
     return true;
   }
 }

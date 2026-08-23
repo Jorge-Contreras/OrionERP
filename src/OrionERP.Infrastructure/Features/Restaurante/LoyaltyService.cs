@@ -455,6 +455,374 @@ public sealed class LoyaltyService : ILoyaltyService
     }
   }
 
+  public async Task<LoyaltyProgramSettingsDto?> GetProgramSettingsAsync(
+    string rfc,
+    CancellationToken ct = default)
+  {
+    var normalizedRfc = LogisticsRfc.Require(rfc);
+    using var conn = CreateConnection();
+    return await conn.QuerySingleOrDefaultAsync<LoyaltyProgramSettingsDto>(new CommandDefinition(
+      """
+      SELECT PesosPerPoint,IsAccrualEnabled,PointsExpire,
+             PointValueMxn,MinimumRedeemPoints,PointsValidityMonths,
+             UpdatedAt,UpdatedBy
+      FROM fidelidad.ProgramSettings WHERE Rfc=@Rfc;
+      """,
+      new { Rfc = normalizedRfc },
+      cancellationToken: ct));
+  }
+
+  public async Task<RestaurantCommandResult> SaveProgramSettingsAsync(
+    LoyaltyProgramSettingsSaveRequest request,
+    string updatedBy,
+    CancellationToken ct = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+    var rfc = LogisticsRfc.Require(request.Rfc);
+    if (request.PesosPerPoint <= 0)
+      return RestaurantCommandResult.Fail("Los pesos por punto deben ser mayores que cero.");
+    if (request.PointValueMxn <= 0)
+      return RestaurantCommandResult.Fail("El valor del punto debe ser mayor que cero.");
+    if (request.MinimumRedeemPoints <= 0)
+      return RestaurantCommandResult.Fail("El mínimo de canje debe ser mayor que cero.");
+    if (request.PointsValidityMonths is < 1 or > 240)
+      return RestaurantCommandResult.Fail("La vigencia debe estar entre 1 y 240 meses.");
+
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    var affected = await conn.ExecuteAsync(new CommandDefinition(
+      """
+      UPDATE fidelidad.ProgramSettings
+      SET PesosPerPoint=@PesosPerPoint,IsAccrualEnabled=@IsAccrualEnabled,
+          PointsExpire=@PointsExpire,PointValueMxn=@PointValueMxn,
+          MinimumRedeemPoints=@MinimumRedeemPoints,PointsValidityMonths=@PointsValidityMonths,
+          UpdatedAt=SYSUTCDATETIME(),UpdatedBy=@UpdatedBy
+      WHERE Rfc=@Rfc;
+      """,
+      new
+      {
+        Rfc = rfc,
+        request.PesosPerPoint,
+        request.IsAccrualEnabled,
+        request.PointsExpire,
+        request.PointValueMxn,
+        request.MinimumRedeemPoints,
+        request.PointsValidityMonths,
+        UpdatedBy = updatedBy
+      },
+      cancellationToken: ct));
+    return affected == 1
+      ? RestaurantCommandResult.Ok("La política del programa fue actualizada.")
+      : RestaurantCommandResult.Fail("No existe configuración de fidelidad para este RFC.");
+  }
+
+  public async Task<LoyaltyRedeemablePreviewDto?> GetRedeemablePreviewAsync(
+    string rfc,
+    Guid memberId,
+    CancellationToken ct = default)
+  {
+    var normalizedRfc = LogisticsRfc.Require(rfc);
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    var settings = await conn.QuerySingleOrDefaultAsync<RedemptionSettingsRow>(new CommandDefinition(
+      "SELECT PointValueMxn,MinimumRedeemPoints,PointsValidityMonths,PointsExpire FROM fidelidad.ProgramSettings WHERE Rfc=@Rfc;",
+      new { Rfc = normalizedRfc },
+      cancellationToken: ct));
+    if (settings is null)
+    {
+      return null;
+    }
+
+    var balance = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
+      "SELECT PointsBalance FROM fidelidad.MemberAccount WHERE Rfc=@Rfc AND Id=@MemberId AND [Status]='Active';",
+      new { Rfc = normalizedRfc, MemberId = memberId },
+      cancellationToken: ct));
+    if (!balance.HasValue)
+    {
+      return null;
+    }
+
+    var redeemable = LoyaltyPointsCalculator.CalculateRedeemablePoints(balance.Value, settings.MinimumRedeemPoints);
+    var preview = new LoyaltyRedeemablePreviewDto
+    {
+      PointsBalance = balance.Value,
+      MinimumRedeemPoints = settings.MinimumRedeemPoints,
+      PointValueMxn = settings.PointValueMxn,
+      CanRedeem = redeemable > 0,
+      RedeemablePoints = redeemable,
+      RedeemableValue = LoyaltyPointsCalculator.CalculateRedemptionValue(redeemable, settings.PointValueMxn)
+    };
+
+    if (settings.PointsExpire && balance.Value > 0)
+    {
+      var horizon = DateTime.UtcNow.AddMonths(-settings.PointsValidityMonths).AddDays(30);
+      var totals = await LoadExpiryTotalsAsync(conn, null, normalizedRfc, memberId, horizon, ct);
+      preview.PointsExpiringSoon = LoyaltyPointsCalculator.CalculateExpiringPoints(
+        totals.CreditedBeforeCutoff, totals.TotalConsumed, balance.Value);
+      preview.NextExpirationDate = totals.OldestOpenCreditAt?.AddMonths(settings.PointsValidityMonths);
+    }
+
+    return preview;
+  }
+
+  public async Task<LoyaltyRedeemResultDto> RedeemPointsAsync(
+    LoyaltyRedeemRequest request,
+    string redeemedBy,
+    CancellationToken ct = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+    var rfc = LogisticsRfc.Require(request.Rfc);
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    try
+    {
+      var settings = await conn.QuerySingleOrDefaultAsync<RedemptionSettingsRow>(new CommandDefinition(
+        """
+        SELECT PointValueMxn,MinimumRedeemPoints,PointsValidityMonths,PointsExpire
+        FROM fidelidad.ProgramSettings WITH(UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc;
+        """,
+        new { Rfc = rfc },
+        tx,
+        cancellationToken: ct));
+      if (settings is null)
+      {
+        await tx.RollbackAsync(ct);
+        return Rejected("El programa de fidelidad no está configurado para este RFC.");
+      }
+
+      var sourceKey = string.IsNullOrWhiteSpace(request.IdempotencyKey)
+        ? $"redeem:{Guid.NewGuid():N}"
+        : $"redeem:{request.IdempotencyKey.Trim()}";
+
+      var existing = await conn.QuerySingleOrDefaultAsync<ExistingRedemptionRow>(new CommandDefinition(
+        """
+        SELECT PointsDelta,BalanceAfter FROM fidelidad.PointLedger
+        WHERE Rfc=@Rfc AND SourceKey=@SourceKey;
+        """,
+        new { Rfc = rfc, SourceKey = sourceKey },
+        tx,
+        cancellationToken: ct));
+      if (existing is not null)
+      {
+        await tx.CommitAsync(ct);
+        var alreadyRedeemed = Math.Abs(existing.PointsDelta);
+        return new LoyaltyRedeemResultDto
+        {
+          Success = true,
+          Message = "Este canje ya había sido registrado; no se duplicó.",
+          PointsRedeemed = alreadyRedeemed,
+          ValueMxn = LoyaltyPointsCalculator.CalculateRedemptionValue(alreadyRedeemed, settings.PointValueMxn),
+          BalanceAfter = existing.BalanceAfter,
+          VoucherCode = BuildVoucherCode(sourceKey)
+        };
+      }
+
+      var member = await conn.QuerySingleOrDefaultAsync<RedeemMemberRow>(new CommandDefinition(
+        """
+        SELECT Id,MembershipNumber,PointsBalance,[Status],EmailVerified
+        FROM fidelidad.MemberAccount WITH(UPDLOCK,HOLDLOCK)
+        WHERE Rfc=@Rfc AND Id=@MemberId;
+        """,
+        new { Rfc = rfc, request.MemberId },
+        tx,
+        cancellationToken: ct));
+      if (member is null)
+      {
+        await tx.RollbackAsync(ct);
+        return Rejected("La membresía no existe.");
+      }
+      if (!string.Equals(member.Status, LoyaltyMemberStatuses.Active, StringComparison.Ordinal) || !member.EmailVerified)
+      {
+        await tx.RollbackAsync(ct);
+        return Rejected("La membresía no está activa o le falta verificación de correo.");
+      }
+
+      var rejection = LoyaltyPointsCalculator.ValidateRedemption(
+        request.Points, member.PointsBalance, settings.MinimumRedeemPoints);
+      if (rejection is not null)
+      {
+        await tx.RollbackAsync(ct);
+        return Rejected(rejection);
+      }
+
+      var balanceAfter = member.PointsBalance - request.Points;
+      var value = LoyaltyPointsCalculator.CalculateRedemptionValue(request.Points, settings.PointValueMxn);
+      var reason = string.IsNullOrWhiteSpace(request.Reason)
+        ? $"Canje de {request.Points} puntos por {value:C2}"
+        : request.Reason.Trim();
+
+      await conn.ExecuteAsync(new CommandDefinition(
+        """
+        UPDATE fidelidad.MemberAccount
+        SET PointsBalance=@BalanceAfter,UpdatedAt=SYSUTCDATETIME()
+        WHERE Rfc=@Rfc AND Id=@MemberId;
+        INSERT fidelidad.PointLedger
+          (Rfc,MemberId,EntryType,PointsDelta,BalanceAfter,SourceKey,Reason,CreatedBy)
+        VALUES
+          (@Rfc,@MemberId,'Redeem',@PointsDelta,@BalanceAfter,@SourceKey,@Reason,@RedeemedBy);
+        """,
+        new
+        {
+          Rfc = rfc,
+          request.MemberId,
+          PointsDelta = -request.Points,
+          BalanceAfter = balanceAfter,
+          SourceKey = sourceKey,
+          Reason = reason,
+          RedeemedBy = redeemedBy
+        },
+        tx,
+        cancellationToken: ct));
+
+      await tx.CommitAsync(ct);
+      return new LoyaltyRedeemResultDto
+      {
+        Success = true,
+        Message = $"Canje aplicado. Aplica {value:C2} de descuento en la cuenta del socio {member.MembershipNumber}.",
+        PointsRedeemed = request.Points,
+        ValueMxn = value,
+        BalanceAfter = balanceAfter,
+        VoucherCode = BuildVoucherCode(sourceKey)
+      };
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
+  public async Task<LoyaltyExpirationRunDto> ExpirePointsAsync(
+    string rfc,
+    bool applyChanges,
+    string runBy,
+    CancellationToken ct = default)
+  {
+    var normalizedRfc = LogisticsRfc.Require(rfc);
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    try
+    {
+      var settings = await conn.QuerySingleOrDefaultAsync<RedemptionSettingsRow>(new CommandDefinition(
+        """
+        SELECT PointValueMxn,MinimumRedeemPoints,PointsValidityMonths,PointsExpire
+        FROM fidelidad.ProgramSettings WITH(UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc;
+        """,
+        new { Rfc = normalizedRfc },
+        tx,
+        cancellationToken: ct));
+
+      var cutoff = DateTime.UtcNow.AddMonths(-(settings?.PointsValidityMonths ?? 12));
+      var run = new LoyaltyExpirationRunDto { CutoffUtc = cutoff, WasApplied = false };
+
+      if (settings is null || !settings.PointsExpire)
+      {
+        await tx.RollbackAsync(ct);
+        return run;
+      }
+
+      var members = (await conn.QueryAsync<ExpiryCandidateRow>(new CommandDefinition(
+        """
+        SELECT Id AS MemberId,PointsBalance
+        FROM fidelidad.MemberAccount WITH(UPDLOCK,HOLDLOCK)
+        WHERE Rfc=@Rfc AND PointsBalance>0;
+        """,
+        new { Rfc = normalizedRfc },
+        tx,
+        cancellationToken: ct))).AsList();
+
+      foreach (var candidate in members)
+      {
+        var totals = await LoadExpiryTotalsAsync(conn, tx, normalizedRfc, candidate.MemberId, cutoff, ct);
+        var expiring = LoyaltyPointsCalculator.CalculateExpiringPoints(
+          totals.CreditedBeforeCutoff, totals.TotalConsumed, candidate.PointsBalance);
+        if (expiring <= 0)
+        {
+          continue;
+        }
+
+        run.MembersAffected++;
+        run.PointsExpired += expiring;
+
+        if (!applyChanges)
+        {
+          continue;
+        }
+
+        var balanceAfter = candidate.PointsBalance - expiring;
+        await conn.ExecuteAsync(new CommandDefinition(
+          """
+          UPDATE fidelidad.MemberAccount
+          SET PointsBalance=@BalanceAfter,UpdatedAt=SYSUTCDATETIME()
+          WHERE Rfc=@Rfc AND Id=@MemberId;
+          INSERT fidelidad.PointLedger
+            (Rfc,MemberId,EntryType,PointsDelta,BalanceAfter,SourceKey,Reason,CreatedBy)
+          VALUES
+            (@Rfc,@MemberId,'Expiration',@PointsDelta,@BalanceAfter,@SourceKey,@Reason,@RunBy);
+          """,
+          new
+          {
+            Rfc = normalizedRfc,
+            candidate.MemberId,
+            PointsDelta = -expiring,
+            BalanceAfter = balanceAfter,
+            SourceKey = $"expiry:{candidate.MemberId:N}:{cutoff:yyyyMMdd}",
+            Reason = $"Caducidad de {expiring} puntos con más de {settings.PointsValidityMonths} meses de antigüedad",
+            RunBy = runBy
+          },
+          tx,
+          cancellationToken: ct));
+      }
+
+      run.WasApplied = applyChanges;
+      if (applyChanges)
+      {
+        await tx.CommitAsync(ct);
+      }
+      else
+      {
+        await tx.RollbackAsync(ct);
+      }
+      return run;
+    }
+    catch
+    {
+      await tx.RollbackAsync(ct);
+      throw;
+    }
+  }
+
+  private static async Task<ExpiryTotals> LoadExpiryTotalsAsync(
+    DbConnection conn,
+    DbTransaction? tx,
+    string rfc,
+    Guid memberId,
+    DateTime cutoff,
+    CancellationToken ct)
+    => await conn.QuerySingleAsync<ExpiryTotals>(new CommandDefinition(
+      """
+      SELECT
+        ISNULL(SUM(CASE WHEN ledger.PointsDelta>0 AND ledger.OccurredAt<@Cutoff
+                        THEN ledger.PointsDelta ELSE 0 END),0) AS CreditedBeforeCutoff,
+        ISNULL(SUM(CASE WHEN ledger.PointsDelta<0
+                        THEN -ledger.PointsDelta ELSE 0 END),0) AS TotalConsumed,
+        MIN(CASE WHEN ledger.PointsDelta>0 THEN ledger.OccurredAt END) AS OldestOpenCreditAt
+      FROM fidelidad.PointLedger ledger
+      WHERE ledger.Rfc=@Rfc AND ledger.MemberId=@MemberId;
+      """,
+      new { Rfc = rfc, MemberId = memberId, Cutoff = cutoff },
+      tx,
+      cancellationToken: ct));
+
+  private static LoyaltyRedeemResultDto Rejected(string message)
+    => new() { Success = false, Message = message };
+
+  private static string BuildVoucherCode(string sourceKey)
+    => "CB-" + Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(sourceKey)))[..8];
+
   public async Task<LoyaltyProgramReportDto> GetReportAsync(
     string rfc,
     DateTime from,
@@ -472,7 +840,17 @@ public sealed class LoyaltyService : ILoyaltyService
          FROM fidelidad.PointLedger WHERE Rfc=@Rfc AND OccurredAt>=@From AND OccurredAt<DATEADD(day,1,@To)) AS PointsIssued,
         (SELECT ABS(ISNULL(SUM(CASE WHEN EntryType IN ('RefundReversal','CancellationReversal') THEN PointsDelta ELSE 0 END),0))
          FROM fidelidad.PointLedger WHERE Rfc=@Rfc AND OccurredAt>=@From AND OccurredAt<DATEADD(day,1,@To)) AS PointsReversed,
-        (SELECT ISNULL(SUM(PointsBalance),0) FROM fidelidad.MemberAccount WHERE Rfc=@Rfc) AS OutstandingPoints;
+        (SELECT ABS(ISNULL(SUM(CASE WHEN EntryType='Redeem' THEN PointsDelta ELSE 0 END),0))
+         FROM fidelidad.PointLedger WHERE Rfc=@Rfc AND OccurredAt>=@From AND OccurredAt<DATEADD(day,1,@To)) AS PointsRedeemed,
+        (SELECT ABS(ISNULL(SUM(CASE WHEN EntryType='Expiration' THEN PointsDelta ELSE 0 END),0))
+         FROM fidelidad.PointLedger WHERE Rfc=@Rfc AND OccurredAt>=@From AND OccurredAt<DATEADD(day,1,@To)) AS PointsExpired,
+        (SELECT CAST(ABS(ISNULL(SUM(CASE WHEN EntryType='Redeem' THEN PointsDelta ELSE 0 END),0))
+                     * ISNULL((SELECT PointValueMxn FROM fidelidad.ProgramSettings WHERE Rfc=@Rfc),0) AS decimal(18,2))
+         FROM fidelidad.PointLedger WHERE Rfc=@Rfc AND OccurredAt>=@From AND OccurredAt<DATEADD(day,1,@To)) AS RedeemedValue,
+        (SELECT ISNULL(SUM(PointsBalance),0) FROM fidelidad.MemberAccount WHERE Rfc=@Rfc) AS OutstandingPoints,
+        (SELECT CAST(ISNULL(SUM(PointsBalance),0)
+                     * ISNULL((SELECT PointValueMxn FROM fidelidad.ProgramSettings WHERE Rfc=@Rfc),0) AS decimal(18,2))
+         FROM fidelidad.MemberAccount WHERE Rfc=@Rfc) AS OutstandingLiability;
       """,
       new { Rfc = normalizedRfc, From = from.Date, To = to.Date },
       cancellationToken: ct));
@@ -625,6 +1003,37 @@ public sealed class LoyaltyService : ILoyaltyService
     public string Status { get; set; } = string.Empty;
     public int PointsBalance { get; set; }
     public DateTime CreatedAt { get; set; }
+  }
+  private sealed class RedemptionSettingsRow
+  {
+    public decimal PointValueMxn { get; set; }
+    public int MinimumRedeemPoints { get; set; }
+    public int PointsValidityMonths { get; set; }
+    public bool PointsExpire { get; set; }
+  }
+  private sealed class RedeemMemberRow
+  {
+    public Guid Id { get; set; }
+    public string MembershipNumber { get; set; } = string.Empty;
+    public int PointsBalance { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public bool EmailVerified { get; set; }
+  }
+  private sealed class ExistingRedemptionRow
+  {
+    public int PointsDelta { get; set; }
+    public int BalanceAfter { get; set; }
+  }
+  private sealed class ExpiryCandidateRow
+  {
+    public Guid MemberId { get; set; }
+    public int PointsBalance { get; set; }
+  }
+  private sealed class ExpiryTotals
+  {
+    public int CreditedBeforeCutoff { get; set; }
+    public int TotalConsumed { get; set; }
+    public DateTime? OldestOpenCreditAt { get; set; }
   }
   private sealed class ConsentRow
   {

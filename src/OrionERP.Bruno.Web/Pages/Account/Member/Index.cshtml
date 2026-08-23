@@ -5,6 +5,25 @@
   <header class="member-dashboard__header"><div><span>Club Bruno · @Model.Profile.MembershipNumber</span><h1>Hola, @Model.Profile.FirstName</h1><p>@Model.Profile.MaskedEmail · @Model.Profile.MaskedPhone</p></div><div><a class="button" href="/cuenta/salir">Cerrar sesión</a></div></header>
   @if (!string.IsNullOrWhiteSpace(Model.Message)) { <p class="@(Model.IsError ? "account-error" : "account-success")">@Model.Message</p> }
   <div class="member-kpis"><article><span>Saldo actual</span><strong>@Model.Profile.PointsBalance</strong><small>puntos</small></article><article><span>Número de miembro</span><strong>@Model.Profile.MembershipNumber</strong><small>muéstralo en caja</small></article><article><span>Estado</span><strong>@(Model.Profile.Status == "Active" ? "Activa" : "Pendiente")</strong><small>@(Model.Profile.EmailVerified ? "Correo verificado" : "Falta confirmar el correo")</small></article></div>
+  @if (Model.Redeemable is not null)
+  {
+    <div class="redeem-banner @(Model.Redeemable.CanRedeem ? "is-ready" : null)">
+      @if (Model.Redeemable.CanRedeem)
+      {
+        <div><strong>Puedes canjear @Model.Redeemable.RedeemablePoints puntos</strong>
+          <p>Equivalen a @Model.Redeemable.RedeemableValue.ToString("C") de descuento. Pídelo en caja antes de pagar.</p></div>
+      }
+      else
+      {
+        <div><strong>Te faltan @(Model.Redeemable.MinimumRedeemPoints - Model.Redeemable.PointsBalance) puntos para tu primer canje</strong>
+          <p>El canje mínimo es de @Model.Redeemable.MinimumRedeemPoints puntos y cada punto vale @Model.Redeemable.PointValueMxn.ToString("C").</p></div>
+      }
+      @if (Model.Redeemable.PointsExpiringSoon > 0)
+      {
+        <small>@Model.Redeemable.PointsExpiringSoon de tus puntos vencen pronto.</small>
+      }
+    </div>
+  }
   <div class="member-grid">
     <article class="member-panel qr-card"><h2>QR temporal</h2><p>Genera un código, muéstralo en el POS y vincula tu compra antes de pagar. Expira en cinco minutos.</p>
       @if (!string.IsNullOrWhiteSpace(Model.QrData)) { <img src="data:image/png;base64,@Model.QrData" alt="Código QR temporal de Club Bruno" /><small>Válido hasta @Model.QrExpiresAt?.ToLocalTime().ToString("HH:mm:ss")</small> }

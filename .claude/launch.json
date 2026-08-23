@@ -2,9 +2,23 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "bruno-web",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "src/OrionERP.Bruno.Web/OrionERP.Bruno.Web.csproj"
+      ],
+      "port": 5020
+    },
+    {
       "name": "orionerp-web",
       "runtimeExecutable": "dotnet",
-      "runtimeArgs": ["run", "--project", "src/OrionERP.Web/OrionERP.Web.csproj", "--launch-profile", "OrionERP.Web", "--urls", "http://localhost:5221"],
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "src/OrionERP.Web/OrionERP.Web.csproj"
+      ],
       "port": 5221
     }
   ]

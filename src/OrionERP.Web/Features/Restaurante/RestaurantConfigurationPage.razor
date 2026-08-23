@@ -19,6 +19,7 @@
   {
     <div class="config-site"><label>Sede<select @onchange="ChangeSiteAsync">@foreach(var site in sites){<option value="@site.Id" selected="@(site.Id==selectedSiteId)">@site.Name</option>}</select></label><span>Todos los identificadores se validan contra <strong>@CurrentRfc</strong>.</span></div>
     <section class="config-grid">
+      <article class="config-card"><header><div><span>Jornada</span><h2>Día operativo</h2></div></header><div class="config-cutoff"><label>Hora de corte<input type="time" step="60" value="@editor.OperationalDayCutoff.ToString(@"hh\:mm")" @onchange="SetOperationalDayCutoff" /></label></div><p class="config-hint">Las ventas anteriores a esta hora se registran en el día operativo anterior. Para un restaurante que cierra por la noche, el valor correcto es de madrugada (04:00). Un corte tardío mueve toda la venta diurna al día previo y descuadra los reportes por fecha.</p></article>
       <article class="config-card"><header><div><span>Servicio</span><h2>Mesas</h2></div><button type="button" @onclick="AddTable">Agregar</button></header>@foreach(var row in editor.Tables){<div class="config-row config-row--table"><input @bind="row.Code" placeholder="Código" /><input @bind="row.Name" placeholder="Nombre" /><input type="number" @bind="row.Capacity" placeholder="Cap." /><label><input type="checkbox" @bind="row.IsActive" /> Activa</label></div>}</article>
       <article class="config-card"><header><div><span>KDS</span><h2>Estaciones</h2></div><button type="button" @onclick="AddStation">Agregar</button></header>@foreach(var row in editor.Stations){<div class="config-row"><input @bind="row.Code" placeholder="Código" /><input @bind="row.Name" placeholder="Nombre" /><input type="number" @bind="row.SortOrder" title="Orden" /><label><input type="checkbox" @bind="row.IsActive" /> Activa</label></div>}</article>
       <article class="config-card"><header><div><span>Domicilio</span><h2>Proveedores externos</h2></div><button type="button" @onclick="AddProvider">Agregar</button></header>@foreach(var row in editor.ExternalProviders){<div class="config-row"><input @bind="row.Code" placeholder="Código" /><input @bind="row.Name" placeholder="Nombre" /><label>Comisión<input type="number" min="0" max="1" step="0.01" @bind="row.DefaultCommissionRate" /></label><label><input type="checkbox" @bind="row.IsActive" /> Activo</label></div>}</article>
@@ -170,6 +171,7 @@
         {
           Rfc = CurrentRfc,
           SiteId = selectedSiteId,
+          OperationalDayCutoff = sites.First(site => site.Id == selectedSiteId).OperationalDayCutoff,
           Tables = workspace.Tables.Select(table => new RestaurantDiningTableSaveRequest
           {
             Id = table.Id, Code = table.Code, Name = table.Name,
@@ -248,6 +250,15 @@
     {
       selectedSiteId = id;
       await LoadAsync();
+    }
+  }
+
+  private void SetOperationalDayCutoff(ChangeEventArgs args)
+  {
+    if (TimeSpan.TryParse(args.Value?.ToString(), out var cutoff) &&
+        cutoff >= TimeSpan.Zero && cutoff < TimeSpan.FromHours(24))
+    {
+      editor.OperationalDayCutoff = cutoff;
     }
   }
 

@@ -43,6 +43,18 @@
     <div><strong>Visítanos</strong><p>Calle Camino Nacional #5<br />Col. Francisco Sarabia<br />Calpulalpan, Tlaxcala · C.P. 90207</p></div>
     <div><strong>Horario</strong><p>Martes a domingo<br />9:00 a 22:00<br />Lunes cerrado</p></div>
     <div><strong>Información</strong><a href="/privacidad">Aviso de privacidad</a><a href="/terminos">Términos del sitio y membresía</a>@if (membershipEnabled) { <a href="/cuenta/baja" target="_top">Solicitud de baja</a> }</div>
+    <div class="footer-connect">
+      <strong>Síguenos</strong>
+      <div class="footer-social">
+        @if (!string.IsNullOrWhiteSpace(settings?.FacebookUrl)) { <a href="@settings.FacebookUrl" target="_blank" rel="noopener">Facebook</a> }
+        @if (!string.IsNullOrWhiteSpace(settings?.InstagramUrl)) { <a href="@settings.InstagramUrl" target="_blank" rel="noopener">Instagram</a> }
+        @if (!string.IsNullOrWhiteSpace(settings?.TikTokUrl)) { <a href="@settings.TikTokUrl" target="_blank" rel="noopener">TikTok</a> }
+      </div>
+      @if (!string.IsNullOrWhiteSpace(settings?.WhatsAppPhone))
+      {
+        <a class="footer-whatsapp" href="https://wa.me/@settings.WhatsAppPhone" target="_blank" rel="noopener">Escríbenos por WhatsApp</a>
+      }
+    </div>
     <small>© @DateTime.Now.Year Bruno's Garden & Snacks S.A. de C.V.</small>
   </footer>
 </div>
@@ -50,24 +62,21 @@
 @code {
   private bool menuOpen;
   private bool membershipEnabled;
+  private BrunoPublicSiteSettingsDto? settings;
   private bool IsHomePage => string.Equals(new Uri(Navigation.Uri).AbsolutePath, "/", StringComparison.Ordinal);
 
   protected override async Task OnInitializedAsync()
   {
-    if (Environment.IsDevelopment())
-    {
-      membershipEnabled = true;
-      return;
-    }
-
     try
     {
-      membershipEnabled = (await CatalogService.GetSettingsAsync(BrunoSiteConstants.Rfc))?.IsMembershipEnabled == true;
+      settings = await CatalogService.GetSettingsAsync(BrunoSiteConstants.Rfc);
     }
     catch
     {
-      membershipEnabled = false;
+      settings = null;
     }
+
+    membershipEnabled = Environment.IsDevelopment() || settings?.IsMembershipEnabled == true;
   }
 
   private void CloseMenu() => menuOpen = false;

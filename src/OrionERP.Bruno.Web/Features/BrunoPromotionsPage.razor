@@ -21,14 +21,35 @@
       }
     </div>
   }
+  @if (membershipEnabled)
+  {
+    <AuthorizeView>
+      <NotAuthorized>
+        <aside class="promo-join">
+          <div>
+            <strong>Algunas promociones son solo para socios</strong>
+            <p>Crear tu cuenta de Club Bruno es gratis y toma menos de un minuto. Además, cada compra elegible te suma puntos.</p>
+          </div>
+          <a class="button button--accent" href="/cuenta/registro" target="_top">Únete gratis</a>
+        </aside>
+      </NotAuthorized>
+    </AuthorizeView>
+  }
   <aside class="legal-callout"><strong>Antes de comprar</strong><p>Las promociones están sujetas a las condiciones publicadas, existencias y volumen disponible. Solo las marcadas como combinables pueden operar sobre unidades elegibles restantes.</p></aside>
 </section>
 
 @code {
   private IReadOnlyList<BrunoPublicPromotionDto> promotions = [];
+  private bool membershipEnabled;
+
   protected override async Task OnInitializedAsync()
   {
-    try { promotions = (await CatalogService.GetCatalogAsync(BrunoSiteConstants.Rfc, BrunoSiteConstants.SiteCode, DateTimeOffset.Now))?.Promotions ?? []; }
+    try
+    {
+      var catalog = await CatalogService.GetCatalogAsync(BrunoSiteConstants.Rfc, BrunoSiteConstants.SiteCode, DateTimeOffset.Now);
+      promotions = catalog?.Promotions ?? [];
+      membershipEnabled = catalog?.Settings?.IsMembershipEnabled == true;
+    }
     catch { }
   }
 }

@@ -845,6 +845,7 @@ public sealed class RestaurantSiteOperationsSaveRequest
 {
   [Required] public string Rfc { get; set; } = string.Empty;
   public int SiteId { get; set; }
+  public TimeSpan OperationalDayCutoff { get; set; } = new(4, 0, 0);
   public List<RestaurantDiningTableSaveRequest> Tables { get; set; } = [];
   public List<RestaurantKitchenStationSaveRequest> Stations { get; set; } = [];
   public List<RestaurantExternalProviderSaveRequest> ExternalProviders { get; set; } = [];

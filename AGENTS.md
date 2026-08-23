@@ -84,3 +84,23 @@ When testing OrionERP in the development environment, Codex should sign in with 
 - Password: `Orion2021`
 
 This account is intended for browser smoke tests and development validation of implemented features.
+
+## Execution Ownership
+
+Do all coding, scripting, and database work directly. Do not hand the user a
+script and ask them to run it when running it is within reach.
+
+Before delegating any step, exhaust the alternatives: a different tool or shell,
+elevation through a UAC prompt, COM automation (Word and Excel are available on
+the workstation), an installed CLI, or a small purpose-built script. When a step
+needs elevation, attempt it and let the prompt surface instead of delegating
+pre-emptively.
+
+Production work on `grupocarpio` is included once the user has authorized the
+change: take a backup first, run the migration with `ApplyChanges=0`, review the
+result, then apply with `ApplyChanges=1`.
+
+Ask the user to act only when the action is genuinely outside the agent's reach:
+a physical task, a credential only they hold, an account only they control, or a
+business decision only they can make. When asking is unavoidable, state exactly
+what was attempted and why it could not work.

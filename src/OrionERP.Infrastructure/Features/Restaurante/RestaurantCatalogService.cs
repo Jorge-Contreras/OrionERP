@@ -746,6 +746,9 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     {
       if(!await conn.ExecuteScalarAsync<bool>(new CommandDefinition("SELECT CAST(CASE WHEN EXISTS(SELECT 1 FROM restaurante.Site WHERE Rfc=@Rfc AND Id=@SiteId) THEN 1 ELSE 0 END AS bit);",new{Rfc=rfc,request.SiteId},tx,cancellationToken:ct)))
       {await tx.RollbackAsync(ct);return RestaurantCommandResult.Fail("La sede no pertenece al RFC activo.");}
+      if(request.OperationalDayCutoff<TimeSpan.Zero||request.OperationalDayCutoff>=TimeSpan.FromHours(24))
+      {await tx.RollbackAsync(ct);return RestaurantCommandResult.Fail("El corte del día operativo debe estar entre 00:00 y 23:59.");}
+      await conn.ExecuteAsync(new CommandDefinition("UPDATE restaurante.Site SET OperationalDayCutoff=@Cutoff WHERE Rfc=@Rfc AND Id=@SiteId;",new{Rfc=rfc,request.SiteId,Cutoff=request.OperationalDayCutoff},tx,cancellationToken:ct));
       var locationIds=request.LocationPriorities.Select(row=>row.LocationId).Distinct().ToArray();
       var locationCount=locationIds.Length==0?0:await conn.ExecuteScalarAsync<int>(new CommandDefinition("SELECT COUNT(*) FROM logistica.Location WHERE Rfc=@Rfc AND Id IN @Ids AND IsInventoryEnabled=1;",new{Rfc=rfc,Ids=locationIds},tx,cancellationToken:ct));
       if(locationCount!=locationIds.Length){await tx.RollbackAsync(ct);return RestaurantCommandResult.Fail("Una ubicación no pertenece al RFC activo.");}

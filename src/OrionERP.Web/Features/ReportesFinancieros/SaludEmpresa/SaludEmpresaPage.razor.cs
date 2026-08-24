@@ -1,5 +1,7 @@
 using System.Globalization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.ReportesFinancieros;
 using OrionERP.Application.Features.ReportesFinancieros.Models;
@@ -10,369 +12,219 @@ namespace OrionERP.Web.Features.ReportesFinancieros.SaludEmpresa;
 
 public partial class SaludEmpresaPage : ComponentBase, IDisposable
 {
-  private static readonly CultureInfo MexicanCulture = CultureInfo.GetCultureInfo("es-MX");
-
+  private static readonly CultureInfo EsMx = CultureInfo.GetCultureInfo("es-MX");
   [Inject] private IUserRfcState RfcState { get; set; } = default!;
-  [Inject] private IReportesFinancierosService ReportesService { get; set; } = default!;
-  [Inject] private ISaludEmpresaPdfService PdfService { get; set; } = default!;
+  [Inject] private IReportesFinancierosService Reports { get; set; } = default!;
+  [Inject] private ISaludEmpresaPdfService Pdf { get; set; } = default!;
+  [Inject] private ISaludEmpresaExcelService Excel { get; set; } = default!;
   [Inject] private IJSRuntime JS { get; set; } = default!;
-  [Inject] private IUiMessageService UiMessages { get; set; } = default!;
+  [Inject] private IUiMessageService Messages { get; set; } = default!;
+  [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
+  [Inject] private IAuthorizationService Authorization { get; set; } = default!;
 
   protected int StartYear { get; set; } = DateTime.Today.Year;
   protected int StartMonth { get; set; } = DateTime.Today.Month;
   protected int EndYear { get; set; } = DateTime.Today.Year;
   protected int EndMonth { get; set; } = DateTime.Today.Month;
-  protected string? CurrentRfc { get; private set; }
-  protected SaludEmpresaReport? Report { get; private set; }
+  protected DateTime CutoffDate { get; set; } = DateTime.Today;
+  protected string CurrentRfc { get; private set; } = string.Empty;
+  protected string ActiveTab { get; set; } = "executive";
   protected bool IsLoading { get; private set; }
-  protected bool IsGeneratingPdf { get; private set; }
+  protected bool IsExporting { get; private set; }
+  protected bool CanManage { get; private set; }
   protected string? ErrorMessage { get; private set; }
+  protected SaludEmpresaReport? Report { get; private set; }
+  protected SaludEmpresaReconciliationPage Reconciliation { get; private set; } = new();
+  protected List<SaludEmpresaTarget> Targets { get; private set; } = [];
+  protected SaludEmpresaConfiguration? Configuration { get; private set; }
+  protected List<SaludEmpresaRoomConfiguration> Rooms { get; private set; } = [];
+  protected int ReconciliationPage { get; set; } = 1;
+  protected string ReconciliationSeverity { get; set; } = string.Empty;
+  protected string ReconciliationType { get; set; } = string.Empty;
+  protected string ReconciliationSearch { get; set; } = string.Empty;
 
-  protected SaludEmpresaExecutiveIndicatorRow? SelectedPeriod => Report?.SelectedPeriod;
-  protected SaludEmpresaExecutiveIndicatorRow? PreviousPeriod => Report?.PreviousPeriod;
-  protected SaludEmpresaExecutiveIndicatorRow? PreviousYearPeriod => Report?.SamePeriodPreviousYear;
-  protected SaludEmpresaFinancialBreakdownRow? SelectedFinancialBreakdown => Report?.SelectedFinancialBreakdown;
-  protected SaludEmpresaCashFlowRow? SelectedCashFlow => Report?.SelectedCashFlow;
-  protected bool HasReport => SelectedPeriod is not null;
-
-  protected IReadOnlyList<DashboardMetricVm> HeadlineMetrics => BuildHeadlineMetrics();
-  protected IReadOnlyList<FinancialBreakdownVm> FinancialBreakdownItems => BuildFinancialBreakdownItems();
-
-  protected IReadOnlyList<SaludEmpresaExecutiveIndicatorRow> PeriodRows => Report?.ExecutiveIndicators
-    .OrderBy(row => row.SortOrder)
-    .ToList() ?? [];
-
-  protected IReadOnlyList<SaludEmpresaCashFlowRow> CashFlowRows => Report?.CashFlow
-    .OrderBy(row => row.SortOrder)
-    .ToList() ?? [];
-
-  protected IReadOnlyList<SaludEmpresaSuitePerformanceRow> TopSuites => Report?.SelectedPeriodSuites
-    .Take(8)
-    .ToList() ?? [];
-
-  protected IReadOnlyList<SaludEmpresaDataQualityRow> PriorityIssues => Report?.SelectedPeriodIssues
-    .Take(10)
-    .ToList() ?? [];
-
-  protected decimal MaxPeriodRevenue => GetMaxAbs(PeriodRows.Select(row => row.RoomRevenue));
-  protected decimal MaxPeriodNetResult => GetMaxAbs(PeriodRows.Select(row => row.NetResult));
-  protected decimal MaxCashFlowAmount => GetMaxAbs(CashFlowRows.SelectMany(row => new[] { row.CashIn, row.CashOut, row.NetCashflow }));
-  protected decimal MaxSuiteRevenue => GetMaxAbs(TopSuites.Select(row => row.RoomRevenue));
-  protected decimal MaxFinancialAmount => GetMaxAbs(FinancialBreakdownItems.Select(row => row.Amount));
+  protected SaludEmpresaExecutiveIndicatorRow? Current => Report?.SelectedPeriod;
+  protected SaludEmpresaFinancialBreakdownRow? Financial => Report?.SelectedFinancialBreakdown;
+  protected SaludEmpresaCashFlowRow? Cash => Report?.SelectedCashFlow;
+  protected bool HasReport => Current is not null;
+  protected DateTime PeriodStart => new(StartYear, StartMonth, 1);
+  protected DateTime PeriodEnd => new DateTime(EndYear, EndMonth, 1).AddMonths(1).AddDays(-1);
   protected string StartMonthValue => $"{StartYear:D4}-{StartMonth:D2}";
   protected string EndMonthValue => $"{EndYear:D4}-{EndMonth:D2}";
-  protected DateTime PeriodStart => new(StartYear, StartMonth, 1);
-  protected DateTime PeriodEnd => new DateTime(EndYear, EndMonth, 1).AddMonths(1).AddSeconds(-1);
-  protected string PeriodRangeDescription => $"Del {PeriodStart:dd/MM/yyyy HH:mm:ss} al {PeriodEnd:dd/MM/yyyy HH:mm:ss}";
+  protected IReadOnlyList<SaludEmpresaDataQualityRow> CriticalIssues => Report?.SelectedPeriodIssues.Where(row => row.Severity.Equals("Alta", StringComparison.OrdinalIgnoreCase)).Take(5).ToList() ?? [];
+  protected IReadOnlyList<SaludEmpresaExpenseRow> TopExpenses => Report?.Expenses.OrderByDescending(row => Math.Abs(row.Amount)).Take(10).ToList() ?? [];
+  protected IReadOnlyList<SaludEmpresaSuitePerformanceRow> Suites => Report?.SelectedPeriodSuites ?? [];
+  protected decimal MaxExpense => TopExpenses.Select(row => Math.Abs(row.Amount)).DefaultIfEmpty(1).Max();
 
   protected override void OnInitialized()
   {
-    RfcState.Changed += OnRfcStateChanged;
-    CurrentRfc = RfcState.CurrentRfc;
+    CurrentRfc = RfcState.CurrentRfc ?? string.Empty;
+    RfcState.Changed += OnRfcChanged;
   }
 
   protected override async Task OnInitializedAsync()
   {
-    await LoadDataAsync();
+    var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+    CanManage = (await Authorization.AuthorizeAsync(user, "FinanzasManager")).Succeeded;
+    await LoadAsync();
   }
 
-  private async void OnRfcStateChanged()
+  private async void OnRfcChanged()
   {
-    CurrentRfc = RfcState.CurrentRfc;
-    await LoadDataAsync();
+    CurrentRfc = RfcState.CurrentRfc ?? string.Empty;
+    await LoadAsync();
     await InvokeAsync(StateHasChanged);
   }
 
-  protected async Task OnStartMonthChanged(ChangeEventArgs e)
+  protected async Task SelectTabAsync(string tab)
   {
-    if (TryParseMonthValue(e.Value?.ToString(), out var year, out var month))
-    {
-      StartYear = year;
-      StartMonth = month;
-      await LoadDataAsync();
-    }
+    ActiveTab = tab;
+    if (tab == "reconciliation" && Reconciliation.TotalCount == 0) await LoadReconciliationAsync();
   }
 
-  protected async Task OnEndMonthChanged(ChangeEventArgs e)
+  protected async Task OnStartMonthChanged(ChangeEventArgs args)
   {
-    if (TryParseMonthValue(e.Value?.ToString(), out var year, out var month))
-    {
-      EndYear = year;
-      EndMonth = month;
-      await LoadDataAsync();
-    }
+    if (TryParseMonth(args.Value?.ToString(), out var year, out var month)) { StartYear = year; StartMonth = month; await LoadAsync(); }
   }
 
-  protected async Task RefreshAsync()
+  protected async Task OnEndMonthChanged(ChangeEventArgs args)
   {
-    await LoadDataAsync();
+    if (TryParseMonth(args.Value?.ToString(), out var year, out var month)) { EndYear = year; EndMonth = month; await LoadAsync(); }
   }
 
-  protected async Task GeneratePdfAsync()
+  protected async Task OnCutoffChanged(ChangeEventArgs args)
   {
-    if (Report is null || SelectedPeriod is null || IsGeneratingPdf)
-    {
-      UiMessages.ShowWarning("Genera primero el reporte.");
-      return;
-    }
+    if (DateTime.TryParse(args.Value?.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var value)) { CutoffDate = value.Date; await LoadAsync(); }
+  }
 
-    IsGeneratingPdf = true;
+  protected Task RefreshAsync() => LoadAsync();
+
+  private async Task LoadAsync()
+  {
+    if (string.IsNullOrWhiteSpace(CurrentRfc)) { Report = null; return; }
+    if (new DateTime(EndYear, EndMonth, 1) < PeriodStart) { ErrorMessage = "El periodo final debe ser mayor o igual al inicial."; return; }
+    IsLoading = true; ErrorMessage = null; await InvokeAsync(StateHasChanged);
     try
     {
-      var model = new SaludEmpresaPdfDocumentModel(CurrentRfc ?? string.Empty, PeriodStart, PeriodEnd, DateTime.Now, Report);
-      var pdfBytes = PdfService.Generate(model);
-      var dataUrl = $"data:application/pdf;base64,{Convert.ToBase64String(pdfBytes)}";
-      await JS.InvokeVoidAsync("triggerFileDownload", BuildPdfFileName(), dataUrl);
+      Report = await Reports.GetSaludEmpresaAsync(new SaludEmpresaQuery(StartYear, StartMonth, EndYear, EndMonth, CurrentRfc, CutoffDate));
+      var targetStart = new DateTime(2026, 1, 1);
+      var targetEnd = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(12);
+      Targets = (await Reports.GetSaludEmpresaTargetsAsync(CurrentRfc, targetStart, targetEnd)).ToList();
+      await LoadReconciliationAsync();
+      if (CanManage)
+      {
+        Configuration = await Reports.GetSaludEmpresaConfigurationAsync(CurrentRfc);
+        Rooms = (await Reports.GetSaludEmpresaRoomsAsync()).Where(room => room.RoomType.Equals("SUITE", StringComparison.OrdinalIgnoreCase) || room.IsRentable).ToList();
+      }
     }
-    catch (Exception ex)
-    {
-      UiMessages.ShowError($"No se pudo generar el PDF. {ex.Message}");
-    }
-    finally
-    {
-      IsGeneratingPdf = false;
-    }
+    catch (Exception ex) { Report = null; ErrorMessage = ex.Message; }
+    finally { IsLoading = false; await InvokeAsync(StateHasChanged); }
   }
 
-  private async Task LoadDataAsync()
+  protected async Task FilterReconciliationAsync() { ReconciliationPage = 1; await LoadReconciliationAsync(); }
+  protected async Task ChangeReconciliationPageAsync(int page) { ReconciliationPage = Math.Clamp(page, 1, Math.Max(1, Reconciliation.TotalPages)); await LoadReconciliationAsync(); }
+
+  private async Task LoadReconciliationAsync()
   {
-    if (string.IsNullOrWhiteSpace(CurrentRfc))
-    {
-      Report = null;
-      ErrorMessage = null;
-      await InvokeAsync(StateHasChanged);
-      return;
-    }
+    if (string.IsNullOrWhiteSpace(CurrentRfc)) return;
+    Reconciliation = await Reports.GetSaludEmpresaReconciliationAsync(new SaludEmpresaReconciliationQuery(
+      CurrentRfc, PeriodStart, PeriodEnd, ReconciliationPage, 25,
+      NullIfBlank(ReconciliationSeverity), NullIfBlank(ReconciliationType), NullIfBlank(ReconciliationSearch)));
+  }
 
-    if (new DateTime(EndYear, EndMonth, 1) < PeriodStart)
-    {
-      Report = null;
-      ErrorMessage = "El mes final debe ser mayor o igual al mes inicial.";
-      await InvokeAsync(StateHasChanged);
-      return;
-    }
-
-    IsLoading = true;
-    ErrorMessage = null;
-    await InvokeAsync(StateHasChanged);
-
+  protected async Task SaveTargetAsync(SaludEmpresaTarget target)
+  {
+    if (!CanManage) return;
     try
     {
-      Report = await ReportesService.GetSaludEmpresaAsync(StartYear, StartMonth, EndYear, EndMonth, CurrentRfc);
+      var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User.Identity?.Name ?? "Sistema";
+      await Reports.SaveSaludEmpresaTargetAsync(target, user);
+      Messages.ShowSuccess($"Meta de {target.Month:MMM yyyy} guardada.");
+      Targets = (await Reports.GetSaludEmpresaTargetsAsync(CurrentRfc, Targets.Min(x => x.Month), Targets.Max(x => x.Month))).ToList();
+      await LoadAsync();
     }
-    catch (Exception ex)
+    catch (Exception ex) { Messages.ShowError(ex.Message); }
+  }
+
+  protected async Task SaveConfigurationAsync()
+  {
+    if (!CanManage || Configuration is null) return;
+    var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User.Identity?.Name ?? "Sistema";
+    await Reports.SaveSaludEmpresaConfigurationAsync(Configuration, user);
+    Messages.ShowSuccess("Configuracion financiera guardada.");
+    await LoadAsync();
+  }
+
+  protected async Task SaveRoomAsync(SaludEmpresaRoomConfiguration room)
+  {
+    if (!CanManage) return;
+    await Reports.SaveSaludEmpresaRoomAsync(room);
+    Messages.ShowSuccess($"Configuracion de {room.RoomName} guardada.");
+    await LoadAsync();
+  }
+
+  protected Task DownloadInternalPdfAsync() => DownloadPdfAsync(investor: false);
+  protected Task DownloadInvestorPdfAsync() => DownloadPdfAsync(investor: true);
+
+  private async Task DownloadPdfAsync(bool investor)
+  {
+    if (Report is null || IsExporting) return;
+    IsExporting = true;
+    try
     {
-      ErrorMessage = ex.Message;
-      Report = null;
+      var reconciliation = investor ? null : await GetAllReconciliationAsync();
+      var model = new SaludEmpresaPdfDocumentModel(CurrentRfc, PeriodStart, PeriodEnd, DateTime.Now, Report, Targets, reconciliation);
+      var bytes = investor ? Pdf.GenerateInvestor(model) : Pdf.Generate(model);
+      await DownloadAsync(investor ? "salud-financiera-inversionistas.pdf" : "salud-financiera-interno.pdf", "application/pdf", bytes);
     }
-    finally
+    catch (Exception ex) { Messages.ShowError($"No se pudo generar el PDF: {ex.Message}"); }
+    finally { IsExporting = false; }
+  }
+
+  protected async Task DownloadExcelAsync()
+  {
+    if (Report is null || IsExporting) return;
+    IsExporting = true;
+    try
     {
-      IsLoading = false;
-      await InvokeAsync(StateHasChanged);
+      var all = await GetAllReconciliationAsync();
+      var bytes = Excel.Generate(new SaludEmpresaPdfDocumentModel(CurrentRfc, PeriodStart, PeriodEnd, DateTime.Now, Report, Targets, all));
+      await DownloadAsync("salud-financiera-interno.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
     }
+    catch (Exception ex) { Messages.ShowError($"No se pudo generar Excel: {ex.Message}"); }
+    finally { IsExporting = false; }
   }
 
-  private IReadOnlyList<DashboardMetricVm> BuildHeadlineMetrics()
-  {
-    var current = SelectedPeriod;
-    var previous = PreviousPeriod;
-    var previousYear = PreviousYearPeriod;
+  private async Task DownloadAsync(string fileName, string mime, byte[] bytes)
+    => await JS.InvokeVoidAsync("triggerFileDownload", fileName, $"data:{mime};base64,{Convert.ToBase64String(bytes)}");
 
-    if (current is null)
+  private async Task<IReadOnlyList<SaludEmpresaReconciliationRow>> GetAllReconciliationAsync()
+  {
+    var all = new List<SaludEmpresaReconciliationRow>();
+    var page = 1;
+    SaludEmpresaReconciliationPage result;
+    do
     {
-      return [];
-    }
-
-    return
-    [
-      BuildMetric("Ingresos", "Ventas de hospedaje", current.RoomRevenue, previous?.RoomRevenue, previousYear?.RoomRevenue, SaludEmpresaMetricFormat.Money, "oi-dollar"),
-      BuildMetric("Resultado neto", "Utilidad del periodo", current.NetResult, previous?.NetResult, previousYear?.NetResult, SaludEmpresaMetricFormat.Money, "oi-pulse"),
-      BuildMetric("Margen neto", "Resultado / ingresos", current.NetMarginPct, previous?.NetMarginPct, previousYear?.NetMarginPct, SaludEmpresaMetricFormat.Percent, "oi-graph"),
-      BuildMetric("Flujo neto", "Entradas menos salidas", current.NetCashflow, previous?.NetCashflow, previousYear?.NetCashflow, SaludEmpresaMetricFormat.Money, "oi-transfer"),
-      BuildMetric("Ocupacion", "Noches vendidas", current.OccupancyPct, previous?.OccupancyPct, previousYear?.OccupancyPct, SaludEmpresaMetricFormat.Percent, "oi-calendar"),
-      BuildMetric("RevPAR", "Ingreso por noche disponible", current.RevPAR, previous?.RevPAR, previousYear?.RevPAR, SaludEmpresaMetricFormat.Money, "oi-bar-chart"),
-      BuildMetric("Cobranza", "Cobrado / reservado", current.CollectionPct, previous?.CollectionPct, previousYear?.CollectionPct, SaludEmpresaMetricFormat.Percent, "oi-check"),
-      BuildMetric(
-        "Pendiente banco",
-        "Impacto excluido",
-        current.PendingBankNetExcluded,
-        previous?.PendingBankNetExcluded,
-        previousYear?.PendingBankNetExcluded,
-        SaludEmpresaMetricFormat.Money,
-        "oi-warning",
-        lowerIsBetter: true,
-        compareAbsolute: true)
-    ];
+      result = await Reports.GetSaludEmpresaReconciliationAsync(new SaludEmpresaReconciliationQuery(CurrentRfc, PeriodStart, PeriodEnd, page, 100));
+      all.AddRange(result.Items);
+      page++;
+    } while (page <= result.TotalPages);
+    return all;
   }
 
-  private static DashboardMetricVm BuildMetric(
-    string label,
-    string caption,
-    decimal? current,
-    decimal? previous,
-    decimal? previousYear,
-    SaludEmpresaMetricFormat format,
-    string icon,
-    bool lowerIsBetter = false,
-    bool compareAbsolute = false)
+  protected static string Money(decimal? value) => value?.ToString("C2", EsMx) ?? "No disponible";
+  protected static string Money0(decimal? value) => value?.ToString("C0", EsMx) ?? "Sin meta";
+  protected static string Percent(decimal? value) => value.HasValue ? $"{value:N1}%" : "No disponible";
+  protected static string Variance(SaludEmpresaTargetVarianceRow? row) => row?.TargetValue is null ? "Sin meta" : $"{row.VariancePct:+0.0;-0.0;0.0}% vs meta";
+  protected SaludEmpresaTargetVarianceRow? VarianceFor(string key) => Report?.TargetVariances.FirstOrDefault(row => row.MetricKey == key);
+  protected static string SeverityClass(string severity) => severity.Equals("Alta", StringComparison.OrdinalIgnoreCase) ? "sf-badge sf-badge--high" : severity.Equals("Media", StringComparison.OrdinalIgnoreCase) ? "sf-badge sf-badge--medium" : "sf-badge sf-badge--low";
+  protected static string Width(decimal value, decimal max) => FormattableString.Invariant($"width:{(max <= 0 ? 0 : Math.Min(100, Math.Abs(value) / max * 100)):0.##}%");
+  private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+  private static bool TryParseMonth(string? value, out int year, out int month)
   {
-    var comparisonCurrent = compareAbsolute ? Abs(current) : current;
-    var comparisonPrevious = compareAbsolute ? Abs(previous) : previous;
-    var comparisonPreviousYear = compareAbsolute ? Abs(previousYear) : previousYear;
-
-    var monthChange = SaludEmpresaDashboardFormatting.BuildChange(
-      comparisonCurrent,
-      comparisonPrevious,
-      format,
-      lowerIsBetter);
-    var yearChange = SaludEmpresaDashboardFormatting.BuildChange(
-      comparisonCurrent,
-      comparisonPreviousYear,
-      format,
-      lowerIsBetter);
-
-    return new DashboardMetricVm(
-      label,
-      caption,
-      SaludEmpresaDashboardFormatting.FormatValue(current, format),
-      icon,
-      monthChange,
-      yearChange);
+    year = month = 0; var parts = value?.Split('-');
+    return parts is { Length: 2 } && int.TryParse(parts[0], out year) && int.TryParse(parts[1], out month) && month is >= 1 and <= 12;
   }
 
-  private IReadOnlyList<FinancialBreakdownVm> BuildFinancialBreakdownItems()
-  {
-    var row = SelectedFinancialBreakdown;
-    if (row is null)
-    {
-      return [];
-    }
-
-    return
-    [
-      new("Ingresos netos", row.NetAccountingIncome, "health-bar--income"),
-      new("Costo de ventas", row.CostOfSales501504, "health-bar--cost"),
-      new("Gastos operativos", row.OperatingExpenses602605, "health-bar--expense"),
-      new("Gastos financieros", row.FinancialExpenses701, "health-bar--expense"),
-      new("Otros netos", row.OtherNet, row.OtherNet >= 0 ? "health-bar--income" : "health-bar--expense"),
-      new("Impuestos", row.Taxes611, "health-bar--tax"),
-      new("Resultado neto", row.NetResult, row.NetResult >= 0 ? "health-bar--income" : "health-bar--loss")
-    ];
-  }
-
-  protected static string Money(decimal? value)
-    => value.HasValue ? value.Value.ToString("C2", MexicanCulture) : "-";
-
-  protected static string MoneyCompact(decimal? value)
-    => value.HasValue ? value.Value.ToString("C0", MexicanCulture) : "-";
-
-  protected static string Number(decimal? value)
-    => value.HasValue ? value.Value.ToString("N0", MexicanCulture) : "-";
-
-  protected static string Percent(decimal? value)
-    => value.HasValue ? $"{value.Value.ToString("N2", MexicanCulture)}%" : "-";
-
-  protected static string Date(DateTime value)
-    => value == default ? "-" : value.ToString("dd/MM/yyyy", MexicanCulture);
-
-  protected static string WidthStyle(decimal? value, decimal max)
-  {
-    var width = max <= 0 ? 0 : Math.Min(100, Math.Abs(value ?? 0) / max * 100);
-    return FormattableString.Invariant($"width:{width:0.##}%");
-  }
-
-  protected static string SignedClass(decimal value)
-    => value >= 0 ? "health-value--positive" : "health-value--negative";
-
-  protected static string DataQualityClass(string severity)
-    => severity.Trim().Equals("Alta", StringComparison.OrdinalIgnoreCase)
-      ? "health-severity health-severity--high"
-      : severity.Trim().Equals("Media", StringComparison.OrdinalIgnoreCase)
-        ? "health-severity health-severity--medium"
-        : "health-severity health-severity--low";
-
-  private static decimal GetMaxAbs(IEnumerable<decimal?> values)
-  {
-    var max = values
-      .Where(value => value.HasValue)
-      .Select(value => Math.Abs(value!.Value))
-      .DefaultIfEmpty(0m)
-      .Max();
-
-    return max <= 0 ? 1m : max;
-  }
-
-  private static decimal GetMaxAbs(IEnumerable<decimal> values)
-  {
-    var max = values
-      .Select(Math.Abs)
-      .DefaultIfEmpty(0m)
-      .Max();
-
-    return max <= 0 ? 1m : max;
-  }
-
-  private static decimal? Abs(decimal? value)
-    => value.HasValue ? Math.Abs(value.Value) : null;
-
-  private string BuildPdfFileName()
-  {
-    var rfc = NormalizeFileNamePart(CurrentRfc ?? "sin-rfc");
-    return $"salud-empresa-{rfc}-{StartYear}-{StartMonth:00}-{EndYear}-{EndMonth:00}.pdf";
-  }
-
-  private static bool TryParseMonthValue(string? value, out int year, out int month)
-  {
-    year = 0;
-    month = 0;
-
-    if (string.IsNullOrWhiteSpace(value))
-    {
-      return false;
-    }
-
-    var parts = value.Split('-', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-    if (parts.Length != 2 ||
-        !int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out year) ||
-        !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out month) ||
-        year is < 1900 or > 9999 ||
-        month is < 1 or > 12)
-    {
-      year = 0;
-      month = 0;
-      return false;
-    }
-
-    return true;
-  }
-
-  private static string NormalizeFileNamePart(string value)
-  {
-    var normalized = new string(value
-      .Trim()
-      .ToLowerInvariant()
-      .Select(ch => char.IsLetterOrDigit(ch) ? ch : '-')
-      .ToArray());
-
-    while (normalized.Contains("--", StringComparison.Ordinal))
-    {
-      normalized = normalized.Replace("--", "-", StringComparison.Ordinal);
-    }
-
-    return normalized.Trim('-');
-  }
-
-  public void Dispose()
-  {
-    RfcState.Changed -= OnRfcStateChanged;
-  }
-
-  protected sealed record DashboardMetricVm(
-    string Label,
-    string Caption,
-    string Value,
-    string Icon,
-    SaludEmpresaMetricChange MonthChange,
-    SaludEmpresaMetricChange YearChange);
-  protected sealed record FinancialBreakdownVm(string Label, decimal Amount, string BarClass);
+  public void Dispose() => RfcState.Changed -= OnRfcChanged;
 }

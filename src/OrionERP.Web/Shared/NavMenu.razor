@@ -226,6 +226,7 @@
     private bool isWorkforceSupervisor;
     private bool isWorkforceAdmin;
     private bool isWorkforcePayroll;
+    private bool isFinanceReader;
     private bool attendanceEnabled;
 
     [Parameter] public EventCallback OnMenuItemSelected { get; set; }
@@ -234,7 +235,7 @@
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
     private bool HasSearch => !string.IsNullOrWhiteSpace(searchText);
 
-    private IReadOnlyList<VisibleNavSection> VisibleSections => BuildVisibleSections(Sections, searchText, isArrendadoresOnly, attendanceEnabled, hasEmployee, isWorkforceSupervisor, isWorkforceAdmin, isWorkforcePayroll);
+    private IReadOnlyList<VisibleNavSection> VisibleSections => BuildVisibleSections(Sections, searchText, isArrendadoresOnly, attendanceEnabled, hasEmployee, isWorkforceSupervisor, isWorkforceAdmin, isWorkforcePayroll, isFinanceReader, isAdmin);
     private IReadOnlyList<NavEntryDefinition> VisibleAdminItems => BuildVisibleAdminItems(searchText, isAdmin);
 
     private NavEntryDefinition? CurrentEntry
@@ -267,6 +268,7 @@
             isAdmin = false;
             hasEmployee = false;
             attendanceEnabled = false;
+            isFinanceReader = false;
             return;
         }
 
@@ -277,6 +279,7 @@
         isWorkforceAdmin = isAdmin || user.IsInRole("CapitalHumanoAdmin");
         isWorkforceSupervisor = isWorkforceAdmin || user.IsInRole("CapitalHumanoSupervisor");
         isWorkforcePayroll = isAdmin || user.IsInRole("CapitalHumanoNomina");
+        isFinanceReader = isAdmin || user.IsInRole("FinanzasLectura") || user.IsInRole("FinanzasManager");
         attendanceEnabled = Configuration.GetValue<bool>("CapitalHumano:AttendanceEnabled");
         isArrendadoresOnly = NavigationCatalog.IsArrendadoresOnly(user);
     }
@@ -286,7 +289,7 @@
         Navigation.LocationChanged -= HandleLocationChanged;
     }
 
-    private static IReadOnlyList<VisibleNavSection> BuildVisibleSections(IReadOnlyList<NavSectionDefinition> source, string filter, bool arrendadoresOnly, bool featureEnabled, bool employee, bool supervisor, bool admin, bool payroll)
+    private static IReadOnlyList<VisibleNavSection> BuildVisibleSections(IReadOnlyList<NavSectionDefinition> source, string filter, bool arrendadoresOnly, bool featureEnabled, bool employee, bool supervisor, bool admin, bool payroll, bool financeReader, bool globalAdmin)
     {
         var query = filter.Trim();
         var sections = new List<VisibleNavSection>();
@@ -295,7 +298,10 @@
         {
             var availableItems = arrendadoresOnly
                 ? section.Items.Where(IsArrendadoresNavItem).ToList()
-                : section.Items.Where(item => CanSeeWorkforceItem(item, featureEnabled, employee, supervisor, admin, payroll)).ToList();
+                : section.Items
+                    .Where(item => CanSeeWorkforceItem(item, featureEnabled, employee, supervisor, admin, payroll))
+                    .Where(item => CanSeeFinanceItem(item, financeReader, globalAdmin))
+                    .ToList();
 
             IReadOnlyList<NavEntryDefinition> items = string.IsNullOrWhiteSpace(query)
                 ? availableItems
@@ -319,6 +325,14 @@
         if (path == "capital-humano/pre-nomina") return enabled && (admin || payroll);
         if (path == "capital-humano/configuracion-tiempo" || path == "capital-humano/ausencias") return enabled && admin;
         return true;
+    }
+
+    private static bool CanSeeFinanceItem(NavEntryDefinition item, bool financeReader, bool globalAdmin)
+    {
+        var path = NormalizePath(item.Href);
+        if (!path.StartsWith("reportesfinancieros/", StringComparison.OrdinalIgnoreCase)) return true;
+        if (path == "reportesfinancieros/saludempresa") return financeReader;
+        return globalAdmin;
     }
 
     private static IReadOnlyList<NavEntryDefinition> BuildVisibleAdminItems(string filter, bool isAdminUser)

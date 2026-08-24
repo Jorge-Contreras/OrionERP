@@ -391,7 +391,7 @@ function mapFinancialBreakdown(row) {
     periodScope: stringValue(row.PeriodScope),
     periodStart: dateOnly(row.PeriodStart),
     periodEnd: dateOnly(row.PeriodEnd),
-    grossIncome: moneyValue(row.GrossIncome401403),
+    grossIncome: moneyValue(row.GrossIncome401403 ?? row.GrossIncome401),
     salesReturns: moneyValue(row.SalesReturns402),
     netAccountingIncome: moneyValue(row.NetAccountingIncome),
     costOfSales: moneyValue(row.CostOfSales501504),

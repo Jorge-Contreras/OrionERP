@@ -1,0 +1,28 @@
+.sf-chart { margin: 0; border: 1px solid #d8e2e7; border-radius: 16px; background: #fff; padding: 1rem; min-width: 0; }
+.sf-chart figcaption { display: flex; flex-direction: column; gap: .2rem; }
+.sf-chart figcaption strong { color: #083f49; font-size: 1rem; }
+.sf-chart figcaption span { color: #667085; font-size: .78rem; }
+.sf-chart svg { width: 100%; height: auto; min-height: 220px; overflow: visible; }
+.sf-chart__grid { stroke: #e8eef1; stroke-width: 1; }
+.sf-chart__axis, .sf-chart__legend { fill: #667085; font: 11px system-ui, sans-serif; }
+.sf-chart__axis-label { color:#667085; font:11px system-ui,sans-serif; white-space:nowrap; }
+.sf-chart__axis-label--right { text-align:right; }.sf-chart__axis-label--center{text-align:center}
+.sf-chart__line { fill: none; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+.sf-chart__line--actual { stroke: #0b5a68; }
+.sf-chart__line--target { stroke: #d98c24; stroke-dasharray: 7 5; }
+.sf-chart__line--previous { stroke: #7d8ba1; stroke-dasharray: 2 5; }
+.sf-chart__point { stroke: #fff; stroke-width: 2; }
+.sf-chart__point--actual { fill: #0b5a68; }
+.sf-chart__point--target { fill: #d98c24; }
+.sf-chart__point--previous { fill: #7d8ba1; }
+.sf-chart__point-group:focus .sf-chart__point { stroke: #f2b84b; stroke-width: 4; }
+.sf-chart__table { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.sf-chart__table:focus { position: static; width: auto; height: auto; clip: auto; overflow-x: auto; }
+.sf-chart__table table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+.sf-chart__table th, .sf-chart__table td { padding: .35rem; border-bottom: 1px solid #e8eef1; text-align: right; }
+.sf-chart__table th:first-child, .sf-chart__table td:first-child { text-align: left; }
+.sf-chart__empty { min-height: 210px; display: grid; place-items: center; color: #667085; }
+@media (max-width: 720px), print {
+  .sf-chart svg { display: none; }
+  .sf-chart__table { position: static; width: auto; height: auto; clip: auto; overflow-x: auto; }
+}

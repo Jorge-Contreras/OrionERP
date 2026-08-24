@@ -35,6 +35,8 @@ namespace OrionERP.Web.Identity
                 "APAdmin",
                 "APOperator",
                 "APReadOnly"
+                ,"FinanzasLectura"
+                ,"FinanzasManager"
                 ,"Logistica"
                 ,"RestauranteAdmin"
                 ,"RestauranteSupervisor"

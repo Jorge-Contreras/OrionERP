@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Threading;
 using OrionERP.Application.Features.ReportesFinancieros.Models;
 
 namespace OrionERP.Application.Features.ReportesFinancieros
@@ -25,6 +26,41 @@ namespace OrionERP.Application.Features.ReportesFinancieros
             int anioFin,
             int mesFin,
             string? rfc);
+
+        Task<SaludEmpresaReport> GetSaludEmpresaAsync(
+            SaludEmpresaQuery query,
+            CancellationToken cancellationToken = default);
+
+        Task<SaludEmpresaReconciliationPage> GetSaludEmpresaReconciliationAsync(
+            SaludEmpresaReconciliationQuery query,
+            CancellationToken cancellationToken = default);
+
+        Task<IReadOnlyList<SaludEmpresaTarget>> GetSaludEmpresaTargetsAsync(
+            string rfc,
+            DateTime startMonth,
+            DateTime endMonth,
+            CancellationToken cancellationToken = default);
+
+        Task SaveSaludEmpresaTargetAsync(
+            SaludEmpresaTarget target,
+            string userName,
+            CancellationToken cancellationToken = default);
+
+        Task<SaludEmpresaConfiguration> GetSaludEmpresaConfigurationAsync(
+            string rfc,
+            CancellationToken cancellationToken = default);
+
+        Task SaveSaludEmpresaConfigurationAsync(
+            SaludEmpresaConfiguration configuration,
+            string userName,
+            CancellationToken cancellationToken = default);
+
+        Task<IReadOnlyList<SaludEmpresaRoomConfiguration>> GetSaludEmpresaRoomsAsync(
+            CancellationToken cancellationToken = default);
+
+        Task SaveSaludEmpresaRoomAsync(
+            SaludEmpresaRoomConfiguration room,
+            CancellationToken cancellationToken = default);
 
     }
 

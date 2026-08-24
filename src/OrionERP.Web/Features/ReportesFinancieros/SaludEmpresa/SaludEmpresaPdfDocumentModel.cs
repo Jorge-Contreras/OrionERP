@@ -7,4 +7,6 @@ public sealed record SaludEmpresaPdfDocumentModel(
   DateTime PeriodStart,
   DateTime PeriodEnd,
   DateTime GeneratedAt,
-  SaludEmpresaReport Report);
+  SaludEmpresaReport Report,
+  IReadOnlyList<SaludEmpresaTarget>? Targets = null,
+  IReadOnlyList<SaludEmpresaReconciliationRow>? Reconciliation = null);

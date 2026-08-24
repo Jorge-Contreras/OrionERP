@@ -364,6 +364,12 @@ builder.Services.AddAuthorization(options =>
       "RoleForSelectedRfc",
       policy => policy.Requirements.Add(new RoleForRfcRequirement("Administrador")));
   options.AddPolicy(
+      "FinanzasLectura",
+      policy => policy.Requirements.Add(new RoleForRfcRequirement("FinanzasLectura", "FinanzasManager")));
+  options.AddPolicy(
+      "FinanzasManager",
+      policy => policy.Requirements.Add(new RoleForRfcRequirement("FinanzasManager")));
+  options.AddPolicy(
       "RestaurantAdmin",
       policy => policy.Requirements.Add(new RoleForRfcRequirement("RestauranteAdmin", "RestauranteSupervisor")));
   options.AddPolicy(

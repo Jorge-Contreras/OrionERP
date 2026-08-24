@@ -1,7 +1,6 @@
 namespace OrionERP.Web.Features.ReportesFinancieros.SaludEmpresa;
 
-public interface ISaludEmpresaPdfService
+public interface ISaludEmpresaExcelService
 {
   byte[] Generate(SaludEmpresaPdfDocumentModel model);
-  byte[] GenerateInvestor(SaludEmpresaPdfDocumentModel model);
 }

@@ -110,6 +110,7 @@ public static class ServiceRegistration
     services.AddScoped<IReservacionPdfService, ReservacionPdfService>();
     services.AddScoped<IArrendadorEstadoCuentaPdfService, ArrendadorEstadoCuentaPdfService>();
     services.AddScoped<ISaludEmpresaPdfService, SaludEmpresaPdfService>();
+    services.AddScoped<ISaludEmpresaExcelService, SaludEmpresaExcelService>();
     services.AddScoped<ReservacionesIOpenClawReservationsService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
     services.AddSingleton<IOpenClawReservationPdfTokenService, OpenClawReservationPdfTokenService>();
@@ -201,6 +202,7 @@ public static class ServiceRegistration
     services.AddScoped<IReservacionPdfService, ReservacionPdfService>();
     services.AddScoped<IArrendadorEstadoCuentaPdfService, ArrendadorEstadoCuentaPdfService>();
     services.AddScoped<ISaludEmpresaPdfService, SaludEmpresaPdfService>();
+    services.AddScoped<ISaludEmpresaExcelService, SaludEmpresaExcelService>();
     services.AddScoped<ReservacionesIOpenClawReservationsService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
     services.AddSingleton<IOpenClawReservationPdfTokenService, OpenClawReservationPdfTokenService>();

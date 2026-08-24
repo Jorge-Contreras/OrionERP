@@ -1,0 +1,109 @@
+@using System.Globalization
+@using OrionERP.Application.Features.ReportesFinancieros.Models
+
+<figure class="sf-chart">
+  <figcaption>
+    <strong>@Title</strong>
+    <span>@Caption</span>
+  </figcaption>
+  @if (Rows.Count == 0)
+  {
+    <div class="sf-chart__empty">Sin datos</div>
+  }
+  else
+  {
+    <svg viewBox="0 0 720 250" role="img" aria-labelledby="@ChartId-title @ChartId-desc">
+      <title id="@ChartId-title">@Title</title>
+      <desc id="@ChartId-desc">@Caption. La tabla equivalente aparece despues de la grafica.</desc>
+      @for (var tick = 0; tick <= 4; tick++)
+      {
+        var y = 24 + tick * 42;
+        <line x1="54" x2="700" y1="@y" y2="@y" class="sf-chart__grid" />
+        <foreignObject x="0" y="@(y - 8)" width="50" height="18"><div class="sf-chart__axis-label sf-chart__axis-label--right">@Compact(AxisValue(tick))</div></foreignObject>
+      }
+      <polyline points="@ActualPoints" class="sf-chart__line sf-chart__line--actual" />
+      @if (HasTarget)
+      {
+        <polyline points="@TargetPoints" class="sf-chart__line sf-chart__line--target" />
+      }
+      @if (HasPreviousYear)
+      {
+        <polyline points="@PreviousYearPoints" class="sf-chart__line sf-chart__line--previous" />
+      }
+      @for (var i = 0; i < Rows.Count; i++)
+      {
+        var row = Rows[i];
+        <g tabindex="0" role="group" aria-label="@PointAria(row)" class="sf-chart__point-group">
+          <circle cx="@X(i)" cy="@Y(Actual(row))" r="4" class="sf-chart__point sf-chart__point--actual"><title>@PointAria(row)</title></circle>
+          @if (i == 0 || i == Rows.Count - 1 || i % 2 == 1)
+          {
+            <foreignObject x="@(X(i) - 30)" y="207" width="60" height="18"><div class="sf-chart__axis-label sf-chart__axis-label--center">@row.Month.ToString("MMM yy", EsMx)</div></foreignObject>
+          }
+        </g>
+      }
+      <g class="sf-chart__legend">
+        <circle cx="445" cy="239" r="4" class="sf-chart__point--actual"/><foreignObject x="453" y="228" width="55" height="20"><div class="sf-chart__axis-label">Real</div></foreignObject>
+        @if (HasTarget) { <circle cx="520" cy="239" r="4" class="sf-chart__point--target"/><foreignObject x="528" y="228" width="55" height="20"><div class="sf-chart__axis-label">Meta</div></foreignObject> }
+        @if (HasPreviousYear) { <circle cx="590" cy="239" r="4" class="sf-chart__point--previous"/><foreignObject x="598" y="228" width="100" height="20"><div class="sf-chart__axis-label">Ano anterior</div></foreignObject> }
+      </g>
+    </svg>
+    <div class="sf-chart__table" tabindex="0">
+      <table>
+        <thead><tr><th>Mes</th><th>Real</th>@if (HasTarget){<th>Meta</th>}@if (HasPreviousYear){<th>Ano anterior</th>}</tr></thead>
+        <tbody>
+          @foreach (var row in Rows)
+          {
+            <tr><td>@row.Month.ToString("MMM yyyy", EsMx)</td><td>@Format(Actual(row))</td>@if (HasTarget){<td>@Format(Target(row))</td>}@if (HasPreviousYear){<td>@Format(PreviousYear(row))</td>}</tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</figure>
+
+@code {
+  private static readonly CultureInfo EsMx = CultureInfo.GetCultureInfo("es-MX");
+  [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+  [Parameter] public string Caption { get; set; } = string.Empty;
+  [Parameter, EditorRequired] public IReadOnlyList<SaludEmpresaTrendRow> Rows { get; set; } = [];
+  [Parameter] public string Metric { get; set; } = "revenue";
+  [Parameter] public bool ShowTarget { get; set; } = true;
+  [Parameter] public bool ShowPreviousYear { get; set; } = true;
+  private string ChartId => $"chart-{Metric}";
+  private bool HasTarget => ShowTarget && Rows.Any(row => Target(row).HasValue);
+  private bool HasPreviousYear => ShowPreviousYear && Rows.Any(row => PreviousYear(row).HasValue);
+  private IEnumerable<decimal> Values => Rows.Select(row => Actual(row) ?? 0m)
+    .Concat(HasTarget ? Rows.Select(row => Target(row) ?? 0m) : [])
+    .Concat(HasPreviousYear ? Rows.Select(row => PreviousYear(row) ?? 0m) : []);
+  private decimal Min => Math.Min(0m, Values.DefaultIfEmpty(0m).Min());
+  private decimal Max => Math.Max(1m, Values.DefaultIfEmpty(1m).Max());
+  private decimal Range => Math.Max(1m, Max - Min);
+  private string ActualPoints => Points(Actual);
+  private string TargetPoints => Points(Target);
+  private string PreviousYearPoints => Points(PreviousYear);
+  private decimal X(int index) => Rows.Count <= 1 ? 377m : 54m + index * 646m / (Rows.Count - 1);
+  private decimal Y(decimal? value) => 192m - ((value ?? 0m) - Min) / Range * 168m;
+  private decimal AxisValue(int tick) => Max - tick * Range / 4m;
+  private string Points(Func<SaludEmpresaTrendRow, decimal?> selector)
+    => string.Join(" ", Rows.Select((row, index) => FormattableString.Invariant($"{X(index):0.##},{Y(selector(row)):0.##}")));
+  private decimal? Actual(SaludEmpresaTrendRow row) => Metric switch
+  {
+    "result" => row.NetResult,
+    "occupancy" => row.OccupancyPct,
+    "adr" => row.ADR,
+    "revpar" => row.RevPAR,
+    _ => row.TotalOperatingRevenue
+  };
+  private decimal? Target(SaludEmpresaTrendRow row) => Metric switch
+  {
+    "result" => row.NetResultTarget,
+    _ when Metric == "revenue" => row.RevenueTarget,
+    _ => null
+  };
+  private decimal? PreviousYear(SaludEmpresaTrendRow row) => Metric == "revenue" ? row.PreviousYearRevenue : null;
+  private string Format(decimal? value) => value.HasValue
+    ? Metric == "occupancy" ? $"{value.Value:N1}%" : value.Value.ToString("C0", EsMx)
+    : "Sin meta";
+  private string Compact(decimal value) => Metric == "occupancy" ? $"{value:0}%" : Math.Abs(value) >= 1000000 ? $"{value/1000000m:0.#}M" : Math.Abs(value) >= 1000 ? $"{value/1000m:0.#}k" : $"{value:0}";
+  private string PointAria(SaludEmpresaTrendRow row) => $"{row.Month:MMMM yyyy}: real {Format(Actual(row))}, meta {Format(Target(row))}, ano anterior {Format(PreviousYear(row))}";
+}

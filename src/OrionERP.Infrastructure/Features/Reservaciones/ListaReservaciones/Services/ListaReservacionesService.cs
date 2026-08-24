@@ -15,6 +15,7 @@ using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.Extras;
 using OrionERP.Application.Features.Reservaciones.OpenClaw;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
+using OrionERP.Infrastructure.Features.Reservaciones;
 
 namespace OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Services;
 
@@ -1867,11 +1868,17 @@ WHERE ID IN (
 
     try
     {
+      var reservationIds = (await conn.QueryAsync<int>(new CommandDefinition(
+        "SELECT DISTINCT TRY_CONVERT(int,NULLIF(LTRIM(RTRIM(LOCK_DESCRIPTION)),'')) FROM dbo.ROOM_CALENDAR WITH (UPDLOCK) WHERE ID IN @Ids;",
+        new { Ids = roomCalendarIds.ToArray() }, tx, cancellationToken: ct))).Where(id => id > 0).ToArray();
       var affected = await conn.ExecuteAsync(
         new CommandDefinition(unlockSql, new { Ids = roomCalendarIds.ToArray() }, tx, cancellationToken: ct));
 
       await conn.ExecuteAsync(
         new CommandDefinition(deleteActividadSql, new { Ids = roomCalendarIds.ToArray() }, tx, cancellationToken: ct));
+
+      foreach (var reservationId in reservationIds)
+        await ReservationStoredTotalSynchronizer.RecalculateAsync(conn, tx!, reservationId, ct);
 
       await tx!.CommitAsync(ct);
       return ReservacionCommandResult.Ok($"Se quitaron {affected} suites de la reservación.");
@@ -1892,8 +1899,16 @@ WHERE ID IN (
     const string sql = @"UPDATE dbo.ROOM_CALENDAR SET PRECIO = @Price WHERE ID IN @Ids;";
 
     await using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+    var reservationIds = (await conn.QueryAsync<int>(new CommandDefinition(
+      "SELECT DISTINCT TRY_CONVERT(int,NULLIF(LTRIM(RTRIM(LOCK_DESCRIPTION)),'')) FROM dbo.ROOM_CALENDAR WITH (UPDLOCK) WHERE ID IN @Ids;",
+      new { Ids = roomCalendarIds.ToArray() }, tx, cancellationToken: ct))).Where(id => id > 0).ToArray();
     var affected = await conn.ExecuteAsync(
-      new CommandDefinition(sql, new { Price = price, Ids = roomCalendarIds.ToArray() }, cancellationToken: ct));
+      new CommandDefinition(sql, new { Price = price, Ids = roomCalendarIds.ToArray() }, tx, cancellationToken: ct));
+    foreach (var reservationId in reservationIds)
+      await ReservationStoredTotalSynchronizer.RecalculateAsync(conn, tx, reservationId, ct);
+    await tx.CommitAsync(ct);
 
     return ReservacionCommandResult.Ok($"Precio actualizado para {affected} suites.");
   }
@@ -1936,6 +1951,9 @@ WHERE ID IN (
 
     try
     {
+      var reservationIds = (await conn.QueryAsync<int>(new CommandDefinition(
+        "SELECT DISTINCT TRY_CONVERT(int,NULLIF(LTRIM(RTRIM(LOCK_DESCRIPTION)),'')) FROM dbo.ROOM_CALENDAR WITH (UPDLOCK) WHERE ID IN @Ids;",
+        new { Ids = ids }, tx, cancellationToken: ct))).Where(id => id > 0).ToArray();
       var affected = 0;
       for (var i = 0; i < ids.Length; i++)
       {
@@ -1943,6 +1961,9 @@ WHERE ID IN (
         affected += await conn.ExecuteAsync(
           new CommandDefinition(sql, new { Precio = priceWithoutIva, Id = ids[i] }, tx, cancellationToken: ct));
       }
+
+      foreach (var reservationId in reservationIds)
+        await ReservationStoredTotalSynchronizer.RecalculateAsync(conn, tx!, reservationId, ct);
 
       await tx!.CommitAsync(ct);
       return ReservacionCommandResult.Ok($"Total con IVA distribuido en {affected} suites.");
@@ -2301,6 +2322,8 @@ WHERE e.ExtraID = @ExtraId
   AND e.IsActive = 1;";
 
     await using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
     var affected = await conn.ExecuteAsync(
       new CommandDefinition(
         sql,
@@ -2312,7 +2335,11 @@ WHERE e.ExtraID = @ExtraId
           request.Quantity,
           Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim()
         },
+        tx,
         cancellationToken: ct));
+    if (affected > 0)
+      await ReservationStoredTotalSynchronizer.RecalculateAsync(conn, tx, request.ReservationId, ct);
+    await tx.CommitAsync(ct);
 
     return affected > 0
       ? ReservacionCommandResult.Ok("Extra agregado.")
@@ -2348,6 +2375,8 @@ WHERE re.ReservationExtraID = @Id
   AND e.IsActive = 1;";
 
     await using var conn = new SqlConnection(_cs);
+    await conn.OpenAsync(ct);
+    await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
     var affected = await conn.ExecuteAsync(
       new CommandDefinition(
         sql,
@@ -2360,7 +2389,11 @@ WHERE re.ReservationExtraID = @Id
           request.Quantity,
           Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim()
         },
+        tx,
         cancellationToken: ct));
+    if (affected > 0)
+      await ReservationStoredTotalSynchronizer.RecalculateAsync(conn, tx, request.ReservationId, ct);
+    await tx.CommitAsync(ct);
 
     return affected > 0
       ? ReservacionCommandResult.Ok("Extra actualizado.")
@@ -2369,10 +2402,19 @@ WHERE re.ReservationExtraID = @Id
 
   public async Task<ReservacionCommandResult> DeleteExtraAsync(int reservationExtraId, CancellationToken ct = default)
   {
-    const string sql = @"DELETE FROM dbo.Reservation_Extra WHERE ReservationExtraID = @Id;";
+    const string sql = @"
+DECLARE @ReservationId int=(SELECT ReservationID FROM dbo.Reservation_Extra WITH (UPDLOCK) WHERE ReservationExtraID=@Id);
+DELETE FROM dbo.Reservation_Extra WHERE ReservationExtraID=@Id;
+SELECT @ReservationId;";
 
     await using var conn = new SqlConnection(_cs);
-    var affected = await conn.ExecuteAsync(new CommandDefinition(sql, new { Id = reservationExtraId }, cancellationToken: ct));
+    await conn.OpenAsync(ct);
+    await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+    var reservationId = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(sql, new { Id = reservationExtraId }, tx, cancellationToken: ct));
+    var affected = reservationId.HasValue ? 1 : 0;
+    if (reservationId.HasValue)
+      await ReservationStoredTotalSynchronizer.RecalculateAsync(conn, tx, reservationId.Value, ct);
+    await tx.CommitAsync(ct);
 
     return affected > 0
       ? ReservacionCommandResult.Ok("Extra eliminado.")

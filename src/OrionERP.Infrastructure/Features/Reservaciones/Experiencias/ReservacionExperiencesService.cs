@@ -7,6 +7,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
+using OrionERP.Infrastructure.Features.Reservaciones;
 
 namespace OrionERP.Infrastructure.Features.Reservaciones.Experiencias;
 
@@ -113,6 +114,7 @@ ORDER BY rea.ReservationExperienceAddOnID;
     {
       var reservationExperienceId = await InsertReservationExperienceAsync(conn, tx, request, validation, ct);
       await InsertReservationExperienceAddOnsAsync(conn, tx, reservationExperienceId, validation.Pricing.AddOns, ct);
+      await ReservationStoredTotalSynchronizer.RecalculateAsync(conn, tx, request.ReservationId, ct);
       await tx.CommitAsync(ct);
       return ReservacionCommandResult.Ok("Experiencia agregada.");
     }
@@ -183,6 +185,7 @@ WHERE ReservationExperienceID = @Id
           cancellationToken: ct));
 
       await InsertReservationExperienceAddOnsAsync(conn, tx, request.Id, validation.Pricing.AddOns, ct);
+      await ReservationStoredTotalSynchronizer.RecalculateAsync(conn, tx, request.ReservationId, ct);
       await tx.CommitAsync(ct);
       return ReservacionCommandResult.Ok("Experiencia actualizada.");
     }
@@ -195,7 +198,11 @@ WHERE ReservationExperienceID = @Id
 
   public async Task<ReservacionCommandResult> DeleteExperienceAsync(int reservationExperienceId, CancellationToken ct = default)
   {
-    const string sql = "DELETE FROM dbo.Reservation_Experience WHERE ReservationExperienceID = @Id;";
+    const string sql = """
+DECLARE @ReservationId int=(SELECT ReservationID FROM dbo.Reservation_Experience WITH (UPDLOCK) WHERE ReservationExperienceID=@Id);
+DELETE FROM dbo.Reservation_Experience WHERE ReservationExperienceID=@Id;
+SELECT @ReservationId;
+""";
 
     await using var conn = new SqlConnection(_connectionString);
     await conn.OpenAsync(ct);
@@ -204,7 +211,12 @@ WHERE ReservationExperienceID = @Id
       return ReservacionCommandResult.Fail("La infraestructura de experiencias aun no esta instalada.");
     }
 
-    var affected = await conn.ExecuteAsync(new CommandDefinition(sql, new { Id = reservationExperienceId }, cancellationToken: ct));
+    await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+    var reservationId = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(sql, new { Id = reservationExperienceId }, tx, cancellationToken: ct));
+    var affected = reservationId.HasValue ? 1 : 0;
+    if (reservationId.HasValue)
+      await ReservationStoredTotalSynchronizer.RecalculateAsync(conn, tx, reservationId.Value, ct);
+    await tx.CommitAsync(ct);
 
     return affected > 0
       ? ReservacionCommandResult.Ok("Experiencia eliminada.")

@@ -49,6 +49,164 @@ public sealed class SaludEmpresaPdfService : ISaludEmpresaPdfService
       .GeneratePdf();
   }
 
+  public byte[] GenerateInvestor(SaludEmpresaPdfDocumentModel model)
+  {
+    return Document.Create(container =>
+      {
+        container.Page(page =>
+        {
+          page.Size(PageSizes.Letter);
+          page.Margin(22);
+          page.DefaultTextStyle(text => text.FontSize(8.5f).FontColor(BrandPrimaryDark));
+          page.Header().Element(header => ComposeHeader(header, model));
+          page.Content().PaddingTop(12).Element(content => ComposeInvestorContent(content, model));
+          page.Footer().PaddingTop(6).Element(footer => ComposeInvestorFooter(footer, model));
+        });
+      })
+      .GeneratePdf();
+  }
+
+  private static void ComposeInvestorContent(IContainer container, SaludEmpresaPdfDocumentModel model)
+  {
+    var report = model.Report;
+    var selected = report.SelectedPeriod;
+    container.Column(column =>
+    {
+      column.Spacing(12);
+      column.Item().Text("Informe para inversionistas")
+        .FontSize(17).SemiBold().FontColor(BrandPrimaryDark);
+      column.Item().Text("Cifras internas, provisionales y no auditadas. El outlook representa exclusivamente negocio on-books; no incorpora demanda hipotética.")
+        .FontColor(BrandMuted);
+
+      if (selected is null)
+      {
+        column.Item().Text("Sin información disponible para el periodo.");
+        return;
+      }
+
+      column.Item().Element(card => card.Element(SectionCard).Column(section =>
+      {
+        section.Spacing(7);
+        section.Item().Text("Resumen ejecutivo").FontSize(12).SemiBold();
+        section.Item().Table(table =>
+        {
+          table.ColumnsDefinition(columns => { columns.RelativeColumn(); columns.RelativeColumn(); columns.RelativeColumn(); columns.RelativeColumn(); });
+          AddHeader(table, ["Ingreso operativo", "Resultado operativo", "Resultado neto", "Caja final"]);
+          table.Cell().Element(TableBodyCell).Text(Money(selected.TotalOperatingRevenue));
+          table.Cell().Element(TableBodyCell).Text(Money(report.SelectedFinancialBreakdown?.OperatingResult));
+          table.Cell().Element(TableBodyCell).Text(Money(selected.NetResult));
+          table.Cell().Element(TableBodyCell).Text(Money(report.SelectedCashFlow?.ClosingCashBalance));
+        });
+        if (report.Metadata.LodgingEnabled)
+        {
+          section.Item().Table(table =>
+          {
+            table.ColumnsDefinition(columns => { columns.RelativeColumn(); columns.RelativeColumn(); columns.RelativeColumn(); columns.RelativeColumn(); });
+            AddHeader(table, ["Ocupación", "ADR", "RevPAR", "TRevPAR"]);
+            table.Cell().Element(TableBodyCell).Text(Percent(selected.OccupancyPct));
+            table.Cell().Element(TableBodyCell).Text(Money(selected.ADR));
+            table.Cell().Element(TableBodyCell).Text(Money(selected.RevPAR));
+            table.Cell().Element(TableBodyCell).Text(Money(selected.TRevPAR));
+          });
+        }
+      }));
+
+      column.Item().Element(card => card.Element(SectionCard).Column(section =>
+      {
+        section.Spacing(7);
+        section.Item().Text("Tendencia de 12 meses").FontSize(12).SemiBold();
+        section.Item().Table(table =>
+        {
+          table.ColumnsDefinition(columns => { columns.RelativeColumn(); columns.RelativeColumn(); columns.RelativeColumn(); columns.RelativeColumn(); columns.RelativeColumn(); });
+          AddHeader(table, ["Mes", "Ingreso", "Meta", "Año anterior", "Resultado neto"]);
+          foreach (var row in report.Trends.OrderBy(row => row.Month))
+          {
+            table.Cell().Element(TableBodyCell).Text(row.Month.ToString("MMM yyyy", MexicanCulture));
+            table.Cell().Element(TableBodyCell).AlignRight().Text(Money(row.TotalOperatingRevenue));
+            table.Cell().Element(TableBodyCell).AlignRight().Text(Money(row.RevenueTarget));
+            table.Cell().Element(TableBodyCell).AlignRight().Text(Money(row.PreviousYearRevenue));
+            table.Cell().Element(TableBodyCell).AlignRight().Text(Money(row.NetResult));
+          }
+        });
+      }));
+
+      column.Item().Element(card => card.Element(SectionCard).Column(section =>
+      {
+        section.Spacing(7);
+        section.Item().Text("Outlook on-books").FontSize(12).SemiBold();
+        section.Item().Table(table =>
+        {
+          table.ColumnsDefinition(columns => { columns.RelativeColumn(); columns.RelativeColumn(); columns.RelativeColumn(); columns.RelativeColumn(); });
+          AddHeader(table, ["Mes", "Ocupación", "Ingreso habitación", "Complementario"]);
+          foreach (var row in report.MonthlyOutlook.OrderBy(row => row.Month).Take(12))
+          {
+            table.Cell().Element(TableBodyCell).Text(row.Month.ToString("MMM yyyy", MexicanCulture));
+            table.Cell().Element(TableBodyCell).AlignRight().Text(Percent(row.OccupancyPct));
+            table.Cell().Element(TableBodyCell).AlignRight().Text(Money(row.RoomRevenue));
+            table.Cell().Element(TableBodyCell).AlignRight().Text(Money(row.ComplementaryRevenue));
+          }
+        });
+      }));
+
+      column.Item().PageBreak();
+      column.Item().Element(card => card.Element(SectionCard).Column(section =>
+      {
+        section.Spacing(7);
+        section.Item().Text("Mezcla de ingresos y liquidez").FontSize(12).SemiBold();
+        section.Item().Row(row =>
+        {
+          row.RelativeItem().Table(table =>
+          {
+            table.ColumnsDefinition(columns => { columns.RelativeColumn(2); columns.RelativeColumn(); columns.RelativeColumn(); });
+            AddHeader(table, ["Ingreso", "Monto", "Mezcla"]);
+            foreach (var item in report.RevenueMix)
+            {
+              table.Cell().Element(TableBodyCell).Text(item.RevenueType);
+              table.Cell().Element(TableBodyCell).AlignRight().Text(Money(item.Amount));
+              table.Cell().Element(TableBodyCell).AlignRight().Text(Percent(item.MixPct));
+            }
+          });
+          row.ConstantItem(12);
+          row.RelativeItem().Table(table =>
+          {
+            table.ColumnsDefinition(columns => { columns.RelativeColumn(2); columns.RelativeColumn(); });
+            AddHeader(table, ["Posición", "Saldo"]);
+            foreach (var item in report.Liquidity)
+            {
+              table.Cell().Element(TableBodyCell).Text(item.MetricLabel);
+              table.Cell().Element(TableBodyCell).AlignRight().Text(item.IsAvailable ? Money(item.Amount) : "No disponible");
+            }
+          });
+        });
+      }));
+
+      var groupedRisks = report.SelectedPeriodIssues
+        .GroupBy(issue => issue.Severity)
+        .Select(group => new { Severity = group.Key, Count = group.Sum(issue => issue.ItemCount ?? 1), Amount = group.Sum(issue => issue.NetEffect ?? issue.MetricAmount ?? 0m) })
+        .OrderBy(group => group.Severity == "Alta" ? 1 : group.Severity == "Media" ? 2 : 3)
+        .ToList();
+      column.Item().Element(card => card.Element(SectionCard).Column(section =>
+      {
+        section.Spacing(6);
+        section.Item().Text("Riesgos y metodología").FontSize(12).SemiBold();
+        foreach (var risk in groupedRisks)
+          section.Item().Text($"{risk.Severity}: {risk.Count:N0} observaciones, efecto identificado {Money(risk.Amount)}.");
+        section.Item().Text("Ocupación = noches vendidas / noches disponibles; ADR = ingreso neto de habitación / noches vendidas; RevPAR = ingreso neto de habitación / noches disponibles; TRevPAR agrega extras y experiencias netos. Estructura inspirada en USALI y adaptada al catálogo mexicano.")
+          .FontColor(BrandMuted);
+      }));
+    });
+  }
+
+  private static void ComposeInvestorFooter(IContainer container, SaludEmpresaPdfDocumentModel model)
+  {
+    container.BorderTop(1).BorderColor(BrandBorder).PaddingTop(5).Row(row =>
+    {
+      row.RelativeItem().Text($"Informe para inversionistas | Corte {model.Report.Metadata.CutoffDate:dd/MM/yyyy} | Interno no auditado")
+        .FontSize(7).FontColor(BrandMuted);
+      row.ConstantItem(75).AlignRight().Text(text => { text.CurrentPageNumber(); text.Span(" / "); text.TotalPages(); });
+    });
+  }
+
   private void ComposeHeader(IContainer container, SaludEmpresaPdfDocumentModel model)
   {
     var selected = model.Report.SelectedPeriod;
@@ -117,8 +275,10 @@ public sealed class SaludEmpresaPdfService : ISaludEmpresaPdfService
         row.RelativeItem().Element(content => ComposeCashFlow(content, report.CashFlow));
       });
 
-      column.Item().Element(content => ComposeSuiteTable(content, report.SelectedPeriodSuites.Take(8).ToList()));
-      column.Item().Element(content => ComposeIssues(content, report.SelectedPeriodIssues.Take(8).ToList()));
+      column.Item().Element(content => ComposeSuiteTable(content, report.SelectedPeriodSuites));
+      column.Item().Element(content => ComposeIssues(content, report.SelectedPeriodIssues));
+      if (model.Reconciliation is { Count: > 0 })
+        column.Item().Element(content => ComposeReconciliationDetail(content, model.Reconciliation));
     });
   }
 
@@ -133,7 +293,7 @@ public sealed class SaludEmpresaPdfService : ISaludEmpresaPdfService
       BuildMetric("Resultado neto", selected.NetResult, previous?.NetResult, SaludEmpresaMetricFormat.Money),
       BuildMetric("Margen neto", selected.NetMarginPct, previous?.NetMarginPct, SaludEmpresaMetricFormat.Percent),
       BuildMetric("Flujo neto", selected.NetCashflow, previous?.NetCashflow, SaludEmpresaMetricFormat.Money),
-      BuildMetric("Ocupacion", selected.OccupancyPct, previous?.OccupancyPct, SaludEmpresaMetricFormat.Percent),
+      BuildMetric("Ocupación", selected.OccupancyPct, previous?.OccupancyPct, SaludEmpresaMetricFormat.Percent),
       BuildMetric("RevPAR", selected.RevPAR, previous?.RevPAR, SaludEmpresaMetricFormat.Money),
       BuildMetric("Cobranza", selected.CollectionPct, previous?.CollectionPct, SaludEmpresaMetricFormat.Percent),
       BuildMetric("YoY ingresos", selected.RoomRevenue, previousYear?.RoomRevenue, SaludEmpresaMetricFormat.Money)
@@ -202,7 +362,7 @@ public sealed class SaludEmpresaPdfService : ISaludEmpresaPdfService
           columns.RelativeColumn(.8f);
         });
 
-        AddHeader(table, ["Periodo", "Ingresos", "Resultado", "Ocupacion", "RevPAR"]);
+        AddHeader(table, ["Periodo", "Ingresos", "Resultado", "Ocupación", "RevPAR"]);
 
         foreach (var row in report.ExecutiveIndicators.OrderBy(row => row.SortOrder))
         {
@@ -344,7 +504,7 @@ public sealed class SaludEmpresaPdfService : ISaludEmpresaPdfService
     container.Element(SectionCard).Column(section =>
     {
       section.Spacing(7);
-      section.Item().Element(SectionTitle).Text("Conciliacion y calidad de datos")
+      section.Item().Element(SectionTitle).Text("Conciliación y calidad de datos")
         .FontSize(11)
         .SemiBold()
         .FontColor(BrandPrimaryDark);
@@ -381,6 +541,34 @@ public sealed class SaludEmpresaPdfService : ISaludEmpresaPdfService
           });
           table.Cell().Element(TableBodyCell).AlignRight().Text(row.ItemCount?.ToString("N0", MexicanCulture) ?? "-");
           table.Cell().Element(TableBodyCell).AlignRight().Text(Money(row.NetEffect ?? row.MetricAmount));
+        }
+      });
+    });
+  }
+
+  private static void ComposeReconciliationDetail(IContainer container, IReadOnlyList<SaludEmpresaReconciliationRow> rows)
+  {
+    container.Element(SectionCard).Column(section =>
+    {
+      section.Spacing(7);
+      section.Item().Element(SectionTitle).Text("Detalle completo de conciliacion")
+        .FontSize(11).SemiBold().FontColor(BrandPrimaryDark);
+      section.Item().Table(table =>
+      {
+        table.ColumnsDefinition(columns =>
+        {
+          columns.RelativeColumn(.45f); columns.RelativeColumn(.7f); columns.RelativeColumn(1.1f);
+          columns.RelativeColumn(1.8f); columns.RelativeColumn(.7f); columns.RelativeColumn(1.1f);
+        });
+        AddHeader(table, ["Sev.", "Fecha", "Tipo", "Observacion", "Efecto", "Referencia"]);
+        foreach (var row in rows)
+        {
+          table.Cell().Element(TableBodyCell).Text(row.Severity).FontColor(SeverityColor(row.Severity));
+          table.Cell().Element(TableBodyCell).Text(row.EventDate?.ToString("dd/MM/yyyy") ?? "-");
+          table.Cell().Element(TableBodyCell).Text(row.Type);
+          table.Cell().Element(TableBodyCell).Column(cell => { cell.Item().Text(row.Item); if (!string.IsNullOrWhiteSpace(row.Notes)) cell.Item().Text(row.Notes).FontSize(6.5f).FontColor(BrandMuted); });
+          table.Cell().Element(TableBodyCell).AlignRight().Text(Money(row.NetEffect ?? row.Amount));
+          table.Cell().Element(TableBodyCell).Text(row.Reference ?? "-");
         }
       });
     });

@@ -3,6 +3,8 @@ using Microsoft.Extensions.FileProviders;
 using OrionERP.Application.Features.ReportesFinancieros.Models;
 using OrionERP.Web.Features.ReportesFinancieros.SaludEmpresa;
 using System.Text;
+using System.IO.Compression;
+using System.Xml.Linq;
 
 namespace OrionERP.UnitTests.ReportesFinancieros;
 
@@ -76,6 +78,57 @@ public class SaludEmpresaDashboardTests
 
     Assert.NotEmpty(bytes);
     Assert.StartsWith("%PDF", Encoding.ASCII.GetString(bytes, 0, 4), StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void SaludEmpresaInvestorPdf_GeneratesPdfWithoutTransactionalAppendix()
+  {
+    var service = new SaludEmpresaPdfService(new FakeWebHostEnvironment());
+    var bytes = service.GenerateInvestor(new SaludEmpresaPdfDocumentModel(
+      "OHM191112Q26", new DateTime(2026, 8, 1), new DateTime(2026, 8, 31),
+      new DateTime(2026, 8, 24), BuildSampleReport(), null,
+      [new SaludEmpresaReconciliationRow { ReservationId = 24244, TransactionId = 999, Reference = "reservacion_id=24244" }]));
+
+    Assert.NotEmpty(bytes);
+    Assert.StartsWith("%PDF", Encoding.ASCII.GetString(bytes, 0, 4), StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void SaludEmpresaExcelService_GeneratesAuditableOpenXmlWorkbook()
+  {
+    var service = new SaludEmpresaExcelService();
+    var bytes = service.Generate(new SaludEmpresaPdfDocumentModel(
+      "OHM191112Q26", new DateTime(2026, 8, 1), new DateTime(2026, 8, 31),
+      new DateTime(2026, 8, 24), BuildSampleReport(),
+      [new SaludEmpresaTarget { Rfc = "OHM191112Q26", Month = new DateTime(2026, 8, 1), Notes = "Meta aprobada" }],
+      [new SaludEmpresaReconciliationRow { Severity = "Alta", Type = "Total", Item = "Diferencia", Reference = "reservacion_id=42" }]));
+
+    using var archive = new ZipArchive(new MemoryStream(bytes), ZipArchiveMode.Read);
+    Assert.NotNull(archive.GetEntry("xl/workbook.xml"));
+    Assert.Equal(4, archive.Entries.Count(entry => entry.FullName.StartsWith("xl/worksheets/sheet", StringComparison.Ordinal)));
+    foreach (var entry in archive.Entries.Where(entry => entry.FullName.EndsWith(".xml", StringComparison.Ordinal)))
+      using (var stream = entry.Open()) XDocument.Load(stream);
+    using var reconciliation = new StreamReader(archive.GetEntry("xl/worksheets/sheet3.xml")!.Open());
+    Assert.Contains("reservacion_id=42", reconciliation.ReadToEnd(), StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void ReconciliationPage_ComputesAllPagesWithoutTruncation()
+  {
+    var page = new SaludEmpresaReconciliationPage { Page = 2, PageSize = 25, TotalCount = 126 };
+    Assert.Equal(6, page.TotalPages);
+  }
+
+  [Fact]
+  public void ExecutiveIndicator_TRevParIncludesComplementaryRevenue()
+  {
+    var row = new SaludEmpresaExecutiveIndicatorRow
+    {
+      RoomRevenue = 8000m, ExtrasRevenue = 1200m, ExperiencesRevenue = 800m,
+      TotalOperatingRevenue = 10000m, AvailableNights = 20, TRevPAR = 500m
+    };
+    Assert.Equal(2000m, row.ComplementaryRevenue);
+    Assert.Equal(500m, row.TRevPAR);
   }
 
   private static SaludEmpresaReport BuildSampleReport()
@@ -162,7 +215,22 @@ public class SaludEmpresaDashboardTests
           SampleReference = "reservacion_id=42",
           Notes = "Muestra de prueba."
         }
-      ]);
+      ],
+      new SaludEmpresaMetadata
+      {
+        Rfc = "OHM191112Q26", CutoffDate = new DateTime(2026, 5, 17), GeneratedAtUtc = new DateTime(2026, 5, 17),
+        IsProvisional = true, LodgingEnabled = true, RatiosAvailable = true, OwnerWithholdingPct = 10m
+      },
+      [
+        new SaludEmpresaTrendRow { Month = new DateTime(2026, 4, 1), MonthLabel = "2026-04", TotalOperatingRevenue = 100000m, RevenueTarget = 95000m, PreviousYearRevenue = 85000m, NetResult = 15000m },
+        new SaludEmpresaTrendRow { Month = new DateTime(2026, 5, 1), MonthLabel = "2026-05", TotalOperatingRevenue = 120000m, RevenueTarget = 110000m, PreviousYearRevenue = 90000m, NetResult = 24000m }
+      ],
+      [new SaludEmpresaRevenueMixRow { RevenueType = "Habitacion", Amount = 120000m, MixPct = 100m }],
+      [new SaludEmpresaExpenseRow { AccountFamily = "Gastos generales", AccountCode = "601.01.01", AccountName = "Servicios", Amount = 5000m, IsMapped = true }],
+      [new SaludEmpresaLiquidityRow { MetricKey = "cash", MetricLabel = "Caja y bancos", Amount = 20000m, IsAvailable = true }],
+      [new SaludEmpresaTargetVarianceRow { Month = new DateTime(2026, 5, 1), MetricKey = "net_result", MetricLabel = "Resultado neto", ActualValue = 24000m, TargetValue = 20000m, VarianceValue = 4000m, VariancePct = 20m }],
+      [new SaludEmpresaOutlookDailyRow { Date = new DateTime(2026, 5, 18), AvailableNights = 8, OnBooksNights = 4, RoomRevenue = 8000m, OccupancyPct = 50m }],
+      [new SaludEmpresaOutlookMonthlyRow { Month = new DateTime(2026, 6, 1), AvailableNights = 240, OnBooksNights = 30, RoomRevenue = 60000m, OccupancyPct = 12.5m }]);
   }
 
   private static SaludEmpresaExecutiveIndicatorRow Indicator(

@@ -117,6 +117,37 @@ public class OpenClawReservationHelpersTests
     Assert.Equal(200m, totals.TotalReservacion);
   }
 
+  [Theory]
+  [InlineData(ReservationChargeTaxMode.TaxableExclusive, 116, 16)]
+  [InlineData(ReservationChargeTaxMode.TaxIncluded, 116, 16)]
+  [InlineData(ReservationChargeTaxMode.NonTaxable, 100, 0)]
+  public void CalculateTotals_AppliesEveryExperienceTaxMode(
+    ReservationChargeTaxMode taxMode,
+    decimal expectedTotal,
+    decimal expectedTax)
+  {
+    var amount = taxMode == ReservationChargeTaxMode.TaxIncluded ? 116m : 100m;
+    var totals = ReservacionTotalsCalculator.Calculate(
+      new DateTime(2026, 3, 18), new DateTime(2026, 3, 20),
+      Array.Empty<decimal>(), Array.Empty<ReservationChargeLine>(),
+      [new ReservationChargeLine(amount, taxMode)], 0m);
+
+    Assert.Equal(expectedTax, totals.Tax);
+    Assert.Equal(expectedTotal, totals.TotalReservacion);
+  }
+
+  [Fact]
+  public void CalculateTotals_PreservesHistoricalIshForCrossYearStay()
+  {
+    var totals = ReservacionTotalsCalculator.Calculate(
+      new DateTime(2024, 12, 31), new DateTime(2025, 1, 2),
+      [100m, 100m], Array.Empty<ReservationChargeLine>(), Array.Empty<ReservationChargeLine>(), 0m);
+
+    Assert.Equal(4m, totals.Ish);
+    Assert.Equal(236m, totals.TotalReservacion);
+    Assert.Equal(2, totals.NumNoches);
+  }
+
   [Fact]
   public void CalculateTotals_DiscountsSuiteLinesBeforePerLineTaxes()
   {

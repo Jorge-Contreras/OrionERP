@@ -2,326 +2,261 @@
 @page "/reportes-financieros/salud-empresa"
 @using Microsoft.AspNetCore.Authorization
 @using OrionERP.Application.Features.ReportesFinancieros.Models
-@attribute [Authorize(Roles = "Administrador")]
+@attribute [Authorize(Policy = "FinanzasLectura")]
 
-<PageTitle>Salud Financiera</PageTitle>
+<PageTitle>Salud Financiera v2</PageTitle>
 
-<div class="report-page salud-page">
-    <div class="report-page__header salud-page__header">
-        <div>
-            <p class="salud-page__eyebrow">Reporte financiero</p>
-            <h1 class="report-page__title">Salud Financiera</h1>
-        </div>
-
-        @if (SelectedPeriod is not null)
-        {
-            <div class="salud-market-status">
-                <span>@SelectedPeriod.PeriodLabel</span>
-                <strong class="@SignedClass(SelectedPeriod.NetResult)">@MoneyCompact(SelectedPeriod.NetResult)</strong>
-            </div>
-        }
+<main class="sf-page">
+  <header class="sf-hero">
+    <div>
+      <span class="sf-eyebrow">Inteligencia financiera</span>
+      <h1>Salud Financiera</h1>
+      <p>Vista ejecutiva, gerencial e inversionista - cifras internas no auditadas.</p>
     </div>
+    @if (Report is not null)
+    {
+      <div class="sf-cutoff">
+        <span>Fecha de corte</span><strong>@Report.Metadata.CutoffDate.ToString("dd/MM/yyyy")</strong>
+        <em class="@(Report.Metadata.IsProvisional ? "sf-status sf-status--provisional" : "sf-status sf-status--closed")">@(Report.Metadata.IsProvisional ? "Provisional" : "Cerrado")</em>
+      </div>
+    }
+  </header>
 
-    <section class="health-filter-panel no-print">
-        <div class="health-filter-panel__copy">
-            <h2>Filtros</h2>
-            <p>@(SelectedPeriod is null ? PeriodRangeDescription : $"{SelectedPeriod.PeriodScope}: {PeriodRangeDescription}")</p>
+  <section class="sf-toolbar no-print" aria-label="Filtros y exportaciones">
+    <label>Mes inicial<input type="month" value="@StartMonthValue" @onchange="OnStartMonthChanged" /></label>
+    <label>Mes final<input type="month" value="@EndMonthValue" @onchange="OnEndMonthChanged" /></label>
+    <label>Fecha de corte<input type="date" value="@CutoffDate.ToString("yyyy-MM-dd")" @onchange="OnCutoffChanged" /></label>
+    <label class="sf-toolbar__rfc">RFC<input value="@CurrentRfc" readonly /></label>
+    <div class="sf-toolbar__actions">
+      <button class="btn btn-primary" @onclick="RefreshAsync" disabled="@IsLoading">Actualizar</button>
+      <button class="btn btn-outline-secondary" @onclick="DownloadInternalPdfAsync" disabled="@(!HasReport || IsExporting)">PDF interno</button>
+      <button class="btn btn-outline-secondary" @onclick="DownloadInvestorPdfAsync" disabled="@(!HasReport || IsExporting)">PDF inversionista</button>
+      <button class="btn btn-outline-secondary" @onclick="DownloadExcelAsync" disabled="@(!HasReport || IsExporting)">Excel</button>
+    </div>
+  </section>
+
+  @if (IsLoading)
+  {
+    <div class="sf-state" role="status">Calculando indicadores y conciliaciones...</div>
+  }
+  else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+  {
+    <div class="alert alert-danger" role="alert">@ErrorMessage</div>
+  }
+  else if (!HasReport)
+  {
+    <div class="sf-state">No hay informacion para el RFC y periodo seleccionados.</div>
+  }
+  else
+  {
+    <nav class="sf-tabs no-print" role="tablist" aria-label="Secciones del reporte">
+      @foreach (var tab in new[] { ("executive","Resumen ejecutivo"), ("hotel","Operacion hotelera"), ("finance","Finanzas y liquidez"), ("reconciliation","Conciliacion"), ("targets","Metas") })
+      {
+        <button role="tab" aria-selected="@(ActiveTab == tab.Item1)" class="@(ActiveTab == tab.Item1 ? "active" : null)" @onclick="() => SelectTabAsync(tab.Item1)">@tab.Item2</button>
+      }
+    </nav>
+
+    @if (ActiveTab == "executive")
+    {
+      <section role="tabpanel" class="sf-section">
+        <div class="sf-period-banner">
+          <div><strong>MTD realizado</strong><span>@Current!.PeriodStart.ToString("dd/MM/yyyy") - @Current.PeriodEnd.ToString("dd/MM/yyyy")</span></div>
+          @if (Report!.Metadata.LodgingEnabled)
+          {
+            <div><strong>Outlook mes completo</strong><span>On-books separado; no inventa demanda.</span></div>
+            <div><strong>Pipeline</strong><span>@Current.PipelineReservationCount cotizaciones - @Money0(Current.PipelineReservationTotal)</span></div>
+          }
         </div>
 
-        <div class="health-filter-panel__controls">
-            <div class="health-field">
-                <label for="salud-mes-inicial">MES INICIAL</label>
-                <input id="salud-mes-inicial" class="form-control" type="month" value="@StartMonthValue" @onchange="OnStartMonthChanged" />
-            </div>
-
-            <div class="health-field">
-                <label for="salud-mes-final">MES FINAL</label>
-                <input id="salud-mes-final" class="form-control" type="month" value="@EndMonthValue" @onchange="OnEndMonthChanged" />
-            </div>
-
-            <div class="health-field health-field--rfc">
-                <label for="salud-rfc">RFC</label>
-                <input id="salud-rfc" class="form-control" value="@CurrentRfc" readonly />
-            </div>
-
-            <div class="health-actions">
-                <button type="button" class="btn btn-primary" @onclick="RefreshAsync" disabled="@IsLoading" title="Refrescar">
-                    <span class="oi oi-reload" aria-hidden="true"></span>
-                    <span>Refrescar</span>
-                </button>
-
-                <button type="button" class="btn btn-outline-secondary" @onclick="GeneratePdfAsync" disabled="@(!HasReport || IsGeneratingPdf)" title="PDF">
-                    <span class="oi oi-document" aria-hidden="true"></span>
-                    <span>@(IsGeneratingPdf ? "PDF..." : "PDF")</span>
-                </button>
-            </div>
+        <div class="sf-kpis" aria-label="Indicadores ejecutivos">
+          <article><span>Ingreso operativo total</span><strong>@Money0(Current.TotalOperatingRevenue)</strong><small>@Variance(VarianceFor("room_revenue"))</small></article>
+          <article><span>Resultado operativo</span><strong>@Money0(Financial?.OperatingResult)</strong><small>@Percent(Current.OperatingMarginPct) de margen</small></article>
+          <article><span>Resultado neto</span><strong>@Money0(Current.NetResult)</strong><small>@Variance(VarianceFor("net_result"))</small></article>
+          <article><span>Caja final</span><strong>@Money0(Cash?.ClosingCashBalance)</strong><small>@Variance(VarianceFor("closing_cash"))</small></article>
+          @if (Report!.Metadata.LodgingEnabled)
+          {
+            <article><span>Ocupacion</span><strong>@Percent(Current.OccupancyPct)</strong><small>@Variance(VarianceFor("occupancy"))</small></article>
+            <article><span>ADR</span><strong>@Money0(Current.ADR)</strong><small>@Variance(VarianceFor("adr"))</small></article>
+            <article><span>RevPAR</span><strong>@Money0(Current.RevPAR)</strong><small>Habitacion / noche disponible</small></article>
+            <article><span>TRevPAR</span><strong>@Money0(Current.TRevPAR)</strong><small>Incluye extras y experiencias netos</small></article>
+          }
+          <article><span>Cobranza vencida</span><strong>@Money0(Current.OutstandingCollections)</strong><small>@Percent(Current.CollectionPct) cobrado</small></article>
         </div>
-    </section>
 
-    @if (IsLoading)
-    {
-        <div class="health-state">Cargando...</div>
-    }
-    else if (!string.IsNullOrWhiteSpace(ErrorMessage))
-    {
-        <div class="alert alert-danger">@ErrorMessage</div>
-    }
-    else if (!HasReport)
-    {
-        <div class="health-state">No hay datos para los filtros seleccionados.</div>
-    }
-    else
-    {
-        <div id="salud-empresa-dashboard" class="health-dashboard">
-            <section class="health-kpi-grid" aria-label="Indicadores principales">
-                @foreach (var metric in HeadlineMetrics)
+        <div class="sf-chart-grid">
+          <SaludTrendChart Title="Ingreso mensual" Caption="Real vs meta vs mismo mes del ano anterior" Rows="Report.Trends" Metric="revenue" />
+          <SaludTrendChart Title="Resultado y margen" Caption="Resultado neto mensual vs meta" Rows="Report.Trends" Metric="result" ShowPreviousYear="false" />
+        </div>
+
+        <div class="sf-two-column">
+          <article class="sf-panel">
+            <header><h2>Puente financiero</h2><p>De ingresos a resultado neto</p></header>
+            <div class="sf-waterfall">
+              <div><span>Ingreso neto</span><strong>@Money0(Financial?.NetAccountingIncome)</strong></div>
+              <div><span>- Costos 501-505</span><strong>@Money0(Financial?.CostOfSales501504)</strong></div>
+              <div><span>- Gastos generales 601</span><strong>@Money0(Financial?.GeneralExpenses601)</strong></div>
+              <div><span>- Gastos operativos 602-606</span><strong>@Money0((Financial?.OperatingExpenses602605 ?? 0) + (Financial?.OtherOperatingExpenses606 ?? 0))</strong></div>
+              <div class="sf-waterfall__subtotal"><span>EBITDA operativo estimado</span><strong>@Money0(Financial?.EstimatedOperatingEbitda)</strong></div>
+              <div><span>- Depreciacion y amortizacion</span><strong>@Money0((Financial?.Depreciation613 ?? 0) + (Financial?.Amortization614 ?? 0))</strong></div>
+              <div class="sf-waterfall__total"><span>Resultado neto</span><strong>@Money0(Financial?.NetResult)</strong></div>
+            </div>
+          </article>
+          <article class="sf-panel">
+            <header><h2>Alertas criticas</h2><p>Requieren decision o correccion</p></header>
+            @if (CriticalIssues.Count == 0)
+            {
+              <div class="sf-empty-good">Sin alertas criticas en el periodo.</div>
+            }
+            else
+            {
+              <ul class="sf-alert-list">
+                @foreach (var issue in CriticalIssues)
                 {
-                    <article class="health-kpi">
-                        <div class="health-kpi__topline">
-                            <span class="health-kpi__icon"><span class="oi @metric.Icon" aria-hidden="true"></span></span>
-                            <span>@metric.Label</span>
-                        </div>
-                        <strong>@metric.Value</strong>
-                        <p>@metric.Caption</p>
-                        <div class="health-kpi__changes">
-                            <span class="@metric.MonthChange.CssClass">MoM @metric.MonthChange.Text</span>
-                            <span class="@metric.YearChange.CssClass">YoY @metric.YearChange.Text</span>
-                        </div>
-                    </article>
+                  <li><span class="@SeverityClass(issue.Severity)">@issue.Severity</span><div><strong>@issue.Item</strong><small>@issue.Notes</small></div><em>@Money0(issue.NetEffect ?? issue.MetricAmount)</em></li>
                 }
-            </section>
-
-            <section class="health-layout">
-                <article class="health-panel health-panel--wide">
-                    <header class="health-panel__header">
-                        <div>
-                            <h2>Mercado del periodo</h2>
-                            <p>Periodo, comparativos y acumulados</p>
-                        </div>
-                    </header>
-
-                    <div class="health-period-list">
-                        @foreach (var row in PeriodRows)
-                        {
-                            <div class="health-period-row">
-                                <div class="health-period-row__label">
-                                    <strong>@row.PeriodLabel</strong>
-                                    <span>@row.PeriodScope</span>
-                                </div>
-
-                                <div class="health-period-row__metric">
-                                    <span>Ingresos</span>
-                                    <div class="health-bar-track">
-                                        <i class="health-bar health-bar--income" style="@WidthStyle(row.RoomRevenue, MaxPeriodRevenue)"></i>
-                                    </div>
-                                    <strong>@MoneyCompact(row.RoomRevenue)</strong>
-                                </div>
-
-                                <div class="health-period-row__metric">
-                                    <span>Resultado</span>
-                                    <div class="health-bar-track">
-                                        <i class="health-bar @(row.NetResult >= 0 ? "health-bar--income" : "health-bar--loss")" style="@WidthStyle(row.NetResult, MaxPeriodNetResult)"></i>
-                                    </div>
-                                    <strong class="@SignedClass(row.NetResult)">@MoneyCompact(row.NetResult)</strong>
-                                </div>
-
-                                <div class="health-period-row__compact">
-                                    <span>@Percent(row.NetMarginPct)</span>
-                                    <small>Margen</small>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                </article>
-
-                <article class="health-panel">
-                    <header class="health-panel__header">
-                        <div>
-                            <h2>Score</h2>
-                            <p>@SelectedPeriod!.RentableSuites suites rentables</p>
-                        </div>
-                    </header>
-
-                    <div class="health-score">
-                        <div>
-                            <span>Noches vendidas</span>
-                            <strong>@Number(SelectedPeriod.OccupiedNights) / @Number(SelectedPeriod.AvailableNights)</strong>
-                        </div>
-                        <div>
-                            <span>ADR</span>
-                            <strong>@Money(SelectedPeriod.ADR)</strong>
-                        </div>
-                        <div>
-                            <span>Reservaciones</span>
-                            <strong>@Number(SelectedPeriod.ReservationCount)</strong>
-                        </div>
-                        <div>
-                            <span>Cobranza pendiente</span>
-                            <strong>@Money(SelectedPeriod.OutstandingCollections)</strong>
-                        </div>
-                    </div>
-                </article>
-
-                <article class="health-panel">
-                    <header class="health-panel__header">
-                        <div>
-                            <h2>Resultado</h2>
-                            <p>Desglose financiero</p>
-                        </div>
-                    </header>
-
-                    <div class="health-breakdown">
-                        @foreach (var item in FinancialBreakdownItems)
-                        {
-                            <div class="health-breakdown__row">
-                                <span>@item.Label</span>
-                                <div class="health-bar-track">
-                                    <i class="health-bar @item.BarClass" style="@WidthStyle(item.Amount, MaxFinancialAmount)"></i>
-                                </div>
-                                <strong class="@SignedClass(item.Amount)">@MoneyCompact(item.Amount)</strong>
-                            </div>
-                        }
-                    </div>
-                </article>
-
-                <article class="health-panel">
-                    <header class="health-panel__header">
-                        <div>
-                            <h2>Flujo</h2>
-                            <p>Entradas, salidas y cierre</p>
-                        </div>
-                    </header>
-
-                    <div class="health-cash-list">
-                        @foreach (var row in CashFlowRows)
-                        {
-                            <div class="health-cash-row">
-                                <div>
-                                    <strong>@row.PeriodLabel</strong>
-                                    <span>@Number(row.CashTransactionCount) movimientos</span>
-                                </div>
-                                <div class="health-cash-row__bars">
-                                    <span style="@WidthStyle(row.CashIn, MaxCashFlowAmount)" class="health-cash-row__in"></span>
-                                    <span style="@WidthStyle(row.CashOut, MaxCashFlowAmount)" class="health-cash-row__out"></span>
-                                </div>
-                                <strong class="@SignedClass(row.NetCashflow)">@MoneyCompact(row.NetCashflow)</strong>
-                            </div>
-                        }
-                    </div>
-                </article>
-
-                <article class="health-panel health-panel--wide">
-                    <header class="health-panel__header">
-                        <div>
-                            <h2>Suites</h2>
-                            <p>Ranking del periodo seleccionado</p>
-                        </div>
-                    </header>
-
-                    @if (TopSuites.Count == 0)
-                    {
-                        <div class="health-state health-state--compact">Sin suites con datos del periodo.</div>
-                    }
-                    else
-                    {
-                        <div class="health-suite-list">
-                            @foreach (var suite in TopSuites)
-                            {
-                                <div class="health-suite-row">
-                                    <div class="health-suite-row__name">
-                                        <strong>@suite.RoomName</strong>
-                                        <span>@Number(suite.OccupiedNights) de @Number(suite.AvailableNights) noches</span>
-                                    </div>
-                                    <div class="health-bar-track">
-                                        <i class="health-bar health-bar--suite" style="@WidthStyle(suite.RoomRevenue, MaxSuiteRevenue)"></i>
-                                    </div>
-                                    <div class="health-suite-row__stats">
-                                        <strong>@MoneyCompact(suite.RoomRevenue)</strong>
-                                        <span>@Percent(suite.OccupancyPct) occ.</span>
-                                        <span>@MoneyCompact(suite.RevPAR) RevPAR</span>
-                                    </div>
-                                </div>
-                            }
-                        </div>
-                    }
-                </article>
-
-                <article class="health-panel">
-                    <header class="health-panel__header">
-                        <div>
-                            <h2>Conciliacion</h2>
-                            <p>Alertas del periodo seleccionado</p>
-                        </div>
-                    </header>
-
-                    @if (PriorityIssues.Count == 0)
-                    {
-                        <div class="health-state health-state--compact">Sin alertas relevantes.</div>
-                    }
-                    else
-                    {
-                        <div class="health-issue-list">
-                            @foreach (var issue in PriorityIssues)
-                            {
-                                <div class="health-issue">
-                                    <span class="@DataQualityClass(issue.Severity)">@issue.Severity</span>
-                                    <div>
-                                        <strong>@issue.CheckType</strong>
-                                        <p>@issue.Item</p>
-                                        @if (!string.IsNullOrWhiteSpace(issue.SampleReference))
-                                        {
-                                            <small>@issue.SampleReference</small>
-                                        }
-                                    </div>
-                                    <strong>@MoneyCompact(issue.NetEffect ?? issue.MetricAmount)</strong>
-                                </div>
-                            }
-                        </div>
-                    }
-                </article>
-            </section>
-
-            <section class="health-table-panel">
-                <header class="health-panel__header">
-                    <div>
-                        <h2>Detalle financiero</h2>
-                        <p>Lectura contable por periodo</p>
-                    </div>
-                </header>
-
-                <div class="table-responsive report-table-shell">
-                    <table class="table table-sm align-middle report-table health-detail-table">
-                        <thead>
-                            <tr>
-                                <th>Periodo</th>
-                                <th class="text-end">Ingreso neto</th>
-                                <th class="text-end">Utilidad bruta</th>
-                                <th class="text-end">Gastos op.</th>
-                                <th class="text-end">Impuestos</th>
-                                <th class="text-end">Resultado neto</th>
-                                <th class="text-end">Pend. banco</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var row in Report!.FinancialBreakdown.OrderBy(row => row.SortOrder))
-                            {
-                                <tr>
-                                    <td>
-                                        <strong>@row.PeriodLabel</strong>
-                                        <span>@row.PeriodScope</span>
-                                    </td>
-                                    <td class="text-end">@Money(row.NetAccountingIncome)</td>
-                                    <td class="text-end">@Money(row.GrossProfit)</td>
-                                    <td class="text-end">@Money(row.OperatingExpenses602605)</td>
-                                    <td class="text-end">@Money(row.Taxes611)</td>
-                                    <td class="text-end @SignedClass(row.NetResult)">@Money(row.NetResult)</td>
-                                    <td class="text-end">@Money(row.PendingBankNetExcluded)</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+              </ul>
+              <button class="btn btn-link" @onclick='() => SelectTabAsync("reconciliation")'>Ver conciliacion completa</button>
+            }
+          </article>
         </div>
+      </section>
     }
-</div>
+    else if (ActiveTab == "hotel")
+    {
+      <section role="tabpanel" class="sf-section">
+        @if (!Report!.Metadata.LodgingEnabled)
+        {
+          <div class="sf-state">Este RFC muestra finanzas sin metricas de hospedaje.</div>
+        }
+        else
+        {
+          <div class="sf-small-multiples">
+            <SaludTrendChart Title="Ocupacion" Caption="Noches vendidas / disponibles" Rows="Report.Trends" Metric="occupancy" ShowTarget="false" ShowPreviousYear="false" />
+            <SaludTrendChart Title="ADR" Caption="Ingreso habitacion / noches vendidas" Rows="Report.Trends" Metric="adr" ShowTarget="false" ShowPreviousYear="false" />
+            <SaludTrendChart Title="RevPAR" Caption="Ingreso habitacion / noches disponibles" Rows="Report.Trends" Metric="revpar" ShowTarget="false" ShowPreviousYear="false" />
+          </div>
+          <div class="sf-two-column">
+            <article class="sf-panel">
+              <header><h2>Mezcla de ingresos</h2><p>Neto antes de impuestos</p></header>
+              @foreach (var row in Report.RevenueMix)
+              {
+                <div class="sf-mix"><span>@row.RevenueType</span><div><i style="width:@(row.MixPct ?? 0)%"></i></div><strong>@Money0(row.Amount) <small>@Percent(row.MixPct)</small></strong></div>
+              }
+            </article>
+            <article class="sf-panel">
+              <header><h2>Outlook mensual on-books</h2><p>12 meses, sin demanda estimada</p></header>
+              <div class="sf-table-wrap"><table><thead><tr><th>Mes</th><th>Ocup.</th><th>Noches</th><th>Ingreso</th></tr></thead><tbody>
+              @foreach (var row in Report.MonthlyOutlook)
+              { <tr><td>@row.Month.ToString("MMM yyyy")</td><td>@Percent(row.OccupancyPct)</td><td>@row.OnBooksNights / @row.AvailableNights</td><td>@Money0(row.RoomRevenue + row.ComplementaryRevenue)</td></tr> }
+              </tbody></table></div>
+            </article>
+          </div>
+          <article class="sf-panel">
+            <header><h2>Desempeno por suite</h2><p>Ocupacion, ADR, RevPAR e ingreso sin truncamiento</p></header>
+            <div class="sf-table-wrap"><table><thead><tr><th>Suite</th><th>Noches</th><th>Ocupacion</th><th>ADR</th><th>RevPAR</th><th>Ingreso</th><th>Participacion arrendador</th></tr></thead><tbody>
+            @foreach (var row in Suites)
+            { <tr><td><strong>@row.RoomName</strong></td><td>@row.OccupiedNights / @row.AvailableNights</td><td>@Percent(row.OccupancyPct)</td><td>@Money0(row.ADR)</td><td>@Money0(row.RevPAR)</td><td>@Money0(row.RoomRevenue)</td><td>@Money0(row.EstimatedOwnerShare)</td></tr> }
+            </tbody></table></div>
+          </article>
+          <article class="sf-panel">
+            <header><h2>Outlook diario de 90 dias</h2><p>Tabla equivalente operativa</p></header>
+            <div class="sf-table-wrap sf-table-wrap--tall"><table><thead><tr><th>Fecha</th><th>Noches on-books</th><th>Ocupacion</th><th>Habitacion</th><th>Complementario</th></tr></thead><tbody>
+            @foreach (var row in Report.DailyOutlook)
+            { <tr><td>@row.Date.ToString("dd/MM/yyyy")</td><td>@row.OnBooksNights / @row.AvailableNights</td><td>@Percent(row.OccupancyPct)</td><td>@Money0(row.RoomRevenue)</td><td>@Money0(row.ComplementaryRevenue)</td></tr> }
+            </tbody></table></div>
+          </article>
+        }
+      </section>
+    }
+    else if (ActiveTab == "finance")
+    {
+      <section role="tabpanel" class="sf-section">
+        @if (!Report!.Metadata.RatiosAvailable)
+        { <div class="sf-ratio-warning"><strong>Ratios no disponibles</strong><span>@Report.Metadata.RatioAvailabilityNotes</span></div> }
+        <div class="sf-liquidity-grid">
+          @foreach (var row in Report.Liquidity)
+          { <article class="@(!row.IsAvailable ? "unavailable" : null)"><span>@row.MetricLabel</span><strong>@(row.IsAvailable ? Money0(row.Amount) : "No disponible")</strong><small>@row.Notes</small></article> }
+        </div>
+        <div class="sf-two-column">
+          <article class="sf-panel">
+            <header><h2>Principales gastos</h2><p>Por familia y cuenta</p></header>
+            @foreach (var row in TopExpenses)
+            { <div class="sf-expense"><div><span>@row.AccountFamily</span><strong>@row.AccountCode @row.AccountName</strong></div><div class="sf-expense__track"><i style="@Width(row.Amount, MaxExpense)"></i></div><em>@Money0(row.Amount)</em></div> }
+          </article>
+          <article class="sf-panel">
+            <header><h2>Flujo de efectivo</h2><p>Transferencias 101/102 excluidas de entradas y salidas brutas</p></header>
+            <div class="sf-waterfall">
+              <div><span>Saldo inicial</span><strong>@Money0(Cash?.OpeningCashBalance)</strong></div>
+              <div><span>Entradas externas</span><strong>@Money0(Cash?.CashIn)</strong></div>
+              <div><span>Salidas externas</span><strong>@Money0(Cash?.CashOut)</strong></div>
+              <div class="sf-waterfall__total"><span>Saldo final</span><strong>@Money0(Cash?.ClosingCashBalance)</strong></div>
+            </div>
+          </article>
+        </div>
+      </section>
+    }
+    else if (ActiveTab == "reconciliation")
+    {
+      <section role="tabpanel" class="sf-section">
+        <div class="sf-recon-summary"><span><strong>@Reconciliation.HighCount</strong> Alta</span><span><strong>@Reconciliation.MediumCount</strong> Media</span><span><strong>@Reconciliation.LowCount</strong> Baja</span><span><strong>@Reconciliation.TotalCount</strong> Total</span></div>
+        <div class="sf-recon-filters no-print">
+          <label>Severidad<select @bind="ReconciliationSeverity"><option value="">Todas</option><option>Alta</option><option>Media</option><option>Baja</option></select></label>
+          <label>Tipo<input @bind="ReconciliationType" placeholder="Todos los tipos" /></label>
+          <label>Buscar<input @bind="ReconciliationSearch" placeholder="Reservacion, transaccion o nota" /></label>
+          <button class="btn btn-primary" @onclick="FilterReconciliationAsync">Aplicar</button>
+        </div>
+        <article class="sf-panel">
+          <div class="sf-table-wrap"><table><thead><tr><th>Sev.</th><th>Fecha</th><th>Tipo</th><th>Observacion</th><th>Monto</th><th>Efecto</th><th>Referencia</th><th>Accion</th></tr></thead><tbody>
+          @foreach (var row in Reconciliation.Items)
+          {
+            <tr><td><span class="@SeverityClass(row.Severity)">@row.Severity</span></td><td>@row.EventDate?.ToString("dd/MM/yyyy")</td><td>@row.Type</td><td><strong>@row.Item</strong><small>@row.Notes</small></td><td>@Money0(row.Amount)</td><td>@Money0(row.NetEffect)</td><td>@row.Reference</td><td>@if(row.ReservationId.HasValue){<a href="@($"/reservaciones/{row.ReservationId}")">Reservacion</a>} @if(row.TransactionId.HasValue){<a href="@($"/contabilidad/transacciones/{row.TransactionId}")">Transaccion</a>}</td></tr>
+          }
+          </tbody></table></div>
+          <footer class="sf-pagination no-print"><button disabled="@(Reconciliation.Page <= 1)" @onclick="() => ChangeReconciliationPageAsync(Reconciliation.Page - 1)">Anterior</button><span>Pagina @Reconciliation.Page de @Math.Max(1,Reconciliation.TotalPages) - @Reconciliation.TotalCount registros</span><button disabled="@(Reconciliation.Page >= Reconciliation.TotalPages)" @onclick="() => ChangeReconciliationPageAsync(Reconciliation.Page + 1)">Siguiente</button></footer>
+        </article>
+      </section>
+    }
+    else if (ActiveTab == "targets")
+    {
+      <section role="tabpanel" class="sf-section">
+        @if (CanManage && Configuration is not null)
+        {
+          <article class="sf-panel sf-settings">
+            <header><h2>Configuracion por RFC</h2><p>Solo Finanzas Manager y Administrador</p></header>
+            <label><input type="checkbox" @bind="Configuration.LodgingEnabled" /> Hospedaje habilitado</label>
+            <label>Retencion de arrendador %<input type="number" min="0" max="100" step="0.01" @bind="Configuration.OwnerWithholdingPct" /></label>
+            <button class="btn btn-primary" @onclick="SaveConfigurationAsync">Guardar configuracion</button>
+          </article>
+        }
+        <article class="sf-panel">
+          <header><h2>Metas mensuales</h2><p>Campos vacios se muestran como "Sin meta"; nunca se interpretan como cero.</p></header>
+          <div class="sf-table-wrap"><table class="sf-targets"><thead><tr><th>Mes</th><th>Habitacion</th><th>Complementario</th><th>Ocup. %</th><th>ADR</th><th>Gastos op.</th><th>Resultado</th><th>Flujo</th><th>Caja</th><th>Notas</th>@if(CanManage){<th></th>}</tr></thead><tbody>
+          @foreach (var target in Targets)
+          {
+            <tr><td>@target.Month.ToString("MMM yyyy")</td>
+            @if (CanManage)
+            {
+              <td><input type="number" step="0.01" @bind="target.RoomRevenueTarget" /></td><td><input type="number" step="0.01" @bind="target.ComplementaryRevenueTarget" /></td><td><input type="number" step="0.01" @bind="target.OccupancyPctTarget" /></td><td><input type="number" step="0.01" @bind="target.AdrTarget" /></td><td><input type="number" step="0.01" @bind="target.OperatingExpensesTarget" /></td><td><input type="number" step="0.01" @bind="target.NetResultTarget" /></td><td><input type="number" step="0.01" @bind="target.NetCashFlowTarget" /></td><td><input type="number" step="0.01" @bind="target.ClosingCashTarget" /></td><td><input @bind="target.Notes" /></td><td><button class="btn btn-sm btn-primary" @onclick="() => SaveTargetAsync(target)">Guardar</button></td>
+            }
+            else
+            {
+              <td>@Money0(target.RoomRevenueTarget)</td><td>@Money0(target.ComplementaryRevenueTarget)</td><td>@(target.OccupancyPctTarget.HasValue ? Percent(target.OccupancyPctTarget) : "Sin meta")</td><td>@Money0(target.AdrTarget)</td><td>@Money0(target.OperatingExpensesTarget)</td><td>@Money0(target.NetResultTarget)</td><td>@Money0(target.NetCashFlowTarget)</td><td>@Money0(target.ClosingCashTarget)</td><td>@target.Notes</td>
+            }
+            </tr>
+          }
+          </tbody></table></div>
+        </article>
+        @if (CanManage && Rooms.Count > 0)
+        {
+          <article class="sf-panel">
+            <header><h2>Habitaciones activas y rentables</h2><p>Espacios operativos pueden permanecer activos sin generar noches disponibles.</p></header>
+            <div class="sf-room-grid">
+            @foreach (var room in Rooms)
+            { <div><strong>@room.RoomName</strong><span>@room.RoomType - @Money0(room.BasePrice)</span><label><input type="checkbox" @bind="room.IsActive" /> Activa</label><label><input type="checkbox" @bind="room.IsRentable" /> Rentable</label><button class="btn btn-sm btn-outline-secondary" @onclick="() => SaveRoomAsync(room)">Guardar</button></div> }
+            </div>
+          </article>
+        }
+      </section>
+    }
+  }
+</main>

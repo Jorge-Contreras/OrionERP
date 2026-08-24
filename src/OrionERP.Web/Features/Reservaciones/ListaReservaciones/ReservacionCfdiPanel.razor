@@ -162,7 +162,13 @@
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Régimen fiscal</label>
-                                    <input class="form-control" @bind="Page.CfdiReceiver.FiscalRegime" />
+                                    <select class="form-select" @bind="Page.CfdiReceiver.FiscalRegime">
+                                        <option value="">Selecciona un régimen</option>
+                                        @foreach (var regimen in Page.CfdiRegimenFiscalOptions)
+                                        {
+                                            <option value="@regimen.Id">@($"{regimen.Id} - {regimen.Display}")</option>
+                                        }
+                                    </select>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Uso CFDI</label>

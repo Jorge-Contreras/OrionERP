@@ -37,6 +37,29 @@ public partial class ReservacionPage
     new() { Id = DeferredCfdiMetodoPago, Description = "Pago en parcialidades o diferido" }
   ];
 
+  private static readonly IReadOnlyList<LookupStringDto> CfdiFiscalRegimeCatalogOptions =
+  [
+    new() { Id = "601", Description = "General de Ley Personas Morales" },
+    new() { Id = "603", Description = "Personas Morales con Fines no Lucrativos" },
+    new() { Id = "605", Description = "Sueldos y Salarios e Ingresos Asimilados a Salarios" },
+    new() { Id = "606", Description = "Arrendamiento" },
+    new() { Id = "607", Description = "Régimen de Enajenación o Adquisición de Bienes" },
+    new() { Id = "608", Description = "Demás ingresos" },
+    new() { Id = "610", Description = "Residentes en el Extranjero sin Establecimiento Permanente en México" },
+    new() { Id = "611", Description = "Ingresos por Dividendos (socios y accionistas)" },
+    new() { Id = "612", Description = "Personas Físicas con Actividades Empresariales y Profesionales" },
+    new() { Id = "614", Description = "Ingresos por intereses" },
+    new() { Id = "615", Description = "Régimen de los ingresos por obtención de premios" },
+    new() { Id = "616", Description = "Sin obligaciones fiscales" },
+    new() { Id = "620", Description = "Sociedades Cooperativas de Producción que optan por diferir sus ingresos" },
+    new() { Id = "621", Description = "Incorporación Fiscal" },
+    new() { Id = "622", Description = "Actividades Agrícolas, Ganaderas, Silvícolas y Pesqueras" },
+    new() { Id = "623", Description = "Opcional para Grupos de Sociedades" },
+    new() { Id = "624", Description = "Coordinados" },
+    new() { Id = "625", Description = "Régimen de las Actividades Empresariales con ingresos a través de Plataformas Tecnológicas" },
+    new() { Id = "626", Description = "Régimen Simplificado de Confianza" }
+  ];
+
   private static readonly IReadOnlyList<LookupStringDto> CfdiUseCatalogOptions =
   [
     new() { Id = "G01", Description = "Adquisicion de mercancias" },
@@ -108,7 +131,7 @@ public partial class ReservacionPage
     => !string.IsNullOrWhiteSpace(CfdiReceiver.Rfc)
        && !string.IsNullOrWhiteSpace(CfdiReceiver.FiscalName)
        && !string.IsNullOrWhiteSpace(CfdiReceiver.TaxZipCode)
-       && !string.IsNullOrWhiteSpace(CfdiReceiver.FiscalRegime)
+       && IsCfdiFiscalRegime(CfdiReceiver.FiscalRegime)
        && !string.IsNullOrWhiteSpace(CfdiReceiver.CfdiUse);
 
   internal bool HasFreshCfdiReceiverValidation
@@ -131,6 +154,7 @@ public partial class ReservacionPage
        && !string.IsNullOrWhiteSpace(SelectedCfdiMetodoPago);
 
   internal IReadOnlyList<LookupStringDto> CfdiMetodoPagoOptions => CfdiMetodoCatalogOptions;
+  internal IReadOnlyList<LookupStringDto> CfdiRegimenFiscalOptions => CfdiFiscalRegimeCatalogOptions;
   internal IReadOnlyList<LookupStringDto> CfdiUsoCfdiOptions => CfdiUseCatalogOptions;
 
   internal bool IsCreatingNewCfdiPoliza
@@ -807,6 +831,11 @@ public partial class ReservacionPage
 
   private void EnsureCfdiSelectionDefaults()
   {
+    if (!IsCfdiFiscalRegime(CfdiReceiver.FiscalRegime))
+    {
+      CfdiReceiver.FiscalRegime = string.Empty;
+    }
+
     if (string.IsNullOrWhiteSpace(CfdiReceiver.CfdiUse))
     {
       CfdiReceiver.CfdiUse = DefaultCfdiUse;
@@ -866,6 +895,11 @@ public partial class ReservacionPage
     => string.IsNullOrWhiteSpace(value)
       ? fallbackValue
       : value.Trim().ToUpperInvariant();
+
+  private static bool IsCfdiFiscalRegime(string? value)
+    => !string.IsNullOrWhiteSpace(value)
+       && CfdiFiscalRegimeCatalogOptions.Any(option =>
+           string.Equals(option.Id, value.Trim(), StringComparison.Ordinal));
 
   private static string BuildCfdiReceiverValidationSignature(ReservationCfdiCustomerUpsertRequest receiver)
     => string.Join("|",

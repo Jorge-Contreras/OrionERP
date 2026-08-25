@@ -27,7 +27,7 @@
   <div class="row g-3 align-items-end mb-3">
     <div class="col-md-4">
       <label class="form-label">RFC (Razón Social)</label>
-            <RfcPicker @bind-SelectedRfc="selectedRfc" @bind-SelectedRfc:after="OnRfcChangedAsync" />
+      <input class="form-control" value="@selectedRfc" disabled aria-label="RFC de la sesión" />
     </div>
     <div class="col-md-3">
       <label class="form-label">Ejercicio</label>
@@ -230,17 +230,10 @@
       selectedRfc = RfcState.CurrentRfc;
     }
 
-    if (string.IsNullOrWhiteSpace(selectedRfc) && !string.IsNullOrWhiteSpace(QueryRfc))
-    {
-      selectedRfc = QueryRfc;
-    }
-
     if (!string.IsNullOrWhiteSpace(QueryRfc) && !string.Equals(QueryRfc, RfcState.CurrentRfc, StringComparison.OrdinalIgnoreCase))
     {
-      if (RfcState.TrySet(QueryRfc))
-      {
-        selectedRfc = RfcState.CurrentRfc;
-      }
+      errorMessage = "El RFC solicitado no coincide con la empresa de tu sesión. Cierra sesión para trabajar con otra empresa.";
+      return;
     }
 
     if (QueryAnio is >= MinYear and <= MaxYear)
@@ -306,7 +299,6 @@
     selectedRfc = RfcState.CurrentRfc;
     if (string.IsNullOrWhiteSpace(selectedRfc))
     {
-      RfcState.ResetToDefault();
       selectedRfc = RfcState.CurrentRfc;
     }
   }
@@ -362,13 +354,14 @@
       return;
     }
 
-    lastComponentRfc = selectedRfc;
-    suppressRfcChange = true;
-    if (!RfcState.TrySet(selectedRfc))
+    if (!string.Equals(selectedRfc, RfcState.CurrentRfc, StringComparison.OrdinalIgnoreCase))
     {
-      suppressRfcChange = false;
+      errorMessage = "El componente intentó usar un RFC distinto al de la sesión.";
+      selectedRfc = RfcState.CurrentRfc;
       await InvokeAsync(StateHasChanged);
+      return;
     }
+    lastComponentRfc = selectedRfc;
   }
 
   private Task OnAccountPickerErrorChangedAsync(string? message)

@@ -24,11 +24,7 @@ public sealed class CurrentEmployeeAccessor : ICurrentEmployeeAccessor
     var roles = user.FindAll(System.Security.Claims.ClaimTypes.Role)
       .Select(claim => claim.Value)
       .ToHashSet(StringComparer.OrdinalIgnoreCase);
-    var rfcs = user.FindAll("rfc")
-      .Select(claim => claim.Value.Trim().ToUpperInvariant())
-      .Where(value => value.Length > 0)
-      .ToHashSet(StringComparer.OrdinalIgnoreCase);
-    var employeeRfc = user.FindFirst("employee_rfc")?.Value.Trim().ToUpperInvariant();
-    return new CurrentEmployeeContext(user.Identity.Name ?? "OrionERP", employeeId, roles, rfcs, employeeRfc);
+    var companyRfc = user.FindFirst("rfc")?.Value.Trim().ToUpperInvariant() ?? string.Empty;
+    return new CurrentEmployeeContext(user.Identity.Name ?? "OrionERP", employeeId, roles, companyRfc);
   }
 }

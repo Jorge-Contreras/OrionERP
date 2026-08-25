@@ -191,6 +191,10 @@
                                             {
                                                 <span class="state-pill info">Protegido</span>
                                             }
+                                            else
+                                            {
+                                                <span class="state-pill @(IsGlobalRoleName(role.Name) ? "info" : null)">@(IsGlobalRoleName(role.Name) ? "Global" : "Por empresa")</span>
+                                            }
                                         </div>
                                         <div class="browser-item__meta">@role.UserCount usuarios asignados</div>
                                         <div class="browser-item__meta">@role.ClaimCount claims de rol</div>
@@ -243,21 +247,14 @@
                                             <span>Teléfono</span>
                                             <input class="form-control" type="tel" @bind="UserForm.PhoneNumber" />
                                         </label>
-                                        <label class="field field-span-2">
-                                            <span>Empleado ligado (Capital Humano)</span>
-                                            <select class="form-select" @bind="UserForm.EmployeeIdInput">
-                                                <option value="">Sin empleado ligado</option>
-                                                @if (SelectedEmployeeIsUnlisted)
-                                                {
-                                                    <option value="@UserForm.EmployeeIdInput">ID @UserForm.EmployeeIdInput · empleado inactivo o inexistente</option>
-                                                }
-                                                @foreach (var employee in EmployeeOptions)
-                                                {
-                                                    <option value="@employee.Id">@FormatEmployeeOption(employee)</option>
-                                                }
-                                            </select>
-                                            <small class="field-help">Solo se listan empleados activos. El empleado ligado define el RFC del usuario y habilita ejecutar órdenes de trabajo asignadas a él.</small>
-                                        </label>
+                                        @if (!string.IsNullOrWhiteSpace(UserForm.EmployeeIdInput))
+                                        {
+                                            <label class="field field-span-2">
+                                                <span>Empleado legado (solo compatibilidad)</span>
+                                                <input class="form-control" value="@UserForm.EmployeeIdInput" disabled />
+                                                <small class="field-help">Este valor ya no determina la empresa ni el empleo activo. Adminístralos en las membresías por empresa.</small>
+                                            </label>
+                                        }
                                         <label class="field field-span-2">
                                             <span>Arrendador (Proveedor)</span>
                                             <select class="form-select" @bind="UserForm.ArrendadorProveedorIdInput">
@@ -370,9 +367,57 @@
                                     </section>
                                 }
 
+                                <section class="panel-card panel-span-2 company-memberships">
+                                    <div class="panel-card__header">
+                                        <div><h3>Membresías por empresa</h3><small class="field-help">Cada sesión usa exactamente una de estas empresas, su empleado y sus roles operativos.</small></div>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AddMembershipAsync" disabled="@(UserForm.IsNew || CompanyAccess is null || AvailableMembershipCompanies.Count == 0)">Agregar empresa</button>
+                                    </div>
+                                    @if (UserForm.IsNew)
+                                    {
+                                        <div class="browser-pane__empty">Guarda la cuenta antes de asignar empresas.</div>
+                                    }
+                                    else if (CompanyAccess is null)
+                                    {
+                                        <div class="browser-pane__empty">Cargando membresías…</div>
+                                    }
+                                    else if (MembershipForms.Count == 0)
+                                    {
+                                        <div class="browser-pane__empty">La cuenta no puede iniciar sesión hasta tener una membresía activa.</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="membership-list">
+                                            @foreach (var membership in MembershipForms)
+                                            {
+                                                <article class="membership-card" @key="membership.Key">
+                                                    <header><div><strong>@CompanyName(membership.Rfc)</strong><small>@membership.Rfc</small></div><button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveMembership(membership.Key)">Quitar</button></header>
+                                                    <div class="field-grid">
+                                                        @if (membership.IsNew)
+                                                        {
+                                                            <label class="field"><span>Empresa</span><select class="form-select" @bind="membership.Rfc" @bind:after="() => MembershipCompanyChangedAsync(membership)"><option value="">Selecciona</option>@foreach(var company in AvailableMembershipCompanies.Append(CompanyAccess.Companies.FirstOrDefault(c => c.Rfc == membership.Rfc)).Where(c => c is not null).DistinctBy(c => c!.Rfc)){<option value="@company!.Rfc">@company.DisplayName · @company.Rfc</option>}</select></label>
+                                                        }
+                                                        <label class="field"><span>Empleado de Capital Humano</span><select class="form-select" @bind="membership.EmployeeIdInput"><option value="">Sin empleado ligado</option>@foreach(var employee in membership.Employees){<option value="@employee.Id">@employee.DisplayName · ID @employee.Id · @(employee.Position ?? "sin puesto") @(!employee.IsActive ? "· BAJA" : "")</option>}</select></label>
+                                                        <label class="toggle"><input type="checkbox" @bind="membership.IsActive" /><span>Membresía activa</span></label>
+                                                        @if (membership.AccessReviewRequired)
+                                                        {
+                                                            <label class="toggle"><input type="checkbox" @bind="membership.MarkReviewed" /><span>Confirmar revisión de acceso</span></label>
+                                                        }
+                                                    </div>
+                                                    @if (membership.Issues.Count > 0) { <div class="membership-issues">@foreach(var issue in membership.Issues){<span>@issue</span>}</div> }
+                                                    <div class="membership-roles"><span>Roles operativos</span><div class="selection-grid">@foreach(var role in CompanyAccess.CompanyRoles){<label class="selection-chip @(membership.RoleNames.Contains(role.Name) ? "selected" : null)"><input type="checkbox" checked="@membership.RoleNames.Contains(role.Name)" @onchange="args => ToggleMembershipRole(membership, role.Name, args)" /><span>@role.Name</span></label>}</div></div>
+                                                </article>
+                                            }
+                                        </div>
+                                    }
+                                    @if (!UserForm.IsNew)
+                                    {
+                                        <div class="membership-save"><button type="button" class="btn btn-primary" @onclick="SaveMembershipsAsync" disabled="@IsSavingMemberships">@(IsSavingMemberships ? "Guardando accesos…" : "Guardar membresías y permisos")</button></div>
+                                    }
+                                </section>
+
                                 <section class="panel-card panel-span-2">
                                     <div class="panel-card__header">
-                                        <h3>Roles asignados</h3>
+                                        <h3>Roles globales</h3>
                                         <span class="panel-card__badge">@UserForm.AssignedRoles.Count seleccionados</span>
                                     </div>
 
@@ -383,7 +428,7 @@
                                         }
                                         else
                                         {
-                                            @foreach (var role in Snapshot.Roles)
+                                            @foreach (var role in Snapshot.Roles.Where(role => IsGlobalRoleName(role.Name)))
                                             {
                                                 <label class="selection-chip @((UserForm.AssignedRoles.Contains(role.Name) ? "selected" : null))">
                                                     <input type="checkbox"
@@ -403,6 +448,7 @@
                                         <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AddUserClaim">Agregar claim</button>
                                     </div>
 
+                                    <p class="field-help"><code>rfc</code>, <code>employee_id</code>, <code>employee_rfc</code> y roles son claims reservados generados por la sesión.</p>
                                     @if (UserForm.Claims.Count == 0)
                                     {
                                         <div class="browser-pane__empty">Este usuario no tiene claims directos.</div>
@@ -541,6 +587,7 @@
                                     <label class="field">
                                         <span>Nombre del rol</span>
                                         <input class="form-control" type="text" @bind="RoleForm.Name" disabled="@IsProtectedSelectedRole" />
+                                        <small class="field-help">Administrador y Arrendadores son globales. Los demás roles se asignan dentro de cada membresía de empresa.</small>
                                     </label>
                                 </section>
 
@@ -568,9 +615,13 @@
                                         <span class="panel-card__badge">@RoleForm.AssignedUserIds.Count seleccionados</span>
                                     </div>
 
-                                    <p class="password-reset__hint">
-                                        Selecciona los usuarios que deben heredar este rol. Los cambios sobre <code>AspNetUserRoles</code> se aplican al guardar.
-                                    </p>
+                                    @if (IsSelectedRoleCompanyScoped)
+                                    {
+                                        <div class="role-members__notice">Este rol es operativo y se asigna por empresa desde la ficha de cada usuario. Las asignaciones legadas de cuenta completa se conservan solo durante la ventana de reversión y no son autoritativas.</div>
+                                    }
+                                    else
+                                    {
+                                    <p class="password-reset__hint">Selecciona los usuarios que deben heredar este rol global.</p>
 
                                     @if (IsProtectedSelectedRole)
                                     {
@@ -610,6 +661,7 @@
                                             }
                                         }
                                     </div>
+                                    }
                                 </section>
 
                                 <section class="panel-card panel-span-2">

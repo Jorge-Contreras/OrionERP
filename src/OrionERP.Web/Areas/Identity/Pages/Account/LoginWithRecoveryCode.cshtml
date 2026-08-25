@@ -1,0 +1,14 @@
+@page
+@model OrionERP.Web.Areas.Identity.Pages.Account.LoginWithRecoveryCodeModel
+@{
+    ViewData["Title"] = "Código de recuperación";
+}
+@section Styles { <link rel="stylesheet" href="~/css/auth.css" asp-append-version="true" /> }
+<div class="auth-shell">
+    <section class="auth-brand" aria-label="OrionERP"><div class="auth-brand__top"><a class="auth-brand__logo" href="/"><img src="~/Images/OrionERP_Logo.svg" alt="OrionERP" /></a></div><div class="auth-brand__copy"><p class="auth-eyebrow">Acceso protegido</p><h1>Recupera el acceso.</h1><p>Cada código de recuperación solo puede utilizarse una vez.</p></div></section>
+    <main class="auth-panel"><section class="auth-card" aria-labelledby="recovery-title">
+        <div class="auth-card__header"><span class="auth-card__mark" aria-hidden="true"><i class="bi bi-key"></i></span><div><p class="auth-eyebrow">Segundo factor</p><h2 id="recovery-title">Código de recuperación</h2></div></div>
+        <div asp-validation-summary="ModelOnly" class="auth-validation" role="alert"></div>
+        <form method="post" class="auth-form"><input type="hidden" asp-for="RememberMe" /><input type="hidden" name="returnUrl" value="@Model.ReturnUrl" /><div class="auth-field"><label asp-for="Input.Code">Código</label><div class="auth-input"><i class="bi bi-shield-lock" aria-hidden="true"></i><input asp-for="Input.Code" autocomplete="one-time-code" autofocus /></div><span asp-validation-for="Input.Code" class="auth-field__error"></span></div><button type="submit" class="auth-submit"><span>Continuar</span><i class="bi bi-arrow-right"></i></button></form>
+    </section></main>
+</div>

@@ -359,6 +359,9 @@ VALUES
   (N'auth', N'AspNetUsers'),
   (N'auth', N'AspNetUserClaims'),
   (N'auth', N'AspNetUserRoles'),
+  (N'auth', N'AspNetUserCompanies'),
+  (N'auth', N'AspNetUserCompanyRoles'),
+  (N'orion', N'Company'),
   (N'logistica', N'UnitOfMeasure'),
   (N'logistica', N'MaterialCategory'),
   (N'logistica', N'Location'),
@@ -524,8 +527,16 @@ IF (SELECT COUNT(*) FROM auth.AspNetUsers) <> 4
           (N'CapacitacionAdmin', N'CapacitacionInstructor', N'CapacitacionAuditor', N'Lectura', N'SatOperator', N'Logistica',
            N'Administrador', N'Arrendadores', N'OrdenTrabajoSupervisor', N'APOperator', N'CapitalHumanoAdmin', N'RestauranteSupervisor')
       )
+   OR EXISTS
+      (
+        SELECT 1 FROM auth.AspNetRoles
+        WHERE [Scope] <> CASE WHEN Name IN (N'Administrador',N'Arrendadores') THEN 'Global' ELSE 'Company' END
+      )
    OR (SELECT COUNT(*) FROM auth.AspNetUserClaims WHERE ClaimType = N'rfc' AND ClaimValue = N'XAXX010101000') <> 4
    OR (SELECT COUNT(*) FROM auth.AspNetUserRoles) <> 22
+   OR (SELECT COUNT(*) FROM orion.Company WHERE Rfc=N'XAXX010101000' AND IsActive=1) <> 1
+   OR (SELECT COUNT(*) FROM auth.AspNetUserCompanies WHERE Rfc=N'XAXX010101000' AND IsActive=1 AND EmployeeId IS NOT NULL) <> 4
+   OR (SELECT COUNT(*) FROM auth.AspNetUserCompanyRoles WHERE Rfc=N'XAXX010101000') <> 19
    OR EXISTS
       (
         SELECT trainee.UserId, expectedRole.RoleName

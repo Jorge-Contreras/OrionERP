@@ -1,0 +1,136 @@
+@page "/admin/empresas"
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using OrionERP.Application.Features.Auth.Companies
+@attribute [Authorize(Roles = "Administrador")]
+@inject ICompanyAccessService Companies
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject OrionERP.Web.Services.IUiMessageService UiMessages
+
+<PageTitle>Directorio de empresas</PageTitle>
+
+<div class="company-admin">
+    <header class="company-admin__hero">
+        <div><p class="company-admin__eyebrow">Administración global</p><h1>Empresas de OrionERP</h1><p>Controla qué RFC pueden iniciar sesión y cómo se presentan. Las credenciales FIEL permanecen en el perfil fiscal.</p></div>
+        <button class="btn btn-light" type="button" @onclick="NewCompany">Registrar empresa</button>
+    </header>
+
+    @if (loading)
+    {
+        <div class="company-admin__loading"><span class="spinner-border"></span> Cargando directorio…</div>
+    }
+    else
+    {
+        <div class="company-admin__layout">
+            <section class="company-admin__directory" aria-label="Empresas registradas">
+                @foreach (var company in companies)
+                {
+                    <button type="button" class="company-tile @(editor.Rfc == company.Rfc ? "is-selected" : null)" @onclick="() => EditCompanyAsync(company.Rfc)">
+                        <span class="company-tile__logo"><span>@Initial(company.DisplayName)</span>@if(company.HasLogo){<img src="/company-branding/@company.Rfc/logo?v=@company.BrandingVersion" alt="" />}</span>
+                        <span class="company-tile__copy"><strong>@company.DisplayName</strong><small>@company.Rfc</small><span class="company-tile__status @(company.IsActive ? "is-active" : null)">@(company.IsActive ? "Disponible al iniciar sesión" : "Inactiva")</span></span>
+                        <span class="company-tile__metrics"><span><strong>@company.MemberCount</strong> miembros</span><span><strong>@company.EmployeeCount</strong> empleados</span><span class="@(company.ReviewCount > 0 ? "text-warning" : null)"><strong>@company.ReviewCount</strong> revisiones</span><span><strong>@(company.HasFiscalProfile ? "Sí" : "No")</strong> perfil fiscal</span></span>
+                    </button>
+                }
+                @if (companies.Count == 0) { <div class="company-admin__empty">No hay empresas registradas.</div> }
+            </section>
+
+            <section class="company-editor">
+                <div class="company-editor__header"><div><p class="company-admin__eyebrow">@(isNew ? "Nuevo RFC" : "Configuración")</p><h2>@(string.IsNullOrWhiteSpace(editor.DisplayName) ? "Empresa" : editor.DisplayName)</h2></div>@if(!isNew){<a class="btn btn-sm btn-outline-secondary" href="/cfdi/register">Abrir perfil fiscal</a>}</div>
+                <div class="company-editor__fields">
+                    <label><span>RFC</span><input class="form-control" maxlength="20" disabled="@(!isNew)" @bind="editor.Rfc" @bind:event="oninput" /></label>
+                    <label><span>Nombre visible</span><input class="form-control" maxlength="200" @bind="editor.DisplayName" /></label>
+                    <label class="company-editor__wide"><span>Razón social</span><input class="form-control" maxlength="300" @bind="editor.LegalName" /></label>
+                    <label class="company-editor__toggle"><input type="checkbox" @bind="editor.IsActive" /><span>Permitir que sus miembros inicien sesión</span></label>
+                </div>
+                <button class="btn btn-primary" disabled="@saving" @onclick="SaveCompanyAsync">@(saving ? "Guardando…" : "Guardar empresa")</button>
+
+                @if (!isNew)
+                {
+                    <hr />
+                    <div class="company-logo-editor">
+                        <span class="company-logo-editor__preview"><span>@Initial(editor.DisplayName)</span>@if(editor.HasLogo){<img src="/company-branding/@editor.Rfc/logo?v=@editor.BrandingVersion" alt="Logotipo de @editor.DisplayName" />}</span>
+                        <div><h3>Logotipo</h3><p>PNG, JPEG o WebP, máximo 2 MB. OrionERP lo ajusta a un máximo de 1024 × 1024 px.</p><InputFile OnChange="UploadLogoAsync" accept="image/png,image/jpeg,image/webp" disabled="@savingLogo" /></div>
+                    </div>
+                }
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    private const long MaxLogoBytes = 2 * 1024 * 1024;
+    private IReadOnlyList<CompanySummary> companies = [];
+    private CompanyForm editor = new();
+    private string actorUserId = string.Empty;
+    private bool loading = true;
+    private bool saving;
+    private bool savingLogo;
+    private bool isNew = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        actorUserId = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync(string? selectRfc = null)
+    {
+        loading = true;
+        try
+        {
+            companies = await Companies.GetCompaniesAsync();
+            if (!string.IsNullOrWhiteSpace(selectRfc)) await EditCompanyAsync(selectRfc);
+            else if (companies.Count > 0 && string.IsNullOrWhiteSpace(editor.Rfc)) await EditCompanyAsync(companies[0].Rfc);
+        }
+        finally { loading = false; }
+    }
+
+    private void NewCompany() { isNew = true; editor = new(); }
+
+    private async Task EditCompanyAsync(string rfc)
+    {
+        var company = await Companies.GetCompanyAsync(rfc);
+        if (company is null) return;
+        isNew = false;
+        editor = new() { Rfc = company.Rfc, DisplayName = company.DisplayName, LegalName = company.LegalName ?? string.Empty, IsActive = company.IsActive, BrandingVersion = company.BrandingVersion, HasLogo = company.HasLogo };
+    }
+
+    private async Task SaveCompanyAsync()
+    {
+        saving = true;
+        try
+        {
+            var result = await Companies.SaveCompanyAsync(new() { Rfc = editor.Rfc, DisplayName = editor.DisplayName, LegalName = editor.LegalName, IsActive = editor.IsActive, ActorUserId = actorUserId });
+            if (!result.Succeeded) { UiMessages.ShowError(result.Message, "Empresas"); return; }
+            UiMessages.ShowSuccess(result.Message, "Empresas");
+            await RefreshAsync(result.Rfc);
+        }
+        catch (Exception ex) { UiMessages.ShowError(ex.Message, "No se pudo guardar la empresa"); }
+        finally { saving = false; }
+    }
+
+    private async Task UploadLogoAsync(InputFileChangeEventArgs args)
+    {
+        if (string.IsNullOrWhiteSpace(editor.Rfc)) return;
+        savingLogo = true;
+        try
+        {
+            var file = args.File;
+            await using var source = file.OpenReadStream(MaxLogoBytes);
+            using var buffer = new MemoryStream();
+            await source.CopyToAsync(buffer);
+            var result = await Companies.SaveLogoAsync(editor.Rfc, buffer.ToArray(), file.ContentType, actorUserId);
+            if (!result.Succeeded) { UiMessages.ShowError(result.Message, "Logotipo"); return; }
+            UiMessages.ShowSuccess(result.Message, "Logotipo");
+            await RefreshAsync(editor.Rfc);
+        }
+        catch (IOException) { UiMessages.ShowError("El archivo excede el límite de 2 MB.", "Logotipo"); }
+        catch (Exception ex) { UiMessages.ShowError(ex.Message, "No se pudo procesar el logotipo"); }
+        finally { savingLogo = false; }
+    }
+
+    private static string Initial(string? name) => string.IsNullOrWhiteSpace(name) ? "E" : name.Trim()[0].ToString().ToUpperInvariant();
+    private sealed class CompanyForm { public string Rfc { get; set; } = string.Empty; public string DisplayName { get; set; } = string.Empty; public string LegalName { get; set; } = string.Empty; public bool IsActive { get; set; } = true; public long BrandingVersion { get; set; } public bool HasLogo { get; set; } }
+}

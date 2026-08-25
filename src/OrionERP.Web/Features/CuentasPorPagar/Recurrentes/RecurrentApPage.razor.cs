@@ -50,7 +50,7 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
   protected bool IsReadOnlyOrSaving => IsReadOnly || IsSavingPayable;
   protected bool IsReadOnlyOrMutating => IsReadOnly || IsSavingOccurrence || IsLinkingTransaction || UnlinkingPaymentId.HasValue || IsUploadingAttachment || IsReseedingPayable || IsCancellingOccurrence;
   protected bool CanUseProviderCredentials => !IsReadOnly;
-  protected string? CurrentRfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault();
+  protected string? CurrentRfc => RfcState.CurrentRfc;
   protected string CurrentRfcLabel => CurrentRfc ?? "Sin RFC";
   protected string EditorTitle => Editor.Id.HasValue ? "Editar recurrente" : "Nuevo recurrente";
 

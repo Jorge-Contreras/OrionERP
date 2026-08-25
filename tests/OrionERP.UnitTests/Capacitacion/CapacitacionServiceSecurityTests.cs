@@ -26,7 +26,7 @@ public sealed class CapacitacionServiceSecurityTests
   public async Task Catalogo_RejectsRfcOutsideAuthenticatedClaimsBeforeSql()
   {
     var connection = new FakeQueryDbConnection();
-    var actor = Actor(employeeId: 12, allowedRfcs: new HashSet<string>(["OTHER010101AAA"], StringComparer.OrdinalIgnoreCase));
+    var actor = Actor(employeeId: 12, companyRfc: "OTHER010101AAA");
     var service = new CapacitacionService(
       new FakeQueryConnectionFactory(connection),
       new StubCurrentEmployeeAccessor(actor));
@@ -176,13 +176,12 @@ public sealed class CapacitacionServiceSecurityTests
   private static CurrentEmployeeContext Actor(
     int? employeeId,
     IReadOnlySet<string>? roles = null,
-    IReadOnlySet<string>? allowedRfcs = null)
+    string companyRfc = Rfc)
     => new(
       "authenticated@orionerp.local",
       employeeId,
       roles ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-      allowedRfcs ?? new HashSet<string>([Rfc], StringComparer.OrdinalIgnoreCase),
-      Rfc);
+      companyRfc);
 
   private sealed class StubCurrentEmployeeAccessor : ICurrentEmployeeAccessor
   {

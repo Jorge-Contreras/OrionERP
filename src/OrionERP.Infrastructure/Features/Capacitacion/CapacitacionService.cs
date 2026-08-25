@@ -213,8 +213,9 @@ public sealed class CapacitacionService : ICapacitacionService
       OUTER APPLY
       (
         SELECT COUNT(1) AS AuthCount, MAX(authUser.Email) AS Email
-        FROM auth.AspNetUsers authUser
-        WHERE authUser.EmployeeId = ch.ID
+        FROM auth.AspNetUserCompanies membership
+        JOIN auth.AspNetUsers authUser ON authUser.Id=membership.UserId
+        WHERE membership.EmployeeId = ch.ID AND membership.Rfc = ch.RFC AND membership.IsActive = 1
       ) authInfo
       WHERE ch.RFC = @Rfc
         AND UPPER(LTRIM(RTRIM(ISNULL(ch.[Status], '')))) = 'ACTIVO'

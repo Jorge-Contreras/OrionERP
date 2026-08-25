@@ -100,24 +100,6 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
         workspaceRfc,
         Filter);
 
-      if (Workspace.Summary is { Direccion: "Otro" } summary)
-      {
-        var documentRfc = RfcState.AllowedRfcs.FirstOrDefault(allowed =>
-            string.Equals(allowed, summary.EmisorRfc, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(allowed, summary.ReceptorRfc, StringComparison.OrdinalIgnoreCase));
-
-        if (!string.IsNullOrWhiteSpace(documentRfc)
-            && !string.Equals(documentRfc, workspaceRfc, StringComparison.OrdinalIgnoreCase))
-        {
-          workspaceRfc = documentRfc;
-          Filter.Rfc = workspaceRfc;
-          Workspace = await TransaccionService.GetPago20PolizaLinkingWorkspaceAsync(
-            DoctoRelacionado_Id,
-            workspaceRfc,
-            Filter);
-        }
-      }
-
       if (Workspace.Summary is not null && Filter.Monto is null)
       {
         Filter.Monto = GetObjectiveMonto();

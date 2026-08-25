@@ -23,7 +23,6 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
   [Inject] private IOrdenTrabajoService OrdenTrabajoService { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
-  [Inject] private UserManager<ApplicationUser> UserManager { get; set; } = default!;
   [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
 
   protected CultureInfo CurrencyCulture { get; } = CultureInfo.GetCultureInfo("es-MX");
@@ -1040,8 +1039,7 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
       || user.IsInRole("OrdenTrabajoAdmin")
       || user.IsInRole("OrdenTrabajoSupervisor");
 
-    var appUser = await UserManager.GetUserAsync(user);
-    CurrentEmployeeId = appUser?.EmployeeId;
+    CurrentEmployeeId = int.TryParse(user.FindFirst("employee_id")?.Value, out var employeeId) ? employeeId : null;
   }
 
   public async ValueTask DisposeAsync()

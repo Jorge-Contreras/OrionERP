@@ -590,3 +590,10 @@
         width: 100%;
     }
 }
+.membership-list { display:grid; gap:1rem; }
+.membership-card { padding:1rem; border:1px solid #dce6ea; border-radius:.85rem; background:#fbfdfe; }
+.membership-card > header { display:flex; justify-content:space-between; align-items:start; gap:1rem; margin-bottom:.85rem; }
+.membership-card > header strong,.membership-card > header small { display:block; }.membership-card > header small { color:#6b7f88; }
+.membership-roles { margin-top:.85rem; }.membership-roles > span { display:block; margin-bottom:.45rem; font-size:.8rem; font-weight:700; color:#455e69; }
+.membership-issues { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.7rem; }.membership-issues span { padding:.22rem .5rem; border-radius:999px; background:#fff3cd; color:#785a09; font-size:.72rem; font-weight:700; }
+.membership-save { display:flex; justify-content:flex-end; margin-top:1rem; }

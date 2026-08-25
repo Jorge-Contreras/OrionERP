@@ -30,7 +30,7 @@ public partial class OrdenTrabajoPlantillasPage : ComponentBase
   protected string? ErrorMessage { get; set; }
   protected bool CanCreateFromSelectedTemplate => SelectedTemplate is { Activa: true, PublishedVersionId: not null };
 
-  private string CurrentRfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault() ?? "OHM191112Q26";
+  private string CurrentRfc => RfcState.CurrentRfc ?? string.Empty;
 
   protected override async Task OnInitializedAsync()
   {

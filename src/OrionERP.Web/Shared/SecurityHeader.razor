@@ -1,12 +1,6 @@
 @using System.Globalization
 @using Microsoft.AspNetCore.Components.Authorization
-@using Microsoft.AspNetCore.Identity
-@using Microsoft.JSInterop
 @using OrionERP.Infrastructure.Auth
-@inject IRfcContext Rfc
-@inject IJSRuntime Js
-@inject NavigationManager Navigation
-@inject SignInManager<ApplicationUser> SignInManager
 
 <AuthorizeView>
     <Authorized Context="context">
@@ -16,12 +10,21 @@
                 <span class="security-header__date">@DateWeekLabel</span>
             </div>
 
-            <div class="security-header__picker">
-                <RfcPicker />
+            <div class="security-header__company" aria-label="Empresa activa">
+                <span class="security-header__company-logo">
+                    <span aria-hidden="true">@GetInitial(context.User.FindFirst(CompanyClaimTypes.CompanyName)?.Value)</span>
+                    <img src="@GetLogoUrl(context.User)" alt="" onerror="this.remove()" />
+                </span>
+                <span class="security-header__company-copy">
+                    <strong>@(context.User.FindFirst(CompanyClaimTypes.CompanyName)?.Value ?? "Empresa")</strong>
+                    <small>@context.User.FindFirst(CompanyClaimTypes.Rfc)?.Value</small>
+                </span>
             </div>
 
             <div class="security-header__actions">
-                <button class="btn btn-link btn-sm security-header__logout" @onclick="LogoutJs">Cerrar sesión</button>
+                <button type="submit"
+                        form="orionerp-logout-form"
+                        class="btn btn-link btn-sm security-header__logout">Cerrar sesión</button>
             </div>
         </header>
     </Authorized>
@@ -34,7 +37,6 @@
 </AuthorizeView>
 
 @code {
-    private const string RfcStorageKey = "orionerp.selectedRfc";
     private static readonly CultureInfo SpanishMexico = CultureInfo.GetCultureInfo("es-MX");
 
     private static string DateWeekLabel
@@ -49,16 +51,9 @@
         }
     }
 
-    private async Task LogoutJs()
-    {
-        await Js.InvokeVoidAsync("eval", "location.href = '/Auth/logout'");
-    }
+    private static string GetLogoUrl(System.Security.Claims.ClaimsPrincipal user)
+      => $"/company-branding/{Uri.EscapeDataString(user.FindFirst(CompanyClaimTypes.Rfc)?.Value ?? string.Empty)}/logo";
 
-    private async Task Logout()
-    {
-        await SignInManager.SignOutAsync();
-        Rfc.CurrentRfc = null;
-        await Js.InvokeVoidAsync("localStorage.removeItem", RfcStorageKey);
-        Navigation.NavigateTo("/", forceLoad: true);
-    }
+    private static string GetInitial(string? name)
+      => string.IsNullOrWhiteSpace(name) ? "E" : name.Trim()[0].ToString().ToUpperInvariant();
 }

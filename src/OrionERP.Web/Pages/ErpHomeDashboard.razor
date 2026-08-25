@@ -11,7 +11,6 @@
 @inject IPhysicalCountService PhysicalCountService
 @inject IListaReservacionesService ReservacionesService
 @inject AuthenticationStateProvider AuthenticationStateProvider
-@inject UserManager<ApplicationUser> UserManager
 @inject IUserRfcState RfcState
 @inject NavigationManager Navigation
 @implements IDisposable
@@ -435,7 +434,7 @@
     private string? LoadedRfc { get; set; }
     private int ApNotificationDays { get; set; } = AjustesGeneralSettingsDto.DefaultApOccurrenceNotificationDays;
 
-    private string CurrentRfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault() ?? "OHM191112Q26";
+    private string CurrentRfc => RfcState.CurrentRfc ?? string.Empty;
 
     private string DashboardSubtitle => IsAuthenticated
         ? $"{CurrentUserName} · {CurrentRfc}"
@@ -672,8 +671,7 @@
             return;
         }
 
-        var appUser = await UserManager.GetUserAsync(principal);
-        CurrentEmployeeId = appUser?.EmployeeId;
+        CurrentEmployeeId = int.TryParse(principal.FindFirst("employee_id")?.Value, out var employeeId) ? employeeId : null;
     }
 
     private void OpenOrdenesTrabajo()

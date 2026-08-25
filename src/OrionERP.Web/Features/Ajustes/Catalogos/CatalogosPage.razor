@@ -16,7 +16,7 @@
     <div class="d-flex flex-wrap align-items-center gap-2">
       @if (ActiveDescriptor?.EsPorRfc == true)
       {
-        <RfcPicker @bind-SelectedRfc="selectedRfc" @bind-SelectedRfc:after="OnRfcChangedAsync" />
+        <span class="badge text-bg-light border">RFC activo: @selectedRfc</span>
       }
       <a class="btn btn-outline-secondary" href="/ajustes">Volver a Ajustes</a>
     </div>
@@ -54,7 +54,7 @@
               </p>
             </div>
             <div class="d-flex flex-wrap align-items-center gap-2">
-              <RfcPicker @bind-SelectedRfc="selectedRfc" @bind-SelectedRfc:after="OnRfcChangedAsync" />
+              <span class="badge text-bg-light border">RFC activo: @selectedRfc</span>
               <button type="button" class="btn btn-outline-primary" @onclick="NewCuenta">Nueva cuenta</button>
             </div>
           </div>

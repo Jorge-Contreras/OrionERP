@@ -63,7 +63,7 @@ public partial class CapitalHumanoPage : ComponentBase, IDisposable
   private int? _attachmentDownloadingId;
   private int? _attachmentDeletingId;
 
-  protected string CurrentRfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault() ?? "OHM191112Q26";
+  protected string CurrentRfc => RfcState.CurrentRfc ?? string.Empty;
 
   protected bool HasPhotoOnly
   {
@@ -684,11 +684,6 @@ public partial class CapitalHumanoPage : ComponentBase, IDisposable
 
   private void EnsureCurrentRfc()
   {
-    if (string.IsNullOrWhiteSpace(RfcState.CurrentRfc))
-    {
-      RfcState.ResetToDefault();
-    }
-
     Filter.Rfc = CurrentRfc;
   }
 

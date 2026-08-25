@@ -1,0 +1,45 @@
+@page
+@model OrionERP.Web.Areas.Identity.Pages.Account.LoginWith2faModel
+@{
+    ViewData["Title"] = "Verificación en dos pasos";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/auth.css" asp-append-version="true" />
+}
+
+<div class="auth-shell">
+    <section class="auth-brand" aria-label="OrionERP">
+        <div class="auth-brand__top">
+            <a class="auth-brand__logo" href="/"><img src="~/Images/OrionERP_Logo.svg" alt="OrionERP" /></a>
+            <span class="auth-brand__tag">Centro de operación</span>
+        </div>
+        <div class="auth-brand__copy">
+            <p class="auth-eyebrow">Acceso protegido</p>
+            <h1>Confirma que eres tú.</h1>
+            <p>La empresa se elegirá después de validar el segundo factor.</p>
+        </div>
+    </section>
+    <main class="auth-panel">
+        <section class="auth-card" aria-labelledby="two-factor-title">
+            <div class="auth-card__header">
+                <span class="auth-card__mark" aria-hidden="true"><i class="bi bi-shield-check"></i></span>
+                <div><p class="auth-eyebrow">Segundo factor</p><h2 id="two-factor-title">Código de autenticación</h2></div>
+            </div>
+            <p class="auth-card__intro">Ingresa el código de seis dígitos de tu aplicación autenticadora.</p>
+            <div asp-validation-summary="ModelOnly" class="auth-validation" role="alert"></div>
+            <form method="post" class="auth-form">
+                <input type="hidden" asp-for="RememberMe" />
+                <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+                <div class="auth-field">
+                    <label asp-for="Input.Code">Código</label>
+                    <div class="auth-input"><i class="bi bi-123" aria-hidden="true"></i><input asp-for="Input.Code" autocomplete="one-time-code" inputmode="numeric" autofocus /></div>
+                    <span asp-validation-for="Input.Code" class="auth-field__error"></span>
+                </div>
+                <label class="auth-check"><input asp-for="Input.RememberMachine" /><span>Confiar en este dispositivo</span></label>
+                <button type="submit" class="auth-submit"><span>Verificar</span><i class="bi bi-arrow-right" aria-hidden="true"></i></button>
+            </form>
+            <div class="auth-registration"><a asp-page="./LoginWithRecoveryCode" asp-route-returnUrl="@Model.ReturnUrl" asp-route-rememberMe="@Model.RememberMe">Usar un código de recuperación</a></div>
+        </section>
+    </main>
+</div>

@@ -60,6 +60,9 @@ BEGIN TRY
 
   DECLARE @TrainingRfc varchar(50) = 'XAXX010101000';
 
+  INSERT orion.Company (Rfc,DisplayName,LegalName,IsActive,CreatedAtUtc,UpdatedAtUtc,UpdatedBy)
+  VALUES (@TrainingRfc,N'Orion Training',N'ORION TRAINING · ORGANIZACIÓN FICTICIA',1,SYSUTCDATETIME(),SYSUTCDATETIME(),N'OrionTrainingProvision');
+
   INSERT dbo.RazonSocial (Nombre)
   VALUES (N'ORION TRAINING · ORGANIZACIÓN FICTICIA');
 
@@ -91,20 +94,20 @@ BEGIN TRY
   -- Administrador existe únicamente para el instructor: es el único acceso a
   -- reportes financieros, ajustes, expediente y portal de seguridad, y es la
   -- cuenta con la que se administran roles dentro del entorno de capacitación.
-  INSERT auth.AspNetRoles (Id, Name, NormalizedName, ConcurrencyStamp)
+  INSERT auth.AspNetRoles (Id, Name, NormalizedName, ConcurrencyStamp, [Scope])
   VALUES
-    (N'training-role-cap-admin', N'CapacitacionAdmin', N'CAPACITACIONADMIN', N'training-role-cap-admin-v1'),
-    (N'training-role-cap-instructor', N'CapacitacionInstructor', N'CAPACITACIONINSTRUCTOR', N'training-role-cap-instructor-v1'),
-    (N'training-role-cap-auditor', N'CapacitacionAuditor', N'CAPACITACIONAUDITOR', N'training-role-cap-auditor-v1'),
-    (N'training-role-read', N'Lectura', N'LECTURA', N'training-role-read-v1'),
-    (N'training-role-sat-operator', N'SatOperator', N'SATOPERATOR', N'training-role-sat-operator-v1'),
-    (N'training-role-logistica', N'Logistica', N'LOGISTICA', N'training-role-logistica-v1'),
-    (N'training-role-administrador', N'Administrador', N'ADMINISTRADOR', N'training-role-administrador-v1'),
-    (N'training-role-arrendadores', N'Arrendadores', N'ARRENDADORES', N'training-role-arrendadores-v1'),
-    (N'training-role-ot-supervisor', N'OrdenTrabajoSupervisor', N'ORDENTRABAJOSUPERVISOR', N'training-role-ot-supervisor-v1'),
-    (N'training-role-ap-operator', N'APOperator', N'APOPERATOR', N'training-role-ap-operator-v1'),
-    (N'training-role-ch-admin', N'CapitalHumanoAdmin', N'CAPITALHUMANOADMIN', N'training-role-ch-admin-v1'),
-    (N'training-role-rest-supervisor', N'RestauranteSupervisor', N'RESTAURANTESUPERVISOR', N'training-role-rest-supervisor-v1');
+    (N'training-role-cap-admin', N'CapacitacionAdmin', N'CAPACITACIONADMIN', N'training-role-cap-admin-v1','Company'),
+    (N'training-role-cap-instructor', N'CapacitacionInstructor', N'CAPACITACIONINSTRUCTOR', N'training-role-cap-instructor-v1','Company'),
+    (N'training-role-cap-auditor', N'CapacitacionAuditor', N'CAPACITACIONAUDITOR', N'training-role-cap-auditor-v1','Company'),
+    (N'training-role-read', N'Lectura', N'LECTURA', N'training-role-read-v1','Company'),
+    (N'training-role-sat-operator', N'SatOperator', N'SATOPERATOR', N'training-role-sat-operator-v1','Company'),
+    (N'training-role-logistica', N'Logistica', N'LOGISTICA', N'training-role-logistica-v1','Company'),
+    (N'training-role-administrador', N'Administrador', N'ADMINISTRADOR', N'training-role-administrador-v1','Global'),
+    (N'training-role-arrendadores', N'Arrendadores', N'ARRENDADORES', N'training-role-arrendadores-v1','Global'),
+    (N'training-role-ot-supervisor', N'OrdenTrabajoSupervisor', N'ORDENTRABAJOSUPERVISOR', N'training-role-ot-supervisor-v1','Company'),
+    (N'training-role-ap-operator', N'APOperator', N'APOPERATOR', N'training-role-ap-operator-v1','Company'),
+    (N'training-role-ch-admin', N'CapitalHumanoAdmin', N'CAPITALHUMANOADMIN', N'training-role-ch-admin-v1','Company'),
+    (N'training-role-rest-supervisor', N'RestauranteSupervisor', N'RESTAURANTESUPERVISOR', N'training-role-rest-supervisor-v1','Company');
 
   INSERT auth.AspNetUsers
   (
@@ -126,6 +129,14 @@ BEGIN TRY
   INSERT auth.AspNetUserClaims (UserId, ClaimType, ClaimValue)
   SELECT Id, N'rfc', CONVERT(nvarchar(50), @TrainingRfc)
   FROM auth.AspNetUsers;
+
+  INSERT auth.AspNetUserCompanies
+    (UserId,Rfc,EmployeeId,IsActive,AccessReviewRequired,AccessReviewedAtUtc,AccessReviewedBy,CreatedAtUtc,UpdatedAtUtc,UpdatedBy)
+  VALUES
+    (N'training-user-instructor-v1',@TrainingRfc,990001,1,0,SYSUTCDATETIME(),N'OrionTrainingProvision',SYSUTCDATETIME(),SYSUTCDATETIME(),N'OrionTrainingProvision'),
+    (N'training-user-trainee01-v1',@TrainingRfc,990002,1,0,SYSUTCDATETIME(),N'OrionTrainingProvision',SYSUTCDATETIME(),SYSUTCDATETIME(),N'OrionTrainingProvision'),
+    (N'training-user-trainee02-v1',@TrainingRfc,990003,1,0,SYSUTCDATETIME(),N'OrionTrainingProvision',SYSUTCDATETIME(),SYSUTCDATETIME(),N'OrionTrainingProvision'),
+    (N'training-user-auditor-v1',@TrainingRfc,990004,1,0,SYSUTCDATETIME(),N'OrionTrainingProvision',SYSUTCDATETIME(),SYSUTCDATETIME(),N'OrionTrainingProvision');
 
   INSERT auth.AspNetUserRoles (UserId, RoleId)
   VALUES
@@ -151,6 +162,11 @@ BEGIN TRY
     (N'training-user-trainee02-v1', N'training-role-ch-admin'),
     (N'training-user-trainee02-v1', N'training-role-rest-supervisor'),
     (N'training-user-auditor-v1', N'training-role-cap-auditor');
+
+  INSERT auth.AspNetUserCompanyRoles(UserId,Rfc,RoleId)
+  SELECT userRole.UserId,@TrainingRfc,userRole.RoleId
+  FROM auth.AspNetUserRoles userRole
+  JOIN auth.AspNetRoles roleInfo ON roleInfo.Id=userRole.RoleId AND roleInfo.[Scope]='Company';
 
   DECLARE @TrainingClientId int;
   INSERT dbo.Clientes (EmpresaId, Nombre, Ciudad, Estado, Email, Notas, Tokens, UserName, Password)

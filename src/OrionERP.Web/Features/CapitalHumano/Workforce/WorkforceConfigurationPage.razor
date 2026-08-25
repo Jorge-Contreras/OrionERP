@@ -70,7 +70,7 @@
   private WorkSiteSaveRequest site=new(){TimeZoneId="America/Mexico_City",RadiusMeters=150,MaxAccuracyMeters=100};
   private ScheduleTemplateSaveRequest schedule=new(); private TimeOnly scheduleStart=new(9,0); private TimeOnly scheduleEnd=new(18,0); private TimeOnly scheduleBreakStart=new(14,0); private int scheduleBreak=60; private bool scheduleBreakPaid;
   private EmployeeWorkAssignmentSaveRequest assignment=new(); private SupervisorAssignmentSaveRequest supervisor=new(); private PayGroupSaveRequest payGroup=new(); private HolidaySaveRequest holiday=new(); private KioskPairingCreateRequest pairing=new(); private KioskCredentialCreateRequest credential=new(); private PrivacyNoticeSaveRequest privacy=new(); private KioskPairingCodeDto? pairingResult; private KioskCredentialResult? credentialResult;
-  private string Rfc=>RfcState.CurrentRfc??RfcState.AllowedRfcs.FirstOrDefault()??string.Empty;
+  private string Rfc=>RfcState.CurrentRfc??string.Empty;
   protected override async Task OnInitializedAsync()=>await LoadAsync();
   private void SelectTab(string value){tab=value;message=null;}
   private async Task LoadAsync(){busy=true;try{setup=await ConfigurationService.GetSetupAsync(Rfc);SeedRfc();}catch(Exception ex){Show(ex.Message,true);}finally{busy=false;}}

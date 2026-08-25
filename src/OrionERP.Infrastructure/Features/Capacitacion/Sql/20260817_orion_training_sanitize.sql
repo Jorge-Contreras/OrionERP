@@ -53,6 +53,9 @@ IF EXISTS
 
 IF OBJECT_ID(N'dbo.Capital_Humano', N'U') IS NULL
    OR OBJECT_ID(N'auth.AspNetUsers', N'U') IS NULL
+   OR OBJECT_ID(N'orion.Company', N'U') IS NULL
+   OR OBJECT_ID(N'auth.AspNetUserCompanies', N'U') IS NULL
+   OR OBJECT_ID(N'auth.AspNetUserCompanyRoles', N'U') IS NULL
    OR OBJECT_ID(N'dbo.RESERVATION', N'U') IS NULL
    OR OBJECT_ID(N'cfdi.Comprobante', N'U') IS NULL
    OR OBJECT_ID(N'logistica.Material', N'U') IS NULL

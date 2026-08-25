@@ -20,6 +20,19 @@
 
 
 <component type="typeof(App)" render-mode="ServerPrerendered" />
+@if (User.Identity?.IsAuthenticated == true)
+{
+    // Keep this form outside the interactive Blazor render tree. A component
+    // antiforgery field can disappear when the header hydrates, leaving an
+    // empty POST that the logout Razor Page correctly rejects.
+    <form id="orionerp-logout-form"
+          method="post"
+          action="/Identity/Account/Logout"
+          hidden
+          aria-hidden="true">
+        @Html.AntiForgeryToken()
+    </form>
+}
 <script>
     window.triggerFileDownload = (fileName, dataUrl) => {
         const link = document.createElement('a');

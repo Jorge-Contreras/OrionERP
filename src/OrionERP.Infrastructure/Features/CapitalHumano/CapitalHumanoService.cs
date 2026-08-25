@@ -55,8 +55,9 @@ public sealed partial class CapitalHumanoService : ICapitalHumanoService
               COUNT(*) AS AuthUserCount,
               MAX(au.UserName) AS AuthUserName,
               MAX(au.Email) AS AuthEmail
-          FROM auth.AspNetUsers au
-          WHERE au.EmployeeId = ch.ID
+          FROM auth.AspNetUserCompanies membership
+          JOIN auth.AspNetUsers au ON au.Id = membership.UserId
+          WHERE membership.EmployeeId = ch.ID AND membership.Rfc = ch.RFC AND membership.IsActive = 1
       ) auth
       WHERE ch.RFC = @Rfc
       """);
@@ -174,8 +175,9 @@ public sealed partial class CapitalHumanoService : ICapitalHumanoService
               COUNT(*) AS AuthUserCount,
               MAX(au.UserName) AS AuthUserName,
               MAX(au.Email) AS AuthEmail
-          FROM auth.AspNetUsers au
-          WHERE au.EmployeeId = ch.ID
+          FROM auth.AspNetUserCompanies membership
+          JOIN auth.AspNetUsers au ON au.Id = membership.UserId
+          WHERE membership.EmployeeId = ch.ID AND membership.Rfc = ch.RFC AND membership.IsActive = 1
       ) auth
       WHERE ch.ID = @Id
         AND ch.RFC = @Rfc;

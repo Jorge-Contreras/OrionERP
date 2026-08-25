@@ -26,6 +26,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
         private static readonly StringComparer RoleNameComparer = StringComparer.OrdinalIgnoreCase;
 
         [Inject] private IIdentityAdminService IdentityAdminService { get; set; } = default!;
+        [Inject] private ICompanyMembershipAdminService CompanyMembershipAdminService { get; set; } = default!;
         [Inject] private IArrendadoresEstadoCuentaService ArrendadoresService { get; set; } = default!;
         [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
         [Inject] private IUiMessageService UiMessages { get; set; } = default!;
@@ -48,9 +49,13 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
         private bool IsResettingPassword { get; set; }
         private bool IsDeletingUser { get; set; }
         private bool IsSavingRole { get; set; }
+        private bool IsSavingMemberships { get; set; }
         private bool IsDeletingRole { get; set; }
         private string? LoadError { get; set; }
         private DateTimeOffset? LastRefreshedAt { get; set; }
+        private UserCompanyAccessEditor? CompanyAccess { get; set; }
+        private List<MembershipFormModel> MembershipForms { get; set; } = new();
+        private IReadOnlyList<MembershipCompanyOption> AvailableMembershipCompanies => CompanyAccess?.Companies.Where(company => MembershipForms.All(membership => !string.Equals(membership.Rfc, company.Rfc, StringComparison.OrdinalIgnoreCase))).ToArray() ?? [];
 
         private bool IsUserBusy => IsRefreshing || IsSavingUser || IsResettingPassword || IsDeletingUser;
         private bool IsRoleBusy => IsRefreshing || IsSavingRole || IsDeletingRole;
@@ -80,6 +85,8 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
         private bool IsProtectedSelectedRole =>
             !RoleForm.IsNew &&
             string.Equals(RoleForm.Name, AdministratorRoleName, StringComparison.OrdinalIgnoreCase);
+
+        private bool IsSelectedRoleCompanyScoped => !IsGlobalRoleName(RoleForm.Name);
 
         private IEnumerable<IdentityUserSummary> FilteredRoleUsers =>
             (Snapshot?.Users ?? Array.Empty<IdentityUserSummary>())
@@ -144,6 +151,8 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
             ActiveTab = IdentityAdminTab.Users;
             SelectedUserId = null;
             UserForm = CreateEmptyUserModel();
+            CompanyAccess = null;
+            MembershipForms.Clear();
         }
 
         private void CreateNewRole()
@@ -506,7 +515,64 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
 
             SelectedUserId = userId;
             UserForm = MapUserEditor(editor);
+            await LoadCompanyAccessAsync(userId);
         }
+
+        private async Task LoadCompanyAccessAsync(string userId)
+        {
+            CompanyAccess = await CompanyMembershipAdminService.GetUserAccessAsync(userId);
+            MembershipForms = CompanyAccess.Memberships.Select(item => new MembershipFormModel
+            {
+                Rfc = item.Rfc,
+                IsActive = item.IsActive,
+                EmployeeIdInput = item.EmployeeId?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+                AccessReviewRequired = item.AccessReviewRequired,
+                RoleNames = new HashSet<string>(item.RoleNames, RoleNameComparer),
+                Issues = item.Issues.ToList()
+            }).ToList();
+            foreach (var membership in MembershipForms) membership.Employees = await CompanyMembershipAdminService.GetEmployeesAsync(membership.Rfc, ParseNullableInt(membership.EmployeeIdInput));
+        }
+
+        private async Task AddMembershipAsync()
+        {
+            var company = AvailableMembershipCompanies.FirstOrDefault();
+            if (company is null) return;
+            var form = new MembershipFormModel { Rfc = company.Rfc, IsActive = company.IsActive, IsNew = true };
+            form.Employees = await CompanyMembershipAdminService.GetEmployeesAsync(form.Rfc);
+            MembershipForms.Add(form);
+        }
+
+        private async Task MembershipCompanyChangedAsync(MembershipFormModel membership)
+        {
+            membership.EmployeeIdInput = string.Empty;
+            membership.Employees = string.IsNullOrWhiteSpace(membership.Rfc) ? [] : await CompanyMembershipAdminService.GetEmployeesAsync(membership.Rfc);
+        }
+
+        private void RemoveMembership(Guid key) => MembershipForms.RemoveAll(membership => membership.Key == key);
+
+        private void ToggleMembershipRole(MembershipFormModel membership, string roleName, ChangeEventArgs args)
+        {
+            if (GetCheckboxValue(args)) membership.RoleNames.Add(roleName); else membership.RoleNames.Remove(roleName);
+        }
+
+        private async Task SaveMembershipsAsync()
+        {
+            if (string.IsNullOrWhiteSpace(UserForm.Id) || IsSavingMemberships) return;
+            IsSavingMemberships = true;
+            try
+            {
+                var request = new SaveUserCompanyAccessRequest(UserForm.Id, CurrentUserId, MembershipForms.Select(membership => new UserCompanyMembershipInput(membership.Rfc, membership.IsActive, ParseNullableInt(membership.EmployeeIdInput), membership.MarkReviewed, membership.RoleNames.ToArray())).ToArray());
+                var result = await CompanyMembershipAdminService.SaveUserAccessAsync(request);
+                if (!result.Succeeded) { UiMessages.ShowError(BuildFailureMessage(result), "No se pudieron guardar los accesos"); return; }
+                UiMessages.ShowSuccess(result.Message, "Seguridad");
+                await LoadPortalAsync(UserForm.Id, SelectedRoleId);
+            }
+            catch (Exception ex) { UiMessages.ShowError(ex.Message, "No se pudieron guardar los accesos"); }
+            finally { IsSavingMemberships = false; }
+        }
+
+        private string CompanyName(string rfc) => CompanyAccess?.Companies.FirstOrDefault(company => company.Rfc == rfc)?.DisplayName ?? "Empresa";
+        private static bool IsGlobalRoleName(string roleName) => string.Equals(roleName, "Administrador", StringComparison.OrdinalIgnoreCase) || string.Equals(roleName, "Arrendadores", StringComparison.OrdinalIgnoreCase);
 
         private async Task LoadRoleAsync(string roleId)
         {
@@ -610,7 +676,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
                 LockoutEnabled = editor.LockoutEnabled,
                 LockoutEndInput = editor.LockoutEnd?.LocalDateTime.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture) ?? string.Empty,
                 AccessFailedCount = editor.AccessFailedCount,
-                AssignedRoles = new HashSet<string>(editor.AssignedRoles, RoleNameComparer),
+                AssignedRoles = new HashSet<string>(editor.AssignedRoles.Where(IsGlobalRoleName), RoleNameComparer),
                 Claims = editor.Claims
                     .Select(claim => new ClaimRowModel
                     {
@@ -831,6 +897,20 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
             public Guid Key { get; } = Guid.NewGuid();
             public string ClaimType { get; set; } = string.Empty;
             public string ClaimValue { get; set; } = string.Empty;
+        }
+
+        private sealed class MembershipFormModel
+        {
+            public Guid Key { get; } = Guid.NewGuid();
+            public string Rfc { get; set; } = string.Empty;
+            public bool IsActive { get; set; } = true;
+            public string EmployeeIdInput { get; set; } = string.Empty;
+            public bool AccessReviewRequired { get; set; }
+            public bool MarkReviewed { get; set; }
+            public bool IsNew { get; set; }
+            public HashSet<string> RoleNames { get; set; } = new(RoleNameComparer);
+            public IReadOnlyList<MembershipEmployeeOption> Employees { get; set; } = [];
+            public List<string> Issues { get; set; } = new();
         }
 
         private enum IdentityAdminTab

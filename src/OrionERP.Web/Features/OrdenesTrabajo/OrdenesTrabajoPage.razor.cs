@@ -16,7 +16,6 @@ public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private NavigationManager Navigation { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
-  [Inject] private UserManager<ApplicationUser> UserManager { get; set; } = default!;
   [Inject] private IUserRfcState RfcState { get; set; } = default!;
   [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
 
@@ -39,7 +38,7 @@ public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
 
   protected bool CanCreate => IsPrivilegedUser;
   protected bool CanDelete => IsPrivilegedUser;
-  private string CurrentRfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault() ?? "OHM191112Q26";
+  private string CurrentRfc => RfcState.CurrentRfc ?? string.Empty;
 
   protected override async Task OnInitializedAsync()
   {
@@ -269,8 +268,7 @@ public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
       || user.IsInRole("OrdenTrabajoAdmin")
       || user.IsInRole("OrdenTrabajoSupervisor");
 
-    var appUser = await UserManager.GetUserAsync(user);
-    CurrentEmployeeId = appUser?.EmployeeId;
+    CurrentEmployeeId = int.TryParse(user.FindFirst("employee_id")?.Value, out var employeeId) ? employeeId : null;
   }
 
   private async Task<bool> ConfirmAsync(string message)

@@ -70,7 +70,7 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
         private void ApplyCurrentRfc(bool force = false)
         {
             var nextRfc = NormalizeRfc(RfcState.CurrentRfc)
-                ?? NormalizeRfc(RfcState.AllowedRfcs.FirstOrDefault());
+                ?? string.Empty;
 
             if (string.IsNullOrWhiteSpace(nextRfc))
             {

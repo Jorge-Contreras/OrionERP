@@ -1,13 +1,10 @@
 @page "/restaurante/sitio-brunos"
 @attribute [Authorize(Policy = "RestaurantAdmin")]
-@implements IDisposable
 @using OrionERP.Application.Features.Logistica.Shared
 @using OrionERP.Application.Features.Restaurante
-@using OrionERP.Infrastructure.Auth
 @inject IRestaurantCatalogService CatalogService
 @inject IBrunoPublicCatalogService PublicCatalogService
 @inject IUserRfcState RfcState
-@inject IRfcContext RfcContext
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Restaurante · Sitio de Bruno's</PageTitle>
@@ -85,13 +82,11 @@
 
   protected override async Task OnInitializedAsync()
   {
-    if (!RfcState.TrySet(CurrentRfc))
+    if (!string.Equals(RfcState.CurrentRfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
     {
-      Show("Tu cuenta no tiene autorización para administrar el RFC interno de Bruno's.", true);
+      Show("Esta página requiere una sesión iniciada con Bruno's. Cierra sesión e ingresa con esa empresa.", true);
       return;
     }
-    RfcContext.CurrentRfc = CurrentRfc;
-    RfcState.Changed += OnRfcChanged;
     await LoadAsync();
   }
 
@@ -139,16 +134,4 @@
   }
 
   private void Show(string value, bool error) { message = value; isError = error; }
-  private void OnRfcChanged() => _ = InvokeAsync(async () =>
-  {
-    if (!string.Equals(RfcState.CurrentRfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
-    {
-      RfcState.TrySet(CurrentRfc);
-      return;
-    }
-    RfcContext.CurrentRfc = CurrentRfc;
-    await LoadAsync();
-    StateHasChanged();
-  });
-  public void Dispose() => RfcState.Changed -= OnRfcChanged;
 }

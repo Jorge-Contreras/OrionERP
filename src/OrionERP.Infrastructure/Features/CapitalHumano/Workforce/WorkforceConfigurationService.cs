@@ -29,10 +29,10 @@ public sealed class WorkforceConfigurationService : WorkforceServiceBase, IWorkf
         ch.ID AS EmployeeId,
         COALESCE(NULLIF(ch.NombreCorto, ''), CONCAT(ch.Nombre, ' ', ch.ApellidoPaterno)) AS [Name],
         ch.Puesto AS Position,
-        CAST(CASE WHEN au.EmployeeId IS NULL THEN 0 ELSE 1 END AS bit) AS HasLogin,
+        CAST(CASE WHEN membership.EmployeeId IS NULL THEN 0 ELSE 1 END AS bit) AS HasLogin,
         CAST(CASE WHEN wa.Id IS NULL THEN 0 ELSE 1 END AS bit) AS IsConfigured
       FROM dbo.Capital_Humano ch
-      LEFT JOIN (SELECT DISTINCT EmployeeId FROM auth.AspNetUsers WHERE EmployeeId IS NOT NULL) au ON au.EmployeeId = ch.ID
+      LEFT JOIN (SELECT DISTINCT EmployeeId,Rfc FROM auth.AspNetUserCompanies WHERE EmployeeId IS NOT NULL AND IsActive=1) membership ON membership.EmployeeId = ch.ID AND membership.Rfc=ch.RFC
       OUTER APPLY
       (
         SELECT TOP (1) a.Id
@@ -99,11 +99,11 @@ public sealed class WorkforceConfigurationService : WorkforceServiceBase, IWorkf
 
       SELECT ch.ID AS EmployeeId,
         COALESCE(NULLIF(ch.NombreCorto, ''), CONCAT(ch.Nombre, ' ', ch.ApellidoPaterno)) AS EmployeeName,
-        CAST(CASE WHEN au.EmployeeId IS NULL THEN 0 ELSE 1 END AS bit) AS HasLogin,
+        CAST(CASE WHEN membership.EmployeeId IS NULL THEN 0 ELSE 1 END AS bit) AS HasLogin,
         CAST(CASE WHEN wa.Id IS NULL THEN 0 ELSE 1 END AS bit) AS HasWorkAssignment,
         CAST(CASE WHEN sa.Id IS NULL THEN 0 ELSE 1 END AS bit) AS HasSupervisor
       FROM dbo.Capital_Humano ch
-      LEFT JOIN (SELECT DISTINCT EmployeeId FROM auth.AspNetUsers WHERE EmployeeId IS NOT NULL) au ON au.EmployeeId = ch.ID
+      LEFT JOIN (SELECT DISTINCT EmployeeId,Rfc FROM auth.AspNetUserCompanies WHERE EmployeeId IS NOT NULL AND IsActive=1) membership ON membership.EmployeeId = ch.ID AND membership.Rfc=ch.RFC
       OUTER APPLY
       (
         SELECT TOP (1) a.Id FROM rh.EmployeeWorkAssignment a

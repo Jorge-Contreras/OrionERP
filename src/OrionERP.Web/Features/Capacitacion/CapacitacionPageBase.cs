@@ -56,7 +56,7 @@ public abstract class CapacitacionPageBase : ComponentBase, IAsyncDisposable
     }
     Actor = await CurrentEmployeeAccessor.GetCurrentAsync(_lifetime.Token);
     Rfc = RfcState.CurrentRfc
-      ?? Actor?.AllowedRfcs.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).FirstOrDefault()
+      ?? Actor?.CompanyRfc
       ?? string.Empty;
 
     if (Actor?.EmployeeId is null)
@@ -74,10 +74,10 @@ public abstract class CapacitacionPageBase : ComponentBase, IAsyncDisposable
     // Capacitación siempre se cursa en la empresa donde el usuario está dado de alta como
     // colaborador. Si el selector apunta a otra, hay que decirlo con claridad en vez de
     // dejar que el servicio truene con un error genérico.
-    if (!string.IsNullOrWhiteSpace(Actor.EmployeeRfc)
-        && !string.Equals(Actor.EmployeeRfc, Rfc, StringComparison.OrdinalIgnoreCase))
+    if (!string.IsNullOrWhiteSpace(Actor.CompanyRfc)
+        && !string.Equals(Actor.CompanyRfc, Rfc, StringComparison.OrdinalIgnoreCase))
     {
-      PageError = $"Tu registro de colaborador pertenece a la empresa {Actor.EmployeeRfc}, "
+      PageError = $"Tu sesión pertenece a la empresa {Actor.CompanyRfc}, "
         + $"no a {Rfc}. Cambia la empresa en el selector RFC para usar Capacitación.";
       return false;
     }

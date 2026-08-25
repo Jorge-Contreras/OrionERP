@@ -1137,12 +1137,6 @@ public partial class BancosPage : ComponentBase, IDisposable
     try
     {
       _currentRfc = RfcState.CurrentRfc;
-      if (string.IsNullOrWhiteSpace(_currentRfc))
-      {
-        RfcState.ResetToDefault();
-        _currentRfc = RfcState.CurrentRfc;
-      }
-
       await LoadAccountsInternalAsync();
       await LoadYearsInternalAsync();
       await LoadPendingTransactionsAsync();

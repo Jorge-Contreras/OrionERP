@@ -1,241 +1,33 @@
-@using System.Security.Claims
-@using System.Security.Cryptography
-@using System.Threading
-@using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Authorization
-@using Microsoft.AspNetCore.Components.Routing
-@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @using OrionERP.Infrastructure.Auth
-@using OrionERP.Web.State
 @implements IDisposable
 
-@* This component has no UI; it initializes and persists the RFC state. *@
 @ChildContent
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
-
     [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
     [Inject] private IUserRfcState RfcState { get; set; } = default!;
-    [Inject] private ProtectedLocalStorage Storage { get; set; } = default!;
-    [Inject] private NavigationManager Navigation { get; set; } = default!;
     [Inject] private IRfcContext RfcContext { get; set; } = default!;
-
-    private const string StorageKeyPrefix = "current_rfc";
-
-    private bool _initialized;
-    private bool _pendingInitialization = true;
-    private readonly SemaphoreSlim _initLock = new(1, 1);
-    private string? _lastIdentityStamp;
-    private string _storageKey = StorageKeyPrefix;
 
     protected override async Task OnInitializedAsync()
     {
-        // La autorización de rutas ocurre durante el prerender, antes de que sea
-        // posible consultar ProtectedLocalStorage en OnAfterRenderAsync. Cargamos
-        // primero el RFC predeterminado desde claims para que RoleForRfcRequirement
-        // pueda validar la ruta sin omitir el aislamiento por empresa. Después del
-        // primer render, InitializeCoreAsync restaura la selección persistida.
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var user = authState.User;
+        AuthStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        await ApplyAsync(await AuthStateProvider.GetAuthenticationStateAsync());
+    }
 
-        RfcState.InitializeFromClaims(user);
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> stateTask)
+    {
+        try { await ApplyAsync(await stateTask); }
+        catch { /* circuit teardown or logout */ }
+    }
+
+    private Task ApplyAsync(AuthenticationState state)
+    {
+        RfcState.InitializeFromClaims(state.User);
         RfcContext.CurrentRfc = RfcState.CurrentRfc;
-
-        if (user.Identity?.IsAuthenticated == true)
-        {
-            var identityStamp = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                ?? user.FindFirst("sub")?.Value
-                ?? user.Identity.Name;
-
-            _storageKey = BuildStorageKey(identityStamp);
-            _lastIdentityStamp = identityStamp;
-        }
+        return InvokeAsync(StateHasChanged);
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            AuthStateProvider.AuthenticationStateChanged += OnAuthStateChanged;
-            Navigation.LocationChanged += OnLocationChanged;
-        }
-
-        if (_pendingInitialization || !_initialized)
-        {
-            var force = _pendingInitialization || firstRender;
-            await EnsureInitializedAsync(force: force);
-        }
-    }
-
-    private async Task EnsureInitializedAsync(bool force = false, AuthenticationState? state = null)
-    {
-        await _initLock.WaitAsync();
-        try
-        {
-            _pendingInitialization = false;
-
-            if (!force && _initialized && RfcState.AllowedRfcs.Any())
-            {
-                return;
-            }
-
-            state ??= await AuthStateProvider.GetAuthenticationStateAsync();
-            await InitializeCoreAsync(state, force);
-
-            if (_pendingInitialization)
-            {
-                return;
-            }
-
-            RfcContext.CurrentRfc = RfcState.CurrentRfc;
-            _initialized = true;
-        }
-        finally
-        {
-            _initLock.Release();
-        }
-    }
-
-    private async Task InitializeCoreAsync(AuthenticationState authState, bool force)
-    {
-        var user = authState.User;
-
-        if (user.Identity?.IsAuthenticated != true)
-        {
-            _storageKey = StorageKeyPrefix;
-
-            if (!force && _initialized && (RfcState.AllowedRfcs.Any() || RfcState.CurrentRfc is not null))
-            {
-                return;
-            }
-
-            RfcState.InitializeFromClaims(new ClaimsPrincipal());
-            RfcState.Changed -= OnRfcChangedPersist;
-            RfcState.Changed += OnRfcChangedPersist;
-            await PersistCurrentAsync();
-            await InvokeAsync(StateHasChanged);
-            _lastIdentityStamp = null;
-            return;
-        }
-
-        var hadRfcs = RfcState.AllowedRfcs.Count > 0;
-        var rfcClaims = user.FindAll("rfc")
-                            .Select(c => c.Value)
-                            .Where(v => !string.IsNullOrWhiteSpace(v))
-                            .ToList();
-
-        var identityStamp = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? user.FindFirst("sub")?.Value
-            ?? user.Identity?.Name;
-
-        if (identityStamp is null && rfcClaims.Any())
-        {
-            identityStamp = string.Join('|', rfcClaims.OrderBy(r => r, StringComparer.OrdinalIgnoreCase));
-        }
-
-        if (!rfcClaims.Any() && hadRfcs)
-        {
-            var sameIdentity = string.Equals(identityStamp, _lastIdentityStamp, StringComparison.Ordinal);
-            if (sameIdentity)
-            {
-                return;
-            }
-        }
-
-        RfcState.InitializeFromClaims(user);
-        _storageKey = BuildStorageKey(identityStamp);
-
-        if (RfcState.AllowedRfcs.Count > 0)
-        {
-            try
-            {
-                var saved = await Storage.GetAsync<string>(_storageKey);
-                if (saved.Success && !string.IsNullOrWhiteSpace(saved.Value))
-                {
-                    if (!RfcState.TrySet(saved.Value))
-                    {
-                        RfcState.ResetToDefault();
-                    }
-                }
-            }
-            catch (CryptographicException)
-            {
-                try
-                {
-                    await Storage.DeleteAsync(_storageKey);
-                }
-                catch
-                {
-                    // ignore clean-up errors
-                }
-
-                RfcState.ResetToDefault();
-            }
-            catch (InvalidOperationException ex) when (IsBrowserStorageUnavailable(ex))
-            {
-                _pendingInitialization = true;
-                return;
-            }
-        }
-
-        RfcState.Changed -= OnRfcChangedPersist;
-        RfcState.Changed += OnRfcChangedPersist;
-
-        await PersistCurrentAsync();
-        await InvokeAsync(StateHasChanged);
-        _lastIdentityStamp = identityStamp;
-    }
-
-    private async void OnAuthStateChanged(Task<AuthenticationState> task)
-    {
-        try
-        {
-            var state = await task;
-            await EnsureInitializedAsync(force: true, state);
-        }
-        catch { /* no-op */ }
-    }
-
-    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
-    {
-        _ = EnsureInitializedAsync();
-    }
-
-    private async void OnRfcChangedPersist()
-    {
-        try
-        {
-            RfcContext.CurrentRfc = RfcState.CurrentRfc;
-            await PersistCurrentAsync();
-        }
-        catch { /* no-op */ }
-    }
-
-    private async Task PersistCurrentAsync()
-    {
-        try
-        {
-            await Storage.SetAsync(_storageKey, RfcState.CurrentRfc ?? string.Empty);
-        }
-        catch (InvalidOperationException ex) when (IsBrowserStorageUnavailable(ex))
-        {
-            _pendingInitialization = true;
-        }
-    }
-
-    private static bool IsBrowserStorageUnavailable(InvalidOperationException ex)
-        => ex.Message.Contains("JavaScript interop calls cannot be issued at this time", StringComparison.Ordinal);
-
-    private static string BuildStorageKey(string? identityStamp)
-        => identityStamp is null
-            ? StorageKeyPrefix
-            : $"{StorageKeyPrefix}::{identityStamp}";
-
-    public void Dispose()
-    {
-        AuthStateProvider.AuthenticationStateChanged -= OnAuthStateChanged;
-        RfcState.Changed -= OnRfcChangedPersist;
-        Navigation.LocationChanged -= OnLocationChanged;
-    }
+    public void Dispose() => AuthStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
 }

@@ -18,9 +18,7 @@
 <div class="mb-3 filter-bar">
     <div class="filter-pair">
         <label class="fw-bold">RFC (Razón Social):</label>
-        <RfcPicker 
-          @bind-SelectedRfc="selectedRfc"
-          @bind-SelectedRfc:after="OnFiltersChangedAsync"  />
+        <input class="form-control inline-select" value="@selectedRfc" disabled aria-label="RFC de la sesión" />
     </div>
 
     <div class="filter-pair">

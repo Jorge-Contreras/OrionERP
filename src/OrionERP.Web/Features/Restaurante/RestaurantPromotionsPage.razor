@@ -1,15 +1,12 @@
 @page "/restaurante/promociones"
 @attribute [Authorize(Policy = "RestaurantAdmin")]
-@implements IDisposable
 @using System.Text
 @using OrionERP.Application.Features.Logistica.Shared
 @using OrionERP.Application.Features.Restaurante
-@using OrionERP.Infrastructure.Auth
 @inject IRestaurantPromotionService PromotionService
 @inject IRestaurantCatalogService CatalogService
 @inject ILoyaltyService LoyaltyService
 @inject IUserRfcState RfcState
-@inject IRfcContext RfcContext
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Restaurante · Promociones y Club Bruno</PageTitle>
@@ -381,13 +378,11 @@
 
   protected override async Task OnInitializedAsync()
   {
-    if (!RfcState.TrySet(CurrentRfc))
+    if (!string.Equals(RfcState.CurrentRfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
     {
-      Show("Tu cuenta no tiene autorización para administrar el RFC interno de Bruno's.", true);
+      Show("Esta página requiere una sesión iniciada con Bruno's. Cierra sesión e ingresa con esa empresa.", true);
       return;
     }
-    RfcContext.CurrentRfc = CurrentRfc;
-    RfcState.Changed += OnRfcChanged;
     await LoadAsync();
   }
 
@@ -619,17 +614,4 @@
   }
   private static string Csv(string? value) => $"\"{(value ?? string.Empty).Replace("\"", "\"\"")}\"";
   private void Show(string value, bool error) { message = value; isError = error; }
-  private void OnRfcChanged() => _ = InvokeAsync(async () =>
-  {
-    if (!string.Equals(RfcState.CurrentRfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
-    {
-      RfcState.TrySet(CurrentRfc);
-      return;
-    }
-    RfcContext.CurrentRfc = CurrentRfc;
-    NewPromotion();
-    await LoadAsync();
-    StateHasChanged();
-  });
-  public void Dispose() => RfcState.Changed -= OnRfcChanged;
 }

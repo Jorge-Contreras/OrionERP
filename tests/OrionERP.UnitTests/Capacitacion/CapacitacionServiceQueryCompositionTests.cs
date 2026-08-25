@@ -186,7 +186,6 @@ public sealed class CapacitacionServiceQueryCompositionTests
         "authenticated@orionerp.local",
         EmployeeId,
         new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-        new HashSet<string>([Rfc], StringComparer.OrdinalIgnoreCase),
         Rfc)));
 
   private static string LastQuery(FakeQueryDbConnection connection)

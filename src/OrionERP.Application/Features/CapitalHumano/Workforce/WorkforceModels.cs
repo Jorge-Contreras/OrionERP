@@ -46,14 +46,13 @@ public sealed record CurrentEmployeeContext(
   string UserName,
   int? EmployeeId,
   IReadOnlySet<string> Roles,
-  IReadOnlySet<string> AllowedRfcs,
-  string? EmployeeRfc = null)
+  string CompanyRfc)
 {
   public bool IsInRole(params string[] roles)
     => Roles.Contains("Administrador") || roles.Any(Roles.Contains);
 
   public bool CanAccessRfc(string rfc)
-    => AllowedRfcs.Contains(rfc);
+    => string.Equals(CompanyRfc, rfc?.Trim(), StringComparison.OrdinalIgnoreCase);
 }
 
 public interface ICurrentEmployeeAccessor

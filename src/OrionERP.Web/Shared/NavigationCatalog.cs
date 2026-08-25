@@ -141,6 +141,7 @@ public static class NavigationCatalog
         "Gestiona accesos, roles y mantenimiento del portal.",
         "oi-lock-locked",
         [
+            new("/admin/empresas", "Empresas", "RFC, branding, disponibilidad y revisiones de acceso.", "oi-building", "Directorio de empresas", NavLinkMatch.Prefix, false, "Admin", "empresas", "rfc", "branding", "membresias"),
             new("/admin/seguridad", "Portal de Seguridad", "Usuarios, permisos y configuracion administrativa.", "oi-lock-locked", "Portal de seguridad", NavLinkMatch.Prefix, false, "Admin", "seguridad", "usuarios", "permisos", "roles"),
             new("/ajustes", "Ajustes", "Plantillas contables y configuracion operativa.", "oi-cog", "Ajustes", NavLinkMatch.Prefix, false, "Setup", "ajustes", "configuracion", "plantillas"),
             new("/capital-humano", "Capital Humano", "Colaboradores, datos laborales, archivos y fotografia.", "oi-people", "Capital Humano", NavLinkMatch.Prefix, false, "HR", "capital", "humano", "recursos humanos", "colaboradores", "empleados", "archivos")

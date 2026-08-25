@@ -6,8 +6,7 @@
 <PageTitle>Descarga Masiva SAT</PageTitle>
 
 <h3>Descarga Masiva SAT</h3>
-<RfcPicker @bind-SelectedRfc="RfcSolicitante"
-           @bind-SelectedRfc:after="LoadSolicitudesAsync" />
+<p><span class="badge text-bg-light border">RFC activo: @RfcState.CurrentRfc</span></p>
 
 <div class="card p-3 mb-3">
     <div class="row g-3">

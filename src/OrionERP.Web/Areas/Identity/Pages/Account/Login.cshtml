@@ -60,16 +60,55 @@
                 </span>
                 <div>
                     <p class="auth-eyebrow">Acceso seguro</p>
-                    <h2 id="login-title">Iniciar sesion</h2>
+                    <h2 id="login-title">@(Model.IsSelectingCompany ? "Elige tu empresa" : "Iniciar sesion")</h2>
                 </div>
             </div>
 
             <p class="auth-card__intro">
-                Usa tu cuenta de OrionERP para continuar al centro de operacion.
+                @(Model.IsSelectingCompany
+                    ? "Esta elección permanecerá fija hasta que cierres sesión."
+                    : "Usa tu cuenta de OrionERP para continuar al centro de operacion.")
             </p>
 
             <div asp-validation-summary="ModelOnly" class="auth-validation" role="alert"></div>
 
+            @if (Model.IsSelectingCompany)
+            {
+                <form method="post" asp-page-handler="SelectCompany" class="auth-company-list">
+                    @foreach (var company in Model.CompanyOptions)
+                    {
+                        <button class="auth-company-card" type="submit" name="rfc" value="@company.Rfc">
+                            <span class="auth-company-card__logo">
+                                @if (company.HasLogo)
+                                {
+                                    <img src="/company-branding/@company.Rfc/logo?v=@company.BrandingVersion"
+                                         alt="Logotipo de @company.DisplayName" />
+                                }
+                                else
+                                {
+                                    <span aria-hidden="true">@company.DisplayName.Trim()[0]</span>
+                                }
+                            </span>
+                            <span class="auth-company-card__copy">
+                                <strong>@company.DisplayName</strong>
+                                <small>@company.Rfc</small>
+                                @if (!string.IsNullOrWhiteSpace(company.Position))
+                                {
+                                    <span>@company.Position</span>
+                                }
+                                else if (company.EmployeeId.HasValue)
+                                {
+                                    <span>Colaborador · ID @company.EmployeeId</span>
+                                }
+                            </span>
+                            <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                        </button>
+                    }
+                </form>
+                <a class="auth-company-restart" href="/Identity/Account/Login">Volver a ingresar mis datos</a>
+            }
+            else
+            {
             <form id="account" method="post" class="auth-form" novalidate>
                 <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
 
@@ -118,8 +157,9 @@
                     <i class="bi bi-arrow-right" aria-hidden="true"></i>
                 </button>
             </form>
+            }
 
-            @if (!HostEnvironment.IsEnvironment("Training"))
+            @if (!Model.IsSelectingCompany && !HostEnvironment.IsEnvironment("Training"))
             {
                 <div class="auth-registration">
                     <span>¿Nuevo en OrionERP?</span>

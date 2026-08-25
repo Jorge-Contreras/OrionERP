@@ -278,14 +278,15 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
                 from link in _db.Set<IdentityUserRole<string>>().AsNoTracking()
                 join role in _roleManager.Roles.AsNoTracking() on link.RoleId equals role.Id
                 where link.UserId == userId
+                  && (role.Name == AdministratorRoleName || role.Name == ArrendadoresRoleName)
                 orderby role.Name
                 select role.Name ?? string.Empty)
                 .Where(roleName => roleName != string.Empty)
                 .ToListAsync(cancellationToken);
 
-            var claims = await _db.Set<IdentityUserClaim<string>>()
+            var storedClaims = await _db.Set<IdentityUserClaim<string>>()
                 .AsNoTracking()
-                .Where(claim => claim.UserId == userId)
+                .Where(claim => claim.UserId == userId && claim.ClaimType != null)
                 .OrderBy(claim => claim.ClaimType)
                 .ThenBy(claim => claim.ClaimValue)
                 .Select(claim => new IdentityClaimRecord(
@@ -293,6 +294,9 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
                     claim.ClaimType ?? string.Empty,
                     claim.ClaimValue ?? string.Empty))
                 .ToListAsync(cancellationToken);
+            var claims = storedClaims
+                .Where(claim => !CompanyClaimTypes.ReservedUserClaims.Contains(claim.ClaimType))
+                .ToArray();
 
             var logins = await _db.Set<IdentityUserLogin<string>>()
                 .AsNoTracking()
@@ -392,6 +396,7 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
             var desiredRoleNames = NormalizeRoleNames(request.RoleNames);
             var validRoleNames = await _roleManager.Roles
                 .AsNoTracking()
+                .Where(role => role.Name == AdministratorRoleName || role.Name == ArrendadoresRoleName)
                 .Select(role => role.Name)
                 .Where(roleName => roleName != null)
                 .ToListAsync(cancellationToken);
@@ -472,7 +477,8 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
             }
 
             var currentRoleNames = (await _userManager.GetRolesAsync(user)).ToArray();
-            var removesAdministrator = currentRoleNames.Contains(AdministratorRoleName, RoleNameComparer)
+            var currentGlobalRoleNames = currentRoleNames.Where(IdentityRoleScopes.IsGlobalRole).ToArray();
+            var removesAdministrator = currentGlobalRoleNames.Contains(AdministratorRoleName, RoleNameComparer)
                 && !desiredRoleNames.Contains(AdministratorRoleName, RoleNameComparer);
 
             if (removesAdministrator)
@@ -488,7 +494,7 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
                 }
             }
 
-            var rolesToRemove = currentRoleNames
+            var rolesToRemove = currentGlobalRoleNames
                 .Where(roleName => !desiredRoleNames.Contains(roleName, RoleNameComparer))
                 .ToArray();
 
@@ -502,7 +508,7 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
             }
 
             var rolesToAdd = desiredRoleNames
-                .Where(roleName => !currentRoleNames.Contains(roleName, RoleNameComparer))
+                .Where(roleName => !currentGlobalRoleNames.Contains(roleName, RoleNameComparer))
                 .ToArray();
 
             if (rolesToAdd.Length > 0)
@@ -676,11 +682,33 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
                 return FromIdentityResult(identityResult, "No se pudo guardar el rol.");
             }
 
+            var desiredScope = IdentityRoleScopes.IsGlobalRole(normalizedRoleName)
+                ? IdentityRoleScopes.Global
+                : IdentityRoleScopes.Company;
+            _db.Entry(role).Property<string>("Scope").CurrentValue = desiredScope;
+            await _db.SaveChangesAsync(cancellationToken);
+
             await SyncRoleClaimsAsync(role.Id, NormalizeClaims(request.Claims), cancellationToken);
-            var syncRoleUsersFailure = await SyncRoleUsersAsync(role, desiredUserIds, request.ActorUserId, cancellationToken);
+            var syncRoleUsersFailure = desiredScope == IdentityRoleScopes.Global
+                ? await SyncRoleUsersAsync(role, desiredUserIds, request.ActorUserId, cancellationToken)
+                : null;
             if (syncRoleUsersFailure is not null)
             {
                 return syncRoleUsersFailure;
+            }
+
+            if (desiredScope == IdentityRoleScopes.Company)
+            {
+                var companyUserIds = await _db.UserCompanyRoles.AsNoTracking()
+                    .Where(link => link.RoleId == role.Id)
+                    .Select(link => link.UserId)
+                    .Distinct()
+                    .ToListAsync(cancellationToken);
+                foreach (var userId in companyUserIds)
+                {
+                    var affectedUser = await _userManager.FindByIdAsync(userId);
+                    if (affectedUser is not null) await _userManager.UpdateSecurityStampAsync(affectedUser);
+                }
             }
 
             await transaction.CommitAsync(cancellationToken);
@@ -775,9 +803,13 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
             CancellationToken cancellationToken)
         {
             var userClaimSet = _db.Set<IdentityUserClaim<string>>();
-            var existingClaims = await userClaimSet
-                .Where(claim => claim.UserId == userId)
+            var storedClaims = await userClaimSet
+                .Where(claim => claim.UserId == userId && claim.ClaimType != null)
                 .ToListAsync(cancellationToken);
+            var existingClaims = storedClaims
+                .Where(claim => claim.ClaimType is not null
+                    && !CompanyClaimTypes.ReservedUserClaims.Contains(claim.ClaimType))
+                .ToArray();
 
             var changed = false;
             var desiredClaimSet = desiredClaims.ToHashSet();
@@ -1171,7 +1203,9 @@ namespace OrionERP.Infrastructure.Features.Auth.AdminPortal
                 .Select(claim => new ClaimSignature(
                     NormalizeRequired(claim.ClaimType),
                     NormalizeRequired(claim.ClaimValue)))
-                .Where(claim => !string.IsNullOrWhiteSpace(claim.ClaimType) && !string.IsNullOrWhiteSpace(claim.ClaimValue))
+                .Where(claim => !string.IsNullOrWhiteSpace(claim.ClaimType)
+                    && !string.IsNullOrWhiteSpace(claim.ClaimValue)
+                    && !CompanyClaimTypes.ReservedUserClaims.Contains(claim.ClaimType))
                 .Distinct()
                 .ToArray();
         }

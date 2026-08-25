@@ -23,7 +23,9 @@ using OrionERP.Application.Common;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
 using OrionERP.Application.Features.CapitalHumano.Workforce;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+using OrionERP.Application.Features.Auth.Companies;
 using OrionERP.Infrastructure.Auth;
+using OrionERP.Infrastructure.Features.Auth;
 using OrionERP.Infrastructure.Features.CapitalHumano.Workforce;
 using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
 using OrionERP.Infrastructure.Features.Mail;
@@ -226,11 +228,28 @@ builder.Services
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<OrionIdentityDbContext>()
     .AddDefaultTokenProviders();
-builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, BrunoAdminClaimsPrincipalFactory>();
+builder.Services.AddScoped<ICompanySignInContext, CompanySignInContext>();
+builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, CompanyClaimsPrincipalFactory>();
+builder.Services.AddScoped<ICompanyAccessService, CompanyAccessService>();
+builder.Services.AddScoped<OrionERP.Application.Features.Auth.AdminPortal.ICompanyMembershipAdminService, OrionERP.Infrastructure.Features.Auth.AdminPortal.CompanyMembershipAdminService>();
+builder.Services.AddAuthentication()
+  .AddCookie(CompanyAuthenticationSchemes.PendingCompanySelection, options =>
+  {
+    options.Cookie.Name = $"{platformIsolation.IdentityCookieName}.PendingCompany";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+      ? CookieSecurePolicy.SameAsRequest
+      : CookieSecurePolicy.Always;
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(5);
+    options.SlidingExpiration = false;
+  });
 
 builder.Services.ConfigureApplicationCookie(options =>
 {
-  options.Cookie.Name = platformIsolation.IdentityCookieName;
+  // Rotated for the company-bound claims contract. Legacy cookies can contain
+  // multiple RFC claims and must never enter the new application session.
+  options.Cookie.Name = $"{platformIsolation.IdentityCookieName}.CompanyV1";
   options.Cookie.HttpOnly = true;
   options.Cookie.SameSite = SameSiteMode.Lax;
   options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
@@ -264,6 +283,51 @@ builder.Services.ConfigureApplicationCookie(options =>
     context.Response.Redirect(context.RedirectUri);
     return Task.CompletedTask;
   };
+
+  options.Events.OnValidatePrincipal = async context =>
+  {
+    var principal = context.Principal;
+    if (principal?.Identity?.IsAuthenticated != true) return;
+
+    var sessionVersion = principal.FindFirst(CompanyClaimTypes.SessionVersion)?.Value;
+    var rfcs = principal.FindAll(CompanyClaimTypes.Rfc)
+      .Select(claim => claim.Value.Trim().ToUpperInvariant())
+      .Where(value => value.Length > 0)
+      .Distinct(StringComparer.OrdinalIgnoreCase)
+      .ToArray();
+    var userId = principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    if (!string.Equals(sessionVersion, CompanyClaimTypes.CurrentSessionVersion, StringComparison.Ordinal)
+        || rfcs.Length != 1
+        || string.IsNullOrWhiteSpace(userId))
+    {
+      context.RejectPrincipal();
+      await context.HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
+      return;
+    }
+
+    // Validate the stamp without asking SecurityStampValidator to rebuild the
+    // principal. Its refresh path runs the claims factory outside the original
+    // company-selection operation, which can lose the selected RFC and produce
+    // a cookie that is immediately rejected on the first protected request.
+    // Access mutations rotate the stamp, so a direct comparison still revokes
+    // affected sessions immediately while preserving the company-bound claims.
+    var signInManager = context.HttpContext.RequestServices
+      .GetRequiredService<SignInManager<ApplicationUser>>();
+    var stampUser = await signInManager.ValidateSecurityStampAsync(principal);
+    if (stampUser is null || !string.Equals(stampUser.Id, userId, StringComparison.Ordinal))
+    {
+      context.RejectPrincipal();
+      await context.HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
+      return;
+    }
+
+    var companyAccess = context.HttpContext.RequestServices.GetRequiredService<ICompanyAccessService>();
+    if (!await companyAccess.HasActiveMembershipAsync(userId, rfcs[0], context.HttpContext.RequestAborted))
+    {
+      context.RejectPrincipal();
+      await context.HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
+    }
+  };
 });
 
 static bool IsApiOrBlazorCircuitRequest(HttpRequest request)
@@ -294,7 +358,9 @@ static bool IsApiOrBlazorCircuitRequest(HttpRequest request)
   return false;
 }
 
-builder.Services.AddScoped<IUserRfcState, UserRfcState>();
+builder.Services.AddScoped<UserRfcState>();
+builder.Services.AddScoped<IUserRfcState>(services => services.GetRequiredService<UserRfcState>());
+builder.Services.AddScoped<ICurrentCompanyContext>(services => services.GetRequiredService<UserRfcState>());
 builder.Services.AddScoped<ICurrentRfcAccessor, UserRfcStateAccessor>();
 builder.Services.AddScoped<ProtectedLocalStorage>();
 builder.Services.AddScoped<ProtectedSessionStorage>();
@@ -527,6 +593,7 @@ app.UseRouting();
 app.UseMiddleware<LoginAntiforgeryRecoveryMiddleware>();
 
 app.UseAuthentication();
+app.UseMiddleware<CompanyScopeGuardMiddleware>();
 app.UseAuthorization();
 app.UseRateLimiter();
 
@@ -583,9 +650,11 @@ app.MapGet("/api/workforce/prenomina/exports/{exportId:long}/{format}", async (
   long exportId,
   string format,
   string rfc,
+  ICurrentCompanyContext companyContext,
   IPrenominaExportService service,
   CancellationToken ct) =>
 {
+  if (!string.Equals(companyContext.CurrentRfc, rfc, StringComparison.OrdinalIgnoreCase)) return Results.Forbid();
   var bundle = await service.GetAsync(exportId, rfc, ct);
   if (bundle is null) return Results.NotFound();
   return format.Equals("xlsx", StringComparison.OrdinalIgnoreCase)
@@ -613,13 +682,22 @@ app.MapGet("/bonhomia", (IOptions<BonhomiaCheckoutOptions> options, ITrainingEnv
 
   return Results.Redirect("/");
 });
-app.MapFallbackToPage("/_Host");
-
-app.MapGet("/auth/logout", async (HttpContext ctx) =>
+app.MapGet("/company-branding/{rfc}/logo", async (
+  string rfc,
+  ICompanyAccessService companyAccess,
+  HttpContext context) =>
 {
-  await ctx.SignOutAsync(IdentityConstants.ApplicationScheme);
-  ctx.Response.Redirect("/");
-});
+  var logo = await companyAccess.GetLogoAsync(rfc, context.RequestAborted);
+  return logo is null
+    ? Results.NotFound()
+    : Results.File(
+      logo.Bytes,
+      logo.ContentType,
+      lastModified: null,
+      entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{logo.BrandingVersion}\""),
+      enableRangeProcessing: false);
+}).AllowAnonymous();
+app.MapFallbackToPage("/_Host");
 
 // Seed Identity
 using (var scope = app.Services.CreateScope())

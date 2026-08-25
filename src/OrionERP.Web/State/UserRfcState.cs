@@ -1,12 +1,15 @@
 using System.Security.Claims;
+using OrionERP.Application.Common;
+using OrionERP.Infrastructure.Auth;
 
 namespace OrionERP.Web.State;
 
-public sealed class UserRfcState : IUserRfcState
+public sealed class UserRfcState : IUserRfcState, ICurrentCompanyContext
 {
   private readonly object _gate = new();
-  private HashSet<string> _allowed = new(StringComparer.OrdinalIgnoreCase);
   private string? _current;
+  private string? _displayName;
+  private int? _employeeId;
 
   public string? CurrentRfc
   {
@@ -30,10 +33,8 @@ public sealed class UserRfcState : IUserRfcState
     }
   }
 
-  public IReadOnlyList<string> AllowedRfcs
-  {
-    get { lock (_gate) return _allowed.OrderBy(r => r).ToList(); }
-  }
+  public string? DisplayName { get { lock (_gate) return _displayName; } }
+  public int? EmployeeId { get { lock (_gate) return _employeeId; } }
 
   public event Action? Changed;
 
@@ -44,11 +45,12 @@ public sealed class UserRfcState : IUserRfcState
       bool cleared;
       lock (_gate)
       {
-        cleared = _allowed.Count != 0 || _current is not null;
+        cleared = _current is not null || _displayName is not null || _employeeId is not null;
         if (cleared)
         {
-          _allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
           _current = null;
+          _displayName = null;
+          _employeeId = null;
         }
       }
 
@@ -60,36 +62,34 @@ public sealed class UserRfcState : IUserRfcState
       return;
     }
 
-    var fromClaims = user.FindAll("rfc")
-                         .Select(c => c.Value)
-                         .Where(v => !string.IsNullOrWhiteSpace(v))
-                         .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    var fromClaims = user.FindAll(CompanyClaimTypes.Rfc)
+      .Select(claim => claim.Value.Trim().ToUpperInvariant())
+      .Where(value => value.Length > 0)
+      .Distinct(StringComparer.OrdinalIgnoreCase)
+      .ToArray();
+    var nextRfc = fromClaims.Length == 1 ? fromClaims[0] : null;
+    var nextDisplayName = user.FindFirst(CompanyClaimTypes.CompanyName)?.Value;
+    var nextEmployeeId = int.TryParse(user.FindFirst(CompanyClaimTypes.EmployeeId)?.Value, out var parsedEmployeeId)
+      ? parsedEmployeeId
+      : (int?)null;
 
     bool changed = false;
     lock (_gate)
     {
-      if (!_allowed.SetEquals(fromClaims))
+      if (!string.Equals(_current, nextRfc, StringComparison.OrdinalIgnoreCase))
       {
-        _allowed = fromClaims;
+        _current = nextRfc;
         changed = true;
       }
-
-      if (_allowed.Count == 0)
+      if (!string.Equals(_displayName, nextDisplayName, StringComparison.Ordinal))
       {
-        if (_current is not null)
-        {
-          _current = null;
-          changed = true;
-        }
+        _displayName = nextDisplayName;
+        changed = true;
       }
-      else if (_current is null || !_allowed.Contains(_current))
+      if (_employeeId != nextEmployeeId)
       {
-        var next = _allowed.OrderBy(r => r).FirstOrDefault();
-        if (!string.Equals(_current, next, StringComparison.OrdinalIgnoreCase))
-        {
-          _current = next;
-          changed = true;
-        }
+        _employeeId = nextEmployeeId;
+        changed = true;
       }
     }
 
@@ -99,30 +99,12 @@ public sealed class UserRfcState : IUserRfcState
     }
   }
 
-  public bool TrySet(string rfc)
-  {
-    if (string.IsNullOrWhiteSpace(rfc)) return false;
-    lock (_gate)
-    {
-      if (!_allowed.Contains(rfc)) return false;
-    }
-    CurrentRfc = rfc;
-    return true;
-  }
+  public string RequireRfc()
+    => CurrentRfc ?? throw new UnauthorizedAccessException("La sesión no tiene una empresa activa.");
 
-  public void ResetToDefault()
+  public void EnsureRfc(string rfc)
   {
-    bool changed;
-    lock (_gate)
-    {
-      var next = _allowed.OrderBy(r => r).FirstOrDefault();
-      changed = !string.Equals(_current, next, StringComparison.OrdinalIgnoreCase);
-      _current = next;
-    }
-
-    if (changed)
-    {
-      Changed?.Invoke();
-    }
+    if (!string.Equals(RequireRfc(), rfc?.Trim(), StringComparison.OrdinalIgnoreCase))
+      throw new UnauthorizedAccessException("El RFC solicitado no corresponde a la empresa de la sesión.");
   }
 }

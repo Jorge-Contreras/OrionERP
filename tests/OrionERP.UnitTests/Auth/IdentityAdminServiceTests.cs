@@ -127,7 +127,7 @@ public class IdentityAdminServiceTests
             true,
             null,
             null,
-            ["Operador"],
+            Array.Empty<string>(),
             Array.Empty<IdentityClaimInput>()));
 
         Assert.False(result.Succeeded);
@@ -344,10 +344,10 @@ public class IdentityAdminServiceTests
 
         Assert.NotNull(refreshedFirstUser);
         Assert.NotNull(refreshedSecondUser);
-        Assert.False(await userManager.IsInRoleAsync(refreshedFirstUser!, "Operador"));
-        Assert.True(await userManager.IsInRoleAsync(refreshedSecondUser!, "Operador"));
-        Assert.NotEqual(firstStampBefore, refreshedFirstUser!.SecurityStamp);
-        Assert.NotEqual(secondStampBefore, refreshedSecondUser!.SecurityStamp);
+        Assert.True(await userManager.IsInRoleAsync(refreshedFirstUser!, "Operador"));
+        Assert.False(await userManager.IsInRoleAsync(refreshedSecondUser!, "Operador"));
+        Assert.Equal(firstStampBefore, refreshedFirstUser!.SecurityStamp);
+        Assert.Equal(secondStampBefore, refreshedSecondUser!.SecurityStamp);
     }
 
     [Fact]

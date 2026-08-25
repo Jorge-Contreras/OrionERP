@@ -544,6 +544,8 @@ VALUES
   (N'AJUSTES-PLANTILLAS', N'OPERAR', 3, 1, N'ENLACE', N'Abrir ajustes', N'/ajustes', N'Acceso local a plantillas contables y configuración del entorno de práctica.'),
 
   (N'ADMIN-SEGURIDAD', N'OPERAR', 3, 1, N'ENLACE', N'Abrir el portal de seguridad', N'/admin/seguridad', N'Acceso local a usuarios, roles y permisos del entorno de práctica.');
+INSERT INTO @Recursos VALUES
+  (N'ADMIN-SEGURIDAD', N'OPERAR', 4, 1, N'ENLACE', N'Abrir el directorio de empresas', N'/admin/empresas', N'Administra branding, disponibilidad y revisiones de acceso por empresa.');
 
 INSERT INTO capacitacion.Recurso (BloqueId, Orden, Tipo, Titulo, Ruta, TextoAlternativo, VersionAplicacion)
 SELECT blockInfo.BloqueId, source.Orden, source.Tipo, source.Titulo, source.Ruta, source.TextoAlternativo, N'v2'

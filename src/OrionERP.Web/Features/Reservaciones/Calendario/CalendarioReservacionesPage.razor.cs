@@ -24,7 +24,6 @@ public partial class CalendarioReservacionesPage : ComponentBase
   [Inject] public IOrdenTrabajoService OrdenTrabajoService { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
   [Inject] public AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
-  [Inject] public UserManager<ApplicationUser> UserManager { get; set; } = default!;
   [Inject] public IUserRfcState RfcState { get; set; } = default!;
   [Inject] public NavigationManager Navigation { get; set; } = default!;
   [Inject] public IJSRuntime Js { get; set; } = default!;
@@ -63,7 +62,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
   protected string StartMonthValue => ToMonthInputValue(Filter.StartDate);
   protected string EndMonthValue => ToMonthInputValue(Filter.EndDateExclusive.AddDays(-1));
   private bool _scrollCalendarToTodayAfterRender;
-  private string CurrentRfc => RfcState.CurrentRfc ?? RfcState.AllowedRfcs.FirstOrDefault() ?? "OHM191112Q26";
+  private string CurrentRfc => RfcState.CurrentRfc ?? string.Empty;
 
   protected override async Task OnInitializedAsync()
   {
@@ -693,8 +692,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
       _ => "OrionERP"
     };
 
-    var appUser = await UserManager.GetUserAsync(user);
-    CurrentEmployeeId = appUser?.EmployeeId;
+    CurrentEmployeeId = int.TryParse(user.FindFirst("employee_id")?.Value, out var employeeId) ? employeeId : null;
     CanUseCalendarActions = user.IsInRole("Administrador")
       || user.IsInRole("SatOperator")
       || user.IsInRole("OrdenTrabajoOperador");

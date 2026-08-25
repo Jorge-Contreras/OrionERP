@@ -1,13 +1,12 @@
 @page "/restaurante/admin"
 @attribute [Authorize(Policy = "RestaurantAdmin")]
-@implements IDisposable
 @using OrionERP.Application.Features.Logistica.Materials
 @using OrionERP.Application.Features.Logistica.Shared
 @using OrionERP.Application.Features.Restaurante
 @using OrionERP.Web.State
 @inject IRestaurantCatalogService CatalogService
 @inject IMaterialService MaterialService
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 
 <PageTitle>Restaurante · Administración</PageTitle>
 
@@ -17,7 +16,6 @@
       <span class="restaurant-admin__eyebrow">Restaurante</span>
       <h1>Catálogo y configuración</h1>
       <p>Sedes, productos terminados, variantes, precio y disponibilidad por RFC.</p>
-      <p class="restaurant-admin__rfc-context"><strong>RFC activo:</strong> @RfcState.CurrentRfc</p>
     </div>
     <button type="button" class="btn btn-primary" @onclick="ReloadAsync" disabled="@isBusy">Actualizar</button>
   </header>
@@ -173,11 +171,10 @@
   private bool isBusy;
   private bool isSaving;
   private bool isUploadingImage;
-  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private string CurrentRfc => RfcState.RequireRfc();
 
   protected override async Task OnInitializedAsync()
   {
-    RfcState.Changed += OnRfcChanged;
     // El RFC forma parte del contexto de sesión, no es un dato editable. Debe estar
     // presente antes de que DataAnnotations valide el primer envío del formulario.
     NewSite();
@@ -376,8 +373,6 @@
   }
 
   private void Show(string value, bool error) { message = value; isError = error; }
-  private void OnRfcChanged() => _ = InvokeAsync(async () => { NewSite(); NewProduct(); await ReloadAsync(); StateHasChanged(); });
-  public void Dispose() => RfcState.Changed -= OnRfcChanged;
   private static RestaurantSiteUpsertRequest NewSiteEditor() => new();
   private static RestaurantProductUpsertRequest NewProductEditor() => new() { IsActive = true };
 }

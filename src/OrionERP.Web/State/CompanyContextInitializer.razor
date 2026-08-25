@@ -1,5 +1,4 @@
 @using Microsoft.AspNetCore.Components.Authorization
-@using OrionERP.Infrastructure.Auth
 @implements IDisposable
 
 @ChildContent
@@ -7,8 +6,7 @@
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
-    [Inject] private IUserRfcState RfcState { get; set; } = default!;
-    [Inject] private IRfcContext RfcContext { get; set; } = default!;
+    [Inject] private CurrentCompanyContext CompanyContext { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
@@ -19,13 +17,12 @@
     private async void OnAuthenticationStateChanged(Task<AuthenticationState> stateTask)
     {
         try { await ApplyAsync(await stateTask); }
-        catch { /* circuit teardown or logout */ }
+        catch { /* circuit teardown or rejected authentication */ }
     }
 
     private Task ApplyAsync(AuthenticationState state)
     {
-        RfcState.InitializeFromClaims(state.User);
-        RfcContext.CurrentRfc = RfcState.CurrentRfc;
+        CompanyContext.InitializeFromClaims(state.User);
         return InvokeAsync(StateHasChanged);
     }
 

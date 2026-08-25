@@ -381,7 +381,7 @@ public class RecurrentApServiceTests
 
     Assert.Contains("Cuentas contables CFDI", pageSource, StringComparison.Ordinal);
     Assert.Contains("CuentaContablePicker", pageSource, StringComparison.Ordinal);
-    Assert.Contains("SelectedRfc=\"@selectedRfc\"", pageSource, StringComparison.Ordinal);
+    Assert.Contains("Rfc=\"@CurrentRfc\"", pageSource, StringComparison.Ordinal);
     Assert.Contains("ajustes-cfdi-selected-account", pageSource, StringComparison.Ordinal);
     Assert.Contains("Seleccionada", pageSource, StringComparison.Ordinal);
     Assert.Contains("ajustes-cfdi-selected-code", cssSource, StringComparison.Ordinal);

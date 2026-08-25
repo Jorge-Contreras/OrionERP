@@ -138,7 +138,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     {
       try
       {
-        int affected = await DeclaracionService.ExcludePagosYDevolucionesAsync(selectedRfc ?? string.Empty, selectedYear, isAnnual ? null : selectedMonth);
+        int affected = await DeclaracionService.ExcludePagosYDevolucionesAsync(CurrentRfc, selectedYear, isAnnual ? null : selectedMonth);
         await LoadAllData();
         if (affected > 0)
         {

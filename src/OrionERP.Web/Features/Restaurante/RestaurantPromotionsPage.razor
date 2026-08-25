@@ -6,7 +6,7 @@
 @inject IRestaurantPromotionService PromotionService
 @inject IRestaurantCatalogService CatalogService
 @inject ILoyaltyService LoyaltyService
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Restaurante · Promociones y Club Bruno</PageTitle>
@@ -378,7 +378,11 @@
 
   protected override async Task OnInitializedAsync()
   {
-    if (!string.Equals(RfcState.CurrentRfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
+    try
+    {
+      RfcState.EnsureRfc(CurrentRfc);
+    }
+    catch (InvalidOperationException)
     {
       Show("Esta página requiere una sesión iniciada con Bruno's. Cierra sesión e ingresa con esa empresa.", true);
       return;

@@ -2,7 +2,7 @@
 @inject IAttendanceService Attendance
 @inject ILeaveManagementService Leave
 @inject IPrenominaService Prenomina
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 
 <div class="workforce-page py-3">
   <header class="workforce-hero">
@@ -77,7 +77,7 @@
   private bool busy;
   private string? message;
   private bool messageIsError;
-  private string Rfc => RfcState.CurrentRfc ?? string.Empty;
+  private string Rfc => RfcState.RequireRfc();
   protected override async Task OnInitializedAsync() => await LoadAsync();
   private async Task LoadAsync(){busy=true;try{dashboard=await Attendance.GetTeamDashboardAsync(Rfc,from,to);prenominaApprovals=await Prenomina.GetPendingApprovalsAsync(Rfc);foreach(var d in dashboard.Days)overtime[d.Id]=d.OvertimeApprovedMinutes;}catch(Exception ex){Show(ex.Message,true);}finally{busy=false;}}
   private async Task DecideExceptionAsync(long id,bool approve)=>await RunAsync(()=>Attendance.DecideExceptionAsync(id,Rfc,approve,approve?"Validado por supervisor":"Evidencia insuficiente"));

@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -16,16 +17,16 @@ namespace OrionERP.Web.Features.Ajustes.Catalogos;
 /// The tabs are driven by <see cref="ICatalogoService.GetDescriptors"/> rather
 /// than hard-coded here, so adding a catalog is a change to the service and not
 /// to this page. Data is fetched when a tab is first opened, and tenant-scoped
-/// tabs reload when the RFC changes while global ones do not.
+/// tenant-scoped tabs use the company fixed into the authenticated session.
 /// </summary>
-public partial class CatalogosPage : ComponentBase, IDisposable
+public partial class CatalogosPage : ComponentBase
 {
   private const string CuentasTab = "cuentas";
 
   [Inject] private ICatalogoService CatalogoService { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private IJSRuntime JsRuntime { get; set; } = default!;
-  [Inject] private IUserRfcState RfcState { get; set; } = default!;
+  [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] private NavigationManager Navigation { get; set; } = default!;
 
   private IReadOnlyList<CatalogoDescriptorDto> Descriptors { get; set; } = Array.Empty<CatalogoDescriptorDto>();
@@ -36,7 +37,6 @@ public partial class CatalogosPage : ComponentBase, IDisposable
   private CuentaEditorModel CuentaEditor { get; set; } = new();
 
   private string tab = string.Empty;
-  private string? selectedRfc;
   private string? selectedItemId;
   private int? selectedCuentaId;
   private string? searchText;
@@ -56,9 +56,6 @@ public partial class CatalogosPage : ComponentBase, IDisposable
   protected override async Task OnInitializedAsync()
   {
     Descriptors = CatalogoService.GetDescriptors();
-    selectedRfc = RfcState.CurrentRfc;
-    RfcState.Changed += OnRfcStateChanged;
-
     // A deep link should land on the tab it names, so a colleague can be sent
     // straight to the catalog under discussion.
     var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
@@ -94,32 +91,6 @@ public partial class CatalogosPage : ComponentBase, IDisposable
     await LoadActiveTabAsync();
   }
 
-  private Task OnRfcChangedAsync()
-  {
-    selectedRfc = RfcState.CurrentRfc;
-    return LoadActiveTabAsync();
-  }
-
-  private async void OnRfcStateChanged()
-  {
-    // Only the tenant-scoped catalogs change meaning when the RFC does; reloading
-    // a global one would be a wasted round-trip and a flicker.
-    if (tab != CuentasTab && ActiveDescriptor?.EsPorRfc != true)
-    {
-      return;
-    }
-
-    try
-    {
-      selectedRfc = RfcState.CurrentRfc;
-      await InvokeAsync(LoadActiveTabAsync);
-    }
-    catch (ObjectDisposedException)
-    {
-      // The page went away while the reload was in flight.
-    }
-  }
-
   private Task LoadActiveTabAsync()
     => tab == CuentasTab ? LoadCuentasAsync() : LoadItemsAsync();
 
@@ -135,7 +106,7 @@ public partial class CatalogosPage : ComponentBase, IDisposable
     {
       var results = await CatalogoService.GetItemsAsync(
         descriptor.Key,
-        descriptor.EsPorRfc ? selectedRfc : null,
+        descriptor.EsPorRfc ? CurrentRfc : null,
         searchText,
         includeInactive);
 
@@ -160,17 +131,10 @@ public partial class CatalogosPage : ComponentBase, IDisposable
 
   private async Task LoadCuentasAsync()
   {
-    if (string.IsNullOrWhiteSpace(selectedRfc))
-    {
-      Cuentas.Clear();
-      StateHasChanged();
-      return;
-    }
-
     isLoading = true;
     try
     {
-      var results = await CatalogoService.GetCuentasAsync(selectedRfc, cuentaSearchText);
+      var results = await CatalogoService.GetCuentasAsync(CurrentRfc, cuentaSearchText);
       Cuentas.Clear();
       Cuentas.AddRange(results);
 
@@ -228,7 +192,7 @@ public partial class CatalogosPage : ComponentBase, IDisposable
         Nombre = ItemEditor.Nombre,
         Orden = descriptor.TieneOrden ? ItemEditor.Orden : null,
         Activo = ItemEditor.Activo,
-        Rfc = descriptor.EsPorRfc ? selectedRfc : null
+        Rfc = descriptor.EsPorRfc ? CurrentRfc : null
       });
 
       if (!result.Success)
@@ -287,7 +251,7 @@ public partial class CatalogosPage : ComponentBase, IDisposable
       var result = await CatalogoService.DeleteItemAsync(
         descriptor.Key,
         item.Id,
-        descriptor.EsPorRfc ? selectedRfc : null);
+        descriptor.EsPorRfc ? CurrentRfc : null);
 
       if (!result.Success)
       {
@@ -332,19 +296,13 @@ public partial class CatalogosPage : ComponentBase, IDisposable
 
   private async Task SaveCuentaAsync()
   {
-    if (string.IsNullOrWhiteSpace(selectedRfc))
-    {
-      UiMessages.ShowWarning("Selecciona un RFC antes de guardar una cuenta.");
-      return;
-    }
-
     isSaving = true;
     try
     {
       var result = await CatalogoService.SaveCuentaAsync(new CuentaContableSaveRequest
       {
         Id = selectedCuentaId,
-        Rfc = selectedRfc,
+        Rfc = CurrentRfc,
         Nivel1 = CuentaEditor.Nivel1,
         Nivel2 = CuentaEditor.Nivel2,
         Nivel3 = CuentaEditor.Nivel3,
@@ -384,11 +342,6 @@ public partial class CatalogosPage : ComponentBase, IDisposable
 
   private async Task DeleteCuentaAsync(int id)
   {
-    if (string.IsNullOrWhiteSpace(selectedRfc))
-    {
-      return;
-    }
-
     var cuenta = Cuentas.FirstOrDefault(item => item.Id == id);
     if (cuenta is null)
     {
@@ -404,7 +357,7 @@ public partial class CatalogosPage : ComponentBase, IDisposable
     isSaving = true;
     try
     {
-      var result = await CatalogoService.DeleteCuentaAsync(selectedRfc, id);
+      var result = await CatalogoService.DeleteCuentaAsync(CurrentRfc, id);
       if (!result.Success)
       {
         UiMessages.ShowWarning(result.Message);
@@ -443,7 +396,7 @@ public partial class CatalogosPage : ComponentBase, IDisposable
   private bool IsKnownTab(string value)
     => value == CuentasTab || Descriptors.Any(descriptor => TabKey(descriptor.Key) == value);
 
-  public void Dispose() => RfcState.Changed -= OnRfcStateChanged;
+  private string CurrentRfc => RfcState.RequireRfc();
 
   private sealed class CatalogoItemEditorModel
   {

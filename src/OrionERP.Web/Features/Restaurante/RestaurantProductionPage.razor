@@ -1,13 +1,12 @@
 @page "/restaurante/produccion"
 @attribute [Authorize(Policy = "RestaurantAdmin")]
-@implements IDisposable
 @using Microsoft.AspNetCore.Components.Authorization
 @using OrionERP.Application.Features.Logistica.Shared
 @using OrionERP.Application.Features.Restaurante
 @using OrionERP.Web.State
 @inject IRestaurantCatalogService CatalogService
 @inject IRestaurantProductionService ProductionService
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Restaurante · Producción</PageTitle>
@@ -99,9 +98,9 @@
   private bool isBusy;
   private string? message;
   private bool isError;
-  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private string CurrentRfc => RfcState.RequireRfc();
 
-  protected override async Task OnInitializedAsync() { RfcState.Changed += OnRfcChanged; await LoadAsync(); }
+  protected override async Task OnInitializedAsync() { await LoadAsync(); }
 
   private async Task LoadAsync()
   {
@@ -139,6 +138,4 @@
   }
   private void Show(string value, bool error) { message = value; isError = error; }
   private static string StatusLabel(string status) => status switch { "Planned" => "Planeada", "Started" => "En proceso", "Completed" => "Terminada", "Cancelled" => "Cancelada", _ => status };
-  private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; complete = new(); await LoadAsync(); StateHasChanged(); });
-  public void Dispose() => RfcState.Changed -= OnRfcChanged;
 }

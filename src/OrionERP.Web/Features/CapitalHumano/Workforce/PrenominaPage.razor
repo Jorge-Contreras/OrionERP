@@ -4,7 +4,7 @@
 @inject IPrenominaService Prenomina
 @inject IPrenominaExportService ExportService
 @inject IWorkforceConfigurationService ConfigurationService
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 
 <PageTitle>Pre-nómina</PageTitle>
 
@@ -26,7 +26,7 @@
 
 @code {
   private IReadOnlyList<PrenominaPeriodDto> periods=[];private IReadOnlyList<PayGroupDto> payGroups=[];private IReadOnlyList<PrenominaLineDto> lines=[];private PrenominaPeriodDto? selected;private PrenominaValidationDto? validation;private PrenominaExportBundle? export;private PrenominaPeriodCreateRequest create=new(){FromDate=DateOnly.FromDateTime(DateTime.Today.AddDays(-6)),ToDate=DateOnly.FromDateTime(DateTime.Today)};private string? message;private bool error;
-  private string Rfc=>RfcState.CurrentRfc??string.Empty;
+  private string Rfc => RfcState.RequireRfc();
   protected override async Task OnInitializedAsync()=>await LoadAsync();
   private async Task LoadAsync(){try{periods=await Prenomina.GetPeriodsAsync(Rfc);payGroups=(await ConfigurationService.GetSetupAsync(Rfc)).PayGroups;create.Rfc=Rfc;if(selected is not null){selected=periods.FirstOrDefault(x=>x.Id==selected.Id);if(selected is not null)lines=await Prenomina.GetLinesAsync(selected.Id,Rfc);}}catch(Exception ex){Show(ex.Message,true);}}
   private async Task SelectAsync(PrenominaPeriodDto period){selected=period;validation=null;export=null;try{lines=await Prenomina.GetLinesAsync(period.Id,Rfc);}catch(Exception ex){Show(ex.Message,true);}}

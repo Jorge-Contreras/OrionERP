@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Options;
@@ -23,7 +24,7 @@ public class SatDescargaPage : ComponentBase
   [Inject] protected ISatDownloadCoordinator Coordinator { get; set; } = default!;
   [Inject] protected ISatSolicitudesRepository SolicitudesRepo { get; set; } = default!;
   [Inject] protected ISatRfcProfileRepository RfcProfiles { get; set; } = default!;
-  [Inject] protected IUserRfcState RfcState { get; set; } = default!;
+  [Inject] protected ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] protected IUiMessageService UiMessages { get; set; } = default!;
   
 
@@ -63,9 +64,7 @@ public class SatDescargaPage : ComponentBase
 
   private async Task<X509Certificate2> LoadCertAsync()
   {
-    var currentRfc = RfcState.CurrentRfc;
-    if (string.IsNullOrWhiteSpace(currentRfc))
-      throw new InvalidOperationException("Selecciona un RFC para continuar.");
+    var currentRfc = RfcState.RequireRfc();
 
     var profile = await RfcProfiles.GetAsync(currentRfc);
     if (profile is null)
@@ -89,7 +88,7 @@ public class SatDescargaPage : ComponentBase
       try
       {
         var cert = await LoadCertAsync();
-        var rfcSolicitante = RfcState.CurrentRfc ?? string.Empty;
+        var rfcSolicitante = RfcState.RequireRfc();
         var p = new SolicitudParams(
             Issued: Issued,
             RfcSolicitante: rfcSolicitante,

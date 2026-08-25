@@ -1,11 +1,9 @@
 using System.ComponentModel.DataAnnotations;
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using OrionERP.Application.Features.Auth.Companies;
 using OrionERP.Infrastructure.Auth;
 using OrionERP.Web.Identity;
 
@@ -16,11 +14,10 @@ public sealed class LoginWithRecoveryCodeModel : PageModel
 {
   private readonly SignInManager<ApplicationUser> _signInManager;
   private readonly UserManager<ApplicationUser> _userManager;
-  private readonly ICompanyAccessService _companyAccess;
-  private readonly ICompanySignInContext _companySignInContext;
+  private readonly ICompanyAuthenticationCoordinator _companyAuthentication;
 
-  public LoginWithRecoveryCodeModel(SignInManager<ApplicationUser> signInManager, UserManager<ApplicationUser> userManager, ICompanyAccessService companyAccess, ICompanySignInContext companySignInContext)
-    => (_signInManager, _userManager, _companyAccess, _companySignInContext) = (signInManager, userManager, companyAccess, companySignInContext);
+  public LoginWithRecoveryCodeModel(SignInManager<ApplicationUser> signInManager, UserManager<ApplicationUser> userManager, ICompanyAuthenticationCoordinator companyAuthentication)
+    => (_signInManager, _userManager, _companyAuthentication) = (signInManager, userManager, companyAuthentication);
 
   [BindProperty] public InputModel Input { get; set; } = new();
   [BindProperty(SupportsGet = true)] public bool RememberMe { get; set; }
@@ -48,23 +45,12 @@ public sealed class LoginWithRecoveryCodeModel : PageModel
 
     await _userManager.ResetAccessFailedCountAsync(user);
     await HttpContext.SignOutAsync(IdentityConstants.TwoFactorUserIdScheme);
-    var options = await _companyAccess.GetLoginOptionsAsync(user.Id, HttpContext.RequestAborted);
-    if (options.Count == 0)
-    {
-      TempData["ErrorMessage"] = "Tu cuenta no tiene una empresa activa asignada. Contacta al administrador de OrionERP.";
-      return RedirectToPage("./Login");
-    }
-
-    if (options.Count == 1)
-    {
-      _companySignInContext.SelectedRfc = options[0].Rfc;
-      try { await _signInManager.SignInAsync(user, new AuthenticationProperties { IsPersistent = RememberMe, AllowRefresh = true }); }
-      finally { _companySignInContext.SelectedRfc = null; }
+    var result = await _companyAuthentication.BeginAsync(HttpContext, user, RememberMe, ReturnUrl);
+    if (result.Status == CompanyAuthenticationStatus.SignedIn)
       return LocalRedirect(ReturnUrl);
-    }
 
-    var identity = new ClaimsIdentity(new[] { new Claim(ClaimTypes.NameIdentifier, user.Id), new Claim("remember_me", RememberMe ? "1" : "0"), new Claim("return_url", ReturnUrl) }, CompanyAuthenticationSchemes.PendingCompanySelection);
-    await HttpContext.SignInAsync(CompanyAuthenticationSchemes.PendingCompanySelection, new ClaimsPrincipal(identity), new AuthenticationProperties { ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(5) });
+    if (result.Status == CompanyAuthenticationStatus.NoCompany)
+      TempData["ErrorMessage"] = "Tu cuenta no tiene una empresa activa asignada. Contacta al administrador de OrionERP.";
     return RedirectToPage("./Login");
   }
 

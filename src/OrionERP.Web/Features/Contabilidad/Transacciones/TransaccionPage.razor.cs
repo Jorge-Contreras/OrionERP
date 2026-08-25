@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
@@ -75,7 +76,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   [Inject] public ITransaccionService TransaccionService { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
-  [Inject] public IUserRfcState RfcState { get; set; } = default!;
+  [Inject] public ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
   [Inject] public NavigationManager NavManager { get; set; } = default!;
   [Inject] public IBancosService BancosService { get; set; } = default!;
@@ -126,7 +127,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string MovimientoModalTitle => _movimientoTarget is null ? "Agregar movimiento" : "Editar movimiento";
   protected bool IsCuentaPickerVisible { get; private set; }
   protected CuentaContableSelection? MovimientoCuentaSelection { get; private set; }
-  protected string? CuentaPickerRfc { get; private set; }
   protected string? CuentaPickerError { get; private set; }
   protected string CurrentUserName => "OrionERP";
 
@@ -224,18 +224,14 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     _activeSection = section;
   }
 
-  protected override void OnInitialized()
-  {
-    RfcState.Changed += OnRfcStateChanged;
-  }
-
   protected void SearchCompraOptions()
   {
     ApplyLookupFilter(CompraSearchTerm, _allCompraOptions, CompraOptions, Header?.CompraId);
   }
 
-  private string? ResolveLookupRfc()
-    => Normalize(Header?.Rfc) ?? Normalize(RfcState.CurrentRfc);
+  protected string CurrentRfc => RfcState.RequireRfc();
+
+  private string ResolveLookupRfc() => CurrentRfc;
 
   protected async Task OnProyectoSearchInputAsync(ChangeEventArgs args)
   {
@@ -634,6 +630,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
         return;
       }
 
+      RfcState.EnsureRfc(headerDto.Rfc ?? string.Empty);
       Header = CreateHeaderModel(headerDto);
       UpdateMontoInputFromHeader();
       await LoadLookupDataAsync(ct);
@@ -1055,7 +1052,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
     MovimientoEditContext = new EditContext(MovimientoDraft!);
     CuentaPickerError = null;
-    CuentaPickerRfc = Header?.Rfc;
     MovimientoCuentaSelection = MovimientoDraft is null ? null : CreateCuentaSelectionFromMovimiento(MovimientoDraft);
     IsCuentaPickerVisible = false;
     ShowMovimientoModal = true;
@@ -1078,7 +1074,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
 
     CuentaPickerError = null;
-    CuentaPickerRfc = Header.Rfc;
     MovimientoCuentaSelection = CreateCuentaSelectionFromMovimiento(MovimientoDraft);
     IsCuentaPickerVisible = true;
   }
@@ -1087,12 +1082,6 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   {
     IsCuentaPickerVisible = false;
     CuentaPickerError = null;
-  }
-
-  protected Task OnCuentaPickerRfcChangedAsync(string? rfc)
-  {
-    CuentaPickerRfc = rfc;
-    return Task.CompletedTask;
   }
 
   protected async Task OnCuentaPickerSelectionChangedAsync(CuentaContableSelection? selection)
@@ -1540,7 +1529,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     return new CuentaContableSelection
     {
       Id = movimiento.CuentaId,
-      Rfc = Header?.Rfc ?? CuentaPickerRfc,
+      Rfc = CurrentRfc,
       Nivel1 = movimiento.Nivel1,
       Nivel2 = movimiento.Nivel2,
       Nivel3 = movimiento.Nivel3,
@@ -2862,32 +2851,10 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       return;
 
     _isDisposed = true;
-    RfcState.Changed -= OnRfcStateChanged;
     _loadCts?.Cancel();
     _loadCts?.Dispose();
     CancelProyectoSearch();
     GC.SuppressFinalize(this);
-  }
-
-  private void OnRfcStateChanged()
-  {
-    if (_isDisposed)
-    {
-      return;
-    }
-
-    _ = InvokeAsync(HandleRfcStateChangedAsync);
-  }
-
-  private async Task HandleRfcStateChangedAsync()
-  {
-    if (_isDisposed)
-    {
-      return;
-    }
-
-    await PerformLoadAsync();
-    StateHasChanged();
   }
 
   protected sealed class TransaccionHeaderModel

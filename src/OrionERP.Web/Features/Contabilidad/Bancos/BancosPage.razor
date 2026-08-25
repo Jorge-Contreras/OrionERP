@@ -65,12 +65,6 @@ else
                     <InputText id="bank-clabe" class="form-control" @bind-Value="AccountDraft!.ClabeCuenta" />
                   </div>
 
-                  <div class="col-md-6">
-                    <label class="form-label" for="bank-rfc">RFC</label>
-                    <InputText id="bank-rfc" class="form-control" @bind-Value="AccountDraft!.Rfc" readonly />
-                    <ValidationMessage For="() => AccountDraft!.Rfc" />
-                  </div>
-
                   @if (AccountDraft!.FechaAlta.HasValue)
                   {
                     <div class="col-md-6">

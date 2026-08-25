@@ -1,6 +1,5 @@
 @page "/restaurante/recetas"
 @attribute [Authorize(Policy = "RestaurantAdmin")]
-@implements IDisposable
 @using Microsoft.AspNetCore.Components.Authorization
 @using OrionERP.Application.Features.Logistica.Materials
 @using OrionERP.Application.Features.Logistica.Shared
@@ -8,7 +7,7 @@
 @using OrionERP.Web.State
 @inject IBomRecipeService BomService
 @inject IMaterialService MaterialService
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Restaurante · Recetas y BOM</PageTitle>
@@ -142,8 +141,8 @@
   private string? message;
   private bool isError;
   private bool isBusy;
-  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
-  protected override async Task OnInitializedAsync() { RfcState.Changed += OnRfcChanged; await LoadAsync(); }
+  private string CurrentRfc => RfcState.RequireRfc();
+  protected override async Task OnInitializedAsync() { await LoadAsync(); }
   private async Task LoadAsync()
   {
     isBusy = true;
@@ -190,7 +189,5 @@
   private async Task DeleteConversionAsync() { if (!conversionEditor.Id.HasValue) return; var conversionId = conversionEditor.Id.Value; await RunMasterAsync(() => BomService.DeleteMaterialUnitConversionAsync(CurrentRfc, conversionId)); if (!isError) NewConversion(); }
   private async Task RunMasterAsync(Func<Task<RestaurantCommandResult>> action) { isBusy = true; try { var result = await action(); Show(result.Message, !result.Success); if (result.Success) await LoadAsync(); } catch (Exception ex) { Show(ex.Message, true); } finally { isBusy = false; } }
   private void Show(string value, bool error) { message = value; isError = error; }
-  private void OnRfcChanged() => _ = InvokeAsync(async () => { NewDraft(); await LoadAsync(); StateHasChanged(); });
-  public void Dispose() => RfcState.Changed -= OnRfcChanged;
   private static BomDraftSaveRequest NewEditor() => new() { YieldQuantity = 1, Components = [new() { Quantity = 1 }], Steps = [new() { StepNumber = 1 }] };
 }

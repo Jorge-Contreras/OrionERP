@@ -8,7 +8,7 @@
 @using OrionERP.Web.State
 @inject IRestaurantCatalogService CatalogService
 @inject IRestaurantOrderService OrderService
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime Js
 @inject RestaurantRealtimeClient Realtime
@@ -175,7 +175,7 @@
   private bool isLoading;
   private bool canSupervise;
   private string? error;
-  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private string CurrentRfc => RfcState.RequireRfc();
   private string SectionStorageKey => $"orion.restaurant.kds.sections:{CurrentRfc}:{selectedSiteId}";
   private IEnumerable<RestaurantOrderDto> OrderedOrders => board.Orders
     .OrderBy(order => order.OperationalDate)
@@ -189,7 +189,6 @@
   {
     var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
     canSupervise = auth.User.IsInRole("Administrador") || auth.User.IsInRole("RestauranteAdmin") || auth.User.IsInRole("RestauranteSupervisor");
-    RfcState.Changed += OnRfcChanged;
     Realtime.EventReceived += OnRealtimeEventAsync;
     await LoadSitesAsync();
     _ = RefreshLoopAsync(disposeCts.Token);
@@ -429,8 +428,7 @@
   }
   private static string SectionDomId(string key) => key.Replace(':', '-');
   private static string OrderTypeLabel(string type) => type switch { "Pickup" => "Recoger", "Table" => "Mesa", "Delivery" => "Domicilio", _ => type };
-  private void OnRfcChanged() => _ = InvokeAsync(async () => { await Task.Yield(); selectedSiteId = 0; catalog = null; board = new(); disabledSectionKeys.Clear(); await LoadSitesAsync(); await RestoreSectionPreferencesAsync(); StateHasChanged(); });
-  public ValueTask DisposeAsync() { RfcState.Changed -= OnRfcChanged; Realtime.EventReceived -= OnRealtimeEventAsync; disposeCts.Cancel(); disposeCts.Dispose(); return ValueTask.CompletedTask; }
+  public ValueTask DisposeAsync() { Realtime.EventReceived -= OnRealtimeEventAsync; disposeCts.Cancel(); disposeCts.Dispose(); return ValueTask.CompletedTask; }
 
   private sealed record KitchenSectionDefinition(string Key, long? Id, string Name, int SortOrder, string Color);
   private sealed record KitchenSectionCard(RestaurantOrderDto Order, KitchenSectionDefinition Section, IReadOnlyList<RestaurantOrderLineDto> Lines);

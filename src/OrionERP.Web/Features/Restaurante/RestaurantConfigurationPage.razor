@@ -1,13 +1,12 @@
 @page "/restaurante/configuracion"
 @attribute [Authorize(Policy = "RestaurantAdmin")]
-@implements IDisposable
 @using OrionERP.Application.Features.Logistica.Shared
 @using OrionERP.Application.Features.Contabilidad.ContabilidadRegistros
 @using OrionERP.Application.Features.Restaurante
 @using OrionERP.Web.State
 @inject IRestaurantCatalogService CatalogService
 @inject ICuentasContablesRepository AccountsRepository
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 
 <PageTitle>Restaurante · Configuración operativa</PageTitle>
 
@@ -92,7 +91,7 @@
             </div>
           }
           <CuentaContablePicker
-            SelectedRfc="@CurrentRfc"
+            Rfc="@CurrentRfc"
             Selection="@activeAccountSelection"
             SelectionChanged="OnAccountSelectedAsync"
             ErrorChanged="OnAccountPickerErrorChangedAsync"
@@ -140,11 +139,10 @@
   private string? message;
   private string? accountPickerError;
   private bool isError;
-  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private string CurrentRfc => RfcState.RequireRfc();
 
   protected override async Task OnInitializedAsync()
   {
-    RfcState.Changed += OnRfcChanged;
     await LoadAsync();
   }
 
@@ -420,16 +418,6 @@
     message = value;
     isError = error;
   }
-
-  private void OnRfcChanged() => _ = InvokeAsync(async () =>
-  {
-    selectedSiteId = 0;
-    CloseAccountPicker();
-    await LoadAsync();
-    StateHasChanged();
-  });
-
-  public void Dispose() => RfcState.Changed -= OnRfcChanged;
 
   private sealed record RestaurantAccountDefinition(string Key, string Label, string Help);
 }

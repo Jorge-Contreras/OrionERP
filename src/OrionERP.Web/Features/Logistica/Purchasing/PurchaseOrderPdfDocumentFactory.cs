@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using System.Globalization;
 using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Purchasing;
@@ -9,9 +10,9 @@ namespace OrionERP.Web.Features.Logistica.Purchasing;
 public sealed class PurchaseOrderPdfDocumentFactory : IPurchaseOrderPdfDocumentFactory
 {
   private readonly IMaterialService _materialService;
-  private readonly IUserRfcState _rfcState;
+  private readonly ICurrentCompanyContext _rfcState;
 
-  public PurchaseOrderPdfDocumentFactory(IMaterialService materialService, IUserRfcState rfcState)
+  public PurchaseOrderPdfDocumentFactory(IMaterialService materialService, ICurrentCompanyContext rfcState)
   {
     _materialService = materialService ?? throw new ArgumentNullException(nameof(materialService));
     _rfcState = rfcState ?? throw new ArgumentNullException(nameof(rfcState));

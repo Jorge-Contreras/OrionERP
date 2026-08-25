@@ -60,13 +60,13 @@ public class MaterialesPageUxTests
   }
 
   [Fact]
-  public void Page_RecoversWhenPersistedRfcCancelsTheInitialListRequest()
+  public void Page_LoadsOnceWithoutPersistedRfcRecoveryPlumbing()
   {
     var codeBehind = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor.cs");
 
-    Assert.Contains("rfcChangedDuringInitialization || Materials.Count == 0", codeBehind, StringComparison.Ordinal);
-    Assert.Contains("ReloadForRfcChangeAsync", codeBehind, StringComparison.Ordinal);
-    Assert.Contains("Task.Delay(120, reloadToken)", codeBehind, StringComparison.Ordinal);
+    Assert.DoesNotContain("rfcChangedDuringInitialization", codeBehind, StringComparison.Ordinal);
+    Assert.DoesNotContain("ReloadForRfcChangeAsync", codeBehind, StringComparison.Ordinal);
+    Assert.DoesNotContain("_rfcReloadCts", codeBehind, StringComparison.Ordinal);
     Assert.Contains("await BuscarAsync();", codeBehind, StringComparison.Ordinal);
   }
 

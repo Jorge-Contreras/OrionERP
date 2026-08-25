@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
@@ -10,10 +11,10 @@ using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.ReportesFinancieros.SaludEmpresa;
 
-public partial class SaludEmpresaPage : ComponentBase, IDisposable
+public partial class SaludEmpresaPage : ComponentBase
 {
   private static readonly CultureInfo EsMx = CultureInfo.GetCultureInfo("es-MX");
-  [Inject] private IUserRfcState RfcState { get; set; } = default!;
+  [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] private IReportesFinancierosService Reports { get; set; } = default!;
   [Inject] private ISaludEmpresaPdfService Pdf { get; set; } = default!;
   [Inject] private ISaludEmpresaExcelService Excel { get; set; } = default!;
@@ -27,7 +28,7 @@ public partial class SaludEmpresaPage : ComponentBase, IDisposable
   protected int EndYear { get; set; } = DateTime.Today.Year;
   protected int EndMonth { get; set; } = DateTime.Today.Month;
   protected DateTime CutoffDate { get; set; } = DateTime.Today;
-  protected string CurrentRfc { get; private set; } = string.Empty;
+  protected string CurrentRfc => RfcState.RequireRfc();
   protected string ActiveTab { get; set; } = "executive";
   protected bool IsLoading { get; private set; }
   protected bool IsExporting { get; private set; }
@@ -56,24 +57,11 @@ public partial class SaludEmpresaPage : ComponentBase, IDisposable
   protected IReadOnlyList<SaludEmpresaSuitePerformanceRow> Suites => Report?.SelectedPeriodSuites ?? [];
   protected decimal MaxExpense => TopExpenses.Select(row => Math.Abs(row.Amount)).DefaultIfEmpty(1).Max();
 
-  protected override void OnInitialized()
-  {
-    CurrentRfc = RfcState.CurrentRfc ?? string.Empty;
-    RfcState.Changed += OnRfcChanged;
-  }
-
   protected override async Task OnInitializedAsync()
   {
     var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
     CanManage = (await Authorization.AuthorizeAsync(user, "FinanzasManager")).Succeeded;
     await LoadAsync();
-  }
-
-  private async void OnRfcChanged()
-  {
-    CurrentRfc = RfcState.CurrentRfc ?? string.Empty;
-    await LoadAsync();
-    await InvokeAsync(StateHasChanged);
   }
 
   protected async Task SelectTabAsync(string tab)
@@ -101,7 +89,6 @@ public partial class SaludEmpresaPage : ComponentBase, IDisposable
 
   private async Task LoadAsync()
   {
-    if (string.IsNullOrWhiteSpace(CurrentRfc)) { Report = null; return; }
     if (new DateTime(EndYear, EndMonth, 1) < PeriodStart) { ErrorMessage = "El periodo final debe ser mayor o igual al inicial."; return; }
     IsLoading = true; ErrorMessage = null; await InvokeAsync(StateHasChanged);
     try
@@ -126,7 +113,6 @@ public partial class SaludEmpresaPage : ComponentBase, IDisposable
 
   private async Task LoadReconciliationAsync()
   {
-    if (string.IsNullOrWhiteSpace(CurrentRfc)) return;
     Reconciliation = await Reports.GetSaludEmpresaReconciliationAsync(new SaludEmpresaReconciliationQuery(
       CurrentRfc, PeriodStart, PeriodEnd, ReconciliationPage, 25,
       NullIfBlank(ReconciliationSeverity), NullIfBlank(ReconciliationType), NullIfBlank(ReconciliationSearch)));
@@ -226,5 +212,4 @@ public partial class SaludEmpresaPage : ComponentBase, IDisposable
     return parts is { Length: 2 } && int.TryParse(parts[0], out year) && int.TryParse(parts[1], out month) && month is >= 1 and <= 12;
   }
 
-  public void Dispose() => RfcState.Changed -= OnRfcChanged;
 }

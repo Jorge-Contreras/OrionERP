@@ -6,7 +6,7 @@ CxCR controla cuentas por pagar recurrentes: servicios, impuestos, seguros, rent
 
 ## Alta de una cuenta recurrente
 
-1. Selecciona el RFC de trabajo.
+1. Inicia sesión con la empresa en la que trabajarás. Para cambiar de empresa, cierra sesión y vuelve a ingresar.
 2. Abre `CxCR`.
 3. Usa `Nuevo recurrente`.
 4. Captura:

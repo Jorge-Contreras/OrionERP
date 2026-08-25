@@ -324,12 +324,6 @@ public partial class ReservacionPage
 
   internal async Task CrearCfdiReservacionAsync()
   {
-    if (string.IsNullOrWhiteSpace(RfcState.CurrentRfc))
-    {
-      UiMessages.ShowError("Selecciona un RFC antes de crear el CFDI.");
-      return;
-    }
-
     var saveOk = await SaveReservationStateAsync(showSuccessMessage: false);
     if (!saveOk)
     {
@@ -381,7 +375,7 @@ public partial class ReservacionPage
       var result = await ReservationCfdiService.CreateCfdiAsync(new ReservationCfdiCreateRequest
       {
         ReservationId = ReservationId,
-        IssuerRfc = RfcState.CurrentRfc!,
+        IssuerRfc = RfcState.RequireRfc(),
         CreateNewPoliza = IsCreatingNewCfdiPoliza,
         TransaccionId = ResolveSelectedCfdiTransaccionId(),
         PersistCustomer = PersistCfdiCustomer,
@@ -660,19 +654,13 @@ public partial class ReservacionPage
       return;
     }
 
-    if (string.IsNullOrWhiteSpace(RfcState.CurrentRfc))
-    {
-      UiMessages.ShowError("Selecciona un RFC antes de preparar el CFDI.");
-      return;
-    }
-
     IsLoadingCfdiContext = true;
     CfdiErrorMessage = null;
 
     try
     {
       await EnsureCfdiCatalogsLoadedAsync();
-      CfdiContext = await ReservationCfdiService.GetContextAsync(ReservationId, RfcState.CurrentRfc!);
+      CfdiContext = await ReservationCfdiService.GetContextAsync(ReservationId, RfcState.RequireRfc());
       if (CfdiContext is null)
       {
         CfdiErrorMessage = "No se pudo preparar el contexto del CFDI para esta reservación.";

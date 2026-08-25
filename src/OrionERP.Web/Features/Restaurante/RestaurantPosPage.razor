@@ -15,7 +15,7 @@
 @inject IRestaurantCashService CashService
 @inject IRestaurantQuickPinService QuickPinService
 @inject IRestaurantReceiptPdfService ReceiptPdfService
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime Js
 @inject RestaurantRealtimeClient Realtime
@@ -547,7 +547,7 @@
   private string idempotencyKey = Guid.NewGuid().ToString("N");
   private RestaurantOrderResult? lastOrder;
   private RestaurantReceiptPdfDocumentModel? lastReceipt;
-  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private string CurrentRfc => RfcState.RequireRfc();
   private IEnumerable<RestaurantProductDto> ActiveProducts => catalog?.Sections.FirstOrDefault(section => section.Id == activeSectionId)?.Products ?? [];
   private string ActiveSectionName => catalog?.Sections.FirstOrDefault(section => section.Id == activeSectionId)?.Name ?? "Menú";
   private int CartItemCount => cart.Sum(item => item.Quantity);
@@ -603,7 +603,7 @@
     return decimal.Round(gross - Math.Min(Math.Max(0, line.DiscountAmount), gross), 2, MidpointRounding.AwayFromZero);
   }
 
-  protected override async Task OnInitializedAsync() { RfcState.Changed += OnRfcChanged; Realtime.EventReceived += OnRealtimeEventAsync; await LoadAsync(); }
+  protected override async Task OnInitializedAsync() { Realtime.EventReceived += OnRealtimeEventAsync; await LoadAsync(); }
 
   private async Task LoadAsync()
   {
@@ -1112,8 +1112,7 @@
   }
 
   private Task OnRealtimeEventAsync(RestaurantRealtimeEvent eventInfo) => eventInfo.EventType is "InventoryDeficit" or "ProductionCompleted" or "ProductAvailabilityChanged" ? InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); }) : Task.CompletedTask;
-  private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; cart = []; selectedMember = null; memberIdentifier = promotionCode = null; promotionQuote = null; lastOrder = null; lastReceipt = null; drawerWarning = null; lastOrderReceivedCash = false; isMenuOpen = true; hasInitializedWorkspace = true; await LoadAsync(); StateHasChanged(); });
-  public void Dispose() { RfcState.Changed -= OnRfcChanged; Realtime.EventReceived -= OnRealtimeEventAsync; }
+  public void Dispose() { Realtime.EventReceived -= OnRealtimeEventAsync; }
 
   public sealed class CartLine
   {

@@ -22,7 +22,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       try
       {
-        var lines = (await DeclaracionService.GenerateDiotAsync(selectedRfc ?? string.Empty, selectedYear, selectedMonth)).ToList();
+        var lines = (await DeclaracionService.GenerateDiotAsync(CurrentRfc, selectedYear, selectedMonth)).ToList();
         if (lines == null || lines.Count == 0)
         {
           SetErrorMessage("No se obtuvieron datos para generar la DIOT.");
@@ -30,7 +30,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
         }
         // Combine lines into one text blob
         string diotContent = string.Join("\r\n", lines);
-        string fileName = $"DIOT-{selectedRfc}-{selectedYear}-{selectedMonth:D2}.txt";
+        string fileName = $"DIOT-{CurrentRfc}-{selectedYear}-{selectedMonth:D2}.txt";
         // Initiate download via JS (create a Blob and download)
         var contentBytes = Encoding.UTF8.GetBytes(diotContent);
         string base64 = Convert.ToBase64String(contentBytes);

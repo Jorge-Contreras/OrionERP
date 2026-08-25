@@ -3,7 +3,7 @@
 @using OrionERP.Application.Features.CapitalHumano.Workforce
 @inject IAttendanceService Attendance
 @inject ILeaveManagementService Leave
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 @inject ICurrentEmployeeAccessor CurrentEmployee
 @inject IJSRuntime Js
 
@@ -153,7 +153,7 @@
   protected override async Task OnInitializedAsync()
   {
     var current = await CurrentEmployee.GetCurrentAsync();
-    employeeRfc = current?.CompanyRfc ?? RfcState.CurrentRfc ?? string.Empty;
+    employeeRfc = current?.CompanyRfc ?? RfcState.RequireRfc();
     await LoadAsync();
   }
 

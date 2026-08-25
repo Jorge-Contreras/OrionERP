@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Server.Circuits;
-using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Http;
@@ -229,6 +228,7 @@ builder.Services
     .AddEntityFrameworkStores<OrionIdentityDbContext>()
     .AddDefaultTokenProviders();
 builder.Services.AddScoped<ICompanySignInContext, CompanySignInContext>();
+builder.Services.AddScoped<ICompanyAuthenticationCoordinator, CompanyAuthenticationCoordinator>();
 builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, CompanyClaimsPrincipalFactory>();
 builder.Services.AddScoped<ICompanyAccessService, CompanyAccessService>();
 builder.Services.AddScoped<OrionERP.Application.Features.Auth.AdminPortal.ICompanyMembershipAdminService, OrionERP.Infrastructure.Features.Auth.AdminPortal.CompanyMembershipAdminService>();
@@ -358,16 +358,11 @@ static bool IsApiOrBlazorCircuitRequest(HttpRequest request)
   return false;
 }
 
-builder.Services.AddScoped<UserRfcState>();
-builder.Services.AddScoped<IUserRfcState>(services => services.GetRequiredService<UserRfcState>());
-builder.Services.AddScoped<ICurrentCompanyContext>(services => services.GetRequiredService<UserRfcState>());
-builder.Services.AddScoped<ICurrentRfcAccessor, UserRfcStateAccessor>();
-builder.Services.AddScoped<ProtectedLocalStorage>();
-builder.Services.AddScoped<ProtectedSessionStorage>();
+builder.Services.AddScoped<CurrentCompanyContext>();
+builder.Services.AddScoped<ICurrentCompanyContext>(services => services.GetRequiredService<CurrentCompanyContext>());
+builder.Services.AddScoped<ICurrentRfcAccessor>(services => services.GetRequiredService<CurrentCompanyContext>());
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<RestaurantRealtimeClient>();
-builder.Services.AddScoped<IRfcContext, RfcContext>();
-builder.Services.AddScoped<IAuthorizationHandler, RoleForRfcHandler>();
 builder.Services.AddRateLimiter(options =>
 {
   options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -390,75 +385,66 @@ builder.Services.AddAuthorization(options =>
 {
   static bool AttendanceIsEnabled(AuthorizationHandlerContext context, IConfiguration configuration)
     => configuration.GetValue<bool>("CapitalHumano:AttendanceEnabled");
-  options.AddPolicy("CapitalHumanoEmployee", policy => policy
-    .RequireAuthenticatedUser()
-    .RequireClaim("employee_id")
-    .RequireClaim("rfc")
-    .RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration)));
-  options.AddPolicy("CapitalHumanoAdmin", policy => policy
-    .RequireRole("Administrador", "CapitalHumanoAdmin")
-    .RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration)));
-  options.AddPolicy("CapitalHumanoSupervisor", policy => policy
-    .RequireRole("Administrador", "CapitalHumanoAdmin", "CapitalHumanoSupervisor")
-    .RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration)));
-  options.AddPolicy("CapitalHumanoNomina", policy => policy
-    .RequireRole("Administrador", "CapitalHumanoAdmin", "CapitalHumanoNomina")
-    .RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration)));
-  options.AddPolicy("CapitalHumanoManagement", policy => policy
-    .RequireRole("Administrador", "CapitalHumanoAdmin", "CapitalHumanoSupervisor", "CapitalHumanoNomina")
-    .RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration)));
-  options.AddPolicy("CapacitacionEmployee", policy => policy
-    .RequireAuthenticatedUser()
-    .RequireClaim("employee_id")
-    .RequireClaim("rfc"));
-  options.AddPolicy("CapacitacionInstructor", policy => policy
-    .RequireAuthenticatedUser()
-    .RequireClaim("employee_id")
-    .RequireClaim("rfc")
-    .RequireRole("Administrador", "CapacitacionAdmin", "CapacitacionInstructor"));
-  options.AddPolicy("CapacitacionAdmin", policy => policy
-    .RequireAuthenticatedUser()
-    .RequireClaim("employee_id")
-    .RequireClaim("rfc")
-    .RequireRole("Administrador", "CapacitacionAdmin"));
-  options.AddPolicy("CapacitacionAuditor", policy => policy
-    .RequireAuthenticatedUser()
-    .RequireClaim("employee_id")
-    .RequireClaim("rfc")
-    .RequireRole("Administrador", "CapacitacionAdmin", "CapacitacionInstructor", "CapacitacionAuditor"));
-  options.AddPolicy(
-      "RoleForSelectedRfc",
-      policy => policy.Requirements.Add(new RoleForRfcRequirement("Administrador")));
-  options.AddPolicy(
-      "FinanzasLectura",
-      policy => policy.Requirements.Add(new RoleForRfcRequirement("FinanzasLectura", "FinanzasManager")));
-  options.AddPolicy(
-      "FinanzasManager",
-      policy => policy.Requirements.Add(new RoleForRfcRequirement("FinanzasManager")));
-  options.AddPolicy(
-      "RestaurantAdmin",
-      policy => policy.Requirements.Add(new RoleForRfcRequirement("RestauranteAdmin", "RestauranteSupervisor")));
-  options.AddPolicy(
-      "RestaurantAdminOnly",
-      policy => policy.Requirements.Add(new RoleForRfcRequirement("RestauranteAdmin")));
-  options.AddPolicy(
-      "RestaurantPos",
-      policy => policy.Requirements.Add(new RoleForRfcRequirement("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin")));
-  options.AddPolicy(
-      "RestaurantKitchen",
-      policy => policy.Requirements.Add(new RoleForRfcRequirement("RestauranteCocina", "RestauranteSupervisor", "RestauranteAdmin")));
-  options.AddPolicy(
-      "RestaurantDisplay",
-      policy => policy.Requirements.Add(new RoleForRfcRequirement("RestaurantePantalla", "RestauranteSupervisor", "RestauranteAdmin")));
-  options.AddPolicy(
-      "RestaurantCash",
-      policy => policy.Requirements.Add(new RoleForRfcRequirement("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin")));
+  options.AddPolicy("CapitalHumanoEmployee", policy =>
+  {
+    policy.RequireCompanySession();
+    policy.RequireClaim(CompanyClaimTypes.EmployeeId);
+    policy.RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration));
+  });
+  options.AddPolicy("CapitalHumanoAdmin", policy =>
+  {
+    policy.RequireCompanyRoles("CapitalHumanoAdmin");
+    policy.RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration));
+  });
+  options.AddPolicy("CapitalHumanoSupervisor", policy =>
+  {
+    policy.RequireCompanyRoles("CapitalHumanoAdmin", "CapitalHumanoSupervisor");
+    policy.RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration));
+  });
+  options.AddPolicy("CapitalHumanoNomina", policy =>
+  {
+    policy.RequireCompanyRoles("CapitalHumanoAdmin", "CapitalHumanoNomina");
+    policy.RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration));
+  });
+  options.AddPolicy("CapitalHumanoManagement", policy =>
+  {
+    policy.RequireCompanyRoles("CapitalHumanoAdmin", "CapitalHumanoSupervisor", "CapitalHumanoNomina");
+    policy.RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration));
+  });
+  options.AddPolicy("CapacitacionEmployee", policy =>
+  {
+    policy.RequireCompanySession();
+    policy.RequireClaim(CompanyClaimTypes.EmployeeId);
+  });
+  options.AddPolicy("CapacitacionInstructor", policy =>
+  {
+    policy.RequireCompanyRoles("CapacitacionAdmin", "CapacitacionInstructor");
+    policy.RequireClaim(CompanyClaimTypes.EmployeeId);
+  });
+  options.AddPolicy("CapacitacionAdmin", policy =>
+  {
+    policy.RequireCompanyRoles("CapacitacionAdmin");
+    policy.RequireClaim(CompanyClaimTypes.EmployeeId);
+  });
+  options.AddPolicy("CapacitacionAuditor", policy =>
+  {
+    policy.RequireCompanyRoles("CapacitacionAdmin", "CapacitacionInstructor", "CapacitacionAuditor");
+    policy.RequireClaim(CompanyClaimTypes.EmployeeId);
+  });
+  options.AddPolicy("FinanzasLectura", policy => policy.RequireCompanyRoles("FinanzasLectura", "FinanzasManager"));
+  options.AddPolicy("FinanzasManager", policy => policy.RequireCompanyRoles("FinanzasManager"));
+  options.AddPolicy("RestaurantAdmin", policy => policy.RequireCompanyRoles("RestauranteAdmin", "RestauranteSupervisor"));
+  options.AddPolicy("RestaurantAdminOnly", policy => policy.RequireCompanyRoles("RestauranteAdmin"));
+  options.AddPolicy("RestaurantPos", policy => policy.RequireCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin"));
+  options.AddPolicy("RestaurantKitchen", policy => policy.RequireCompanyRoles("RestauranteCocina", "RestauranteSupervisor", "RestauranteAdmin"));
+  options.AddPolicy("RestaurantDisplay", policy => policy.RequireCompanyRoles("RestaurantePantalla", "RestauranteSupervisor", "RestauranteAdmin"));
+  options.AddPolicy("RestaurantCash", policy => policy.RequireCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin"));
   // QZ calls these endpoints through a regular browser fetch, outside the
   // Blazor circuit that owns the selected-RFC state. Keep the bridge limited
   // to restaurant cash roles without relying on circuit-scoped state.
   options.AddPolicy(
       "RestaurantQzBridge",
-      policy => policy.RequireRole("Administrador", "RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin"));
+      policy => policy.RequireCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin"));
 });
 
 builder.Services.AddRazorPages();      // Identity UI depends on Razor Pages
@@ -654,8 +640,9 @@ app.MapGet("/api/workforce/prenomina/exports/{exportId:long}/{format}", async (
   IPrenominaExportService service,
   CancellationToken ct) =>
 {
-  if (!string.Equals(companyContext.CurrentRfc, rfc, StringComparison.OrdinalIgnoreCase)) return Results.Forbid();
-  var bundle = await service.GetAsync(exportId, rfc, ct);
+  try { companyContext.EnsureRfc(rfc); }
+  catch (UnauthorizedAccessException) { return Results.Forbid(); }
+  var bundle = await service.GetAsync(exportId, companyContext.RequireRfc(), ct);
   if (bundle is null) return Results.NotFound();
   return format.Equals("xlsx", StringComparison.OrdinalIgnoreCase)
     ? Results.File(bundle.XlsxBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bundle.XlsxFileName)

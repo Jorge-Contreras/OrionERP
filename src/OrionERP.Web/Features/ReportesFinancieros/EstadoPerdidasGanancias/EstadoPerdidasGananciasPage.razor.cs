@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.ReportesFinancieros;
@@ -7,10 +8,10 @@ using System.Globalization;
 
 namespace OrionERP.Web.Features.ReportesFinancieros.EstadoPerdidasGanancias
 {
-    public partial class EstadoPerdidasGananciasPage : ComponentBase, IDisposable
+    public partial class EstadoPerdidasGananciasPage : ComponentBase
     {
         [Inject]
-        private IUserRfcState RfcState { get; set; } = default!;
+        private ICurrentCompanyContext RfcState { get; set; } = default!;
 
         [Inject]
         private IReportesFinancierosService ReportesService { get; set; } = default!;
@@ -38,7 +39,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.EstadoPerdidasGanancias
         }
 
         public int? Mes { get; private set; } = DateTime.Now.Month;
-        public string? CurrentRfc { get; private set; }
+        public string CurrentRfc => RfcState.RequireRfc();
         public bool IsLoading { get; private set; }
         public string? ErrorMessage { get; private set; }
         public List<EstadoPerdidasGananciasRow> Resultados { get; private set; } = new();
@@ -49,21 +50,12 @@ namespace OrionERP.Web.Features.ReportesFinancieros.EstadoPerdidasGanancias
 
         protected override void OnInitialized()
         {
-            RfcState.Changed += OnRfcStateChanged;
-            CurrentRfc = RfcState.CurrentRfc;
             SetDateRange();
         }
 
         protected override async Task OnInitializedAsync()
         {
             await LoadDataAsync();
-        }
-
-        private async void OnRfcStateChanged()
-        {
-            CurrentRfc = RfcState.CurrentRfc;
-            await LoadDataAsync();
-            await InvokeAsync(StateHasChanged);
         }
 
         private async Task OnMesChanged(ChangeEventArgs e)
@@ -89,13 +81,6 @@ namespace OrionERP.Web.Features.ReportesFinancieros.EstadoPerdidasGanancias
 
         private async Task LoadDataAsync()
         {
-            if (string.IsNullOrWhiteSpace(CurrentRfc))
-            {
-                Resultados.Clear();
-                await InvokeAsync(StateHasChanged);
-                return;
-            }
-
             IsLoading = true;
             ErrorMessage = null;
             await InvokeAsync(StateHasChanged);
@@ -128,9 +113,5 @@ namespace OrionERP.Web.Features.ReportesFinancieros.EstadoPerdidasGanancias
                 $"Del {StartDate:dd/MM/yyyy} al {EndDate:dd/MM/yyyy}");
         }
 
-        public void Dispose()
-        {
-            RfcState.Changed -= OnRfcStateChanged;
-        }
     }
 }

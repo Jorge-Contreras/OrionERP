@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
@@ -8,7 +9,7 @@ using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.CapitalHumano;
 
-public partial class CapitalHumanoPage : ComponentBase, IDisposable
+public partial class CapitalHumanoPage : ComponentBase
 {
   private const int PhotoMaxPixels = 640;
   private const int PageSize = 50;
@@ -16,7 +17,7 @@ public partial class CapitalHumanoPage : ComponentBase, IDisposable
 
   [Inject] private ICapitalHumanoService CapitalHumanoService { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
-  [Inject] private IUserRfcState RfcState { get; set; } = default!;
+  [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] private IJSRuntime JS { get; set; } = default!;
 
   protected CapitalHumanoFilter Filter { get; set; } = new();
@@ -63,7 +64,7 @@ public partial class CapitalHumanoPage : ComponentBase, IDisposable
   private int? _attachmentDownloadingId;
   private int? _attachmentDeletingId;
 
-  protected string CurrentRfc => RfcState.CurrentRfc ?? string.Empty;
+  protected string CurrentRfc => RfcState.RequireRfc();
 
   protected bool HasPhotoOnly
   {
@@ -104,7 +105,6 @@ public partial class CapitalHumanoPage : ComponentBase, IDisposable
 
   protected override async Task OnInitializedAsync()
   {
-    RfcState.Changed += OnRfcStateChanged;
     EnsureCurrentRfc();
     await LoadCatalogAsync();
     NuevoEmpleado();
@@ -687,20 +687,6 @@ public partial class CapitalHumanoPage : ComponentBase, IDisposable
     Filter.Rfc = CurrentRfc;
   }
 
-  private async void OnRfcStateChanged()
-  {
-    await InvokeAsync(async () =>
-    {
-      EnsureCurrentRfc();
-      await LoadCatalogAsync();
-      NuevoEmpleado();
-      HasExecutedSearch = false;
-      Employees = [];
-      EmployeePhotoDataUrls = [];
-      StateHasChanged();
-    });
-  }
-
   private static CapitalHumanoSaveRequest MapToEditor(CapitalHumanoDetailDto detail)
     => new()
     {
@@ -759,8 +745,4 @@ public partial class CapitalHumanoPage : ComponentBase, IDisposable
     return FormattableString.Invariant($"data:{safeContentType};base64,{Convert.ToBase64String(bytes)}");
   }
 
-  public void Dispose()
-  {
-    RfcState.Changed -= OnRfcStateChanged;
-  }
 }

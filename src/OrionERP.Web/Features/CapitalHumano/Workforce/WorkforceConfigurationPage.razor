@@ -2,7 +2,7 @@
 @attribute [Authorize(Policy = "CapitalHumanoAdmin")]
 @using OrionERP.Application.Features.CapitalHumano.Workforce
 @inject IWorkforceConfigurationService ConfigurationService
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 
 <PageTitle>Configuración de tiempo</PageTitle>
 
@@ -22,7 +22,7 @@
   @if(setup is null){<div class="workforce-card"><div class="workforce-card__body">Cargando configuración…</div></div>}
   else if(tab=="readiness")
   {
-    <section class="workforce-card"><div class="workforce-card__header"><h2>Lista de preparación</h2><span class="workforce-status @(setup.Readiness.Any(x=>!x.IsReady)?"workforce-status--warn":"")">@setup.Readiness.Count(x=>x.IsReady) / @setup.Readiness.Count listos</span></div><div class="table-responsive"><table class="table workforce-table"><thead><tr><th>Empleado</th><th>Acceso</th><th>Asignación</th><th>Supervisor</th><th>Estado</th></tr></thead><tbody>@if(setup.Readiness.Count==0){<tr><td colspan="5" class="workforce-empty">No hay empleados activos en el RFC seleccionado.</td></tr>}@foreach(var item in setup.Readiness){<tr><td class="fw-semibold">@item.EmployeeName <span class="workforce-label">#@item.EmployeeId</span></td><td>@Check(item.HasLogin)</td><td>@Check(item.HasWorkAssignment)</td><td>@Check(item.HasSupervisor)</td><td><span class="workforce-status @(item.IsReady?"":"workforce-status--warn")">@(item.IsReady?"Listo":"Requiere configuración")</span></td></tr>}</tbody></table></div></section>
+    <section class="workforce-card"><div class="workforce-card__header"><h2>Lista de preparación</h2><span class="workforce-status @(setup.Readiness.Any(x=>!x.IsReady)?"workforce-status--warn":"")">@setup.Readiness.Count(x=>x.IsReady) / @setup.Readiness.Count listos</span></div><div class="table-responsive"><table class="table workforce-table"><thead><tr><th>Empleado</th><th>Acceso</th><th>Asignación</th><th>Supervisor</th><th>Estado</th></tr></thead><tbody>@if(setup.Readiness.Count==0){<tr><td colspan="5" class="workforce-empty">No hay empleados activos en la empresa de tu sesión.</td></tr>}@foreach(var item in setup.Readiness){<tr><td class="fw-semibold">@item.EmployeeName <span class="workforce-label">#@item.EmployeeId</span></td><td>@Check(item.HasLogin)</td><td>@Check(item.HasWorkAssignment)</td><td>@Check(item.HasSupervisor)</td><td><span class="workforce-status @(item.IsReady?"":"workforce-status--warn")">@(item.IsReady?"Listo":"Requiere configuración")</span></td></tr>}</tbody></table></div></section>
   }
   else if(tab=="sites")
   {
@@ -70,7 +70,7 @@
   private WorkSiteSaveRequest site=new(){TimeZoneId="America/Mexico_City",RadiusMeters=150,MaxAccuracyMeters=100};
   private ScheduleTemplateSaveRequest schedule=new(); private TimeOnly scheduleStart=new(9,0); private TimeOnly scheduleEnd=new(18,0); private TimeOnly scheduleBreakStart=new(14,0); private int scheduleBreak=60; private bool scheduleBreakPaid;
   private EmployeeWorkAssignmentSaveRequest assignment=new(); private SupervisorAssignmentSaveRequest supervisor=new(); private PayGroupSaveRequest payGroup=new(); private HolidaySaveRequest holiday=new(); private KioskPairingCreateRequest pairing=new(); private KioskCredentialCreateRequest credential=new(); private PrivacyNoticeSaveRequest privacy=new(); private KioskPairingCodeDto? pairingResult; private KioskCredentialResult? credentialResult;
-  private string Rfc=>RfcState.CurrentRfc??string.Empty;
+  private string Rfc => RfcState.RequireRfc();
   protected override async Task OnInitializedAsync()=>await LoadAsync();
   private void SelectTab(string value){tab=value;message=null;}
   private async Task LoadAsync(){busy=true;try{setup=await ConfigurationService.GetSetupAsync(Rfc);SeedRfc();}catch(Exception ex){Show(ex.Message,true);}finally{busy=false;}}

@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -24,7 +25,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
   [Inject] public IOrdenTrabajoService OrdenTrabajoService { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
   [Inject] public AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
-  [Inject] public IUserRfcState RfcState { get; set; } = default!;
+  [Inject] public ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] public NavigationManager Navigation { get; set; } = default!;
   [Inject] public IJSRuntime Js { get; set; } = default!;
 
@@ -62,7 +63,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
   protected string StartMonthValue => ToMonthInputValue(Filter.StartDate);
   protected string EndMonthValue => ToMonthInputValue(Filter.EndDateExclusive.AddDays(-1));
   private bool _scrollCalendarToTodayAfterRender;
-  private string CurrentRfc => RfcState.CurrentRfc ?? string.Empty;
+  private string CurrentRfc => RfcState.RequireRfc();
 
   protected override async Task OnInitializedAsync()
   {

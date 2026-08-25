@@ -17,7 +17,7 @@ public sealed class RestaurantAdminPageTests
     Assert.True(initializationStart >= 0);
     Assert.InRange(newSite, initializationStart, firstAwait - 1);
     Assert.InRange(newProduct, initializationStart, firstAwait - 1);
-    Assert.Contains("RFC activo:", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("RFC activo:", source, StringComparison.Ordinal);
   }
 
   [Fact]

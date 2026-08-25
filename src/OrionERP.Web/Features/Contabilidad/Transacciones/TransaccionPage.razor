@@ -1359,8 +1359,7 @@ else
                 <div class="border rounded p-3 bg-light-subtle">
                   <CuentaContablePicker
                     @ref="CuentaPicker"
-                    SelectedRfc="@CuentaPickerRfc"
-                    SelectedRfcChanged="@OnCuentaPickerRfcChangedAsync"
+                    Rfc="@CurrentRfc"
                     Selection="@MovimientoCuentaSelection"
                     SelectionChanged="@OnCuentaPickerSelectionChangedAsync"
                     SearchRequested="@OnCuentaPickerSearchRequestedAsync"

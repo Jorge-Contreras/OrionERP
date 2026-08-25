@@ -73,7 +73,7 @@ public sealed class RestaurantQzTraySigningServiceTests
     var policySource = source.Substring(
       policyStart,
       Math.Min(500, source.Length - policyStart));
-    Assert.Contains("policy.RequireRole", policySource, StringComparison.Ordinal);
+    Assert.Contains("policy.RequireCompanyRoles", policySource, StringComparison.Ordinal);
     Assert.Contains("\"RestauranteCaja\"", policySource, StringComparison.Ordinal);
     Assert.DoesNotContain("RoleForRfcRequirement", policySource, StringComparison.Ordinal);
   }

@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using System.IO;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -13,7 +14,7 @@ using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Logistica.Locations;
 
-public partial class UbicacionesPage : ComponentBase, IDisposable
+public partial class UbicacionesPage : ComponentBase
 {
   private const int PageSize = 50;
   private const int QueryTake = PageSize + 1;
@@ -30,7 +31,7 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
   [Inject] private IJSRuntime Js { get; set; } = default!;
-  [Inject] private IUserRfcState RfcState { get; set; } = default!;
+  [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
 
   protected StockFilter StockFilter { get; set; } = new() { IncludeZeroBalances = true };
   protected MaterialFilter MaterialPickerFilter { get; set; } = new() { Status = "ACTIVO" };
@@ -118,7 +119,6 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
 
   protected override async Task OnInitializedAsync()
   {
-    RfcState.Changed += HandleRfcChanged;
     CurrentUserName = await ResolveCurrentUserAsync();
     await LoadLookupsAsync();
   }
@@ -142,17 +142,6 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
     {
     }
   }
-
-  private void HandleRfcChanged() => _ = InvokeAsync(async () =>
-  {
-    SelectedRoomId = null;
-    Locations = [];
-    ClearSelectedLocationContext();
-    await LoadLookupsAsync();
-    StateHasChanged();
-  });
-
-  public void Dispose() => RfcState.Changed -= HandleRfcChanged;
 
   protected async Task OnRoomChangedAsync(ChangeEventArgs args)
   {
@@ -991,7 +980,7 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
       Take = take
     };
 
-  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private string CurrentRfc => RfcState.RequireRfc();
 
   private void ApplyThresholdsToSelection(decimal? minQuantity, decimal? maxQuantity)
   {

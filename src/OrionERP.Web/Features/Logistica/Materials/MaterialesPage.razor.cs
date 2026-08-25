@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -23,7 +24,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   [Inject] private IMaterialService MaterialService { get; set; } = default!;
   [Inject] private IBusinessPartnerService BusinessPartnerService { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
-  [Inject] private IUserRfcState RfcState { get; set; } = default!;
+  [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
 
   protected MaterialFilter Filter { get; set; } = new();
@@ -73,13 +74,11 @@ public partial class MaterialesPage : ComponentBase, IDisposable
 
   private CancellationTokenSource? _searchDebounceCts;
   private CancellationTokenSource? _listRequestCts;
-  private CancellationTokenSource? _rfcReloadCts;
   private CancellationTokenSource? _lifecycleAssessmentCts;
   private CancellationTokenSource? _inventoryRequestCts;
   private CancellationTokenSource? _movementRequestCts;
-  private string? _catalogRfc;
   private bool _catalogRetryPending;
-  private string? _catalogRecoveryRfc;
+  private bool _catalogRecoveryAttempted;
   private decimal? _purchasePresentationPrice;
   private string _purchaseQuantityInputText = "1";
   private string _baseUnitPriceInputText = string.Empty;
@@ -173,7 +172,6 @@ public partial class MaterialesPage : ComponentBase, IDisposable
 
   protected override async Task OnInitializedAsync()
   {
-    RfcState.Changed += HandleRfcChanged;
     var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
     IsAdministrator = authenticationState.User.IsInRole("Administrador");
     CurrentUserName = authenticationState.User.Identity?.Name ?? "OrionERP";
@@ -181,34 +179,6 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     await LoadCatalogAsync();
     NuevoMaterial();
     await BuscarAsync();
-  }
-
-  protected override async Task OnAfterRenderAsync(bool firstRender)
-  {
-    if (!firstRender)
-    {
-      return;
-    }
-
-    var rfcChangedDuringInitialization = !string.Equals(
-      _catalogRfc,
-      CurrentRfc,
-      StringComparison.OrdinalIgnoreCase);
-
-    if (rfcChangedDuringInitialization)
-    {
-      await LoadCatalogAsync();
-      NuevoMaterial();
-    }
-
-    // The persisted RFC can finish restoring while the first interactive circuit
-    // is connecting. If that cancels the initial list request, recover once here
-    // so users never need to press refresh just to see the catalog.
-    if (rfcChangedDuringInitialization || Materials.Count == 0)
-    {
-      await BuscarAsync();
-      StateHasChanged();
-    }
   }
 
   protected async Task BuscarAsync()
@@ -1539,7 +1509,6 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   {
     var rfc = CurrentRfc;
     Catalog = await MaterialService.GetCatalogAsync(rfc);
-    _catalogRfc = rfc;
     _catalogRetryPending = allowEmptyRetry
       && Catalog.Categories.Count == 0
       && Catalog.Vendors.Count == 0;
@@ -1551,12 +1520,6 @@ public partial class MaterialesPage : ComponentBase, IDisposable
 
   private async Task EnsureCatalogForCurrentRfcAsync()
   {
-    if (!string.Equals(_catalogRfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
-    {
-      await LoadCatalogAsync();
-      return;
-    }
-
     if (_catalogRetryPending)
     {
       _catalogRetryPending = false;
@@ -1571,13 +1534,12 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     var needsVendors = Catalog.Vendors.Count == 0
       && materials.Any(material => !string.IsNullOrWhiteSpace(material.VendorName));
 
-    if ((!needsCategories && !needsVendors)
-        || string.Equals(_catalogRecoveryRfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
+    if ((!needsCategories && !needsVendors) || _catalogRecoveryAttempted)
     {
       return;
     }
 
-    _catalogRecoveryRfc = CurrentRfc;
+    _catalogRecoveryAttempted = true;
     await LoadCatalogAsync(allowEmptyRetry: false);
   }
 
@@ -1722,59 +1684,14 @@ public partial class MaterialesPage : ComponentBase, IDisposable
       VendorProfile = new VendorProfileUpsertRequest { IsApproved = true }
     };
 
-  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
-
-  private void HandleRfcChanged()
-  {
-    ResetLifecycleReport();
-    ShowInactiveMaterials = false;
-    _rfcReloadCts?.Cancel();
-    _rfcReloadCts?.Dispose();
-    _rfcReloadCts = new CancellationTokenSource();
-    var reloadToken = _rfcReloadCts.Token;
-    _ = InvokeAsync(() => ReloadForRfcChangeAsync(reloadToken));
-  }
-
-  private async Task ReloadForRfcChangeAsync(CancellationToken reloadToken)
-  {
-    try
-    {
-      // RfcStateInitializer can publish the claims default and the persisted
-      // selection back-to-back. Coalesce them so only the final RFC wins.
-      await Task.Delay(120, reloadToken);
-      reloadToken.ThrowIfCancellationRequested();
-
-      _searchDebounceCts?.Cancel();
-      _listRequestCts?.Cancel();
-      Materials = [];
-      MaterialThumbnailDataUrls = [];
-      HasExecutedSearch = false;
-      Filter = new MaterialFilter();
-      ShowInactiveMaterials = false;
-      SelectedMaterialId = null;
-      _catalogRecoveryRfc = null;
-      await LoadCatalogAsync();
-      reloadToken.ThrowIfCancellationRequested();
-      NuevoMaterial();
-      await BuscarAsync();
-      reloadToken.ThrowIfCancellationRequested();
-      StateHasChanged();
-    }
-    catch (OperationCanceledException) when (reloadToken.IsCancellationRequested)
-    {
-      // A newer RFC selection replaced this reload.
-    }
-  }
+  private string CurrentRfc => RfcState.RequireRfc();
 
   public void Dispose()
   {
-    RfcState.Changed -= HandleRfcChanged;
     _searchDebounceCts?.Cancel();
     _searchDebounceCts?.Dispose();
     _listRequestCts?.Cancel();
     _listRequestCts?.Dispose();
-    _rfcReloadCts?.Cancel();
-    _rfcReloadCts?.Dispose();
     _lifecycleAssessmentCts?.Cancel();
     _lifecycleAssessmentCts?.Dispose();
     _inventoryRequestCts?.Cancel();

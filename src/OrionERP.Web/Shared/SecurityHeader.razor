@@ -1,6 +1,7 @@
 @using System.Globalization
 @using Microsoft.AspNetCore.Components.Authorization
 @using OrionERP.Infrastructure.Auth
+@inject ICurrentCompanyContext CompanyContext
 
 <AuthorizeView>
     <Authorized Context="context">
@@ -12,12 +13,12 @@
 
             <div class="security-header__company" aria-label="Empresa activa">
                 <span class="security-header__company-logo">
-                    <span aria-hidden="true">@GetInitial(context.User.FindFirst(CompanyClaimTypes.CompanyName)?.Value)</span>
-                    <img src="@GetLogoUrl(context.User)" alt="" onerror="this.remove()" />
+                    <span aria-hidden="true">@GetInitial(CompanyContext.DisplayName)</span>
+                    <img src="@GetLogoUrl()" alt="" onerror="this.remove()" />
                 </span>
                 <span class="security-header__company-copy">
-                    <strong>@(context.User.FindFirst(CompanyClaimTypes.CompanyName)?.Value ?? "Empresa")</strong>
-                    <small>@context.User.FindFirst(CompanyClaimTypes.Rfc)?.Value</small>
+                    <strong>@(CompanyContext.DisplayName ?? "Empresa")</strong>
+                    <small>@CompanyContext.CurrentRfc</small>
                 </span>
             </div>
 
@@ -51,8 +52,8 @@
         }
     }
 
-    private static string GetLogoUrl(System.Security.Claims.ClaimsPrincipal user)
-      => $"/company-branding/{Uri.EscapeDataString(user.FindFirst(CompanyClaimTypes.Rfc)?.Value ?? string.Empty)}/logo";
+    private string GetLogoUrl()
+      => $"/company-branding/{Uri.EscapeDataString(CompanyContext.RequireRfc())}/logo";
 
     private static string GetInitial(string? name)
       => string.IsNullOrWhiteSpace(name) ? "E" : name.Trim()[0].ToString().ToUpperInvariant();

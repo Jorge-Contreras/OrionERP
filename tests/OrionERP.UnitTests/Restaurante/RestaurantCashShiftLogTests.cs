@@ -11,7 +11,7 @@ public sealed class RestaurantCashShiftLogTests
     Assert.Equal(3, CountOccurrences(page, "<AuthorizeView Policy=\"RestaurantAdminOnly\">"));
     Assert.Contains("AuthorizationService.AuthorizeAsync(auth.User, \"RestaurantAdminOnly\")", page, StringComparison.Ordinal);
     Assert.Contains("\"RestaurantAdminOnly\"", program, StringComparison.Ordinal);
-    Assert.Contains("new RoleForRfcRequirement(\"RestauranteAdmin\")", program, StringComparison.Ordinal);
+    Assert.Contains("policy.RequireCompanyRoles(\"RestauranteAdmin\")", program, StringComparison.Ordinal);
   }
 
   [Fact]

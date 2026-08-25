@@ -1,7 +1,7 @@
 @using OrionERP.Web.State
 @using OrionERP.Web.Shared   @* For typeof(MainLayout) *@
 
-<RfcStateInitializer>
+<CompanyContextInitializer>
     <CascadingAuthenticationState>
         <Router AppAssembly="@typeof(Program).Assembly">
             <Found Context="routeData">
@@ -36,4 +36,4 @@
             </NotFound>
         </Router>
     </CascadingAuthenticationState>
-</RfcStateInitializer>
+</CompanyContextInitializer>

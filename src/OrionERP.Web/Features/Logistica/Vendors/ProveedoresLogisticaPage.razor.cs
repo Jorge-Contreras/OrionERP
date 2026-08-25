@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
 using OrionERP.Application.Features.Logistica.BusinessPartners;
 using OrionERP.Web.Services;
@@ -6,11 +7,11 @@ using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Logistica.Vendors;
 
-public partial class ProveedoresLogisticaPage : ComponentBase, IDisposable
+public partial class ProveedoresLogisticaPage : ComponentBase
 {
   [Inject] private IBusinessPartnerService BusinessPartnerService { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
-  [Inject] private IUserRfcState RfcState { get; set; } = default!;
+  [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
 
   protected BusinessPartnerFilter Filter { get; set; } = new() { VendorOnly = true };
   protected BusinessPartnerCatalogDto Catalog { get; set; } = new();
@@ -24,21 +25,10 @@ public partial class ProveedoresLogisticaPage : ComponentBase, IDisposable
 
   protected override async Task OnInitializedAsync()
   {
-    RfcState.Changed += HandleRfcChanged;
     Editor = CreateNewEditor(CurrentRfc);
     Catalog = await BusinessPartnerService.GetCatalogAsync(CurrentRfc);
     await BuscarAsync();
   }
-
-  private void HandleRfcChanged() => _ = InvokeAsync(async () =>
-  {
-    NuevoRegistro();
-    Catalog = await BusinessPartnerService.GetCatalogAsync(CurrentRfc);
-    await BuscarAsync();
-    StateHasChanged();
-  });
-
-  public void Dispose() => RfcState.Changed -= HandleRfcChanged;
 
   protected async Task BuscarAsync()
   {
@@ -177,5 +167,5 @@ public partial class ProveedoresLogisticaPage : ComponentBase, IDisposable
       IsApproved = true
     };
 
-  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private string CurrentRfc => RfcState.RequireRfc();
 }

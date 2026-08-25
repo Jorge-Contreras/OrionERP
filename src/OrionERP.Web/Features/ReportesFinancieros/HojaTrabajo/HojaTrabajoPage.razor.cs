@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
 using OrionERP.Web.State;
 using System;
@@ -9,12 +10,12 @@ using Microsoft.JSInterop;
 
 namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
 {
-    public partial class HojaTrabajoPage : ComponentBase, IDisposable
+    public partial class HojaTrabajoPage : ComponentBase
     {
         [Inject]
         private IJSRuntime JS { get; set; } = default!;
         [Inject]
-        private IUserRfcState RfcState { get; set; } = default!;
+        private ICurrentCompanyContext RfcState { get; set; } = default!;
 
         [Inject]
         private IReportesFinancierosService ReportesService { get; set; } = default!;
@@ -33,7 +34,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
             }
         }
 
-        public string? CurrentRfc { get; private set; }
+        public string CurrentRfc => RfcState.RequireRfc();
         public bool IsLoading { get; private set; }
         public bool IsExporting { get; private set; }
         public string? ErrorMessage { get; private set; }
@@ -49,38 +50,13 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
 
         private static readonly CultureInfo MexicanCulture = new("es-MX");
 
-        protected override void OnInitialized()
-        {
-            RfcState.Changed += OnRfcStateChanged;
-            CurrentRfc = RfcState.CurrentRfc;
-        }
-
         protected override async Task OnInitializedAsync()
         {
             await LoadHojaTrabajoData();
         }
 
-        private async void OnRfcStateChanged()
-        {
-            CurrentRfc = RfcState.CurrentRfc;
-            await LoadHojaTrabajoData();
-            await InvokeAsync(StateHasChanged);
-        }
-
         private async Task LoadHojaTrabajoData()
         {
-            if (string.IsNullOrEmpty(CurrentRfc))
-            {
-                HojaTrabajoCfdi.Clear();
-                HojaTrabajoComplementos.Clear();
-                HojaTrabajoContabilidad.Clear();
-                HojaTrabajoAcumulados.Clear();
-                HojaTrabajoTipoE.Clear();
-                HojaTrabajoTipoN.Clear();
-                _selectedRows.Clear();
-                return;
-            }
-
             IsLoading = true;
             ErrorMessage = null;
             await InvokeAsync(StateHasChanged);
@@ -160,11 +136,6 @@ namespace OrionERP.Web.Features.ReportesFinancieros.HojaTrabajo
                 11 => row.DICIEMBRE,
                 _ => 0
             };
-        }
-
-        public void Dispose()
-        {
-            RfcState.Changed -= OnRfcStateChanged;
         }
 
         private void SelectRow(HojaTrabajoTablaDto row, HojaTrabajoTab tab)

@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.ReportesFinancieros;
@@ -10,10 +11,10 @@ using Microsoft.AspNetCore.Http.Extensions;
 
 namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
 {
-    public partial class BalanzaComprobacionPage : ComponentBase, IDisposable
+    public partial class BalanzaComprobacionPage : ComponentBase
     {
         [Inject]
-        private IUserRfcState RfcState { get; set; } = default!;
+        private ICurrentCompanyContext RfcState { get; set; } = default!;
 
         [Inject]
         private IReportesFinancierosService ReportesService { get; set; } = default!;
@@ -28,7 +29,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
 
         public int Anio { get; set; } = DateTime.Now.Year;
         public int? Mes { get; set; } = DateTime.Now.Month;
-        public string? CurrentRfc { get; private set; }
+        public string CurrentRfc => RfcState.RequireRfc();
         public bool IsLoading { get; private set; }
         public string? ErrorMessage { get; private set; }
         public List<BalanzaComprobacionRow> Resultados { get; private set; } = new();
@@ -49,22 +50,9 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
         private decimal SummaryHaber => Resultados.Where(row => row.NivelJerarquia == 1).Sum(row => row.Haber_Mes);
         private decimal SummarySaldoFinal => Resultados.Where(row => row.NivelJerarquia == 1).Sum(row => row.Saldo_Final);
 
-        protected override void OnInitialized()
-        {
-            RfcState.Changed += OnRfcStateChanged;
-            CurrentRfc = RfcState.CurrentRfc;
-        }
-
         protected override async Task OnInitializedAsync()
         {
             await LoadDataAsync();
-        }
-
-        private async void OnRfcStateChanged()
-        {
-            CurrentRfc = RfcState.CurrentRfc;
-            await LoadDataAsync();
-            await InvokeAsync(StateHasChanged);
         }
 
         private async Task OnAnioChanged(ChangeEventArgs e)
@@ -83,12 +71,6 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
             await LoadDataAsync();
         }
 
-        private async Task OnRfcChangedFromPicker(string? rfc)
-        {
-            CurrentRfc = rfc;
-            await LoadDataAsync();
-        }
-
         private async Task RefreshAsync()
         {
             await LoadDataAsync();
@@ -96,16 +78,6 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
 
         private async Task LoadDataAsync()
         {
-            if (string.IsNullOrWhiteSpace(CurrentRfc))
-            {
-                Resultados.Clear();
-                SelectedRowId = null;
-                ExpandedAccountKeys.Clear();
-                ParentAccountKeys.Clear();
-                await InvokeAsync(StateHasChanged);
-                return;
-            }
-
             IsLoading = true;
             ErrorMessage = null;
             await InvokeAsync(StateHasChanged);
@@ -520,16 +492,11 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
                 "orionPrintReport",
                 "balanza-comprobacion-print-root",
                 "Balanza de Comprobación",
-                string.IsNullOrWhiteSpace(CurrentRfc) ? PeriodoDescripcion : $"RFC: {CurrentRfc}  Periodo: {PeriodoDescripcion}");
+                $"RFC: {CurrentRfc}  Periodo: {PeriodoDescripcion}");
         }
 
         private async Task GoToContabilidadRegistros(BalanzaComprobacionRow row)
         {
-            if (string.IsNullOrWhiteSpace(CurrentRfc))
-            {
-                return;
-            }
-
             var query = new QueryBuilder
             {
                 { "nivel1", row.Nivel1 },
@@ -558,9 +525,5 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
             await JS.InvokeVoidAsync("open", registrosContablesUrl, "_blank", "noopener,noreferrer");
         }
 
-        public void Dispose()
-        {
-            RfcState.Changed -= OnRfcStateChanged;
-        }
     }
 }

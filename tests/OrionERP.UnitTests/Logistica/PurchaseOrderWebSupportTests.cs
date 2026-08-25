@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.FileProviders;
 using System.Globalization;
@@ -309,14 +310,17 @@ public class PurchaseOrderWebSupportTests
       => throw new NotSupportedException();
   }
 
-  private sealed class FakeRfcState : IUserRfcState
+  private sealed class FakeRfcState : ICurrentCompanyContext
   {
     public string? CurrentRfc => "OHM191112Q26";
-    public IReadOnlyList<string> AllowedRfcs => ["OHM191112Q26"];
-    public event Action? Changed { add { } remove { } }
-    public void InitializeFromClaims(System.Security.Claims.ClaimsPrincipal user) { }
-    public bool TrySet(string rfc) => string.Equals(rfc, CurrentRfc, StringComparison.OrdinalIgnoreCase);
-    public void ResetToDefault() { }
+    public string? DisplayName => "Orion";
+    public int? EmployeeId => 1;
+    public string RequireRfc() => CurrentRfc!;
+    public void EnsureRfc(string rfc)
+    {
+      if (!string.Equals(rfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
+        throw new UnauthorizedAccessException();
+    }
   }
 
   private sealed class FakeWebHostEnvironment : IWebHostEnvironment

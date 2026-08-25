@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -15,7 +16,7 @@ using OrionERP.Web.State;
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages;
 
 [Authorize(Roles = "Administrador,SatOperator")]
-public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
+public partial class LigarCFDIPolizaPage : ComponentBase
 {
   [Parameter]
   public int Comprobante_Id { get; set; }
@@ -27,7 +28,7 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
   public ITransaccionService TransaccionService { get; set; } = default!;
 
   [Inject]
-  public IUserRfcState RfcState { get; set; } = default!;
+  public ICurrentCompanyContext RfcState { get; set; } = default!;
 
   [Inject]
   public IUiMessageService UiMessages { get; set; } = default!;
@@ -50,30 +51,14 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
   protected int? HighlightedTransaccionId { get; set; }
   private readonly Dictionary<int, LinkedMontoEditor> _linkedMontoEditors = new();
   private int? _savingLinkedMontoTransaccionId;
-  private bool _disposed;
 
   protected bool CanLigar => Summary is not null && SelectedCandidate is not null && LinkMonto > 0m;
   protected bool CanCreatePoliza => Summary is not null;
 
   protected override async Task OnInitializedAsync()
   {
-    RfcState.Changed += OnRfcChanged;
     ResetFilters();
     await LoadWorkspaceAsync();
-  }
-
-  private async void OnRfcChanged()
-  {
-    if (_disposed)
-    {
-      return;
-    }
-
-    await InvokeAsync(async () =>
-    {
-      ResetFilters();
-      await LoadWorkspaceAsync();
-    });
   }
 
   private async Task LoadWorkspaceAsync(bool candidatesOnly = false)
@@ -93,10 +78,10 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
 
     try
     {
-      Filter.Rfc = RfcState.CurrentRfc;
+      Filter.Rfc = RfcState.RequireRfc();
       Workspace = await TransaccionService.GetCfdiPolizaLinkingWorkspaceAsync(
         Comprobante_Id,
-        RfcState.CurrentRfc,
+        RfcState.RequireRfc(),
         Filter);
 
       if (Workspace.Summary is not null && Filter.Monto is null)
@@ -233,7 +218,7 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
     {
       var transaccionId = await DeclaracionPreviaService.GenerarPolizaDesdeComprobanteAsync(
         Summary.ComprobanteId,
-        RfcState.CurrentRfc ?? string.Empty);
+        RfcState.RequireRfc());
 
       HighlightedTransaccionId = transaccionId;
       UiMessages.ShowSuccess($"Póliza {transaccionId} creada y ligada al CFDI.");
@@ -256,7 +241,7 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
     var now = DateTime.Now;
     Filter = new TransaccionFilter
     {
-      Rfc = RfcState.CurrentRfc,
+      Rfc = RfcState.RequireRfc(),
       Year = Summary?.Fecha.Year ?? now.Year,
       Month = Summary?.Fecha.Month ?? now.Month,
       Monto = null
@@ -411,14 +396,4 @@ public partial class LigarCFDIPolizaPage : ComponentBase, IDisposable
     public decimal Monto { get; set; }
   }
 
-  public void Dispose()
-  {
-    if (_disposed)
-    {
-      return;
-    }
-
-    RfcState.Changed -= OnRfcChanged;
-    _disposed = true;
-  }
 }

@@ -3,7 +3,7 @@
 @using OrionERP.Application.Features.CapitalHumano.Workforce
 @inject ILeaveManagementService Leave
 @inject IWorkforceConfigurationService ConfigurationService
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 
 <PageTitle>Ausencias</PageTitle>
 
@@ -22,7 +22,7 @@
 
 @code {
   private IReadOnlyList<LeaveRequestDto> requests=[]; private IReadOnlyList<LeaveTypeDto> types=[]; private IReadOnlyList<LeavePolicyDto> policies=[]; private IReadOnlyList<LeaveEnrollmentDto> enrollments=[]; private IReadOnlyList<EmployeeWorkforceOptionDto> employees=[]; private LeaveBalanceAdjustmentRequest adjustment=new(); private LeavePolicySaveRequest policy=new(); private LeaveEnrollmentSaveRequest enrollment=new(); private DateOnly accrualDate=DateOnly.FromDateTime(DateTime.Today); private string? message; private bool error;
-  private string Rfc=>RfcState.CurrentRfc??string.Empty;
+  private string Rfc => RfcState.RequireRfc();
   protected override async Task OnInitializedAsync()=>await LoadAsync();
   private async Task LoadAsync(){try{requests=await Leave.GetTeamRequestsAsync(Rfc);types=await Leave.GetLeaveTypesAsync(Rfc);policies=await Leave.GetPoliciesAsync(Rfc);enrollments=await Leave.GetEnrollmentsAsync(Rfc);employees=(await ConfigurationService.GetSetupAsync(Rfc)).Employees;adjustment.Rfc=Rfc;policy.Rfc=Rfc;enrollment.Rfc=Rfc;}catch(Exception ex){Show(ex.Message,true);}}
   private async Task DecideAsync(long id,bool approve)=>await RunAsync(()=>Leave.DecideRequestAsync(id,Rfc,approve,approve?"Aprobada por Capital Humano":"Rechazada por Capital Humano"));

@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using OrionERP.Application.Features.OrdenesTrabajo;
@@ -12,7 +13,7 @@ public partial class OrdenTrabajoPlantillasPage : ComponentBase
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private NavigationManager Navigation { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
-  [Inject] private IUserRfcState RfcState { get; set; } = default!;
+  [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
 
   protected List<OrdenTrabajoCategoriaDto> Categories { get; set; } = [];
   protected List<OrdenTrabajoLookupDto> Employees { get; set; } = [];
@@ -30,7 +31,7 @@ public partial class OrdenTrabajoPlantillasPage : ComponentBase
   protected string? ErrorMessage { get; set; }
   protected bool CanCreateFromSelectedTemplate => SelectedTemplate is { Activa: true, PublishedVersionId: not null };
 
-  private string CurrentRfc => RfcState.CurrentRfc ?? string.Empty;
+  private string CurrentRfc => RfcState.RequireRfc();
 
   protected override async Task OnInitializedAsync()
   {

@@ -1,6 +1,5 @@
 @page "/restaurante/turnos"
 @attribute [Authorize(Policy = "RestaurantCash")]
-@implements IDisposable
 @using Microsoft.AspNetCore.Components.Authorization
 @using OrionERP.Application.Features.Logistica.Shared
 @using OrionERP.Application.Features.Restaurante
@@ -8,7 +7,7 @@
 @inject IRestaurantCatalogService CatalogService
 @inject IRestaurantCashService CashService
 @inject IRestaurantQuickPinService QuickPinService
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IAuthorizationService AuthorizationService
 
@@ -242,7 +241,7 @@
   private bool isBusy;
   private string? message;
   private bool isError;
-  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private string CurrentRfc => RfcState.RequireRfc();
   private IEnumerable<RestaurantCashShiftLogEntryDto> FilteredLogEntries
     => (shiftLog?.Entries ?? Array.Empty<RestaurantCashShiftLogEntryDto>()).Where(entry => logFilter switch
     {
@@ -252,7 +251,7 @@
       _ => true
     });
 
-  protected override async Task OnInitializedAsync() { RfcState.Changed += OnRfcChanged; await LoadAsync(); }
+  protected override async Task OnInitializedAsync() { await LoadAsync(); }
   private async Task LoadAsync()
   {
     try
@@ -357,6 +356,4 @@
   }
   private void ResetEditors() { openRequest = new() { Rfc = CurrentRfc, SiteId = selectedSiteId }; registerEditor = new() { Rfc = CurrentRfc, SiteId = selectedSiteId }; pinSetup = new() { Rfc = CurrentRfc, SiteId = selectedSiteId, CashRegisterId = registers.FirstOrDefault(item => item.IsActive)?.Id ?? 0 }; }
   private void Show(string value, bool error) { message = value; isError = error; }
-  private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; CloseShiftLog(); await LoadAsync(); StateHasChanged(); });
-  public void Dispose() => RfcState.Changed -= OnRfcChanged;
 }

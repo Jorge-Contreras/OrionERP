@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using OrionERP.Web.State;
@@ -12,30 +13,11 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
 {
   public partial class DeclaracionPrevia
   {
-    [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
-    [Inject] protected IUserRfcState RfcState { get; set; } = default!;
+    [Inject] protected ICurrentCompanyContext RfcState { get; set; } = default!;
     [Inject] private IDeclaracionPreviaService DeclaracionService { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
-      try
-      {
-        // For RazonSocial list, query the Emisor table for distinct RFCs:
-        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
-        var user = auth.User;
-
-        disponiblesRFCs = await DeclaracionService.GetAvailableRfcsAsync(user);
-      }
-      catch
-      {
-        disponiblesRFCs = Array.Empty<string>(); // if fails, fallback
-      }
-      if (disponiblesRFCs == null || disponiblesRFCs.Count == 0)
-      {
-        // If none found, just use a default from config or known value
-        disponiblesRFCs = new[] { string.Empty };
-      }
-      selectedRfc = RfcState.CurrentRfc ;
       selectedYear = DateTime.Now.Year;
       selectedMonth = DateTime.Now.Month;
       isAnnual = false;
@@ -51,7 +33,7 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       try
       {
         
-        var request = new DeclaracionPreviaRequest(selectedRfc ?? string.Empty, selectedYear, isAnnual ? null : selectedMonth, isAnnual);
+        var request = new DeclaracionPreviaRequest(CurrentRfc, selectedYear, isAnnual ? null : selectedMonth, isAnnual);
         var data = await DeclaracionService.GetDeclaracionAsync(request);
 
         disponibleYears = data.DisponibleYears;

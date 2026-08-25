@@ -1,13 +1,12 @@
 @page "/restaurante/inventario"
 @attribute [Authorize(Policy = "RestaurantAdmin")]
-@implements IDisposable
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using OrionERP.Application.Features.Logistica.Shared
 @using OrionERP.Application.Features.Logistica.Stock
 @using OrionERP.Web.State
 @inject IInventoryMovementService MovementService
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Restaurante · Movimientos de inventario</PageTitle>
@@ -100,7 +99,7 @@
   private bool isBusy;
   private string? message;
   private bool isError;
-  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private string CurrentRfc => RfcState.RequireRfc();
   private IEnumerable<InventoryBalanceOptionDto> SourceBalances => workspace.Balances
     .Where(item => item.LocationId == transfer.FromLocationId && item.AvailableQuantity > 0)
     .GroupBy(item => item.MaterialId).Select(group => group.First());
@@ -109,7 +108,6 @@
 
   protected override async Task OnInitializedAsync()
   {
-    RfcState.Changed += OnRfcChanged;
     ResetEditors();
     await LoadAsync();
   }
@@ -191,6 +189,4 @@
       .ToList();
   private static string ExpirationLabel(InventoryLotOptionDto lot) => lot.ExpirationDate.HasValue ? $"· cad. {lot.ExpirationDate:dd/MM/yy}" : string.Empty;
   private void Show(string value, bool error) { message = value; isError = error; }
-  private void OnRfcChanged() => _ = InvokeAsync(async () => { ResetEditors(); await LoadAsync(); StateHasChanged(); });
-  public void Dispose() => RfcState.Changed -= OnRfcChanged;
 }

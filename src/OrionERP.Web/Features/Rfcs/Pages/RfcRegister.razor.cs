@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using System;
 using System.IO;
 using System.Security.Cryptography.X509Certificates;
@@ -16,7 +17,7 @@ namespace OrionERP.Web.Features.Rfcs.Pages
   public partial class RfcRegisterBase : ComponentBase, IDisposable
   {
     [Inject] protected AppRfcs.ISatRfcProfileRepository Repo { get; set; } = default!;
-    [Inject] protected IUserRfcState RfcState { get; set; } = default!;
+    [Inject] protected ICurrentCompanyContext RfcState { get; set; } = default!;
     [Inject] protected IUiMessageService UiMessages { get; set; } = default!;
     [Inject] protected ITrainingEnvironmentState TrainingEnvironmentState { get; set; } = default!;
 
@@ -58,14 +59,11 @@ namespace OrionERP.Web.Features.Rfcs.Pages
     protected string? UiMessage { get; set; }
     protected string UiMessageCss { get; set; } = "alert-success";
     private CancellationTokenSource? _msgCts;
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-      base.OnInitialized();
+      await base.OnInitializedAsync();
       if (TrainingEnvironmentState.IsTraining) return;
-
-      RfcState.Changed += OnRfcChanged;
-      _ = LoadCurrentRfcAsync();
-
+      await LoadCurrentRfcAsync();
     }
 
 
@@ -180,9 +178,11 @@ namespace OrionERP.Web.Features.Rfcs.Pages
         return;
       }
 
+      var sessionRfc = RfcState.RequireRfc();
+      Model.Rfc = sessionRfc;
       var dto = new AppRfcs.SatRfcProfileUpsert
       {
-        Rfc = Model.Rfc?.Trim()?.ToUpperInvariant() ?? string.Empty,
+        Rfc = sessionRfc,
         RazonSocial = Model.RazonSocial,
         NombreComercial = Model.NombreComercial,
         RegimenCapital = Model.RegimenCapital,
@@ -233,22 +233,9 @@ namespace OrionERP.Web.Features.Rfcs.Pages
       // TODO: clear form or show a toast
     }
 
-    // Can stay private; only SaveAsync uses it
-    private void OnRfcChanged() => _ = InvokeAsync(LoadCurrentRfcAsync);
-
     private async Task LoadCurrentRfcAsync()
     {
-      var current = RfcState.CurrentRfc;
-      if (string.IsNullOrWhiteSpace(current))
-      {
-        await InvokeAsync(() =>
-        {
-          ResetModel();
-          StateHasChanged();
-          return Task.CompletedTask;
-        });
-        return;
-      }
+      var current = RfcState.RequireRfc();
 
       try
       {
@@ -279,6 +266,7 @@ namespace OrionERP.Web.Features.Rfcs.Pages
         return;
       }
 
+      RfcState.EnsureRfc(profile.Rfc);
       Model.Rfc = profile.Rfc;
       Model.RazonSocial = profile.RazonSocial;
       Model.NombreComercial = profile.NombreComercial;
@@ -339,10 +327,8 @@ namespace OrionERP.Web.Features.Rfcs.Pages
 
     public void Dispose()
     {
-      if (!TrainingEnvironmentState.IsTraining)
-      {
-        RfcState.Changed -= OnRfcChanged;
-      }
+      _msgCts?.Cancel();
+      _msgCts?.Dispose();
     }
 
     private void PublishUiMessage(string text, string css)

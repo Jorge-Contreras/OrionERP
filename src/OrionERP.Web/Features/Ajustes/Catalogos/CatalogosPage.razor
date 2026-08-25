@@ -14,10 +14,6 @@
       </p>
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2">
-      @if (ActiveDescriptor?.EsPorRfc == true)
-      {
-        <span class="badge text-bg-light border">RFC activo: @selectedRfc</span>
-      }
       <a class="btn btn-outline-secondary" href="/ajustes">Volver a Ajustes</a>
     </div>
   </div>
@@ -54,7 +50,6 @@
               </p>
             </div>
             <div class="d-flex flex-wrap align-items-center gap-2">
-              <span class="badge text-bg-light border">RFC activo: @selectedRfc</span>
               <button type="button" class="btn btn-outline-primary" @onclick="NewCuenta">Nueva cuenta</button>
             </div>
           </div>
@@ -82,10 +77,6 @@
                     @if (isLoading && Cuentas.Count == 0)
                     {
                       <tr><td colspan="2" class="text-center text-muted py-4">Cargando cuentas...</td></tr>
-                    }
-                    else if (string.IsNullOrWhiteSpace(selectedRfc))
-                    {
-                      <tr><td colspan="2" class="text-center text-muted py-4">Selecciona un RFC para ver su catálogo de cuentas.</td></tr>
                     }
                     else if (Cuentas.Count == 0)
                     {
@@ -219,10 +210,6 @@
                     @if (isLoading && Items.Count == 0)
                     {
                       <tr><td colspan="3" class="text-center text-muted py-4">Cargando registros...</td></tr>
-                    }
-                    else if (descriptor.EsPorRfc && string.IsNullOrWhiteSpace(selectedRfc))
-                    {
-                      <tr><td colspan="3" class="text-center text-muted py-4">Selecciona un RFC para ver este catálogo.</td></tr>
                     }
                     else if (Items.Count == 0)
                     {

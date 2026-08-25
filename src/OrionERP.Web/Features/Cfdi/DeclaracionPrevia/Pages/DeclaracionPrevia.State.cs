@@ -12,10 +12,9 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
     [Inject] private IUiMessageService UiMessages { get; set; } = default!;
 
     // Filter state
-    private IReadOnlyList<string>? disponiblesRFCs;
     private IReadOnlyList<int>? disponibleYears;
     private IReadOnlyList<(int, string)>? disponibleMonths;
-    private string? selectedRfc;
+    private string CurrentRfc => RfcState.RequireRfc();
     private int selectedYear;
     private int selectedMonth;
     private bool isAnnual;

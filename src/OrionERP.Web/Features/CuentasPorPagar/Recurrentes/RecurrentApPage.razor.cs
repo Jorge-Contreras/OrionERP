@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
@@ -9,14 +10,13 @@ using System.Globalization;
 
 namespace OrionERP.Web.Features.CuentasPorPagar.Recurrentes;
 
-public partial class RecurrentApPage : ComponentBase, IDisposable
+public partial class RecurrentApPage : ComponentBase
 {
   private const long AttachmentMaxFileSize = RecurrentApAttachmentCreateRequest.MaxFileSizeBytes;
-  private bool _disposed;
   private int? _handledRequestedOccurrenceId;
 
   [Inject] private IRecurrentApService ApService { get; set; } = default!;
-  [Inject] private IUserRfcState RfcState { get; set; } = default!;
+  [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
   [Inject] private IJSRuntime Js { get; set; } = default!;
@@ -50,13 +50,11 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
   protected bool IsReadOnlyOrSaving => IsReadOnly || IsSavingPayable;
   protected bool IsReadOnlyOrMutating => IsReadOnly || IsSavingOccurrence || IsLinkingTransaction || UnlinkingPaymentId.HasValue || IsUploadingAttachment || IsReseedingPayable || IsCancellingOccurrence;
   protected bool CanUseProviderCredentials => !IsReadOnly;
-  protected string? CurrentRfc => RfcState.CurrentRfc;
-  protected string CurrentRfcLabel => CurrentRfc ?? "Sin RFC";
+  protected string CurrentRfc => RfcState.RequireRfc();
   protected string EditorTitle => Editor.Id.HasValue ? "Editar recurrente" : "Nuevo recurrente";
 
   protected override async Task OnInitializedAsync()
   {
-    RfcState.Changed += OnRfcStateChanged;
     CurrentUserName = await ResolveCurrentUserAsync();
     await ResolvePermissionsAsync();
     ResetFilters();
@@ -94,11 +92,6 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
 
   protected async Task EditPayable(int payableId)
   {
-    if (string.IsNullOrWhiteSpace(CurrentRfc))
-    {
-      return;
-    }
-
     var payable = await ApService.GetPayableAsync(payableId, CurrentRfc, includePassword: CanUseProviderCredentials);
     if (payable is null)
     {
@@ -134,7 +127,7 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
 
   protected async Task SavePayableAsync()
   {
-    if (string.IsNullOrWhiteSpace(CurrentRfc) || IsReadOnly)
+    if (IsReadOnly)
     {
       return;
     }
@@ -227,7 +220,7 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
 
   protected async Task ReseedPayableAsync()
   {
-    if (!Editor.Id.HasValue || string.IsNullOrWhiteSpace(CurrentRfc) || IsReadOnly)
+    if (!Editor.Id.HasValue || IsReadOnly)
     {
       return;
     }
@@ -320,11 +313,6 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
 
   protected async Task SearchTransactionsAsync()
   {
-    if (string.IsNullOrWhiteSpace(CurrentRfc))
-    {
-      return;
-    }
-
     TransactionCandidates = (await ApService.SearchTransactionsAsync(CurrentRfc, TransactionSearchText)).ToList();
   }
 
@@ -482,11 +470,6 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
 
   private async Task SelectRequestedOccurrenceAsync(int occurrenceId)
   {
-    if (string.IsNullOrWhiteSpace(CurrentRfc))
-    {
-      return;
-    }
-
     var requestedOccurrence = Workspace.Occurrences.FirstOrDefault(item => item.Id == occurrenceId);
     if (requestedOccurrence is null)
     {
@@ -521,12 +504,6 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
 
   private async Task LoadWorkspaceAsync()
   {
-    if (string.IsNullOrWhiteSpace(CurrentRfc))
-    {
-      Workspace = new RecurrentApWorkspaceDto();
-      return;
-    }
-
     IsLoading = true;
     try
     {
@@ -556,30 +533,6 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
       ToDate = DateTime.Today.AddMonths(3),
       DueSoonDays = 7
     };
-  }
-
-  private async void OnRfcStateChanged()
-  {
-    if (_disposed)
-    {
-      return;
-    }
-
-    await InvokeAsync(async () =>
-    {
-      ResetFilters();
-      Editor = CreateEditor(CurrentRfc);
-      IsEditorVisible = true;
-      AreOccurrencesVisible = true;
-      ClearSelectedOccurrence();
-      _handledRequestedOccurrenceId = null;
-      await LoadWorkspaceAsync();
-      if (RequestedOccurrenceId.HasValue && RequestedOccurrenceId.Value > 0)
-      {
-        await SelectRequestedOccurrenceAsync(RequestedOccurrenceId.Value);
-      }
-      StateHasChanged();
-    });
   }
 
   private async Task<string> ResolveCurrentUserAsync()
@@ -671,14 +624,4 @@ public partial class RecurrentApPage : ComponentBase, IDisposable
     return string.Empty;
   }
 
-  public void Dispose()
-  {
-    if (_disposed)
-    {
-      return;
-    }
-
-    _disposed = true;
-    RfcState.Changed -= OnRfcStateChanged;
-  }
 }

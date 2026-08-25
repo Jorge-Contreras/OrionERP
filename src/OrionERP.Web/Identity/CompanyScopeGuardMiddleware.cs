@@ -1,4 +1,5 @@
 using OrionERP.Infrastructure.Auth;
+using OrionERP.Web.State;
 
 namespace OrionERP.Web.Identity;
 
@@ -9,19 +10,21 @@ public sealed class CompanyScopeGuardMiddleware
 
   public CompanyScopeGuardMiddleware(RequestDelegate next) => _next = next;
 
-  public async Task InvokeAsync(HttpContext context)
+  public async Task InvokeAsync(HttpContext context, CurrentCompanyContext companyContext)
   {
     var user = context.User;
-    if (user.Identity?.IsAuthenticated != true || context.Request.Path.StartsWithSegments("/company-branding"))
+    companyContext.InitializeFromClaims(user);
+    if (user.Identity?.IsAuthenticated != true)
     {
       await _next(context);
       return;
     }
 
-    var sessionRfc = Normalize(user.FindFirst(CompanyClaimTypes.Rfc)?.Value);
+    var sessionRfc = companyContext.CurrentRfc;
     if (sessionRfc is null)
     {
-      await _next(context);
+      context.Response.StatusCode = StatusCodes.Status403Forbidden;
+      await context.Response.WriteAsync("Acceso denegado: la sesión no contiene exactamente una empresa válida.");
       return;
     }
 

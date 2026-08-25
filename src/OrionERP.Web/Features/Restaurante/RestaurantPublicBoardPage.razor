@@ -6,7 +6,7 @@
 @using OrionERP.Web.State
 @inject IRestaurantCatalogService CatalogService
 @inject IRestaurantOrderService OrderService
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 @inject IJSRuntime Js
 @inject RestaurantRealtimeClient Realtime
 
@@ -27,8 +27,8 @@
   private List<RestaurantSiteDto> sites = [];
   private List<RestaurantPublicOrderDto> orders = [];
   private int selectedSiteId;
-  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
-  protected override async Task OnInitializedAsync() { RfcState.Changed += OnRfcChanged; Realtime.EventReceived += OnRealtimeEventAsync; await LoadSitesAsync(); _ = LoopAsync(disposeCts.Token); }
+  private string CurrentRfc => RfcState.RequireRfc();
+  protected override async Task OnInitializedAsync() { Realtime.EventReceived += OnRealtimeEventAsync; await LoadSitesAsync(); _ = LoopAsync(disposeCts.Token); }
   private async Task LoadSitesAsync() { sites = (await CatalogService.GetSitesAsync(CurrentRfc)).Where(item => item.IsEnabled).ToList(); if (!sites.Any(item => item.Id == selectedSiteId)) selectedSiteId = sites.FirstOrDefault()?.Id ?? 0; await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId); await LoadAsync(); }
   private async Task LoadAsync()
   {
@@ -42,6 +42,5 @@
   private async Task LoopAsync(CancellationToken ct) { using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5)); try { while (await timer.WaitForNextTickAsync(ct)) await InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); }); } catch (OperationCanceledException) { } }
   private static string TypeLabel(RestaurantPublicOrderDto order) => order.OrderType switch { "Pickup" => "Recoger", "Table" => order.TableName ?? "Mesa", "Delivery" => "Domicilio", _ => order.OrderType };
   private static string StatusLabel(string status) => status switch { "Sent" => "Recibida", "Preparing" => "Preparando", "Ready" => "Puede pasar", "Dispatched" => "Despachada", _ => status };
-  private void OnRfcChanged() => _ = InvokeAsync(async () => { selectedSiteId = 0; announced.Clear(); await LoadSitesAsync(); StateHasChanged(); });
-  public ValueTask DisposeAsync() { RfcState.Changed -= OnRfcChanged; Realtime.EventReceived -= OnRealtimeEventAsync; disposeCts.Cancel(); disposeCts.Dispose(); return ValueTask.CompletedTask; }
+  public ValueTask DisposeAsync() { Realtime.EventReceived -= OnRealtimeEventAsync; disposeCts.Cancel(); disposeCts.Dispose(); return ValueTask.CompletedTask; }
 }

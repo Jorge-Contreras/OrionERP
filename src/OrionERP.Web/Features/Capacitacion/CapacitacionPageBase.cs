@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
 using OrionERP.Application.Features.CapitalHumano.Workforce;
 using OrionERP.Application.Features.Capacitacion;
@@ -8,12 +9,10 @@ namespace OrionERP.Web.Features.Capacitacion;
 public abstract class CapacitacionPageBase : ComponentBase, IAsyncDisposable
 {
   private readonly CancellationTokenSource _lifetime = new();
-  private bool _subscribedToRfcChanges;
-  private bool _initialLoadStarted;
 
   [Inject] protected ICapacitacionService Capacitacion { get; set; } = default!;
   [Inject] protected ICurrentEmployeeAccessor CurrentEmployeeAccessor { get; set; } = default!;
-  [Inject] protected IUserRfcState RfcState { get; set; } = default!;
+  [Inject] protected ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] protected NavigationManager Navigation { get; set; } = default!;
   [Inject] protected IConfiguration Configuration { get; set; } = default!;
   [Inject] protected ILogger<CapacitacionPageBase> Logger { get; set; } = default!;
@@ -25,18 +24,12 @@ public abstract class CapacitacionPageBase : ComponentBase, IAsyncDisposable
   protected string? PageMessage { get; set; }
   protected bool MessageIsError { get; set; }
 
-  /// <summary>
-  /// Cada página carga aquí sus datos. La base la invoca después del primer render —cuando
-  /// el RFC guardado ya se restauró desde ProtectedLocalStorage— y otra vez cada que el
-  /// usuario cambia de empresa. Cargar durante OnInitializedAsync no sirve: en el prerender
-  /// todavía no hay interop de JavaScript, así que el RFC seleccionado aún no se conoce.
-  /// </summary>
+  /// <summary>Cada página carga aquí sus datos para la empresa ligada a la sesión.</summary>
   protected virtual Task LoadPageDataAsync() => Task.CompletedTask;
 
-  protected override async Task OnAfterRenderAsync(bool firstRender)
+  protected override async Task OnInitializedAsync()
   {
-    if (!firstRender || _initialLoadStarted) return;
-    _initialLoadStarted = true;
+    await base.OnInitializedAsync();
     await ReloadPageDataAsync();
   }
 
@@ -49,15 +42,8 @@ public abstract class CapacitacionPageBase : ComponentBase, IAsyncDisposable
 
   protected async Task<bool> InitializeActorAsync()
   {
-    if (!_subscribedToRfcChanges)
-    {
-      RfcState.Changed += HandleRfcChanged;
-      _subscribedToRfcChanges = true;
-    }
     Actor = await CurrentEmployeeAccessor.GetCurrentAsync(_lifetime.Token);
-    Rfc = RfcState.CurrentRfc
-      ?? Actor?.CompanyRfc
-      ?? string.Empty;
+    Rfc = RfcState.RequireRfc();
 
     if (Actor?.EmployeeId is null)
     {
@@ -65,20 +51,12 @@ public abstract class CapacitacionPageBase : ComponentBase, IAsyncDisposable
       return false;
     }
 
-    if (string.IsNullOrWhiteSpace(Rfc))
-    {
-      PageError = "No hay una empresa activa para consultar Capacitación.";
-      return false;
-    }
-
-    // Capacitación siempre se cursa en la empresa donde el usuario está dado de alta como
-    // colaborador. Si el selector apunta a otra, hay que decirlo con claridad en vez de
-    // dejar que el servicio truene con un error genérico.
+    // Capacitación siempre se cursa en la empresa donde el usuario está dado de alta.
     if (!string.IsNullOrWhiteSpace(Actor.CompanyRfc)
         && !string.Equals(Actor.CompanyRfc, Rfc, StringComparison.OrdinalIgnoreCase))
     {
       PageError = $"Tu sesión pertenece a la empresa {Actor.CompanyRfc}, "
-        + $"no a {Rfc}. Cambia la empresa en el selector RFC para usar Capacitación.";
+        + $"no a {Rfc}. Cierra sesión e ingresa con la empresa correcta para usar Capacitación.";
       return false;
     }
 
@@ -177,28 +155,8 @@ public abstract class CapacitacionPageBase : ComponentBase, IAsyncDisposable
 
   public virtual ValueTask DisposeAsync()
   {
-    if (_subscribedToRfcChanges)
-    {
-      RfcState.Changed -= HandleRfcChanged;
-      _subscribedToRfcChanges = false;
-    }
     _lifetime.Cancel();
     _lifetime.Dispose();
     return ValueTask.CompletedTask;
-  }
-
-  private void HandleRfcChanged()
-  {
-    // Recargar los datos en su lugar. Un NavigateTo(forceLoad: true) reinicia el circuito,
-    // el RFC vuelve al primero de los claims y, si el usuario tenía otro guardado, la
-    // restauración vuelve a disparar este evento: un ciclo infinito de recargas.
-    if (_lifetime.IsCancellationRequested || !_initialLoadStarted) return;
-    _ = InvokeAsync(async () =>
-    {
-      if (_lifetime.IsCancellationRequested) return;
-      PageError = null;
-      PageMessage = null;
-      await ReloadPageDataAsync();
-    });
   }
 }

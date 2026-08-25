@@ -1,13 +1,12 @@
 @page "/restaurante/menus"
 @attribute [Authorize(Policy = "RestaurantAdmin")]
-@implements IDisposable
 @using OrionERP.Application.Features.Logistica.Materials
 @using OrionERP.Application.Features.Logistica.Shared
 @using OrionERP.Application.Features.Restaurante
 @using OrionERP.Web.State
 @inject IRestaurantCatalogService CatalogService
 @inject IMaterialService MaterialService
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 
 <PageTitle>Restaurante · Menús y modificadores</PageTitle>
 
@@ -52,8 +51,8 @@
 @code {
   private List<RestaurantSiteDto> sites=[]; private List<RestaurantProductDto> products=[]; private List<RestaurantMenuAdminDto> menus=[]; private List<RestaurantModifierAdminDto> modifiers=[]; private List<MaterialListItemDto> materials=[]; private IReadOnlyList<RestaurantMaterialOption> materialOptions=[]; private MaterialCatalogDto materialCatalog=new();
   private RestaurantMenuSaveRequest menuEditor=NewMenuEditor(); private RestaurantModifierSaveRequest modifierEditor=NewModifierEditor();
-  private string tab="menus"; private string? message; private bool isError; private bool isBusy; private string CurrentRfc=>LogisticsRfc.Require(RfcState.CurrentRfc);
-  protected override async Task OnInitializedAsync(){RfcState.Changed+=OnRfcChanged;await LoadAsync();}
+  private string tab="menus"; private string? message; private bool isError; private bool isBusy; private string CurrentRfc=>RfcState.RequireRfc();
+  protected override async Task OnInitializedAsync(){await LoadAsync();}
   private async Task LoadAsync(){isBusy=true;try{var rfc=CurrentRfc;sites=(await CatalogService.GetSitesAsync(rfc)).ToList();products=(await CatalogService.GetProductsAsync(rfc)).ToList();menus=(await CatalogService.GetMenusAsync(rfc)).ToList();modifiers=(await CatalogService.GetModifierGroupsAsync(rfc)).ToList();materials=(await MaterialService.GetMaterialsAsync(new(){Rfc=rfc,Status="ACTIVO",Take=0})).ToList();materialOptions=RestaurantMaterialOption.FromMaterials(materials);materialCatalog=await MaterialService.GetCatalogAsync(rfc);}catch(Exception ex){Show(ex.Message,true);}finally{isBusy=false;}}
   private void NewMenu(){menuEditor=NewMenuEditor();menuEditor.Rfc=CurrentRfc;} private void AddSection()=>menuEditor.Sections.Add(new(){Name=$"Sección {menuEditor.Sections.Count+1}",SortOrder=menuEditor.Sections.Count}); private void AddSchedule()=>menuEditor.Schedules.Add(new(){SiteId=sites.FirstOrDefault()?.Id??0,StartsAt=new(6,0,0),EndsAt=new(23,0,0)});
   private void EditMenu(RestaurantMenuAdminDto menu)=>menuEditor=new(){Rfc=CurrentRfc,Id=menu.Id,MenuCode=menu.MenuCode,Name=menu.Name,IsPublished=menu.IsPublished,IsActive=menu.IsActive,Schedules=menu.Schedules.Select(row=>new RestaurantMenuScheduleSaveRequest{SiteId=row.SiteId,DayOfWeek=row.DayOfWeek,StartsAt=row.StartsAt,EndsAt=row.EndsAt}).ToList(),Sections=menu.Sections.Select(row=>new RestaurantMenuSectionSaveRequest{Name=row.Name,SortOrder=row.SortOrder,ProductIds=row.ProductIds.ToList()}).ToList()};
@@ -63,6 +62,5 @@
   private async Task SaveModifierAsync(){modifierEditor.Rfc=CurrentRfc;await SaveAsync(()=>CatalogService.SaveModifierGroupAsync(modifierEditor),"modifiers");}
   private async Task SaveAsync(Func<Task<RestaurantCommandResult>> action,string selected){isBusy=true;try{var result=await action();Show(result.Message,!result.Success);if(result.Success){await LoadAsync();if(selected=="menus"&&result.EntityId.HasValue){var found=menus.FirstOrDefault(x=>x.Id==result.EntityId);if(found is not null)EditMenu(found);}if(selected=="modifiers"&&result.EntityId.HasValue){var found=modifiers.FirstOrDefault(x=>x.Id==result.EntityId);if(found is not null)EditModifier(found);}}}catch(Exception ex){Show(ex.Message,true);}finally{isBusy=false;}}
   private static void ToggleProduct(List<long> ids,long id){if(!ids.Remove(id))ids.Add(id);} private static string DayName(byte day)=>day switch{0=>"Domingo",1=>"Lunes",2=>"Martes",3=>"Miércoles",4=>"Jueves",5=>"Viernes",6=>"Sábado",_=>"Día"}; private static string FormatTime(TimeSpan value)=>value.ToString(@"hh\:mm"); private static void SetStart(RestaurantMenuScheduleSaveRequest row,object? value){if(TimeSpan.TryParse(value?.ToString(),out var time))row.StartsAt=time;} private static void SetEnd(RestaurantMenuScheduleSaveRequest row,object? value){if(TimeSpan.TryParse(value?.ToString(),out var time))row.EndsAt=time;}
-  private void Show(string value,bool error){message=value;isError=error;} private void OnRfcChanged()=>_=InvokeAsync(async()=>{NewMenu();NewModifier();await LoadAsync();StateHasChanged();}); public void Dispose()=>RfcState.Changed-=OnRfcChanged;
-  private static RestaurantMenuSaveRequest NewMenuEditor()=>new(){IsActive=true,Sections=[new(){Name="Principal"}]}; private static RestaurantModifierSaveRequest NewModifierEditor()=>new(){IsActive=true,MaxSelections=1,Options=[new(){Name="Opción 1"}]};
+  private void Show(string value,bool error){message=value;isError=error;} private static RestaurantMenuSaveRequest NewMenuEditor()=>new(){IsActive=true,Sections=[new(){Name="Principal"}]}; private static RestaurantModifierSaveRequest NewModifierEditor()=>new(){IsActive=true,MaxSelections=1,Options=[new(){Name="Opción 1"}]};
 }

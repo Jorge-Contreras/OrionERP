@@ -8,7 +8,7 @@ public sealed class RestaurantConfigurationPageTests
     var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantConfigurationPage.razor");
 
     Assert.Contains("<CuentaContablePicker", page, StringComparison.Ordinal);
-    Assert.Contains("SelectedRfc=\"@CurrentRfc\"", page, StringComparison.Ordinal);
+    Assert.Contains("Rfc=\"@CurrentRfc\"", page, StringComparison.Ordinal);
     Assert.Contains("AllowAccountManagement=\"false\"", page, StringComparison.Ordinal);
     Assert.DoesNotContain("@bind=\"editor.Accounting.CashAccount\"", page, StringComparison.Ordinal);
     Assert.DoesNotContain("@bind=\"editor.Accounting.SalesAccount\"", page, StringComparison.Ordinal);

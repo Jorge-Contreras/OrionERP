@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -43,7 +44,7 @@ public partial class BancosPage : ComponentBase, IDisposable
   private CancellationTokenSource? _pendingTransactionsCts;
   private CancellationTokenSource? _textFilterDebounceCts;
 
-  private string? _currentRfc;
+  private string CurrentRfc => RfcState.RequireRfc();
   private readonly Dictionary<int, IReadOnlyList<TransaccionMovimientoDto>> _accountingDetailsByPolicy = new();
   private readonly HashSet<int> _expandedPolicyIds = new();
   private readonly HashSet<int> _loadingPolicyDetailIds = new();
@@ -53,7 +54,7 @@ public partial class BancosPage : ComponentBase, IDisposable
   [Inject] public IBancosService BancosService { get; set; } = default!;
   [Inject] public ITransaccionService TransaccionService { get; set; } = default!;
   [Inject] public IContabilidadRegistrosService RegistrosService { get; set; } = default!;
-  [Inject] public IUserRfcState RfcState { get; set; } = default!;
+  [Inject] public ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
   [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
   [Inject] public NavigationManager NavManager { get; set; } = default!;
@@ -204,12 +205,6 @@ public partial class BancosPage : ComponentBase, IDisposable
   protected bool IsAccountingOrderSelected
     => string.Equals(MovementOrder, MovementOrderAccounting, StringComparison.Ordinal);
 
-  protected override void OnInitialized()
-  {
-    base.OnInitialized();
-    RfcState.Changed += OnRfcStateChanged;
-  }
-
   protected override async Task OnInitializedAsync()
   {
     await base.OnInitializedAsync();
@@ -224,7 +219,6 @@ public partial class BancosPage : ComponentBase, IDisposable
     _pendingTransactionsCts?.Dispose();
     _textFilterDebounceCts?.Cancel();
     _textFilterDebounceCts?.Dispose();
-    RfcState.Changed -= OnRfcStateChanged;
   }
 
   protected string FormatCurrency(decimal value)
@@ -395,13 +389,7 @@ public partial class BancosPage : ComponentBase, IDisposable
 
   protected void ShowCreateAccountModal()
   {
-    if (string.IsNullOrWhiteSpace(_currentRfc))
-    {
-      UiMessages.ShowWarning("Selecciona un RFC antes de registrar cuentas bancarias.");
-      return;
-    }
-
-    AccountDraft = BankAccountInputModel.CreateNew(_currentRfc);
+    AccountDraft = BankAccountInputModel.CreateNew(CurrentRfc);
     AccountModalTitle = "Agregar cuenta bancaria";
     AccountEditContext = new EditContext(AccountDraft);
     IsAccountModalVisible = true;
@@ -414,6 +402,7 @@ public partial class BancosPage : ComponentBase, IDisposable
       return;
     }
 
+    RfcState.EnsureRfc(account.Rfc);
     AccountDraft = BankAccountInputModel.FromAccount(account);
     AccountModalTitle = $"Editar cuenta bancaria – {account.NombreBanco}";
     AccountEditContext = new EditContext(AccountDraft);
@@ -440,6 +429,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     }
 
     var draft = AccountDraft;
+    draft.Rfc = CurrentRfc;
     var request = draft.ToRequest();
     var isNewAccount = !draft.CuentaBancoId.HasValue;
     var wasSelected = draft.CuentaBancoId.HasValue && SelectedAccountId == draft.CuentaBancoId.Value;
@@ -468,6 +458,7 @@ public partial class BancosPage : ComponentBase, IDisposable
         UiMessages.ShowSuccess("Cuenta bancaria registrada correctamente.");
       }
 
+      RfcState.EnsureRfc(savedAccount.Rfc);
       var savedAccountId = savedAccount.CuentaBancoId;
 
       CloseAccountModal();
@@ -510,12 +501,6 @@ public partial class BancosPage : ComponentBase, IDisposable
       return;
     }
 
-    if (string.IsNullOrWhiteSpace(_currentRfc))
-    {
-      UiMessages.ShowWarning("Selecciona un RFC válido antes de eliminar cuentas bancarias.");
-      return;
-    }
-
     var confirmationMessage = $"¿Deseas eliminar la cuenta {account.NombreBanco} · {account.NumeroCuenta}?";
 
     bool confirm;
@@ -537,7 +522,7 @@ public partial class BancosPage : ComponentBase, IDisposable
 
     try
     {
-      await BancosService.DeleteAccountAsync(account.CuentaBancoId, _currentRfc);
+      await BancosService.DeleteAccountAsync(account.CuentaBancoId, CurrentRfc);
 
       if (SelectedAccountId == account.CuentaBancoId)
       {
@@ -793,7 +778,6 @@ public partial class BancosPage : ComponentBase, IDisposable
   {
     var account = Accounts.FirstOrDefault(a => a.CuentaBancoId == SelectedAccountId);
     if (account is null ||
-        string.IsNullOrWhiteSpace(_currentRfc) ||
         string.IsNullOrWhiteSpace(account.CuentaContableNivel1) ||
         string.IsNullOrWhiteSpace(account.CuentaContableNivel2))
     {
@@ -806,7 +790,7 @@ public partial class BancosPage : ComponentBase, IDisposable
 
     return string.Create(
       CultureInfo.InvariantCulture,
-      $"/contabilidad/registros-contables?rfc={Uri.EscapeDataString(_currentRfc)}&anio={SelectedYear:0000}&mes={SelectedMonth:00}&nivel1={Uri.EscapeDataString(account.CuentaContableNivel1.Trim())}&nivel2={Uri.EscapeDataString(account.CuentaContableNivel2.Trim())}&nivel3={Uri.EscapeDataString(nivel3)}");
+      $"/contabilidad/registros-contables?rfc={Uri.EscapeDataString(CurrentRfc)}&anio={SelectedYear:0000}&mes={SelectedMonth:00}&nivel1={Uri.EscapeDataString(account.CuentaContableNivel1.Trim())}&nivel2={Uri.EscapeDataString(account.CuentaContableNivel2.Trim())}&nivel3={Uri.EscapeDataString(nivel3)}");
   }
 
   protected async Task OnLinkClicked()
@@ -867,12 +851,6 @@ public partial class BancosPage : ComponentBase, IDisposable
       return;
     }
 
-    if (string.IsNullOrWhiteSpace(_currentRfc))
-    {
-      UiMessages.ShowWarning("Selecciona un RFC válido antes de continuar.");
-      return;
-    }
-
     bool confirm;
     try
     {
@@ -891,7 +869,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     try
     {
       var created = await BancosService.CreateAutoPoliciesAsync(
-          _currentRfc,
+          CurrentRfc,
           SelectedYear,
           SelectedMonth,
           SelectedAccountId);
@@ -924,12 +902,6 @@ public partial class BancosPage : ComponentBase, IDisposable
       return;
     }
 
-    if (string.IsNullOrWhiteSpace(_currentRfc))
-    {
-      UiMessages.ShowWarning("Selecciona un RFC válido antes de continuar.");
-      return;
-    }
-
     if (!Movements.Any(m => m.PolicyCount > 0))
     {
       UiMessages.ShowInfo("No hay pólizas ligadas para alinear en este periodo.");
@@ -959,7 +931,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     try
     {
       var aligned = await BancosService.AlignTransactionsToBankMovementsAsync(
-        _currentRfc,
+        CurrentRfc,
         SelectedYear,
         SelectedMonth,
         SelectedAccountId.Value);
@@ -1136,7 +1108,6 @@ public partial class BancosPage : ComponentBase, IDisposable
   {
     try
     {
-      _currentRfc = RfcState.CurrentRfc;
       await LoadAccountsInternalAsync();
       await LoadYearsInternalAsync();
       await LoadPendingTransactionsAsync();
@@ -1154,49 +1125,6 @@ public partial class BancosPage : ComponentBase, IDisposable
     }
   }
 
-  private void OnRfcStateChanged()
-  {
-    _ = InvokeAsync(HandleRfcChangedAsync);
-  }
-
-  private async Task HandleRfcChangedAsync()
-  {
-    var nextRfc = RfcState.CurrentRfc;
-
-    if (string.Equals(_currentRfc, nextRfc, StringComparison.OrdinalIgnoreCase))
-    {
-      return;
-    }
-
-    _currentRfc = nextRfc;
-    CloseAccountModal();
-    SelectedAccountId = null;
-    SelectedPendingTransactionId = null;
-    SelectedMovimientoId = null;
-    LastProcessResult = null;
-    ErrorMessage = null;
-    ClearAccountingDetailState();
-
-    _movementsCts?.Cancel();
-    _pendingTransactionsCts?.Cancel();
-    _textFilterDebounceCts?.Cancel();
-
-    if (string.IsNullOrWhiteSpace(_currentRfc))
-    {
-      Accounts.Clear();
-      Movements.Clear();
-      PendingTransactions.Clear();
-      AvailableYears.Clear();
-      await InvokeAsync(StateHasChanged);
-      return;
-    }
-
-    await LoadAccountsInternalAsync();
-    await LoadYearsInternalAsync();
-    await LoadPendingTransactionsAsync();
-    await LoadMovementsAsync();
-  }
-
   private async Task LoadAccountsInternalAsync()
   {
     IsLoadingAccounts = true;
@@ -1205,7 +1133,9 @@ public partial class BancosPage : ComponentBase, IDisposable
     try
     {
       Accounts.Clear();
-      var accounts = await BancosService.GetAccountsAsync(_currentRfc ?? string.Empty);
+      var accounts = await BancosService.GetAccountsAsync(CurrentRfc);
+      foreach (var account in accounts)
+        RfcState.EnsureRfc(account.Rfc);
       Accounts.AddRange(accounts);
     }
     catch (Exception)
@@ -1224,14 +1154,9 @@ public partial class BancosPage : ComponentBase, IDisposable
   {
     AvailableYears.Clear();
 
-    if (string.IsNullOrWhiteSpace(_currentRfc))
-    {
-      return;
-    }
-
     try
     {
-      var years = await BancosService.GetAvailableYearsAsync(_currentRfc);
+      var years = await BancosService.GetAvailableYearsAsync(CurrentRfc);
       if (years.Count > 0)
       {
         AvailableYears.AddRange(years);
@@ -1259,7 +1184,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     previousCts?.Cancel();
     previousCts?.Dispose();
 
-    if (string.IsNullOrWhiteSpace(_currentRfc) || !SelectedAccountId.HasValue)
+    if (!SelectedAccountId.HasValue)
     {
       _movementsCts = null;
       Movements.Clear();
@@ -1279,7 +1204,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     {
       Movements.Clear();
       var rows = await BancosService.GetMovementsAsync(
-          _currentRfc,
+          CurrentRfc,
           SelectedAccountId,
           SelectedYear,
           SelectedMonth,
@@ -1315,13 +1240,6 @@ public partial class BancosPage : ComponentBase, IDisposable
 
   private async Task LoadPendingTransactionsAsync()
   {
-    if (string.IsNullOrWhiteSpace(_currentRfc))
-    {
-      PendingTransactions.Clear();
-      SelectedPendingTransactionId = null;
-      return;
-    }
-
     var previousCts = _pendingTransactionsCts;
     previousCts?.Cancel();
     previousCts?.Dispose();
@@ -1336,7 +1254,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     {
       PendingTransactions.Clear();
       var rows = await BancosService.GetPendingTransactionsAsync(
-          _currentRfc,
+          CurrentRfc,
           SelectedAccountId,
           SelectedYear,
           SelectedMonth,

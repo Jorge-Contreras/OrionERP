@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -50,7 +51,7 @@ public partial class ReservacionPage : ComponentBase, IDisposable
   [Inject] public IReservacionExperiencesService ExperiencesService { get; set; } = default!;
   [Inject] public IBonhomiaRoomCalendarSyncService BonhomiaRoomCalendarSyncService { get; set; } = default!;
   [Inject] public ITransaccionService TransaccionService { get; set; } = default!;
-  [Inject] public IUserRfcState RfcState { get; set; } = default!;
+  [Inject] public ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
   [Inject] public IJSRuntime Js { get; set; } = default!;
   [Inject] public NavigationManager Nav { get; set; } = default!;
@@ -359,12 +360,6 @@ public partial class ReservacionPage : ComponentBase, IDisposable
     if (Detail is null)
       return;
 
-    if (string.IsNullOrWhiteSpace(RfcState.CurrentRfc))
-    {
-      UiMessages.ShowError("Selecciona un RFC antes de crear la póliza.");
-      return;
-    }
-
     IsCreatingPoliza = true;
     try
     {
@@ -380,7 +375,7 @@ public partial class ReservacionPage : ComponentBase, IDisposable
 
       var createResult = await TransaccionService.CreateTransaccionAsync(new TransaccionCreateRequest
       {
-        Rfc = RfcState.CurrentRfc!,
+        Rfc = RfcState.RequireRfc(),
         Fecha = DateTime.Now,
         Concepto = $"PAGO POR RESERVACION#{Detail.Id} - {cliente}",
         Monto = TotalReservacion,
@@ -417,7 +412,7 @@ public partial class ReservacionPage : ComponentBase, IDisposable
           {
             ReservationId = Detail.Id,
             TransaccionId = createResult.NewTransaccionId,
-            IssuerRfc = RfcState.CurrentRfc!
+            IssuerRfc = RfcState.RequireRfc()
           });
 
         if (!accountingResult.Success)

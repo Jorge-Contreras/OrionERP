@@ -26,7 +26,6 @@
     <label>Mes inicial<input type="month" value="@StartMonthValue" @onchange="OnStartMonthChanged" /></label>
     <label>Mes final<input type="month" value="@EndMonthValue" @onchange="OnEndMonthChanged" /></label>
     <label>Fecha de corte<input type="date" value="@CutoffDate.ToString("yyyy-MM-dd")" @onchange="OnCutoffChanged" /></label>
-    <label class="sf-toolbar__rfc">RFC<input value="@CurrentRfc" readonly /></label>
     <div class="sf-toolbar__actions">
       <button class="btn btn-primary" @onclick="RefreshAsync" disabled="@IsLoading">Actualizar</button>
       <button class="btn btn-outline-secondary" @onclick="DownloadInternalPdfAsync" disabled="@(!HasReport || IsExporting)">PDF interno</button>

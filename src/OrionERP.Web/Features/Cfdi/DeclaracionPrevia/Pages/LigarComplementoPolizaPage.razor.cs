@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -14,7 +15,7 @@ using OrionERP.Web.State;
 namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages;
 
 [Authorize(Roles = "Administrador,SatOperator")]
-public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
+public partial class LigarComplementoPolizaPage : ComponentBase
 {
   [Parameter]
   public int DoctoRelacionado_Id { get; set; }
@@ -23,7 +24,7 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
   public ITransaccionService TransaccionService { get; set; } = default!;
 
   [Inject]
-  public IUserRfcState RfcState { get; set; } = default!;
+  public ICurrentCompanyContext RfcState { get; set; } = default!;
 
   [Inject]
   public IUiMessageService UiMessages { get; set; } = default!;
@@ -47,7 +48,6 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
   private readonly Dictionary<int, LinkedMontoEditor> _linkedMontoEditors = new();
   private int? _savingLinkedMontoTransaccionId;
   private int? _unlinkingTransaccionId;
-  private bool _disposed;
 
   protected bool CanLigar => Summary is not null
     && Summary.Pendiente > 0m
@@ -57,23 +57,8 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
 
   protected override async Task OnInitializedAsync()
   {
-    RfcState.Changed += OnRfcChanged;
     ResetFilters();
     await LoadWorkspaceAsync();
-  }
-
-  private async void OnRfcChanged()
-  {
-    if (_disposed)
-    {
-      return;
-    }
-
-    await InvokeAsync(async () =>
-    {
-      ResetFilters();
-      await LoadWorkspaceAsync();
-    });
   }
 
   private async Task LoadWorkspaceAsync(bool candidatesOnly = false)
@@ -93,7 +78,7 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
 
     try
     {
-      var workspaceRfc = RfcState.CurrentRfc;
+      var workspaceRfc = RfcState.RequireRfc();
       Filter.Rfc = workspaceRfc;
       Workspace = await TransaccionService.GetPago20PolizaLinkingWorkspaceAsync(
         DoctoRelacionado_Id,
@@ -236,7 +221,7 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
     var now = DateTime.Now;
     Filter = new TransaccionFilter
     {
-      Rfc = RfcState.CurrentRfc,
+      Rfc = RfcState.RequireRfc(),
       Year = Summary?.FechaPago?.Year ?? now.Year,
       Month = Summary?.FechaPago?.Month ?? now.Month,
       Monto = null
@@ -428,14 +413,4 @@ public partial class LigarComplementoPolizaPage : ComponentBase, IDisposable
     public decimal Monto { get; set; }
   }
 
-  public void Dispose()
-  {
-    if (_disposed)
-    {
-      return;
-    }
-
-    RfcState.Changed -= OnRfcChanged;
-    _disposed = true;
-  }
 }

@@ -12,12 +12,6 @@
         <ValidationSummary />
 
         <div class="form-group">
-            <label for="rfc">RFC</label>
-            <InputText id="rfc" class="form-control" @bind-Value="Model.Rfc" />
-            <ValidationMessage For="@(() => Model.Rfc)" />
-        </div>
-
-        <div class="form-group">
             <label for="fecha">Fecha</label>
             <InputDate id="fecha" class="form-control" @bind-Value="Model.Fecha" />
             <ValidationMessage For="@(() => Model.Fecha)" />

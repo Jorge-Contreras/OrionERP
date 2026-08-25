@@ -30,7 +30,7 @@
 
   @if (string.IsNullOrWhiteSpace(currentRfc))
   {
-    <div class="text-muted small">Selecciona un RFC antes de buscar cuentas contables.</div>
+    <div class="text-muted small">La sesión no tiene una empresa activa. Vuelve a iniciar sesión.</div>
   }
   else
   {
@@ -278,10 +278,7 @@
 
 @code {
   [Inject] public ICuentasContablesRepository CuentasRepository { get; set; } = default!;
-  [Inject] public IUserRfcState RfcState { get; set; } = default!;
-
-  [Parameter] public string? SelectedRfc { get; set; }
-  [Parameter] public EventCallback<string?> SelectedRfcChanged { get; set; }
+  [Parameter, EditorRequired] public string Rfc { get; set; } = string.Empty;
   [Parameter] public CuentaContableSelection? Selection { get; set; }
   [Parameter] public EventCallback<CuentaContableSelection?> SelectionChanged { get; set; }
   [Parameter] public EventCallback SearchRequested { get; set; }
@@ -320,9 +317,10 @@
       currentSelection = Selection ?? new CuentaContableSelection();
     }
 
-    if (!string.Equals(currentRfc, SelectedRfc, StringComparison.OrdinalIgnoreCase))
+    var normalizedRfc = string.IsNullOrWhiteSpace(Rfc) ? null : Rfc.Trim().ToUpperInvariant();
+    if (!string.Equals(currentRfc, normalizedRfc, StringComparison.OrdinalIgnoreCase))
     {
-      currentRfc = SelectedRfc;
+      currentRfc = normalizedRfc;
     }
 
     if (!string.Equals(lastLoadedRfc, currentRfc, StringComparison.OrdinalIgnoreCase))
@@ -359,8 +357,7 @@
         return false;
       }
 
-      await ApplyAccountAsync(account);
-      return true;
+      return await ApplyAccountAsync(account);
     }
     catch (Exception ex)
     {
@@ -385,7 +382,7 @@
 
     if (string.IsNullOrWhiteSpace(currentRfc))
     {
-      await NotifyErrorAsync("Selecciona un RFC antes de buscar cuentas contables.");
+      await NotifyErrorAsync("La sesión no tiene una empresa activa. Vuelve a iniciar sesión.");
       return;
     }
 
@@ -470,9 +467,13 @@
     ResetSearchResults();
   }
 
-  private async Task ApplyAccountAsync(CuentasContablesDto account)
+  private async Task<bool> ApplyAccountAsync(CuentasContablesDto account)
   {
-    await SetRfcAsync(account.Rfc);
+    if (!string.Equals(currentRfc, account.Rfc?.Trim(), StringComparison.OrdinalIgnoreCase))
+    {
+      await NotifyErrorAsync("La cuenta contable no pertenece a la empresa de la sesión.");
+      return false;
+    }
 
     currentSelection = new CuentaContableSelection
     {
@@ -489,23 +490,7 @@
 
     await SelectionChanged.InvokeAsync(currentSelection);
     await ClearErrorAsync();
-  }
-
-  private async Task SetRfcAsync(string rfc)
-  {
-    if (string.IsNullOrWhiteSpace(rfc))
-    {
-      return;
-    }
-
-    if (!string.Equals(currentRfc, rfc, StringComparison.OrdinalIgnoreCase))
-    {
-      currentRfc = rfc;
-      if (SelectedRfcChanged.HasDelegate)
-      {
-        await SelectedRfcChanged.InvokeAsync(rfc);
-      }
-    }
+    return true;
   }
 
   private async Task OnCreateNivel1KeyDown(KeyboardEventArgs args)

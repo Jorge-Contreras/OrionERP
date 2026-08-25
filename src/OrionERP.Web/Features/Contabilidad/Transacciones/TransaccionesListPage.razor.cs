@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,21 +10,19 @@ using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Contabilidad.Transacciones
 {
-    public partial class TransaccionesListPage : ComponentBase, IDisposable
+    public partial class TransaccionesListPage : ComponentBase
     {
         [Inject]
         public ITransaccionService TransaccionService { get; set; } = default!;
         [Inject]
-        public IUserRfcState RfcState { get; set; } = default!;
+        public ICurrentCompanyContext RfcState { get; set; } = default!;
 
         protected bool IsLoading { get; set; }
         protected List<TransaccionListItemDto> Transacciones { get; set; } = new();
         protected TransaccionFilter Filter { get; set; } = new();
-        private bool _isDisposed;
 
         protected override async Task OnInitializedAsync()
         {
-            RfcState.Changed += OnRfcStateChanged;
             Filter.Year = DateTime.Now.Year;
             Filter.Month = DateTime.Now.Month;
             await LoadTransacciones();
@@ -74,7 +73,7 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
             IsLoading = true;
             StateHasChanged();
 
-            Filter.Rfc = RfcState.CurrentRfc;
+            Filter.Rfc = RfcState.RequireRfc();
 
             var result = await TransaccionService.GetTransaccionesListAsync(Filter);
             Transacciones = result.ToList();
@@ -83,17 +82,5 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
             StateHasChanged();
         }
 
-        private async void OnRfcStateChanged()
-        {
-            if (_isDisposed) return;
-            await InvokeAsync(LoadTransacciones);
-        }
-
-        public void Dispose()
-        {
-            if (_isDisposed) return;
-            _isDisposed = true;
-            RfcState.Changed -= OnRfcStateChanged;
-        }
     }
 }

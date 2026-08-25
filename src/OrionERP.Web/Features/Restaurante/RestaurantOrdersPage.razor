@@ -11,7 +11,7 @@
 @inject IRestaurantCashService CashService
 @inject IRestaurantQuickPinService QuickPinService
 @inject IRestaurantAccountingService AccountingService
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime Js
 @inject RestaurantRealtimeClient Realtime
@@ -235,7 +235,7 @@
   private bool reprintBusy;
   private string? reprintError;
 
-  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private string CurrentRfc => RfcState.RequireRfc();
   private IEnumerable<RestaurantOrderDto> FilteredOrders => (statusFilter == "Active"
       ? orders.Where(order => order.Status is not ("Completed" or "Cancelled"))
       : orders.Where(order => order.Status == statusFilter))
@@ -246,7 +246,6 @@
 
   protected override async Task OnInitializedAsync()
   {
-    RfcState.Changed += OnRfcChanged;
     Realtime.EventReceived += OnRealtimeEventAsync;
     await LoadSitesAsync();
     _ = RefreshLoopAsync(disposeCts.Token);
@@ -551,19 +550,8 @@
     catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
   }
 
-  private void OnRfcChanged() => _ = InvokeAsync(async () =>
-  {
-    selectedSiteId = 0;
-    CloseCorrections();
-    CloseOrderLog();
-    CloseReprint();
-    await LoadSitesAsync();
-    StateHasChanged();
-  });
-
   public ValueTask DisposeAsync()
   {
-    RfcState.Changed -= OnRfcChanged;
     Realtime.EventReceived -= OnRealtimeEventAsync;
     disposeCts.Cancel();
     disposeCts.Dispose();

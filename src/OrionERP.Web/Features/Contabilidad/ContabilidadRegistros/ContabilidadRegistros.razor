@@ -8,7 +8,7 @@
 @using System.Globalization
 @inject IContabilidadRegistrosService RegistrosService
 @inject IJSRuntime JS
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 @implements IDisposable
 
@@ -25,10 +25,6 @@
 
 <div class="card p-3 mb-3">
   <div class="row g-3 align-items-end mb-3">
-    <div class="col-md-4">
-      <label class="form-label">RFC (Razón Social)</label>
-      <input class="form-control" value="@selectedRfc" disabled aria-label="RFC de la sesión" />
-    </div>
     <div class="col-md-3">
       <label class="form-label">Ejercicio</label>
       <select class="form-select" @bind="selectedYear" @bind:after="OnBuscarClickedAsync">
@@ -59,8 +55,7 @@
   <div class="mt-3">
     <CuentaContablePicker
       @ref="accountPicker"
-      @bind-SelectedRfc="selectedRfc"
-      @bind-SelectedRfc:after="OnAccountPickerRfcChangedAsync"
+      Rfc="@CurrentRfc"
       Selection="accountSelection"
       SelectionChanged="OnAccountSelectionChangedAsync"
       ErrorChanged="OnAccountPickerErrorChangedAsync" />
@@ -179,8 +174,6 @@
 
   private CuentaContablePicker? accountPicker;
   private CuentaContableSelection? accountSelection;
-  private string? selectedRfc;
-  private string? lastComponentRfc;
   private int selectedYear = DateTime.Today.Year;
   private int selectedMonth = DateTime.Today.Month;
   private bool mostrarTodo;
@@ -190,9 +183,7 @@
   private bool isLoading;
   private bool isExporting;
   private string? errorMessage;
-  private bool suppressRfcChange;
   private string? lastQueryKey;
-  private bool isApplyingQueryFilters;
   private CancellationTokenSource? queryApplyCts;
 
   [Parameter, SupplyParameterFromQuery(Name = "nivel1")]
@@ -214,25 +205,18 @@
   public int? QueryMes { get; set; }
 
   private bool HasAccountSelection => accountSelection?.HasNivel2 ?? false;
-  private bool CanBuscar => HasAccountSelection && !string.IsNullOrWhiteSpace(selectedRfc);
-
-  protected override Task OnInitializedAsync()
-  {
-    SyncSelectedRfcWithState();
-
-    return Task.CompletedTask;
-  }
+  private bool CanBuscar => HasAccountSelection;
+  private string CurrentRfc => RfcState.RequireRfc();
 
   protected override async Task OnParametersSetAsync()
   {
-    if (string.IsNullOrWhiteSpace(selectedRfc))
+    try
     {
-      selectedRfc = RfcState.CurrentRfc;
+      if (!string.IsNullOrWhiteSpace(QueryRfc)) RfcState.EnsureRfc(QueryRfc);
     }
-
-    if (!string.IsNullOrWhiteSpace(QueryRfc) && !string.Equals(QueryRfc, RfcState.CurrentRfc, StringComparison.OrdinalIgnoreCase))
+    catch (UnauthorizedAccessException ex)
     {
-      errorMessage = "El RFC solicitado no coincide con la empresa de tu sesión. Cierra sesión para trabajar con otra empresa.";
+      errorMessage = ex.Message;
       return;
     }
 
@@ -258,8 +242,6 @@
     queryApplyCts = new CancellationTokenSource();
     var token = queryApplyCts.Token;
 
-    isApplyingQueryFilters = true;
-
     try
     {
       await Task.Delay(TimeSpan.FromSeconds(1), token);
@@ -277,10 +259,6 @@
     {
       // A new parameter set arrived; only the newest one should apply.
     }
-    finally
-    {
-      isApplyingQueryFilters = false;
-    }
   }
 
   private static string NormalizeTwoDigits(string value)
@@ -294,15 +272,6 @@
     return trimmed;
   }
 
-  private void SyncSelectedRfcWithState()
-  {
-    selectedRfc = RfcState.CurrentRfc;
-    if (string.IsNullOrWhiteSpace(selectedRfc))
-    {
-      selectedRfc = RfcState.CurrentRfc;
-    }
-  }
-
   private string BuildQueryKey()
     => $"{QueryNivel1}|{QueryNivel2}|{QueryNivel3}|{QueryRfc}|{selectedYear}|{selectedMonth}";
 
@@ -312,7 +281,7 @@
       Nivel1 = QueryNivel1,
       Nivel2 = string.IsNullOrWhiteSpace(QueryNivel2) ? null : NormalizeTwoDigits(QueryNivel2),
       Nivel3 = string.IsNullOrWhiteSpace(QueryNivel3) ? null : NormalizeTwoDigits(QueryNivel3),
-      Rfc = selectedRfc
+      Rfc = CurrentRfc
     };
 
   private void ResetSearchState()
@@ -322,46 +291,6 @@
     transaccionOrder.Clear();
     hasSearched = false;
     errorMessage = null;
-  }
-
-  private async Task OnRfcChangedAsync()
-  {
-    if (suppressRfcChange)
-    {
-      suppressRfcChange = false;
-      return;
-    }
-
-    if (isApplyingQueryFilters)
-    {
-      return;
-    }
-
-    ResetSearchState();
-
-    await InvokeAsync(StateHasChanged);
-  }
-
-  private async Task OnAccountPickerRfcChangedAsync()
-  {
-    if (string.IsNullOrWhiteSpace(selectedRfc))
-    {
-      return;
-    }
-
-    if (string.Equals(lastComponentRfc, selectedRfc, StringComparison.OrdinalIgnoreCase))
-    {
-      return;
-    }
-
-    if (!string.Equals(selectedRfc, RfcState.CurrentRfc, StringComparison.OrdinalIgnoreCase))
-    {
-      errorMessage = "El componente intentó usar un RFC distinto al de la sesión.";
-      selectedRfc = RfcState.CurrentRfc;
-      await InvokeAsync(StateHasChanged);
-      return;
-    }
-    lastComponentRfc = selectedRfc;
   }
 
   private Task OnAccountPickerErrorChangedAsync(string? message)
@@ -421,7 +350,7 @@
       var nivel3 = string.IsNullOrWhiteSpace(accountSelection.Nivel3) ? "00" : accountSelection.Nivel3!;
       var startDate = GetStartDate();
       var endDate = GetEndDate();
-      var items = await RegistrosService.GetRegistrosAsync(startDate, endDate, selectedRfc!, accountSelection.Nivel1!, accountSelection.Nivel2!, nivel3);
+      var items = await RegistrosService.GetRegistrosAsync(startDate, endDate, CurrentRfc, accountSelection.Nivel1!, accountSelection.Nivel2!, nivel3);
       registros.Clear();
       registros.AddRange(items);
       UpdateTransaccionOrder();
@@ -515,7 +444,7 @@
     var nivel3 = string.IsNullOrWhiteSpace(accountSelection?.Nivel3) ? "00" : accountSelection.Nivel3!;
     return string.Create(
       CultureInfo.InvariantCulture,
-      $"RegistrosContables_{SanitizeFileSegment(selectedRfc)}_{selectedYear:0000}_{selectedMonth:00}_{SanitizeFileSegment(accountSelection?.Nivel1)}_{SanitizeFileSegment(accountSelection?.Nivel2)}_{SanitizeFileSegment(nivel3)}.xlsx");
+      $"RegistrosContables_{SanitizeFileSegment(CurrentRfc)}_{selectedYear:0000}_{selectedMonth:00}_{SanitizeFileSegment(accountSelection?.Nivel1)}_{SanitizeFileSegment(accountSelection?.Nivel2)}_{SanitizeFileSegment(nivel3)}.xlsx");
   }
 
   private static string SanitizeFileSegment(string? value)

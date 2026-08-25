@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -10,13 +11,13 @@ using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.OrdenesTrabajo;
 
-public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
+public partial class OrdenesTrabajoPage : ComponentBase
 {
   [Inject] private IOrdenTrabajoService OrdenTrabajoService { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private NavigationManager Navigation { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
-  [Inject] private IUserRfcState RfcState { get; set; } = default!;
+  [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
 
   protected CultureInfo CurrencyCulture { get; } = CultureInfo.GetCultureInfo("es-MX");
@@ -34,15 +35,13 @@ public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
   protected bool IsCreating { get; set; }
   protected int? DeletingOrderId { get; set; }
   protected string? ErrorMessage { get; set; }
-  private string? LoadedRfc { get; set; }
 
   protected bool CanCreate => IsPrivilegedUser;
   protected bool CanDelete => IsPrivilegedUser;
-  private string CurrentRfc => RfcState.CurrentRfc ?? string.Empty;
+  private string CurrentRfc => RfcState.RequireRfc();
 
   protected override async Task OnInitializedAsync()
   {
-    RfcState.Changed += OnRfcStateChanged;
     await ResolveCurrentUserAsync();
     CreateRequest = BuildDefaultCreateRequest();
     await LoadAsync();
@@ -61,8 +60,6 @@ public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
         CreateRequest.OwnerEmployeeId = Employees[0].Id;
       }
       CreateHelperIds.IntersectWith(Employees.Select(employee => employee.Id));
-      LoadedRfc = CurrentRfc;
-
       await LoadDashboardAsync();
       await LoadOrdersAsync();
     }
@@ -283,25 +280,4 @@ public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
     }
   }
 
-  private async void OnRfcStateChanged()
-  {
-    if (string.Equals(LoadedRfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
-    {
-      return;
-    }
-
-    try
-    {
-      await InvokeAsync(LoadAsync);
-    }
-    catch
-    {
-      // The page may already be disposing while the shared RFC state changes.
-    }
-  }
-
-  public void Dispose()
-  {
-    RfcState.Changed -= OnRfcStateChanged;
-  }
 }

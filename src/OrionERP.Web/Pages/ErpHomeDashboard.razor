@@ -11,7 +11,7 @@
 @inject IPhysicalCountService PhysicalCountService
 @inject IListaReservacionesService ReservacionesService
 @inject AuthenticationStateProvider AuthenticationStateProvider
-@inject IUserRfcState RfcState
+@inject ICurrentCompanyContext RfcState
 @inject NavigationManager Navigation
 @implements IDisposable
 
@@ -26,11 +26,6 @@
         </div>
 
         <div class="home-dashboard__masthead-actions">
-            <div class="home-dashboard__signal" aria-label="RFC seleccionado">
-                <span class="home-dashboard__signal-dot" aria-hidden="true"></span>
-                <span>@CurrentRfc</span>
-            </div>
-
             <button class="btn btn-primary home-dashboard__refresh" type="button" @onclick="LoadDashboardAsync" disabled="@IsLoading">
                 <span class="oi oi-reload" aria-hidden="true"></span>
                 <span>@(IsLoading ? "Actualizando" : "Actualizar")</span>
@@ -431,13 +426,12 @@
     private bool HasCalendarioRole { get; set; }
     private bool IsLoading { get; set; }
     private string? ErrorMessage { get; set; }
-    private string? LoadedRfc { get; set; }
     private int ApNotificationDays { get; set; } = AjustesGeneralSettingsDto.DefaultApOccurrenceNotificationDays;
 
-    private string CurrentRfc => RfcState.CurrentRfc ?? string.Empty;
+    private string CurrentRfc => RfcState.RequireRfc();
 
     private string DashboardSubtitle => IsAuthenticated
-        ? $"{CurrentUserName} · {CurrentRfc}"
+        ? CurrentUserName
         : "Acceso personal";
 
     private string EmptyWorkOrdersMessage => CurrentEmployeeId.HasValue
@@ -457,7 +451,6 @@
     protected override async Task OnInitializedAsync()
     {
         AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
-        RfcState.Changed += OnRfcStateChanged;
         await ResolveCurrentUserAsync();
         await LoadDashboardAsync();
     }
@@ -485,7 +478,6 @@
             await LoadUpcomingPaidReservationsAsync();
             await LoadPendingRecountsAsync();
             await LoadApOccurrencesAsync();
-            LoadedRfc = CurrentRfc;
         }
         catch (Exception ex)
         {
@@ -897,27 +889,9 @@
         }
     }
 
-    private async void OnRfcStateChanged()
-    {
-        if (string.Equals(LoadedRfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        try
-        {
-            await InvokeAsync(LoadDashboardAsync);
-        }
-        catch
-        {
-            // The page can be disposing while the shared RFC state changes.
-        }
-    }
-
     public void Dispose()
     {
         AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
-        RfcState.Changed -= OnRfcStateChanged;
     }
 
     private sealed record ReservationDayGroupVm(

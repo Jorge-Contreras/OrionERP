@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.JSInterop;
@@ -10,7 +11,7 @@ using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Logistica.Purchasing;
 
-public partial class ComprasPage : ComponentBase, IDisposable
+public partial class ComprasPage : ComponentBase
 {
   private const int MaterialSearchTake = 25;
 
@@ -22,7 +23,7 @@ public partial class ComprasPage : ComponentBase, IDisposable
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
   [Inject] private IJSRuntime Js { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
-  [Inject] private IUserRfcState RfcState { get; set; } = default!;
+  [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
 
   protected PurchaseOrderFilter Filter { get; set; } = new() { OpenOnly = true };
   protected PurchaseOrderCatalogDto Catalog { get; set; } = new();
@@ -111,23 +112,12 @@ public partial class ComprasPage : ComponentBase, IDisposable
 
   protected override async Task OnInitializedAsync()
   {
-    RfcState.Changed += HandleRfcChanged;
     CurrentUserName = await ResolveCurrentUserAsync();
     Catalog = await PurchaseOrderService.GetCatalogAsync();
     ResetAutoPoRequest();
     await LoadOrdersAsync();
     NuevaOrden();
   }
-
-  private void HandleRfcChanged() => _ = InvokeAsync(async () =>
-  {
-    Catalog = await PurchaseOrderService.GetCatalogAsync();
-    NuevaOrden();
-    await LoadOrdersAsync();
-    StateHasChanged();
-  });
-
-  public void Dispose() => RfcState.Changed -= HandleRfcChanged;
 
   protected async Task BuscarOrdenesAsync()
   {
@@ -1091,7 +1081,7 @@ public partial class ComprasPage : ComponentBase, IDisposable
   private static string FormatQuantity(decimal value)
     => value.ToString("N2", CultureInfo.CurrentCulture);
 
-  private string CurrentRfc => LogisticsRfc.Require(RfcState.CurrentRfc);
+  private string CurrentRfc => RfcState.RequireRfc();
 
   private static PurchaseOrderUpsertRequest CreateEditor()
     => new()

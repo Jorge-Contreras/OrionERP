@@ -1,3 +1,4 @@
+using OrionERP.Application.Common;
 using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Web.State;
@@ -7,9 +8,9 @@ namespace OrionERP.Web.Features.Logistica.Purchasing;
 public sealed class PurchaseMaterialThumbnailHydrator : IPurchaseMaterialThumbnailHydrator
 {
   private readonly IMaterialService _materialService;
-  private readonly IUserRfcState _rfcState;
+  private readonly ICurrentCompanyContext _rfcState;
 
-  public PurchaseMaterialThumbnailHydrator(IMaterialService materialService, IUserRfcState rfcState)
+  public PurchaseMaterialThumbnailHydrator(IMaterialService materialService, ICurrentCompanyContext rfcState)
   {
     _materialService = materialService ?? throw new ArgumentNullException(nameof(materialService));
     _rfcState = rfcState ?? throw new ArgumentNullException(nameof(rfcState));

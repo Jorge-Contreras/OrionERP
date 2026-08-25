@@ -13,7 +13,6 @@
       <p class="text-muted small mb-0">Cuentas Por Cobrar Recurrentes</p>
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2">
-      <span class="badge text-bg-light border">RFC: @CurrentRfcLabel</span>
       <button type="button" class="btn btn-outline-secondary" @onclick="RefreshAsync" disabled="@IsLoading">
         @(IsLoading ? "Actualizando..." : "Actualizar")
       </button>
@@ -23,12 +22,6 @@
     </div>
   </div>
 
-  @if (string.IsNullOrWhiteSpace(CurrentRfc))
-  {
-    <div class="alert alert-warning">Selecciona un RFC para consultar AP recurrente.</div>
-  }
-  else
-  {
     <div class="recurrent-ap-metrics mb-3">
       <div class="recurrent-ap-metric">
         <div class="text-muted small">Abiertos</div>
@@ -505,5 +498,4 @@
         }
       </div>
     </div>
-  }
 </div>

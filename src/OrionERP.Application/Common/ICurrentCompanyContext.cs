@@ -1,8 +1,7 @@
 namespace OrionERP.Application.Common;
 
-public interface ICurrentCompanyContext
+public interface ICurrentCompanyContext : ICurrentRfcAccessor
 {
-  string? CurrentRfc { get; }
   string? DisplayName { get; }
   int? EmployeeId { get; }
 

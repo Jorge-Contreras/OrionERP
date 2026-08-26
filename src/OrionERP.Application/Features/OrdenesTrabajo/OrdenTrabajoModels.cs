@@ -2,6 +2,12 @@ using System.ComponentModel.DataAnnotations;
 
 namespace OrionERP.Application.Features.OrdenesTrabajo;
 
+public enum OrdenTrabajoSearchSort
+{
+  Newest = 0,
+  OperationalPriority = 1
+}
+
 public class OrdenTrabajoCommandResult
 {
   public bool Success { get; set; }
@@ -93,7 +99,10 @@ public sealed class OrdenTrabajoSearchFilter
   public string? CreatedByActor { get; set; }
   public DateTime? ScheduledFrom { get; set; }
   public DateTime? ScheduledTo { get; set; }
+  public bool OverdueOnly { get; set; }
+  public bool ClosedOnly { get; set; }
   public bool IncludeClosed { get; set; }
+  public OrdenTrabajoSearchSort SortMode { get; set; } = OrdenTrabajoSearchSort.Newest;
   public int Skip { get; set; }
   public int Take { get; set; } = 100;
 }

@@ -135,4 +135,37 @@
     .security-header--anonymous {
         justify-content: flex-start;
     }
+
+    .security-header--compact-mobile {
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .security-header--compact-mobile .security-header__identity-wrap,
+    .security-header--compact-mobile .security-header__actions {
+        display: none;
+    }
+
+    .security-header--compact-mobile .security-header__company {
+        justify-self: auto;
+        max-width: min(100%, 15rem);
+        padding: 0.25rem 0.5rem;
+        border: 0;
+        background: transparent;
+    }
+
+    .security-header--compact-mobile .security-header__company-logo {
+        width: 2rem;
+        height: 2rem;
+        flex-basis: 2rem;
+    }
+
+    .security-header--compact-mobile .security-header__company-copy small {
+        display: none;
+    }
+
+    .security-header--compact-mobile .security-header__company-copy strong {
+        max-width: 17ch;
+        font-size: 0.82rem;
+    }
 }

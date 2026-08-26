@@ -1,0 +1,131 @@
+@using System.Globalization
+
+<a class="orden-card @GetCardClass()" href="@Href" aria-label="Abrir orden @Item.Folio: @Item.Titulo">
+    <div class="orden-card__topline">
+        <span class="orden-card__folio">@Item.Folio</span>
+        <span class="orden-card__date">@FormatRelativeDate(Item.FechaProgramada)</span>
+    </div>
+
+    <h3 class="orden-card__title">@Item.Titulo</h3>
+
+    <div class="orden-card__badges">
+        <span class="orden-card__status @GetStatusClass(Item.Estado)">
+            <span class="oi @GetStatusIcon(Item.Estado)" aria-hidden="true"></span>
+            @OrdenesTrabajoPage.GetStatusLabel(Item.Estado)
+        </span>
+        @if (!string.Equals(Item.Prioridad, OrdenTrabajoCodes.PrioridadNormal, StringComparison.OrdinalIgnoreCase))
+        {
+            <span class="orden-card__priority @GetPriorityClass(Item.Prioridad)">@GetPriorityLabel(Item.Prioridad)</span>
+        }
+    </div>
+
+    @if (Item.Estado == OrdenTrabajoCodes.EstadoRechazada)
+    {
+        <div class="orden-card__attention orden-card__attention--rejected">
+            <span class="oi oi-action-undo" aria-hidden="true"></span>
+            Requiere corrección
+        </div>
+    }
+    else if (Item.IsOverdue)
+    {
+        <div class="orden-card__attention orden-card__attention--overdue">
+            <span class="oi oi-warning" aria-hidden="true"></span>
+            Orden vencida
+        </div>
+    }
+
+    <div class="orden-card__facts">
+        <span>
+            <span class="oi oi-map-marker" aria-hidden="true"></span>
+            @OrdenesTrabajoPage.FormatTarget(Item)
+        </span>
+        <span>
+            <span class="oi oi-calendar" aria-hidden="true"></span>
+            @Item.FechaProgramada.ToString("dd MMM", SpanishMexico)
+        </span>
+        @if (ShowOwner)
+        {
+            <span>
+                <span class="oi oi-person" aria-hidden="true"></span>
+                @Item.OwnerName
+            </span>
+        }
+    </div>
+
+    <div class="orden-card__progress-row">
+        <div class="orden-card__progress-copy">
+            <span>Avance</span>
+            <strong>@Item.CompletedStepCount de @Item.StepCount</strong>
+        </div>
+        <div class="orden-card__progress" role="progressbar" aria-label="Progreso de la orden" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@ProgressPercent">
+            <span style="width: @ProgressPercent%"></span>
+        </div>
+        <span class="orden-card__open">
+            Abrir
+            <span class="oi oi-chevron-right" aria-hidden="true"></span>
+        </span>
+    </div>
+</a>
+
+@code {
+    private static readonly CultureInfo SpanishMexico = CultureInfo.GetCultureInfo("es-MX");
+
+    [Parameter, EditorRequired] public OrdenTrabajoListItemDto Item { get; set; } = default!;
+    [Parameter, EditorRequired] public string Href { get; set; } = string.Empty;
+    [Parameter] public bool ShowOwner { get; set; }
+
+    private int ProgressPercent => Item.StepCount <= 0
+        ? 0
+        : (int)Math.Clamp(Math.Round(Item.CompletedStepCount * 100d / Item.StepCount), 0, 100);
+
+    private string GetCardClass()
+        => Item.IsOverdue ? "orden-card--overdue" : Item.Estado == OrdenTrabajoCodes.EstadoRechazada ? "orden-card--rejected" : string.Empty;
+
+    private static string FormatRelativeDate(DateTime date)
+    {
+        var days = (date.Date - DateTime.Today).Days;
+        return days switch
+        {
+            0 => "Hoy",
+            1 => "Mañana",
+            -1 => "Ayer",
+            < -1 => $"Hace {Math.Abs(days)} días",
+            _ => $"En {days} días"
+        };
+    }
+
+    private static string GetStatusClass(string? status) => status switch
+    {
+        OrdenTrabajoCodes.EstadoEnProceso => "orden-card__status--progress",
+        OrdenTrabajoCodes.EstadoEnRevision => "orden-card__status--review",
+        OrdenTrabajoCodes.EstadoRechazada => "orden-card__status--rejected",
+        OrdenTrabajoCodes.EstadoCerrada => "orden-card__status--closed",
+        OrdenTrabajoCodes.EstadoCancelada => "orden-card__status--cancelled",
+        _ => "orden-card__status--assigned"
+    };
+
+    private static string GetStatusIcon(string? status) => status switch
+    {
+        OrdenTrabajoCodes.EstadoEnProceso => "oi-media-play",
+        OrdenTrabajoCodes.EstadoEnRevision => "oi-eye",
+        OrdenTrabajoCodes.EstadoRechazada => "oi-action-undo",
+        OrdenTrabajoCodes.EstadoCerrada => "oi-check",
+        OrdenTrabajoCodes.EstadoCancelada => "oi-ban",
+        _ => "oi-task"
+    };
+
+    private static string GetPriorityClass(string? priority) => priority switch
+    {
+        OrdenTrabajoCodes.PrioridadUrgente => "orden-card__priority--urgent",
+        OrdenTrabajoCodes.PrioridadAlta => "orden-card__priority--high",
+        _ => string.Empty
+    };
+
+    private static string GetPriorityLabel(string? priority) => priority switch
+    {
+        OrdenTrabajoCodes.PrioridadUrgente => "Urgente",
+        OrdenTrabajoCodes.PrioridadAlta => "Alta",
+        OrdenTrabajoCodes.PrioridadBaja => "Baja",
+        _ => "Normal"
+    };
+}

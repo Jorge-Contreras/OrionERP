@@ -19,9 +19,11 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
   private const int ThumbnailMaxPixels = 320;
 
   [Parameter] public int Id { get; set; }
+  [SupplyParameterFromQuery(Name = "from")] public string? ReturnState { get; set; }
 
   [Inject] private IOrdenTrabajoService OrdenTrabajoService { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
+  [Inject] private NavigationManager Navigation { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
   [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
 
@@ -32,10 +34,15 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
   protected List<OrdenTrabajoStepSaveRequest> StepEditor { get; set; } = [];
   protected HashSet<int> EditHelperIds { get; set; } = [];
   protected Dictionary<int, string?> StepNotes { get; set; } = [];
+  protected Dictionary<int, string> PendingStepStatuses { get; set; } = [];
+  protected HashSet<int> ExpandedNoteStepIds { get; set; } = [];
+  protected HashSet<int> BusyStepIds { get; set; } = [];
   protected List<OrdenTrabajoTransactionSearchItemDto> TransactionMatches { get; set; } = [];
   protected string TransactionSearchText { get; set; } = string.Empty;
   protected string ReviewReason { get; set; } = string.Empty;
   protected string CancelReason { get; set; } = string.Empty;
+  protected string ActionDialogKind { get; set; } = string.Empty;
+  protected string ActionDialogReason { get; set; } = string.Empty;
   protected string CurrentUserName { get; set; } = "OrionERP";
   protected int? CurrentEmployeeId { get; set; }
   protected bool IsPrivilegedUser { get; set; }
@@ -46,6 +53,8 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
   protected bool CameraSupported { get; set; } = true;
   protected string? ErrorMessage { get; set; }
   protected string? CameraError { get; set; }
+  protected string? CameraPreviewUrl { get; set; }
+  protected CameraCaptureResult? PendingCameraCapture { get; set; }
   protected bool IsEvidencePreviewOpen { get; set; }
   protected bool IsEvidencePreviewLoading { get; set; }
   protected bool IsEditingSteps { get; set; }
@@ -57,6 +66,9 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
   protected List<CameraDeviceOption> CameraDevices { get; set; } = [];
   protected string? SelectedCameraDeviceId { get; set; }
   protected ElementReference CameraVideoElement { get; set; }
+  protected ElementReference ActionReasonElement { get; set; }
+  protected ElementReference ActionDialogCancelElement { get; set; }
+  protected int? LastSavedStepId { get; set; }
 
   protected bool CanReview => IsPrivilegedUser;
   protected bool IsInReview => Order?.Estado == OrdenTrabajoCodes.EstadoEnRevision;
@@ -66,6 +78,25 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
     && IsExecutableStatus(Order.Estado)
     && IsCurrentUserAssigned();
   protected bool CanRemoveEvidence => CanExecute && Order?.HasBeenSubmittedForReview == false;
+  protected bool IsActionDialogOpen => !string.IsNullOrWhiteSpace(ActionDialogKind);
+  protected bool CanStart => CanExecute && Order?.Estado != OrdenTrabajoCodes.EstadoEnProceso;
+  protected OrdenTrabajoReviewReadiness ReviewReadiness
+    => OrdenTrabajoReviewReadinessCalculator.Calculate(Order?.Steps);
+  protected int ProgressPercent => Order?.StepCount > 0
+    ? (int)Math.Clamp(Math.Round(Order.CompletedStepCount * 100d / Order.StepCount), 0, 100)
+    : 0;
+  protected string ReturnHref
+  {
+    get
+    {
+      var relative = ReturnState?.Trim().TrimStart('/');
+      return !string.IsNullOrWhiteSpace(relative)
+        && relative.StartsWith("ordenes-trabajo", StringComparison.OrdinalIgnoreCase)
+        && !relative.StartsWith($"ordenes-trabajo/{Id}", StringComparison.OrdinalIgnoreCase)
+          ? $"/{relative}"
+          : "/ordenes-trabajo";
+    }
+  }
 
   protected string? ExecutionBlockedReason
   {
@@ -78,15 +109,15 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
 
       if (!IsExecutableStatus(Order.Estado))
       {
-        return $"La orden esta en estado {OrdenesTrabajoPage.GetStatusLabel(Order.Estado)}; solo se puede trabajar en ordenes en borrador, asignadas, en proceso o rechazadas.";
+        return $"La orden está en estado {OrdenesTrabajoPage.GetStatusLabel(Order.Estado)} y ya no permite cambios.";
       }
 
       if (!CurrentEmployeeId.HasValue)
       {
-        return "Tu usuario no tiene un empleado de Capital Humano ligado (EmployeeId). Pide a un administrador que lo ligue en /admin/seguridad y vuelve a iniciar sesion.";
+        return "Tu usuario no está vinculado con un empleado. Pide a un supervisor que revise tu acceso y vuelve a iniciar sesión.";
       }
 
-      return $"Solo el responsable ({Order.OwnerName}) y sus ayudantes pueden ejecutar esta orden. Los roles no habilitan la ejecucion: hay que agregarte como responsable o ayudante.";
+      return $"Sólo {Order.OwnerName} y sus ayudantes pueden trabajar en esta orden.";
     }
   }
 
@@ -97,6 +128,8 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
   private int? ActorEmployeeIdForExecution => CurrentEmployeeId;
   private IJSObjectReference? CameraModule { get; set; }
   private bool PendingCameraStart { get; set; }
+  private bool PendingDraftRestore { get; set; }
+  private bool PendingActionDialogFocus { get; set; }
 
   protected override async Task OnInitializedAsync()
   {
@@ -114,6 +147,7 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
       Order = await OrdenTrabajoService.GetWorkOrderDetailAsync(Id);
       Employees = (await OrdenTrabajoService.GetActiveEmployeeOptionsAsync(Order?.Rfc)).ToList();
       BuildEditorFromOrder();
+      PendingDraftRestore = true;
     }
     catch (Exception ex)
     {
@@ -274,16 +308,79 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
       return;
     }
 
-    await MutateAsync(() => OrdenTrabajoService.UpdateStepAsync(
-      Order.Id,
-      step.Id,
-      new OrdenTrabajoStepUpdateRequest
+    BusyStepIds.Add(step.Id);
+    LastSavedStepId = null;
+    try
+    {
+      var notes = StepNotes.TryGetValue(step.Id, out var draftNotes) ? draftNotes : step.Notas;
+      var result = await OrdenTrabajoService.UpdateStepAsync(
+        Order.Id,
+        step.Id,
+        new OrdenTrabajoStepUpdateRequest
+        {
+          Estado = status,
+          Notas = notes,
+          UpdatedBy = CurrentUserName,
+          ActorEmployeeId = ActorEmployeeIdForExecution
+        });
+      if (!result.Success)
       {
-        Estado = status,
-        Notas = StepNotes.TryGetValue(step.Id, out var notes) ? notes : step.Notas,
-        UpdatedBy = CurrentUserName,
-        ActorEmployeeId = ActorEmployeeIdForExecution
-      }));
+        UiMessages.ShowError(result.Message);
+        await LoadAsync();
+        return;
+      }
+
+      step.Estado = status;
+      step.Notas = NullIfWhiteSpace(notes);
+      step.CompletadoEn = status == OrdenTrabajoCodes.PasoPendiente ? null : DateTime.UtcNow;
+      step.CompletadoPor = status == OrdenTrabajoCodes.PasoPendiente ? null : CurrentUserName;
+      Order.Estado = Order.Estado is OrdenTrabajoCodes.EstadoBorrador or OrdenTrabajoCodes.EstadoAsignada or OrdenTrabajoCodes.EstadoRechazada
+        ? OrdenTrabajoCodes.EstadoEnProceso
+        : Order.Estado;
+      RefreshOrderProgress();
+      PendingStepStatuses.Remove(step.Id);
+      LastSavedStepId = step.Id;
+      await ClearStepDraftAsync(step.Id);
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo actualizar el paso. {ex.Message}");
+    }
+    finally
+    {
+      BusyStepIds.Remove(step.Id);
+    }
+  }
+
+  protected async Task RequestStepStatusAsync(OrdenTrabajoStepDto step, string status)
+  {
+    var notes = GetStepNotes(step);
+    var requiresNote = (status == OrdenTrabajoCodes.PasoIncidencia && step.RequiereNotasEnIncidencia)
+      || (status == OrdenTrabajoCodes.PasoNoAplica && step.RequiereNotasEnNoAplica);
+    if (requiresNote && string.IsNullOrWhiteSpace(notes))
+    {
+      PendingStepStatuses[step.Id] = status;
+      ExpandedNoteStepIds.Add(step.Id);
+      return;
+    }
+
+    await UpdateStepAsync(step, status);
+  }
+
+  protected async Task ConfirmPendingStepAsync(OrdenTrabajoStepDto step)
+  {
+    if (!PendingStepStatuses.TryGetValue(step.Id, out var status))
+    {
+      return;
+    }
+
+    if (string.IsNullOrWhiteSpace(GetStepNotes(step)))
+    {
+      UiMessages.ShowWarning("Escribe una nota para continuar.");
+      return;
+    }
+
+    await UpdateStepAsync(step, status);
   }
 
   protected async Task OnEvidenceSelectedAsync(OrdenTrabajoStepDto step, InputFileChangeEventArgs args)
@@ -299,7 +396,7 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
       return;
     }
 
-    IsMutating = true;
+    BusyStepIds.Add(step.Id);
     try
     {
       if (file.Size > MaxEvidenceFileBytes)
@@ -336,7 +433,30 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
           CapturedBy = CurrentUserName,
           ActorEmployeeId = ActorEmployeeIdForExecution
         });
-      await HandleMutationResultAsync(result);
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      if (result.EntityId.HasValue)
+      {
+        AddLocalEvidence(
+          step,
+          result.EntityId.Value,
+          file.Name,
+          content.ContentType,
+          thumbnailBytes,
+          thumbnailContentType,
+          file.Size,
+          OrdenTrabajoCodes.EvidenciaFile);
+      }
+      else
+      {
+        await LoadAsync();
+      }
+
+      UiMessages.ShowSuccess("Evidencia guardada.");
     }
     catch (Exception ex)
     {
@@ -344,7 +464,7 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
     }
     finally
     {
-      IsMutating = false;
+      BusyStepIds.Remove(step.Id);
     }
   }
 
@@ -366,7 +486,7 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
       CameraSupported = await module.InvokeAsync<bool>("isSupported");
       if (!CameraSupported)
       {
-        CameraError = "Este navegador no permite acceso directo a la camara. Usa la opcion de archivo.";
+        CameraError = "Este teléfono no permite abrir la cámara aquí. Cierra esta pantalla y usa “Subir archivo”.";
         IsCameraStarting = false;
         return;
       }
@@ -374,9 +494,9 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
       PendingCameraStart = true;
       await InvokeAsync(StateHasChanged);
     }
-    catch (Exception ex)
+    catch (Exception)
     {
-      CameraError = $"No se pudo preparar la camara. {ex.Message}";
+      CameraError = "No pudimos preparar la cámara. Revisa el permiso del navegador o cierra esta pantalla y usa “Subir archivo”.";
       IsCameraStarting = false;
     }
   }
@@ -410,9 +530,50 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
         CameraVideoElement,
         ImageMaxPixels,
         ThumbnailMaxPixels);
+      PendingCameraCapture = capture;
+      CameraPreviewUrl = await module.InvokeAsync<string>("getPreviewUrl");
+    }
+    catch (Exception)
+    {
+      CameraError = "No se pudo capturar la foto. Mantén la cámara abierta y toca Capturar nuevamente.";
+    }
+    finally
+    {
+      IsCameraCapturing = false;
+    }
+  }
+
+  protected async Task RetakeCameraAsync()
+  {
+    CameraPreviewUrl = null;
+    PendingCameraCapture = null;
+    try
+    {
+      var module = await EnsureCameraModuleAsync();
+      await module.InvokeVoidAsync("clearLastCapture");
+    }
+    catch (Exception ex)
+    {
+      CameraError = $"No se pudo preparar otra foto. {ex.Message}";
+    }
+  }
+
+  protected async Task SaveCameraAsync(OrdenTrabajoStepDto step)
+  {
+    if (!CanExecute || Order is null || ActiveCameraStepId != step.Id || PendingCameraCapture is null)
+    {
+      return;
+    }
+
+    IsCameraCapturing = true;
+    CameraError = null;
+    BusyStepIds.Add(step.Id);
+    try
+    {
+      var module = await EnsureCameraModuleAsync();
       var imageBytes = await ReadCameraBlobAsync(module, "getLastImage", MaxImageBytes);
       var thumbnailBytes = await ReadCameraBlobAsync(module, "getLastThumbnail", MaxImageBytes);
-
+      var fileName = $"camara-{Order.Folio}-{step.Id}-{DateTime.Now:yyyyMMddHHmmss}.jpg";
       var result = await OrdenTrabajoService.AddStepEvidenceAsync(
         Order.Id,
         step.Id,
@@ -420,29 +581,48 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
         {
           ImageBytes = imageBytes,
           ThumbnailBytes = thumbnailBytes,
-          FileName = $"camara-{Order.Folio}-{step.Id}-{DateTime.Now:yyyyMMddHHmmss}.jpg",
-          ContentType = capture.ImageContentType,
-          ThumbnailContentType = capture.ThumbnailContentType,
-          DeviceInfo = BuildCameraDeviceInfo(capture),
+          FileName = fileName,
+          ContentType = PendingCameraCapture.ImageContentType,
+          ThumbnailContentType = PendingCameraCapture.ThumbnailContentType,
+          DeviceInfo = BuildCameraDeviceInfo(PendingCameraCapture),
           CaptureSource = OrdenTrabajoCodes.EvidenciaCamera,
           CapturedBy = CurrentUserName,
           ActorEmployeeId = ActorEmployeeIdForExecution
         });
-
-      if (result.Success)
+      if (!result.Success)
       {
-        await module.InvokeVoidAsync("clearLastCapture");
-        await CloseCameraAsync(showState: false);
+        CameraError = result.Message;
+        return;
       }
 
-      await HandleMutationResultAsync(result);
+      if (result.EntityId.HasValue)
+      {
+        AddLocalEvidence(
+          step,
+          result.EntityId.Value,
+          fileName,
+          PendingCameraCapture.ImageContentType,
+          thumbnailBytes,
+          PendingCameraCapture.ThumbnailContentType,
+          imageBytes.LongLength,
+          OrdenTrabajoCodes.EvidenciaCamera);
+      }
+      else
+      {
+        await LoadAsync();
+      }
+
+      await module.InvokeVoidAsync("clearLastCapture");
+      await CloseCameraAsync(showState: false);
+      UiMessages.ShowSuccess("Foto guardada.");
     }
-    catch (Exception ex)
+    catch (Exception)
     {
-      CameraError = $"No se pudo capturar la foto. {ex.Message}";
+      CameraError = "No se pudo guardar la foto. Conservamos la vista previa: revisa tu conexión y vuelve a tocar “Usar esta foto”.";
     }
     finally
     {
+      BusyStepIds.Remove(step.Id);
       IsCameraCapturing = false;
     }
   }
@@ -454,7 +634,28 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
       return;
     }
 
-    await MutateAsync(() => OrdenTrabajoService.RemoveStepEvidenceAsync(Order.Id, step.Id, evidenceId, CurrentUserName, ActorEmployeeIdForExecution));
+    BusyStepIds.Add(step.Id);
+    try
+    {
+      var result = await OrdenTrabajoService.RemoveStepEvidenceAsync(Order.Id, step.Id, evidenceId, CurrentUserName, ActorEmployeeIdForExecution);
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      step.Evidence = step.Evidence.Where(evidence => evidence.Id != evidenceId).ToList();
+      step.ActiveEvidenceCount = step.Evidence.Count(evidence => !evidence.Eliminada);
+      UiMessages.ShowSuccess("Evidencia eliminada.");
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo quitar la evidencia. {ex.Message}");
+    }
+    finally
+    {
+      BusyStepIds.Remove(step.Id);
+    }
   }
 
   protected async Task OpenEvidenceAsync(OrdenTrabajoEvidenceDto evidence)
@@ -600,6 +801,37 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
       _ => "Pendiente"
     };
 
+  protected static string GetDetailStatusClass(string status)
+    => status switch
+    {
+      OrdenTrabajoCodes.EstadoEnProceso => "is-progress",
+      OrdenTrabajoCodes.EstadoEnRevision => "is-review",
+      OrdenTrabajoCodes.EstadoRechazada => "is-rejected",
+      OrdenTrabajoCodes.EstadoCerrada => "is-closed",
+      OrdenTrabajoCodes.EstadoCancelada => "is-cancelled",
+      _ => "is-assigned"
+    };
+
+  protected static string GetDetailStatusIcon(string status)
+    => status switch
+    {
+      OrdenTrabajoCodes.EstadoEnProceso => "oi-media-play",
+      OrdenTrabajoCodes.EstadoEnRevision => "oi-eye",
+      OrdenTrabajoCodes.EstadoRechazada => "oi-action-undo",
+      OrdenTrabajoCodes.EstadoCerrada => "oi-check",
+      OrdenTrabajoCodes.EstadoCancelada => "oi-ban",
+      _ => "oi-task"
+    };
+
+  protected static string GetStepStatusClass(string status)
+    => status switch
+    {
+      OrdenTrabajoCodes.PasoHecho => "is-done",
+      OrdenTrabajoCodes.PasoIncidencia => "is-issue",
+      OrdenTrabajoCodes.PasoNoAplica => "is-na",
+      _ => "is-pending"
+    };
+
   protected static string GetStepBadgeClass(string status)
     => status switch
     {
@@ -712,11 +944,202 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
   protected string? GetStepNotes(OrdenTrabajoStepDto step)
     => StepNotes.TryGetValue(step.Id, out var notes) ? notes : step.Notas;
 
-  protected void SetStepNotes(int stepId, string? notes)
-    => StepNotes[stepId] = notes;
+  protected async Task SetStepNotesAsync(int stepId, string? notes)
+  {
+    StepNotes[stepId] = notes;
+    try
+    {
+      await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", GetStepDraftKey(stepId), notes ?? string.Empty);
+    }
+    catch (JSException)
+    {
+    }
+    catch (InvalidOperationException)
+    {
+    }
+  }
+
+  protected void ToggleStepNotes(int stepId)
+  {
+    if (!ExpandedNoteStepIds.Add(stepId))
+    {
+      ExpandedNoteStepIds.Remove(stepId);
+    }
+  }
+
+  protected bool IsStepNotesVisible(OrdenTrabajoStepDto step)
+    => ExpandedNoteStepIds.Contains(step.Id)
+      || PendingStepStatuses.ContainsKey(step.Id)
+      || !string.IsNullOrWhiteSpace(GetStepNotes(step));
+
+  protected bool IsStepBusy(int stepId)
+    => BusyStepIds.Contains(stepId);
+
+  protected static bool IsExecutableStatusForDisplay(string status)
+    => IsExecutableStatus(status);
+
+  protected static bool ShouldShowStepDescription(OrdenTrabajoStepDto step)
+    => !string.IsNullOrWhiteSpace(step.Descripcion)
+      && !string.Equals(NormalizeComparisonText(step.Titulo), NormalizeComparisonText(step.Descripcion), StringComparison.OrdinalIgnoreCase);
+
+  protected bool HasMissingRequiredNote(OrdenTrabajoStepDto step)
+    => string.IsNullOrWhiteSpace(GetStepNotes(step))
+      && ((step.Estado == OrdenTrabajoCodes.PasoIncidencia && step.RequiereNotasEnIncidencia)
+        || (step.Estado == OrdenTrabajoCodes.PasoNoAplica && step.RequiereNotasEnNoAplica));
+
+  protected string GetReadinessMessage()
+  {
+    var parts = new List<string>();
+    if (ReviewReadiness.PendingStepCount > 0)
+    {
+      parts.Add($"{ReviewReadiness.PendingStepCount} {Pluralize(ReviewReadiness.PendingStepCount, "paso pendiente", "pasos pendientes")}");
+    }
+    if (ReviewReadiness.MissingRequiredPhotoCount > 0)
+    {
+      parts.Add($"{ReviewReadiness.MissingRequiredPhotoCount} {Pluralize(ReviewReadiness.MissingRequiredPhotoCount, "foto pendiente", "fotos pendientes")}");
+    }
+    if (ReviewReadiness.MissingRequiredNoteCount > 0)
+    {
+      parts.Add($"{ReviewReadiness.MissingRequiredNoteCount} {Pluralize(ReviewReadiness.MissingRequiredNoteCount, "nota pendiente", "notas pendientes")}");
+    }
+
+    return parts.Count == 0 ? "Lista para enviar" : string.Join(" · ", parts);
+  }
+
+  protected void OpenActionDialog(string kind)
+  {
+    ActionDialogKind = kind;
+    ActionDialogReason = kind switch
+    {
+      "reject" => ReviewReason,
+      "cancel" => CancelReason,
+      _ => string.Empty
+    };
+    PendingActionDialogFocus = true;
+  }
+
+  protected void CloseActionDialog()
+  {
+    if (IsMutating)
+    {
+      return;
+    }
+
+    ActionDialogKind = string.Empty;
+    ActionDialogReason = string.Empty;
+  }
+
+  protected string ActionDialogTitle => ActionDialogKind switch
+  {
+    "reject" => "Devolver para corrección",
+    "cancel" => "Cancelar orden",
+    "delete" => "Eliminar orden",
+    _ => "Confirmar acción"
+  };
+
+  protected string ActionDialogMessage => ActionDialogKind switch
+  {
+    "reject" => "Explica con palabras claras qué debe corregir el equipo.",
+    "cancel" => "La orden dejará de aparecer como trabajo activo.",
+    "delete" => $"Se eliminará {Order?.Folio}. Esta acción no se puede deshacer.",
+    _ => string.Empty
+  };
+
+  protected string ActionDialogConfirmLabel => ActionDialogKind switch
+  {
+    "reject" => "Devolver orden",
+    "cancel" => "Cancelar orden",
+    "delete" => "Eliminar definitivamente",
+    _ => "Confirmar"
+  };
+
+  protected bool ActionDialogRequiresReason => ActionDialogKind is "reject" or "cancel";
+
+  protected void HandleActionDialogKeyDown(KeyboardEventArgs args)
+  {
+    if (args.Key == "Escape")
+    {
+      CloseActionDialog();
+    }
+  }
+
+  protected async Task ConfirmActionDialogAsync()
+  {
+    if (Order is null || IsMutating)
+    {
+      return;
+    }
+
+    if (ActionDialogRequiresReason && string.IsNullOrWhiteSpace(ActionDialogReason))
+    {
+      UiMessages.ShowWarning("Escribe un motivo para continuar.");
+      return;
+    }
+
+    IsMutating = true;
+    try
+    {
+      var kind = ActionDialogKind;
+      var result = kind switch
+      {
+        "reject" => await OrdenTrabajoService.RejectAsync(Order.Id, ActionDialogReason, CurrentUserName),
+        "cancel" => await OrdenTrabajoService.CancelWorkOrderAsync(Order.Id, ActionDialogReason, CurrentUserName),
+        "delete" => await OrdenTrabajoService.DeleteWorkOrderAsync(Order.Id, CurrentUserName),
+        _ => OrdenTrabajoCommandResult.Fail("La acción seleccionada no es válida.")
+      };
+
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      ActionDialogKind = string.Empty;
+      ActionDialogReason = string.Empty;
+      if (kind == "delete")
+      {
+        Navigation.NavigateTo(ReturnHref);
+        return;
+      }
+
+      await LoadAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError(ex.Message);
+    }
+    finally
+    {
+      IsMutating = false;
+    }
+  }
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
   {
+    if (PendingDraftRestore)
+    {
+      PendingDraftRestore = false;
+      await RestoreStepDraftsAsync();
+      await InvokeAsync(StateHasChanged);
+    }
+
+    if (PendingActionDialogFocus)
+    {
+      PendingActionDialogFocus = false;
+      var target = ActionDialogRequiresReason ? ActionReasonElement : ActionDialogCancelElement;
+      try
+      {
+        await JSRuntime.InvokeVoidAsync("focusAndSelectTextInput", target, false);
+      }
+      catch (JSException)
+      {
+      }
+      catch (InvalidOperationException)
+      {
+      }
+    }
+
     if (!PendingCameraStart)
     {
       return;
@@ -808,6 +1231,98 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
       Order.Helpers.Select(helper => helper.EmployeeId));
   }
 
+  private void RefreshOrderProgress()
+  {
+    if (Order is null)
+    {
+      return;
+    }
+
+    Order.CompletedStepCount = Order.Steps.Count(step => step.Estado != OrdenTrabajoCodes.PasoPendiente);
+    Order.IssueStepCount = Order.Steps.Count(step => step.Estado == OrdenTrabajoCodes.PasoIncidencia);
+  }
+
+  private void AddLocalEvidence(
+    OrdenTrabajoStepDto step,
+    int evidenceId,
+    string fileName,
+    string contentType,
+    byte[]? thumbnailBytes,
+    string? thumbnailContentType,
+    long sizeBytes,
+    string captureSource)
+  {
+    var evidence = new OrdenTrabajoEvidenceDto
+    {
+      Id = evidenceId,
+      PasoId = step.Id,
+      FileName = fileName,
+      ContentType = contentType,
+      ThumbnailBytes = thumbnailBytes,
+      ThumbnailContentType = thumbnailContentType,
+      SizeBytes = sizeBytes,
+      CaptureSource = captureSource,
+      CapturadaEn = DateTime.UtcNow,
+      CapturadaPor = CurrentUserName
+    };
+    step.Evidence = step.Evidence.Append(evidence).ToList();
+    step.ActiveEvidenceCount = step.Evidence.Count(item => !item.Eliminada);
+  }
+
+  private async Task RestoreStepDraftsAsync()
+  {
+    if (Order is null)
+    {
+      return;
+    }
+
+    foreach (var step in Order.Steps)
+    {
+      try
+      {
+        var draft = await JSRuntime.InvokeAsync<string?>("sessionStorage.getItem", GetStepDraftKey(step.Id));
+        if (draft is null || string.Equals(draft, step.Notas, StringComparison.Ordinal))
+        {
+          continue;
+        }
+
+        StepNotes[step.Id] = draft;
+        ExpandedNoteStepIds.Add(step.Id);
+      }
+      catch (JSException)
+      {
+        return;
+      }
+      catch (InvalidOperationException)
+      {
+        return;
+      }
+    }
+  }
+
+  private async Task ClearStepDraftAsync(int stepId)
+  {
+    try
+    {
+      await JSRuntime.InvokeVoidAsync("sessionStorage.removeItem", GetStepDraftKey(stepId));
+    }
+    catch (JSException)
+    {
+    }
+    catch (InvalidOperationException)
+    {
+    }
+  }
+
+  private string GetStepDraftKey(int stepId)
+    => $"orionerp:ordenes-trabajo:{Id}:paso:{stepId}:nota";
+
+  private static string NormalizeComparisonText(string? value)
+    => string.Join(' ', (value ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).Trim();
+
+  private static string Pluralize(int count, string singular, string plural)
+    => count == 1 ? singular : plural;
+
   private static bool IsEditableStatus(string status)
     => status is "BORRADOR" or "ASIGNADA" or "EN_PROCESO" or "RECHAZADA";
 
@@ -877,9 +1392,9 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
         SelectedCameraDeviceId = CameraDevices[0].DeviceId;
       }
     }
-    catch (Exception ex)
+    catch (Exception)
     {
-      CameraError = $"No se pudo abrir la camara. {ex.Message}";
+      CameraError = "No pudimos abrir la cámara. Permite su uso en el navegador o cierra esta pantalla y usa “Subir archivo”.";
     }
     finally
     {
@@ -895,12 +1410,15 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
     CameraError = null;
     IsCameraStarting = false;
     IsCameraCapturing = false;
+    CameraPreviewUrl = null;
+    PendingCameraCapture = null;
 
     if (CameraModule is not null)
     {
       try
       {
         await CameraModule.InvokeVoidAsync("stop");
+        await CameraModule.InvokeVoidAsync("clearLastCapture");
       }
       catch (JSDisconnectedException)
       {
@@ -1035,9 +1553,7 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
       { Length: > 0 } name => name,
       _ => "OrionERP"
     };
-    IsPrivilegedUser = user.IsInRole("Administrador")
-      || user.IsInRole("OrdenTrabajoAdmin")
-      || user.IsInRole("OrdenTrabajoSupervisor");
+    IsPrivilegedUser = OrdenTrabajoPermissions.CanAccessManagement(user.IsInRole);
 
     CurrentEmployeeId = int.TryParse(user.FindFirst("employee_id")?.Value, out var employeeId) ? employeeId : null;
   }

@@ -76,6 +76,58 @@
     padding: 0 1rem 2rem;
 }
 
+@media (max-width: 640.98px) {
+    .app-shell--field-operations {
+        --field-mobile-chrome-height: 3.85rem;
+    }
+
+    .app-shell--field-operations .app-shell__sidebar {
+        min-height: var(--field-mobile-chrome-height);
+    }
+
+    .app-shell--field-operations ::deep .navmenu-topbar {
+        min-height: var(--field-mobile-chrome-height);
+        height: var(--field-mobile-chrome-height);
+        padding: 0.5rem 0.75rem;
+    }
+
+    .app-shell--field-operations ::deep .navmenu-topbar .navbar-brand.brand-logo {
+        gap: 0;
+    }
+
+    .app-shell--field-operations ::deep .navmenu-topbar .navbar-brand.brand-logo img {
+        width: 112px;
+        max-height: 2.7rem;
+    }
+
+    .app-shell--field-operations ::deep .brand-logo__tag {
+        display: none;
+    }
+
+    .app-shell--field-operations ::deep .navmenu-backdrop,
+    .app-shell--field-operations ::deep .navmenu-body {
+        inset-block-start: var(--field-mobile-chrome-height);
+    }
+
+    .app-shell--field-operations .app-shell__main {
+        gap: 0.75rem;
+    }
+
+    .app-shell--field-operations .app-shell__topbar {
+        position: relative;
+        min-height: 3.35rem;
+        padding: 0.4rem 0.75rem;
+    }
+
+    .app-shell--field-operations ::deep .command-center {
+        display: none;
+    }
+
+    .app-shell--field-operations .app-shell__content {
+        padding: 0 0.65rem 6.5rem;
+    }
+}
+
 @media (min-width: 641px) {
     .app-shell {
         flex-direction: row;

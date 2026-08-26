@@ -2,485 +2,489 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize(Roles = "Administrador,OrdenTrabajoAdmin,OrdenTrabajoSupervisor,OrdenTrabajoOperador")]
 
-<PageTitle>Orden de trabajo</PageTitle>
+<PageTitle>@(Order?.Folio ?? "Orden de trabajo")</PageTitle>
 
-<div class="container-fluid py-3 orden-detail-page">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-        <div>
-            <a class="small" href="/ordenes-trabajo">Volver a ordenes</a>
-            <h1 class="h3 mb-1">@(Order?.Folio ?? "Orden de trabajo")</h1>
-            @if (Order is not null)
-            {
-                <p class="text-muted mb-0">@Order.Titulo</p>
-            }
-        </div>
-        @if (Order is not null)
-        {
-            <div class="d-flex flex-wrap gap-2">
-                <span class="@OrdenesTrabajoPage.GetStatusBadgeClass(Order.Estado) align-self-center">@OrdenesTrabajoPage.GetStatusLabel(Order.Estado)</span>
-                <button class="btn btn-outline-secondary" type="button" @onclick="LoadAsync" disabled="@IsLoading">Actualizar</button>
-            </div>
-        }
-    </div>
-
+<div class="container-fluid orden-detail-page @(CanExecute ? "orden-detail-page--executable" : null)">
     @if (!string.IsNullOrWhiteSpace(ErrorMessage))
     {
-        <div class="alert alert-danger">@ErrorMessage</div>
+        <div class="orden-detail-feedback orden-detail-feedback--error" role="alert">
+            <span class="oi oi-warning" aria-hidden="true"></span>
+            <div><strong>No pudimos cargar la orden.</strong><span>@ErrorMessage</span></div>
+            <button class="btn btn-sm btn-outline-danger" type="button" @onclick="LoadAsync">Reintentar</button>
+        </div>
     }
 
     @if (Order is null)
     {
-        <section class="card shadow-sm">
-            <div class="card-body text-center text-muted py-5">@(IsLoading ? "Cargando orden..." : "No se encontro la orden.")</div>
+        <section class="orden-detail-loading" aria-live="polite">
+            @if (IsLoading)
+            {
+                <span class="spinner-border text-primary" aria-hidden="true"></span>
+                <strong>Cargando orden…</strong>
+            }
+            else
+            {
+                <span class="oi oi-inbox" aria-hidden="true"></span>
+                <strong>No encontramos esta orden.</strong>
+                <a class="btn btn-outline-primary" href="@ReturnHref">Volver a órdenes</a>
+            }
         </section>
     }
     else
     {
-        <div class="row g-3">
-            <div class="col-12 col-xl-4">
-                <section class="card shadow-sm mb-3">
-                    <div class="card-body">
-                        <h2 class="h5 mb-3">Datos generales</h2>
-                        <div class="orden-detail-meta">
-                            <div>
-                                <span>Responsable</span>
-                                <strong>@Order.OwnerName</strong>
-                            </div>
-                            <div>
-                                <span>Programada</span>
-                                <strong>@Order.FechaProgramada.ToString("yyyy-MM-dd")</strong>
-                            </div>
-                            <div>
-                                <span>Ventana</span>
-                                <strong>@OrdenesTrabajoPage.FormatWindow(Order.HoraInicioProgramada, Order.HoraFinProgramada)</strong>
-                            </div>
-                            <div>
-                                <span>Ubicacion</span>
-                                <strong>@OrdenesTrabajoPage.FormatTarget(Order)</strong>
-                            </div>
-                        </div>
+        <header class="orden-detail-hero">
+            <div class="orden-detail-hero__topline">
+                <a class="orden-back-link" href="@ReturnHref">
+                    <span class="oi oi-chevron-left" aria-hidden="true"></span>
+                    Órdenes
+                </a>
+                <button class="orden-detail-refresh" type="button" @onclick="LoadAsync" disabled="@IsLoading" aria-label="Actualizar orden">
+                    <span class="oi oi-reload" aria-hidden="true"></span>
+                </button>
+            </div>
+            <div class="orden-detail-hero__title-row">
+                <div>
+                    <span class="orden-detail-folio">@Order.Folio</span>
+                    <h1>@Order.Titulo</h1>
+                </div>
+                <span class="orden-detail-status @GetDetailStatusClass(Order.Estado)">
+                    <span class="oi @GetDetailStatusIcon(Order.Estado)" aria-hidden="true"></span>
+                    @OrdenesTrabajoPage.GetStatusLabel(Order.Estado)
+                </span>
+            </div>
+            <div class="orden-detail-hero__facts">
+                <span><span class="oi oi-map-marker" aria-hidden="true"></span>@OrdenesTrabajoPage.FormatTarget(Order)</span>
+                <span><span class="oi oi-person" aria-hidden="true"></span>@Order.OwnerName</span>
+                <span><span class="oi oi-calendar" aria-hidden="true"></span>@Order.FechaProgramada.ToString("dd MMM yyyy", CurrencyCulture)</span>
+            </div>
+            <div class="orden-detail-progress">
+                <div><span>Avance</span><strong>@Order.CompletedStepCount de @Order.StepCount pasos</strong></div>
+                <div role="progressbar" aria-label="Progreso de la orden" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@ProgressPercent"><span style="width: @ProgressPercent%"></span></div>
+                <b>@ProgressPercent%</b>
+            </div>
+        </header>
 
-                        @if (Order.Helpers.Count > 0)
+        @if (Order.Estado == OrdenTrabajoCodes.EstadoRechazada && !string.IsNullOrWhiteSpace(Order.MotivoRechazo))
+        {
+            <section class="orden-rejected-callout" role="status">
+                <span class="oi oi-action-undo" aria-hidden="true"></span>
+                <div><strong>Esta orden fue devuelta</strong><p>@Order.MotivoRechazo</p></div>
+            </section>
+        }
+
+        @if (ExecutionBlockedReason is not null && IsExecutableStatusForDisplay(Order.Estado))
+        {
+            <section class="orden-detail-feedback orden-detail-feedback--info" role="status">
+                <span class="oi oi-lock-locked" aria-hidden="true"></span>
+                <div><strong>Orden de sólo lectura</strong><span>@ExecutionBlockedReason</span></div>
+            </section>
+        }
+
+        <div class="orden-detail-layout">
+            <main class="orden-checklist">
+                <div class="orden-section-heading">
+                    <div>
+                        <span class="orden-detail-eyebrow">Checklist completo</span>
+                        <h2>Pasos de la orden</h2>
+                    </div>
+                    <span class="orden-readiness @(ReviewReadiness.IsReady ? "is-ready" : null)">
+                        <span class="oi @(ReviewReadiness.IsReady ? "oi-check" : "oi-clock")" aria-hidden="true"></span>
+                        @GetReadinessMessage()
+                    </span>
+                </div>
+
+                @if (Order.Steps.Count == 0)
+                {
+                    <div class="orden-detail-empty">
+                        <span class="oi oi-list-rich" aria-hidden="true"></span>
+                        <strong>Esta orden todavía no tiene pasos.</strong>
+                    </div>
+                }
+                else
+                {
+                    <div class="orden-steps">
+                        @foreach (var step in Order.Steps)
                         {
-                            <div class="mt-3">
-                                <div class="small text-muted fw-semibold mb-1">Ayudantes</div>
-                                <div class="d-flex flex-wrap gap-1">
-                                    @foreach (var participant in Order.Helpers)
+                            <article class="@GetStepCardClass(step)" aria-busy="@IsStepBusy(step.Id)" @key="step.Id">
+                                <header class="orden-step-header">
+                                    <span class="orden-step-number" aria-label="Paso @step.Secuencia.ToString("0.##")">@step.Secuencia.ToString("0.##")</span>
+                                    <div class="orden-step-title-wrap">
+                                        <h3>@step.Titulo</h3>
+                                        <span class="orden-step-status @GetStepStatusClass(step.Estado)">@GetStepLabel(step.Estado)</span>
+                                    </div>
+                                </header>
+
+                                @if (ShouldShowStepDescription(step))
+                                {
+                                    <p class="orden-step-description">@step.Descripcion</p>
+                                }
+
+                                <div class="orden-step-requirements">
+                                    @if (step.PoliticaFoto == OrdenTrabajoCodes.FotoRequerida)
                                     {
-                                        <span class="badge text-bg-light">@participant.EmployeeName</span>
+                                        <span class="@(step.ActiveEvidenceCount > 0 ? "is-complete" : "is-missing")">
+                                            <span class="oi oi-camera-slr" aria-hidden="true"></span>
+                                            @(step.ActiveEvidenceCount > 0 ? "Foto agregada" : "Foto obligatoria")
+                                        </span>
+                                    }
+                                    else if (step.PoliticaFoto == OrdenTrabajoCodes.FotoOpcional)
+                                    {
+                                        <span><span class="oi oi-camera-slr" aria-hidden="true"></span>Foto opcional</span>
+                                    }
+                                    @if (step.ProcedimientoId.HasValue)
+                                    {
+                                        <span><span class="oi oi-book" aria-hidden="true"></span>Procedimiento @step.ProcedimientoId</span>
+                                    }
+                                    @if (step.ActiveEvidenceCount > 0 && step.PoliticaFoto != OrdenTrabajoCodes.FotoRequerida)
+                                    {
+                                        <span class="is-complete"><span class="oi oi-paperclip" aria-hidden="true"></span>@step.ActiveEvidenceCount evidencia(s)</span>
+                                    }
+                                    @if (HasMissingRequiredNote(step))
+                                    {
+                                        <span class="is-missing"><span class="oi oi-pencil" aria-hidden="true"></span>Nota obligatoria</span>
                                     }
                                 </div>
-                            </div>
-                        }
 
-                        @if (!string.IsNullOrWhiteSpace(Order.Descripcion))
-                        {
-                            <div class="mt-3">
-                                <div class="small text-muted fw-semibold mb-1">Descripcion</div>
-                                <p class="mb-0">@Order.Descripcion</p>
-                            </div>
-                        }
-
-                        <div class="d-grid gap-2 mt-3">
-                            <span class="orden-action-wrap" title="@ExecutionBlockedReason">
-                                <button class="btn btn-outline-primary" type="button" @onclick="StartAsync" disabled="@(!CanExecute || IsMutating)">Iniciar</button>
-                            </span>
-                            <span class="orden-action-wrap" title="@ExecutionBlockedReason">
-                                <button class="btn btn-warning" type="button" @onclick="SubmitAsync" disabled="@(!CanExecute || IsMutating)">Enviar a revision</button>
-                            </span>
-                            @if (CanReview)
-                            {
-                                <span class="orden-action-wrap" title="@ReviewBlockedReason">
-                                    <button class="btn btn-success" type="button" @onclick="ApproveAsync" disabled="@(!IsInReview || IsMutating)">Aprobar y cerrar</button>
-                                </span>
-                            }
-                        </div>
-
-                        @if (ExecutionBlockedReason is not null)
-                        {
-                            <p class="orden-action-hint mt-2 mb-0">@ExecutionBlockedReason</p>
-                        }
-                    </div>
-                </section>
-
-                @if (CanEdit)
-                {
-                    <section class="card shadow-sm mb-3">
-                        <div class="card-body">
-                            <h2 class="h5 mb-3">Editar antes de revision</h2>
-                            <div class="row g-3">
-                                <div class="col-12">
-                                    <label class="form-label">Titulo</label>
-                                    <InputText class="form-control" @bind-Value="EditRequest.Titulo" />
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label">Responsable</label>
-                                    <select class="form-select" @bind="EditRequest.OwnerEmployeeId">
-                                        @foreach (var employee in Employees)
-                                        {
-                                            <option value="@employee.Id">@employee.Name</option>
-                                        }
-                                    </select>
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label">Ayudantes</label>
-                                    <div class="orden-helper-list">
-                                        @foreach (var employee in Employees)
-                                        {
-                                            <label class="form-check">
-                                                <input class="form-check-input" type="checkbox" checked="@EditHelperIds.Contains(employee.Id)" @onchange="args => ToggleEditHelper(employee.Id, args)" />
-                                                <span class="form-check-label">@employee.Name</span>
-                                            </label>
-                                        }
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Fecha</label>
-                                    <InputDate class="form-control" @bind-Value="EditRequest.FechaProgramada" />
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Vence</label>
-                                    <InputDate class="form-control" @bind-Value="EditRequest.FechaVencimiento" />
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label">Ubicacion</label>
-                                    <InputText class="form-control" @bind-Value="EditRequest.Ubicacion" />
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label">Descripcion</label>
-                                    <InputTextArea class="form-control" rows="3" @bind-Value="EditRequest.Descripcion" />
-                                </div>
-                            </div>
-                            <button class="btn btn-primary mt-3 w-100" type="button" @onclick="SaveAsync" disabled="@IsMutating">Guardar cambios</button>
-                        </div>
-                    </section>
-                }
-
-                @if (CanReview && IsInReview)
-                {
-                    <section class="card shadow-sm mb-3">
-                        <div class="card-body">
-                            <h2 class="h5 mb-3">Rechazo</h2>
-                            <InputTextArea class="form-control" rows="3" @bind-Value="ReviewReason" placeholder="Motivo de rechazo" />
-                            <button class="btn btn-outline-danger mt-3 w-100" type="button" @onclick="RejectAsync" disabled="@IsMutating">Rechazar</button>
-                        </div>
-                    </section>
-                }
-
-                @if (CanEdit)
-                {
-                    <section class="card shadow-sm">
-                        <div class="card-body">
-                            <h2 class="h5 mb-3">Cancelar</h2>
-                            <InputTextArea class="form-control" rows="3" @bind-Value="CancelReason" placeholder="Motivo de cancelacion" />
-                            <button class="btn btn-outline-danger mt-3 w-100" type="button" @onclick="CancelAsync" disabled="@IsMutating">Cancelar orden</button>
-                        </div>
-                    </section>
-                }
-            </div>
-
-            <div class="col-12 col-xl-8">
-                <section class="card shadow-sm mb-3">
-                    <div class="card-body">
-                        <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
-                            <div>
-                                <h2 class="h5 mb-1">Ruta critica</h2>
-                                <div class="text-muted small">@Order.CompletedStepCount / @Order.StepCount pasos completados</div>
-                            </div>
-                            @if (CanEditSteps)
-                            {
-                                <div class="d-flex flex-wrap gap-2">
-                                    @if (IsEditingSteps)
+                                @if (CanExecute)
+                                {
+                                    @if (IsStepNotesVisible(step))
                                     {
-                                        <button class="btn btn-sm btn-outline-primary" type="button" @onclick="AddStep" disabled="@IsMutating">Agregar paso</button>
-                                        <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="CancelStepEdit" disabled="@IsMutating">Cancelar edicion</button>
+                                        <div class="orden-step-notes @(PendingStepStatuses.ContainsKey(step.Id) ? "is-required" : null)">
+                                            <label for="step-note-@step.Id">@(PendingStepStatuses.ContainsKey(step.Id) ? "Escribe qué ocurrió" : "Nota del paso")</label>
+                                            <textarea id="step-note-@step.Id" class="form-control" rows="2" value="@GetStepNotes(step)" @oninput="args => SetStepNotesAsync(step.Id, args.Value?.ToString())" placeholder="Escribe una nota breve y clara"></textarea>
+                                            @if (PendingStepStatuses.ContainsKey(step.Id))
+                                            {
+                                                <div class="orden-step-note-confirm">
+                                                    <span>La nota es necesaria para guardar este estado.</span>
+                                                    <button class="btn btn-primary" type="button" @onclick="() => ConfirmPendingStepAsync(step)" disabled="@IsStepBusy(step.Id)">Guardar y continuar</button>
+                                                </div>
+                                            }
+                                        </div>
                                     }
                                     else
                                     {
-                                        <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="StartStepEdit" disabled="@IsMutating">Editar ruta critica</button>
+                                        <button class="orden-add-note" type="button" @onclick="() => ToggleStepNotes(step.Id)">
+                                            <span class="oi oi-pencil" aria-hidden="true"></span>
+                                            Agregar nota
+                                        </button>
                                     }
-                                </div>
-                            }
-                        </div>
 
-                        @if (CanEditSteps && IsEditingSteps)
-                        {
-                            <div class="orden-step-editor mb-3">
-                                @foreach (var step in StepEditor)
-                                {
-                                    <div class="orden-step-editor-row" @key="step">
-                                        <div class="orden-step-editor-sequence">@step.Secuencia.ToString("0.##")</div>
-                                        <div>
-                                            <label class="form-label">Titulo</label>
-                                            <InputText class="form-control" @bind-Value="step.Titulo" />
-                                        </div>
-                                        <div>
-                                            <label class="form-label">Descripcion</label>
-                                            <InputTextArea class="form-control" rows="2" @bind-Value="step.Descripcion" />
-                                        </div>
-                                        <div>
-                                            <label class="form-label">Foto</label>
-                                            <select class="form-select" @bind="step.PoliticaFoto">
-                                                <option value="NO_PERMITIDA">No permitida</option>
-                                                <option value="OPCIONAL">Opcional</option>
-                                                <option value="REQUERIDA">Requerida</option>
-                                            </select>
-                                        </div>
-                                        <div class="orden-step-editor-actions">
-                                            <button class="btn btn-sm btn-outline-danger" type="button" @onclick="() => RemoveStep(step)" disabled="@(IsMutating || StepEditor.Count <= 1)">Quitar</button>
-                                        </div>
-                                    </div>
-                                }
-                                <button class="btn btn-primary" type="button" @onclick="SaveStepsAsync" disabled="@IsMutating">Guardar ruta critica</button>
-                            </div>
-                        }
-
-                        <div class="orden-steps">
-                            @foreach (var step in Order.Steps)
-                            {
-                                <article class="@GetStepCardClass(step)">
-                                    <div class="orden-step-header">
-                                        <div>
-                                            <div class="orden-step-number">@step.Secuencia.ToString("0.##")</div>
-                                            <h3>@step.Titulo</h3>
-                                        </div>
-                                        <span class="@GetStepBadgeClass(step.Estado)">@GetStepLabel(step.Estado)</span>
-                                    </div>
-                                    <p>@step.Descripcion</p>
-                                    <div class="small text-muted mb-2">
-                                        Foto: @GetPhotoPolicyLabel(step.PoliticaFoto)
-                                        @if (step.ProcedimientoId.HasValue)
-                                        {
-                                            <span> · Procedimiento ref: @step.ProcedimientoId</span>
-                                        }
-                                    </div>
-                                    <textarea class="form-control mb-2"
-                                              rows="2"
-                                              value="@GetStepNotes(step)"
-                                              @onchange="args => SetStepNotes(step.Id, args.Value?.ToString())"
-                                              disabled="@(!CanExecute)"></textarea>
-                                    <div class="d-flex flex-wrap gap-2 mb-2">
-                                        <button class="@(step.Estado == OrdenTrabajoCodes.PasoHecho ? "btn btn-sm btn-success" : "btn btn-sm btn-outline-success")"
+                                    <div class="orden-step-actions" role="group" aria-label="Estado del paso @step.Secuencia.ToString("0.##")">
+                                        <button class="orden-step-action orden-step-action--done @(step.Estado == OrdenTrabajoCodes.PasoHecho ? "active" : null)"
                                                 type="button"
-                                                aria-pressed="@(step.Estado == OrdenTrabajoCodes.PasoHecho ? "true" : "false")"
-                                                title="@(step.Estado == OrdenTrabajoCodes.PasoHecho ? "Volver a pendiente" : "Marcar como hecho")"
-                                                @onclick="() => UpdateStepAsync(step, OrdenTrabajoCodes.TogglePasoHecho(step.Estado))"
-                                                disabled="@(!CanExecute || IsMutating)">Hecho</button>
-                                        <button class="btn btn-sm btn-outline-warning" type="button" @onclick="() => UpdateStepAsync(step, OrdenTrabajoCodes.PasoIncidencia)" disabled="@(!CanExecute || IsMutating)">Incidencia</button>
-                                        <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="() => UpdateStepAsync(step, OrdenTrabajoCodes.PasoNoAplica)" disabled="@(!CanExecute || IsMutating)">N/A</button>
+                                                aria-pressed="@(step.Estado == OrdenTrabajoCodes.PasoHecho)"
+                                                @onclick="() => RequestStepStatusAsync(step, OrdenTrabajoCodes.TogglePasoHecho(step.Estado))"
+                                                disabled="@IsStepBusy(step.Id)">
+                                            <span class="oi oi-check" aria-hidden="true"></span>
+                                            @(step.Estado == OrdenTrabajoCodes.PasoHecho ? "Reabrir paso" : "Listo")
+                                        </button>
+                                        <button class="orden-step-action orden-step-action--issue @(step.Estado == OrdenTrabajoCodes.PasoIncidencia ? "active" : null)"
+                                                type="button"
+                                                aria-pressed="@(step.Estado == OrdenTrabajoCodes.PasoIncidencia)"
+                                                @onclick="() => RequestStepStatusAsync(step, OrdenTrabajoCodes.PasoIncidencia)"
+                                                disabled="@IsStepBusy(step.Id)">
+                                            <span class="oi oi-warning" aria-hidden="true"></span>
+                                            Reportar problema
+                                        </button>
+                                        <button class="orden-step-action orden-step-action--na @(step.Estado == OrdenTrabajoCodes.PasoNoAplica ? "active" : null)"
+                                                type="button"
+                                                aria-pressed="@(step.Estado == OrdenTrabajoCodes.PasoNoAplica)"
+                                                @onclick="() => RequestStepStatusAsync(step, OrdenTrabajoCodes.PasoNoAplica)"
+                                                disabled="@IsStepBusy(step.Id)">
+                                            No aplica
+                                        </button>
                                     </div>
 
-                                    @if (CanExecute && step.PoliticaFoto != OrdenTrabajoCodes.FotoNoPermitida)
+                                    @if (LastSavedStepId == step.Id)
+                                    {
+                                        <div class="orden-step-saved" role="status"><span class="oi oi-check" aria-hidden="true"></span>Guardado</div>
+                                    }
+
+                                    @if (step.PoliticaFoto != OrdenTrabajoCodes.FotoNoPermitida)
                                     {
                                         <div class="orden-evidence-actions">
-                                            <button class="btn btn-sm btn-primary" type="button" @onclick="() => OpenCameraAsync(step)" disabled="@(IsMutating || IsCameraStarting || IsCameraCapturing)">
+                                            <button class="btn btn-primary" type="button" @onclick="() => OpenCameraAsync(step)" disabled="@(IsStepBusy(step.Id) || IsCameraStarting || IsCameraCapturing)">
                                                 <span class="oi oi-camera-slr" aria-hidden="true"></span>
                                                 Tomar foto
                                             </button>
-                                            <label class="btn btn-sm btn-outline-secondary orden-file-upload">
+                                            <label class="btn btn-outline-secondary orden-file-upload">
                                                 <span class="oi oi-cloud-upload" aria-hidden="true"></span>
                                                 Subir archivo
-                                                <InputFile OnChange="args => OnEvidenceSelectedAsync(step, args)"
-                                                           disabled="@(IsMutating || IsCameraCapturing)" />
+                                                <InputFile OnChange="args => OnEvidenceSelectedAsync(step, args)" disabled="@IsStepBusy(step.Id)" />
                                             </label>
                                         </div>
+                                    }
+                                }
+                                else if (!string.IsNullOrWhiteSpace(step.Notas))
+                                {
+                                    <div class="orden-step-readonly-note"><strong>Nota</strong><span>@step.Notas</span></div>
+                                }
 
-                                        @if (ActiveCameraStepId == step.Id)
+                                @if (step.Evidence.Any(item => !item.Eliminada))
+                                {
+                                    <div class="orden-evidence-grid">
+                                        @foreach (var evidence in step.Evidence.Where(item => !item.Eliminada))
                                         {
-                                            <div class="orden-camera-panel mt-3">
-                                                <video class="orden-camera-preview" @ref="CameraVideoElement" autoplay muted playsinline></video>
-                                                @if (!string.IsNullOrWhiteSpace(CameraError))
-                                                {
-                                                    <div class="alert alert-warning py-2 mb-2">@CameraError</div>
-                                                }
-                                                @if (CameraDevices.Count > 1)
-                                                {
-                                                    <select class="form-select form-select-sm mb-2" value="@SelectedCameraDeviceId" @onchange="ChangeCameraAsync" disabled="@(IsCameraStarting || IsCameraCapturing)">
-                                                        @foreach (var camera in CameraDevices)
-                                                        {
-                                                            <option value="@camera.DeviceId">@camera.Label</option>
-                                                        }
-                                                    </select>
-                                                }
-                                                <div class="d-flex flex-wrap gap-2">
-                                                    <button class="btn btn-sm btn-success" type="button" @onclick="() => CaptureCameraAsync(step)" disabled="@(IsCameraStarting || IsCameraCapturing || !CameraSupported)">
-                                                        @(IsCameraCapturing ? "Guardando..." : "Capturar")
-                                                    </button>
-                                                    <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="CloseCameraAsync" disabled="@IsCameraCapturing">Cancelar</button>
+                                            <div class="orden-evidence" @key="evidence.Id">
+                                                <button class="orden-evidence-preview-button" type="button" title="@GetEvidenceActionTitle(evidence)" @onclick="() => OpenEvidenceAsync(evidence)">
+                                                    @if (IsImageEvidence(evidence) && evidence.ThumbnailBytes is { Length: > 0 })
+                                                    {
+                                                        <img src="@BuildThumbnailDataUrl(evidence)" alt="Evidencia del paso @step.Secuencia.ToString("0.##")" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="@GetEvidencePlaceholderClass(evidence)"><span class="@GetEvidenceIconClass(evidence)" aria-hidden="true"></span><span>@GetEvidenceTypeLabel(evidence)</span></span>
+                                                    }
+                                                </button>
+                                                <div class="orden-evidence-copy">
+                                                    <strong title="@evidence.FileName">@GetEvidenceDisplayName(evidence)</strong>
+                                                    <span>@FormatFileSize(evidence.SizeBytes) · @GetCaptureSourceLabel(evidence.CaptureSource)</span>
                                                 </div>
+                                                @if (CanRemoveEvidence)
+                                                {
+                                                    <button class="orden-evidence-remove" type="button" @onclick="() => RemoveEvidenceAsync(step, evidence.Id)" disabled="@IsStepBusy(step.Id)" aria-label="Quitar evidencia @GetEvidenceDisplayName(evidence)">
+                                                        <span class="oi oi-trash" aria-hidden="true"></span>
+                                                    </button>
+                                                }
                                             </div>
                                         }
-                                    }
+                                    </div>
+                                }
 
-                                    @if (step.Evidence.Count > 0)
+                                @if (IsStepBusy(step.Id))
+                                {
+                                    <div class="orden-step-busy" aria-hidden="true"><span class="spinner-border spinner-border-sm"></span></div>
+                                }
+                            </article>
+                        }
+                    </div>
+                }
+            </main>
+
+            <aside class="orden-detail-sidebar">
+                <details class="orden-detail-disclosure">
+                    <summary><span><span class="oi oi-info" aria-hidden="true"></span>Datos de la orden</span><span class="oi oi-chevron-bottom" aria-hidden="true"></span></summary>
+                    <div class="orden-detail-disclosure__body">
+                        <dl class="orden-detail-meta">
+                            <div><dt>Responsable</dt><dd>@Order.OwnerName</dd></div>
+                            <div><dt>Programada</dt><dd>@Order.FechaProgramada.ToString("dd MMMM yyyy", CurrencyCulture)</dd></div>
+                            <div><dt>Horario</dt><dd>@OrdenesTrabajoPage.FormatWindow(Order.HoraInicioProgramada, Order.HoraFinProgramada)</dd></div>
+                            <div><dt>Ubicación</dt><dd>@OrdenesTrabajoPage.FormatTarget(Order)</dd></div>
+                        </dl>
+                        @if (Order.Helpers.Count > 0)
+                        {
+                            <div class="orden-detail-helpers">
+                                <strong>Ayudantes</strong>
+                                <div>
+                                    @foreach (var assistant in Order.Helpers)
                                     {
-                                        <div class="orden-evidence-grid mt-3">
-                                            @foreach (var evidence in step.Evidence.Where(item => !item.Eliminada))
+                                        <span>@assistant.EmployeeName</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(Order.Descripcion))
+                        {
+                            <div class="orden-detail-description"><strong>Descripción</strong><p>@Order.Descripcion</p></div>
+                        }
+                    </div>
+                </details>
+
+                @if (IsPrivilegedUser)
+                {
+                    <details class="orden-detail-disclosure orden-admin-disclosure">
+                        <summary><span><span class="oi oi-cog" aria-hidden="true"></span>Administrar orden</span><span class="oi oi-chevron-bottom" aria-hidden="true"></span></summary>
+                        <div class="orden-detail-disclosure__body orden-admin-sections">
+                            @if (CanEdit)
+                            {
+                                <section class="orden-admin-section">
+                                    <h3>Datos y asignación</h3>
+                                    <div class="orden-admin-form">
+                                        <div><label for="edit-title">Título</label><InputText id="edit-title" class="form-control" @bind-Value="EditRequest.Titulo" /></div>
+                                        <div><label for="edit-owner">Responsable</label><select id="edit-owner" class="form-select" @bind="EditRequest.OwnerEmployeeId">@foreach (var employee in Employees) { <option value="@employee.Id">@employee.Name</option> }</select></div>
+                                        <div>
+                                            <span class="orden-admin-label">Ayudantes</span>
+                                            <div class="orden-helper-list">@foreach (var employee in Employees) { <label class="form-check"><input class="form-check-input" type="checkbox" checked="@EditHelperIds.Contains(employee.Id)" @onchange="args => ToggleEditHelper(employee.Id, args)" /><span class="form-check-label">@employee.Name</span></label> }</div>
+                                        </div>
+                                        <div class="orden-admin-grid"><div><label>Fecha</label><InputDate class="form-control" @bind-Value="EditRequest.FechaProgramada" /></div><div><label>Vence</label><InputDate class="form-control" @bind-Value="EditRequest.FechaVencimiento" /></div></div>
+                                        <div><label>Ubicación</label><InputText class="form-control" @bind-Value="EditRequest.Ubicacion" /></div>
+                                        <div><label>Descripción</label><InputTextArea class="form-control" rows="3" @bind-Value="EditRequest.Descripcion" /></div>
+                                        <button class="btn btn-primary" type="button" @onclick="SaveAsync" disabled="@IsMutating">Guardar cambios</button>
+                                    </div>
+                                </section>
+                            }
+
+                            @if (CanEditSteps)
+                            {
+                                <section class="orden-admin-section">
+                                    <div class="orden-admin-section__heading">
+                                        <h3>Ruta crítica</h3>
+                                        @if (!IsEditingSteps) { <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="StartStepEdit">Editar</button> }
+                                    </div>
+                                    @if (IsEditingSteps)
+                                    {
+                                        <div class="orden-step-editor">
+                                            @foreach (var editorStep in StepEditor)
                                             {
-                                                <div class="orden-evidence">
-                                                    <button class="orden-evidence-preview-button"
-                                                            type="button"
-                                                            title="@GetEvidenceActionTitle(evidence)"
-                                                            @onclick="() => OpenEvidenceAsync(evidence)">
-                                                        @if (IsImageEvidence(evidence) && evidence.ThumbnailBytes is { Length: > 0 })
-                                                        {
-                                                            <img src="@BuildThumbnailDataUrl(evidence)" alt="Evidencia @evidence.Id" />
-                                                        }
-                                                        else
-                                                        {
-                                                            <span class="@GetEvidencePlaceholderClass(evidence)">
-                                                                <span class="@GetEvidenceIconClass(evidence)" aria-hidden="true"></span>
-                                                                <span>@GetEvidenceTypeLabel(evidence)</span>
-                                                            </span>
-                                                        }
-                                                    </button>
-                                                    <div class="orden-evidence-file-name" title="@evidence.FileName">@GetEvidenceDisplayName(evidence)</div>
-                                                    <div class="small text-muted">@FormatFileSize(evidence.SizeBytes)</div>
-                                                    <div class="small">@evidence.CapturadaPor</div>
-                                                    <div class="small text-muted">@evidence.CapturadaEn.ToString("yyyy-MM-dd HH:mm")</div>
-                                                    <span class="@GetCaptureSourceBadgeClass(evidence.CaptureSource)">@GetCaptureSourceLabel(evidence.CaptureSource)</span>
-                                                    @if (CanRemoveEvidence)
-                                                    {
-                                                        <button class="btn btn-sm btn-link text-danger p-0" type="button" @onclick="() => RemoveEvidenceAsync(step, evidence.Id)">Quitar</button>
-                                                    }
+                                                <div class="orden-step-editor-row" @key="editorStep">
+                                                    <strong>@editorStep.Secuencia.ToString("0.##")</strong>
+                                                    <InputText class="form-control" @bind-Value="editorStep.Titulo" placeholder="Título del paso" />
+                                                    <InputTextArea class="form-control" rows="2" @bind-Value="editorStep.Descripcion" placeholder="Descripción" />
+                                                    <select class="form-select" @bind="editorStep.PoliticaFoto"><option value="NO_PERMITIDA">Sin foto</option><option value="OPCIONAL">Foto opcional</option><option value="REQUERIDA">Foto requerida</option></select>
+                                                    <button class="btn btn-sm btn-outline-danger" type="button" @onclick="() => RemoveStep(editorStep)" disabled="@(StepEditor.Count <= 1 || IsMutating)">Quitar</button>
                                                 </div>
                                             }
+                                            <div class="orden-step-editor-actions">
+                                                <button class="btn btn-outline-primary" type="button" @onclick="AddStep" disabled="@IsMutating">Agregar paso</button>
+                                                <button class="btn btn-outline-secondary" type="button" @onclick="CancelStepEdit" disabled="@IsMutating">Descartar</button>
+                                                <button class="btn btn-primary" type="button" @onclick="SaveStepsAsync" disabled="@IsMutating">Guardar ruta</button>
+                                            </div>
                                         </div>
                                     }
-                                </article>
+                                </section>
                             }
-                        </div>
-                    </div>
-                </section>
 
-                @if (CanReview)
-                {
-                    <section class="card shadow-sm mb-3">
-                        <div class="card-body">
-                            <h2 class="h5 mb-3">Transacciones ligadas</h2>
-                            <div class="row g-2 align-items-end mb-3">
-                                <div class="col-md-8">
-                                    <label class="form-label">Buscar transaccion</label>
-                                    <InputText class="form-control" @bind-Value="TransactionSearchText" />
-                                </div>
-                                <div class="col-md-4 d-grid">
-                                    <button class="btn btn-outline-primary" type="button" @onclick="SearchTransactionsAsync">Buscar</button>
-                                </div>
-                            </div>
-                            @if (TransactionMatches.Count > 0)
+                            @if (CanReview)
                             {
-                                <div class="list-group mb-3">
-                                    @foreach (var item in TransactionMatches)
+                                <section class="orden-admin-section">
+                                    <h3>Transacciones ligadas</h3>
+                                    <div class="orden-transaction-search"><InputText class="form-control" @bind-Value="TransactionSearchText" placeholder="Buscar transacción" /><button class="btn btn-outline-primary" type="button" @onclick="SearchTransactionsAsync">Buscar</button></div>
+                                    @if (TransactionMatches.Count > 0)
                                     {
-                                        <button class="list-group-item list-group-item-action d-flex justify-content-between gap-2" type="button" @onclick="() => LinkTransactionAsync(item.Id)">
-                                            <span>@item.Fecha.ToString("yyyy-MM-dd") · @item.Concepto</span>
-                                            <strong>@item.Monto.ToString("C2", CurrencyCulture)</strong>
-                                        </button>
+                                        <div class="orden-transaction-results">@foreach (var item in TransactionMatches) { <button type="button" @onclick="() => LinkTransactionAsync(item.Id)"><span>@item.Fecha.ToString("dd MMM") · @item.Concepto</span><strong>@item.Monto.ToString("C2", CurrencyCulture)</strong></button> }</div>
+                                    }
+                                    @if (Order.Transactions.Count == 0)
+                                    {
+                                        <p class="text-muted mb-0">Sin transacciones ligadas.</p>
+                                    }
+                                    else
+                                    {
+                                        <div class="orden-linked-transactions">@foreach (var tx in Order.Transactions) { <div><span>@tx.Fecha.ToString("dd MMM") · @tx.Concepto</span><strong>@tx.Monto.ToString("C2", CurrencyCulture)</strong><button type="button" @onclick="() => UnlinkTransactionAsync(tx.TransaccionId)" aria-label="Quitar transacción"><span class="oi oi-x"></span></button></div> }</div>
+                                    }
+                                </section>
+                            }
+
+                            <section class="orden-admin-section">
+                                <h3>Auditoría</h3>
+                                <div class="orden-audit-list">
+                                    @foreach (var audit in Order.Audit)
+                                    {
+                                        <div><span class="orden-audit-dot" aria-hidden="true"></span><div><strong>@audit.Evento</strong><small>@audit.CreadoPor · @audit.CreadoEn.ToString("dd MMM yyyy HH:mm", CurrencyCulture)</small>@if (!string.IsNullOrWhiteSpace(audit.Detalle)) { <p>@audit.Detalle</p> }</div></div>
                                     }
                                 </div>
-                            }
+                            </section>
 
-                            <div class="table-responsive">
-                                <table class="table table-sm mb-0">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>ID</th>
-                                            <th>Fecha</th>
-                                            <th>Concepto</th>
-                                            <th class="text-end">Monto</th>
-                                            <th></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @if (Order.Transactions.Count == 0)
-                                        {
-                                            <tr><td colspan="5" class="text-center text-muted py-3">Sin transacciones ligadas.</td></tr>
-                                        }
-                                        else
-                                        {
-                                            @foreach (var tx in Order.Transactions)
-                                            {
-                                                <tr>
-                                                    <td>@tx.TransaccionId</td>
-                                                    <td>@tx.Fecha.ToString("yyyy-MM-dd")</td>
-                                                    <td>@tx.Concepto</td>
-                                                    <td class="text-end">@tx.Monto.ToString("C2", CurrencyCulture)</td>
-                                                    <td class="text-end"><button class="btn btn-sm btn-outline-danger" type="button" @onclick="() => UnlinkTransactionAsync(tx.TransaccionId)">Quitar</button></td>
-                                                </tr>
-                                            }
-                                        }
-                                    </tbody>
-                                </table>
-                            </div>
+                            @if (CanEdit)
+                            {
+                                <section class="orden-admin-section orden-danger-zone">
+                                    <h3>Acciones delicadas</h3>
+                                    <p>Estas acciones cambian o eliminan la orden completa.</p>
+                                    <button class="btn btn-outline-danger" type="button" @onclick='() => OpenActionDialog("cancel")'>Cancelar orden</button>
+                                    <button class="btn btn-danger" type="button" @onclick='() => OpenActionDialog("delete")'>Eliminar orden</button>
+                                </section>
+                            }
                         </div>
-                    </section>
+                    </details>
                 }
-
-                <section class="card shadow-sm">
-                    <div class="card-body">
-                        <h2 class="h5 mb-3">Auditoria</h2>
-                        <div class="list-group list-group-flush">
-                            @foreach (var audit in Order.Audit)
-                            {
-                                <div class="list-group-item px-0">
-                                    <div class="d-flex justify-content-between gap-2">
-                                        <strong>@audit.Evento</strong>
-                                        <span class="small text-muted">@audit.CreadoEn.ToString("yyyy-MM-dd HH:mm")</span>
-                                    </div>
-                                    <div class="small text-muted">@audit.CreadoPor</div>
-                                    @if (!string.IsNullOrWhiteSpace(audit.Detalle))
-                                    {
-                                        <div>@audit.Detalle</div>
-                                    }
-                                </div>
-                            }
-                        </div>
-                    </div>
-                </section>
-            </div>
+            </aside>
         </div>
+
+        <div class="orden-sticky-actions" role="region" aria-label="Acción principal de la orden">
+            @if (CanReview && IsInReview)
+            {
+                <div class="orden-sticky-copy"><strong>Lista para revisión</strong><span>Comprueba evidencia e incidencias antes de cerrar.</span></div>
+                <button class="btn btn-outline-danger" type="button" @onclick='() => OpenActionDialog("reject")' disabled="@IsMutating">Devolver</button>
+                <button class="btn btn-success" type="button" @onclick="ApproveAsync" disabled="@IsMutating"><span class="oi oi-check"></span>Aprobar y cerrar</button>
+            }
+            else if (CanStart)
+            {
+                <div class="orden-sticky-copy"><strong>Orden lista para comenzar</strong><span>Iníciala cuando estés en el lugar de trabajo.</span></div>
+                <button class="btn btn-primary" type="button" @onclick="StartAsync" disabled="@IsMutating"><span class="oi oi-media-play"></span>Iniciar orden</button>
+            }
+            else if (CanExecute)
+            {
+                <div class="orden-sticky-copy"><strong>@GetReadinessMessage()</strong><span>@(ReviewReadiness.IsReady ? "Todos los requisitos están completos." : "Completa lo pendiente antes de enviar.")</span></div>
+                <button class="btn btn-warning" type="button" @onclick="SubmitAsync" disabled="@(!ReviewReadiness.IsReady || IsMutating)"><span class="oi oi-share-boxed"></span>Enviar a revisión</button>
+            }
+            else if (IsInReview)
+            {
+                <div class="orden-sticky-copy"><strong>En revisión</strong><span>Un supervisor revisará el trabajo enviado.</span></div>
+                <span class="orden-sticky-state"><span class="oi oi-clock"></span>Esperando</span>
+            }
+            else if (Order.Estado == OrdenTrabajoCodes.EstadoCerrada)
+            {
+                <div class="orden-sticky-copy"><strong>Orden cerrada</strong><span>El trabajo fue aprobado.</span></div>
+                <span class="orden-sticky-state is-success"><span class="oi oi-check"></span>Completada</span>
+            }
+        </div>
+    }
+
+    @if (ActiveCameraStepId.HasValue && Order is not null)
+    {
+        var cameraStep = Order.Steps.FirstOrDefault(step => step.Id == ActiveCameraStepId.Value);
+        @if (cameraStep is not null)
+        {
+            <div class="orden-camera-overlay" role="dialog" aria-modal="true" aria-label="Tomar foto para @cameraStep.Titulo">
+                <div class="orden-camera-dialog">
+                    <header><div><span>Paso @cameraStep.Secuencia.ToString("0.##")</span><h2>@cameraStep.Titulo</h2></div><button type="button" @onclick="CloseCameraAsync" disabled="@IsCameraCapturing" aria-label="Cerrar cámara"><span class="oi oi-x"></span></button></header>
+                    <div class="orden-camera-stage">
+                        @if (CameraPreviewUrl is not null)
+                        {
+                            <img src="@CameraPreviewUrl" alt="Vista previa de la foto" />
+                        }
+                        else
+                        {
+                            <video class="orden-camera-preview" @ref="CameraVideoElement" autoplay muted playsinline></video>
+                        }
+                        @if (IsCameraStarting) { <div class="orden-camera-status"><span class="spinner-border"></span><strong>Abriendo cámara…</strong></div> }
+                        @if (!string.IsNullOrWhiteSpace(CameraError)) { <div class="orden-camera-error" role="alert">@CameraError</div> }
+                    </div>
+                    @if (CameraDevices.Count > 1 && CameraPreviewUrl is null)
+                    {
+                        <select class="form-select" value="@SelectedCameraDeviceId" @onchange="ChangeCameraAsync" disabled="@(IsCameraStarting || IsCameraCapturing)">@foreach (var camera in CameraDevices) { <option value="@camera.DeviceId">@camera.Label</option> }</select>
+                    }
+                    <footer>
+                        @if (CameraPreviewUrl is null)
+                        {
+                            <button class="btn btn-light" type="button" @onclick="CloseCameraAsync" disabled="@IsCameraCapturing">Cancelar</button>
+                            <button class="orden-camera-capture" type="button" @onclick="() => CaptureCameraAsync(cameraStep)" disabled="@(IsCameraStarting || IsCameraCapturing || !CameraSupported)" aria-label="Capturar foto"><span></span></button>
+                            <span></span>
+                        }
+                        else
+                        {
+                            <button class="btn btn-outline-light" type="button" @onclick="RetakeCameraAsync" disabled="@IsCameraCapturing">Repetir</button>
+                            <button class="btn btn-success" type="button" @onclick="() => SaveCameraAsync(cameraStep)" disabled="@IsCameraCapturing">@(IsCameraCapturing ? "Guardando…" : "Usar esta foto")</button>
+                        }
+                    </footer>
+                </div>
+            </div>
+        }
     }
 
     @if (IsEvidencePreviewOpen)
     {
-        <div class="orden-image-viewer"
-             role="dialog"
-             aria-modal="true"
-             aria-label="@EvidencePreviewTitle"
-             tabindex="-1"
-             @onclick="CloseEvidencePreview"
-             @onkeydown="HandleEvidencePreviewKeyDown">
+        <div class="orden-image-viewer" role="dialog" aria-modal="true" aria-label="@EvidencePreviewTitle" tabindex="-1" @onclick="CloseEvidencePreview" @onkeydown="HandleEvidencePreviewKeyDown">
             <div class="orden-image-viewer-dialog" @onclick:stopPropagation="true">
-                <div class="orden-image-viewer-toolbar">
-                    <div>
-                        <div class="orden-image-viewer-title">@EvidencePreviewTitle</div>
-                        @if (!string.IsNullOrWhiteSpace(EvidencePreviewSubtitle))
-                        {
-                            <div class="orden-image-viewer-subtitle">@EvidencePreviewSubtitle</div>
-                        }
-                    </div>
-                    <button class="btn btn-sm btn-light orden-image-viewer-close"
-                            type="button"
-                            aria-label="Cerrar evidencia"
-                            @onclick="CloseEvidencePreview">
-                        <span class="oi oi-x" aria-hidden="true"></span>
-                    </button>
-                </div>
-                <div class="orden-image-viewer-body">
-                    @if (IsEvidencePreviewLoading)
-                    {
-                        <div class="orden-image-viewer-status">Cargando evidencia...</div>
-                    }
-                    else if (!string.IsNullOrWhiteSpace(EvidencePreviewError))
-                    {
-                        <div class="alert alert-warning mb-0">@EvidencePreviewError</div>
-                    }
-                    else if (!string.IsNullOrWhiteSpace(EvidencePreviewImageDataUrl))
-                    {
-                        <img src="@EvidencePreviewImageDataUrl" alt="@EvidencePreviewTitle" />
-                    }
-                </div>
+                <div class="orden-image-viewer-toolbar"><div><div class="orden-image-viewer-title">@EvidencePreviewTitle</div>@if (!string.IsNullOrWhiteSpace(EvidencePreviewSubtitle)) { <div class="orden-image-viewer-subtitle">@EvidencePreviewSubtitle</div> }</div><button class="btn btn-sm btn-light" type="button" aria-label="Cerrar evidencia" @onclick="CloseEvidencePreview"><span class="oi oi-x"></span></button></div>
+                <div class="orden-image-viewer-body">@if (IsEvidencePreviewLoading) { <div class="orden-image-viewer-status">Cargando evidencia…</div> } else if (!string.IsNullOrWhiteSpace(EvidencePreviewError)) { <div class="alert alert-warning mb-0">@EvidencePreviewError</div> } else if (!string.IsNullOrWhiteSpace(EvidencePreviewImageDataUrl)) { <img src="@EvidencePreviewImageDataUrl" alt="@EvidencePreviewTitle" /> }</div>
             </div>
+        </div>
+    }
+
+    @if (IsActionDialogOpen)
+    {
+        <div class="orden-confirm-backdrop" role="presentation" @onclick="CloseActionDialog">
+            <section class="orden-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="orden-confirm-title" aria-describedby="orden-confirm-description" tabindex="-1" @onclick:stopPropagation="true" @onkeydown="HandleActionDialogKeyDown">
+                <span class="orden-confirm-icon"><span class="oi oi-warning" aria-hidden="true"></span></span>
+                <h2 id="orden-confirm-title">@ActionDialogTitle</h2>
+                <p id="orden-confirm-description">@ActionDialogMessage</p>
+                @if (ActionDialogRequiresReason)
+                {
+                    <label for="orden-action-reason">Motivo</label>
+                    <textarea id="orden-action-reason" class="form-control" rows="3" @bind="ActionDialogReason" @ref="ActionReasonElement" placeholder="Escribe un motivo claro"></textarea>
+                }
+                <footer><button class="btn btn-outline-secondary" type="button" @ref="ActionDialogCancelElement" @onclick="CloseActionDialog" disabled="@IsMutating">Volver</button><button class="btn btn-danger" type="button" @onclick="ConfirmActionDialogAsync" disabled="@IsMutating">@(IsMutating ? "Procesando…" : ActionDialogConfirmLabel)</button></footer>
+            </section>
         </div>
     }
 </div>

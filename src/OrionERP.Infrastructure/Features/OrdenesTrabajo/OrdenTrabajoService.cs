@@ -255,11 +255,34 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
       """);
 
     AppendWorkOrderFilters(sql, p, filter);
-    sql.Append(
-      """
-      ORDER BY ot.FechaProgramada DESC, ot.Id DESC
-      OFFSET @Skip ROWS FETCH NEXT @Take ROWS ONLY;
-      """);
+    if (filter.SortMode == OrdenTrabajoSearchSort.OperationalPriority)
+    {
+      sql.Append(
+        """
+        ORDER BY
+          CASE
+            WHEN ot.Estado = 'RECHAZADA' THEN 0
+            WHEN ot.Estado IN ('BORRADOR','ASIGNADA','EN_PROCESO')
+              AND ISNULL(ot.FechaVencimiento, ot.FechaProgramada) < CONVERT(date, GETDATE()) THEN 1
+            WHEN ot.Estado = 'EN_PROCESO' AND ot.FechaProgramada = CONVERT(date, GETDATE()) THEN 2
+            WHEN ot.FechaProgramada = CONVERT(date, GETDATE()) THEN 3
+            WHEN ot.Estado = 'EN_REVISION' THEN 5
+            ELSE 4
+          END,
+          CASE ot.Prioridad WHEN 'URGENTE' THEN 0 WHEN 'ALTA' THEN 1 WHEN 'NORMAL' THEN 2 WHEN 'BAJA' THEN 3 ELSE 4 END,
+          ot.FechaProgramada,
+          ot.Id DESC
+        OFFSET @Skip ROWS FETCH NEXT @Take ROWS ONLY;
+        """);
+    }
+    else
+    {
+      sql.Append(
+        """
+        ORDER BY ot.FechaProgramada DESC, ot.Id DESC
+        OFFSET @Skip ROWS FETCH NEXT @Take ROWS ONLY;
+        """);
+    }
     p.Add("@Skip", Math.Max(filter.Skip, 0), DbType.Int32);
     p.Add("@Take", Math.Clamp(filter.Take, 1, 500), DbType.Int32);
 
@@ -2933,9 +2956,19 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
       p.Add("@Rfc", filter.Rfc.Trim());
     }
 
-    if (!filter.IncludeClosed)
+    if (filter.ClosedOnly)
+    {
+      sql.AppendLine(" AND ot.Estado IN ('CERRADA','CANCELADA')");
+    }
+    else if (!filter.IncludeClosed)
     {
       sql.AppendLine(" AND ot.Estado <> 'CERRADA' AND ot.Estado <> 'CANCELADA'");
+    }
+
+    if (filter.OverdueOnly)
+    {
+      sql.AppendLine(" AND ot.Estado IN ('BORRADOR','ASIGNADA','EN_PROCESO','RECHAZADA')");
+      sql.AppendLine(" AND ISNULL(ot.FechaVencimiento, ot.FechaProgramada) < CONVERT(date, GETDATE())");
     }
 
     if (!string.IsNullOrWhiteSpace(filter.Estado))

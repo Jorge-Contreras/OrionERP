@@ -1,8 +1,10 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @using OrionERP.Web.Services
 @using OrionERP.Web.Features.TrainingSafety
 @inject IUiMessageService MessageService
 @inject ITrainingEnvironmentState TrainingEnvironment
+@inject NavigationManager Navigation
 
 <PageTitle>@(TrainingEnvironment.IsTraining ? "CAPACITACIÓN · OrionERP" : "OrionERP")</PageTitle>
 
@@ -26,7 +28,7 @@
             <CommandCenter />
 
             <div class="app-shell__topbar-header">
-                <SecurityHeader />
+                <SecurityHeader CompactMobile="@IsWorkOrderFieldRoute" />
             </div>
         </div>
 
@@ -48,11 +50,36 @@
     </main>
 </div>
 
+<ConnectionStatus />
+
 @code {
     [CascadingParameter] private ErrorBoundary? _errorBoundary { get; set; }
     private bool _isDesktopNavVisible;
 
-    private string AppShellCssClass => _isDesktopNavVisible ? "page app-shell" : "page app-shell app-shell--nav-hidden";
+    private string AppShellCssClass
+        => $"page app-shell{(_isDesktopNavVisible ? string.Empty : " app-shell--nav-hidden")}{(IsWorkOrderFieldRoute ? " app-shell--field-operations" : string.Empty)}";
+
+    private bool IsWorkOrderFieldRoute
+    {
+        get
+        {
+            var path = Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/');
+            if (string.Equals(path, "ordenes-trabajo", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            return segments.Length == 2
+                && string.Equals(segments[0], "ordenes-trabajo", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(segments[1], out _);
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += HandleLocationChanged;
+    }
 
     private void HandleError(Exception exception)
     {
@@ -73,5 +100,16 @@
     private void HideDesktopNavMenu()
     {
         _isDesktopNavVisible = false;
+    }
+
+    private void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args)
+    {
+        _isDesktopNavVisible = false;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= HandleLocationChanged;
     }
 }

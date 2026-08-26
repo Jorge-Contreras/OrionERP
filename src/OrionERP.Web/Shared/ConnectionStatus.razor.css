@@ -1,0 +1,82 @@
+.connection-status {
+    position: fixed;
+    inset: auto 0.75rem calc(0.75rem + env(safe-area-inset-bottom));
+    z-index: 1200;
+    display: none;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.connection-status.components-reconnect-show,
+.connection-status.components-reconnect-failed,
+.connection-status.components-reconnect-rejected {
+    display: flex;
+}
+
+.connection-status__panel {
+    width: min(100%, 34rem);
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 1rem;
+    background: #102c4d;
+    color: #fff;
+    box-shadow: 0 20px 44px rgba(6, 24, 43, 0.28);
+    pointer-events: auto;
+}
+
+.connection-status__spinner {
+    width: 1.4rem;
+    height: 1.4rem;
+    flex: 0 0 1.4rem;
+    border: 3px solid rgba(255, 255, 255, 0.28);
+    border-top-color: #f5c453;
+    border-radius: 50%;
+    animation: connection-spin 0.85s linear infinite;
+}
+
+.connection-status__copy {
+    display: none;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.components-reconnect-show .connection-status__retrying,
+.components-reconnect-failed .connection-status__failed,
+.components-reconnect-rejected .connection-status__rejected {
+    display: grid;
+    gap: 0.2rem;
+}
+
+.components-reconnect-failed .connection-status__spinner,
+.components-reconnect-rejected .connection-status__spinner {
+    display: none;
+}
+
+.connection-status__copy strong {
+    font-size: 0.95rem;
+}
+
+.connection-status__copy span {
+    color: rgba(255, 255, 255, 0.76);
+    font-size: 0.82rem;
+    line-height: 1.35;
+}
+
+.connection-status__copy button {
+    justify-self: start;
+    min-height: 2.75rem;
+    margin-top: 0.5rem;
+    padding: 0.55rem 0.85rem;
+    border: 0;
+    border-radius: 0.7rem;
+    background: #f5c453;
+    color: #102c4d;
+    font-weight: 800;
+}
+
+@keyframes connection-spin {
+    to { transform: rotate(360deg); }
+}

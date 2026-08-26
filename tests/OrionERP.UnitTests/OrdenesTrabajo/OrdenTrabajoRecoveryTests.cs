@@ -17,6 +17,19 @@ public class OrdenTrabajoRecoveryTests
     Assert.False(OrdenTrabajoPermissions.CanExecute(30, ownerEmployeeId: 10, helperEmployeeIds: [20]));
   }
 
+  [Theory]
+  [InlineData("Administrador", true)]
+  [InlineData("OrdenTrabajoAdmin", true)]
+  [InlineData("OrdenTrabajoSupervisor", true)]
+  [InlineData("Empleado", false)]
+  [InlineData("CapitalHumanoSupervisor", false)]
+  public void ManagementVisibility_IsLimitedToWorkOrderPrivilegedRoles(string role, bool expected)
+  {
+    var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { role };
+
+    Assert.Equal(expected, OrdenTrabajoPermissions.CanAccessManagement(roles.Contains));
+  }
+
   [Fact]
   public async Task StartWorkOrderAsync_RejectsMissingActorEmployee()
   {

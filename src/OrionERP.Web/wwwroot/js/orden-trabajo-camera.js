@@ -1,5 +1,6 @@
 let currentStream = null;
 let lastCapture = null;
+let lastPreviewUrl = null;
 
 export function isSupported() {
   return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
@@ -57,6 +58,8 @@ export async function capture(videoElement, imageMaxPixels, thumbnailMaxPixels) 
     imageBlob: image.blob,
     thumbnailBlob: thumbnail.blob
   };
+  revokePreviewUrl();
+  lastPreviewUrl = URL.createObjectURL(image.blob);
 
   return {
     imageContentType: image.contentType,
@@ -87,7 +90,16 @@ export function getLastThumbnail() {
   return lastCapture.thumbnailBlob;
 }
 
+export function getPreviewUrl() {
+  if (!lastPreviewUrl) {
+    throw new Error("No hay una vista previa disponible.");
+  }
+
+  return lastPreviewUrl;
+}
+
 export function clearLastCapture() {
+  revokePreviewUrl();
   lastCapture = null;
 }
 
@@ -199,5 +211,15 @@ window.addEventListener("pagehide", () => {
   }
 
   currentStream = null;
+  revokePreviewUrl();
   lastCapture = null;
 });
+
+function revokePreviewUrl() {
+  if (!lastPreviewUrl) {
+    return;
+  }
+
+  URL.revokeObjectURL(lastPreviewUrl);
+  lastPreviewUrl = null;
+}

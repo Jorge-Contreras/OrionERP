@@ -2,266 +2,326 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize(Roles = "Administrador,OrdenTrabajoAdmin,OrdenTrabajoSupervisor,OrdenTrabajoOperador")]
 
-<PageTitle>Ordenes de trabajo</PageTitle>
+<PageTitle>Órdenes de trabajo</PageTitle>
 
-<div class="container-fluid py-3 ordenes-page">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+<div class="container-fluid ordenes-page">
+    <header class="ordenes-hero">
         <div>
-            <h1 class="h3 mb-1">Ordenes de trabajo</h1>
-            <p class="text-muted mb-0">Operacion, limpieza, mantenimiento y checklists con ruta critica y evidencia.</p>
+            <span class="ordenes-eyebrow">Operación diaria</span>
+            <h1>Órdenes de trabajo</h1>
+            <p>@(IsPrivilegedUser ? "Consulta el trabajo pendiente o entra a gestión." : "Aquí está el trabajo que tienes asignado.")</p>
         </div>
-        <div class="d-flex gap-2">
-            <a class="btn btn-outline-secondary" href="/ordenes-trabajo/plantillas">Plantillas</a>
-            <button class="btn btn-primary" type="button" @onclick="LoadAsync" disabled="@IsLoading">Actualizar</button>
-        </div>
-    </div>
+        <button class="ordenes-refresh" type="button" @onclick="LoadAsync" disabled="@IsLoading" aria-label="Actualizar órdenes">
+            <span class="oi oi-reload" aria-hidden="true"></span>
+            <span class="d-none d-sm-inline">Actualizar</span>
+        </button>
+    </header>
+
+    @if (IsPrivilegedUser)
+    {
+        <nav class="ordenes-view-switch" aria-label="Vista de órdenes de trabajo">
+            <button type="button" class="@(ActiveView == WorkView ? "active" : null)" @onclick="() => SetViewAsync(WorkView)">
+                <span class="oi oi-task" aria-hidden="true"></span>
+                Trabajo
+            </button>
+            <button type="button" class="@(ActiveView == ManagementView ? "active" : null)" @onclick="() => SetViewAsync(ManagementView)">
+                <span class="oi oi-cog" aria-hidden="true"></span>
+                Gestión
+                @if ((Dashboard?.PendingReviewCount ?? 0) > 0)
+                {
+                    <span class="ordenes-view-count">@Dashboard!.PendingReviewCount</span>
+                }
+            </button>
+        </nav>
+    }
 
     @if (!string.IsNullOrWhiteSpace(ErrorMessage))
     {
-        <div class="alert alert-danger">@ErrorMessage</div>
+        <div class="ordenes-feedback ordenes-feedback--error" role="alert">
+            <span class="oi oi-warning" aria-hidden="true"></span>
+            <div>
+                <strong>No pudimos cargar las órdenes.</strong>
+                <span>@ErrorMessage</span>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="LoadAsync">Reintentar</button>
+        </div>
     }
 
-    @if (Dashboard is not null)
+    @if (!IsPrivilegedUser && !CurrentEmployeeId.HasValue)
     {
-        <section class="ordenes-kpis mb-3">
-            <div class="ordenes-kpi">
-                <span>Abiertas</span>
-                <strong>@Dashboard.OpenCount</strong>
+        <section class="ordenes-empty ordenes-empty--attention" role="status">
+            <span class="oi oi-person" aria-hidden="true"></span>
+            <h2>Falta vincular tu perfil de empleado</h2>
+            <p>Pide a un supervisor que relacione tu usuario con Capital Humano. Después vuelve a iniciar sesión.</p>
+        </section>
+    }
+    else if (ActiveView == ManagementView && IsPrivilegedUser)
+    {
+        <section class="ordenes-management-heading">
+            <div>
+                <span class="ordenes-eyebrow">Supervisión</span>
+                <h2>Gestión</h2>
+                <p>Revisa entregas y administra el trabajo sin mezclarlo con el recorrido del empleado.</p>
             </div>
-            <div class="ordenes-kpi ordenes-kpi-danger">
-                <span>Vencidas</span>
-                <strong>@Dashboard.OverdueCount</strong>
+            <div class="ordenes-management-actions">
+                <button class="btn btn-primary" type="button" @onclick="OpenCreatePanel">
+                    <span class="oi oi-plus" aria-hidden="true"></span>
+                    Nueva orden
+                </button>
+                <a class="btn btn-outline-secondary" href="/ordenes-trabajo/plantillas">Plantillas</a>
             </div>
-            <div class="ordenes-kpi ordenes-kpi-review">
-                <span>En revision</span>
-                <strong>@Dashboard.PendingReviewCount</strong>
+        </section>
+
+        @if (Dashboard is not null)
+        {
+            <section class="ordenes-management-kpis" aria-label="Resumen de órdenes">
+                <div><span>Abiertas</span><strong>@Dashboard.OpenCount</strong></div>
+                <div class="is-overdue"><span>Vencidas</span><strong>@Dashboard.OverdueCount</strong></div>
+                <div class="is-review"><span>Por revisar</span><strong>@Dashboard.PendingReviewCount</strong></div>
+                <div class="is-cleaning"><span>Limpieza hoy</span><strong>@Dashboard.TodayCleaningCount</strong></div>
+            </section>
+        }
+
+        <div class="ordenes-management-grid">
+            <section class="ordenes-review-panel">
+                <div class="ordenes-section-heading">
+                    <div>
+                        <span class="ordenes-eyebrow">Acción requerida</span>
+                        <h2>Por revisar</h2>
+                    </div>
+                    <span class="ordenes-result-count">@Orders.Count visibles</span>
+                </div>
+                @if (IsLoading && Orders.Count == 0)
+                {
+                    <div class="ordenes-skeleton-list" aria-label="Cargando órdenes">
+                        <div></div><div></div><div></div>
+                    </div>
+                }
+                else if (Orders.Count == 0)
+                {
+                    <div class="ordenes-inline-empty">
+                        <span class="oi oi-circle-check" aria-hidden="true"></span>
+                        <div><strong>Todo está revisado</strong><span>No hay entregas esperando aprobación.</span></div>
+                    </div>
+                }
+                else
+                {
+                    <div class="ordenes-card-list">
+                        @foreach (var item in Orders)
+                        {
+                            <OrdenTrabajoCard Item="item" Href="@BuildOrderHref(item.Id)" ShowOwner="true" @key="item.Id" />
+                        }
+                    </div>
+                    @if (HasMoreOrders)
+                    {
+                        <button class="ordenes-load-more" type="button" @onclick="LoadMoreAsync" disabled="@IsLoadingMore">
+                            @(IsLoadingMore ? "Cargando…" : "Cargar más")
+                        </button>
+                    }
+                }
+            </section>
+
+            <aside class="ordenes-workload">
+                <div class="ordenes-section-heading">
+                    <div>
+                        <span class="ordenes-eyebrow">Equipo</span>
+                        <h2>Carga de trabajo</h2>
+                    </div>
+                </div>
+                @if (Dashboard?.AssigneeLoads.Count > 0)
+                {
+                    <div class="ordenes-workload-list">
+                        @foreach (var load in Dashboard.AssigneeLoads)
+                        {
+                            <button type="button" @onclick="() => OpenEmployeeWorkAsync(load.EmployeeId)">
+                                <span class="ordenes-avatar" aria-hidden="true">@GetInitial(load.EmployeeName)</span>
+                                <span class="ordenes-workload-copy">
+                                    <strong>@load.EmployeeName</strong>
+                                    <small>@load.OverdueCount vencidas · @load.PendingReviewCount por revisar</small>
+                                </span>
+                                <span class="ordenes-workload-count">@load.OpenCount</span>
+                            </button>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted mb-0">No hay carga asignada.</p>
+                }
+            </aside>
+        </div>
+    }
+    else
+    {
+        <section class="ordenes-tools" aria-label="Buscar y filtrar órdenes">
+            <div class="ordenes-search">
+                <span class="oi oi-magnifying-glass" aria-hidden="true"></span>
+                <input type="search" value="@Filter.SearchText" @oninput="OnSearchInput" placeholder="Buscar orden, lugar o folio" aria-label="Buscar orden, lugar o folio" />
+                @if (!string.IsNullOrWhiteSpace(Filter.SearchText))
+                {
+                    <button type="button" @onclick="ClearSearchAsync" aria-label="Limpiar búsqueda"><span class="oi oi-x" aria-hidden="true"></span></button>
+                }
             </div>
-            <div class="ordenes-kpi ordenes-kpi-cleaning">
-                <span>Limpieza hoy</span>
-                <strong>@Dashboard.TodayCleaningCount</strong>
+            <button class="ordenes-filter-toggle @(IsAdvancedFiltersOpen ? "active" : null)" type="button" @onclick="ToggleAdvancedFilters" aria-expanded="@IsAdvancedFiltersOpen">
+                <span class="oi oi-equalizer" aria-hidden="true"></span>
+                Filtros
+                @if (ActiveAdvancedFilterCount > 0)
+                {
+                    <span>@ActiveAdvancedFilterCount</span>
+                }
+            </button>
+        </section>
+
+        <nav class="ordenes-queue-chips" aria-label="Filtrar por momento">
+            <button type="button" class="@(ActiveQueue == ActiveQueueCode ? "active" : null)" @onclick="() => SetQueueAsync(ActiveQueueCode)">Activas</button>
+            <button type="button" class="@(ActiveQueue == TodayQueueCode ? "active" : null)" @onclick="() => SetQueueAsync(TodayQueueCode)">Hoy</button>
+            <button type="button" class="@(ActiveQueue == OverdueQueueCode ? "active" : null)" @onclick="() => SetQueueAsync(OverdueQueueCode)">
+                Vencidas
+                @if ((Dashboard?.OverdueCount ?? 0) > 0)
+                {
+                    <span>@Dashboard!.OverdueCount</span>
+                }
+            </button>
+            <button type="button" class="@(ActiveQueue == HistoryQueueCode ? "active" : null)" @onclick="() => SetQueueAsync(HistoryQueueCode)">Historial</button>
+        </nav>
+
+        @if (IsAdvancedFiltersOpen)
+        {
+            <section class="ordenes-advanced-filters">
+                <div>
+                    <label for="orden-category-filter">Categoría</label>
+                    <select id="orden-category-filter" class="form-select" value="@Filter.CategoriaCodigo" @onchange="OnCategoryChangedAsync">
+                        <option value="">Todas</option>
+                        @foreach (var category in Categories)
+                        {
+                            <option value="@category.Codigo">@category.Nombre</option>
+                        }
+                    </select>
+                </div>
+                @if (IsPrivilegedUser)
+                {
+                    <div>
+                        <label for="orden-owner-filter">Responsable</label>
+                        <select id="orden-owner-filter" class="form-select" value="@Filter.OwnerEmployeeId" @onchange="OnOwnerChangedAsync">
+                            <option value="">Todos</option>
+                            @foreach (var employee in Employees)
+                            {
+                                <option value="@employee.Id">@employee.Name</option>
+                            }
+                        </select>
+                    </div>
+                }
+                <button type="button" class="btn btn-link" @onclick="ClearAdvancedFiltersAsync">Limpiar filtros</button>
+            </section>
+        }
+
+        <section class="ordenes-results" aria-live="polite">
+            <div class="ordenes-section-heading">
+                <div><span class="ordenes-eyebrow">@QueueEyebrow</span><h2>@QueueTitle</h2></div>
+                @if (!IsLoading)
+                {
+                    <span class="ordenes-result-count">@Orders.Count visibles</span>
+                }
             </div>
+
+            @if (IsLoading && Orders.Count == 0)
+            {
+                <div class="ordenes-skeleton-list" aria-label="Cargando órdenes"><div></div><div></div><div></div></div>
+            }
+            else if (Orders.Count == 0)
+            {
+                <div class="ordenes-empty">
+                    <span class="oi oi-inbox" aria-hidden="true"></span>
+                    <h2>@EmptyTitle</h2>
+                    <p>@EmptyMessage</p>
+                    @if (HasActiveFilters)
+                    {
+                        <button class="btn btn-outline-primary" type="button" @onclick="ResetWorkViewAsync">Ver órdenes activas</button>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="ordenes-card-list">
+                    @foreach (var item in Orders)
+                    {
+                        <OrdenTrabajoCard Item="item" Href="@BuildOrderHref(item.Id)" ShowOwner="@IsPrivilegedUser" @key="item.Id" />
+                    }
+                </div>
+                @if (HasMoreOrders)
+                {
+                    <button class="ordenes-load-more" type="button" @onclick="LoadMoreAsync" disabled="@IsLoadingMore">@(IsLoadingMore ? "Cargando…" : "Cargar más órdenes")</button>
+                }
+            }
         </section>
     }
 
-    <div class="row g-3">
-        <div class="col-12 col-xl-4">
-            @if (CanCreate)
-            {
-                <section class="card shadow-sm mb-3">
-                    <div class="card-body">
-                        <h2 class="h5 mb-3">Nueva orden manual</h2>
-                        <div class="row g-3">
-                            <div class="col-12">
-                                <label class="form-label">Titulo</label>
-                                <InputText class="form-control" @bind-Value="CreateRequest.Titulo" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Categoria</label>
-                                <select class="form-select" @bind="CreateRequest.CategoriaCodigo">
-                                    @foreach (var category in Categories)
-                                    {
-                                        <option value="@category.Codigo">@category.Nombre</option>
-                                    }
-                                </select>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Prioridad</label>
-                                <select class="form-select" @bind="CreateRequest.Prioridad">
-                                    <option value="NORMAL">Normal</option>
-                                    <option value="BAJA">Baja</option>
-                                    <option value="ALTA">Alta</option>
-                                    <option value="URGENTE">Urgente</option>
-                                </select>
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label">Responsable</label>
-                                <select class="form-select" @bind="CreateRequest.OwnerEmployeeId">
-                                    <option value="0">Selecciona responsable</option>
-                                    @foreach (var employee in Employees)
-                                    {
-                                        <option value="@employee.Id">@employee.Name</option>
-                                    }
-                                </select>
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label">Ayudantes</label>
+    @if (CanCreate && IsCreatePanelOpen)
+    {
+        <div class="ordenes-panel-backdrop" role="presentation" @onclick="CloseCreatePanel">
+            <section class="ordenes-create-panel" role="dialog" aria-modal="true" aria-labelledby="create-order-title" @onclick:stopPropagation="true">
+                <header>
+                    <div><span class="ordenes-eyebrow">Gestión</span><h2 id="create-order-title">Nueva orden</h2></div>
+                    <button type="button" @onclick="CloseCreatePanel" aria-label="Cerrar nueva orden"><span class="oi oi-x" aria-hidden="true"></span></button>
+                </header>
+
+                <EditForm Model="CreateRequest" OnValidSubmit="CreateManualAsync" class="ordenes-create-form">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary class="alert alert-warning" />
+                    <div>
+                        <label for="create-title">¿Qué se necesita hacer?</label>
+                        <InputText id="create-title" class="form-control" @bind-Value="CreateRequest.Titulo" placeholder="Ej. Reparar llave de la suite Berlín" />
+                        <ValidationMessage For="() => CreateRequest.Titulo" />
+                    </div>
+                    <div class="ordenes-create-grid">
+                        <div>
+                            <label for="create-category">Categoría</label>
+                            <select id="create-category" class="form-select" @bind="CreateRequest.CategoriaCodigo">
+                                @foreach (var category in Categories) { <option value="@category.Codigo">@category.Nombre</option> }
+                            </select>
+                        </div>
+                        <div>
+                            <label for="create-priority">Prioridad</label>
+                            <select id="create-priority" class="form-select" @bind="CreateRequest.Prioridad">
+                                <option value="NORMAL">Normal</option><option value="BAJA">Baja</option><option value="ALTA">Alta</option><option value="URGENTE">Urgente</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="create-owner">Responsable</label>
+                        <select id="create-owner" class="form-select" @bind="CreateRequest.OwnerEmployeeId">
+                            <option value="0">Selecciona responsable</option>
+                            @foreach (var employee in Employees) { <option value="@employee.Id">@employee.Name</option> }
+                        </select>
+                    </div>
+                    <div class="ordenes-create-grid">
+                        <div><label for="create-date">Fecha programada</label><InputDate id="create-date" class="form-control" @bind-Value="CreateRequest.FechaProgramada" /></div>
+                        <div><label for="create-location">Lugar</label><InputText id="create-location" class="form-control" @bind-Value="CreateRequest.Ubicacion" placeholder="Suite o ubicación" /></div>
+                    </div>
+
+                    <details class="ordenes-create-more">
+                        <summary>Agregar ayudantes y más detalles</summary>
+                        <div class="ordenes-create-more__body">
+                            <div>
+                                <span class="ordenes-field-label">Ayudantes</span>
                                 <div class="ordenes-helper-list">
                                     @foreach (var employee in Employees)
                                     {
-                                        <label class="form-check">
-                                            <input class="form-check-input" type="checkbox" checked="@CreateHelperIds.Contains(employee.Id)" @onchange="args => ToggleCreateHelper(employee.Id, args)" />
-                                            <span class="form-check-label">@employee.Name</span>
-                                        </label>
+                                        <label class="form-check"><input class="form-check-input" type="checkbox" checked="@CreateHelperIds.Contains(employee.Id)" @onchange="args => ToggleCreateHelper(employee.Id, args)" /><span class="form-check-label">@employee.Name</span></label>
                                     }
                                 </div>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Fecha</label>
-                                <InputDate class="form-control" @bind-Value="CreateRequest.FechaProgramada" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Vence</label>
-                                <InputDate class="form-control" @bind-Value="CreateRequest.FechaVencimiento" />
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label">Ubicacion</label>
-                                <InputText class="form-control" @bind-Value="CreateRequest.Ubicacion" />
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label">Descripcion</label>
-                                <InputTextArea class="form-control" rows="3" @bind-Value="CreateRequest.Descripcion" />
-                            </div>
+                            <div><label for="create-due">Fecha límite</label><InputDate id="create-due" class="form-control" @bind-Value="CreateRequest.FechaVencimiento" /></div>
+                            <div><label for="create-description">Descripción</label><InputTextArea id="create-description" class="form-control" rows="3" @bind-Value="CreateRequest.Descripcion" /></div>
                         </div>
-                        <button class="btn btn-primary mt-3 w-100" type="button" @onclick="CreateManualAsync" disabled="@IsCreating">
-                            @(IsCreating ? "Creando..." : "Crear orden")
-                        </button>
-                    </div>
-                </section>
-            }
+                    </details>
 
-            @if (Dashboard?.AssigneeLoads.Count > 0)
-            {
-                <section class="card shadow-sm">
-                    <div class="card-body">
-                        <h2 class="h5 mb-3">Carga de trabajo</h2>
-                        <div class="list-group list-group-flush">
-                            @foreach (var load in Dashboard.AssigneeLoads)
-                            {
-                                <div class="list-group-item px-0 d-flex justify-content-between gap-2">
-                                    <div>
-                                        <div class="fw-semibold">@load.EmployeeName</div>
-                                        <div class="small text-muted">@load.PendingReviewCount en revision · @load.OverdueCount vencidas</div>
-                                    </div>
-                                    <span class="badge text-bg-primary align-self-center">@load.OpenCount</span>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                </section>
-            }
-        </div>
-
-        <div class="col-12 col-xl-8">
-            <section class="card shadow-sm mb-3">
-                <div class="card-body">
-                    <div class="row g-3 align-items-end">
-                        <div class="col-md-4">
-                            <label class="form-label">Buscar</label>
-                            <InputText class="form-control" @bind-Value="Filter.SearchText" />
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Estado</label>
-                            <select class="form-select" @bind="Filter.Estado">
-                                <option value="">Todos</option>
-                                <option value="ASIGNADA">Asignada</option>
-                                <option value="EN_PROCESO">En proceso</option>
-                                <option value="EN_REVISION">En revision</option>
-                                <option value="RECHAZADA">Rechazada</option>
-                                <option value="CERRADA">Cerrada</option>
-                                <option value="CANCELADA">Cancelada</option>
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Categoria</label>
-                            <select class="form-select" @bind="Filter.CategoriaCodigo">
-                                <option value="">Todas</option>
-                                @foreach (var category in Categories)
-                                {
-                                    <option value="@category.Codigo">@category.Nombre</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Responsable</label>
-                            <select class="form-select" @bind="Filter.OwnerEmployeeId">
-                                <option value="">Todos</option>
-                                @foreach (var employee in Employees)
-                                {
-                                    <option value="@employee.Id">@employee.Name</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-md-2 d-grid">
-                            <button class="btn btn-outline-primary" type="button" @onclick="LoadOrdersAsync" disabled="@IsLoading">Filtrar</button>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-check">
-                                <InputCheckbox class="form-check-input" @bind-Value="Filter.IncludeClosed" />
-                                <span class="form-check-label">Incluir cerradas/canceladas</span>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="card shadow-sm">
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0 ordenes-table">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Orden</th>
-                                <th>Responsable</th>
-                                <th>Programacion</th>
-                                <th>Progreso</th>
-                                <th class="text-end">Costo</th>
-                                @if (CanDelete)
-                                {
-                                    <th class="text-end">Acciones</th>
-                                }
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (Orders.Count == 0)
-                            {
-                                <tr>
-                                    <td colspan="@(CanDelete ? 6 : 5)" class="text-center text-muted py-4">No hay ordenes para mostrar.</td>
-                                </tr>
-                            }
-                            else
-                            {
-                                @foreach (var item in Orders)
-                                {
-                                    <tr class="@GetOrderRowClass(item)" @onclick="() => OpenOrder(item.Id)">
-                                        <td data-label="Orden">
-                                            <div class="fw-semibold">@item.Folio</div>
-                                            <div>@item.Titulo</div>
-                                            <div class="small text-muted">@item.CategoriaNombre · @FormatTarget(item)</div>
-                                            <span class="@GetStatusBadgeClass(item.Estado)">@GetStatusLabel(item.Estado)</span>
-                                        </td>
-                                        <td data-label="Responsable">@item.OwnerName</td>
-                                        <td data-label="Programacion">
-                                            <div>@item.FechaProgramada.ToString("yyyy-MM-dd")</div>
-                                            <div class="small text-muted">@FormatWindow(item.HoraInicioProgramada, item.HoraFinProgramada)</div>
-                                        </td>
-                                        <td data-label="Progreso">
-                                            <div>@item.CompletedStepCount / @item.StepCount pasos</div>
-                                            @if (item.IssueStepCount > 0)
-                                            {
-                                                <span class="badge text-bg-warning">@item.IssueStepCount incidencia(s)</span>
-                                            }
-                                        </td>
-                                        <td data-label="Costo" class="text-end">@item.ActualCost.ToString("C2", CurrencyCulture)</td>
-                                        @if (CanDelete)
-                                        {
-                                            <td data-label="Acciones" class="text-end">
-                                                <button
-                                                    class="btn btn-sm btn-outline-danger"
-                                                    type="button"
-                                                    title="Eliminar orden"
-                                                    disabled="@(DeletingOrderId == item.Id)"
-                                                    @onclick="() => DeleteOrderAsync(item)"
-                                                    @onclick:stopPropagation="true">
-                                                    @(DeletingOrderId == item.Id ? "Eliminando..." : "Eliminar")
-                                                </button>
-                                            </td>
-                                        }
-                                    </tr>
-                                }
-                            }
-                        </tbody>
-                    </table>
-                </div>
+                    <footer>
+                        <button class="btn btn-outline-secondary" type="button" @onclick="CloseCreatePanel">Cancelar</button>
+                        <button class="btn btn-primary" type="submit" disabled="@IsCreating">@(IsCreating ? "Creando…" : "Crear orden")</button>
+                    </footer>
+                </EditForm>
             </section>
         </div>
-    </div>
+    }
 </div>

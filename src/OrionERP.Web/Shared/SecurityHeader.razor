@@ -5,7 +5,7 @@
 
 <AuthorizeView>
     <Authorized Context="context">
-        <header class="security-header" role="banner">
+        <header class="@HeaderCssClass" role="banner">
             <div class="security-header__identity-wrap">
                 <span class="security-header__identity">@context.User.Identity?.Name</span>
                 <span class="security-header__date">@DateWeekLabel</span>
@@ -39,6 +39,12 @@
 
 @code {
     private static readonly CultureInfo SpanishMexico = CultureInfo.GetCultureInfo("es-MX");
+
+    [Parameter] public bool CompactMobile { get; set; }
+
+    private string HeaderCssClass => CompactMobile
+        ? "security-header security-header--compact-mobile"
+        : "security-header";
 
     private static string DateWeekLabel
     {

@@ -1,0 +1,190 @@
+.orden-card {
+  position: relative;
+  display: grid;
+  gap: 0.7rem;
+  padding: 1rem;
+  overflow: hidden;
+  border: 1px solid rgba(15, 45, 78, 0.1);
+  border-radius: 1rem;
+  background: #fff;
+  color: var(--orion-color-text);
+  text-decoration: none;
+  box-shadow: 0 0.55rem 1.4rem rgba(15, 45, 78, 0.07);
+  touch-action: manipulation;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.orden-card:hover,
+.orden-card:focus-visible {
+  color: var(--orion-color-text);
+  border-color: rgba(31, 138, 174, 0.42);
+  box-shadow: 0 0.8rem 1.8rem rgba(15, 45, 78, 0.12);
+  transform: translateY(-1px);
+}
+
+.orden-card:focus-visible {
+  outline: 0.2rem solid rgba(31, 138, 174, 0.28);
+  outline-offset: 0.12rem;
+}
+
+.orden-card--overdue,
+.orden-card--rejected {
+  border-left-width: 0.32rem;
+}
+
+.orden-card--overdue {
+  border-left-color: #c2410c;
+}
+
+.orden-card--rejected {
+  border-left-color: #b42318;
+}
+
+.orden-card__topline,
+.orden-card__progress-row,
+.orden-card__progress-copy {
+  display: flex;
+  align-items: center;
+}
+
+.orden-card__topline {
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.orden-card__folio,
+.orden-card__date {
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.orden-card__folio {
+  color: var(--orion-color-primary);
+}
+
+.orden-card__date {
+  color: var(--orion-color-text-muted);
+}
+
+.orden-card__title {
+  margin: 0;
+  color: #102c4d;
+  font-size: 1.03rem;
+  font-weight: 760;
+  line-height: 1.3;
+  text-wrap: pretty;
+}
+
+.orden-card__badges,
+.orden-card__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.orden-card__status,
+.orden-card__priority {
+  display: inline-flex;
+  min-height: 1.7rem;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.orden-card__status--assigned { background: #e8f1ff; color: #175cd3; }
+.orden-card__status--progress { background: #e2f7fb; color: #0e7490; }
+.orden-card__status--review { background: #fff5d6; color: #8a5b00; }
+.orden-card__status--rejected { background: #fee4e2; color: #b42318; }
+.orden-card__status--closed { background: #dcfae6; color: #067647; }
+.orden-card__status--cancelled { background: #eef2f6; color: #475467; }
+
+.orden-card__priority {
+  background: #f2f4f7;
+  color: #475467;
+}
+
+.orden-card__priority--high { background: #fff4e5; color: #b54708; }
+.orden-card__priority--urgent { background: #fee4e2; color: #b42318; }
+
+.orden-card__attention {
+  display: flex;
+  min-height: 2rem;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.38rem 0.55rem;
+  border-radius: 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 730;
+}
+
+.orden-card__attention--overdue { background: #fff4e5; color: #9a3412; }
+.orden-card__attention--rejected { background: #fff1f0; color: #b42318; }
+
+.orden-card__facts {
+  color: var(--orion-color-text-muted);
+  font-size: 0.8rem;
+}
+
+.orden-card__facts > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.orden-card__progress-row {
+  display: grid;
+  grid-template-columns: auto minmax(4rem, 1fr) auto;
+  gap: 0.7rem;
+  margin-top: 0.05rem;
+}
+
+.orden-card__progress-copy {
+  gap: 0.25rem;
+  color: var(--orion-color-text-muted);
+  font-size: 0.75rem;
+}
+
+.orden-card__progress-copy strong {
+  color: #173d67;
+}
+
+.orden-card__progress {
+  height: 0.42rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e6edf3;
+}
+
+.orden-card__progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1f8aae, #18a06f);
+}
+
+.orden-card__open {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--orion-color-accent);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+@media (max-width: 430px) {
+  .orden-card {
+    padding: 0.9rem;
+    border-radius: 0.9rem;
+  }
+
+  .orden-card__progress-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .orden-card__progress-copy {
+    grid-column: 1 / -1;
+  }
+}

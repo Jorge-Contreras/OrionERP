@@ -1,0 +1,26 @@
+<div id="components-reconnect-modal"
+     class="connection-status components-reconnect-hide"
+     role="status"
+     aria-live="assertive"
+     aria-atomic="true">
+    <div class="connection-status__panel">
+        <span class="connection-status__spinner" aria-hidden="true"></span>
+
+        <div class="connection-status__copy connection-status__retrying">
+            <strong>Reconectando…</strong>
+            <span>Estamos recuperando la conexión. Tus notas siguen guardadas en este teléfono.</span>
+        </div>
+
+        <div class="connection-status__copy connection-status__failed">
+            <strong>No pudimos reconectar</strong>
+            <span>Revisa tu señal y vuelve a cargar. No repetiremos envíos ni fotos automáticamente.</span>
+            <button type="button" onclick="window.location.reload()">Volver a cargar</button>
+        </div>
+
+        <div class="connection-status__copy connection-status__rejected">
+            <strong>La sesión ya no está disponible</strong>
+            <span>Vuelve a cargar para sincronizar la orden antes de continuar.</span>
+            <button type="button" onclick="window.location.reload()">Sincronizar ahora</button>
+        </div>
+    </div>
+</div>

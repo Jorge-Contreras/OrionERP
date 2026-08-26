@@ -260,7 +260,12 @@
                                               @onchange="args => SetStepNotes(step.Id, args.Value?.ToString())"
                                               disabled="@(!CanExecute)"></textarea>
                                     <div class="d-flex flex-wrap gap-2 mb-2">
-                                        <button class="btn btn-sm btn-outline-success" type="button" @onclick="() => UpdateStepAsync(step, OrdenTrabajoCodes.PasoHecho)" disabled="@(!CanExecute || IsMutating)">Hecho</button>
+                                        <button class="@(step.Estado == OrdenTrabajoCodes.PasoHecho ? "btn btn-sm btn-success" : "btn btn-sm btn-outline-success")"
+                                                type="button"
+                                                aria-pressed="@(step.Estado == OrdenTrabajoCodes.PasoHecho ? "true" : "false")"
+                                                title="@(step.Estado == OrdenTrabajoCodes.PasoHecho ? "Volver a pendiente" : "Marcar como hecho")"
+                                                @onclick="() => UpdateStepAsync(step, OrdenTrabajoCodes.TogglePasoHecho(step.Estado))"
+                                                disabled="@(!CanExecute || IsMutating)">Hecho</button>
                                         <button class="btn btn-sm btn-outline-warning" type="button" @onclick="() => UpdateStepAsync(step, OrdenTrabajoCodes.PasoIncidencia)" disabled="@(!CanExecute || IsMutating)">Incidencia</button>
                                         <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="() => UpdateStepAsync(step, OrdenTrabajoCodes.PasoNoAplica)" disabled="@(!CanExecute || IsMutating)">N/A</button>
                                     </div>

@@ -374,7 +374,7 @@ public partial class OrdenTrabajoPlantillasPage : ComponentBase
     => new()
     {
       Secuencia = order,
-      PoliticaFoto = OrdenTrabajoCodes.FotoNoPermitida,
+      PoliticaFoto = OrdenTrabajoCodes.FotoOpcional,
       RequiereNotasEnIncidencia = true,
       RequiereNotasEnNoAplica = true
     };

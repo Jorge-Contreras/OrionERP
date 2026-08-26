@@ -165,7 +165,7 @@ public sealed class OrdenTrabajoStepDto
   public string Titulo { get; set; } = string.Empty;
   public string Descripcion { get; set; } = string.Empty;
   public string Estado { get; set; } = OrdenTrabajoCodes.PasoPendiente;
-  public string PoliticaFoto { get; set; } = OrdenTrabajoCodes.FotoNoPermitida;
+  public string PoliticaFoto { get; set; } = OrdenTrabajoCodes.FotoOpcional;
   public bool RequiereNotasEnIncidencia { get; set; }
   public bool RequiereNotasEnNoAplica { get; set; }
   public int? ProcedimientoId { get; set; }
@@ -297,7 +297,7 @@ public sealed class OrdenTrabajoStepSaveRequest
   [StringLength(1000)]
   public string Descripcion { get; set; } = string.Empty;
 
-  public string PoliticaFoto { get; set; } = OrdenTrabajoCodes.FotoNoPermitida;
+  public string PoliticaFoto { get; set; } = OrdenTrabajoCodes.FotoOpcional;
   public bool RequiereNotasEnIncidencia { get; set; } = true;
   public bool RequiereNotasEnNoAplica { get; set; } = true;
   public int? ProcedimientoId { get; set; }
@@ -409,7 +409,7 @@ public sealed class OrdenTrabajoTemplateStepDto
   public decimal Secuencia { get; set; }
   public string Titulo { get; set; } = string.Empty;
   public string Descripcion { get; set; } = string.Empty;
-  public string PoliticaFoto { get; set; } = OrdenTrabajoCodes.FotoNoPermitida;
+  public string PoliticaFoto { get; set; } = OrdenTrabajoCodes.FotoOpcional;
   public bool RequiereNotasEnIncidencia { get; set; } = true;
   public bool RequiereNotasEnNoAplica { get; set; } = true;
   public int? ProcedimientoId { get; set; }
@@ -459,7 +459,7 @@ public sealed class OrdenTrabajoTemplateStepSaveRequest
   [StringLength(1000)]
   public string Descripcion { get; set; } = string.Empty;
 
-  public string PoliticaFoto { get; set; } = OrdenTrabajoCodes.FotoNoPermitida;
+  public string PoliticaFoto { get; set; } = OrdenTrabajoCodes.FotoOpcional;
   public bool RequiereNotasEnIncidencia { get; set; } = true;
   public bool RequiereNotasEnNoAplica { get; set; } = true;
   public int? ProcedimientoId { get; set; }

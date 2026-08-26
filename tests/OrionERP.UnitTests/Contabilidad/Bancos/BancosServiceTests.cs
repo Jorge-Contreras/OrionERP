@@ -288,11 +288,34 @@ public class BancosServiceTests
     var command = Assert.Single(connection.ExecutedCommands);
     Assert.Contains("SELECT @MaxRow = COUNT(*)", command.CommandText, StringComparison.Ordinal);
     Assert.DoesNotContain("DECLARE @MaxRow int = @@ROWCOUNT;", command.CommandText, StringComparison.Ordinal);
+    Assert.Contains("defaults.CuentaClave = 'SUBTOTAL_GASTO'", command.CommandText, StringComparison.Ordinal);
+    Assert.Contains("defaults.CuentaClave = 'SUBTOTAL_INGRESO'", command.CommandText, StringComparison.Ordinal);
+    Assert.Contains("Ajustes > Cuentas contables CFDI", command.CommandText, StringComparison.Ordinal);
 
     AssertParameter(command.Parameters, "@Rfc", "RFC123456789");
     AssertParameter(command.Parameters, "@StartDate", new DateTime(2026, 4, 1));
     AssertParameter(command.Parameters, "@EndDate", new DateTime(2026, 5, 1));
     AssertParameter(command.Parameters, "@AccountId", 18);
+  }
+
+  [Fact]
+  public void AutoPolicyProcedure_UsesAjustesCounterpartAccounts()
+  {
+    var sql = ReadRepositoryFile(
+      "src",
+      "OrionERP.Infrastructure",
+      "Features",
+      "Contabilidad",
+      "Bancos",
+      "Sql",
+      "20260825_bancos_auto_polizas_ajustes_accounts.sql");
+
+    Assert.Contains("CREATE OR ALTER PROCEDURE [dbo].[Crear_Transaccion_Contable_Banco]", sql, StringComparison.Ordinal);
+    Assert.Contains("dbo.CfdiPolizaCuentaDefault", sql, StringComparison.Ordinal);
+    Assert.Contains("'SUBTOTAL_GASTO'", sql, StringComparison.Ordinal);
+    Assert.Contains("'SUBTOTAL_INGRESO'", sql, StringComparison.Ordinal);
+    Assert.DoesNotContain("cb.Cuenta_Contable_Egreso", sql, StringComparison.Ordinal);
+    Assert.DoesNotContain("cb.Cuenta_Contable_Ingreso", sql, StringComparison.Ordinal);
   }
 
   [Fact]

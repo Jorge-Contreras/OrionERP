@@ -19,7 +19,9 @@ public sealed class TransaccionRegularCfdiLinkCandidateDto
   public string? Tipo { get; set; }
   public string? Serie { get; set; }
   public string? Folio { get; set; }
+  public string? Emisor { get; set; }
   public string? EmisorRfc { get; set; }
+  public string? Receptor { get; set; }
   public string? ReceptorRfc { get; set; }
   public string? Direccion { get; set; }
   public string? Uuid { get; set; }

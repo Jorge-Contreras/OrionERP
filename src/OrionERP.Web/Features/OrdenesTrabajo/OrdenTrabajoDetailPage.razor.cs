@@ -790,7 +790,7 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
     => new()
     {
       Secuencia = sequence,
-      PoliticaFoto = OrdenTrabajoCodes.FotoNoPermitida,
+      PoliticaFoto = OrdenTrabajoCodes.FotoOpcional,
       RequiereNotasEnIncidencia = true,
       RequiereNotasEnNoAplica = true
     };

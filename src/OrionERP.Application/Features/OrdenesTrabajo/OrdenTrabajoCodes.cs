@@ -37,6 +37,11 @@ public static class OrdenTrabajoCodes
   public const string EvidenciaFile = "FILE";
   public const string EvidenciaUnknown = "UNKNOWN";
 
+  public static string TogglePasoHecho(string? currentStatus)
+    => string.Equals(currentStatus, PasoHecho, StringComparison.OrdinalIgnoreCase)
+      ? PasoPendiente
+      : PasoHecho;
+
   public static readonly string[] OpenStatuses =
   [
     EstadoBorrador,

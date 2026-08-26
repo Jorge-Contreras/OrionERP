@@ -3096,10 +3096,10 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   private static string NormalizePhotoPolicy(string? value)
   {
-    var normalized = NormalizeCode(value, OrdenTrabajoCodes.FotoNoPermitida);
+    var normalized = NormalizeCode(value, OrdenTrabajoCodes.FotoOpcional);
     return normalized is OrdenTrabajoCodes.FotoNoPermitida or OrdenTrabajoCodes.FotoOpcional or OrdenTrabajoCodes.FotoRequerida
       ? normalized
-      : OrdenTrabajoCodes.FotoNoPermitida;
+      : OrdenTrabajoCodes.FotoOpcional;
   }
 
   private static string NormalizeImageContentType(string? contentType)

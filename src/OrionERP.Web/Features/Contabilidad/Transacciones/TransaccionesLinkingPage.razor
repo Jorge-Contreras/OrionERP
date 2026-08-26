@@ -92,6 +92,8 @@ else if (Header is not null)
                 <thead>
                   <tr>
                     <th>CFDI</th>
+                    <th>Emisor / receptor</th>
+                    <th>Conceptos</th>
                     <th>Fecha</th>
                     <th>Tipo</th>
                     <th>Dirección</th>
@@ -109,6 +111,11 @@ else if (Header is not null)
                   {
                     <tr>
                       <td class="fw-semibold">@linked.ComprobanteId</td>
+                      <td class="transaction-linking-parties">
+                        <div><span>Emisor</span><strong>@PartyName(linked.Emisor)</strong><small>@linked.EmisorRfc</small></div>
+                        <div><span>Receptor</span><strong>@PartyName(linked.Receptor)</strong><small>@linked.ReceptorRfc</small></div>
+                      </td>
+                      <td><div class="transaction-linking-concepts" title="@linked.Conceptos">@SummarizeConcepts(linked.Conceptos)</div></td>
                       <td>@linked.Fecha.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
                       <td>@linked.Tipo</td>
                       <td>@linked.Direccion</td>
@@ -319,6 +326,11 @@ else if (Header is not null)
               <div class="transaction-linking-subtle">
                 Total @FormatCurrency(SelectedRegularCandidate.Total) · sugerido @FormatCurrency(SelectedRegularCandidate.MontoSugerido)
               </div>
+              <div class="transaction-linking-selection-detail">
+                <span>Emisor: @PartyName(SelectedRegularCandidate.Emisor) (@SelectedRegularCandidate.EmisorRfc)</span>
+                <span>Receptor: @PartyName(SelectedRegularCandidate.Receptor) (@SelectedRegularCandidate.ReceptorRfc)</span>
+                <span title="@SelectedRegularCandidate.Conceptos">@SummarizeConcepts(SelectedRegularCandidate.Conceptos)</span>
+              </div>
             }
           </div>
           <div class="transaction-linking-selection-controls">
@@ -363,6 +375,8 @@ else if (Header is not null)
                     <tr>
                       <th>Match</th>
                       <th>CFDI</th>
+                      <th>Emisor / receptor</th>
+                      <th>Conceptos</th>
                       <th>Fecha</th>
                       <th>Tipo</th>
                       <th>UUID</th>
@@ -387,6 +401,11 @@ else if (Header is not null)
                           <div class="transaction-linking-subtle">@candidate.MatchScore pts</div>
                         </td>
                         <td class="fw-semibold">@candidate.ComprobanteId</td>
+                        <td class="transaction-linking-parties">
+                          <div><span>Emisor</span><strong>@PartyName(candidate.Emisor)</strong><small>@candidate.EmisorRfc</small></div>
+                          <div><span>Receptor</span><strong>@PartyName(candidate.Receptor)</strong><small>@candidate.ReceptorRfc</small></div>
+                        </td>
+                        <td><div class="transaction-linking-concepts" title="@candidate.Conceptos">@SummarizeConcepts(candidate.Conceptos)</div></td>
                         <td>@candidate.Fecha.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
                         <td>@candidate.Tipo</td>
                         <td class="transaction-linking-uuid">@candidate.Uuid</td>

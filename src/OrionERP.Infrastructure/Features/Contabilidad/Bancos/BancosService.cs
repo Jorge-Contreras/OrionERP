@@ -1423,6 +1423,46 @@ DECLARE @Processed int = 0;
 SELECT @MaxRow = COUNT(*)
 FROM @Candidates;
 
+IF EXISTS
+(
+    SELECT 1
+    FROM @Candidates AS candidates
+    LEFT JOIN bancos.Cuentas_Banco AS bankAccount
+        ON bankAccount.Cuenta_Banco_ID = candidates.CuentaBancoId
+       AND bankAccount.RFC = @Rfc
+    LEFT JOIN dbo.CuentasContables AS bankLedger
+        ON bankLedger.id = bankAccount.Cuenta_Contable_ID
+       AND bankLedger.RFC = @Rfc
+    WHERE bankLedger.id IS NULL
+)
+    THROW 50020, 'Configura la cuenta contable general de cada banco antes de crear polizas automaticas.', 1;
+
+IF EXISTS (SELECT 1 FROM @Candidates WHERE UPPER(ISNULL(Tipo, '')) = 'E')
+   AND NOT EXISTS
+   (
+       SELECT 1
+       FROM dbo.CfdiPolizaCuentaDefault AS defaults
+       JOIN dbo.CuentasContables AS account
+         ON account.id = defaults.CuentaContableId
+        AND account.RFC = @Rfc
+       WHERE defaults.Rfc = @Rfc
+         AND defaults.CuentaClave = 'SUBTOTAL_GASTO'
+   )
+    THROW 50021, 'Configura Subtotal gasto en Ajustes > Cuentas contables CFDI antes de crear polizas automaticas.', 1;
+
+IF EXISTS (SELECT 1 FROM @Candidates WHERE UPPER(ISNULL(Tipo, '')) = 'I')
+   AND NOT EXISTS
+   (
+       SELECT 1
+       FROM dbo.CfdiPolizaCuentaDefault AS defaults
+       JOIN dbo.CuentasContables AS account
+         ON account.id = defaults.CuentaContableId
+        AND account.RFC = @Rfc
+       WHERE defaults.Rfc = @Rfc
+         AND defaults.CuentaClave = 'SUBTOTAL_INGRESO'
+   )
+    THROW 50022, 'Configura Subtotal ingreso en Ajustes > Cuentas contables CFDI antes de crear polizas automaticas.', 1;
+
 DECLARE @MovimientoId bigint;
 DECLARE @Dia datetime2(7);
 DECLARE @Concepto nvarchar(max);

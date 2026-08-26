@@ -262,12 +262,54 @@ WHERE ID = @TransaccionId;",
             commandType: CommandType.StoredProcedure,
             cancellationToken: ct));
 
+    var regularCandidates = (await multi.ReadAsync<TransaccionRegularCfdiLinkCandidateDto>()).AsList();
+    var pago20Candidates = (await multi.ReadAsync<TransaccionPago20LinkCandidateDto>()).AsList();
+    var cfdiIds = linked.Comprobantes
+        .Select(item => item.ComprobanteId)
+        .Concat(regularCandidates.Select(item => item.ComprobanteId))
+        .Distinct()
+        .ToArray();
+
+    if (cfdiIds.Length > 0)
+    {
+      await using var identityConnection = new SqlConnection(_cs);
+      var parties = (await identityConnection.QueryAsync<CfdiPartyRow>(new CommandDefinition(
+          @"SELECT
+    Comprobante_Id AS ComprobanteId,
+    MAX(NULLIF(LTRIM(RTRIM(EMISOR)), '')) AS Emisor,
+    MAX(NULLIF(LTRIM(RTRIM(RECEPTOR)), '')) AS Receptor
+FROM cfdi.Comprobante_Detalle
+WHERE Comprobante_Id IN @CfdiIds
+GROUP BY Comprobante_Id;",
+          new { CfdiIds = cfdiIds },
+          cancellationToken: ct)))
+        .ToDictionary(item => item.ComprobanteId);
+
+      foreach (var item in linked.Comprobantes)
+      {
+        if (parties.TryGetValue(item.ComprobanteId, out var party))
+        {
+          item.Emisor = party.Emisor;
+          item.Receptor = party.Receptor;
+        }
+      }
+
+      foreach (var item in regularCandidates)
+      {
+        if (parties.TryGetValue(item.ComprobanteId, out var party))
+        {
+          item.Emisor = party.Emisor;
+          item.Receptor = party.Receptor;
+        }
+      }
+    }
+
     var data = new TransaccionCfdiLinkingWorkspaceDto();
     data.Linked.Comprobantes.AddRange(linked.Comprobantes);
     data.Linked.ComplementosPago.AddRange(linked.ComplementosPago);
     data.Linked.LegacyComplementosPago.AddRange(linked.LegacyComplementosPago);
-    data.RegularCandidates.AddRange((await multi.ReadAsync<TransaccionRegularCfdiLinkCandidateDto>()).AsList());
-    data.Pago20Candidates.AddRange((await multi.ReadAsync<TransaccionPago20LinkCandidateDto>()).AsList());
+    data.RegularCandidates.AddRange(regularCandidates);
+    data.Pago20Candidates.AddRange(pago20Candidates);
 
     var hasRegularLinks = data.Linked.Comprobantes.Count > 0;
     var hasPaymentLinks = data.Linked.ComplementosPago.Count > 0 || data.Linked.LegacyComplementosPago.Count > 0;
@@ -2855,4 +2897,11 @@ WHERE rc.TransaccionID = @TransaccionId;";
 
   private static string? NormalizePostalCode(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+  private sealed class CfdiPartyRow
+  {
+    public long ComprobanteId { get; set; }
+    public string? Emisor { get; set; }
+    public string? Receptor { get; set; }
+  }
 }

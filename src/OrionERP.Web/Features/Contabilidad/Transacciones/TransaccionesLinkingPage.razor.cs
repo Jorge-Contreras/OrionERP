@@ -90,6 +90,22 @@ public partial class TransaccionesLinkingPage : ComponentBase
       _ => "text-bg-secondary"
     };
 
+  protected static string SummarizeConcepts(string? concepts, int maxLength = 160)
+  {
+    if (string.IsNullOrWhiteSpace(concepts))
+    {
+      return "Sin conceptos";
+    }
+
+    var normalized = string.Join(' ', concepts.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    return normalized.Length <= maxLength
+      ? normalized
+      : $"{normalized[..(maxLength - 1)].TrimEnd()}…";
+  }
+
+  protected static string PartyName(string? name)
+    => string.IsNullOrWhiteSpace(name) ? "Nombre no disponible" : name.Trim();
+
   protected bool IsRegularCandidateSelected(TransaccionRegularCfdiLinkCandidateDto candidate)
     => SelectedKind == CandidateSelectionKind.Regular && SelectedRegularCandidate?.ComprobanteId == candidate.ComprobanteId;
 

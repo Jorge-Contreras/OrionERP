@@ -51,6 +51,7 @@ public partial class LigarCFDIPolizaPage : ComponentBase
   protected int? HighlightedTransaccionId { get; set; }
   private readonly Dictionary<int, LinkedMontoEditor> _linkedMontoEditors = new();
   private int? _savingLinkedMontoTransaccionId;
+  private int? _unlinkingLinkedTransaccionId;
 
   protected bool CanLigar => Summary is not null && SelectedCandidate is not null && LinkMonto > 0m;
   protected bool CanCreatePoliza => Summary is not null;
@@ -295,6 +296,58 @@ public partial class LigarCFDIPolizaPage : ComponentBase
 
   protected bool IsSavingLinkedMonto(CfdiPolizaLinkedPolizaDto poliza)
     => _savingLinkedMontoTransaccionId == poliza.TransaccionId;
+
+  protected bool IsUnlinkingPoliza(CfdiPolizaLinkedPolizaDto poliza)
+    => _unlinkingLinkedTransaccionId == poliza.TransaccionId;
+
+  protected bool IsLinkedPolizaBusy(CfdiPolizaLinkedPolizaDto poliza)
+    => IsSavingLinkedMonto(poliza) || IsUnlinkingPoliza(poliza);
+
+  protected async Task DesligarPolizaAsync(CfdiPolizaLinkedPolizaDto poliza)
+  {
+    if (Summary is null || _unlinkingLinkedTransaccionId.HasValue)
+    {
+      return;
+    }
+
+    var confirmed = await Js.InvokeAsync<bool>(
+      "confirm",
+      $"¿Desligar la póliza {poliza.TransaccionId} de este CFDI? Se liberarán {FormatCurrency(poliza.MontoAsignado)} asignados.");
+    if (!confirmed)
+    {
+      return;
+    }
+
+    InlineError = null;
+    _unlinkingLinkedTransaccionId = poliza.TransaccionId;
+
+    try
+    {
+      var result = await TransaccionService.UnlinkRegularCfdiAsync(
+        poliza.TransaccionId,
+        Summary.ComprobanteId);
+
+      if (!result.Success)
+      {
+        InlineError = result.Message;
+        UiMessages.ShowWarning(result.Message);
+        return;
+      }
+
+      HighlightedTransaccionId = null;
+      UiMessages.ShowSuccess(result.Message);
+      await LoadWorkspaceAsync();
+    }
+    catch (Exception ex)
+    {
+      InlineError = $"No se pudo desligar la póliza: {ex.Message}";
+      UiMessages.ShowError(InlineError);
+    }
+    finally
+    {
+      _unlinkingLinkedTransaccionId = null;
+    }
+  }
 
   protected async Task GuardarMontoLigadoAsync(CfdiPolizaLinkedPolizaDto poliza)
   {

@@ -883,9 +883,9 @@ public partial class BancosPage : ComponentBase, IDisposable
         UiMessages.ShowSuccess($"Se crearon {created} póliza(s) automáticamente.");
       }
     }
-    catch (Exception)
+    catch (Exception ex)
     {
-      UiMessages.ShowError("Ocurrió un error al crear las pólizas automáticas.");
+      UiMessages.ShowError($"No se pudieron crear las pólizas automáticas. {ex.Message}");
     }
     finally
     {

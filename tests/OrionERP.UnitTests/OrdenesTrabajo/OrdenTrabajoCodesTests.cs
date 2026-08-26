@@ -28,4 +28,22 @@ public class OrdenTrabajoCodesTests
     Assert.Equal("OPCIONAL", OrdenTrabajoCodes.FotoOpcional);
     Assert.Equal("REQUERIDA", OrdenTrabajoCodes.FotoRequerida);
   }
+
+  [Theory]
+  [InlineData("PENDIENTE", "HECHO")]
+  [InlineData("INCIDENCIA", "HECHO")]
+  [InlineData("NO_APLICA", "HECHO")]
+  [InlineData("HECHO", "PENDIENTE")]
+  [InlineData("hecho", "PENDIENTE")]
+  public void TogglePasoHecho_ReturnsExpectedStatus(string current, string expected)
+  {
+    Assert.Equal(expected, OrdenTrabajoCodes.TogglePasoHecho(current));
+  }
+
+  [Fact]
+  public void NewStepModels_DefaultPhotoPolicyToOptional()
+  {
+    Assert.Equal(OrdenTrabajoCodes.FotoOpcional, new OrdenTrabajoStepSaveRequest().PoliticaFoto);
+    Assert.Equal(OrdenTrabajoCodes.FotoOpcional, new OrdenTrabajoTemplateStepSaveRequest().PoliticaFoto);
+  }
 }

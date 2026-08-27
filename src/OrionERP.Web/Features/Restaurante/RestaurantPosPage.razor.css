@@ -1067,6 +1067,7 @@
   margin-top: 1rem;
 }
 
+.pos-ticket__recovered,
 .pos-ticket__copies,
 .pos-ticket__error,
 .pos-ticket__drawer-warning {
@@ -1074,6 +1075,11 @@
   padding: .45rem .65rem;
   border-radius: .6rem;
   font-weight: 750;
+}
+
+.pos-ticket__recovered {
+  background: #e8f1ff;
+  color: #174c83;
 }
 
 .pos-ticket__copies {

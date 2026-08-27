@@ -1,26 +1,30 @@
 <div id="components-reconnect-modal"
      class="connection-status components-reconnect-hide"
-     role="status"
+     role="alertdialog"
+     aria-label="Estado de conexión con OrionERP"
+     aria-modal="true"
+     aria-hidden="true"
      aria-live="assertive"
-     aria-atomic="true">
-    <div class="connection-status__panel">
+     aria-atomic="true"
+     tabindex="-1">
+    <div class="connection-status__panel" role="document">
         <span class="connection-status__spinner" aria-hidden="true"></span>
 
         <div class="connection-status__copy connection-status__retrying">
             <strong>Reconectando…</strong>
-            <span>Estamos recuperando la conexión. Tus notas siguen guardadas en este teléfono.</span>
+            <span>Por seguridad, los controles están bloqueados mientras recuperamos la conexión.</span>
         </div>
 
         <div class="connection-status__copy connection-status__failed">
             <strong>No pudimos reconectar</strong>
-            <span>Revisa tu señal y vuelve a cargar. No repetiremos envíos ni fotos automáticamente.</span>
-            <button type="button" onclick="window.location.reload()">Volver a cargar</button>
+            <span>La pantalla quedó bloqueada para evitar cambios o envíos duplicados. Revisa tu señal y vuelve a cargar.</span>
+            <button type="button" class="connection-status__primary-action" onclick="window.location.reload()">Volver a cargar</button>
         </div>
 
         <div class="connection-status__copy connection-status__rejected">
-            <strong>La sesión ya no está disponible</strong>
-            <span>Vuelve a cargar para sincronizar la orden antes de continuar.</span>
-            <button type="button" onclick="window.location.reload()">Sincronizar ahora</button>
+            <strong>La sesión expiró</strong>
+            <span>Debes volver a cargar antes de continuar. Si una orden ya llegó al servidor, no se registrará nuevamente.</span>
+            <button type="button" class="connection-status__primary-action" onclick="window.location.reload()">Volver a entrar de forma segura</button>
         </div>
     </div>
 </div>

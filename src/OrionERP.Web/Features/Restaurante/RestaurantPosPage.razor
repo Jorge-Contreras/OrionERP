@@ -453,6 +453,10 @@
       <span>ORDEN</span><strong>@lastOrder.Folio.ToString("000")</strong>
       @if (!string.IsNullOrWhiteSpace(lastOrder.CustomerName)) { <b class="pos-ticket__customer">@lastOrder.CustomerName</b> }
       <p>Total @lastOrder.Total.ToString("C")</p><small>@lastOrder.Status · @lastOrder.PaymentStatus</small>
+      @if (lastOrder.WasDuplicate)
+      {
+        <small class="pos-ticket__recovered" role="status">Esta orden ya se había registrado. Recuperamos el resultado sin volver a cobrarla ni enviarla.</small>
+      }
       @if (lastReceipt is not null)
       {
         <small class="pos-ticket__copies">
@@ -641,6 +645,7 @@
     if (!int.TryParse(args.Value?.ToString(), out var id)) return;
     selectedSiteId = id;
     cart = [];
+    idempotencyKey = Guid.NewGuid().ToString("N");
     selectedMember = null;
     memberIdentifier = null;
     promotionQuote = null;
@@ -786,7 +791,7 @@
     await PersistCartAsync();
     await RefreshPromotionQuoteAsync();
   }
-  private async Task ClearCartAsync() { cart = []; promotionQuote = null; ShowMenu(); await PersistCartAsync(); }
+  private async Task ClearCartAsync() { cart = []; promotionQuote = null; ShowMenu(); idempotencyKey = Guid.NewGuid().ToString("N"); await PersistCartAsync(); }
   private async Task OnCartDiscountChangedAsync() { await PersistCartAsync(); await RefreshPromotionQuoteAsync(); }
   private async Task SetOrderTypeAsync(string value) { orderType = value; await RefreshPromotionQuoteAsync(); }
   private void FillCash() { cardAmount = 0; transferAmount = 0; cashReceived = GrandTotal + Math.Max(0, tipAmount); }
@@ -881,21 +886,21 @@
 
   private async Task SubmitAsync()
   {
-    if (catalog is null || cart.Count == 0) return;
-    await RefreshPromotionQuoteAsync();
-    if (!string.IsNullOrWhiteSpace(promotionCode) && promotionQuote?.CodeAccepted != true)
-    {
-      error = promotionQuote?.Message ?? "El código promocional no es válido para esta orden.";
-      return;
-    }
-    if (IsCustomerNameMissing) { error = "El nombre del cliente es obligatorio."; return; }
-    var shift = SelectedShift;
-    if (shift is null) { error = "Selecciona un turno de caja abierto para registrar la venta."; return; }
-    if (ElectronicPaymentExcess > 0.01m) { error = "Los pagos electrónicos no pueden exceder el total de la orden."; return; }
-    if (RequiresFullPayment && PosCash.Shortfall > 0.01m) { error = $"Falta cubrir {PosCash.Shortfall:C} para cobrar esta orden."; return; }
+    if (catalog is null || cart.Count == 0 || isSubmitting) return;
     isSubmitting = true; error = null; drawerWarning = null;
     try
     {
+      await RefreshPromotionQuoteAsync();
+      if (!string.IsNullOrWhiteSpace(promotionCode) && promotionQuote?.CodeAccepted != true)
+      {
+        error = promotionQuote?.Message ?? "El código promocional no es válido para esta orden.";
+        return;
+      }
+      if (IsCustomerNameMissing) { error = "El nombre del cliente es obligatorio."; return; }
+      var shift = SelectedShift;
+      if (shift is null) { error = "Selecciona un turno de caja abierto para registrar la venta."; return; }
+      if (ElectronicPaymentExcess > 0.01m) { error = "Los pagos electrónicos no pueden exceder el total de la orden."; return; }
+      if (RequiresFullPayment && PosCash.Shortfall > 0.01m) { error = $"Falta cubrir {PosCash.Shortfall:C} para cobrar esta orden."; return; }
       var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
       var userName = auth.User.Identity?.Name ?? "restaurante";
       string? supervisorAuthorizedBy = null;
@@ -941,26 +946,69 @@
         Payments = payments
       };
       lastOrder = await OrderService.CreateOrderAsync(request, userName);
-      lastReceipt = BuildReceiptModel(lastOrder);
-      lastOrderReceivedCash = shouldOpenCashDrawer;
-      if (shouldOpenCashDrawer)
+      if (lastOrder.WasDuplicate)
+      {
+        var recoveredReceipt = await OrderService.GetReceiptAsync(CurrentRfc, lastOrder.OrderId);
+        lastReceipt = recoveredReceipt is null
+          ? null
+          : RestaurantReceiptReprintMapper.Create(recoveredReceipt, catalog);
+      }
+      else
+      {
+        lastReceipt = BuildReceiptModel(lastOrder);
+      }
+      lastOrderReceivedCash = shouldOpenCashDrawer && !lastOrder.WasDuplicate;
+      if (lastOrderReceivedCash)
       {
         await OpenCashDrawerAsync();
       }
-      cart = []; await PersistCartAsync();
-      idempotencyKey = Guid.NewGuid().ToString("N"); cashReceived = cardAmount = transferAmount = tipAmount = 0; customerName = customerPhone = deliveryAddress = deliveryReferences = externalReference = orderNotes = discountReason = supervisorIdentity = supervisorPin = memberIdentifier = promotionCode = null; selectedMember = null; promotionQuote = null; deliveryCost = commissionAmount = discountValue = 0; allowInventoryDeficit = false;
+      cart = [];
+      idempotencyKey = Guid.NewGuid().ToString("N");
+      await PersistCartAsync();
+      cashReceived = cardAmount = transferAmount = tipAmount = 0; customerName = customerPhone = deliveryAddress = deliveryReferences = externalReference = orderNotes = discountReason = supervisorIdentity = supervisorPin = memberIdentifier = promotionCode = null; selectedMember = null; promotionQuote = null; deliveryCost = commissionAmount = discountValue = 0; allowInventoryDeficit = false;
     }
     catch (Exception ex) { error = ex.Message; }
     finally { isSubmitting = false; }
   }
 
-  private async Task PersistCartAsync() { try { await Js.InvokeVoidAsync("localStorage.setItem", StorageKey, JsonSerializer.Serialize(cart)); } catch { } }
+  private async Task PersistCartAsync()
+  {
+    try
+    {
+      var draft = new StoredPosDraft { IdempotencyKey = idempotencyKey, Cart = cart };
+      await Js.InvokeVoidAsync("localStorage.setItem", StorageKey, JsonSerializer.Serialize(draft));
+    }
+    catch { }
+  }
+
   private async Task RestoreCartAsync()
   {
     try
     {
       var json = await Js.InvokeAsync<string?>("localStorage.getItem", StorageKey);
-      if (!string.IsNullOrWhiteSpace(json)) cart = JsonSerializer.Deserialize<List<CartLine>>(json) ?? [];
+      if (!string.IsNullOrWhiteSpace(json))
+      {
+        if (json.TrimStart().StartsWith("[", StringComparison.Ordinal))
+        {
+          cart = JsonSerializer.Deserialize<List<CartLine>>(json) ?? [];
+          idempotencyKey = Guid.NewGuid().ToString("N");
+          await PersistCartAsync();
+        }
+        else
+        {
+          var draft = JsonSerializer.Deserialize<StoredPosDraft>(json);
+          cart = draft?.Cart ?? [];
+          if (IsValidIdempotencyKey(draft?.IdempotencyKey))
+          {
+            idempotencyKey = draft!.IdempotencyKey;
+          }
+          else
+          {
+            idempotencyKey = Guid.NewGuid().ToString("N");
+            await PersistCartAsync();
+          }
+        }
+      }
       if (catalog is null) return;
       foreach (var line in cart.Where(line => !line.IsCustom && !line.MenuSectionId.HasValue && line.ProductId.HasValue))
       {
@@ -975,6 +1023,9 @@
     }
     catch { cart = []; }
   }
+
+  private static bool IsValidIdempotencyKey(string? value)
+    => value is not null && Guid.TryParseExact(value, "N", out _);
 
   private RestaurantReceiptPdfDocumentModel BuildReceiptModel(RestaurantOrderResult order)
   {
@@ -1129,5 +1180,12 @@
     public string? Notes { get; set; }
     public List<long> ModifierIds { get; set; } = [];
     public List<string> ModifierNames { get; set; } = [];
+  }
+
+  private sealed class StoredPosDraft
+  {
+    public int Version { get; set; } = 1;
+    public string IdempotencyKey { get; set; } = string.Empty;
+    public List<CartLine> Cart { get; set; } = [];
   }
 }

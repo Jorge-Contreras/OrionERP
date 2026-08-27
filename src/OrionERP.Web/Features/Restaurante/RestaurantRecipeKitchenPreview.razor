@@ -1,0 +1,81 @@
+@using Microsoft.JSInterop
+@using OrionERP.Application.Features.Restaurante
+@inject IJSRuntime JsRuntime
+
+<div class="recipe-preview-backdrop" role="dialog" aria-modal="true" aria-labelledby="recipe-preview-title">
+  <article class="recipe-preview-sheet">
+    <header class="recipe-preview-top">
+      <div>
+        <span>Vista de cocina</span>
+        <h1 id="recipe-preview-title">@Version.ProductName</h1>
+        <p>Versión @Version.VersionNumber · @StatusLabel(Version.Status)</p>
+      </div>
+      <div class="recipe-preview-actions"><button type="button" class="btn btn-outline-secondary" @onclick="PrintAsync"><span class="oi oi-print" aria-hidden="true"></span> Imprimir</button><button type="button" class="btn btn-primary" @onclick="OnClose">Cerrar</button></div>
+    </header>
+
+    @if (!string.Equals(Version.Status, "Active", StringComparison.OrdinalIgnoreCase))
+    {
+      <div class="recipe-preview-warning">@(string.Equals(Version.Status, "Draft", StringComparison.OrdinalIgnoreCase) ? "BORRADOR — NO USAR" : "RECETA ARCHIVADA")</div>
+    }
+
+    <section class="recipe-preview-yield">
+      <label>Preparar para<input type="number" min="0.0001" step="0.0001" @bind="targetYield" /></label>
+      <strong>@YieldUnitLabel</strong>
+      <small>Receta original: @Version.YieldQuantity.ToString("0.####") @YieldUnitLabel</small>
+    </section>
+
+    @if (Version.Allergens.Count > 0)
+    {
+      <section class="recipe-preview-allergens"><h2>Alérgenos</h2><div>@foreach (var allergen in Version.Allergens) { <span>@allergen</span> }</div></section>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Version.SafetyNotes))
+    {
+      <section class="recipe-preview-safety"><h2>Seguridad</h2><p>@Version.SafetyNotes</p></section>
+    }
+
+    <section class="recipe-preview-section">
+      <h2>Ingredientes</h2>
+      <div class="recipe-preview-ingredients">
+        @foreach (var component in Version.Components)
+        {
+          <div><strong>@component.MaterialName</strong><span>@Scale(component.Quantity).ToString("0.####") @component.UnitName</span>@if (component.ExpectedWastePercent > 0) { <small>Incluye @component.ExpectedWastePercent.ToString("0.##")% de merma</small> }</div>
+        }
+      </div>
+    </section>
+
+    <section class="recipe-preview-section">
+      <h2>Preparación</h2>
+      <ol class="recipe-preview-steps">
+        @foreach (var step in Version.Steps.OrderBy(item => item.StepNumber))
+        {
+          <li>
+            <div class="recipe-preview-step-copy"><p>@step.Instruction</p><div>@if (step.DurationMinutes.HasValue) { <span><b>Tiempo:</b> @step.DurationMinutes min</span> }@if (step.TemperatureC.HasValue) { <span><b>Temperatura:</b> @step.TemperatureC.Value.ToString("0.#") °C</span> }@if (!string.IsNullOrWhiteSpace(step.Equipment)) { <span><b>Equipo:</b> @step.Equipment</span> }</div></div>
+            @if (step.Image is { Length: > 0 }) { <img src="@ImageDataUrl(step)" alt="Referencia visual del paso @step.StepNumber" /> }
+          </li>
+        }
+      </ol>
+    </section>
+  </article>
+</div>
+
+@code {
+  [Parameter, EditorRequired] public BomVersionDto Version { get; set; } = default!;
+  [Parameter] public string YieldUnitLabel { get; set; } = "unidad";
+  [Parameter] public EventCallback OnClose { get; set; }
+
+  private long loadedVersionId;
+  private decimal targetYield;
+
+  protected override void OnParametersSet()
+  {
+    if (loadedVersionId == Version.Id) return;
+    loadedVersionId = Version.Id;
+    targetYield = Version.YieldQuantity;
+  }
+
+  private decimal Scale(decimal quantity) => Version.YieldQuantity <= 0 || targetYield <= 0 ? quantity : RestaurantRecipeScaling.ScaleQuantity(quantity, Version.YieldQuantity, targetYield);
+  private Task PrintAsync() => JsRuntime.InvokeVoidAsync("restaurantUi.printPage").AsTask();
+  private static string StatusLabel(string status) => status switch { "Draft" => "Borrador", "Active" => "En uso", "Retired" => "Archivada", _ => status };
+  private static string ImageDataUrl(RecipeStepDto step) => $"data:{step.ImageContentType ?? "image/jpeg"};base64,{Convert.ToBase64String(step.Image!)}";
+}

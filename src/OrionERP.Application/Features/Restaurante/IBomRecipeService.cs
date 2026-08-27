@@ -4,7 +4,10 @@ public interface IBomRecipeService
 {
   Task<IReadOnlyList<BomVersionDto>> GetBomVersionsAsync(string rfc, CancellationToken ct = default);
   Task<BomVersionDto?> GetBomVersionAsync(string rfc, long bomVersionId, CancellationToken ct = default);
-  Task<RestaurantCommandResult> SaveDraftAsync(BomDraftSaveRequest request, CancellationToken ct = default);
+  Task<BomCostBreakdownDto?> GetCostBreakdownAsync(string rfc, long bomVersionId, CancellationToken ct = default);
+  Task<IReadOnlyList<RecipeUnitOptionDto>> GetRecipeUnitOptionsAsync(string rfc, CancellationToken ct = default);
+  Task<RecipeActivationReadinessDto> GetActivationReadinessAsync(string rfc, long bomVersionId, CancellationToken ct = default);
+  Task<RestaurantCommandResult> SaveDraftAsync(BomDraftSaveRequest request, string userName, CancellationToken ct = default);
   Task<RestaurantCommandResult> ActivateAsync(string rfc, long bomVersionId, string userName, CancellationToken ct = default);
   Task<RestaurantCommandResult> DeleteDraftAsync(string rfc, long bomVersionId, CancellationToken ct = default);
   Task<RestaurantCommandResult> RetireAsync(string rfc, long bomVersionId, string userName, CancellationToken ct = default);

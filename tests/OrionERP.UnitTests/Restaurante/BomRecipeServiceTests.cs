@@ -29,10 +29,39 @@ public sealed class BomRecipeServiceTests
       ]
     };
 
-    var result = await service.SaveDraftAsync(request);
+    var result = await service.SaveDraftAsync(request, "chef@orionerp.local");
 
     Assert.False(result.Success);
-    Assert.Equal("Selecciona el producto, los ingredientes y sus unidades base.", result.Message);
+    Assert.Equal("Selecciona el producto, los ingredientes y sus unidades.", result.Message);
+  }
+
+  [Fact]
+  public async Task SaveDraftAsync_ReturnsValidationError_ForInvalidWasteOrDuration()
+  {
+    var service = new BomRecipeService(new UnavailableConnectionFactory());
+    var invalidWaste = await service.SaveDraftAsync(new BomDraftSaveRequest
+    {
+      Rfc = "OHM191112Q26",
+      ProductMaterialId = 10,
+      YieldQuantity = 1,
+      YieldUnitId = 1,
+      ExpectedWastePercent = 101,
+      Components = [new() { MaterialId = 20, Quantity = 1, UnitId = 1 }]
+    }, "chef@orionerp.local");
+    var invalidDuration = await service.SaveDraftAsync(new BomDraftSaveRequest
+    {
+      Rfc = "OHM191112Q26",
+      ProductMaterialId = 10,
+      YieldQuantity = 1,
+      YieldUnitId = 1,
+      Components = [new() { MaterialId = 20, Quantity = 1, UnitId = 1 }],
+      Steps = [new() { StepNumber = 1, DurationMinutes = -1 }]
+    }, "chef@orionerp.local");
+
+    Assert.False(invalidWaste.Success);
+    Assert.Contains("merma", invalidWaste.Message, StringComparison.OrdinalIgnoreCase);
+    Assert.False(invalidDuration.Success);
+    Assert.Contains("duración", invalidDuration.Message, StringComparison.OrdinalIgnoreCase);
   }
 
   [Fact]
@@ -81,7 +110,9 @@ public sealed class BomRecipeServiceTests
     {
       ReaderResultFactory = (commandText, _) => commandText.Contains("WITH MaterialTree", StringComparison.Ordinal)
         ? CreateIncompleteBomMaterialTable()
-        : CreateVersionTable("Draft"),
+        : commandText.Contains("component.UnitId<>material.BaseUnitId", StringComparison.Ordinal)
+          ? new DataTable()
+          : CreateVersionTable("Draft"),
       ScalarResultFactory = (_, _) => 1
     };
 

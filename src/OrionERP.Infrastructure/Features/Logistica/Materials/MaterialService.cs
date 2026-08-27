@@ -37,8 +37,8 @@ public sealed class MaterialService : IMaterialService
       new("ProductionOrder", "Órdenes de producción", "El material aparece como producto de una orden de producción.", "Revisar producción", "/restaurante/produccion"),
       new("RestaurantProduct", "Productos de restaurante", "El material está publicado como variante de un producto del restaurante.", "Revisar menús", "/restaurante/menus"),
       new("ModifierIngredientDelta", "Modificadores de restaurante", "El material se agrega o retira mediante opciones de modificadores.", "Revisar menús", "/restaurante/menus"),
-      new("MaterialAllergen", "Asignaciones de alérgenos", "El material conserva asignaciones de alérgenos, incluso si el alérgeno está inactivo.", "Revisar recetas", "/restaurante/recetas"),
-      new("MaterialUnitConversion", "Conversiones de unidad", "El material conserva conversiones especiales de unidad, incluso si están inactivas.", "Revisar recetas", "/restaurante/recetas")
+      new("MaterialAllergen", "Asignaciones de alérgenos", "El material conserva asignaciones de alérgenos, incluso si el alérgeno está inactivo.", "Revisar seguridad de recetas", "/restaurante/recetas/configuracion"),
+      new("MaterialUnitConversion", "Conversiones de unidad", "El material conserva conversiones especiales de unidad, incluso si están inactivas.", "Revisar unidades de recetas", "/restaurante/recetas/configuracion")
     }.ToDictionary(definition => definition.Code, StringComparer.Ordinal);
 
   private readonly IDbConnectionFactory _connectionFactory;
@@ -75,6 +75,8 @@ public sealed class MaterialService : IMaterialService
           m.[Description],
           m.BaseUnitId,
           m.MaterialClass,
+          m.ProductType,
+          m.FulfillmentMode,
           m.MaterialStatus AS [Status],
           m.IsActive,
           mc.CategoryName,

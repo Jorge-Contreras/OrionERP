@@ -1,0 +1,207 @@
+@page "/restaurante/recetas/configuracion"
+@attribute [Authorize(Policy = "RestaurantAdmin")]
+@using OrionERP.Application.Features.Logistica.Materials
+@using OrionERP.Application.Features.Logistica.Shared
+@using OrionERP.Application.Features.Restaurante
+@using OrionERP.Web.State
+@inject IBomRecipeService BomService
+@inject IMaterialService MaterialService
+@inject ICurrentCompanyContext RfcState
+
+<PageTitle>Configuración de recetas · Restaurante</PageTitle>
+
+<main class="recipe-settings-shell">
+  <header class="recipe-settings-hero">
+    <div>
+      <a href="/restaurante/recetas"><span class="oi oi-arrow-left" aria-hidden="true"></span> Volver a recetas</a>
+      <span>Configuración avanzada</span>
+      <h1>Seguridad y unidades de cocina</h1>
+      <p>Administra alérgenos y equivalencias sin interrumpir la captura diaria de recetas.</p>
+    </div>
+  </header>
+
+  @if (!string.IsNullOrWhiteSpace(message))
+  {
+    <div class="recipe-settings-alert recipe-settings-alert--@(isError ? "error" : "success")" role="status" aria-live="polite">@message</div>
+  }
+
+  @if (isLoading)
+  {
+    <section class="recipe-settings-loading"><span class="spinner-border" aria-hidden="true"></span><p>Cargando configuración…</p></section>
+  }
+  else
+  {
+    <section class="recipe-settings-grid">
+      <article class="recipe-settings-card">
+        <header><div><span>Seguridad alimentaria</span><h2>Alérgenos por material</h2><p>Selecciona un insumo o subreceta y marca los alérgenos conocidos.</p></div></header>
+        <div class="recipe-settings-fields">
+          <RestaurantMaterialPicker Label="Material"
+                                    Options="@materialOptions"
+                                    @bind-Value="allergenMaterialId"
+                                    Changed="@(_ => LoadMaterialAllergens())"
+                                    EmptyActionHref="/logistica/materiales" />
+          @if (allergenMaterialId > 0)
+          {
+            <div class="recipe-settings-allergens">
+              @foreach (var allergen in allergens.Where(item => item.IsActive))
+              {
+                <label class="@(selectedAllergenIds.Contains(allergen.Id) ? "is-selected" : null)"><input type="checkbox" checked="@selectedAllergenIds.Contains(allergen.Id)" @onchange="() => ToggleAllergen(allergen.Id)" /> <span>@allergen.Name</span></label>
+              }
+            </div>
+            <button type="button" class="btn btn-primary" disabled="@isBusy" @onclick="SaveMaterialAllergensAsync">@(isBusy ? "Guardando…" : "Guardar alérgenos")</button>
+          }
+          else
+          {
+            <div class="recipe-settings-hint"><span class="oi oi-info" aria-hidden="true"></span> Elige un material para revisar sus alérgenos.</div>
+          }
+        </div>
+
+        <details class="recipe-settings-details">
+          <summary>Administrar catálogo global de alérgenos</summary>
+          <div class="recipe-settings-fields recipe-settings-fields--compact">
+            <label>Código<input @bind="allergenEditor.Code" /></label>
+            <label>Nombre<input @bind="allergenEditor.Name" /></label>
+            <label class="recipe-settings-check"><input type="checkbox" @bind="allergenEditor.IsActive" /> Disponible</label>
+            <div class="recipe-settings-actions"><button type="button" class="btn btn-outline-secondary" @onclick="NewAllergen">Nuevo</button><button type="button" class="btn btn-primary" disabled="@isBusy" @onclick="SaveAllergenAsync">Guardar</button></div>
+          </div>
+          <div class="recipe-settings-list">
+            @foreach (var allergen in allergens)
+            {
+              <button type="button" @onclick="() => EditAllergen(allergen)"><strong>@allergen.Name</strong><small>@allergen.Code · @(allergen.IsActive ? "Disponible" : "No disponible")</small></button>
+            }
+          </div>
+        </details>
+      </article>
+
+      <article class="recipe-settings-card">
+        <header><div><span>Unidades culinarias</span><h2>Equivalencias por material</h2><p>Define medidas como bolsa, taza o cucharada en términos de la unidad base del insumo.</p></div><button type="button" class="btn btn-outline-primary btn-sm" @onclick="NewConversion">Nueva equivalencia</button></header>
+        <div class="recipe-settings-fields">
+          <RestaurantMaterialPicker Label="Material"
+                                    Options="@materialOptions"
+                                    @bind-Value="conversionEditor.MaterialId"
+                                    Changed="SetConversionMaterial"
+                                    EmptyActionHref="/logistica/materiales" />
+          <label>Unidad culinaria<select @bind="conversionEditor.FromUnitId"><option value="0">Selecciona una unidad…</option>@foreach (var unit in AvailableFromUnits) { <option value="@unit.Id">@UnitDisplay(unit)</option> }</select></label>
+          <div class="recipe-settings-equation">
+            <strong>1 @FromUnitLabel equivale a</strong>
+            <label><span class="visually-hidden">Cantidad en unidad base</span><input type="number" min="0.0000000001" step="0.0001" @bind="conversionEditor.Factor" /></label>
+            <strong>@BaseUnitLabel</strong>
+          </div>
+          <small class="recipe-settings-example">Ejemplo: si una bolsa contiene 12 piezas, captura “12”.</small>
+          <label>Nota opcional<input @bind="conversionEditor.Notes" placeholder="Ej. presentación usada por cocina" /></label>
+          <label class="recipe-settings-check"><input type="checkbox" @bind="conversionEditor.IsActive" /> Disponible para nuevas recetas</label>
+          <div class="recipe-settings-actions">
+            <button type="button" class="btn btn-primary" disabled="@(isBusy || !CanSaveConversion)" @onclick="SaveConversionAsync">@(isBusy ? "Guardando…" : "Guardar equivalencia")</button>
+            @if (conversionEditor.Id.HasValue)
+            {
+              <button type="button" class="btn btn-outline-danger" disabled="@isBusy" @onclick="() => showDeleteConversion = true">Eliminar</button>
+            }
+          </div>
+        </div>
+        <div class="recipe-settings-list recipe-settings-list--conversions">
+          @foreach (var conversion in conversions)
+          {
+            <button type="button" @onclick="() => EditConversion(conversion)"><strong>@conversion.MaterialName</strong><small>1 @conversion.FromUnitCode = @conversion.Factor.ToString("0.########") @conversion.ToUnitCode · @(conversion.IsActive ? "Disponible" : "No disponible")</small></button>
+          }
+          @if (conversions.Count == 0) { <p>Aún no hay equivalencias especiales.</p> }
+        </div>
+      </article>
+    </section>
+  }
+</main>
+
+@if (showDeleteConversion)
+{
+  <div class="recipe-settings-modal" role="dialog" aria-modal="true" aria-labelledby="delete-conversion-title">
+    <section>
+      <h2 id="delete-conversion-title">¿Eliminar esta equivalencia?</h2>
+      <p>Las recetas actuales que dependan de ella impedirán la eliminación. Esta acción no cambia cantidades ya registradas.</p>
+      <div><button type="button" class="btn btn-outline-secondary" @onclick="() => showDeleteConversion = false">Cancelar</button><button type="button" class="btn btn-danger" disabled="@isBusy" @onclick="DeleteConversionAsync">Eliminar equivalencia</button></div>
+    </section>
+  </div>
+}
+
+@code {
+  private List<MaterialListItemDto> materials = [];
+  private IReadOnlyList<RestaurantMaterialOption> materialOptions = [];
+  private MaterialCatalogDto catalog = new();
+  private List<RestaurantAllergenDto> allergens = [];
+  private List<MaterialUnitConversionDto> conversions = [];
+  private RestaurantAllergenSaveRequest allergenEditor = new() { IsActive = true };
+  private MaterialUnitConversionSaveRequest conversionEditor = new() { IsActive = true, Factor = 1 };
+  private readonly HashSet<int> selectedAllergenIds = [];
+  private int allergenMaterialId;
+  private string? message;
+  private bool isError;
+  private bool isBusy;
+  private bool isLoading = true;
+  private bool showDeleteConversion;
+  private string CurrentRfc => RfcState.RequireRfc();
+  private MaterialListItemDto? ConversionMaterial => materials.FirstOrDefault(item => item.Id == conversionEditor.MaterialId);
+  private IEnumerable<LookupOptionDto> AvailableFromUnits => catalog.Units.Where(unit => unit.Id != conversionEditor.ToUnitId);
+  private string FromUnitLabel => catalog.Units.FirstOrDefault(item => item.Id == conversionEditor.FromUnitId) is { } unit ? UnitDisplay(unit) : "unidad culinaria";
+  private string BaseUnitLabel => catalog.Units.FirstOrDefault(item => item.Id == conversionEditor.ToUnitId) is { } unit ? UnitDisplay(unit) : "unidad base";
+  private bool CanSaveConversion => conversionEditor.MaterialId > 0 && conversionEditor.FromUnitId > 0 && conversionEditor.ToUnitId > 0 && conversionEditor.Factor > 0;
+
+  protected override async Task OnInitializedAsync() => await LoadAsync();
+
+  private async Task LoadAsync()
+  {
+    isBusy = true;
+    try
+    {
+      materials = (await MaterialService.GetMaterialsAsync(new() { Rfc = CurrentRfc, Status = "ACTIVO", MaterialClass = "Consumable", Take = 0 })).ToList();
+      materialOptions = RestaurantMaterialOption.FromMaterials(materials);
+      catalog = await MaterialService.GetCatalogAsync(CurrentRfc);
+      allergens = (await BomService.GetAllergensAsync(CurrentRfc)).ToList();
+      conversions = (await BomService.GetMaterialUnitConversionsAsync(CurrentRfc)).ToList();
+      if (allergenMaterialId > 0) LoadMaterialAllergens();
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { isBusy = false; isLoading = false; }
+  }
+
+  private void LoadMaterialAllergens()
+  {
+    selectedAllergenIds.Clear();
+    foreach (var allergen in allergens.Where(item => item.MaterialIds.Contains(allergenMaterialId))) selectedAllergenIds.Add(allergen.Id);
+  }
+  private void ToggleAllergen(int id) { if (!selectedAllergenIds.Remove(id)) selectedAllergenIds.Add(id); }
+  private async Task SaveMaterialAllergensAsync() => await RunAsync(() => BomService.SaveMaterialAllergensAsync(CurrentRfc, allergenMaterialId, selectedAllergenIds));
+  private void NewAllergen() => allergenEditor = new() { IsActive = true };
+  private void EditAllergen(RestaurantAllergenDto item) => allergenEditor = new() { Id = item.Id, Code = item.Code, Name = item.Name, IsActive = item.IsActive };
+  private async Task SaveAllergenAsync() => await RunAsync(() => BomService.SaveAllergenAsync(allergenEditor));
+
+  private void NewConversion() => conversionEditor = new() { Rfc = CurrentRfc, IsActive = true, Factor = 1 };
+  private void SetConversionMaterial(int materialId) => conversionEditor.ToUnitId = materials.FirstOrDefault(item => item.Id == materialId)?.BaseUnitId ?? 0;
+  private void EditConversion(MaterialUnitConversionDto item) => conversionEditor = new() { Rfc = CurrentRfc, Id = item.Id, MaterialId = item.MaterialId, FromUnitId = item.FromUnitId, ToUnitId = item.ToUnitId, Factor = item.Factor, Notes = item.Notes, IsActive = item.IsActive };
+  private async Task SaveConversionAsync()
+  {
+    conversionEditor.Rfc = CurrentRfc;
+    await RunAsync(() => BomService.SaveMaterialUnitConversionAsync(conversionEditor));
+  }
+  private async Task DeleteConversionAsync()
+  {
+    if (!conversionEditor.Id.HasValue) return;
+    var id = conversionEditor.Id.Value;
+    showDeleteConversion = false;
+    await RunAsync(() => BomService.DeleteMaterialUnitConversionAsync(CurrentRfc, id));
+    if (!isError) NewConversion();
+  }
+
+  private async Task RunAsync(Func<Task<RestaurantCommandResult>> action)
+  {
+    isBusy = true;
+    try
+    {
+      var result = await action();
+      Show(result.Message, !result.Success);
+      if (result.Success) await LoadAsync();
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { isBusy = false; }
+  }
+
+  private static string UnitDisplay(LookupOptionDto unit) => string.IsNullOrWhiteSpace(unit.Code) ? unit.Name : $"{unit.Name} ({unit.Code})";
+  private void Show(string value, bool error) { message = value; isError = error; }
+}

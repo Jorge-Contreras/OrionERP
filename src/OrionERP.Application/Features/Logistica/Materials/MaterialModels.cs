@@ -27,6 +27,8 @@ public sealed class MaterialListItemDto
   public string Description { get; set; } = string.Empty;
   public int BaseUnitId { get; set; }
   public string MaterialClass { get; set; } = string.Empty;
+  public string ProductType { get; set; } = string.Empty;
+  public string FulfillmentMode { get; set; } = string.Empty;
   public string Status { get; set; } = string.Empty;
   public bool IsActive { get; set; }
   public string? CategoryName { get; set; }

@@ -53,6 +53,33 @@ public sealed class RestaurantAdminPageTests
       StringComparison.Ordinal);
   }
 
+  [Fact]
+  public void ProductForm_AssignsTheKitchenStationInsteadOfOnlyPreservingIt()
+  {
+    var source = File.ReadAllText(GetRepoFile(
+      "src/OrionERP.Web/Features/Restaurante/RestaurantAdminPage.razor"));
+
+    Assert.Contains("@bind-Value=\"productEditor.KitchenStationId\"", source, StringComparison.Ordinal);
+    Assert.Contains("stations = (await CatalogService.GetKitchenStationsAsync(rfc)).ToList();", source, StringComparison.Ordinal);
+    Assert.Contains("stations.GroupBy(item => item.SiteName)", source, StringComparison.Ordinal);
+    Assert.Contains("<option value=\"\">Sin estación", source, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void KitchenStationLookup_IsScopedToTheActiveRfcAndNamesItsSite()
+  {
+    var service = File.ReadAllText(GetRepoFile(
+      "src/OrionERP.Infrastructure/Features/Restaurante/RestaurantCatalogService.cs"));
+    var lookupStart = service.IndexOf("GetKitchenStationsAsync", StringComparison.Ordinal);
+    var lookupEnd = service.IndexOf("GetSiteOperationsAsync", lookupStart, StringComparison.Ordinal);
+    var lookup = service[lookupStart..lookupEnd];
+
+    Assert.Contains("LogisticsRfc.Require(rfc)", lookup, StringComparison.Ordinal);
+    Assert.Contains("FROM restaurante.KitchenStation station", lookup, StringComparison.Ordinal);
+    Assert.Contains("site.[Name] AS SiteName", lookup, StringComparison.Ordinal);
+    Assert.Contains("WHERE station.Rfc=@Rfc", lookup, StringComparison.Ordinal);
+  }
+
   private static string GetRepoFile(string relativePath)
     => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../", relativePath));
 }

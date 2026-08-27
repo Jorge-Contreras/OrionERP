@@ -704,6 +704,22 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     catch{await tx.RollbackAsync(ct);throw;}
   }
 
+  public async Task<IReadOnlyList<RestaurantKitchenStationLookupDto>> GetKitchenStationsAsync(string rfc, CancellationToken ct = default)
+  {
+    var normalizedRfc=LogisticsRfc.Require(rfc);
+    const string sql=
+      """
+      SELECT station.Id,station.SiteId,site.[Name] AS SiteName,station.StationCode AS Code,
+             station.[Name],station.SortOrder,station.IsActive
+      FROM restaurante.KitchenStation station
+      JOIN restaurante.Site site ON site.Rfc=station.Rfc AND site.Id=station.SiteId
+      WHERE station.Rfc=@Rfc
+      ORDER BY site.[Name],station.SortOrder,station.[Name],station.Id;
+      """;
+    using var conn=CreateConnection();
+    return (await conn.QueryAsync<RestaurantKitchenStationLookupDto>(new CommandDefinition(sql,new{Rfc=normalizedRfc},cancellationToken:ct))).AsList();
+  }
+
   public async Task<RestaurantSiteOperationsDto> GetSiteOperationsAsync(string rfc, int siteId, CancellationToken ct = default)
   {
     var normalizedRfc=LogisticsRfc.Require(rfc);

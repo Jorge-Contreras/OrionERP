@@ -523,8 +523,44 @@ public sealed class BomVersionDto
   public decimal ExpectedWastePercent { get; set; }
   public decimal TheoreticalCost { get; set; }
   public string? SafetyNotes { get; set; }
+  public DateTime CreatedAt { get; set; }
+  public string? CreatedBy { get; set; }
+  public DateTime? EffectiveFrom { get; set; }
+  public DateTime? RetiredAt { get; set; }
+  public int ComponentCount { get; set; }
+  public int StepCount { get; set; }
+  public IReadOnlyList<string> Allergens { get; set; } = Array.Empty<string>();
   public IReadOnlyList<BomComponentDto> Components { get; set; } = Array.Empty<BomComponentDto>();
   public IReadOnlyList<RecipeStepDto> Steps { get; set; } = Array.Empty<RecipeStepDto>();
+}
+
+public sealed class BomCostBreakdownDto
+{
+  public long BomVersionId { get; set; }
+  public decimal YieldQuantity { get; set; }
+  public int YieldUnitId { get; set; }
+  public string YieldUnitName { get; set; } = string.Empty;
+  public decimal StoredUnitCost { get; set; }
+  public decimal CurrentBatchCost { get; set; }
+  public decimal CurrentUnitCost { get; set; }
+  public IReadOnlyList<BomCostLineDto> Lines { get; set; } = Array.Empty<BomCostLineDto>();
+}
+
+public sealed class BomCostLineDto
+{
+  public int MaterialId { get; set; }
+  public string MaterialName { get; set; } = string.Empty;
+  public decimal RecipeQuantity { get; set; }
+  public string RecipeUnitName { get; set; } = string.Empty;
+  public decimal WastePercent { get; set; }
+  public decimal ConversionFactor { get; set; }
+  public decimal BaseQuantity { get; set; }
+  public decimal QuantityWithWaste { get; set; }
+  public string BaseUnitName { get; set; } = string.Empty;
+  public decimal UnitCost { get; set; }
+  public string CostSource { get; set; } = string.Empty;
+  public decimal BatchCost { get; set; }
+  public decimal UnitContribution { get; set; }
 }
 
 public sealed class BomComponentDto
@@ -625,6 +661,31 @@ public sealed class MaterialUnitConversionSaveRequest
   [Range(typeof(decimal), "0.0000000001", "99999999999999")] public decimal Factor { get; set; } = 1;
   [StringLength(500)] public string? Notes { get; set; }
   public bool IsActive { get; set; } = true;
+}
+
+public sealed class RecipeUnitOptionDto
+{
+  public int MaterialId { get; set; }
+  public int UnitId { get; set; }
+  public string UnitCode { get; set; } = string.Empty;
+  public string UnitName { get; set; } = string.Empty;
+  public decimal FactorToBase { get; set; }
+  public bool IsBase { get; set; }
+}
+
+public sealed class RecipeValidationIssueDto
+{
+  public string Section { get; set; } = string.Empty;
+  public string Code { get; set; } = string.Empty;
+  public string Message { get; set; } = string.Empty;
+}
+
+public sealed class RecipeActivationReadinessDto
+{
+  public bool CanActivate => Issues.Count == 0;
+  public int? ReplacesVersionNumber { get; set; }
+  public IReadOnlyList<RecipeValidationIssueDto> Issues { get; set; } = Array.Empty<RecipeValidationIssueDto>();
+  public IReadOnlyList<string> Warnings { get; set; } = Array.Empty<string>();
 }
 
 public sealed class RestaurantProductionOrderDto
@@ -800,6 +861,17 @@ public sealed class RestaurantModifierDeltaSaveRequest
 public sealed class RestaurantKitchenStationAdminDto
 {
   public int Id { get; set; }
+  public string Code { get; set; } = string.Empty;
+  public string Name { get; set; } = string.Empty;
+  public int SortOrder { get; set; }
+  public bool IsActive { get; set; }
+}
+
+public sealed class RestaurantKitchenStationLookupDto
+{
+  public int Id { get; set; }
+  public int SiteId { get; set; }
+  public string SiteName { get; set; } = string.Empty;
   public string Code { get; set; } = string.Empty;
   public string Name { get; set; } = string.Empty;
   public int SortOrder { get; set; }

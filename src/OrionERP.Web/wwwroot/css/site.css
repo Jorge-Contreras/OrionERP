@@ -353,3 +353,34 @@ html, body, .page {
 .access-denied__actions {
   margin-top: 1rem;
 }
+@media print {
+  body:has(.recipe-preview-backdrop) * {
+    visibility: hidden !important;
+  }
+
+  body:has(.recipe-preview-backdrop) .recipe-preview-backdrop,
+  body:has(.recipe-preview-backdrop) .recipe-preview-backdrop * {
+    visibility: visible !important;
+  }
+
+  body:has(.recipe-preview-backdrop) .recipe-preview-backdrop {
+    position: absolute !important;
+    inset: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  body:has(.recipe-preview-backdrop) .recipe-preview-sheet {
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  body:has(.recipe-preview-backdrop) .recipe-preview-actions,
+  body:has(.recipe-preview-backdrop) .recipe-preview-yield input {
+    display: none !important;
+  }
+}

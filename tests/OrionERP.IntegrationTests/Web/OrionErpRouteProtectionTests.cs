@@ -60,6 +60,7 @@ public class OrionErpRouteProtectionTests
   [InlineData("/restaurante/admin", "RestaurantAdmin")]
   [InlineData("/restaurante/menus", "RestaurantAdmin")]
   [InlineData("/restaurante/recetas", "RestaurantAdmin")]
+  [InlineData("/restaurante/recetas/configuracion", "RestaurantAdmin")]
   [InlineData("/restaurante/produccion", "RestaurantAdmin")]
   [InlineData("/restaurante/inventario", "RestaurantAdmin")]
   [InlineData("/restaurante/reportes", "RestaurantAdmin")]

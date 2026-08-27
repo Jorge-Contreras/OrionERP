@@ -119,11 +119,12 @@ public class MaterialesPageUxTests
   public void RecipePage_ExposesOnlyExplicitSafeCleanupActions()
   {
     var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantRecipesPage.razor");
+    var settings = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantRecipeSettingsPage.razor");
     var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/BomRecipeService.cs");
 
     Assert.Contains("Eliminar borrador", page, StringComparison.Ordinal);
-    Assert.Contains("Retirar versión", page, StringComparison.Ordinal);
-    Assert.Contains("Eliminar conversión", page, StringComparison.Ordinal);
+    Assert.Contains("Archivar receta", page, StringComparison.Ordinal);
+    Assert.Contains("Eliminar equivalencia", settings, StringComparison.Ordinal);
     Assert.Contains("string.Equals(version.Status, \"Draft\"", service, StringComparison.Ordinal);
     Assert.Contains("string.Equals(version.Status, \"Active\"", service, StringComparison.Ordinal);
     Assert.Contains("[Status] IN ('Planned', 'Started')", service, StringComparison.Ordinal);

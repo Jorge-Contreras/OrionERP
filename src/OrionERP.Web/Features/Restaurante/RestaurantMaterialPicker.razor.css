@@ -130,7 +130,8 @@
 }
 
 .restaurant-material-picker__option:hover,
-.restaurant-material-picker__option:focus-visible {
+.restaurant-material-picker__option:focus-visible,
+.restaurant-material-picker__option.is-highlighted {
   outline: 0;
   background: #edf7f3;
 }
@@ -164,10 +165,29 @@
 }
 
 .restaurant-material-picker__empty {
+  display: grid;
+  gap: .35rem;
   margin: 0;
   padding: 1rem;
   color: #6f7d77;
   text-align: center;
+}
+
+.restaurant-material-picker__empty strong { color: #34443d; }
+.restaurant-material-picker__empty a { color: #276b56; font-weight: 850; }
+
+.restaurant-material-picker__group {
+  position: sticky;
+  top: 2.95rem;
+  z-index: 1;
+  padding: .4rem .7rem;
+  border-bottom: 1px solid #e1e8e5;
+  background: #f8faf9;
+  color: #5d6c66;
+  font-size: .68rem;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
 }
 
 .restaurant-material-picker--compact .restaurant-material-picker__results {

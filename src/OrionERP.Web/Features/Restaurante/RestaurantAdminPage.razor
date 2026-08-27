@@ -130,6 +130,28 @@
             </InputSelect>
           </label>
         </div>
+        <label>Estación de cocina
+          <InputSelect @bind-Value="productEditor.KitchenStationId">
+            <option value="">Sin estación · el producto no se envía a cocina</option>
+            @foreach (var siteGroup in stations.GroupBy(item => item.SiteName))
+            {
+              <optgroup label="@siteGroup.Key">
+                @foreach (var station in siteGroup)
+                {
+                  <option value="@station.Id">@station.Name · @station.Code@(station.IsActive ? null : " (inactiva)")</option>
+                }
+              </optgroup>
+            }
+          </InputSelect>
+          @if (stations.Count == 0)
+          {
+            <small>Aún no hay estaciones. Créalas en <a href="/restaurante/configuracion">Configuración operativa</a> para poder asignarlas.</small>
+          }
+          else if (RequiresPreparationStation && !productEditor.KitchenStationId.HasValue)
+          {
+            <small class="restaurant-admin__hint">Los productos preparados al ordenar necesitan una estación para llegar al KDS.</small>
+          }
+        </label>
         <label class="restaurant-admin__check"><InputCheckbox @bind-Value="productEditor.IsActive" /> Producto activo</label>
         <label class="restaurant-admin__check"><InputCheckbox @bind-Value="productEditor.SoldOutOverride" /> Marcar agotado manualmente</label>
         <label>Fotografía familiar (compartida por variantes)
@@ -155,6 +177,7 @@
   private readonly MaterialFilter materialFilter = new() { Status = "ACTIVO", Take = 0 };
   private List<RestaurantSiteDto> sites = [];
   private List<RestaurantProductDto> products = [];
+  private List<RestaurantKitchenStationLookupDto> stations = [];
   private List<MaterialListItemDto> materials = [];
   private IReadOnlyList<RestaurantMaterialOption> materialOptions = [];
   private Dictionary<long, string> images = [];
@@ -172,6 +195,8 @@
   private bool isSaving;
   private bool isUploadingImage;
   private string CurrentRfc => RfcState.RequireRfc();
+  private bool RequiresPreparationStation
+    => string.Equals(productEditor.FulfillmentMode, "MakeToOrder", StringComparison.OrdinalIgnoreCase);
 
   protected override async Task OnInitializedAsync()
   {
@@ -191,6 +216,7 @@
       var rfc = CurrentRfc;
       sites = (await CatalogService.GetSitesAsync(rfc)).ToList();
       products = (await CatalogService.GetProductsAsync(rfc)).ToList();
+      stations = (await CatalogService.GetKitchenStationsAsync(rfc)).ToList();
       materialFilter.Rfc = rfc;
       materials = (await MaterialService.GetMaterialsAsync(materialFilter)).ToList();
       materialOptions = RestaurantMaterialOption.FromMaterials(materials);

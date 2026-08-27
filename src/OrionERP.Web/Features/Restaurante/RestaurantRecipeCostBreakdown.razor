@@ -1,0 +1,104 @@
+@using OrionERP.Application.Features.Restaurante
+
+<section class="recipe-cost" aria-labelledby="recipe-cost-title">
+  <header class="recipe-cost__heading">
+    <span class="recipe-cost__icon"><span class="oi oi-lock-locked" aria-hidden="true"></span></span>
+    <div>
+      <span class="recipe-cost__eyebrow">Sólo administradores</span>
+      <h3 id="recipe-cost-title">Costo de elaboración</h3>
+      <p>Consulta cuánto aporta cada ingrediente al costo de esta receta.</p>
+    </div>
+  </header>
+
+  @if (Breakdown is null)
+  {
+    <div class="recipe-cost__empty">
+      <span class="oi oi-info" aria-hidden="true"></span>
+      Guarda el borrador para calcular y consultar su costo.
+    </div>
+  }
+  else
+  {
+    @if (HasUnsavedChanges)
+    {
+      <div class="recipe-cost__notice" role="status">
+        <span class="oi oi-warning" aria-hidden="true"></span>
+        Este desglose corresponde al último borrador guardado. Guarda los cambios para actualizarlo.
+      </div>
+    }
+
+    <div class="recipe-cost__summary">
+      <article>
+        <span>Costo estimado por @Breakdown.YieldUnitName</span>
+        <strong>@Breakdown.CurrentUnitCost.ToString("C2")</strong>
+        <small>Estimación con costos disponibles hoy</small>
+      </article>
+      <article>
+        <span>Costo del rendimiento completo</span>
+        <strong>@Breakdown.CurrentBatchCost.ToString("C2")</strong>
+        <small>@FormatQuantity(Breakdown.YieldQuantity) @Breakdown.YieldUnitName</small>
+      </article>
+      <article>
+        <span>Costo guardado de la versión</span>
+        <strong>@Breakdown.StoredUnitCost.ToString("C2")</strong>
+        <small>Por @Breakdown.YieldUnitName al último guardado</small>
+      </article>
+    </div>
+
+    @if (HasCostVariance)
+    {
+      <div class="recipe-cost__variance">
+        El estimado actual cambió <strong>@AbsoluteVariance.ToString("C2")</strong>
+        @(CostVariance > 0 ? "por encima" : "por debajo") del costo guardado por @Breakdown.YieldUnitName.
+      </div>
+    }
+
+    @if (Breakdown.Lines.Count == 0)
+    {
+      <div class="recipe-cost__empty">Esta versión todavía no tiene ingredientes para desglosar.</div>
+    }
+    else
+    {
+      <div class="recipe-cost__list" role="table" aria-label="Desglose del costo por ingrediente">
+        <div class="recipe-cost__columns" role="row">
+          <span role="columnheader">Ingrediente</span>
+          <span role="columnheader">Cantidad de receta</span>
+          <span role="columnheader">Con merma</span>
+          <span role="columnheader">Costo unitario</span>
+          <span role="columnheader">Aporte al lote</span>
+          <span role="columnheader">Aporte por unidad</span>
+        </div>
+        @foreach (var line in Breakdown.Lines)
+        {
+          <article class="recipe-cost__line @(line.UnitCost <= 0 ? "is-missing" : null)" role="row">
+            <div class="recipe-cost__ingredient" role="cell">
+              <strong>@line.MaterialName</strong>
+              <span class="recipe-cost__source">@line.CostSource</span>
+            </div>
+            <div role="cell"><span class="recipe-cost__mobile-label">Cantidad de receta</span><strong>@FormatQuantity(line.RecipeQuantity) @line.RecipeUnitName</strong></div>
+            <div role="cell"><span class="recipe-cost__mobile-label">Con merma</span><strong>@FormatQuantity(line.QuantityWithWaste) @line.BaseUnitName</strong>@if (line.WastePercent > 0) { <small>Incluye @FormatQuantity(line.WastePercent)%</small> }</div>
+            <div role="cell"><span class="recipe-cost__mobile-label">Costo unitario</span><strong>@line.UnitCost.ToString("C2")</strong><small>por @line.BaseUnitName</small></div>
+            <div role="cell"><span class="recipe-cost__mobile-label">Aporte al lote</span><strong>@line.BatchCost.ToString("C2")</strong></div>
+            <div role="cell"><span class="recipe-cost__mobile-label">Aporte por unidad</span><strong>@line.UnitContribution.ToString("C2")</strong></div>
+          </article>
+        }
+      </div>
+    }
+
+    <p class="recipe-cost__help">
+      El cálculo incluye conversiones y merma. Cada ingrediente se valora con su precio por unidad base de Materiales;
+      cuando ese precio falta, una subreceta activa puede aportar su costo calculado.
+    </p>
+  }
+</section>
+
+@code {
+  [Parameter] public BomCostBreakdownDto? Breakdown { get; set; }
+  [Parameter] public bool HasUnsavedChanges { get; set; }
+
+  private decimal CostVariance => Breakdown is null ? 0 : Breakdown.CurrentUnitCost - Breakdown.StoredUnitCost;
+  private decimal AbsoluteVariance => Math.Abs(CostVariance);
+  private bool HasCostVariance => AbsoluteVariance >= 0.005m;
+
+  private static string FormatQuantity(decimal value) => value.ToString("0.########");
+}

@@ -54,11 +54,13 @@ public sealed class RestaurantMaterialPickerTests
 
     var admin = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantAdminPage.razor");
     var recipes = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantRecipesPage.razor");
+    var recipeSettings = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantRecipeSettingsPage.razor");
     var menus = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantMenuManagementPage.razor");
     var movements = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantInventoryMovementsPage.razor");
 
     Assert.Contains("<RestaurantMaterialPicker Label=\"Material logístico\"", admin, StringComparison.Ordinal);
-    Assert.Equal(4, Count(recipes, "<RestaurantMaterialPicker"));
+    Assert.Equal(2, Count(recipes, "<RestaurantMaterialPicker"));
+    Assert.Equal(2, Count(recipeSettings, "<RestaurantMaterialPicker"));
     Assert.Contains("@bind-Value=\"delta.MaterialId\"", menus, StringComparison.Ordinal);
     Assert.Contains("@bind-Value=\"line.MaterialId\"", movements, StringComparison.Ordinal);
     Assert.DoesNotContain("<select @bind=\"component.MaterialId\"", recipes, StringComparison.Ordinal);
@@ -67,28 +69,42 @@ public sealed class RestaurantMaterialPickerTests
   }
 
   [Fact]
-  public void RecipeEditor_DerivesYieldAndIngredientUnitsFromMaterialBaseUnits()
+  public void RecipeEditor_DefaultsToBaseUnitsAndOffersConfiguredKitchenUnits()
   {
     var recipes = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantRecipesPage.razor");
 
-    Assert.Contains("Changed=\"SetProductMaterial\"", recipes, StringComparison.Ordinal);
+    Assert.Contains("Changed=\"SetProductMaterialAsync\"", recipes, StringComparison.Ordinal);
     Assert.Contains("SetComponentMaterial(component, materialId)", recipes, StringComparison.Ordinal);
-    Assert.Contains("MaterialBaseUnitId(detail.ProductMaterialId)", recipes, StringComparison.Ordinal);
-    Assert.Contains("UnitId = MaterialBaseUnitId(item.MaterialId)", recipes, StringComparison.Ordinal);
-    Assert.DoesNotContain("UnitId = catalog.Units.FirstOrDefault()?.Id", recipes, StringComparison.Ordinal);
+    Assert.Contains("GetRecipeUnitOptionsAsync", recipes, StringComparison.Ordinal);
+    Assert.Contains("UnitOptionsFor(component.MaterialId)", recipes, StringComparison.Ordinal);
+    Assert.Contains("UnitId = item.UnitId", recipes, StringComparison.Ordinal);
+    Assert.Contains("option.IsBase", recipes, StringComparison.Ordinal);
   }
 
   [Fact]
-  public void RecipeLayout_ConstrainsGridItemsAndProvidesHorizontalScrolling()
+  public void RecipeLayout_UsesResponsiveCardsWithoutIngredientTableScrolling()
   {
     var css = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantRecipesPage.razor.css");
 
-    Assert.Contains("grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);", css, StringComparison.Ordinal);
-    Assert.Contains(".recipe-editor", css, StringComparison.Ordinal);
-    Assert.Contains("min-width: 0;", css, StringComparison.Ordinal);
-    Assert.Contains(".recipe-table", css, StringComparison.Ordinal);
-    Assert.Contains("overflow-x: auto;", css, StringComparison.Ordinal);
-    Assert.Contains("scrollbar-gutter: stable both-edges;", css, StringComparison.Ordinal);
+    Assert.Contains(".recipe-workspace", css, StringComparison.Ordinal);
+    Assert.Contains(".recipe-ingredient", css, StringComparison.Ordinal);
+    Assert.Contains("min-width:0", css, StringComparison.Ordinal);
+    Assert.Contains("@media(max-width:650px)", css, StringComparison.Ordinal);
+    Assert.Contains("grid-template-columns:2.4rem minmax(0,1fr)", css, StringComparison.Ordinal);
+    Assert.Contains(".recipe-toolbar>div{display:flex;flex-wrap:wrap", css, StringComparison.Ordinal);
+    Assert.DoesNotContain(".recipe-table", css, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void Picker_ProvidesKeyboardAndOutsideDismissalBehavior()
+  {
+    var picker = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantMaterialPicker.razor");
+    var script = ReadRepoFile("src/OrionERP.Web/wwwroot/js/restaurant-ui.js");
+
+    Assert.Contains("ArrowDown", picker, StringComparison.Ordinal);
+    Assert.Contains("aria-activedescendant", picker, StringComparison.Ordinal);
+    Assert.Contains("CloseFromOutside", picker, StringComparison.Ordinal);
+    Assert.Contains("registerDismissable", script, StringComparison.Ordinal);
   }
 
   private static int Count(string source, string value)

@@ -1,4 +1,6 @@
 let restaurantQzSecurityConfiguration = null;
+let restaurantDismissableSequence = 0;
+const restaurantDismissables = new Map();
 
 const configureRestaurantQzSecurity = function (qzClient) {
     if (restaurantQzSecurityConfiguration) {
@@ -51,6 +53,29 @@ const configureRestaurantQzSecurity = function (qzClient) {
 };
 
 window.restaurantUi = {
+    registerDismissable: function (element, dotNetReference) {
+        const id = ++restaurantDismissableSequence;
+        const handler = event => {
+            if (element && !element.contains(event.target)) {
+                dotNetReference.invokeMethodAsync("CloseFromOutside");
+            }
+        };
+        document.addEventListener("pointerdown", handler, true);
+        restaurantDismissables.set(id, { handler, dotNetReference });
+        return id;
+    },
+
+    disposeDismissable: function (id) {
+        const registration = restaurantDismissables.get(id);
+        if (!registration) return;
+        document.removeEventListener("pointerdown", registration.handler, true);
+        restaurantDismissables.delete(id);
+    },
+
+    printPage: function () {
+        window.print();
+    },
+
     openCashDrawer: async function (printerNameHint) {
         const qzClient = window.qz;
         if (!qzClient) {

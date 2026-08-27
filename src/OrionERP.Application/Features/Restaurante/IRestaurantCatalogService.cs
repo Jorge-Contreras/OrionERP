@@ -12,6 +12,7 @@ public interface IRestaurantCatalogService
   Task<RestaurantCommandResult> SaveMenuAsync(RestaurantMenuSaveRequest request, CancellationToken ct = default);
   Task<IReadOnlyList<RestaurantModifierAdminDto>> GetModifierGroupsAsync(string rfc, CancellationToken ct = default);
   Task<RestaurantCommandResult> SaveModifierGroupAsync(RestaurantModifierSaveRequest request, CancellationToken ct = default);
+  Task<IReadOnlyList<RestaurantKitchenStationLookupDto>> GetKitchenStationsAsync(string rfc, CancellationToken ct = default);
   Task<RestaurantSiteOperationsDto> GetSiteOperationsAsync(string rfc, int siteId, CancellationToken ct = default);
   Task<RestaurantCommandResult> SaveSiteOperationsAsync(RestaurantSiteOperationsSaveRequest request, CancellationToken ct = default);
 }

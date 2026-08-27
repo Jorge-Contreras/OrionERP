@@ -7,7 +7,8 @@ public sealed record RestaurantMaterialOption(
   int Id,
   string Code,
   string Description,
-  string? Detail = null)
+  string? Detail = null,
+  string? Group = null)
 {
   private static readonly CompareInfo SearchComparer = CultureInfo.GetCultureInfo("es-MX").CompareInfo;
   private const CompareOptions SearchOptions = CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace;
@@ -36,7 +37,10 @@ public sealed record RestaurantMaterialOption(
         material.Id,
         material.MaterialCode,
         material.Description,
-        JoinDetails(material.CategoryName, material.BaseUnitName)))
+        JoinDetails(material.CategoryName, material.BaseUnitName),
+        string.Equals(material.ProductType, "FinishedGood", StringComparison.OrdinalIgnoreCase)
+          ? "Productos y subrecetas"
+          : material.CategoryName ?? "Insumos"))
       .OrderBy(material => material.Description, StringComparer.CurrentCultureIgnoreCase)
       .ThenBy(material => material.Code, StringComparer.CurrentCultureIgnoreCase)
       .ToList();

@@ -1,6 +1,9 @@
 @using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@inject IJSRuntime JsRuntime
+@implements IAsyncDisposable
 
-<div class="restaurant-material-picker @(Compact ? "restaurant-material-picker--compact" : null)">
+<div class="restaurant-material-picker @(Compact ? "restaurant-material-picker--compact" : null)" @ref="rootElement">
   @if (!string.IsNullOrWhiteSpace(Label))
   {
     <label for="@inputId">@Label</label>
@@ -17,19 +20,20 @@
            aria-autocomplete="list"
            aria-expanded="@isOpen.ToString().ToLowerInvariant()"
            aria-controls="@listboxId"
+           aria-activedescendant="@ActiveOptionId"
            aria-label="@(string.IsNullOrWhiteSpace(Label) ? Placeholder : Label)"
-           @onfocus="Open"
+           @onfocus="OpenAsync"
            @oninput="Filter"
-           @onkeydown="HandleKeyDown" />
+           @onkeydown="HandleKeyDownAsync" />
     @if (Value > 0 && !Disabled)
     {
-      <button type="button" class="restaurant-material-picker__clear" title="Quitar material" aria-label="Quitar material" @onclick="Clear">×</button>
+      <button type="button" class="restaurant-material-picker__clear" title="Quitar material" aria-label="Quitar material" @onclick="ClearAsync">×</button>
     }
     <button type="button"
             class="restaurant-material-picker__toggle"
             disabled="@Disabled"
             aria-label="@(isOpen ? "Cerrar lista de materiales" : "Abrir lista de materiales")"
-            @onclick="Toggle">
+            @onclick="ToggleAsync">
       <span class="oi @(isOpen ? "oi-chevron-top" : "oi-chevron-bottom")" aria-hidden="true"></span>
     </button>
   </div>
@@ -39,27 +43,44 @@
     <div id="@listboxId" class="restaurant-material-picker__results" role="listbox" aria-label="Resultados de materiales">
       <div class="restaurant-material-picker__summary">
         <span>@ResultSummary</span>
-        <button type="button" @onclick="Close">Cerrar</button>
+        <button type="button" @onclick="CloseAsync">Cerrar</button>
       </div>
       @if (FilteredOptions.Count == 0)
       {
-        <p class="restaurant-material-picker__empty">No hay materiales que coincidan con “@searchText”.</p>
+        <div class="restaurant-material-picker__empty">
+          <strong>No encontramos “@searchText”.</strong>
+          <span>@EmptyText</span>
+          @if (!string.IsNullOrWhiteSpace(EmptyActionHref))
+          {
+            <a href="@EmptyActionHref">@EmptyActionLabel</a>
+          }
+        </div>
       }
       else
       {
-        @foreach (var option in FilteredOptions)
+        @foreach (var group in FilteredOptions.GroupBy(option => option.Group ?? "Materiales"))
         {
-          <button type="button"
-                  class="restaurant-material-picker__option @(option.Id == Value ? "is-selected" : null)"
-                  role="option"
-                  aria-selected="@(option.Id == Value ? "true" : "false")"
-                  @onclick="() => SelectAsync(option.Id)">
-            <span><strong>@option.Description</strong><small>@option.Code</small></span>
-            @if (!string.IsNullOrWhiteSpace(option.Detail))
-            {
-              <em>@option.Detail</em>
-            }
-          </button>
+          @if (ShowGroups)
+          {
+            <div class="restaurant-material-picker__group">@group.Key</div>
+          }
+          @foreach (var option in group)
+          {
+            var optionIndex = FilteredOptions.IndexOf(option);
+            <button id="@OptionId(option)"
+                    type="button"
+                    class="restaurant-material-picker__option @(option.Id == Value ? "is-selected" : null) @(optionIndex == activeIndex ? "is-highlighted" : null)"
+                    role="option"
+                    aria-selected="@(option.Id == Value ? "true" : "false")"
+                    @onmouseenter="() => activeIndex = optionIndex"
+                    @onclick="() => SelectAsync(option.Id)">
+              <span><strong>@option.Description</strong><small>@option.Code</small></span>
+              @if (!string.IsNullOrWhiteSpace(option.Detail))
+              {
+                <em>@option.Detail</em>
+              }
+            </button>
+          }
         }
       }
     </div>
@@ -71,6 +92,10 @@
   private readonly string listboxId = $"material-results-{Guid.NewGuid():N}";
   private string searchText = string.Empty;
   private bool isOpen;
+  private int activeIndex = -1;
+  private ElementReference rootElement;
+  private DotNetObjectReference<RestaurantMaterialPicker>? dotNetReference;
+  private long? dismissableId;
 
   [Parameter] public IReadOnlyList<RestaurantMaterialOption> Options { get; set; } = [];
   [Parameter] public int Value { get; set; }
@@ -80,73 +105,120 @@
   [Parameter] public string Placeholder { get; set; } = "Buscar material por código o nombre…";
   [Parameter] public bool Disabled { get; set; }
   [Parameter] public bool Compact { get; set; }
+  [Parameter] public bool ShowGroups { get; set; } = true;
   [Parameter] public int MaximumResults { get; set; } = 80;
+  [Parameter] public string EmptyText { get; set; } = "Prueba con otra palabra o revisa el catálogo de materiales.";
+  [Parameter] public string? EmptyActionHref { get; set; }
+  [Parameter] public string EmptyActionLabel { get; set; } = "Abrir Materiales";
 
   private RestaurantMaterialOption? SelectedOption => Options.FirstOrDefault(option => option.Id == Value);
   private string InputText => isOpen ? searchText : SelectedOption?.DisplayText ?? string.Empty;
   private int MatchCount => string.IsNullOrWhiteSpace(searchText)
     ? Options.Count
     : Options.Count(option => option.Matches(searchText));
-  private IReadOnlyList<RestaurantMaterialOption> FilteredOptions => Options
+  private List<RestaurantMaterialOption> FilteredOptions => Options
     .Where(option => option.Matches(searchText))
     .Take(Math.Max(1, MaximumResults))
     .ToList();
   private string ResultSummary => MatchCount > MaximumResults
     ? $"Mostrando {MaximumResults} de {MatchCount}; escribe para afinar la búsqueda."
-    : $"{MatchCount} material{(MatchCount == 1 ? string.Empty : "es")} disponible{(MatchCount == 1 ? string.Empty : "s")}";
+    : $"{MatchCount} opción{(MatchCount == 1 ? string.Empty : "es")} disponible{(MatchCount == 1 ? string.Empty : "s")}";
+  private string? ActiveOptionId => isOpen && activeIndex >= 0 && activeIndex < FilteredOptions.Count
+    ? OptionId(FilteredOptions[activeIndex])
+    : null;
 
-  private void Open()
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (isOpen && !dismissableId.HasValue)
+    {
+      dotNetReference = DotNetObjectReference.Create(this);
+      dismissableId = await JsRuntime.InvokeAsync<long>("restaurantUi.registerDismissable", rootElement, dotNetReference);
+    }
+    else if (!isOpen && dismissableId.HasValue)
+    {
+      await DisposeDismissableAsync();
+    }
+  }
+
+  private Task OpenAsync()
   {
     isOpen = true;
     searchText = string.Empty;
+    activeIndex = SelectedOption is null ? 0 : Math.Max(0, FilteredOptions.FindIndex(option => option.Id == Value));
+    return InvokeAsync(StateHasChanged);
   }
 
-  private void Toggle()
+  private async Task ToggleAsync()
   {
-    if (isOpen)
-    {
-      Close();
-    }
-    else
-    {
-      Open();
-    }
+    if (isOpen) await CloseAsync(); else await OpenAsync();
   }
 
   private void Filter(ChangeEventArgs args)
   {
     searchText = args.Value?.ToString() ?? string.Empty;
     isOpen = true;
+    activeIndex = FilteredOptions.Count == 0 ? -1 : 0;
   }
 
-  private void HandleKeyDown(KeyboardEventArgs args)
+  private async Task HandleKeyDownAsync(KeyboardEventArgs args)
   {
     if (args.Key == "Escape")
     {
-      Close();
+      await CloseAsync();
+      return;
     }
+    if (args.Key is "ArrowDown" or "ArrowUp")
+    {
+      if (!isOpen) await OpenAsync();
+      var count = FilteredOptions.Count;
+      if (count > 0)
+        activeIndex = args.Key == "ArrowDown" ? (activeIndex + 1 + count) % count : (activeIndex - 1 + count) % count;
+      return;
+    }
+    if (args.Key == "Enter" && isOpen && activeIndex >= 0 && activeIndex < FilteredOptions.Count)
+      await SelectAsync(FilteredOptions[activeIndex].Id);
   }
 
-  private async Task Clear()
-    => await SelectAsync(0);
+  private Task ClearAsync() => SelectAsync(0);
 
   private async Task SelectAsync(int materialId)
   {
-    isOpen = false;
-    searchText = string.Empty;
-    if (ValueChanged.HasDelegate)
-    {
-      await ValueChanged.InvokeAsync(materialId);
-    }
-    if (Changed.HasDelegate)
-    {
-      await Changed.InvokeAsync(materialId);
-    }
+    await CloseAsync();
+    if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(materialId);
+    if (Changed.HasDelegate) await Changed.InvokeAsync(materialId);
   }
 
-  private void Close()
+  private async Task CloseAsync()
   {
     isOpen = false;
     searchText = string.Empty;
+    activeIndex = -1;
+    await DisposeDismissableAsync();
   }
+
+  [JSInvokable]
+  public async Task CloseFromOutside()
+  {
+    if (!isOpen) return;
+    isOpen = false;
+    searchText = string.Empty;
+    activeIndex = -1;
+    await InvokeAsync(StateHasChanged);
+  }
+
+  private string OptionId(RestaurantMaterialOption option) => $"{listboxId}-{option.Id}";
+
+  private async ValueTask DisposeDismissableAsync()
+  {
+    if (dismissableId.HasValue)
+    {
+      try { await JsRuntime.InvokeVoidAsync("restaurantUi.disposeDismissable", dismissableId.Value); }
+      catch (JSDisconnectedException) { }
+      dismissableId = null;
+    }
+    dotNetReference?.Dispose();
+    dotNetReference = null;
+  }
+
+  public async ValueTask DisposeAsync() => await DisposeDismissableAsync();
 }

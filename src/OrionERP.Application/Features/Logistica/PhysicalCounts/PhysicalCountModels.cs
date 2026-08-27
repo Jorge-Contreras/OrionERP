@@ -55,6 +55,7 @@ public sealed class PhysicalCountSessionSummaryDto
   public DateTime? RecountRequestedAt { get; set; }
   public string? RecountRequestedBy { get; set; }
   public int LineCount { get; set; }
+  public int CountedLineCount { get; set; }
   public int VarianceLineCount { get; set; }
   public int RecountLineCount { get; set; }
 }
@@ -78,6 +79,7 @@ public sealed class PhysicalCountLineDto
   public int MaterialId { get; set; }
   public string MaterialCode { get; set; } = string.Empty;
   public string MaterialDescription { get; set; } = string.Empty;
+  public string? Barcode { get; set; }
   public string MaterialClass { get; set; } = string.Empty;
   public string? BaseUnitName { get; set; }
   public decimal ExpectedQuantity { get; set; }
@@ -167,6 +169,8 @@ public sealed class PhysicalCountLineCaptureRequest
 
   [Required]
   public int LineId { get; set; }
+
+  public DateTime? ExpectedCapturedAt { get; set; }
 
   public decimal CountedQuantity { get; set; }
 

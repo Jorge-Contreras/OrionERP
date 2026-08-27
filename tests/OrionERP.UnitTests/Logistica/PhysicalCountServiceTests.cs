@@ -1,3 +1,4 @@
+using System.Data;
 using OrionERP.Application.Features.Logistica.PhysicalCounts;
 using OrionERP.Infrastructure.Features.Logistica.PhysicalCounts;
 using OrionERP.UnitTests.Common;
@@ -6,6 +7,71 @@ namespace OrionERP.UnitTests.Logistica;
 
 public class PhysicalCountServiceTests
 {
+  [Fact]
+  public async Task GetSessionsAsync_MapsCountedLineProgress()
+  {
+    var resultTable = new DataTable();
+    resultTable.Columns.Add("Id", typeof(int));
+    resultTable.Columns.Add("LineCount", typeof(int));
+    resultTable.Columns.Add("CountedLineCount", typeof(int));
+    resultTable.Rows.Add(51, 8, 3);
+
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (_, _) => resultTable
+    };
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.GetSessionsAsync();
+
+    var session = Assert.Single(result);
+    Assert.Equal(8, session.LineCount);
+    Assert.Equal(3, session.CountedLineCount);
+    var commandText = Assert.Single(connection.ExecutedCommands).CommandText;
+    Assert.Contains("s.[Status] = 'Recount'", commandText, StringComparison.Ordinal);
+    Assert.Contains("activePlanLine.Id IS NOT NULL AND line.CountedQuantity IS NOT NULL", commandText, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public async Task CaptureLineAsync_RejectsStaleSaveAndDoesNotInsertAttachment()
+  {
+    var originalCapturedAt = new DateTime(2026, 8, 27, 14, 0, 0, DateTimeKind.Utc);
+    var newerCapturedAt = originalCapturedAt.AddMinutes(2);
+    var lockedLineTable = new DataTable();
+    lockedLineTable.Columns.Add("Id", typeof(int));
+    lockedLineTable.Columns.Add("CapturedAt", typeof(DateTime));
+    lockedLineTable.Rows.Add(10, newerCapturedAt);
+
+    var connection = new FakeQueryDbConnection
+    {
+      ScalarResultFactory = (commandText, _) => commandText.Contains("SELECT [Status]", StringComparison.Ordinal) ? "Draft" : null,
+      ReaderResultFactory = (commandText, _) => commandText.Contains("WITH (UPDLOCK, HOLDLOCK)", StringComparison.Ordinal)
+        ? lockedLineTable
+        : new DataTable(),
+      NonQueryResultFactory = (_, _) => 1
+    };
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CaptureLineAsync(new PhysicalCountLineCaptureRequest
+    {
+      SessionId = 51,
+      LineId = 10,
+      ExpectedCapturedAt = originalCapturedAt,
+      CountedQuantity = 12.5m,
+      CapturedBy = "contador@orionerp.local",
+      AttachmentBytes = [1, 2, 3],
+      AttachmentFileName = "evidencia.jpg",
+      AttachmentContentType = "image/jpeg"
+    });
+
+    Assert.False(result.Success);
+    Assert.Equal("Otro empleado actualizó este material. Se recargó el conteo para proteger su captura.", result.Message);
+    Assert.NotNull(connection.LastTransaction);
+    Assert.True(connection.LastTransaction!.WasRolledBack);
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("SET CountedQuantity = @CountedQuantity", StringComparison.Ordinal));
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO logistica.PhysicalCountAttachment", StringComparison.Ordinal));
+  }
+
   [Fact]
   public async Task RequestRecountAsync_Fails_WhenNoLinesAreSelected()
   {

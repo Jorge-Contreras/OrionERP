@@ -42,6 +42,14 @@ public sealed class PhysicalCountService : IPhysicalCountService
           activePlan.RequestedAt AS RecountRequestedAt,
           activePlan.RequestedBy AS RecountRequestedBy,
           COUNT(line.Id) AS LineCount,
+          SUM(
+            CASE
+              WHEN s.[Status] = 'Recount'
+                THEN CASE WHEN activePlanLine.Id IS NOT NULL AND line.CountedQuantity IS NOT NULL THEN 1 ELSE 0 END
+              WHEN line.CountedQuantity IS NOT NULL THEN 1
+              ELSE 0
+            END
+          ) AS CountedLineCount,
           SUM(CASE WHEN line.VarianceQuantity IS NOT NULL AND line.VarianceQuantity <> 0 THEN 1 ELSE 0 END) AS VarianceLineCount,
           COUNT(activePlanLine.Id) AS RecountLineCount
       FROM logistica.PhysicalCountSession s
@@ -129,6 +137,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
           line.MaterialId,
           m.MaterialCode,
           m.[Description] AS MaterialDescription,
+          m.Barcode,
           m.MaterialClass,
           u.UnitName AS BaseUnitName,
           CAST(line.ExpectedQuantity AS decimal(18,4)) AS ExpectedQuantity,
@@ -395,6 +404,30 @@ public sealed class PhysicalCountService : IPhysicalCountService
       {
         await tx.RollbackAsync(ct);
         return LogisticsCommandResult.Fail("Solo las sesiones en borrador o reconteo permiten capturar conteos.");
+      }
+
+      var currentLine = await conn.QueryFirstOrDefaultAsync<LineCaptureStateRow>(
+        new CommandDefinition(
+          """
+          SELECT Id, CapturedAt
+          FROM logistica.PhysicalCountLine WITH (UPDLOCK, HOLDLOCK)
+          WHERE Id = @LineId
+            AND SessionId = @SessionId;
+          """,
+          new { request.LineId, request.SessionId },
+          tx,
+          cancellationToken: ct));
+
+      if (currentLine is null)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("La línea no pertenece a la sesión de conteo seleccionada.");
+      }
+
+      if (currentLine.CapturedAt != request.ExpectedCapturedAt)
+      {
+        await tx.RollbackAsync(ct);
+        return LogisticsCommandResult.Fail("Otro empleado actualizó este material. Se recargó el conteo para proteger su captura.");
       }
 
       var expectedLots = (await conn.QueryAsync<PhysicalCountLotLineDto>(new CommandDefinition(
@@ -1319,6 +1352,12 @@ public sealed class PhysicalCountService : IPhysicalCountService
   {
     public int Id { get; set; }
     public string Status { get; set; } = string.Empty;
+  }
+
+  private sealed class LineCaptureStateRow
+  {
+    public int Id { get; set; }
+    public DateTime? CapturedAt { get; set; }
   }
 
   private sealed class LinePostingRow

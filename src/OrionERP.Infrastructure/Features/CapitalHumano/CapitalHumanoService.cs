@@ -583,6 +583,7 @@ public sealed partial class CapitalHumanoService : ICapitalHumanoService
               Nivel_Maximo_Estudios = @Nivel_Maximo_Estudios,
               Descanso_Semanal = @Descanso_Semanal
           """);
+        updateSql.AppendLine();
 
         if (hasNewPhoto)
         {

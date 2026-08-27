@@ -6,564 +6,653 @@
 
 <PageTitle>Logística · Conteos físicos</PageTitle>
 
-<div class="container-fluid py-3 conteos-page">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+<div class="conteos-page">
+    <header class="conteos-hero">
         <div>
-            <h1 class="h3 mb-1">Conteos físicos</h1>
-            <p class="text-muted mb-0">Sesiones de conteo con captura por línea, adjuntos opcionales y contabilización aprobada.</p>
+            <span class="conteos-eyebrow">Inventario físico</span>
+            <h1>Conteos fáciles, paso a paso</h1>
+            <p>Elige una ubicación, cuenta cada material y envía el resultado para revisión.</p>
         </div>
-    </div>
+        <div class="conteos-hero-actions">
+            <button class="btn btn-light" type="button" @onclick="CargarSesionesAsync" disabled="@IsLoadingSessions">
+                <span class="oi oi-reload" aria-hidden="true"></span>
+                @(IsLoadingSessions ? "Actualizando…" : "Actualizar")
+            </button>
+            @if (CanManageCounts)
+            {
+                <button class="btn btn-primary" type="button" @onclick="AbrirCreacion">
+                    <span class="oi oi-plus" aria-hidden="true"></span>
+                    Nuevo conteo
+                </button>
+            }
+        </div>
+    </header>
 
-    <div class="row g-3">
-        <div class="col-12 col-xxl-4">
-            <section class="card shadow-sm mb-3">
-                <div class="card-body">
-                    <h2 class="h5 mb-3">Nueva sesión</h2>
-                    <div class="row g-3">
-                        <div class="col-12">
-                            <label class="form-label">Ubicación</label>
-                            <select class="form-select" @bind="SessionCreateRequest.LocationId">
-                                <option value="0">Selecciona una ubicación</option>
-                                @foreach (var option in LocationOptions)
-                                {
-                                    <option value="@option.Id">@option.Name</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label">Notas</label>
-                            <InputTextArea class="form-control" rows="3" @bind-Value="SessionCreateRequest.Notes" />
-                        </div>
+    @if (SelectedSession is null)
+    {
+        <main class="conteos-dashboard">
+            <section class="conteos-process-card" aria-label="Proceso de un conteo físico">
+                <div class="conteos-process-copy">
+                    <span class="oi oi-info" aria-hidden="true"></span>
+                    <div>
+                        <strong>¿Cómo funciona?</strong>
+                        <span>Cuenta los materiales, envía el resultado y espera la revisión antes de aplicar cambios al inventario.</span>
                     </div>
+                </div>
+                <div class="conteos-process-steps" aria-hidden="true">
+                    <span>1. Contar</span><i></i><span>2. Revisar</span><i></i><span>3. Aprobar</span><i></i><span>4. Aplicar</span>
+                </div>
+            </section>
 
-                    <button class="btn btn-primary mt-3" type="button" @onclick="CrearSesionAsync" disabled="@IsCreatingSession">
-                        @(IsCreatingSession ? "Creando..." : "Crear sesión")
+            <section class="conteos-session-group" aria-labelledby="conteos-active-title">
+                <div class="conteos-section-heading">
+                    <div>
+                        <span class="conteos-section-kicker">Trabajo pendiente</span>
+                        <h2 id="conteos-active-title">Por contar</h2>
+                        <p>Abre un conteo para comenzar o continuar donde quedó el equipo.</p>
+                    </div>
+                    <span class="conteos-total-pill">@CountableSessions.Count</span>
+                </div>
+
+                @if (CountableSessions.Count == 0)
+                {
+                    <div class="conteos-empty-state">
+                        <span class="oi oi-check" aria-hidden="true"></span>
+                        <h3>No hay conteos pendientes</h3>
+                        <p>@(CanManageCounts ? "Puedes crear un conteo nuevo cuando lo necesites." : "Cuando haya un conteo disponible aparecerá aquí.")</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="conteos-session-grid">
+                        @foreach (var item in CountableSessions)
+                        {
+                            <button class="conteos-session-tile @GetSessionStatusClass(item.Status)" type="button" @onclick="() => SeleccionarSesionAsync(item.Id)">
+                                <span class="conteos-session-tile-top">
+                                    <span class="conteos-session-code">@item.SessionCode</span>
+                                    <span class="@GetSessionStatusBadgeClass(item.Status)">@GetSessionStatusLabel(item.Status)</span>
+                                </span>
+                                <strong>@item.LocationName</strong>
+                                @if (!string.IsNullOrWhiteSpace(item.RoomName))
+                                {
+                                    <small>@item.RoomName</small>
+                                }
+                                <span class="conteos-session-progress-copy">
+                                    <span>@item.CountedLineCount de @GetSessionProgressTotal(item) contados</span>
+                                    <b>@GetProgressPercentage(item.CountedLineCount, GetSessionProgressTotal(item))%</b>
+                                </span>
+                                <span class="conteos-progress-track"><span style="width: @GetProgressPercentage(item.CountedLineCount, GetSessionProgressTotal(item))%"></span></span>
+                                <span class="conteos-session-tile-footer">
+                                    @if (item.RecountLineCount > 0)
+                                    {
+                                        <span><span class="oi oi-loop" aria-hidden="true"></span> @item.RecountLineCount por recontar</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@item.VarianceLineCount con diferencia</span>
+                                    }
+                                    <b>@(item.CountedLineCount == 0 ? "Comenzar" : "Continuar") <span aria-hidden="true">→</span></b>
+                                </span>
+                            </button>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="conteos-session-group" aria-labelledby="conteos-review-title">
+                <div class="conteos-section-heading">
+                    <div>
+                        <span class="conteos-section-kicker">Siguiente etapa</span>
+                        <h2 id="conteos-review-title">En revisión</h2>
+                        <p>@(CanManageCounts ? "Revisa diferencias y decide el siguiente paso." : "Estos conteos ya fueron enviados al equipo de Logística.")</p>
+                    </div>
+                    <span class="conteos-total-pill">@ReviewSessions.Count</span>
+                </div>
+
+                @if (ReviewSessions.Count == 0)
+                {
+                    <div class="conteos-compact-empty">No hay conteos esperando revisión.</div>
+                }
+                else
+                {
+                    <div class="conteos-session-grid conteos-session-grid-review">
+                        @foreach (var item in ReviewSessions)
+                        {
+                            <button class="conteos-session-tile @GetSessionStatusClass(item.Status)" type="button" @onclick="() => SeleccionarSesionAsync(item.Id)">
+                                <span class="conteos-session-tile-top">
+                                    <span class="conteos-session-code">@item.SessionCode</span>
+                                    <span class="@GetSessionStatusBadgeClass(item.Status)">@GetSessionStatusLabel(item.Status)</span>
+                                </span>
+                                <strong>@item.LocationName</strong>
+                                <span class="conteos-session-tile-footer">
+                                    <span>@item.VarianceLineCount diferencias</span>
+                                    <b>@(CanManageCounts ? "Revisar" : "Ver estado") <span aria-hidden="true">→</span></b>
+                                </span>
+                            </button>
+                        }
+                    </div>
+                }
+            </section>
+
+            @if (CanManageCounts)
+            {
+                <details class="conteos-history">
+                    <summary>
+                        <span><span class="oi oi-folder" aria-hidden="true"></span> Finalizados</span>
+                        <small>@HistoricalSessions.Count conteos</small>
+                    </summary>
+                    @if (HistoricalSessions.Count == 0)
+                    {
+                        <div class="conteos-compact-empty">Aún no hay conteos finalizados.</div>
+                    }
+                    else
+                    {
+                        <div class="conteos-history-list">
+                            @foreach (var item in HistoricalSessions)
+                            {
+                                <button type="button" @onclick="() => SeleccionarSesionAsync(item.Id, includeHistorical: true)">
+                                    <span><strong>@item.SessionCode</strong><small>@item.LocationName</small></span>
+                                    <span class="@GetSessionStatusBadgeClass(item.Status)">@GetSessionStatusLabel(item.Status)</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                </details>
+            }
+        </main>
+    }
+    else
+    {
+        <main class="conteos-workspace">
+            <section class="conteos-session-header">
+                <div class="conteos-session-header-main">
+                    <button class="conteos-back-button" type="button" @onclick="VolverASesionesAsync" aria-label="Volver a la lista de conteos">
+                        <span class="oi oi-arrow-left" aria-hidden="true"></span>
+                    </button>
+                    <div>
+                        <span class="conteos-section-kicker">@SelectedSession.SessionCode</span>
+                        <h2>@SelectedSession.LocationName</h2>
+                        @if (!string.IsNullOrWhiteSpace(SelectedSession.RoomName))
+                        {
+                            <p>@SelectedSession.RoomName</p>
+                        }
+                    </div>
+                </div>
+                <div class="conteos-session-header-actions">
+                    <span class="@SelectedSessionStatusBadgeClass">@SelectedSessionStatusLabel</span>
+                    <button class="btn btn-outline-secondary" type="button" @onclick="ActualizarSesionActualAsync" disabled="@IsLoadingSessions">
+                        <span class="oi oi-reload" aria-hidden="true"></span>
+                        Actualizar
                     </button>
                 </div>
             </section>
 
-            <section class="@GetSessionsSectionClass()">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h2 class="h5 mb-0">Sesiones</h2>
-                        <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="CargarSesionesAsync" disabled="@IsLoadingSessions">
-                            @(IsLoadingSessions ? "Actualizando..." : "Actualizar")
-                        </button>
+            <section class="conteos-lifecycle" aria-label="Etapas del conteo">
+                @for (var step = 1; step <= 4; step++)
+                {
+                    <div class="@GetLifecycleStepClass(step)">
+                        <span>@step</span>
+                        <strong>@GetLifecycleStepLabel(step)</strong>
                     </div>
+                }
+            </section>
+            <p class="conteos-next-step">@GetCurrentStatusGuidance()</p>
 
-                    <div class="form-check mb-3">
-                        <InputCheckbox id="conteos-mostrar-contabilizadas" class="form-check-input" @bind-Value="ShowPostedSessions" />
-                        <label class="form-check-label" for="conteos-mostrar-contabilizadas">Mostrar contabilizadas/canceladas</label>
-                    </div>
+            @if (CanSubmit)
+            {
+                @if (ShowCompletionReview || SelectedLine is null)
+                {
+                    <section class="conteos-completion-card">
+                        <div class="conteos-completion-icon"><span class="oi @(PendingLineCount == 0 ? "oi-check" : "oi-clock")" aria-hidden="true"></span></div>
+                        <span class="conteos-section-kicker">Revisión del operador</span>
+                        <h2>@(PendingLineCount == 0 ? "Terminaste de contar" : "Aún faltan materiales")</h2>
+                        <p>@(PendingLineCount == 0 ? "Revisa el resumen y envía el conteo al equipo de Logística." : "Completa las cantidades pendientes antes de enviar el conteo.")</p>
 
-                    <div class="table-responsive conteos-sessions-scroll">
-                        @{
-                            var visibleSessions = VisibleSessions;
-                        }
-                        <table class="table table-sm table-hover align-middle conteos-sessions-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Sesión</th>
-                                    <th class="conteos-location-col">Ubicación</th>
-                                    <th class="text-end conteos-count-col">Líneas</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @if (visibleSessions.Count == 0)
+                        <div class="conteos-summary-grid">
+                            <div><span>Total</span><strong>@CaptureTotalLineCount</strong></div>
+                            <div><span>Contados</span><strong>@CountedLineCount</strong></div>
+                            <div class="@(PendingLineCount > 0 ? "is-warning" : string.Empty)"><span>Pendientes</span><strong>@PendingLineCount</strong></div>
+                            <div class="@(VarianceLineCount > 0 ? "is-warning" : string.Empty)"><span>Diferencias</span><strong>@VarianceLineCount</strong></div>
+                        </div>
+
+                        <div class="conteos-review-list">
+                            @foreach (var line in GetOperatorReviewLines())
+                            {
+                                <button type="button" @onclick="() => EditarLinea(line)">
+                                    <span>
+                                        <strong>@GetMaterialTitle(line)</strong>
+                                        <small>@(line.CountedQuantity.HasValue ? $"Contado {line.CountedQuantity.Value:N2} · Esperado {line.ExpectedQuantity:N2}" : "Pendiente de captura")</small>
+                                    </span>
+                                    @if (!line.CountedQuantity.HasValue)
+                                    {
+                                        <b class="conteos-pending-label">Pendiente</b>
+                                    }
+                                    else if (line.VarianceQuantity is not null and not 0m)
+                                    {
+                                        <b class="conteos-variance-label">@FormatSignedQuantity(line.VarianceQuantity)</b>
+                                    }
+                                    else
+                                    {
+                                        <b class="conteos-ok-label"><span class="oi oi-check" aria-hidden="true"></span></b>
+                                    }
+                                </button>
+                            }
+                        </div>
+
+                        <div class="conteos-completion-actions">
+                            @if (PendingLineCount > 0)
+                            {
+                                <button class="btn btn-primary btn-lg" type="button" @onclick="ContinuarPendientes">
+                                    Continuar contando @PendingLineCount
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-primary btn-lg" type="button" @onclick="EnviarSesionAsync" disabled="@IsMutatingSession">
+                                    @(IsMutatingSession ? "Enviando…" : "Enviar a revisión")
+                                </button>
+                            }
+                        </div>
+                    </section>
+                }
+                else
+                {
+                    <section class="conteos-progress-panel">
+                        <div>
+                            <span>@CountedLineCount de @CaptureTotalLineCount contados</span>
+                            <strong>@SessionProgressPercentage%</strong>
+                        </div>
+                        <span class="conteos-progress-track"><span style="width: @SessionProgressPercentage%"></span></span>
+                        <small>@(IsRecountStatus(SelectedSession.Status) ? $"{PendingLineCount} materiales pendientes de reconteo" : $"{PendingLineCount} materiales pendientes")</small>
+                    </section>
+
+                    <button class="conteos-mobile-materials-button" type="button" @onclick="AbrirListaMovil">
+                        <span class="oi oi-list-rich" aria-hidden="true"></span>
+                        Ver materiales
+                        <span>@PendingLineCount pendientes</span>
+                    </button>
+
+                    <div class="conteos-count-layout">
+                        <aside class="conteos-material-sidebar" aria-label="Materiales de la sesión">
+                            <div class="conteos-sidebar-heading">
+                                <div><strong>Materiales</strong><small>@FilteredSessionLines.Count visibles</small></div>
+                                <button type="button" @onclick="MostrarRevisionFinal" title="Revisar conteo"><span class="oi oi-clipboard" aria-hidden="true"></span></button>
+                            </div>
+                            <div class="conteos-search-row">
+                                <label>
+                                    <span class="oi oi-magnifying-glass" aria-hidden="true"></span>
+                                    <input type="search" placeholder="Nombre, código o barras" @bind="MaterialSearch" @bind:event="oninput" />
+                                </label>
+                                <button type="button" @onclick="AbrirEscanerAsync" disabled="@(!CameraScanningAllowed)" title="Escanear código de barras" aria-label="Escanear código de barras">
+                                    <span class="oi oi-camera-slr" aria-hidden="true"></span>
+                                </button>
+                            </div>
+                            <div class="conteos-filter-chips" role="group" aria-label="Filtrar materiales">
+                                @foreach (var filter in CaptureFilters)
                                 {
-                                    <tr>
-                                        <td colspan="3" class="text-center text-muted py-3">@(Sessions.Count == 0 ? "Aún no hay sesiones." : "No hay sesiones para el filtro actual.")</td>
-                                    </tr>
+                                    <button class="@(CaptureFilter == filter.Value ? "is-active" : string.Empty)" type="button" @onclick="() => SetCaptureFilter(filter.Value)">@filter.Label</button>
+                                }
+                            </div>
+                            <div class="conteos-material-list">
+                                @foreach (var line in FilteredSessionLines)
+                                {
+                                    <button class="@GetMaterialListItemClass(line)" type="button" @onclick="() => SeleccionarLinea(line)">
+                                        <span class="conteos-material-list-state">@GetLineStateIcon(line)</span>
+                                        <span><strong>@GetMaterialTitle(line)</strong><small>@GetMaterialListSubtitle(line)</small></span>
+                                        @if (line.CountedQuantity.HasValue)
+                                        {
+                                            <b>@line.CountedQuantity.Value.ToString("N2")</b>
+                                        }
+                                    </button>
+                                }
+                                @if (FilteredSessionLines.Count == 0)
+                                {
+                                    <div class="conteos-material-list-empty">No hay materiales con este filtro.</div>
+                                }
+                            </div>
+                        </aside>
+
+                        <section class="conteos-focus-card" aria-labelledby="conteos-material-title">
+                            @{
+                                var materialTitle = GetMaterialTitle(SelectedLine);
+                                var unitLabel = GetCountUnitLabel(SelectedLine.BaseUnitName);
+                                var thumbnailDataUrl = GetMaterialThumbnailDataUrl(SelectedLine.MaterialId);
+                            }
+                            <div class="conteos-focus-media">
+                                @if (thumbnailDataUrl is not null)
+                                {
+                                    <button type="button" @onclick="() => AbrirImagenMaterialAsync(SelectedLine)" aria-label="Ampliar foto de @materialTitle">
+                                        <img src="@thumbnailDataUrl" alt="Foto de @materialTitle" />
+                                        <span><span class="oi oi-zoom-in" aria-hidden="true"></span> Ampliar</span>
+                                    </button>
                                 }
                                 else
                                 {
-                                    @foreach (var item in visibleSessions)
-                                    {
-                                        <tr class="@GetSessionRowClass(item)" style="cursor: pointer;" @onclick="() => SeleccionarSesionAsync(item.Id)">
-                                            <td data-label="Sesión">
-                                                <div class="fw-semibold">@item.SessionCode</div>
-                                                <span class="@GetSessionStatusBadgeClass(item.Status)">@GetSessionStatusLabel(item.Status)</span>
-                                            </td>
-                                            <td data-label="Ubicación" class="conteos-location-col">
-                                                <div class="conteos-cell-stack">
-                                                    <div class="conteos-cell-primary">@item.LocationName</div>
-                                                    <div class="conteos-cell-secondary">@(string.IsNullOrWhiteSpace(item.RoomName) ? "Sin room" : item.RoomName)</div>
-                                                </div>
-                                            </td>
-                                            <td data-label="Líneas" class="text-end conteos-count-col">
-                                                <div>@item.LineCount</div>
-                                                <small class="text-muted">@item.VarianceLineCount variaciones</small>
-                                            </td>
-                                        </tr>
-                                    }
+                                    <div><span class="oi oi-image" aria-hidden="true"></span><small>Sin foto</small></div>
                                 }
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
-        </div>
-
-        <div class="col-12 col-xxl-8">
-            @if (SelectedSession is null)
-            {
-                <section class="card shadow-sm">
-                    <div class="card-body text-center text-muted py-5">
-                        Selecciona una sesión para capturar líneas, adjuntar archivos opcionales y contabilizar.
-                    </div>
-                </section>
-            }
-            else
-            {
-                <section class="card shadow-sm mb-3 conteos-session-card">
-                    <div class="card-body">
-                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
-                            <div>
-                                <h2 class="h4 mb-1">@SelectedSession.SessionCode</h2>
-                                <div class="conteos-session-location">@SelectedSession.LocationName</div>
-                                <div class="mt-2">
-                                    <span class="@SelectedSessionStatusBadgeClass">@SelectedSessionStatusLabel</span>
+                            </div>
+                            <div class="conteos-focus-body">
+                                <div class="conteos-focus-heading">
+                                    <span class="conteos-section-kicker">Material @CurrentLinePosition de @CaptureTotalLineCount</span>
+                                    <h2 id="conteos-material-title">@materialTitle</h2>
+                                    @if (!string.IsNullOrWhiteSpace(SelectedLine.MaterialCode) && !string.Equals(SelectedLine.MaterialCode, materialTitle, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <p>@SelectedLine.MaterialCode</p>
+                                    }
+                                    <span class="conteos-unit-badge">Cuenta en @unitLabel</span>
                                 </div>
-                                @if (!string.IsNullOrWhiteSpace(SelectedSession.RoomName))
-                                {
-                                    <div class="conteos-session-room text-muted">@SelectedSession.RoomName</div>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(SelectedSession.Notes))
-                                {
-                                    <div class="small text-muted mt-1">@SelectedSession.Notes</div>
-                                }
-                            </div>
-                            <div class="d-flex flex-wrap gap-2 conteos-session-actions">
-                                <button class="btn btn-outline-secondary conteos-session-action d-md-none" type="button" @onclick="MostrarSesionesAsync">
-                                    Cambiar sesión
-                                </button>
-                                @if (CanCancel)
-                                {
-                                    <button class="btn btn-outline-danger conteos-session-action" type="button" @onclick="CancelarSesionAsync" disabled="@IsMutatingSession">
-                                        @(IsCancelingSession ? "Cancelando..." : "Cancelar conteo")
-                                    </button>
-                                }
-                                <button class="btn btn-outline-primary conteos-session-action" type="button" @onclick="EnviarSesionAsync" disabled="@(!CanSubmit || IsMutatingSession)">Enviar</button>
-                                @if (CanManageCounts)
-                                {
-                                    <button class="btn btn-outline-warning conteos-session-action" type="button" @onclick="AbrirReconteo" disabled="@(!CanRequestRecount || IsMutatingSession)">Reconteo</button>
-                                    <button class="btn btn-outline-success conteos-session-action" type="button" @onclick="AprobarSesionAsync" disabled="@(!CanApprove || IsMutatingSession)">Aprobar</button>
-                                    <button class="btn btn-success conteos-session-action" type="button" @onclick="ContabilizarSesionAsync" disabled="@(!CanPost || IsMutatingSession)">Contabilizar</button>
-                                }
-                            </div>
-                        </div>
 
-                        <div class="conteos-lines-tip">
-                            Revisa la unidad de conteo de cada material antes de capturar.
-                        </div>
-
-                        <div class="table-responsive conteos-lines-scroll">
-                            <table class="table table-sm table-hover align-middle conteos-lines-table">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th class="conteos-line-image-col">Foto</th>
-                                        <th class="conteos-material-col">Material</th>
-                                        <th class="text-end conteos-quantity-col">Esperado</th>
-                                        <th class="text-end conteos-quantity-col">Contado</th>
-                                        <th class="text-end conteos-quantity-col">Varianza</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var line in SelectedSession.Lines)
-                                    {
-                                        var thumbnailDataUrl = GetMaterialThumbnailDataUrl(line.MaterialId);
-                                        var materialTitle = string.IsNullOrWhiteSpace(line.MaterialDescription) ? line.MaterialCode : line.MaterialDescription;
-                                        var showMaterialCode = !string.IsNullOrWhiteSpace(line.MaterialCode) && !string.Equals(line.MaterialCode, materialTitle, StringComparison.OrdinalIgnoreCase);
-                                        var lineUnitLabel = GetCountUnitLabel(line.BaseUnitName);
-                                        var capturedByCurrentUser = IsLineCapturedByCurrentUser(line);
-                                        var isSelectedLine = IsSelectedLine(line);
-                                        var showInlineCountEditor = isSelectedLine && CanCaptureLine;
-                                        <tr class="@GetLineRowClass(line)" style="cursor: pointer;" @onclick="() => SeleccionarLinea(line)">
-                                            <td data-label="Foto" class="conteos-line-image-col">
-                                                @if (thumbnailDataUrl is not null)
-                                                {
-                                                    <button class="conteos-line-image-button" type="button" title="Ver imagen" aria-label="Ver imagen del material" @onclick="() => AbrirImagenMaterialAsync(line)" @onclick:stopPropagation="true">
-                                                        <img src="@thumbnailDataUrl" alt="Imagen de @materialTitle" class="conteos-line-image" />
-                                                    </button>
-                                                }
-                                                else
-                                                {
-                                                    <div class="conteos-line-image-placeholder">Sin foto</div>
-                                                }
-                                            </td>
-                                            <td data-label="Material" class="conteos-material-col">
-                                                <div class="conteos-cell-stack">
-                                                    <div class="conteos-cell-primary">@materialTitle</div>
-                                                    @if (showMaterialCode)
-                                                    {
-                                                        <div class="conteos-cell-secondary">@line.MaterialCode</div>
-                                                    }
-                                                    <div class="conteos-line-unit">
-                                                        <span class="@GetCountUnitBadgeClass(line.BaseUnitName)">Contar en @lineUnitLabel</span>
-                                                    </div>
-                                                    @if (line.CapturedAt.HasValue)
-                                                    {
-                                                        <div class="conteos-line-captured-at">@FormatLineCapturedSummary(line)</div>
-                                                    }
-                                                    @if (capturedByCurrentUser)
-                                                    {
-                                                        <div class="conteos-line-user-indicator">
-                                                            <span class="conteos-line-user-badge">Capturado por ti</span>
-                                                        </div>
-                                                    }
-                                                    @if (HasRecountIssue(line))
-                                                    {
-                                                        <div class="conteos-line-recount-note">
-                                                            <span class="conteos-line-recount-badge">@GetRecountIssueLabel(line.RecountIssueCode)</span>
-                                                            @if (!string.IsNullOrWhiteSpace(line.RecountReason))
-                                                            {
-                                                                <span>@line.RecountReason</span>
-                                                            }
-                                                        </div>
-                                                    }
-                                                </div>
-                                            </td>
-                                            <td data-label="@(GetQuantityFieldLabel("Esperado", line.BaseUnitName))" class="text-end conteos-quantity-col">@line.ExpectedQuantity.ToString("N2")</td>
-                                            <td data-label="@(GetQuantityFieldLabel("Contado", line.BaseUnitName))" class="text-end conteos-quantity-col">
-                                                @if (showInlineCountEditor)
-                                                {
-                                                    <div class="conteos-inline-count-editor d-md-none" @onclick:stopPropagation="true">
-                                                        <input class="form-control conteos-counted-input conteos-inline-counted-input"
-                                                               type="text"
-                                                               inputmode="decimal"
-                                                               enterkeyhint="done"
-                                                               autocomplete="off"
-                                                               spellcheck="false"
-                                                               aria-label="@(GetQuantityFieldLabel("Contado", line.BaseUnitName))"
-                                                               title="@($"Captura la cantidad en {lineUnitLabel}")"
-                                                               value="@CountedQuantityInput"
-                                                               @oninput="OnCountedQuantityInput"
-                                                               @onblur="OnCountedQuantityBlur"
-                                                               @onfocus="() => SelectCountedQuantityAsync()"
-                                                               @onclick="() => SelectCountedQuantityAsync()"
-                                                               @onkeydown="HandleMobileCountedQuantityKeyDownAsync"
-                                                               @onclick:stopPropagation="true"
-                                                               @ref="MobileCountedQuantityInputRef" />
-                                                        <button class="btn btn-primary conteos-inline-save-button"
-                                                                type="button"
-                                                                @onclick="GuardarLineaMovilAsync"
-                                                                @onclick:stopPropagation="true"
-                                                                disabled="@(!CanCaptureLine || IsSavingLine)">
-                                                            @(IsSavingLine ? "Guardando..." : "Guardar")
-                                                        </button>
-                                                    </div>
-                                                    <div class="d-none d-md-block">@FormatOptionalQuantity(line.CountedQuantity)</div>
-                                                }
-                                                else
-                                                {
-                                                    @FormatOptionalQuantity(line.CountedQuantity)
-                                                }
-                                            </td>
-                                            <td data-label="@(GetQuantityFieldLabel("Varianza", line.BaseUnitName))" class="text-end conteos-quantity-col">
-                                                @if (line.VarianceQuantity.HasValue && line.VarianceQuantity.Value != 0)
-                                                {
-                                                    <span class="badge text-bg-warning">@line.VarianceQuantity.Value.ToString("N2")</span>
-                                                }
-                                                else
-                                                {
-                                                    <span class="text-muted">0.00</span>
-                                                }
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </section>
-
-                @if (SelectedLine is not null)
-                {
-                    <section class="card shadow-sm conteos-capture-card">
-                        <div class="card-body">
-                            <div class="row g-3">
-                                <div class="col-12 col-xl-6">
-                                    <h3 class="h5 mb-3">Captura de línea</h3>
-                                    @{
-                                        var selectedMaterialTitle = string.IsNullOrWhiteSpace(SelectedLine.MaterialDescription) ? SelectedLine.MaterialCode : SelectedLine.MaterialDescription;
-                                        var showSelectedMaterialCode = !string.IsNullOrWhiteSpace(SelectedLine.MaterialCode) && !string.Equals(SelectedLine.MaterialCode, selectedMaterialTitle, StringComparison.OrdinalIgnoreCase);
-                                        var selectedLineUnitLabel = GetCountUnitLabel(SelectedLine.BaseUnitName);
-                                    }
-                                    <div class="conteos-selected-line-summary mb-3">
-                                        <div class="conteos-selected-line-title">@selectedMaterialTitle</div>
-                                        @if (showSelectedMaterialCode)
-                                        {
-                                            <div class="conteos-selected-line-subtitle">@SelectedLine.MaterialCode</div>
-                                        }
-                                        <div class="conteos-selected-line-unit">
-                                            <span class="@GetCountUnitBadgeClass(SelectedLine.BaseUnitName)">Contar en @selectedLineUnitLabel</span>
-                                        </div>
-                                        @if (SelectedLine.CapturedAt.HasValue)
-                                        {
-                                            <div class="conteos-selected-line-captured-at">@FormatLineCapturedSummary(SelectedLine)</div>
-                                        }
-                                        @if (HasRecountIssue(SelectedLine))
-                                        {
-                                            <div class="conteos-selected-line-recount mt-2">
-                                                <span class="conteos-line-recount-badge">@GetRecountIssueLabel(SelectedLine.RecountIssueCode)</span>
-                                                @if (!string.IsNullOrWhiteSpace(SelectedLine.RecountReason))
-                                                {
-                                                    <span>@SelectedLine.RecountReason</span>
-                                                }
-                                            </div>
-                                        }
+                                @if (HasRecountIssue(SelectedLine))
+                                {
+                                    <div class="conteos-recount-instruction">
+                                        <span class="oi oi-loop" aria-hidden="true"></span>
+                                        <div><strong>Reconteo solicitado: @GetRecountIssueLabel(SelectedLine.RecountIssueCode)</strong><p>@SelectedLine.RecountReason</p></div>
                                     </div>
-                                    <div class="row g-3 conteos-capture-form">
-                                        <div class="col-6 col-md-4">
-                                            <label class="form-label">@GetQuantityFieldLabel("Esperado", SelectedLine.BaseUnitName)</label>
-                                            <input class="form-control" type="text" value="@SelectedLine.ExpectedQuantity.ToString("N2")" disabled />
-                                        </div>
-                                        <div class="d-none d-md-block col-md-4">
-                                            <label class="form-label">@GetQuantityFieldLabel("Contado", SelectedLine.BaseUnitName)</label>
-                                            <input class="form-control form-control-lg conteos-counted-input"
+                                }
+
+                                <div class="conteos-quantity-grid">
+                                    <div><span>Esperado</span><strong>@SelectedLine.ExpectedQuantity.ToString("N2")</strong><small>@unitLabel</small></div>
+                                    <label class="conteos-count-input-wrap">
+                                        <span>¿Cuánto contaste?</span>
+                                        @if (SelectedLine.Lots.Count > 0)
+                                        {
+                                            <input class="conteos-count-input" type="text" value="@CountedQuantityInput" disabled />
+                                        }
+                                        else
+                                        {
+                                            <input class="conteos-count-input"
                                                    type="text"
                                                    inputmode="decimal"
                                                    enterkeyhint="done"
                                                    autocomplete="off"
                                                    spellcheck="false"
-                                                   aria-label="@(GetQuantityFieldLabel("Contado", SelectedLine.BaseUnitName))"
-                                                   title="@($"Captura la cantidad en {selectedLineUnitLabel}")"
+                                                   aria-label="Cantidad contada en @unitLabel"
                                                    value="@CountedQuantityInput"
                                                    @oninput="OnCountedQuantityInput"
                                                    @onblur="OnCountedQuantityBlur"
                                                    @onfocus="() => SelectCountedQuantityAsync()"
                                                    @onclick="() => SelectCountedQuantityAsync()"
-                                                   @onkeydown="HandleCountedQuantityKeyDownAsync"
+                                                   @onkeydown="HandleMobileCountedQuantityKeyDownAsync"
                                                    @ref="CountedQuantityInputRef" />
-                                        </div>
-                                         <div class="col-12 col-md-4">
-                                            <label class="form-label">@GetQuantityFieldLabel("Varianza", SelectedLine.BaseUnitName)</label>
-                                             <input class="form-control" type="text" value="@CurrentVarianceText" disabled />
-                                         </div>
-                                         @if (SelectedLine.Lots.Count > 0)
-                                         {
-                                             <div class="col-12">
-                                                 <div class="alert alert-info py-2 mb-2">Este material se controla por lote. La suma de lotes debe coincidir con el total contado.</div>
-                                                 <div class="row g-2">
-                                                     @foreach (var lot in SelectedLine.Lots)
-                                                     {
-                                                         var captureLot = LineCapture.Lots.Single(item => item.MaterialLotId == lot.MaterialLotId);
-                                                         <div class="col-12 col-md-6">
-                                                             <label class="form-label">Lote @lot.LotCode · esperado @lot.ExpectedQuantity.ToString("N2")@if (lot.ExpiresAt.HasValue) { <span> · vence @lot.ExpiresAt.Value.ToString("d")</span> }</label>
-                                                             <InputNumber class="form-control" min="0" step="0.0001" @bind-Value="captureLot.CountedQuantity" @bind-Value:after="UpdateTotalFromLots" />
-                                                         </div>
-                                                     }
-                                                 </div>
-                                             </div>
-                                         }
-                                         <div class="col-md-6">
-                                            <div class="form-check mt-2 conteos-toggle-card">
-                                                <InputCheckbox class="form-check-input" @bind-Value="LineCapture.IsMissing" />
-                                                <label class="form-check-label">Faltante</label>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="form-check mt-2 conteos-toggle-card">
-                                                <InputCheckbox class="form-check-input" @bind-Value="LineCapture.IsDamaged" />
-                                                <label class="form-check-label">Dañado</label>
-                                            </div>
-                                        </div>
-                                        <div class="col-12">
-                                            <label class="form-label">Notas</label>
-                                            <InputTextArea class="form-control" rows="3" @bind-Value="LineCapture.Notes" />
-                                        </div>
-                                        <div class="col-12">
-                                            <label class="form-label">Evidencia opcional</label>
-                                            <InputFile class="form-control" OnChange="OnLineAttachmentSelectedAsync" />
-                                            @if (!string.IsNullOrWhiteSpace(PendingLineAttachmentName))
-                                            {
-                                                <div class="form-text">@PendingLineAttachmentName</div>
-                                            }
-                                        </div>
-                                    </div>
-                                    <button class="btn btn-primary mt-3 conteos-save-button d-md-none" type="button" @onclick="GuardarLineaMovilAsync" disabled="@(!CanCaptureLine || IsSavingLine)">
-                                        @(IsSavingLine ? "Guardando..." : "Guardar línea")
-                                    </button>
-                                    <button class="btn btn-primary mt-3 conteos-save-button d-none d-md-inline-block" type="button" @onclick="GuardarLineaAsync" disabled="@(!CanCaptureLine || IsSavingLine)">
-                                        @(IsSavingLine ? "Guardando..." : "Guardar línea")
-                                    </button>
+                                        }
+                                        <small>@unitLabel</small>
+                                    </label>
+                                    <div class="@GetCurrentVarianceClass()"><span>Diferencia</span><strong>@CurrentVarianceText</strong><small>@unitLabel</small></div>
                                 </div>
 
-                                <div class="col-12 col-xl-6">
-                                    <h3 class="h5 mb-3">Evidencias capturadas</h3>
-                                    <div class="table-responsive conteos-evidence-scroll">
-                                        <table class="table table-sm">
-                                            <thead class="table-light">
-                                                <tr>
-                                                    <th>Archivo</th>
-                                                    <th>Descripción</th>
-                                                    <th></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                @if (SelectedLine.Attachments.Count == 0)
-                                                {
-                                                    <tr>
-                                                        <td colspan="3" class="text-center text-muted py-3">Sin evidencia.</td>
-                                                    </tr>
-                                                }
-                                                else
-                                                {
-                                                    @foreach (var attachment in SelectedLine.Attachments)
-                                                    {
-                                                        <tr>
-                                                            <td>@attachment.FileName</td>
-                                                            <td>@attachment.Description</td>
-                                                            <td class="text-end">
-                                                                <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="() => DescargarEvidenciaAsync(attachment.Id)">
-                                                                    Descargar
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    }
-                                                }
-                                            </tbody>
-                                        </table>
+                                @if (SelectedLine.Lots.Count > 0)
+                                {
+                                    <div class="conteos-lots">
+                                        <div><strong>Cuenta cada lote</strong><small>El total se calcula automáticamente.</small></div>
+                                        @foreach (var lot in SelectedLine.Lots)
+                                        {
+                                            var captureLot = LineCapture.Lots.Single(item => item.MaterialLotId == lot.MaterialLotId);
+                                            <label>
+                                                <span><strong>@lot.LotCode</strong><small>Esperado @lot.ExpectedQuantity.ToString("N2")@if (lot.ExpiresAt.HasValue) { <text> · vence @lot.ExpiresAt.Value.ToString("d")</text> }</small></span>
+                                                <InputNumber class="form-control" min="0" step="0.0001" @bind-Value="captureLot.CountedQuantity" @bind-Value:after="UpdateTotalFromLots" />
+                                            </label>
+                                        }
                                     </div>
-                                </div>
+                                }
+
+                                <details class="conteos-extra-details" open="@ShouldOpenLineDetails">
+                                    <summary><span class="oi oi-chevron-bottom" aria-hidden="true"></span> Agregar detalles <small>Opcional</small></summary>
+                                    <div class="conteos-extra-content">
+                                        <div class="conteos-condition-buttons">
+                                            <label class="@(LineCapture.IsMissing ? "is-selected" : string.Empty)">
+                                                <InputCheckbox @bind-Value="LineCapture.IsMissing" />
+                                                <span class="oi oi-warning" aria-hidden="true"></span>
+                                                <span><strong>Faltante</strong><small>No se encontró el material.</small></span>
+                                            </label>
+                                            <label class="@(LineCapture.IsDamaged ? "is-selected" : string.Empty)">
+                                                <InputCheckbox @bind-Value="LineCapture.IsDamaged" />
+                                                <span class="oi oi-wrench" aria-hidden="true"></span>
+                                                <span><strong>Dañado</strong><small>El material no está en buen estado.</small></span>
+                                            </label>
+                                        </div>
+                                        <label class="conteos-field">
+                                            <span>Nota</span>
+                                            <InputTextArea rows="3" placeholder="Describe algo importante para quien revisará" @bind-Value="LineCapture.Notes" />
+                                        </label>
+                                        <label class="conteos-field conteos-file-field">
+                                            <span>Foto o evidencia</span>
+                                            <InputFile accept="image/*,.pdf" OnChange="OnLineAttachmentSelectedAsync" />
+                                            <small>@(string.IsNullOrWhiteSpace(PendingLineAttachmentName) ? "Puedes tomar una foto o elegir un archivo." : PendingLineAttachmentName)</small>
+                                        </label>
+                                        @if (SelectedLine.Attachments.Count > 0)
+                                        {
+                                            <div class="conteos-attachments">
+                                                <strong>Evidencias guardadas</strong>
+                                                @foreach (var attachment in SelectedLine.Attachments)
+                                                {
+                                                    <button type="button" @onclick="() => DescargarEvidenciaAsync(attachment.Id)"><span class="oi oi-paperclip" aria-hidden="true"></span>@attachment.FileName</button>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </details>
                             </div>
-                        </div>
-                    </section>
+
+                            <footer class="conteos-focus-actions">
+                                <button class="btn btn-outline-secondary" type="button" @onclick="SeleccionarLineaAnterior" disabled="@(!CanSelectPreviousLine)">
+                                    <span aria-hidden="true">←</span> Anterior
+                                </button>
+                                <button class="btn btn-link" type="button" @onclick="OmitirLineaActual">Omitir por ahora</button>
+                                <button class="btn btn-primary btn-lg" type="button" @onclick="GuardarLineaMovilAsync" disabled="@(!CanCaptureLine || IsSavingLine)">
+                                    @(IsSavingLine ? "Guardando…" : "Guardar y siguiente") <span aria-hidden="true">→</span>
+                                </button>
+                            </footer>
+                        </section>
+                    </div>
+                }
+                @if (CanCancel)
+                {
+                    <details class="conteos-more-actions">
+                        <summary>Más acciones</summary>
+                        <button class="btn btn-outline-danger" type="button" @onclick="CancelarSesionAsync" disabled="@IsMutatingSession">Cancelar este conteo</button>
+                    </details>
                 }
             }
-        </div>
-    </div>
+            else
+            {
+                <section class="conteos-supervisor-review">
+                    <div class="conteos-review-heading">
+                        <div>
+                            <span class="conteos-section-kicker">@(IsPostedStatus(SelectedSession.Status) || IsCanceledStatus(SelectedSession.Status) ? "Consulta" : "Revisión del conteo")</span>
+                            <h2>@GetReviewHeading()</h2>
+                            <p>@GetReviewDescription()</p>
+                        </div>
+                        @if (CanManageCounts && (CanApprove || CanPost || CanRequestRecount))
+                        {
+                            <div class="conteos-review-primary-actions">
+                                @if (CanRequestRecount)
+                                {
+                                    <button class="btn btn-outline-warning" type="button" @onclick="AbrirReconteo" disabled="@IsMutatingSession">Solicitar reconteo</button>
+                                }
+                                @if (CanApprove)
+                                {
+                                    <button class="btn btn-primary" type="button" @onclick="AprobarSesionAsync" disabled="@IsMutatingSession">Aprobar conteo</button>
+                                }
+                                @if (CanPost)
+                                {
+                                    <button class="btn btn-success" type="button" @onclick="ContabilizarSesionAsync" disabled="@IsMutatingSession">Aplicar al inventario</button>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <div class="conteos-summary-grid">
+                        <div><span>Materiales</span><strong>@SelectedSession.Lines.Count</strong></div>
+                        <div><span>Sin diferencia</span><strong>@MatchingLineCount</strong></div>
+                        <div class="@(VarianceLineCount > 0 ? "is-warning" : string.Empty)"><span>Con diferencia</span><strong>@VarianceLineCount</strong></div>
+                        <div class="@(FlaggedLineCount > 0 ? "is-warning" : string.Empty)"><span>Con incidencia</span><strong>@FlaggedLineCount</strong></div>
+                    </div>
+
+                    <div class="conteos-review-toolbar">
+                        <label><span class="oi oi-magnifying-glass" aria-hidden="true"></span><input type="search" placeholder="Buscar material" @bind="MaterialSearch" @bind:event="oninput" /></label>
+                        <div class="conteos-filter-chips" role="group" aria-label="Filtrar revisión">
+                            @foreach (var filter in ReviewFilters)
+                            {
+                                <button class="@(ReviewFilter == filter.Value ? "is-active" : string.Empty)" type="button" @onclick="() => SetReviewFilter(filter.Value)">@filter.Label</button>
+                            }
+                        </div>
+                    </div>
+
+                    @if (ShowRecountPanel)
+                    {
+                        <div class="conteos-recount-banner">
+                            <span class="oi oi-loop" aria-hidden="true"></span>
+                            <div><strong>Selecciona lo que debe contarse otra vez</strong><p>Indica el problema y explica qué debe verificarse.</p></div>
+                            <button type="button" @onclick="CerrarReconteo" aria-label="Cerrar plan de reconteo"><span class="oi oi-x" aria-hidden="true"></span></button>
+                        </div>
+                    }
+
+                    <div class="conteos-review-cards">
+                        @foreach (var line in FilteredReviewLines)
+                        {
+                            var recountEditor = GetRecountEditor(line.Id);
+                            <article class="conteos-review-card @(line.VarianceQuantity is not null and not 0m ? "has-variance" : string.Empty) @(HasRecountIssue(line) ? "has-recount" : string.Empty)">
+                                <header>
+                                    @if (ShowRecountPanel && recountEditor is not null)
+                                    {
+                                        <label class="conteos-recount-check"><InputCheckbox @bind-Value="recountEditor.IsSelected" /><span>Recontar</span></label>
+                                    }
+                                    <div><strong>@GetMaterialTitle(line)</strong><small>@line.MaterialCode · @GetCountUnitLabel(line.BaseUnitName)</small></div>
+                                    <span class="@(line.VarianceQuantity is not null and not 0m ? "conteos-variance-label" : "conteos-ok-label")">@(line.VarianceQuantity is not null and not 0m ? FormatSignedQuantity(line.VarianceQuantity) : "Sin diferencia")</span>
+                                </header>
+                                <div class="conteos-review-quantities">
+                                    <span>Esperado <strong>@line.ExpectedQuantity.ToString("N2")</strong></span>
+                                    <span>Contado <strong>@FormatOptionalQuantity(line.CountedQuantity)</strong></span>
+                                    <span>Por <strong>@(string.IsNullOrWhiteSpace(line.CapturedBy) ? "Sin usuario" : line.CapturedBy)</strong></span>
+                                </div>
+                                @if (line.IsMissing || line.IsDamaged || !string.IsNullOrWhiteSpace(line.Notes) || line.AttachmentCount > 0)
+                                {
+                                    <div class="conteos-review-notes">
+                                        @if (line.IsMissing) { <span>Faltante</span> }
+                                        @if (line.IsDamaged) { <span>Dañado</span> }
+                                        @if (line.AttachmentCount > 0) { <span>@line.AttachmentCount evidencia(s)</span> }
+                                        @if (!string.IsNullOrWhiteSpace(line.Notes)) { <p>@line.Notes</p> }
+                                    </div>
+                                }
+                                @if (ShowRecountPanel && recountEditor is not null && recountEditor.IsSelected)
+                                {
+                                    <div class="conteos-recount-fields">
+                                        <label><span>Problema</span><select @bind="recountEditor.IssueCode">
+                                            <option value="@PhysicalCountRecountIssueCodes.QuantityMismatch">Cantidad</option>
+                                            <option value="@PhysicalCountRecountIssueCodes.UnitIssue">Unidad</option>
+                                            <option value="@PhysicalCountRecountIssueCodes.WrongMaterial">Material</option>
+                                            <option value="@PhysicalCountRecountIssueCodes.EvidenceMissing">Evidencia</option>
+                                            <option value="@PhysicalCountRecountIssueCodes.ConditionIssue">Condición</option>
+                                            <option value="@PhysicalCountRecountIssueCodes.Other">Otro</option>
+                                        </select></label>
+                                        <label><span>Qué debe verificarse</span><InputTextArea rows="2" placeholder="Ej. Confirmar las cajas de la repisa superior" @bind-Value="recountEditor.Reason" /></label>
+                                    </div>
+                                }
+                            </article>
+                        }
+                    </div>
+
+                    @if (ShowRecountPanel)
+                    {
+                        <div class="conteos-review-sticky-action">
+                            <span>@SelectedRecountLineCount material(es) seleccionados</span>
+                            <button class="btn btn-warning btn-lg" type="button" @onclick="EnviarAReconteoAsync" disabled="@IsRequestingRecount">
+                                @(IsRequestingRecount ? "Enviando…" : "Enviar a reconteo")
+                            </button>
+                        </div>
+                    }
+
+                    @if (CanCancel)
+                    {
+                        <details class="conteos-more-actions">
+                            <summary>Más acciones</summary>
+                            <button class="btn btn-outline-danger" type="button" @onclick="CancelarSesionAsync" disabled="@IsMutatingSession">Cancelar este conteo</button>
+                        </details>
+                    }
+                </section>
+            }
+        </main>
+    }
 </div>
 
-@if (ShowCancelModal && SelectedSession is not null)
+@if (ShowCreateModal)
 {
-    <div class="modal fade show d-block conteos-modal-backdrop" role="dialog" aria-modal="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Cancelar @SelectedSession.SessionCode</h5>
-                    <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CerrarCancelacion"></button>
-                </div>
-                <div class="modal-body">
-                    <label class="form-label">Razón</label>
-                    <InputTextArea class="form-control" rows="4" @bind-Value="CancelReason" />
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-outline-secondary" type="button" @onclick="CerrarCancelacion" disabled="@IsCancelingSession">Cerrar</button>
-                    <button class="btn btn-danger" type="button" @onclick="ConfirmarCancelacionAsync" disabled="@IsCancelingSession">
-                        @(IsCancelingSession ? "Cancelando..." : "Cancelar conteo")
-                    </button>
-                </div>
-            </div>
-        </div>
+    <div class="conteos-overlay" role="dialog" aria-modal="true" aria-labelledby="conteos-create-title">
+        <section class="conteos-dialog">
+            <header><div><span class="conteos-section-kicker">Administración</span><h2 id="conteos-create-title">Nuevo conteo</h2></div><button type="button" @onclick="CerrarCreacion" aria-label="Cerrar"><span class="oi oi-x" aria-hidden="true"></span></button></header>
+            <div class="conteos-dialog-info"><span class="oi oi-info" aria-hidden="true"></span><p>Se tomará una fotografía de la existencia actual. El inventario no cambiará hasta que el conteo sea revisado, aprobado y aplicado.</p></div>
+            <label class="conteos-field"><span>Ubicación</span><select @bind="SessionCreateRequest.LocationId"><option value="0">Selecciona una ubicación</option>@foreach (var option in LocationOptions) { <option value="@option.Id">@option.Name</option> }</select></label>
+            <label class="conteos-field"><span>Nota <small>Opcional</small></span><InputTextArea rows="3" placeholder="Instrucciones para el equipo de conteo" @bind-Value="SessionCreateRequest.Notes" /></label>
+            <footer><button class="btn btn-outline-secondary" type="button" @onclick="CerrarCreacion">Cerrar</button><button class="btn btn-primary btn-lg" type="button" @onclick="CrearSesionAsync" disabled="@IsCreatingSession">@(IsCreatingSession ? "Creando…" : "Crear y abrir conteo")</button></footer>
+        </section>
     </div>
 }
 
-@if (ShowRecountModal && SelectedSession is not null)
+@if (ShowMobileMaterialList && SelectedSession is not null)
 {
-    <div class="modal fade show d-block conteos-modal-backdrop" role="dialog" aria-modal="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Plan de reconteo · @SelectedSession.SessionCode</h5>
-                    <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CerrarReconteo"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="table-responsive conteos-recount-scroll">
-                        <table class="table table-sm align-middle conteos-recount-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="conteos-recount-select-col">Recontar</th>
-                                    <th>Material</th>
-                                    <th class="text-end">Esperado</th>
-                                    <th class="text-end">Contado</th>
-                                    <th>Incidencia</th>
-                                    <th>Razón</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var line in RecountPlanLines)
-                                {
-                                    <tr class="@(line.IsSelected ? "table-warning" : string.Empty)">
-                                        <td data-label="Recontar" class="conteos-recount-select-col">
-                                            <InputCheckbox class="form-check-input" @bind-Value="line.IsSelected" />
-                                        </td>
-                                        <td data-label="Material">
-                                            <div class="conteos-cell-stack">
-                                                <div class="conteos-cell-primary">@line.MaterialDescription</div>
-                                                @if (!string.IsNullOrWhiteSpace(line.MaterialCode) && !string.Equals(line.MaterialCode, line.MaterialDescription, StringComparison.OrdinalIgnoreCase))
-                                                {
-                                                    <div class="conteos-cell-secondary">@line.MaterialCode</div>
-                                                }
-                                            </div>
-                                        </td>
-                                        <td data-label="Esperado" class="text-end">@line.ExpectedQuantity.ToString("N2")</td>
-                                        <td data-label="Contado" class="text-end">@FormatOptionalQuantity(line.CountedQuantity)</td>
-                                        <td data-label="Incidencia">
-                                            <select class="form-select form-select-sm" @bind="line.IssueCode" disabled="@(!line.IsSelected)">
-                                                <option value="@PhysicalCountRecountIssueCodes.QuantityMismatch">@GetRecountIssueLabel(PhysicalCountRecountIssueCodes.QuantityMismatch)</option>
-                                                <option value="@PhysicalCountRecountIssueCodes.UnitIssue">@GetRecountIssueLabel(PhysicalCountRecountIssueCodes.UnitIssue)</option>
-                                                <option value="@PhysicalCountRecountIssueCodes.WrongMaterial">@GetRecountIssueLabel(PhysicalCountRecountIssueCodes.WrongMaterial)</option>
-                                                <option value="@PhysicalCountRecountIssueCodes.EvidenceMissing">@GetRecountIssueLabel(PhysicalCountRecountIssueCodes.EvidenceMissing)</option>
-                                                <option value="@PhysicalCountRecountIssueCodes.ConditionIssue">@GetRecountIssueLabel(PhysicalCountRecountIssueCodes.ConditionIssue)</option>
-                                                <option value="@PhysicalCountRecountIssueCodes.Other">@GetRecountIssueLabel(PhysicalCountRecountIssueCodes.Other)</option>
-                                            </select>
-                                        </td>
-                                        <td data-label="Razón">
-                                            <InputTextArea class="form-control form-control-sm conteos-recount-reason"
-                                                           rows="2"
-                                                           disabled="@(!line.IsSelected)"
-                                                           @bind-Value="line.Reason" />
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-outline-secondary" type="button" @onclick="CerrarReconteo" disabled="@IsRequestingRecount">Cerrar</button>
-                    <button class="btn btn-warning" type="button" @onclick="EnviarAReconteoAsync" disabled="@IsRequestingRecount">
-                        @(IsRequestingRecount ? "Enviando..." : "Enviar a reconteo")
-                    </button>
-                </div>
+    <div class="conteos-overlay conteos-drawer-overlay" role="dialog" aria-modal="true" aria-labelledby="conteos-mobile-list-title">
+        <section class="conteos-mobile-drawer">
+            <header><div><span class="conteos-section-kicker">@PendingLineCount pendientes</span><h2 id="conteos-mobile-list-title">Materiales</h2></div><button type="button" @onclick="CerrarListaMovil" aria-label="Cerrar lista"><span class="oi oi-x" aria-hidden="true"></span></button></header>
+            <div class="conteos-search-row">
+                <label><span class="oi oi-magnifying-glass" aria-hidden="true"></span><input type="search" placeholder="Nombre, código o barras" @bind="MaterialSearch" @bind:event="oninput" /></label>
+                <button type="button" @onclick="AbrirEscanerDesdeListaAsync" disabled="@(!CameraScanningAllowed)" aria-label="Escanear código de barras"><span class="oi oi-camera-slr" aria-hidden="true"></span></button>
             </div>
-        </div>
+            <div class="conteos-filter-chips" role="group" aria-label="Filtrar materiales">
+                @foreach (var filter in CaptureFilters)
+                {
+                    <button class="@(CaptureFilter == filter.Value ? "is-active" : string.Empty)" type="button" @onclick="() => SetCaptureFilter(filter.Value)">@filter.Label</button>
+                }
+            </div>
+            <div class="conteos-material-list">
+                @foreach (var line in FilteredSessionLines)
+                {
+                    <button class="@GetMaterialListItemClass(line)" type="button" @onclick="() => SeleccionarLineaDesdeLista(line)">
+                        <span class="conteos-material-list-state">@GetLineStateIcon(line)</span>
+                        <span><strong>@GetMaterialTitle(line)</strong><small>@GetMaterialListSubtitle(line)</small></span>
+                        @if (line.CountedQuantity.HasValue) { <b>@line.CountedQuantity.Value.ToString("N2")</b> }
+                    </button>
+                }
+            </div>
+            <footer><button class="btn btn-outline-secondary w-100" type="button" @onclick="MostrarRevisionDesdeLista">Revisar todo el conteo</button></footer>
+        </section>
+    </div>
+}
+
+@if (ShowBarcodeScanner)
+{
+    <div class="conteos-scanner-overlay" role="dialog" aria-modal="true" aria-labelledby="conteos-scanner-title">
+        <section class="conteos-scanner-dialog">
+            <header><div><span class="conteos-section-kicker">Búsqueda rápida</span><h2 id="conteos-scanner-title">Escanear código</h2></div><button type="button" @onclick="CerrarEscanerAsync" aria-label="Cerrar cámara"><span class="oi oi-x" aria-hidden="true"></span></button></header>
+            <div class="conteos-scanner-stage">
+                <video @ref="ScannerVideoElement" autoplay muted playsinline></video>
+                <span class="conteos-scanner-frame" aria-hidden="true"></span>
+                @if (IsStartingScanner) { <div class="conteos-scanner-status"><span class="spinner-border" aria-hidden="true"></span><strong>Abriendo cámara…</strong></div> }
+            </div>
+            <p>Coloca el código de barras dentro del recuadro. La cámara se cerrará al encontrar el material.</p>
+            @if (!string.IsNullOrWhiteSpace(ScannerMessage)) { <div class="conteos-scanner-message" role="status">@ScannerMessage</div> }
+            <footer><button class="btn btn-light w-100" type="button" @onclick="CerrarEscanerAsync">Cancelar y buscar manualmente</button></footer>
+        </section>
+    </div>
+}
+
+@if (ShowCancelModal && SelectedSession is not null)
+{
+    <div class="conteos-overlay" role="dialog" aria-modal="true" aria-labelledby="conteos-cancel-title">
+        <section class="conteos-dialog conteos-dialog-small">
+            <header><div><span class="conteos-section-kicker">Acción administrativa</span><h2 id="conteos-cancel-title">Cancelar @SelectedSession.SessionCode</h2></div><button type="button" @onclick="CerrarCancelacion" aria-label="Cerrar"><span class="oi oi-x" aria-hidden="true"></span></button></header>
+            <div class="conteos-dialog-warning"><span class="oi oi-warning" aria-hidden="true"></span><p>El conteo quedará únicamente para consulta y ya no podrá continuarse ni aplicarse.</p></div>
+            <label class="conteos-field"><span>Razón de cancelación</span><InputTextArea rows="4" placeholder="Explica por qué se cancela" @bind-Value="CancelReason" /></label>
+            <footer><button class="btn btn-outline-secondary" type="button" @onclick="CerrarCancelacion" disabled="@IsCancelingSession">Volver</button><button class="btn btn-danger" type="button" @onclick="ConfirmarCancelacionAsync" disabled="@IsCancelingSession">@(IsCancelingSession ? "Cancelando…" : "Cancelar conteo")</button></footer>
+        </section>
     </div>
 }
 
 @if (ShowMaterialImageModal)
 {
-    <div class="modal fade show d-block conteos-image-modal-backdrop" role="dialog" aria-modal="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">@(string.IsNullOrWhiteSpace(MaterialImageModalTitle) ? "Imagen del material" : MaterialImageModalTitle)</h5>
-                    <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CloseMaterialImageModal"></button>
-                </div>
-                <div class="modal-body text-center">
-                    @if (MaterialImageModalDataUrl is not null)
-                    {
-                        <img src="@MaterialImageModalDataUrl" alt="Vista ampliada del material" class="conteos-image-modal-preview" />
-                    }
-                    else if (IsLoadingMaterialImage)
-                    {
-                        <div class="py-5 text-muted">Cargando imagen...</div>
-                    }
-                    else
-                    {
-                        <div class="py-5 text-muted">Sin imagen disponible.</div>
-                    }
-
-                    @if (IsLoadingMaterialImage && MaterialImageModalDataUrl is not null)
-                    {
-                        <div class="small text-muted mt-3">Cargando la imagen completa...</div>
-                    }
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-outline-secondary" type="button" @onclick="CloseMaterialImageModal">Cerrar</button>
-                </div>
-            </div>
-        </div>
+    <div class="conteos-overlay conteos-image-overlay" role="dialog" aria-modal="true" aria-labelledby="conteos-image-title">
+        <section class="conteos-image-dialog">
+            <header><h2 id="conteos-image-title">@(string.IsNullOrWhiteSpace(MaterialImageModalTitle) ? "Imagen del material" : MaterialImageModalTitle)</h2><button type="button" @onclick="CloseMaterialImageModal" aria-label="Cerrar"><span class="oi oi-x" aria-hidden="true"></span></button></header>
+            <div>@if (MaterialImageModalDataUrl is not null) { <img src="@MaterialImageModalDataUrl" alt="Vista ampliada del material" /> } else if (IsLoadingMaterialImage) { <span class="spinner-border" aria-hidden="true"></span> } else { <p>Sin imagen disponible.</p> }</div>
+        </section>
     </div>
 }

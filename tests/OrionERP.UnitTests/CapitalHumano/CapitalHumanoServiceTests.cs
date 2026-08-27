@@ -121,6 +121,8 @@ public class CapitalHumanoServiceTests
       connection.ExecutedCommands,
       command => command.CommandText.Contains("UPDATE dbo.Capital_Humano", StringComparison.Ordinal));
     Assert.DoesNotContain("Fotografia = @Fotografia", updateWithoutPhoto.CommandText, StringComparison.Ordinal);
+    Assert.DoesNotContain("@Descanso_SemanalWHERE", updateWithoutPhoto.CommandText, StringComparison.Ordinal);
+    Assert.Contains("WHERE ID = @Id", updateWithoutPhoto.CommandText, StringComparison.Ordinal);
     Assert.DoesNotContain(updateWithoutPhoto.Parameters, parameter => string.Equals(parameter.Name, "Fotografia", StringComparison.OrdinalIgnoreCase));
 
     var withPhoto = CreateValidRequest(workerRfc: "XAXX010101000");

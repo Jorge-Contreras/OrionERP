@@ -32,6 +32,21 @@ public sealed class RestaurantPosOrderReviewTests
   }
 
   [Fact]
+  public void Pos_LoadsItsCatalogOnceAfterPrerenderingAndShowsAnHonestLoadingState()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantPosPage.razor");
+
+    Assert.Contains("private bool isBusy = true;", page, StringComparison.Ordinal);
+    Assert.Contains("protected override void OnInitialized() => Realtime.EventReceived += OnRealtimeEventAsync;", page, StringComparison.Ordinal);
+    Assert.Contains("protected override async Task OnAfterRenderAsync(bool firstRender)", page, StringComparison.Ordinal);
+    Assert.Contains("if (!firstRender) return;\n    await LoadAsync();\n    StateHasChanged();", page, StringComparison.Ordinal);
+
+    var loadingState = page.IndexOf("@if (isBusy || (sites.Count > 0 && catalog is null))", StringComparison.Ordinal);
+    var emptyState = page.IndexOf("else if (sites.Count == 0)", StringComparison.Ordinal);
+    Assert.True(loadingState >= 0 && emptyState > loadingState, "Loading must win over the real no-site empty state.");
+  }
+
+  [Fact]
   public void Pos_ReturnsToTheMenuWhenTheOrderBecomesEmpty()
   {
     var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantPosPage.razor");

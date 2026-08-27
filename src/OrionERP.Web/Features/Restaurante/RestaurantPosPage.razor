@@ -57,15 +57,15 @@
     <div class="pos-alert" role="alert">@error</div>
   }
 
-  @if (sites.Count == 0)
-  {
-    <section class="pos-empty"><span class="oi oi-cog"></span><h2>No hay una sede configurada</h2><p>Un administrador debe crearla y habilitar Restaurante.</p></section>
-  }
-  else if (catalog is null || isBusy)
+  @if (isBusy || (sites.Count > 0 && catalog is null))
   {
     <section class="pos-empty"><span class="spinner-border"></span><h2>Cargando menú…</h2></section>
   }
-  else
+  else if (sites.Count == 0)
+  {
+    <section class="pos-empty"><span class="oi oi-cog"></span><h2>No hay una sede configurada</h2><p>Un administrador debe crearla y habilitar Restaurante.</p></section>
+  }
+  else if (catalog is not null)
   {
     <div class="pos-workspace">
       <nav class="pos-workspace-tabs" role="tablist" aria-label="Orden y secciones del menú">
@@ -539,7 +539,7 @@
   private decimal tipAmount;
   private string? error;
   private string? drawerWarning;
-  private bool isBusy;
+  private bool isBusy = true;
   private bool isSubmitting;
   private bool isLookingUpMember;
   private bool isQuotingPromotions;
@@ -610,7 +610,14 @@
     return decimal.Round(gross - Math.Min(Math.Max(0, line.DiscountAmount), gross), 2, MidpointRounding.AwayFromZero);
   }
 
-  protected override async Task OnInitializedAsync() { Realtime.EventReceived += OnRealtimeEventAsync; await LoadAsync(); }
+  protected override void OnInitialized() => Realtime.EventReceived += OnRealtimeEventAsync;
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (!firstRender) return;
+    await LoadAsync();
+    StateHasChanged();
+  }
 
   private async Task LoadAsync()
   {

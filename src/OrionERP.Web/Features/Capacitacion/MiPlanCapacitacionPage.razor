@@ -164,7 +164,7 @@
             <button type="button" class="@(activeFilter == filter.Key ? "active" : null)" aria-pressed="@(activeFilter == filter.Key)" @onclick="() => activeFilter = filter.Key">@filter.Label <span>@FilterCount(filter.Key)</span></button>
           }
         </div>
-        <label class="cap-search"><span class="visually-hidden">Buscar en mi plan</span><span class="oi oi-magnifying-glass" aria-hidden="true"></span><input type="search" class="cap-input" placeholder="Buscar curso o módulo" @bind="search" @bind:event="oninput" /></label>
+        <label class="cap-search"><span class="visually-hidden">Buscar en mi plan</span><span class="oi oi-magnifying-glass" aria-hidden="true"></span><input type="search" class="cap-input" placeholder="Buscar curso o módulo · Enter" @bind="searchDraft" @bind:event="oninput" @onkeyup="ApplySearchOnEnter" /></label>
       </div>
 
       @if (VisibleAssignments.Count == 0)
@@ -206,6 +206,7 @@
   private bool busy;
   private string activeFilter = "ALL";
   private string search = string.Empty;
+  private string searchDraft = string.Empty;
   private readonly Dictionary<int, int> selectedOptions = [];
   private CapacitacionEvaluacionResultadoDto? evaluationResult;
 
@@ -240,6 +241,8 @@
     var textMatches = string.IsNullOrWhiteSpace(search) || item.CursoNombre.Contains(search, StringComparison.OrdinalIgnoreCase) || item.Categoria.Contains(search, StringComparison.OrdinalIgnoreCase);
     return statusMatches && textMatches;
   }
+
+  private void ApplySearchOnEnter(KeyboardEventArgs args) { if(args.Key == "Enter") search = searchDraft.Trim(); }
 
   private int FilterCount(string key) => key == "ALL" ? assignments.Count : assignments.Count(x => x.Estado.Equals(key, StringComparison.OrdinalIgnoreCase));
 

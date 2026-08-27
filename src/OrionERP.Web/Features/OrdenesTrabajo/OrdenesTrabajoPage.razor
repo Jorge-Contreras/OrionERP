@@ -156,7 +156,7 @@
         <section class="ordenes-tools" aria-label="Buscar y filtrar órdenes">
             <div class="ordenes-search">
                 <span class="oi oi-magnifying-glass" aria-hidden="true"></span>
-                <input type="search" value="@Filter.SearchText" @oninput="OnSearchInput" placeholder="Buscar orden, lugar o folio" aria-label="Buscar orden, lugar o folio" />
+                <input type="search" value="@Filter.SearchText" @oninput="OnSearchInput" @onkeyup="OnSearchKeyUpAsync" placeholder="Buscar orden, lugar o folio · Enter para buscar" aria-label="Buscar orden, lugar o folio" />
                 @if (!string.IsNullOrWhiteSpace(Filter.SearchText))
                 {
                     <button type="button" @onclick="ClearSearchAsync" aria-label="Limpiar búsqueda"><span class="oi oi-x" aria-hidden="true"></span></button>

@@ -264,7 +264,7 @@
                     <div class="row g-2 mb-3">
                         <div class="col-lg-7">
                             <label class="form-label">Buscar material</label>
-                            <input class="form-control" type="search" placeholder="Código, material, barras o ubicación" @bind="StockFilter.SearchText" @bind:event="oninput" disabled="@(!SelectedLocationId.HasValue)" />
+                            <input class="form-control" type="search" placeholder="Código, material, barras o ubicación" @bind="StockFilter.SearchText" @bind:event="oninput" @onkeyup="OnStockSearchKeyUpAsync" disabled="@(!SelectedLocationId.HasValue)" />
                         </div>
                         <div class="col-lg-5">
                             <label class="form-label">Ubicación activa</label>

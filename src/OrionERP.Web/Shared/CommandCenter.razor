@@ -42,16 +42,13 @@
                 <span class="oi oi-magnifying-glass" aria-hidden="true"></span>
                 <input id="command-center-search"
                        type="search"
-                       value="@_searchText"
-                       placeholder="Busca páginas, módulos o tareas..."
+                       placeholder="Busca y presiona Enter..."
                        autocomplete="off"
                        spellcheck="false"
                        aria-label="Buscar páginas, módulos o tareas"
                        aria-controls="command-center-results"
                        aria-activedescendant="@ActiveDescendantId"
-                       @ref="_searchInput"
-                       @oninput="HandleSearchInput"
-                       @onkeydown="HandleSearchKeyDown" />
+                       @ref="_searchInput" />
                 @if (!string.IsNullOrWhiteSpace(_searchText))
                 {
                     <button type="button" class="command-center__clear" @onclick="ClearSearchAsync">
@@ -63,7 +60,7 @@
             <div class="command-center__context">
                 <span>@ContextLabel</span>
                 <span aria-hidden="true">•</span>
-                <span>@_availableDestinations.Count destinos disponibles</span>
+                <span>@(_hasSubmittedSearch ? $"{_availableDestinations.Count} destinos disponibles" : "Escribe y presiona Enter para buscar")</span>
             </div>
         </header>
 
@@ -143,7 +140,7 @@
         <footer class="command-center__footer">
             <div class="command-center__key-help" aria-label="Ayuda de teclado">
                 <span><kbd>↑</kbd><kbd>↓</kbd> navegar</span>
-                <span><kbd>Enter</kbd> abrir</span>
+                <span><kbd>Enter</kbd> buscar · de nuevo abrir</span>
                 <span><kbd>Esc</kbd> cerrar</span>
             </div>
             <span class="command-center__footer-note">
@@ -164,6 +161,7 @@
     private ElementReference _dialog;
     private ElementReference _searchInput;
     private string _searchText = string.Empty;
+    private bool _hasSubmittedSearch;
     private string _storageKey = StorageKeyPrefix;
     private int _selectedIndex;
     private bool _isInitialized;
@@ -239,8 +237,48 @@
     public Task HandleDialogClosed()
     {
         _searchText = string.Empty;
+        _hasSubmittedSearch = false;
         _selectedIndex = 0;
         return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task SubmitSearch(string? searchText)
+    {
+        var normalizedSearch = searchText?.Trim() ?? string.Empty;
+        var shouldOpenSelection = _hasSubmittedSearch
+            && !string.IsNullOrWhiteSpace(normalizedSearch)
+            && string.Equals(_searchText, normalizedSearch, StringComparison.Ordinal);
+
+        _searchText = normalizedSearch;
+        _hasSubmittedSearch = !string.IsNullOrWhiteSpace(normalizedSearch);
+
+        if (shouldOpenSelection)
+        {
+            var entries = KeyboardEntries;
+            if (entries.Count > 0)
+            {
+                await NavigateAsync(entries[Math.Clamp(_selectedIndex, 0, entries.Count - 1)]);
+                return;
+            }
+        }
+
+        _selectedIndex = 0;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task MoveSelection(int delta)
+    {
+        var entries = KeyboardEntries;
+        if (entries.Count == 0)
+        {
+            return;
+        }
+
+        _selectedIndex = (_selectedIndex + delta + entries.Count) % entries.Count;
+        await InvokeAsync(StateHasChanged);
+        await ScrollSelectionIntoViewAsync();
     }
 
     private async Task OpenAsync()
@@ -251,6 +289,7 @@
         }
 
         _searchText = string.Empty;
+        _hasSubmittedSearch = false;
         _selectedIndex = 0;
         StateHasChanged();
         await Js.InvokeVoidAsync("orionCommandCenter.open", _dialog, _searchInput);
@@ -264,41 +303,12 @@
         }
     }
 
-    private void HandleSearchInput(ChangeEventArgs args)
-    {
-        _searchText = args.Value?.ToString() ?? string.Empty;
-        _selectedIndex = 0;
-    }
-
-    private async Task HandleSearchKeyDown(KeyboardEventArgs args)
-    {
-        var entries = KeyboardEntries;
-        if (entries.Count == 0)
-        {
-            return;
-        }
-
-        switch (args.Key)
-        {
-            case "ArrowDown":
-                _selectedIndex = (_selectedIndex + 1) % entries.Count;
-                await ScrollSelectionIntoViewAsync();
-                break;
-            case "ArrowUp":
-                _selectedIndex = (_selectedIndex - 1 + entries.Count) % entries.Count;
-                await ScrollSelectionIntoViewAsync();
-                break;
-            case "Enter":
-                await NavigateAsync(entries[Math.Clamp(_selectedIndex, 0, entries.Count - 1)]);
-                break;
-        }
-    }
-
     private async Task ClearSearchAsync()
     {
         _searchText = string.Empty;
+        _hasSubmittedSearch = false;
         _selectedIndex = 0;
-        await Js.InvokeVoidAsync("orionCommandCenter.focusSearch", _searchInput);
+        await Js.InvokeVoidAsync("orionCommandCenter.focusSearch", _searchInput, true);
     }
 
     private void Select(NavigationDestination destination)

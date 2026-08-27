@@ -233,7 +233,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   private string ResolveLookupRfc() => CurrentRfc;
 
-  protected async Task OnProyectoSearchInputAsync(ChangeEventArgs args)
+  protected Task OnProyectoSearchInputAsync(ChangeEventArgs args)
   {
     ProyectoSearchTerm = args.Value?.ToString() ?? string.Empty;
 
@@ -242,11 +242,12 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       SetProyectoSelection(null);
       ProyectoOptions.Clear();
       ShowProyectoResults = false;
-      return;
+      return Task.CompletedTask;
     }
 
-    await SearchProyectoOptionsAsync();
-    ShowProyectoResults = true;
+    ProyectoOptions.Clear();
+    ShowProyectoResults = false;
+    return Task.CompletedTask;
   }
 
   protected async Task HandleProyectoSearchKeyDownAsync(KeyboardEventArgs args)
@@ -313,6 +314,14 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     if (args.Key == "Enter")
     {
       await SearchReservacionesAsync();
+    }
+  }
+
+  protected async Task HandleApOccurrenceSearchKeyDownAsync(KeyboardEventArgs args)
+  {
+    if (args.Key == "Enter")
+    {
+      await SearchApOccurrencesAsync();
     }
   }
 

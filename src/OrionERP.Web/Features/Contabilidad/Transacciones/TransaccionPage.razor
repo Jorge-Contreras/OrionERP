@@ -820,7 +820,7 @@ else
             <div class="d-flex flex-column flex-lg-row gap-2 align-items-lg-end">
               <div class="flex-grow-1">
                 <label class="form-label">Buscar vencimiento AP abierto</label>
-                <input class="form-control" @bind="ApOccurrenceSearchTerm" @bind:event="oninput" placeholder="Nombre, proveedor o categoría" />
+                <input class="form-control" @bind="ApOccurrenceSearchTerm" @bind:event="oninput" @onkeydown="HandleApOccurrenceSearchKeyDownAsync" placeholder="Nombre, proveedor o categoría" />
               </div>
               <button type="button" class="btn btn-outline-secondary" @onclick="() => SearchApOccurrencesAsync()" disabled="@IsSearchingApOccurrences">
                 @(IsSearchingApOccurrences ? "Buscando..." : "Buscar AP")

@@ -3,6 +3,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.ReportesFinancieros;
 using OrionERP.Application.Features.ReportesFinancieros.Models;
@@ -109,6 +110,7 @@ public partial class SaludEmpresaPage : ComponentBase
   }
 
   protected async Task FilterReconciliationAsync() { ReconciliationPage = 1; await LoadReconciliationAsync(); }
+  protected Task OnReconciliationSearchKeyUpAsync(KeyboardEventArgs args) => args.Key == "Enter" ? FilterReconciliationAsync() : Task.CompletedTask;
   protected async Task ChangeReconciliationPageAsync(int page) { ReconciliationPage = Math.Clamp(page, 1, Math.Max(1, Reconciliation.TotalPages)); await LoadReconciliationAsync(); }
 
   private async Task LoadReconciliationAsync()

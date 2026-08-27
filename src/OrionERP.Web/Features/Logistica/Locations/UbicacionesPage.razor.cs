@@ -185,6 +185,9 @@ public partial class UbicacionesPage : ComponentBase
     }
   }
 
+  protected Task OnStockSearchKeyUpAsync(KeyboardEventArgs args)
+    => args.Key == "Enter" ? BuscarStockAsync() : Task.CompletedTask;
+
   protected async Task BuscarMaterialesParaAgregarAsync()
   {
     if (IsMaterialPickerBusy)

@@ -348,7 +348,7 @@
                             {
                                 <section class="orden-admin-section">
                                     <h3>Transacciones ligadas</h3>
-                                    <div class="orden-transaction-search"><InputText class="form-control" @bind-Value="TransactionSearchText" placeholder="Buscar transacción" /><button class="btn btn-outline-primary" type="button" @onclick="SearchTransactionsAsync">Buscar</button></div>
+                                    <div class="orden-transaction-search"><InputText class="form-control" @bind-Value="TransactionSearchText" @bind-Value:event="oninput" @onkeyup="OnTransactionSearchKeyUpAsync" placeholder="Buscar transacción" /><button class="btn btn-outline-primary" type="button" @onclick="SearchTransactionsAsync">Buscar</button></div>
                                     @if (TransactionMatches.Count > 0)
                                     {
                                         <div class="orden-transaction-results">@foreach (var item in TransactionMatches) { <button type="button" @onclick="() => LinkTransactionAsync(item.Id)"><span>@item.Fecha.ToString("dd MMM") · @item.Concepto</span><strong>@item.Monto.ToString("C2", CurrencyCulture)</strong></button> }</div>

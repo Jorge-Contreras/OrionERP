@@ -129,6 +129,9 @@ public partial class CatalogosPage : ComponentBase
     }
   }
 
+  private Task OnCatalogSearchKeyUpAsync(KeyboardEventArgs args)
+    => args.Key == "Enter" ? LoadItemsAsync() : Task.CompletedTask;
+
   private async Task LoadCuentasAsync()
   {
     isLoading = true;
@@ -153,6 +156,9 @@ public partial class CatalogosPage : ComponentBase
       StateHasChanged();
     }
   }
+
+  private Task OnCuentaSearchKeyUpAsync(KeyboardEventArgs args)
+    => args.Key == "Enter" ? LoadCuentasAsync() : Task.CompletedTask;
 
   private void NewItem()
   {

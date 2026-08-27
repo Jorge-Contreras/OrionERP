@@ -138,8 +138,9 @@
                                        class="form-control"
                                        type="search"
                                        placeholder="Código, cuenta o descripción"
-                                       @bind-value="SearchText"
-                                       @bind-value:event="oninput" />
+                                       @bind-value="SearchDraft"
+                                       @bind-value:event="oninput"
+                                       @onkeyup="SubmitSearchOnEnter" />
                                 <button class="btn btn-outline-secondary"
                                         type="button"
                                         title="Limpiar búsqueda"

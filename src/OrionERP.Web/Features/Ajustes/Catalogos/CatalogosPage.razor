@@ -63,7 +63,7 @@
                      placeholder="Clave o descripción"
                      @bind="cuentaSearchText"
                      @bind:event="oninput"
-                     @bind:after="LoadCuentasAsync" />
+                     @onkeyup="OnCuentaSearchKeyUpAsync" />
 
               <div class="table-responsive catalogos-list">
                 <table class="table table-sm table-hover align-middle mb-0 compact-table">
@@ -184,7 +184,7 @@
                      placeholder="@(descriptor.TieneCodigo ? $"{descriptor.CodigoEtiqueta} o {descriptor.NombreEtiqueta.ToLowerInvariant()}" : descriptor.NombreEtiqueta)"
                      @bind="searchText"
                      @bind:event="oninput"
-                     @bind:after="LoadItemsAsync" />
+                     @onkeyup="OnCatalogSearchKeyUpAsync" />
 
               @if (descriptor.TieneActivo)
               {

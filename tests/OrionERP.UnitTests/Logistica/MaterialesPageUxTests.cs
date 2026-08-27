@@ -7,7 +7,7 @@ public class MaterialesPageUxTests
   {
     var page = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor");
 
-    Assert.Contains("OnSearchInputAsync", page, StringComparison.Ordinal);
+    Assert.Contains("OnSearchKeyUpAsync", page, StringComparison.Ordinal);
     Assert.Contains("VendorCombobox", page, StringComparison.Ordinal);
     Assert.Contains("Nueva categoría", page, StringComparison.Ordinal);
     Assert.Contains("Nueva UoM", page, StringComparison.Ordinal);

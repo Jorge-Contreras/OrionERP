@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.JSInterop;
 using OrionERP.Application.Common;
@@ -10,7 +11,7 @@ using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.OrdenesTrabajo;
 
-public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
+public partial class OrdenesTrabajoPage : ComponentBase
 {
   protected const string WorkView = "trabajo";
   protected const string ManagementView = "gestion";
@@ -80,8 +81,6 @@ public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
     : "Cuando te asignen una orden aparecerá aquí.";
 
   private string CurrentRfc => RfcState.RequireRfc();
-  private CancellationTokenSource? SearchDebounce { get; set; }
-
   protected override async Task OnInitializedAsync()
   {
     await ResolveCurrentUserAsync();
@@ -173,25 +172,17 @@ public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
     await PersistQueryStateAsync();
   }
 
-  protected async Task OnSearchInput(ChangeEventArgs args)
+  protected void OnSearchInput(ChangeEventArgs args)
   {
     Filter.SearchText = args.Value?.ToString();
-    SearchDebounce?.Cancel();
-    SearchDebounce?.Dispose();
-    SearchDebounce = new CancellationTokenSource();
-    var token = SearchDebounce.Token;
+  }
 
-    try
+  protected async Task OnSearchKeyUpAsync(KeyboardEventArgs args)
+  {
+    if (args.Key == "Enter")
     {
-      await Task.Delay(350, token);
-      await InvokeAsync(async () =>
-      {
-        await ReloadOrdersAsync();
-        await PersistQueryStateAsync();
-      });
-    }
-    catch (OperationCanceledException)
-    {
+      await ReloadOrdersAsync();
+      await PersistQueryStateAsync();
     }
   }
 
@@ -364,12 +355,6 @@ public partial class OrdenesTrabajoPage : ComponentBase, IDisposable
     => !string.IsNullOrWhiteSpace(item.RoomName)
       ? item.RoomName
       : string.IsNullOrWhiteSpace(item.Ubicacion) ? "Sin ubicación" : item.Ubicacion;
-
-  public void Dispose()
-  {
-    SearchDebounce?.Cancel();
-    SearchDebounce?.Dispose();
-  }
 
   private async Task ReloadOrdersAsync()
   {

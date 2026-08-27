@@ -39,7 +39,7 @@
         <section class="cap-card" aria-labelledby="cap-participants-title">
           <div class="cap-card__header"><div><h2 id="cap-participants-title">Participantes</h2><p>Selecciona a quienes recibirán esta capacitación.</p></div><span class="cap-badge @(selectedEmployeeIds.Count > 0 ? "cap-badge--success" : "cap-badge--warn")">@selectedEmployeeIds.Count seleccionados</span></div>
           <div class="cap-card__body">
-            <div class="cap-participant-tools"><label><span class="oi oi-magnifying-glass" aria-hidden="true"></span><span class="visually-hidden">Buscar colaboradores</span><input class="cap-input" type="search" placeholder="Nombre, puesto o correo" @bind="employeeSearch" @bind:event="oninput" /></label><button class="cap-btn cap-btn--light" type="button" @onclick="SelectVisible">Seleccionar visibles</button><button class="cap-btn cap-btn--light" type="button" disabled="@(selectedEmployeeIds.Count == 0)" @onclick="ClearSelection">Limpiar</button></div>
+            <div class="cap-participant-tools"><label><span class="oi oi-magnifying-glass" aria-hidden="true"></span><span class="visually-hidden">Buscar colaboradores</span><input class="cap-input" type="search" placeholder="Nombre, puesto o correo · Enter" @bind="employeeSearchDraft" @bind:event="oninput" @onkeyup="ApplyEmployeeSearchOnEnter" /></label><button class="cap-btn cap-btn--light" type="button" @onclick="SelectVisible">Seleccionar visibles</button><button class="cap-btn cap-btn--light" type="button" disabled="@(selectedEmployeeIds.Count == 0)" @onclick="ClearSelection">Limpiar</button></div>
             <div class="cap-employee-list" role="group" aria-label="Colaboradores disponibles">
               @if (VisibleEmployees.Count == 0)
               {
@@ -91,12 +91,14 @@
   private int selectedCourseVersionId;
   private string sessionName = string.Empty;
   private string employeeSearch = string.Empty;
+  private string employeeSearchDraft = string.Empty;
   private DateTime scheduledAt = DateTime.Now.AddHours(1);
   private bool loading = true;
   private bool saving;
   private CapacitacionCursoResumenDto? SelectedCourse => courses.FirstOrDefault(x => x.CursoVersionId == selectedCourseVersionId);
   private List<CapacitacionEmpleadoDto> VisibleEmployees => employees.Where(x => x.EmployeeId != Actor?.EmployeeId && (string.IsNullOrWhiteSpace(employeeSearch) || x.Nombre.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) || (x.Puesto?.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) ?? false) || (x.Email?.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) ?? false))).OrderBy(x => x.Nombre).ToList();
   private bool CanCreate => selectedCourseVersionId > 0 && !string.IsNullOrWhiteSpace(sessionName) && selectedEmployeeIds.Count > 0 && scheduledAt > DateTime.Now.AddMinutes(-1);
+  private void ApplyEmployeeSearchOnEnter(KeyboardEventArgs args) { if(args.Key == "Enter") employeeSearch = employeeSearchDraft.Trim(); }
 
   protected override async Task LoadPageDataAsync()
   {

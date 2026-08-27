@@ -1,5 +1,6 @@
 using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.ReportesFinancieros;
 using OrionERP.Application.Features.ReportesFinancieros.Models;
@@ -35,6 +36,7 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
         public List<BalanzaComprobacionRow> Resultados { get; private set; } = new();
         private string? SelectedRowId { get; set; }
         private string SearchText { get; set; } = string.Empty;
+        private string SearchDraft { get; set; } = string.Empty;
         private readonly HashSet<string> ExpandedAccountKeys = new(StringComparer.OrdinalIgnoreCase);
         private HashSet<string> ParentAccountKeys { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -369,6 +371,15 @@ namespace OrionERP.Web.Features.ReportesFinancieros.BalanzaComprobacion
         private void ClearSearch()
         {
             SearchText = string.Empty;
+            SearchDraft = string.Empty;
+        }
+
+        private void SubmitSearchOnEnter(KeyboardEventArgs args)
+        {
+            if (args.Key == "Enter")
+            {
+                SearchText = SearchDraft.Trim();
+            }
         }
 
         private HashSet<string> GetSearchVisibleRowIds()

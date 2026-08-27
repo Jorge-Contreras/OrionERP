@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Reservaciones.CalendarSync;
 using OrionERP.Application.Features.Reservaciones.Cfdi;
@@ -15,11 +16,10 @@ using OrionERP.Web.Services;
 namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 
 [Authorize(Roles = "Administrador,SatOperator")]
-public partial class ListaReservacionesPage : ComponentBase, IDisposable
+public partial class ListaReservacionesPage : ComponentBase
 {
   private const int PageSize = 100;
   private const int QueryTake = PageSize + 1;
-  private const int FilterInputDebounceMs = 300;
 
   [Inject] public IListaReservacionesService ReservacionesService { get; set; } = default!;
   [Inject] public IBonhomiaRoomCalendarSyncService BonhomiaRoomCalendarSyncService { get; set; } = default!;
@@ -38,7 +38,6 @@ public partial class ListaReservacionesPage : ComponentBase, IDisposable
 
   private DateTime? _checkInFrom;
   private DateTime? _checkInTo;
-  private CancellationTokenSource? _filterSearchDebounceCts;
   private int _searchVersion;
   protected bool IsBusy => IsLoading || IsLoadingMore || IsSyncingAirbnb;
   protected bool IsBusyDanger => IsBusy;
@@ -62,8 +61,6 @@ public partial class ListaReservacionesPage : ComponentBase, IDisposable
 
   protected async Task BuscarAsync()
   {
-    CancelPendingFilterSearch();
-
     var searchVersion = Interlocked.Increment(ref _searchVersion);
     IsLoading = true;
     ErrorMessage = null;
@@ -110,7 +107,6 @@ public partial class ListaReservacionesPage : ComponentBase, IDisposable
 
   protected async Task LimpiarAsync()
   {
-    CancelPendingFilterSearch();
     Filter = new ListaReservacionFilter();
     _checkInFrom = null;
     _checkInTo = null;
@@ -315,33 +311,12 @@ public partial class ListaReservacionesPage : ComponentBase, IDisposable
   protected Task OnFilterChangedAsync()
     => BuscarAsync();
 
-  protected async Task OnFilterInputChangedAsync()
+  protected async Task OnFilterSearchKeyUpAsync(KeyboardEventArgs args)
   {
-    CancelPendingFilterSearch();
-    _filterSearchDebounceCts = new CancellationTokenSource();
-    var localCts = _filterSearchDebounceCts;
-
-    try
+    if (args.Key == "Enter")
     {
-      await Task.Delay(TimeSpan.FromMilliseconds(FilterInputDebounceMs), localCts.Token);
-      if (!ReferenceEquals(_filterSearchDebounceCts, localCts) || localCts.IsCancellationRequested)
-      {
-        return;
-      }
+      await BuscarAsync();
     }
-    catch (TaskCanceledException)
-    {
-      return;
-    }
-    finally
-    {
-      if (ReferenceEquals(_filterSearchDebounceCts, localCts))
-      {
-        _filterSearchDebounceCts = null;
-      }
-    }
-
-    await BuscarAsync();
   }
 
   protected async Task OnCheckInFromChangedAsync(ChangeEventArgs args)
@@ -354,11 +329,6 @@ public partial class ListaReservacionesPage : ComponentBase, IDisposable
   {
     _checkInTo = ParseDate(args.Value?.ToString());
     await OnFilterChangedAsync();
-  }
-
-  public void Dispose()
-  {
-    CancelPendingFilterSearch();
   }
 
   private async Task<(List<ListaReservacionItemDto> Items, bool HasMore)> GetReservacionesPageAsync(int skip)
@@ -392,13 +362,6 @@ public partial class ListaReservacionesPage : ComponentBase, IDisposable
       return null;
 
     return DateTime.TryParse(value, out var parsed) ? parsed.Date : null;
-  }
-
-  private void CancelPendingFilterSearch()
-  {
-    _filterSearchDebounceCts?.Cancel();
-    _filterSearchDebounceCts?.Dispose();
-    _filterSearchDebounceCts = null;
   }
 
   private static string BuildSyncSummary(BonhomiaRoomCalendarSyncResult result)

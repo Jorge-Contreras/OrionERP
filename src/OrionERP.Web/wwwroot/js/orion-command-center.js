@@ -39,7 +39,30 @@
             };
 
             const onDialogClose = () => {
+                if (searchInput) {
+                    searchInput.value = "";
+                }
                 void dotNetReference.invokeMethodAsync("HandleDialogClosed");
+            };
+
+            const onSearchKeyDown = (event) => {
+                if (event.isComposing) {
+                    return;
+                }
+
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void dotNetReference.invokeMethodAsync("SubmitSearch", searchInput.value);
+                    return;
+                }
+
+                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const delta = event.key === "ArrowDown" ? 1 : -1;
+                    void dotNetReference.invokeMethodAsync("MoveSelection", delta);
+                }
             };
 
             const onDialogClick = (event) => {
@@ -61,11 +84,14 @@
             document.addEventListener("keydown", onDocumentKeyDown);
             dialog.addEventListener("close", onDialogClose);
             dialog.addEventListener("click", onDialogClick);
+            searchInput?.addEventListener("keydown", onSearchKeyDown);
 
             registrations.set(dialog, {
                 onDocumentKeyDown,
                 onDialogClose,
-                onDialogClick
+                onDialogClick,
+                onSearchKeyDown,
+                searchInput
             });
         },
 
@@ -76,6 +102,10 @@
 
             if (!dialog.open) {
                 dialog.showModal();
+            }
+
+            if (searchInput) {
+                searchInput.value = "";
             }
 
             window.requestAnimationFrame(() => {
@@ -90,8 +120,11 @@
             }
         },
 
-        focusSearch(searchInput) {
+        focusSearch(searchInput, clearValue) {
             window.requestAnimationFrame(() => {
+                if (clearValue && searchInput) {
+                    searchInput.value = "";
+                }
                 searchInput?.focus({ preventScroll: true });
             });
         },
@@ -137,6 +170,7 @@
             document.removeEventListener("keydown", registration.onDocumentKeyDown);
             dialog.removeEventListener("close", registration.onDialogClose);
             dialog.removeEventListener("click", registration.onDialogClick);
+            registration.searchInput?.removeEventListener("keydown", registration.onSearchKeyDown);
             registrations.delete(dialog);
         }
     };

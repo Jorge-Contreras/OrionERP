@@ -48,7 +48,7 @@
                     <div class="row g-3">
                         <div class="col-12">
                             <label class="form-label">Buscar</label>
-                            <input class="form-control" type="search" placeholder="PO, proveedor o nota" @bind="Filter.SearchText" @bind:event="oninput" />
+                            <input class="form-control" type="search" placeholder="PO, proveedor o nota" @bind="Filter.SearchText" @bind:event="oninput" @onkeyup="OnOrderSearchKeyUpAsync" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Proveedor</label>
@@ -228,7 +228,7 @@
                             <div class="row g-3 align-items-end">
                                 <div class="col-md-8">
                                     <label class="form-label">Buscar material</label>
-                                    <InputText class="form-control" @bind-Value="MaterialSearchText" placeholder="Código, descripción o barras" />
+                                    <InputText class="form-control" @bind-Value="MaterialSearchText" @bind-Value:event="oninput" @onkeyup="OnMaterialSearchKeyUpAsync" placeholder="Código, descripción o barras" />
                                 </div>
                                 <div class="col-md-4">
                                     <button type="button" class="btn btn-outline-primary w-100" @onclick="BuscarMaterialesAsync" disabled="@IsSearchingMaterials">

@@ -58,7 +58,7 @@
     else
     {
       <div class="cap-catalog-toolbar">
-        <label class="cap-catalog-search"><span class="oi oi-magnifying-glass" aria-hidden="true"></span><span class="visually-hidden">Buscar cursos</span><input type="search" class="cap-input" placeholder="Buscar por curso, clave o tema" @bind="search" @bind:event="oninput" /></label>
+        <label class="cap-catalog-search"><span class="oi oi-magnifying-glass" aria-hidden="true"></span><span class="visually-hidden">Buscar cursos</span><input type="search" class="cap-input" placeholder="Buscar por curso, clave o tema · Enter" @bind="searchDraft" @bind:event="oninput" @onkeyup="ApplySearchOnEnter" /></label>
         <label><span class="cap-label">Módulo</span><select class="cap-select" @bind="category"><option value="">Todos los módulos</option>@foreach(var item in Categories){<option value="@item">@item</option>}</select></label>
         <div class="cap-catalog-count"><strong>@VisibleCourses.Count</strong><span>@(VisibleCourses.Count == 1 ? "curso disponible" : "cursos disponibles")</span></div>
       </div>
@@ -90,6 +90,7 @@
   private bool loading = true;
   private bool detailsLoading;
   private string search = string.Empty;
+  private string searchDraft = string.Empty;
   private string category = string.Empty;
   private List<string> Categories => courses.Select(x => x.Categoria).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
   private List<CapacitacionCursoResumenDto> VisibleCourses => courses.Where(x => (string.IsNullOrWhiteSpace(category) || x.Categoria.Equals(category, StringComparison.OrdinalIgnoreCase)) && (string.IsNullOrWhiteSpace(search) || x.Nombre.Contains(search, StringComparison.OrdinalIgnoreCase) || x.Clave.Contains(search, StringComparison.OrdinalIgnoreCase) || x.Descripcion.Contains(search, StringComparison.OrdinalIgnoreCase))).OrderBy(x => x.Categoria).ThenBy(x => x.Nombre).ToList();
@@ -111,7 +112,8 @@
   }
 
   private void CloseDetails() => selectedCourse = null;
-  private void ClearFilters() { search = string.Empty; category = string.Empty; }
+  private void ApplySearchOnEnter(KeyboardEventArgs args) { if(args.Key == "Enter") search = searchDraft.Trim(); }
+  private void ClearFilters() { search = string.Empty; searchDraft = string.Empty; category = string.Empty; }
   private static IEnumerable<string> Lines(string value) => value.Split(['\r','\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
   private static string CoverClass(string category) => ((StringComparer.OrdinalIgnoreCase.GetHashCode(category) & int.MaxValue) % 4) switch { 1 => "teal", 2 => "gold", 3 => "violet", _ => "blue" };
   private static string BlockTypeLabel(string type) => type switch { CapacitacionCodes.BloqueTeoria => "Teoría", CapacitacionCodes.BloqueObjetivos => "Objetivos", CapacitacionCodes.BloqueImagen => "Visual", CapacitacionCodes.BloquePasos => "Pasos", CapacitacionCodes.BloqueDemostracion => "Demo", CapacitacionCodes.BloquePractica => "Práctica", CapacitacionCodes.BloqueEvaluacion => "Evaluación", CapacitacionCodes.BloqueResumen => "Resumen", CapacitacionCodes.BloqueAlerta => "Alerta", _ => type };

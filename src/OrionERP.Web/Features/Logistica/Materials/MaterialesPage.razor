@@ -56,7 +56,7 @@
                     <div>
                         <span class="materiales-step">1 · Encuentra</span>
                         <h2>Catálogo</h2>
-                        <p>Los resultados se actualizan mientras escribes.</p>
+                        <p>Escribe tu búsqueda y presiona Enter.</p>
                     </div>
                     <button type="button"
                             class="materiales-icon-button"
@@ -75,7 +75,8 @@
                            placeholder="Nombre, código, barras o código de proveedor"
                            value="@Filter.SearchText"
                            aria-label="Buscar materiales"
-                           @oninput="OnSearchInputAsync" />
+                           @oninput="OnSearchInput"
+                           @onkeyup="OnSearchKeyUpAsync" />
                     @if (!string.IsNullOrWhiteSpace(Filter.SearchText))
                     {
                         <button type="button" title="Limpiar búsqueda" aria-label="Limpiar búsqueda" @onclick="ClearSearchAsync">
@@ -1023,10 +1024,16 @@
                                                type="search"
                                                placeholder="Notas, usuario, referencia o ubicación"
                                                @bind="MovementSearchText"
-                                               @bind:after="ApplyMovementFiltersAsync" />
+                                               @bind:event="oninput"
+                                               @onkeyup="OnMovementSearchKeyUpAsync" />
                                     </div>
                                 </div>
                                 <div class="col-12 d-flex justify-content-end">
+                                    <button type="button"
+                                            class="btn btn-sm btn-primary me-2"
+                                            @onclick="ApplyMovementFiltersAsync">
+                                        Buscar
+                                    </button>
                                     <button type="button"
                                             class="btn btn-sm btn-outline-secondary"
                                             @onclick="ResetMovementFiltersAsync"

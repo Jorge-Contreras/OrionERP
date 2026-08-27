@@ -1,6 +1,7 @@
 using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using System.Globalization;
 using OrionERP.Application.Features.Logistica.Materials;
@@ -123,6 +124,9 @@ public partial class ComprasPage : ComponentBase
   {
     await LoadOrdersAsync();
   }
+
+  protected Task OnOrderSearchKeyUpAsync(KeyboardEventArgs args)
+    => args.Key == "Enter" ? BuscarOrdenesAsync() : Task.CompletedTask;
 
   protected void NuevaOrden()
   {
@@ -274,6 +278,9 @@ public partial class ComprasPage : ComponentBase
       IsSearchingMaterials = false;
     }
   }
+
+  protected Task OnMaterialSearchKeyUpAsync(KeyboardEventArgs args)
+    => args.Key == "Enter" ? BuscarMaterialesAsync() : Task.CompletedTask;
 
   protected async Task AgregarMaterialAsync(MaterialListItemDto item)
   {

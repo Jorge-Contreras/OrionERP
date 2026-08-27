@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Application.Features.Contabilidad.ContabilidadRegistros;
@@ -42,7 +43,6 @@ public partial class BancosPage : ComponentBase, IDisposable
 
   private CancellationTokenSource? _movementsCts;
   private CancellationTokenSource? _pendingTransactionsCts;
-  private CancellationTokenSource? _textFilterDebounceCts;
 
   private string CurrentRfc => RfcState.RequireRfc();
   private readonly Dictionary<int, IReadOnlyList<TransaccionMovimientoDto>> _accountingDetailsByPolicy = new();
@@ -217,8 +217,6 @@ public partial class BancosPage : ComponentBase, IDisposable
     _movementsCts?.Dispose();
     _pendingTransactionsCts?.Cancel();
     _pendingTransactionsCts?.Dispose();
-    _textFilterDebounceCts?.Cancel();
-    _textFilterDebounceCts?.Dispose();
   }
 
   protected string FormatCurrency(decimal value)
@@ -964,28 +962,14 @@ public partial class BancosPage : ComponentBase, IDisposable
   protected void OnTextFilterChanged(ChangeEventArgs args)
   {
     TextFilter = args.Value?.ToString();
+  }
 
-    _textFilterDebounceCts?.Cancel();
-    _textFilterDebounceCts?.Dispose();
-    _textFilterDebounceCts = new CancellationTokenSource();
-
-    var localCts = _textFilterDebounceCts;
-
-    _ = Task.Run(async () =>
+  protected async Task OnTextFilterKeyUpAsync(KeyboardEventArgs args)
+  {
+    if (args.Key == "Enter")
     {
-      try
-      {
-        await Task.Delay(TimeSpan.FromMilliseconds(300), localCts.Token);
-        if (!localCts.IsCancellationRequested)
-        {
-          await InvokeAsync(() => LoadMovementsAsync());
-        }
-      }
-      catch (TaskCanceledException)
-      {
-        // Ignore
-      }
-    });
+      await LoadMovementsAsync();
+    }
   }
 
   protected async Task OpenBankFilePickerAsync()

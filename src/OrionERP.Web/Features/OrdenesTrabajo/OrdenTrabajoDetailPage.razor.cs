@@ -754,6 +754,9 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
     TransactionMatches = (await OrdenTrabajoService.SearchTransactionsAsync(Order.Id, TransactionSearchText)).ToList();
   }
 
+  protected Task OnTransactionSearchKeyUpAsync(KeyboardEventArgs args)
+    => args.Key == "Enter" ? SearchTransactionsAsync() : Task.CompletedTask;
+
   protected async Task LinkTransactionAsync(int transactionId)
   {
     if (Order is null)

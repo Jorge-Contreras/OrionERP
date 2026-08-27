@@ -1,5 +1,6 @@
 using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using OrionERP.Application.Features.Logistica.BusinessPartners;
 using OrionERP.Web.Services;
 using OrionERP.Application.Features.Logistica.Shared;
@@ -48,6 +49,9 @@ public partial class ProveedoresLogisticaPage : ComponentBase
       StateHasChanged();
     }
   }
+
+  protected Task OnSearchKeyUpAsync(KeyboardEventArgs args)
+    => args.Key == "Enter" ? BuscarAsync() : Task.CompletedTask;
 
   protected void NuevoRegistro()
   {

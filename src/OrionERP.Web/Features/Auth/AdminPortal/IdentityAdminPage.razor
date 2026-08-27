@@ -114,7 +114,7 @@
                         <div class="browser-pane__toolbar">
                             <label class="browser-pane__search">
                                 <span class="visually-hidden">Buscar usuarios</span>
-                                <input class="form-control" type="search" placeholder="Buscar por usuario, correo o rol" @bind="UserSearch" @bind:event="oninput" />
+                                <input class="form-control" type="search" placeholder="Buscar por usuario, correo o rol · Enter" @bind="UserSearchDraft" @bind:event="oninput" @onkeyup="ApplyUserSearchOnEnter" />
                             </label>
                             <button type="button" class="btn btn-primary" @onclick="CreateNewUser">Nuevo usuario</button>
                         </div>
@@ -166,7 +166,7 @@
                         <div class="browser-pane__toolbar">
                             <label class="browser-pane__search">
                                 <span class="visually-hidden">Buscar roles</span>
-                                <input class="form-control" type="search" placeholder="Buscar roles" @bind="RoleSearch" @bind:event="oninput" />
+                                <input class="form-control" type="search" placeholder="Buscar roles · Enter" @bind="RoleSearchDraft" @bind:event="oninput" @onkeyup="ApplyRoleSearchOnEnter" />
                             </label>
                             <button type="button" class="btn btn-primary" @onclick="CreateNewRole">Nuevo rol</button>
                         </div>
@@ -633,7 +633,7 @@
                                     <div class="role-members__toolbar">
                                         <label class="browser-pane__search">
                                             <span class="visually-hidden">Buscar usuarios para el rol</span>
-                                            <input class="form-control" type="search" placeholder="Buscar usuarios para este rol" @bind="RoleMemberSearch" @bind:event="oninput" />
+                                            <input class="form-control" type="search" placeholder="Buscar usuarios para este rol · Enter" @bind="RoleMemberSearchDraft" @bind:event="oninput" @onkeyup="ApplyRoleMemberSearchOnEnter" />
                                         </label>
                                     </div>
 

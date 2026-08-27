@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Arrendadores;
@@ -96,6 +97,9 @@ public partial class ArrendadoresPage : ComponentBase
       IsLoadingArrendadores = false;
     }
   }
+
+  protected Task OnSearchKeyUpAsync(KeyboardEventArgs args)
+    => args.Key == "Enter" ? BuscarArrendadoresAsync() : Task.CompletedTask;
 
   protected async Task SeleccionarArrendadorAsync(int ownerId)
   {

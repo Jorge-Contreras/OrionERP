@@ -257,7 +257,7 @@
     else
     {
       <div class="cap-course-toolbar">
-        <label><span class="oi oi-magnifying-glass" aria-hidden="true"></span><span class="visually-hidden">Buscar cursos</span><input type="search" class="cap-input" placeholder="Buscar por nombre, clave o categoría" @bind="search" @bind:event="oninput" /></label>
+        <label><span class="oi oi-magnifying-glass" aria-hidden="true"></span><span class="visually-hidden">Buscar cursos</span><input type="search" class="cap-input" placeholder="Buscar por nombre, clave o categoría · Enter" @bind="searchDraft" @bind:event="oninput" @onkeyup="ApplySearchOnEnter" /></label>
         <div class="cap-course-counters"><span><strong>@courses.Count(item => item.Activo)</strong> disponibles</span><span><strong>@courses.Count(item => item.EsBorrador)</strong> borradores</span></div>
         <button type="button" class="cap-btn cap-btn--primary" @onclick="StartNewCourse"><span class="oi oi-plus" aria-hidden="true"></span>Nuevo curso</button>
       </div>
@@ -347,6 +347,7 @@
   private CapacitacionCursoAdministrableDto? selectedCourse;
   private CapacitacionGuardarCursoRequest? editor;
   private string search = string.Empty;
+  private string searchDraft = string.Empty;
   private bool loading = true;
   private bool saving;
   private bool confirmDeactivate;
@@ -357,6 +358,8 @@
       || course.Clave.Contains(search, StringComparison.OrdinalIgnoreCase)
       || course.Categoria.Contains(search, StringComparison.OrdinalIgnoreCase))
     .ToList();
+
+  private void ApplySearchOnEnter(KeyboardEventArgs args) { if(args.Key == "Enter") search = searchDraft.Trim(); }
 
   private bool CanPublishEditor => editor is not null
     && editor.Lecciones.Count > 0

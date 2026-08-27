@@ -53,7 +53,7 @@
             <div class="row g-3">
               <div class="col-12">
                 <label class="form-label">Buscar</label>
-                <input class="form-control" type="search" @bind="Filter.SearchText" @bind:event="oninput" placeholder="Nombre, proveedor, categoría o nota" />
+                <input class="form-control" type="search" @bind="Filter.SearchText" @bind:event="oninput" @onkeyup="OnWorkspaceSearchKeyUpAsync" placeholder="Nombre, proveedor, categoría o nota" />
               </div>
               <div class="col-6">
                 <label class="form-label">Desde</label>
@@ -447,7 +447,7 @@
 
                   <h3 class="h6">Ligar póliza</h3>
                   <div class="input-group mb-2">
-                    <input class="form-control" @bind="TransactionSearchText" @bind:event="oninput" placeholder="ID, concepto, referencia o memo" />
+                    <input class="form-control" @bind="TransactionSearchText" @bind:event="oninput" @onkeyup="OnTransactionSearchKeyUpAsync" placeholder="ID, concepto, referencia o memo" />
                     <button type="button" class="btn btn-outline-secondary" @onclick="SearchTransactionsAsync">Buscar</button>
                   </div>
                   <div class="table-responsive recurrent-ap-candidates">

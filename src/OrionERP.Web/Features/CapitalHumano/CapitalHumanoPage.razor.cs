@@ -2,6 +2,7 @@ using OrionERP.Application.Common;
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.CapitalHumano;
 using OrionERP.Web.Services;
@@ -139,6 +140,9 @@ public partial class CapitalHumanoPage : ComponentBase
       StateHasChanged();
     }
   }
+
+  protected Task OnSearchKeyUpAsync(KeyboardEventArgs args)
+    => args.Key == "Enter" ? BuscarAsync() : Task.CompletedTask;
 
   protected async Task CargarMasAsync()
   {

@@ -41,8 +41,11 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
         private string? SelectedUserId { get; set; }
         private string? SelectedRoleId { get; set; }
         private string UserSearch { get; set; } = string.Empty;
+        private string UserSearchDraft { get; set; } = string.Empty;
         private string RoleSearch { get; set; } = string.Empty;
+        private string RoleSearchDraft { get; set; } = string.Empty;
         private string RoleMemberSearch { get; set; } = string.Empty;
+        private string RoleMemberSearchDraft { get; set; } = string.Empty;
         private string CurrentUserId { get; set; } = string.Empty;
         private bool IsRefreshing { get; set; }
         private bool IsSavingUser { get; set; }
@@ -100,6 +103,21 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
             .Where(user => RoleForm.AssignedUserIds.Contains(user.Id))
             .OrderBy(user => user.UserName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(user => user.Email ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+
+        private void ApplyUserSearchOnEnter(KeyboardEventArgs args)
+        {
+            if (args.Key == "Enter") UserSearch = UserSearchDraft.Trim();
+        }
+
+        private void ApplyRoleSearchOnEnter(KeyboardEventArgs args)
+        {
+            if (args.Key == "Enter") RoleSearch = RoleSearchDraft.Trim();
+        }
+
+        private void ApplyRoleMemberSearchOnEnter(KeyboardEventArgs args)
+        {
+            if (args.Key == "Enter") RoleMemberSearch = RoleMemberSearchDraft.Trim();
+        }
 
         protected override async Task OnInitializedAsync()
         {
@@ -160,6 +178,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
             ActiveTab = IdentityAdminTab.Roles;
             SelectedRoleId = null;
             RoleMemberSearch = string.Empty;
+            RoleMemberSearchDraft = string.Empty;
             RoleForm = CreateEmptyRoleModel();
         }
 

@@ -3,6 +3,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Components.Web;
 using OrionERP.Application.Features.Logistica.BusinessPartners;
 using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Shared;
@@ -18,7 +19,6 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   private const int QueryTake = PageSize + 1;
   private const int MovementPageSize = 25;
   private const int MovementQueryTake = MovementPageSize + 1;
-  private const int SearchDebounceMilliseconds = 320;
   private const long MaxImageBytes = 8 * 1024 * 1024;
 
   [Inject] private IMaterialService MaterialService { get; set; } = default!;
@@ -72,7 +72,6 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   protected bool DeletionConfirmationMatches
     => string.Equals(DeletionConfirmationText, "Delete", StringComparison.Ordinal);
 
-  private CancellationTokenSource? _searchDebounceCts;
   private CancellationTokenSource? _listRequestCts;
   private CancellationTokenSource? _lifecycleAssessmentCts;
   private CancellationTokenSource? _inventoryRequestCts;
@@ -224,22 +223,16 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     }
   }
 
-  protected async Task OnSearchInputAsync(ChangeEventArgs args)
+  protected void OnSearchInput(ChangeEventArgs args)
   {
     Filter.SearchText = args.Value?.ToString();
-    _searchDebounceCts?.Cancel();
-    _searchDebounceCts?.Dispose();
-    _searchDebounceCts = new CancellationTokenSource();
-    var token = _searchDebounceCts.Token;
+  }
 
-    try
+  protected async Task OnSearchKeyUpAsync(KeyboardEventArgs args)
+  {
+    if (args.Key == "Enter")
     {
-      await Task.Delay(SearchDebounceMilliseconds, token);
       await BuscarAsync();
-    }
-    catch (OperationCanceledException) when (token.IsCancellationRequested)
-    {
-      // The user is still typing.
     }
   }
 
@@ -299,7 +292,6 @@ public partial class MaterialesPage : ComponentBase, IDisposable
 
   protected async Task ResetFiltersAsync()
   {
-    _searchDebounceCts?.Cancel();
     Filter = new MaterialFilter();
     await BuscarAsync();
   }
@@ -1121,6 +1113,9 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   protected Task ApplyMovementFiltersAsync()
     => LoadMovementsAsync(reset: true);
 
+  protected Task OnMovementSearchKeyUpAsync(KeyboardEventArgs args)
+    => args.Key == "Enter" ? ApplyMovementFiltersAsync() : Task.CompletedTask;
+
   protected async Task ResetMovementFiltersAsync()
   {
     ResetMovementFilters();
@@ -1688,8 +1683,6 @@ public partial class MaterialesPage : ComponentBase, IDisposable
 
   public void Dispose()
   {
-    _searchDebounceCts?.Cancel();
-    _searchDebounceCts?.Dispose();
     _listRequestCts?.Cancel();
     _listRequestCts?.Dispose();
     _lifecycleAssessmentCts?.Cancel();

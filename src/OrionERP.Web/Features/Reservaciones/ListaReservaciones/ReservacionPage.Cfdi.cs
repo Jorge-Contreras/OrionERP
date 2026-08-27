@@ -207,7 +207,7 @@ public partial class ReservacionPage
     return Task.CompletedTask;
   }
 
-  internal async Task OnCfdiCustomerInputChangedAsync(ChangeEventArgs args)
+  internal Task OnCfdiCustomerInputChangedAsync(ChangeEventArgs args)
   {
     CfdiCustomerSearchText = args.Value?.ToString() ?? string.Empty;
     CfdiReceiver.BusinessPartnerId = null;
@@ -216,10 +216,12 @@ public partial class ReservacionPage
     {
       ShowCfdiCustomerResults = false;
       CfdiCustomerSuggestions.Clear();
-      return;
+      return Task.CompletedTask;
     }
 
-    await SearchCfdiCustomersAsync(allowEmptySearch: false);
+    ShowCfdiCustomerResults = false;
+    CfdiCustomerSuggestions.Clear();
+    return Task.CompletedTask;
   }
 
   internal async Task OnCfdiCustomerInputKeyDownAsync(KeyboardEventArgs args)

@@ -28,7 +28,6 @@ namespace OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 public partial class ReservacionPage : ComponentBase, IDisposable
 {
   private const int ClienteSuggestionLimit = 5;
-  private const int ClienteSearchDebounceMs = 300;
 
   private sealed record ReservationFormState(
     int? ClienteId,
@@ -44,7 +43,6 @@ public partial class ReservacionPage : ComponentBase, IDisposable
 
   [Parameter] public int ReservationId { get; set; }
 
-  private CancellationTokenSource? _clienteSearchDebounceCts;
   private int _clienteSearchVersion;
 
   [Inject] public IListaReservacionesService ReservacionesService { get; set; } = default!;
@@ -609,7 +607,8 @@ public partial class ReservacionPage : ComponentBase, IDisposable
       SelectedClienteNombre = string.Empty;
     }
 
-    QueueClienteMatchesRefresh(allowEmptySearch: false);
+    ShowClienteResults = false;
+    Clientes.Clear();
     return Task.CompletedTask;
   }
 
@@ -1229,60 +1228,8 @@ public partial class ReservacionPage : ComponentBase, IDisposable
     ShowClienteResults = allowEmptySearch || !string.IsNullOrWhiteSpace(searchText);
   }
 
-  private void QueueClienteMatchesRefresh(bool allowEmptySearch)
-  {
-    CancelPendingClienteMatchesRefresh();
-
-    var searchText = NormalizeClienteNombre(ClienteSearchText);
-    if (!allowEmptySearch && string.IsNullOrWhiteSpace(searchText))
-    {
-      ShowClienteResults = false;
-      Clientes.Clear();
-      return;
-    }
-
-    _clienteSearchDebounceCts = new CancellationTokenSource();
-    var localCts = _clienteSearchDebounceCts;
-    var searchVersion = Interlocked.Increment(ref _clienteSearchVersion);
-    _ = DebounceClienteMatchesRefreshAsync(searchText, allowEmptySearch, searchVersion, localCts);
-  }
-
-  private async Task DebounceClienteMatchesRefreshAsync(
-    string searchText,
-    bool allowEmptySearch,
-    int searchVersion,
-    CancellationTokenSource localCts)
-  {
-    try
-    {
-      await Task.Delay(TimeSpan.FromMilliseconds(ClienteSearchDebounceMs), localCts.Token);
-      await RefreshClienteMatchesAsync(searchText, allowEmptySearch, searchVersion);
-      await InvokeAsync(StateHasChanged);
-    }
-    catch (OperationCanceledException)
-    {
-      // A newer keystroke superseded this lookup.
-    }
-    catch (Exception ex)
-    {
-      await InvokeAsync(() => UiMessages.ShowError($"No se pudieron buscar clientes. {ex.Message}"));
-    }
-    finally
-    {
-      if (ReferenceEquals(_clienteSearchDebounceCts, localCts))
-      {
-        _clienteSearchDebounceCts = null;
-      }
-
-      localCts.Dispose();
-    }
-  }
-
   private void CancelPendingClienteMatchesRefresh()
   {
-    _clienteSearchDebounceCts?.Cancel();
-    _clienteSearchDebounceCts?.Dispose();
-    _clienteSearchDebounceCts = null;
     Interlocked.Increment(ref _clienteSearchVersion);
   }
 

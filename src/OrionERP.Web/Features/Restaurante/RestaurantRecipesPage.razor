@@ -35,7 +35,7 @@
   else
   {
     <section class="recipe-toolbar" aria-label="Buscar y filtrar recetas">
-      <label><span class="oi oi-magnifying-glass" aria-hidden="true"></span><input type="search" @bind="recipeSearch" @bind:event="oninput" placeholder="Buscar platillo o preparación…" aria-label="Buscar recetas" /></label>
+      <label><span class="oi oi-magnifying-glass" aria-hidden="true"></span><input type="search" @bind="recipeSearchDraft" @bind:event="oninput" @onkeyup="ApplyRecipeSearchOnEnter" placeholder="Buscar platillo o preparación · Enter" aria-label="Buscar recetas" /></label>
       <div role="group" aria-label="Filtrar por estado">
         @foreach (var filter in statusFilters)
         {
@@ -269,6 +269,7 @@
   private string? selectedStatus;
   private string? message;
   private string recipeSearch = string.Empty;
+  private string recipeSearchDraft = string.Empty;
   private string statusFilter = "Active";
   private string? confirmKind;
   private bool editorVisible;
@@ -296,6 +297,7 @@
   private IEnumerable<RecipeFamily> FilteredFamilies => recipeFamilies.Where(family =>
     (string.IsNullOrWhiteSpace(recipeSearch) || family.ProductName.Contains(recipeSearch.Trim(), StringComparison.CurrentCultureIgnoreCase)) &&
     (statusFilter == "All" || family.Versions.Any(version => string.Equals(version.Status, statusFilter, StringComparison.OrdinalIgnoreCase))));
+  private void ApplyRecipeSearchOnEnter(KeyboardEventArgs args) { if(args.Key == "Enter") recipeSearch = recipeSearchDraft.Trim(); }
   private IReadOnlyList<RestaurantMaterialOption> ProductOptions => materialOptions.Where(option =>
     FindMaterial(option.Id) is { } material &&
     (string.Equals(material.ProductType, "FinishedGood", StringComparison.OrdinalIgnoreCase) || versions.Any(version => version.ProductMaterialId == material.Id)))

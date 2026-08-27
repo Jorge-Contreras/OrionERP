@@ -60,7 +60,7 @@
                 <div><label class="cap-label" for="cap-admin-due">Fecha límite</label><input id="cap-admin-due" type="date" class="cap-input" @bind="dueDate" @bind:format="yyyy-MM-dd" /></div>
               </div>
               <hr />
-              <div class="cap-participant-tools"><label><span class="oi oi-magnifying-glass" aria-hidden="true"></span><span class="visually-hidden">Buscar colaboradores</span><input class="cap-input" type="search" placeholder="Buscar nombre, puesto o correo" @bind="employeeSearch" @bind:event="oninput" /></label><button type="button" class="cap-btn cap-btn--light" @onclick="SelectVisible">Seleccionar visibles</button><button type="button" class="cap-btn cap-btn--light" @onclick="ClearSelection">Limpiar</button></div>
+              <div class="cap-participant-tools"><label><span class="oi oi-magnifying-glass" aria-hidden="true"></span><span class="visually-hidden">Buscar colaboradores</span><input class="cap-input" type="search" placeholder="Buscar nombre, puesto o correo · Enter" @bind="employeeSearchDraft" @bind:event="oninput" @onkeyup="ApplyEmployeeSearchOnEnter" /></label><button type="button" class="cap-btn cap-btn--light" @onclick="SelectVisible">Seleccionar visibles</button><button type="button" class="cap-btn cap-btn--light" @onclick="ClearSelection">Limpiar</button></div>
               <div class="cap-admin-employee-grid">
                 @foreach(var employee in VisibleEmployees)
                 {
@@ -94,12 +94,14 @@
   private readonly HashSet<int> selectedEmployeeIds = [];
   private string tab = "overview";
   private string employeeSearch = string.Empty;
+  private string employeeSearchDraft = string.Empty;
   private int courseVersionId;
   private int instructorEmployeeId;
   private DateTime dueDate = DateTime.Today.AddDays(30);
   private bool loading = true;
   private bool saving;
   private List<CapacitacionEmpleadoDto> VisibleEmployees => employees.Where(x => string.IsNullOrWhiteSpace(employeeSearch) || x.Nombre.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) || (x.Puesto?.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) ?? false) || (x.Email?.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase) ?? false)).OrderBy(x => x.Nombre).ToList();
+  private void ApplyEmployeeSearchOnEnter(KeyboardEventArgs args) { if(args.Key == "Enter") employeeSearch = employeeSearchDraft.Trim(); }
 
   protected override async Task LoadPageDataAsync()
   {

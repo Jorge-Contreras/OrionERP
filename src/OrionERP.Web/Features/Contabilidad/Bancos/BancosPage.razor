@@ -286,7 +286,7 @@ else
           </div>
           <div class="flex-grow-1">
             <label class="form-label" for="text-filter">Buscar en concepto</label>
-            <input id="text-filter" class="form-control" type="text" placeholder="Escribe para filtrar…" value="@TextFilter" @oninput="OnTextFilterChanged" />
+            <input id="text-filter" class="form-control" type="search" placeholder="Concepto · Enter para buscar" value="@TextFilter" @oninput="OnTextFilterChanged" @onkeyup="OnTextFilterKeyUpAsync" />
           </div>
           <div class="ms-lg-auto">
             <button class="btn btn-outline-secondary" @onclick="ReloadMovementsAsync" disabled="@(IsLoadingMovements || IsLoadingPendingTransactions)">

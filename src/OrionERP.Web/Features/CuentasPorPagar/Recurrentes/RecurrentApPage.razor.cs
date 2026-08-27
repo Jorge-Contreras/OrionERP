@@ -2,6 +2,7 @@ using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.CuentasPorPagar.Recurrentes;
 using OrionERP.Web.Services;
@@ -77,6 +78,9 @@ public partial class RecurrentApPage : ComponentBase
   {
     await LoadWorkspaceAsync();
   }
+
+  protected Task OnWorkspaceSearchKeyUpAsync(KeyboardEventArgs args)
+    => args.Key == "Enter" ? RefreshAsync() : Task.CompletedTask;
 
   protected async Task ClearFiltersAsync()
   {
@@ -315,6 +319,9 @@ public partial class RecurrentApPage : ComponentBase
   {
     TransactionCandidates = (await ApService.SearchTransactionsAsync(CurrentRfc, TransactionSearchText)).ToList();
   }
+
+  protected Task OnTransactionSearchKeyUpAsync(KeyboardEventArgs args)
+    => args.Key == "Enter" ? SearchTransactionsAsync() : Task.CompletedTask;
 
   protected async Task LinkTransactionAsync(RecurrentApTransactionCandidateDto transaction)
   {

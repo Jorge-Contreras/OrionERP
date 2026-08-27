@@ -48,6 +48,8 @@ public sealed class RestaurantCashShiftLogTests
     Assert.Contains("AS GrossSales", service, StringComparison.Ordinal);
     Assert.Contains("paymentInfo.PaidAt>=shiftInfo.OpenedAt", service, StringComparison.Ordinal);
     Assert.Contains("refundInfo.RefundedAt>=shiftInfo.OpenedAt", service, StringComparison.Ordinal);
+    Assert.Contains("orderInfo.[Status]='Cancelled'", service, StringComparison.Ordinal);
+    Assert.Contains("orderInfo.[Status]<>'Cancelled'", service, StringComparison.Ordinal);
     Assert.Contains("QueryMultipleAsync", service, StringComparison.Ordinal);
     Assert.Contains("<dt>Apertura</dt>", page, StringComparison.Ordinal);
     Assert.Contains("<dt>Cierre</dt>", page, StringComparison.Ordinal);
@@ -58,7 +60,8 @@ public sealed class RestaurantCashShiftLogTests
     Assert.Contains("Venta neta", summary, StringComparison.Ordinal);
     Assert.Contains("Venta bruta", summary, StringComparison.Ordinal);
     Assert.Contains("Reembolsos", summary, StringComparison.Ordinal);
-    Assert.Contains("Shift.GrossSales - RefundTotal", summary, StringComparison.Ordinal);
+    Assert.Contains("Cancelaciones", summary, StringComparison.Ordinal);
+    Assert.Contains("Shift.GrossSales - RefundTotal - CancellationTotal", summary, StringComparison.Ordinal);
     Assert.Contains("Neto recibido", summary, StringComparison.Ordinal);
     Assert.Contains("Desglose por forma de pago", summary, StringComparison.Ordinal);
   }

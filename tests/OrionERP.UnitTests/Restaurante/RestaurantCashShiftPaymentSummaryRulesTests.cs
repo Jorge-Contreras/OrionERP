@@ -15,7 +15,8 @@ public sealed class RestaurantCashShiftPaymentSummaryRulesTests
       new() { PaymentMethod = "ExternalCard", PaymentCount = 2, Sales = 60m, Tips = 3m, RefundCount = 1, Refunds = 8m },
       new() { PaymentMethod = "DeliveryProvider", PaymentCount = 1, Sales = 20m },
       new() { PaymentMethod = "Platform", RefundCount = 1, Refunds = 2m },
-      new() { PaymentMethod = "Transfer", PaymentCount = 1, Sales = 30m }
+      new() { PaymentMethod = "Transfer", PaymentCount = 1, Sales = 30m },
+      new() { PaymentMethod = "transferencia", CancellationCount = 1, Cancellations = 12m }
     ]);
 
     Assert.Equal(["Cash", "ExternalCard", "Transfer", "Platform"], result.Select(method => method.PaymentMethod));
@@ -38,7 +39,13 @@ public sealed class RestaurantCashShiftPaymentSummaryRulesTests
     Assert.Equal(250m, result.Sum(method => method.Sales));
     Assert.Equal(13m, result.Sum(method => method.Tips));
     Assert.Equal(15m, result.Sum(method => method.Refunds));
-    Assert.Equal(248m, result.Sum(method => method.NetTotal));
+    Assert.Equal(12m, result.Sum(method => method.Cancellations));
+    Assert.Equal(236m, result.Sum(method => method.NetTotal));
+
+    var transfer = result[2];
+    Assert.Equal(1, transfer.CancellationCount);
+    Assert.Equal(12m, transfer.Cancellations);
+    Assert.Equal(18m, transfer.NetTotal);
   }
 
   [Fact]

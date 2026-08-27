@@ -14,9 +14,11 @@ public static class RestaurantCashShiftPaymentSummaryRules
         PaymentMethod = group.Key,
         PaymentCount = group.Sum(summary => summary.PaymentCount),
         RefundCount = group.Sum(summary => summary.RefundCount),
+        CancellationCount = group.Sum(summary => summary.CancellationCount),
         Sales = group.Sum(summary => summary.Sales),
         Tips = group.Sum(summary => summary.Tips),
-        Refunds = group.Sum(summary => summary.Refunds)
+        Refunds = group.Sum(summary => summary.Refunds),
+        Cancellations = group.Sum(summary => summary.Cancellations)
       })
       .OrderBy(summary => SortOrder(summary.PaymentMethod))
       .ThenBy(summary => summary.PaymentMethod, StringComparer.OrdinalIgnoreCase)

@@ -141,6 +141,7 @@
               <div><span>Pagos</span><strong>@shiftLog.PaymentCount</strong></div>
               <div><span>Venta + propina</span><strong>@((shiftLog.GrossSales + shiftLog.TipTotal).ToString("C"))</strong></div>
               <div><span>Devoluciones</span><strong class="@(shiftLog.RefundTotal > 0 ? "is-negative" : null)">@shiftLog.RefundTotal.ToString("C")</strong></div>
+              <div><span>Cancelaciones</span><strong class="@(shiftLog.CancellationTotal > 0 ? "is-negative" : null)">@shiftLog.CancellationTotal.ToString("C")</strong></div>
               <div><span>Duración</span><strong>@ShiftDurationLabel(shiftLog.Shift)</strong></div>
             </div>
 
@@ -158,7 +159,7 @@
                 {
                   <article>
                     <div><span class="oi @PaymentMethodIcon(method.PaymentMethod)" aria-hidden="true"></span><strong>@PaymentMethodLabel(method.PaymentMethod)</strong></div>
-                    <dl><div><dt>Venta</dt><dd>@((method.Sales + method.Tips).ToString("C"))</dd></div>@if(method.Refunds > 0){<div><dt>Devuelto</dt><dd class="is-negative">-@method.Refunds.ToString("C")</dd></div>}<div><dt>Neto</dt><dd>@method.NetTotal.ToString("C")</dd></div></dl>
+                    <dl><div><dt>Venta</dt><dd>@((method.Sales + method.Tips).ToString("C"))</dd></div>@if(method.Refunds > 0){<div><dt>Devuelto</dt><dd class="is-negative">-@method.Refunds.ToString("C")</dd></div>}@if(method.Cancellations > 0){<div><dt>Cancelado</dt><dd class="is-negative">-@method.Cancellations.ToString("C")</dd></div>}<div><dt>Neto</dt><dd>@method.NetTotal.ToString("C")</dd></div></dl>
                   </article>
                 }
               </div>

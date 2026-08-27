@@ -16,7 +16,8 @@
     <div class="shift-sales__net-sale"><span>Venta neta</span><strong>@NetSales.ToString("C")</strong></div>
     <div><span>Venta bruta</span><strong>@Shift.GrossSales.ToString("C")</strong></div>
     <div><span>Reembolsos</span><strong class="@(RefundTotal > 0 ? "is-negative" : null)">@RefundTotal.ToString("C")</strong></div>
-    <div><span>Propinas</span><strong>@TipTotal.ToString("C")</strong></div>
+    <div><span>Cancelaciones</span><strong class="@(CancellationTotal > 0 ? "is-negative" : null)">@CancellationTotal.ToString("C")</strong></div>
+    <div class="shift-sales__tips"><span>Propinas</span><strong>@TipTotal.ToString("C")</strong></div>
     <div class="shift-sales__net"><span>Neto recibido</span><strong>@NetReceived.ToString("C")</strong></div>
   </div>
 
@@ -45,6 +46,10 @@
             {
               <div><dt>Devuelto</dt><dd class="is-negative">-@method.Refunds.ToString("C")</dd></div>
             }
+            @if (method.Cancellations > 0)
+            {
+              <div><dt>Cancelado</dt><dd class="is-negative">-@method.Cancellations.ToString("C")</dd></div>
+            }
           </dl>
         </article>
       }
@@ -58,7 +63,8 @@
 
   private decimal TipTotal => Shift.PaymentMethods.Sum(method => method.Tips);
   private decimal RefundTotal => Shift.PaymentMethods.Sum(method => method.Refunds);
-  private decimal NetSales => Shift.GrossSales - RefundTotal;
+  private decimal CancellationTotal => Shift.PaymentMethods.Sum(method => method.Cancellations);
+  private decimal NetSales => Shift.GrossSales - RefundTotal - CancellationTotal;
   private decimal NetReceived => Shift.PaymentMethods.Sum(method => method.NetTotal);
 
   private static string PaymentMethodLabel(string method) => method switch

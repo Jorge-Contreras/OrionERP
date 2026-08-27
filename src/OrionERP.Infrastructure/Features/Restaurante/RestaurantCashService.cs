@@ -60,10 +60,10 @@ public sealed class RestaurantCashService : IRestaurantCashService
       ORDER BY CASE shiftInfo.[Status] WHEN 'Open' THEN 0 WHEN 'PendingApproval' THEN 1 ELSE 2 END, shiftInfo.OpenedAt DESC;
 
       SELECT shiftInfo.Id AS ShiftId, paymentInfo.PaymentMethod,
-             COUNT(*) AS PaymentCount, CAST(0 AS int) AS RefundCount,
+             COUNT(*) AS PaymentCount, CAST(0 AS int) AS RefundCount, CAST(0 AS int) AS CancellationCount,
              CAST(ISNULL(SUM(paymentInfo.Amount),0) AS decimal(18,2)) AS Sales,
-             CAST(ISNULL(SUM(paymentInfo.TipAmount),0) AS decimal(18,2)) AS Tips,
-             CAST(0 AS decimal(18,2)) AS Refunds
+             CAST(ISNULL(SUM(CASE WHEN orderInfo.[Status]<>'Cancelled' THEN paymentInfo.TipAmount ELSE 0 END),0) AS decimal(18,2)) AS Tips,
+             CAST(0 AS decimal(18,2)) AS Refunds, CAST(0 AS decimal(18,2)) AS Cancellations
       FROM restaurante.CashShift shiftInfo
       JOIN restaurante.Payment paymentInfo ON paymentInfo.Rfc=shiftInfo.Rfc
       JOIN restaurante.[Order] orderInfo
@@ -75,9 +75,10 @@ public sealed class RestaurantCashService : IRestaurantCashService
       GROUP BY shiftInfo.Id,paymentInfo.PaymentMethod;
 
       SELECT shiftInfo.Id AS ShiftId, paymentInfo.PaymentMethod,
-             CAST(0 AS int) AS PaymentCount, COUNT(*) AS RefundCount,
+             CAST(0 AS int) AS PaymentCount, COUNT(*) AS RefundCount, CAST(0 AS int) AS CancellationCount,
              CAST(0 AS decimal(18,2)) AS Sales, CAST(0 AS decimal(18,2)) AS Tips,
-             CAST(ISNULL(SUM(refundInfo.Amount),0) AS decimal(18,2)) AS Refunds
+             CAST(ISNULL(SUM(refundInfo.Amount),0) AS decimal(18,2)) AS Refunds,
+             CAST(0 AS decimal(18,2)) AS Cancellations
       FROM restaurante.CashShift shiftInfo
       JOIN restaurante.PaymentRefund refundInfo ON refundInfo.Rfc=shiftInfo.Rfc
       JOIN restaurante.Payment paymentInfo
@@ -86,8 +87,26 @@ public sealed class RestaurantCashService : IRestaurantCashService
         ON orderInfo.Rfc=paymentInfo.Rfc AND orderInfo.Id=paymentInfo.OrderId
       WHERE shiftInfo.Rfc=@Rfc AND shiftInfo.SiteId=@SiteId
         AND (orderInfo.CashShiftId=shiftInfo.Id OR orderInfo.CashRegisterId=shiftInfo.CashRegisterId)
+        AND orderInfo.[Status]<>'Cancelled'
         AND refundInfo.RefundedAt>=shiftInfo.OpenedAt
         AND refundInfo.RefundedAt<=ISNULL(shiftInfo.ClosedAt,SYSUTCDATETIME())
+      GROUP BY shiftInfo.Id,paymentInfo.PaymentMethod;
+
+      SELECT shiftInfo.Id AS ShiftId, paymentInfo.PaymentMethod,
+             CAST(0 AS int) AS PaymentCount, CAST(0 AS int) AS RefundCount,
+             COUNT(DISTINCT orderInfo.Id) AS CancellationCount,
+             CAST(0 AS decimal(18,2)) AS Sales, CAST(0 AS decimal(18,2)) AS Tips,
+             CAST(0 AS decimal(18,2)) AS Refunds,
+             CAST(ISNULL(SUM(paymentInfo.Amount),0) AS decimal(18,2)) AS Cancellations
+      FROM restaurante.CashShift shiftInfo
+      JOIN restaurante.[Order] orderInfo ON orderInfo.Rfc=shiftInfo.Rfc
+      JOIN restaurante.Payment paymentInfo
+        ON paymentInfo.Rfc=orderInfo.Rfc AND paymentInfo.OrderId=orderInfo.Id
+      WHERE shiftInfo.Rfc=@Rfc AND shiftInfo.SiteId=@SiteId
+        AND (orderInfo.CashShiftId=shiftInfo.Id OR orderInfo.CashRegisterId=shiftInfo.CashRegisterId)
+        AND orderInfo.[Status]='Cancelled'
+        AND paymentInfo.PaidAt>=shiftInfo.OpenedAt
+        AND paymentInfo.PaidAt<=ISNULL(shiftInfo.ClosedAt,SYSUTCDATETIME())
       GROUP BY shiftInfo.Id,paymentInfo.PaymentMethod;
       """;
     using var conn = CreateConnection();
@@ -98,6 +117,7 @@ public sealed class RestaurantCashService : IRestaurantCashService
     var shifts = (await multi.ReadAsync<RestaurantCashShiftDto>()).AsList();
     var summaryRows = (await multi.ReadAsync<ShiftPaymentSummaryRow>())
       .Concat(await multi.ReadAsync<ShiftPaymentSummaryRow>())
+      .Concat(await multi.ReadAsync<ShiftPaymentSummaryRow>())
       .ToLookup(row => row.ShiftId);
 
     foreach (var shift in shifts)
@@ -107,9 +127,11 @@ public sealed class RestaurantCashService : IRestaurantCashService
         PaymentMethod = row.PaymentMethod,
         PaymentCount = row.PaymentCount,
         RefundCount = row.RefundCount,
+        CancellationCount = row.CancellationCount,
         Sales = row.Sales,
         Tips = row.Tips,
-        Refunds = row.Refunds
+        Refunds = row.Refunds,
+        Cancellations = row.Cancellations
       }));
       shift.GrossSales = shift.PaymentMethods.Sum(method => method.Sales);
     }
@@ -142,7 +164,8 @@ public sealed class RestaurantCashService : IRestaurantCashService
       """
       SELECT paymentInfo.Id, paymentInfo.OrderId, orderInfo.Folio AS OrderFolio, orderInfo.CustomerName,
              paymentInfo.PaymentMethod, paymentInfo.Amount, paymentInfo.TipAmount,
-             paymentInfo.ExternalReference, paymentInfo.PaidAt, paymentInfo.ReceivedBy
+             paymentInfo.ExternalReference, paymentInfo.PaidAt, paymentInfo.ReceivedBy,
+             orderInfo.[Status] AS OrderStatus
       FROM restaurante.Payment paymentInfo
       JOIN restaurante.[Order] orderInfo
         ON orderInfo.Rfc=paymentInfo.Rfc AND orderInfo.Id=paymentInfo.OrderId
@@ -163,7 +186,8 @@ public sealed class RestaurantCashService : IRestaurantCashService
       """
       SELECT refundInfo.Id, paymentInfo.OrderId, orderInfo.Folio AS OrderFolio, orderInfo.CustomerName,
              paymentInfo.PaymentMethod, refundInfo.Amount, refundInfo.Reason,
-             refundInfo.RefundedAt, refundInfo.RequestedBy, refundInfo.AuthorizedBy
+             refundInfo.RefundedAt, refundInfo.RequestedBy, refundInfo.AuthorizedBy,
+             orderInfo.[Status] AS OrderStatus
       FROM restaurante.PaymentRefund refundInfo
       JOIN restaurante.Payment paymentInfo
         ON paymentInfo.Rfc=refundInfo.Rfc AND paymentInfo.Id=refundInfo.PaymentId
@@ -173,6 +197,25 @@ public sealed class RestaurantCashService : IRestaurantCashService
         AND (orderInfo.CashShiftId=@ShiftId OR orderInfo.CashRegisterId=@CashRegisterId)
         AND refundInfo.RefundedAt>=@OpenedAt AND refundInfo.RefundedAt<=@EndedAt
       ORDER BY refundInfo.RefundedAt, refundInfo.Id;
+      """, new
+      {
+        Rfc = normalizedRfc,
+        ShiftId = shift.Id,
+        shift.CashRegisterId,
+        shift.OpenedAt,
+        EndedAt = endedAt
+      }, cancellationToken: ct))).AsList();
+
+    var cancellationRows = (await conn.QueryAsync<ShiftCancellationRow>(new CommandDefinition(
+      """
+      SELECT orderInfo.Id AS OrderId, paymentInfo.PaymentMethod, paymentInfo.Amount
+      FROM restaurante.[Order] orderInfo
+      JOIN restaurante.Payment paymentInfo
+        ON paymentInfo.Rfc=orderInfo.Rfc AND paymentInfo.OrderId=orderInfo.Id
+      WHERE orderInfo.Rfc=@Rfc
+        AND (orderInfo.CashShiftId=@ShiftId OR orderInfo.CashRegisterId=@CashRegisterId)
+        AND orderInfo.[Status]='Cancelled'
+        AND paymentInfo.PaidAt>=@OpenedAt AND paymentInfo.PaidAt<=@EndedAt;
       """, new
       {
         Rfc = normalizedRfc,
@@ -303,16 +346,29 @@ public sealed class RestaurantCashService : IRestaurantCashService
         PaymentMethod = group.Key,
         PaymentCount = group.Count(),
         Sales = group.Sum(item => item.Amount),
-        Tips = group.Sum(item => item.TipAmount)
+        Tips = group.Where(item => item.OrderStatus != RestaurantOrderStatuses.Cancelled).Sum(item => item.TipAmount)
       })
       .Concat(refundRows
+        .Where(item => item.OrderStatus != RestaurantOrderStatuses.Cancelled)
         .GroupBy(item => item.PaymentMethod, StringComparer.OrdinalIgnoreCase)
         .Select(group => new RestaurantCashShiftPaymentSummaryDto
         {
           PaymentMethod = group.Key,
           RefundCount = group.Count(),
           Refunds = group.Sum(item => item.Amount)
+        }))
+      .Concat(cancellationRows
+        .GroupBy(item => item.PaymentMethod, StringComparer.OrdinalIgnoreCase)
+        .Select(group => new RestaurantCashShiftPaymentSummaryDto
+        {
+          PaymentMethod = group.Key,
+          CancellationCount = group.Select(item => item.OrderId).Distinct().Count(),
+          Cancellations = group.Sum(item => item.Amount)
         })));
+
+    var financialRefundRows = refundRows
+      .Where(item => item.OrderStatus != RestaurantOrderStatuses.Cancelled)
+      .ToList();
 
     var orderCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
       """
@@ -329,10 +385,12 @@ public sealed class RestaurantCashService : IRestaurantCashService
       Shift = shift,
       OrderCount = orderCount,
       PaymentCount = paymentRows.Count,
-      RefundCount = refundRows.Count,
+      RefundCount = financialRefundRows.Count,
+      CancellationCount = cancellationRows.Select(item => item.OrderId).Distinct().Count(),
       GrossSales = shift.GrossSales,
-      TipTotal = paymentRows.Sum(item => item.TipAmount),
-      RefundTotal = refundRows.Sum(item => item.Amount),
+      TipTotal = paymentRows.Where(item => item.OrderStatus != RestaurantOrderStatuses.Cancelled).Sum(item => item.TipAmount),
+      RefundTotal = financialRefundRows.Sum(item => item.Amount),
+      CancellationTotal = cancellationRows.Sum(item => item.Amount),
       PaymentMethods = paymentMethods,
       Entries = entries
         .OrderBy(item => item.OccurredAt)
@@ -598,6 +656,7 @@ public sealed class RestaurantCashService : IRestaurantCashService
     public string? ExternalReference { get; set; }
     public DateTime PaidAt { get; set; }
     public string? ReceivedBy { get; set; }
+    public string OrderStatus { get; set; } = string.Empty;
   }
 
   private sealed class ShiftPaymentSummaryRow
@@ -606,9 +665,11 @@ public sealed class RestaurantCashService : IRestaurantCashService
     public string PaymentMethod { get; set; } = string.Empty;
     public int PaymentCount { get; set; }
     public int RefundCount { get; set; }
+    public int CancellationCount { get; set; }
     public decimal Sales { get; set; }
     public decimal Tips { get; set; }
     public decimal Refunds { get; set; }
+    public decimal Cancellations { get; set; }
   }
 
   private sealed class ShiftRefundRow
@@ -623,6 +684,14 @@ public sealed class RestaurantCashService : IRestaurantCashService
     public DateTime RefundedAt { get; set; }
     public string RequestedBy { get; set; } = string.Empty;
     public string AuthorizedBy { get; set; } = string.Empty;
+    public string OrderStatus { get; set; } = string.Empty;
+  }
+
+  private sealed class ShiftCancellationRow
+  {
+    public Guid OrderId { get; set; }
+    public string PaymentMethod { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
   }
 
   private sealed class ShiftMovementRow

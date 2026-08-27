@@ -434,9 +434,11 @@ public sealed class RestaurantCashShiftLogDto
   public int OrderCount { get; set; }
   public int PaymentCount { get; set; }
   public int RefundCount { get; set; }
+  public int CancellationCount { get; set; }
   public decimal GrossSales { get; set; }
   public decimal TipTotal { get; set; }
   public decimal RefundTotal { get; set; }
+  public decimal CancellationTotal { get; set; }
   public IReadOnlyList<RestaurantCashShiftPaymentSummaryDto> PaymentMethods { get; set; } = Array.Empty<RestaurantCashShiftPaymentSummaryDto>();
   public IReadOnlyList<RestaurantCashShiftLogEntryDto> Entries { get; set; } = Array.Empty<RestaurantCashShiftLogEntryDto>();
 }
@@ -446,10 +448,12 @@ public sealed class RestaurantCashShiftPaymentSummaryDto
   public string PaymentMethod { get; set; } = string.Empty;
   public int PaymentCount { get; set; }
   public int RefundCount { get; set; }
+  public int CancellationCount { get; set; }
   public decimal Sales { get; set; }
   public decimal Tips { get; set; }
   public decimal Refunds { get; set; }
-  public decimal NetTotal => Sales + Tips - Refunds;
+  public decimal Cancellations { get; set; }
+  public decimal NetTotal => Sales + Tips - Refunds - Cancellations;
 }
 
 public sealed class RestaurantCashShiftLogEntryDto

@@ -167,6 +167,7 @@ public sealed class CapacitacionOpcionDto
   public int PreguntaId { get; set; }
   public int Orden { get; set; }
   public string Texto { get; set; } = string.Empty;
+  public bool EsCorrecta { get; set; }
 }
 
 public sealed class CapacitacionPracticaDto

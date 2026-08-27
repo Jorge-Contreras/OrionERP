@@ -71,6 +71,9 @@ public sealed class CapacitacionServiceSecurityTests
     Assert.Contains(query.Parameters, parameter =>
       string.Equals(parameter.Name, "AllowPinned", StringComparison.OrdinalIgnoreCase)
       && parameter.Value is false);
+    Assert.Contains(query.Parameters, parameter =>
+      string.Equals(parameter.Name, "IncludeAnswerKey", StringComparison.OrdinalIgnoreCase)
+      && parameter.Value is false);
   }
 
   [Fact]
@@ -105,6 +108,9 @@ public sealed class CapacitacionServiceSecurityTests
     Assert.Contains(pinnedCourse.Parameters, parameter =>
       string.Equals(parameter.Name, "AllowPinned", StringComparison.OrdinalIgnoreCase)
       && parameter.Value is true);
+    Assert.Contains(pinnedCourse.Parameters, parameter =>
+      string.Equals(parameter.Name, "IncludeAnswerKey", StringComparison.OrdinalIgnoreCase)
+      && parameter.Value is false);
   }
 
   [Fact]

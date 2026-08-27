@@ -1244,7 +1244,8 @@ public sealed partial class CapacitacionService : ICapacitacionService
     int courseVersionId,
     string rfc,
     bool allowPinned,
-    CancellationToken ct)
+    CancellationToken ct,
+    bool includeAnswerKey = false)
   {
     const string sql =
       """
@@ -1298,7 +1299,8 @@ public sealed partial class CapacitacionService : ICapacitacionService
       WHERE e.CursoVersionId = @CursoVersionId
       ORDER BY e.EvaluacionId, p.Orden;
 
-      SELECT o.OpcionId, o.PreguntaId, o.Orden, o.Texto
+      SELECT o.OpcionId, o.PreguntaId, o.Orden, o.Texto,
+             CAST(CASE WHEN @IncludeAnswerKey = 1 THEN o.EsCorrecta ELSE 0 END AS bit) AS EsCorrecta
       FROM capacitacion.Evaluacion e
       JOIN capacitacion.Pregunta p ON p.EvaluacionId = e.EvaluacionId
       JOIN capacitacion.OpcionPregunta o ON o.PreguntaId = p.PreguntaId
@@ -1319,7 +1321,7 @@ public sealed partial class CapacitacionService : ICapacitacionService
 
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(
       sql,
-      new { CursoVersionId = courseVersionId, Rfc = rfc, AllowPinned = allowPinned },
+      new { CursoVersionId = courseVersionId, Rfc = rfc, AllowPinned = allowPinned, IncludeAnswerKey = includeAnswerKey },
       tx,
       cancellationToken: ct));
     var detail = await multi.ReadFirstOrDefaultAsync<CapacitacionCursoDetalleDto>();

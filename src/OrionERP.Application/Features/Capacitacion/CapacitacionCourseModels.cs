@@ -44,6 +44,8 @@ public sealed class CapacitacionGuardarCursoRequest
   public decimal CalificacionMinima { get; set; } = 80;
 
   public List<CapacitacionGuardarLeccionRequest> Lecciones { get; set; } = [];
+  public List<CapacitacionGuardarEvaluacionRequest> Evaluaciones { get; set; } = [];
+  public List<CapacitacionGuardarPracticaRequest> Practicas { get; set; } = [];
   public int ActorEmployeeId { get; set; }
 
   [Required, StringLength(256)]
@@ -87,6 +89,77 @@ public sealed class CapacitacionGuardarBloqueRequest
 
   public string? ConfiguracionJson { get; set; }
   public bool Requerido { get; set; } = true;
+}
+
+public sealed class CapacitacionGuardarEvaluacionRequest
+{
+  public int EvaluacionId { get; set; }
+
+  [Required, StringLength(160)]
+  public string Titulo { get; set; } = string.Empty;
+
+  [Required, StringLength(1000)]
+  public string Instrucciones { get; set; } = string.Empty;
+
+  [Range(0, 100)]
+  public decimal CalificacionMinima { get; set; } = 80;
+
+  public bool Requerida { get; set; } = true;
+  public List<CapacitacionGuardarPreguntaRequest> Preguntas { get; set; } = [];
+}
+
+public sealed class CapacitacionGuardarPreguntaRequest
+{
+  public int PreguntaId { get; set; }
+  public int Orden { get; set; }
+
+  [Required, StringLength(1000)]
+  public string Texto { get; set; } = string.Empty;
+
+  [StringLength(1000)]
+  public string? Explicacion { get; set; }
+
+  public bool Critica { get; set; }
+  public List<CapacitacionGuardarOpcionRequest> Opciones { get; set; } = [];
+}
+
+public sealed class CapacitacionGuardarOpcionRequest
+{
+  public int OpcionId { get; set; }
+  public int Orden { get; set; }
+
+  [Required, StringLength(1000)]
+  public string Texto { get; set; } = string.Empty;
+
+  public bool EsCorrecta { get; set; }
+}
+
+public sealed class CapacitacionGuardarPracticaRequest
+{
+  public int PracticaId { get; set; }
+
+  [Required, StringLength(160)]
+  public string Titulo { get; set; } = string.Empty;
+
+  [Required, StringLength(2000)]
+  public string Instrucciones { get; set; } = string.Empty;
+
+  [StringLength(500)]
+  public string? RutaSandbox { get; set; }
+
+  public bool Requerida { get; set; } = true;
+  public List<CapacitacionGuardarPracticaPasoRequest> Pasos { get; set; } = [];
+}
+
+public sealed class CapacitacionGuardarPracticaPasoRequest
+{
+  public int PracticaPasoId { get; set; }
+  public int Orden { get; set; }
+
+  [Required, StringLength(1000)]
+  public string Descripcion { get; set; } = string.Empty;
+
+  public bool Critico { get; set; }
 }
 
 public class CapacitacionCursoCommandRequest

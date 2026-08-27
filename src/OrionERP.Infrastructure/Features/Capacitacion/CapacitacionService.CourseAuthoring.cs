@@ -159,7 +159,8 @@ public sealed partial class CapacitacionService
       course.CursoVersionId,
       normalizedRfc,
       allowPinned: true,
-      ct);
+      ct,
+      includeAnswerKey: true);
     if (content is null)
       return null;
 
@@ -479,6 +480,7 @@ public sealed partial class CapacitacionService
       }
 
       await SaveDraftStructureAsync(conn, tx, versionId, request.Lecciones, ct);
+      await ReplaceDraftActivitiesAsync(conn, tx, versionId, request.Evaluaciones, request.Practicas, ct);
       await AddAuditAsync(
         conn,
         tx,
@@ -486,7 +488,8 @@ public sealed partial class CapacitacionService
         "CURSO",
         courseId,
         created ? "CREADO" : "BORRADOR_GUARDADO",
-        $"{request.Lecciones.Count} lección(es) y {request.Lecciones.Sum(lesson => lesson.Bloques.Count)} bloque(s).",
+        $"{request.Lecciones.Count} lección(es), {request.Lecciones.Sum(lesson => lesson.Bloques.Count)} bloque(s), "
+          + $"{request.Evaluaciones.Count} evaluación(es) y {request.Practicas.Count} práctica(s).",
         actorEmployeeId,
         actor,
         ct);
@@ -684,6 +687,14 @@ public sealed partial class CapacitacionService
       return "Una lección aparece más de una vez en el borrador.";
     if (request.Lecciones.Select(lesson => NullIfWhiteSpace(lesson.Clave)).Where(value => value is not null).GroupBy(value => value!, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
       return "Cada lección debe tener una clave distinta.";
+    if (request.Evaluaciones.Count > 20)
+      return "Un curso no puede tener más de 20 evaluaciones.";
+    if (request.Evaluaciones.Select(item => NullIfWhiteSpace(item.Titulo)).Where(value => value is not null).GroupBy(value => value!, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
+      return "Cada evaluación debe tener un título distinto.";
+    if (request.Practicas.Count > 20)
+      return "Un curso no puede tener más de 20 prácticas.";
+    if (request.Practicas.Select(item => NullIfWhiteSpace(item.Titulo)).Where(value => value is not null).GroupBy(value => value!, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
+      return "Cada práctica debe tener un título distinto.";
 
     foreach (var lesson in request.Lecciones)
     {
@@ -716,6 +727,46 @@ public sealed partial class CapacitacionService
       }
     }
 
+    foreach (var evaluation in request.Evaluaciones)
+    {
+      if (NullIfWhiteSpace(evaluation.Titulo) is not { Length: <= 160 })
+        return "Cada evaluación necesita un título de hasta 160 caracteres.";
+      if (NullIfWhiteSpace(evaluation.Instrucciones) is not { Length: <= 1000 })
+        return "Cada evaluación necesita instrucciones de hasta 1,000 caracteres.";
+      if (evaluation.CalificacionMinima is < 0 or > 100)
+        return "La calificación mínima de cada evaluación debe estar entre 0 y 100.";
+      if (evaluation.Preguntas.Count is < 1 or > 200)
+        return "Cada evaluación debe tener entre 1 y 200 preguntas.";
+
+      foreach (var question in evaluation.Preguntas)
+      {
+        if (NullIfWhiteSpace(question.Texto) is not { Length: <= 1000 })
+          return "Cada pregunta necesita un texto de hasta 1,000 caracteres.";
+        if (NullIfWhiteSpace(question.Explicacion) is { Length: > 1000 })
+          return "La explicación de una pregunta no puede superar 1,000 caracteres.";
+        if (question.Opciones.Count is < 2 or > 10)
+          return "Cada pregunta debe tener entre 2 y 10 opciones.";
+        if (question.Opciones.Count(option => option.EsCorrecta) != 1)
+          return "Marca exactamente una respuesta correcta en cada pregunta.";
+        if (question.Opciones.Any(option => NullIfWhiteSpace(option.Texto) is not { Length: <= 1000 }))
+          return "Cada opción de respuesta necesita un texto de hasta 1,000 caracteres.";
+      }
+    }
+
+    foreach (var practice in request.Practicas)
+    {
+      if (NullIfWhiteSpace(practice.Titulo) is not { Length: <= 160 })
+        return "Cada práctica necesita un título de hasta 160 caracteres.";
+      if (NullIfWhiteSpace(practice.Instrucciones) is not { Length: <= 2000 })
+        return "Cada práctica necesita instrucciones de hasta 2,000 caracteres.";
+      if (NullIfWhiteSpace(practice.RutaSandbox) is { Length: > 500 })
+        return "La ruta de sandbox no puede superar 500 caracteres.";
+      if (practice.Pasos.Count is < 1 or > 200)
+        return "Cada práctica debe tener entre 1 y 200 pasos.";
+      if (practice.Pasos.Any(step => NullIfWhiteSpace(step.Descripcion) is not { Length: <= 1000 }))
+        return "Cada paso práctico necesita una descripción de hasta 1,000 caracteres.";
+    }
+
     return null;
   }
 
@@ -743,6 +794,38 @@ public sealed partial class CapacitacionService
         blockInfo.Titulo = blockInfo.Titulo.Trim();
         blockInfo.Contenido = blockInfo.Contenido.Trim();
         blockInfo.ConfiguracionJson = NullIfWhiteSpace(blockInfo.ConfiguracionJson);
+      }
+    }
+
+    foreach (var evaluation in request.Evaluaciones)
+    {
+      evaluation.Titulo = evaluation.Titulo.Trim();
+      evaluation.Instrucciones = evaluation.Instrucciones.Trim();
+      for (var questionIndex = 0; questionIndex < evaluation.Preguntas.Count; questionIndex++)
+      {
+        var question = evaluation.Preguntas[questionIndex];
+        question.Orden = questionIndex + 1;
+        question.Texto = question.Texto.Trim();
+        question.Explicacion = NullIfWhiteSpace(question.Explicacion);
+        for (var optionIndex = 0; optionIndex < question.Opciones.Count; optionIndex++)
+        {
+          var option = question.Opciones[optionIndex];
+          option.Orden = optionIndex + 1;
+          option.Texto = option.Texto.Trim();
+        }
+      }
+    }
+
+    foreach (var practice in request.Practicas)
+    {
+      practice.Titulo = practice.Titulo.Trim();
+      practice.Instrucciones = practice.Instrucciones.Trim();
+      practice.RutaSandbox = NullIfWhiteSpace(practice.RutaSandbox);
+      for (var stepIndex = 0; stepIndex < practice.Pasos.Count; stepIndex++)
+      {
+        var step = practice.Pasos[stepIndex];
+        step.Orden = stepIndex + 1;
+        step.Descripcion = step.Descripcion.Trim();
       }
     }
   }
@@ -942,6 +1025,173 @@ public sealed partial class CapacitacionService
             tx,
             cancellationToken: ct));
         }
+      }
+    }
+  }
+
+  private static async Task ReplaceDraftActivitiesAsync(
+    DbConnection conn,
+    IDbTransaction tx,
+    int versionId,
+    IReadOnlyList<CapacitacionGuardarEvaluacionRequest> evaluations,
+    IReadOnlyList<CapacitacionGuardarPracticaRequest> practices,
+    CancellationToken ct)
+  {
+    // Evaluations and practices are owned by an unpublished version. Replacing the
+    // complete child graph keeps additions, edits, removals and ordering atomic,
+    // while published versions remain protected by the database immutability triggers.
+    await conn.ExecuteAsync(new CommandDefinition(
+      """
+      DELETE FROM capacitacion.OpcionPregunta
+      WHERE PreguntaId IN
+      (
+        SELECT question.PreguntaId
+        FROM capacitacion.Pregunta question
+        JOIN capacitacion.Evaluacion evaluation ON evaluation.EvaluacionId = question.EvaluacionId
+        WHERE evaluation.CursoVersionId = @CursoVersionId
+      );
+
+      DELETE FROM capacitacion.Pregunta
+      WHERE EvaluacionId IN
+      (
+        SELECT EvaluacionId
+        FROM capacitacion.Evaluacion
+        WHERE CursoVersionId = @CursoVersionId
+      );
+
+      DELETE FROM capacitacion.Evaluacion
+      WHERE CursoVersionId = @CursoVersionId;
+
+      DELETE FROM capacitacion.PracticaPaso
+      WHERE PracticaId IN
+      (
+        SELECT PracticaId
+        FROM capacitacion.Practica
+        WHERE CursoVersionId = @CursoVersionId
+      );
+
+      DELETE FROM capacitacion.Practica
+      WHERE CursoVersionId = @CursoVersionId;
+      """,
+      new { CursoVersionId = versionId },
+      tx,
+      cancellationToken: ct));
+
+    foreach (var evaluation in evaluations)
+    {
+      evaluation.EvaluacionId = await conn.QuerySingleAsync<int>(new CommandDefinition(
+        """
+        DECLARE @InsertedEvaluation TABLE (EvaluacionId int NOT NULL);
+
+        INSERT INTO capacitacion.Evaluacion
+          (CursoVersionId, Titulo, Instrucciones, CalificacionMinima, Requerida)
+        OUTPUT inserted.EvaluacionId INTO @InsertedEvaluation (EvaluacionId)
+        VALUES
+          (@CursoVersionId, @Titulo, @Instrucciones, @CalificacionMinima, @Requerida);
+
+        SELECT EvaluacionId FROM @InsertedEvaluation;
+        """,
+        new
+        {
+          CursoVersionId = versionId,
+          evaluation.Titulo,
+          evaluation.Instrucciones,
+          evaluation.CalificacionMinima,
+          evaluation.Requerida
+        },
+        tx,
+        cancellationToken: ct));
+
+      foreach (var question in evaluation.Preguntas)
+      {
+        question.PreguntaId = await conn.QuerySingleAsync<int>(new CommandDefinition(
+          """
+          DECLARE @InsertedQuestion TABLE (PreguntaId int NOT NULL);
+
+          INSERT INTO capacitacion.Pregunta
+            (EvaluacionId, Orden, Texto, Explicacion, Critica)
+          OUTPUT inserted.PreguntaId INTO @InsertedQuestion (PreguntaId)
+          VALUES
+            (@EvaluacionId, @Orden, @Texto, @Explicacion, @Critica);
+
+          SELECT PreguntaId FROM @InsertedQuestion;
+          """,
+          new
+          {
+            evaluation.EvaluacionId,
+            question.Orden,
+            question.Texto,
+            question.Explicacion,
+            question.Critica
+          },
+          tx,
+          cancellationToken: ct));
+
+        foreach (var option in question.Opciones)
+        {
+          await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO capacitacion.OpcionPregunta
+              (PreguntaId, Orden, Texto, EsCorrecta)
+            VALUES
+              (@PreguntaId, @Orden, @Texto, @EsCorrecta);
+            """,
+            new
+            {
+              question.PreguntaId,
+              option.Orden,
+              option.Texto,
+              option.EsCorrecta
+            },
+            tx,
+            cancellationToken: ct));
+        }
+      }
+    }
+
+    foreach (var practice in practices)
+    {
+      practice.PracticaId = await conn.QuerySingleAsync<int>(new CommandDefinition(
+        """
+        DECLARE @InsertedPractice TABLE (PracticaId int NOT NULL);
+
+        INSERT INTO capacitacion.Practica
+          (CursoVersionId, Titulo, Instrucciones, RutaSandbox, Requerida)
+        OUTPUT inserted.PracticaId INTO @InsertedPractice (PracticaId)
+        VALUES
+          (@CursoVersionId, @Titulo, @Instrucciones, @RutaSandbox, @Requerida);
+
+        SELECT PracticaId FROM @InsertedPractice;
+        """,
+        new
+        {
+          CursoVersionId = versionId,
+          practice.Titulo,
+          practice.Instrucciones,
+          practice.RutaSandbox,
+          practice.Requerida
+        },
+        tx,
+        cancellationToken: ct));
+
+      foreach (var step in practice.Pasos)
+      {
+        await conn.ExecuteAsync(new CommandDefinition(
+          """
+          INSERT INTO capacitacion.PracticaPaso
+            (PracticaId, Orden, Descripcion, Critico)
+          VALUES
+            (@PracticaId, @Orden, @Descripcion, @Critico);
+          """,
+          new
+          {
+            practice.PracticaId,
+            step.Orden,
+            step.Descripcion,
+            step.Critico
+          },
+          tx,
+          cancellationToken: ct));
       }
     }
   }

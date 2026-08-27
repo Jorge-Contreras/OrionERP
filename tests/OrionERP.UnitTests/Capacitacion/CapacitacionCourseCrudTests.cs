@@ -98,6 +98,41 @@ public sealed class CapacitacionCourseCrudTests
     }
   }
 
+  [Fact]
+  public void DraftActivities_AreValidatedAndReplacedInsideTheCourseTransaction()
+  {
+    var source = ReadRepoFile("src/OrionERP.Infrastructure/Features/Capacitacion/CapacitacionService.CourseAuthoring.cs");
+
+    Assert.Contains("await ReplaceDraftActivitiesAsync(conn, tx, versionId", source, StringComparison.Ordinal);
+    Assert.Contains("question.Opciones.Count(option => option.EsCorrecta) != 1", source, StringComparison.Ordinal);
+    Assert.Contains("Cada práctica debe tener entre 1 y 200 pasos", source, StringComparison.Ordinal);
+
+    foreach (var table in new[]
+    {
+      "capacitacion.Evaluacion",
+      "capacitacion.Pregunta",
+      "capacitacion.OpcionPregunta",
+      "capacitacion.Practica",
+      "capacitacion.PracticaPaso"
+    })
+    {
+      Assert.Contains($"DELETE FROM {table}", source, StringComparison.Ordinal);
+      Assert.Contains($"INSERT INTO {table}", source, StringComparison.Ordinal);
+    }
+  }
+
+  [Fact]
+  public void AnswerKey_IsMaskedByDefaultAndRequestedOnlyByAuthorizedAuthoring()
+  {
+    var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Capacitacion/CapacitacionService.cs");
+    var authoring = ReadRepoFile("src/OrionERP.Infrastructure/Features/Capacitacion/CapacitacionService.CourseAuthoring.cs");
+
+    Assert.Contains("bool includeAnswerKey = false", service, StringComparison.Ordinal);
+    Assert.Contains("CASE WHEN @IncludeAnswerKey = 1 THEN o.EsCorrecta ELSE 0 END", service, StringComparison.Ordinal);
+    Assert.Contains("includeAnswerKey: true", authoring, StringComparison.Ordinal);
+    Assert.Equal(1, CountOccurrences(authoring, "includeAnswerKey: true"));
+  }
+
   private static CapacitacionService NewService(FakeQueryDbConnection connection, IReadOnlySet<string> roles)
     => new(
       new FakeQueryConnectionFactory(connection),
@@ -113,6 +148,18 @@ public sealed class CapacitacionCourseCrudTests
     while (current is not null && !File.Exists(Path.Combine(current.FullName, "OrionERP.sln"))) current = current.Parent;
     Assert.NotNull(current);
     return File.ReadAllText(Path.Combine(current!.FullName, relativePath));
+  }
+
+  private static int CountOccurrences(string source, string value)
+  {
+    var count = 0;
+    var index = 0;
+    while ((index = source.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+    {
+      count++;
+      index += value.Length;
+    }
+    return count;
   }
 
   private sealed class StubAccessor : ICurrentEmployeeAccessor

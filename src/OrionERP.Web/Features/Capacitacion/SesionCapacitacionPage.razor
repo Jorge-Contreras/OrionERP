@@ -143,7 +143,18 @@
                       <div><h2 id="cap-live-eval-title">@CurrentEvaluation.Titulo</h2><p>@CurrentEvaluation.Instrucciones</p><span class="cap-badge cap-badge--warn">Mínimo @CurrentEvaluation.CalificacionMinima.ToString("0")%</span></div>
                       @foreach(var question in CurrentEvaluation.Preguntas.OrderBy(x => x.Orden))
                       {
-                        <fieldset><legend>@question.Orden. @question.Texto @if(question.Critica){<span class="cap-badge cap-badge--danger">Crítica</span>}</legend>@foreach(var option in question.Opciones.OrderBy(x => x.Orden)){<label><input type="radio" name="session-question-@question.PreguntaId" checked="@(SelectedOption(question.PreguntaId) == option.OpcionId)" @onchange="() => SelectOption(question.PreguntaId, option.OpcionId)"/><span>@option.Texto</span></label>}</fieldset>
+                        <fieldset class="@QuestionResultCss(question.PreguntaId)">
+                          <legend>
+                            @question.Orden. @question.Texto
+                            @if(question.Critica){<span class="cap-badge cap-badge--danger">Crítica</span>}
+                            @if (QuestionWasGraded(question.PreguntaId))
+                            {
+                              var incorrect = QuestionIsIncorrect(question.PreguntaId);
+                              <span class="cap-question-result" role="status"><span class="oi @(incorrect ? "oi-x" : "oi-check")" aria-hidden="true"></span>@(incorrect ? "Incorrecta" : "Correcta")</span>
+                            }
+                          </legend>
+                          @foreach(var option in question.Opciones.OrderBy(x => x.Orden)){<label><input type="radio" name="session-question-@question.PreguntaId" checked="@(SelectedOption(question.PreguntaId) == option.OpcionId)" @onchange="() => SelectOption(question.PreguntaId, option.OpcionId)"/><span>@option.Texto</span></label>}
+                        </fieldset>
                       }
                       <button class="cap-btn cap-btn--primary" type="button" disabled="@(busy || !AllQuestionsAnswered)" @onclick="SubmitEvaluationAsync">@(busy ? "Evaluando…" : "Enviar respuestas")</button>
                       @if(evaluationResult is not null){<div class="cap-alert @(evaluationResult.Aprobada ? "cap-alert--success" : "cap-alert--error") mt-3"><span class="oi @(evaluationResult.Aprobada ? "oi-check" : "oi-warning")" aria-hidden="true"></span><p><strong>@evaluationResult.Calificacion.ToString("0")%</strong> · @evaluationResult.Message</p></div>}
@@ -342,6 +353,9 @@
 
   private void SelectOption(int questionId, int optionId){ selectedOptions[questionId] = optionId; evaluationResult = null; }
   private int? SelectedOption(int questionId) => selectedOptions.TryGetValue(questionId, out var value) ? value : null;
+  private bool QuestionWasGraded(int questionId) => evaluationResult?.Success == true;
+  private bool QuestionIsIncorrect(int questionId) => evaluationResult?.PreguntasIncorrectas.Contains(questionId) == true;
+  private string QuestionResultCss(int questionId) => !QuestionWasGraded(questionId) ? string.Empty : QuestionIsIncorrect(questionId) ? "is-incorrect" : "is-correct";
   private async Task SubmitEvaluationAsync()
   {
     if(CurrentEvaluation is null || CurrentParticipant?.AsignacionId is not { } assignmentId || Actor?.EmployeeId is null || !AllQuestionsAnswered) return;

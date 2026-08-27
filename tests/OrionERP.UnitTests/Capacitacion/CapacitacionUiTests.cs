@@ -93,6 +93,35 @@ public sealed class CapacitacionUiTests
   }
 
   [Fact]
+  public void LearnerEvaluations_MarkCorrectAndIncorrectQuestionsAfterGrading()
+  {
+    foreach (var file in new[]
+    {
+      "src/OrionERP.Web/Features/Capacitacion/MiPlanCapacitacionPage.razor",
+      "src/OrionERP.Web/Features/Capacitacion/SesionCapacitacionPage.razor"
+    })
+    {
+      var source = ReadRepoFile(file);
+      Assert.Contains("QuestionResultCss(question.PreguntaId)", source, StringComparison.Ordinal);
+      Assert.Contains("PreguntasIncorrectas.Contains(questionId)", source, StringComparison.Ordinal);
+      Assert.Contains("Incorrecta", source, StringComparison.Ordinal);
+      Assert.Contains("Correcta", source, StringComparison.Ordinal);
+      Assert.Contains("evaluationResult?.Success == true", source, StringComparison.Ordinal);
+    }
+
+    foreach (var file in new[]
+    {
+      "src/OrionERP.Web/Features/Capacitacion/MiPlanCapacitacionPage.razor.css",
+      "src/OrionERP.Web/Features/Capacitacion/SesionCapacitacionPage.razor.css"
+    })
+    {
+      var source = ReadRepoFile(file);
+      Assert.Contains(".is-correct", source, StringComparison.Ordinal);
+      Assert.Contains(".is-incorrect", source, StringComparison.Ordinal);
+    }
+  }
+
+  [Fact]
   public void LearnerPlan_PersistsTheLastRequiredBlockBeforeSignoff()
   {
     var source = ReadRepoFile("src/OrionERP.Web/Features/Capacitacion/MiPlanCapacitacionPage.razor");
@@ -150,6 +179,30 @@ public sealed class CapacitacionUiTests
     Assert.Contains("CambiarEstadoCursoAsync", page, StringComparison.Ordinal);
     Assert.Contains("El historial se conservará", page, StringComparison.Ordinal);
     Assert.Contains("href=\"/capacitacion/cursos\"", navigation, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void InstructorCourseWorkspace_AuthorsEvaluationsAndPracticesInTheDraft()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Capacitacion/CursosCapacitacionPage.razor");
+
+    foreach (var action in new[]
+    {
+      "AddEvaluation",
+      "RemoveEvaluation",
+      "AddQuestion",
+      "SelectCorrectOption",
+      "AddPractice",
+      "RemovePractice",
+      "AddPracticeStep",
+      "RemovePracticeStep"
+    })
+      Assert.Contains(action, page, StringComparison.Ordinal);
+
+    Assert.Contains("Evaluaciones = course.Evaluaciones.Select", page, StringComparison.Ordinal);
+    Assert.Contains("Practicas = course.Practicas.Select", page, StringComparison.Ordinal);
+    Assert.Contains("EsCorrecta = option.EsCorrecta", page, StringComparison.Ordinal);
+    Assert.DoesNotContain("se conservarán al publicar", page, StringComparison.OrdinalIgnoreCase);
   }
 
   private sealed class PageProbe : CapacitacionPageBase

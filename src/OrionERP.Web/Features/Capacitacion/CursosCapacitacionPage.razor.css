@@ -66,8 +66,28 @@
 .cap-block-editor__top ::deep .cap-input, .cap-block-editor__top ::deep .cap-select { min-height: 2.3rem; padding-block: .45rem; }
 .cap-block-footer { align-items: center; display: flex; flex-wrap: wrap; gap: .7rem; justify-content: space-between; margin-top: .55rem; }
 .cap-block-footer ::deep .cap-check { font-size: .75rem; }
-.cap-editor-preserved { border: 1px solid #dce5ec; border-radius: .75rem; margin-bottom: 1rem; }
+.cap-activity-editor { margin-bottom: .85rem; overflow: visible; }
+.cap-order-badge--practice { background: #0c857b; }
+.cap-question-editor { background: #f8fafb; border: 1px solid #dce5ec; border-radius: .8rem; margin-top: .75rem; padding: .85rem; }
+.cap-question-editor__top { align-items: center; display: grid; gap: .55rem; grid-template-columns: auto minmax(0, 1fr) auto; margin-bottom: .65rem; }
+.cap-question-editor__top strong { color: #18324a; font-size: .82rem; }
+.cap-question-explanation { display: block; margin-top: .65rem; }
+.cap-question-critical { margin-top: .7rem; }
+.cap-answer-heading { align-items: center; border-top: 1px solid #dce5ec; color: #486176; display: flex; font-size: .74rem; font-weight: 750; justify-content: space-between; margin-top: .75rem; padding-top: .7rem; }
+.cap-inline-add { align-items: center; background: transparent; border: 0; color: #126b8f; display: inline-flex; font-size: .72rem; font-weight: 750; gap: .3rem; padding: .35rem; }
+.cap-inline-add:disabled { cursor: not-allowed; opacity: .45; }
+.cap-answer-list { display: grid; gap: .45rem; margin-top: .45rem; }
+.cap-answer-option { align-items: center; background: #fff; border: 1px solid #dce5ec; border-radius: .65rem; display: grid; gap: .5rem; grid-template-columns: auto minmax(0, 1fr) 4.2rem auto; padding: .45rem; transition: border-color .15s ease, background-color .15s ease; }
+.cap-answer-option.is-correct { background: #effaf6; border-color: #8fcdb9; }
+.cap-answer-option > input[type="radio"] { accent-color: #0c857b; height: 1.05rem; margin: 0 .2rem; width: 1.05rem; }
+.cap-answer-option ::deep .cap-input { min-height: 2.2rem; padding-block: .4rem; }
+.cap-correct-label { color: #08715c; font-size: .67rem; font-weight: 800; text-align: center; text-transform: uppercase; }
+.cap-answer-option .cap-order-actions button { height: 2rem; width: 2rem; }
+.cap-practice-step-list { display: grid; gap: .55rem; margin-top: .7rem; }
+.cap-practice-step { align-items: center; background: #f8fafb; border: 1px solid #dce5ec; border-radius: .7rem; display: grid; gap: .6rem; grid-template-columns: auto minmax(0, 1fr) auto auto; padding: .6rem; }
+.cap-practice-step ::deep .cap-textarea { min-height: 3.5rem; }
+.cap-practice-step ::deep .cap-check { font-size: .72rem; white-space: nowrap; }
 .cap-editor-bottom-actions { align-items: center; background: #f4f8fa; border: 1px solid #dce5ec; border-radius: .85rem; display: flex; gap: .6rem; justify-content: flex-end; padding: .85rem; }
 @media (max-width: 1100px) { .cap-course-admin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 800px) { .cap-course-toolbar { align-items: stretch; flex-wrap: wrap; } .cap-course-toolbar > label { max-width: none; } .cap-course-counters { margin-left: 0; } .cap-editor-toolbar { align-items: stretch; position: static; } .cap-editor-toolbar, .cap-editor-actions { flex-direction: column; } .cap-course-review__body { grid-template-columns: 1fr; } .cap-block-editor__top { grid-template-columns: auto minmax(0, 1fr) auto; } .cap-block-editor__top ::deep .cap-input { grid-column: 2 / -1; grid-row: 2; } }
-@media (max-width: 650px) { .cap-course-admin-grid { grid-template-columns: 1fr; } .cap-course-toolbar > .cap-btn { width: 100%; } .cap-course-counters { justify-content: space-between; width: 100%; } .cap-lesson-editor__header { align-items: start; grid-template-columns: auto minmax(0, 1fr); } .cap-lesson-editor__header .cap-order-actions { grid-column: 2; } .cap-editor-bottom-actions { align-items: stretch; flex-direction: column; } .cap-course-review__actions > ::deep .cap-btn { width: 100%; } }
+@media (max-width: 800px) { .cap-course-toolbar { align-items: stretch; flex-wrap: wrap; } .cap-course-toolbar > label { max-width: none; } .cap-course-counters { margin-left: 0; } .cap-editor-toolbar { align-items: stretch; position: static; } .cap-editor-toolbar, .cap-editor-actions { flex-direction: column; } .cap-course-review__body { grid-template-columns: 1fr; } .cap-block-editor__top { grid-template-columns: auto minmax(0, 1fr) auto; } .cap-block-editor__top ::deep .cap-input { grid-column: 2 / -1; grid-row: 2; } .cap-answer-option { grid-template-columns: auto minmax(0, 1fr) auto; } .cap-correct-label { display: none; } .cap-answer-option .cap-order-actions { grid-column: 2 / -1; justify-content: flex-end; } .cap-practice-step { align-items: start; grid-template-columns: auto minmax(0, 1fr); } .cap-practice-step > ::deep .cap-check, .cap-practice-step > .cap-order-actions { grid-column: 2; } }
+@media (max-width: 650px) { .cap-course-admin-grid { grid-template-columns: 1fr; } .cap-course-toolbar > .cap-btn { width: 100%; } .cap-course-counters { justify-content: space-between; width: 100%; } .cap-lesson-editor__header { align-items: start; grid-template-columns: auto minmax(0, 1fr); } .cap-lesson-editor__header .cap-order-actions { grid-column: 2; } .cap-editor-bottom-actions { align-items: stretch; flex-direction: column; } .cap-course-review__actions > ::deep .cap-btn { width: 100%; } .cap-answer-heading { align-items: flex-start; flex-direction: column; gap: .25rem; } }

@@ -127,10 +127,125 @@
           }
         </section>
 
-        @if ((selectedCourse?.Evaluaciones.Count ?? 0) > 0 || (selectedCourse?.Practicas.Count ?? 0) > 0)
-        {
-          <div class="cap-content-note cap-editor-preserved"><span class="oi oi-lock-locked" aria-hidden="true"></span><p>Las evaluaciones y prácticas existentes se copiaron al borrador y se conservarán al publicar. Este editor modifica la ficha, las lecciones y los bloques.</p></div>
-        }
+        <section class="cap-editor-section" aria-labelledby="course-evaluations-title">
+          <div class="cap-section-title">
+            <div><h2 id="course-evaluations-title">Evaluaciones</h2><p>Define las preguntas, opciones y respuestas correctas del borrador.</p></div>
+            <button type="button" class="cap-btn cap-btn--primary" @onclick="AddEvaluation"><span class="oi oi-plus" aria-hidden="true"></span>Agregar evaluación</button>
+          </div>
+
+          @if (editor.Evaluaciones.Count == 0)
+          {
+            <div class="cap-card cap-empty cap-editor-empty"><span class="cap-empty__icon"><span class="oi oi-pencil" aria-hidden="true"></span></span><h3>Sin evaluación</h3><p>La evaluación es opcional. Agrégala si necesitas comprobar conocimientos antes de completar el curso.</p><button type="button" class="cap-btn cap-btn--primary" @onclick="AddEvaluation">Crear evaluación</button></div>
+          }
+
+          @foreach (var evaluation in editor.Evaluaciones)
+          {
+            var evaluationIndex = editor.Evaluaciones.IndexOf(evaluation);
+            <article class="cap-card cap-activity-editor" @key="evaluation">
+              <header class="cap-lesson-editor__header">
+                <div class="cap-order-badge">@(evaluationIndex + 1)</div>
+                <div><h3>@(string.IsNullOrWhiteSpace(evaluation.Titulo) ? $"Evaluación {evaluationIndex + 1}" : evaluation.Titulo)</h3><p>@evaluation.Preguntas.Count pregunta(s) · mínimo @evaluation.CalificacionMinima.ToString("0")%</p></div>
+                <div class="cap-order-actions"><button type="button" class="danger" title="Eliminar evaluación" @onclick="() => RemoveEvaluation(evaluation)"><span class="oi oi-trash" aria-hidden="true"></span><span class="visually-hidden">Eliminar evaluación</span></button></div>
+              </header>
+              <div class="cap-card__body">
+                <div class="cap-form-grid">
+                  <div class="cap-field--wide"><label class="cap-label">Título</label><input class="cap-input" maxlength="160" required @bind="evaluation.Titulo" /></div>
+                  <div class="cap-field--wide"><label class="cap-label">Instrucciones</label><textarea class="cap-textarea" rows="2" maxlength="1000" required @bind="evaluation.Instrucciones"></textarea></div>
+                  <div><label class="cap-label">Calificación mínima</label><div class="cap-input-suffix"><input class="cap-input" type="number" min="0" max="100" step="1" required @bind="evaluation.CalificacionMinima" /><span>%</span></div></div>
+                  <label class="cap-check"><input type="checkbox" @bind="evaluation.Requerida" /><span><strong>Evaluación obligatoria</strong><small class="cap-hint">Debe aprobarse para completar el curso.</small></span></label>
+                </div>
+
+                <div class="cap-block-heading"><div><h4>Preguntas</h4><p>Cada pregunta necesita de 2 a 10 opciones y una sola respuesta correcta.</p></div><button type="button" class="cap-btn cap-btn--light" @onclick="() => AddQuestion(evaluation)"><span class="oi oi-plus" aria-hidden="true"></span>Agregar pregunta</button></div>
+                @foreach (var question in evaluation.Preguntas)
+                {
+                  var questionIndex = evaluation.Preguntas.IndexOf(question);
+                  <section class="cap-question-editor" @key="question">
+                    <div class="cap-question-editor__top">
+                      <span class="cap-block-number">@(questionIndex + 1)</span>
+                      <strong>Pregunta @(questionIndex + 1)</strong>
+                      <div class="cap-order-actions">
+                        <button type="button" title="Subir pregunta" disabled="@(questionIndex == 0)" @onclick="() => MoveQuestion(evaluation, questionIndex, -1)"><span class="oi oi-arrow-thick-top" aria-hidden="true"></span><span class="visually-hidden">Subir pregunta</span></button>
+                        <button type="button" title="Bajar pregunta" disabled="@(questionIndex == evaluation.Preguntas.Count - 1)" @onclick="() => MoveQuestion(evaluation, questionIndex, 1)"><span class="oi oi-arrow-thick-bottom" aria-hidden="true"></span><span class="visually-hidden">Bajar pregunta</span></button>
+                        <button type="button" class="danger" title="Eliminar pregunta" @onclick="() => RemoveQuestion(evaluation, question)"><span class="oi oi-trash" aria-hidden="true"></span><span class="visually-hidden">Eliminar pregunta</span></button>
+                      </div>
+                    </div>
+                    <label class="cap-label">Enunciado</label><textarea class="cap-textarea" rows="2" maxlength="1000" required @bind="question.Texto"></textarea>
+                    <label class="cap-label cap-question-explanation">Explicación al responder</label><textarea class="cap-textarea" rows="2" maxlength="1000" @bind="question.Explicacion"></textarea>
+                    <label class="cap-check cap-question-critical"><input type="checkbox" @bind="question.Critica" /><span><strong>Pregunta crítica</strong><small class="cap-hint">Una respuesta incorrecta impide aprobar el intento.</small></span></label>
+
+                    <div class="cap-answer-heading"><span>Opciones de respuesta</span><button type="button" class="cap-inline-add" disabled="@(question.Opciones.Count >= 10)" @onclick="() => AddOption(question)"><span class="oi oi-plus" aria-hidden="true"></span>Agregar opción</button></div>
+                    <div class="cap-answer-list">
+                      @foreach (var option in question.Opciones)
+                      {
+                        var optionIndex = question.Opciones.IndexOf(option);
+                        <div class="cap-answer-option @(option.EsCorrecta ? "is-correct" : null)" @key="option">
+                          <input type="radio" name="@($"correct-{evaluationIndex}-{questionIndex}")" checked="@option.EsCorrecta" aria-label="Marcar como respuesta correcta" @onchange="() => SelectCorrectOption(question, option)" />
+                          <input class="cap-input" aria-label="Opción @(optionIndex + 1)" maxlength="1000" required @bind="option.Texto" />
+                          <span class="cap-correct-label">@(option.EsCorrecta ? "Correcta" : "")</span>
+                          <div class="cap-order-actions">
+                            <button type="button" title="Subir opción" disabled="@(optionIndex == 0)" @onclick="() => MoveOption(question, optionIndex, -1)"><span class="oi oi-arrow-thick-top" aria-hidden="true"></span><span class="visually-hidden">Subir opción</span></button>
+                            <button type="button" title="Bajar opción" disabled="@(optionIndex == question.Opciones.Count - 1)" @onclick="() => MoveOption(question, optionIndex, 1)"><span class="oi oi-arrow-thick-bottom" aria-hidden="true"></span><span class="visually-hidden">Bajar opción</span></button>
+                            <button type="button" class="danger" title="Eliminar opción" disabled="@(question.Opciones.Count <= 2)" @onclick="() => RemoveOption(question, option)"><span class="oi oi-trash" aria-hidden="true"></span><span class="visually-hidden">Eliminar opción</span></button>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  </section>
+                }
+              </div>
+            </article>
+          }
+        </section>
+
+        <section class="cap-editor-section" aria-labelledby="course-practices-title">
+          <div class="cap-section-title">
+            <div><h2 id="course-practices-title">Prácticas</h2><p>Crea ejercicios guiados que el instructor pueda revisar paso a paso.</p></div>
+            <button type="button" class="cap-btn cap-btn--primary" @onclick="AddPractice"><span class="oi oi-plus" aria-hidden="true"></span>Agregar práctica</button>
+          </div>
+
+          @if (editor.Practicas.Count == 0)
+          {
+            <div class="cap-card cap-empty cap-editor-empty"><span class="cap-empty__icon"><span class="oi oi-wrench" aria-hidden="true"></span></span><h3>Sin práctica</h3><p>Agrega una actividad cuando el colaborador deba demostrar el procedimiento, no solo responder preguntas.</p><button type="button" class="cap-btn cap-btn--primary" @onclick="AddPractice">Crear práctica</button></div>
+          }
+
+          @foreach (var practice in editor.Practicas)
+          {
+            var practiceIndex = editor.Practicas.IndexOf(practice);
+            <article class="cap-card cap-activity-editor" @key="practice">
+              <header class="cap-lesson-editor__header">
+                <div class="cap-order-badge cap-order-badge--practice">@(practiceIndex + 1)</div>
+                <div><h3>@(string.IsNullOrWhiteSpace(practice.Titulo) ? $"Práctica {practiceIndex + 1}" : practice.Titulo)</h3><p>@practice.Pasos.Count paso(s)</p></div>
+                <div class="cap-order-actions"><button type="button" class="danger" title="Eliminar práctica" @onclick="() => RemovePractice(practice)"><span class="oi oi-trash" aria-hidden="true"></span><span class="visually-hidden">Eliminar práctica</span></button></div>
+              </header>
+              <div class="cap-card__body">
+                <div class="cap-form-grid">
+                  <div class="cap-field--wide"><label class="cap-label">Título</label><input class="cap-input" maxlength="160" required @bind="practice.Titulo" /></div>
+                  <div class="cap-field--wide"><label class="cap-label">Instrucciones</label><textarea class="cap-textarea" rows="3" maxlength="2000" required @bind="practice.Instrucciones"></textarea></div>
+                  <div class="cap-field--wide"><label class="cap-label">Ruta del entorno de práctica</label><input class="cap-input" maxlength="500" placeholder="Ej. /sandbox/mi-ejercicio (opcional)" @bind="practice.RutaSandbox" /><small class="cap-hint">Usa una ruta del entorno de capacitación configurado; nunca una pantalla de producción.</small></div>
+                  <label class="cap-check cap-field--wide"><input type="checkbox" @bind="practice.Requerida" /><span><strong>Práctica obligatoria</strong><small class="cap-hint">Un instructor debe validarla para completar el curso.</small></span></label>
+                </div>
+
+                <div class="cap-block-heading"><div><h4>Pasos de validación</h4><p>Marca como críticos los pasos cuya omisión debe reprobar la práctica.</p></div><button type="button" class="cap-btn cap-btn--light" @onclick="() => AddPracticeStep(practice)"><span class="oi oi-plus" aria-hidden="true"></span>Agregar paso</button></div>
+                <div class="cap-practice-step-list">
+                  @foreach (var step in practice.Pasos)
+                  {
+                    var stepIndex = practice.Pasos.IndexOf(step);
+                    <div class="cap-practice-step" @key="step">
+                      <span class="cap-block-number">@(stepIndex + 1)</span>
+                      <textarea class="cap-textarea" rows="2" aria-label="Descripción del paso @(stepIndex + 1)" maxlength="1000" required @bind="step.Descripcion"></textarea>
+                      <label class="cap-check"><input type="checkbox" @bind="step.Critico" /><span>Crítico</span></label>
+                      <div class="cap-order-actions">
+                        <button type="button" title="Subir paso" disabled="@(stepIndex == 0)" @onclick="() => MovePracticeStep(practice, stepIndex, -1)"><span class="oi oi-arrow-thick-top" aria-hidden="true"></span><span class="visually-hidden">Subir paso</span></button>
+                        <button type="button" title="Bajar paso" disabled="@(stepIndex == practice.Pasos.Count - 1)" @onclick="() => MovePracticeStep(practice, stepIndex, 1)"><span class="oi oi-arrow-thick-bottom" aria-hidden="true"></span><span class="visually-hidden">Bajar paso</span></button>
+                        <button type="button" class="danger" title="Eliminar paso" @onclick="() => RemovePracticeStep(practice, step)"><span class="oi oi-trash" aria-hidden="true"></span><span class="visually-hidden">Eliminar paso</span></button>
+                      </div>
+                    </div>
+                  }
+                </div>
+              </div>
+            </article>
+          }
+        </section>
 
         <div class="cap-editor-bottom-actions">
           <button type="button" class="cap-btn cap-btn--light" @onclick="CloseEditor">Cancelar</button>
@@ -343,6 +458,44 @@
           ConfiguracionJson = blockInfo.ConfiguracionJson,
           Requerido = blockInfo.Requerido
         }).ToList()
+      }).ToList(),
+      Evaluaciones = course.Evaluaciones.Select(evaluation => new CapacitacionGuardarEvaluacionRequest
+      {
+        EvaluacionId = evaluation.EvaluacionId,
+        Titulo = evaluation.Titulo,
+        Instrucciones = evaluation.Instrucciones,
+        CalificacionMinima = evaluation.CalificacionMinima,
+        Requerida = evaluation.Requerida,
+        Preguntas = evaluation.Preguntas.Select(question => new CapacitacionGuardarPreguntaRequest
+        {
+          PreguntaId = question.PreguntaId,
+          Orden = question.Orden,
+          Texto = question.Texto,
+          Explicacion = question.Explicacion,
+          Critica = question.Critica,
+          Opciones = question.Opciones.Select(option => new CapacitacionGuardarOpcionRequest
+          {
+            OpcionId = option.OpcionId,
+            Orden = option.Orden,
+            Texto = option.Texto,
+            EsCorrecta = option.EsCorrecta
+          }).ToList()
+        }).ToList()
+      }).ToList(),
+      Practicas = course.Practicas.Select(practice => new CapacitacionGuardarPracticaRequest
+      {
+        PracticaId = practice.PracticaId,
+        Titulo = practice.Titulo,
+        Instrucciones = practice.Instrucciones,
+        RutaSandbox = practice.RutaSandbox,
+        Requerida = practice.Requerida,
+        Pasos = practice.Pasos.Select(step => new CapacitacionGuardarPracticaPasoRequest
+        {
+          PracticaPasoId = step.PracticaPasoId,
+          Orden = step.Orden,
+          Descripcion = step.Descripcion,
+          Critico = step.Critico
+        }).ToList()
       }).ToList()
     };
   }
@@ -453,6 +606,71 @@
       Requerido = true
     });
 
+  private void AddEvaluation()
+  {
+    if (editor is null) return;
+    var number = editor.Evaluaciones.Count + 1;
+    var evaluation = new CapacitacionGuardarEvaluacionRequest
+    {
+      Titulo = $"Evaluación {number}",
+      Instrucciones = "Selecciona la respuesta correcta para cada pregunta.",
+      CalificacionMinima = editor.CalificacionMinima,
+      Requerida = true
+    };
+    AddQuestion(evaluation);
+    editor.Evaluaciones.Add(evaluation);
+  }
+
+  private static void AddQuestion(CapacitacionGuardarEvaluacionRequest evaluation)
+  {
+    var number = evaluation.Preguntas.Count + 1;
+    evaluation.Preguntas.Add(new()
+    {
+      Orden = number,
+      Texto = $"Pregunta {number}",
+      Opciones =
+      [
+        new() { Orden = 1, Texto = "Respuesta correcta", EsCorrecta = true },
+        new() { Orden = 2, Texto = "Otra respuesta" }
+      ]
+    });
+  }
+
+  private static void AddOption(CapacitacionGuardarPreguntaRequest question)
+    => question.Opciones.Add(new()
+    {
+      Orden = question.Opciones.Count + 1,
+      Texto = $"Opción {question.Opciones.Count + 1}"
+    });
+
+  private static void SelectCorrectOption(
+    CapacitacionGuardarPreguntaRequest question,
+    CapacitacionGuardarOpcionRequest selected)
+  {
+    foreach (var option in question.Opciones)
+      option.EsCorrecta = ReferenceEquals(option, selected);
+  }
+
+  private void AddPractice()
+  {
+    if (editor is null) return;
+    var number = editor.Practicas.Count + 1;
+    editor.Practicas.Add(new()
+    {
+      Titulo = $"Práctica {number}",
+      Instrucciones = "Completa los pasos en el entorno de práctica y solicita la validación de tu instructor.",
+      Requerida = true,
+      Pasos = [new() { Orden = 1, Descripcion = "Completa el primer paso de la práctica." }]
+    });
+  }
+
+  private static void AddPracticeStep(CapacitacionGuardarPracticaRequest practice)
+    => practice.Pasos.Add(new()
+    {
+      Orden = practice.Pasos.Count + 1,
+      Descripcion = $"Paso {practice.Pasos.Count + 1}"
+    });
+
   private void MoveLesson(int index, int direction)
   {
     if (editor is null) return;
@@ -461,6 +679,15 @@
 
   private static void MoveBlock(CapacitacionGuardarLeccionRequest lesson, int index, int direction)
     => Move(lesson.Bloques, index, direction);
+
+  private static void MoveQuestion(CapacitacionGuardarEvaluacionRequest evaluation, int index, int direction)
+    => Move(evaluation.Preguntas, index, direction);
+
+  private static void MoveOption(CapacitacionGuardarPreguntaRequest question, int index, int direction)
+    => Move(question.Opciones, index, direction);
+
+  private static void MovePracticeStep(CapacitacionGuardarPracticaRequest practice, int index, int direction)
+    => Move(practice.Pasos, index, direction);
 
   private static void Move<T>(List<T> items, int index, int direction)
   {
@@ -471,6 +698,17 @@
 
   private void RemoveLesson(CapacitacionGuardarLeccionRequest lesson) => editor?.Lecciones.Remove(lesson);
   private static void RemoveBlock(CapacitacionGuardarLeccionRequest lesson, CapacitacionGuardarBloqueRequest blockInfo) => lesson.Bloques.Remove(blockInfo);
+  private void RemoveEvaluation(CapacitacionGuardarEvaluacionRequest evaluation) => editor?.Evaluaciones.Remove(evaluation);
+  private static void RemoveQuestion(CapacitacionGuardarEvaluacionRequest evaluation, CapacitacionGuardarPreguntaRequest question) => evaluation.Preguntas.Remove(question);
+  private static void RemoveOption(CapacitacionGuardarPreguntaRequest question, CapacitacionGuardarOpcionRequest option)
+  {
+    var wasCorrect = option.EsCorrecta;
+    question.Opciones.Remove(option);
+    if (wasCorrect && question.Opciones.Count > 0)
+      question.Opciones[0].EsCorrecta = true;
+  }
+  private void RemovePractice(CapacitacionGuardarPracticaRequest practice) => editor?.Practicas.Remove(practice);
+  private static void RemovePracticeStep(CapacitacionGuardarPracticaRequest practice, CapacitacionGuardarPracticaPasoRequest step) => practice.Pasos.Remove(step);
   private int ResourceCount(int blockId) => selectedCourse?.Lecciones.SelectMany(lesson => lesson.Bloques).FirstOrDefault(blockInfo => blockInfo.BloqueId == blockId)?.Recursos.Count ?? 0;
   private void CloseEditor() { editor = null; selectedCourse = null; confirmDeactivate = false; }
   private void CloseReview() { selectedCourse = null; confirmDeactivate = false; }

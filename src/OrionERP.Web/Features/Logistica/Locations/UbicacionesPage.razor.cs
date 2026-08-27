@@ -1,5 +1,7 @@
 using OrionERP.Application.Common;
 using System.IO;
+using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
@@ -14,14 +16,18 @@ using OrionERP.Web.State;
 
 namespace OrionERP.Web.Features.Logistica.Locations;
 
-public partial class UbicacionesPage : ComponentBase
+public partial class UbicacionesPage : ComponentBase, IDisposable
 {
   private const int PageSize = 50;
   private const int QueryTake = PageSize + 1;
   private const string SuiteRoomType = "SUITE";
+  private const string InventoryMode = "inventory";
+  private const string ManagementMode = "management";
 
   private ElementReference MaterialPickerSearchInput;
   private bool _focusMaterialPickerSearchPending;
+  private bool _selectionRestoreAttempted;
+  private string _currentUserId = "unknown";
 
   protected static readonly string[] LocationTypes = ["Room", "Storage", "Disposal", "Service"];
 
@@ -45,10 +51,12 @@ public partial class UbicacionesPage : ComponentBase
   protected Dictionary<int, string> MaterialThumbnailDataUrls { get; set; } = [];
   protected Dictionary<int, string> MaterialPickerThumbnailDataUrls { get; set; } = [];
   protected LocationUpsertRequest LocationEditor { get; set; } = CreateLocationEditor();
+  protected EditContext LocationEditContext { get; set; }
   protected StockThresholdUpdateRequest ThresholdEditor { get; set; } = CreateThresholdEditor();
   protected StockListItemDto? SelectedStock { get; set; }
   protected int? SelectedRoomId { get; set; }
   protected int? SelectedLocationId { get; set; }
+  protected int? ManagementLocationId { get; set; }
   protected int? AddingMaterialId { get; set; }
   protected bool IsLocationListCollapsed { get; set; }
   protected bool HasExecutedStockSearch { get; set; }
@@ -66,7 +74,11 @@ public partial class UbicacionesPage : ComponentBase
   protected bool IsMutatingStock { get; set; }
   protected bool ShowAddMaterialDialog { get; set; }
   protected bool ShowMaterialImageModal { get; set; }
+  protected bool ShowLocationEditor { get; set; }
   protected bool IsLoadingMaterialImage { get; set; }
+  protected bool IsRestoringSelection { get; set; }
+  protected bool IsLocationEditorDirty { get; set; }
+  protected string ActiveMode { get; set; } = InventoryMode;
   protected string CurrentUserName { get; set; } = "Administrador";
 
   protected byte[]? PendingAttachmentBytes { get; set; }
@@ -80,6 +92,8 @@ public partial class UbicacionesPage : ComponentBase
   protected bool IsStockBusy => IsLoadingStock || IsLoadingMoreStock;
   protected bool IsMaterialPickerBusy => IsLoadingMaterialPicker || IsLoadingMoreMaterialPicker || AddingMaterialId.HasValue;
   protected bool CanEditSelectedStock => SelectedStock is { IsRemoved: false };
+  protected bool IsManagementMode => string.Equals(ActiveMode, ManagementMode, StringComparison.Ordinal);
+  protected bool IsInventoryMode => !IsManagementMode;
   protected bool HasImageOnly
   {
     get => MaterialPickerFilter.HasImage ?? false;
@@ -88,6 +102,19 @@ public partial class UbicacionesPage : ComponentBase
 
   protected LookupOptionDto? SelectedRoom => RoomOptions.FirstOrDefault(room => room.Id == SelectedRoomId);
   protected string SelectedRoomName => SelectedRoom?.Name ?? "Selecciona una suite";
+  protected LocationListItemDto? SelectedLocation => Locations.FirstOrDefault(item => item.Id == SelectedLocationId);
+  protected bool CanAddMaterialToSelectedLocation => SelectedLocation is { IsActive: true, IsInventoryEnabled: true };
+  protected IReadOnlyList<LocationListItemDto> OperationalLocations => Locations
+    .Where(item => item.IsActive && item.IsInventoryEnabled)
+    .OrderBy(item => item.LocationName, StringComparer.OrdinalIgnoreCase)
+    .ThenBy(item => item.Id)
+    .ToList();
+  protected IReadOnlyList<LocationListItemDto> NonOperationalLocations => Locations
+    .Where(item => !item.IsActive || !item.IsInventoryEnabled)
+    .OrderByDescending(item => item.IsActive)
+    .ThenBy(item => item.LocationName, StringComparer.OrdinalIgnoreCase)
+    .ThenBy(item => item.Id)
+    .ToList();
   protected int InventoryEnabledLocationCount => Locations.Count(item => item.IsInventoryEnabled);
   protected int ActiveLocationCount => Locations.Count(item => item.IsActive);
   protected string LocationListToggleLabel => IsLocationListCollapsed ? "Mostrar ubicaciones" : "Ocultar ubicaciones";
@@ -117,14 +144,39 @@ public partial class UbicacionesPage : ComponentBase
     }
   }
 
+  private string SelectionStorageKey
+    => $"orionerp.logistica.ubicaciones.selection:{Uri.EscapeDataString(CurrentRfc)}:{Uri.EscapeDataString(_currentUserId)}";
+
+  public UbicacionesPage()
+  {
+    LocationEditContext = new EditContext(LocationEditor);
+    LocationEditContext.OnFieldChanged += HandleLocationEditorFieldChanged;
+  }
+
   protected override async Task OnInitializedAsync()
   {
-    CurrentUserName = await ResolveCurrentUserAsync();
+    var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+    var user = authState.User;
+    CurrentUserName = user.Identity?.Name?.Trim() switch
+    {
+      { Length: > 0 } name => name,
+      _ => "Administrador"
+    };
+    _currentUserId = user.FindFirstValue(ClaimTypes.NameIdentifier)?.Trim() switch
+    {
+      { Length: > 0 } id => id,
+      _ => CurrentUserName
+    };
     await LoadLookupsAsync();
   }
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
   {
+    if (firstRender && !_selectionRestoreAttempted)
+    {
+      await RestoreRememberedSelectionAsync();
+    }
+
     if (!_focusMaterialPickerSearchPending || !ShowAddMaterialDialog || !SelectedLocationId.HasValue)
     {
       return;
@@ -145,9 +197,29 @@ public partial class UbicacionesPage : ComponentBase
 
   protected async Task OnRoomChangedAsync(ChangeEventArgs args)
   {
+    if (!await CanDiscardLocationEditorAsync())
+    {
+      StateHasChanged();
+      return;
+    }
+
     SelectedRoomId = int.TryParse(args.Value?.ToString(), out var roomId) ? roomId : null;
     IsLocationListCollapsed = false;
     await LoadLocationsForSelectedRoomAsync();
+    await RememberSelectionAsync(SelectedRoomId, null);
+  }
+
+  protected async Task OnLocationChangedAsync(ChangeEventArgs args)
+  {
+    if (!int.TryParse(args.Value?.ToString(), out var locationId))
+    {
+      ClearSelectedLocationContext();
+      SetLocationEditor(CreateLocationEditor(SelectedRoomId));
+      await RememberSelectionAsync(SelectedRoomId, null);
+      return;
+    }
+
+    await SeleccionarUbicacionAsync(locationId, openEditor: false, loadInventory: true, rememberSelection: true);
   }
 
   protected async Task BuscarStockAsync()
@@ -187,6 +259,40 @@ public partial class UbicacionesPage : ComponentBase
 
   protected Task OnStockSearchKeyUpAsync(KeyboardEventArgs args)
     => args.Key == "Enter" ? BuscarStockAsync() : Task.CompletedTask;
+
+  protected async Task ToggleLowStockFilterAsync()
+  {
+    StockFilter.LowStockOnly = !StockFilter.LowStockOnly;
+    await BuscarStockAsync();
+  }
+
+  protected async Task ToggleCountDueFilterAsync()
+  {
+    StockFilter.CountDueOnly = !StockFilter.CountDueOnly;
+    await BuscarStockAsync();
+  }
+
+  protected async Task OnIncludeZeroBalancesChangedAsync(ChangeEventArgs args)
+  {
+    StockFilter.IncludeZeroBalances = args.Value is true || string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+    await BuscarStockAsync();
+  }
+
+  protected async Task OnIncludeRemovedChangedAsync(ChangeEventArgs args)
+  {
+    StockFilter.IncludeRemoved = args.Value is true || string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+    await BuscarStockAsync();
+  }
+
+  protected async Task LimpiarFiltrosStockAsync()
+  {
+    StockFilter.SearchText = null;
+    StockFilter.LowStockOnly = false;
+    StockFilter.CountDueOnly = false;
+    StockFilter.IncludeZeroBalances = true;
+    StockFilter.IncludeRemoved = false;
+    await BuscarStockAsync();
+  }
 
   protected async Task BuscarMaterialesParaAgregarAsync()
   {
@@ -243,6 +349,12 @@ public partial class UbicacionesPage : ComponentBase
       return;
     }
 
+    if (!CanAddMaterialToSelectedLocation)
+    {
+      UiMessages.ShowWarning("La ubicación debe estar activa y habilitada para inventario antes de agregar materiales.");
+      return;
+    }
+
     ShowAddMaterialDialog = true;
     RequestMaterialPickerSearchFocus();
 
@@ -286,7 +398,7 @@ public partial class UbicacionesPage : ComponentBase
 
   protected async Task AgregarMaterialAUbicacionAsync(MaterialListItemDto item)
   {
-    if (!SelectedLocationId.HasValue || AddingMaterialId.HasValue)
+    if (!SelectedLocationId.HasValue || !CanAddMaterialToSelectedLocation || AddingMaterialId.HasValue)
     {
       return;
     }
@@ -350,7 +462,11 @@ public partial class UbicacionesPage : ComponentBase
     }
   }
 
-  protected async Task SeleccionarUbicacionAsync(int locationId)
+  protected async Task SeleccionarUbicacionAsync(
+    int locationId,
+    bool openEditor = false,
+    bool loadInventory = true,
+    bool rememberSelection = false)
   {
     try
     {
@@ -367,7 +483,7 @@ public partial class UbicacionesPage : ComponentBase
       }
 
       SelectedLocationId = detail.Id;
-      LocationEditor = new LocationUpsertRequest
+      SetLocationEditor(new LocationUpsertRequest
       {
         Id = detail.Id,
         LocationCode = detail.LocationCode,
@@ -378,12 +494,21 @@ public partial class UbicacionesPage : ComponentBase
         Description = detail.Description,
         IsInventoryEnabled = detail.IsInventoryEnabled,
         IsActive = detail.IsActive
-      };
+      });
 
       StockFilter.RoomId = detail.RoomId ?? SelectedRoomId;
       StockFilter.LocationId = detail.Id;
-      IsLocationListCollapsed = true;
-      await BuscarStockAsync();
+      ShowLocationEditor = openEditor;
+
+      if (rememberSelection)
+      {
+        await RememberSelectionAsync(SelectedRoomId, detail.Id);
+      }
+
+      if (loadInventory)
+      {
+        await BuscarStockAsync();
+      }
     }
     catch (Exception ex)
     {
@@ -391,7 +516,17 @@ public partial class UbicacionesPage : ComponentBase
     }
   }
 
-  protected void NuevaUbicacion()
+  protected async Task EditarUbicacionAsync(int locationId)
+  {
+    if (!await CanDiscardLocationEditorAsync())
+    {
+      return;
+    }
+
+    await LoadLocationEditorAsync(locationId);
+  }
+
+  protected async Task NuevaUbicacionAsync()
   {
     if (!SelectedRoomId.HasValue)
     {
@@ -399,9 +534,14 @@ public partial class UbicacionesPage : ComponentBase
       return;
     }
 
-    ClearSelectedLocationContext();
-    LocationEditor = CreateLocationEditor(SelectedRoomId);
-    IsLocationListCollapsed = true;
+    if (!await CanDiscardLocationEditorAsync())
+    {
+      return;
+    }
+
+    ManagementLocationId = null;
+    SetLocationEditor(CreateLocationEditor(SelectedRoomId));
+    ShowLocationEditor = true;
   }
 
   protected async Task GuardarUbicacionAsync()
@@ -424,7 +564,11 @@ public partial class UbicacionesPage : ComponentBase
       }
 
       UiMessages.ShowSuccess(result.Message);
-      await LoadLocationsForSelectedRoomAsync(result.EntityId);
+      var savedLocationId = result.EntityId;
+      await RefreshLocationListAsync();
+      ManagementLocationId = savedLocationId;
+      ShowLocationEditor = false;
+      SetLocationEditor(CreateLocationEditor(SelectedRoomId));
     }
     catch (Exception ex)
     {
@@ -438,23 +582,69 @@ public partial class UbicacionesPage : ComponentBase
 
   protected async Task RestablecerUbicacionAsync()
   {
-    if (SelectedLocationId.HasValue)
+    if (ManagementLocationId.HasValue)
     {
-      await SeleccionarUbicacionAsync(SelectedLocationId.Value);
+      await LoadLocationEditorAsync(ManagementLocationId.Value);
       return;
     }
 
-    LocationEditor = CreateLocationEditor(SelectedRoomId);
+    SetLocationEditor(CreateLocationEditor(SelectedRoomId));
   }
 
-  protected void ToggleLocationList()
+  protected async Task CerrarEditorUbicacionAsync()
   {
-    if (Locations.Count == 0)
+    if (!await CanDiscardLocationEditorAsync())
     {
       return;
     }
 
-    IsLocationListCollapsed = !IsLocationListCollapsed;
+    ShowLocationEditor = false;
+    SetLocationEditor(CreateLocationEditor(SelectedRoomId));
+  }
+
+  protected void AbrirAdministracion()
+  {
+    ResetStockSelection();
+    ActiveMode = ManagementMode;
+    ManagementLocationId = SelectedLocationId.HasValue && Locations.Any(item => item.Id == SelectedLocationId.Value)
+      ? SelectedLocationId
+      : null;
+    ShowLocationEditor = false;
+    SetLocationEditor(CreateLocationEditor(SelectedRoomId));
+  }
+
+  protected async Task VolverAInventarioAsync()
+  {
+    if (!await CanDiscardLocationEditorAsync())
+    {
+      return;
+    }
+
+    ActiveMode = InventoryMode;
+    ManagementLocationId = null;
+    ShowLocationEditor = false;
+
+    if (SelectedLocationId.HasValue)
+    {
+      await SeleccionarUbicacionAsync(SelectedLocationId.Value, openEditor: false, loadInventory: true, rememberSelection: true);
+    }
+    else
+    {
+      SetLocationEditor(CreateLocationEditor(SelectedRoomId));
+    }
+  }
+
+  protected async Task VerInventarioDeUbicacionAsync(int locationId)
+  {
+    if (!await CanDiscardLocationEditorAsync())
+    {
+      return;
+    }
+
+    ActiveMode = InventoryMode;
+    ManagementLocationId = null;
+    ShowLocationEditor = false;
+    await SeleccionarUbicacionAsync(locationId, openEditor: false, loadInventory: true, rememberSelection: true);
   }
 
   protected async Task SeleccionarStockAsync(StockListItemDto item)
@@ -476,6 +666,9 @@ public partial class UbicacionesPage : ComponentBase
       UiMessages.ShowError($"No se pudo cargar el detalle de inventario. {ex.Message}");
     }
   }
+
+  protected void CerrarDetalleMaterial()
+    => ResetStockSelection();
 
   protected async Task GuardarThresholdsAsync()
   {
@@ -799,9 +992,10 @@ public partial class UbicacionesPage : ComponentBase
     {
       StockFilter.RoomId = SelectedRoomId;
       ClearSelectedLocationContext();
-      LocationEditor = CreateLocationEditor(SelectedRoomId);
+      ManagementLocationId = null;
+      SetLocationEditor(CreateLocationEditor(SelectedRoomId));
+      ShowLocationEditor = false;
       Locations = [];
-      IsLocationListCollapsed = false;
 
       if (!SelectedRoomId.HasValue)
       {
@@ -816,7 +1010,11 @@ public partial class UbicacionesPage : ComponentBase
 
       if (preferredLocationId.HasValue && Locations.Any(item => item.Id == preferredLocationId.Value))
       {
-        await SeleccionarUbicacionAsync(preferredLocationId.Value);
+        await SeleccionarUbicacionAsync(
+          preferredLocationId.Value,
+          openEditor: false,
+          loadInventory: IsInventoryMode,
+          rememberSelection: IsInventoryMode);
       }
     }
     catch (Exception ex)
@@ -827,6 +1025,53 @@ public partial class UbicacionesPage : ComponentBase
     {
       IsLoadingLocations = false;
       StateHasChanged();
+    }
+  }
+
+  private async Task RefreshLocationListAsync()
+  {
+    if (!SelectedRoomId.HasValue)
+    {
+      Locations = [];
+      return;
+    }
+
+    Locations = (await LocationService.GetLocationsAsync(new LocationFilter
+    {
+      RoomId = SelectedRoomId,
+      IncludeInactive = true
+    })).ToList();
+  }
+
+  private async Task LoadLocationEditorAsync(int locationId)
+  {
+    try
+    {
+      var detail = await LocationService.GetLocationAsync(locationId);
+      if (detail is null)
+      {
+        UiMessages.ShowWarning("La ubicación ya no existe.");
+        return;
+      }
+
+      ManagementLocationId = detail.Id;
+      SetLocationEditor(new LocationUpsertRequest
+      {
+        Id = detail.Id,
+        LocationCode = detail.LocationCode,
+        LocationName = detail.LocationName,
+        LocationType = detail.LocationType,
+        ParentLocationId = detail.ParentLocationId,
+        RoomId = detail.RoomId,
+        Description = detail.Description,
+        IsInventoryEnabled = detail.IsInventoryEnabled,
+        IsActive = detail.IsActive
+      });
+      ShowLocationEditor = true;
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo cargar la ubicación. {ex.Message}");
     }
   }
 
@@ -1055,6 +1300,120 @@ public partial class UbicacionesPage : ComponentBase
     MaterialPickerThumbnailDataUrls = [];
   }
 
+  private async Task RestoreRememberedSelectionAsync()
+  {
+    _selectionRestoreAttempted = true;
+    IsRestoringSelection = true;
+    StateHasChanged();
+
+    try
+    {
+      var json = await Js.InvokeAsync<string?>("localStorage.getItem", SelectionStorageKey);
+      if (string.IsNullOrWhiteSpace(json))
+      {
+        return;
+      }
+
+      var remembered = JsonSerializer.Deserialize<RememberedLocationSelection>(json);
+      if (remembered is null || !remembered.RoomId.HasValue || RoomOptions.All(room => room.Id != remembered.RoomId.Value))
+      {
+        await Js.InvokeVoidAsync("localStorage.removeItem", SelectionStorageKey);
+        return;
+      }
+
+      SelectedRoomId = remembered.RoomId;
+      await LoadLocationsForSelectedRoomAsync();
+
+      if (remembered.LocationId.HasValue
+          && Locations.Any(location => location.Id == remembered.LocationId.Value && location.RoomId == remembered.RoomId))
+      {
+        await SeleccionarUbicacionAsync(
+          remembered.LocationId.Value,
+          openEditor: false,
+          loadInventory: true,
+          rememberSelection: false);
+      }
+      else
+      {
+        await RememberSelectionAsync(SelectedRoomId, null);
+      }
+    }
+    catch (JsonException)
+    {
+      try
+      {
+        await Js.InvokeVoidAsync("localStorage.removeItem", SelectionStorageKey);
+      }
+      catch
+      {
+      }
+    }
+    catch (InvalidOperationException)
+    {
+    }
+    catch (JSDisconnectedException)
+    {
+    }
+    catch (JSException)
+    {
+    }
+    finally
+    {
+      IsRestoringSelection = false;
+      StateHasChanged();
+    }
+  }
+
+  private async Task RememberSelectionAsync(int? roomId, int? locationId)
+  {
+    try
+    {
+      var json = JsonSerializer.Serialize(new RememberedLocationSelection
+      {
+        RoomId = roomId,
+        LocationId = locationId
+      });
+      await Js.InvokeVoidAsync("localStorage.setItem", SelectionStorageKey, json);
+    }
+    catch (InvalidOperationException)
+    {
+    }
+    catch (JSDisconnectedException)
+    {
+    }
+    catch (JSException)
+    {
+    }
+  }
+
+  private async Task<bool> CanDiscardLocationEditorAsync()
+  {
+    if (!ShowLocationEditor || !IsLocationEditorDirty)
+    {
+      return true;
+    }
+
+    var confirmed = await ConfirmAsync("Hay cambios sin guardar en la ubicación. ¿Deseas descartarlos?");
+    if (confirmed)
+    {
+      IsLocationEditorDirty = false;
+    }
+
+    return confirmed;
+  }
+
+  private void SetLocationEditor(LocationUpsertRequest editor)
+  {
+    LocationEditContext.OnFieldChanged -= HandleLocationEditorFieldChanged;
+    LocationEditor = editor;
+    LocationEditContext = new EditContext(LocationEditor);
+    LocationEditContext.OnFieldChanged += HandleLocationEditorFieldChanged;
+    IsLocationEditorDirty = false;
+  }
+
+  private void HandleLocationEditorFieldChanged(object? sender, FieldChangedEventArgs args)
+    => IsLocationEditorDirty = true;
+
   private void RequestMaterialPickerSearchFocus()
   {
     if (ShowAddMaterialDialog)
@@ -1111,6 +1470,65 @@ public partial class UbicacionesPage : ComponentBase
 
   protected static string FormatThresholdQuantity(decimal? quantity)
     => quantity.HasValue ? quantity.Value.ToString("N2") : "No definido";
+
+  protected static string GetLocationTypeLabel(string? locationType)
+    => locationType?.Trim() switch
+    {
+      "Room" => "Habitación",
+      "Storage" => "Almacén",
+      "Disposal" => "Descarte",
+      "Service" => "Servicio",
+      { Length: > 0 } value => value,
+      _ => "Sin tipo"
+    };
+
+  protected static string GetLocationAvailabilityText(LocationListItemDto item)
+    => item switch
+    {
+      { IsActive: false } => "Inactiva",
+      { IsInventoryEnabled: false } => "No habilitada para inventario",
+      _ => "Lista para inventario"
+    };
+
+  protected static string GetLocationOptionLabel(LocationListItemDto item)
+  {
+    var name = string.IsNullOrWhiteSpace(item.LocationCode)
+      ? item.LocationName
+      : $"{item.LocationCode} · {item.LocationName}";
+    return $"{name} · {GetLocationTypeLabel(item.LocationType)} · {item.MaterialCount} materiales";
+  }
+
+  protected static string GetLocationCardClass(LocationListItemDto item, int? selectedLocationId)
+  {
+    var classes = new List<string> { "ubicaciones-location-card" };
+    if (item.Id == selectedLocationId)
+    {
+      classes.Add("is-selected");
+    }
+
+    if (!item.IsActive || !item.IsInventoryEnabled)
+    {
+      classes.Add("is-nonoperational");
+    }
+
+    return string.Join(' ', classes);
+  }
+
+  protected string GetStockCardClass(StockListItemDto item)
+  {
+    var classes = new List<string> { "ubicaciones-stock-card" };
+    if (SelectedStock?.StockBalanceId == item.StockBalanceId)
+    {
+      classes.Add("is-selected");
+    }
+
+    if (item.IsRemoved)
+    {
+      classes.Add("is-removed");
+    }
+
+    return string.Join(' ', classes);
+  }
 
   protected string GetThresholdStatusText()
   {
@@ -1240,16 +1658,6 @@ public partial class UbicacionesPage : ComponentBase
     }
   }
 
-  private async Task<string> ResolveCurrentUserAsync()
-  {
-    var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-    return authState.User.Identity?.Name?.Trim() switch
-    {
-      { Length: > 0 } name => name,
-      _ => "Administrador"
-    };
-  }
-
   private static StockThresholdUpdateRequest CreateThresholdEditor(StockListItemDto? item = null)
     => new()
     {
@@ -1266,4 +1674,13 @@ public partial class UbicacionesPage : ComponentBase
       IsInventoryEnabled = true,
       IsActive = true
     };
+
+  public void Dispose()
+    => LocationEditContext.OnFieldChanged -= HandleLocationEditorFieldChanged;
+
+  private sealed class RememberedLocationSelection
+  {
+    public int? RoomId { get; set; }
+    public int? LocationId { get; set; }
+  }
 }

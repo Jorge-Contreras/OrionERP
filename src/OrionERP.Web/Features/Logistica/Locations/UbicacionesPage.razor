@@ -5,845 +5,577 @@
 
 <PageTitle>Logística · Ubicaciones e inventario</PageTitle>
 
-<div class="container-fluid py-3">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+<div class="ubicaciones-page">
+    <header class="ubicaciones-hero">
         <div>
-            <h1 class="h3 mb-1">Ubicaciones e inventario</h1>
-            <p class="text-muted mb-0">Selecciona una suite, elige la ubicación correcta y sincroniza inventario, miniaturas y parámetros en una sola vista.</p>
+            <span class="ubicaciones-eyebrow">Logística</span>
+            <h1>@(IsManagementMode ? "Administrar ubicaciones" : "Inventario por ubicación")</h1>
+            <p>@(IsManagementMode
+                ? "Crea y organiza los espacios donde se guarda o utiliza material."
+                : "Elige dónde vas a trabajar y revisa los materiales de esa ubicación.")</p>
         </div>
-        <button type="button" class="btn btn-outline-primary" @onclick="NuevaUbicacion" disabled="@(!SelectedRoomId.HasValue)">
-            Nueva ubicación
-        </button>
-    </div>
+        @if (IsInventoryMode)
+        {
+            <button class="btn btn-light ubicaciones-mode-button" type="button" @onclick="AbrirAdministracion">
+                <span class="oi oi-cog" aria-hidden="true"></span>
+                Administrar ubicaciones
+            </button>
+        }
+        else
+        {
+            <button class="btn btn-light ubicaciones-mode-button" type="button" @onclick="VolverAInventarioAsync">
+                <span class="oi oi-arrow-left" aria-hidden="true"></span>
+                Volver al inventario
+            </button>
+        }
+    </header>
 
-    <div class="row g-3">
-        <div class="col-12 col-xxl-4">
-            <section class="card shadow-sm mb-3 ubicaciones-selector-card">
-                <div class="card-body">
-                    <div class="ubicaciones-panel-header mb-3">
-                        <div>
-                            <div class="ubicaciones-step-chip">Paso 1</div>
-                            <h2 class="h5 mb-1">Suite y ubicación</h2>
-                            <p class="text-muted mb-0">Primero elige una suite y luego una ubicación. Esa selección actualizará el inventario y el editor.</p>
-                        </div>
+    @if (IsRestoringSelection)
+    {
+        <div class="ubicaciones-restoring" role="status" aria-live="polite">
+            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+            Recuperando tu última ubicación…
+        </div>
+    }
+
+    @if (IsInventoryMode)
+    {
+        <main class="ubicaciones-inventory-workspace">
+            <section class="ubicaciones-context-card" aria-labelledby="ubicaciones-context-title">
+                <div class="ubicaciones-section-heading">
+                    <div>
+                        <span class="ubicaciones-section-kicker">Primero</span>
+                        <h2 id="ubicaciones-context-title">¿Dónde vas a trabajar?</h2>
+                        <p>Selecciona la suite y después la ubicación que deseas consultar.</p>
                     </div>
+                    @if (SelectedLocation is not null)
+                    {
+                        <span class="ubicaciones-ready-badge"><span class="oi oi-check" aria-hidden="true"></span> Ubicación lista</span>
+                    }
+                </div>
 
-                    <div class="mb-3">
-                        <label class="form-label">Suite</label>
-                        <select class="form-select form-select-lg" value="@SelectedRoomId" @onchange="OnRoomChangedAsync">
+                <div class="ubicaciones-context-controls">
+                    <label class="ubicaciones-step-field">
+                        <span class="ubicaciones-step-number">1</span>
+                        <span class="ubicaciones-step-copy"><strong>Suite</strong><small>Elige el espacio general.</small></span>
+                        <select class="form-select" value="@SelectedRoomId" @onchange="OnRoomChangedAsync" disabled="@IsLoadingLocations">
                             <option value="">Selecciona una suite</option>
                             @foreach (var room in RoomOptions)
                             {
                                 <option value="@room.Id">@room.Name</option>
                             }
                         </select>
-                        <div class="form-text">Suites obtenidas con el filtro SQL <code>ROOM_TYPE = 'SUITE'</code>.</div>
+                    </label>
+
+                    <label class="ubicaciones-step-field">
+                        <span class="ubicaciones-step-number">2</span>
+                        <span class="ubicaciones-step-copy"><strong>Ubicación</strong><small>Elige el lugar exacto.</small></span>
+                        <select class="form-select" value="@SelectedLocationId" @onchange="OnLocationChangedAsync" disabled="@(!SelectedRoomId.HasValue || IsLoadingLocations)">
+                            <option value="">Selecciona una ubicación</option>
+                            @if (OperationalLocations.Count > 0)
+                            {
+                                <optgroup label="Listas para inventario">
+                                    @foreach (var location in OperationalLocations)
+                                    {
+                                        <option value="@location.Id">@GetLocationOptionLabel(location)</option>
+                                    }
+                                </optgroup>
+                            }
+                            @if (NonOperationalLocations.Count > 0)
+                            {
+                                <optgroup label="Inactivas o no habilitadas">
+                                    @foreach (var location in NonOperationalLocations)
+                                    {
+                                        <option value="@location.Id">@GetLocationOptionLabel(location) · @GetLocationAvailabilityText(location)</option>
+                                    }
+                                </optgroup>
+                            }
+                        </select>
+                    </label>
+                </div>
+
+                @if (IsLoadingLocations)
+                {
+                    <div class="ubicaciones-inline-status" role="status">Cargando ubicaciones…</div>
+                }
+                else if (SelectedRoomId.HasValue && Locations.Count == 0)
+                {
+                    <div class="ubicaciones-empty-state">
+                        <span class="oi oi-map-marker" aria-hidden="true"></span>
+                        <div><strong>Esta suite todavía no tiene ubicaciones</strong><p>Abre “Administrar ubicaciones” para crear la primera.</p></div>
+                    </div>
+                }
+                else if (SelectedLocation is null)
+                {
+                    <div class="ubicaciones-context-help">
+                        <span class="oi oi-info" aria-hidden="true"></span>
+                        <span>@(SelectedRoomId.HasValue ? "Ahora elige una ubicación para cargar su inventario." : "Comienza seleccionando una suite.")</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="ubicaciones-active-context" aria-label="Ubicación seleccionada">
+                        <div class="ubicaciones-active-icon"><span class="oi oi-map-marker" aria-hidden="true"></span></div>
+                        <div class="ubicaciones-active-main">
+                            <span>Estás trabajando en</span>
+                            <strong>@SelectedLocation.LocationName</strong>
+                            <small>@(string.IsNullOrWhiteSpace(SelectedLocation.LocationCode) ? $"LOC-{SelectedLocation.Id}" : SelectedLocation.LocationCode) · @SelectedRoomName</small>
+                        </div>
+                        <div class="ubicaciones-active-facts">
+                            <span><small>Tipo</small><strong>@GetLocationTypeLabel(SelectedLocation.LocationType)</strong></span>
+                            <span><small>Materiales</small><strong>@SelectedLocation.MaterialCount</strong></span>
+                            <span class="@(CanAddMaterialToSelectedLocation ? "is-operational" : "is-warning")"><small>Estado</small><strong>@GetLocationAvailabilityText(SelectedLocation)</strong></span>
+                        </div>
+                    </div>
+                }
+            </section>
+
+            <section class="ubicaciones-inventory-card" aria-labelledby="ubicaciones-inventory-title">
+                <div class="ubicaciones-section-heading ubicaciones-inventory-heading">
+                    <div>
+                        <span class="ubicaciones-section-kicker">Después</span>
+                        <h2 id="ubicaciones-inventory-title">Revisa el inventario</h2>
+                        <p>@(SelectedLocation is null ? "Selecciona una ubicación para comenzar." : $"Materiales disponibles en {SelectedLocation.LocationName}.")</p>
+                    </div>
+                    <button class="btn btn-primary ubicaciones-primary-action" type="button" @onclick="AbrirAgregarMaterialDialogAsync" disabled="@(!CanAddMaterialToSelectedLocation)">
+                        <span class="oi oi-plus" aria-hidden="true"></span>
+                        Agregar material
+                    </button>
+                </div>
+
+                @if (SelectedLocation is not null && !CanAddMaterialToSelectedLocation)
+                {
+                    <div class="ubicaciones-operation-warning" role="note">
+                        <span class="oi oi-warning" aria-hidden="true"></span>
+                        <div>
+                            <strong>No se pueden agregar materiales aquí</strong>
+                            <p>@(SelectedLocation.IsActive
+                                ? "Esta ubicación no está habilitada para inventario. Puedes consultar sus registros existentes."
+                                : "Esta ubicación está inactiva. Puedes consultar sus registros existentes.")</p>
+                        </div>
+                    </div>
+                }
+
+                @if (!SelectedLocationId.HasValue)
+                {
+                    <div class="ubicaciones-empty-state ubicaciones-empty-state-large">
+                        <span class="oi oi-box" aria-hidden="true"></span>
+                        <div><strong>Aquí aparecerá el inventario</strong><p>Completa los dos pasos de arriba para ver materiales, cantidades y alertas.</p></div>
+                    </div>
+                }
+                else
+                {
+                    <div class="ubicaciones-stock-toolbar">
+                        <label class="ubicaciones-search-box">
+                            <span class="oi oi-magnifying-glass" aria-hidden="true"></span>
+                            <span class="visually-hidden">Buscar material</span>
+                            <input type="search" placeholder="Nombre, código o barras" @bind="StockFilter.SearchText" @bind:event="oninput" @onkeyup="OnStockSearchKeyUpAsync" />
+                        </label>
+                        <button class="btn btn-primary" type="button" @onclick="BuscarStockAsync" disabled="@IsStockBusy">Buscar</button>
+                        <button class="btn btn-outline-secondary" type="button" @onclick="LimpiarFiltrosStockAsync" disabled="@IsStockBusy">Limpiar</button>
+                        <button class="btn btn-outline-secondary ubicaciones-refresh-button" type="button" @onclick="BuscarStockAsync" disabled="@IsStockBusy" title="Actualizar inventario">
+                            <span class="oi oi-reload" aria-hidden="true"></span><span>Actualizar</span>
+                        </button>
                     </div>
 
-                    <div class="ubicaciones-room-summary mb-3">
-                        <div class="ubicaciones-room-summary-item">
-                            <span class="ubicaciones-summary-label">Suite</span>
-                            <strong>@SelectedRoomName</strong>
-                        </div>
-                        <div class="ubicaciones-room-summary-item">
-                            <span class="ubicaciones-summary-label">Ubicaciones</span>
-                            <strong>@Locations.Count</strong>
-                        </div>
-                        <div class="ubicaciones-room-summary-item">
-                            <span class="ubicaciones-summary-label">Con inventario</span>
-                            <strong>@InventoryEnabledLocationCount</strong>
-                        </div>
-                        <div class="ubicaciones-room-summary-item">
-                            <span class="ubicaciones-summary-label">Activas</span>
-                            <strong>@ActiveLocationCount</strong>
-                        </div>
-                    </div>
-
-                    @if (IsLoadingLocations)
-                    {
-                        <div class="ubicaciones-empty-state">Cargando ubicaciones de la suite seleccionada...</div>
-                    }
-                    else if (!SelectedRoomId.HasValue)
-                    {
-                        <div class="ubicaciones-empty-state">Selecciona una suite para mostrar todas las ubicaciones relacionadas y elegir con cuál vas a trabajar.</div>
-                    }
-                    else if (Locations.Count == 0)
-                    {
-                        <div class="ubicaciones-empty-state">No se encontraron ubicaciones asociadas a esta suite.</div>
-                    }
-                    else
-                    {
-                        <div class="ubicaciones-selector-toolbar mb-3">
-                            <div class="ubicaciones-collapsed-summary">
-                                @if (SelectedLocationId.HasValue)
-                                {
-                                    <span class="ubicaciones-summary-label">Ubicación seleccionada</span>
-                                    <strong>@SelectedLocationSummary</strong>
-                                }
-                                else
-                                {
-                                    <span class="ubicaciones-summary-label">Siguiente paso</span>
-                                    <strong>Elige una ubicación para abrir el editor y el inventario.</strong>
-                                }
+                    <div class="ubicaciones-filter-row">
+                        <span class="ubicaciones-filter-label">Mostrar:</span>
+                        <button class="ubicaciones-filter-chip @(StockFilter.LowStockOnly ? "is-active" : null)" type="button" aria-pressed="@StockFilter.LowStockOnly" @onclick="ToggleLowStockFilterAsync" disabled="@IsStockBusy">
+                            <span class="oi oi-warning" aria-hidden="true"></span> Bajo mínimo
+                        </button>
+                        <button class="ubicaciones-filter-chip @(StockFilter.CountDueOnly ? "is-active" : null)" type="button" aria-pressed="@StockFilter.CountDueOnly" @onclick="ToggleCountDueFilterAsync" disabled="@IsStockBusy">
+                            <span class="oi oi-clock" aria-hidden="true"></span> Conteo vencido
+                        </button>
+                        <details class="ubicaciones-more-filters">
+                            <summary>Más filtros</summary>
+                            <div>
+                                <label><input type="checkbox" checked="@StockFilter.IncludeZeroBalances" @onchange="OnIncludeZeroBalancesChangedAsync" disabled="@IsStockBusy" /> Incluir cantidades en cero</label>
+                                <label><input type="checkbox" checked="@StockFilter.IncludeRemoved" @onchange="OnIncludeRemovedChangedAsync" disabled="@IsStockBusy" /> Mostrar materiales eliminados</label>
                             </div>
-                            <button type="button" class="btn btn-sm btn-outline-secondary ubicaciones-collapse-toggle" @onclick="ToggleLocationList">
-                                @LocationListToggleLabel
-                            </button>
-                        </div>
+                        </details>
+                    </div>
 
-                        @if (IsLocationListCollapsed)
+                    <div class="ubicaciones-results" aria-live="polite">
+                        @if (IsLoadingStock && StockRows.Count == 0)
                         {
-                            <div class="ubicaciones-collapsed-hint">
-                                La lista está contraída para que el editor quede más cerca, especialmente en móvil.
+                            <div class="ubicaciones-loading-state"><span class="spinner-border" aria-hidden="true"></span><strong>Cargando inventario…</strong></div>
+                        }
+                        else if (HasExecutedStockSearch && StockRows.Count == 0)
+                        {
+                            <div class="ubicaciones-empty-state ubicaciones-empty-state-large">
+                                <span class="oi oi-magnifying-glass" aria-hidden="true"></span>
+                                <div><strong>No encontramos materiales</strong><p>Prueba otra búsqueda o limpia los filtros actuales.</p></div>
                             </div>
                         }
-                        else
+                        else if (StockRows.Count > 0)
                         {
-                            <div class="table-responsive ubicaciones-location-table-wrap">
-                                <table class="table table-hover align-middle ubicaciones-location-table mb-0">
+                            <div class="ubicaciones-stock-table-wrap">
+                                <table class="ubicaciones-stock-table">
                                     <thead>
-                                        <tr>
-                                            <th class="ubicaciones-location-name-col">Ubicación</th>
-                                            <th>Código</th>
-                                            <th>Tipo</th>
-                                            <th>Inventario</th>
-                                            <th class="text-end">Materiales</th>
-                                            <th class="text-end">Estado</th>
-                                        </tr>
+                                        <tr><th>Material</th><th class="text-end">Cantidad</th><th class="text-end">Mínimo</th><th class="text-end">Máximo</th><th>Estado</th></tr>
                                     </thead>
                                     <tbody>
-                                        @foreach (var item in Locations)
+                                        @foreach (var item in StockRows)
                                         {
-                                            <tr class="@GetLocationRowClass(item)" @onclick="() => SeleccionarUbicacionAsync(item.Id)">
-                                                <td class="ubicaciones-location-name-col">
-                                                    <div class="ubicaciones-location-name">@item.LocationName</div>
-                                                    @if (!string.IsNullOrWhiteSpace(item.ParentLocationName))
-                                                    {
-                                                        <div class="ubicaciones-location-parent">Depende de @item.ParentLocationName</div>
-                                                    }
-                                                </td>
+                                            var thumbnailDataUrl = GetMaterialThumbnailDataUrl(item.MaterialId);
+                                            var materialTitle = string.IsNullOrWhiteSpace(item.MaterialDescription) ? item.MaterialCode : item.MaterialDescription;
+                                            var showMaterialCode = !string.IsNullOrWhiteSpace(item.MaterialCode) && !string.Equals(item.MaterialCode, materialTitle, StringComparison.OrdinalIgnoreCase);
+                                            <tr class="@GetStockRowClass(item)">
                                                 <td>
-                                                    <span class="ubicaciones-location-code-text">@(string.IsNullOrWhiteSpace(item.LocationCode) ? $"LOC-{item.Id}" : item.LocationCode)</span>
+                                                    <div class="ubicaciones-table-material">
+                                                        @if (thumbnailDataUrl is not null)
+                                                        {
+                                                            <button class="ubicaciones-line-image-button" type="button" title="Ver imagen" aria-label="Ver imagen de @materialTitle" @onclick="() => AbrirImagenMaterialAsync(item)">
+                                                                <img src="@thumbnailDataUrl" alt="" class="ubicaciones-line-image" />
+                                                            </button>
+                                                        }
+                                                        else
+                                                        {
+                                                            <div class="ubicaciones-line-image-placeholder">Sin foto</div>
+                                                        }
+                                                        <button class="ubicaciones-material-name-button" type="button" @onclick="() => SeleccionarStockAsync(item)">
+                                                            <strong>@materialTitle</strong>
+                                                            @if (showMaterialCode) { <small>@item.MaterialCode</small> }
+                                                            <span>Ver detalle <span aria-hidden="true">→</span></span>
+                                                        </button>
+                                                    </div>
                                                 </td>
+                                                <td class="text-end"><strong>@item.Quantity.ToString("N2")</strong><small>@item.BaseUnitName</small></td>
+                                                <td class="text-end">@FormatThresholdQuantity(item.MinQuantity)</td>
+                                                <td class="text-end">@FormatThresholdQuantity(item.MaxQuantity)</td>
                                                 <td>
-                                                    <span class="badge @GetLocationInventoryBadgeClass(item) ubicaciones-location-type">@item.LocationType</span>
-                                                </td>
-                                                <td>
-                                                    <span class="ubicaciones-location-flag">@(item.IsInventoryEnabled ? "Habilitado" : "Solo referencia")</span>
-                                                </td>
-                                                <td class="text-end">
-                                                    <span class="ubicaciones-location-metric">@item.MaterialCount</span>
-                                                </td>
-                                                <td class="text-end">
-                                                    <span class="badge @(item.IsActive ? "text-bg-light" : "text-bg-secondary") ubicaciones-location-state">@(item.IsActive ? "Activa" : "Inactiva")</span>
+                                                    <div class="ubicaciones-alert-stack">
+                                                        @if (item.IsRemoved) { <span class="ubicaciones-status is-muted">Eliminado</span> }
+                                                        @if (item.IsLowStock) { <span class="ubicaciones-status is-danger">Bajo mínimo</span> }
+                                                        @if (item.IsCountDue) { <span class="ubicaciones-status is-warning">Conteo vencido</span> }
+                                                        @if (!item.IsRemoved && !item.IsLowStock && !item.IsCountDue) { <span class="ubicaciones-status is-ok">En orden</span> }
+                                                    </div>
                                                 </td>
                                             </tr>
                                         }
                                     </tbody>
                                 </table>
                             </div>
+
+                            <div class="ubicaciones-stock-cards">
+                                @foreach (var item in StockRows)
+                                {
+                                    var thumbnailDataUrl = GetMaterialThumbnailDataUrl(item.MaterialId);
+                                    var materialTitle = string.IsNullOrWhiteSpace(item.MaterialDescription) ? item.MaterialCode : item.MaterialDescription;
+                                    var showMaterialCode = !string.IsNullOrWhiteSpace(item.MaterialCode) && !string.Equals(item.MaterialCode, materialTitle, StringComparison.OrdinalIgnoreCase);
+                                    <article class="@GetStockCardClass(item)">
+                                        <div class="ubicaciones-stock-card-heading">
+                                            @if (thumbnailDataUrl is not null)
+                                            {
+                                                <button class="ubicaciones-line-image-button" type="button" title="Ver imagen" aria-label="Ver imagen de @materialTitle" @onclick="() => AbrirImagenMaterialAsync(item)">
+                                                    <img src="@thumbnailDataUrl" alt="" class="ubicaciones-line-image" />
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <div class="ubicaciones-line-image-placeholder">Sin foto</div>
+                                            }
+                                            <div><strong>@materialTitle</strong>@if (showMaterialCode) { <small>@item.MaterialCode</small> }</div>
+                                            <div class="ubicaciones-stock-card-quantity"><strong>@item.Quantity.ToString("N2")</strong><small>@item.BaseUnitName</small></div>
+                                        </div>
+                                        <div class="ubicaciones-stock-card-limits">
+                                            <span><small>Mínimo</small><strong>@FormatThresholdQuantity(item.MinQuantity)</strong></span>
+                                            <span><small>Máximo</small><strong>@FormatThresholdQuantity(item.MaxQuantity)</strong></span>
+                                        </div>
+                                        <div class="ubicaciones-stock-card-footer">
+                                            <div class="ubicaciones-alert-stack">
+                                                @if (item.IsRemoved) { <span class="ubicaciones-status is-muted">Eliminado</span> }
+                                                @if (item.IsLowStock) { <span class="ubicaciones-status is-danger">Bajo mínimo</span> }
+                                                @if (item.IsCountDue) { <span class="ubicaciones-status is-warning">Conteo</span> }
+                                                @if (!item.IsRemoved && !item.IsLowStock && !item.IsCountDue) { <span class="ubicaciones-status is-ok">En orden</span> }
+                                            </div>
+                                            <button type="button" @onclick="() => SeleccionarStockAsync(item)">Ver detalle <span aria-hidden="true">→</span></button>
+                                        </div>
+                                    </article>
+                                }
+                            </div>
                         }
-                    }
-                </div>
-            </section>
-
-            <section class="card shadow-sm ubicaciones-editor-card">
-                <div class="card-body">
-                    <div class="ubicaciones-panel-header mb-3">
-                        <div>
-                            <div class="ubicaciones-step-chip">Paso 2</div>
-                            <h2 class="h5 mb-1">Editor de ubicación</h2>
-                            <p class="text-muted mb-0">Modifica la ubicación seleccionada o prepara una nueva dentro de la suite activa.</p>
-                        </div>
-                    </div>
-
-                    @if (!SelectedRoomId.HasValue)
-                    {
-                        <div class="ubicaciones-empty-state">Selecciona una suite para habilitar el editor de ubicación.</div>
-                    }
-                    else
-                    {
-                        <div class="ubicaciones-editor-summary mb-3">
-                            <div class="ubicaciones-editor-summary-item">
-                                <span class="ubicaciones-summary-label">Suite</span>
-                                <strong>@SelectedRoomName</strong>
-                            </div>
-                            <div class="ubicaciones-editor-summary-item">
-                                <span class="ubicaciones-summary-label">Modo</span>
-                                <strong>@(SelectedLocationId.HasValue ? "Editar ubicación" : "Nueva ubicación")</strong>
-                            </div>
-                        </div>
-
-                        <EditForm Model="LocationEditor" OnValidSubmit="GuardarUbicacionAsync">
-                            <DataAnnotationsValidator />
-                            <ValidationSummary />
-
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <label class="form-label">Código</label>
-                                    <InputText class="form-control" @bind-Value="LocationEditor.LocationCode" />
-                                    <div class="form-text">Si está vacío en una alta nueva, el sistema genera el código.</div>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Tipo</label>
-                                    <InputSelect class="form-select" @bind-Value="LocationEditor.LocationType">
-                                        @foreach (var type in LocationTypes)
-                                        {
-                                            <option value="@type">@type</option>
-                                        }
-                                    </InputSelect>
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label">Nombre</label>
-                                    <InputText class="form-control" @bind-Value="LocationEditor.LocationName" />
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Suite seleccionada</label>
-                                    <input class="form-control" type="text" value="@SelectedRoomName" disabled />
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Ubicación padre</label>
-                                    <InputSelect class="form-select" @bind-Value="LocationEditor.ParentLocationId">
-                                        <option value="">Sin padre</option>
-                                        @foreach (var option in ParentLocationOptions)
-                                        {
-                                            <option value="@option.Id">@(string.IsNullOrWhiteSpace(option.LocationCode) ? option.LocationName : $"{option.LocationCode} · {option.LocationName}")</option>
-                                        }
-                                    </InputSelect>
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label">Descripción</label>
-                                    <InputTextArea class="form-control" rows="3" @bind-Value="LocationEditor.Description" />
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="form-check mt-2">
-                                        <InputCheckbox class="form-check-input" @bind-Value="LocationEditor.IsInventoryEnabled" />
-                                        <label class="form-check-label">Habilitada para inventario</label>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="form-check mt-2">
-                                        <InputCheckbox class="form-check-input" @bind-Value="LocationEditor.IsActive" />
-                                        <label class="form-check-label">Activa</label>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="d-flex flex-wrap gap-2 mt-4">
-                                <button type="submit" class="btn btn-primary" disabled="@IsSavingLocation">
-                                    @(IsSavingLocation ? "Guardando..." : "Guardar ubicación")
-                                </button>
-                                <button type="button" class="btn btn-outline-secondary" @onclick="RestablecerUbicacionAsync" disabled="@IsSavingLocation">Restablecer</button>
-                                <button type="button" class="btn btn-outline-primary" @onclick="NuevaUbicacion" disabled="@IsSavingLocation">Nueva ubicación</button>
-                            </div>
-                        </EditForm>
-                    }
-                </div>
-            </section>
-        </div>
-
-        <div class="col-12 col-xxl-8">
-            <section class="card shadow-sm mb-3">
-                <div class="card-body">
-                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-                        <div>
-                            <h2 class="h5 mb-1">Inventario por ubicación</h2>
-                            <div class="text-muted">La ubicación seleccionada controla esta vista y carga miniaturas, cantidades y alertas.</div>
-                        </div>
-                        <div class="d-flex flex-wrap align-items-center justify-content-end gap-2">
-                            <div class="ubicaciones-context-pills">
-                                <span class="ubicaciones-context-pill">Suite: @SelectedRoomName</span>
-                                <span class="ubicaciones-context-pill @(SelectedLocationId.HasValue ? "is-active" : null)">Ubicación: @SelectedLocationSummary</span>
-                            </div>
-                            <button class="btn btn-outline-primary" type="button" @onclick="AbrirAgregarMaterialDialogAsync" disabled="@(!SelectedLocationId.HasValue)">
-                                Agregar Material
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="row g-2 mb-3">
-                        <div class="col-lg-7">
-                            <label class="form-label">Buscar material</label>
-                            <input class="form-control" type="search" placeholder="Código, material, barras o ubicación" @bind="StockFilter.SearchText" @bind:event="oninput" @onkeyup="OnStockSearchKeyUpAsync" disabled="@(!SelectedLocationId.HasValue)" />
-                        </div>
-                        <div class="col-lg-5">
-                            <label class="form-label">Ubicación activa</label>
-                            <input class="form-control" type="text" value="@SelectedLocationSummary" disabled />
-                        </div>
-                    </div>
-
-                    @if (!SelectedLocationId.HasValue)
-                    {
-                        <div class="ubicaciones-empty-state mb-3">Selecciona una ubicación en el panel izquierdo para cargar su inventario con miniaturas y alertas.</div>
-                    }
-
-                    <div class="d-flex flex-wrap gap-3 mb-3">
-                        <label class="form-check">
-                            <input class="form-check-input" type="checkbox" @bind="StockFilter.LowStockOnly" disabled="@(!SelectedLocationId.HasValue)" />
-                            <span class="form-check-label">Solo bajo mínimo</span>
-                        </label>
-                        <label class="form-check">
-                            <input class="form-check-input" type="checkbox" @bind="StockFilter.CountDueOnly" disabled="@(!SelectedLocationId.HasValue)" />
-                            <span class="form-check-label">Conteo vencido</span>
-                        </label>
-                        <label class="form-check">
-                            <input class="form-check-input" type="checkbox" @bind="StockFilter.IncludeZeroBalances" disabled="@(!SelectedLocationId.HasValue)" />
-                            <span class="form-check-label">Incluir ceros</span>
-                        </label>
-                        <label class="form-check">
-                            <input class="form-check-input" type="checkbox" @bind="StockFilter.IncludeRemoved" disabled="@(!SelectedLocationId.HasValue)" />
-                            <span class="form-check-label">Mostrar eliminados</span>
-                        </label>
-                        <button class="btn btn-primary ms-auto" type="button" @onclick="BuscarStockAsync" disabled="@(IsStockBusy || !SelectedLocationId.HasValue)">
-                            @(IsLoadingStock ? "Cargando..." : "Actualizar inventario")
-                        </button>
-                    </div>
-
-                    <div class="table-responsive" style="max-height: 40vh;">
-                        <table class="table table-sm table-hover align-middle ubicaciones-stock-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="ubicaciones-stock-image-col">Foto</th>
-                                    <th class="ubicaciones-material-col">Material</th>
-                                    <th>Ubicación</th>
-                                    <th class="text-end">Cantidad</th>
-                                    <th class="text-end ubicaciones-threshold-col">Mín.</th>
-                                    <th class="text-end ubicaciones-threshold-col">Máx.</th>
-                                    <th class="text-end">Alertas</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @if (!HasExecutedStockSearch)
-                                {
-                                    <tr>
-                                        <td colspan="7" class="text-center text-muted py-3">Selecciona una ubicación para cargar su inventario.</td>
-                                    </tr>
-                                }
-                                else if (IsLoadingStock && StockRows.Count == 0)
-                                {
-                                    <tr>
-                                        <td colspan="7" class="text-center text-muted py-3">Cargando inventario...</td>
-                                    </tr>
-                                }
-                                else if (StockRows.Count == 0)
-                                {
-                                    <tr>
-                                        <td colspan="7" class="text-center text-muted py-3">No hay inventario para el filtro actual.</td>
-                                    </tr>
-                                }
-                                else
-                                {
-                                    @foreach (var item in StockRows)
-                                    {
-                                        var thumbnailDataUrl = GetMaterialThumbnailDataUrl(item.MaterialId);
-                                        var materialTitle = string.IsNullOrWhiteSpace(item.MaterialDescription) ? item.MaterialCode : item.MaterialDescription;
-                                        var showMaterialCode = !string.IsNullOrWhiteSpace(item.MaterialCode) && !string.Equals(item.MaterialCode, materialTitle, StringComparison.OrdinalIgnoreCase);
-                                        <tr class="@GetStockRowClass(item)" style="cursor: pointer;" @onclick="() => SeleccionarStockAsync(item)">
-                                            <td class="ubicaciones-stock-image-col">
-                                                @if (thumbnailDataUrl is not null)
-                                                {
-                                                    <button class="ubicaciones-line-image-button" type="button" title="Ver imagen" aria-label="Ver imagen del material" @onclick="() => AbrirImagenMaterialAsync(item)" @onclick:stopPropagation="true">
-                                                        <img src="@thumbnailDataUrl" alt="Imagen de @materialTitle" class="ubicaciones-line-image" />
-                                                    </button>
-                                                }
-                                                else
-                                                {
-                                                    <div class="ubicaciones-line-image-placeholder">Sin foto</div>
-                                                }
-                                            </td>
-                                            <td class="ubicaciones-material-col">
-                                                <div class="ubicaciones-cell-stack">
-                                                    <div class="ubicaciones-cell-primary">@materialTitle</div>
-                                                    @if (showMaterialCode)
-                                                    {
-                                                        <div class="ubicaciones-cell-secondary">@item.MaterialCode</div>
-                                                    }
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div>@item.LocationName</div>
-                                                <small class="text-muted">@(string.IsNullOrWhiteSpace(item.RoomName) ? item.LocationType : item.RoomName)</small>
-                                            </td>
-                                            <td class="text-end">@item.Quantity.ToString("N2")</td>
-                                            <td class="text-end ubicaciones-threshold-col">@FormatThresholdQuantity(item.MinQuantity)</td>
-                                            <td class="text-end ubicaciones-threshold-col">@FormatThresholdQuantity(item.MaxQuantity)</td>
-                                            <td class="text-end">
-                                                @if (item.IsRemoved)
-                                                {
-                                                    <span class="badge text-bg-secondary me-1">Eliminado</span>
-                                                }
-                                                @if (item.IsLowStock)
-                                                {
-                                                    <span class="badge text-bg-danger me-1">Bajo mínimo</span>
-                                                }
-                                                @if (item.IsCountDue)
-                                                {
-                                                    <span class="badge text-bg-warning">Conteo</span>
-                                                }
-                                            </td>
-                                        </tr>
-                                    }
-                                }
-                            </tbody>
-                        </table>
                     </div>
 
                     @if (HasExecutedStockSearch && StockRows.Count > 0)
                     {
-                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
-                            <span class="text-muted small">Mostrando @StockRows.Count registros de inventario.</span>
-
+                        <div class="ubicaciones-results-footer">
+                            <span>Mostrando @StockRows.Count materiales.</span>
                             @if (HasMoreStockRows)
                             {
                                 <button class="btn btn-outline-primary" type="button" @onclick="CargarMasStockAsync" disabled="@IsStockBusy">
-                                    @(IsLoadingMoreStock ? "Cargando..." : $"Cargar {PageSize} más")
+                                    @(IsLoadingMoreStock ? "Cargando…" : $"Cargar {PageSize} más")
                                 </button>
                             }
                         </div>
                     }
-                </div>
+                }
+            </section>
+        </main>
+    }
+    else
+    {
+        <main class="ubicaciones-management-workspace">
+            <section class="ubicaciones-management-toolbar">
+                <label>
+                    <span>Suite que deseas organizar</span>
+                    <select class="form-select" value="@SelectedRoomId" @onchange="OnRoomChangedAsync" disabled="@IsLoadingLocations">
+                        <option value="">Selecciona una suite</option>
+                        @foreach (var room in RoomOptions)
+                        {
+                            <option value="@room.Id">@room.Name</option>
+                        }
+                    </select>
+                </label>
+                <button class="btn btn-primary" type="button" @onclick="NuevaUbicacionAsync" disabled="@(!SelectedRoomId.HasValue || IsLoadingLocations)">
+                    <span class="oi oi-plus" aria-hidden="true"></span> Nueva ubicación
+                </button>
             </section>
 
-            @if (SelectedStock is not null)
+            @if (!SelectedRoomId.HasValue)
             {
-                <section class="card shadow-sm">
-                    <div class="card-body">
-                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-                            <div>
-                                <h2 class="h5 mb-1">@SelectedStock.MaterialCode · @SelectedStock.MaterialDescription</h2>
-                                <div class="text-muted">@SelectedStock.LocationName · @SelectedStock.Quantity.ToString("N2") @SelectedStock.BaseUnitName</div>
-                                @if (SelectedStock.IsRemoved)
-                                {
-                                    <div class="small text-muted mt-1">@GetSelectedStockRemovalSummary()</div>
-                                }
-                            </div>
-                            <div class="d-flex flex-column align-items-start align-items-sm-end gap-2">
-                                @if (SelectedStock.IsRemoved)
-                                {
-                                    <button class="btn btn-outline-success" type="button" @onclick="ReactivarMaterialAsync" disabled="@IsMutatingStock">
-                                        @(IsMutatingStock ? "Reactivando..." : "Reactivar material")
-                                    </button>
-                                }
-                                else
-                                {
-                                    <button class="btn btn-outline-danger" type="button" @onclick="QuitarMaterialAsync" disabled="@(IsMutatingStock || SelectedStock.Quantity != 0)">
-                                        @(IsMutatingStock ? "Quitando..." : "Quitar material")
-                                    </button>
-                                    @if (SelectedStock.Quantity != 0)
-                                    {
-                                        <div class="small text-muted">La cantidad debe estar en 0 para quitarlo.</div>
-                                    }
-                                }
-                            </div>
-                        </div>
-
-                        <div class="row g-3">
-                            <div class="col-12">
-                                <section class="border rounded-3 p-3 bg-body-tertiary">
-                                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
-                                        <div>
-                                            <h3 class="h6 mb-1">Parámetros de inventario</h3>
-                                            <div class="text-muted small">Define el mínimo y máximo para esta combinación de ubicación y material.</div>
-                                        </div>
-                                        <div class="text-muted small">Cantidad actual: @SelectedStock.Quantity.ToString("N2") @SelectedStock.BaseUnitName</div>
-                                    </div>
-
-                                    <EditForm Model="ThresholdEditor" OnValidSubmit="GuardarThresholdsAsync">
-                                        <DataAnnotationsValidator />
-                                        <ValidationSummary />
-
-                                        <div class="row g-3 align-items-end">
-                                            <div class="col-md-3">
-                                                <label class="form-label">Cantidad actual</label>
-                                                <input class="form-control" type="text" value="@SelectedStock.Quantity.ToString("N2")" disabled />
-                                            </div>
-                                            <div class="col-md-3">
-                                                <label class="form-label">Mínimo</label>
-                                                <InputNumber class="form-control" @bind-Value="ThresholdEditor.MinQuantity" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)" />
-                                            </div>
-                                            <div class="col-md-3">
-                                                <label class="form-label">Máximo</label>
-                                                <InputNumber class="form-control" @bind-Value="ThresholdEditor.MaxQuantity" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)" />
-                                            </div>
-                                            <div class="col-md-3">
-                                                <label class="form-label">Estado actual</label>
-                                                <input class="form-control" type="text" value="@GetThresholdStatusText()" disabled />
-                                            </div>
-                                            <div class="col-12">
-                                                <div class="form-text">
-                                                    @(SelectedStock.IsRemoved
-                                                        ? "Este material está eliminado. Reactívalo para cambiar mínimos o máximos."
-                                                        : "Deja un campo vacío para quitar ese límite.")
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div class="d-flex gap-2 mt-3">
-                                            <button class="btn btn-primary" type="submit" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)">
-                                                @(IsSavingThresholds ? "Guardando..." : "Guardar parámetros")
-                                            </button>
-                                            <button class="btn btn-outline-secondary" type="button" @onclick="RestablecerThresholdEditor" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)">
-                                                Restablecer
-                                            </button>
-                                        </div>
-                                    </EditForm>
-                                </section>
-                            </div>
-
-                            <div class="col-12 col-xl-6">
-                                <h3 class="h6">Historial de movimientos</h3>
-                                <div class="table-responsive" style="max-height: 28vh;">
-                                    <table class="table table-sm">
-                                        <thead class="table-light">
-                                            <tr>
-                                                <th>Fecha</th>
-                                                <th>Tipo</th>
-                                                <th class="text-end">Delta</th>
-                                                <th class="text-end">Final</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @if (SelectedStockTransactions.Count == 0)
-                                            {
-                                                <tr>
-                                                    <td colspan="4" class="text-center text-muted py-3">Sin movimientos.</td>
-                                                </tr>
-                                            }
-                                            else
-                                            {
-                                                @foreach (var movement in SelectedStockTransactions)
-                                                {
-                                                    <tr>
-                                                        <td>@movement.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
-                                                        <td>@movement.TransactionType</td>
-                                                        <td class="text-end">@movement.QuantityDelta.ToString("N2")</td>
-                                                        <td class="text-end">@movement.QuantityAfter.ToString("N2")</td>
-                                                    </tr>
-                                                }
-                                            }
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-
-                            <div class="col-12 col-xl-6">
-                                <h3 class="h6">Adjuntos por ubicación/material</h3>
-                                <div class="d-flex flex-column gap-2 mb-3">
-                                    <InputFile OnChange="OnAttachmentSelectedAsync" disabled="@(!CanEditSelectedStock || IsSavingAttachment || IsMutatingStock)" />
-                                    <input class="form-control" type="text" placeholder="Descripción del adjunto" @bind="PendingAttachmentDescription" disabled="@(!CanEditSelectedStock || IsSavingAttachment || IsMutatingStock)" />
-                                    <button class="btn btn-outline-primary" type="button" @onclick="GuardarAdjuntoAsync" disabled="@(!CanEditSelectedStock || !HasPendingAttachment || IsSavingAttachment || IsMutatingStock)">
-                                        @(IsSavingAttachment ? "Guardando..." : "Guardar adjunto")
-                                    </button>
-                                    @if (SelectedStock.IsRemoved)
-                                    {
-                                        <div class="form-text">Los adjuntos están archivados mientras el material siga eliminado, pero aún puedes descargarlos.</div>
-                                    }
-                                </div>
-
-                                <div class="table-responsive" style="max-height: 28vh;">
-                                    <table class="table table-sm">
-                                        <thead class="table-light">
-                                            <tr>
-                                                <th>Archivo</th>
-                                                <th>Descripción</th>
-                                                <th></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @if (SelectedStockAttachments.Count == 0)
-                                            {
-                                                <tr>
-                                                    <td colspan="3" class="text-center text-muted py-3">@(SelectedStock.IsRemoved ? "Sin adjuntos archivados." : "Sin adjuntos.")</td>
-                                                </tr>
-                                            }
-                                            else
-                                            {
-                                                @foreach (var attachment in SelectedStockAttachments)
-                                                {
-                                                    <tr>
-                                                        <td>
-                                                            <div>@attachment.FileName</div>
-                                                            @if (attachment.IsDeleted)
-                                                            {
-                                                                <div class="small text-muted">@GetAttachmentArchiveSummary(attachment)</div>
-                                                            }
-                                                        </td>
-                                                        <td>
-                                                            @if (attachment.IsDeleted)
-                                                            {
-                                                                <span class="badge text-bg-secondary me-1">Archivado</span>
-                                                            }
-                                                            @(string.IsNullOrWhiteSpace(attachment.Description) ? "-" : attachment.Description)
-                                                        </td>
-                                                        <td class="text-end">
-                                                            <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="() => DescargarAdjuntoAsync(attachment)">
-                                                                Descargar
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                }
-                                            }
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
+                <div class="ubicaciones-empty-state ubicaciones-empty-state-large">
+                    <span class="oi oi-map-marker" aria-hidden="true"></span>
+                    <div><strong>Selecciona una suite</strong><p>Después podrás revisar, crear o modificar sus ubicaciones.</p></div>
+                </div>
             }
-        </div>
-    </div>
+            else
+            {
+                <div class="ubicaciones-management-grid">
+                    <section class="ubicaciones-location-library" aria-labelledby="ubicaciones-location-library-title">
+                        <div class="ubicaciones-section-heading">
+                            <div><span class="ubicaciones-section-kicker">@SelectedRoomName</span><h2 id="ubicaciones-location-library-title">Ubicaciones</h2><p>@Locations.Count registradas · @OperationalLocations.Count listas para inventario</p></div>
+                        </div>
+                        @if (IsLoadingLocations)
+                        {
+                            <div class="ubicaciones-loading-state"><span class="spinner-border" aria-hidden="true"></span><strong>Cargando ubicaciones…</strong></div>
+                        }
+                        else if (Locations.Count == 0)
+                        {
+                            <div class="ubicaciones-empty-state"><span class="oi oi-plus" aria-hidden="true"></span><div><strong>Aún no hay ubicaciones</strong><p>Usa “Nueva ubicación” para crear la primera.</p></div></div>
+                        }
+                        else
+                        {
+                            <div class="ubicaciones-location-cards">
+                                @foreach (var item in Locations.OrderBy(item => item.LocationName, StringComparer.OrdinalIgnoreCase))
+                                {
+                                    <article class="@GetLocationCardClass(item, ManagementLocationId)">
+                                        <div class="ubicaciones-location-card-main">
+                                            <span class="ubicaciones-location-card-icon"><span class="oi oi-map-marker" aria-hidden="true"></span></span>
+                                            <div>
+                                                <strong>@item.LocationName</strong>
+                                                <small>@(string.IsNullOrWhiteSpace(item.LocationCode) ? $"LOC-{item.Id}" : item.LocationCode) · @GetLocationTypeLabel(item.LocationType)</small>
+                                                @if (!string.IsNullOrWhiteSpace(item.ParentLocationName)) { <small>Dentro de @item.ParentLocationName</small> }
+                                            </div>
+                                            <span class="ubicaciones-status @(item.IsActive && item.IsInventoryEnabled ? "is-ok" : "is-muted")">@GetLocationAvailabilityText(item)</span>
+                                        </div>
+                                        <div class="ubicaciones-location-card-meta"><span><strong>@item.MaterialCount</strong> materiales</span><span><strong>@item.ChildCount</strong> dependientes</span></div>
+                                        <div class="ubicaciones-location-card-actions">
+                                            <button class="btn btn-outline-secondary" type="button" @onclick="() => EditarUbicacionAsync(item.Id)">Editar</button>
+                                            <button class="btn btn-outline-primary" type="button" @onclick="() => VerInventarioDeUbicacionAsync(item.Id)">Ver inventario</button>
+                                        </div>
+                                    </article>
+                                }
+                            </div>
+                        }
+                    </section>
+
+                    @if (ShowLocationEditor)
+                    {
+                        <section class="ubicaciones-location-editor" role="dialog" aria-modal="true" aria-labelledby="ubicaciones-editor-title">
+                            <header>
+                                <div><span class="ubicaciones-section-kicker">@(LocationEditor.Id.HasValue ? "Editar" : "Nueva")</span><h2 id="ubicaciones-editor-title">@(LocationEditor.Id.HasValue ? LocationEditor.LocationName : "Nueva ubicación")</h2><p>Suite: @SelectedRoomName</p></div>
+                                <button type="button" @onclick="CerrarEditorUbicacionAsync" aria-label="Cerrar editor"><span class="oi oi-x" aria-hidden="true"></span></button>
+                            </header>
+                            <EditForm EditContext="LocationEditContext" OnValidSubmit="GuardarUbicacionAsync">
+                                <DataAnnotationsValidator />
+                                <ValidationSummary class="ubicaciones-validation" />
+                                <div class="ubicaciones-editor-fields">
+                                    <label><span>Nombre <b>*</b></span><InputText class="form-control" @bind-Value="LocationEditor.LocationName" placeholder="Ej. Clóset de blancos" /></label>
+                                    <label><span>Código</span><InputText class="form-control" @bind-Value="LocationEditor.LocationCode" placeholder="Se genera si lo dejas vacío" /><small>Úsalo solo si tu equipo ya identifica esta ubicación por código.</small></label>
+                                    <label><span>Tipo</span><InputSelect class="form-select" @bind-Value="LocationEditor.LocationType">@foreach (var type in LocationTypes) { <option value="@type">@GetLocationTypeLabel(type)</option> }</InputSelect></label>
+                                    <label><span>Ubicación superior</span><InputSelect class="form-select" @bind-Value="LocationEditor.ParentLocationId"><option value="">Ninguna</option>@foreach (var option in ParentLocationOptions) { <option value="@option.Id">@option.LocationName</option> }</InputSelect><small>Selecciona otra ubicación solo cuando esta se encuentre dentro de ella.</small></label>
+                                    <label class="ubicaciones-editor-description"><span>Descripción</span><InputTextArea class="form-control" rows="3" @bind-Value="LocationEditor.Description" placeholder="Indicaciones sencillas para encontrarla" /></label>
+                                    <label class="ubicaciones-switch-card"><InputCheckbox @bind-Value="LocationEditor.IsInventoryEnabled" /><span><strong>Controlar inventario aquí</strong><small>Permite agregar materiales y controlar cantidades.</small></span></label>
+                                    <label class="ubicaciones-switch-card"><InputCheckbox @bind-Value="LocationEditor.IsActive" /><span><strong>Ubicación activa</strong><small>Desactívala únicamente cuando ya no se utilice.</small></span></label>
+                                </div>
+                                <footer>
+                                    <button class="btn btn-outline-secondary" type="button" @onclick="RestablecerUbicacionAsync" disabled="@IsSavingLocation">Restablecer</button>
+                                    <button class="btn btn-primary" type="submit" disabled="@IsSavingLocation">@(IsSavingLocation ? "Guardando…" : "Guardar ubicación")</button>
+                                </footer>
+                            </EditForm>
+                        </section>
+                    }
+                    else
+                    {
+                        <aside class="ubicaciones-editor-placeholder">
+                            <span class="oi oi-pencil" aria-hidden="true"></span><h2>Selecciona una ubicación</h2><p>Usa “Editar” en una tarjeta o crea una ubicación nueva.</p>
+                        </aside>
+                    }
+                </div>
+            }
+        </main>
+    }
 </div>
+
+@if (SelectedStock is not null)
+{
+    <div class="ubicaciones-detail-backdrop" role="dialog" aria-modal="true" aria-labelledby="ubicaciones-detail-title">
+        <aside class="ubicaciones-detail-panel">
+            <header>
+                <div><span class="ubicaciones-section-kicker">Ficha del material</span><h2 id="ubicaciones-detail-title">@(string.IsNullOrWhiteSpace(SelectedStock.MaterialDescription) ? SelectedStock.MaterialCode : SelectedStock.MaterialDescription)</h2><p>@SelectedStock.LocationName · @SelectedStock.MaterialCode</p></div>
+                <button type="button" @onclick="CerrarDetalleMaterial" aria-label="Cerrar detalle"><span class="oi oi-x" aria-hidden="true"></span></button>
+            </header>
+            <div class="ubicaciones-detail-body">
+                @if (SelectedStock.IsRemoved)
+                {
+                    <div class="ubicaciones-operation-warning"><span class="oi oi-warning" aria-hidden="true"></span><div><strong>Material eliminado</strong><p>@GetSelectedStockRemovalSummary()</p></div></div>
+                }
+                <section class="ubicaciones-detail-summary">
+                    <div><span>Cantidad actual</span><strong>@SelectedStock.Quantity.ToString("N2")</strong><small>@SelectedStock.BaseUnitName</small></div>
+                    <div><span>Estado</span><strong>@GetThresholdStatusText()</strong></div>
+                </section>
+
+                <section class="ubicaciones-detail-section">
+                    <div class="ubicaciones-detail-section-heading"><div><h3>Mínimo y máximo</h3><p>Recibe alertas cuando la cantidad salga del rango esperado.</p></div></div>
+                    <EditForm Model="ThresholdEditor" OnValidSubmit="GuardarThresholdsAsync">
+                        <DataAnnotationsValidator /><ValidationSummary />
+                        <div class="ubicaciones-threshold-grid">
+                            <label><span>Mínimo</span><InputNumber class="form-control" @bind-Value="ThresholdEditor.MinQuantity" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)" /><small>Déjalo vacío si no necesitas límite.</small></label>
+                            <label><span>Máximo</span><InputNumber class="form-control" @bind-Value="ThresholdEditor.MaxQuantity" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)" /><small>Déjalo vacío si no necesitas límite.</small></label>
+                        </div>
+                        <div class="ubicaciones-detail-form-actions"><button class="btn btn-outline-secondary" type="button" @onclick="RestablecerThresholdEditor" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)">Restablecer</button><button class="btn btn-primary" type="submit" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)">@(IsSavingThresholds ? "Guardando…" : "Guardar límites")</button></div>
+                    </EditForm>
+                </section>
+
+                <details class="ubicaciones-detail-disclosure">
+                    <summary><span><span class="oi oi-list-rich" aria-hidden="true"></span><strong>Movimientos</strong></span><small>@SelectedStockTransactions.Count registros</small></summary>
+                    @if (SelectedStockTransactions.Count == 0)
+                    {
+                        <div class="ubicaciones-compact-empty">Este material todavía no tiene movimientos.</div>
+                    }
+                    else
+                    {
+                        <div class="ubicaciones-movement-list">
+                            @foreach (var movement in SelectedStockTransactions)
+                            {
+                                <div><span><strong>@movement.TransactionType</strong><small>@movement.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</small></span><span><strong>@movement.QuantityDelta.ToString("N2")</strong><small>Final: @movement.QuantityAfter.ToString("N2")</small></span></div>
+                            }
+                        </div>
+                    }
+                </details>
+
+                <details class="ubicaciones-detail-disclosure">
+                    <summary><span><span class="oi oi-paperclip" aria-hidden="true"></span><strong>Archivos</strong></span><small>@SelectedStockAttachments.Count adjuntos</small></summary>
+                    <div class="ubicaciones-attachment-form">
+                        <InputFile OnChange="OnAttachmentSelectedAsync" disabled="@(!CanEditSelectedStock || IsSavingAttachment || IsMutatingStock)" />
+                        <input class="form-control" type="text" placeholder="Descripción del archivo" @bind="PendingAttachmentDescription" disabled="@(!CanEditSelectedStock || IsSavingAttachment || IsMutatingStock)" />
+                        <button class="btn btn-outline-primary" type="button" @onclick="GuardarAdjuntoAsync" disabled="@(!CanEditSelectedStock || !HasPendingAttachment || IsSavingAttachment || IsMutatingStock)">@(IsSavingAttachment ? "Guardando…" : "Guardar archivo")</button>
+                    </div>
+                    @if (SelectedStockAttachments.Count == 0)
+                    {
+                        <div class="ubicaciones-compact-empty">No hay archivos adjuntos.</div>
+                    }
+                    else
+                    {
+                        <div class="ubicaciones-attachment-list">
+                            @foreach (var attachment in SelectedStockAttachments)
+                            {
+                                <div><span><strong>@attachment.FileName</strong><small>@(string.IsNullOrWhiteSpace(attachment.Description) ? "Sin descripción" : attachment.Description)</small>@if (attachment.IsDeleted) { <small>@GetAttachmentArchiveSummary(attachment)</small> }</span><button class="btn btn-sm btn-outline-secondary" type="button" @onclick="() => DescargarAdjuntoAsync(attachment)">Descargar</button></div>
+                            }
+                        </div>
+                    }
+                </details>
+            </div>
+            <footer class="ubicaciones-detail-footer">
+                @if (SelectedStock.IsRemoved)
+                {
+                    <button class="btn btn-outline-success" type="button" @onclick="ReactivarMaterialAsync" disabled="@IsMutatingStock">@(IsMutatingStock ? "Reactivando…" : "Reactivar material")</button>
+                }
+                else
+                {
+                    <div>@if (SelectedStock.Quantity != 0) { <small>La cantidad debe estar en 0 para quitarlo.</small> }</div>
+                    <button class="btn btn-outline-danger" type="button" @onclick="QuitarMaterialAsync" disabled="@(IsMutatingStock || SelectedStock.Quantity != 0)">@(IsMutatingStock ? "Quitando…" : "Quitar de la ubicación")</button>
+                }
+            </footer>
+        </aside>
+    </div>
+}
 
 @if (ShowAddMaterialDialog)
 {
-    <div class="modal fade show d-block ubicaciones-material-dialog-backdrop" role="dialog" aria-modal="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable ubicaciones-material-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <div>
-                        <h5 class="modal-title">Agregar materiales a la ubicación</h5>
-                        <div class="text-muted small">Busca en el catálogo, revisa la miniatura y agrega el material a @SelectedLocationSummary con existencia inicial en cero.</div>
-                    </div>
-                    <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CerrarAgregarMaterialDialog"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="ubicaciones-material-search-panel mb-3">
-                        <div class="row g-2">
-                            <div class="col-lg-4">
-                                <label class="form-label" for="material-picker-search">Buscar material</label>
-                                <div class="input-group">
-                                    <input id="material-picker-search"
-                                           class="form-control ubicaciones-material-search-input"
-                                           type="search"
-                                           placeholder="Código, descripción o barras"
-                                           autocomplete="off"
-                                           spellcheck="false"
-                                           enterkeyhint="search"
-                                           aria-describedby="material-picker-search-hint"
-                                           @bind="MaterialPickerFilter.SearchText"
-                                           @bind:event="oninput"
-                                           @onkeydown="HandleMaterialPickerSearchKeyDownAsync"
-                                           @ref="MaterialPickerSearchInput"
-                                           disabled="@(!SelectedLocationId.HasValue)" />
-                                    <button class="btn btn-primary ubicaciones-material-search-button"
-                                            type="button"
-                                            aria-keyshortcuts="Enter"
-                                            @onclick="BuscarMaterialesParaAgregarAsync"
-                                            disabled="@(IsMaterialPickerBusy || !SelectedLocationId.HasValue)">
-                                        @(IsLoadingMaterialPicker ? "Buscando..." : "Buscar")
-                                    </button>
-                                </div>
-                                <div id="material-picker-search-hint" class="form-text">Escribe y presiona Enter para buscar.</div>
-                            </div>
-                            <div class="col-sm-6 col-lg-2">
-                                <label class="form-label">Categoría</label>
-                                <select class="form-select" @bind="MaterialPickerFilter.CategoryId" disabled="@(!SelectedLocationId.HasValue)">
-                                    <option value="">Todas</option>
-                                    @foreach (var option in MaterialCatalog.Categories)
-                                    {
-                                        <option value="@option.Id">@option.Name</option>
-                                    }
-                                </select>
-                            </div>
-                            <div class="col-sm-6 col-lg-2">
-                                <label class="form-label">Proveedor</label>
-                                <select class="form-select" @bind="MaterialPickerFilter.VendorId" disabled="@(!SelectedLocationId.HasValue)">
-                                    <option value="">Todos</option>
-                                    @foreach (var option in MaterialCatalog.Vendors)
-                                    {
-                                        <option value="@option.Id">@option.Name</option>
-                                    }
-                                </select>
-                            </div>
-                            <div class="col-sm-6 col-lg-2">
-                                <label class="form-label">Clase</label>
-                                <select class="form-select" @bind="MaterialPickerFilter.MaterialClass" disabled="@(!SelectedLocationId.HasValue)">
-                                    <option value="">Todas</option>
-                                    @foreach (var option in MaterialCatalog.MaterialClasses)
-                                    {
-                                        <option value="@option">@option</option>
-                                    }
-                                </select>
-                            </div>
-                            <div class="col-sm-6 col-lg-2">
-                                <label class="form-label">Estado</label>
-                                <select class="form-select" @bind="MaterialPickerFilter.Status" disabled="@(!SelectedLocationId.HasValue)">
-                                    <option value="">Todos</option>
-                                    @foreach (var option in MaterialCatalog.Statuses)
-                                    {
-                                        <option value="@option">@option</option>
-                                    }
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="d-flex flex-wrap gap-3 mt-3">
-                            <label class="form-check mb-0">
-                                <input class="form-check-input" type="checkbox" @bind="HasImageOnly" disabled="@(!SelectedLocationId.HasValue)" />
-                                <span class="form-check-label">Solo con imagen</span>
-                            </label>
-                            <div class="text-muted small ms-auto">Ubicación destino: <span class="fw-semibold">@SelectedLocationSummary</span></div>
-                        </div>
-                    </div>
-
-                    @if (!SelectedLocationId.HasValue)
-                    {
-                        <div class="ubicaciones-empty-state mb-3">Selecciona una ubicación para agregarle materiales desde el catálogo.</div>
-                    }
-
-                    @if (HasExecutedMaterialPickerSearch && MaterialPickerRows.Count > 0)
-                    {
-                        <div class="ubicaciones-material-results-summary mb-2" aria-live="polite">
-                            <span>Mostrando <strong>@MaterialPickerRows.Count</strong> materiales.</span>
-                            <span>Después de agregar, solo escribe la siguiente búsqueda.</span>
-                        </div>
-                    }
-
-                    <div class="table-responsive ubicaciones-material-picker-wrap">
-                        <table class="table table-sm table-hover align-middle ubicaciones-material-picker-table mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="ubicaciones-stock-image-col">Foto</th>
-                                    <th class="ubicaciones-material-col">Material</th>
-                                    <th>Clase</th>
-                                    <th>Proveedor</th>
-                                    <th class="text-end">Existencia</th>
-                                    <th class="text-end ubicaciones-material-action-col">Acción</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @if (!HasExecutedMaterialPickerSearch)
-                                {
-                                    <tr>
-                                        <td colspan="6" class="text-center text-muted py-3">Escribe un código, descripción o código de barras y presiona Enter.</td>
-                                    </tr>
-                                }
-                                else if (IsLoadingMaterialPicker && MaterialPickerRows.Count == 0)
-                                {
-                                    <tr>
-                                        <td colspan="6" class="text-center text-muted py-3">Cargando materiales...</td>
-                                    </tr>
-                                }
-                                else if (MaterialPickerRows.Count == 0)
-                                {
-                                    <tr>
-                                        <td colspan="6" class="text-center text-muted py-3">No hay materiales para el filtro actual.</td>
-                                    </tr>
-                                }
-                                else
-                                {
-                                    @foreach (var item in MaterialPickerRows)
-                                    {
-                                        var thumbnailDataUrl = GetMaterialPickerThumbnailDataUrl(item.Id);
-                                        var materialTitle = string.IsNullOrWhiteSpace(item.Description) ? item.MaterialCode : item.Description;
-                                        var showMaterialCode = !string.IsNullOrWhiteSpace(item.MaterialCode) && !string.Equals(item.MaterialCode, materialTitle, StringComparison.OrdinalIgnoreCase);
-                                        var alreadyVisible = IsMaterialAlreadyVisibleInSelectedLocation(item.Id);
-                                        var isAddingThis = AddingMaterialId == item.Id;
-                                        var actionButtonClass = alreadyVisible ? "btn-outline-secondary" : "btn-primary";
-
-                                        <tr>
-                                            <td class="ubicaciones-stock-image-col">
-                                                @if (thumbnailDataUrl is not null)
-                                                {
-                                                    <button class="ubicaciones-line-image-button" type="button" title="Ver imagen" aria-label="Ver imagen del material" @onclick="() => AbrirImagenMaterialAsync(item)">
-                                                        <img src="@thumbnailDataUrl" alt="Imagen de @materialTitle" class="ubicaciones-line-image" />
-                                                    </button>
-                                                }
-                                                else
-                                                {
-                                                    <div class="ubicaciones-line-image-placeholder">Sin foto</div>
-                                                }
-                                            </td>
-                                            <td class="ubicaciones-material-col">
-                                                <div class="ubicaciones-cell-stack">
-                                                    <div class="ubicaciones-cell-primary">@materialTitle</div>
-                                                    @if (showMaterialCode)
-                                                    {
-                                                        <div class="ubicaciones-cell-secondary">@item.MaterialCode</div>
-                                                    }
-                                                    @if (!string.IsNullOrWhiteSpace(item.Barcode))
-                                                    {
-                                                        <div class="ubicaciones-cell-secondary">@item.Barcode</div>
-                                                    }
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div>@item.MaterialClass</div>
-                                                <small class="text-muted">@(string.IsNullOrWhiteSpace(item.CategoryName) ? "Sin categoría" : item.CategoryName)</small>
-                                            </td>
-                                            <td>@(string.IsNullOrWhiteSpace(item.VendorName) ? "Sin proveedor" : item.VendorName)</td>
-                                            <td class="text-end">
-                                                <div>@item.TotalQuantity.ToString("N2")</div>
-                                                <small class="text-muted">@item.LocationCount ubicaciones</small>
-                                            </td>
-                                            <td class="text-end ubicaciones-material-action-col">
-                                                <button class="btn @actionButtonClass ubicaciones-material-add-button"
-                                                        type="button"
-                                                        title="@(alreadyVisible ? "Este material ya está en la ubicación" : $"Agregar {materialTitle} a la ubicación")"
-                                                        aria-label="@(alreadyVisible ? $"{materialTitle} ya está agregado" : $"Agregar {materialTitle}")"
-                                                        @onclick="() => AgregarMaterialAUbicacionAsync(item)"
-                                                        disabled="@(alreadyVisible || IsMaterialPickerBusy || !SelectedLocationId.HasValue)">
-                                                    @(alreadyVisible ? "Ya agregado" : isAddingThis ? "Agregando..." : "Agregar")
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    }
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    @if (HasExecutedMaterialPickerSearch && MaterialPickerRows.Count > 0)
-                    {
-                        <span class="text-muted small me-auto">La búsqueda queda seleccionada para reemplazarla al escribir.</span>
-                    }
-                    @if (HasMoreMaterialPickerRows)
-                    {
-                        <button class="btn btn-outline-primary" type="button" @onclick="CargarMasMaterialesParaAgregarAsync" disabled="@IsMaterialPickerBusy">
-                            @(IsLoadingMoreMaterialPicker ? "Cargando..." : $"Cargar {PageSize} más")
-                        </button>
-                    }
-                    <button class="btn btn-outline-secondary" type="button" @onclick="CerrarAgregarMaterialDialog">Cerrar</button>
-                </div>
+    <div class="ubicaciones-picker-backdrop" role="dialog" aria-modal="true" aria-labelledby="ubicaciones-picker-title">
+        <section class="ubicaciones-picker-panel">
+            <header>
+                <div><span class="ubicaciones-section-kicker">@SelectedLocationSummary</span><h2 id="ubicaciones-picker-title">Agregar materiales</h2><p>Busca uno o varios materiales y agrégalos sin salir de esta pantalla.</p></div>
+                <button type="button" @onclick="CerrarAgregarMaterialDialog" aria-label="Cerrar selector"><span class="oi oi-x" aria-hidden="true"></span></button>
+            </header>
+            <div class="ubicaciones-picker-search">
+                <label class="ubicaciones-search-box"><span class="oi oi-magnifying-glass" aria-hidden="true"></span><span class="visually-hidden">Buscar material para agregar</span><input @ref="MaterialPickerSearchInput" type="search" placeholder="Nombre, código o barras" @bind="MaterialPickerFilter.SearchText" @bind:event="oninput" @onkeydown="HandleMaterialPickerSearchKeyDownAsync" /></label>
+                <button class="btn btn-primary" type="button" @onclick="BuscarMaterialesParaAgregarAsync" disabled="@IsMaterialPickerBusy">Buscar</button>
             </div>
-        </div>
+            <details class="ubicaciones-picker-filters">
+                <summary>Filtros adicionales</summary>
+                <div>
+                    <label><span>Categoría</span><select class="form-select" @bind="MaterialPickerFilter.CategoryId"><option value="">Todas</option>@foreach (var option in MaterialCatalog.Categories) { <option value="@option.Id">@option.Name</option> }</select></label>
+                    <label><span>Proveedor</span><select class="form-select" @bind="MaterialPickerFilter.VendorId"><option value="">Todos</option>@foreach (var option in MaterialCatalog.Vendors) { <option value="@option.Id">@option.Name</option> }</select></label>
+                    <label><span>Clase</span><select class="form-select" @bind="MaterialPickerFilter.MaterialClass"><option value="">Todas</option>@foreach (var option in MaterialCatalog.MaterialClasses) { <option value="@option">@option</option> }</select></label>
+                    <label><span>Estado</span><select class="form-select" @bind="MaterialPickerFilter.Status"><option value="">Todos</option>@foreach (var option in MaterialCatalog.Statuses) { <option value="@option">@option</option> }</select></label>
+                    <label class="ubicaciones-picker-checkbox"><input type="checkbox" @bind="HasImageOnly" /> Solo con imagen</label>
+                </div>
+            </details>
+            <div class="ubicaciones-picker-results" aria-live="polite">
+                @if (IsLoadingMaterialPicker && MaterialPickerRows.Count == 0)
+                {
+                    <div class="ubicaciones-loading-state"><span class="spinner-border" aria-hidden="true"></span><strong>Buscando materiales…</strong></div>
+                }
+                else if (HasExecutedMaterialPickerSearch && MaterialPickerRows.Count == 0)
+                {
+                    <div class="ubicaciones-empty-state"><span class="oi oi-magnifying-glass" aria-hidden="true"></span><div><strong>No encontramos materiales</strong><p>Cambia la búsqueda o los filtros.</p></div></div>
+                }
+                else
+                {
+                    <div class="ubicaciones-picker-grid">
+                        @foreach (var item in MaterialPickerRows)
+                        {
+                            var thumbnailDataUrl = GetMaterialPickerThumbnailDataUrl(item.Id);
+                            var materialTitle = string.IsNullOrWhiteSpace(item.Description) ? item.MaterialCode : item.Description;
+                            var showMaterialCode = !string.IsNullOrWhiteSpace(item.MaterialCode) && !string.Equals(item.MaterialCode, materialTitle, StringComparison.OrdinalIgnoreCase);
+                            var alreadyVisible = IsMaterialAlreadyVisibleInSelectedLocation(item.Id);
+                            var isAddingThis = AddingMaterialId == item.Id;
+                            <article class="ubicaciones-picker-card @(alreadyVisible ? "is-added" : null)">
+                                <div class="ubicaciones-picker-card-heading">
+                                    @if (thumbnailDataUrl is not null)
+                                    {
+                                        <button class="ubicaciones-line-image-button" type="button" title="Ver imagen" aria-label="Ver imagen de @materialTitle" @onclick="() => AbrirImagenMaterialAsync(item)"><img src="@thumbnailDataUrl" alt="" class="ubicaciones-line-image" /></button>
+                                    }
+                                    else
+                                    {
+                                        <div class="ubicaciones-line-image-placeholder">Sin foto</div>
+                                    }
+                                    <div><strong>@materialTitle</strong>@if (showMaterialCode) { <small>@item.MaterialCode</small> }@if (!string.IsNullOrWhiteSpace(item.Barcode)) { <small>@item.Barcode</small> }</div>
+                                </div>
+                                <div class="ubicaciones-picker-card-meta"><span>@(string.IsNullOrWhiteSpace(item.CategoryName) ? "Sin categoría" : item.CategoryName)</span><span>@item.TotalQuantity.ToString("N2") disponibles</span></div>
+                                <button class="btn @(alreadyVisible ? "btn-outline-secondary" : "btn-primary")" type="button" @onclick="() => AgregarMaterialAUbicacionAsync(item)" disabled="@(alreadyVisible || IsMaterialPickerBusy || !CanAddMaterialToSelectedLocation)">@(alreadyVisible ? "Ya agregado" : isAddingThis ? "Agregando…" : "Agregar")</button>
+                            </article>
+                        }
+                    </div>
+                }
+            </div>
+            <footer>
+                <span>@MaterialPickerRows.Count materiales mostrados</span>
+                <div>@if (HasMoreMaterialPickerRows) { <button class="btn btn-outline-primary" type="button" @onclick="CargarMasMaterialesParaAgregarAsync" disabled="@IsMaterialPickerBusy">@(IsLoadingMoreMaterialPicker ? "Cargando…" : $"Cargar {PageSize} más")</button> }<button class="btn btn-outline-secondary" type="button" @onclick="CerrarAgregarMaterialDialog">Cerrar</button></div>
+            </footer>
+        </section>
     </div>
 }
 
 @if (ShowMaterialImageModal)
 {
-    <div class="modal fade show d-block ubicaciones-image-modal-backdrop" role="dialog" aria-modal="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">@(string.IsNullOrWhiteSpace(MaterialImageModalTitle) ? "Imagen del material" : MaterialImageModalTitle)</h5>
-                    <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CloseMaterialImageModal"></button>
-                </div>
-                <div class="modal-body text-center">
-                    @if (MaterialImageModalDataUrl is not null)
-                    {
-                        <img src="@MaterialImageModalDataUrl" alt="Vista ampliada del material" class="ubicaciones-image-modal-preview" />
-                    }
-                    else if (IsLoadingMaterialImage)
-                    {
-                        <div class="py-5 text-muted">Cargando imagen...</div>
-                    }
-                    else
-                    {
-                        <div class="py-5 text-muted">Sin imagen disponible.</div>
-                    }
-
-                    @if (IsLoadingMaterialImage && MaterialImageModalDataUrl is not null)
-                    {
-                        <div class="small text-muted mt-3">Cargando la imagen completa...</div>
-                    }
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-outline-secondary" type="button" @onclick="CloseMaterialImageModal">Cerrar</button>
-                </div>
-            </div>
-        </div>
+    <div class="ubicaciones-image-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ubicaciones-image-title">
+        <section class="ubicaciones-image-modal">
+            <header><h2 id="ubicaciones-image-title">@(string.IsNullOrWhiteSpace(MaterialImageModalTitle) ? "Imagen del material" : MaterialImageModalTitle)</h2><button type="button" @onclick="CloseMaterialImageModal" aria-label="Cerrar imagen"><span class="oi oi-x" aria-hidden="true"></span></button></header>
+            <div>@if (MaterialImageModalDataUrl is not null) { <img src="@MaterialImageModalDataUrl" alt="Vista ampliada del material" /> } else if (IsLoadingMaterialImage) { <div class="ubicaciones-loading-state"><span class="spinner-border" aria-hidden="true"></span><strong>Cargando imagen…</strong></div> } else { <div class="ubicaciones-compact-empty">Sin imagen disponible.</div> }</div>
+        </section>
     </div>
 }

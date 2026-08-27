@@ -78,6 +78,26 @@ public sealed class CapacitacionCourseCrudTests
     Assert.DoesNotContain("DELETE FROM capacitacion.Curso\r\n", source, StringComparison.Ordinal);
   }
 
+  [Fact]
+  public void CourseAuthoring_CapturesGeneratedIdsThroughOutputTablesWhenContentTriggersAreEnabled()
+  {
+    var source = ReadRepoFile("src/OrionERP.Infrastructure/Features/Capacitacion/CapacitacionService.CourseAuthoring.cs");
+
+    foreach (var identityColumn in new[]
+    {
+      "CursoVersionId",
+      "LeccionId",
+      "BloqueId",
+      "EvaluacionId",
+      "PreguntaId",
+      "PracticaId"
+    })
+    {
+      Assert.Matches($"OUTPUT inserted\\.{identityColumn} INTO @Inserted", source);
+      Assert.DoesNotMatch($"OUTPUT inserted\\.{identityColumn}\\r?\\n", source);
+    }
+  }
+
   private static CapacitacionService NewService(FakeQueryDbConnection connection, IReadOnlySet<string> roles)
     => new(
       new FakeQueryConnectionFactory(connection),

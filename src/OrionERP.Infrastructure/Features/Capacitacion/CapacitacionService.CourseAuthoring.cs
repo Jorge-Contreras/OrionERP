@@ -404,11 +404,15 @@ public sealed partial class CapacitacionService
 
         versionId = await conn.QuerySingleAsync<int>(new CommandDefinition(
           """
+          DECLARE @InsertedVersion TABLE (CursoVersionId int NOT NULL);
+
           INSERT INTO capacitacion.CursoVersion
             (CursoId, NumeroVersion, Estado, Objetivos, Prerequisitos, CalificacionMinima, CreadaPor)
-          OUTPUT inserted.CursoVersionId
+          OUTPUT inserted.CursoVersionId INTO @InsertedVersion (CursoVersionId)
           VALUES
             (@CursoId, 1, 'BORRADOR', @Objetivos, @Prerequisitos, @CalificacionMinima, @Actor);
+
+          SELECT CursoVersionId FROM @InsertedVersion;
           """,
           new
           {
@@ -831,11 +835,15 @@ public sealed partial class CapacitacionService
       {
         lesson.LeccionId = await conn.QuerySingleAsync<int>(new CommandDefinition(
           """
+          DECLARE @InsertedLesson TABLE (LeccionId int NOT NULL);
+
           INSERT INTO capacitacion.Leccion
             (CursoVersionId, Orden, Clave, Titulo, Objetivo, DuracionMinutos, Requerida)
-          OUTPUT inserted.LeccionId
+          OUTPUT inserted.LeccionId INTO @InsertedLesson (LeccionId)
           VALUES
             (@CursoVersionId, @Orden, @Clave, @Titulo, @Objetivo, @DuracionMinutos, @Requerida);
+
+          SELECT LeccionId FROM @InsertedLesson;
           """,
           new
           {
@@ -884,11 +892,15 @@ public sealed partial class CapacitacionService
         {
           blockInfo.BloqueId = await conn.QuerySingleAsync<int>(new CommandDefinition(
             """
+            DECLARE @InsertedBlock TABLE (BloqueId int NOT NULL);
+
             INSERT INTO capacitacion.BloqueContenido
               (LeccionId, Orden, Tipo, Titulo, Contenido, ConfiguracionJson, Requerido)
-            OUTPUT inserted.BloqueId
+            OUTPUT inserted.BloqueId INTO @InsertedBlock (BloqueId)
             VALUES
               (@LeccionId, @Orden, @Tipo, @Titulo, @Contenido, @ConfiguracionJson, @Requerido);
+
+            SELECT BloqueId FROM @InsertedBlock;
             """,
             new
             {
@@ -950,11 +962,15 @@ public sealed partial class CapacitacionService
       cancellationToken: ct));
     var targetVersionId = await conn.QuerySingleAsync<int>(new CommandDefinition(
       """
+      DECLARE @InsertedVersion TABLE (CursoVersionId int NOT NULL);
+
       INSERT INTO capacitacion.CursoVersion
         (CursoId, NumeroVersion, Estado, Objetivos, Prerequisitos, CalificacionMinima, CreadaPor)
-      OUTPUT inserted.CursoVersionId
+      OUTPUT inserted.CursoVersionId INTO @InsertedVersion (CursoVersionId)
       VALUES
         (@CursoId, @NumeroVersion, 'BORRADOR', @Objetivos, @Prerequisitos, @CalificacionMinima, @Actor);
+
+      SELECT CursoVersionId FROM @InsertedVersion;
       """,
       new
       {
@@ -978,9 +994,13 @@ public sealed partial class CapacitacionService
     {
       var newId = await conn.QuerySingleAsync<int>(new CommandDefinition(
         """
+        DECLARE @InsertedLesson TABLE (LeccionId int NOT NULL);
+
         INSERT INTO capacitacion.Leccion (CursoVersionId, Orden, Clave, Titulo, Objetivo, DuracionMinutos, Requerida)
-        OUTPUT inserted.LeccionId
+        OUTPUT inserted.LeccionId INTO @InsertedLesson (LeccionId)
         VALUES (@CursoVersionId, @Orden, @Clave, @Titulo, @Objetivo, @DuracionMinutos, @Requerida);
+
+        SELECT LeccionId FROM @InsertedLesson;
         """,
         new
         {
@@ -1013,9 +1033,13 @@ public sealed partial class CapacitacionService
     {
       var newId = await conn.QuerySingleAsync<int>(new CommandDefinition(
         """
+        DECLARE @InsertedBlock TABLE (BloqueId int NOT NULL);
+
         INSERT INTO capacitacion.BloqueContenido (LeccionId, Orden, Tipo, Titulo, Contenido, ConfiguracionJson, Requerido)
-        OUTPUT inserted.BloqueId
+        OUTPUT inserted.BloqueId INTO @InsertedBlock (BloqueId)
         VALUES (@LeccionId, @Orden, @Tipo, @Titulo, @Contenido, @ConfiguracionJson, @Requerido);
+
+        SELECT BloqueId FROM @InsertedBlock;
         """,
         new
         {
@@ -1080,9 +1104,13 @@ public sealed partial class CapacitacionService
     {
       var newId = await conn.QuerySingleAsync<int>(new CommandDefinition(
         """
+        DECLARE @InsertedEvaluation TABLE (EvaluacionId int NOT NULL);
+
         INSERT INTO capacitacion.Evaluacion (CursoVersionId, Titulo, Instrucciones, CalificacionMinima, Requerida)
-        OUTPUT inserted.EvaluacionId
+        OUTPUT inserted.EvaluacionId INTO @InsertedEvaluation (EvaluacionId)
         VALUES (@CursoVersionId, @Titulo, @Instrucciones, @CalificacionMinima, @Requerida);
+
+        SELECT EvaluacionId FROM @InsertedEvaluation;
         """,
         new
         {
@@ -1113,9 +1141,13 @@ public sealed partial class CapacitacionService
     {
       var newId = await conn.QuerySingleAsync<int>(new CommandDefinition(
         """
+        DECLARE @InsertedQuestion TABLE (PreguntaId int NOT NULL);
+
         INSERT INTO capacitacion.Pregunta (EvaluacionId, Orden, Texto, Explicacion, Critica)
-        OUTPUT inserted.PreguntaId
+        OUTPUT inserted.PreguntaId INTO @InsertedQuestion (PreguntaId)
         VALUES (@EvaluacionId, @Orden, @Texto, @Explicacion, @Critica);
+
+        SELECT PreguntaId FROM @InsertedQuestion;
         """,
         new
         {
@@ -1167,9 +1199,13 @@ public sealed partial class CapacitacionService
     {
       var newId = await conn.QuerySingleAsync<int>(new CommandDefinition(
         """
+        DECLARE @InsertedPractice TABLE (PracticaId int NOT NULL);
+
         INSERT INTO capacitacion.Practica (CursoVersionId, Titulo, Instrucciones, RutaSandbox, Requerida)
-        OUTPUT inserted.PracticaId
+        OUTPUT inserted.PracticaId INTO @InsertedPractice (PracticaId)
         VALUES (@CursoVersionId, @Titulo, @Instrucciones, @RutaSandbox, @Requerida);
+
+        SELECT PracticaId FROM @InsertedPractice;
         """,
         new
         {

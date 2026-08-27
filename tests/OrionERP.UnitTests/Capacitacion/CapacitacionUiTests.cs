@@ -12,6 +12,7 @@ public sealed class CapacitacionUiTests
   [InlineData(typeof(CapacitacionHubPage), "/capacitacion", "CapacitacionEmployee")]
   [InlineData(typeof(MiPlanCapacitacionPage), "/capacitacion/mi-plan", "CapacitacionEmployee")]
   [InlineData(typeof(CatalogoCapacitacionPage), "/capacitacion/catalogo", "CapacitacionEmployee")]
+  [InlineData(typeof(CursosCapacitacionPage), "/capacitacion/cursos", "CapacitacionInstructor")]
   [InlineData(typeof(NuevaSesionCapacitacionPage), "/capacitacion/sesiones/nueva", "CapacitacionInstructor")]
   [InlineData(typeof(SesionCapacitacionPage), "/capacitacion/sesiones/{Id:long}", "CapacitacionEmployee")]
   [InlineData(typeof(AdminCapacitacionPage), "/capacitacion/admin", "CapacitacionAdmin")]
@@ -121,6 +122,7 @@ public sealed class CapacitacionUiTests
       "src/OrionERP.Web/Features/Capacitacion/CapacitacionHubPage.razor",
       "src/OrionERP.Web/Features/Capacitacion/CatalogoCapacitacionPage.razor",
       "src/OrionERP.Web/Features/Capacitacion/MiPlanCapacitacionPage.razor",
+      "src/OrionERP.Web/Features/Capacitacion/CursosCapacitacionPage.razor",
       "src/OrionERP.Web/Features/Capacitacion/NuevaSesionCapacitacionPage.razor",
       "src/OrionERP.Web/Features/Capacitacion/SesionCapacitacionPage.razor",
       "src/OrionERP.Web/Features/Capacitacion/AdminCapacitacionPage.razor"
@@ -133,6 +135,21 @@ public sealed class CapacitacionUiTests
       "Logger.LogError",
       ReadRepoFile("src/OrionERP.Web/Features/Capacitacion/CapacitacionPageBase.cs"),
       StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void InstructorCourseWorkspace_ProvidesVersionSafeCrudActions()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Capacitacion/CursosCapacitacionPage.razor");
+    var navigation = ReadRepoFile("src/OrionERP.Web/Features/Capacitacion/Components/CapacitacionShell.razor");
+
+    Assert.Contains("GuardarCursoAsync", page, StringComparison.Ordinal);
+    Assert.Contains("GetCursoAdministrableAsync", page, StringComparison.Ordinal);
+    Assert.Contains("PrepararEdicionCursoAsync", page, StringComparison.Ordinal);
+    Assert.Contains("PublicarCursoAsync", page, StringComparison.Ordinal);
+    Assert.Contains("CambiarEstadoCursoAsync", page, StringComparison.Ordinal);
+    Assert.Contains("El historial se conservará", page, StringComparison.Ordinal);
+    Assert.Contains("href=\"/capacitacion/cursos\"", navigation, StringComparison.Ordinal);
   }
 
   private sealed class PageProbe : CapacitacionPageBase

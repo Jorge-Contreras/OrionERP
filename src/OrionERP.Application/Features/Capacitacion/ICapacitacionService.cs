@@ -6,6 +6,12 @@ public interface ICapacitacionService
   Task<IReadOnlyList<CapacitacionCursoResumenDto>> GetCatalogoAsync(string rfc, CancellationToken ct = default);
   Task<CapacitacionCursoDetalleDto?> GetCursoAsync(int cursoVersionId, string rfc, CancellationToken ct = default);
   Task<CapacitacionCursoDetalleDto?> GetCursoAsignadoAsync(long asignacionId, string rfc, int employeeId, CancellationToken ct = default);
+  Task<IReadOnlyList<CapacitacionCursoAdministrableDto>> GetCursosAdministrablesAsync(string rfc, CancellationToken ct = default);
+  Task<CapacitacionCursoAdministrableDto?> GetCursoAdministrableAsync(int cursoId, string rfc, CancellationToken ct = default);
+  Task<CapacitacionCommandResult> PrepararEdicionCursoAsync(CapacitacionCursoCommandRequest request, CancellationToken ct = default);
+  Task<CapacitacionCommandResult> GuardarCursoAsync(CapacitacionGuardarCursoRequest request, CancellationToken ct = default);
+  Task<CapacitacionCommandResult> PublicarCursoAsync(CapacitacionCursoCommandRequest request, CancellationToken ct = default);
+  Task<CapacitacionCommandResult> CambiarEstadoCursoAsync(CapacitacionCambiarEstadoCursoRequest request, CancellationToken ct = default);
   Task<IReadOnlyList<CapacitacionAsignacionDto>> GetMiPlanAsync(string rfc, int employeeId, CancellationToken ct = default);
   Task<IReadOnlyList<CapacitacionEmpleadoDto>> GetEmpleadosAsignablesAsync(string rfc, string? search = null, CancellationToken ct = default);
   Task<CapacitacionCommandResult> CrearAsignacionesAsync(CapacitacionCrearAsignacionesRequest request, CancellationToken ct = default);

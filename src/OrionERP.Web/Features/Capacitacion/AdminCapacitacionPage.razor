@@ -7,7 +7,7 @@
 <CapacitacionShell Title="Administración de capacitación"
                    Eyebrow="Gobierno y seguimiento"
                    Description="Asigna rutas, consulta versiones publicadas y da seguimiento a la adopción de OrionERP por empresa.">
-  <HeroActions><a class="cap-btn cap-btn--ghost" href="/capacitacion/sesiones/nueva"><span class="oi oi-people" aria-hidden="true"></span>Nueva sesión</a></HeroActions>
+  <HeroActions><a class="cap-btn cap-btn--ghost" href="/capacitacion/cursos"><span class="oi oi-book" aria-hidden="true"></span>Administrar cursos</a><a class="cap-btn cap-btn--ghost" href="/capacitacion/sesiones/nueva"><span class="oi oi-people" aria-hidden="true"></span>Nueva sesión</a></HeroActions>
   <ChildContent>
     @if (!string.IsNullOrWhiteSpace(PageError)) { <div class="cap-alert cap-alert--error" role="alert"><span class="oi oi-warning" aria-hidden="true"></span><p>@PageError</p></div> }
     @if (!string.IsNullOrWhiteSpace(PageMessage)) { <div class="cap-alert @(MessageIsError ? "cap-alert--error" : "cap-alert--success")" role="status"><span class="oi @(MessageIsError ? "oi-warning" : "oi-check")" aria-hidden="true"></span><p>@PageMessage</p></div> }
@@ -78,9 +78,9 @@
         <section class="cap-card" aria-labelledby="cap-content-title">
           <div class="cap-card__header"><div><h2 id="cap-content-title">Versiones publicadas</h2><p>Las asignaciones quedan fijadas a la versión que recibió el colaborador.</p></div><span class="cap-badge cap-badge--success">@courses.Count activas</span></div>
           <div class="cap-table-wrap"><table class="cap-table"><thead><tr><th>Clave</th><th>Curso</th><th>Módulo</th><th>Versión</th><th>Estructura</th><th>Duración</th><th>Calificación</th><th></th></tr></thead><tbody>
-            @foreach(var item in courses.OrderBy(x => x.Categoria).ThenBy(x => x.Nombre)){<tr><td><code>@item.Clave</code></td><td><strong>@item.Nombre</strong><small class="d-block text-muted">@Trim(item.Descripcion, 80)</small></td><td>@item.Categoria</td><td><span class="cap-badge cap-badge--success">v@(item.NumeroVersion) · @item.EstadoVersion</span></td><td>@item.LeccionCount lecciones · @item.BloqueCount bloques</td><td>@item.DuracionMinutos min</td><td>@item.CalificacionMinima.ToString("0")%</td><td><a class="cap-btn cap-btn--light" href="/capacitacion/catalogo">Revisar</a></td></tr>}
+            @foreach(var item in courses.OrderBy(x => x.Categoria).ThenBy(x => x.Nombre)){<tr><td><code>@item.Clave</code></td><td><strong>@item.Nombre</strong><small class="d-block text-muted">@Trim(item.Descripcion, 80)</small></td><td>@item.Categoria</td><td><span class="cap-badge cap-badge--success">v@(item.NumeroVersion) · @item.EstadoVersion</span></td><td>@item.LeccionCount lecciones · @item.BloqueCount bloques</td><td>@item.DuracionMinutos min</td><td>@item.CalificacionMinima.ToString("0")%</td><td><a class="cap-btn cap-btn--light" href="/capacitacion/cursos">Administrar</a></td></tr>}
           </tbody></table></div>
-          <div class="cap-content-note"><span class="oi oi-info" aria-hidden="true"></span><p>El contenido publicado es inmutable para preservar la evidencia. Las correcciones se publican como una versión nueva mediante el proceso de datos controlado.</p></div>
+          <div class="cap-content-note"><span class="oi oi-info" aria-hidden="true"></span><p>El contenido publicado es inmutable para preservar la evidencia. Usa Cursos para preparar, revisar y publicar una versión nueva.</p></div>
         </section>
       }
     }

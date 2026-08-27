@@ -152,6 +152,10 @@
             <small class="restaurant-admin__hint">Los productos preparados al ordenar necesitan una estación para llegar al KDS.</small>
           }
         </label>
+        <label>Minutos de preparación
+          <InputNumber @bind-Value="productEditor.PreparationMinutes" min="0" step="1" />
+          <small>Tiempo estimado que tarda esta variante. Déjalo vacío si no aplica.</small>
+        </label>
         <label class="restaurant-admin__check"><InputCheckbox @bind-Value="productEditor.IsActive" /> Producto activo</label>
         <label class="restaurant-admin__check"><InputCheckbox @bind-Value="productEditor.SoldOutOverride" /> Marcar agotado manualmente</label>
         <label>Fotografía familiar (compartida por variantes)

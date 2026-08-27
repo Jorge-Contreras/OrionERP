@@ -95,7 +95,7 @@ public sealed class RestaurantProductUpsertRequest
   [StringLength(120)] public string? VariantName { get; set; }
   [Range(0, 999999999)] public decimal Price { get; set; }
   public int? KitchenStationId { get; set; }
-  public int? PreparationMinutes { get; set; }
+  [Range(0, 1440)] public int? PreparationMinutes { get; set; }
   public bool IsActive { get; set; } = true;
   public bool SoldOutOverride { get; set; }
   public byte[]? FamilyImage { get; set; }

@@ -1,0 +1,494 @@
+@page "/capacitacion/cursos"
+@attribute [Authorize(Policy = "CapacitacionInstructor")]
+@inherits CapacitacionPageBase
+
+<PageTitle>Cursos de capacitación</PageTitle>
+
+<CapacitacionShell Title="Cursos y clases"
+                   Eyebrow="Herramientas para instructores"
+                   Description="Crea cursos, organiza sus lecciones y publica nuevas versiones sin alterar el historial de capacitación.">
+  <HeroActions>
+    <button type="button" class="cap-btn cap-btn--ghost" @onclick="StartNewCourse">
+      <span class="oi oi-plus" aria-hidden="true"></span>Nuevo curso
+    </button>
+  </HeroActions>
+  <ChildContent>
+    @if (!string.IsNullOrWhiteSpace(PageError))
+    {
+      <div class="cap-alert cap-alert--error" role="alert"><span class="oi oi-warning" aria-hidden="true"></span><p>@PageError</p></div>
+    }
+    @if (!string.IsNullOrWhiteSpace(PageMessage))
+    {
+      <div class="cap-alert @(MessageIsError ? "cap-alert--error" : "cap-alert--success")" role="status"><span class="oi @(MessageIsError ? "oi-warning" : "oi-check")" aria-hidden="true"></span><p>@PageMessage</p></div>
+    }
+
+    @if (loading)
+    {
+      <CapacitacionLoading />
+    }
+    else if (editor is not null)
+    {
+      <EditForm Model="editor" OnValidSubmit="SaveDraftAsync" class="cap-course-editor">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="cap-editor-validation" />
+
+        <div class="cap-editor-toolbar">
+          <div>
+            <button type="button" class="cap-editor-back" @onclick="CloseEditor"><span class="oi oi-chevron-left" aria-hidden="true"></span>Volver a cursos</button>
+            <h2>@(editor.CursoId > 0 ? editor.Nombre : "Nuevo curso")</h2>
+            <p>@(editor.CursoId > 0 ? $"Borrador v{selectedCourse?.NumeroVersion}" : "El curso se guardará inicialmente como borrador.")</p>
+          </div>
+          <div class="cap-editor-actions">
+            <button type="submit" class="cap-btn cap-btn--light" disabled="@saving"><span class="oi oi-cloud-upload" aria-hidden="true"></span>@(saving ? "Guardando…" : "Guardar borrador")</button>
+            <button type="button" class="cap-btn cap-btn--teal" disabled="@(saving || !CanPublishEditor)" @onclick="SaveAndPublishAsync"><span class="oi oi-check" aria-hidden="true"></span>Guardar y publicar</button>
+          </div>
+        </div>
+
+        <section class="cap-card cap-editor-section" aria-labelledby="course-general-title">
+          <div class="cap-card__header"><div><h3 id="course-general-title">Información general</h3><p>Identifica el curso en el catálogo y en las asignaciones.</p></div><span class="cap-badge cap-badge--warn">Borrador</span></div>
+          <div class="cap-card__body">
+            <div class="cap-form-grid">
+              <div><label class="cap-label" for="course-key">Clave</label><input id="course-key" class="cap-input" maxlength="64" required @bind="editor.Clave" /><small class="cap-hint">Única dentro de la empresa; se guardará en mayúsculas.</small></div>
+              <div><label class="cap-label" for="course-category">Categoría o módulo</label><input id="course-category" class="cap-input" maxlength="80" required @bind="editor.Categoria" /></div>
+              <div class="cap-field--wide"><label class="cap-label" for="course-name">Nombre</label><input id="course-name" class="cap-input" maxlength="160" required @bind="editor.Nombre" /></div>
+              <div class="cap-field--wide"><label class="cap-label" for="course-description">Descripción</label><textarea id="course-description" class="cap-textarea" rows="3" maxlength="1000" required @bind="editor.Descripcion"></textarea></div>
+              <div><label class="cap-label" for="course-duration">Duración total (minutos)</label><input id="course-duration" class="cap-input" type="number" min="1" max="10080" required @bind="editor.DuracionMinutos" /></div>
+              <div><label class="cap-label" for="course-score">Calificación mínima</label><div class="cap-input-suffix"><input id="course-score" class="cap-input" type="number" min="0" max="100" step="1" required @bind="editor.CalificacionMinima" /><span>%</span></div></div>
+              <div class="cap-field--wide"><label class="cap-label" for="course-objectives">Objetivos</label><textarea id="course-objectives" class="cap-textarea" rows="3" maxlength="2000" required @bind="editor.Objetivos"></textarea></div>
+              <div class="cap-field--wide"><label class="cap-label" for="course-prerequisites">Prerrequisitos</label><textarea id="course-prerequisites" class="cap-textarea" rows="2" maxlength="1000" @bind="editor.Prerequisitos"></textarea></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="cap-editor-section" aria-labelledby="course-lessons-title">
+          <div class="cap-section-title">
+            <div><h2 id="course-lessons-title">Lecciones y bloques</h2><p>Ordena las clases y define lo que verá el colaborador en cada paso.</p></div>
+            <button type="button" class="cap-btn cap-btn--primary" @onclick="AddLesson"><span class="oi oi-plus" aria-hidden="true"></span>Agregar lección</button>
+          </div>
+
+          @if (editor.Lecciones.Count == 0)
+          {
+            <div class="cap-card cap-empty cap-editor-empty"><span class="cap-empty__icon"><span class="oi oi-book" aria-hidden="true"></span></span><h3>El borrador todavía no tiene lecciones</h3><p>Agrega al menos una lección con un bloque para poder publicarlo e impartirlo.</p><button type="button" class="cap-btn cap-btn--primary" @onclick="AddLesson">Agregar primera lección</button></div>
+          }
+
+          @foreach (var lesson in editor.Lecciones)
+          {
+            var lessonIndex = editor.Lecciones.IndexOf(lesson);
+            <article class="cap-card cap-lesson-editor" @key="lesson">
+              <header class="cap-lesson-editor__header">
+                <div class="cap-order-badge">@(lessonIndex + 1)</div>
+                <div><h3>@(string.IsNullOrWhiteSpace(lesson.Titulo) ? $"Lección {lessonIndex + 1}" : lesson.Titulo)</h3><p>@lesson.Bloques.Count bloque(s) · @lesson.DuracionMinutos min</p></div>
+                <div class="cap-order-actions" aria-label="Orden y acciones de la lección">
+                  <button type="button" title="Subir lección" disabled="@(lessonIndex == 0)" @onclick="() => MoveLesson(lessonIndex, -1)"><span class="oi oi-arrow-thick-top" aria-hidden="true"></span><span class="visually-hidden">Subir lección</span></button>
+                  <button type="button" title="Bajar lección" disabled="@(lessonIndex == editor.Lecciones.Count - 1)" @onclick="() => MoveLesson(lessonIndex, 1)"><span class="oi oi-arrow-thick-bottom" aria-hidden="true"></span><span class="visually-hidden">Bajar lección</span></button>
+                  <button type="button" class="danger" title="Eliminar lección" @onclick="() => RemoveLesson(lesson)"><span class="oi oi-trash" aria-hidden="true"></span><span class="visually-hidden">Eliminar lección</span></button>
+                </div>
+              </header>
+              <div class="cap-card__body">
+                <div class="cap-form-grid">
+                  <div><label class="cap-label">Clave de lección</label><input class="cap-input" maxlength="64" required @bind="lesson.Clave" /></div>
+                  <div><label class="cap-label">Duración (minutos)</label><input class="cap-input" type="number" min="1" max="1440" required @bind="lesson.DuracionMinutos" /></div>
+                  <div class="cap-field--wide"><label class="cap-label">Título</label><input class="cap-input" maxlength="160" required @bind="lesson.Titulo" /></div>
+                  <div class="cap-field--wide"><label class="cap-label">Objetivo</label><textarea class="cap-textarea" rows="2" maxlength="1000" required @bind="lesson.Objetivo"></textarea></div>
+                  <label class="cap-check cap-field--wide"><input type="checkbox" @bind="lesson.Requerida" /><span><strong>Lección obligatoria</strong><small class="cap-hint">Cuenta para completar el curso.</small></span></label>
+                </div>
+
+                <div class="cap-block-heading"><div><h4>Bloques de contenido</h4><p>Teoría, pasos, demostraciones, práctica y cierres.</p></div><button type="button" class="cap-btn cap-btn--light" @onclick="() => AddBlock(lesson)"><span class="oi oi-plus" aria-hidden="true"></span>Agregar bloque</button></div>
+                @if (lesson.Bloques.Count == 0)
+                {
+                  <div class="cap-block-empty">Esta lección todavía no tiene contenido.</div>
+                }
+                @foreach (var blockInfo in lesson.Bloques)
+                {
+                  var blockIndex = lesson.Bloques.IndexOf(blockInfo);
+                  <section class="cap-block-editor" @key="blockInfo">
+                    <div class="cap-block-editor__top">
+                      <span class="cap-block-number">@(blockIndex + 1)</span>
+                      <select class="cap-select" aria-label="Tipo de bloque" @bind="blockInfo.Tipo">@foreach (var blockType in BlockTypes){<option value="@blockType.Code">@blockType.Label</option>}</select>
+                      <input class="cap-input" aria-label="Título del bloque" placeholder="Título del bloque" maxlength="160" required @bind="blockInfo.Titulo" />
+                      <div class="cap-order-actions">
+                        <button type="button" title="Subir bloque" disabled="@(blockIndex == 0)" @onclick="() => MoveBlock(lesson, blockIndex, -1)"><span class="oi oi-arrow-thick-top" aria-hidden="true"></span><span class="visually-hidden">Subir bloque</span></button>
+                        <button type="button" title="Bajar bloque" disabled="@(blockIndex == lesson.Bloques.Count - 1)" @onclick="() => MoveBlock(lesson, blockIndex, 1)"><span class="oi oi-arrow-thick-bottom" aria-hidden="true"></span><span class="visually-hidden">Bajar bloque</span></button>
+                        <button type="button" class="danger" title="Eliminar bloque" @onclick="() => RemoveBlock(lesson, blockInfo)"><span class="oi oi-trash" aria-hidden="true"></span><span class="visually-hidden">Eliminar bloque</span></button>
+                      </div>
+                    </div>
+                    <textarea class="cap-textarea" rows="4" aria-label="Contenido del bloque" placeholder="Escribe el contenido que se mostrará al colaborador" required @bind="blockInfo.Contenido"></textarea>
+                    <div class="cap-block-footer">
+                      <label class="cap-check"><input type="checkbox" @bind="blockInfo.Requerido" /><span>Bloque obligatorio</span></label>
+                      @if (blockInfo.BloqueId > 0 && ResourceCount(blockInfo.BloqueId) > 0)
+                      {
+                        <span class="cap-badge cap-badge--info"><span class="oi oi-paperclip" aria-hidden="true"></span>@ResourceCount(blockInfo.BloqueId) recurso(s) preservado(s)</span>
+                      }
+                    </div>
+                  </section>
+                }
+              </div>
+            </article>
+          }
+        </section>
+
+        @if ((selectedCourse?.Evaluaciones.Count ?? 0) > 0 || (selectedCourse?.Practicas.Count ?? 0) > 0)
+        {
+          <div class="cap-content-note cap-editor-preserved"><span class="oi oi-lock-locked" aria-hidden="true"></span><p>Las evaluaciones y prácticas existentes se copiaron al borrador y se conservarán al publicar. Este editor modifica la ficha, las lecciones y los bloques.</p></div>
+        }
+
+        <div class="cap-editor-bottom-actions">
+          <button type="button" class="cap-btn cap-btn--light" @onclick="CloseEditor">Cancelar</button>
+          <button type="submit" class="cap-btn cap-btn--primary" disabled="@saving">@(saving ? "Guardando…" : "Guardar borrador")</button>
+          <button type="button" class="cap-btn cap-btn--teal" disabled="@(saving || !CanPublishEditor)" @onclick="SaveAndPublishAsync">Guardar y publicar</button>
+        </div>
+      </EditForm>
+    }
+    else
+    {
+      <div class="cap-course-toolbar">
+        <label><span class="oi oi-magnifying-glass" aria-hidden="true"></span><span class="visually-hidden">Buscar cursos</span><input type="search" class="cap-input" placeholder="Buscar por nombre, clave o categoría" @bind="search" @bind:event="oninput" /></label>
+        <div class="cap-course-counters"><span><strong>@courses.Count(item => item.Activo)</strong> disponibles</span><span><strong>@courses.Count(item => item.EsBorrador)</strong> borradores</span></div>
+        <button type="button" class="cap-btn cap-btn--primary" @onclick="StartNewCourse"><span class="oi oi-plus" aria-hidden="true"></span>Nuevo curso</button>
+      </div>
+
+      @if (VisibleCourses.Count == 0)
+      {
+        <div class="cap-card cap-empty"><span class="cap-empty__icon"><span class="oi oi-magnifying-glass" aria-hidden="true"></span></span><h2>No encontramos cursos</h2><p>Cambia la búsqueda o crea un curso para tu empresa.</p></div>
+      }
+      else
+      {
+        <div class="cap-course-admin-grid">
+          @foreach (var course in VisibleCourses)
+          {
+            <article class="cap-card cap-course-admin-card @(course.Activo ? null : "is-inactive")" @key="course.CursoId">
+              <div class="cap-course-admin-card__stripe"></div>
+              <div class="cap-course-admin-card__body">
+                <div class="cap-course-admin-card__meta">
+                  <span class="cap-course-admin-icon"><span class="oi @CapacitacionUi.IconForModule(course.Categoria)" aria-hidden="true"></span></span>
+                  <span class="cap-badge @VersionCss(course)">@VersionLabel(course)</span>
+                  @if (course.EsGlobal) { <span class="cap-badge">Curso general</span> }
+                  @if (!course.Activo) { <span class="cap-badge cap-badge--danger">Desactivado</span> }
+                </div>
+                <code>@course.Clave</code>
+                <h2>@course.Nombre</h2>
+                <p>@course.Descripcion</p>
+                <dl><div><dt>Contenido</dt><dd>@course.LeccionCount lecciones · @course.BloqueCount bloques</dd></div><div><dt>Duración</dt><dd>@course.DuracionMinutos min</dd></div><div><dt>Mínimo</dt><dd>@course.CalificacionMinima.ToString("0")%</dd></div></dl>
+              </div>
+              <footer>
+                <button type="button" class="cap-btn cap-btn--light" @onclick="() => ReviewCourseAsync(course)"><span class="oi oi-eye" aria-hidden="true"></span>Revisar</button>
+                @if (course.Activo)
+                {
+                  <button type="button" class="cap-btn cap-btn--primary" @onclick="() => PrepareCourseAsync(course)" disabled="@saving"><span class="oi oi-pencil" aria-hidden="true"></span>@(course.EsGlobal ? "Personalizar" : course.EsBorrador ? "Editar" : "Nueva versión")</button>
+                }
+                else
+                {
+                  <button type="button" class="cap-btn cap-btn--teal" @onclick="() => ChangeCourseStateAsync(course, true)" disabled="@saving"><span class="oi oi-reload" aria-hidden="true"></span>Reactivar</button>
+                }
+              </footer>
+            </article>
+          }
+        </div>
+      }
+
+      @if (selectedCourse is not null)
+      {
+        <section class="cap-card cap-course-review" aria-labelledby="course-review-title">
+          <div class="cap-card__header"><div><span class="cap-badge @VersionCss(selectedCourse)">@VersionLabel(selectedCourse)</span><h2 id="course-review-title">@selectedCourse.Nombre</h2><p>@selectedCourse.Clave · @selectedCourse.Categoria</p></div><button type="button" class="cap-review-close" @onclick="CloseReview"><span class="oi oi-x" aria-hidden="true"></span><span class="visually-hidden">Cerrar detalle</span></button></div>
+          <div class="cap-card__body cap-course-review__body">
+            <div><h3>Descripción</h3><p>@selectedCourse.Descripcion</p><h3>Objetivos</h3><p>@selectedCourse.Objetivos</p>@if (!string.IsNullOrWhiteSpace(selectedCourse.Prerequisitos)){<h3>Prerrequisitos</h3><p>@selectedCourse.Prerequisitos</p>}</div>
+            <div><h3>Programa</h3>@if(selectedCourse.Lecciones.Count == 0){<p class="text-muted">Sin lecciones.</p>}else{<ol>@foreach(var lesson in selectedCourse.Lecciones){<li><strong>@lesson.Titulo</strong><span>@lesson.Bloques.Count bloques · @lesson.DuracionMinutos min</span></li>}</ol>}</div>
+          </div>
+          <footer class="cap-course-review__actions">
+            @if (selectedCourse.Activo)
+            {
+              <button type="button" class="cap-btn cap-btn--primary" @onclick="() => PrepareCourseAsync(selectedCourse)" disabled="@saving"><span class="oi oi-pencil" aria-hidden="true"></span>@(selectedCourse.EsGlobal ? "Personalizar para mi empresa" : selectedCourse.EsBorrador ? "Editar borrador" : "Crear nueva versión")</button>
+            }
+            @if (!selectedCourse.EsGlobal && selectedCourse.Activo && !confirmDeactivate)
+            {
+              <button type="button" class="cap-btn cap-btn--danger" @onclick="AskDeactivate"><span class="oi oi-trash" aria-hidden="true"></span>Desactivar curso</button>
+            }
+            @if (!selectedCourse.EsGlobal && selectedCourse.Activo && confirmDeactivate)
+            {
+              <div class="cap-delete-confirm"><span>¿Desactivar este curso? El historial se conservará.</span><button type="button" class="cap-btn cap-btn--danger" @onclick="() => ChangeCourseStateAsync(selectedCourse, false)" disabled="@saving">Sí, desactivar</button><button type="button" class="cap-btn cap-btn--light" @onclick="CancelDeactivate">Cancelar</button></div>
+            }
+          </footer>
+        </section>
+      }
+    }
+  </ChildContent>
+</CapacitacionShell>
+
+@code {
+  private static readonly (string Code, string Label)[] BlockTypes =
+  [
+    (CapacitacionCodes.BloqueObjetivos, "Objetivos"),
+    (CapacitacionCodes.BloqueTeoria, "Teoría"),
+    (CapacitacionCodes.BloquePasos, "Pasos"),
+    (CapacitacionCodes.BloqueDemostracion, "Demostración"),
+    (CapacitacionCodes.BloqueImagen, "Imagen o apoyo visual"),
+    (CapacitacionCodes.BloquePractica, "Práctica"),
+    (CapacitacionCodes.BloqueEvaluacion, "Evaluación"),
+    (CapacitacionCodes.BloqueResumen, "Resumen"),
+    (CapacitacionCodes.BloqueAlerta, "Alerta")
+  ];
+
+  private IReadOnlyList<CapacitacionCursoAdministrableDto> courses = [];
+  private CapacitacionCursoAdministrableDto? selectedCourse;
+  private CapacitacionGuardarCursoRequest? editor;
+  private string search = string.Empty;
+  private bool loading = true;
+  private bool saving;
+  private bool confirmDeactivate;
+
+  private List<CapacitacionCursoAdministrableDto> VisibleCourses => courses
+    .Where(course => string.IsNullOrWhiteSpace(search)
+      || course.Nombre.Contains(search, StringComparison.OrdinalIgnoreCase)
+      || course.Clave.Contains(search, StringComparison.OrdinalIgnoreCase)
+      || course.Categoria.Contains(search, StringComparison.OrdinalIgnoreCase))
+    .ToList();
+
+  private bool CanPublishEditor => editor is not null
+    && editor.Lecciones.Count > 0
+    && editor.Lecciones.All(lesson => lesson.Bloques.Count > 0);
+
+  protected override async Task LoadPageDataAsync()
+  {
+    if (!await InitializeActorAsync()) { loading = false; return; }
+    try { courses = await Capacitacion.GetCursosAdministrablesAsync(Rfc, LifetimeToken); }
+    catch (Exception exception) { ShowPageException(exception, "No fue posible cargar los cursos de capacitación."); }
+    finally { loading = false; }
+  }
+
+  private void StartNewCourse()
+  {
+    selectedCourse = null;
+    confirmDeactivate = false;
+    PageMessage = null;
+    editor = new CapacitacionGuardarCursoRequest
+    {
+      Rfc = Rfc,
+      DuracionMinutos = 60,
+      CalificacionMinima = 80,
+      ActorEmployeeId = Actor?.EmployeeId ?? 0,
+      Actor = Actor?.UserName ?? string.Empty
+    };
+  }
+
+  private async Task ReviewCourseAsync(CapacitacionCursoAdministrableDto course)
+  {
+    confirmDeactivate = false;
+    try { selectedCourse = await Capacitacion.GetCursoAdministrableAsync(course.CursoId, Rfc, LifetimeToken); }
+    catch (Exception exception) { ShowException(exception, "No fue posible abrir el curso."); }
+  }
+
+  private async Task PrepareCourseAsync(CapacitacionCursoAdministrableDto course)
+  {
+    if (Actor?.EmployeeId is null) return;
+    saving = true;
+    try
+    {
+      var result = await Capacitacion.PrepararEdicionCursoAsync(new()
+      {
+        Rfc = Rfc,
+        CursoId = course.CursoId,
+        ActorEmployeeId = Actor.EmployeeId.Value,
+        Actor = Actor.UserName
+      }, LifetimeToken);
+      ShowResult(result);
+      if (!result.Success || !result.EntityId.HasValue) return;
+      await ReloadCoursesAsync();
+      var editable = await Capacitacion.GetCursoAdministrableAsync((int)result.EntityId.Value, Rfc, LifetimeToken);
+      if (editable is null || !editable.EsBorrador)
+      {
+        ShowResult(CapacitacionCommandResult.Fail("No fue posible abrir el borrador preparado."));
+        return;
+      }
+      OpenEditor(editable);
+    }
+    catch (Exception exception) { ShowException(exception, "No fue posible preparar el curso para edición."); }
+    finally { saving = false; }
+  }
+
+  private void OpenEditor(CapacitacionCursoAdministrableDto course)
+  {
+    selectedCourse = course;
+    confirmDeactivate = false;
+    editor = new CapacitacionGuardarCursoRequest
+    {
+      Rfc = Rfc,
+      CursoId = course.CursoId,
+      CursoVersionId = course.CursoVersionId,
+      Clave = course.Clave,
+      Categoria = course.Categoria,
+      Nombre = course.Nombre,
+      Descripcion = course.Descripcion,
+      DuracionMinutos = course.DuracionMinutos,
+      Objetivos = course.Objetivos,
+      Prerequisitos = course.Prerequisitos,
+      CalificacionMinima = course.CalificacionMinima,
+      ActorEmployeeId = Actor?.EmployeeId ?? 0,
+      Actor = Actor?.UserName ?? string.Empty,
+      Lecciones = course.Lecciones.Select(lesson => new CapacitacionGuardarLeccionRequest
+      {
+        LeccionId = lesson.LeccionId,
+        Orden = lesson.Orden,
+        Clave = lesson.Clave,
+        Titulo = lesson.Titulo,
+        Objetivo = lesson.Objetivo,
+        DuracionMinutos = lesson.DuracionMinutos,
+        Requerida = lesson.Requerida,
+        Bloques = lesson.Bloques.Select(blockInfo => new CapacitacionGuardarBloqueRequest
+        {
+          BloqueId = blockInfo.BloqueId,
+          Orden = blockInfo.Orden,
+          Tipo = blockInfo.Tipo,
+          Titulo = blockInfo.Titulo,
+          Contenido = blockInfo.Contenido,
+          ConfiguracionJson = blockInfo.ConfiguracionJson,
+          Requerido = blockInfo.Requerido
+        }).ToList()
+      }).ToList()
+    };
+  }
+
+  private async Task SaveDraftAsync() => _ = await SaveDraftCoreAsync();
+
+  private async Task<bool> SaveDraftCoreAsync()
+  {
+    if (editor is null || Actor?.EmployeeId is null) return false;
+    saving = true;
+    try
+    {
+      editor.Rfc = Rfc;
+      editor.ActorEmployeeId = Actor.EmployeeId.Value;
+      editor.Actor = Actor.UserName;
+      var result = await Capacitacion.GuardarCursoAsync(editor, LifetimeToken);
+      ShowResult(result);
+      if (!result.Success || !result.EntityId.HasValue) return false;
+      await ReloadCoursesAsync();
+      var saved = await Capacitacion.GetCursoAdministrableAsync((int)result.EntityId.Value, Rfc, LifetimeToken);
+      if (saved is not null) OpenEditor(saved);
+      return saved is not null;
+    }
+    catch (Exception exception)
+    {
+      ShowException(exception, "No fue posible guardar el borrador.");
+      return false;
+    }
+    finally { saving = false; }
+  }
+
+  private async Task SaveAndPublishAsync()
+  {
+    if (!CanPublishEditor || !await SaveDraftCoreAsync() || editor is null || Actor?.EmployeeId is null) return;
+    saving = true;
+    try
+    {
+      var result = await Capacitacion.PublicarCursoAsync(new()
+      {
+        Rfc = Rfc,
+        CursoId = editor.CursoId,
+        ActorEmployeeId = Actor.EmployeeId.Value,
+        Actor = Actor.UserName
+      }, LifetimeToken);
+      ShowResult(result);
+      if (result.Success)
+      {
+        editor = null;
+        selectedCourse = null;
+        await ReloadCoursesAsync();
+      }
+    }
+    catch (Exception exception) { ShowException(exception, "No fue posible publicar el curso."); }
+    finally { saving = false; }
+  }
+
+  private async Task ChangeCourseStateAsync(CapacitacionCursoAdministrableDto course, bool active)
+  {
+    if (Actor?.EmployeeId is null) return;
+    saving = true;
+    try
+    {
+      var result = await Capacitacion.CambiarEstadoCursoAsync(new()
+      {
+        Rfc = Rfc,
+        CursoId = course.CursoId,
+        Activo = active,
+        ActorEmployeeId = Actor.EmployeeId.Value,
+        Actor = Actor.UserName
+      }, LifetimeToken);
+      ShowResult(result);
+      if (result.Success)
+      {
+        selectedCourse = null;
+        confirmDeactivate = false;
+        await ReloadCoursesAsync();
+      }
+    }
+    catch (Exception exception) { ShowException(exception, active ? "No fue posible reactivar el curso." : "No fue posible desactivar el curso."); }
+    finally { saving = false; }
+  }
+
+  private async Task ReloadCoursesAsync()
+    => courses = await Capacitacion.GetCursosAdministrablesAsync(Rfc, LifetimeToken);
+
+  private void AddLesson()
+  {
+    if (editor is null) return;
+    var number = editor.Lecciones.Count + 1;
+    editor.Lecciones.Add(new()
+    {
+      Orden = number,
+      Clave = $"LECCION-{number:00}",
+      Titulo = $"Lección {number}",
+      Objetivo = "Describe qué podrá hacer el colaborador al terminar esta lección.",
+      DuracionMinutos = 15,
+      Requerida = true
+    });
+  }
+
+  private static void AddBlock(CapacitacionGuardarLeccionRequest lesson)
+    => lesson.Bloques.Add(new()
+    {
+      Orden = lesson.Bloques.Count + 1,
+      Tipo = CapacitacionCodes.BloqueTeoria,
+      Titulo = "Contenido",
+      Contenido = "Escribe aquí el contenido de este bloque.",
+      Requerido = true
+    });
+
+  private void MoveLesson(int index, int direction)
+  {
+    if (editor is null) return;
+    Move(editor.Lecciones, index, direction);
+  }
+
+  private static void MoveBlock(CapacitacionGuardarLeccionRequest lesson, int index, int direction)
+    => Move(lesson.Bloques, index, direction);
+
+  private static void Move<T>(List<T> items, int index, int direction)
+  {
+    var target = index + direction;
+    if (index < 0 || index >= items.Count || target < 0 || target >= items.Count) return;
+    (items[index], items[target]) = (items[target], items[index]);
+  }
+
+  private void RemoveLesson(CapacitacionGuardarLeccionRequest lesson) => editor?.Lecciones.Remove(lesson);
+  private static void RemoveBlock(CapacitacionGuardarLeccionRequest lesson, CapacitacionGuardarBloqueRequest blockInfo) => lesson.Bloques.Remove(blockInfo);
+  private int ResourceCount(int blockId) => selectedCourse?.Lecciones.SelectMany(lesson => lesson.Bloques).FirstOrDefault(blockInfo => blockInfo.BloqueId == blockId)?.Recursos.Count ?? 0;
+  private void CloseEditor() { editor = null; selectedCourse = null; confirmDeactivate = false; }
+  private void CloseReview() { selectedCourse = null; confirmDeactivate = false; }
+  private void AskDeactivate() => confirmDeactivate = true;
+  private void CancelDeactivate() => confirmDeactivate = false;
+
+  private static string VersionLabel(CapacitacionCursoAdministrableDto course) => course.EstadoVersion switch
+  {
+    CapacitacionCodes.CursoVersionBorrador => $"Borrador v{course.NumeroVersion}",
+    CapacitacionCodes.CursoVersionPublicada => $"Publicada v{course.NumeroVersion}",
+    CapacitacionCodes.CursoVersionRetirada => $"Retirada v{course.NumeroVersion}",
+    _ => course.EstadoVersion
+  };
+
+  private static string VersionCss(CapacitacionCursoAdministrableDto course) => course.EstadoVersion switch
+  {
+    CapacitacionCodes.CursoVersionBorrador => "cap-badge--warn",
+    CapacitacionCodes.CursoVersionPublicada => "cap-badge--success",
+    _ => "cap-badge--danger"
+  };
+}

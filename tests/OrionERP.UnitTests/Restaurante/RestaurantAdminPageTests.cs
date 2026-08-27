@@ -63,6 +63,7 @@ public sealed class RestaurantAdminPageTests
     Assert.Contains("stations = (await CatalogService.GetKitchenStationsAsync(rfc)).ToList();", source, StringComparison.Ordinal);
     Assert.Contains("stations.GroupBy(item => item.SiteName)", source, StringComparison.Ordinal);
     Assert.Contains("<option value=\"\">Sin estación", source, StringComparison.Ordinal);
+    Assert.Contains("@bind-Value=\"productEditor.PreparationMinutes\"", source, StringComparison.Ordinal);
   }
 
   [Fact]

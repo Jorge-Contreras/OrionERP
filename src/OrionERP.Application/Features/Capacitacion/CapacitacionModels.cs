@@ -22,6 +22,10 @@ public static class CapacitacionCodes
   public const string SesionFinalizada = "FINALIZADA";
   public const string SesionCancelada = "CANCELADA";
 
+  public const string CursoVersionBorrador = "BORRADOR";
+  public const string CursoVersionPublicada = "PUBLICADA";
+  public const string CursoVersionRetirada = "RETIRADA";
+
   public const string BloqueTeoria = "TEORIA";
   public const string BloqueObjetivos = "OBJETIVOS";
   public const string BloqueImagen = "IMAGEN";
@@ -88,7 +92,7 @@ public class CapacitacionCursoResumenDto
   public string EstadoVersion { get; set; } = string.Empty;
 }
 
-public sealed class CapacitacionCursoDetalleDto : CapacitacionCursoResumenDto
+public class CapacitacionCursoDetalleDto : CapacitacionCursoResumenDto
 {
   public IReadOnlyList<CapacitacionLeccionDto> Lecciones { get; set; } = Array.Empty<CapacitacionLeccionDto>();
   public IReadOnlyList<CapacitacionEvaluacionDto> Evaluaciones { get; set; } = Array.Empty<CapacitacionEvaluacionDto>();

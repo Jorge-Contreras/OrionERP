@@ -9,7 +9,7 @@ using OrionERP.Application.Features.CapitalHumano.Workforce;
 
 namespace OrionERP.Infrastructure.Features.Capacitacion;
 
-public sealed class CapacitacionService : ICapacitacionService
+public sealed partial class CapacitacionService : ICapacitacionService
 {
   private readonly IDbConnectionFactory _connectionFactory;
   private readonly ICurrentEmployeeAccessor _currentEmployeeAccessor;

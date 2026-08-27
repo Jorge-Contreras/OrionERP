@@ -586,6 +586,7 @@ app.UseRateLimiter();
 app.MapRazorPages();
 app.MapBlazorHub();
 app.MapHub<RestaurantEventsHub>("/hubs/restaurante");
+app.MapRestaurantProductImagesApi();
 app.MapTrainingReadiness();
 if (app.Environment.IsEnvironment(TrainingEnvironment.Name))
 {

@@ -10,9 +10,25 @@ public sealed class RestaurantPosOrderReviewTests
     Assert.Contains("class=\"pos-workspace-tabs\" role=\"tablist\"", page, StringComparison.Ordinal);
     Assert.Contains("aria-selected=\"@(!isMenuOpen)\"", page, StringComparison.Ordinal);
     Assert.Contains("SelectProduct(product, activeSectionId)", page, StringComparison.Ordinal);
-    Assert.Contains("line.ProductId is long productId && images.TryGetValue(productId, out var lineImage)", page, StringComparison.Ordinal);
+    Assert.Contains("line.ProductId is long productId && ProductHasImage(productId)", page, StringComparison.Ordinal);
     Assert.Contains("MenuSectionId = sectionId", page, StringComparison.Ordinal);
     Assert.Contains("CloseProductModal(); isMenuOpen = false;", page, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void Pos_LoadsOnlyVisibleProductImagesThroughTheAuthorizedThumbnailEndpoint()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantPosPage.razor");
+    var api = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantProductImagesApi.cs");
+    var program = ReadRepoFile("src/OrionERP.Web/Program.cs");
+
+    Assert.Contains("src=\"@ProductImageUrl(product.Id)\"", page, StringComparison.Ordinal);
+    Assert.Contains("loading=\"lazy\" decoding=\"async\"", page, StringComparison.Ordinal);
+    Assert.DoesNotContain("Convert.ToBase64String(image.Value.Bytes)", page, StringComparison.Ordinal);
+    Assert.Contains("/api/restaurant/products/{productId:long}/thumbnail", api, StringComparison.Ordinal);
+    Assert.Contains("RequireAuthorization(\"RestaurantPos\")", api, StringComparison.Ordinal);
+    Assert.Contains("companyContext.RequireRfc()", api, StringComparison.Ordinal);
+    Assert.Contains("app.MapRestaurantProductImagesApi();", program, StringComparison.Ordinal);
   }
 
   [Fact]

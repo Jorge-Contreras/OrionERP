@@ -1,0 +1,89 @@
+@using OrionERP.Application.Features.Restaurante
+
+@* El puente entre lo que cobró el punto de venta y lo que quedó en los libros. *@
+
+<div class="recon">
+  <div class="recon__kpis">
+    <article>
+      <span>Órdenes pagadas</span>
+      <strong>@Data.OrdenesPagadas</strong>
+      <small>@Data.DiasConVenta día(s) con venta</small>
+    </article>
+    <article class="@(Data.OrdenesSinLigar > 0 ? "is-bad" : "is-ok")">
+      <span>Sin póliza que las ligue</span>
+      <strong>@Data.OrdenesSinLigar</strong>
+      <small>@Data.OrdenesLigadas ligada(s) de @Data.OrdenesPagadas</small>
+    </article>
+    <article class="@(Math.Abs(Data.DiferenciaCajaNeta) > 1 ? "is-warn" : "is-ok")">
+      <span>Diferencia de caja</span>
+      <strong>@Data.DiferenciaCajaNeta.ToString("C")</strong>
+      <small>@Data.DiferenciaCajaAbsoluta.ToString("C") en valor absoluto</small>
+    </article>
+    <article class="@(Data.TurnosSinAprobar > 0 ? "is-warn" : "is-ok")">
+      <span>Turnos sin aprobar</span>
+      <strong>@Data.TurnosSinAprobar</strong>
+      <small>@Data.TurnosConDiferencia con diferencia</small>
+    </article>
+  </div>
+
+  <div class="recon__scroll">
+    <table class="recon__table">
+      <caption class="visually-hidden">Conciliación entre la operación y la contabilidad</caption>
+      <thead>
+        <tr>
+          <th scope="col">Concepto</th>
+          <th scope="col" class="num">Punto de venta</th>
+          <th scope="col" class="num">Contabilidad</th>
+          <th scope="col" class="num">Diferencia</th>
+          <th scope="col">Agrupadores</th>
+          <th scope="col">Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        @foreach (var row in Data.Rows)
+        {
+          <tr class="@RowClass(row)">
+            <th scope="row">
+              @row.Concepto
+              <small>@row.Detalle</small>
+            </th>
+            <td class="num">@row.Operacion.ToString("C")</td>
+            <td class="num">@row.Contabilidad.ToString("C")</td>
+            <td class="num">@(row.NoComparable ? "—" : row.Diferencia.ToString("C"))</td>
+            <td><ReportAgrupadorBadge Codes="row.Agrupadores" Missing="row.AgrupadoresSinMovimiento" Descriptions="Descriptions" /></td>
+            <td>
+              @if (row.NoComparable)
+              {
+                <span class="pill pill--muted">No comparable</span>
+              }
+              else if (row.AgrupadoresSinMovimiento)
+              {
+                <span class="pill pill--bad">Nunca se registró</span>
+              }
+              else if (row.Conciliado)
+              {
+                <span class="pill pill--ok">Conciliado</span>
+              }
+              else
+              {
+                <span class="pill pill--warn">Con diferencia</span>
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</div>
+
+@code {
+  [Parameter, EditorRequired] public RestaurantReconciliationDto Data { get; set; } = new();
+  [Parameter] public IReadOnlyDictionary<string, string>? Descriptions { get; set; }
+
+  private static string? RowClass(RestaurantReconciliationRowDto row)
+  {
+    if (row.NoComparable) { return "is-muted"; }
+    if (row.AgrupadoresSinMovimiento) { return "is-bad"; }
+    return row.Conciliado ? null : "is-warn";
+  }
+}

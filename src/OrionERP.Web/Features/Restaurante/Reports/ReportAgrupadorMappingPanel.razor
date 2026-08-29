@@ -1,0 +1,128 @@
+@using OrionERP.Application.Features.Restaurante
+
+@* Define qué códigos agrupadores nivel 1 alimentan cada concepto del reporte.
+   Agregar o retirar un agrupador cambia todas las cifras de la página. *@
+
+<div class="mapping">
+  <header class="mapping__head">
+    <div>
+      <span>Configuración del reporte</span>
+      <h3>Mapeo de agrupadores SAT</h3>
+      <p>
+        Cada concepto suma los códigos agrupadores nivel 1 que tenga asignados. Retira un agrupador si
+        consideras que no pertenece al renglón, o agrega el que falte: los reportes se recalculan al aplicar.
+      </p>
+    </div>
+    <button type="button" class="btn btn-light" disabled="@Busy" @onclick="OnReset">Restaurar el mapeo del Anexo 24</button>
+  </header>
+
+  @if (Map.FueraDelMapeo.Count > 0)
+  {
+    <div class="mapping__alert" role="status">
+      <strong>@Map.FueraDelMapeo.Count agrupador(es) con movimientos quedaron fuera de todo concepto</strong>
+      <p>Su importe no aparece en ningún renglón del estado de resultados. Asígnalos a un concepto o confirma que deben quedar fuera.</p>
+      <ul>
+        @foreach (var loose in Map.FueraDelMapeo)
+        {
+          <li>
+            <span class="code">@loose.Nivel1</span>
+            <span>@loose.Descripcion</span>
+            <b>@((loose.Cargos + loose.Abonos).ToString("C"))</b>
+            <small>@loose.Movimientos movimiento(s)</small>
+          </li>
+        }
+      </ul>
+    </div>
+  }
+
+  <div class="mapping__grid">
+    @foreach (var concepto in Map.Conceptos)
+    {
+      <article class="mapping__card">
+        <header>
+          <h4>@concepto.Etiqueta</h4>
+          <span class="pill @(concepto.Signo > 0 ? "pill--ok" : "pill--muted")">@(concepto.Signo > 0 ? "Suma" : "Resta")</span>
+        </header>
+        <ul>
+          @foreach (var row in concepto.Agrupadores)
+          {
+            <li class="@(row.Incluido ? null : "is-off")">
+              <label>
+                <input type="checkbox" checked="@row.Incluido"
+                       @onchange="e => ToggleAsync(row, (bool?)e.Value ?? false)" disabled="@Busy" />
+                <span class="code">@row.Nivel1</span>
+                <span class="mapping__name">@row.Nivel1Descripcion</span>
+              </label>
+              <span class="mapping__amount">
+                @if (row.Movimientos > 0)
+                {
+                  <b>@row.Importe.ToString("C")</b>
+                  <small>@row.Movimientos mov.</small>
+                }
+                else
+                {
+                  <small>sin movimientos</small>
+                }
+              </span>
+              @if (row.EsPersonalizado)
+              {
+                <button type="button" class="mapping__remove" title="Retirar este agrupador del concepto"
+                        disabled="@Busy" @onclick="() => OnDelete.InvokeAsync(row.Id)">Quitar</button>
+              }
+            </li>
+          }
+        </ul>
+        <footer>
+          <select value="@Pending(concepto.ConceptoClave)" disabled="@Busy"
+                  @onchange="e => pending[concepto.ConceptoClave] = e.Value?.ToString() ?? string.Empty"
+                  aria-label="@($"Agregar agrupador a {concepto.Etiqueta}")">
+            <option value="">Agregar un agrupador…</option>
+            @foreach (var option in Available.Where(item => concepto.Agrupadores.All(row => row.Nivel1 != item.Nivel1)))
+            {
+              <option value="@option.Nivel1">@option.Nivel1 · @option.Descripcion</option>
+            }
+          </select>
+          <button type="button" class="btn btn-light btn-sm"
+                  disabled="@(Busy || string.IsNullOrWhiteSpace(Pending(concepto.ConceptoClave)))"
+                  @onclick="() => AddAsync(concepto)">Agregar</button>
+        </footer>
+      </article>
+    }
+  </div>
+</div>
+
+@code {
+  [Parameter, EditorRequired] public RestaurantAgrupadorMapDto Map { get; set; } = new();
+  [Parameter] public IReadOnlyList<RestaurantAgrupadorDto> Available { get; set; } = [];
+  [Parameter] public bool Busy { get; set; }
+  [Parameter] public EventCallback<RestaurantAgrupadorMapRowDto> OnSave { get; set; }
+  [Parameter] public EventCallback<int> OnDelete { get; set; }
+  [Parameter] public EventCallback OnReset { get; set; }
+
+  private readonly Dictionary<string, string> pending = [];
+
+  private string Pending(string concepto) => pending.TryGetValue(concepto, out var value) ? value : string.Empty;
+
+  private Task ToggleAsync(RestaurantAgrupadorMapRowDto row, bool included)
+  {
+    row.Incluido = included;
+    return OnSave.InvokeAsync(row);
+  }
+
+  private async Task AddAsync(RestaurantAgrupadorConceptoDto concepto)
+  {
+    var nivel1 = Pending(concepto.ConceptoClave);
+    if (string.IsNullOrWhiteSpace(nivel1)) { return; }
+
+    await OnSave.InvokeAsync(new RestaurantAgrupadorMapRowDto
+    {
+      ConceptoClave = concepto.ConceptoClave,
+      Nivel1 = nivel1,
+      Signo = concepto.Signo,
+      Incluido = true,
+      Orden = concepto.Orden,
+      EsPersonalizado = true
+    });
+    pending[concepto.ConceptoClave] = string.Empty;
+  }
+}

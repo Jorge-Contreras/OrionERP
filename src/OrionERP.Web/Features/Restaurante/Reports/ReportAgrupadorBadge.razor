@@ -1,0 +1,36 @@
+@* Chip con los códigos agrupadores nivel 1 del SAT que componen una cifra.
+   Ninguna cantidad monetaria de esta página se muestra sin él. *@
+
+@if (Codes.Count == 0)
+{
+  <span class="agr agr--none" title="Ningún agrupador está asignado a este concepto.">sin agrupador</span>
+}
+else
+{
+  <span class="agr-set" role="group" aria-label="@AriaLabel">
+    @foreach (var code in Codes)
+    {
+      <span class="agr @(Missing ? "agr--missing" : null)" title="@Describe(code)">@(code)</span>
+    }
+  </span>
+}
+
+@code {
+  [Parameter] public IReadOnlyList<string> Codes { get; set; } = [];
+
+  /// <summary>Marca los códigos como esperados pero sin movimientos en el periodo.</summary>
+  [Parameter] public bool Missing { get; set; }
+
+  [Parameter] public IReadOnlyDictionary<string, string>? Descriptions { get; set; }
+
+  private string AriaLabel => Missing
+    ? $"Agrupadores esperados sin movimientos: {string.Join(", ", Codes)}"
+    : $"Agrupadores SAT nivel 1: {string.Join(", ", Codes)}";
+
+  private string Describe(string code)
+  {
+    var name = Descriptions is not null && Descriptions.TryGetValue(code, out var found) ? found : null;
+    var prefix = string.IsNullOrWhiteSpace(name) ? $"Agrupador {code}" : $"{code} · {name}";
+    return Missing ? $"{prefix} — sin movimientos en el periodo" : prefix;
+  }
+}

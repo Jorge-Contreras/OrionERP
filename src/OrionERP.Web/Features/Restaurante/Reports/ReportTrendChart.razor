@@ -1,0 +1,133 @@
+@using System.Globalization
+@using OrionERP.Application.Features.Restaurante
+
+@* Serie diaria que confronta la venta del punto de venta, su costo recalculado
+   y el ingreso que quedó registrado en la contabilidad. *@
+
+<figure class="rchart rchart--trend">
+  <figcaption>
+    <strong>Venta diaria contra ingreso contable</strong>
+    <span>Barras: venta del punto de venta antes de impuesto · Línea: ingreso registrado en @IngresoCodigos · Área: costo recalculado desde receta</span>
+  </figcaption>
+
+  @if (Points.Count == 0)
+  {
+    <div class="rchart__empty">No hubo venta registrada en el periodo.</div>
+  }
+  else
+  {
+    <div class="rchart__scroll">
+      <svg viewBox="@($"0 0 {Width} 260")" role="img" aria-labelledby="@($"{ChartId}-t")">
+        <title id="@($"{ChartId}-t")">
+          Venta diaria contra ingreso contable. @Points.Count día(s), venta máxima @Max.ToString("C0").
+        </title>
+
+        @for (var tick = 0; tick <= 4; tick++)
+        {
+          var y = 20 + tick * 45;
+          <line class="rchart__grid" x1="56" y1="@y" x2="@((Width - 12).ToString(Inv))" y2="@y" />
+          <foreignObject x="0" y="@(y - 8)" width="50" height="18">
+            <div class="rchart__tick rchart__tick--right">@Compact(Max - Max * tick / 4m)</div>
+          </foreignObject>
+        }
+
+        @for (var index = 0; index < Points.Count; index++)
+        {
+          var point = Points[index];
+          var x = X(index);
+          var height = Y0 - Y(point.VentaPos);
+          <g>
+            <rect class="rchart__bar rchart__bar--@(point.TienePolizaLigada ? "neutral" : "warn")"
+                  x="@((x - BarHalf).ToString(Inv))" y="@Y(point.VentaPos).ToString(Inv)"
+                  width="@((BarHalf * 2).ToString(Inv))" height="@Math.Max(1, height).ToString(Inv)" rx="1.5">
+              <title>@point.Fecha.ToString("dd MMM") · venta @point.VentaPos.ToString("C") · costo @point.CostoRecalculado.ToString("C") · contable @point.IngresoContable.ToString("C")@(point.TienePolizaLigada ? string.Empty : " · sin póliza ligada")</title>
+            </rect>
+          </g>
+        }
+
+        <polyline class="rchart__area" points="@AreaPoints" />
+        <polyline class="rchart__line" points="@LedgerPoints" />
+
+        @for (var index = 0; index < Points.Count; index++)
+        {
+          if (index != 0 && index != Points.Count - 1 && index % LabelEvery != 0) { continue; }
+          <foreignObject x="@((X(index) - 30).ToString(Inv))" y="232" width="60" height="18">
+            <div class="rchart__tick rchart__tick--center">@Points[index].Fecha.ToString("dd MMM", EsMx)</div>
+          </foreignObject>
+        }
+      </svg>
+    </div>
+
+    <div class="rchart__legend">
+      <span class="rchart__key rchart__key--neutral">Venta con póliza ligada</span>
+      <span class="rchart__key rchart__key--warn">Venta sin póliza ligada</span>
+      <span class="rchart__key rchart__key--line">Ingreso contable</span>
+      <span class="rchart__key rchart__key--area">Costo recalculado</span>
+    </div>
+
+    <details class="rchart__table">
+      <summary>Ver los datos en tabla</summary>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Fecha</th><th scope="col" class="num">Órdenes</th><th scope="col" class="num">Venta</th>
+            <th scope="col" class="num">IVA</th><th scope="col" class="num">Costo</th>
+            <th scope="col" class="num">Ingreso contable</th><th scope="col">Póliza</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach (var point in Points)
+          {
+            <tr>
+              <td>@point.Fecha.ToString("dd MMM yyyy", EsMx)</td>
+              <td class="num">@point.Ordenes</td>
+              <td class="num">@point.VentaPos.ToString("C")</td>
+              <td class="num">@point.IvaPos.ToString("C")</td>
+              <td class="num">@point.CostoRecalculado.ToString("C")</td>
+              <td class="num">@point.IngresoContable.ToString("C")</td>
+              <td>@(point.TienePolizaLigada ? "Ligada" : "Sin ligar")</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </details>
+  }
+</figure>
+
+@code {
+  private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+  private static readonly CultureInfo EsMx = CultureInfo.GetCultureInfo("es-MX");
+  private const decimal Y0 = 200m;
+
+  [Parameter] public IReadOnlyList<RestaurantDailyLedgerPointDto> Points { get; set; } = [];
+  [Parameter] public IReadOnlyList<string> AgrupadoresIngreso { get; set; } = [];
+
+  private readonly string ChartId = $"rt{Guid.NewGuid():N}";
+
+  private string IngresoCodigos => AgrupadoresIngreso.Count == 0 ? "la cuenta de ingresos" : string.Join(" · ", AgrupadoresIngreso);
+
+  private decimal Width => Math.Max(720m, 70m + Points.Count * 26m);
+  private decimal Step => Points.Count <= 1 ? 0m : (Width - 90m) / (Points.Count - 1);
+  private decimal BarHalf => Points.Count <= 1 ? 10m : Math.Clamp(Step / 3m, 2m, 12m);
+  private int LabelEvery => Points.Count <= 12 ? 1 : (int)Math.Ceiling(Points.Count / 12.0);
+
+  private decimal Max => Points.Count == 0
+    ? 1m
+    : Math.Max(1m, Points.Max(point => Math.Max(point.VentaPos, Math.Max(point.IngresoContable, point.CostoRecalculado))));
+
+  private decimal X(int index) => Points.Count <= 1 ? 70m : 70m + index * Step;
+  private decimal Y(decimal value) => Y0 - value / Max * 180m;
+
+  private string AreaPoints => string.Join(" ",
+    Points.Select((point, index) => $"{X(index).ToString(Inv)},{Y(point.CostoRecalculado).ToString(Inv)}"));
+
+  private string LedgerPoints => string.Join(" ",
+    Points.Select((point, index) => $"{X(index).ToString(Inv)},{Y(point.IngresoContable).ToString(Inv)}"));
+
+  private static string Compact(decimal value) => value switch
+  {
+    >= 1_000_000m => $"{value / 1_000_000m:0.#}M",
+    >= 1_000m => $"{value / 1_000m:0.#}k",
+    _ => value.ToString("0")
+  };
+}

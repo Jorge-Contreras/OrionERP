@@ -1,0 +1,106 @@
+@using System.Globalization
+
+@* Gráfica de barras horizontales en SVG, con la tabla equivalente después para
+   quien no puede verla. Sigue el patrón de SaludTrendChart. *@
+
+<figure class="rchart">
+  <figcaption>
+    <strong>@Title</strong>
+    @if (!string.IsNullOrWhiteSpace(Caption)) { <span>@Caption</span> }
+  </figcaption>
+
+  @if (Items.Count == 0)
+  {
+    <div class="rchart__empty">Sin movimientos en el periodo.</div>
+  }
+  else
+  {
+    <div class="rchart__scroll">
+      <svg viewBox="@($"0 0 760 {Height}")" role="img" aria-labelledby="@($"{ChartId}-t")">
+        <title id="@($"{ChartId}-t")">@Title. @Caption</title>
+
+        @if (Diverging)
+        {
+          <line class="rchart__axis" x1="@Zero.ToString(Inv)" y1="18" x2="@Zero.ToString(Inv)" y2="@((Height - 14).ToString(Inv))" />
+        }
+
+        @for (var index = 0; index < Items.Count; index++)
+        {
+          var item = Items[index];
+          var top = 18 + index * RowHeight;
+          var width = BarWidth(item.Value);
+          var left = Diverging && item.Value < 0 ? Zero - width : Diverging ? Zero : LabelWidth;
+          <g class="rchart__row">
+            <foreignObject x="0" y="@((top + 1).ToString(Inv))" width="@((LabelWidth - 10).ToString(Inv))" height="@((RowHeight - 4).ToString(Inv))">
+              <div class="rchart__label" title="@item.Label">
+                <span>@item.Label</span>
+                @if (!string.IsNullOrWhiteSpace(item.Sublabel)) { <small>@item.Sublabel</small> }
+              </div>
+            </foreignObject>
+            <rect class="rchart__bar rchart__bar--@Tone(item)"
+                  x="@left.ToString(Inv)" y="@((top + 3).ToString(Inv))"
+                  width="@Math.Max(2, width).ToString(Inv)" height="@((RowHeight - 10).ToString(Inv))"
+                  rx="2">
+              <title>@item.Label: @item.Display</title>
+            </rect>
+            <foreignObject x="616" y="@((top + 3).ToString(Inv))" width="138" height="@((RowHeight - 8).ToString(Inv))">
+              <div class="rchart__value">@item.Display</div>
+            </foreignObject>
+          </g>
+        }
+      </svg>
+    </div>
+
+    <details class="rchart__table">
+      <summary>Ver los datos en tabla</summary>
+      <table>
+        <thead>
+          <tr><th scope="col">Concepto</th><th scope="col">Agrupadores</th><th scope="col" class="num">Importe</th></tr>
+        </thead>
+        <tbody>
+          @foreach (var item in Items)
+          {
+            <tr>
+              <td>@item.Label @if (!string.IsNullOrWhiteSpace(item.Sublabel)) { <small>@item.Sublabel</small> }</td>
+              <td>@(item.Codes.Count == 0 ? "—" : string.Join(" · ", item.Codes))</td>
+              <td class="num">@item.Display</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </details>
+  }
+</figure>
+
+@code {
+  private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+  private const int RowHeight = 30;
+  private const int LabelWidth = 210;
+
+  [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+  [Parameter] public string? Caption { get; set; }
+  [Parameter] public IReadOnlyList<ReportBarItem> Items { get; set; } = [];
+
+  /// <summary>Cuando es verdadero los valores negativos crecen hacia la izquierda desde el eje.</summary>
+  [Parameter] public bool Diverging { get; set; }
+
+  private readonly string ChartId = $"rc{Guid.NewGuid():N}";
+
+  private int Height => 30 + Math.Max(1, Items.Count) * RowHeight;
+  private decimal Zero => Diverging ? 410m : LabelWidth;
+  private decimal Span => Diverging ? 200m : 400m;
+
+  private decimal Max => Items.Count == 0
+    ? 1m
+    : Math.Max(1m, Items.Max(item => Math.Abs(item.Value)));
+
+  private decimal BarWidth(decimal value) => Math.Abs(value) / Max * Span;
+
+  private static string Tone(ReportBarItem item) => item.Tone switch
+  {
+    ReportTone.Good => "good",
+    ReportTone.Warning => "warn",
+    ReportTone.Critical => "crit",
+    _ => item.Value < 0 ? "negative" : "neutral"
+  };
+}

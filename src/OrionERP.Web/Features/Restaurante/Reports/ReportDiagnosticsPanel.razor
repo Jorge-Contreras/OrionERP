@@ -1,0 +1,218 @@
+@using OrionERP.Application.Features.Restaurante
+
+@* Hallazgos del diagnóstico contable-fiscal, ordenados por severidad, con las
+   acciones guiadas que los corrigen. *@
+
+<div class="diag">
+  <header class="diag__head">
+    <div>
+      <span>Diagnóstico contable y fiscal</span>
+      @if (Run is null)
+      {
+        <h3>Sin corridas guardadas</h3>
+        <p>Corre el diagnóstico para medir el periodo y guardar el resultado.</p>
+      }
+      else
+      {
+        <h3>@Run.HallazgosTotal hallazgo(s) · @Run.Criticos crítico(s)</h3>
+        <p>
+          Corrida del @Run.EjecutadoEn.ToLocalTime().ToString("dd MMM yyyy HH:mm") por @Run.EjecutadoPor ·
+          @Run.MontoExpuesto.ToString("C") expuestos · @Run.Abiertos abierto(s)
+        </p>
+      }
+    </div>
+    <div class="diag__actions">
+      <button type="button" class="btn btn-primary" disabled="@Busy" @onclick="OnRun">Correr diagnóstico</button>
+      @if (CanExecuteActions)
+      {
+        <button type="button" class="btn btn-light" disabled="@(Busy || MissingAccounts.Count == 0)" @onclick="OnCreateAccounts">
+          Crear @MissingAccounts.Count cuenta(s) faltante(s)
+        </button>
+        <button type="button" class="btn btn-light" disabled="@Busy" @onclick="OnBackfill">Generar pólizas faltantes</button>
+      }
+    </div>
+  </header>
+
+  @if (MissingAccounts.Count > 0 && CanExecuteActions)
+  {
+    <details class="diag__accounts">
+      <summary>Cuentas de detalle que se darían de alta (@MissingAccounts.Count)</summary>
+      <ul>
+        @foreach (var account in MissingAccounts)
+        {
+          <li>
+            <label>
+              <input type="checkbox" checked="@account.Seleccionada" disabled="@(!account.EncabezadoDisponible)"
+                     @onchange="e => account.Seleccionada = (bool?)e.Value ?? false" />
+              <span class="code">@account.Nivel1-@account.Nivel2</span>
+              <strong>@account.DescripcionSugerida</strong>
+              <small>@account.Uso</small>
+              @if (!account.EncabezadoDisponible)
+              {
+                <em>El encabezado nivel 2 no existe en el catálogo de este RFC.</em>
+              }
+            </label>
+          </li>
+        }
+      </ul>
+    </details>
+  }
+
+  @if (Backfill is not null)
+  {
+    <div class="diag__backfill">
+      <p>@Backfill.Message</p>
+      @if (Backfill.Days.Count > 0)
+      {
+        <ul>
+          @foreach (var day in Backfill.Days)
+          {
+            <li class="@(day.Generada ? "is-ok" : "is-bad")">
+              <span class="code">@day.Fecha.ToString("dd MMM yyyy")</span>
+              <span>@day.Ordenes orden(es) · @day.Importe.ToString("C")</span>
+              <small>@day.Mensaje</small>
+            </li>
+          }
+        </ul>
+      }
+    </div>
+  }
+
+  @if (Run is null || Run.Findings.Count == 0)
+  {
+    <p class="diag__empty">Todavía no hay hallazgos que mostrar.</p>
+  }
+  else
+  {
+    <ol class="diag__list">
+      @foreach (var finding in Run.Findings)
+      {
+        <li class="diag__item diag__item--@finding.Severidad.ToLowerInvariant() @(finding.Estado != "Abierto" ? "is-closed" : null)">
+          <div class="diag__marker">
+            <span class="diag__rule">@finding.ReglaClave</span>
+            <span class="diag__sev">@SeverityLabel(finding.Severidad)</span>
+          </div>
+          <div class="diag__body">
+            <h4>@finding.Titulo</h4>
+            <p>@finding.Detalle</p>
+            @if (finding.AgrupadoresLista.Count > 0)
+            {
+              <ReportAgrupadorBadge Codes="finding.AgrupadoresLista" Descriptions="Descriptions" />
+            }
+            @if (!string.IsNullOrWhiteSpace(finding.AccionSugerida))
+            {
+              <p class="diag__action"><span>Acción</span>@finding.AccionSugerida</p>
+            }
+            @if (finding.Estado == "Aceptado")
+            {
+              <p class="diag__accepted">
+                Aceptado por @finding.ResueltoPor el @finding.ResueltoEn?.ToLocalTime().ToString("dd MMM yyyy"):
+                «@finding.Justificacion»
+              </p>
+            }
+            else if (finding.Estado == "Abierto" && CanExecuteActions)
+            {
+              @if (acceptingId == finding.Id)
+              {
+                <div class="diag__accept">
+                  <label for="@($"just-{finding.Id}")">Justifica por qué se acepta sin corregir</label>
+                  <textarea id="@($"just-{finding.Id}")" rows="2" @bind="justification"
+                            placeholder="Por ejemplo: el contador externo lo regularizará en el cierre anual."></textarea>
+                  <div>
+                    <button type="button" class="btn btn-primary btn-sm" disabled="@Busy" @onclick="() => ConfirmAcceptAsync(finding)">Aceptar hallazgo</button>
+                    <button type="button" class="btn btn-light btn-sm" @onclick="CancelAccept">Cancelar</button>
+                  </div>
+                </div>
+              }
+              else
+              {
+                <button type="button" class="diag__accept-link" @onclick="() => StartAccept(finding)">Aceptar con justificación</button>
+              }
+            }
+          </div>
+          <div class="diag__amount">
+            @if (finding.MontoExpuesto > 0)
+            {
+              <strong>@finding.MontoExpuesto.ToString("C")</strong>
+              <small>expuesto</small>
+            }
+            else if (finding.Conteo > 0)
+            {
+              <strong>@finding.Conteo</strong>
+              <small>caso(s)</small>
+            }
+          </div>
+        </li>
+      }
+    </ol>
+  }
+
+  @if (History.Count > 1)
+  {
+    <details class="diag__history">
+      <summary>Historial de corridas (@History.Count)</summary>
+      <table>
+        <thead>
+          <tr><th scope="col">Fecha</th><th scope="col">Periodo</th><th scope="col" class="num">Hallazgos</th><th scope="col" class="num">Críticos</th><th scope="col" class="num">Monto expuesto</th><th scope="col">Ejecutó</th></tr>
+        </thead>
+        <tbody>
+          @foreach (var run in History)
+          {
+            <tr>
+              <td>@run.EjecutadoEn.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
+              <td>@run.PeriodoInicio.ToString("dd MMM") – @run.PeriodoFin.ToString("dd MMM yyyy")</td>
+              <td class="num">@run.HallazgosTotal</td>
+              <td class="num">@run.Criticos</td>
+              <td class="num">@run.MontoExpuesto.ToString("C")</td>
+              <td>@run.EjecutadoPor</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </details>
+  }
+</div>
+
+@code {
+  [Parameter] public RestaurantDiagnosticRunDto? Run { get; set; }
+  [Parameter] public IReadOnlyList<RestaurantDiagnosticRunDto> History { get; set; } = [];
+  [Parameter] public IReadOnlyList<RestaurantMissingAccountDto> MissingAccounts { get; set; } = [];
+  [Parameter] public RestaurantPolicyBackfillResultDto? Backfill { get; set; }
+  [Parameter] public IReadOnlyDictionary<string, string>? Descriptions { get; set; }
+  [Parameter] public bool Busy { get; set; }
+  [Parameter] public bool CanExecuteActions { get; set; }
+  [Parameter] public EventCallback OnRun { get; set; }
+  [Parameter] public EventCallback OnCreateAccounts { get; set; }
+  [Parameter] public EventCallback OnBackfill { get; set; }
+  [Parameter] public EventCallback<(long Id, string Justificacion)> OnAccept { get; set; }
+
+  private long? acceptingId;
+  private string justification = string.Empty;
+
+  private void StartAccept(RestaurantDiagnosticFindingDto finding)
+  {
+    acceptingId = finding.Id;
+    justification = string.Empty;
+  }
+
+  private void CancelAccept()
+  {
+    acceptingId = null;
+    justification = string.Empty;
+  }
+
+  private async Task ConfirmAcceptAsync(RestaurantDiagnosticFindingDto finding)
+  {
+    await OnAccept.InvokeAsync((finding.Id, justification));
+    CancelAccept();
+  }
+
+  private static string SeverityLabel(string severidad) => severidad switch
+  {
+    RestaurantDiagnosticSeverities.Critica => "Crítica",
+    RestaurantDiagnosticSeverities.Alta => "Alta",
+    RestaurantDiagnosticSeverities.Media => "Media",
+    RestaurantDiagnosticSeverities.Menor => "Menor",
+    _ => "Sin hallazgo"
+  };
+}

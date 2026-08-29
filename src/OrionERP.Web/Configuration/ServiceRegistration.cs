@@ -178,6 +178,9 @@ public static class ServiceRegistration
     services.AddScoped<IRestaurantProductionService, RestaurantProductionService>();
     services.AddScoped<IRestaurantBackofficeService, RestaurantBackofficeService>();
     services.AddScoped<IRestaurantAccountingService, RestaurantAccountingService>();
+    services.AddScoped<IRestaurantAnalyticsService, RestaurantAnalyticsService>();
+    services.AddScoped<IRestaurantDiagnosticsService, RestaurantDiagnosticsService>();
+    services.AddScoped<IRestaurantReportWorkbookService, RestaurantReportWorkbookService>();
     services.AddScoped<IRestaurantQuickPinService, RestaurantQuickPinService>();
     services.AddScoped<IOrdenTrabajoService, OrdenTrabajoService>();
     services.AddScoped<IArrendadoresEstadoCuentaService, ArrendadoresEstadoCuentaService>();

@@ -1,0 +1,231 @@
+@using OrionERP.Application.Features.Restaurante
+
+@* Estado de resultados por concepto, con el desglose nivel 1 → nivel 2 → nivel 3
+   → póliza para poder llegar del renglón al asiento que lo produjo. *@
+
+<div class="pnl">
+  <div class="pnl__scroll">
+    <table class="pnl__table">
+      <caption class="visually-hidden">Estado de resultados por código agrupador SAT</caption>
+      <thead>
+        <tr>
+          <th scope="col">Concepto</th>
+          <th scope="col">Agrupadores nivel 1</th>
+          <th scope="col" class="num">Periodo</th>
+          <th scope="col" class="num">Periodo anterior</th>
+          <th scope="col" class="num">Acumulado</th>
+          <th scope="col" class="num">% venta</th>
+          <th scope="col" class="num">Movs.</th>
+        </tr>
+      </thead>
+      <tbody>
+        @foreach (var row in Pnl.Rows)
+        {
+          <tr class="@(row.Movimientos == 0 ? "is-empty" : null)">
+            <th scope="row">
+              @if (row.Agrupadores.Count > 0)
+              {
+                <button type="button" class="pnl__toggle @(IsOpen(row) ? "is-open" : null)"
+                        @onclick="() => ToggleAsync(row)"
+                        aria-expanded="@(IsOpen(row) ? "true" : "false")">
+                  <span class="pnl__caret" aria-hidden="true"></span>@row.Etiqueta
+                </button>
+              }
+              else
+              {
+                <span class="pnl__plain">@row.Etiqueta</span>
+              }
+            </th>
+            <td><ReportAgrupadorBadge Codes="row.Agrupadores" Missing="row.Movimientos == 0" Descriptions="Descriptions" /></td>
+            <td class="num @Sign(row.Periodo)">@row.Periodo.ToString("C")</td>
+            <td class="num muted">@row.PeriodoAnterior.ToString("C")</td>
+            <td class="num muted">@row.Acumulado.ToString("C")</td>
+            <td class="num muted">@(row.Movimientos == 0 ? "—" : row.PorcentajeSobreVenta.ToString("0.0") + "%")</td>
+            <td class="num muted">@row.Movimientos</td>
+          </tr>
+
+          @if (IsOpen(row))
+          {
+            <tr class="pnl__drill">
+              <td colspan="7">
+                @if (loading.Contains(row.ConceptoClave))
+                {
+                  <p class="pnl__hint">Cargando el desglose…</p>
+                }
+                else if (!breakdown.TryGetValue(row.ConceptoClave, out var nodes) || nodes.Count == 0)
+                {
+                  <p class="pnl__hint">Estos agrupadores no tuvieron movimientos en el periodo.</p>
+                }
+                else
+                {
+                  <table class="pnl__sub">
+                    <thead>
+                      <tr>
+                        <th scope="col">Cuenta</th><th scope="col">Descripción</th>
+                        <th scope="col" class="num">Cargos</th><th scope="col" class="num">Abonos</th>
+                        <th scope="col" class="num">Saldo</th><th scope="col" class="num">Movs.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @foreach (var node in nodes)
+                      {
+                        var key = NodeKey(node);
+                        <tr class="@(node.EsEncabezado ? "is-header-account" : null)">
+                          <th scope="row">
+                            <button type="button" class="pnl__toggle pnl__toggle--sub @(openNodes.Contains(key) ? "is-open" : null)"
+                                    @onclick="() => ToggleNodeAsync(node)"
+                                    aria-expanded="@(openNodes.Contains(key) ? "true" : "false")">
+                              <span class="pnl__caret" aria-hidden="true"></span>@NodeCode(node)
+                            </button>
+                          </th>
+                          <td>
+                            @node.Descripcion
+                            @if (node.EsEncabezado)
+                            {
+                              <span class="pnl__flag" title="Se registró contra una cuenta de encabezado, que no debe recibir movimientos.">cuenta de encabezado</span>
+                            }
+                          </td>
+                          <td class="num">@node.Cargos.ToString("C")</td>
+                          <td class="num">@node.Abonos.ToString("C")</td>
+                          <td class="num">@node.Saldo.ToString("C")</td>
+                          <td class="num muted">@node.Movimientos</td>
+                        </tr>
+
+                        @if (openNodes.Contains(key))
+                        {
+                          <tr class="pnl__entries">
+                            <td colspan="6">
+                              @if (!entries.TryGetValue(key, out var lines))
+                              {
+                                <p class="pnl__hint">Cargando los movimientos…</p>
+                              }
+                              else if (lines.Count == 0)
+                              {
+                                <p class="pnl__hint">Sin movimientos.</p>
+                              }
+                              else
+                              {
+                                <table class="pnl__sub pnl__sub--entries">
+                                  <thead>
+                                    <tr>
+                                      <th scope="col">Póliza</th><th scope="col">Fecha</th><th scope="col">Tipo</th>
+                                      <th scope="col">Concepto</th><th scope="col">Cuenta</th>
+                                      <th scope="col" class="num">Debe</th><th scope="col" class="num">Haber</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    @foreach (var line in lines)
+                                    {
+                                      <tr>
+                                        <td class="code">@line.TransaccionId</td>
+                                        <td>@line.Fecha.ToString("dd MMM yyyy")</td>
+                                        <td>@line.TipoPoliza</td>
+                                        <td>@line.Concepto</td>
+                                        <td class="code">@line.Cuenta<small>@line.NombreCuenta</small></td>
+                                        <td class="num">@line.Debe.ToString("C")</td>
+                                        <td class="num">@line.Haber.ToString("C")</td>
+                                      </tr>
+                                    }
+                                  </tbody>
+                                </table>
+                                @if (lines.Count >= 500)
+                                {
+                                  <p class="pnl__hint">Se muestran los primeros 500 movimientos. Acota el periodo para verlos todos.</p>
+                                }
+                              }
+                            </td>
+                          </tr>
+                        }
+                      }
+                    </tbody>
+                  </table>
+                }
+              </td>
+            </tr>
+          }
+        }
+      </tbody>
+      <tfoot>
+        <tr><th scope="row" colspan="2">Ingresos</th><td class="num">@Pnl.Ingresos.ToString("C")</td><td colspan="4"></td></tr>
+        <tr><th scope="row" colspan="2">Costo</th><td class="num neg">@((-Pnl.Costo).ToString("C"))</td><td colspan="4"></td></tr>
+        <tr class="is-strong"><th scope="row" colspan="2">Margen bruto</th><td class="num @Sign(Pnl.MargenBruto)">@Pnl.MargenBruto.ToString("C")</td><td colspan="4"></td></tr>
+        <tr><th scope="row" colspan="2">Gastos de operación</th><td class="num neg">@((-Pnl.Gastos).ToString("C"))</td><td colspan="4"></td></tr>
+        <tr class="is-strong"><th scope="row" colspan="2">Resultado del periodo</th><td class="num @Sign(Pnl.Resultado)">@Pnl.Resultado.ToString("C")</td><td colspan="4"></td></tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <p class="pnl__balance @(Pnl.Cuadrada ? "is-ok" : "is-bad")">
+    @if (Pnl.Cuadrada)
+    {
+      <text>Balanza cuadrada: cargos y abonos suman @Pnl.CargosTotales.ToString("C") de cada lado.</text>
+    }
+    else
+    {
+      <text>Balanza descuadrada: @Pnl.CargosTotales.ToString("C") de cargos contra @Pnl.AbonosTotales.ToString("C") de abonos.</text>
+    }
+  </p>
+</div>
+
+@code {
+  [Parameter, EditorRequired] public RestaurantPnlDto Pnl { get; set; } = new();
+  [Parameter] public IReadOnlyDictionary<string, string>? Descriptions { get; set; }
+  [Parameter] public Func<string, string?, Task<IReadOnlyList<RestaurantLedgerNodeDto>>>? LoadBreakdown { get; set; }
+  [Parameter] public Func<string, string?, string?, Task<IReadOnlyList<RestaurantLedgerEntryDto>>>? LoadEntries { get; set; }
+
+  private readonly HashSet<string> openConcepts = [];
+  private readonly HashSet<string> openNodes = [];
+  private readonly HashSet<string> loading = [];
+  private readonly Dictionary<string, IReadOnlyList<RestaurantLedgerNodeDto>> breakdown = [];
+  private readonly Dictionary<string, IReadOnlyList<RestaurantLedgerEntryDto>> entries = [];
+
+  private bool IsOpen(RestaurantPnlRowDto row) => openConcepts.Contains(row.ConceptoClave);
+
+  private static string NodeKey(RestaurantLedgerNodeDto node) => $"{node.Nivel1}-{node.Nivel2}-{node.Nivel3}";
+
+  private static string NodeCode(RestaurantLedgerNodeDto node) => string.IsNullOrEmpty(node.Nivel3)
+    ? $"{node.Nivel1}-{node.Nivel2}"
+    : $"{node.Nivel1}-{node.Nivel2}-{node.Nivel3}";
+
+  private static string Sign(decimal value) => value < 0 ? "neg" : "pos";
+
+  private async Task ToggleAsync(RestaurantPnlRowDto row)
+  {
+    if (!openConcepts.Add(row.ConceptoClave))
+    {
+      openConcepts.Remove(row.ConceptoClave);
+      return;
+    }
+
+    if (breakdown.ContainsKey(row.ConceptoClave) || LoadBreakdown is null) { return; }
+
+    loading.Add(row.ConceptoClave);
+    try
+    {
+      var nodes = new List<RestaurantLedgerNodeDto>();
+      foreach (var code in row.Agrupadores)
+      {
+        nodes.AddRange(await LoadBreakdown(code, null));
+      }
+
+      breakdown[row.ConceptoClave] = nodes;
+    }
+    finally
+    {
+      loading.Remove(row.ConceptoClave);
+    }
+  }
+
+  private async Task ToggleNodeAsync(RestaurantLedgerNodeDto node)
+  {
+    var key = NodeKey(node);
+    if (!openNodes.Add(key))
+    {
+      openNodes.Remove(key);
+      return;
+    }
+
+    if (entries.ContainsKey(key) || LoadEntries is null) { return; }
+    entries[key] = await LoadEntries(node.Nivel1, node.Nivel2, node.Nivel3);
+  }
+}

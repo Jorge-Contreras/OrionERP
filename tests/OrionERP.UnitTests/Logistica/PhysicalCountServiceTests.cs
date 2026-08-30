@@ -33,6 +33,74 @@ public class PhysicalCountServiceTests
   }
 
   [Fact]
+  public async Task GetSessionAsync_MapsLifecycleAndMaterialCapturesIntoAuditTrail()
+  {
+    var startedAt = new DateTime(2026, 8, 30, 13, 0, 0);
+    var countedAt = startedAt.AddMinutes(15);
+    var submittedAt = startedAt.AddMinutes(30);
+    var results = new DataSet();
+
+    var sessionTable = new DataTable();
+    sessionTable.Columns.Add("Id", typeof(int));
+    sessionTable.Columns.Add("SessionCode", typeof(string));
+    sessionTable.Columns.Add("CreatedAt", typeof(DateTime));
+    sessionTable.Columns.Add("CreatedBy", typeof(string));
+    sessionTable.Rows.Add(51, "PC-000051", startedAt, "jefe@orionerp.local");
+    results.Tables.Add(sessionTable);
+
+    var lineTable = new DataTable();
+    lineTable.Columns.Add("Id", typeof(int));
+    lineTable.Columns.Add("MaterialId", typeof(int));
+    results.Tables.Add(lineTable);
+
+    var attachmentTable = new DataTable();
+    attachmentTable.Columns.Add("Id", typeof(int));
+    attachmentTable.Columns.Add("PhysicalCountLineId", typeof(int));
+    results.Tables.Add(attachmentTable);
+
+    var lotTable = new DataTable();
+    lotTable.Columns.Add("Id", typeof(long));
+    lotTable.Columns.Add("PhysicalCountLineId", typeof(int));
+    results.Tables.Add(lotTable);
+
+    var auditTable = new DataTable();
+    auditTable.Columns.Add("EventType", typeof(string));
+    auditTable.Columns.Add("OccurredAt", typeof(DateTime));
+    auditTable.Columns.Add("PerformedBy", typeof(string));
+    auditTable.Columns.Add("MaterialId", typeof(int));
+    auditTable.Columns.Add("MaterialCode", typeof(string));
+    auditTable.Columns.Add("MaterialDescription", typeof(string));
+    auditTable.Columns.Add("ExpectedQuantity", typeof(decimal));
+    auditTable.Columns.Add("CountedQuantity", typeof(decimal));
+    auditTable.Columns.Add("Details", typeof(string));
+    auditTable.Rows.Add(PhysicalCountAuditEventTypes.Submitted, submittedAt, "contador@orionerp.local", DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value);
+    auditTable.Rows.Add(PhysicalCountAuditEventTypes.LineCounted, countedAt, "contador@orionerp.local", 810, "MAT-810", "Aceite", 6m, 5m, "Envase abierto.");
+    auditTable.Rows.Add(PhysicalCountAuditEventTypes.SessionStarted, startedAt, "jefe@orionerp.local", DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value, "Conteo mensual.");
+    results.Tables.Add(auditTable);
+
+    var connection = new FakeQueryDbConnection
+    {
+      MultiResultReaderFactory = (_, _) => results
+    };
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.GetSessionAsync(51);
+
+    Assert.NotNull(result);
+    Assert.Equal(3, result!.AuditEvents.Count);
+    var capture = Assert.Single(result.AuditEvents, auditEvent => auditEvent.EventType == PhysicalCountAuditEventTypes.LineCounted);
+    Assert.Equal("contador@orionerp.local", capture.PerformedBy);
+    Assert.Equal(countedAt, capture.OccurredAt);
+    Assert.Equal("Aceite", capture.MaterialDescription);
+    Assert.Equal(5m, capture.CountedQuantity);
+
+    var commandText = Assert.Single(connection.ExecutedCommands).CommandText;
+    Assert.Contains("recountLine.PreviousCapturedAt", commandText, StringComparison.Ordinal);
+    Assert.Contains("'EvidenceAdded'", commandText, StringComparison.Ordinal);
+    Assert.Contains("ORDER BY audit.OccurredAt DESC", commandText, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public async Task CaptureLineAsync_RejectsStaleSaveAndDoesNotInsertAttachment()
   {
     var originalCapturedAt = new DateTime(2026, 8, 27, 14, 0, 0, DateTimeKind.Utc);

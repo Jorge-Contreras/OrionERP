@@ -826,18 +826,36 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     }, cancellationToken: ct))).AsList();
   }
 
-  public async Task<IReadOnlyList<RestaurantOrderDto>> GetOperationalOrdersAsync(string rfc, int siteId, CancellationToken ct = default)
+  public async Task<IReadOnlyList<RestaurantOrderDto>> GetOperationalOrdersAsync(
+    string rfc,
+    int siteId,
+    DateOnly serviceDate,
+    CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
     using var conn = CreateConnection();
+    var timeZoneId = await conn.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
+      "SELECT TimeZoneId FROM restaurante.Site WHERE Rfc=@Rfc AND Id=@SiteId;",
+      new { Rfc = normalizedRfc, SiteId = siteId },
+      cancellationToken: ct))
+      ?? throw new InvalidOperationException("La sede no existe en el RFC seleccionado.");
+    var window = RestaurantServiceDayPolicy.GetUtcWindow(
+      serviceDate,
+      TimeZoneInfo.FindSystemTimeZoneById(timeZoneId));
     var ids = (await conn.QueryAsync<Guid>(new CommandDefinition(
       """
       SELECT orderInfo.Id FROM restaurante.[Order] orderInfo
       WHERE orderInfo.Rfc=@Rfc AND orderInfo.SiteId=@SiteId
-        AND orderInfo.CreatedAt>=DATEADD(day,-2,SYSUTCDATETIME())
+        AND orderInfo.CreatedAt>=@StartUtc AND orderInfo.CreatedAt<@EndUtcExclusive
         AND orderInfo.[Status]<>'Draft'
       ORDER BY orderInfo.OperationalDate, orderInfo.Folio, orderInfo.CreatedAt, orderInfo.Id;
-      """, new { Rfc = normalizedRfc, SiteId = siteId }, cancellationToken: ct))).AsList();
+      """, new
+      {
+        Rfc = normalizedRfc,
+        SiteId = siteId,
+        window.StartUtc,
+        window.EndUtcExclusive
+      }, cancellationToken: ct))).AsList();
     var result = new List<RestaurantOrderDto>();
     foreach (var id in ids)
     {

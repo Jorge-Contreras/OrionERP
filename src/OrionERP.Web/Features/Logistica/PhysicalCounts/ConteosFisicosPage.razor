@@ -198,6 +198,76 @@
             </section>
             <p class="conteos-next-step">@GetCurrentStatusGuidance()</p>
 
+            <section class="conteos-audit" aria-labelledby="conteos-audit-title">
+                <header class="conteos-audit-heading">
+                    <div>
+                        <span class="conteos-section-kicker">Seguimiento completo</span>
+                        <h2 id="conteos-audit-title">Bitácora del conteo</h2>
+                        <p>Consulta cuándo comenzó, quién contó cada material y qué ocurrió después.</p>
+                    </div>
+                    <span class="conteos-total-pill">@AuditEvents.Count</span>
+                </header>
+
+                <div class="conteos-audit-summary">
+                    <div>
+                        <span>Inicio del conteo</span>
+                        @if (FirstCaptureEvent is not null)
+                        {
+                            <strong>@FormatAuditMoment(FirstCaptureEvent.OccurredAt)</strong>
+                            <small>@GetAuditActor(FirstCaptureEvent.PerformedBy)</small>
+                        }
+                        else
+                        {
+                            <strong>Aún no comienza</strong>
+                            <small>Sin cantidades capturadas</small>
+                        }
+                    </div>
+                    <div>
+                        <span>Última actividad</span>
+                        @if (LastAuditEvent is not null)
+                        {
+                            <strong>@FormatAuditMoment(LastAuditEvent.OccurredAt)</strong>
+                            <small>@GetAuditActor(LastAuditEvent.PerformedBy)</small>
+                        }
+                        else
+                        {
+                            <strong>Sin actividad</strong>
+                            <small>—</small>
+                        }
+                    </div>
+                    <div>
+                        <span>Personas que contaron</span>
+                        <strong>@AuditCounterCount</strong>
+                        <small>@AuditCaptureCount capturas registradas</small>
+                    </div>
+                </div>
+
+                <div class="conteos-audit-list">
+                    @foreach (var auditEvent in VisibleAuditEvents)
+                    {
+                        <article class="conteos-audit-event @GetAuditEventClass(auditEvent.EventType)">
+                            <span class="conteos-audit-marker" aria-hidden="true"></span>
+                            <time datetime="@FormatAuditMachineTime(auditEvent.OccurredAt)">
+                                <strong>@FormatAuditDay(auditEvent.OccurredAt)</strong>
+                                <small>@FormatAuditTime(auditEvent.OccurredAt)</small>
+                            </time>
+                            <div>
+                                <strong>@GetAuditEventTitle(auditEvent)</strong>
+                                <p>@GetAuditEventDescription(auditEvent)</p>
+                                <span class="conteos-audit-actor"><span class="oi oi-person" aria-hidden="true"></span>@GetAuditActor(auditEvent.PerformedBy)</span>
+                            </div>
+                        </article>
+                    }
+                </div>
+
+                @if (AuditEvents.Count > 12)
+                {
+                    <button class="conteos-audit-toggle" type="button" @onclick="() => ShowFullAuditLog = !ShowFullAuditLog">
+                        @(ShowFullAuditLog ? "Mostrar solo lo más reciente" : $"Ver toda la bitácora ({AuditEvents.Count} eventos)")
+                    </button>
+                }
+            </section>
+
             @if (CanSubmit)
             {
                 @if (ShowCompletionReview || SelectedLine is null)

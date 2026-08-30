@@ -33,6 +33,19 @@ public static class PhysicalCountRecountIssueCodes
   };
 }
 
+public static class PhysicalCountAuditEventTypes
+{
+  public const string SessionStarted = "SessionStarted";
+  public const string LineCounted = "LineCounted";
+  public const string EvidenceAdded = "EvidenceAdded";
+  public const string Submitted = "Submitted";
+  public const string RecountRequested = "RecountRequested";
+  public const string RecountCompleted = "RecountCompleted";
+  public const string Approved = "Approved";
+  public const string Posted = "Posted";
+  public const string Canceled = "Canceled";
+}
+
 public sealed class PhysicalCountSessionSummaryDto
 {
   public int Id { get; set; }
@@ -111,6 +124,19 @@ public sealed class PhysicalCountLotLineDto
   public decimal? VarianceQuantity { get; set; }
 }
 
+public sealed class PhysicalCountAuditEventDto
+{
+  public string EventType { get; set; } = string.Empty;
+  public DateTime OccurredAt { get; set; }
+  public string? PerformedBy { get; set; }
+  public int? MaterialId { get; set; }
+  public string? MaterialCode { get; set; }
+  public string? MaterialDescription { get; set; }
+  public decimal? ExpectedQuantity { get; set; }
+  public decimal? CountedQuantity { get; set; }
+  public string? Details { get; set; }
+}
+
 public sealed class PhysicalCountSessionDetailDto
 {
   public int Id { get; set; }
@@ -135,6 +161,7 @@ public sealed class PhysicalCountSessionDetailDto
   public DateTime? RecountRequestedAt { get; set; }
   public string? RecountRequestedBy { get; set; }
   public IReadOnlyList<PhysicalCountLineDto> Lines { get; set; } = Array.Empty<PhysicalCountLineDto>();
+  public IReadOnlyList<PhysicalCountAuditEventDto> AuditEvents { get; set; } = Array.Empty<PhysicalCountAuditEventDto>();
 }
 
 public sealed class PhysicalCountPendingRecountDto

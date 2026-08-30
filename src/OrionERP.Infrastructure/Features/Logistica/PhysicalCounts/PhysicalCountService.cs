@@ -195,6 +195,208 @@ public sealed class PhysicalCountService : IPhysicalCountService
       JOIN logistica.MaterialLot materialLot ON materialLot.Rfc=lotLine.Rfc AND materialLot.Id=lotLine.MaterialLotId
       WHERE line.SessionId=@SessionId
       ORDER BY materialLot.ExpiresAt,materialLot.LotCode;
+
+      SELECT
+          audit.EventType,
+          audit.OccurredAt,
+          audit.PerformedBy,
+          audit.MaterialId,
+          audit.MaterialCode,
+          audit.MaterialDescription,
+          audit.ExpectedQuantity,
+          audit.CountedQuantity,
+          audit.Details
+      FROM
+      (
+          SELECT
+              CAST('SessionStarted' AS varchar(40)) AS EventType,
+              sessionInfo.CreatedAt AS OccurredAt,
+              sessionInfo.CreatedBy AS PerformedBy,
+              CAST(NULL AS int) AS MaterialId,
+              CAST(NULL AS varchar(100)) AS MaterialCode,
+              CAST(NULL AS varchar(500)) AS MaterialDescription,
+              CAST(NULL AS decimal(18,4)) AS ExpectedQuantity,
+              CAST(NULL AS decimal(18,4)) AS CountedQuantity,
+              CAST(sessionInfo.Notes AS varchar(1000)) AS Details,
+              10 AS EventSort
+          FROM logistica.PhysicalCountSession sessionInfo
+          WHERE sessionInfo.Id = @SessionId
+
+          UNION ALL
+
+          SELECT
+              'LineCounted',
+              countLine.CapturedAt,
+              countLine.CapturedBy,
+              countLine.MaterialId,
+              material.MaterialCode,
+              material.[Description],
+              CAST(countLine.ExpectedQuantity AS decimal(18,4)),
+              CAST(countLine.CountedQuantity AS decimal(18,4)),
+              CAST(countLine.Notes AS varchar(1000)),
+              20
+          FROM logistica.PhysicalCountLine countLine
+          JOIN logistica.Material material
+            ON material.Rfc = countLine.Rfc
+           AND material.Id = countLine.MaterialId
+          WHERE countLine.SessionId = @SessionId
+            AND countLine.CapturedAt IS NOT NULL
+
+          UNION ALL
+
+          SELECT
+              'LineCounted',
+              recountLine.PreviousCapturedAt,
+              recountLine.PreviousCapturedBy,
+              countLine.MaterialId,
+              material.MaterialCode,
+              material.[Description],
+              CAST(countLine.ExpectedQuantity AS decimal(18,4)),
+              CAST(recountLine.PreviousCountedQuantity AS decimal(18,4)),
+              CAST(recountLine.PreviousNotes AS varchar(1000)),
+              20
+          FROM logistica.PhysicalCountRecountPlanLine recountLine
+          JOIN logistica.PhysicalCountRecountPlan recountPlan
+            ON recountPlan.Rfc = recountLine.Rfc
+           AND recountPlan.Id = recountLine.RecountPlanId
+          JOIN logistica.PhysicalCountLine countLine
+            ON countLine.Rfc = recountLine.Rfc
+           AND countLine.Id = recountLine.PhysicalCountLineId
+          JOIN logistica.Material material
+            ON material.Rfc = countLine.Rfc
+           AND material.Id = countLine.MaterialId
+          WHERE recountPlan.SessionId = @SessionId
+            AND recountLine.PreviousCapturedAt IS NOT NULL
+
+          UNION ALL
+
+          SELECT
+              'EvidenceAdded',
+              attachment.CreatedAt,
+              attachment.CreatedBy,
+              countLine.MaterialId,
+              material.MaterialCode,
+              material.[Description],
+              CAST(NULL AS decimal(18,4)),
+              CAST(NULL AS decimal(18,4)),
+              CAST(attachment.FileName AS varchar(1000)),
+              30
+          FROM logistica.PhysicalCountAttachment attachment
+          JOIN logistica.PhysicalCountLine countLine
+            ON countLine.Rfc = attachment.Rfc
+           AND countLine.Id = attachment.PhysicalCountLineId
+          JOIN logistica.Material material
+            ON material.Rfc = countLine.Rfc
+           AND material.Id = countLine.MaterialId
+          WHERE countLine.SessionId = @SessionId
+
+          UNION ALL
+
+          SELECT
+              'Submitted',
+              sessionInfo.SubmittedAt,
+              sessionInfo.SubmittedBy,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              40
+          FROM logistica.PhysicalCountSession sessionInfo
+          WHERE sessionInfo.Id = @SessionId
+            AND sessionInfo.SubmittedAt IS NOT NULL
+
+          UNION ALL
+
+          SELECT
+              'RecountRequested',
+              recountPlan.RequestedAt,
+              recountPlan.RequestedBy,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              CAST(CONCAT(
+                (SELECT COUNT(*)
+                 FROM logistica.PhysicalCountRecountPlanLine recountItem
+                 WHERE recountItem.Rfc = recountPlan.Rfc
+                   AND recountItem.RecountPlanId = recountPlan.Id),
+                ' material(es) enviados a reconteo.') AS varchar(1000)),
+              50
+          FROM logistica.PhysicalCountRecountPlan recountPlan
+          WHERE recountPlan.SessionId = @SessionId
+
+          UNION ALL
+
+          SELECT
+              'RecountCompleted',
+              recountPlan.CompletedAt,
+              recountPlan.CompletedBy,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              60
+          FROM logistica.PhysicalCountRecountPlan recountPlan
+          WHERE recountPlan.SessionId = @SessionId
+            AND recountPlan.CompletedAt IS NOT NULL
+
+          UNION ALL
+
+          SELECT
+              'Approved',
+              sessionInfo.ApprovedAt,
+              sessionInfo.ApprovedBy,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              70
+          FROM logistica.PhysicalCountSession sessionInfo
+          WHERE sessionInfo.Id = @SessionId
+            AND sessionInfo.ApprovedAt IS NOT NULL
+
+          UNION ALL
+
+          SELECT
+              'Posted',
+              sessionInfo.PostedAt,
+              sessionInfo.PostedBy,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              80
+          FROM logistica.PhysicalCountSession sessionInfo
+          WHERE sessionInfo.Id = @SessionId
+            AND sessionInfo.PostedAt IS NOT NULL
+
+          UNION ALL
+
+          SELECT
+              'Canceled',
+              sessionInfo.CanceledAt,
+              sessionInfo.CanceledBy,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              CAST(sessionInfo.CancelReason AS varchar(1000)),
+              90
+          FROM logistica.PhysicalCountSession sessionInfo
+          WHERE sessionInfo.Id = @SessionId
+            AND sessionInfo.CanceledAt IS NOT NULL
+      ) audit
+      ORDER BY audit.OccurredAt DESC, audit.EventSort DESC;
       """;
 
     using var conn = CreateConnection();
@@ -210,6 +412,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
     var lines = (await multi.ReadAsync<PhysicalCountLineDto>()).AsList();
     var attachments = (await multi.ReadAsync<PhysicalCountAttachmentDto>()).AsList();
     var lots = (await multi.ReadAsync<PhysicalCountLotLineDto>()).AsList();
+    var auditEvents = (await multi.ReadAsync<PhysicalCountAuditEventDto>()).AsList();
     var attachmentsByLine = attachments
       .GroupBy(attachment => attachment.PhysicalCountLineId)
       .ToDictionary(group => group.Key, group => (IReadOnlyList<PhysicalCountAttachmentDto>)group.ToList());
@@ -223,6 +426,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
     }
 
     session.Lines = lines;
+    session.AuditEvents = auditEvents;
     return session;
   }
 

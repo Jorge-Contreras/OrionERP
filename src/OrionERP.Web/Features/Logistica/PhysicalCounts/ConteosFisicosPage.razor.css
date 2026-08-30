@@ -1687,6 +1687,204 @@
   object-fit: contain;
 }
 
+.conteos-audit {
+  order: 10;
+  min-width: 0;
+  padding: 1.2rem;
+  border: 1px solid var(--count-border);
+  border-radius: 1.2rem;
+  background: #fff;
+  box-shadow: 0 9px 28px rgba(26, 61, 84, 0.06);
+}
+
+.conteos-audit-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.conteos-audit-heading h2 {
+  margin: 0.15rem 0 0.2rem;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+
+.conteos-audit-heading p {
+  margin: 0;
+  color: var(--count-muted);
+  font-size: 0.87rem;
+}
+
+.conteos-audit-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.conteos-audit-summary > div {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #d9e7ed;
+  border-radius: 0.85rem;
+  background: #f5fafc;
+}
+
+.conteos-audit-summary span {
+  color: var(--count-muted);
+  font-size: 0.67rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.conteos-audit-summary strong {
+  overflow-wrap: anywhere;
+  color: var(--count-primary-dark);
+  font-size: 0.9rem;
+}
+
+.conteos-audit-summary small {
+  overflow-wrap: anywhere;
+  color: var(--count-muted);
+  font-size: 0.72rem;
+}
+
+.conteos-audit-list {
+  display: grid;
+}
+
+.conteos-audit-event {
+  --audit-accent: #60798a;
+  position: relative;
+  display: grid;
+  grid-template-columns: 1rem minmax(108px, 145px) minmax(0, 1fr);
+  gap: 0.8rem;
+  min-width: 0;
+  padding: 0.8rem 0;
+}
+
+.conteos-audit-event:not(:last-child) {
+  border-bottom: 1px solid #edf2f5;
+}
+
+.conteos-audit-event::before {
+  content: "";
+  position: absolute;
+  top: 1.65rem;
+  bottom: -1rem;
+  left: 0.34rem;
+  width: 2px;
+  background: #dce7ec;
+}
+
+.conteos-audit-event:last-child::before {
+  display: none;
+}
+
+.conteos-audit-marker {
+  position: relative;
+  z-index: 1;
+  width: 0.78rem;
+  height: 0.78rem;
+  margin-top: 0.25rem;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--audit-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--audit-accent) 30%, white);
+}
+
+.conteos-audit-event.is-capture {
+  --audit-accent: #16718d;
+}
+
+.conteos-audit-event.is-evidence {
+  --audit-accent: #6f62a5;
+}
+
+.conteos-audit-event.is-recount {
+  --audit-accent: #b66b13;
+}
+
+.conteos-audit-event.is-success {
+  --audit-accent: #238254;
+}
+
+.conteos-audit-event.is-canceled {
+  --audit-accent: #b84943;
+}
+
+.conteos-audit-event time {
+  display: grid;
+  align-content: start;
+  gap: 0.12rem;
+  color: var(--count-ink);
+  font-size: 0.75rem;
+}
+
+.conteos-audit-event time small {
+  color: var(--count-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.conteos-audit-event > div {
+  display: grid;
+  justify-items: start;
+  gap: 0.22rem;
+  min-width: 0;
+}
+
+.conteos-audit-event > div > strong {
+  overflow-wrap: anywhere;
+  font-size: 0.88rem;
+}
+
+.conteos-audit-event p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--count-muted);
+  font-size: 0.78rem;
+}
+
+.conteos-audit-actor {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+  margin-top: 0.16rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: #edf4f7;
+  color: #3d5f70;
+  font-size: 0.68rem;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.conteos-audit-toggle {
+  display: block;
+  width: 100%;
+  min-height: 2.7rem;
+  margin-top: 0.55rem;
+  border: 1px solid #c9dce5;
+  border-radius: 0.75rem;
+  background: #f4f9fb;
+  color: var(--count-primary-dark);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.conteos-audit-toggle:hover,
+.conteos-audit-toggle:focus-visible {
+  border-color: #8ebbc9;
+  background: #eaf5f8;
+}
+
 @media (max-width: 980px) {
   .conteos-process-card {
     align-items: flex-start;
@@ -1778,6 +1976,34 @@
     min-height: 44px;
     padding: 0.35rem 0.6rem;
     font-size: 0.75rem;
+  }
+
+  .conteos-audit {
+    padding: 0.9rem;
+  }
+
+  .conteos-audit-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .conteos-audit-event {
+    grid-template-columns: 0.85rem minmax(0, 1fr);
+    gap: 0.65rem;
+  }
+
+  .conteos-audit-event time {
+    grid-column: 2;
+    display: flex;
+    gap: 0.35rem;
+    margin-bottom: -0.3rem;
+  }
+
+  .conteos-audit-event > div {
+    grid-column: 2;
+  }
+
+  .conteos-audit-event::before {
+    left: 0.27rem;
   }
 
   .conteos-lifecycle {

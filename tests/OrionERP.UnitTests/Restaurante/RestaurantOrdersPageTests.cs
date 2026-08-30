@@ -1,7 +1,44 @@
+using OrionERP.Application.Features.Restaurante;
+
 namespace OrionERP.UnitTests.Restaurante;
 
 public sealed class RestaurantOrdersPageTests
 {
+  [Fact]
+  public void ServiceDay_BeginsAtFiveInTheSiteTimeZone()
+  {
+    var timeZone = TimeZoneInfo.CreateCustomTimeZone("RestaurantTest", TimeSpan.FromHours(-6), "RestaurantTest", "RestaurantTest");
+
+    Assert.Equal(
+      new DateOnly(2026, 8, 29),
+      RestaurantServiceDayPolicy.GetServiceDate(new DateTimeOffset(2026, 8, 30, 10, 59, 0, TimeSpan.Zero), timeZone));
+    Assert.Equal(
+      new DateOnly(2026, 8, 30),
+      RestaurantServiceDayPolicy.GetServiceDate(new DateTimeOffset(2026, 8, 30, 11, 0, 0, TimeSpan.Zero), timeZone));
+
+    var window = RestaurantServiceDayPolicy.GetUtcWindow(new DateOnly(2026, 8, 30), timeZone);
+    Assert.Equal(new DateTime(2026, 8, 30, 11, 0, 0, DateTimeKind.Utc), window.StartUtc);
+    Assert.Equal(new DateTime(2026, 8, 31, 11, 0, 0, DateTimeKind.Utc), window.EndUtcExclusive);
+  }
+
+  [Fact]
+  public void OrdersPage_NavigatesOneServiceDayAtATime()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantOrdersPage.razor");
+    var styles = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantOrdersPage.razor.css");
+    var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantOrderService.cs");
+
+    Assert.Contains("ChangeServiceDateAsync(-1)", page, StringComparison.Ordinal);
+    Assert.Contains("ChangeServiceDateAsync(1)", page, StringComparison.Ordinal);
+    Assert.Contains("GoToCurrentServiceDateAsync", page, StringComparison.Ordinal);
+    Assert.Contains("5:00 a. m. del", page, StringComparison.Ordinal);
+    Assert.Contains("4:59 a. m. del", page, StringComparison.Ordinal);
+    Assert.Contains("requestedServiceDate", page, StringComparison.Ordinal);
+    Assert.Contains(".orders-service-day", styles, StringComparison.Ordinal);
+    Assert.Contains("orderInfo.CreatedAt>=@StartUtc AND orderInfo.CreatedAt<@EndUtcExclusive", service, StringComparison.Ordinal);
+    Assert.DoesNotContain("DATEADD(day,-2,SYSUTCDATETIME())", service, StringComparison.Ordinal);
+  }
+
   [Fact]
   public void OrdersQuery_KeepsOrdersInFolioSequence()
   {

@@ -62,6 +62,7 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
   protected bool ShowCancelModal { get; set; }
   protected bool ShowRecountPanel { get; set; }
   protected bool ShowCompletionReview { get; set; }
+  protected bool ShowFullAuditLog { get; set; }
   protected bool ShowMobileMaterialList { get; set; }
   protected bool ShowBarcodeScanner { get; set; }
   protected bool IsStartingScanner { get; set; }
@@ -172,6 +173,27 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
   protected int FlaggedLineCount => SelectedSession?.Lines.Count(line => line.IsMissing || line.IsDamaged || !string.IsNullOrWhiteSpace(line.Notes)) ?? 0;
   protected int SelectedRecountLineCount => RecountPlanLines.Count(line => line.IsSelected);
   protected int SessionProgressPercentage => GetProgressPercentage(CountedLineCount, CaptureTotalLineCount);
+  protected IReadOnlyList<PhysicalCountAuditEventDto> AuditEvents => SelectedSession is null
+    ? Array.Empty<PhysicalCountAuditEventDto>()
+    : SelectedSession.AuditEvents
+      .OrderByDescending(auditEvent => auditEvent.OccurredAt)
+      .ToList();
+  protected IReadOnlyList<PhysicalCountAuditEventDto> VisibleAuditEvents => ShowFullAuditLog
+    ? AuditEvents
+    : AuditEvents.Take(12).ToList();
+  protected PhysicalCountAuditEventDto? LastAuditEvent => AuditEvents.FirstOrDefault();
+  protected PhysicalCountAuditEventDto? FirstCaptureEvent => AuditEvents
+    .Where(auditEvent => string.Equals(auditEvent.EventType, PhysicalCountAuditEventTypes.LineCounted, StringComparison.Ordinal))
+    .OrderBy(auditEvent => auditEvent.OccurredAt)
+    .FirstOrDefault();
+  protected int AuditCounterCount => AuditEvents
+    .Where(auditEvent => string.Equals(auditEvent.EventType, PhysicalCountAuditEventTypes.LineCounted, StringComparison.Ordinal))
+    .Select(auditEvent => auditEvent.PerformedBy?.Trim())
+    .Where(actor => !string.IsNullOrWhiteSpace(actor))
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .Count();
+  protected int AuditCaptureCount => AuditEvents.Count(auditEvent =>
+    string.Equals(auditEvent.EventType, PhysicalCountAuditEventTypes.LineCounted, StringComparison.Ordinal));
   protected int CurrentLinePosition => SelectedLine is null ? 0 : Math.Max(1, CaptureSessionLines.ToList().FindIndex(line => line.Id == SelectedLine.Id) + 1);
   protected bool CanSelectPreviousLine => SelectedLine is not null && CaptureSessionLines.ToList().FindIndex(line => line.Id == SelectedLine.Id) > 0;
   protected bool ShouldOpenLineDetails => SelectedLine is not null
@@ -326,6 +348,7 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
         ? LineFilterMode.Variance
         : LineFilterMode.All;
       ShowCompletionReview = false;
+      ShowFullAuditLog = false;
       ShowMobileMaterialList = false;
       ShowRecountPanel = false;
       RecountPlanLines = [];
@@ -1148,6 +1171,121 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
       _ => "Consulta el estado del conteo."
     };
 
+  protected static string GetAuditEventTitle(PhysicalCountAuditEventDto auditEvent)
+    => auditEvent.EventType switch
+    {
+      PhysicalCountAuditEventTypes.SessionStarted => "Sesión de conteo creada",
+      PhysicalCountAuditEventTypes.LineCounted => $"Material contado: {GetAuditMaterialTitle(auditEvent)}",
+      PhysicalCountAuditEventTypes.EvidenceAdded => $"Evidencia agregada: {GetAuditMaterialTitle(auditEvent)}",
+      PhysicalCountAuditEventTypes.Submitted => "Conteo enviado a revisión",
+      PhysicalCountAuditEventTypes.RecountRequested => "Reconteo solicitado",
+      PhysicalCountAuditEventTypes.RecountCompleted => "Reconteo terminado y enviado",
+      PhysicalCountAuditEventTypes.Approved => "Conteo aprobado",
+      PhysicalCountAuditEventTypes.Posted => "Conteo aplicado al inventario",
+      PhysicalCountAuditEventTypes.Canceled => "Conteo cancelado",
+      _ => "Actividad del conteo"
+    };
+
+  protected static string GetAuditEventDescription(PhysicalCountAuditEventDto auditEvent)
+  {
+    if (string.Equals(auditEvent.EventType, PhysicalCountAuditEventTypes.LineCounted, StringComparison.Ordinal))
+    {
+      var description = auditEvent.CountedQuantity.HasValue
+        ? $"Contado {auditEvent.CountedQuantity.Value:N2}"
+        : "Cantidad capturada";
+      if (auditEvent.ExpectedQuantity.HasValue)
+      {
+        description += $" · esperado {auditEvent.ExpectedQuantity.Value:N2}";
+      }
+
+      if (!string.IsNullOrWhiteSpace(auditEvent.Details))
+      {
+        description += $" · Nota: {auditEvent.Details.Trim()}";
+      }
+
+      return description;
+    }
+
+    if (!string.IsNullOrWhiteSpace(auditEvent.Details))
+    {
+      return auditEvent.Details.Trim();
+    }
+
+    return auditEvent.EventType switch
+    {
+      PhysicalCountAuditEventTypes.SessionStarted => "Se creó la sesión y quedó lista para comenzar a contar.",
+      PhysicalCountAuditEventTypes.EvidenceAdded => "Se adjuntó evidencia al material.",
+      PhysicalCountAuditEventTypes.Submitted => "Las cantidades quedaron bloqueadas para revisión de Logística.",
+      PhysicalCountAuditEventTypes.RecountRequested => "Logística pidió verificar nuevamente uno o más materiales.",
+      PhysicalCountAuditEventTypes.RecountCompleted => "El equipo terminó los materiales solicitados para reconteo.",
+      PhysicalCountAuditEventTypes.Approved => "Logística aprobó las cantidades capturadas.",
+      PhysicalCountAuditEventTypes.Posted => "Las cantidades aprobadas actualizaron las existencias.",
+      PhysicalCountAuditEventTypes.Canceled => "La sesión quedó disponible únicamente para consulta.",
+      _ => "Se registró una actividad en esta sesión."
+    };
+  }
+
+  protected static string GetAuditEventClass(string? eventType)
+    => eventType switch
+    {
+      PhysicalCountAuditEventTypes.LineCounted => "is-capture",
+      PhysicalCountAuditEventTypes.EvidenceAdded => "is-evidence",
+      PhysicalCountAuditEventTypes.RecountRequested or PhysicalCountAuditEventTypes.RecountCompleted => "is-recount",
+      PhysicalCountAuditEventTypes.Approved or PhysicalCountAuditEventTypes.Posted => "is-success",
+      PhysicalCountAuditEventTypes.Canceled => "is-canceled",
+      _ => "is-status"
+    };
+
+  protected static string GetAuditActor(string? actor)
+    => string.IsNullOrWhiteSpace(actor) ? "Usuario no registrado" : actor.Trim();
+
+  protected static string FormatAuditMoment(DateTime value)
+    => GetLocalAuditMoment(value).ToString("dd MMM yyyy · HH:mm", QuantityInputCulture);
+
+  protected static string FormatAuditDay(DateTime value)
+    => GetLocalAuditMoment(value).ToString("dd MMM yyyy", QuantityInputCulture);
+
+  protected static string FormatAuditTime(DateTime value)
+    => GetLocalAuditMoment(value).ToString("HH:mm:ss", QuantityInputCulture);
+
+  protected static string FormatAuditMachineTime(DateTime value)
+  {
+    var utcValue = value.Kind switch
+    {
+      DateTimeKind.Utc => value,
+      DateTimeKind.Local => value.ToUniversalTime(),
+      _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+    };
+    return utcValue.ToString("O", CultureInfo.InvariantCulture);
+  }
+
+  private static string GetAuditMaterialTitle(PhysicalCountAuditEventDto auditEvent)
+  {
+    var description = auditEvent.MaterialDescription?.Trim();
+    var code = auditEvent.MaterialCode?.Trim();
+    if (!string.IsNullOrWhiteSpace(description) && !string.IsNullOrWhiteSpace(code))
+    {
+      return $"{description} ({code})";
+    }
+
+    return !string.IsNullOrWhiteSpace(description)
+      ? description
+      : !string.IsNullOrWhiteSpace(code) ? code : "material";
+  }
+
+  private static DateTime GetLocalAuditMoment(DateTime value)
+  {
+    if (value.Kind == DateTimeKind.Local)
+    {
+      return value;
+    }
+
+    var utcValue = value.Kind == DateTimeKind.Utc
+      ? value
+      : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+    return utcValue.ToLocalTime();
+  }
+
   protected string GetReviewHeading()
     => NormalizeSessionStatus(SelectedSession?.Status) switch
     {
@@ -1378,6 +1516,7 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
     _countedQuantityInput = string.Empty;
     _focusCountedQuantityInputPending = false;
     ShowCompletionReview = false;
+    ShowFullAuditLog = false;
     ShowMobileMaterialList = false;
     ShowRecountPanel = false;
     CloseMaterialImageModal();

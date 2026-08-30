@@ -1,6 +1,7 @@
 @page "/restaurante/ordenes"
 @attribute [Authorize(Policy = "RestaurantPos")]
 @implements IAsyncDisposable
+@using System.Globalization
 @using Microsoft.AspNetCore.Components.Authorization
 @using OrionERP.Application.Features.Logistica.Shared
 @using OrionERP.Application.Features.Restaurante
@@ -18,8 +19,22 @@
 
 <PageTitle>Restaurante · Órdenes y entregas</PageTitle>
 <main class="orders-shell">
-  <header class="orders-hero"><div><span>Barra y entrega</span><h1>Órdenes activas</h1><p>Despacha domicilio, entrega al comensal y completa órdenes pagadas.</p></div><div>@if(sites.Count>1){<select @onchange="ChangeSiteAsync">@foreach(var site in sites){<option value="@site.Id" selected="@(site.Id==selectedSiteId)">@site.Name</option>}</select>}<button type="button" @onclick="LoadAsync">Actualizar</button></div></header>
+  <header class="orders-hero"><div><span>Barra y entrega</span><h1>Órdenes y entregas</h1><p>Consulta un solo día de servicio, entrega al comensal y completa órdenes pagadas.</p></div><div>@if(sites.Count>1){<select @onchange="ChangeSiteAsync" aria-label="Sede">@foreach(var site in sites){<option value="@site.Id" selected="@(site.Id==selectedSiteId)">@site.Name</option>}</select>}<button type="button" @onclick="LoadAsync" disabled="@isLoadingOrders">@(isLoadingOrders ? "Actualizando…" : "Actualizar")</button></div></header>
   @if(!string.IsNullOrWhiteSpace(message)){<div class="alert @(isError?"alert-danger":"alert-success")">@message</div>}
+  <section class="orders-service-day" aria-label="Navegar por día de servicio">
+    <button type="button" class="orders-service-day__previous" @onclick="()=>ChangeServiceDateAsync(-1)">
+      <span aria-hidden="true">←</span><span>Anterior</span>
+    </button>
+    <div class="orders-service-day__summary">
+      <span>@(IsCurrentServiceDay ? "Día de servicio actual" : "Día de servicio anterior")</span>
+      <strong>@ServiceDateLabel</strong>
+      <small>@ServiceRangeLabel</small>
+    </div>
+    <div class="orders-service-day__actions">
+      <button type="button" class="orders-service-day__today" disabled="@IsCurrentServiceDay" @onclick="GoToCurrentServiceDateAsync">Hoy</button>
+      <button type="button" disabled="@IsCurrentServiceDay" @onclick="()=>ChangeServiceDateAsync(1)"><span>Siguiente</span><span aria-hidden="true">→</span></button>
+    </div>
+  </section>
   <nav class="orders-filters">@foreach(var filter in new[]{"Active","Ready","Dispatched","Delivered","Completed","Cancelled"}){<button type="button" class="@(statusFilter==filter?"is-active":null)" @onclick="()=>statusFilter=filter">@FilterLabel(filter) <b>@Count(filter)</b></button>}</nav>
   <section class="orders-grid">
     @foreach(var order in FilteredOrders)
@@ -209,6 +224,10 @@
   private List<RestaurantSiteDto> sites = [];
   private List<RestaurantOrderDto> orders = [];
   private int selectedSiteId;
+  private DateOnly selectedServiceDate;
+  private bool followCurrentServiceDate = true;
+  private bool isLoadingOrders;
+  private int loadVersion;
   private string statusFilter = "Active";
   private string? message;
   private bool isError;
@@ -236,6 +255,12 @@
   private string? reprintError;
 
   private string CurrentRfc => RfcState.RequireRfc();
+  private RestaurantSiteDto? SelectedSite => sites.FirstOrDefault(site => site.Id == selectedSiteId);
+  private DateOnly CurrentServiceDate => RestaurantServiceDayPolicy.GetServiceDate(DateTimeOffset.UtcNow, ResolveSelectedTimeZone());
+  private bool IsCurrentServiceDay => selectedServiceDate == CurrentServiceDate;
+  private string ServiceDateLabel => Capitalize(selectedServiceDate.ToString("dddd d 'de' MMMM 'de' yyyy", SpanishMexico));
+  private string ServiceRangeLabel => $"5:00 a. m. del {selectedServiceDate.ToString("d MMM", SpanishMexico)} → 4:59 a. m. del {selectedServiceDate.AddDays(1).ToString("d MMM", SpanishMexico)}";
+  private static readonly CultureInfo SpanishMexico = CultureInfo.GetCultureInfo("es-MX");
   private IEnumerable<RestaurantOrderDto> FilteredOrders => (statusFilter == "Active"
       ? orders.Where(order => order.Status is not ("Completed" or "Cancelled"))
       : orders.Where(order => order.Status == statusFilter))
@@ -255,19 +280,58 @@
   {
     sites = (await CatalogService.GetSitesAsync(CurrentRfc)).Where(site => site.IsEnabled).ToList();
     if (!sites.Any(site => site.Id == selectedSiteId)) selectedSiteId = sites.FirstOrDefault()?.Id ?? 0;
+    selectedServiceDate = CurrentServiceDate;
+    followCurrentServiceDate = true;
     await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId);
     await LoadAsync();
   }
 
   private async Task LoadAsync()
   {
+    if (followCurrentServiceDate) selectedServiceDate = CurrentServiceDate;
+    var requestedSiteId = selectedSiteId;
+    var requestedServiceDate = selectedServiceDate;
+    var requestVersion = ++loadVersion;
+    isLoadingOrders = true;
     try
     {
-      orders = selectedSiteId > 0
-        ? (await OrderService.GetOperationalOrdersAsync(CurrentRfc, selectedSiteId)).ToList()
+      var loadedOrders = requestedSiteId > 0
+        ? (await OrderService.GetOperationalOrdersAsync(CurrentRfc, requestedSiteId, requestedServiceDate)).ToList()
         : [];
+      if (requestVersion == loadVersion
+          && requestedSiteId == selectedSiteId
+          && requestedServiceDate == selectedServiceDate)
+      {
+        orders = loadedOrders;
+      }
     }
-    catch (Exception ex) { Show(ex.Message, true); }
+    catch (Exception ex)
+    {
+      if (requestVersion == loadVersion) Show(ex.Message, true);
+    }
+    finally
+    {
+      if (requestVersion == loadVersion) isLoadingOrders = false;
+    }
+  }
+
+  private async Task ChangeServiceDateAsync(int days)
+  {
+    var currentServiceDate = CurrentServiceDate;
+    var targetDate = selectedServiceDate.AddDays(days);
+    selectedServiceDate = targetDate > currentServiceDate ? currentServiceDate : targetDate;
+    followCurrentServiceDate = selectedServiceDate == currentServiceDate;
+    CloseCorrections();
+    CloseOrderLog();
+    CloseReprint();
+    await LoadAsync();
+  }
+
+  private Task GoToCurrentServiceDateAsync()
+  {
+    selectedServiceDate = CurrentServiceDate;
+    followCurrentServiceDate = true;
+    return ChangeServiceDateAsync(0);
   }
 
   private async Task SetStatusAsync(RestaurantOrderDto order, string status)
@@ -482,6 +546,8 @@
     if (int.TryParse(args.Value?.ToString(), out var id))
     {
       selectedSiteId = id;
+      selectedServiceDate = CurrentServiceDate;
+      followCurrentServiceDate = true;
       CloseCorrections();
       CloseOrderLog();
       CloseReprint();
@@ -508,6 +574,16 @@
   private static string CategoryLabel(string value) => value switch { "Order" => "Orden", "Kitchen" => "Cocina", "Payment" => "Pago", "Delivery" => "Entrega", "Inventory" => "Inventario", "Authorization" => "Autorización", "Accounting" => "Contabilidad", _ => value };
   private static string CategoryClass(string value) => value.Trim().ToLowerInvariant() switch { "order" => "order", "kitchen" => "kitchen", "payment" => "payment", "delivery" => "delivery", "inventory" => "inventory", "authorization" => "authorization", "accounting" => "accounting", _ => "other" };
   private static string CategoryIcon(string value) => value switch { "Kitchen" => "oi-fire", "Payment" => "oi-dollar", "Delivery" => "oi-map-marker", "Inventory" => "oi-box", "Authorization" => "oi-shield", "Accounting" => "oi-spreadsheet", _ => "oi-check" };
+  private TimeZoneInfo ResolveSelectedTimeZone()
+  {
+    if (SelectedSite is null || string.IsNullOrWhiteSpace(SelectedSite.TimeZoneId)) return TimeZoneInfo.Local;
+    try { return TimeZoneInfo.FindSystemTimeZoneById(SelectedSite.TimeZoneId); }
+    catch (TimeZoneNotFoundException) { return TimeZoneInfo.Local; }
+    catch (InvalidTimeZoneException) { return TimeZoneInfo.Local; }
+  }
+  private static string Capitalize(string value) => string.IsNullOrEmpty(value)
+    ? value
+    : char.ToUpper(value[0], SpanishMexico) + value[1..];
   private string FormatEventTime(DateTime utcDate)
   {
     var site = sites.FirstOrDefault(item => item.Id == selectedSiteId);

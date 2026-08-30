@@ -126,7 +126,7 @@ if (!string.IsNullOrWhiteSpace(conn))
   }
 }
 
-TrainingSafetyValidator.ValidateStartup(
+TrainingEnvironmentValidator.ValidateStartup(
   builder.Environment.EnvironmentName,
   conn,
   platformIsolation,
@@ -195,15 +195,6 @@ if (string.IsNullOrWhiteSpace(conn))
       "Missing/empty ConnectionStrings:OrionDb. In Development, set it with User Secrets, " +
       "a local appsettings.Development.json, or ConnectionStrings__OrionDb. In Production, " +
       "use ASPNETCORE_ConnectionStrings__OrionDb.");
-
-var trainingDatabaseSafety = TrainingDatabaseSafetyAttestation.NotApplicable;
-if (builder.Environment.IsEnvironment(TrainingEnvironment.Name))
-{
-  trainingDatabaseSafety = await TrainingDatabaseSafetyVerifier.VerifyOrThrowAsync(conn);
-  Console.WriteLine(
-    $"[BOOT] Training database safety verified; schema v{trainingDatabaseSafety.SchemaVersion}, " +
-    "sanitized synthetic data, isolated least-privilege login.");
-}
 
 var userSessionTimeout = TimeSpan.FromHours(8);
 var disconnectedCircuitRetentionPeriod = TimeSpan.FromHours(2);
@@ -485,13 +476,12 @@ builder.Services.Configure<ReservacionPdfOptions>(options =>
 
 builder.Services.AddCfdiCargarXmlSat();
 builder.Services.AddOrionServices();
-builder.Services.AddTrainingSafety(
+builder.Services.AddTrainingEnvironment(
   builder.Environment.EnvironmentName,
   conn,
   platformIsolation,
   builder.Configuration["Hosting:WindowsServiceUrl"],
   isMarkedTrainingService,
-  trainingDatabaseSafety,
   builder.Configuration["AllowedHosts"]);
 builder.Services.AddScoped<IUiMessageService, UiMessageService>();
 builder.Services.AddHostedService<RestaurantEventBroadcaster>();
@@ -515,27 +505,6 @@ if (isMarkedTrainingService || (OperatingSystem.IsWindows() && WindowsServiceHel
 var app = builder.Build();
 
 app.UseForwardedHeaders();
-
-if (app.Environment.IsEnvironment(TrainingEnvironment.Name))
-{
-  app.Use(async (context, next) =>
-  {
-    context.Response.Headers.ContentSecurityPolicy =
-      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; " +
-      "form-action 'self'; connect-src 'self'; img-src 'self' data: blob:; " +
-      "font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'";
-    context.Response.Headers["Permissions-Policy"] =
-      "camera=(), geolocation=(), microphone=(), payment=(), usb=(), serial=(), bluetooth=()";
-    context.Response.Headers.XContentTypeOptions = "nosniff";
-    context.Response.Headers["Referrer-Policy"] = "no-referrer";
-    if (context.Request.Path.StartsWithSegments("/Identity/Account/Register"))
-    {
-      context.Response.StatusCode = StatusCodes.Status404NotFound;
-      return;
-    }
-    await next();
-  });
-}
 
 if (app.Environment.IsDevelopment())
 {
@@ -588,15 +557,8 @@ app.MapBlazorHub();
 app.MapHub<RestaurantEventsHub>("/hubs/restaurante");
 app.MapRestaurantProductImagesApi();
 app.MapTrainingReadiness();
-if (app.Environment.IsEnvironment(TrainingEnvironment.Name))
-{
-  app.MapTrainingBlockedExternalEffectEndpoints();
-}
-else
-{
-  app.MapRestaurantQzTraySigningApi();
-  app.MapOpenClawReservationsApi();
-}
+app.MapRestaurantQzTraySigningApi();
+app.MapOpenClawReservationsApi();
 app.MapPost("/api/workforce/kiosk/pair", async (
   KioskPairApiRequest request,
   IKioskAttendanceService service,
@@ -651,16 +613,8 @@ app.MapGet("/api/workforce/prenomina/exports/{exportId:long}/{format}", async (
       ? Results.File(bundle.ZipBytes, "application/zip", bundle.ZipFileName)
       : Results.NotFound();
 }).RequireAuthorization("CapitalHumanoNomina");
-app.MapGet("/bonhomia", (IOptions<BonhomiaCheckoutOptions> options, ITrainingEnvironmentState trainingState) =>
+app.MapGet("/bonhomia", (IOptions<BonhomiaCheckoutOptions> options) =>
 {
-  if (trainingState.IsTraining)
-  {
-    return Results.Problem(
-      title: "Acción externa bloqueada",
-      detail: TrainingExternalEffectsPolicy.BlockedMessage("reservaciones públicas y PayPal"),
-      statusCode: StatusCodes.Status409Conflict);
-  }
-
   var publicBaseUrl = options.Value.PublicBaseUrl?.Trim();
   if (!string.IsNullOrWhiteSpace(publicBaseUrl)
       && Uri.TryCreate(publicBaseUrl, UriKind.Absolute, out var baseUri))

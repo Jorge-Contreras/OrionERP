@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Components.Forms;
 using OrionERP.Web.State;
 using OrionERP.Web.Services;
 using OrionERP.Web.Features.Shared;
-using OrionERP.Web.Features.TrainingSafety;
 using AppRfcs = OrionERP.Application.Features.Rfcs.Contracts;
 using Sat.MassiveDownload.Crypto;
 
@@ -19,7 +18,6 @@ namespace OrionERP.Web.Features.Rfcs.Pages
     [Inject] protected AppRfcs.ISatRfcProfileRepository Repo { get; set; } = default!;
     [Inject] protected ICurrentCompanyContext RfcState { get; set; } = default!;
     [Inject] protected IUiMessageService UiMessages { get; set; } = default!;
-    [Inject] protected ITrainingEnvironmentState TrainingEnvironmentState { get; set; } = default!;
 
     // Make the type accessible to the derived .razor
     protected class FormModel
@@ -62,7 +60,6 @@ namespace OrionERP.Web.Features.Rfcs.Pages
     protected override async Task OnInitializedAsync()
     {
       await base.OnInitializedAsync();
-      if (TrainingEnvironmentState.IsTraining) return;
       await LoadCurrentRfcAsync();
     }
 
@@ -106,12 +103,6 @@ namespace OrionERP.Web.Features.Rfcs.Pages
 
     protected async Task ValidateFielAsync()
     {
-      if (TrainingEnvironmentState.IsTraining)
-      {
-        await ShowErrorAsync("Las credenciales FIEL están bloqueadas en el entorno de capacitación.");
-        return;
-      }
-
       if (Validating) return;
 
       if (Model.Mode != CredentialMode.CerKey)
@@ -172,12 +163,6 @@ namespace OrionERP.Web.Features.Rfcs.Pages
     // Submit handler the .razor will call
     protected async Task SaveAsync()
     {
-      if (TrainingEnvironmentState.IsTraining)
-      {
-        await ShowErrorAsync("El entorno de capacitación no permite guardar credenciales fiscales.");
-        return;
-      }
-
       var sessionRfc = RfcState.RequireRfc();
       Model.Rfc = sessionRfc;
       var dto = new AppRfcs.SatRfcProfileUpsert

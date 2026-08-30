@@ -1,6 +1,4 @@
-@implements IAsyncDisposable
 @inject ITrainingEnvironmentState TrainingState
-@inject IJSRuntime Js
 
 @if (TrainingState.IsTraining)
 {
@@ -8,23 +6,4 @@
     <span class="training-environment-banner__icon" aria-hidden="true">⚠</span>
     <strong>@TrainingState.BannerText</strong>
   </div>
-}
-
-@code {
-  private IJSObjectReference? _module;
-
-  protected override async Task OnAfterRenderAsync(bool firstRender)
-  {
-    if (!firstRender || !TrainingState.IsTraining)
-      return;
-
-    _module = await Js.InvokeAsync<IJSObjectReference>("import", "./js/training-safety.js");
-    await _module.InvokeVoidAsync("installTrainingSafetyGuards");
-  }
-
-  public async ValueTask DisposeAsync()
-  {
-    if (_module is not null)
-      await _module.DisposeAsync();
-  }
 }

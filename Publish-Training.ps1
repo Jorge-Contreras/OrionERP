@@ -74,9 +74,6 @@ if (-not $SkipServiceControl) {
     if (-not $service) {
         throw "Training service is not configured. For first install, publish with -SkipServiceControl, then run Configure-TrainingService.ps1 -Restart."
     }
-    if ($service.Status -ne "Running") {
-        throw "Training service must be running before a managed publish so readiness and rollback can be verified."
-    }
 }
 
 $healthCheckUrl = "http://127.0.0.1:$($serviceUri.Port)/readyz"
@@ -88,17 +85,10 @@ $trainingReadinessValidator = {
         -and $ready.environment -eq "Training" `
         -and $ready.database.catalog -eq "Orion_Training" `
         -and $ready.database.trainingCatalogAllowed -eq $true `
-        -and $ready.database.safetyVerified -eq $true `
-        -and [int]$ready.database.schemaVersion -ge 1 `
-        -and $ready.database.sanitized -eq $true `
-        -and $ready.database.syntheticDataOnly -eq $true `
-        -and $ready.database.runtimeLoginIsolated -eq $true `
-        -and $ready.trainingSafety.active -eq $true `
-        -and $ready.trainingSafety.externalEffectsBlocked -eq $true `
-        -and $ready.trainingSafety.outboundHttpBlocked -eq $true `
-        -and $ready.trainingSafety.serverOutboundHttpBlocked -eq $true `
-        -and $ready.trainingSafety.browserOutboundBlocked -eq $true `
-        -and $ready.trainingSafety.productionCookiesAndKeysIsolated -eq $true
+        -and $ready.database.reachable -eq $true `
+        -and $ready.training.active -eq $true `
+        -and $ready.training.mode -eq "production_clone" `
+        -and $ready.training.existingUsersPreserved -eq $true
 }
 
 $publishParameters = @{
@@ -110,13 +100,8 @@ $publishParameters = @{
     PreserveDirectoryPatterns = @()
     HealthCheckUrl = $healthCheckUrl
     HealthCheckValidator = $trainingReadinessValidator
-    # A Training restart re-runs the full database safety verification before
-    # /readyz answers, which can outlast the shared default budget of 15 attempts.
-    # Falling short there would trigger a rollback of a perfectly good deployment,
-    # so this raises the retry count only for Training.
-    HealthCheckAttempts = 40
+    HealthCheckAttempts = 20
     HealthCheckDelaySeconds = 3
-    AdditionalPublishArguments = @("-p:ExcludeProductionEncryptionKey=true")
 }
 
 if ($SkipServiceControl) {
@@ -125,6 +110,8 @@ if ($SkipServiceControl) {
 
 # Publish-prod.ps1 provides staging, backup, rollback, service control, and
 # bounded health checks. Training uses a different service/output/port and does
-# not preserve appsettings files; secrets belong only in the service-scoped
-# ORION_TRAINING_ configuration installed by Configure-TrainingService.ps1.
+# not preserve appsettings files; its database secret belongs only in the
+# service-scoped ORION_TRAINING_ configuration installed by
+# Configure-TrainingService.ps1. The shared RFC encryption key is intentionally
+# published so copied credentials remain readable inside the cloned database.
 & (Join-Path -Path $PSScriptRoot -ChildPath "Publish-prod.ps1") @publishParameters

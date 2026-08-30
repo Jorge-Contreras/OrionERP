@@ -12,12 +12,6 @@ public sealed class CapacitacionCurriculumSqlTests
 
   private static readonly string PilotSql = ReadRepoFile(PilotSeedPath);
   private static readonly string CurriculumSql = ReadRepoFile(CurriculumPath);
-  private static readonly string ProvisionSql = ReadRepoFile(
-    "src/OrionERP.Infrastructure/Features/Capacitacion/Sql/20260817_orion_training_provision.sql");
-  private static readonly string AttestSql = ReadRepoFile(
-    "src/OrionERP.Infrastructure/Features/Capacitacion/Sql/20260817_orion_training_attest.sql");
-  private static readonly string Sanitizer = ReadRepoFile("Sanitize-OrionTraining.ps1");
-  private static readonly string Installer = ReadRepoFile("Install-CapacitacionSchema.ps1");
 
   private static readonly string[] PilotCourses =
   [
@@ -122,82 +116,6 @@ public sealed class CapacitacionCurriculumSqlTests
     Assert.DoesNotContain("N'http:", CurriculumSql, StringComparison.OrdinalIgnoreCase);
     Assert.DoesNotContain("N'https:", CurriculumSql, StringComparison.OrdinalIgnoreCase);
     Assert.DoesNotContain("N'//", CurriculumSql, StringComparison.Ordinal);
-  }
-
-  [Fact]
-  public void ResetWorkflow_InstallsTheCurriculumBeforeSyntheticProvisioning()
-  {
-    var installerCall = Sanitizer.IndexOf(
-      "Invoke-SqlFile -Connection $connection -Path $capacitacionInstaller",
-      StringComparison.Ordinal);
-    var curriculumCall = Sanitizer.IndexOf(
-      "Invoke-SqlFile -Connection $connection -Path $curriculumInstaller",
-      StringComparison.Ordinal);
-    var provisionCall = Sanitizer.IndexOf(
-      "Invoke-SqlFile -Connection $connection -Path $provisionScript",
-      StringComparison.Ordinal);
-
-    Assert.InRange(curriculumCall, installerCall + 1, provisionCall - 1);
-    Assert.Contains("20260819_capacitacion_curriculum_v2.sql", Sanitizer, StringComparison.Ordinal);
-    Assert.Contains("20260819_capacitacion_curriculum_v2.sql", Installer, StringComparison.Ordinal);
-    Assert.Contains("$scriptsToApply = @($schemaScript, $curriculumScript)", Installer, StringComparison.Ordinal);
-  }
-
-  [Fact]
-  public void Provisioning_GivesTrainee01TheWholeProgramWithTheTrainingInstructor()
-  {
-    var trainee01 = ProvisionSql.IndexOf("990002, versionInfo.CursoVersionId", StringComparison.Ordinal);
-    var trainee02 = ProvisionSql.IndexOf("990003, versionInfo.CursoVersionId", StringComparison.Ordinal);
-
-    Assert.True(trainee01 >= 0);
-    Assert.True(trainee02 > trainee01);
-    Assert.Contains("N'ORION-EXPERTO'", ProvisionSql, StringComparison.Ordinal);
-    Assert.Contains("990001, N'ASIGNADA'", ProvisionSql, StringComparison.Ordinal);
-    Assert.Contains("990001, N'instructor@training.orion.local'", ProvisionSql, StringComparison.Ordinal);
-    Assert.Contains(
-      "PROVISIONING FAILED: a seeded course is unpublished or missing from the complete learning path.",
-      ProvisionSql,
-      StringComparison.Ordinal);
-
-    foreach (var course in SeededCourses().Concat(PilotCourses))
-      Assert.Contains($"(N'{course}', N'OrionERP.Capacitacion", AttestSql, StringComparison.Ordinal);
-
-    Assert.Contains("(N'capacitacion', N'RutaAprendizaje')", AttestSql, StringComparison.Ordinal);
-    Assert.Contains("(N'capacitacion', N'RutaCurso')", AttestSql, StringComparison.Ordinal);
-    Assert.Contains("N'RutaAprendizaje', N'RutaCurso'", ProvisionSql, StringComparison.Ordinal);
-  }
-
-  [Fact]
-  public void Provisioning_GivesBothTraineesTheRolesEveryPracticeScreenNeeds()
-  {
-    // Un rol por familia de pantallas: OrdenTrabajoSupervisor cubre tablero y
-    // plantillas, CapitalHumanoAdmin cubre asistencia, ausencias, configuración
-    // de tiempo, pre-nómina y mi equipo, y RestauranteSupervisor cubre las
-    // catorce pantallas de Restaurante.
-    string[] moduleRoles =
-    [
-      "training-role-arrendadores", "training-role-ot-supervisor", "training-role-ap-operator",
-      "training-role-ch-admin", "training-role-rest-supervisor"
-    ];
-
-    foreach (var role in moduleRoles)
-    {
-      Assert.Contains($"(N'{role}', N'", ProvisionSql, StringComparison.Ordinal);
-      foreach (var trainee in new[] { "trainee01", "trainee02" })
-        Assert.Contains(
-          $"(N'training-user-{trainee}-v1', N'{role}')",
-          ProvisionSql,
-          StringComparison.Ordinal);
-    }
-
-    // El manifiesto de la atestación cuenta exactamente las mismas membresías
-    // que siembra el aprovisionamiento.
-    var granted = Regex.Matches(ProvisionSql, @"\(N'training-user-[a-z0-9]+-v1', N'training-role-[a-z0-9\-]+'\)").Count;
-    var attested = Regex.Matches(AttestSql, @"\(N'training-user-[a-z0-9]+-v1', N'[A-Za-z]+'\)").Count;
-    Assert.Equal(22, granted);
-    Assert.Equal(granted, attested);
-    Assert.Contains("(SELECT COUNT(*) FROM auth.AspNetUserRoles) <> 22", AttestSql, StringComparison.Ordinal);
-    Assert.Contains("(SELECT COUNT(*) FROM auth.AspNetRoles) <> 12", AttestSql, StringComparison.Ordinal);
   }
 
   private static string[] SeededCourses()

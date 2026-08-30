@@ -61,6 +61,15 @@ public sealed class RestaurantEventBroadcaster : BackgroundService
     var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
     using var conn = connectionFactory.Create() as DbConnection
       ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
+    await conn.OpenAsync(ct);
+
+    // A pooled connection can retain the isolation level used by an earlier
+    // workflow. Establish the locking level in its own command so SQL Server
+    // compiles the READPAST query under READ COMMITTED as well.
+    await conn.ExecuteAsync(new CommandDefinition(
+      "SET TRANSACTION ISOLATION LEVEL READ COMMITTED;",
+      cancellationToken: ct));
+
     var events = (await conn.QueryAsync<OutboxRow>(new CommandDefinition(
       """
       SELECT TOP (50) Id, Rfc, SiteId, EventType, AggregateId, Payload, OccurredAt

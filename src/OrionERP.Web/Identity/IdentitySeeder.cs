@@ -12,15 +12,6 @@ namespace OrionERP.Web.Identity
         public static async Task RunAsync(IServiceProvider sp)
         {
             var hostEnvironment = sp.GetRequiredService<IHostEnvironment>();
-
-            // Training identity is provisioned and attested by the guarded
-            // Orion_Training sanitization workflow. Startup must not mutate that
-            // closed synthetic manifest after its safety checks have passed.
-            if (hostEnvironment.IsEnvironment("Training"))
-            {
-                return;
-            }
-
             var roleMgr = sp.GetRequiredService<RoleManager<IdentityRole>>();
             var userMgr = sp.GetRequiredService<UserManager<ApplicationUser>>();
             var db = sp.GetRequiredService<OrionIdentityDbContext>();

@@ -465,3 +465,69 @@ aplicación ya no deja activar una receta así.
 - Regla de diagnóstico de `BaseUnitPrice` sospechoso de ser precio de venta. Las otras tres reglas
   previstas quedaron cubiertas en lugares más útiles (página de producción, desglose de costo,
   validación de activación).
+
+---
+
+# Aplicación a producción — pendiente de ejecutar
+
+La escritura a `grupocarpio` quedó **bloqueada por el clasificador de permisos** de la sesión.
+Los scripts están probados en `Orion_SandBox` y listos; hay que correrlos manualmente.
+
+## Producción no es igual al sandbox
+
+`Orion_SandBox` es un snapshot anterior. Diferencias que importan:
+
+- En **producción**, `EMPANIZADO` (7195), `MEZCLA DE ESPECIAS` (7196) y `CURTIDO DE PEPINOS` (7198)
+  **ya están** como `SemiFinished · MakeToStock`. Por eso la reclasificación toca **29** materiales
+  en producción y no 32.
+- El problema de rendimientos **sí existe igual** en producción: las mismas 3 recetas.
+
+Reclasificación que aplicaría en producción:
+
+| Regla | Cambio | n |
+|---|---|---|
+| C1 | `RawMaterial·StockItem` → `SemiFinished·MakeToStock` | 5 |
+| C2 | `FinishedGood·MakeToOrder` → `SemiFinished·MakeToOrder` | 2 |
+| C3 | → `FinishedGood·MakeToOrder` | 4 |
+| C4 | `FinishedGood·StockItem` → `FinishedGood·MakeToStock` | 1 |
+| C5 | `FinishedGood·StockItem` → `Resale·StockItem` | 17 |
+
+C1: ADEREZO CHICKEN FINGER · ENSALADA DE COL · MARINADO DE SUERO DE LECHE · PETROLEO MICHELADA · TOTOPOS
+C2: CHICKEN FINGERS · PAPAS Gajo — C3: HAMBURGUESA DE SIRLON · los 3 mojitos — C4: BINUELO
+
+## Comandos
+
+```
+sqlcmd -S 127.0.0.1,1433 -U orion -P <pwd> -C -d grupocarpio -b -i src/OrionERP.Infrastructure/Features/Logistica/Sql/20260830_material_production_role.sql
+sqlcmd -S 127.0.0.1,1433 -U orion -P <pwd> -C -d grupocarpio -b -i src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260830_fix_recipe_yield_units.sql
+sqlcmd -S 127.0.0.1,1433 -U orion -P <pwd> -C -d grupocarpio -b -i src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260830_recipe_cost_recalculation.sql
+```
+
+El tercero **abortará** hasta que se corrijan a mano los dos rendimientos que no se pueden derivar.
+
+## Reversa
+
+```sql
+-- deshacer la reclasificación
+UPDATE m SET m.ProductType = b.OldProductType, m.FulfillmentMode = b.OldFulfillmentMode
+FROM logistica.Material m
+JOIN logistica.MaterialProductionRoleBackfill b ON b.Rfc = m.Rfc AND b.MaterialId = m.Id;
+ALTER TABLE logistica.Material DROP CONSTRAINT CK_Material_ProductionRole;
+
+-- deshacer la conversión de rendimiento
+UPDATE v SET v.YieldQuantity = l.OldYieldQuantity, v.YieldUnitId = l.OldYieldUnitId
+FROM logistica.BomVersion v
+JOIN logistica.BomYieldUnitFixLog l ON l.Rfc = v.Rfc AND l.BomVersionId = v.Id;
+
+-- deshacer el recosteo
+UPDATE v SET v.FrozenTheoreticalCost = l.OldUnitCost
+FROM logistica.BomVersion v
+JOIN logistica.BomCostRecalculationLog l ON l.Rfc = v.Rfc AND l.BomVersionId = v.BomVersionId;
+```
+
+## Los dos datos que faltan
+
+| Material | Dice que rinde | Se inventaría en | Se consume como | Pregunta |
+|---|---|---|---|---|
+| `MEZCLA DE ESPECIAS PARA SUERO DE LECHE` (7196) | 1 GRAMO | MILILITRO | 40 ml por orden de chicken fingers | La tanda son 40 g de especias. ¿El rendimiento son 40, y la unidad base debería ser GRAMO en vez de MILILITRO? |
+| `CURTIDO DE PEPINOS` (7198) | 1 LITRO | REBANADA | 4 rebanadas por ensalada de col | ¿Cuántas rebanadas salen de la tanda (2 pepinos)? |

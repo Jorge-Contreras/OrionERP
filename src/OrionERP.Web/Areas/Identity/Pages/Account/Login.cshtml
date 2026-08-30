@@ -1,6 +1,5 @@
 @page
 @model OrionERP.Web.Areas.Identity.Pages.Account.LoginModel
-@inject Microsoft.Extensions.Hosting.IHostEnvironment HostEnvironment
 @{
     ViewData["Title"] = "Iniciar sesion";
 }
@@ -159,7 +158,7 @@
             </form>
             }
 
-            @if (!Model.IsSelectingCompany && !HostEnvironment.IsEnvironment("Training"))
+            @if (!Model.IsSelectingCompany)
             {
                 <div class="auth-registration">
                     <span>¿Nuevo en OrionERP?</span>

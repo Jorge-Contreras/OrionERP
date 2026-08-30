@@ -121,9 +121,33 @@
                                           EmptyText="Revisa el código o el nombre. Si el material todavía no existe, créalo en Materiales."
                                           EmptyActionHref="/logistica/materiales" />
                 <label>Esta receta rinde<input type="number" min="0.0001" step="0.0001" disabled="@IsReadOnly" @bind="editor.YieldQuantity" @bind:after="MarkDirty" @oninput="MarkDirty" /></label>
-                <label>Unidad de rendimiento<select @bind="editor.YieldUnitId" disabled><option value="0">Elige un producto…</option>@if (FindMaterial(editor.ProductMaterialId) is { } product) { <option value="@product.BaseUnitId">@UnitLabel(product.BaseUnitId)</option> }</select></label>
+                <label>Unidad de rendimiento
+                  <output class="recipe-yield-unit">@(editor.ProductMaterialId > 0 ? YieldUnitLabel : "Elige un producto…")</output>
+                  <small>Es la unidad de inventario del material; no se elige aparte.</small>
+                </label>
                 <label>Merma total esperada <small>Opcional</small><div class="recipe-input-suffix"><input type="number" min="0" max="100" step="0.1" disabled="@IsReadOnly" @bind="editor.ExpectedWastePercent" @bind:after="MarkDirty" @oninput="MarkDirty" /><span>%</span></div></label>
               </div>
+              @if (yieldUnitCorrectedFrom is { } correctedUnit)
+              {
+                <div class="recipe-classification-note">
+                  <span class="oi oi-warning" aria-hidden="true"></span>
+                  <div>
+                    @if (IsReadOnly)
+                    {
+                      <strong>El rendimiento está en @correctedUnit y no en @BaseUnitLabel.</strong>
+                      <text>Este material se inventaría en @BaseUnitLabel, así que el costo del lote completo
+                      se carga sobre una sola @BaseUnitLabel. Crea una nueva versión para corregirlo.</text>
+                    }
+                    else
+                    {
+                      <strong>El rendimiento estaba en @correctedUnit y no en @YieldUnitLabel.</strong>
+                      <text>Lo cambiamos a @YieldUnitLabel, que es la unidad de inventario de este material.
+                      Captura de nuevo cuánto rinde una corrida en @YieldUnitLabel: el número anterior
+                      cargaba el costo del lote completo sobre una sola @YieldUnitLabel.</text>
+                    }
+                  </div>
+                </div>
+              }
               @if (ProductClassificationNotice is { } classificationNotice)
               {
                 <div class="recipe-classification-note">
@@ -298,6 +322,7 @@
   private BomVersionDto? selectedDetail;
   private BomCostBreakdownDto? costBreakdown;
   private List<RecipeUsageDto> recipeUsage = [];
+  private string? yieldUnitCorrectedFrom;
   private BomVersionDto? previewVersion;
   private RecipeActivationReadinessDto? activationReadiness;
   private readonly Dictionary<string, List<string>> validationErrors = new(StringComparer.OrdinalIgnoreCase);
@@ -320,6 +345,7 @@
   private string CurrentRfc => RfcState.RequireRfc();
   private bool IsReadOnly => selectedDetail is not null && !string.Equals(selectedDetail.Status, "Draft", StringComparison.OrdinalIgnoreCase);
   private string YieldUnitLabel => UnitLabel(editor.YieldUnitId);
+  private string BaseUnitLabel => FindMaterial(editor.ProductMaterialId) is { } baseMaterial ? UnitLabel(baseMaterial.BaseUnitId) : "su unidad base";
   private string EditorEyebrow => selectedVersionId.HasValue ? $"Versión {selectedDetail?.VersionNumber}" : clonedFromVersion.HasValue ? "Nueva versión" : "Nueva receta";
   private string EditorTitle => FindMaterial(editor.ProductMaterialId)?.Description ?? selectedDetail?.ProductName ?? "Completa los datos de la receta";
   private string EditorSubtitle => IsReadOnly ? $"Consulta la versión {selectedDetail?.VersionNumber} sin alterar el historial." : "Los campos opcionales pueden completarse después mientras siga en borrador.";
@@ -403,13 +429,14 @@
       await Task.WhenAll(detailTask, costTask);
       var detail = await detailTask;
       if (detail is null) { Show("La receta seleccionada ya no existe.", true); return; }
+      yieldUnitCorrectedFrom = null;
       editor = new()
       {
         Rfc = CurrentRfc,
         BomVersionId = detail.Status == "Draft" ? detail.Id : null,
         ProductMaterialId = detail.ProductMaterialId,
         YieldQuantity = detail.YieldQuantity,
-        YieldUnitId = detail.YieldUnitId,
+        YieldUnitId = NormalizedYieldUnitId(detail.ProductMaterialId, detail.YieldUnitId, detail.Status == "Draft"),
         ExpectedWastePercent = detail.ExpectedWastePercent,
         SafetyNotes = detail.SafetyNotes,
         Components = detail.Components.Select(item => new BomComponentSaveRequest { MaterialId = item.MaterialId, Quantity = item.Quantity, UnitId = item.UnitId, ExpectedWastePercent = item.ExpectedWastePercent }).ToList(),
@@ -446,6 +473,19 @@
     validationErrors.Clear();
     message = null;
     return Task.CompletedTask;
+  }
+
+  /// <summary>
+  /// El rendimiento siempre se expresa en la unidad base del material. Hay versiones antiguas
+  /// guardadas en otra unidad: al abrirlas se corrige la unidad y se avisa, porque la cantidad
+  /// deja de significar lo mismo y hay que recapturarla.
+  /// </summary>
+  private int NormalizedYieldUnitId(int productMaterialId, int storedYieldUnitId, bool editable)
+  {
+    var baseUnitId = FindMaterial(productMaterialId)?.BaseUnitId ?? 0;
+    if (baseUnitId <= 0 || baseUnitId == storedYieldUnitId) return storedYieldUnitId;
+    yieldUnitCorrectedFrom = UnitLabel(storedYieldUnitId);
+    return editable ? baseUnitId : storedYieldUnitId;
   }
 
   private async Task ReclassifyAsBatchSubProductAsync()
@@ -486,12 +526,13 @@
     var source = selectedDetail;
     var existingDraft = versions.Where(version => version.ProductMaterialId == source.ProductMaterialId && version.Status == "Draft").OrderByDescending(version => version.VersionNumber).FirstOrDefault();
     if (existingDraft is not null) { await EditAsync(existingDraft.Id); if (selectedVersionId == existingDraft.Id) Show("Este producto ya tiene un borrador; lo abrimos para que continúes.", false); return; }
+    yieldUnitCorrectedFrom = null;
     editor = new()
     {
       Rfc = CurrentRfc,
       ProductMaterialId = source.ProductMaterialId,
       YieldQuantity = source.YieldQuantity,
-      YieldUnitId = source.YieldUnitId,
+      YieldUnitId = NormalizedYieldUnitId(source.ProductMaterialId, source.YieldUnitId, editable: true),
       ExpectedWastePercent = source.ExpectedWastePercent,
       SafetyNotes = source.SafetyNotes,
       Components = source.Components.Select(item => new BomComponentSaveRequest { MaterialId = item.MaterialId, Quantity = item.Quantity, UnitId = item.UnitId, ExpectedWastePercent = item.ExpectedWastePercent }).ToList(),
@@ -657,7 +698,7 @@
     var discard = await JsRuntime.InvokeAsync<bool>("confirm", "Hay cambios sin guardar en esta receta. ¿Deseas descartarlos?");
     if (!discard) context.PreventNavigation();
   }
-  private void ResetEditor() { editorVisible = false; editor = NewEditor(); selectedDetail = null; costBreakdown = null; recipeUsage = []; selectedVersionId = null; selectedStatus = null; clonedFromVersion = null; isDirty = false; validationErrors.Clear(); }
+  private void ResetEditor() { editorVisible = false; editor = NewEditor(); selectedDetail = null; costBreakdown = null; recipeUsage = []; yieldUnitCorrectedFrom = null; selectedVersionId = null; selectedStatus = null; clonedFromVersion = null; isDirty = false; validationErrors.Clear(); }
   private void Show(string value, bool error) { message = value; isError = error; }
   private static BomDraftSaveRequest NewEditor() => new() { YieldQuantity = 1, Components = [new() { Quantity = 1 }], Steps = [new() { StepNumber = 1 }] };
   private sealed record RecipeFamily(int ProductMaterialId, string ProductName, IReadOnlyList<BomVersionDto> Versions);

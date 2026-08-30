@@ -12,8 +12,7 @@ catálogo completo se arma con dos scripts, en este orden:
 Ambos son idempotentes y comparten el mismo guardarraíl de catálogo
 (`ExpectedDatabase` debe ser `Orion_Training`, `Orion_Sandbox` o `grupocarpio`).
 `Install-CapacitacionSchema.ps1` los aplica juntos y
-`Sanitize-OrionTraining.ps1` los ejecuta como parte del reinicio del entorno de
-capacitación, antes de provisionar la cohorte sintética.
+el ambiente `Orion_Training` los recibe normalmente al clonar `grupocarpio`.
 
 ## Estructura de cada curso nuevo
 
@@ -72,57 +71,20 @@ manifiesto de lo que significa dominar OrionERP:
 navegación de OrionERP aparezca en el contenido sembrado, de modo que un módulo
 nuevo sin curso hace fallar la prueba.
 
-## Cohorte del entorno de capacitación
+## Usuarios y permisos en el entorno de capacitación
 
-`20260817_orion_training_provision.sql` crea las asignaciones ficticias:
-
-- `instructor@training.orion.local` (empleado 990001) queda como instructor y
-  responsable de la asignación de **todos** los cursos.
-- `trainee01@training.orion.local` (empleado 990002) recibe el programa
-  completo: una asignación por cada curso de la ruta `ORION-EXPERTO`.
-- `trainee02@training.orion.local` (empleado 990003) conserva la cohorte piloto
-  de cinco cursos.
-
-### Roles de la cohorte
-
-Los roles también se siembran en el aprovisionamiento; **no se asignan a mano**,
-porque `auth.AspNetUserRoles` se borra en cada reinicio. Un rol por familia de
-pantallas basta para todo el currículo:
-
-| Rol | Qué habilita | instructor | trainee01 / trainee02 |
-| --- | --- | :---: | :---: |
-| `Lectura` | Consulta general | | ✓ |
-| `SatOperator` | CFDI, contabilidad, bancos, reservaciones | ✓ | ✓ |
-| `Logistica` | Materiales, proveedores, compras, ubicaciones, conteos | ✓ | ✓ |
-| `Arrendadores` | Estado de cuenta de arrendadores | | ✓ |
-| `OrdenTrabajoSupervisor` | Órdenes de trabajo y plantillas | | ✓ |
-| `APOperator` | Cuentas por pagar recurrentes | | ✓ |
-| `CapitalHumanoAdmin` | Asistencia, ausencias, configuración de tiempo, pre-nómina, mi equipo | | ✓ |
-| `RestauranteSupervisor` | Las catorce pantallas de Restaurante | | ✓ |
-| `CapacitacionAdmin`, `CapacitacionInstructor` | Administración de cursos y sesiones guiadas | ✓ | |
-| `Administrador` | Reportes financieros, ajustes, expediente y portal de seguridad | ✓ | |
-
-`Administrador` es exclusivo del instructor: es la cuenta con la que se
-administran roles dentro de Training desde `/admin/seguridad`, y es el único
-acceso a las cuatro pantallas que no tienen un rol menor. Por eso los cursos
-`REPORTES-FINANCIEROS`, `AJUSTES-PLANTILLAS`, `ADMIN-SEGURIDAD` y
-`RH-EXPEDIENTES` se imparten como demostración conducida por el instructor.
-`CapitalHumanoNomina` y `Conteo` quedan deliberadamente fuera del entorno.
-
-La atestación (`20260817_orion_training_attest.sql`) revisa ese manifiesto: el
-catálogo debe contener exactamente los cursos revisados, cada versión debe estar
-publicada por su autor declarado, la ruta debe enumerarlos todos y las
-asignaciones deben coincidir con los conteos anteriores. Cualquier curso extra o
-faltante impide la atestación positiva y, por lo tanto, el arranque del servicio
-de Training.
+Training no crea una cohorte artificial. El clon conserva `auth.AspNetUsers`,
+roles, relaciones con empresas y contraseñas tal como están en producción. Cada
+persona entra con su cuenta habitual y conserva las mismas pantallas y permisos.
+Las asignaciones de cursos también forman parte del clon y pueden administrarse
+normalmente desde el propio módulo.
 
 ## Agregar un curso nuevo
 
 1. Añade el curso, sus lecciones, bloques, recursos, evaluación, preguntas,
    práctica y pasos al script del currículo, siempre en la versión `BORRADOR`.
 2. Agrégalo a `@RutaOrden` para que forme parte de la ruta completa.
-3. Añade la clave y su autor a `@CursoManifiesto` en el script de atestación.
-4. Ejecuta las pruebas: `dotnet test tests/OrionERP.UnitTests/OrionERP.UnitTests.csproj`.
+3. Ejecuta las pruebas: `dotnet test tests/OrionERP.UnitTests/OrionERP.UnitTests.csproj`.
 
 Una versión ya publicada nunca se edita: para cambiar contenido se crea una
 versión nueva del curso.

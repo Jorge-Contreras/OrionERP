@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
-using Microsoft.Extensions.Hosting;
 using Microsoft.JSInterop;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Logistica.Locations;
@@ -41,7 +40,6 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
   [Inject] private IJSRuntime Js { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
   [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
-  [Inject] private IHostEnvironment HostEnvironment { get; set; } = default!;
 
   protected List<LookupOptionDto> LocationOptions { get; set; } = [];
   protected List<PhysicalCountSessionSummaryDto> Sessions { get; set; } = [];
@@ -117,7 +115,7 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
   protected bool CanApprove => CanManageCounts && SelectedSession is not null && IsSubmittedStatus(SelectedSession.Status);
   protected bool CanPost => CanManageCounts && SelectedSession is not null && IsApprovedStatus(SelectedSession.Status);
   protected bool CanCaptureLine => CanSubmit && SelectedLine is not null;
-  protected bool CameraScanningAllowed => !string.Equals(HostEnvironment.EnvironmentName, "Training", StringComparison.OrdinalIgnoreCase);
+  protected bool CameraScanningAllowed => true;
   protected string SelectedSessionStatusBadgeClass => GetSessionStatusBadgeClass(SelectedSession?.Status);
   protected string SelectedSessionStatusLabel => GetSessionStatusLabel(SelectedSession?.Status);
 

@@ -165,7 +165,7 @@
                 @if (block.Tipo == CapacitacionCodes.BloquePractica && CurrentPractice is not null)
                 {
                   <section class="cap-live-practice" aria-labelledby="cap-live-practice-title">
-                    <div class="cap-practice-env"><span class="oi oi-shield" aria-hidden="true"></span><div><strong>ENTORNO DE PRÁCTICA · DATOS SIMULADOS</strong><small>Las integraciones y efectos externos están bloqueados.</small></div></div>
+                    <div class="cap-practice-env"><span class="oi oi-monitor" aria-hidden="true"></span><div><strong>ENTORNO DE PRÁCTICA · COPIA DE PRODUCCIÓN</strong><small>Practica libremente: los cambios quedan únicamente en Orion_Training.</small></div></div>
                     <h2 id="cap-live-practice-title">@CurrentPractice.Titulo</h2><p>@CurrentPractice.Instrucciones</p>
                     @if (BuildSandboxUrl(CurrentPractice.RutaSandbox) is { } sandboxUrl)
                     {

@@ -105,7 +105,7 @@
               @if (ActiveBlock.Tipo == CapacitacionCodes.BloquePractica && CurrentPractice is not null)
               {
                 <section class="cap-practice" aria-labelledby="cap-practice-title">
-                  <div class="cap-practice__banner"><span class="oi oi-shield" aria-hidden="true"></span><div><strong>Práctica aislada</strong><p>Trabaja únicamente con datos simulados. Ninguna acción de este escenario debe ejecutarse en producción.</p></div></div>
+                  <div class="cap-practice__banner"><span class="oi oi-monitor" aria-hidden="true"></span><div><strong>Práctica en copia de producción</strong><p>Usa tus datos y tu cuenta habituales; todo cambio permanece en Orion_Training.</p></div></div>
                   <h2 id="cap-practice-title">@CurrentPractice.Titulo</h2>
                   <p>@CurrentPractice.Instrucciones</p>
                   <ol class="cap-practice__steps">

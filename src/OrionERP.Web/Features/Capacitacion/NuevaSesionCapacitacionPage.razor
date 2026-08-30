@@ -73,7 +73,7 @@
             {
               <div class="cap-empty py-4"><span class="cap-empty__icon"><span class="oi oi-book" aria-hidden="true"></span></span><h3>Selecciona un curso</h3><p>Aquí verás el resumen de la sesión.</p></div>
             }
-            <div class="cap-alert"><span class="oi oi-shield" aria-hidden="true"></span><p>Las prácticas abrirán OrionERP Training con datos simulados; evita usar ejemplos de clientes o documentos reales.</p></div>
+            <div class="cap-alert"><span class="oi oi-monitor" aria-hidden="true"></span><p>Las prácticas abrirán una copia de producción en OrionERP Training. Los cambios realizados allí no afectan el sistema en vivo.</p></div>
             <button class="cap-btn cap-btn--teal w-100" type="button" disabled="@(!CanCreate || saving)" @onclick="CreateSessionAsync"><span class="oi oi-people" aria-hidden="true"></span>@(saving ? "Creando sesión…" : "Crear sesión guiada")</button>
           </div>
         </aside>

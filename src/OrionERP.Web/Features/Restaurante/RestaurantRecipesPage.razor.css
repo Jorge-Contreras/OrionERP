@@ -6,3 +6,4 @@
 .recipe-usage__list small{color:#68776f}
 .recipe-usage__empty{margin:.9rem 0 0;color:#68776f}
 .recipe-usage__produce{display:inline-block;margin-top:.8rem;padding:.5rem .8rem;border-radius:.6rem;background:#356f5d;color:#fff;font-weight:800;font-size:.82rem;text-decoration:none}
+.recipe-yield-unit{display:flex;align-items:center;min-height:2.7rem;padding:.55rem .65rem;border:1px solid #dde4e1;border-radius:.65rem;background:#f2f5f4;color:#435149;font-weight:800}

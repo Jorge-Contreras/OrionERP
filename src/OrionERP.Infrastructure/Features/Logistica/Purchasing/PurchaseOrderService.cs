@@ -178,8 +178,11 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           CAST(line.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice,
           CAST(line.OrderedQuantity AS decimal(18,4)) AS OrderedQuantity,
           CAST(line.ReceivedQuantity AS decimal(18,4)) AS ReceivedQuantity,
-          CAST(line.OrderedQuantity - line.ReceivedQuantity AS decimal(18,4)) AS RemainingQuantity
+          CAST(line.OrderedQuantity - line.ReceivedQuantity AS decimal(18,4)) AS RemainingQuantity,
+          CAST(CASE WHEN material.TrackLots = 1 OR material.IsPerishable = 1 THEN 1 ELSE 0 END AS bit) AS RequiresLot
       FROM logistica.PurchaseOrderLine line
+      JOIN logistica.Material material
+        ON material.Id = line.MaterialId
       WHERE line.PurchaseOrderId = @PurchaseOrderId
       ORDER BY line.MaterialCodeSnapshot, line.MaterialDescriptionSnapshot, line.Id;
 
@@ -214,6 +217,11 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           receiptLine.LocationId,
           location.LocationName,
           CAST(receiptLine.Quantity AS decimal(18,4)) AS Quantity,
+          CAST(receiptLine.SubtotalAmount AS decimal(18,2)) AS SubtotalAmount,
+          CAST(receiptLine.IvaAmount AS decimal(18,2)) AS IvaAmount,
+          CAST(receiptLine.TotalAmount AS decimal(18,2)) AS TotalAmount,
+          CAST(receiptLine.IncludesIva AS bit) AS IncludesIva,
+          CAST(receiptLine.UnitCost AS decimal(18,6)) AS UnitCost,
           receipt.CreatedBy,
           receipt.Notes
       FROM logistica.PurchaseReceiptLine receiptLine
@@ -524,9 +532,10 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         return LogisticsCommandResult.Fail("Solo las órdenes emitidas o parcialmente recibidas aceptan recepciones.");
       }
 
-      var groupedLines = request.Lines
-        .GroupBy(line => line.PurchaseOrderLineAllocationId)
-        .ToDictionary(group => group.Key, group => group.Sum(item => item.Quantity));
+      var receiptLinesByAllocation = request.Lines
+        .ToDictionary(line => line.PurchaseOrderLineAllocationId);
+      var groupedLines = receiptLinesByAllocation
+        .ToDictionary(item => item.Key, item => item.Value.Quantity);
 
       var allocationRows = await LoadAllocationRowsAsync(conn, tx, request.PurchaseOrderId, groupedLines.Keys, ct);
       if (allocationRows.Count != groupedLines.Count)
@@ -538,7 +547,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       foreach (var item in groupedLines)
       {
         var allocation = allocationRows[item.Key];
-        var receiptInput = request.Lines.First(line => line.PurchaseOrderLineAllocationId == item.Key);
+        var receiptInput = receiptLinesByAllocation[item.Key];
         var remainingQuantity = allocation.PlannedQuantity - allocation.ReceivedQuantity;
         if (item.Value > remainingQuantity)
         {
@@ -602,9 +611,13 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       foreach (var item in groupedLines)
       {
         var allocation = allocationRows[item.Key];
-        var receiptInput = request.Lines.First(line => line.PurchaseOrderLineAllocationId == item.Key);
+        var receiptInput = receiptLinesByAllocation[item.Key];
         var quantity = item.Value;
-        var unitCost = allocation.BaseUnitPrice.GetValueOrDefault();
+        var amounts = PurchaseReceiptAmountCalculator.Calculate(receiptInput.TotalAmount, receiptInput.IncludesIva);
+        var unitCost = PurchaseReceiptAmountCalculator.CalculateBaseUnitCost(
+          receiptInput.TotalAmount,
+          receiptInput.IncludesIva,
+          quantity);
 
         await conn.ExecuteAsync(
           new CommandDefinition(
@@ -791,6 +804,10 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                 Quantity,
                 MaterialLotId,
                 UnitCost,
+                SubtotalAmount,
+                IvaAmount,
+                TotalAmount,
+                IncludesIva,
                 CreatedAt
             )
             VALUES
@@ -803,6 +820,10 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                 @Quantity,
                 @MaterialLotId,
                 @UnitCost,
+                @SubtotalAmount,
+                @IvaAmount,
+                @TotalAmount,
+                @IncludesIva,
                 SYSUTCDATETIME()
             );
             """,
@@ -815,7 +836,11 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
               allocation.MaterialId,
               Quantity = quantity,
               MaterialLotId = materialLotId,
-              UnitCost = unitCost
+              UnitCost = unitCost,
+              amounts.SubtotalAmount,
+              amounts.IvaAmount,
+              amounts.TotalAmount,
+              receiptInput.IncludesIva
             },
             tx,
             cancellationToken: ct));
@@ -929,6 +954,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           },
           tx,
           cancellationToken: ct));
+
+      await UpdateMaterialPricesFromCompletedOrderAsync(conn, tx, purchaseOrderId, ct);
 
       await tx.CommitAsync(ct);
       return LogisticsCommandResult.Ok("Orden de compra cerrada correctamente.", purchaseOrderId);
@@ -1404,6 +1431,11 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     if (request.Lines.Count == 0)
     {
       return "Captura al menos una cantidad para registrar la recepción.";
+    }
+
+    if (request.Lines.Select(line => line.PurchaseOrderLineAllocationId).Distinct().Count() != request.Lines.Count)
+    {
+      return "Cada ubicación debe aparecer una sola vez en la recepción.";
     }
 
     foreach (var line in request.Lines)
@@ -1956,6 +1988,47 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           CompletedBy = actor,
           UpdatedBy = actor
         },
+        tx,
+        cancellationToken: ct));
+
+    if (isCompleted)
+    {
+      await UpdateMaterialPricesFromCompletedOrderAsync(conn, tx, purchaseOrderId, ct);
+    }
+  }
+
+  private static async Task UpdateMaterialPricesFromCompletedOrderAsync(
+    DbConnection conn,
+    DbTransaction? tx,
+    int purchaseOrderId,
+    CancellationToken ct)
+  {
+    await conn.ExecuteAsync(
+      new CommandDefinition(
+        """
+        ;WITH ActualReceiptCosts AS
+        (
+          SELECT
+              receiptLine.MaterialId,
+              CAST(
+                SUM(COALESCE(receiptLine.SubtotalAmount, receiptLine.UnitCost * receiptLine.Quantity))
+                / NULLIF(SUM(receiptLine.Quantity), 0)
+                AS decimal(18,6)) AS BaseUnitPrice
+          FROM logistica.PurchaseReceiptLine receiptLine
+          JOIN logistica.PurchaseReceipt receipt
+            ON receipt.Id = receiptLine.PurchaseReceiptId
+          WHERE receipt.PurchaseOrderId = @PurchaseOrderId
+            AND (receiptLine.SubtotalAmount IS NOT NULL OR receiptLine.UnitCost IS NOT NULL)
+          GROUP BY receiptLine.MaterialId
+        )
+        UPDATE material
+        SET BaseUnitPrice = actual.BaseUnitPrice,
+            UpdatedDate = CONVERT(date, SYSUTCDATETIME())
+        FROM logistica.Material material
+        JOIN ActualReceiptCosts actual
+          ON actual.MaterialId = material.Id;
+        """,
+        new { PurchaseOrderId = purchaseOrderId },
         tx,
         cancellationToken: ct));
   }

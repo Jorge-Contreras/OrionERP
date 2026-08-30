@@ -9,39 +9,70 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
             <h1 class="h3 mb-1">Compras</h1>
-            <p class="text-muted mb-0">Órdenes de compra por proveedor con planeación por ubicación, recepción parcial, miniaturas de material y PDF con QuestPDF.</p>
+            <p class="text-muted mb-0">Prepara la compra, recibe contra el ticket y termina con precios actualizados.</p>
         </div>
 
-        <div class="d-flex flex-wrap gap-2">
+        <div class="compras-action-bar">
+            <button type="button" class="btn btn-outline-secondary" @onclick="AlternarExploradorOrdenes" disabled="@IsMutating">
+                @(ShowOrderBrowser ? "Ocultar compras" : "Buscar compra")
+            </button>
             <button type="button" class="btn btn-outline-secondary" @onclick="NuevaOrden" disabled="@IsMutating">
-                Nueva orden
+                Nueva compra
             </button>
-            <button type="button" class="btn btn-outline-success" @onclick="AbrirAutoPoModal" disabled="@IsMutating">
-                @(IsCreatingAutoPo ? "Generando Auto PO..." : "Auto PO")
-            </button>
-            <button type="button" class="btn btn-primary" @onclick="GuardarBorradorAsync" disabled="@(!IsDraftMode || IsMutating)">
-                @(IsSavingDraft ? "Guardando..." : "Guardar borrador")
-            </button>
-            <button type="button" class="btn btn-outline-primary" @onclick="EmitirOrdenAsync" disabled="@(!CanIssue)">
-                @(IsIssuing ? "Emitiendo..." : "Emitir")
-            </button>
-            <button type="button" class="btn btn-outline-success" @onclick="RegistrarRecepcionAsync" disabled="@(!CanReceive)">
-                @(IsReceiving ? "Recibiendo..." : "Registrar recepción")
-            </button>
-            <button type="button" class="btn btn-outline-warning" @onclick="CerrarPendienteAsync" disabled="@(!CanComplete)">
-                @(IsCompleting ? "Cerrando..." : "Cerrar pendiente")
-            </button>
-            <button type="button" class="btn btn-outline-dark" @onclick="CancelarOrdenAsync" disabled="@(!CanCancel)">
-                @(IsCancelling ? "Cancelando..." : "Cancelar")
-            </button>
-            <button type="button" class="btn btn-outline-info" @onclick="ImprimirOrdenAsync" disabled="@(!CanPrint)">
-                @(IsPrinting ? "Generando PDF..." : "Imprimir PO")
-            </button>
+            @if (IsDraftMode)
+            {
+                <button type="button" class="btn btn-outline-success" @onclick="AbrirAutoPoModal" disabled="@IsMutating">
+                    @(IsCreatingAutoPo ? "Preparando..." : "Sugerir compra")
+                </button>
+                <button type="button" class="btn btn-primary" @onclick="GuardarBorradorAsync" disabled="@IsMutating">
+                    @(IsSavingDraft ? "Guardando..." : "Guardar")
+                </button>
+            }
+            @if (CanIssue)
+            {
+                <button type="button" class="btn btn-primary" @onclick="EmitirOrdenAsync">
+                    @(IsIssuing ? "Enviando..." : "Enviar al proveedor")
+                </button>
+            }
+            @if (CanEnterReceipt)
+            {
+                <button type="button" class="btn btn-success" @onclick="RegistrarRecepcionAsync" disabled="@(!CanReceive)">
+                    @(IsReceiving ? "Registrando..." : "Guardar recepción")
+                </button>
+            }
+            @if (CanComplete)
+            {
+                <button type="button" class="btn btn-outline-warning" @onclick="CerrarPendienteAsync">
+                    @(IsCompleting ? "Cerrando..." : "Cerrar sin recibir lo pendiente")
+                </button>
+            }
+            @if (CanPrint)
+            {
+                <button type="button" class="btn btn-outline-info" @onclick="ImprimirOrdenAsync">
+                    @(IsPrinting ? "Generando..." : "Descargar orden")
+                </button>
+            }
+            @if (CanCancel)
+            {
+                <button type="button" class="btn btn-link text-danger compras-cancel-action" @onclick="CancelarOrdenAsync">
+                    @(IsCancelling ? "Cancelando..." : "Cancelar")
+                </button>
+            }
         </div>
     </div>
 
+    <section class="compras-process" aria-label="Proceso de compra">
+        <ol class="compras-process-steps">
+            <li class="@GetProcessStepClass(1)"><span>1</span><div><strong>Preparar</strong><small>Proveedor y materiales</small></div></li>
+            <li class="@GetProcessStepClass(2)"><span>2</span><div><strong>Enviar</strong><small>Orden al proveedor</small></div></li>
+            <li class="@GetProcessStepClass(3)"><span>3</span><div><strong>Recibir</strong><small>Cantidades y ticket</small></div></li>
+            <li class="@GetProcessStepClass(4)"><span>4</span><div><strong>Terminar</strong><small>Actualizar precios</small></div></li>
+        </ol>
+        <p>@ProcessGuidance</p>
+    </section>
+
     <div class="row g-3">
-        <div class="col-12 col-xxl-4">
+        <div class="col-12 col-xxl-4 compras-order-browser @(ShowOrderBrowser ? "is-open" : null)">
             <section class="card shadow-sm mb-3">
                 <div class="card-body">
                     <h2 class="h5 mb-3">Filtros</h2>
@@ -61,7 +92,7 @@
                             </select>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Status</label>
+                            <label class="form-label">Estado</label>
                             <select class="form-select" @bind="Filter.Status">
                                 <option value="">Todos</option>
                                 @foreach (var status in StatusOptions)
@@ -227,8 +258,15 @@
                             <h3 class="h5 mb-3">Agregar materiales</h3>
                             <div class="row g-3 align-items-end">
                                 <div class="col-md-8">
-                                    <label class="form-label">Buscar material</label>
-                                    <InputText class="form-control" @bind-Value="MaterialSearchText" @bind-Value:event="oninput" @onkeyup="OnMaterialSearchKeyUpAsync" placeholder="Código, descripción o barras" />
+                                    <label class="form-label" for="compras-material-search">Buscar material</label>
+                                    <input id="compras-material-search"
+                                           class="form-control"
+                                           type="search"
+                                           @bind="MaterialSearchText"
+                                           @bind:event="oninput"
+                                           @onkeyup="OnMaterialSearchKeyUpAsync"
+                                           placeholder="Código, descripción o barras"
+                                           autocomplete="off" />
                                 </div>
                                 <div class="col-md-4">
                                     <button type="button" class="btn btn-outline-primary w-100" @onclick="BuscarMaterialesAsync" disabled="@IsSearchingMaterials">
@@ -553,53 +591,43 @@
                     </section>
                 }
 
-                @if (CanReceive)
+                @if (CanEnterReceipt)
                 {
-                    <section class="card shadow-sm mb-3">
+                    <section class="card shadow-sm mb-3 compras-receipt-section">
                         <div class="card-body">
                             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                                 <div>
-                                    <h3 class="h5 mb-1">Recepción</h3>
-                                    <p class="text-muted mb-0">Recibe cantidades en unidad de compra por ubicación. El sistema convierte internamente a unidad base para inventario.</p>
+                                    <span class="compras-section-kicker">Paso 3 · Compara con el ticket</span>
+                                    <h3 class="h4 mb-1">¿Qué llegó y cuánto costó?</h3>
+                                    <p class="text-muted mb-0">Captura el total impreso para la cantidad recibida de cada artículo.</p>
                                 </div>
-                                <button type="button" class="btn btn-sm btn-outline-success" @onclick="RecibirTodo" disabled="@(!CanReceive)">
-                                    Recibir Todo
+                                <button type="button" class="btn btn-outline-success" @onclick="RecibirTodo" disabled="@(!CanEnterReceipt)">
+                                    Recibir todo lo pendiente
                                 </button>
                             </div>
 
                             <div class="row g-3 mb-3">
-                                <div class="col-md-3">
-                                    <label class="form-label">Fecha recepción</label>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Fecha del ticket</label>
                                     <InputDate class="form-control" @bind-Value="ReceiptDate" />
                                 </div>
-                                <div class="col-md-9">
-                                    <label class="form-label">Notas recepción</label>
-                                    <InputTextArea class="form-control" rows="2" @bind-Value="ReceiptNotes" />
+                                <div class="col-md-8">
+                                    <label class="form-label fw-semibold">Nota opcional</label>
+                                    <InputTextArea class="form-control" rows="2" @bind-Value="ReceiptNotes" placeholder="Ej. faltó una caja o hubo sustitución" />
                                 </div>
                             </div>
 
-                            <div class="table-responsive compras-receive-scroll">
-                                <table class="table table-sm table-hover align-middle compras-receive-table">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th class="compras-thumb-col">Foto</th>
-                                            <th>Material</th>
-                                            <th>Ubicación</th>
-                                            <th class="text-end">Planeado</th>
-                                            <th class="text-end">Recibido</th>
-                                            <th class="text-end">Pendiente</th>
-                                            <th class="text-end">Recibir ahora</th>
-                                            <th>Lote</th>
-                                            <th>Caducidad</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
+                            <div class="row g-3 align-items-start">
+                                <div class="col-12 col-xl-8">
+                                    <div class="compras-receive-grid">
                                         @foreach (var item in ReceiveItems)
                                         {
                                             var thumbnailDataUrl = GetMaterialThumbnailDataUrl(item.MaterialId);
                                             var materialTitle = string.IsNullOrWhiteSpace(item.MaterialDescription) ? item.MaterialCode : item.MaterialDescription;
-                                            <tr>
-                                                <td class="compras-thumb-col">
+                                            var itemAmounts = GetReceiptItemAmounts(item);
+                                            var suggestedTotal = GetSuggestedReceiptTotal(item);
+                                            <article class="compras-receive-card @(item.ReceiveNowQuantity > 0m ? "is-selected" : null)">
+                                                <header>
                                                     @if (thumbnailDataUrl is not null)
                                                     {
                                                         <img src="@thumbnailDataUrl" alt="Imagen de @materialTitle" class="compras-thumb" />
@@ -608,32 +636,113 @@
                                                     {
                                                         <div class="compras-thumb-placeholder">@GetMaterialFallbackText(item.MaterialCode, item.MaterialDescription)</div>
                                                     }
-                                                </td>
-                                                <td>
-                                                    <div class="fw-semibold">@materialTitle</div>
-                                                    <small class="text-muted">@item.MaterialCode</small>
-                                                </td>
-                                                <td>
-                                                    <div>@item.LocationName</div>
-                                                    <small class="text-muted">@(string.IsNullOrWhiteSpace(item.LocationCode) ? "Sin código" : item.LocationCode)</small>
-                                                </td>
-                                                <td class="text-end">@FormatPurchaseQuantity(item, item.PlannedQuantity)</td>
-                                                <td class="text-end">@FormatPurchaseQuantity(item, item.ReceivedQuantity)</td>
-                                                <td class="text-end">@FormatPurchaseQuantity(item, item.RemainingQuantity)</td>
-                                                <td class="text-end">
+                                                    <div class="compras-receive-card-title">
+                                                        <strong>@materialTitle</strong>
+                                                        <small>@item.MaterialCode · @item.LocationName</small>
+                                                    </div>
+                                                    <div class="compras-pending-pill">
+                                                        <span>Pendiente</span>
+                                                        <strong>@FormatPurchaseQuantity(item, item.RemainingQuantity)</strong>
+                                                    </div>
+                                                </header>
+
+                                                <div class="compras-receive-fields">
+                                                    <label>
+                                                        <span>Cantidad que llegó</span>
+                                                        <small>En @GetPurchaseUnitName(item)</small>
                                                     <input type="number"
                                                            step="any"
                                                            min="0"
-                                                           class="form-control form-control-sm compras-inline-number"
+                                                               inputmode="decimal"
+                                                           class="form-control compras-receive-number"
                                                            value="@FormatNumberInput(GetReceiveNowDisplayQuantity(item))"
-                                                           @onchange="args => UpdateReceiveNowDisplayQuantity(item, args)" />
-                                                </td>
-                                                <td><input class="form-control form-control-sm" placeholder="Si aplica" @bind="item.LotCode" /></td>
-                                                <td><InputDate class="form-control form-control-sm" @bind-Value="item.ExpiresAt" /></td>
-                                            </tr>
+                                                           @oninput="args => UpdateReceiveNowDisplayQuantity(item, args)" />
+                                                    </label>
+                                                    <label>
+                                                        <span>Total en el ticket</span>
+                                                        <small>Por esta cantidad</small>
+                                                        <div class="input-group compras-money-input">
+                                                            <span class="input-group-text">$</span>
+                                                            <input type="number"
+                                                                   class="form-control"
+                                                                   min="0.01"
+                                                                   step="0.01"
+                                                                   inputmode="decimal"
+                                                                   value="@(item.TotalAmount.HasValue ? FormatNumberInput(item.TotalAmount.Value) : null)"
+                                                                   @oninput="args => UpdateReceiveTotalAmount(item, args)" />
+                                                        </div>
+                                                    </label>
+                                                </div>
+
+                                                <label class="compras-iva-toggle">
+                                                    <input type="checkbox" @bind="item.IncludesIva" />
+                                                    <span><strong>IVA incluido</strong><small>Márcalo solo si este artículo paga IVA de 16%.</small></span>
+                                                </label>
+
+                                                @if (item.TotalAmount.GetValueOrDefault() > 0m)
+                                                {
+                                                    <div class="compras-line-breakdown">
+                                                        <span>Subtotal <strong>@FormatMoney(itemAmounts.SubtotalAmount)</strong></span>
+                                                        <span>IVA <strong>@FormatMoney(itemAmounts.IvaAmount)</strong></span>
+                                                        <span>Costo por @(string.IsNullOrWhiteSpace(item.BaseUnitName) ? "unidad" : item.BaseUnitName) <strong>@FormatMoney(GetReceiptItemBaseUnitCost(item))</strong></span>
+                                                    </div>
+                                                }
+                                                else if (suggestedTotal.HasValue)
+                                                {
+                                                    <p class="compras-price-hint">Referencia de la orden: @FormatMoney(suggestedTotal). Confirma el importe real del ticket.</p>
+                                                }
+
+                                                @if (item.RequiresLot)
+                                                {
+                                                    <div class="compras-lot-fields">
+                                                        <label><span>Lote <strong>obligatorio</strong></span><input class="form-control" value="@item.LotCode" @oninput="args => UpdateReceiveLotCode(item, args)" /></label>
+                                                        <label><span>Caducidad <strong>obligatoria</strong></span><input type="date" class="form-control" value="@FormatDateInput(item.ExpiresAt)" @oninput="args => UpdateReceiveExpiration(item, args)" /></label>
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <details class="compras-optional-fields">
+                                                        <summary>Agregar lote o caducidad (opcional)</summary>
+                                                        <div class="compras-lot-fields">
+                                                            <label><span>Lote</span><input class="form-control" value="@item.LotCode" @oninput="args => UpdateReceiveLotCode(item, args)" /></label>
+                                                            <label><span>Caducidad</span><input type="date" class="form-control" value="@FormatDateInput(item.ExpiresAt)" @oninput="args => UpdateReceiveExpiration(item, args)" /></label>
+                                                        </div>
+                                                    </details>
+                                                }
+                                            </article>
                                         }
-                                    </tbody>
-                                </table>
+                                    </div>
+                                </div>
+
+                                <div class="col-12 col-xl-4">
+                                    <aside class="compras-ticket-summary">
+                                        <div class="compras-ticket-brand">Resumen del ticket</div>
+                                        <div class="compras-ticket-meta"><span>Artículos</span><strong>@ReceiptCapturedItemCount</strong></div>
+                                        <div class="compras-ticket-rule"></div>
+                                        <div><span>Subtotal</span><strong>@FormatMoney(CurrentReceiptAmounts.SubtotalAmount)</strong></div>
+                                        <div><span>IVA 16%</span><strong>@FormatMoney(CurrentReceiptAmounts.IvaAmount)</strong></div>
+                                        <div class="compras-ticket-total"><span>TOTAL</span><strong>@FormatMoney(CurrentReceiptAmounts.TotalAmount)</strong></div>
+                                        @if (ReceiptMissingAmountCount > 0)
+                                        {
+                                            <p class="compras-ticket-warning">Falta el total de @ReceiptMissingAmountCount artículo(s).</p>
+                                        }
+                                        else if (ReceiptMissingLotCount > 0)
+                                        {
+                                            <p class="compras-ticket-warning">Falta lote o caducidad de @ReceiptMissingLotCount artículo(s).</p>
+                                        }
+                                        else if (ReceiptCapturedItemCount == 0)
+                                        {
+                                            <p class="compras-ticket-help">Captura una cantidad para comenzar.</p>
+                                        }
+                                        else
+                                        {
+                                            <p class="compras-ticket-help">Este total debe coincidir con el ticket.</p>
+                                        }
+                                        <button type="button" class="btn btn-success btn-lg w-100" @onclick="RegistrarRecepcionAsync" disabled="@(!CanReceive)">
+                                            @(IsReceiving ? "Guardando recepción..." : "Guardar recepción")
+                                        </button>
+                                    </aside>
+                                </div>
                             </div>
                         </div>
                     </section>
@@ -645,32 +754,32 @@
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-center mb-3">
                                 <h3 class="h5 mb-0">Historial de recepciones</h3>
-                                <span class="text-muted small">@ReceiptHistory.Count renglones</span>
+                                <span class="text-muted small">@ReceiptHistory.Select(item => item.ReceiptId).Distinct().Count() recepciones</span>
                             </div>
 
-                            <div class="table-responsive compras-history-scroll">
-                                <table class="table table-sm table-hover align-middle compras-history-table">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>Recepción</th>
-                                            <th class="compras-thumb-col">Foto</th>
-                                            <th>Material</th>
-                                            <th>Ubicación</th>
-                                            <th class="text-end">Cantidad</th>
-                                            <th>Notas</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var item in ReceiptHistory)
+                            <div class="compras-history-list">
+                                @foreach (var receiptGroup in ReceiptHistory.GroupBy(item => new { item.ReceiptId, item.ReceiptCode, item.ReceiptDate }))
+                                {
+                                    var hasAmounts = receiptGroup.Any(item => item.TotalAmount.HasValue);
+                                    var receiptSubtotal = receiptGroup.Sum(item => item.SubtotalAmount.GetValueOrDefault());
+                                    var receiptIva = receiptGroup.Sum(item => item.IvaAmount.GetValueOrDefault());
+                                    var receiptTotal = receiptGroup.Sum(item => item.TotalAmount.GetValueOrDefault());
+                                    var receiptNotes = receiptGroup.First().Notes;
+                                    <article class="compras-history-receipt">
+                                        <header>
+                                            <div><strong>@receiptGroup.Key.ReceiptCode</strong><small>@receiptGroup.Key.ReceiptDate.ToString("dd/MM/yyyy")</small></div>
+                                            @if (hasAmounts)
+                                            {
+                                                <div class="compras-history-total"><span>Total</span><strong>@FormatMoney(receiptTotal)</strong></div>
+                                            }
+                                        </header>
+                                        <div class="compras-history-lines">
+                                        @foreach (var item in receiptGroup)
                                         {
                                             var thumbnailDataUrl = GetMaterialThumbnailDataUrl(item.MaterialId);
                                             var materialTitle = string.IsNullOrWhiteSpace(item.MaterialDescription) ? item.MaterialCode : item.MaterialDescription;
-                                            <tr>
-                                                <td>
-                                                    <div class="fw-semibold">@item.ReceiptCode</div>
-                                                    <small class="text-muted">@item.ReceiptDate.ToShortDateString()</small>
-                                                </td>
-                                                <td class="compras-thumb-col">
+                                            <div class="compras-history-line">
+                                                <div>
                                                     @if (thumbnailDataUrl is not null)
                                                     {
                                                         <img src="@thumbnailDataUrl" alt="Imagen de @materialTitle" class="compras-thumb" />
@@ -679,18 +788,28 @@
                                                     {
                                                         <div class="compras-thumb-placeholder">@GetMaterialFallbackText(item.MaterialCode, item.MaterialDescription)</div>
                                                     }
-                                                </td>
-                                                <td>
-                                                    <div class="fw-semibold">@materialTitle</div>
-                                                    <small class="text-muted">@item.MaterialCode</small>
-                                                </td>
-                                                <td>@item.LocationName</td>
-                                                <td class="text-end">@FormatPurchaseQuantity(item, item.Quantity)</td>
-                                                <td>@(string.IsNullOrWhiteSpace(item.Notes) ? "-" : item.Notes)</td>
-                                            </tr>
+                                                    <span><strong>@materialTitle</strong><small>@FormatPurchaseQuantity(item, item.Quantity) · @item.LocationName</small></span>
+                                                </div>
+                                                <div class="text-end">
+                                                    <strong>@FormatMoney(item.TotalAmount)</strong>
+                                                    @if (item.IncludesIva)
+                                                    {
+                                                        <small>IVA: @FormatMoney(item.IvaAmount)</small>
+                                                    }
+                                                </div>
+                                            </div>
                                         }
-                                    </tbody>
-                                </table>
+                                        </div>
+                                        @if (hasAmounts)
+                                        {
+                                            <footer><span>Subtotal @FormatMoney(receiptSubtotal)</span><span>IVA @FormatMoney(receiptIva)</span><strong>Total @FormatMoney(receiptTotal)</strong></footer>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(receiptNotes))
+                                        {
+                                            <p class="compras-history-notes">@receiptNotes</p>
+                                        }
+                                    </article>
+                                }
                             </div>
                         </div>
                     </section>

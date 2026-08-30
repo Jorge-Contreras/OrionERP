@@ -56,6 +56,7 @@ public partial class ComprasPage : ComponentBase
   protected bool IsPrinting { get; set; }
   protected bool IsCreatingAutoPo { get; set; }
   protected bool ShowAutoPoModal { get; set; }
+  protected bool ShowOrderBrowser { get; set; }
 
   protected bool IsDraftMode => SelectedPurchaseOrder is null || string.Equals(SelectedPurchaseOrder.Status, PurchaseOrderStatuses.Draft, StringComparison.OrdinalIgnoreCase);
   protected bool CanEditVendor => IsDraftMode && Lines.Count == 0;
@@ -63,10 +64,16 @@ public partial class ComprasPage : ComponentBase
   protected bool CanIssue => SelectedPurchaseOrder is not null
     && string.Equals(SelectedPurchaseOrder.Status, PurchaseOrderStatuses.Draft, StringComparison.OrdinalIgnoreCase)
     && !IsMutating;
-  protected bool CanReceive => SelectedPurchaseOrder is not null
+  protected bool CanEnterReceipt => SelectedPurchaseOrder is not null
     && PurchaseOrderStatuses.Open.Contains(SelectedPurchaseOrder.Status, StringComparer.OrdinalIgnoreCase)
     && ReceiveItems.Count > 0
     && !IsMutating;
+  protected bool CanReceive => CanEnterReceipt
+    && ReceiveItems.Any(item => item.ReceiveNowQuantity > 0m)
+    && ReceiveItems
+      .Where(item => item.ReceiveNowQuantity > 0m)
+      .All(item => item.TotalAmount.GetValueOrDefault() > 0m
+        && (!item.RequiresLot || (!string.IsNullOrWhiteSpace(item.LotCode) && item.ExpiresAt.HasValue)));
   protected bool CanComplete => SelectedPurchaseOrder is not null
     && string.Equals(SelectedPurchaseOrder.Status, PurchaseOrderStatuses.PartiallyReceived, StringComparison.OrdinalIgnoreCase)
     && !IsMutating;
@@ -85,6 +92,44 @@ public partial class ComprasPage : ComponentBase
   protected int CurrentMaterialCount => Lines.Count;
   protected int CurrentAllocationCount => Lines.Sum(line => line.Allocations.Count);
   protected int CurrentPendingAllocationCount => Lines.Sum(line => line.Allocations.Count(allocation => allocation.RemainingQuantity > 0m));
+  protected int ReceiptCapturedItemCount => ReceiveItems.Count(item => item.ReceiveNowQuantity > 0m);
+  protected int ReceiptMissingAmountCount => ReceiveItems.Count(item => item.ReceiveNowQuantity > 0m && item.TotalAmount.GetValueOrDefault() <= 0m);
+  protected int ReceiptMissingLotCount => ReceiveItems.Count(item => item.ReceiveNowQuantity > 0m
+    && item.RequiresLot
+    && (string.IsNullOrWhiteSpace(item.LotCode) || !item.ExpiresAt.HasValue));
+  protected PurchaseReceiptAmounts CurrentReceiptAmounts
+  {
+    get
+    {
+      var selectedItems = ReceiveItems
+        .Where(item => item.ReceiveNowQuantity > 0m && item.TotalAmount.GetValueOrDefault() > 0m)
+        .Select(item => PurchaseReceiptAmountCalculator.Calculate(item.TotalAmount!.Value, item.IncludesIva))
+        .ToList();
+
+      return new PurchaseReceiptAmounts(
+        selectedItems.Sum(item => item.SubtotalAmount),
+        selectedItems.Sum(item => item.IvaAmount),
+        selectedItems.Sum(item => item.TotalAmount));
+    }
+  }
+  protected int CurrentProcessStep
+    => NormalizeStatus(SelectedPurchaseOrder?.Status ?? PurchaseOrderStatuses.Draft) switch
+    {
+      PurchaseOrderStatuses.Issued => 3,
+      PurchaseOrderStatuses.PartiallyReceived => 3,
+      PurchaseOrderStatuses.Completed => 4,
+      _ => 1
+    };
+  protected string ProcessGuidance
+    => NormalizeStatus(SelectedPurchaseOrder?.Status ?? PurchaseOrderStatuses.Draft) switch
+    {
+      PurchaseOrderStatuses.Draft => "Elige proveedor y materiales, asigna sus ubicaciones y guarda la compra.",
+      PurchaseOrderStatuses.Issued => "Compara la entrega con el ticket y captura cantidad, total e IVA de cada artículo.",
+      PurchaseOrderStatuses.PartiallyReceived => "Continúa con lo que llegó hoy o cierra lo que ya no entregará el proveedor.",
+      PurchaseOrderStatuses.Completed => "Compra terminada. Los precios de Materiales ya reflejan los importes recibidos.",
+      PurchaseOrderStatuses.Cancelled => "Esta compra está cancelada y ya no admite cambios.",
+      _ => "Sigue el paso marcado para continuar."
+    };
   protected IReadOnlyList<LookupOptionDto> VendorOptions => Catalog.Vendors;
   protected IReadOnlyList<LookupOptionDto> LocationOptions => Catalog.Locations;
   protected IReadOnlyList<LookupOptionDto> AutoPoRoomOptions => Catalog.Rooms;
@@ -118,6 +163,7 @@ public partial class ComprasPage : ComponentBase
     ResetAutoPoRequest();
     await LoadOrdersAsync();
     NuevaOrden();
+    ShowOrderBrowser = true;
   }
 
   protected async Task BuscarOrdenesAsync()
@@ -145,7 +191,11 @@ public partial class ComprasPage : ComponentBase
     HasExecutedMaterialSearch = false;
     MaterialThumbnailDataUrls = [];
     ShowAutoPoModal = false;
+    ShowOrderBrowser = false;
   }
+
+  protected void AlternarExploradorOrdenes()
+    => ShowOrderBrowser = !ShowOrderBrowser;
 
   protected async Task SeleccionarOrdenAsync(int purchaseOrderId)
   {
@@ -160,6 +210,7 @@ public partial class ComprasPage : ComponentBase
       }
 
       SelectedPurchaseOrder = detail;
+      ShowOrderBrowser = false;
       Editor = new PurchaseOrderUpsertRequest
       {
         Id = detail.Id,
@@ -213,6 +264,8 @@ public partial class ComprasPage : ComponentBase
             BaseUnitName = line.BaseUnitName,
             PurchaseQuantity = NormalizePurchaseQuantity(line.PurchaseQuantity),
             PurchaseUnitName = line.PurchaseUnitName,
+            BaseUnitPrice = line.BaseUnitPrice,
+            RequiresLot = line.RequiresLot,
             LocationId = allocation.LocationId,
             LocationName = allocation.LocationName,
             LocationCode = allocation.LocationCode,
@@ -567,6 +620,8 @@ public partial class ComprasPage : ComponentBase
       {
         PurchaseOrderLineAllocationId = item.AllocationId,
         Quantity = item.ReceiveNowQuantity,
+        TotalAmount = item.TotalAmount.GetValueOrDefault(),
+        IncludesIva = item.IncludesIva,
         LotCode = item.LotCode,
         ExpiresAt = item.ExpiresAt
       })
@@ -575,6 +630,12 @@ public partial class ComprasPage : ComponentBase
     if (lines.Count == 0)
     {
       UiMessages.ShowWarning("Captura al menos una cantidad para registrar la recepción.");
+      return;
+    }
+
+    if (lines.Any(line => line.TotalAmount <= 0m))
+    {
+      UiMessages.ShowWarning("Captura el total del ticket para cada artículo que vas a recibir.");
       return;
     }
 
@@ -616,6 +677,42 @@ public partial class ComprasPage : ComponentBase
       item.ReceiveNowQuantity = item.RemainingQuantity;
     }
   }
+
+  protected PurchaseReceiptAmounts GetReceiptItemAmounts(ReceiveAllocationInput item)
+    => item.TotalAmount.GetValueOrDefault() > 0m
+      ? PurchaseReceiptAmountCalculator.Calculate(item.TotalAmount!.Value, item.IncludesIva)
+      : default;
+
+  protected decimal? GetReceiptItemBaseUnitCost(ReceiveAllocationInput item)
+    => item.TotalAmount.GetValueOrDefault() > 0m && item.ReceiveNowQuantity > 0m
+      ? PurchaseReceiptAmountCalculator.CalculateBaseUnitCost(
+        item.TotalAmount!.Value,
+        item.IncludesIva,
+        item.ReceiveNowQuantity)
+      : null;
+
+  protected decimal? GetSuggestedReceiptTotal(ReceiveAllocationInput item)
+    => item.BaseUnitPrice.HasValue && item.ReceiveNowQuantity > 0m
+      ? decimal.Round(item.BaseUnitPrice.Value * item.ReceiveNowQuantity, 2, MidpointRounding.AwayFromZero)
+      : null;
+
+  protected string GetProcessStepClass(int step)
+  {
+    if (NormalizeStatus(SelectedPurchaseOrder?.Status) == PurchaseOrderStatuses.Cancelled)
+    {
+      return "is-disabled";
+    }
+
+    if (step < CurrentProcessStep || (CurrentProcessStep == 4 && step == 4))
+    {
+      return "is-complete";
+    }
+
+    return step == CurrentProcessStep ? "is-current" : string.Empty;
+  }
+
+  protected string FormatMoney(decimal? amount)
+    => amount.HasValue ? amount.Value.ToString("C2", CultureInfo.CurrentCulture) : "—";
 
   protected async Task CerrarPendienteAsync()
   {
@@ -868,6 +965,37 @@ public partial class ComprasPage : ComponentBase
 
   protected void UpdateReceiveNowDisplayQuantity(ReceiveAllocationInput item, ChangeEventArgs args)
     => SetReceiveNowDisplayQuantity(item, ParseNumberInput(args, GetReceiveNowDisplayQuantity(item)));
+
+  protected void UpdateReceiveTotalAmount(ReceiveAllocationInput item, ChangeEventArgs args)
+  {
+    var text = args.Value?.ToString();
+    item.TotalAmount = string.IsNullOrWhiteSpace(text)
+      ? null
+      : decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var invariantValue)
+        ? decimal.Round(invariantValue, 2, MidpointRounding.AwayFromZero)
+        : decimal.TryParse(text, NumberStyles.Number, CultureInfo.CurrentCulture, out var currentValue)
+          ? decimal.Round(currentValue, 2, MidpointRounding.AwayFromZero)
+          : item.TotalAmount;
+  }
+
+  protected void UpdateReceiveLotCode(ReceiveAllocationInput item, ChangeEventArgs args)
+    => item.LotCode = args.Value?.ToString();
+
+  protected void UpdateReceiveExpiration(ReceiveAllocationInput item, ChangeEventArgs args)
+  {
+    var text = args.Value?.ToString();
+    item.ExpiresAt = DateTime.TryParseExact(
+      text,
+      "yyyy-MM-dd",
+      CultureInfo.InvariantCulture,
+      DateTimeStyles.None,
+      out var expiration)
+      ? expiration
+      : null;
+  }
+
+  protected string? FormatDateInput(DateTime? value)
+    => value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
   protected bool HasInvalidPurchaseMultiple(EditablePurchaseLine line)
     => RequiresWholePurchaseMultiple(line.PurchaseQuantity, line.PurchaseUnitName)
@@ -1150,6 +1278,8 @@ public partial class ComprasPage : ComponentBase
     public string? BaseUnitName { get; set; }
     public decimal PurchaseQuantity { get; set; } = 1m;
     public string? PurchaseUnitName { get; set; }
+    public decimal? BaseUnitPrice { get; set; }
+    public bool RequiresLot { get; set; }
     public int LocationId { get; set; }
     public string LocationName { get; set; } = string.Empty;
     public string? LocationCode { get; set; }
@@ -1157,6 +1287,8 @@ public partial class ComprasPage : ComponentBase
     public decimal ReceivedQuantity { get; set; }
     public decimal RemainingQuantity => Math.Max(PlannedQuantity - ReceivedQuantity, 0m);
     public decimal ReceiveNowQuantity { get; set; }
+    public decimal? TotalAmount { get; set; }
+    public bool IncludesIva { get; set; }
     public string? LotCode { get; set; }
     public DateTime? ExpiresAt { get; set; }
   }

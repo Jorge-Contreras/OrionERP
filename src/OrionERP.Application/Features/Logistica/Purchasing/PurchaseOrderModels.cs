@@ -99,6 +99,7 @@ public sealed class PurchaseOrderLineDto
   public decimal OrderedQuantity { get; set; }
   public decimal ReceivedQuantity { get; set; }
   public decimal RemainingQuantity { get; set; }
+  public bool RequiresLot { get; set; }
   public IReadOnlyList<PurchaseOrderAllocationDto> Allocations { get; set; } = Array.Empty<PurchaseOrderAllocationDto>();
 }
 
@@ -129,6 +130,11 @@ public sealed class PurchaseReceiptLineHistoryDto
   public int LocationId { get; set; }
   public string LocationName { get; set; } = string.Empty;
   public decimal Quantity { get; set; }
+  public decimal? SubtotalAmount { get; set; }
+  public decimal? IvaAmount { get; set; }
+  public decimal? TotalAmount { get; set; }
+  public bool IncludesIva { get; set; }
+  public decimal? UnitCost { get; set; }
   public string? CreatedBy { get; set; }
   public string? Notes { get; set; }
 }
@@ -213,6 +219,11 @@ public sealed class PurchaseReceiptLineCreateRequest
 
   [Range(typeof(decimal), "0.0001", "999999999", ErrorMessage = "La cantidad recibida debe ser mayor a 0.")]
   public decimal Quantity { get; set; }
+
+  [Range(typeof(decimal), "0.01", "999999999", ErrorMessage = "Captura el total del artículo tal como aparece en el ticket.")]
+  public decimal TotalAmount { get; set; }
+
+  public bool IncludesIva { get; set; }
 
   [StringLength(80)]
   public string? LotCode { get; set; }

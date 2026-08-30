@@ -42,6 +42,17 @@ public class SearchSubmissionUxTests
     Assert.Contains("OnStockSearchKeyUpAsync", ReadRepoFile("src/OrionERP.Web/Features/Logistica/Locations/UbicacionesPage.razor"), StringComparison.Ordinal);
   }
 
+  [Fact]
+  public void PurchasingMaterialSearch_UsesNativeOnInputBinding()
+  {
+    var purchasing = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Purchasing/ComprasPage.razor");
+
+    Assert.Contains("id=\"compras-material-search\"", purchasing, StringComparison.Ordinal);
+    Assert.Contains("@bind=\"MaterialSearchText\"", purchasing, StringComparison.Ordinal);
+    Assert.Contains("@bind:event=\"oninput\"", purchasing, StringComparison.Ordinal);
+    Assert.DoesNotContain("@bind-Value=\"MaterialSearchText\" @bind-Value:event=\"oninput\"", purchasing, StringComparison.Ordinal);
+  }
+
   private static string ReadRepoFile(string relativePath)
   {
     var current = new DirectoryInfo(AppContext.BaseDirectory);

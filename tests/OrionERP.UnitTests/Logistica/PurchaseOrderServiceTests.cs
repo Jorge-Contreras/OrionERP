@@ -1306,7 +1306,8 @@ public class PurchaseOrderServiceTests
         new PurchaseReceiptLineCreateRequest
         {
           PurchaseOrderLineAllocationId = 11,
-          Quantity = 2m
+          Quantity = 2m,
+          TotalAmount = 5.64m
         }
       ]
     }, "Ana");
@@ -1378,7 +1379,8 @@ public class PurchaseOrderServiceTests
         new PurchaseReceiptLineCreateRequest
         {
           PurchaseOrderLineAllocationId = 11,
-          Quantity = 2m
+          Quantity = 2m,
+          TotalAmount = 5.64m
         }
       ]
     }, "Ana");
@@ -1398,6 +1400,10 @@ public class PurchaseOrderServiceTests
     AssertParameter(receiptLineInsert.Parameters, "@PurchaseReceiptId", 70);
     AssertParameter(receiptLineInsert.Parameters, "@PurchaseOrderLineAllocationId", 11);
     AssertParameter(receiptLineInsert.Parameters, "@UnitCost", 2.82m);
+    AssertParameter(receiptLineInsert.Parameters, "@SubtotalAmount", 5.64m);
+    AssertParameter(receiptLineInsert.Parameters, "@IvaAmount", 0m);
+    AssertParameter(receiptLineInsert.Parameters, "@TotalAmount", 5.64m);
+    AssertParameter(receiptLineInsert.Parameters, "@IncludesIva", false);
 
     var auditInsert = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO logistica.StockTransaction", StringComparison.Ordinal));
     Assert.Contains("'PurchaseReceipt'", auditInsert.CommandText, StringComparison.Ordinal);
@@ -1408,6 +1414,10 @@ public class PurchaseOrderServiceTests
     var orderStatusUpdate = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("SET [Status] = @Status", StringComparison.Ordinal)
       && command.CommandText.Contains("CompletedAt = CASE WHEN @IsCompleted = 1", StringComparison.Ordinal));
     AssertParameter(orderStatusUpdate.Parameters, "@Status", PurchaseOrderStatuses.Completed);
+
+    var materialPriceUpdate = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("WITH ActualReceiptCosts", StringComparison.Ordinal));
+    Assert.Contains("UPDATE material", materialPriceUpdate.CommandText, StringComparison.Ordinal);
+    Assert.Contains("BaseUnitPrice = actual.BaseUnitPrice", materialPriceUpdate.CommandText, StringComparison.Ordinal);
   }
 
   private static void AssertParameter(IReadOnlyList<FakeQueryParameter> parameters, string name, object expectedValue)

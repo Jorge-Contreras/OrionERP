@@ -142,6 +142,10 @@ BEGIN
         LocationId int NOT NULL,
         MaterialId int NOT NULL,
         Quantity decimal(18,4) NOT NULL,
+        SubtotalAmount decimal(18,2) NULL,
+        IvaAmount decimal(18,2) NULL,
+        TotalAmount decimal(18,2) NULL,
+        IncludesIva bit NOT NULL CONSTRAINT DF_PurchaseReceiptLine_IncludesIva DEFAULT (0),
         CreatedAt datetime2(0) NOT NULL CONSTRAINT DF_PurchaseReceiptLine_CreatedAt DEFAULT (SYSUTCDATETIME()),
         CONSTRAINT FK_PurchaseReceiptLine_Receipt
             FOREIGN KEY (PurchaseReceiptId) REFERENCES logistica.PurchaseReceipt (Id),

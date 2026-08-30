@@ -114,22 +114,20 @@
         <label>Variante <InputText @bind-Value="productEditor.VariantName" placeholder="Ej. grande, sin azúcar" /></label>
         <label>Descripción <InputTextArea @bind-Value="productEditor.Description" /></label>
         <label>Etiquetas de dieta <InputText @bind-Value="dietaryTagsText" placeholder="Vegetariano, sin gluten, vegano…" /><small>Separadas por coma. Verifica ingredientes y contacto cruzado antes de publicar.</small></label>
-        <div class="restaurant-admin__form-row">
-          <label>Tipo
-            <InputSelect @bind-Value="productEditor.ProductType">
-              <option value="FinishedGood">Producto terminado</option>
-              <option value="SemiFinished">Semielaborado</option>
-              <option value="Resale">Reventa / snack</option>
-            </InputSelect>
-          </label>
-          <label>Modo
-            <InputSelect @bind-Value="productEditor.FulfillmentMode">
-              <option value="MakeToOrder">Preparado al ordenar</option>
-              <option value="MakeToStock">Producido por lote</option>
-              <option value="StockItem">Descontar existencia propia</option>
-            </InputSelect>
-          </label>
-        </div>
+        <label>Rol de producción
+          <InputSelect @bind-Value="productEditor.ProductionRole">
+            @if (productEditor.ProductionRole == MaterialProductionRoles.Unclassified)
+            {
+              <option value="@MaterialProductionRoles.Unclassified">Sin clasificar · elige un rol</option>
+            }
+            @foreach (var role in MaterialProductionRoles.All)
+            {
+              <option value="@role.Key">@role.Label</option>
+            }
+          </InputSelect>
+          <small>@(MaterialProductionRoles.Find(productEditor.ProductionRole)?.Description
+            ?? "Este material tiene una combinación de tipo y modo que ya no es válida. Elige el rol que le corresponde.")</small>
+        </label>
         <label>Estación de cocina
           <InputSelect @bind-Value="productEditor.KitchenStationId">
             <option value="">Sin estación · el producto no se envía a cocina</option>
@@ -200,7 +198,10 @@
   private bool isUploadingImage;
   private string CurrentRfc => RfcState.RequireRfc();
   private bool RequiresPreparationStation
-    => string.Equals(productEditor.FulfillmentMode, "MakeToOrder", StringComparison.OrdinalIgnoreCase);
+    => string.Equals(
+      MaterialProductionRoles.Find(productEditor.ProductionRole)?.FulfillmentMode,
+      "MakeToOrder",
+      StringComparison.OrdinalIgnoreCase);
 
   protected override async Task OnInitializedAsync()
   {
@@ -280,7 +281,7 @@
       Sku = product.Sku, Name = product.Name, Description = product.Description, VariantName = product.VariantName,
       Price = product.Price, KitchenStationId = product.KitchenStationId, PreparationMinutes = product.PreparationMinutes,
       IsActive = product.IsActive, SoldOutOverride = product.IsSoldOut,
-      ProductType = product.ProductType, FulfillmentMode = product.FulfillmentMode
+      ProductionRole = MaterialProductionRoles.Resolve(product.ProductType, product.FulfillmentMode)
     };
     dietaryTagsText = string.Join(", ", product.DietaryTags);
     imagePreview = images.GetValueOrDefault(product.Id);

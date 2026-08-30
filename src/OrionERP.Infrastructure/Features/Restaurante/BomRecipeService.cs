@@ -145,13 +145,22 @@ public sealed class BomRecipeService : IBomRecipeService
              CAST(COALESCE(materialConversion.Factor, globalConversion.Factor,
                   CASE WHEN component.UnitId=material.BaseUnitId THEN 1 END) AS decimal(24,10)) AS ConversionFactor,
              baseUnit.UnitName AS BaseUnitName,
-             CAST(COALESCE(material.BaseUnitPrice,
-                  subBom.FrozenTheoreticalCost / NULLIF(subBom.YieldQuantity, 0), 0) AS decimal(24,10)) AS UnitCost,
+             CAST(COALESCE(subBom.FrozenTheoreticalCost / NULLIF(subBom.YieldQuantity, 0),
+                  material.BaseUnitPrice, 0) AS decimal(24,10)) AS UnitCost,
              CASE
-               WHEN material.BaseUnitPrice IS NOT NULL THEN 'Precio de Materiales'
                WHEN subBom.FrozenTheoreticalCost / NULLIF(subBom.YieldQuantity, 0) IS NOT NULL THEN 'Costo de subreceta activa'
+               WHEN material.BaseUnitPrice IS NOT NULL THEN 'Precio de Materiales'
                ELSE 'Sin costo configurado'
-             END AS CostSource
+             END AS CostSource,
+             CAST(CASE WHEN material.FulfillmentMode = 'StockItem' AND EXISTS
+                  (
+                    SELECT 1
+                    FROM logistica.BomHeader ignoredHeader
+                    JOIN logistica.BomVersion ignoredVersion
+                      ON ignoredVersion.Rfc = ignoredHeader.Rfc AND ignoredVersion.BomHeaderId = ignoredHeader.Id
+                     AND ignoredVersion.[Status] = 'Active'
+                    WHERE ignoredHeader.Rfc = material.Rfc AND ignoredHeader.ProductMaterialId = material.Id
+                  ) THEN 1 ELSE 0 END AS bit) AS RecipeCostIgnored
       FROM logistica.BomComponent component
       JOIN logistica.Material material ON material.Rfc=component.Rfc AND material.Id=component.ComponentMaterialId
       JOIN logistica.UnitOfMeasure recipeUnit ON recipeUnit.Id=component.UnitId
@@ -178,6 +187,7 @@ public sealed class BomRecipeService : IBomRecipeService
         JOIN logistica.BomVersion childVersion ON childVersion.Rfc=childHeader.Rfc AND childVersion.BomHeaderId=childHeader.Id
         WHERE childHeader.Rfc=material.Rfc AND childHeader.ProductMaterialId=material.Id
           AND childVersion.[Status]='Active'
+          AND material.FulfillmentMode IN ('MakeToStock', 'MakeToOrder')
       ) subBom
       WHERE component.Rfc=@Rfc AND component.BomVersionId=@BomVersionId
       ORDER BY component.SortOrder, component.Id;
@@ -307,9 +317,14 @@ public sealed class BomRecipeService : IBomRecipeService
     var invalidUnit = await FindInvalidComponentUnitAsync(conn, null, normalizedRfc, bomVersionId, ct);
     if (invalidUnit is not null)
       issues.Add(new() { Section = "ingredients", Code = "unit_conversion_missing", Message = $"La unidad de {invalidUnit.Description} ya no tiene una conversión activa hacia su unidad base." });
+    var yieldMismatch = await FindYieldUnitMismatchAsync(conn, null, normalizedRfc, bomVersionId, ct);
+    if (yieldMismatch is not null)
+      issues.Add(new() { Section = "basics", Code = "yield_unit_mismatch", Message = $"El rendimiento está en {yieldMismatch.YieldUnit} pero {yieldMismatch.Description} se inventaría en {yieldMismatch.BaseUnit}. Corrige el rendimiento: si no, el costo del lote completo se cargaría a una sola {yieldMismatch.BaseUnit}." });
     var incompleteSubassembly = await FindIncompleteSubassemblyAsync(conn, null, normalizedRfc, bomVersionId, detail.ProductMaterialId, ct);
     if (incompleteSubassembly is not null)
       issues.Add(new() { Section = "ingredients", Code = "subrecipe_missing", Message = $"{incompleteSubassembly.Description} está configurado como subreceta, pero no tiene una receta activa completa." });
+    foreach (var subProduct in await FindUnproducibleBatchSubProductsAsync(conn, null, normalizedRfc, bomVersionId, ct))
+      warnings.Add($"{subProduct} se produce por lote pero todavía no tiene receta: sólo podrás venderlo mientras quede existencia.");
     var replacesVersion = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
       """
       SELECT TOP (1) activeVersion.VersionNumber
@@ -320,6 +335,30 @@ public sealed class BomRecipeService : IBomRecipeService
       new { Rfc = normalizedRfc, Id = bomVersionId },
       cancellationToken: ct));
     return new() { ReplacesVersionNumber = replacesVersion, Issues = issues, Warnings = warnings };
+  }
+
+  public async Task<IReadOnlyList<RecipeUsageDto>> GetRecipeUsageAsync(string rfc, int materialId, CancellationToken ct = default)
+  {
+    var normalizedRfc = LogisticsRfc.Require(rfc);
+    using var conn = CreateConnection();
+    return (await conn.QueryAsync<RecipeUsageDto>(new CommandDefinition(
+      """
+      SELECT parentHeader.ProductMaterialId, parentMaterial.[Description] AS ProductName,
+             parentVersion.VersionNumber, component.Quantity, unitInfo.UnitName
+      FROM logistica.BomComponent component
+      JOIN logistica.BomVersion parentVersion
+        ON parentVersion.Rfc = component.Rfc AND parentVersion.Id = component.BomVersionId
+       AND parentVersion.[Status] = 'Active'
+      JOIN logistica.BomHeader parentHeader
+        ON parentHeader.Rfc = parentVersion.Rfc AND parentHeader.Id = parentVersion.BomHeaderId
+      JOIN logistica.Material parentMaterial
+        ON parentMaterial.Rfc = parentHeader.Rfc AND parentMaterial.Id = parentHeader.ProductMaterialId
+      JOIN logistica.UnitOfMeasure unitInfo ON unitInfo.Id = component.UnitId
+      WHERE component.Rfc = @Rfc AND component.ComponentMaterialId = @MaterialId
+      ORDER BY parentMaterial.[Description];
+      """,
+      new { Rfc = normalizedRfc, MaterialId = materialId },
+      cancellationToken: ct))).AsList();
   }
 
   public async Task<RestaurantCommandResult> SaveDraftAsync(BomDraftSaveRequest request, string userName, CancellationToken ct = default)
@@ -614,6 +653,14 @@ public sealed class BomRecipeService : IBomRecipeService
         return RestaurantCommandResult.Fail($"La unidad de {invalidUnit.Description} ya no tiene una conversión activa hacia su unidad base.");
       }
 
+      var yieldMismatch = await FindYieldUnitMismatchAsync(conn, tx, normalizedRfc, bomVersionId, ct);
+      if (yieldMismatch is not null)
+      {
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail(
+          $"El rendimiento está en {yieldMismatch.YieldUnit} pero {yieldMismatch.Description} se inventaría en {yieldMismatch.BaseUnit}. Corrige el rendimiento antes de activar: de lo contrario el costo del lote completo se cargaría a una sola {yieldMismatch.BaseUnit}.");
+      }
+
       var incompleteSubassembly = await FindIncompleteSubassemblyAsync(conn, tx, normalizedRfc, bomVersionId, version.ProductMaterialId, ct);
       if (incompleteSubassembly is not null)
       {
@@ -638,8 +685,17 @@ public sealed class BomRecipeService : IBomRecipeService
           Id = bomVersionId,
           Cost = await CalculateTheoreticalCostAsync(conn, tx, normalizedRfc, bomVersionId, ct)
         }, tx, cancellationToken: ct));
+
+      // El costo congelado de una receta incluye el de sus subrecetas, así que al activar ésta
+      // hay que rehacer el de todas las recetas que la consumen, de la más cercana a la más lejana.
+      var recosted = await RecostAncestorsAsync(conn, tx, normalizedRfc, version.ProductMaterialId, ct);
+
       await tx.CommitAsync(ct);
-      return RestaurantCommandResult.Ok("La receta quedó en uso; las versiones anteriores permanecen intactas.", bomVersionId);
+      return RestaurantCommandResult.Ok(
+        recosted == 0
+          ? "La receta quedó en uso; las versiones anteriores permanecen intactas."
+          : $"La receta quedó en uso y se recalculó el costo de {recosted} receta{(recosted == 1 ? string.Empty : "s")} que la utiliza{(recosted == 1 ? string.Empty : "n")}.",
+        bomVersionId);
     }
     catch
     {
@@ -762,7 +818,8 @@ public sealed class BomRecipeService : IBomRecipeService
         """
         SELECT TOP (1)
                parentHeader.ProductMaterialId,
-               parentMaterial.[Description]
+               parentMaterial.[Description],
+               childMaterial.FulfillmentMode
         FROM logistica.Material childMaterial WITH (UPDLOCK, HOLDLOCK)
         JOIN logistica.BomComponent component WITH (UPDLOCK, HOLDLOCK)
           ON component.Rfc = childMaterial.Rfc AND component.ComponentMaterialId = childMaterial.Id
@@ -775,13 +832,16 @@ public sealed class BomRecipeService : IBomRecipeService
           ON parentMaterial.Rfc = parentHeader.Rfc AND parentMaterial.Id = parentHeader.ProductMaterialId
         WHERE childMaterial.Rfc = @Rfc
           AND childMaterial.Id = @ProductMaterialId
-          AND childMaterial.FulfillmentMode = 'MakeToOrder'
+          AND childMaterial.FulfillmentMode IN ('MakeToOrder', 'MakeToStock')
         ORDER BY parentHeader.ProductMaterialId;
         """,
         new { Rfc = normalizedRfc, version.ProductMaterialId },
         tx,
         cancellationToken: ct));
-      if (activeParent is not null)
+      // Una subreceta al momento se explota en cada venta: sin ella el padre deja de poder venderse.
+      // Un subproducto por lote se descuenta del inventario, así que el padre sigue vendiéndose
+      // mientras quede existencia; lo que se pierde es la forma de reponerlo.
+      if (activeParent is not null && string.Equals(activeParent.FulfillmentMode, "MakeToOrder", StringComparison.OrdinalIgnoreCase))
       {
         await tx.RollbackAsync(ct);
         return RestaurantCommandResult.Fail(
@@ -812,7 +872,11 @@ public sealed class BomRecipeService : IBomRecipeService
       }
 
       await tx.CommitAsync(ct);
-      return RestaurantCommandResult.Ok($"La versión activa fue retirada por {NormalizeActor(userName)} y permanece en el historial.", bomVersionId);
+      return RestaurantCommandResult.Ok(
+        activeParent is null
+          ? $"La versión activa fue retirada por {NormalizeActor(userName)} y permanece en el historial."
+          : $"La versión fue retirada por {NormalizeActor(userName)}, pero {activeParent.Description} todavía la consume: ese subproducto ya no se podrá producir y sólo se venderá mientras quede existencia.",
+        bomVersionId);
     }
     catch
     {
@@ -1117,6 +1181,124 @@ public sealed class BomRecipeService : IBomRecipeService
       tx,
       cancellationToken: ct));
 
+  /// <summary>
+  /// Recalcula el costo congelado de cada receta activa que consume, directa o indirectamente,
+  /// al material indicado. Se procesa de la más cercana a la más lejana para que cada nivel use
+  /// el costo ya actualizado del nivel de abajo. Devuelve cuántas recetas se recalcularon.
+  /// </summary>
+  /// <summary>
+  /// Una receta cuyo rendimiento no está en la unidad base de su material carga el costo de todo
+  /// el lote sobre una sola unidad base, e infla el costo de cuanto platillo la use.
+  /// </summary>
+  /// <summary>
+  /// Ingredientes que se producen por lote pero todavía no tienen receta activa. No impiden
+  /// activar ni vender —se descuentan del inventario existente— pero no hay forma de reponerlos
+  /// con una orden de producción.
+  /// </summary>
+  private static async Task<IReadOnlyList<string>> FindUnproducibleBatchSubProductsAsync(
+    DbConnection conn, DbTransaction? tx, string rfc, long versionId, CancellationToken ct)
+    => (await conn.QueryAsync<string>(new CommandDefinition(
+      """
+      SELECT DISTINCT material.[Description]
+      FROM logistica.BomComponent component
+      JOIN logistica.Material material
+        ON material.Rfc = component.Rfc AND material.Id = component.ComponentMaterialId
+      WHERE component.Rfc = @Rfc AND component.BomVersionId = @Id
+        AND material.FulfillmentMode = 'MakeToStock'
+        AND NOT EXISTS
+        (
+          SELECT 1
+          FROM logistica.BomHeader requiredHeader
+          JOIN logistica.BomVersion requiredVersion
+            ON requiredVersion.Rfc = requiredHeader.Rfc AND requiredVersion.BomHeaderId = requiredHeader.Id
+           AND requiredVersion.[Status] = 'Active'
+          WHERE requiredHeader.Rfc = material.Rfc AND requiredHeader.ProductMaterialId = material.Id
+        )
+      ORDER BY material.[Description];
+      """,
+      new { Rfc = rfc, Id = versionId },
+      tx,
+      cancellationToken: ct))).AsList();
+
+  private static async Task<YieldUnitMismatchRow?> FindYieldUnitMismatchAsync(
+    DbConnection conn, DbTransaction? tx, string rfc, long versionId, CancellationToken ct)
+    => await conn.QuerySingleOrDefaultAsync<YieldUnitMismatchRow>(new CommandDefinition(
+      """
+      SELECT TOP (1) material.[Description],
+             COALESCE(NULLIF(yieldUnit.Abbreviation, ''), yieldUnit.UnitName) AS YieldUnit,
+             COALESCE(NULLIF(baseUnit.Abbreviation, ''), baseUnit.UnitName) AS BaseUnit
+      FROM logistica.BomVersion versionInfo
+      JOIN logistica.BomHeader headerInfo
+        ON headerInfo.Rfc = versionInfo.Rfc AND headerInfo.Id = versionInfo.BomHeaderId
+      JOIN logistica.Material material
+        ON material.Rfc = headerInfo.Rfc AND material.Id = headerInfo.ProductMaterialId
+      JOIN logistica.UnitOfMeasure yieldUnit ON yieldUnit.Id = versionInfo.YieldUnitId
+      JOIN logistica.UnitOfMeasure baseUnit ON baseUnit.Id = material.BaseUnitId
+      WHERE versionInfo.Rfc = @Rfc AND versionInfo.Id = @Id
+        AND versionInfo.YieldUnitId <> material.BaseUnitId;
+      """,
+      new { Rfc = rfc, Id = versionId },
+      tx,
+      cancellationToken: ct));
+
+  private static async Task<int> RecostAncestorsAsync(
+    DbConnection conn, DbTransaction tx, string rfc, int productMaterialId, CancellationToken ct)
+  {
+    var ancestors = (await conn.QueryAsync<AncestorVersionRow>(new CommandDefinition(
+      """
+      WITH Ancestors AS
+      (
+        SELECT parentHeader.ProductMaterialId AS MaterialId, parentVersion.Id AS BomVersionId, 1 AS Depth
+        FROM logistica.BomComponent component
+        JOIN logistica.BomVersion parentVersion
+          ON parentVersion.Rfc = component.Rfc AND parentVersion.Id = component.BomVersionId AND parentVersion.[Status] = 'Active'
+        JOIN logistica.BomHeader parentHeader
+          ON parentHeader.Rfc = parentVersion.Rfc AND parentHeader.Id = parentVersion.BomHeaderId
+        WHERE component.Rfc = @Rfc AND component.ComponentMaterialId = @MaterialId
+
+        UNION ALL
+
+        SELECT parentHeader.ProductMaterialId, parentVersion.Id, ancestor.Depth + 1
+        FROM Ancestors ancestor
+        JOIN logistica.BomComponent component
+          ON component.Rfc = @Rfc AND component.ComponentMaterialId = ancestor.MaterialId
+        JOIN logistica.BomVersion parentVersion
+          ON parentVersion.Rfc = component.Rfc AND parentVersion.Id = component.BomVersionId AND parentVersion.[Status] = 'Active'
+        JOIN logistica.BomHeader parentHeader
+          ON parentHeader.Rfc = parentVersion.Rfc AND parentHeader.Id = parentVersion.BomHeaderId
+        WHERE ancestor.Depth < 31 AND parentHeader.ProductMaterialId <> @MaterialId
+      )
+      SELECT BomVersionId, MIN(Depth) AS Depth
+      FROM Ancestors
+      GROUP BY BomVersionId
+      ORDER BY Depth, BomVersionId
+      OPTION (MAXRECURSION 32);
+      """,
+      new { Rfc = rfc, MaterialId = productMaterialId },
+      tx,
+      cancellationToken: ct))).AsList();
+
+    foreach (var ancestor in ancestors)
+    {
+      await conn.ExecuteAsync(new CommandDefinition(
+        """
+        UPDATE logistica.BomVersion
+        SET FrozenTheoreticalCost = @Cost
+        WHERE Rfc = @Rfc AND Id = @Id AND [Status] = 'Active';
+        """,
+        new
+        {
+          Rfc = rfc,
+          Id = ancestor.BomVersionId,
+          Cost = await CalculateTheoreticalCostAsync(conn, tx, rfc, ancestor.BomVersionId, ct)
+        },
+        tx,
+        cancellationToken: ct));
+    }
+
+    return ancestors.Count;
+  }
+
   private static async Task<decimal> CalculateTheoreticalCostAsync(DbConnection conn, DbTransaction tx, string rfc, long versionId, CancellationToken ct)
   {
     const string sql =
@@ -1125,7 +1307,7 @@ public sealed class BomRecipeService : IBomRecipeService
         component.Quantity
         * (1 + component.ExpectedWastePercent / 100.0)
         * COALESCE(materialConversion.Factor, globalConversion.Factor, CASE WHEN component.UnitId = material.BaseUnitId THEN 1 END)
-        * COALESCE(material.BaseUnitPrice, subBom.FrozenTheoreticalCost / NULLIF(subBom.YieldQuantity, 0), 0)
+        * COALESCE(subBom.FrozenTheoreticalCost / NULLIF(subBom.YieldQuantity, 0), material.BaseUnitPrice, 0)
       ), 0) / NULLIF(versionInfo.YieldQuantity, 0) AS decimal(18,6))
       FROM logistica.BomVersion versionInfo
       JOIN logistica.BomComponent component ON component.Rfc = versionInfo.Rfc AND component.BomVersionId = versionInfo.Id
@@ -1149,6 +1331,7 @@ public sealed class BomRecipeService : IBomRecipeService
         FROM logistica.BomHeader childHeader
         JOIN logistica.BomVersion childVersion ON childVersion.Rfc = childHeader.Rfc AND childVersion.BomHeaderId = childHeader.Id
         WHERE childHeader.Rfc = material.Rfc AND childHeader.ProductMaterialId = material.Id AND childVersion.[Status] = 'Active'
+          AND material.FulfillmentMode IN ('MakeToStock', 'MakeToOrder')
       ) subBom
       WHERE versionInfo.Rfc = @Rfc AND versionInfo.Id = @VersionId
       GROUP BY versionInfo.YieldQuantity;
@@ -1162,6 +1345,19 @@ public sealed class BomRecipeService : IBomRecipeService
 
   private static string NormalizeActor(string? value)
     => string.IsNullOrWhiteSpace(value) ? "OrionERP" : value.Trim();
+
+  private sealed class YieldUnitMismatchRow
+  {
+    public string Description { get; set; } = string.Empty;
+    public string YieldUnit { get; set; } = string.Empty;
+    public string BaseUnit { get; set; } = string.Empty;
+  }
+
+  private sealed class AncestorVersionRow
+  {
+    public long BomVersionId { get; set; }
+    public int Depth { get; set; }
+  }
 
   private sealed class VersionIdentityRow
   {
@@ -1189,6 +1385,7 @@ public sealed class BomRecipeService : IBomRecipeService
     public string BaseUnitName { get; set; } = string.Empty;
     public decimal UnitCost { get; set; }
     public string CostSource { get; set; } = string.Empty;
+    public bool RecipeCostIgnored { get; set; }
   }
   private sealed class IncompleteBomMaterialRow
   {
@@ -1202,6 +1399,7 @@ public sealed class BomRecipeService : IBomRecipeService
   }
   private sealed class ActiveParentBomRow
   {
+    public string FulfillmentMode { get; set; } = string.Empty;
     public int ProductMaterialId { get; set; }
     public string Description { get; set; } = string.Empty;
   }

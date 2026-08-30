@@ -21,7 +21,7 @@
 .recipe-cost__line strong{overflow-wrap:anywhere;color:#263b33;font-size:.8rem}
 .recipe-cost__line small{color:#718078;font-size:.68rem}
 .recipe-cost__ingredient strong{font-size:.86rem}
-.recipe-cost__source{width:max-content;max-width:100%;padding:.2rem .38rem;border-radius:999px;background:#e4f0eb;color:#2e6754;font-size:.65rem;font-weight:850}
+.recipe-cost__ignored{display:block;margin-top:.2rem;color:#8a5f10;font-size:.72rem;font-weight:750;line-height:1.35}.recipe-cost__source{width:max-content;max-width:100%;padding:.2rem .38rem;border-radius:999px;background:#e4f0eb;color:#2e6754;font-size:.65rem;font-weight:850}
 .recipe-cost__line.is-missing{border-color:#e5c6a0;background:#fff9ef}
 .recipe-cost__line.is-missing .recipe-cost__source{background:#f8dfbd;color:#815317}
 .recipe-cost__mobile-label{display:none;color:#6b7972;font-size:.67rem;font-weight:800}

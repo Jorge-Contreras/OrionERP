@@ -84,12 +84,68 @@ public sealed class RestaurantRecipesUxTests
     Assert.Contains("Sin costo configurado", service, StringComparison.Ordinal);
     Assert.Contains("Costo de subreceta activa", service, StringComparison.Ordinal);
     Assert.Contains("Precio de Materiales", service, StringComparison.Ordinal);
-    Assert.Contains("COALESCE(material.BaseUnitPrice, subBom.FrozenTheoreticalCost", service, StringComparison.Ordinal);
+    // El costo de la receta gana sobre el precio de compra cuando el material realmente se produce.
+    Assert.Contains("COALESCE(subBom.FrozenTheoreticalCost / NULLIF(subBom.YieldQuantity, 0), material.BaseUnitPrice", service, StringComparison.Ordinal);
+    Assert.DoesNotContain("COALESCE(material.BaseUnitPrice, subBom.FrozenTheoreticalCost", service, StringComparison.Ordinal);
+    Assert.Contains("material.FulfillmentMode IN ('MakeToStock', 'MakeToOrder')", service, StringComparison.Ordinal);
+    Assert.Contains("RecipeCostIgnored", service, StringComparison.Ordinal);
+    Assert.Contains("RecostAncestorsAsync", service, StringComparison.Ordinal);
     Assert.DoesNotContain("stockCost.AverageUnitCost", service, StringComparison.Ordinal);
     Assert.Contains("component.ExpectedWastePercent", service, StringComparison.Ordinal);
     Assert.Contains("materialConversion.Factor", service, StringComparison.Ordinal);
     Assert.Contains("@media(max-width:650px)", costStyles, StringComparison.Ordinal);
     Assert.DoesNotContain("overflow-x:auto", costStyles, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void ProductPicker_OffersEverySemiFinishedInsteadOfFilteringByProductType()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantRecipesPage.razor");
+    var styles = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantRecipesPage.razor.css");
+
+    Assert.Contains("RestaurantRecipeProductRules.BuildProductOptions", page, StringComparison.Ordinal);
+    Assert.Contains("RestaurantRecipeProductRules.ClassificationNotice", page, StringComparison.Ordinal);
+    Assert.Contains("recipe-classification-note", page, StringComparison.Ordinal);
+    Assert.Contains("recipe-classification-note", styles, StringComparison.Ordinal);
+
+    // El filtro por ProductType dejaba fuera a cualquier semielaborado sin recetas previas.
+    Assert.DoesNotContain("string.Equals(material.ProductType, \"FinishedGood\"", page, StringComparison.Ordinal);
+    Assert.DoesNotContain("Group = \"Productos terminados\"", page, StringComparison.Ordinal);
+
+    // El estado vacío enlazaba a Materiales prometiendo una clasificación que esa pantalla no ofrece.
+    Assert.DoesNotContain("Los productos terminados se crean y clasifican desde Materiales.", page, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void RecipeLifecycle_GuardsYieldUnitsAndBatchSubProducts()
+  {
+    var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/BomRecipeService.cs");
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantRecipesPage.razor");
+
+    // Un rendimiento fuera de la unidad base carga el costo del lote entero sobre una unidad.
+    Assert.Contains("FindYieldUnitMismatchAsync", service, StringComparison.Ordinal);
+    Assert.Contains("yield_unit_mismatch", service, StringComparison.Ordinal);
+    Assert.Contains("versionInfo.YieldUnitId <> material.BaseUnitId", service, StringComparison.Ordinal);
+
+    // Archivar la receta de un subproducto por lote advierte, pero no bloquea la venta.
+    Assert.Contains("IN ('MakeToOrder', 'MakeToStock')", service, StringComparison.Ordinal);
+    Assert.Contains("FindUnproducibleBatchSubProductsAsync", service, StringComparison.Ordinal);
+
+    Assert.Contains("GetRecipeUsageAsync", service, StringComparison.Ordinal);
+    Assert.Contains("recipe-usage", page, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void Production_ExplainsWhichRecipesCannotBeProducedYet()
+  {
+    var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantProductionService.cs");
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantProductionPage.razor");
+    var readiness = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantSaleReadinessService.cs");
+
+    Assert.Contains("UnproducibleWithRecipe", service, StringComparison.Ordinal);
+    Assert.Contains("UnproducibleWithRecipe", page, StringComparison.Ordinal);
+    // Un subproducto por lote no se repone comprando, se repone produciendo.
+    Assert.Contains("Planea una producción de", readiness, StringComparison.Ordinal);
   }
 
   private static string ReadRepoFile(string relativePath)

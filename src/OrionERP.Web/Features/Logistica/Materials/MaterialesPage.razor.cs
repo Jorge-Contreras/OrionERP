@@ -406,7 +406,8 @@ public partial class MaterialesPage : ComponentBase, IDisposable
         Barcode = detail.Barcode,
         VendorCode = detail.VendorCode,
         PurchaseLink = detail.PurchaseLink,
-        MaterialClass = detail.MaterialClass
+        MaterialClass = detail.MaterialClass,
+        ProductionRole = detail.ProductionRole
       };
 
       SyncPurchasePresentationPriceFromBase();
@@ -1666,7 +1667,8 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     {
       PurchaseQuantity = 1m,
       MaterialClass = "Consumable",
-      Status = "ACTIVO"
+      Status = "ACTIVO",
+      ProductionRole = MaterialProductionRoles.PurchasedInput
     };
 
   private static BusinessPartnerUpsertRequest CreateVendorDraft(string ownerRfc)

@@ -42,6 +42,27 @@
         <label>Ubicación de salida<InputSelect @bind-Value="plan.OutputLocationId"><option value="0">Seleccionar…</option>@foreach (var location in workspace.OutputLocations) { <option value="@((int)location.Id)">@location.Label</option> }</InputSelect></label>
         <button type="submit" class="btn btn-primary" disabled="@(isBusy || plan.BomVersionId == 0 || plan.OutputLocationId == 0)">Reservar y planear</button>
         <small>Si falta un ingrediente, no se crea una orden parcial.</small>
+        @if (workspace.ActiveBoms.Count == 0)
+        {
+          <div class="production-hint">
+            <strong>Todavía no hay nada que producir.</strong>
+            Sólo aparecen aquí los materiales con el rol <em>subproducto por lote</em> o <em>producto terminado por lote</em> y una receta activa.
+          </div>
+        }
+        @if (workspace.UnproducibleWithRecipe.Count > 0)
+        {
+          <div class="production-hint">
+            <strong>@workspace.UnproducibleWithRecipe.Count material@(workspace.UnproducibleWithRecipe.Count == 1 ? null : "es") con receta activa que nadie puede producir</strong>
+            Están clasificados como insumo comprado, así que su receta no se usa. Si en la cocina se
+            preparan en tanda, cámbialos a <em>subproducto por lote</em> en <a href="/logistica/materiales">Materiales</a>.
+            <ul>
+              @foreach (var material in workspace.UnproducibleWithRecipe)
+              {
+                <li>@material.Label</li>
+              }
+            </ul>
+          </div>
+        }
       </EditForm>
 
       <section class="production-orders">

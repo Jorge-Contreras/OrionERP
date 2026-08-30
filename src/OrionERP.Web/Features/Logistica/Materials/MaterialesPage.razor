@@ -1,6 +1,7 @@
 @page "/logistica/materiales"
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Forms
+@using OrionERP.Application.Features.Logistica.Materials
 @attribute [Authorize(Roles = "Administrador,Logistica")]
 
 <PageTitle>Materiales · Logística</PageTitle>
@@ -378,6 +379,24 @@
                                         <option value="@option">@GetMaterialClassLabel(option)</option>
                                     }
                                 </InputSelect>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label" for="material-production-role">Rol de producción</label>
+                                <InputSelect id="material-production-role" class="form-select" @bind-Value="Editor.ProductionRole">
+                                    @if (Editor.ProductionRole == MaterialProductionRoles.Unclassified)
+                                    {
+                                        <option value="@MaterialProductionRoles.Unclassified">Sin clasificar · elige un rol</option>
+                                    }
+                                    @foreach (var role in MaterialProductionRoles.All)
+                                    {
+                                        <option value="@role.Key">@role.Label</option>
+                                    }
+                                </InputSelect>
+                                <div class="form-text">
+                                    @(MaterialProductionRoles.Find(Editor.ProductionRole)?.Description
+                                        ?? "Este material tiene una combinación de tipo y modo que ya no es válida. Elige el rol que le corresponde.")
+                                </div>
                             </div>
 
                             <div class="col-md-6">

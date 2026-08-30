@@ -74,6 +74,10 @@
             <div class="recipe-cost__ingredient" role="cell">
               <strong>@line.MaterialName</strong>
               <span class="recipe-cost__source">@line.CostSource</span>
+              @if (line.RecipeCostIgnored)
+              {
+                <span class="recipe-cost__ignored">Tiene receta activa, pero está clasificado como insumo comprado: su receta no cuenta en este costo.</span>
+              }
             </div>
             <div role="cell"><span class="recipe-cost__mobile-label">Cantidad de receta</span><strong>@FormatQuantity(line.RecipeQuantity) @line.RecipeUnitName</strong></div>
             <div role="cell"><span class="recipe-cost__mobile-label">Con merma</span><strong>@FormatQuantity(line.QuantityWithWaste) @line.BaseUnitName</strong>@if (line.WastePercent > 0) { <small>Incluye @FormatQuantity(line.WastePercent)%</small> }</div>
@@ -86,8 +90,8 @@
     }
 
     <p class="recipe-cost__help">
-      El cálculo incluye conversiones y merma. Cada ingrediente se valora con su precio por unidad base de Materiales;
-      cuando ese precio falta, una subreceta activa puede aportar su costo calculado.
+      El cálculo incluye conversiones y merma. Un ingrediente que se produce —subproducto por lote o subreceta al momento—
+      se valora con el costo de su receta activa; el resto se valora con su precio por unidad base de Materiales.
     </p>
   }
 </section>

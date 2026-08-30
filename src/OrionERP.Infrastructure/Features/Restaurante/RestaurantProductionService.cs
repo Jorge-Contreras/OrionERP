@@ -57,6 +57,18 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
       FROM logistica.Location locationInfo
       WHERE locationInfo.Rfc=@Rfc AND locationInfo.IsActive=1 AND locationInfo.IsInventoryEnabled=1
       ORDER BY locationInfo.LocationName, locationInfo.Id;
+
+      -- Sólo los que están atorados: tienen receta activa pero se clasificaron como comprados,
+      -- así que nadie puede producirlos. Un MakeToOrder con receta es lo normal en un platillo
+      -- que se prepara al momento y no debe aparecer aquí como problema.
+      SELECT CAST(material.Id AS bigint) AS Id,
+             CONCAT(material.[Description], ' · clasificado como insumo comprado') AS Label
+      FROM logistica.Material material
+      JOIN logistica.BomHeader headerInfo ON headerInfo.Rfc=material.Rfc AND headerInfo.ProductMaterialId=material.Id
+      JOIN logistica.BomVersion versionInfo ON versionInfo.Rfc=headerInfo.Rfc AND versionInfo.BomHeaderId=headerInfo.Id
+       AND versionInfo.[Status]='Active'
+      WHERE material.Rfc=@Rfc AND material.IsActive=1 AND material.FulfillmentMode='StockItem'
+      ORDER BY material.[Description];
       """;
     using var conn = CreateConnection();
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(sql, new { Rfc = normalizedRfc, SiteId = siteId }, cancellationToken: ct));
@@ -64,7 +76,8 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
     {
       Orders = (await multi.ReadAsync<RestaurantProductionOrderDto>()).AsList(),
       ActiveBoms = (await multi.ReadAsync<RestaurantLookupDto>()).AsList(),
-      OutputLocations = (await multi.ReadAsync<RestaurantLookupDto>()).AsList()
+      OutputLocations = (await multi.ReadAsync<RestaurantLookupDto>()).AsList(),
+      UnproducibleWithRecipe = (await multi.ReadAsync<RestaurantLookupDto>()).AsList()
     };
   }
 

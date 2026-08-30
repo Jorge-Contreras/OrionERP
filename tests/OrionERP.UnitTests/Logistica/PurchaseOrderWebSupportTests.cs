@@ -303,6 +303,9 @@ public class PurchaseOrderWebSupportTests
     public Task<LogisticsCommandResult> SaveMaterialAsync(MaterialUpsertRequest request, CancellationToken ct = default)
       => throw new NotSupportedException();
 
+    public Task<LogisticsCommandResult> SetProductionRoleAsync(string rfc, int materialId, string productionRole, CancellationToken ct = default)
+      => throw new NotSupportedException();
+
     public Task<LogisticsCommandResult> CreateCategoryAsync(MaterialCategoryCreateRequest request, CancellationToken ct = default)
       => throw new NotSupportedException();
 

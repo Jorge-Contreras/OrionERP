@@ -99,7 +99,8 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
           EstimatedSellableUnits = inventory.EstimatedSellableUnits,
           LocationSummary = inventory.LocationSummary,
           Status = inventory.Status,
-          PredictedPosMessage = inventory.Message
+          PredictedPosMessage = inventory.Message,
+          FulfillmentMode = material.FulfillmentMode
         };
         productIngredients.Add(ingredient);
         ingredientRows.Add(ingredient);
@@ -740,12 +741,25 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
   };
 
   private static string InventoryAction(RestaurantSaleReadinessIngredient ingredient)
-    => ingredient.Status switch
+  {
+    // Un subproducto por lote no se compra: se repone planeando una producción.
+    if (string.Equals(ingredient.FulfillmentMode, "MakeToStock", StringComparison.OrdinalIgnoreCase))
+    {
+      return ingredient.Status switch
+      {
+        RestaurantSaleReadinessStatuses.Warning => $"Planea una producción de {ingredient.MaterialName} antes de llegar al mínimo operativo (Restaurante › Producción).",
+        RestaurantSaleReadinessStatuses.SupervisorRequired => $"Planea una producción de {ingredient.MaterialName}; mientras tanto prepara la autorización de déficit con supervisor.",
+        _ => $"Planea una producción de {ingredient.MaterialName} en Restaurante › Producción antes de vender."
+      };
+    }
+
+    return ingredient.Status switch
     {
       RestaurantSaleReadinessStatuses.Warning => "Repón el material antes de llegar al mínimo operativo.",
       RestaurantSaleReadinessStatuses.SupervisorRequired => "Repón inventario o prepara la autorización de déficit con supervisor.",
       _ => "Repón o corrige el saldo del material antes de vender."
     };
+  }
 
   private static string ConfigurationAction(string issueCode)
     => issueCode switch

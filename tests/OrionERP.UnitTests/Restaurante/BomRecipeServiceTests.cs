@@ -111,6 +111,7 @@ public sealed class BomRecipeServiceTests
       ReaderResultFactory = (commandText, _) => commandText.Contains("WITH MaterialTree", StringComparison.Ordinal)
         ? CreateIncompleteBomMaterialTable()
         : commandText.Contains("component.UnitId<>material.BaseUnitId", StringComparison.Ordinal)
+          || commandText.Contains("versionInfo.YieldUnitId <> material.BaseUnitId", StringComparison.Ordinal)
           ? new DataTable()
           : CreateVersionTable("Draft"),
       ScalarResultFactory = (_, _) => 1
@@ -182,6 +183,29 @@ public sealed class BomRecipeServiceTests
   }
 
   [Fact]
+  public async Task RetireAsync_WarnsButAllowsWhenTheChildIsABatchSubProduct()
+  {
+    // Un subproducto por lote se descuenta del inventario: el padre sigue vendiéndose mientras
+    // quede existencia. Lo que se pierde es poder reponerlo, y eso se avisa sin bloquear.
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) => commandText.Contains("parentVersion", StringComparison.Ordinal)
+        ? CreateActiveParentBomTable("MakeToStock")
+        : CreateVersionTable("Active"),
+      ScalarResultFactory = (_, _) => 0,
+      NonQueryResultFactory = (_, _) => 1
+    };
+
+    var result = await new BomRecipeService(new FakeQueryConnectionFactory(connection))
+      .RetireAsync("OHM191112Q26", 88, "admin@orionerp.local");
+
+    Assert.True(result.Success);
+    Assert.Contains("HAMBURGUESA DE SIRLOIN", result.Message, StringComparison.Ordinal);
+    Assert.Contains("ya no se podrá producir", result.Message, StringComparison.Ordinal);
+    Assert.Contains(connection.ExecutedCommands, command => command.CommandText.Contains("SET [Status] = 'Retired'", StringComparison.Ordinal));
+  }
+
+  [Fact]
   public async Task DeleteConversionAsync_BlocksCurrentBomUsage_AndDeletesWhenClear()
   {
     var blockedConnection = new FakeQueryDbConnection
@@ -244,12 +268,13 @@ public sealed class BomRecipeServiceTests
     return table;
   }
 
-  private static DataTable CreateActiveParentBomTable()
+  private static DataTable CreateActiveParentBomTable(string childFulfillmentMode = "MakeToOrder")
   {
     var table = new DataTable();
     table.Columns.Add("ProductMaterialId", typeof(int));
     table.Columns.Add("Description", typeof(string));
-    table.Rows.Add(7066, "HAMBURGUESA DE SIRLOIN");
+    table.Columns.Add("FulfillmentMode", typeof(string));
+    table.Rows.Add(7066, "HAMBURGUESA DE SIRLOIN", childFulfillmentMode);
     return table;
   }
 

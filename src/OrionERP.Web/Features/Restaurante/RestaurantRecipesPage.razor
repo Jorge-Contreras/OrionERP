@@ -117,13 +117,26 @@
                                           @bind-Value="editor.ProductMaterialId"
                                           Changed="SetProductMaterialAsync"
                                           Disabled="@(IsReadOnly || editor.BomVersionId.HasValue || clonedFromVersion.HasValue)"
-                                          Placeholder="Buscar producto terminado…"
-                                          EmptyText="Los productos terminados se crean y clasifican desde Materiales."
+                                          Placeholder="Buscar producto o subproducto…"
+                                          EmptyText="Revisa el código o el nombre. Si el material todavía no existe, créalo en Materiales."
                                           EmptyActionHref="/logistica/materiales" />
                 <label>Esta receta rinde<input type="number" min="0.0001" step="0.0001" disabled="@IsReadOnly" @bind="editor.YieldQuantity" @bind:after="MarkDirty" @oninput="MarkDirty" /></label>
                 <label>Unidad de rendimiento<select @bind="editor.YieldUnitId" disabled><option value="0">Elige un producto…</option>@if (FindMaterial(editor.ProductMaterialId) is { } product) { <option value="@product.BaseUnitId">@UnitLabel(product.BaseUnitId)</option> }</select></label>
                 <label>Merma total esperada <small>Opcional</small><div class="recipe-input-suffix"><input type="number" min="0" max="100" step="0.1" disabled="@IsReadOnly" @bind="editor.ExpectedWastePercent" @bind:after="MarkDirty" @oninput="MarkDirty" /><span>%</span></div></label>
               </div>
+              @if (ProductClassificationNotice is { } classificationNotice)
+              {
+                <div class="recipe-classification-note">
+                  <span class="oi oi-warning" aria-hidden="true"></span>
+                  <div>
+                    <strong>@(FindMaterial(editor.ProductMaterialId)?.Description) está clasificado como insumo comprado.</strong>
+                    @classificationNotice
+                    <button type="button" class="recipe-classification-note__action" disabled="@isBusy" @onclick="ReclassifyAsBatchSubProductAsync">
+                      Clasificar como subproducto por lote
+                    </button>
+                  </div>
+                </div>
+              }
             </section>
 
             <section class="recipe-editor-card" aria-labelledby="recipe-ingredients-title">
@@ -194,6 +207,30 @@
               @if (selectedDetail is { Allergens.Count: > 0 }) { <div class="recipe-allergen-summary"><strong>Alérgenos detectados</strong><div>@foreach (var allergen in selectedDetail.Allergens) { <span>@allergen</span> }</div></div> }
             </section>
 
+            @if (selectedVersionId.HasValue && (recipeUsage.Count > 0 || IsProducibleProduct))
+            {
+              <section class="recipe-editor-card recipe-usage" aria-labelledby="recipe-usage-title">
+                <header><span class="oi oi-link-intact" aria-hidden="true"></span><div><h3 id="recipe-usage-title">Dónde se usa</h3><p>Antes de cambiar o archivar esta receta, revisa qué depende de ella.</p></div></header>
+                @if (recipeUsage.Count == 0)
+                {
+                  <p class="recipe-usage__empty">Ninguna receta activa usa este material como ingrediente.</p>
+                }
+                else
+                {
+                  <ul class="recipe-usage__list">
+                    @foreach (var usage in recipeUsage)
+                    {
+                      <li><strong>@usage.ProductName</strong> <small>v@usage.VersionNumber · usa @FormatQuantity(usage.Quantity) @usage.UnitName</small></li>
+                    }
+                  </ul>
+                }
+                @if (IsProducibleProduct)
+                {
+                  <a class="recipe-usage__produce" href="/restaurante/produccion">Planear una producción de este subproducto</a>
+                }
+              </section>
+            }
+
             <footer class="recipe-actions">
               <div class="recipe-save-state"><span class="recipe-save-state__dot @(isDirty ? "is-dirty" : null)"></span><strong>@SaveStateLabel</strong>@if (selectedDetail is not null) { <small>Creada por @(string.IsNullOrWhiteSpace(selectedDetail.CreatedBy) ? "Usuario no registrado" : selectedDetail.CreatedBy) · @selectedDetail.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</small> }</div>
               <div>
@@ -260,6 +297,7 @@
   private BomDraftSaveRequest editor = NewEditor();
   private BomVersionDto? selectedDetail;
   private BomCostBreakdownDto? costBreakdown;
+  private List<RecipeUsageDto> recipeUsage = [];
   private BomVersionDto? previewVersion;
   private RecipeActivationReadinessDto? activationReadiness;
   private readonly Dictionary<string, List<string>> validationErrors = new(StringComparer.OrdinalIgnoreCase);
@@ -298,10 +336,14 @@
     (string.IsNullOrWhiteSpace(recipeSearch) || family.ProductName.Contains(recipeSearch.Trim(), StringComparison.CurrentCultureIgnoreCase)) &&
     (statusFilter == "All" || family.Versions.Any(version => string.Equals(version.Status, statusFilter, StringComparison.OrdinalIgnoreCase))));
   private void ApplyRecipeSearchOnEnter(KeyboardEventArgs args) { if(args.Key == "Enter") recipeSearch = recipeSearchDraft.Trim(); }
-  private IReadOnlyList<RestaurantMaterialOption> ProductOptions => materialOptions.Where(option =>
-    FindMaterial(option.Id) is { } material &&
-    (string.Equals(material.ProductType, "FinishedGood", StringComparison.OrdinalIgnoreCase) || versions.Any(version => version.ProductMaterialId == material.Id)))
-    .Select(option => option with { Group = "Productos terminados" }).ToList();
+  private IReadOnlyList<RestaurantMaterialOption> ProductOptions => RestaurantRecipeProductRules.BuildProductOptions(
+    materialOptions,
+    materials,
+    versions.Select(version => version.ProductMaterialId));
+  private bool IsProducibleProduct => FindMaterial(editor.ProductMaterialId) is { } producible
+    && string.Equals(producible.FulfillmentMode, "MakeToStock", StringComparison.OrdinalIgnoreCase);
+  private static string FormatQuantity(decimal value) => value == decimal.Truncate(value) ? value.ToString("N0") : value.ToString("N2");
+  private string? ProductClassificationNotice => RestaurantRecipeProductRules.ClassificationNotice(FindMaterial(editor.ProductMaterialId));
   private string ConfirmationTitle => confirmKind switch { "activate" => "¿Activar esta receta?", "delete" => "¿Eliminar este borrador?", "retire" => "¿Archivar esta receta?", _ => "Confirmar acción" };
   private string ConfirmationText => confirmKind switch { "activate" when activationReadiness?.ReplacesVersionNumber is { } number => $"La versión {selectedDetail?.VersionNumber} quedará en uso y reemplazará a la versión {number}.", "activate" => "Esta versión quedará disponible para operación y producción.", "delete" => "El borrador y sus pasos se eliminarán de forma permanente.", "retire" => "La receta dejará de estar disponible para nuevas operaciones. La producción pendiente puede impedirlo.", _ => string.Empty };
   private string ConfirmationButtonLabel => confirmKind switch { "activate" => "Activar receta", "delete" => "Eliminar borrador", "retire" => "Archivar receta", _ => "Confirmar" };
@@ -375,6 +417,9 @@
       };
       selectedDetail = detail;
       costBreakdown = await costTask;
+      recipeUsage = selectedDetail is null
+        ? []
+        : (await BomService.GetRecipeUsageAsync(CurrentRfc, selectedDetail.ProductMaterialId)).ToList();
       selectedVersionId = detail.Id;
       selectedStatus = detail.Status;
       clonedFromVersion = null;
@@ -401,6 +446,24 @@
     validationErrors.Clear();
     message = null;
     return Task.CompletedTask;
+  }
+
+  private async Task ReclassifyAsBatchSubProductAsync()
+  {
+    var materialId = editor.ProductMaterialId;
+    if (materialId <= 0) return;
+    isBusy = true;
+    try
+    {
+      var result = await MaterialService.SetProductionRoleAsync(CurrentRfc, materialId, MaterialProductionRoles.BatchSubProduct);
+      if (!result.Success) { Show(result.Message, true); return; }
+      // Sólo se recarga el catálogo de materiales: el borrador en edición no debe perderse.
+      materials = (await MaterialService.GetMaterialsAsync(new() { Rfc = CurrentRfc, Status = "ACTIVO", MaterialClass = "Consumable", Take = 0 })).ToList();
+      materialOptions = RestaurantMaterialOption.FromMaterials(materials);
+      Show(result.Message, false);
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { isBusy = false; }
   }
 
   private async Task SetProductMaterialAsync(int materialId)
@@ -594,7 +657,7 @@
     var discard = await JsRuntime.InvokeAsync<bool>("confirm", "Hay cambios sin guardar en esta receta. ¿Deseas descartarlos?");
     if (!discard) context.PreventNavigation();
   }
-  private void ResetEditor() { editorVisible = false; editor = NewEditor(); selectedDetail = null; costBreakdown = null; selectedVersionId = null; selectedStatus = null; clonedFromVersion = null; isDirty = false; validationErrors.Clear(); }
+  private void ResetEditor() { editorVisible = false; editor = NewEditor(); selectedDetail = null; costBreakdown = null; recipeUsage = []; selectedVersionId = null; selectedStatus = null; clonedFromVersion = null; isDirty = false; validationErrors.Clear(); }
   private void Show(string value, bool error) { message = value; isError = error; }
   private static BomDraftSaveRequest NewEditor() => new() { YieldQuantity = 1, Components = [new() { Quantity = 1 }], Steps = [new() { StepNumber = 1 }] };
   private sealed record RecipeFamily(int ProductMaterialId, string ProductName, IReadOnlyList<BomVersionDto> Versions);

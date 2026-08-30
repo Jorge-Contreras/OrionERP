@@ -213,6 +213,8 @@ public sealed class MaterialService : IMaterialService
           m.VendorCode,
           m.PurchaseLink,
           m.MaterialClass,
+          m.ProductType,
+          m.FulfillmentMode,
           m.IsActive,
           CAST(CASE WHEN m.PrimaryImage IS NULL THEN 0 ELSE 1 END AS bit) AS HasImage,
           m.PrimaryImageFileName,
@@ -968,6 +970,18 @@ public sealed class MaterialService : IMaterialService
               MaterialClass = @MaterialClass
           """);
 
+        // Sin rol explícito el material conserva su clasificación: las pantallas que no la
+        // muestran no deben pisarla al guardar.
+        var requestedRole = MaterialProductionRoles.Find(request.ProductionRole);
+        if (requestedRole is not null)
+        {
+          sql.AppendLine(
+            """
+            , ProductType = @ProductType,
+              FulfillmentMode = @FulfillmentMode
+            """);
+        }
+
         if (updateImage)
         {
           sql.AppendLine(
@@ -1007,6 +1021,8 @@ public sealed class MaterialService : IMaterialService
               VendorCode = NullIfWhiteSpace(request.VendorCode),
               PurchaseLink = NullIfWhiteSpace(request.PurchaseLink),
               request.MaterialClass,
+              ProductType = requestedRole?.ProductType,
+              FulfillmentMode = requestedRole?.FulfillmentMode,
               PrimaryImage = hasNewImage ? request.PrimaryImageBytes : null,
               PrimaryImageFileName = hasNewImage ? NullIfWhiteSpace(request.PrimaryImageFileName) : null,
               PrimaryImageContentType = hasNewImage ? imageContentType : null,
@@ -1031,6 +1047,10 @@ public sealed class MaterialService : IMaterialService
           await tx.RollbackAsync(ct);
           return LogisticsCommandResult.Fail("Los materiales nuevos deben crearse activos.");
         }
+
+        // Un material nuevo nace como insumo comprado salvo que la pantalla indique otro rol.
+        var newMaterialRole = MaterialProductionRoles.Find(request.ProductionRole)
+          ?? MaterialProductionRoles.Find(MaterialProductionRoles.PurchasedInput)!;
 
         const string insertSql =
           """
@@ -1062,6 +1082,8 @@ public sealed class MaterialService : IMaterialService
               PrimaryImageThumbnailContentType,
               PurchaseLink,
               MaterialClass,
+              ProductType,
+              FulfillmentMode,
               IsActive
           )
           VALUES
@@ -1092,6 +1114,8 @@ public sealed class MaterialService : IMaterialService
               @PrimaryImageThumbnailContentType,
               @PurchaseLink,
               @MaterialClass,
+              @ProductType,
+              @FulfillmentMode,
               1
           );
 
@@ -1125,7 +1149,9 @@ public sealed class MaterialService : IMaterialService
               PrimaryImageThumbnail = hasNewImage ? request.PrimaryImageThumbnailBytes : null,
               PrimaryImageThumbnailContentType = thumbnailContentType,
               PurchaseLink = NullIfWhiteSpace(request.PurchaseLink),
-              request.MaterialClass
+              request.MaterialClass,
+              ProductType = newMaterialRole.ProductType,
+              FulfillmentMode = newMaterialRole.FulfillmentMode
             },
             tx,
             cancellationToken: ct));
@@ -1155,6 +1181,38 @@ public sealed class MaterialService : IMaterialService
       await tx.RollbackAsync(ct);
       throw;
     }
+  }
+
+  public async Task<LogisticsCommandResult> SetProductionRoleAsync(string rfc, int materialId, string productionRole, CancellationToken ct = default)
+  {
+    var normalizedRfc = LogisticsRfc.Require(rfc);
+    var role = MaterialProductionRoles.Find(productionRole);
+    if (role is null)
+    {
+      return LogisticsCommandResult.Fail("El rol de producción no es válido.");
+    }
+
+    using var conn = CreateConnection();
+    var affected = await conn.ExecuteAsync(new CommandDefinition(
+      """
+      UPDATE logistica.Material
+      SET ProductType = @ProductType,
+          FulfillmentMode = @FulfillmentMode,
+          UpdatedDate = CONVERT(date, SYSUTCDATETIME())
+      WHERE Rfc = @Rfc AND Id = @MaterialId;
+      """,
+      new
+      {
+        Rfc = normalizedRfc,
+        MaterialId = materialId,
+        role.ProductType,
+        role.FulfillmentMode
+      },
+      cancellationToken: ct));
+
+    return affected == 1
+      ? LogisticsCommandResult.Ok($"El material quedó clasificado como {role.Label.ToLowerInvariant()}.")
+      : LogisticsCommandResult.Fail("El material no pertenece al RFC activo.");
   }
 
   public async Task<LogisticsCommandResult> CreateCategoryAsync(MaterialCategoryCreateRequest request, CancellationToken ct = default)

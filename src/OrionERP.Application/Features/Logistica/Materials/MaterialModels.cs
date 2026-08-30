@@ -67,10 +67,15 @@ public sealed class MaterialDetailDto
   public string? VendorCode { get; set; }
   public string? PurchaseLink { get; set; }
   public string MaterialClass { get; set; } = string.Empty;
+  public string ProductType { get; set; } = string.Empty;
+  public string FulfillmentMode { get; set; } = string.Empty;
   public bool IsActive { get; set; }
   public bool HasImage { get; set; }
   public string? PrimaryImageFileName { get; set; }
   public string? PrimaryImageContentType { get; set; }
+
+  /// <summary>Rol de producción derivado del par almacenado.</summary>
+  public string ProductionRole => MaterialProductionRoles.Resolve(ProductType, FulfillmentMode);
 }
 
 public sealed class MaterialUpsertRequest
@@ -123,6 +128,13 @@ public sealed class MaterialUpsertRequest
   [Required]
   [StringLength(50)]
   public string MaterialClass { get; set; } = "Consumable";
+
+  /// <summary>
+  /// Rol de producción elegido por el usuario. En <c>null</c> o vacío el material conserva la
+  /// clasificación que ya tenía, de modo que guardar desde una pantalla que no la muestra no la pise.
+  /// </summary>
+  [StringLength(40)]
+  public string? ProductionRole { get; set; }
 
   public bool RemovePrimaryImage { get; set; }
   public byte[]? PrimaryImageBytes { get; set; }

@@ -2,6 +2,7 @@ using System.Data.Common;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Restaurante;
 
@@ -205,6 +206,9 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     var rfc = LogisticsRfc.Require(request.Rfc);
     if (!IsValidImage(request.FamilyImage, request.ImageContentType) || !IsValidImage(request.VariantImage, request.VariantImageContentType))
       return RestaurantCommandResult.Fail("Las fotografías deben ser imágenes válidas de hasta 8 MB.");
+    var productionRole = MaterialProductionRoles.Find(request.ProductionRole);
+    if (productionRole is null)
+      return RestaurantCommandResult.Fail("Elige un rol de producción válido para el material.");
     using var conn = CreateConnection();
     await conn.OpenAsync(ct);
     await using var tx = await conn.BeginTransactionAsync(ct);
@@ -349,8 +353,8 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
         {
           Rfc = rfc,
           request.MaterialId,
-          ProductType = request.ProductType.Trim(),
-          FulfillmentMode = request.FulfillmentMode.Trim()
+          ProductType = productionRole.ProductType,
+          FulfillmentMode = productionRole.FulfillmentMode
         }, tx, cancellationToken: ct));
 
       await conn.ExecuteAsync(new CommandDefinition(

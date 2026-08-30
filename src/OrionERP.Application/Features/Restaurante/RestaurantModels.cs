@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using OrionERP.Application.Features.Logistica.Materials;
 
 namespace OrionERP.Application.Features.Restaurante;
 
@@ -87,8 +88,11 @@ public sealed class RestaurantProductUpsertRequest
   public long? Id { get; set; }
   public long? ProductCardId { get; set; }
   [Required] public int MaterialId { get; set; }
-  [Required, StringLength(30)] public string ProductType { get; set; } = "FinishedGood";
-  [Required, StringLength(30)] public string FulfillmentMode { get; set; } = "MakeToOrder";
+  /// <summary>
+  /// Rol de producción del material. Sustituye a los antiguos campos independientes
+  /// ProductType/FulfillmentMode, que podían quedar en combinaciones contradictorias.
+  /// </summary>
+  [Required, StringLength(40)] public string ProductionRole { get; set; } = MaterialProductionRoles.OnDemandFinishedGood;
   [Required, StringLength(50)] public string Sku { get; set; } = string.Empty;
   [Required, StringLength(160)] public string Name { get; set; } = string.Empty;
   [StringLength(800)] public string? Description { get; set; }
@@ -550,6 +554,16 @@ public sealed class BomCostBreakdownDto
   public IReadOnlyList<BomCostLineDto> Lines { get; set; } = Array.Empty<BomCostLineDto>();
 }
 
+/// <summary>Receta activa que consume un material, para poder medir el impacto de cambiarlo.</summary>
+public sealed class RecipeUsageDto
+{
+  public int ProductMaterialId { get; set; }
+  public string ProductName { get; set; } = string.Empty;
+  public int VersionNumber { get; set; }
+  public decimal Quantity { get; set; }
+  public string UnitName { get; set; } = string.Empty;
+}
+
 public sealed class BomCostLineDto
 {
   public int MaterialId { get; set; }
@@ -563,6 +577,8 @@ public sealed class BomCostLineDto
   public string BaseUnitName { get; set; } = string.Empty;
   public decimal UnitCost { get; set; }
   public string CostSource { get; set; } = string.Empty;
+  /// <summary>El material tiene receta activa pero está clasificado como comprado, así que su receta no cuenta.</summary>
+  public bool RecipeCostIgnored { get; set; }
   public decimal BatchCost { get; set; }
   public decimal UnitContribution { get; set; }
 }
@@ -749,6 +765,8 @@ public sealed class RestaurantProductionWorkspaceDto
   public IReadOnlyList<RestaurantProductionOrderDto> Orders { get; set; } = Array.Empty<RestaurantProductionOrderDto>();
   public IReadOnlyList<RestaurantLookupDto> ActiveBoms { get; set; } = Array.Empty<RestaurantLookupDto>();
   public IReadOnlyList<RestaurantLookupDto> OutputLocations { get; set; } = Array.Empty<RestaurantLookupDto>();
+  /// <summary>Materiales con receta activa que no se pueden producir por su clasificación.</summary>
+  public IReadOnlyList<RestaurantLookupDto> UnproducibleWithRecipe { get; set; } = Array.Empty<RestaurantLookupDto>();
 }
 
 public sealed class RestaurantMenuAdminDto

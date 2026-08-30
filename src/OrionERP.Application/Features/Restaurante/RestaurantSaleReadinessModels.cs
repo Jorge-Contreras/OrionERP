@@ -76,6 +76,7 @@ public sealed class RestaurantSaleReadinessIngredient
   public string BaseUnit { get; set; } = string.Empty;
   public string BomPath { get; set; } = string.Empty;
   public int BomDepth { get; set; }
+  public string FulfillmentMode { get; set; } = string.Empty;
   public bool TrackLots { get; set; }
   public decimal RequiredQuantity { get; set; }
   public decimal StockQuantity { get; set; }

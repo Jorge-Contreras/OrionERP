@@ -19,6 +19,8 @@ public interface IMaterialService
   Task<LogisticsCommandResult> DeactivateMaterialAsync(MaterialDeactivateRequest request, CancellationToken ct = default);
   Task<LogisticsCommandResult> ReactivateMaterialAsync(MaterialReactivateRequest request, CancellationToken ct = default);
   Task<LogisticsCommandResult> SaveMaterialAsync(MaterialUpsertRequest request, CancellationToken ct = default);
+  /// <summary>Cambia sólo el rol de producción, sin tocar el resto de la ficha del material.</summary>
+  Task<LogisticsCommandResult> SetProductionRoleAsync(string rfc, int materialId, string productionRole, CancellationToken ct = default);
   Task<LogisticsCommandResult> CreateCategoryAsync(MaterialCategoryCreateRequest request, CancellationToken ct = default);
   Task<LogisticsCommandResult> CreateUnitAsync(UnitOfMeasureCreateRequest request, CancellationToken ct = default);
 }

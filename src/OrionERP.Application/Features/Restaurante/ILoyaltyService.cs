@@ -12,9 +12,6 @@ public interface ILoyaltyService : IBrunoMemberService
   Task<LoyaltyProgramSettingsDto?> GetProgramSettingsAsync(string rfc, CancellationToken ct = default);
   Task<RestaurantCommandResult> SaveProgramSettingsAsync(LoyaltyProgramSettingsSaveRequest request, string updatedBy, CancellationToken ct = default);
 
-  /// <summary>Canjea puntos y devuelve el valor en pesos que la caja debe aplicar como descuento.</summary>
-  Task<LoyaltyRedeemResultDto> RedeemPointsAsync(LoyaltyRedeemRequest request, string redeemedBy, CancellationToken ct = default);
-
   /// <summary>Saldo canjeable del socio y puntos próximos a caducar.</summary>
   Task<LoyaltyRedeemablePreviewDto?> GetRedeemablePreviewAsync(string rfc, Guid memberId, CancellationToken ct = default);
 

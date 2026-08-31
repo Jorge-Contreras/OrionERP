@@ -17,9 +17,11 @@ public sealed class RestaurantLoyaltyCancellationTests
     var cancellationWorkflow = orderService[cancellationStart..paymentsStart];
 
     Assert.Contains("ReverseCancelledOrderAsync", cancellationWorkflow, StringComparison.Ordinal);
+    Assert.Contains("RestoreCancelledRedemptionAsync", cancellationWorkflow, StringComparison.Ordinal);
     Assert.Contains("LoyaltyPointsReversed", cancellationWorkflow, StringComparison.Ordinal);
     Assert.Contains("SET PointsEarned=0", loyaltyService, StringComparison.Ordinal);
     Assert.Contains("'CancellationReversal'", loyaltyService, StringComparison.Ordinal);
+    Assert.Contains("'RedemptionReversal'", loyaltyService, StringComparison.Ordinal);
   }
 
   [Fact]

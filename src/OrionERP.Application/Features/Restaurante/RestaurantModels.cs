@@ -186,6 +186,7 @@ public sealed class RestaurantOrderCreateRequest
   public string? DiscountReason { get; set; }
   public string? SupervisorAuthorizedBy { get; set; }
   public Guid? MemberId { get; set; }
+  [Range(0, 1000000)] public int PointsToRedeem { get; set; }
   [StringLength(32)] public string? PromotionCode { get; set; }
   [Required, StringLength(10)] public string SalesChannel { get; set; } = RestaurantSalesChannels.Pos;
   public bool AllowInventoryDeficit { get; set; }
@@ -209,7 +210,7 @@ public sealed class RestaurantOrderLineCreateRequest
 public sealed class RestaurantPaymentCreateRequest
 {
   [Required] public string PaymentMethod { get; set; } = "Cash";
-  [Range(typeof(decimal), "0.01", "999999999")] public decimal Amount { get; set; }
+  [Range(typeof(decimal), "0", "999999999")] public decimal Amount { get; set; }
   public decimal TipAmount { get; set; }
   [Required] public string IdempotencyKey { get; set; } = string.Empty;
   public string? ExternalReference { get; set; }
@@ -289,6 +290,8 @@ public sealed class RestaurantOrderResult
   public IReadOnlyList<RestaurantPromotionAdjustmentDto> AppliedPromotions { get; set; } = Array.Empty<RestaurantPromotionAdjustmentDto>();
   public string? MembershipNumber { get; set; }
   public int PointsEarned { get; set; }
+  public int PointsRedeemed { get; set; }
+  public decimal RedemptionValue { get; set; }
   public int? PointsBalance { get; set; }
   public bool WasDuplicate { get; set; }
 }
@@ -310,6 +313,8 @@ public sealed class RestaurantOrderDto
   public Guid? MemberId { get; set; }
   public string? MembershipNumber { get; set; }
   public int PointsEarned { get; set; }
+  public int PointsRedeemed { get; set; }
+  public decimal RedemptionValue { get; set; }
   public int? CashRegisterId { get; set; }
   public Guid? CashShiftId { get; set; }
   public byte Priority { get; set; }
@@ -342,6 +347,9 @@ public sealed class RestaurantReceiptDto
   public decimal DeliveryCost { get; set; }
   public string? MembershipNumber { get; set; }
   public int PointsEarned { get; set; }
+  public int PointsRedeemed { get; set; }
+  public decimal RedemptionValue { get; set; }
+  public int? PointsBalance { get; set; }
   public DateTime CreatedAt { get; set; }
   public IReadOnlyList<RestaurantReceiptLineDto> Lines { get; set; } = Array.Empty<RestaurantReceiptLineDto>();
   public IReadOnlyList<RestaurantPaymentDto> Payments { get; set; } = Array.Empty<RestaurantPaymentDto>();

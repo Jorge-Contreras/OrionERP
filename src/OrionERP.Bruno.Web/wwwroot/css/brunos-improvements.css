@@ -749,3 +749,9 @@
   color: #8f271c;
   font-weight: 700;
 }
+
+@media (min-width: 901px) {
+  .club-explainer {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}

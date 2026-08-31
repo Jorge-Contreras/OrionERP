@@ -278,12 +278,48 @@
                 <div><strong>@selectedMember.DisplayName</strong><small>@selectedMember.MembershipNumber · @selectedMember.MaskedPhone · @selectedMember.PointsBalance puntos</small></div>
                 <button type="button" @onclick="ClearMember">Quitar</button>
               </div>
+              @if (redemptionPreview is not null)
+              {
+                <div class="pos-redemption @(appliedRedemptionPoints > 0 ? "is-applied" : null)">
+                  <div class="pos-redemption__summary">
+                    <span>Canje de puntos</span>
+                    <strong>@redemptionPreview.PointsBalance puntos · 1 punto = @redemptionPreview.PointValueMxn.ToString("C")</strong>
+                    <small>Mínimo @redemptionPreview.MinimumRedeemPoints · máximo para esta orden @MaximumOrderRedemptionPoints</small>
+                  </div>
+                  @if (!redemptionPreview.CanRedeem)
+                  {
+                    <p>El socio todavía no alcanza el mínimo de @redemptionPreview.MinimumRedeemPoints puntos.</p>
+                  }
+                  else if (MaximumOrderRedemptionPoints == 0)
+                  {
+                    <p>La mercancía restante de esta orden no alcanza el mínimo de canje.</p>
+                  }
+                  else
+                  {
+                    <div class="pos-redemption__controls">
+                      <label>Puntos a canjear
+                        <input type="number" min="@redemptionPreview.MinimumRedeemPoints" max="@MaximumOrderRedemptionPoints" step="1" @bind="redemptionPoints" />
+                      </label>
+                      <button type="button" @onclick="ApplyRedemption" disabled="@(!CanApplyRedemption)">Aplicar</button>
+                      <button type="button" @onclick="UseMaximumRedemption">Usar máximo</button>
+                    </div>
+                    @if (appliedRedemptionPoints > 0)
+                    {
+                      <div class="pos-redemption__applied">
+                        <span>@appliedRedemptionPoints puntos aplicados</span>
+                        <strong>-@AppliedRedemptionValue.ToString("C")</strong>
+                        <button type="button" @onclick="ClearRedemption">Quitar</button>
+                      </div>
+                    }
+                  }
+                </div>
+              }
             }
             <div class="pos-membership__lookup">
               <label>Código promocional
                 <input @bind="promotionCode" @bind:event="oninput" maxlength="32" autocomplete="off" placeholder="Ej. MARTES2X1" />
               </label>
-              <button type="button" @onclick="RefreshPromotionQuoteAsync" disabled="@(isQuotingPromotions || cart.Count == 0)">@(isQuotingPromotions ? "Calculando…" : "Aplicar")</button>
+              <button type="button" @onclick="() => RefreshPromotionQuoteAsync()" disabled="@(isQuotingPromotions || cart.Count == 0)">@(isQuotingPromotions ? "Calculando…" : "Aplicar")</button>
             </div>
             @if (promotionQuote is not null)
             {
@@ -310,9 +346,10 @@
           <label>Notas de la orden<textarea @bind="orderNotes" rows="2"></textarea></label>
           <details class="pos-discounts">
             <summary>Descuento o excepción de inventario</summary>
-            <div class="pos-form-row"><label>Tipo<select @bind="discountMode"><option value="Amount">Importe</option><option value="Percent">Porcentaje</option></select></label><label>Valor <input type="number" min="0" step="0.01" @bind="discountValue" /></label></div>
+            <div class="pos-form-row"><label>Tipo<select @bind="discountMode" @bind:after="InvalidateRedemption"><option value="Amount">Importe</option><option value="Percent">Porcentaje</option></select></label><label>Valor <input type="number" min="0" step="0.01" @bind="discountValue" @bind:after="InvalidateRedemption" /></label></div>
             <label>Motivo <input @bind="discountReason" /></label>
-            <label><input type="checkbox" @bind="allowInventoryDeficit" /> Autorizar venta excepcional sin existencia</label>
+            <label><input type="checkbox" @bind="allowInventoryDeficit" /> Autorizar cualquier excepción de inventario</label>
+            <small>Con PIN válido, permite cobrar aunque falten existencias, saldos, ubicaciones o configuración de ingredientes.</small>
             <div class="pos-form-row"><label>Supervisor <input @bind="supervisorIdentity" autocomplete="username" /></label><label>PIN <input type="password" inputmode="numeric" @bind="supervisorPin" autocomplete="current-password" /></label></div>
           </details>
             </section>
@@ -350,7 +387,14 @@
           @if (DiscountTotal > 0)
           {
             <div><span>Productos</span><b>@CartSubtotal.ToString("C")</b></div>
-            <div><span>@(catalog.Site.PricesIncludeTax ? "Descuento (IVA incluido)" : "Descuento")</span><b>-@DiscountTotal.ToString("C")</b></div>
+            @if (NonLoyaltyDiscountTotal > 0)
+            {
+              <div><span>@(catalog.Site.PricesIncludeTax ? "Descuentos (IVA incluido)" : "Descuentos")</span><b>-@NonLoyaltyDiscountTotal.ToString("C")</b></div>
+            }
+            @if (AppliedRedemptionValue > 0)
+            {
+              <div class="is-redemption"><span>Club Bruno · @appliedRedemptionPoints puntos</span><b>-@AppliedRedemptionValue.ToString("C")</b></div>
+            }
           }
           <div><span>Subtotal antes de IVA</span><b>@PosTotals.SubtotalBeforeTax.ToString("C")</b></div>
           <div><span>IVA (@catalog.Site.TaxRate.ToString("P0"))</span><b>@PosTotals.Tax.ToString("C")</b></div>
@@ -453,6 +497,10 @@
       <span>ORDEN</span><strong>@lastOrder.Folio.ToString("000")</strong>
       @if (!string.IsNullOrWhiteSpace(lastOrder.CustomerName)) { <b class="pos-ticket__customer">@lastOrder.CustomerName</b> }
       <p>Total @lastOrder.Total.ToString("C")</p><small>@lastOrder.Status · @lastOrder.PaymentStatus</small>
+      @if (lastOrder.PointsRedeemed > 0)
+      {
+        <small class="pos-ticket__loyalty">Canje: @lastOrder.PointsRedeemed puntos (-@lastOrder.RedemptionValue.ToString("C")) · Saldo @lastOrder.PointsBalance</small>
+      }
       @if (lastOrder.WasDuplicate)
       {
         <small class="pos-ticket__recovered" role="status">Esta orden ya se había registrado. Recuperamos el resultado sin volver a cobrarla ni enviarla.</small>
@@ -519,6 +567,9 @@
   private string? customerPhone;
   private string? memberIdentifier;
   private LoyaltyMemberDto? selectedMember;
+  private LoyaltyRedeemablePreviewDto? redemptionPreview;
+  private int redemptionPoints;
+  private int appliedRedemptionPoints;
   private string? promotionCode;
   private RestaurantPromotionQuoteDto? promotionQuote;
   private string? deliveryAddress;
@@ -566,7 +617,33 @@
           : discountValue),
       Math.Max(0, CartSubtotal - PromotionDiscountTotal - LineDiscountTotal)),
     2);
-  private decimal DiscountTotal => PromotionDiscountTotal + LineDiscountTotal + OrderDiscountAmount;
+  private decimal NonLoyaltyDiscountTotal => decimal.Round(PromotionDiscountTotal + LineDiscountTotal + OrderDiscountAmount, 2);
+  private decimal MerchandiseBeforeRedemption => decimal.Round(Math.Max(0, CartSubtotal - NonLoyaltyDiscountTotal), 2);
+  private int MaximumOrderRedemptionPoints => redemptionPreview is null
+    ? 0
+    : LoyaltyPointsCalculator.CalculateMaximumOrderRedemptionPoints(
+      redemptionPreview.PointsBalance,
+      redemptionPreview.MinimumRedeemPoints,
+      redemptionPreview.PointValueMxn,
+      MerchandiseBeforeRedemption);
+  private decimal AppliedRedemptionValue => redemptionPreview is null || appliedRedemptionPoints <= 0
+    ? 0
+    : LoyaltyPointsCalculator.CalculateRedemptionValue(appliedRedemptionPoints, redemptionPreview.PointValueMxn);
+  private bool CanApplyRedemption => redemptionPreview is not null
+    && redemptionPoints >= redemptionPreview.MinimumRedeemPoints
+    && redemptionPoints <= MaximumOrderRedemptionPoints
+    && LoyaltyPointsCalculator.ValidateRedemption(
+      redemptionPoints,
+      redemptionPreview.PointsBalance,
+      redemptionPreview.MinimumRedeemPoints) is null;
+  private bool AppliedRedemptionIsValid => appliedRedemptionPoints == 0 ||
+    (redemptionPreview is not null && selectedMember is not null &&
+     appliedRedemptionPoints <= MaximumOrderRedemptionPoints &&
+     LoyaltyPointsCalculator.ValidateRedemption(
+       appliedRedemptionPoints,
+       redemptionPreview.PointsBalance,
+       redemptionPreview.MinimumRedeemPoints) is null);
+  private decimal DiscountTotal => decimal.Round(NonLoyaltyDiscountTotal + AppliedRedemptionValue, 2);
   private RestaurantPosTotalsBreakdown PosTotals => RestaurantPosTotalsCalculator.Calculate(
     CartSubtotal,
     DiscountTotal,
@@ -588,6 +665,7 @@
     && !isSubmitting
     && SelectedShift is not null
     && !IsCustomerNameMissing
+    && AppliedRedemptionIsValid
     && (string.IsNullOrWhiteSpace(promotionCode) || promotionQuote?.CodeAccepted == true)
     && ElectronicPaymentExcess <= 0.01m
     && (!RequiresFullPayment || PosCash.Shortfall <= 0.01m);
@@ -652,6 +730,8 @@
     idempotencyKey = Guid.NewGuid().ToString("N");
     selectedMember = null;
     memberIdentifier = null;
+    redemptionPreview = null;
+    redemptionPoints = appliedRedemptionPoints = 0;
     promotionQuote = null;
     promotionCode = null;
     isMenuOpen = true;
@@ -795,10 +875,35 @@
     await PersistCartAsync();
     await RefreshPromotionQuoteAsync();
   }
-  private async Task ClearCartAsync() { cart = []; promotionQuote = null; ShowMenu(); idempotencyKey = Guid.NewGuid().ToString("N"); await PersistCartAsync(); }
+  private async Task ClearCartAsync() { cart = []; promotionQuote = null; ShowMenu(); appliedRedemptionPoints = 0; idempotencyKey = Guid.NewGuid().ToString("N"); await PersistCartAsync(); }
   private async Task OnCartDiscountChangedAsync() { await PersistCartAsync(); await RefreshPromotionQuoteAsync(); }
   private async Task SetOrderTypeAsync(string value) { orderType = value; await RefreshPromotionQuoteAsync(); }
   private void FillCash() { cardAmount = 0; transferAmount = 0; cashReceived = GrandTotal + Math.Max(0, tipAmount); }
+
+  private void InvalidateRedemption()
+  {
+    appliedRedemptionPoints = 0;
+  }
+
+  private void ApplyRedemption()
+  {
+    if (!CanApplyRedemption) return;
+    appliedRedemptionPoints = redemptionPoints;
+    error = null;
+  }
+
+  private void UseMaximumRedemption()
+  {
+    if (MaximumOrderRedemptionPoints <= 0) return;
+    redemptionPoints = MaximumOrderRedemptionPoints;
+    appliedRedemptionPoints = MaximumOrderRedemptionPoints;
+    error = null;
+  }
+
+  private void ClearRedemption()
+  {
+    appliedRedemptionPoints = 0;
+  }
 
   private async Task FindMemberAsync()
   {
@@ -820,11 +925,18 @@
       {
         customerName = selectedMember.DisplayName;
       }
+      redemptionPreview = await LoyaltyService.GetRedeemablePreviewAsync(CurrentRfc, selectedMember.Id);
+      redemptionPoints = redemptionPreview?.CanRedeem == true
+        ? redemptionPreview.MinimumRedeemPoints
+        : 0;
+      appliedRedemptionPoints = 0;
       await RefreshPromotionQuoteAsync();
     }
     catch (Exception ex)
     {
       selectedMember = null;
+      redemptionPreview = null;
+      redemptionPoints = appliedRedemptionPoints = 0;
       error = ex.Message;
     }
     finally
@@ -837,11 +949,17 @@
   {
     selectedMember = null;
     memberIdentifier = null;
+    redemptionPreview = null;
+    redemptionPoints = appliedRedemptionPoints = 0;
     _ = RefreshPromotionQuoteAsync();
   }
 
-  private async Task RefreshPromotionQuoteAsync()
+  private async Task RefreshPromotionQuoteAsync(bool preserveRedemption = false)
   {
+    if (!preserveRedemption)
+    {
+      InvalidateRedemption();
+    }
     if (catalog is null || cart.Count == 0)
     {
       promotionQuote = null;
@@ -894,10 +1012,15 @@
     isSubmitting = true; error = null; drawerWarning = null;
     try
     {
-      await RefreshPromotionQuoteAsync();
+      await RefreshPromotionQuoteAsync(preserveRedemption: true);
       if (!string.IsNullOrWhiteSpace(promotionCode) && promotionQuote?.CodeAccepted != true)
       {
         error = promotionQuote?.Message ?? "El código promocional no es válido para esta orden.";
+        return;
+      }
+      if (!AppliedRedemptionIsValid)
+      {
+        error = "El canje ya no cabe en la mercancía restante. Revísalo y vuelve a aplicarlo.";
         return;
       }
       if (IsCustomerNameMissing) { error = "El nombre del cliente es obligatorio."; return; }
@@ -922,7 +1045,7 @@
       }
       var payments = new List<RestaurantPaymentCreateRequest>();
       var shouldOpenCashDrawer = cashReceived > 0.01m;
-      if (PosCash.CashAppliedToOrder > 0.01m) payments.Add(new() { PaymentMethod = "Cash", Amount = PosCash.CashAppliedToOrder, TipAmount = tipAmount, IdempotencyKey = $"{idempotencyKey}:cash" });
+      if (PosCash.CashAppliedToOrder > 0.01m || tipAmount > 0.01m) payments.Add(new() { PaymentMethod = "Cash", Amount = PosCash.CashAppliedToOrder, TipAmount = tipAmount, IdempotencyKey = $"{idempotencyKey}:cash" });
       if (cardAmount > 0) payments.Add(new() { PaymentMethod = "ExternalCard", Amount = cardAmount, IdempotencyKey = $"{idempotencyKey}:card" });
       if (transferAmount > 0) payments.Add(new() { PaymentMethod = "Transfer", Amount = transferAmount, IdempotencyKey = $"{idempotencyKey}:transfer" });
       var request = new RestaurantOrderCreateRequest
@@ -932,7 +1055,7 @@
         CustomerName = customerName!.Trim(), CustomerPhone = customerPhone, DeliveryAddress = deliveryAddress, DeliveryReferences = deliveryReferences,
         ExternalProviderId = externalProviderId, ExternalReference = externalReference, DeliveryCost = deliveryCost, CommissionAmount = commissionAmount,
         Notes = orderNotes, OrderDiscountAmount = OrderDiscountAmount, DiscountReason = discountReason,
-        SupervisorAuthorizedBy = supervisorAuthorizedBy,MemberId=selectedMember?.Id,
+        SupervisorAuthorizedBy = supervisorAuthorizedBy,MemberId=selectedMember?.Id,PointsToRedeem=appliedRedemptionPoints,
         PromotionCode=promotionCode,SalesChannel=RestaurantSalesChannels.Pos,
         AllowInventoryDeficit = allowInventoryDeficit,
         Lines = cart.Select(item => new RestaurantOrderLineCreateRequest
@@ -969,7 +1092,7 @@
       cart = [];
       idempotencyKey = Guid.NewGuid().ToString("N");
       await PersistCartAsync();
-      cashReceived = cardAmount = transferAmount = tipAmount = 0; customerName = customerPhone = deliveryAddress = deliveryReferences = externalReference = orderNotes = discountReason = supervisorIdentity = supervisorPin = memberIdentifier = promotionCode = null; selectedMember = null; promotionQuote = null; deliveryCost = commissionAmount = discountValue = 0; allowInventoryDeficit = false;
+      cashReceived = cardAmount = transferAmount = tipAmount = 0; customerName = customerPhone = deliveryAddress = deliveryReferences = externalReference = orderNotes = discountReason = supervisorIdentity = supervisorPin = memberIdentifier = promotionCode = null; selectedMember = null; redemptionPreview = null; redemptionPoints = appliedRedemptionPoints = 0; promotionQuote = null; deliveryCost = commissionAmount = discountValue = 0; allowInventoryDeficit = false;
     }
     catch (Exception ex) { error = ex.Message; }
     finally { isSubmitting = false; }
@@ -1091,6 +1214,8 @@
       Promotions = order.AppliedPromotions,
       MembershipNumber = order.MembershipNumber,
       PointsEarned = order.PointsEarned,
+      PointsRedeemed = order.PointsRedeemed,
+      RedemptionValue = order.RedemptionValue,
       PointsBalance = order.PointsBalance,
       Lines = receiptLines
     };
@@ -1129,7 +1254,9 @@
     drawerWarning = null;
     try
     {
-      _ = await Js.InvokeAsync<string>("restaurantUi.openCashDrawer", "TM-T20");
+      _ = await Js.InvokeAsync<string>("restaurantUi.openCashDrawer", "TM-T20")
+        .AsTask()
+        .WaitAsync(TimeSpan.FromSeconds(5));
     }
     catch (Exception ex)
     {

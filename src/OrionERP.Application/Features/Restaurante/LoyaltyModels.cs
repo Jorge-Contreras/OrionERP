@@ -14,6 +14,7 @@ public static class LoyaltyLedgerTypes
 {
   public const string Earn = "Earn";
   public const string Redeem = "Redeem";
+  public const string RedemptionReversal = "RedemptionReversal";
   public const string Expiration = "Expiration";
   public const string RefundReversal = "RefundReversal";
   public const string CancellationReversal = "CancellationReversal";
@@ -55,6 +56,8 @@ public sealed class LoyaltyMemberOrderDto
   public string PaymentStatus { get; set; } = string.Empty;
   public decimal Total { get; set; }
   public int PointsEarned { get; set; }
+  public int PointsRedeemed { get; set; }
+  public int PointsRestored { get; set; }
   public DateTime CreatedAt { get; set; }
 }
 
@@ -133,8 +136,10 @@ public sealed class LoyaltyProgramReportDto
   public int PointsIssued { get; set; }
   public int PointsReversed { get; set; }
   public int PointsRedeemed { get; set; }
+  public int PointsRestored { get; set; }
   public int PointsExpired { get; set; }
   public decimal RedeemedValue { get; set; }
+  public decimal RestoredValue { get; set; }
   public int OutstandingPoints { get; set; }
   public decimal OutstandingLiability { get; set; }
 }
@@ -160,26 +165,6 @@ public sealed class LoyaltyProgramSettingsSaveRequest
   [Range(typeof(decimal), "0.01", "1000")] public decimal PointValueMxn { get; set; } = 1m;
   [Range(1, 1000000)] public int MinimumRedeemPoints { get; set; } = 100;
   [Range(1, 240)] public int PointsValidityMonths { get; set; } = 12;
-}
-
-public sealed class LoyaltyRedeemRequest
-{
-  [Required] public string Rfc { get; set; } = string.Empty;
-  public Guid MemberId { get; set; }
-  [Range(1, 1000000)] public int Points { get; set; }
-  [StringLength(500)] public string? Reason { get; set; }
-  /// <summary>Clave idempotente opcional. Si se repite, el canje no se duplica.</summary>
-  [StringLength(120)] public string? IdempotencyKey { get; set; }
-}
-
-public sealed class LoyaltyRedeemResultDto
-{
-  public bool Success { get; set; }
-  public string Message { get; set; } = string.Empty;
-  public int PointsRedeemed { get; set; }
-  public decimal ValueMxn { get; set; }
-  public int BalanceAfter { get; set; }
-  public string? VoucherCode { get; set; }
 }
 
 public sealed class LoyaltyRedeemablePreviewDto

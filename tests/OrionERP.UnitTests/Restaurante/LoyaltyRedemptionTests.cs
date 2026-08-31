@@ -71,6 +71,58 @@ public sealed class LoyaltyRedemptionTests
     Assert.Equal(expected, LoyaltyPointsCalculator.CalculateRedeemablePoints(balance, minimum));
   }
 
+  [Theory]
+  [InlineData(500, 100, 1, 250, 250)]
+  [InlineData(80, 100, 1, 500, 0)]
+  [InlineData(500, 100, 1, 99, 0)]
+  [InlineData(150, 100, 1, 500, 150)]
+  [InlineData(500, 100, 0.5, 75, 150)]
+  public void OrderRedemption_CapsPointsByBalanceMinimumAndRemainingMerchandise(
+    int balance,
+    int minimum,
+    decimal pointValue,
+    decimal merchandise,
+    int expected)
+  {
+    Assert.Equal(
+      expected,
+      LoyaltyPointsCalculator.CalculateMaximumOrderRedemptionPoints(
+        balance,
+        minimum,
+        pointValue,
+        merchandise));
+  }
+
+  [Fact]
+  public void OrderRedemption_DoesNotExceedMerchandiseAfterCurrencyRounding()
+  {
+    var points = LoyaltyPointsCalculator.CalculateMaximumOrderRedemptionPoints(
+      500,
+      1,
+      0.33335m,
+      33.33m);
+
+    Assert.Equal(99, points);
+    Assert.True(LoyaltyPointsCalculator.CalculateRedemptionValue(points, 0.33335m) <= 33.33m);
+  }
+
+  [Theory]
+  [InlineData(200, 300, 150, 100)]
+  [InlineData(200, 300, 299.99, 200)]
+  [InlineData(200, 300, 300, 200)]
+  [InlineData(200, 300, 0, 0)]
+  [InlineData(200, 0, 100, 0)]
+  public void RefundRestoration_IsProportionalAndCompletesAtFullRefund(
+    int redeemed,
+    decimal total,
+    decimal refunded,
+    int expected)
+  {
+    Assert.Equal(
+      expected,
+      LoyaltyPointsCalculator.CalculateTargetRestoredPoints(redeemed, total, refunded));
+  }
+
   /* ---------- Caducidad PEPS ---------- */
 
   [Fact]

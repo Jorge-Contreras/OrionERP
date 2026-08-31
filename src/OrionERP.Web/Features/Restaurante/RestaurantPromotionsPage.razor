@@ -212,6 +212,8 @@
         <article><span>Órdenes</span><strong>@promotionReport.OrderCount</strong></article>
         <article><span>Miembros activos</span><strong>@loyaltyReport.ActiveMembers</strong></article>
         <article><span>Puntos en circulación</span><strong>@loyaltyReport.OutstandingPoints</strong></article>
+        <article><span>Puntos canjeados</span><strong>@loyaltyReport.PointsRedeemed</strong><small>@loyaltyReport.RedeemedValue.ToString("C")</small></article>
+        <article><span>Puntos restituidos</span><strong>@loyaltyReport.PointsRestored</strong><small>@loyaltyReport.RestoredValue.ToString("C")</small></article>
       </div>
       <div class="data-table">
         <div class="data-table__head"><span>Promoción / código</span><span>Usos</span><span>Órdenes</span><span>Bruta</span><span>Descuento</span><span>Neta</span></div>
@@ -284,59 +286,6 @@
           <button type="button" class="btn btn-primary" @onclick="AdjustPointsAsync" disabled="@(pointsDelta == 0 || string.IsNullOrWhiteSpace(adjustmentReason))">Registrar ajuste auditado</button>
         </article>
 
-        <article class="panel member-redeem">
-          <header>
-            <div><span>Canje de puntos</span><h2>Aplicar puntos a la cuenta</h2></div>
-            @if (redeemPreview is not null)
-            {
-              <strong>@redeemPreview.RedeemableValue.ToString("C") disponibles</strong>
-            }
-          </header>
-
-          @if (redeemPreview is null)
-          {
-            <p class="empty">Cargando saldo canjeable…</p>
-          }
-          else if (!redeemPreview.CanRedeem)
-          {
-            <p class="empty">
-              Este socio tiene @redeemPreview.PointsBalance puntos. El canje mínimo del programa es de
-              @redeemPreview.MinimumRedeemPoints puntos, así que todavía no puede canjear.
-            </p>
-          }
-          else
-          {
-            <p class="redeem-rate">
-              @redeemPreview.PointsBalance puntos · 1 punto = @redeemPreview.PointValueMxn.ToString("C") ·
-              mínimo @redeemPreview.MinimumRedeemPoints puntos
-            </p>
-            <div class="field-grid">
-              <label>Puntos a canjear
-                <input type="number" min="@redeemPreview.MinimumRedeemPoints" max="@redeemPreview.RedeemablePoints" step="1" @bind="redeemPoints" />
-              </label>
-              <label>Referencia o folio (opcional) <input @bind="redeemReason" maxlength="500" /></label>
-            </div>
-            <p class="redeem-value">Equivale a <strong>@RedeemValuePreview.ToString("C")</strong> de descuento.</p>
-            <button type="button" class="btn btn-primary" @onclick="RedeemPointsAsync"
-                    disabled="@(!CanSubmitRedeem)">Canjear y generar vale</button>
-          }
-
-          @if (redeemPreview?.PointsExpiringSoon > 0)
-          {
-            <p class="redeem-warning">
-              Atención: @redeemPreview.PointsExpiringSoon puntos de este socio caducan pronto.
-            </p>
-          }
-
-          @if (lastRedeem is not null && lastRedeem.Success)
-          {
-            <div class="redeem-voucher">
-              <span>Vale generado</span>
-              <strong>@lastRedeem.VoucherCode</strong>
-              <p>Aplica <strong>@lastRedeem.ValueMxn.ToString("C")</strong> como descuento en la cuenta. Saldo restante: @lastRedeem.BalanceAfter puntos.</p>
-            </div>
-          }
-        </article>
       }
     </section>
   }
@@ -365,11 +314,6 @@
   private LoyaltyProgramSettingsDto? programSettings;
   private LoyaltyExpirationRunDto? expirationRun;
   private bool isExpiring;
-  private LoyaltyRedeemablePreviewDto? redeemPreview;
-  private LoyaltyRedeemResultDto? lastRedeem;
-  private int redeemPoints;
-  private string redeemReason = string.Empty;
-  private bool isRedeeming;
   private int pointsDelta;
   private string adjustmentReason = string.Empty;
   private DateTime from = DateTime.Today.AddDays(-30);
@@ -493,7 +437,6 @@
     {
       member = await LoyaltyService.FindMemberAsync(CurrentRfc, memberIdentifier);
       Show(member is null ? "No se encontró una membresía activa y verificada." : "Membresía localizada.", member is null);
-      await RefreshRedeemPreviewAsync();
     }
     catch (Exception ex) { Show(ex.Message, true); }
   }
@@ -509,67 +452,9 @@
       member = await LoyaltyService.FindMemberAsync(CurrentRfc, member.MembershipNumber);
       pointsDelta = 0;
       adjustmentReason = string.Empty;
-      await RefreshRedeemPreviewAsync();
     }
   }
 
-  private decimal RedeemValuePreview =>
-    redeemPreview is null ? 0 : LoyaltyPointsCalculator.CalculateRedemptionValue(redeemPoints, redeemPreview.PointValueMxn);
-
-  private bool CanSubmitRedeem =>
-    !isRedeeming && redeemPreview is not null &&
-    LoyaltyPointsCalculator.ValidateRedemption(redeemPoints, redeemPreview.PointsBalance, redeemPreview.MinimumRedeemPoints) is null;
-
-  private async Task RefreshRedeemPreviewAsync()
-  {
-    lastRedeem = null;
-    if (member is null)
-    {
-      redeemPreview = null;
-      return;
-    }
-    try
-    {
-      redeemPreview = await LoyaltyService.GetRedeemablePreviewAsync(CurrentRfc, member.Id);
-      redeemPoints = redeemPreview?.CanRedeem == true ? redeemPreview.MinimumRedeemPoints : 0;
-    }
-    catch (Exception ex)
-    {
-      redeemPreview = null;
-      Show(ex.Message, true);
-    }
-  }
-
-  private async Task RedeemPointsAsync()
-  {
-    if (member is null || !CanSubmitRedeem) return;
-    isRedeeming = true;
-    try
-    {
-      var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-      lastRedeem = await LoyaltyService.RedeemPointsAsync(
-        new LoyaltyRedeemRequest
-        {
-          Rfc = CurrentRfc,
-          MemberId = member.Id,
-          Points = redeemPoints,
-          Reason = redeemReason,
-          IdempotencyKey = $"{member.Id:N}:{DateTime.UtcNow:yyyyMMddHHmmss}"
-        },
-        auth.User.Identity?.Name ?? "fidelidad");
-      Show(lastRedeem.Message, !lastRedeem.Success);
-      if (lastRedeem.Success)
-      {
-        var voucher = lastRedeem;
-        member = await LoyaltyService.FindMemberAsync(CurrentRfc, member.MembershipNumber);
-        redeemReason = string.Empty;
-        await RefreshRedeemPreviewAsync();
-        lastRedeem = voucher;
-      }
-    }
-    catch (Exception ex) { Show(ex.Message, true); }
-    finally { isRedeeming = false; }
-  }
 
   private async Task RunExpirationAsync(bool applyChanges)
   {
@@ -583,7 +468,6 @@
       {
         Show($"Caducidad aplicada: {expirationRun.PointsExpired} puntos de {expirationRun.MembersAffected} socios.", false);
         await LoadReportsAsync();
-        await RefreshRedeemPreviewAsync();
       }
       else
       {

@@ -531,3 +531,53 @@ JOIN logistica.BomCostRecalculationLog l ON l.Rfc = v.Rfc AND l.BomVersionId = v
 |---|---|---|---|---|
 | `MEZCLA DE ESPECIAS PARA SUERO DE LECHE` (7196) | 1 GRAMO | MILILITRO | 40 ml por orden de chicken fingers | La tanda son 40 g de especias. ¿El rendimiento son 40, y la unidad base debería ser GRAMO en vez de MILILITRO? |
 | `CURTIDO DE PEPINOS` (7198) | 1 LITRO | REBANADA | 4 rebanadas por ensalada de col | ¿Cuántas rebanadas salen de la tanda (2 pepinos)? |
+
+---
+
+# Cierre — orden final de ejecución
+
+Tras las correcciones hechas a mano en la UI (rendimientos, unidades base, receta de salsa verde,
+receta v16 de chicken fingers), quedaron cuatro pendientes que se resuelven por SQL en
+`20260830_bruno_recipe_data_fixes.sql`:
+
+| | Corrección | Verificado contra producción |
+|---|---|---|
+| F1 | `CHICKEN FINGER BURGER` consume chicken fingers en ORDEN, unidad base PIEZA → **2 PIEZA** | componente 1480 |
+| F2 | `EMPANIZADO` rinde 100 g → **700 g**, precio $0.30 → **$0.043272**/g | versión 299, lote $30.29 |
+| F3 | `HAMBURGUESA DE SIRLON` (7066) → `FinishedGood · MakeToOrder` | |
+| F4 | `CHICKEN FINGERS` (6928) → `SemiFinished · MakeToOrder` | |
+
+F1 y F2 editan versiones activas en sitio, cosa que la aplicación no permite. Se hace por SQL
+porque son correcciones de datos defectuosos, no evolución de receta. Queda registro en
+`logistica.BomRecipeDataFixLog`.
+
+## Orden
+
+```
+1. 20260830_bruno_recipe_data_fixes.sql      -- F1..F4, termina con una verificación
+2. 20260830_material_production_role.sql     -- 22 materiales + CK_Material_ProductionRole
+3. 20260830_recipe_cost_recalculation.sql    -- recosteo en cascada
+```
+
+`20260830_fix_recipe_yield_units.sql` ya no aplica: cero rendimientos fuera de unidad base.
+
+## Proyección tras aplicar los tres
+
+Ningún margen negativo. El más bajo es `ORDEN DE PAPAS DE GAJO` con 34%; el resto, 40% o más.
+
+| | Costo hoy | Costo después | Venta | Margen |
+|---|---|---|---|---|
+| CHICKEN FINGER BURGER | $16.21 | $37.52 | $85.00 | 56% |
+| CHICKEN FINGERS | $8.21 | $9.69 | — | subreceta |
+| EMPANIZADO (por gramo) | $0.30 | $0.04 | — | subproducto |
+| NACHOS | $22.43 | $30.27 | $65.00 | 53% |
+
+Las bebidas —margarita, cantarito, mojitos, micheladas— pasan de costo cero a costo real.
+
+## Hueco conocido que queda abierto
+
+Cambiar la unidad base de un material deja rotas las recetas activas que lo consumen en la
+unidad anterior: el motor las marca `BOM_CONVERSION_MISSING`, el ingrediente aporta $0 al costo
+y el platillo queda bloqueado por configuración. Pasó dos veces durante esta corrección
+(`MEZCLA DE ESPECIAS` y `CHICKEN FINGERS`). La validación existente sólo corre al activar una
+receta, no al editar el material. Falta una guarda en el guardado de material.

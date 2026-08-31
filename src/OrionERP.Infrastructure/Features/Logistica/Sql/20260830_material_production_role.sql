@@ -11,6 +11,11 @@
   (¿tiene receta activa? ¿lo usa otra receta como ingrediente?) y después fija un CHECK que
   impide volver a crear combinaciones inválidas.
 
+  Sólo toca lo que nadie decidió (ProductType = 'RawMaterial', el default del esquema) o lo que
+  es inválido de origen (FinishedGood + StockItem, que el CHECK rechazaría). Un par válido que
+  alguien eligió a mano se respeta: ahora existe el selector de rol en Materiales y no
+  corresponde que un script contradiga esa decisión.
+
   Idempotente. No borra datos: sólo reescribe ProductType/FulfillmentMode.
 
   Pares válidos a partir de aquí:
@@ -100,17 +105,13 @@ CROSS APPLY
     WHERE e.HasActiveRecipe = 1 AND e.IsIngredient = 1 AND e.FulfillmentMode = 'StockItem'
 
     UNION ALL
-    -- C2  Receta activa + lo usa otra receta + se explota al vender -> subreceta al momento.
-    SELECT 2, 'SemiFinished', 'MakeToOrder', 'C2'
-    WHERE e.HasActiveRecipe = 1 AND e.IsIngredient = 1 AND e.FulfillmentMode = 'MakeToOrder'
-
-    UNION ALL
-    -- C3  Receta activa y nadie lo usa como ingrediente -> es un producto terminado, no un insumo.
-    --     El modo sólo cambia cuando no hay producto vendible, para no alterar el POS.
+    -- C3  Insumo sin clasificar, con receta activa y que nadie usa como ingrediente:
+    --     es un producto terminado. El modo sólo cambia cuando no hay producto vendible,
+    --     para no alterar el POS.
     SELECT 3, 'FinishedGood',
       CASE WHEN e.FulfillmentMode = 'StockItem' AND e.HasSellableProduct = 0
            THEN 'MakeToOrder' ELSE e.FulfillmentMode END, 'C3'
-    WHERE e.HasActiveRecipe = 1 AND e.IsIngredient = 0 AND e.ProductType <> 'FinishedGood'
+    WHERE e.HasActiveRecipe = 1 AND e.IsIngredient = 0 AND e.ProductType = 'RawMaterial'
 
     UNION ALL
     -- C4  Terminado que descuenta inventario y tiene receta -> producto terminado por lote.

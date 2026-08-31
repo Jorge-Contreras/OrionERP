@@ -74,6 +74,9 @@ public static class RestaurantReceiptReprintMapper
       Promotions = receipt.Promotions,
       MembershipNumber = receipt.MembershipNumber,
       PointsEarned = receipt.PointsEarned,
+      PointsRedeemed = receipt.PointsRedeemed,
+      RedemptionValue = receipt.RedemptionValue,
+      PointsBalance = receipt.PointsBalance,
       Lines = lines
     };
   }

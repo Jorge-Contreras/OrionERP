@@ -1,5 +1,6 @@
 @page "/cuenta"
 @model OrionERP.Bruno.Web.Pages.Account.Member.IndexModel
+@using OrionERP.Application.Features.Restaurante
 @{ ViewData["Title"] = "Mi cuenta · Club Bruno"; }
 <section class="member-dashboard">
   <header class="member-dashboard__header"><div><span>Club Bruno · @Model.Profile.MembershipNumber</span><h1>Hola, @Model.Profile.FirstName</h1><p>@Model.Profile.MaskedEmail · @Model.Profile.MaskedPhone</p></div><div><a class="button" href="/cuenta/salir">Cerrar sesión</a></div></header>
@@ -10,8 +11,8 @@
     <div class="redeem-banner @(Model.Redeemable.CanRedeem ? "is-ready" : null)">
       @if (Model.Redeemable.CanRedeem)
       {
-        <div><strong>Puedes canjear @Model.Redeemable.RedeemablePoints puntos</strong>
-          <p>Equivalen a @Model.Redeemable.RedeemableValue.ToString("C") de descuento. Pídelo en caja antes de pagar.</p></div>
+        <div><strong>Tienes @Model.Redeemable.RedeemablePoints puntos canjeables</strong>
+          <p>En caja puedes elegir desde @Model.Redeemable.MinimumRedeemPoints puntos hasta el límite de tu compra. Cada punto vale @Model.Redeemable.PointValueMxn.ToString("C").</p></div>
       }
       else
       {
@@ -40,7 +41,7 @@
     </article>
     <article class="member-panel member-panel--wide"><h2>Mis órdenes</h2>
       @if (Model.Profile.OrderHistory.Count == 0) { <p>Aún no hay órdenes vinculadas a tu membresía.</p> }
-      else { <div class="member-table-scroll"><table class="ledger member-orders"><thead><tr><th>Fecha</th><th>Orden</th><th>Estado</th><th>Pago</th><th>Total</th><th>Puntos</th></tr></thead><tbody>@foreach (var row in Model.Profile.OrderHistory) { <tr class="@(row.Status == "Cancelled" ? "member-orders__cancelled" : null)"><td>@row.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td><td>#@row.Folio.ToString("D4")</td><td><span class="order-status order-status--@StatusClass(row.Status)">@OrderStatusLabel(row.Status)</span></td><td>@PaymentStatusLabel(row.PaymentStatus)</td><td>@row.Total.ToString("C")</td><td>@(row.PointsEarned > 0 ? $"+{row.PointsEarned}" : "0")</td></tr> }</tbody></table></div> }
+      else { <div class="member-table-scroll"><table class="ledger member-orders"><thead><tr><th>Fecha</th><th>Orden</th><th>Estado</th><th>Pago</th><th>Total</th><th>Puntos</th></tr></thead><tbody>@foreach (var row in Model.Profile.OrderHistory) { <tr class="@(row.Status == "Cancelled" ? "member-orders__cancelled" : null)"><td>@row.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td><td>#@row.Folio.ToString("D4")</td><td><span class="order-status order-status--@StatusClass(row.Status)">@OrderStatusLabel(row.Status)</span></td><td>@PaymentStatusLabel(row.PaymentStatus)</td><td>@row.Total.ToString("C")</td><td>@PointsSummary(row)</td></tr> }</tbody></table></div> }
     </article>
     <article class="member-panel member-panel--wide"><h2>Historial de puntos</h2>
       @if (Model.Profile.PointHistory.Count == 0) { <p>Aún no hay movimientos. Identifícate antes de pagar en tu próxima visita.</p> }
@@ -49,7 +50,15 @@
   </div>
 </section>
 @functions {
-  private static string EntryLabel(string value) => value switch { "Earn" => "Compra", "RefundReversal" => "Reembolso", "CancellationReversal" => "Cancelación", "AdminAdjustment" => "Ajuste", _ => value };
+  private static string EntryLabel(string value) => value switch { "Earn" => "Compra", "Redeem" => "Canje", "RedemptionReversal" => "Restitución de canje", "Expiration" => "Caducidad", "RefundReversal" => "Reembolso", "CancellationReversal" => "Cancelación", "AdminAdjustment" => "Ajuste", _ => value };
+  private static string PointsSummary(LoyaltyMemberOrderDto row)
+  {
+    var movements = new List<string>();
+    if (row.PointsRedeemed > 0) movements.Add($"-{row.PointsRedeemed} canjeados");
+    if (row.PointsEarned > 0) movements.Add($"+{row.PointsEarned} ganados");
+    if (row.PointsRestored > 0) movements.Add($"+{row.PointsRestored} restituidos");
+    return movements.Count == 0 ? "0" : string.Join(" · ", movements);
+  }
   private static string OrderStatusLabel(string value) => value switch { "AwaitingPayment" => "Pendiente de pago", "Sent" => "Enviada", "Preparing" => "Preparando", "Ready" => "Lista", "Dispatched" => "Despachada", "Delivered" => "Entregada", "Completed" => "Completada", "Cancelled" => "Cancelada", _ => value };
   private static string PaymentStatusLabel(string value) => value switch { "Pending" => "Pendiente", "Partial" => "Parcial", "Paid" => "Pagada", "PartiallyRefunded" => "Reembolso parcial", "Refunded" => "Reembolsada", "PendingSettlement" => "Por liquidar", _ => value };
   private static string StatusClass(string value) => value switch { "Completed" => "completed", "Cancelled" => "cancelled", "Ready" or "Delivered" => "ready", _ => "active" };

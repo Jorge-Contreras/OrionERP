@@ -32,6 +32,8 @@ public sealed class RestaurantReceiptPdfDocumentModel
   public IReadOnlyList<RestaurantPromotionAdjustmentDto> Promotions { get; init; } = Array.Empty<RestaurantPromotionAdjustmentDto>();
   public string? MembershipNumber { get; init; }
   public int PointsEarned { get; init; }
+  public int PointsRedeemed { get; init; }
+  public decimal RedemptionValue { get; init; }
   public int? PointsBalance { get; init; }
   public IReadOnlyList<RestaurantReceiptPdfLineModel> Lines { get; init; } = Array.Empty<RestaurantReceiptPdfLineModel>();
 

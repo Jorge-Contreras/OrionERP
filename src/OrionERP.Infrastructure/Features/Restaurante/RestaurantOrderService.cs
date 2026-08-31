@@ -33,6 +33,10 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     {
       throw new InvalidOperationException("El nombre del cliente no puede exceder 150 caracteres.");
     }
+    if (request.PointsToRedeem < 0)
+    {
+      throw new InvalidOperationException("Los puntos a canjear no pueden ser negativos.");
+    }
     foreach (var line in request.Lines)
     {
       if (line.IsCustom)
@@ -77,9 +81,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       {
         throw new InvalidOperationException("Restaurante está deshabilitado para esta sede.");
       }
-      if (request.AllowInventoryDeficit && (!site.AllowSupervisorDeficit || string.IsNullOrWhiteSpace(request.SupervisorAuthorizedBy)))
+      if (request.AllowInventoryDeficit && string.IsNullOrWhiteSpace(request.SupervisorAuthorizedBy))
       {
-        throw new InvalidOperationException("El déficit de inventario requiere que la sede lo permita y autorización de supervisor.");
+        throw new InvalidOperationException("El déficit de inventario requiere autorización de supervisor.");
       }
       if (request.OrderDiscountAmount > 0 || request.Lines.Any(line => line.DiscountAmount > 0) || request.AllowInventoryDeficit)
       {
@@ -121,11 +125,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             JOIN logistica.BomVersion bomVersion ON bomVersion.Rfc = bomHeader.Rfc AND bomVersion.BomHeaderId = bomHeader.Id
             WHERE bomHeader.Rfc = product.Rfc AND bomHeader.ProductMaterialId = product.MaterialId AND bomVersion.[Status] = 'Active'
           ) activeBom
-          WHERE product.Rfc = @Rfc AND product.Id IN @ProductIds AND product.IsActive = 1 AND product.SoldOutOverride = 0;
-          """, new { Rfc = rfc, ProductIds = productIds }, tx, cancellationToken: ct))).AsList();
+          WHERE product.Rfc = @Rfc AND product.Id IN @ProductIds AND product.IsActive = 1
+            AND (@AllowInventoryOverride = 1 OR product.SoldOutOverride = 0);
+          """, new { Rfc = rfc, ProductIds = productIds, AllowInventoryOverride = request.AllowInventoryDeficit }, tx, cancellationToken: ct))).AsList();
       if (products.Count != productIds.Length)
       {
-        throw new InvalidOperationException("Uno o más productos están inactivos, agotados o pertenecen a otro RFC.");
+        throw new InvalidOperationException("Uno o más productos están inactivos o pertenecen a otro RFC.");
       }
 
       var timeZone = TimeZoneInfo.FindSystemTimeZoneById(site.TimeZoneId);
@@ -296,8 +301,24 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         throw new InvalidOperationException("El descuento de orden no puede exceder el subtotal disponible.");
       }
 
-      var discountTotal = decimal.Round(
+      var nonLoyaltyDiscountTotal = decimal.Round(
         lineDiscount + request.OrderDiscountAmount + promotionDiscount,
+        2,
+        MidpointRounding.AwayFromZero);
+      var merchandiseBeforeRedemption = decimal.Round(
+        subtotalBeforeDiscount - nonLoyaltyDiscountTotal,
+        2,
+        MidpointRounding.AwayFromZero);
+      var redemption = await RestaurantLoyaltyTransaction.PrepareOrderRedemptionAsync(
+        conn,
+        tx,
+        rfc,
+        member,
+        request.PointsToRedeem,
+        merchandiseBeforeRedemption,
+        ct);
+      var discountTotal = decimal.Round(
+        nonLoyaltyDiscountTotal + redemption.ValueMxn,
         2,
         MidpointRounding.AwayFromZero);
       var discountedMerchandise = decimal.Round(subtotalBeforeDiscount - discountTotal, 2, MidpointRounding.AwayFromZero);
@@ -318,9 +339,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       }
 
       var paymentAmount = request.Payments.Sum(payment => payment.Amount);
-      if (request.Payments.Any(payment => payment.Amount <= 0 || string.IsNullOrWhiteSpace(payment.IdempotencyKey)))
+      if (request.Payments.Any(payment =>
+            payment.Amount < 0 || payment.TipAmount < 0 ||
+            payment.Amount + payment.TipAmount <= 0 ||
+            string.IsNullOrWhiteSpace(payment.IdempotencyKey)))
       {
-        throw new InvalidOperationException("Cada pago requiere importe positivo y clave de idempotencia.");
+        throw new InvalidOperationException("Cada pago requiere un importe o propina positivos y clave de idempotencia.");
       }
       if (paymentAmount > total + 0.01m)
       {
@@ -335,11 +359,13 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
 
       var operationalDate = DateOnly.FromDateTime(localNow.TimeOfDay < site.OperationalDayCutoff ? localNow.AddDays(-1).Date : localNow.Date);
       var orderId = Guid.NewGuid();
-      var requirements = await BuildRequirementsAsync(conn, tx, rfc, pricedLines, ct);
-      var reservation = requirements.Count == 0
-        ? new ReservationResult(null, false)
-        : await ReserveInventoryAsync(conn, tx, rfc, request.SiteId, orderId, request.IdempotencyKey.Trim(), requirements,
-          request.AllowInventoryDeficit, userName, ct);
+      var inventoryPlan = await BuildRequirementsAsync(
+        conn, tx, rfc, pricedLines, request.AllowInventoryDeficit, ct);
+      var reservation = inventoryPlan.Requirements.Count == 0
+        ? new ReservationResult(null, inventoryPlan.OverrideReasons.Count > 0, inventoryPlan.OverrideReasons)
+        : await ReserveInventoryAsync(
+          conn, tx, rfc, request.SiteId, orderId, request.IdempotencyKey.Trim(), inventoryPlan.Requirements,
+          request.AllowInventoryDeficit, inventoryPlan.OverrideReasons, userName, ct);
 
       var folioParameters = new DynamicParameters();
       folioParameters.Add("@Rfc", rfc);
@@ -369,7 +395,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
            Subtotal, DiscountTotal, TaxTotal, TipTotal, Total, BalanceDue, TaxRateSnapshot,
            PricesIncludeTaxSnapshot, InventoryReservationId, TheoreticalCost, IdempotencyKey,
            Notes, CreatedBy, PaidAt, SentToKitchenAt,MemberId,MembershipNumberSnapshot,
-           PromotionDiscountTotal,EligibleMerchandiseTotal,PointsEarned)
+           PromotionDiscountTotal,EligibleMerchandiseTotal,PointsEarned,RedeemedPoints,RedemptionValue)
         VALUES
           (@Id, @Rfc, @SiteId, @Folio, @OperationalDate, @OrderType, @Status, @PaymentStatus,
            @CustomerName, @CustomerPhone, @DiningTableId, @CashRegisterId, @CashShiftId,
@@ -377,7 +403,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
            @PricesIncludeTax, @ReservationId, @TheoreticalCost, @IdempotencyKey,
            @Notes, @CreatedBy, CASE WHEN @PaymentStatus = 'Paid' THEN SYSUTCDATETIME() END,
            CASE WHEN @Status = 'Sent' THEN SYSUTCDATETIME() END,@MemberId,@MembershipNumber,
-           @PromotionDiscountTotal,@EligibleMerchandiseTotal,0);
+           @PromotionDiscountTotal,@EligibleMerchandiseTotal,0,@RedeemedPoints,@RedemptionValue);
         """, new
         {
           Id = orderId,
@@ -409,8 +435,29 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           MemberId = member?.Id,
           MembershipNumber = member?.MembershipNumber,
           PromotionDiscountTotal = promotionDiscount,
-          EligibleMerchandiseTotal = discountedMerchandise
+          EligibleMerchandiseTotal = discountedMerchandise,
+          RedeemedPoints = redemption.Points,
+          RedemptionValue = redemption.ValueMxn
         }, tx, cancellationToken: ct));
+
+      if (redemption.Points > 0)
+      {
+        redemption = await RestaurantLoyaltyTransaction.ApplyOrderRedemptionAsync(
+          conn,
+          tx,
+          rfc,
+          orderId,
+          member!.Id,
+          redemption,
+          merchandiseBeforeRedemption,
+          userName,
+          ct);
+        await RestaurantOrderEventWriter.AddAsync(
+          conn, tx, rfc, request.SiteId, orderId,
+          "LoyaltyPointsRedeemed", "Loyalty", "Puntos canjeados",
+          $"{redemption.Points} punto(s) · Descuento {redemption.ValueMxn:C} · Saldo {redemption.BalanceAfter}",
+          userName, ct, $"order:{orderId}:LoyaltyPointsRedeemed");
+      }
 
       await RestaurantOrderEventWriter.AddAsync(
         conn, tx, rfc, request.SiteId, orderId,
@@ -441,7 +488,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           line.Request.DiscountAmount),
         StringComparer.Ordinal);
       var orderDiscountAllocations = AllocateDiscount(
-        request.OrderDiscountAmount,
+        request.OrderDiscountAmount + redemption.ValueMxn,
         pricedLines.Select(line => (line.LineKey, orderDiscountWeights[line.LineKey])).ToList());
       for (var lineIndex = 0; lineIndex < pricedLines.Count; lineIndex++)
       {
@@ -605,14 +652,15 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
 
         if (request.AllowInventoryDeficit)
         {
+          var inventoryAuthorizationReason = DescribeInventoryOverride(reservation.OverrideReasons);
           await AddSupervisorAuthorizationAsync(
             conn, tx, rfc, request.SiteId, orderId, "InventoryDeficit",
-            "Venta autorizada con déficit de inventario.",
+            inventoryAuthorizationReason,
             userName, request.SupervisorAuthorizedBy, ct);
           await RestaurantOrderEventWriter.AddAsync(
             conn, tx, rfc, request.SiteId, orderId,
             "InventoryDeficitAuthorized", "Authorization", "Déficit de inventario autorizado",
-            "Se autorizó continuar la venta con existencias insuficientes.",
+            inventoryAuthorizationReason,
             request.SupervisorAuthorizedBy, ct);
         }
       }
@@ -677,7 +725,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         AppliedPromotions = promotionQuote.Adjustments,
         MembershipNumber = member?.MembershipNumber,
         PointsEarned = loyaltyAward?.Points ?? 0,
-        PointsBalance = loyaltyAward?.BalanceAfter ?? member?.PointsBalance
+        PointsRedeemed = redemption.Points,
+        RedemptionValue = redemption.ValueMxn,
+        PointsBalance = loyaltyAward?.BalanceAfter ?? (redemption.Points > 0 ? redemption.BalanceAfter : member?.PointsBalance)
       };
     }
     catch
@@ -707,6 +757,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
              orderInfo.PricesIncludeTaxSnapshot AS PricesIncludeTax,
              ISNULL(deliveryInfo.DeliveryCost,0) AS DeliveryCost,
              orderInfo.MembershipNumberSnapshot AS MembershipNumber,orderInfo.PointsEarned,
+             orderInfo.RedeemedPoints AS PointsRedeemed,orderInfo.RedemptionValue,
+             orderPoints.BalanceAfter AS PointsBalance,
              orderInfo.CreatedAt
       FROM restaurante.[Order] orderInfo
       JOIN restaurante.Site siteInfo
@@ -715,6 +767,14 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         ON diningTable.Rfc=orderInfo.Rfc AND diningTable.Id=orderInfo.DiningTableId
       LEFT JOIN restaurante.Delivery deliveryInfo
         ON deliveryInfo.Rfc=orderInfo.Rfc AND deliveryInfo.OrderId=orderInfo.Id
+      OUTER APPLY
+      (
+        SELECT TOP(1) ledger.BalanceAfter
+        FROM fidelidad.PointLedger ledger
+        WHERE ledger.Rfc=orderInfo.Rfc AND ledger.OrderId=orderInfo.Id
+          AND ledger.EntryType IN ('Redeem','Earn')
+        ORDER BY ledger.Id DESC
+      ) orderPoints
       WHERE orderInfo.Rfc=@Rfc AND orderInfo.Id=@OrderId;
 
       SELECT lineInfo.Id,lineInfo.ProductId,lineInfo.ProductNameSnapshot AS ProductName,
@@ -1189,6 +1249,13 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         orderId,
         supervisorUserName,
         ct);
+      var redemptionRestoration = await RestaurantLoyaltyTransaction.RestoreCancelledRedemptionAsync(
+        conn,
+        tx,
+        normalizedRfc,
+        orderId,
+        supervisorUserName,
+        ct);
       if (inventoryReleased)
       {
         await RestaurantOrderEventWriter.AddAsync(
@@ -1209,7 +1276,16 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           $"{Math.Abs(loyaltyReversal.Points)} punto(s) · Saldo {loyaltyReversal.BalanceAfter}",
           supervisorUserName, ct, $"order:{orderId}:LoyaltyPointsCancelled");
       }
+      if (redemptionRestoration is { Points: > 0 })
+      {
+        await RestaurantOrderEventWriter.AddAsync(
+          conn, tx, normalizedRfc, order.SiteId, orderId,
+          "LoyaltyRedemptionRestored", "Loyalty", "Puntos canjeados restituidos",
+          $"{redemptionRestoration.Points} punto(s) · Saldo {redemptionRestoration.BalanceAfter}",
+          supervisorUserName, ct, $"order:{orderId}:LoyaltyRedemptionRestored");
+      }
       var pointsReversed = Math.Abs(loyaltyReversal?.Points ?? 0);
+      var pointsRestored = Math.Max(0, redemptionRestoration?.Points ?? 0);
       await AddOutboxEventAsync(
         conn,
         tx,
@@ -1217,13 +1293,16 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         order.SiteId,
         "OrderCancelled",
         orderId.ToString(),
-        new { orderId, reason, pointsReversed },
+        new { orderId, reason, pointsReversed, pointsRestored },
         ct);
       await tx.CommitAsync(ct);
       var loyaltyMessage = pointsReversed > 0
         ? $" Se retiraron {pointsReversed} punto(s) de la membresía vinculada."
         : string.Empty;
-      return RestaurantCommandResult.Ok($"La orden fue cancelada.{loyaltyMessage} Los cobros existentes requieren reembolso supervisado por separado.");
+      var restorationMessage = pointsRestored > 0
+        ? $" Se restituyeron {pointsRestored} punto(s) canjeados."
+        : string.Empty;
+      return RestaurantCommandResult.Ok($"La orden fue cancelada.{loyaltyMessage}{restorationMessage} Los cobros existentes requieren reembolso supervisado por separado.");
     }
     catch
     {
@@ -1573,6 +1652,14 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         refundId,
         requestedBy,
         ct);
+      var redemptionRestoration = await RestaurantLoyaltyTransaction.RestoreRefundedRedemptionAsync(
+        conn,
+        tx,
+        rfc,
+        payment.OrderId,
+        refundId,
+        requestedBy,
+        ct);
       await RestaurantOrderEventWriter.AddAsync(
         conn, tx, rfc, payment.SiteId, payment.OrderId,
         "PaymentRefunded", "Payment", "Pago reembolsado",
@@ -1591,7 +1678,23 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           $"{Math.Abs(loyaltyReversal.Points)} punto(s) · Saldo {loyaltyReversal.BalanceAfter}",
           requestedBy, ct, $"refund:{refundId}:LoyaltyPointsReversed");
       }
-      await AddOutboxEventAsync(conn, tx, rfc, payment.SiteId, "OrderPaymentRefunded", payment.OrderId.ToString(), new { payment.OrderId, request.PaymentId, refundId, request.Amount, paymentStatus }, ct);
+      if (redemptionRestoration is { Points: > 0 })
+      {
+        await RestaurantOrderEventWriter.AddAsync(
+          conn, tx, rfc, payment.SiteId, payment.OrderId,
+          "LoyaltyRedemptionRestored", "Loyalty", "Puntos canjeados restituidos",
+          $"{redemptionRestoration.Points} punto(s) · Saldo {redemptionRestoration.BalanceAfter}",
+          requestedBy, ct, $"refund:{refundId}:LoyaltyRedemptionRestored");
+      }
+      await AddOutboxEventAsync(conn, tx, rfc, payment.SiteId, "OrderPaymentRefunded", payment.OrderId.ToString(), new
+      {
+        payment.OrderId,
+        request.PaymentId,
+        refundId,
+        request.Amount,
+        paymentStatus,
+        pointsRestored = Math.Max(0, redemptionRestoration?.Points ?? 0)
+      }, ct);
       await tx.CommitAsync(ct);
       return RestaurantCommandResult.Ok("El reembolso fue registrado y auditado.");
     }
@@ -1756,12 +1859,18 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     }
   }
 
-  private static async Task<Dictionary<int, decimal>> BuildRequirementsAsync(DbConnection conn, DbTransaction tx, string rfc,
-    IReadOnlyList<PricedLine> lines, CancellationToken ct)
+  private static async Task<InventoryRequirementPlan> BuildRequirementsAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    string rfc,
+    IReadOnlyList<PricedLine> lines,
+    bool allowInventoryOverride,
+    CancellationToken ct)
   {
     var selectedOptionIds = lines.SelectMany(line => line.Modifiers).Select(modifier => modifier.Id).Distinct().ToArray();
     var graph = await RestaurantRequirementGraphLoader.LoadAsync(conn, tx, rfc, selectedOptionIds, ct);
     var requirements = new Dictionary<int, decimal>();
+    var overrideReasons = new List<string>();
     foreach (var line in lines)
     {
       if (line.IsCustom || line.Product is null)
@@ -1775,15 +1884,25 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         line.Request.Quantity,
         line.Modifiers.Select(modifier => modifier.Id).ToArray());
       var issue = calculation.Issues.FirstOrDefault();
-      if (issue is not null) throw new InvalidOperationException(issue.Message);
+      if (issue is not null)
+      {
+        if (!allowInventoryOverride)
+        {
+          throw new InvalidOperationException(issue.Message);
+        }
+        overrideReasons.Add(issue.Message);
+      }
       foreach (var requirement in calculation.Requirements)
         AddRequirement(requirements, requirement.Key, requirement.Value);
     }
-    return requirements.Where(item => item.Value > 0).ToDictionary(item => item.Key, item => item.Value);
+    return new InventoryRequirementPlan(
+      requirements.Where(item => item.Value > 0).ToDictionary(item => item.Key, item => item.Value),
+      overrideReasons.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
   }
 
   private static async Task<ReservationResult> ReserveInventoryAsync(DbConnection conn, DbTransaction tx, string rfc, int siteId,
-    Guid orderId, string orderIdempotencyKey, IReadOnlyDictionary<int, decimal> requirements, bool allowDeficit, string userName, CancellationToken ct)
+    Guid orderId, string orderIdempotencyKey, IReadOnlyDictionary<int, decimal> requirements, bool allowDeficit,
+    IReadOnlyList<string> initialOverrideReasons, string userName, CancellationToken ct)
   {
     var reservationId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
       """
@@ -1793,7 +1912,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         (@Rfc, @SiteId, 'RestaurantOrder', @OrderId, @IdempotencyKey, 'Reserved', @CreatedBy);
       SELECT CAST(SCOPE_IDENTITY() AS bigint);
       """, new { Rfc = rfc, SiteId = siteId, OrderId = orderId, IdempotencyKey = $"ORDER:{orderIdempotencyKey}", CreatedBy = userName }, tx, cancellationToken: ct));
-    var hasDeficit = false;
+    var hasDeficit = initialOverrideReasons.Count > 0;
+    var overrideReasons = new List<string>(initialOverrideReasons);
     foreach (var requirement in requirements)
     {
       var needed = decimal.Round(requirement.Value, 4, MidpointRounding.AwayFromZero);
@@ -1869,13 +1989,23 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             ON priorityInfo.Rfc=locationInfo.Rfc AND priorityInfo.SiteId=@SiteId AND priorityInfo.LocationId=locationInfo.Id
           WHERE locationInfo.Rfc=@Rfc AND locationInfo.IsActive=1 AND locationInfo.IsInventoryEnabled=1
           ORDER BY ISNULL(priorityInfo.Priority, 2147483647), locationInfo.Id;
-          """, new { Rfc = rfc, SiteId = siteId }, tx, cancellationToken: ct))
-          ?? throw new InvalidOperationException("No hay una ubicación de inventario configurada para registrar el déficit.");
-        await InsertReservationLineAsync(conn, tx, rfc, reservationId, requirement.Key, fallbackLocation, null, needed, 0, true, 0, ct);
+          """, new { Rfc = rfc, SiteId = siteId }, tx, cancellationToken: ct));
+        if (fallbackLocation.HasValue)
+        {
+          await InsertReservationLineAsync(
+            conn, tx, rfc, reservationId, requirement.Key, fallbackLocation.Value, null, needed, 0, true, 0, ct);
+        }
+        else
+        {
+          overrideReasons.Add($"El material {requirement.Key} no tiene una ubicación de inventario configurada.");
+        }
         hasDeficit = true;
       }
     }
-    return new ReservationResult(reservationId, hasDeficit);
+    return new ReservationResult(
+      reservationId,
+      hasDeficit,
+      overrideReasons.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
   }
 
   private static Task InsertReservationLineAsync(DbConnection conn, DbTransaction tx, string rfc, long reservationId, int materialId,
@@ -2004,6 +2134,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
              orderInfo.PaymentStatus, orderInfo.CustomerName, diningTable.[Name] AS TableName, orderInfo.Notes,
               orderInfo.Total, orderInfo.BalanceDue,orderInfo.PromotionDiscountTotal,
               orderInfo.MemberId,orderInfo.MembershipNumberSnapshot AS MembershipNumber,orderInfo.PointsEarned,
+              orderInfo.RedeemedPoints AS PointsRedeemed,orderInfo.RedemptionValue,
               orderInfo.CashRegisterId, orderInfo.CashShiftId,
               orderInfo.Priority,orderInfo.PriorityReason,orderInfo.PrioritizedBy,orderInfo.CreatedAt
       FROM restaurante.[Order] orderInfo
@@ -2301,7 +2432,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     => await conn.QuerySingleOrDefaultAsync<RestaurantOrderResult>(new CommandDefinition(
       """
       SELECT Id AS OrderId,Folio,CustomerName,OperationalDate,[Status],PaymentStatus,Total,BalanceDue,
-             PromotionDiscountTotal,MembershipNumberSnapshot AS MembershipNumber,PointsEarned
+             PromotionDiscountTotal,MembershipNumberSnapshot AS MembershipNumber,PointsEarned,
+             RedeemedPoints AS PointsRedeemed,RedemptionValue
       FROM restaurante.[Order] WITH (UPDLOCK, HOLDLOCK)
       WHERE Rfc=@Rfc AND SiteId=@SiteId AND IdempotencyKey=@Key;
       """, new { Rfc = rfc, SiteId = siteId, Key = key }, tx, cancellationToken: ct));
@@ -2374,6 +2506,18 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       _ => value
     };
 
+  private static string DescribeInventoryOverride(IReadOnlyList<string> reasons)
+  {
+    const string fallback = "Venta autorizada por supervisor con excepción de inventario.";
+    if (reasons.Count == 0)
+    {
+      return fallback;
+    }
+
+    var description = $"{fallback} {string.Join(" | ", reasons)}";
+    return description.Length <= 480 ? description : $"{description[..477]}...";
+  }
+
   private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
   private DbConnection CreateConnection()
@@ -2400,7 +2544,13 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     public string MenuSectionName { get; set; } = string.Empty;
     public int MenuSectionSortOrder { get; set; }
   }
-  private sealed record ReservationResult(long? ReservationId, bool HasDeficit);
+  private sealed record InventoryRequirementPlan(
+    IReadOnlyDictionary<int, decimal> Requirements,
+    IReadOnlyList<string> OverrideReasons);
+  private sealed record ReservationResult(
+    long? ReservationId,
+    bool HasDeficit,
+    IReadOnlyList<string> OverrideReasons);
   private sealed record OrderStatusTransition(string CurrentStatus, string NextStatus);
 
   private sealed class SiteRow

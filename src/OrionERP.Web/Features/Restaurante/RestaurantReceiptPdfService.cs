@@ -136,9 +136,17 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
 
       column.Item().PaddingVertical(2).LineHorizontal(1).LineColor(Colors.Black);
       column.Item().Element(item => ComposeMoneyRow(item, "Productos", model.Subtotal));
-      if (model.DiscountTotal > 0)
+      var nonLoyaltyDiscount = Math.Max(0, model.DiscountTotal - model.RedemptionValue);
+      if (nonLoyaltyDiscount > 0)
       {
-        column.Item().Element(item => ComposeMoneyRow(item, "Descuento", -model.DiscountTotal));
+        column.Item().Element(item => ComposeMoneyRow(item, "Descuentos", -nonLoyaltyDiscount));
+      }
+      if (model.RedemptionValue > 0)
+      {
+        column.Item().Element(item => ComposeMoneyRow(
+          item,
+          $"Club Bruno ({model.PointsRedeemed} pts)",
+          -model.RedemptionValue));
       }
       foreach (var promotion in model.Promotions)
       {
@@ -192,6 +200,10 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
       {
         column.Item().PaddingTop(4).LineHorizontal(1).LineColor(LightColor);
         column.Item().PaddingTop(2).Text($"Membresía {model.MembershipNumber}").FontSize(8).SemiBold();
+        if (model.PointsRedeemed > 0)
+        {
+          column.Item().Text($"Puntos canjeados: {model.PointsRedeemed} (-{model.RedemptionValue:C})").FontSize(8);
+        }
         column.Item().Text($"Puntos de esta compra: {model.PointsEarned}").FontSize(8);
         if (model.PointsBalance.HasValue)
         {

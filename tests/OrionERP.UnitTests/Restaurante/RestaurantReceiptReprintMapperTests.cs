@@ -70,6 +70,9 @@ public sealed class RestaurantReceiptReprintMapperTests
       PricesIncludeTax = true,
       MembershipNumber = "BR-100",
       PointsEarned = 23,
+      PointsRedeemed = 100,
+      RedemptionValue = 100m,
+      PointsBalance = 173,
       Lines =
       [
         new()
@@ -127,6 +130,9 @@ public sealed class RestaurantReceiptReprintMapperTests
     Assert.Equal("Comida", model.Lines[0].SectionName);
     Assert.True(model.Lines[1].IsCustom);
     Assert.Equal("Promo verano", Assert.Single(model.Promotions).PromotionName);
+    Assert.Equal(100, model.PointsRedeemed);
+    Assert.Equal(100m, model.RedemptionValue);
+    Assert.Equal(173, model.PointsBalance);
     Assert.Equal(new DateTimeOffset(2026, 8, 5, 18, 30, 0, TimeSpan.Zero), model.CreatedAt);
 
     var pdf = new RestaurantReceiptPdfService().Generate(model);

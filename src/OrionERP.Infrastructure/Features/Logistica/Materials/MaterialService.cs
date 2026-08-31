@@ -947,6 +947,18 @@ public sealed class MaterialService : IMaterialService
           return LogisticsCommandResult.Fail("Usa la revisión de retiro para desactivar un material.");
         }
 
+        // Cambiar la unidad base rompe en silencio las recetas activas que ya referencian este
+        // material: la que lo consume en la unidad anterior deja de convertir —el motor la reporta
+        // como BOM_CONVERSION_MISSING, el ingrediente aporta $0 y el platillo queda bloqueado por
+        // configuración— y su propia receta queda rindiendo en una unidad ajena al inventario.
+        var baseUnitBreakage = await FindBaseUnitChangeBreakageAsync(
+          conn, tx, rfc, request.Id.Value, request.BaseUnitId, ct);
+        if (baseUnitBreakage is not null)
+        {
+          await tx.RollbackAsync(ct);
+          return LogisticsCommandResult.Fail(baseUnitBreakage);
+        }
+
         var sql = new StringBuilder(
           """
           UPDATE logistica.Material
@@ -1181,6 +1193,100 @@ public sealed class MaterialService : IMaterialService
       await tx.RollbackAsync(ct);
       throw;
     }
+  }
+
+  /// <summary>
+  /// Explica por qué no se puede cambiar la unidad base de un material, o <c>null</c> si el
+  /// cambio es inocuo. Cubre los dos daños posibles: recetas activas que lo consumen en una
+  /// unidad que ya no convertiría, y su propia receta activa, cuyo rendimiento quedaría
+  /// expresado fuera de la nueva unidad de inventario.
+  /// </summary>
+  private static async Task<string?> FindBaseUnitChangeBreakageAsync(
+    DbConnection conn, DbTransaction tx, string rfc, int materialId, int newBaseUnitId, CancellationToken ct)
+  {
+    var currentBaseUnitId = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
+      "SELECT BaseUnitId FROM logistica.Material WHERE Rfc = @Rfc AND Id = @Id;",
+      new { Rfc = rfc, Id = materialId }, tx, cancellationToken: ct));
+    if (currentBaseUnitId is null || currentBaseUnitId == newBaseUnitId)
+    {
+      return null;
+    }
+
+    var breakage = await conn.QuerySingleOrDefaultAsync<BaseUnitBreakageRow>(new CommandDefinition(
+      """
+      SELECT TOP (1) blocker.Kind, blocker.RecipeName, blocker.UnitName, blocker.AffectedRecipes
+      FROM
+      (
+        -- Recetas activas que consumen el material en una unidad que ya no convertiría.
+        SELECT 1 AS Priority, 'component' AS Kind,
+               parentMaterial.[Description] AS RecipeName,
+               componentUnit.UnitName AS UnitName,
+               COUNT(*) OVER () AS AffectedRecipes
+        FROM logistica.BomComponent component
+        JOIN logistica.BomVersion parentVersion
+          ON parentVersion.Rfc = component.Rfc AND parentVersion.Id = component.BomVersionId
+         AND parentVersion.[Status] = 'Active'
+        JOIN logistica.BomHeader parentHeader
+          ON parentHeader.Rfc = parentVersion.Rfc AND parentHeader.Id = parentVersion.BomHeaderId
+        JOIN logistica.Material parentMaterial
+          ON parentMaterial.Rfc = parentHeader.Rfc AND parentMaterial.Id = parentHeader.ProductMaterialId
+        JOIN logistica.UnitOfMeasure componentUnit ON componentUnit.Id = component.UnitId
+        WHERE component.Rfc = @Rfc AND component.ComponentMaterialId = @MaterialId
+          AND component.UnitId <> @NewBaseUnitId
+          AND NOT EXISTS (SELECT 1 FROM logistica.MaterialUnitConversion materialConversion
+                          WHERE materialConversion.Rfc = @Rfc AND materialConversion.MaterialId = @MaterialId
+                            AND materialConversion.FromUnitId = component.UnitId
+                            AND materialConversion.ToUnitId = @NewBaseUnitId AND materialConversion.IsActive = 1)
+          AND NOT EXISTS (SELECT 1 FROM logistica.UnitConversion globalConversion
+                          WHERE globalConversion.FromUnitId = component.UnitId
+                            AND globalConversion.ToUnitId = @NewBaseUnitId AND globalConversion.IsActive = 1)
+
+        UNION ALL
+
+        -- Su propia receta activa quedaría rindiendo en una unidad distinta a la de inventario.
+        SELECT 2, 'yield', ownMaterial.[Description], yieldUnit.UnitName, 1
+        FROM logistica.BomHeader ownHeader
+        JOIN logistica.BomVersion ownVersion
+          ON ownVersion.Rfc = ownHeader.Rfc AND ownVersion.BomHeaderId = ownHeader.Id
+         AND ownVersion.[Status] = 'Active'
+        JOIN logistica.Material ownMaterial
+          ON ownMaterial.Rfc = ownHeader.Rfc AND ownMaterial.Id = ownHeader.ProductMaterialId
+        JOIN logistica.UnitOfMeasure yieldUnit ON yieldUnit.Id = ownVersion.YieldUnitId
+        WHERE ownHeader.Rfc = @Rfc AND ownHeader.ProductMaterialId = @MaterialId
+          AND ownVersion.YieldUnitId <> @NewBaseUnitId
+      ) blocker
+      ORDER BY blocker.Priority;
+      """,
+      new { Rfc = rfc, MaterialId = materialId, NewBaseUnitId = newBaseUnitId },
+      tx,
+      cancellationToken: ct));
+
+    if (breakage is null)
+    {
+      return null;
+    }
+
+    var newUnitName = await conn.ExecuteScalarAsync<string>(new CommandDefinition(
+      "SELECT UnitName FROM logistica.UnitOfMeasure WHERE Id = @Id;",
+      new { Id = newBaseUnitId }, tx, cancellationToken: ct)) ?? "la nueva unidad";
+
+    if (string.Equals(breakage.Kind, "yield", StringComparison.Ordinal))
+    {
+      return $"No se puede cambiar la unidad base a {newUnitName}: la receta activa de este material rinde en {breakage.UnitName}. Corrige primero el rendimiento de esa receta.";
+    }
+
+    var others = breakage.AffectedRecipes > 1
+      ? $" y {breakage.AffectedRecipes - 1} receta{(breakage.AffectedRecipes == 2 ? "" : "s")} más"
+      : "";
+    return $"No se puede cambiar la unidad base a {newUnitName}: {breakage.RecipeName}{others} consume este material en {breakage.UnitName}, y no existe conversión hacia {newUnitName}. Ajusta esas recetas o crea la conversión antes de cambiar la unidad.";
+  }
+
+  private sealed class BaseUnitBreakageRow
+  {
+    public string Kind { get; set; } = string.Empty;
+    public string RecipeName { get; set; } = string.Empty;
+    public string UnitName { get; set; } = string.Empty;
+    public int AffectedRecipes { get; set; }
   }
 
   public async Task<LogisticsCommandResult> SetProductionRoleAsync(string rfc, int materialId, string productionRole, CancellationToken ct = default)

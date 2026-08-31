@@ -84,6 +84,43 @@ public static class LoyaltyPointsCalculator
     var balance = Math.Max(0, currentBalance);
     return minimumRedeemPoints > 0 && balance < minimumRedeemPoints ? 0 : balance;
   }
+
+  /// <summary>
+  /// Máximo de puntos enteros que no excede la mercancía restante después de
+  /// promociones y descuentos. Respeta saldo, mínimo y redondeo monetario.
+  /// </summary>
+  public static int CalculateMaximumOrderRedemptionPoints(
+    int currentBalance,
+    int minimumRedeemPoints,
+    decimal pointValueMxn,
+    decimal remainingMerchandise)
+  {
+    if (pointValueMxn <= 0) throw new ArgumentOutOfRangeException(nameof(pointValueMxn));
+    var balance = Math.Max(0, currentBalance);
+    var merchandise = decimal.Round(Math.Max(0, remainingMerchandise), 2, MidpointRounding.AwayFromZero);
+    if (balance == 0 || merchandise <= 0)
+      return 0;
+
+    var maximum = Math.Min(balance, checked((int)Math.Min(int.MaxValue, decimal.Floor(merchandise / pointValueMxn))));
+    while (maximum > 0 && CalculateRedemptionValue(maximum, pointValueMxn) > merchandise)
+      maximum--;
+    return minimumRedeemPoints > 0 && maximum < minimumRedeemPoints ? 0 : maximum;
+  }
+
+  public static int CalculateTargetRestoredPoints(
+    int originallyRedeemedPoints,
+    decimal paidOrderTotal,
+    decimal cumulativeRefundedTotal)
+  {
+    var redeemed = Math.Max(0, originallyRedeemedPoints);
+    if (redeemed == 0 || paidOrderTotal <= 0 || cumulativeRefundedTotal <= 0)
+      return 0;
+    if (cumulativeRefundedTotal >= paidOrderTotal - 0.01m)
+      return redeemed;
+
+    var ratio = Math.Clamp(cumulativeRefundedTotal / paidOrderTotal, 0, 1);
+    return Math.Clamp((int)decimal.Floor(redeemed * ratio), 0, redeemed);
+  }
 }
 
 public sealed record LoyaltyRefundCalculation(

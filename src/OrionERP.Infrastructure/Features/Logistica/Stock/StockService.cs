@@ -4,6 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Text;
 using Dapper;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Logistica.Stock;
 using OrionERP.Infrastructure.Features.Logistica.Support;
@@ -140,7 +141,7 @@ public sealed class StockService : IStockService
         """);
     }
 
-    sql.AppendLine("ORDER BY ISNULL(sb.IsRemoved, 0), room.ROOM_NAME, l.LocationName, m.MaterialCode, m.[Description], sb.Id");
+    sql.AppendLine($"ORDER BY ISNULL(sb.IsRemoved, 0), room.ROOM_NAME, l.LocationName, {MaterialSortOrder.SqlKeys("m")}, sb.Id");
 
     if (take > 0)
     {

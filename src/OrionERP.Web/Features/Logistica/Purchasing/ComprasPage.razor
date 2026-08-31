@@ -278,7 +278,7 @@
                             @if (!CanSearchMaterials)
                             {
                                 <div class="alert alert-light border mt-3 mb-0">
-                                    Selecciona el proveedor primero para buscar únicamente materiales asignados a ese proveedor.
+                                    Selecciona el proveedor primero para saber cuáles de estos materiales te surte de costumbre.
                                 </div>
                             }
                             else if (HasExecutedMaterialSearch)
@@ -298,7 +298,7 @@
                                             @if (MaterialSearchResults.Count == 0)
                                             {
                                                 <tr>
-                                                    <td colspan="5" class="text-center text-muted py-3">No hay materiales disponibles para ese proveedor.</td>
+                                                    <td colspan="5" class="text-center text-muted py-3">Ningún material coincide con esa búsqueda.</td>
                                                 </tr>
                                             }
                                             else
@@ -321,6 +321,17 @@
                                                         <td>
                                                             <div class="fw-semibold">@materialTitle</div>
                                                             <small class="text-muted">@item.MaterialCode</small>
+                                                            @if (item.IsHighlightedVendorMaterial)
+                                                            {
+                                                                <span class="badge compras-vendor-badge is-usual ms-2">Lo surte este proveedor</span>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="badge compras-vendor-badge is-new ms-2"
+                                                                      title="@(string.IsNullOrWhiteSpace(item.VendorName) ? "El material no tiene proveedor registrado." : $"Lo surte {item.VendorName}.")">
+                                                                    @(string.IsNullOrWhiteSpace(item.VendorName) ? "Sin proveedor registrado" : $"Habitual: {item.VendorName}")
+                                                                </span>
+                                                            }
                                                         </td>
                                                         <td>@(string.IsNullOrWhiteSpace(item.BaseUnitName) ? "Sin unidad" : item.BaseUnitName)</td>
                                                         <td class="text-end">@item.TotalQuantity.ToString("N2")</td>
@@ -349,6 +360,25 @@
                             </div>
                             <span class="text-muted small">@Lines.Count materiales</span>
                         </div>
+
+                        @if (IsDraftMode && UnlinkedMaterialNames.Count > 0)
+                        {
+                            <div class="alert alert-warning compras-vendor-link-notice">
+                                <div class="fw-semibold mb-1">
+                                    <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
+                                    @(UnlinkedMaterialNames.Count == 1
+                                        ? "Un material de esta orden no lo surte este proveedor de costumbre."
+                                        : $"{UnlinkedMaterialNames.Count} materiales de esta orden no los surte este proveedor de costumbre.")
+                                </div>
+                                <div class="small mb-2">@string.Join(" · ", UnlinkedMaterialNames)</div>
+                                <div class="form-check mb-0">
+                                    <input class="form-check-input" type="checkbox" id="compras-link-vendor" @bind="LinkMaterialsToVendor" />
+                                    <label class="form-check-label" for="compras-link-vendor">
+                                        Registrar a <strong>@CurrentVendorName</strong> como proveedor alternativo de estos materiales al guardar.
+                                    </label>
+                                </div>
+                            </div>
+                        }
 
                         <div class="table-responsive compras-lines-scroll">
                             <table class="table table-sm table-hover align-middle compras-lines-table">

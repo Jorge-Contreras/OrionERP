@@ -112,7 +112,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
       if (!string.IsNullOrWhiteSpace(Editor.Description)) score += 20;
       if (Editor.BaseUnitId > 0) score += 15;
       if (Editor.CategoryId.HasValue) score += 15;
-      if (Editor.BusinessPartnerId.HasValue) score += 15;
+      if (EditorVendors.Any(vendor => vendor.BusinessPartnerId > 0)) score += 15;
       if (Editor.PurchaseUnitId.HasValue) score += 10;
       if (Editor.BaseUnitPrice.HasValue) score += 10;
       if (!string.IsNullOrWhiteSpace(Editor.Barcode)) score += 10;
@@ -394,7 +394,6 @@ public partial class MaterialesPage : ComponentBase, IDisposable
         BaseUnitId = detail.BaseUnitId,
         PurchaseQuantity = detail.PurchaseQuantity,
         PurchaseUnitId = detail.PurchaseUnitId,
-        BusinessPartnerId = detail.BusinessPartnerId,
         BaseUnitPrice = detail.BaseUnitPrice,
         Brand = detail.Brand,
         Model = detail.Model,
@@ -407,7 +406,8 @@ public partial class MaterialesPage : ComponentBase, IDisposable
         VendorCode = detail.VendorCode,
         PurchaseLink = detail.PurchaseLink,
         MaterialClass = detail.MaterialClass,
-        ProductionRole = detail.ProductionRole
+        ProductionRole = detail.ProductionRole,
+        Vendors = detail.Vendors.Select(ToVendorRequest).ToList()
       };
 
       SyncPurchasePresentationPriceFromBase();
@@ -823,7 +823,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
       }
 
       await LoadCatalogAsync();
-      Editor.BusinessPartnerId = result.EntityId;
+      AssignVendorToDraftRow(result.EntityId);
       ShowVendorDialog = false;
       UiMessages.ShowSuccess(result.Message);
     }
@@ -837,11 +837,88 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     }
   }
 
-  protected Task OnEditorVendorChangedAsync(int? vendorId)
+  /// <summary>Proveedores del material en edición; nunca es <c>null</c> desde la pantalla.</summary>
+  protected List<MaterialVendorLinkRequest> EditorVendors => Editor.Vendors ??= [];
+
+  /// <summary>Renglón cuyo combo abrió el diálogo de "Nuevo proveedor".</summary>
+  private MaterialVendorLinkRequest? _vendorDialogTarget;
+
+  protected IReadOnlyList<LookupOptionDto> VendorOptionsFor(MaterialVendorLinkRequest row)
+    => Catalog.Vendors
+      .Where(option => option.Id == row.BusinessPartnerId
+        || EditorVendors.All(other => other.BusinessPartnerId != option.Id))
+      .ToList();
+
+  protected void AddVendorRow()
   {
-    Editor.BusinessPartnerId = vendorId;
+    // El primer proveedor es el principal por definición; los siguientes son alternativos.
+    EditorVendors.Add(new MaterialVendorLinkRequest { IsPrimary = EditorVendors.Count == 0 });
+  }
+
+  protected void RemoveVendorRow(MaterialVendorLinkRequest row)
+  {
+    EditorVendors.Remove(row);
+    if (EditorVendors.Count > 0 && !EditorVendors.Any(vendor => vendor.IsPrimary))
+    {
+      EditorVendors[0].IsPrimary = true;
+    }
+  }
+
+  protected void SetPrimaryVendor(MaterialVendorLinkRequest row)
+  {
+    foreach (var vendor in EditorVendors)
+    {
+      vendor.IsPrimary = ReferenceEquals(vendor, row);
+    }
+  }
+
+  protected Task OnVendorRowChangedAsync(MaterialVendorLinkRequest row, int? vendorId)
+  {
+    row.BusinessPartnerId = vendorId ?? 0;
     return Task.CompletedTask;
   }
+
+  protected void OpenVendorDialogFor(MaterialVendorLinkRequest row)
+  {
+    _vendorDialogTarget = row;
+    OpenVendorDialog();
+  }
+
+  private void AssignVendorToDraftRow(int? businessPartnerId)
+  {
+    if (businessPartnerId is not > 0)
+    {
+      return;
+    }
+
+    var target = _vendorDialogTarget;
+    _vendorDialogTarget = null;
+
+    if (target is null || !EditorVendors.Contains(target))
+    {
+      AddVendorRow();
+      target = EditorVendors[^1];
+    }
+
+    target.BusinessPartnerId = businessPartnerId.Value;
+  }
+
+  protected string VendorRowName(MaterialVendorLinkRequest row)
+    => Catalog.Vendors.FirstOrDefault(option => option.Id == row.BusinessPartnerId)?.Name ?? "este proveedor";
+
+  private static MaterialVendorLinkRequest ToVendorRequest(MaterialVendorLinkDto vendor)
+    => new()
+    {
+      BusinessPartnerId = vendor.BusinessPartnerId,
+      IsPrimary = vendor.IsPrimary,
+      IsActive = vendor.IsActive,
+      VendorCode = vendor.VendorCode,
+      PurchaseQuantity = vendor.PurchaseQuantity,
+      PurchaseUnitId = vendor.PurchaseUnitId,
+      PurchaseLink = vendor.PurchaseLink,
+      LastUnitPrice = vendor.LastUnitPrice,
+      Notes = vendor.Notes
+    };
 
   protected void OnPurchaseUnitChanged(int? purchaseUnitId)
   {
@@ -1668,7 +1745,8 @@ public partial class MaterialesPage : ComponentBase, IDisposable
       PurchaseQuantity = 1m,
       MaterialClass = "Consumable",
       Status = "ACTIVO",
-      ProductionRole = MaterialProductionRoles.PurchasedInput
+      ProductionRole = MaterialProductionRoles.PurchasedInput,
+      Vendors = []
     };
 
   private static BusinessPartnerUpsertRequest CreateVendorDraft(string ownerRfc)

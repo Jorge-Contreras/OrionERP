@@ -31,12 +31,12 @@ public class MaterialServicePagingTests
     Assert.Contains("OFFSET @Skip ROWS", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.Contains("FETCH NEXT @Take ROWS ONLY;", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.Contains("m.CategoryId = @CategoryId", connection.LastCommandText!, StringComparison.Ordinal);
-    Assert.Contains("m.BusinessPartnerId = @VendorId", connection.LastCommandText!, StringComparison.Ordinal);
+    Assert.Contains("fv.BusinessPartnerId = @VendorId", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.Contains("m.MaterialClass = @MaterialClass", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.Contains("m.MaterialStatus = @Status", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.Contains("m.PrimaryImage IS NOT NULL", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.Contains("ISNULL(st.TotalQuantity, 0) <= 0", connection.LastCommandText!, StringComparison.Ordinal);
-    Assert.Contains("m.BusinessPartnerId IS NULL", connection.LastCommandText!, StringComparison.Ordinal);
+    Assert.Contains("NOT EXISTS (SELECT 1 FROM logistica.MaterialVendor nv", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.Contains("m.CategoryId IS NULL", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.Contains("NULLIF(LTRIM(RTRIM(m.Barcode)), '') IS NULL", connection.LastCommandText!, StringComparison.Ordinal);
 

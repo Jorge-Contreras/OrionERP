@@ -41,8 +41,8 @@ public sealed record RestaurantMaterialOption(
         string.Equals(material.ProductType, "FinishedGood", StringComparison.OrdinalIgnoreCase)
           ? "Productos y subrecetas"
           : material.CategoryName ?? "Insumos"))
-      .OrderBy(material => material.Description, StringComparer.CurrentCultureIgnoreCase)
-      .ThenBy(material => material.Code, StringComparer.CurrentCultureIgnoreCase)
+      .OrderBy(material => material.Description, MaterialSortOrder.Comparer)
+      .ThenBy(material => material.Code, MaterialSortOrder.Comparer)
       .ToList();
 
   private static bool Contains(string? value, string term)

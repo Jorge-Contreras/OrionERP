@@ -155,6 +155,13 @@ public sealed class PurchaseOrderUpsertRequest
   public string? Notes { get; set; }
 
   public List<PurchaseOrderLineUpsertRequest> Lines { get; set; } = [];
+
+  /// <summary>
+  /// Registra al proveedor de la orden como proveedor alternativo de los materiales que compró
+  /// sin surtir de costumbre. Es lo que convierte una compra de emergencia en catálogo: la
+  /// siguiente vez el material ya aparece marcado como suyo.
+  /// </summary>
+  public bool LinkMaterialsToVendor { get; set; } = true;
 }
 
 public sealed class AutoPurchaseOrderCreateRequest

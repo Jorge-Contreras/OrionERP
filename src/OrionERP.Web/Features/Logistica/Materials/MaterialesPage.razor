@@ -472,25 +472,114 @@
                             <span class="materiales-section-icon is-purchase"><i class="bi bi-cart3" aria-hidden="true"></i></span>
                             <div>
                                 <h3>Abastecimiento</h3>
-                                <p>Proveedor, presentación y costo listos para una orden de compra.</p>
+                                <p>Proveedores, presentación y costo listos para una orden de compra.</p>
                             </div>
                         </div>
 
                         <div class="row g-3">
                             <div class="col-12">
                                 <div class="materiales-field-label-row">
-                                    <label class="form-label">Proveedor preferido</label>
-                                    <button type="button" class="materiales-inline-create" @onclick="OpenVendorDialog">
+                                    <label class="form-label">Proveedores</label>
+                                    <button type="button" class="materiales-inline-create" @onclick="AddVendorRow">
                                         <i class="bi bi-plus-lg" aria-hidden="true"></i>
-                                        Nuevo proveedor
+                                        Agregar proveedor
                                     </button>
                                 </div>
-                                <VendorCombobox Options="@Catalog.Vendors"
-                                                SelectedId="@Editor.BusinessPartnerId"
-                                                SelectedIdChanged="OnEditorVendorChangedAsync"
-                                                AriaLabel="Proveedor preferido"
-                                                Placeholder="Escribe nombre o RFC para encontrarlo" />
-                                <div class="form-text">Busca entre todos los proveedores activos de la empresa de tu sesión.</div>
+
+                                @if (EditorVendors.Count == 0)
+                                {
+                                    <div class="materiales-vendor-empty">
+                                        <i class="bi bi-shop" aria-hidden="true"></i>
+                                        <div>
+                                            <strong>Sin proveedores registrados</strong>
+                                            <span>Un material puede comprarse con varios. El primero que agregues queda como principal.</span>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <ul class="materiales-vendor-list">
+                                        @foreach (var vendorRow in EditorVendors)
+                                        {
+                                            <li class="materiales-vendor-row @(vendorRow.IsPrimary ? "is-primary" : null)">
+                                                <div class="materiales-vendor-row-head">
+                                                    <div class="materiales-vendor-picker">
+                                                        <VendorCombobox Options="@VendorOptionsFor(vendorRow)"
+                                                                        SelectedId="@(vendorRow.BusinessPartnerId > 0 ? vendorRow.BusinessPartnerId : null)"
+                                                                        SelectedIdChanged="@(id => OnVendorRowChangedAsync(vendorRow, id))"
+                                                                        AriaLabel="Proveedor del material"
+                                                                        Placeholder="Escribe nombre o RFC para encontrarlo" />
+                                                    </div>
+                                                    <div class="materiales-vendor-row-actions">
+                                                        <button type="button"
+                                                                class="materiales-vendor-primary-toggle @(vendorRow.IsPrimary ? "is-on" : null)"
+                                                                title="@(vendorRow.IsPrimary ? "Proveedor principal" : "Marcar como principal")"
+                                                                aria-pressed="@vendorRow.IsPrimary"
+                                                                @onclick="() => SetPrimaryVendor(vendorRow)">
+                                                            <i class="bi @(vendorRow.IsPrimary ? "bi-star-fill" : "bi-star")" aria-hidden="true"></i>
+                                                            <span>@(vendorRow.IsPrimary ? "Principal" : "Hacer principal")</span>
+                                                        </button>
+                                                        <button type="button"
+                                                                class="materiales-vendor-remove"
+                                                                title="Quitar proveedor"
+                                                                aria-label="Quitar proveedor"
+                                                                @onclick="() => RemoveVendorRow(vendorRow)">
+                                                            <i class="bi bi-trash3" aria-hidden="true"></i>
+                                                        </button>
+                                                        <button type="button" class="materiales-inline-create" @onclick="() => OpenVendorDialogFor(vendorRow)">
+                                                            <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                                                            Nuevo
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div class="row g-2 materiales-vendor-row-body">
+                                                    <div class="col-md-4">
+                                                        <label class="form-label">Código del proveedor</label>
+                                                        <InputText class="form-control" placeholder="SKU o referencia externa" @bind-Value="vendorRow.VendorCode" />
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label">Presentación</label>
+                                                        <InputSelect TValue="int?"
+                                                                     class="form-select"
+                                                                     Value="@vendorRow.PurchaseUnitId"
+                                                                     ValueChanged="@((int? unitId) => vendorRow.PurchaseUnitId = unitId)"
+                                                                     ValueExpression="@(() => vendorRow.PurchaseUnitId)">
+                                                            <option value="">Igual que el material</option>
+                                                            @foreach (var option in Catalog.Units)
+                                                            {
+                                                                <option value="@option.Id">@GetUnitDisplay(option)</option>
+                                                            }
+                                                        </InputSelect>
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                        <label class="form-label">Contenido</label>
+                                                        <InputNumber class="form-control" step="0.0001" @bind-Value="vendorRow.PurchaseQuantity" />
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label">Último precio</label>
+                                                        <div class="input-group">
+                                                            <span class="input-group-text">$</span>
+                                                            <InputNumber class="form-control" step="0.000001" @bind-Value="vendorRow.LastUnitPrice" />
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-12">
+                                                        <label class="form-label">Liga de compra</label>
+                                                        <div class="materiales-input-with-icon">
+                                                            <i class="bi bi-link-45deg" aria-hidden="true"></i>
+                                                            <InputText class="form-control" placeholder="https://…" @bind-Value="vendorRow.PurchaseLink" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+                                <div class="form-text">
+                                    El proveedor principal es el que surte de costumbre: su código y su liga son los que
+                                    guarda el material. Los demás quedan disponibles al capturar una orden de compra, para
+                                    los días en que el habitual no tiene el producto.
+                                </div>
                             </div>
 
                             <div class="col-md-6 col-xxl-4">
@@ -568,17 +657,6 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-5">
-                                <label class="form-label" for="material-vendor-code">Código del proveedor</label>
-                                <InputText id="material-vendor-code" class="form-control" placeholder="SKU o referencia externa" @bind-Value="Editor.VendorCode" />
-                            </div>
-                            <div class="col-md-7">
-                                <label class="form-label" for="material-purchase-link">Liga de compra</label>
-                                <div class="materiales-input-with-icon">
-                                    <i class="bi bi-link-45deg" aria-hidden="true"></i>
-                                    <InputText id="material-purchase-link" class="form-control" placeholder="https://…" @bind-Value="Editor.PurchaseLink" />
-                                </div>
-                            </div>
                         </div>
                     </section>
 

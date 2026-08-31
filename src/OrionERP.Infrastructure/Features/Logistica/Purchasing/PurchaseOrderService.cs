@@ -184,7 +184,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       JOIN logistica.Material material
         ON material.Id = line.MaterialId
       WHERE line.PurchaseOrderId = @PurchaseOrderId
-      ORDER BY line.MaterialCodeSnapshot, line.MaterialDescriptionSnapshot, line.Id;
+      ORDER BY line.MaterialDescriptionSnapshot, line.MaterialCodeSnapshot, line.Id;
 
       SELECT
           allocation.Id,
@@ -234,7 +234,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       JOIN logistica.Location location
         ON location.Id = receiptLine.LocationId
       WHERE receipt.PurchaseOrderId = @PurchaseOrderId
-      ORDER BY receipt.ReceiptDate DESC, receipt.Id DESC, poLine.MaterialCodeSnapshot, location.LocationName, receiptLine.Id DESC;
+      ORDER BY receipt.ReceiptDate DESC, receipt.Id DESC, poLine.MaterialDescriptionSnapshot, poLine.MaterialCodeSnapshot, location.LocationName, receiptLine.Id DESC;
 
       SELECT
           room.ID AS Id,
@@ -1068,7 +1068,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
 
     if (materialRows.Count != request.Lines.Count)
     {
-      return LogisticsCommandResult.Fail("Todos los materiales deben existir, estar activos y pertenecer al proveedor seleccionado.");
+      return LogisticsCommandResult.Fail("Todos los materiales deben existir y estar activos.");
     }
 
     var locationIds = request.Lines
@@ -1349,7 +1349,67 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       }
     }
 
+    if (request.LinkMaterialsToVendor)
+    {
+      await LinkPurchasedMaterialsToVendorAsync(conn, tx, request, materialRows, ct);
+    }
+
     return LogisticsCommandResult.Ok("Orden de compra guardada correctamente.", purchaseOrderId);
+  }
+
+  /// <summary>
+  /// Da de alta al proveedor de la orden como proveedor alternativo de los materiales que no
+  /// surtía. Es el caso de la compra de emergencia: el proveedor habitual no tenía el producto, se
+  /// compró con otro, y a partir de ahora el catálogo lo sabe. Nunca desplaza al principal.
+  /// </summary>
+  private static async Task LinkPurchasedMaterialsToVendorAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    PurchaseOrderUpsertRequest request,
+    IReadOnlyDictionary<int, MaterialRow> materialRows,
+    CancellationToken ct)
+  {
+    foreach (var lineRequest in request.Lines)
+    {
+      if (!materialRows.TryGetValue(lineRequest.MaterialId, out var material) || material.IsVendorLinked)
+      {
+        continue;
+      }
+
+      await conn.ExecuteAsync(new CommandDefinition(
+        """
+        INSERT INTO logistica.MaterialVendor
+          (Rfc, MaterialId, BusinessPartnerId, IsPrimary, IsActive, LastUnitPrice, LastPurchaseDate, Notes)
+        SELECT
+            m.Rfc,
+            m.Id,
+            @BusinessPartnerId,
+            0,
+            1,
+            @BaseUnitPrice,
+            CONVERT(date, @OrderDate),
+            'Alta automática al capturar una orden de compra.'
+        FROM logistica.Material m
+        WHERE m.Id = @MaterialId
+          AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRfcScope scope
+                      WHERE scope.Rfc = m.Rfc
+                        AND scope.BusinessPartnerId = @BusinessPartnerId
+                        AND scope.IsActive = 1)
+          AND NOT EXISTS (SELECT 1 FROM logistica.MaterialVendor mv
+                          WHERE mv.Rfc = m.Rfc
+                            AND mv.MaterialId = m.Id
+                            AND mv.BusinessPartnerId = @BusinessPartnerId);
+        """,
+        new
+        {
+          request.BusinessPartnerId,
+          lineRequest.MaterialId,
+          BaseUnitPrice = MaterialPriceCalculator.NormalizeBaseUnitPrice(lineRequest.BaseUnitPrice),
+          request.OrderDate
+        },
+        tx,
+        cancellationToken: ct));
+    }
   }
 
   private DbConnection CreateConnection()
@@ -1592,8 +1652,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
   {
     var lines = candidateRows
       .GroupBy(row => row.MaterialId)
-      .OrderBy(group => group.First().MaterialCode, StringComparer.OrdinalIgnoreCase)
-      .ThenBy(group => group.First().MaterialDescription, StringComparer.OrdinalIgnoreCase)
+      .OrderBy(group => group.First().MaterialDescription, MaterialSortOrder.Comparer)
+      .ThenBy(group => group.First().MaterialCode, MaterialSortOrder.Comparer)
       .Select(group =>
       {
         var first = group.First();
@@ -1669,14 +1729,15 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           sb.MaterialId,
           m.MaterialCode,
           m.[Description] AS MaterialDescription,
-          m.VendorCode,
+          COALESCE(mv.VendorCode, m.VendorCode) AS VendorCode,
           baseU.UnitName AS BaseUnitName,
           purchaseU.UnitName AS PurchaseUnitName,
           CAST(CASE
-              WHEN m.PurchaseQuantity IS NULL OR m.PurchaseQuantity <= 0 THEN 1
-              ELSE m.PurchaseQuantity
+              WHEN COALESCE(mv.PurchaseQuantity, m.PurchaseQuantity) IS NULL
+                OR COALESCE(mv.PurchaseQuantity, m.PurchaseQuantity) <= 0 THEN 1
+              ELSE COALESCE(mv.PurchaseQuantity, m.PurchaseQuantity)
           END AS decimal(18,4)) AS PurchaseQuantity,
-          CAST(m.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice,
+          CAST(COALESCE(mv.LastUnitPrice, m.BaseUnitPrice) AS decimal(18,6)) AS BaseUnitPrice,
           sb.LocationId,
           location.LocationName,
           location.LocationCode,
@@ -1691,20 +1752,21 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       FROM logistica.StockBalance sb
       JOIN logistica.Material m
         ON m.Id = sb.MaterialId
+      JOIN logistica.MaterialVendor mv
+        ON mv.Rfc = m.Rfc AND mv.MaterialId = m.Id AND mv.BusinessPartnerId = @BusinessPartnerId AND mv.IsActive = 1
       JOIN logistica.Location location
         ON location.Id = sb.LocationId
       LEFT JOIN logistica.UnitOfMeasure baseU
         ON baseU.Id = m.BaseUnitId
       LEFT JOIN logistica.UnitOfMeasure purchaseU
-        ON purchaseU.Id = m.PurchaseUnitId
+        ON purchaseU.Id = COALESCE(mv.PurchaseUnitId, m.PurchaseUnitId)
       LEFT JOIN OpenPurchaseAllocations openAlloc
         ON openAlloc.MaterialId = sb.MaterialId
        AND openAlloc.LocationId = sb.LocationId
       LEFT JOIN RecentConsumption recentConsumption
         ON recentConsumption.MaterialId=sb.MaterialId
        AND recentConsumption.LocationId=sb.LocationId
-      WHERE m.BusinessPartnerId = @BusinessPartnerId
-        AND m.IsActive = 1
+      WHERE m.IsActive = 1
         AND location.IsActive = 1
         AND location.IsInventoryEnabled = 1
         AND ISNULL(sb.IsRemoved, 0) = 0
@@ -1722,7 +1784,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       parameters.Add("@RoomIds", roomIds);
     }
 
-    sql.AppendLine("ORDER BY m.MaterialCode, m.[Description], sb.LocationId;");
+    sql.AppendLine($"ORDER BY {MaterialSortOrder.SqlKeys("m")}, sb.LocationId;");
 
     var rows = await conn.QueryAsync<AutoPurchaseCandidateRow>(
       new CommandDefinition(
@@ -1772,22 +1834,25 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             m.Id,
             m.MaterialCode,
             m.[Description],
-            m.VendorCode,
+            COALESCE(mv.VendorCode, m.VendorCode) AS VendorCode,
             baseU.UnitName AS BaseUnitName,
             purchaseU.UnitName AS PurchaseUnitName,
             CAST(CASE
-                WHEN m.PurchaseQuantity IS NULL OR m.PurchaseQuantity <= 0 THEN 1
-                ELSE m.PurchaseQuantity
+                WHEN COALESCE(mv.PurchaseQuantity, m.PurchaseQuantity) IS NULL
+                  OR COALESCE(mv.PurchaseQuantity, m.PurchaseQuantity) <= 0 THEN 1
+                ELSE COALESCE(mv.PurchaseQuantity, m.PurchaseQuantity)
             END AS decimal(18,4)) AS PurchaseQuantity,
-            CAST(m.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice
+            CAST(COALESCE(mv.LastUnitPrice, m.BaseUnitPrice) AS decimal(18,6)) AS BaseUnitPrice,
+            CAST(CASE WHEN mv.Id IS NULL THEN 0 ELSE 1 END AS bit) AS IsVendorLinked
         FROM logistica.Material m
+        LEFT JOIN logistica.MaterialVendor mv
+          ON mv.Rfc = m.Rfc AND mv.MaterialId = m.Id AND mv.BusinessPartnerId = @BusinessPartnerId
         LEFT JOIN logistica.UnitOfMeasure baseU
           ON baseU.Id = m.BaseUnitId
         LEFT JOIN logistica.UnitOfMeasure purchaseU
-          ON purchaseU.Id = m.PurchaseUnitId
+          ON purchaseU.Id = COALESCE(mv.PurchaseUnitId, m.PurchaseUnitId)
         WHERE m.Id IN @MaterialIds
-          AND m.IsActive = 1
-          AND m.BusinessPartnerId = @BusinessPartnerId;
+          AND m.IsActive = 1;
         """,
         new
         {
@@ -2021,12 +2086,48 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             AND (receiptLine.SubtotalAmount IS NOT NULL OR receiptLine.UnitCost IS NOT NULL)
           GROUP BY receiptLine.MaterialId
         )
+        -- El costo real es de ese proveedor, así que se guarda en su vínculo.
+        UPDATE vendorLink
+        SET vendorLink.LastUnitPrice = actual.BaseUnitPrice,
+            vendorLink.LastPurchaseDate = CONVERT(date, SYSUTCDATETIME()),
+            vendorLink.UpdatedAt = SYSUTCDATETIME()
+        FROM logistica.MaterialVendor vendorLink
+        JOIN ActualReceiptCosts actual
+          ON actual.MaterialId = vendorLink.MaterialId
+        JOIN logistica.PurchaseOrder purchaseOrder
+          ON purchaseOrder.Id = @PurchaseOrderId
+         AND purchaseOrder.BusinessPartnerId = vendorLink.BusinessPartnerId;
+
+        ;WITH ActualReceiptCosts AS
+        (
+          SELECT
+              receiptLine.MaterialId,
+              CAST(
+                SUM(COALESCE(receiptLine.SubtotalAmount, receiptLine.UnitCost * receiptLine.Quantity))
+                / NULLIF(SUM(receiptLine.Quantity), 0)
+                AS decimal(18,6)) AS BaseUnitPrice
+          FROM logistica.PurchaseReceiptLine receiptLine
+          JOIN logistica.PurchaseReceipt receipt
+            ON receipt.Id = receiptLine.PurchaseReceiptId
+          WHERE receipt.PurchaseOrderId = @PurchaseOrderId
+            AND (receiptLine.SubtotalAmount IS NOT NULL OR receiptLine.UnitCost IS NOT NULL)
+          GROUP BY receiptLine.MaterialId
+        )
+        -- El costo de referencia del material sólo lo mueve el proveedor principal: si no, una
+        -- compra de emergencia con otro proveedor recostearía todas las recetas que lo usan.
         UPDATE material
         SET BaseUnitPrice = actual.BaseUnitPrice,
             UpdatedDate = CONVERT(date, SYSUTCDATETIME())
         FROM logistica.Material material
         JOIN ActualReceiptCosts actual
-          ON actual.MaterialId = material.Id;
+          ON actual.MaterialId = material.Id
+        JOIN logistica.MaterialVendor primaryVendor
+          ON primaryVendor.Rfc = material.Rfc
+         AND primaryVendor.MaterialId = material.Id
+         AND primaryVendor.IsPrimary = 1
+        JOIN logistica.PurchaseOrder purchaseOrder
+          ON purchaseOrder.Id = @PurchaseOrderId
+         AND purchaseOrder.BusinessPartnerId = primaryVendor.BusinessPartnerId;
         """,
         new { PurchaseOrderId = purchaseOrderId },
         tx,
@@ -2162,6 +2263,9 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     public string? PurchaseUnitName { get; set; }
     public decimal PurchaseQuantity { get; set; }
     public decimal? BaseUnitPrice { get; set; }
+
+    /// <summary>Falso cuando el material se le está comprando a un proveedor que no lo surte de costumbre.</summary>
+    public bool IsVendorLinked { get; set; }
   }
 
   private sealed class LocationRow

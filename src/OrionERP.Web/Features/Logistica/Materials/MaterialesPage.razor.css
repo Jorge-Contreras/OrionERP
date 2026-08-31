@@ -2943,3 +2943,119 @@
     transition: none;
   }
 }
+
+/* Proveedores del material ------------------------------------------------ */
+
+.materiales-vendor-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px dashed var(--materials-border);
+  border-radius: 0.7rem;
+  background: rgba(31, 138, 174, 0.04);
+  color: var(--materials-muted);
+}
+
+.materiales-vendor-empty > i {
+  font-size: 1.25rem;
+  color: var(--materials-accent);
+}
+
+.materiales-vendor-empty strong {
+  display: block;
+  color: var(--materials-ink);
+  font-size: 0.85rem;
+}
+
+.materiales-vendor-empty span {
+  font-size: 0.78rem;
+}
+
+.materiales-vendor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.materiales-vendor-row {
+  padding: 0.85rem;
+  border: 1px solid var(--materials-border);
+  border-radius: 0.7rem;
+  background: var(--materials-surface);
+}
+
+.materiales-vendor-row.is-primary {
+  border-color: var(--materials-accent);
+  box-shadow: inset 3px 0 0 var(--materials-accent);
+}
+
+.materiales-vendor-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.materiales-vendor-picker {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.materiales-vendor-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.materiales-vendor-primary-toggle,
+.materiales-vendor-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--materials-border);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--materials-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.materiales-vendor-primary-toggle:hover,
+.materiales-vendor-primary-toggle:focus-visible,
+.materiales-vendor-remove:hover,
+.materiales-vendor-remove:focus-visible {
+  border-color: var(--materials-accent);
+  color: var(--materials-accent);
+}
+
+.materiales-vendor-primary-toggle.is-on {
+  border-color: var(--materials-accent);
+  background: rgba(31, 138, 174, 0.1);
+  color: var(--materials-accent);
+}
+
+.materiales-vendor-row-body {
+  margin-top: 0.65rem;
+}
+
+.materiales-vendor-row-body .form-label {
+  margin-bottom: 0.2rem;
+  color: var(--materials-muted);
+  font-size: 0.68rem;
+  font-weight: 720;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 575.98px) {
+  .materiales-vendor-row-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

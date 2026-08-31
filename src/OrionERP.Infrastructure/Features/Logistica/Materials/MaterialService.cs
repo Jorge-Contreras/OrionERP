@@ -68,6 +68,14 @@ public sealed class MaterialService : IMaterialService
           WHERE sb.Rfc = @Rfc
             AND ISNULL(sb.IsRemoved, 0) = 0
           GROUP BY sb.MaterialId
+      ),
+      VendorTotals AS (
+          SELECT
+              mv.MaterialId,
+              COUNT(*) AS VendorCount
+          FROM logistica.MaterialVendor mv
+          WHERE mv.Rfc = @Rfc
+          GROUP BY mv.MaterialId
       )
       SELECT
           m.Id,
@@ -82,6 +90,14 @@ public sealed class MaterialService : IMaterialService
           mc.CategoryName,
           u.UnitName AS BaseUnitName,
           bp.PartnerName AS VendorName,
+          ISNULL(vt.VendorCount, 0) AS VendorCount,
+          CAST(CASE
+              WHEN @HighlightVendorId IS NOT NULL AND EXISTS
+              (
+                  SELECT 1 FROM logistica.MaterialVendor hv
+                  WHERE hv.Rfc = m.Rfc AND hv.MaterialId = m.Id AND hv.BusinessPartnerId = @HighlightVendorId
+              ) THEN 1 ELSE 0
+          END AS bit) AS IsHighlightedVendorMaterial,
           CAST(m.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice,
           CAST(CASE WHEN m.PrimaryImage IS NULL THEN 0 ELSE 1 END AS bit) AS HasImage,
           m.Barcode,
@@ -92,15 +108,20 @@ public sealed class MaterialService : IMaterialService
         ON mc.Rfc = m.Rfc AND mc.Id = m.CategoryId
       LEFT JOIN logistica.UnitOfMeasure u
         ON u.Id = m.BaseUnitId
+      LEFT JOIN logistica.MaterialVendor primaryVendor
+        ON primaryVendor.Rfc = m.Rfc AND primaryVendor.MaterialId = m.Id AND primaryVendor.IsPrimary = 1
       LEFT JOIN dbo.BusinessPartner bp
-        ON bp.Id = m.BusinessPartnerId
+        ON bp.Id = primaryVendor.BusinessPartnerId
       LEFT JOIN StockTotals st
         ON st.MaterialId = m.Id
+      LEFT JOIN VendorTotals vt
+        ON vt.MaterialId = m.Id
       WHERE m.Rfc = @Rfc
       """);
 
     var parameters = new DynamicParameters();
     parameters.Add("@Rfc", rfc, DbType.String);
+    parameters.Add("@HighlightVendorId", filter.HighlightVendorId, DbType.Int32);
 
     if (!filter.IncludeInactive)
     {
@@ -109,7 +130,17 @@ public sealed class MaterialService : IMaterialService
 
     if (!string.IsNullOrWhiteSpace(filter.SearchText))
     {
-      sql.AppendLine(" AND (m.MaterialCode LIKE @Search OR m.[Description] LIKE @Search OR m.Barcode LIKE @Search OR m.VendorCode LIKE @Search)");
+      // El SKU se busca también en los proveedores alternativos: quien tiene el código en la mano
+      // no sabe cuál de ellos es el principal.
+      sql.AppendLine(
+        """
+         AND (m.MaterialCode LIKE @Search
+              OR m.[Description] LIKE @Search
+              OR m.Barcode LIKE @Search
+              OR m.VendorCode LIKE @Search
+              OR EXISTS (SELECT 1 FROM logistica.MaterialVendor sv
+                         WHERE sv.Rfc = m.Rfc AND sv.MaterialId = m.Id AND sv.VendorCode LIKE @Search))
+        """);
       parameters.Add("@Search", $"%{filter.SearchText.Trim()}%", DbType.String);
     }
 
@@ -121,7 +152,14 @@ public sealed class MaterialService : IMaterialService
 
     if (filter.VendorId.HasValue)
     {
-      sql.AppendLine(" AND m.BusinessPartnerId = @VendorId");
+      sql.AppendLine(
+        """
+         AND EXISTS
+         (
+             SELECT 1 FROM logistica.MaterialVendor fv
+             WHERE fv.Rfc = m.Rfc AND fv.MaterialId = m.Id AND fv.BusinessPartnerId = @VendorId
+         )
+        """);
       parameters.Add("@VendorId", filter.VendorId.Value, DbType.Int32);
     }
 
@@ -154,7 +192,8 @@ public sealed class MaterialService : IMaterialService
       sql.AppendLine(
         """
          AND (
-              m.BusinessPartnerId IS NULL
+              NOT EXISTS (SELECT 1 FROM logistica.MaterialVendor nv
+                          WHERE nv.Rfc = m.Rfc AND nv.MaterialId = m.Id)
               OR m.CategoryId IS NULL
               OR NULLIF(LTRIM(RTRIM(m.Barcode)), '') IS NULL
               OR m.PrimaryImage IS NULL
@@ -163,7 +202,7 @@ public sealed class MaterialService : IMaterialService
     }
 
     sql.AppendLine();
-    sql.AppendLine("ORDER BY m.MaterialCode, m.[Description], m.Id");
+    sql.AppendLine($"ORDER BY {MaterialSortOrder.SqlKeys("m")}, m.Id");
 
     if (take > 0)
     {
@@ -198,7 +237,6 @@ public sealed class MaterialService : IMaterialService
           CAST(m.PurchaseQuantity AS decimal(18,4)) AS PurchaseQuantity,
           m.PurchaseUnitId,
           purchaseU.UnitName AS PurchaseUnitName,
-          m.BusinessPartnerId,
           CAST(m.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice,
           m.CreatedDate,
           m.UpdatedDate,
@@ -226,11 +264,44 @@ public sealed class MaterialService : IMaterialService
         ON purchaseU.Id = m.PurchaseUnitId
       WHERE m.Rfc = @Rfc
         AND m.Id = @MaterialId;
+
+      SELECT
+          mv.Id,
+          mv.BusinessPartnerId,
+          bp.PartnerName AS VendorName,
+          bp.Rfc AS VendorRfc,
+          mv.IsPrimary,
+          mv.IsActive,
+          mv.VendorCode,
+          CAST(mv.PurchaseQuantity AS decimal(18,4)) AS PurchaseQuantity,
+          mv.PurchaseUnitId,
+          purchaseU.UnitName AS PurchaseUnitName,
+          mv.PurchaseLink,
+          CAST(mv.LastUnitPrice AS decimal(18,6)) AS LastUnitPrice,
+          mv.LastPurchaseDate,
+          mv.Notes
+      FROM logistica.MaterialVendor mv
+      JOIN dbo.BusinessPartner bp
+        ON bp.Id = mv.BusinessPartnerId
+      LEFT JOIN logistica.UnitOfMeasure purchaseU
+        ON purchaseU.Id = mv.PurchaseUnitId
+      WHERE mv.Rfc = @Rfc
+        AND mv.MaterialId = @MaterialId
+      ORDER BY mv.IsPrimary DESC, bp.PartnerName, mv.Id;
       """;
 
     using var conn = CreateConnection();
-    return await conn.QueryFirstOrDefaultAsync<MaterialDetailDto>(
+    using var multi = await conn.QueryMultipleAsync(
       new CommandDefinition(sql, new { Rfc = LogisticsRfc.Require(rfc), MaterialId = materialId }, cancellationToken: ct));
+
+    var detail = await multi.ReadFirstOrDefaultAsync<MaterialDetailDto>();
+    if (detail is null)
+    {
+      return null;
+    }
+
+    detail.Vendors = (await multi.ReadAsync<MaterialVendorLinkDto>()).AsList();
+    return detail;
   }
 
   public async Task<MaterialCatalogDto> GetCatalogAsync(string rfc, CancellationToken ct = default)
@@ -291,9 +362,9 @@ public sealed class MaterialService : IMaterialService
             OR EXISTS
             (
                 SELECT 1
-                FROM logistica.Material material
-                WHERE material.Rfc = @Rfc
-                  AND material.BusinessPartnerId = bp.Id
+                FROM logistica.MaterialVendor materialVendor
+                WHERE materialVendor.Rfc = @Rfc
+                  AND materialVendor.BusinessPartnerId = bp.Id
             )
         )
       ORDER BY bp.PartnerName, bp.Id;
@@ -702,6 +773,15 @@ public sealed class MaterialService : IMaterialService
           $"El material no se puede eliminar porque conserva {assessment.TotalReferences:N0} referencia(s) en {assessment.Dependencies.Count:N0} grupo(s). Revisa el reporte actualizado.");
       }
 
+      // Los proveedores del material son configuración suya, no referencias que lo retengan:
+      // se van con él.
+      await conn.ExecuteAsync(
+        new CommandDefinition(
+          "DELETE FROM logistica.MaterialVendor WHERE Rfc = @Rfc AND MaterialId = @MaterialId;",
+          new { Rfc = rfc, request.MaterialId },
+          tx,
+          cancellationToken: ct));
+
       var affected = await conn.ExecuteAsync(
         new CommandDefinition(
           "DELETE FROM logistica.Material WHERE Rfc = @Rfc AND Id = @MaterialId;",
@@ -966,7 +1046,6 @@ public sealed class MaterialService : IMaterialService
               BaseUnitId = @BaseUnitId,
               PurchaseQuantity = @PurchaseQuantity,
               PurchaseUnitId = @PurchaseUnitId,
-              BusinessPartnerId = @BusinessPartnerId,
               BaseUnitPrice = @BaseUnitPrice,
               UpdatedDate = CONVERT(date, SYSUTCDATETIME()),
               Brand = @Brand,
@@ -1020,7 +1099,6 @@ public sealed class MaterialService : IMaterialService
               request.BaseUnitId,
               request.PurchaseQuantity,
               request.PurchaseUnitId,
-              request.BusinessPartnerId,
               BaseUnitPrice = baseUnitPrice,
               Brand = NullIfWhiteSpace(request.Brand),
               Model = NullIfWhiteSpace(request.Model),
@@ -1074,7 +1152,6 @@ public sealed class MaterialService : IMaterialService
               BaseUnitId,
               PurchaseQuantity,
               PurchaseUnitId,
-              BusinessPartnerId,
               BaseUnitPrice,
               CreatedDate,
               UpdatedDate,
@@ -1106,7 +1183,6 @@ public sealed class MaterialService : IMaterialService
               @BaseUnitId,
               @PurchaseQuantity,
               @PurchaseUnitId,
-              @BusinessPartnerId,
               @BaseUnitPrice,
               CONVERT(date, SYSUTCDATETIME()),
               CONVERT(date, SYSUTCDATETIME()),
@@ -1144,7 +1220,6 @@ public sealed class MaterialService : IMaterialService
               request.BaseUnitId,
               request.PurchaseQuantity,
               request.PurchaseUnitId,
-              request.BusinessPartnerId,
               BaseUnitPrice = baseUnitPrice,
               Brand = NullIfWhiteSpace(request.Brand),
               Model = NullIfWhiteSpace(request.Model),
@@ -1180,6 +1255,16 @@ public sealed class MaterialService : IMaterialService
             cancellationToken: ct));
       }
 
+      if (request.Vendors is not null)
+      {
+        var vendorError = await SyncVendorLinksAsync(conn, tx, rfc, materialId, request.Vendors, ct);
+        if (vendorError is not null)
+        {
+          await tx.RollbackAsync(ct);
+          return LogisticsCommandResult.Fail(vendorError);
+        }
+      }
+
       await tx.CommitAsync(ct);
       return LogisticsCommandResult.Ok($"Material {description} guardado correctamente.", materialId);
     }
@@ -1193,6 +1278,182 @@ public sealed class MaterialService : IMaterialService
       await tx.RollbackAsync(ct);
       throw;
     }
+  }
+
+  /// <summary>
+  /// Deja los proveedores del material exactamente como los mandó la pantalla: da de alta los
+  /// nuevos, actualiza los que siguen, quita los que ya no están y garantiza que haya un único
+  /// proveedor principal. Devuelve el motivo del rechazo, o <c>null</c> si todo quedó guardado.
+  /// </summary>
+  private static async Task<string?> SyncVendorLinksAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    string rfc,
+    int materialId,
+    IReadOnlyList<MaterialVendorLinkRequest> vendors,
+    CancellationToken ct)
+  {
+    // Un proveedor repetido es un descuido de captura, no un error que valga detener el guardado:
+    // gana el primer renglón.
+    var links = vendors
+      .Where(vendor => vendor.BusinessPartnerId > 0)
+      .GroupBy(vendor => vendor.BusinessPartnerId)
+      .Select(group => group.First())
+      .ToList();
+
+    // Un material sin proveedor principal no tendría de dónde tomar el código ni la liga de
+    // compra, así que si nadie eligió, manda el primero.
+    if (links.Count > 0 && !links.Any(link => link.IsPrimary))
+    {
+      links[0].IsPrimary = true;
+    }
+
+    var primary = links.FirstOrDefault(link => link.IsPrimary);
+    foreach (var link in links)
+    {
+      link.IsPrimary = ReferenceEquals(link, primary);
+    }
+
+    var partnerIds = links.Select(link => link.BusinessPartnerId).ToArray();
+
+    if (partnerIds.Length > 0)
+    {
+      var scopedCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+        """
+        SELECT COUNT(*)
+        FROM dbo.BusinessPartnerRfcScope scope
+        WHERE scope.Rfc = @Rfc
+          AND scope.BusinessPartnerId IN @PartnerIds
+          AND scope.IsActive = 1;
+        """,
+        new { Rfc = rfc, PartnerIds = partnerIds },
+        tx,
+        cancellationToken: ct));
+
+      if (scopedCount != partnerIds.Length)
+      {
+        return "Alguno de los proveedores no pertenece a la empresa de tu sesión.";
+      }
+    }
+
+    await conn.ExecuteAsync(new CommandDefinition(
+      partnerIds.Length == 0
+        ? "DELETE FROM logistica.MaterialVendor WHERE Rfc = @Rfc AND MaterialId = @MaterialId;"
+        : """
+          DELETE FROM logistica.MaterialVendor
+          WHERE Rfc = @Rfc
+            AND MaterialId = @MaterialId
+            AND BusinessPartnerId NOT IN @PartnerIds;
+          """,
+      new { Rfc = rfc, MaterialId = materialId, PartnerIds = partnerIds },
+      tx,
+      cancellationToken: ct));
+
+    if (links.Count == 0)
+    {
+      // Sin proveedor, el código y la liga de compra dejan de significar algo.
+      await conn.ExecuteAsync(new CommandDefinition(
+        """
+        UPDATE logistica.Material
+        SET VendorCode = NULL,
+            PurchaseLink = NULL,
+            UpdatedDate = CONVERT(date, SYSUTCDATETIME())
+        WHERE Rfc = @Rfc AND Id = @MaterialId;
+        """,
+        new { Rfc = rfc, MaterialId = materialId },
+        tx,
+        cancellationToken: ct));
+
+      return null;
+    }
+
+    // El índice único filtrado sólo tolera un principal por material, así que se limpia la marca
+    // antes de repartirla de nuevo.
+    await conn.ExecuteAsync(new CommandDefinition(
+      """
+      UPDATE logistica.MaterialVendor
+      SET IsPrimary = 0
+      WHERE Rfc = @Rfc AND MaterialId = @MaterialId AND IsPrimary = 1;
+      """,
+      new { Rfc = rfc, MaterialId = materialId },
+      tx,
+      cancellationToken: ct));
+
+    const string upsertSql =
+      """
+      MERGE logistica.MaterialVendor AS target
+      USING (SELECT @Rfc AS Rfc, @MaterialId AS MaterialId, @BusinessPartnerId AS BusinessPartnerId) AS src
+        ON target.Rfc = src.Rfc
+       AND target.MaterialId = src.MaterialId
+       AND target.BusinessPartnerId = src.BusinessPartnerId
+      WHEN MATCHED THEN
+        UPDATE SET
+          IsActive = @IsActive,
+          VendorCode = @VendorCode,
+          PurchaseQuantity = @PurchaseQuantity,
+          PurchaseUnitId = @PurchaseUnitId,
+          PurchaseLink = @PurchaseLink,
+          LastUnitPrice = @LastUnitPrice,
+          Notes = @Notes,
+          UpdatedAt = SYSUTCDATETIME()
+      WHEN NOT MATCHED THEN
+        INSERT (Rfc, MaterialId, BusinessPartnerId, IsPrimary, IsActive,
+                VendorCode, PurchaseQuantity, PurchaseUnitId, PurchaseLink, LastUnitPrice, Notes)
+        VALUES (@Rfc, @MaterialId, @BusinessPartnerId, 0, @IsActive,
+                @VendorCode, @PurchaseQuantity, @PurchaseUnitId, @PurchaseLink, @LastUnitPrice, @Notes);
+      """;
+
+    foreach (var link in links)
+    {
+      await conn.ExecuteAsync(new CommandDefinition(
+        upsertSql,
+        new
+        {
+          Rfc = rfc,
+          MaterialId = materialId,
+          link.BusinessPartnerId,
+          link.IsActive,
+          VendorCode = NullIfWhiteSpace(link.VendorCode),
+          PurchaseQuantity = link.PurchaseQuantity > 0 ? link.PurchaseQuantity : null,
+          link.PurchaseUnitId,
+          PurchaseLink = NullIfWhiteSpace(link.PurchaseLink),
+          link.LastUnitPrice,
+          Notes = NullIfWhiteSpace(link.Notes)
+        },
+        tx,
+        cancellationToken: ct));
+    }
+
+    await conn.ExecuteAsync(new CommandDefinition(
+      """
+      UPDATE logistica.MaterialVendor
+      SET IsPrimary = 1, UpdatedAt = SYSUTCDATETIME()
+      WHERE Rfc = @Rfc AND MaterialId = @MaterialId AND BusinessPartnerId = @BusinessPartnerId;
+      """,
+      new { Rfc = rfc, MaterialId = materialId, primary!.BusinessPartnerId },
+      tx,
+      cancellationToken: ct));
+
+    // El código y la liga que guarda el material son los del proveedor principal: siguen siendo
+    // criterio de búsqueda y se congelan en los renglones de orden de compra.
+    await conn.ExecuteAsync(new CommandDefinition(
+      """
+      UPDATE material
+      SET material.VendorCode = vendorLink.VendorCode,
+          material.PurchaseLink = vendorLink.PurchaseLink,
+          material.UpdatedDate = CONVERT(date, SYSUTCDATETIME())
+      FROM logistica.Material material
+      JOIN logistica.MaterialVendor vendorLink
+        ON vendorLink.Rfc = material.Rfc
+       AND vendorLink.MaterialId = material.Id
+       AND vendorLink.IsPrimary = 1
+      WHERE material.Rfc = @Rfc AND material.Id = @MaterialId;
+      """,
+      new { Rfc = rfc, MaterialId = materialId },
+      tx,
+      cancellationToken: ct));
+
+    return null;
   }
 
   /// <summary>

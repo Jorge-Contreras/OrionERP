@@ -60,7 +60,20 @@ public partial class ComprasPage : ComponentBase
 
   protected bool IsDraftMode => SelectedPurchaseOrder is null || string.Equals(SelectedPurchaseOrder.Status, PurchaseOrderStatuses.Draft, StringComparison.OrdinalIgnoreCase);
   protected bool CanEditVendor => IsDraftMode && Lines.Count == 0;
-  protected bool CanSearchMaterials => IsDraftMode && Editor.BusinessPartnerId > 0;
+  /// <summary>
+  /// La búsqueda recorre todo el catálogo: cuando el proveedor habitual no tiene el producto hay
+  /// que poder comprarlo con otro sin reasignar el material.
+  /// </summary>
+  protected bool CanSearchMaterials => IsDraftMode;
+
+  /// <summary>Materiales agregados a la orden que este proveedor no surte de costumbre.</summary>
+  protected List<string> UnlinkedMaterialNames { get; } = [];
+
+  /// <summary>Registra al proveedor de la orden en los materiales de <see cref="UnlinkedMaterialNames"/>.</summary>
+  protected bool LinkMaterialsToVendor { get; set; } = true;
+
+  protected string CurrentVendorName
+    => VendorOptions.FirstOrDefault(option => option.Id == Editor.BusinessPartnerId)?.Name ?? "este proveedor";
   protected bool CanIssue => SelectedPurchaseOrder is not null
     && string.Equals(SelectedPurchaseOrder.Status, PurchaseOrderStatuses.Draft, StringComparison.OrdinalIgnoreCase)
     && !IsMutating;
@@ -190,6 +203,8 @@ public partial class ComprasPage : ComponentBase
     PendingAllocationQuantity = 1m;
     HasExecutedMaterialSearch = false;
     MaterialThumbnailDataUrls = [];
+    UnlinkedMaterialNames.Clear();
+    LinkMaterialsToVendor = true;
     ShowAutoPoModal = false;
     ShowOrderBrowser = false;
   }
@@ -199,6 +214,9 @@ public partial class ComprasPage : ComponentBase
 
   protected async Task SeleccionarOrdenAsync(int purchaseOrderId)
   {
+    // El aviso de proveedores por registrar pertenece a lo que se capturó en esta pantalla; al
+    // abrir otra orden se descarta.
+    UnlinkedMaterialNames.Clear();
     IsLoadingOrder = true;
     try
     {
@@ -272,8 +290,8 @@ public partial class ComprasPage : ComponentBase
             PlannedQuantity = allocation.PlannedQuantity,
             ReceivedQuantity = allocation.ReceivedQuantity
           }))
-        .OrderBy(item => item.MaterialCode, StringComparer.OrdinalIgnoreCase)
-        .ThenBy(item => item.MaterialDescription, StringComparer.OrdinalIgnoreCase)
+        .OrderBy(item => item.MaterialDescription, MaterialSortOrder.Comparer)
+        .ThenBy(item => item.MaterialCode, MaterialSortOrder.Comparer)
         .ThenBy(item => item.LocationName, StringComparer.OrdinalIgnoreCase)
         .ToList();
 
@@ -302,7 +320,7 @@ public partial class ComprasPage : ComponentBase
   {
     if (!CanSearchMaterials)
     {
-      UiMessages.ShowWarning("Selecciona un proveedor antes de buscar materiales.");
+      UiMessages.ShowWarning("Guarda o abre una orden en borrador para agregar materiales.");
       return;
     }
 
@@ -313,7 +331,7 @@ public partial class ComprasPage : ComponentBase
       MaterialSearchResults = (await MaterialService.GetMaterialsAsync(new MaterialFilter
       {
         Rfc = CurrentRfc,
-        VendorId = Editor.BusinessPartnerId,
+        HighlightVendorId = Editor.BusinessPartnerId > 0 ? Editor.BusinessPartnerId : null,
         SearchText = MaterialSearchText,
         Status = "ACTIVO",
         Skip = 0,
@@ -324,7 +342,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron cargar los materiales del proveedor. {ex.Message}");
+      UiMessages.ShowError($"No se pudieron cargar los materiales. {ex.Message}");
     }
     finally
     {
@@ -357,23 +375,36 @@ public partial class ComprasPage : ComponentBase
         return;
       }
 
+      // Cuando el proveedor de la orden ya surte el material, manda su ficha: su SKU, su
+      // presentación y el último precio que le pagamos.
+      var vendorLink = detail.Vendors.FirstOrDefault(vendor => vendor.BusinessPartnerId == Editor.BusinessPartnerId);
+
       var line = new EditablePurchaseLine
       {
         MaterialId = item.Id,
         MaterialCode = item.MaterialCode,
         MaterialDescription = item.Description,
-        VendorCode = detail.VendorCode,
+        VendorCode = vendorLink?.VendorCode ?? detail.VendorCode,
         BaseUnitName = detail.BaseUnitName ?? item.BaseUnitName,
-        PurchaseQuantity = NormalizePurchaseQuantity(detail.PurchaseQuantity),
-        PurchaseUnitName = detail.PurchaseUnitName,
-        BaseUnitPrice = detail.BaseUnitPrice,
+        PurchaseQuantity = NormalizePurchaseQuantity(vendorLink?.PurchaseQuantity ?? detail.PurchaseQuantity),
+        PurchaseUnitName = vendorLink?.PurchaseUnitName ?? detail.PurchaseUnitName,
+        BaseUnitPrice = vendorLink?.LastUnitPrice ?? detail.BaseUnitPrice,
         ReceivedQuantity = 0
       };
 
+      if (vendorLink is null && Editor.BusinessPartnerId > 0)
+      {
+        var materialName = string.IsNullOrWhiteSpace(item.Description) ? item.MaterialCode : item.Description;
+        if (!UnlinkedMaterialNames.Contains(materialName))
+        {
+          UnlinkedMaterialNames.Add(materialName);
+        }
+      }
+
       Lines.Add(line);
       Lines = Lines
-        .OrderBy(current => current.MaterialCode, StringComparer.OrdinalIgnoreCase)
-        .ThenBy(current => current.MaterialDescription, StringComparer.OrdinalIgnoreCase)
+        .OrderBy(current => current.MaterialDescription, MaterialSortOrder.Comparer)
+        .ThenBy(current => current.MaterialCode, MaterialSortOrder.Comparer)
         .ToList();
       SelectedLine = Lines.FirstOrDefault(current => current.MaterialId == item.Id);
       PendingAllocationLocationId = 0;
@@ -477,6 +508,7 @@ public partial class ComprasPage : ComponentBase
     }
 
     Lines.Remove(line);
+    UnlinkedMaterialNames.Remove(string.IsNullOrWhiteSpace(line.MaterialDescription) ? line.MaterialCode : line.MaterialDescription);
     if (ReferenceEquals(SelectedLine, line))
     {
       SelectedLine = Lines.FirstOrDefault();
@@ -1082,6 +1114,7 @@ public partial class ComprasPage : ComponentBase
       OrderDate = Editor.OrderDate,
       ExpectedDate = Editor.ExpectedDate,
       Notes = Editor.Notes,
+      LinkMaterialsToVendor = LinkMaterialsToVendor,
       Lines = Lines
         .Select(line => new PurchaseOrderLineUpsertRequest
         {

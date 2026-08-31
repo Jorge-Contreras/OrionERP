@@ -36,7 +36,7 @@ public sealed class InventoryMovementService : IInventoryMovementService
       LEFT JOIN logistica.UnitOfMeasure unitInfo ON unitInfo.Id=material.BaseUnitId
       WHERE balanceInfo.Rfc=@Rfc AND ISNULL(balanceInfo.IsRemoved,0)=0
         AND material.IsActive=1 AND locationInfo.IsActive=1 AND locationInfo.IsInventoryEnabled=1
-      ORDER BY material.MaterialCode,locationInfo.LocationName;
+      ORDER BY material.[Description],material.MaterialCode,locationInfo.LocationName;
 
       SELECT lotInfo.Id,lotInfo.MaterialId,lotBalance.LocationId,lotInfo.LotCode,lotInfo.ExpirationDate,
              lotBalance.Quantity,lotBalance.ReservedQuantity

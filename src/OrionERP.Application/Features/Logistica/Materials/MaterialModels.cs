@@ -9,7 +9,16 @@ public sealed class MaterialFilter
   public string Rfc { get; set; } = string.Empty;
   public string? SearchText { get; set; }
   public int? CategoryId { get; set; }
+
+  /// <summary>Deja únicamente los materiales que ese proveedor surte.</summary>
   public int? VendorId { get; set; }
+
+  /// <summary>
+  /// No filtra: marca cuáles de los materiales devueltos ya surte ese proveedor. Compras lo usa
+  /// para buscar en todo el catálogo sin perder de vista con quién se compra normalmente cada cosa.
+  /// </summary>
+  public int? HighlightVendorId { get; set; }
+
   public string? MaterialClass { get; set; }
   public string? Status { get; set; }
   public bool IncludeInactive { get; set; }
@@ -33,7 +42,19 @@ public sealed class MaterialListItemDto
   public bool IsActive { get; set; }
   public string? CategoryName { get; set; }
   public string? BaseUnitName { get; set; }
+
+  /// <summary>Proveedor principal del material.</summary>
   public string? VendorName { get; set; }
+
+  /// <summary>Cuántos proveedores lo surten, contando al principal.</summary>
+  public int VendorCount { get; set; }
+
+  /// <summary>
+  /// Verdadero cuando el material ya está vinculado al proveedor de
+  /// <see cref="MaterialFilter.HighlightVendorId"/>. Sin ese filtro siempre es falso.
+  /// </summary>
+  public bool IsHighlightedVendorMaterial { get; set; }
+
   public decimal? BaseUnitPrice { get; set; }
   public bool HasImage { get; set; }
   public string? Barcode { get; set; }
@@ -52,7 +73,6 @@ public sealed class MaterialDetailDto
   public decimal PurchaseQuantity { get; set; }
   public int? PurchaseUnitId { get; set; }
   public string? PurchaseUnitName { get; set; }
-  public int? BusinessPartnerId { get; set; }
   public decimal? BaseUnitPrice { get; set; }
   public DateTime? CreatedDate { get; set; }
   public DateTime? UpdatedDate { get; set; }
@@ -74,8 +94,62 @@ public sealed class MaterialDetailDto
   public string? PrimaryImageFileName { get; set; }
   public string? PrimaryImageContentType { get; set; }
 
+  /// <summary>Proveedores que surten el material, el principal primero.</summary>
+  public IReadOnlyList<MaterialVendorLinkDto> Vendors { get; set; } = Array.Empty<MaterialVendorLinkDto>();
+
   /// <summary>Rol de producción derivado del par almacenado.</summary>
   public string ProductionRole => MaterialProductionRoles.Resolve(ProductType, FulfillmentMode);
+
+  public MaterialVendorLinkDto? PrimaryVendor => Vendors.FirstOrDefault(vendor => vendor.IsPrimary);
+  public int? PrimaryVendorId => PrimaryVendor?.BusinessPartnerId;
+}
+
+/// <summary>
+/// Vínculo entre un material y uno de sus proveedores. Guarda lo que es propio de ese proveedor
+/// —su SKU, su presentación, su liga y el último costo que se le pagó— para que comprarle a un
+/// segundo proveedor no borre los datos del habitual.
+/// </summary>
+public sealed class MaterialVendorLinkDto
+{
+  public int Id { get; set; }
+  public int BusinessPartnerId { get; set; }
+  public string VendorName { get; set; } = string.Empty;
+  public string? VendorRfc { get; set; }
+  public bool IsPrimary { get; set; }
+  public bool IsActive { get; set; }
+  public string? VendorCode { get; set; }
+  public decimal? PurchaseQuantity { get; set; }
+  public int? PurchaseUnitId { get; set; }
+  public string? PurchaseUnitName { get; set; }
+  public string? PurchaseLink { get; set; }
+  public decimal? LastUnitPrice { get; set; }
+  public DateTime? LastPurchaseDate { get; set; }
+  public string? Notes { get; set; }
+}
+
+/// <summary>Un proveedor tal como llega desde el editor de materiales.</summary>
+public sealed class MaterialVendorLinkRequest
+{
+  [Range(1, int.MaxValue, ErrorMessage = "Elige un proveedor.")]
+  public int BusinessPartnerId { get; set; }
+
+  public bool IsPrimary { get; set; }
+  public bool IsActive { get; set; } = true;
+
+  [StringLength(100)]
+  public string? VendorCode { get; set; }
+
+  [Range(typeof(decimal), "0.0001", "999999999", ErrorMessage = "El contenido debe ser mayor que cero.")]
+  public decimal? PurchaseQuantity { get; set; }
+
+  public int? PurchaseUnitId { get; set; }
+  public string? PurchaseLink { get; set; }
+
+  [Range(typeof(decimal), "0", "999999999", ErrorMessage = "El precio no puede ser negativo.")]
+  public decimal? LastUnitPrice { get; set; }
+
+  [StringLength(500)]
+  public string? Notes { get; set; }
 }
 
 public sealed class MaterialUpsertRequest
@@ -96,7 +170,6 @@ public sealed class MaterialUpsertRequest
   public decimal PurchaseQuantity { get; set; } = 1m;
 
   public int? PurchaseUnitId { get; set; }
-  public int? BusinessPartnerId { get; set; }
 
   [Range(typeof(decimal), "0", "999999999", ErrorMessage = "El precio por unidad base no puede ser negativo.")]
   public decimal? BaseUnitPrice { get; set; }
@@ -135,6 +208,13 @@ public sealed class MaterialUpsertRequest
   /// </summary>
   [StringLength(40)]
   public string? ProductionRole { get; set; }
+
+  /// <summary>
+  /// Proveedores del material. En <c>null</c> los vínculos existentes se conservan tal cual, de
+  /// modo que guardar desde una pantalla que no los muestra no los borre —mismo criterio que
+  /// <see cref="ProductionRole"/>. Una lista vacía sí significa "quítalos todos".
+  /// </summary>
+  public List<MaterialVendorLinkRequest>? Vendors { get; set; }
 
   public bool RemovePrimaryImage { get; set; }
   public byte[]? PrimaryImageBytes { get; set; }

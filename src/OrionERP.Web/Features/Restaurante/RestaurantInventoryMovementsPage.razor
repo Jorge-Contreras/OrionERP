@@ -2,6 +2,7 @@
 @attribute [Authorize(Policy = "RestaurantAdmin")]
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
+@using OrionERP.Application.Features.Logistica.Materials
 @using OrionERP.Application.Features.Logistica.Shared
 @using OrionERP.Application.Features.Logistica.Stock
 @using OrionERP.Web.State
@@ -184,8 +185,8 @@
         balance.MaterialCode,
         balance.MaterialName,
         includeAvailability ? $"Disponible {balance.AvailableQuantity:0.####} {balance.UnitCode}" : null))
-      .OrderBy(material => material.Description, StringComparer.CurrentCultureIgnoreCase)
-      .ThenBy(material => material.Code, StringComparer.CurrentCultureIgnoreCase)
+      .OrderBy(material => material.Description, MaterialSortOrder.Comparer)
+      .ThenBy(material => material.Code, MaterialSortOrder.Comparer)
       .ToList();
   private static string ExpirationLabel(InventoryLotOptionDto lot) => lot.ExpirationDate.HasValue ? $"· cad. {lot.ExpirationDate:dd/MM/yy}" : string.Empty;
   private void Show(string value, bool error) { message = value; isError = error; }

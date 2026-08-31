@@ -169,7 +169,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
         ON activePlanLine.RecountPlanId = activePlan.Id
        AND activePlanLine.PhysicalCountLineId = line.Id
       WHERE line.SessionId = @SessionId
-      ORDER BY m.MaterialCode, m.[Description], line.Id;
+      ORDER BY m.[Description], m.MaterialCode, line.Id;
 
       SELECT
           attachment.Id,

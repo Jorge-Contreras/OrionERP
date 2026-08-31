@@ -56,7 +56,7 @@ public class MaterialesPageUxTests
 
     Assert.Contains("material.CategoryId = category.Id", service, StringComparison.Ordinal);
     Assert.Contains("material.BaseUnitId = unit.Id OR material.PurchaseUnitId = unit.Id", service, StringComparison.Ordinal);
-    Assert.Contains("material.BusinessPartnerId = bp.Id", service, StringComparison.Ordinal);
+    Assert.Contains("materialVendor.BusinessPartnerId = bp.Id", service, StringComparison.Ordinal);
   }
 
   [Fact]

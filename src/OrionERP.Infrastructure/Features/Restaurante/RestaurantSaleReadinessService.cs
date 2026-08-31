@@ -1,6 +1,7 @@
 using System.Data.Common;
 using Dapper;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Restaurante;
 
@@ -785,7 +786,7 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
     => string.IsNullOrWhiteSpace(material.Name) ? $"material {material.Id}" : $"{material.Name} (material {material.Id})";
 
   private static string MaterialSortKey(RestaurantSaleRequirementGraph graph, int materialId)
-    => graph.Materials.TryGetValue(materialId, out var material) ? $"{material.Code}|{material.Name}" : materialId.ToString("D10");
+    => graph.Materials.TryGetValue(materialId, out var material) ? MaterialSortOrder.Key(material.Name, material.Code) : materialId.ToString("D10");
 
   private static decimal RoundQuantity(decimal value)
     => decimal.Round(value, 4, MidpointRounding.AwayFromZero);

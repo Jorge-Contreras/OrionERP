@@ -42,10 +42,9 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
           GROUP BY r.BusinessPartnerId
       ),
       MaterialCounts AS (
-          SELECT m.BusinessPartnerId, COUNT(*) AS MaterialCount
-          FROM logistica.Material m
-          WHERE m.BusinessPartnerId IS NOT NULL
-          GROUP BY m.BusinessPartnerId
+          SELECT mv.BusinessPartnerId, COUNT(DISTINCT mv.MaterialId) AS MaterialCount
+          FROM logistica.MaterialVendor mv
+          GROUP BY mv.BusinessPartnerId
       )
       SELECT
           bp.Id,

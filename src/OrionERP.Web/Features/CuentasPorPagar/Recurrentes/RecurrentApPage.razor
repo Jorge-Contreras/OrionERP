@@ -447,7 +447,7 @@
 
                   <h3 class="h6">Ligar póliza</h3>
                   <div class="input-group mb-2">
-                    <input class="form-control" @bind="TransactionSearchText" @bind:event="oninput" @onkeyup="OnTransactionSearchKeyUpAsync" placeholder="ID, concepto, referencia o memo" />
+                    <input class="form-control" type="search" @bind="TransactionSearchText" @bind:event="oninput" @onkeyup="OnTransactionSearchKeyUpAsync" placeholder="ID, concepto, referencia o memo" />
                     <button type="button" class="btn btn-outline-secondary" @onclick="SearchTransactionsAsync">Buscar</button>
                   </div>
                   <div class="table-responsive recurrent-ap-candidates">

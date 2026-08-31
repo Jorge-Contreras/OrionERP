@@ -268,7 +268,7 @@
       </article>
       <article class="panel member-search">
         <header><div><span>Búsqueda exacta y protegida</span><h2>Localizar membresía</h2></div></header>
-        <label>Correo, teléfono, número o QR <input @bind="memberIdentifier" @onkeydown="MemberSearchKeyDown" autocomplete="off" /></label>
+        <label>Correo, teléfono, número o QR <input type="search" @bind="memberIdentifier" @onkeydown="MemberSearchKeyDown" autocomplete="off" /></label>
         <button type="button" @onclick="FindMemberAsync">Buscar</button>
         <p class="empty">No se muestran listados completos de clientes. El POS y este panel solo aceptan búsquedas exactas.</p>
       </article>

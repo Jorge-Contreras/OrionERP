@@ -110,9 +110,10 @@ else
                   <label class="form-label">Proyecto</label>
                   <div class="position-relative">
                     <input class="form-control"
+                           type="search"
                            value="@ProyectoSearchTerm"
                            placeholder="Buscar por ID o descripción"
-                           @oninput="OnProyectoSearchInputAsync"
+                           @oninput="OnProyectoSearchInput"
                            @onkeydown="HandleProyectoSearchKeyDownAsync"
                            @onblur="OnProyectoSearchBlurAsync" />
 
@@ -143,6 +144,7 @@ else
                   <label class="form-label">Compra</label>
                   <div class="input-group mb-2">
                     <InputText class="form-control"
+                               type="search"
                                @bind-Value="CompraSearchTerm"
                                @bind-Value:event="oninput"
                                placeholder="Buscar por ID o descripción"
@@ -820,7 +822,7 @@ else
             <div class="d-flex flex-column flex-lg-row gap-2 align-items-lg-end">
               <div class="flex-grow-1">
                 <label class="form-label">Buscar vencimiento AP abierto</label>
-                <input class="form-control" @bind="ApOccurrenceSearchTerm" @bind:event="oninput" @onkeydown="HandleApOccurrenceSearchKeyDownAsync" placeholder="Nombre, proveedor o categoría" />
+                <input class="form-control" type="search" @bind="ApOccurrenceSearchTerm" @bind:event="oninput" @onkeydown="HandleApOccurrenceSearchKeyDownAsync" placeholder="Nombre, proveedor o categoría" />
               </div>
               <button type="button" class="btn btn-outline-secondary" @onclick="() => SearchApOccurrencesAsync()" disabled="@IsSearchingApOccurrences">
                 @(IsSearchingApOccurrences ? "Buscando..." : "Buscar AP")
@@ -899,6 +901,7 @@ else
                   <div class="flex-grow-1">
                     <label class="form-label">Buscar reservación</label>
                     <input class="form-control"
+                           type="search"
                            placeholder="ID, cliente o notas"
                            @bind="ReservacionSearchTerm"
                            @bind:event="oninput"

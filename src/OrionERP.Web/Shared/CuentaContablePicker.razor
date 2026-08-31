@@ -6,6 +6,7 @@
 <div class="d-flex flex-column gap-3">
   <div class="input-group">
     <input class="form-control"
+           type="search"
            placeholder="Busca por id, código Nivel1 o descripción"
            @bind-value="searchTerm"
            @bind-value:event="oninput"
@@ -118,6 +119,7 @@
                 <label class="form-label">Buscar Nivel 1</label>
                 <div class="input-group">
                   <input class="form-control"
+                         type="search"
                          placeholder="Ej. 102 o BANCOS"
                          @bind-value="createNivel1Term"
                          @bind-value:event="oninput"
@@ -160,6 +162,7 @@
                 <label class="form-label">Buscar Nivel 2</label>
                 <div class="input-group">
                   <input class="form-control"
+                         type="search"
                          placeholder="Ej. 01 o descripci&oacute;n"
                          @bind-value="createNivel2Term"
                          @bind-value:event="oninput"

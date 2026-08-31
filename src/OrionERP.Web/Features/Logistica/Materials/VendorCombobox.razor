@@ -17,7 +17,7 @@
                aria-expanded="@IsOpen"
                aria-controls="@ListboxId"
                @onfocus="Open"
-               @oninput="OnInputAsync"
+               @oninput="OnInput"
                @onkeydown="OnKeyDownAsync" />
         @if (SelectedId.HasValue || !string.IsNullOrWhiteSpace(SearchText))
         {
@@ -133,12 +133,11 @@
         HighlightedIndex = -1;
     }
 
-    private Task OnInputAsync(ChangeEventArgs args)
+    private void OnInput(ChangeEventArgs args)
     {
         SearchText = args.Value?.ToString() ?? string.Empty;
         IsOpen = true;
         HighlightedIndex = -1;
-        return Task.CompletedTask;
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs args)

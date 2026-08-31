@@ -1,5 +1,6 @@
 (() => {
   const isWorkOrderRoute = () => /^\/ordenes-trabajo(?:\/\d+)?\/?$/i.test(window.location.pathname);
+  const stepNoteDraftAttribute = "data-orion-work-order-note-draft";
   const reconnectStates = [
     "components-reconnect-rejected",
     "components-reconnect-failed",
@@ -7,6 +8,28 @@
     "components-reconnect-paused",
     "components-reconnect-show",
   ];
+
+  const persistStepNoteDraft = (event) => {
+    const noteInput = event.target;
+    if (!isWorkOrderRoute()
+      || !(noteInput instanceof HTMLTextAreaElement)
+      || !noteInput.hasAttribute(stepNoteDraftAttribute)) {
+      return;
+    }
+
+    const storageKey = noteInput.getAttribute(stepNoteDraftAttribute);
+    if (!storageKey) {
+      return;
+    }
+
+    try {
+      window.sessionStorage.setItem(storageKey, noteInput.value);
+    } catch {
+      // Draft recovery is optional when browser storage is unavailable.
+    }
+  };
+
+  document.addEventListener("input", persistStepNoteDraft);
 
   const observeReconnectState = () => {
     const modal = document.getElementById("components-reconnect-modal");

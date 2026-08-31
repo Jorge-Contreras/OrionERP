@@ -93,7 +93,7 @@ else
                         {
                             <span>@(Filter.SortAsc ? "▲" : "▼")</span>
                         }
-                        <input type="number" class="form-control" @bind-value="Filter.Id" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
+                        <input type="number" class="form-control" data-orion-prevent-keys="Enter" @bind-value="Filter.Id" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
                     </th>
                     <th>
                         <button type="button" class="transacciones-sort-button" @onclick='() => Sort("Fecha")'>
@@ -112,7 +112,7 @@ else
                         {
                             <span>@(Filter.SortAsc ? "▲" : "▼")</span>
                         }
-                        <input type="text" class="form-control" @bind-value="Filter.Concepto" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
+                        <input type="text" class="form-control" data-orion-prevent-keys="Enter" @bind-value="Filter.Concepto" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
                     </th>
                     <th>
                         <button type="button" class="transacciones-sort-button" @onclick='() => Sort("Monto")'>
@@ -122,7 +122,7 @@ else
                         {
                             <span>@(Filter.SortAsc ? "▲" : "▼")</span>
                         }
-                        <input type="number" class="form-control" @bind-value="Filter.Monto" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
+                        <input type="number" class="form-control" data-orion-prevent-keys="Enter" @bind-value="Filter.Monto" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
                     </th>
                     <th>
                         <button type="button" class="transacciones-sort-button" @onclick='() => Sort("TipoPoliza")'>
@@ -132,7 +132,7 @@ else
                         {
                             <span>@(Filter.SortAsc ? "▲" : "▼")</span>
                         }
-                        <input type="text" class="form-control" @bind-value="Filter.TipoPoliza" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
+                        <input type="text" class="form-control" data-orion-prevent-keys="Enter" @bind-value="Filter.TipoPoliza" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
                     </th>
                     <th>
                         <button type="button" class="transacciones-sort-button" @onclick='() => Sort("FormaPago")'>
@@ -142,7 +142,7 @@ else
                         {
                             <span>@(Filter.SortAsc ? "▲" : "▼")</span>
                         }
-                        <input type="text" class="form-control" @bind-value="Filter.FormaPago" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
+                        <input type="text" class="form-control" data-orion-prevent-keys="Enter" @bind-value="Filter.FormaPago" @bind-value:event="oninput" @onkeyup="OnFilterKeyDown" />
                     </th>
                     <th>AP</th>
                     <th></th>

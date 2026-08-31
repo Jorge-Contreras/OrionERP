@@ -947,20 +947,8 @@ public partial class OrdenTrabajoDetailPage : ComponentBase, IAsyncDisposable
   protected string? GetStepNotes(OrdenTrabajoStepDto step)
     => StepNotes.TryGetValue(step.Id, out var notes) ? notes : step.Notas;
 
-  protected async Task SetStepNotesAsync(int stepId, string? notes)
-  {
-    StepNotes[stepId] = notes;
-    try
-    {
-      await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", GetStepDraftKey(stepId), notes ?? string.Empty);
-    }
-    catch (JSException)
-    {
-    }
-    catch (InvalidOperationException)
-    {
-    }
-  }
+  protected void SetStepNotes(int stepId, string? notes)
+    => StepNotes[stepId] = notes;
 
   protected void ToggleStepNotes(int stepId)
   {

@@ -151,7 +151,13 @@
                                     {
                                         <div class="orden-step-notes @(PendingStepStatuses.ContainsKey(step.Id) ? "is-required" : null)">
                                             <label for="step-note-@step.Id">@(PendingStepStatuses.ContainsKey(step.Id) ? "Escribe qué ocurrió" : "Nota del paso")</label>
-                                            <textarea id="step-note-@step.Id" class="form-control" rows="2" value="@GetStepNotes(step)" @oninput="args => SetStepNotesAsync(step.Id, args.Value?.ToString())" placeholder="Escribe una nota breve y clara"></textarea>
+                                            <textarea id="step-note-@step.Id"
+                                                      class="form-control"
+                                                      rows="2"
+                                                      value="@GetStepNotes(step)"
+                                                      data-orion-work-order-note-draft="@GetStepDraftKey(step.Id)"
+                                                      @onchange="args => SetStepNotes(step.Id, args.Value?.ToString())"
+                                                      placeholder="Escribe una nota breve y clara"></textarea>
                                             @if (PendingStepStatuses.ContainsKey(step.Id))
                                             {
                                                 <div class="orden-step-note-confirm">
@@ -348,7 +354,7 @@
                             {
                                 <section class="orden-admin-section">
                                     <h3>Transacciones ligadas</h3>
-                                    <div class="orden-transaction-search"><InputText class="form-control" @bind-Value="TransactionSearchText" @bind-Value:event="oninput" @onkeyup="OnTransactionSearchKeyUpAsync" placeholder="Buscar transacción" /><button class="btn btn-outline-primary" type="button" @onclick="SearchTransactionsAsync">Buscar</button></div>
+                                    <div class="orden-transaction-search"><InputText class="form-control" type="search" @bind-Value="TransactionSearchText" @bind-Value:event="oninput" @onkeyup="OnTransactionSearchKeyUpAsync" placeholder="Buscar transacción" /><button class="btn btn-outline-primary" type="button" @onclick="SearchTransactionsAsync">Buscar</button></div>
                                     @if (TransactionMatches.Count > 0)
                                     {
                                         <div class="orden-transaction-results">@foreach (var item in TransactionMatches) { <button type="button" @onclick="() => LinkTransactionAsync(item.Id)"><span>@item.Fecha.ToString("dd MMM") · @item.Concepto</span><strong>@item.Monto.ToString("C2", CurrencyCulture)</strong></button> }</div>

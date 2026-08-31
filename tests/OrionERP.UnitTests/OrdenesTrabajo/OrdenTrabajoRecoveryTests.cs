@@ -356,6 +356,19 @@ public class OrdenTrabajoRecoveryTests
   }
 
   [Fact]
+  public void StepNoteInput_PersistsDraftWithoutServerRoundTripPerKeystroke()
+  {
+    var page = File.ReadAllText(GetRepoFile("src/OrionERP.Web/Features/OrdenesTrabajo/OrdenTrabajoDetailPage.razor"));
+    var script = File.ReadAllText(GetRepoFile("src/OrionERP.Web/wwwroot/js/orion-work-order-reconnect.js"));
+
+    Assert.Contains("data-orion-work-order-note-draft", page, StringComparison.Ordinal);
+    Assert.Contains("@onchange=\"args => SetStepNotes", page, StringComparison.Ordinal);
+    Assert.DoesNotContain("@oninput=\"args => SetStepNotes", page, StringComparison.Ordinal);
+    Assert.Contains("document.addEventListener(\"input\", persistStepNoteDraft)", script, StringComparison.Ordinal);
+    Assert.Contains("window.sessionStorage.setItem(storageKey, noteInput.value)", script, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public void LegacySeed_FallsBackToSuiteCleaningActivitiesWhenPlantillaHasNoSteps()
   {
     var source = File.ReadAllText(GetRepoFile("src/OrionERP.Infrastructure/Features/OrdenesTrabajo/OrdenTrabajoService.cs"));

@@ -120,12 +120,12 @@
                                           Placeholder="Buscar producto o subproducto…"
                                           EmptyText="Revisa el código o el nombre. Si el material todavía no existe, créalo en Materiales."
                                           EmptyActionHref="/logistica/materiales" />
-                <label>Esta receta rinde<input type="number" min="0.0001" step="0.0001" disabled="@IsReadOnly" @bind="editor.YieldQuantity" @bind:after="MarkDirty" @oninput="MarkDirty" /></label>
+                <label>Esta receta rinde<input type="number" min="0.0001" step="0.0001" disabled="@IsReadOnly" @bind="editor.YieldQuantity" @bind:after="MarkDirty" /></label>
                 <label>Unidad de rendimiento
                   <output class="recipe-yield-unit">@(editor.ProductMaterialId > 0 ? YieldUnitLabel : "Elige un producto…")</output>
                   <small>Es la unidad de inventario del material; no se elige aparte.</small>
                 </label>
-                <label>Merma total esperada <small>Opcional</small><div class="recipe-input-suffix"><input type="number" min="0" max="100" step="0.1" disabled="@IsReadOnly" @bind="editor.ExpectedWastePercent" @bind:after="MarkDirty" @oninput="MarkDirty" /><span>%</span></div></label>
+                <label>Merma total esperada <small>Opcional</small><div class="recipe-input-suffix"><input type="number" min="0" max="100" step="0.1" disabled="@IsReadOnly" @bind="editor.ExpectedWastePercent" @bind:after="MarkDirty" /><span>%</span></div></label>
               </div>
               @if (yieldUnitCorrectedFrom is { } correctedUnit)
               {
@@ -188,9 +188,9 @@
                                               Compact="true"
                                               Placeholder="Buscar ingrediente o subreceta…"
                                               EmptyActionHref="/logistica/materiales" />
-                    <label>Cantidad<input type="number" min="0.000001" step="0.0001" disabled="@IsReadOnly" @bind="component.Quantity" @bind:after="MarkDirty" @oninput="MarkDirty" /></label>
+                    <label>Cantidad<input type="number" min="0.000001" step="0.0001" disabled="@IsReadOnly" @bind="component.Quantity" @bind:after="MarkDirty" /></label>
                     <label>Unidad<select disabled="@IsReadOnly" @bind="component.UnitId" @bind:after="MarkDirty"><option value="0">Selecciona…</option>@foreach (var unit in UnitOptionsFor(component.MaterialId)) { <option value="@unit.UnitId">@RecipeUnitLabel(unit)</option> }</select></label>
-                    <label>Merma <small>Opcional</small><div class="recipe-input-suffix"><input type="number" min="0" max="100" step="0.1" disabled="@IsReadOnly" @bind="component.ExpectedWastePercent" @bind:after="MarkDirty" @oninput="MarkDirty" /><span>%</span></div></label>
+                    <label>Merma <small>Opcional</small><div class="recipe-input-suffix"><input type="number" min="0" max="100" step="0.1" disabled="@IsReadOnly" @bind="component.ExpectedWastePercent" @bind:after="MarkDirty" /><span>%</span></div></label>
                     @if (!IsReadOnly) { <button type="button" class="recipe-remove" aria-label="Eliminar ingrediente @(componentIndex + 1)" @onclick="() => RemoveComponent(component)"><span class="oi oi-trash" aria-hidden="true"></span><span>Eliminar</span></button> }
                   </article>
                 }
@@ -213,8 +213,8 @@
                   var stepIndex = index;
                   <article class="recipe-step">
                     <div class="recipe-order-controls"><b>@(stepIndex + 1)</b>@if (!IsReadOnly) { <button type="button" aria-label="Subir paso @(stepIndex + 1)" disabled="@(stepIndex == 0)" @onclick="() => MoveStep(stepIndex, -1)"><span class="oi oi-chevron-top" aria-hidden="true"></span></button><button type="button" aria-label="Bajar paso @(stepIndex + 1)" disabled="@(stepIndex == editor.Steps.Count - 1)" @onclick="() => MoveStep(stepIndex, 1)"><span class="oi oi-chevron-bottom" aria-hidden="true"></span></button> }</div>
-                    <label class="recipe-step__instruction">Instrucción<textarea rows="3" maxlength="2000" disabled="@IsReadOnly" @bind="step.Instruction" @bind:after="MarkDirty" @oninput="MarkDirty" placeholder="Ej. Cocina la salsa a fuego medio hasta que espese."></textarea></label>
-                    <div class="recipe-step__details"><label>Minutos<input type="number" min="0" disabled="@IsReadOnly" @bind="step.DurationMinutes" @bind:after="MarkDirty" @oninput="MarkDirty" /></label><label>Temperatura °C<input type="number" step="0.1" disabled="@IsReadOnly" @bind="step.TemperatureC" @bind:after="MarkDirty" @oninput="MarkDirty" /></label><label>Equipo<input disabled="@IsReadOnly" @bind="step.Equipment" @bind:after="MarkDirty" @oninput="MarkDirty" placeholder="Ej. sartén mediano" /></label></div>
+                    <label class="recipe-step__instruction">Instrucción<textarea rows="3" maxlength="2000" disabled="@IsReadOnly" @bind="step.Instruction" @bind:after="MarkDirty" placeholder="Ej. Cocina la salsa a fuego medio hasta que espese."></textarea></label>
+                    <div class="recipe-step__details"><label>Minutos<input type="number" min="0" disabled="@IsReadOnly" @bind="step.DurationMinutes" @bind:after="MarkDirty" /></label><label>Temperatura °C<input type="number" step="0.1" disabled="@IsReadOnly" @bind="step.TemperatureC" @bind:after="MarkDirty" /></label><label>Equipo<input disabled="@IsReadOnly" @bind="step.Equipment" @bind:after="MarkDirty" placeholder="Ej. sartén mediano" /></label></div>
                     <div class="recipe-step__image">
                       @if (step.Image is { Length: > 0 }) { <img src="@ImageDataUrl(step)" alt="Referencia visual del paso @(stepIndex + 1)" /> }
                       @if (!IsReadOnly)
@@ -227,7 +227,7 @@
                   </article>
                 }
               </div>
-              <label class="recipe-safety">Notas de seguridad <small>Almacenamiento, contaminación cruzada o manejo especial</small><textarea rows="3" maxlength="2000" disabled="@IsReadOnly" @bind="editor.SafetyNotes" @bind:after="MarkDirty" @oninput="MarkDirty" placeholder="Ej. Mantener refrigerado y usar tabla exclusiva para pollo crudo."></textarea></label>
+              <label class="recipe-safety">Notas de seguridad <small>Almacenamiento, contaminación cruzada o manejo especial</small><textarea rows="3" maxlength="2000" disabled="@IsReadOnly" @bind="editor.SafetyNotes" @bind:after="MarkDirty" placeholder="Ej. Mantener refrigerado y usar tabla exclusiva para pollo crudo."></textarea></label>
               @if (selectedDetail is { Allergens.Count: > 0 }) { <div class="recipe-allergen-summary"><strong>Alérgenos detectados</strong><div>@foreach (var allergen in selectedDetail.Allergens) { <span>@allergen</span> }</div></div> }
             </section>
 

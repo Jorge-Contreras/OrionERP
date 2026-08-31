@@ -304,6 +304,21 @@ html, body, .page {
   overflow-x: hidden;
 }
 /* Permanent marker on Razor/Identity surfaces, including the login page. */
+.orion-training-page {
+    background-color: #fff7ed;
+}
+
+.orion-training-page::before {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 2040;
+    width: .45rem;
+    background: repeating-linear-gradient(180deg, #f97316 0, #f97316 18px, #facc15 18px, #facc15 36px);
+    box-shadow: 2px 0 10px rgba(124, 45, 18, .28);
+    content: "";
+    pointer-events: none;
+}
+
 .training-page-banner {
     position: relative;
     z-index: 2000;

@@ -151,18 +151,37 @@ public class FacturamaApiClientTests
   }
 
   [Fact]
-  public async Task CreateIssuedCfdiAsync_DoesNotInferSandbox_FromSandboxNamedDatabaseAlone()
+  public void Constructor_DoesNotRequireExternalCredentials_ForLocalOnlyPages()
   {
     var handler = new RecordingHttpMessageHandler();
-    var ex = Assert.Throws<InvalidOperationException>(() => CreateClient(
+    var exception = Record.Exception(() => CreateClient(
         handler,
         new Dictionary<string, string?>
         {
           ["ConnectionStrings:OrionDb"] = "Server=127.0.0.1,1433;Database=Orion_Sandbox;User Id=sa;Password=secret;TrustServerCertificate=True;Encrypt=True;"
         }));
 
+    Assert.Null(exception);
+    Assert.Null(handler.LastRequest);
+  }
+
+  [Fact]
+  public async Task CreateIssuedCfdiAsync_DoesNotInferSandbox_FromSandboxNamedDatabaseAlone()
+  {
+    var handler = new RecordingHttpMessageHandler();
+    var client = CreateClient(
+        handler,
+        new Dictionary<string, string?>
+        {
+          ["ConnectionStrings:OrionDb"] = "Server=127.0.0.1,1433;Database=Orion_Sandbox;User Id=sa;Password=secret;TrustServerCertificate=True;Encrypt=True;"
+        });
+
+    var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        client.CreateIssuedCfdiAsync("""{"test":true}"""));
+
     Assert.Contains("Facturama:User", ex.Message, StringComparison.Ordinal);
     Assert.Contains("Facturama:Password", ex.Message, StringComparison.Ordinal);
+    Assert.Null(handler.LastRequest);
   }
 
   [Fact]

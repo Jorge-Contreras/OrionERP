@@ -1,21 +1,26 @@
 .training-environment-banner {
   align-items: center;
-  background: repeating-linear-gradient(135deg, #7c2d12 0, #7c2d12 18px, #9a3412 18px, #9a3412 36px);
-  border-bottom: 2px solid #fed7aa;
-  box-shadow: 0 3px 12px rgb(67 20 7 / 32%);
+  background:
+    repeating-linear-gradient(135deg, transparent 0, transparent 18px, rgb(255 255 255 / 8%) 18px, rgb(255 255 255 / 8%) 36px),
+    linear-gradient(90deg, rgb(67 20 7 / 98%), rgb(124 45 18 / 98%));
+  border-top: 3px solid #fdba74;
+  box-shadow: 0 -6px 24px rgb(67 20 7 / 30%);
+  box-sizing: border-box;
   color: #fff7ed;
   display: flex;
   font-size: .78rem;
   gap: .55rem;
   justify-content: center;
   letter-spacing: .075em;
-  min-height: 2.25rem;
-  padding: .45rem 1rem;
-  position: relative;
+  min-height: 2.85rem;
+  padding: .5rem 1rem;
+  pointer-events: none;
+  position: fixed;
+  inset: auto 0 0;
   text-align: center;
   text-transform: uppercase;
-  width: 100%;
-  z-index: 1050;
+  width: 100vw;
+  z-index: 2050;
 }
 
 .training-environment-banner__icon {
@@ -23,10 +28,26 @@
   font-size: 1rem;
 }
 
+.training-environment-banner__detail {
+  color: #ffedd5;
+  font-weight: 650;
+  letter-spacing: .035em;
+}
+
 @media (max-width: 640px) {
   .training-environment-banner {
+    align-items: flex-start;
+    flex-wrap: wrap;
     font-size: .68rem;
     letter-spacing: .045em;
+    line-height: 1.2;
     padding-inline: .6rem;
+    row-gap: .1rem;
+  }
+
+  .training-environment-banner__detail {
+    flex-basis: 100%;
+    font-size: .62rem;
+    padding-left: 1.45rem;
   }
 }

@@ -57,7 +57,7 @@
     private bool _isDesktopNavVisible;
 
     private string AppShellCssClass
-        => $"page app-shell{(_isDesktopNavVisible ? string.Empty : " app-shell--nav-hidden")}{(IsWorkOrderFieldRoute ? " app-shell--field-operations" : string.Empty)}";
+        => $"page app-shell{(_isDesktopNavVisible ? string.Empty : " app-shell--nav-hidden")}{(IsWorkOrderFieldRoute ? " app-shell--field-operations" : string.Empty)}{(TrainingEnvironment.IsTraining ? " app-shell--training" : string.Empty)}";
 
     private bool IsWorkOrderFieldRoute
     {

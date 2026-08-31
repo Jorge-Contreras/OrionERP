@@ -233,7 +233,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
 
   private string ResolveLookupRfc() => CurrentRfc;
 
-  protected Task OnProyectoSearchInputAsync(ChangeEventArgs args)
+  protected void OnProyectoSearchInput(ChangeEventArgs args)
   {
     ProyectoSearchTerm = args.Value?.ToString() ?? string.Empty;
 
@@ -242,12 +242,11 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       SetProyectoSelection(null);
       ProyectoOptions.Clear();
       ShowProyectoResults = false;
-      return Task.CompletedTask;
+      return;
     }
 
     ProyectoOptions.Clear();
     ShowProyectoResults = false;
-    return Task.CompletedTask;
   }
 
   protected async Task HandleProyectoSearchKeyDownAsync(KeyboardEventArgs args)

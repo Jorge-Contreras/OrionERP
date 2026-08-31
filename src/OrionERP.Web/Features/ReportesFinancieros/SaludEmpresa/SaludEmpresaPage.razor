@@ -201,7 +201,7 @@
         <div class="sf-recon-filters no-print">
           <label>Severidad<select @bind="ReconciliationSeverity"><option value="">Todas</option><option>Alta</option><option>Media</option><option>Baja</option></select></label>
           <label>Tipo<input @bind="ReconciliationType" placeholder="Todos los tipos" /></label>
-          <label>Buscar<input @bind="ReconciliationSearch" @bind:event="oninput" @onkeyup="OnReconciliationSearchKeyUpAsync" placeholder="Reservación, transacción o nota" /></label>
+          <label>Buscar<input type="search" @bind="ReconciliationSearch" @bind:event="oninput" @onkeyup="OnReconciliationSearchKeyUpAsync" placeholder="Reservación, transacción o nota" /></label>
           <button class="btn btn-primary" @onclick="FilterReconciliationAsync">Aplicar</button>
         </div>
         <article class="sf-panel">

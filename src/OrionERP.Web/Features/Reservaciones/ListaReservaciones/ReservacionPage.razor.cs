@@ -598,7 +598,7 @@ public partial class ReservacionPage : ComponentBase, IDisposable
     await RefreshSuitesAsync();
   }
 
-  internal Task OnClienteInputChangedAsync(ChangeEventArgs args)
+  internal void OnClienteInputChanged(ChangeEventArgs args)
   {
     ClienteSearchText = args.Value?.ToString() ?? string.Empty;
     if (!string.Equals(NormalizeClienteNombre(ClienteSearchText), NormalizeClienteNombre(SelectedClienteNombre), StringComparison.OrdinalIgnoreCase))
@@ -609,7 +609,6 @@ public partial class ReservacionPage : ComponentBase, IDisposable
 
     ShowClienteResults = false;
     Clientes.Clear();
-    return Task.CompletedTask;
   }
 
   internal async Task OnClienteInputKeyDownAsync(KeyboardEventArgs args)

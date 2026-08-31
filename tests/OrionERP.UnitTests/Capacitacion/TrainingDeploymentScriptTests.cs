@@ -7,6 +7,14 @@ public sealed class TrainingDeploymentScriptTests
   private static readonly string TrainingSettings = ReadRepoFile(
     "src/OrionERP.Web/appsettings.Training.json");
   private static readonly string Runbook = ReadRepoFile("docs/orion-training-runbook.md");
+  private static readonly string MainLayout = ReadRepoFile(
+    "src/OrionERP.Web/Shared/MainLayout.razor");
+  private static readonly string MainLayoutCss = ReadRepoFile(
+    "src/OrionERP.Web/Shared/MainLayout.razor.css");
+  private static readonly string TrainingBanner = ReadRepoFile(
+    "src/OrionERP.Web/Features/TrainingSafety/TrainingEnvironmentBanner.razor");
+  private static readonly string TrainingBannerCss = ReadRepoFile(
+    "src/OrionERP.Web/Features/TrainingSafety/TrainingEnvironmentBanner.razor.css");
 
   [Fact]
   public void Configure_UsesTheProductionCloneAndNoSpecialRuntimeLogin()
@@ -49,6 +57,16 @@ public sealed class TrainingDeploymentScriptTests
     Assert.Contains("production_clone", Runbook, StringComparison.Ordinal);
     Assert.Contains("capacitacion.orion.land", TrainingSettings, StringComparison.Ordinal);
     Assert.Contains("\"DataProtectionApplicationName\": \"OrionERP\"", TrainingSettings, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void TrainingUi_KeepsAPermanentBottomMarkerAndDistinctBackground()
+  {
+    Assert.Contains("app-shell--training", MainLayout, StringComparison.Ordinal);
+    Assert.Contains("app-shell--training .app-shell__main", MainLayoutCss, StringComparison.Ordinal);
+    Assert.Contains("CAPACITACIÓN · AMBIENTE DE PRÁCTICA", TrainingBanner, StringComparison.Ordinal);
+    Assert.Contains("position: fixed", TrainingBannerCss, StringComparison.Ordinal);
+    Assert.Contains("inset: auto 0 0", TrainingBannerCss, StringComparison.Ordinal);
   }
 
   private static string ReadRepoFile(string relativePath)

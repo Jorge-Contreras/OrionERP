@@ -705,6 +705,7 @@
     private const string PaymentConfirmationPanelId = "bonhomia-payment-confirmation";
     private const int CalendarVisibleMonthCount = 2;
     private const int CalendarMaxMonthOffset = 6;
+    private const int CheckoutPersistDebounceMilliseconds = 350;
     private static readonly CultureInfo MoneyCulture = CultureInfo.GetCultureInfo("es-MX");
     private static readonly CultureInfo HeaderCulture = CultureInfo.GetCultureInfo("es-MX");
     private static readonly CheckoutStepDefinition[] WizardSteps =
@@ -751,6 +752,7 @@
     private string? _payPalRenderInFlightKey;
     private bool _focusPaymentConfirmationAfterRender;
     private DotNetObjectReference<BonhomiaReservationPage>? _dotNetRef;
+    private CancellationTokenSource? _checkoutPersistDebounceCts;
 
     private string TodayText => Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     private string CheckInText => CheckIn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -1308,7 +1310,40 @@
         }
 
         CheckoutError = null;
-        _ = PersistCheckoutAsync();
+        QueueCheckoutPersistence();
+    }
+
+    private void QueueCheckoutPersistence()
+    {
+        var previousRequest = _checkoutPersistDebounceCts;
+        var currentRequest = new CancellationTokenSource();
+        _checkoutPersistDebounceCts = currentRequest;
+        previousRequest?.Cancel();
+        _ = PersistCheckoutAfterDelayAsync(currentRequest);
+    }
+
+    private async Task PersistCheckoutAfterDelayAsync(CancellationTokenSource request)
+    {
+        try
+        {
+            await Task.Delay(CheckoutPersistDebounceMilliseconds, request.Token);
+            if (ReferenceEquals(_checkoutPersistDebounceCts, request))
+            {
+                await PersistCheckoutAsync();
+            }
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_checkoutPersistDebounceCts, request))
+            {
+                _checkoutPersistDebounceCts = null;
+            }
+
+            request.Dispose();
+        }
     }
 
     private async Task AcceptPoliciesAsync()
@@ -1984,6 +2019,9 @@
 
     public async ValueTask DisposeAsync()
     {
+        var pendingPersistence = _checkoutPersistDebounceCts;
+        _checkoutPersistDebounceCts = null;
+        pendingPersistence?.Cancel();
         _dotNetRef?.Dispose();
         try
         {

@@ -110,9 +110,10 @@
                             <div class="reservacion-lookup mb-3">
                                 <label class="form-label">Buscar RFC o razón social</label>
                                 <input class="form-control"
+                                       type="search"
                                        placeholder="RFC, razón social o email"
                                        value="@Page.CfdiCustomerSearchText"
-                                       @oninput="Page.OnCfdiCustomerInputChangedAsync"
+                                       @oninput="Page.OnCfdiCustomerInputChanged"
                                        @onkeydown="Page.OnCfdiCustomerInputKeyDownAsync" />
                                 @if (Page.ShowCfdiCustomerResults)
                                 {

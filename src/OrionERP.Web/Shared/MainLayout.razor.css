@@ -76,6 +76,25 @@
     padding: 0 1rem 2rem;
 }
 
+.app-shell--training .app-shell__main {
+    background:
+        radial-gradient(circle at top right, rgba(249, 115, 22, 0.14), transparent 30%),
+        linear-gradient(180deg, rgba(255, 247, 237, 0.96) 0%, rgba(255, 251, 235, 0.82) 100%);
+}
+
+.app-shell--training .app-shell__sidebar {
+    border-right: 4px solid #f59e0b;
+}
+
+.app-shell--training .app-shell__topbar {
+    border-top: 3px solid #f97316;
+    background: rgba(255, 247, 237, 0.92);
+}
+
+.app-shell--training .app-shell__content {
+    padding-bottom: 5.25rem;
+}
+
 @media (max-width: 640.98px) {
     .app-shell--field-operations {
         --field-mobile-chrome-height: 3.85rem;

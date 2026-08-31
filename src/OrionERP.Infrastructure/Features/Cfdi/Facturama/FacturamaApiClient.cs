@@ -22,21 +22,30 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
   };
 
   private readonly HttpClient _httpClient;
-  private readonly Uri _baseUri;
-  private readonly AuthenticationHeaderValue _authHeader;
+  private readonly Lazy<FacturamaRuntimeSettings> _settings;
 
   public FacturamaApiClient(HttpClient httpClient, IConfiguration configuration)
   {
     _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-    var settings = ResolveSettings(configuration ?? throw new ArgumentNullException(nameof(configuration)));
-    var baseUrl = settings.BaseUrl;
+    ArgumentNullException.ThrowIfNull(configuration);
 
-    _baseUri = new Uri(baseUrl.EndsWith("/", StringComparison.Ordinal) ? baseUrl : $"{baseUrl}/", UriKind.Absolute);
-    var user = settings.User;
-    var password = settings.Password;
+    // Pages that only read local accounting data still resolve this typed
+    // client through TransaccionService. Delay credential validation until an
+    // operation actually talks to Facturama so missing external credentials do
+    // not prevent those pages from rendering (notably in Training).
+    _settings = new Lazy<FacturamaRuntimeSettings>(() =>
+    {
+      var settings = ResolveSettings(configuration);
+      var baseUrl = settings.BaseUrl.EndsWith("/", StringComparison.Ordinal)
+          ? settings.BaseUrl
+          : $"{settings.BaseUrl}/";
+      var credentials = Convert.ToBase64String(
+          Encoding.ASCII.GetBytes($"{settings.User}:{settings.Password}"));
 
-    var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{user}:{password}"));
-    _authHeader = new AuthenticationHeaderValue("Basic", credentials);
+      return new FacturamaRuntimeSettings(
+          new Uri(baseUrl, UriKind.Absolute),
+          new AuthenticationHeaderValue("Basic", credentials));
+    }, LazyThreadSafetyMode.ExecutionAndPublication);
   }
 
   public Task<string> CreateIssuedCfdiAsync(FacturamaIssuedCfdiRequest request, CancellationToken ct = default)
@@ -187,14 +196,15 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
   }
 
   private Uri BuildUri(string relativePath)
-    => new(_baseUri, relativePath);
+    => new(_settings.Value.BaseUri, relativePath);
 
   private async Task<string> SendFacturamaAsync(
       HttpRequestMessage request,
       string operationDescription,
       CancellationToken ct)
   {
-    request.Headers.Authorization = _authHeader;
+    var settings = _settings.Value;
+    request.Headers.Authorization = settings.AuthHeader;
     request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
     try
@@ -390,7 +400,7 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
         : response.ReasonPhrase;
     var endpoint = DescribeRequest(request);
     var message =
-        $"Facturama ({_baseUri.Host}) devolvió {(int)statusCode} {reason} al {operationDescription}. " +
+        $"Facturama ({_settings.Value.BaseUri.Host}) devolvió {(int)statusCode} {reason} al {operationDescription}. " +
         $"Endpoint: {endpoint}. " +
         $"Detalle interpretado: {detail}. " +
         $"Respuesta cruda: {responseBody}.";
@@ -410,7 +420,7 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
       string body)
   {
     var message =
-        $"Facturama ({_baseUri.Host}) devolvió una respuesta inesperada al {operationDescription}. " +
+        $"Facturama ({_settings.Value.BaseUri.Host}) devolvió una respuesta inesperada al {operationDescription}. " +
         $"Endpoint: {DescribeRequest(request)}. " +
         $"Problema: {reason}. " +
         $"Detalle interpretado: {FormatFacturamaErrorBody(body)}. " +
@@ -425,7 +435,7 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
       HttpRequestException exception)
   {
     return
-        $"No se pudo comunicar con Facturama ({_baseUri.Host}) al {operationDescription}. " +
+        $"No se pudo comunicar con Facturama ({_settings.Value.BaseUri.Host}) al {operationDescription}. " +
         $"Endpoint: {DescribeRequest(request)}. " +
         $"Error de red: {exception.Message}. " +
         "Revisa conectividad, DNS, TLS/proxy/firewall y disponibilidad de Facturama.";
@@ -436,7 +446,7 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
       string operationDescription)
   {
     return
-        $"Facturama ({_baseUri.Host}) no respondió a tiempo al {operationDescription}. " +
+        $"Facturama ({_settings.Value.BaseUri.Host}) no respondió a tiempo al {operationDescription}. " +
         $"Endpoint: {DescribeRequest(request)}. " +
         "Revisa la disponibilidad de Facturama, la conectividad de red y vuelve a intentar.";
   }
@@ -604,6 +614,10 @@ public sealed class FacturamaApiClient : IFacturamaApiClient
   }
 
   private sealed record FacturamaSettings(string BaseUrl, string User, string Password);
+
+  private sealed record FacturamaRuntimeSettings(
+      Uri BaseUri,
+      AuthenticationHeaderValue AuthHeader);
 
   private sealed class FacturamaCancellationResult
   {

@@ -16,9 +16,10 @@
             <div class="col-lg-4 col-md-12 reservacion-lookup">
                 <label class="form-label">CLIENTE</label>
                 <input class="form-control"
+                       type="search"
                        placeholder="Cliente"
                        value="@Page.ClienteSearchText"
-                       @oninput="Page.OnClienteInputChangedAsync"
+                       @oninput="Page.OnClienteInputChanged"
                        @onkeydown="Page.OnClienteInputKeyDownAsync" />
                 @if (Page.ShowClienteResults)
                 {

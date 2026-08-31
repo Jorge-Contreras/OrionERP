@@ -7,6 +7,75 @@ namespace OrionERP.UnitTests.Restaurante;
 public sealed class RestaurantReceiptReprintMapperTests
 {
   [Fact]
+  public void Create_PreservesComboHierarchySnapshotsAndDoesNotDoubleSubtotal()
+  {
+    var receipt = new RestaurantReceiptDto
+    {
+      SiteName = "Bruno's",
+      SiteTimeZoneId = "UTC",
+      CreatedAt = DateTime.UtcNow,
+      Total = 145m,
+      Lines =
+      [
+        new()
+        {
+          Id = 10,
+          ProductId = 500,
+          ProductName = "Combo chilaquiles",
+          LineKind = RestaurantOrderLineKinds.Combo,
+          Quantity = 1,
+          UnitPrice = 145m,
+          BaseUnitPrice = 95m,
+          ChoicePriceDelta = 50m
+        },
+        new()
+        {
+          Id = 11,
+          ProductId = 501,
+          ProductName = "Chilaquiles",
+          LineKind = RestaurantOrderLineKinds.ComboComponent,
+          ParentOrderLineId = 10,
+          ParentProductName = "Combo chilaquiles",
+          ComboSlotName = "Platillo",
+          Quantity = 1,
+          ChoicePriceDelta = 30m,
+          MenuSectionName = "Comida",
+          MenuSectionSortOrder = 1,
+          StructuredModifiers =
+          [
+            new()
+            {
+              ModifierOptionId = 99,
+              GroupName = "Cambios",
+              Name = "Cebolla",
+              EffectKind = RestaurantModifierEffectKinds.RemoveIngredient
+            },
+            new()
+            {
+              ModifierOptionId = 99,
+              GroupName = "Cambios",
+              Name = "Carne",
+              EffectKind = RestaurantModifierEffectKinds.AddQuantity
+            }
+          ]
+        }
+      ]
+    };
+
+    var model = RestaurantReceiptReprintMapper.Create(receipt, new RestaurantPosCatalogDto());
+
+    Assert.Equal(145m, model.Subtotal);
+    Assert.Equal(1, model.SectionTicketCount);
+    Assert.Equal(RestaurantOrderLineKinds.Combo, model.Lines[0].LineKind);
+    Assert.Equal(RestaurantOrderLineKinds.ComboComponent, model.Lines[1].LineKind);
+    Assert.Equal("Combo chilaquiles", model.Lines[1].ParentProductName);
+    Assert.Equal("Platillo", model.Lines[1].ComboSlotName);
+    Assert.Collection(model.Lines[1].StructuredModifiers,
+      removed => Assert.Equal(RestaurantModifierEffectKinds.RemoveIngredient, removed.EffectKind),
+      added => Assert.Equal(RestaurantModifierEffectKinds.AddQuantity, added.EffectKind));
+  }
+
+  [Fact]
   public void Create_PrefersSaleTimeSectionSnapshotOverCurrentCatalog()
   {
     var receipt = new RestaurantReceiptDto

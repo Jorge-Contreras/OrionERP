@@ -46,7 +46,7 @@ public sealed class RestaurantSaleReadinessProduct
   public string ProductName { get; set; } = string.Empty;
   public string Sections { get; set; } = string.Empty;
   public decimal Price { get; set; }
-  public int MaterialId { get; set; }
+  public int? MaterialId { get; set; }
   public string MaterialCode { get; set; } = string.Empty;
   public string MaterialName { get; set; } = string.Empty;
   public string FulfillmentMode { get; set; } = string.Empty;
@@ -135,6 +135,7 @@ public sealed class RestaurantSaleReadinessModifierRow
   public string MaterialCode { get; set; } = string.Empty;
   public string MaterialName { get; set; } = string.Empty;
   public decimal? QuantityDelta { get; set; }
+  public string EffectKind { get; set; } = RestaurantModifierEffectKinds.AdjustQuantity;
   public string DeltaUnit { get; set; } = string.Empty;
   public decimal? ConversionFactor { get; set; }
   public decimal? BaseQuantityImpact { get; set; }
@@ -170,4 +171,3 @@ public sealed class RestaurantSaleReadinessWorkbook
   public string ContentType { get; set; } = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   public byte[] Bytes { get; set; } = [];
 }
-

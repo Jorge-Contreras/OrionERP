@@ -46,6 +46,10 @@ public static class RestaurantCustomItemRules
     {
       throw new InvalidOperationException("Un cargo personalizado no puede usar modificadores de catálogo.");
     }
+    if (line.ComboSelections.Count > 0)
+    {
+      throw new InvalidOperationException("Un cargo personalizado no puede usar selecciones de combo.");
+    }
 
     var unitPrice = decimal.Round(line.CustomUnitPrice.Value, 2, MidpointRounding.AwayFromZero);
     var gross = decimal.Round(unitPrice * line.Quantity, 2, MidpointRounding.AwayFromZero);

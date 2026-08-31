@@ -183,7 +183,11 @@ public sealed class RestaurantAnalyticsService : IRestaurantAnalyticsService
       .ToDictionary(row => row.Fecha.Date, row => row.IngresoContable);
 
     var recipeCosts = await LoadRecipeCostsAsync(conn, rfc, query.SiteId, from.Date, toExclusive.AddDays(-1).Date, ct);
-    var costoRecalculado = decimal.Round(recipeCosts.Sum(cost => cost.CostoVendido), 2);
+    // Este snapshot nace del mismo grafo de requerimientos que reservó inventario.
+    // Por ello incluye componentes de combo y todos sus efectos semánticos sin
+    // depender de que el catálogo o la receta hayan cambiado después de la venta.
+    var costoRecalculado = await LoadOrderSnapshotCostAsync(
+      conn, rfc, query.SiteId, from.Date, toExclusive.AddDays(-1).Date, ct);
 
     var mapDto = BuildMap(map, catalogo, periodo);
     var pnl = BuildPnl(map, catalogo, periodo, anterior, acumulado, from, toExclusive.AddDays(-1));
@@ -211,9 +215,7 @@ public sealed class RestaurantAnalyticsService : IRestaurantAnalyticsService
         .ToList()
     };
 
-    var costByDate = recipeCosts.Count == 0
-      ? new Dictionary<DateTime, decimal>()
-      : await LoadDailyCostAsync(conn, rfc, query.SiteId, from.Date, toExclusive.AddDays(-1).Date, ct);
+    var costByDate = await LoadDailyCostAsync(conn, rfc, query.SiteId, from.Date, toExclusive.AddDays(-1).Date, ct);
 
     var daily = seriePos.Select(row => new RestaurantDailyLedgerPointDto
     {
@@ -773,27 +775,182 @@ public sealed class RestaurantAnalyticsService : IRestaurantAnalyticsService
     var sql = RestaurantAnalyticsSql.RecipeCostCte +
       """
 
+      , ProductIngredientQuantityRaw AS
+      (
+        SELECT product.Id AS ProductId,product.MaterialId AS MaterialId,
+               CAST(1 AS decimal(18,8)) AS BaseQuantity
+        FROM restaurante.Product product
+        JOIN logistica.Material productMaterial
+          ON productMaterial.Rfc=product.Rfc AND productMaterial.Id=product.MaterialId
+        WHERE product.Rfc=@Rfc AND product.ProductKind='Standard'
+          AND productMaterial.FulfillmentMode<>'MakeToOrder'
+        UNION ALL
+        SELECT product.Id,component.ComponentMaterialId,
+               CAST(component.Quantity*(1+component.ExpectedWastePercent/100.0)
+                    *COALESCE(materialConversion.Factor,globalConversion.Factor,
+                      CASE WHEN component.UnitId=componentMaterial.BaseUnitId THEN 1 END)
+                    /NULLIF(activeBom.YieldQuantity,0) AS decimal(18,8))
+        FROM restaurante.Product product
+        JOIN logistica.Material productMaterial
+          ON productMaterial.Rfc=product.Rfc AND productMaterial.Id=product.MaterialId
+         AND productMaterial.FulfillmentMode='MakeToOrder'
+        JOIN VersionActiva activeBom
+          ON activeBom.ProductMaterialId=product.MaterialId AND activeBom.Fila=1
+        JOIN logistica.BomComponent component
+          ON component.Rfc=activeBom.Rfc AND component.BomVersionId=activeBom.BomVersionId
+        JOIN logistica.Material componentMaterial
+          ON componentMaterial.Rfc=component.Rfc AND componentMaterial.Id=component.ComponentMaterialId
+        OUTER APPLY
+        (
+          SELECT TOP (1) conversionInfo.Factor
+          FROM logistica.MaterialUnitConversion conversionInfo
+          WHERE conversionInfo.Rfc=componentMaterial.Rfc AND conversionInfo.MaterialId=componentMaterial.Id
+            AND conversionInfo.FromUnitId=component.UnitId AND conversionInfo.ToUnitId=componentMaterial.BaseUnitId
+            AND conversionInfo.IsActive=1
+        ) materialConversion
+        OUTER APPLY
+        (
+          SELECT TOP (1) conversionInfo.Factor
+          FROM logistica.UnitConversion conversionInfo
+          WHERE conversionInfo.FromUnitId=component.UnitId AND conversionInfo.ToUnitId=componentMaterial.BaseUnitId
+            AND conversionInfo.IsActive=1
+        ) globalConversion
+        WHERE product.Rfc=@Rfc AND product.ProductKind='Standard'
+          AND COALESCE(materialConversion.Factor,globalConversion.Factor,
+                CASE WHEN component.UnitId=componentMaterial.BaseUnitId THEN 1 END) IS NOT NULL
+      ),
+      ProductLeafMaterialQuantity AS
+      (
+        SELECT ProductId,MaterialId,CAST(SUM(BaseQuantity) AS decimal(18,8)) AS BaseQuantity
+        FROM ProductIngredientQuantityRaw
+        GROUP BY ProductId,MaterialId
+      ),
+      ProductLeafMaterialCost AS
+      (
+        SELECT quantityInfo.ProductId,quantityInfo.MaterialId,
+               CAST(quantityInfo.BaseQuantity*ISNULL(material.BaseUnitPrice,0) AS decimal(18,6)) AS MaterialCost
+        FROM ProductLeafMaterialQuantity quantityInfo
+        JOIN logistica.Material material
+          ON material.Rfc=@Rfc AND material.Id=quantityInfo.MaterialId
+      ),
+      ProductLeafCost AS
+      (
+        SELECT ProductId,CAST(SUM(MaterialCost) AS decimal(18,6)) AS UnitCost
+        FROM ProductLeafMaterialCost
+        GROUP BY ProductId
+      ),
+      RemovedModifierMaterial AS
+      (
+        SELECT lineModifier.OrderLineId,effect.MaterialId,
+               MAX(effect.FrozenBaseUnitCost) AS FrozenBaseUnitCost
+        FROM restaurante.OrderLineModifier lineModifier
+        JOIN restaurante.OrderLineModifierIngredientEffect effect
+          ON effect.Rfc=lineModifier.Rfc AND effect.OrderLineModifierId=lineModifier.Id
+        WHERE lineModifier.Rfc=@Rfc AND effect.EffectKind='RemoveIngredient'
+        GROUP BY lineModifier.OrderLineId,effect.MaterialId
+      ),
+      LineRemovedModifierCost AS
+      (
+        SELECT removed.OrderLineId,
+               CAST(-SUM(ISNULL(leafQuantity.BaseQuantity,0)*removed.FrozenBaseUnitCost) AS decimal(18,6)) AS UnitCost
+        FROM RemovedModifierMaterial removed
+        JOIN restaurante.OrderLine lineInfo ON lineInfo.Rfc=@Rfc AND lineInfo.Id=removed.OrderLineId
+        LEFT JOIN ProductLeafMaterialQuantity leafQuantity
+          ON leafQuantity.ProductId=lineInfo.ProductId AND leafQuantity.MaterialId=removed.MaterialId
+        GROUP BY removed.OrderLineId
+      ),
+      LineQuantityModifierCost AS
+      (
+        SELECT lineModifier.OrderLineId,
+               CAST(SUM(effect.BaseQuantityDelta*effect.FrozenBaseUnitCost
+                        *lineModifier.Quantity) AS decimal(18,6)) AS UnitCost
+        FROM restaurante.OrderLineModifier lineModifier
+        JOIN restaurante.OrderLineModifierIngredientEffect effect
+          ON effect.Rfc=lineModifier.Rfc AND effect.OrderLineModifierId=lineModifier.Id
+        WHERE lineModifier.Rfc=@Rfc AND effect.EffectKind IN ('AddQuantity','AdjustQuantity')
+        GROUP BY lineModifier.OrderLineId
+      ),
+      LineModifierCost AS
+      (
+        SELECT costInfo.OrderLineId,CAST(SUM(costInfo.UnitCost) AS decimal(18,6)) AS UnitCost
+        FROM
+        (
+          SELECT OrderLineId,UnitCost FROM LineRemovedModifierCost
+          UNION ALL
+          SELECT OrderLineId,UnitCost FROM LineQuantityModifierCost
+        ) costInfo
+        GROUP BY costInfo.OrderLineId
+      ),
+      ComboParentCost AS
+      (
+        SELECT parentLine.Id AS ParentLineId,parentLine.ProductId,parentLine.Quantity,
+               CAST(ISNULL(SUM(componentLine.Quantity *
+                 CASE WHEN ISNULL(componentCost.UnitCost,0)+ISNULL(modifierCost.UnitCost,0)<0 THEN 0
+                      ELSE ISNULL(componentCost.UnitCost,0)+ISNULL(modifierCost.UnitCost,0) END),0) AS decimal(18,6)) AS TotalCost
+        FROM restaurante.OrderLine parentLine
+        JOIN restaurante.[Order] comboOrder
+          ON comboOrder.Rfc=parentLine.Rfc AND comboOrder.Id=parentLine.OrderId
+        JOIN restaurante.OrderLine componentLine
+          ON componentLine.Rfc=parentLine.Rfc AND componentLine.ParentOrderLineId=parentLine.Id
+        LEFT JOIN ProductLeafCost componentCost ON componentCost.ProductId=componentLine.ProductId
+        LEFT JOIN LineModifierCost modifierCost ON modifierCost.OrderLineId=componentLine.Id
+        WHERE parentLine.Rfc=@Rfc AND parentLine.LineKind='Combo'
+          AND comboOrder.SiteId=@SiteId
+          AND comboOrder.OperationalDate>=@From AND comboOrder.OperationalDate<=@To
+          AND comboOrder.PaymentStatus='Paid' AND comboOrder.[Status]<>'Cancelled'
+          AND componentLine.[Status]<>'Cancelled'
+        GROUP BY parentLine.Id,parentLine.ProductId,parentLine.Quantity
+      ),
+      ComboCost AS
+      (
+        SELECT ProductId,
+               CAST(SUM(TotalCost)/NULLIF(SUM(Quantity),0) AS decimal(18,6)) AS UnitCost
+        FROM ComboParentCost
+        GROUP BY ProductId
+      ),
+      StandardActualCost AS
+      (
+        SELECT lineInfo.ProductId,
+               CAST(SUM(lineInfo.Quantity*
+                 CASE WHEN ISNULL(productCost.UnitCost,0)+ISNULL(modifierCost.UnitCost,0)<0 THEN 0
+                      ELSE ISNULL(productCost.UnitCost,0)+ISNULL(modifierCost.UnitCost,0) END)
+                 /NULLIF(SUM(lineInfo.Quantity),0) AS decimal(18,6)) AS UnitCost
+        FROM restaurante.OrderLine lineInfo
+        JOIN restaurante.[Order] orderInfo ON orderInfo.Rfc=lineInfo.Rfc AND orderInfo.Id=lineInfo.OrderId
+        LEFT JOIN ProductLeafCost productCost ON productCost.ProductId=lineInfo.ProductId
+        LEFT JOIN LineModifierCost modifierCost ON modifierCost.OrderLineId=lineInfo.Id
+        WHERE lineInfo.Rfc=@Rfc AND lineInfo.LineKind='Standard' AND lineInfo.[Status]<>'Cancelled'
+          AND orderInfo.SiteId=@SiteId
+          AND orderInfo.OperationalDate>=@From AND orderInfo.OperationalDate<=@To
+          AND orderInfo.PaymentStatus='Paid' AND orderInfo.[Status]<>'Cancelled'
+        GROUP BY lineInfo.ProductId
+      )
+
       SELECT product.Id AS ProductId,
              card.[Name] + CASE WHEN product.VariantName IS NULL THEN '' ELSE ' · ' + product.VariantName END AS Producto,
              CAST(ISNULL(SUM(line.Quantity), 0) AS decimal(18,2))  AS UnidadesVendidas,
              CAST(ISNULL(SUM(line.LineTotal), 0) AS decimal(18,2)) AS Venta,
              CAST(product.Price AS decimal(18,2)) AS PrecioLista,
-             CAST(ISNULL(MAX(receta.CostoCongelado), 0) AS decimal(18,6))    AS CostoCongelado,
-             CAST(ISNULL(MAX(COALESCE(receta.CostoRecalculado, reventa.Costo)), 0) AS decimal(18,6)) AS CostoRecalculado,
+             CAST(ISNULL(MAX(COALESCE(comboCost.UnitCost,receta.CostoCongelado)), 0) AS decimal(18,6)) AS CostoCongelado,
+             CAST(ISNULL(MAX(COALESCE(comboCost.UnitCost,standardActual.UnitCost,receta.CostoRecalculado, reventa.Costo)), 0) AS decimal(18,6)) AS CostoRecalculado,
              CAST(ISNULL(MAX(receta.YieldQuantity), 0) AS decimal(18,4))     AS RendimientoReceta,
              MAX(receta.UnidadRendimiento) AS UnidadRendimiento,
              ISNULL(MAX(receta.ComponentesSinConversion), 0) AS ComponentesSinConversion,
-             CAST(CASE WHEN MAX(receta.ProductMaterialId) IS NULL THEN 0 ELSE 1 END AS bit) AS TieneReceta,
+             CAST(CASE WHEN MAX(receta.ProductMaterialId) IS NULL AND MAX(comboCost.ProductId) IS NULL AND MAX(standardActual.ProductId) IS NULL THEN 0 ELSE 1 END AS bit) AS TieneReceta,
              CASE
+               WHEN MAX(comboCost.ProductId) IS NOT NULL THEN 'Componentes y personalizaciones del combo'
+               WHEN MAX(standardActual.ProductId) IS NOT NULL THEN 'Receta y personalizaciones vendidas'
                WHEN MAX(receta.ProductMaterialId) IS NOT NULL THEN 'Receta'
                WHEN MAX(reventa.Costo) IS NOT NULL THEN 'Compra'
                ELSE 'Sin costo'
              END AS CostoOrigen
       FROM restaurante.Product product
       JOIN restaurante.ProductCard card ON card.Rfc = product.Rfc AND card.Id = product.ProductCardId
-      JOIN logistica.Material productMaterial
+      LEFT JOIN logistica.Material productMaterial
         ON productMaterial.Rfc = product.Rfc AND productMaterial.Id = product.MaterialId
       LEFT JOIN RecetaCosto receta ON receta.ProductMaterialId = product.MaterialId
+      LEFT JOIN ComboCost comboCost ON comboCost.ProductId=product.Id
+      LEFT JOIN StandardActualCost standardActual ON standardActual.ProductId=product.Id
       OUTER APPLY
       (
         /* Los productos de reventa no tienen receta: su costo es el precio de compra
@@ -803,6 +960,7 @@ public sealed class RestaurantAnalyticsService : IRestaurantAnalyticsService
         WHERE productMaterial.FulfillmentMode = 'StockItem' AND productMaterial.BaseUnitPrice > 0
       ) reventa
       LEFT JOIN restaurante.OrderLine line ON line.Rfc = product.Rfc AND line.ProductId = product.Id
+        AND line.LineKind<>'ComboComponent'
         AND EXISTS
         (
           SELECT 1 FROM restaurante.[Order] orderInfo
@@ -813,7 +971,7 @@ public sealed class RestaurantAnalyticsService : IRestaurantAnalyticsService
         )
       WHERE product.Rfc = @Rfc
       GROUP BY product.Id, card.[Name], product.VariantName, product.Price
-      HAVING ISNULL(SUM(line.Quantity), 0) > 0 OR MAX(receta.ProductMaterialId) IS NOT NULL
+      HAVING ISNULL(SUM(line.Quantity), 0) > 0 OR MAX(receta.ProductMaterialId) IS NOT NULL OR MAX(comboCost.ProductId) IS NOT NULL
       ORDER BY Venta DESC;
       """;
 
@@ -830,31 +988,40 @@ public sealed class RestaurantAnalyticsService : IRestaurantAnalyticsService
     DateTime to,
     CancellationToken ct)
   {
-    var sql = RestaurantAnalyticsSql.RecipeCostCte +
+    const string sql =
       """
-
       SELECT orderInfo.OperationalDate AS Fecha,
-             CAST(ISNULL(SUM(line.Quantity * ISNULL(COALESCE(receta.CostoRecalculado, reventa.Costo), 0)), 0) AS decimal(18,2)) AS Costo
+             CAST(ISNULL(SUM(orderInfo.TheoreticalCost),0) AS decimal(18,2)) AS Costo
       FROM restaurante.[Order] orderInfo
-      JOIN restaurante.OrderLine line ON line.Rfc = orderInfo.Rfc AND line.OrderId = orderInfo.Id
-      LEFT JOIN restaurante.Product product ON product.Rfc = line.Rfc AND product.Id = line.ProductId
-      LEFT JOIN logistica.Material productMaterial
-        ON productMaterial.Rfc = product.Rfc AND productMaterial.Id = product.MaterialId
-      LEFT JOIN RecetaCosto receta ON receta.ProductMaterialId = product.MaterialId
-      OUTER APPLY
-      (
-        SELECT productMaterial.BaseUnitPrice AS Costo
-        WHERE productMaterial.FulfillmentMode = 'StockItem' AND productMaterial.BaseUnitPrice > 0
-      ) reventa
-      WHERE orderInfo.Rfc = @Rfc AND orderInfo.SiteId = @SiteId
-        AND orderInfo.OperationalDate >= @From AND orderInfo.OperationalDate <= @To
-        AND orderInfo.PaymentStatus = 'Paid' AND orderInfo.[Status] <> 'Cancelled'
+      WHERE orderInfo.Rfc=@Rfc AND orderInfo.SiteId=@SiteId
+        AND orderInfo.OperationalDate>=@From AND orderInfo.OperationalDate<=@To
+        AND orderInfo.PaymentStatus='Paid' AND orderInfo.[Status]<>'Cancelled'
       GROUP BY orderInfo.OperationalDate;
       """;
 
     var rows = await conn.QueryAsync<DailyCostRow>(new CommandDefinition(
       sql, new { Rfc = rfc, SiteId = siteId, From = from, To = to }, cancellationToken: ct));
     return rows.ToDictionary(row => row.Fecha.Date, row => row.Costo);
+  }
+
+  private static async Task<decimal> LoadOrderSnapshotCostAsync(
+    DbConnection conn,
+    string rfc,
+    int siteId,
+    DateTime from,
+    DateTime to,
+    CancellationToken ct)
+  {
+    const string sql =
+      """
+      SELECT CAST(ISNULL(SUM(TheoreticalCost),0) AS decimal(18,2))
+      FROM restaurante.[Order]
+      WHERE Rfc=@Rfc AND SiteId=@SiteId
+        AND OperationalDate>=@From AND OperationalDate<=@To
+        AND PaymentStatus='Paid' AND [Status]<>'Cancelled';
+      """;
+    return await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
+      sql, new { Rfc = rfc, SiteId = siteId, From = from, To = to }, cancellationToken: ct));
   }
 
   private static async Task<IReadOnlyList<MapRow>> LoadMapRowsAsync(DbConnection conn, string rfc, CancellationToken ct)

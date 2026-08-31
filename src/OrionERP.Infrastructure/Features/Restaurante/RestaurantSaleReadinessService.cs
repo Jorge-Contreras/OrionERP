@@ -40,7 +40,9 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
       .ThenBy(item => ProductDisplayName(item.Product), StringComparer.OrdinalIgnoreCase)
       .ToList();
 
-    var optionIds = menuProducts.SelectMany(item => item.Product.ModifierGroups)
+    var optionIds = menuProducts.SelectMany(item => item.Product.ModifierGroups
+        .Concat(item.Product.ComboSlots.SelectMany(slot => slot.Options)
+          .SelectMany(option => option.ComponentModifierGroups)))
       .SelectMany(group => group.Options)
       .Select(option => option.Id)
       .Distinct()
@@ -61,7 +63,16 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
     foreach (var menuProduct in menuProducts)
     {
       var product = menuProduct.Product;
-      var calculation = RestaurantSaleRequirementCalculator.Calculate(graph, product.MaterialId, product.Sku, 1m);
+      if (!product.MaterialId.HasValue)
+      {
+        AppendComboReadiness(
+          productRows, ingredientRows, bomRows, modifierRows, actions,
+          graph, context, generatedAtUtc, catalog.Site.AllowSupervisorDeficit,
+          fallbackLocationExists, menuProduct, product);
+        continue;
+      }
+      var rootMaterialId = product.MaterialId.Value;
+      var calculation = RestaurantSaleRequirementCalculator.Calculate(graph, rootMaterialId, product.Sku, 1m);
       AppendBomRows(bomRows, graph, product, calculation);
 
       var productIngredients = new List<RestaurantSaleReadinessIngredient>();
@@ -172,7 +183,7 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
           ProductSku = product.Sku,
           ProductName = ProductDisplayName(product),
           MaterialId = product.MaterialId,
-          Material = graph.Materials.TryGetValue(product.MaterialId, out var soldOutMaterial)
+          Material = graph.Materials.TryGetValue(rootMaterialId, out var soldOutMaterial)
             ? $"{soldOutMaterial.Code} · {soldOutMaterial.Name}"
             : string.Empty,
           Issue = predictedMessage,
@@ -238,7 +249,7 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
         .OrderBy(ingredient => ingredient.EstimatedSellableUnits)
         .ThenBy(ingredient => ingredient.MaterialCode, StringComparer.OrdinalIgnoreCase)
         .FirstOrDefault();
-      var rootMaterial = graph.Materials.GetValueOrDefault(product.MaterialId);
+      var rootMaterial = graph.Materials.GetValueOrDefault(rootMaterialId);
       productRows.Add(new RestaurantSaleReadinessProduct
       {
         ProductId = product.Id,
@@ -302,6 +313,256 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
         .ThenBy(action => action.Material, StringComparer.OrdinalIgnoreCase)
         .ToList()
     };
+  }
+
+  private static void AppendComboReadiness(
+    ICollection<RestaurantSaleReadinessProduct> productRows,
+    ICollection<RestaurantSaleReadinessIngredient> ingredientRows,
+    ICollection<RestaurantSaleReadinessBomRow> bomRows,
+    ICollection<RestaurantSaleReadinessModifierRow> modifierRows,
+    ICollection<RestaurantSaleReadinessAction> actions,
+    RestaurantSaleRequirementGraph graph,
+    OperationalContext context,
+    DateTimeOffset at,
+    bool allowSupervisorDeficit,
+    bool fallbackLocationExists,
+    MenuProduct menuProduct,
+    RestaurantProductDto product)
+  {
+    var activeSlots = product.ComboSlots.Where(slot => slot.IsActive).ToList();
+    var invalidSlot = activeSlots.FirstOrDefault(slot =>
+    {
+      var activeOptions = slot.Options.Where(option => option.IsActive).ToList();
+      var defaultCount = activeOptions.Count(option => option.IsDefault);
+      return activeOptions.Count < slot.MinSelections
+             || defaultCount < slot.MinSelections
+             || defaultCount > slot.MaxSelections;
+    });
+    var configurationMessages = new List<string>();
+    if (activeSlots.Count == 0) configurationMessages.Add("El combo no tiene grupos configurados.");
+    if (invalidSlot is not null) configurationMessages.Add($"El grupo {invalidSlot.Name} no cumple sus límites u opciones predeterminadas.");
+
+    var evaluations = new List<ComboOptionEvaluation>();
+    var defaultRequirements = new Dictionary<int, decimal>();
+    var defaultPaths = new Dictionary<int, string>();
+    var defaultDepths = new Dictionary<int, int>();
+    var stationWarnings = 0;
+    foreach (var slot in activeSlots)
+    {
+      foreach (var option in slot.Options.Where(option => option.IsActive))
+      {
+        var component = option.ComponentProduct;
+        if (component?.MaterialId is null)
+        {
+          configurationMessages.Add($"{slot.Name} / {option.ComponentProductName} no tiene un producto estándar con material.");
+          evaluations.Add(new ComboOptionEvaluation(slot, option, null, null, null, true, false, false));
+          continue;
+        }
+
+        var calculation = RestaurantSaleRequirementCalculator.Calculate(
+          graph, component.MaterialId.Value, component.Sku, option.Quantity);
+        AppendBomRows(bomRows, graph, component, calculation);
+        if (calculation.Issues.Count > 0)
+        {
+          configurationMessages.AddRange(calculation.Issues.Select(issue =>
+            $"{slot.Name} / {ProductDisplayName(component)}: {issue.Message}"));
+        }
+        foreach (var issue in calculation.Issues)
+        {
+          actions.Add(new RestaurantSaleReadinessAction
+          {
+            Severity = RestaurantSaleReadinessSeverities.Error,
+            ProductSku = product.Sku,
+            ProductName = ProductDisplayName(product),
+            MaterialId = issue.MaterialId,
+            Issue = $"Componente {ProductDisplayName(component)}: {issue.Message}",
+            RecommendedAction = ConfigurationAction(issue.Code)
+          });
+        }
+
+        var modifierEvaluation = EvaluateModifiers(
+          graph, component, calculation, context, at, allowSupervisorDeficit, fallbackLocationExists);
+        foreach (var row in modifierEvaluation.Rows) modifierRows.Add(row);
+        foreach (var action in modifierEvaluation.Actions) actions.Add(action);
+        if (modifierEvaluation.ConfigurationBlocked)
+          configurationMessages.Add($"{slot.Name} / {ProductDisplayName(component)}: {modifierEvaluation.FirstBlockingMessage}");
+
+        var optionInventoryBlocked = false;
+        var optionSupervisorRequired = false;
+        foreach (var requirement in calculation.Requirements)
+        {
+          if (!graph.Materials.TryGetValue(requirement.Key, out var material)) continue;
+          var inventory = EvaluateInventory(material, requirement.Value, context.StockBalances, context.LotBalances,
+            at, allowSupervisorDeficit, fallbackLocationExists);
+          optionInventoryBlocked |= inventory.Status == RestaurantSaleReadinessStatuses.InventoryBlocked;
+          optionSupervisorRequired |= inventory.Status == RestaurantSaleReadinessStatuses.SupervisorRequired;
+        }
+        optionInventoryBlocked |= modifierEvaluation.InventoryBlocked;
+        optionSupervisorRequired |= modifierEvaluation.SupervisorRequired;
+        evaluations.Add(new ComboOptionEvaluation(
+          slot, option, component, calculation, modifierEvaluation,
+          calculation.Issues.Count > 0 || modifierEvaluation.ConfigurationBlocked,
+          optionInventoryBlocked, optionSupervisorRequired));
+
+        if (string.Equals(component.FulfillmentMode, "MakeToOrder", StringComparison.OrdinalIgnoreCase)
+            && !component.KitchenStationId.HasValue)
+          stationWarnings++;
+
+        if (!option.IsDefault) continue;
+        foreach (var requirement in calculation.Requirements)
+        {
+          defaultRequirements[requirement.Key] = defaultRequirements.GetValueOrDefault(requirement.Key) + requirement.Value;
+          defaultPaths.TryAdd(requirement.Key,
+            $"Combo {ProductDisplayName(product)} > {slot.Name} > {ProductDisplayName(component)} > {calculation.RequirementPaths.GetValueOrDefault(requirement.Key, $"material {requirement.Key}")}");
+          defaultDepths[requirement.Key] = Math.Max(defaultDepths.GetValueOrDefault(requirement.Key), calculation.RequirementDepths.GetValueOrDefault(requirement.Key));
+        }
+      }
+    }
+
+    var unavailableSlot = activeSlots.FirstOrDefault(slot =>
+      evaluations.Count(evaluation => evaluation.Slot.Id == slot.Id
+                                      && !evaluation.Option.IsSoldOut
+                                      && !evaluation.ConfigurationBlocked
+                                      && !evaluation.InventoryBlocked) < slot.MinSelections);
+
+    var productIngredients = new List<RestaurantSaleReadinessIngredient>();
+    foreach (var requirement in defaultRequirements.OrderBy(item => MaterialSortKey(graph, item.Key)))
+    {
+      if (!graph.Materials.TryGetValue(requirement.Key, out var material)) continue;
+      var inventory = EvaluateInventory(material, requirement.Value, context.StockBalances, context.LotBalances,
+        at, allowSupervisorDeficit, fallbackLocationExists);
+      var ingredient = new RestaurantSaleReadinessIngredient
+      {
+        ProductId = product.Id,
+        ProductSku = product.Sku,
+        ProductName = ProductDisplayName(product),
+        MaterialId = material.Id,
+        MaterialCode = material.Code,
+        MaterialName = material.Name,
+        BaseUnit = material.BaseUnit,
+        BomPath = defaultPaths.GetValueOrDefault(material.Id, MaterialLabel(material)),
+        BomDepth = defaultDepths.GetValueOrDefault(material.Id),
+        FulfillmentMode = material.FulfillmentMode,
+        TrackLots = material.TrackLots,
+        RequiredQuantity = RoundQuantity(requirement.Value),
+        StockQuantity = inventory.StockQuantity,
+        ReservedQuantity = inventory.ReservedQuantity,
+        UsableQuantity = inventory.UsableQuantity,
+        ExcludedLotQuantity = inventory.ExcludedLotQuantity,
+        ProjectedUsableQuantity = inventory.ProjectedUsableQuantity,
+        MinimumQuantity = inventory.MinimumQuantity,
+        ShortageQuantity = inventory.ShortageQuantity,
+        EstimatedSellableUnits = inventory.EstimatedSellableUnits,
+        LocationSummary = inventory.LocationSummary,
+        Status = inventory.Status,
+        PredictedPosMessage = inventory.Message
+      };
+      productIngredients.Add(ingredient);
+      ingredientRows.Add(ingredient);
+      if (ingredient.Status is not RestaurantSaleReadinessStatuses.Ready)
+      {
+        actions.Add(new RestaurantSaleReadinessAction
+        {
+          Severity = ingredient.Status == RestaurantSaleReadinessStatuses.Warning
+            ? RestaurantSaleReadinessSeverities.Warning
+            : RestaurantSaleReadinessSeverities.Error,
+          ProductSku = product.Sku,
+          ProductName = ProductDisplayName(product),
+          MaterialId = material.Id,
+          Material = $"{material.Code} · {material.Name}",
+          Issue = ingredient.PredictedPosMessage ?? ingredient.Status,
+          ShortageQuantity = ingredient.ShortageQuantity > 0 ? ingredient.ShortageQuantity : null,
+          RecommendedAction = InventoryAction(ingredient)
+        });
+      }
+    }
+
+    var hardInventory = productIngredients.Any(ingredient => ingredient.Status == RestaurantSaleReadinessStatuses.InventoryBlocked);
+    var supervisorInventory = productIngredients.Any(ingredient => ingredient.Status == RestaurantSaleReadinessStatuses.SupervisorRequired);
+    var modifierConfigurationBlocked = evaluations.Any(evaluation => evaluation.Modifier?.ConfigurationBlocked == true);
+    var modifierInventoryBlocked = evaluations.Any(evaluation => evaluation.Option.IsDefault && evaluation.Modifier?.InventoryBlocked == true);
+    var modifierSupervisorRequired = evaluations.Any(evaluation => evaluation.Option.IsDefault && evaluation.Modifier?.SupervisorRequired == true);
+    var warningCount = productIngredients.Count(ingredient => ingredient.Status == RestaurantSaleReadinessStatuses.Warning)
+      + evaluations.Where(evaluation => evaluation.Option.IsDefault).Sum(evaluation => evaluation.Modifier?.WarningCount ?? 0)
+      + stationWarnings + (product.Price <= 0 ? 1 : 0);
+    var status = product.IsSoldOut || unavailableSlot is not null
+      ? RestaurantSaleReadinessStatuses.SoldOut
+      : configurationMessages.Count > 0 || modifierConfigurationBlocked
+        ? RestaurantSaleReadinessStatuses.ConfigurationBlocked
+        : hardInventory || modifierInventoryBlocked
+          ? RestaurantSaleReadinessStatuses.InventoryBlocked
+          : supervisorInventory || modifierSupervisorRequired
+            ? RestaurantSaleReadinessStatuses.SupervisorRequired
+            : warningCount > 0
+          ? RestaurantSaleReadinessStatuses.Warning
+          : RestaurantSaleReadinessStatuses.Ready;
+    var message = status switch
+    {
+      RestaurantSaleReadinessStatuses.SoldOut => unavailableSlot is null
+        ? "El combo está marcado como agotado."
+        : $"El grupo {unavailableSlot.Name} no tiene suficientes componentes disponibles.",
+      RestaurantSaleReadinessStatuses.ConfigurationBlocked => configurationMessages.FirstOrDefault()
+        ?? "Un modificador de componente tiene configuración incompleta.",
+      RestaurantSaleReadinessStatuses.InventoryBlocked => productIngredients.FirstOrDefault(ingredient => ingredient.Status == RestaurantSaleReadinessStatuses.InventoryBlocked)?.PredictedPosMessage
+        ?? "Un componente predeterminado no tiene inventario suficiente.",
+      RestaurantSaleReadinessStatuses.SupervisorRequired => productIngredients.FirstOrDefault(ingredient => ingredient.Status == RestaurantSaleReadinessStatuses.SupervisorRequired)?.PredictedPosMessage
+        ?? "Un componente predeterminado requiere autorización de déficit.",
+      RestaurantSaleReadinessStatuses.Warning => product.Price <= 0
+        ? "El combo tiene precio base cero."
+        : stationWarnings > 0
+          ? "Un componente de preparación no tiene estación asignada."
+          : "El inventario de un componente está cerca del mínimo.",
+      _ => "La receta, inventario y modificadores de los componentes predeterminados son válidos."
+    };
+
+    if (status is not RestaurantSaleReadinessStatuses.Ready)
+    {
+      actions.Add(new RestaurantSaleReadinessAction
+      {
+        Severity = status == RestaurantSaleReadinessStatuses.Warning
+          ? RestaurantSaleReadinessSeverities.Warning
+          : RestaurantSaleReadinessSeverities.Error,
+        ProductSku = product.Sku,
+        ProductName = ProductDisplayName(product),
+        Issue = message,
+        RecommendedAction = status == RestaurantSaleReadinessStatuses.ConfigurationBlocked
+          ? "Completa los grupos, mínimos, opciones predeterminadas y rutas del combo."
+          : status is RestaurantSaleReadinessStatuses.InventoryBlocked or RestaurantSaleReadinessStatuses.SupervisorRequired
+            ? "Repón el inventario requerido por los componentes predeterminados."
+            : "Revisa disponibilidad de los componentes y la marca de agotado."
+      });
+    }
+
+    var bottleneck = productIngredients.Where(ingredient => ingredient.EstimatedSellableUnits.HasValue)
+      .OrderBy(ingredient => ingredient.EstimatedSellableUnits).FirstOrDefault();
+
+    productRows.Add(new RestaurantSaleReadinessProduct
+    {
+      ProductId = product.Id,
+      Sku = product.Sku,
+      ProductName = ProductDisplayName(product),
+      Sections = menuProduct.Sections,
+      Price = product.Price,
+      MaterialId = null,
+      MaterialCode = string.Empty,
+      MaterialName = "Componentes del combo",
+      FulfillmentMode = RestaurantProductKinds.Combo,
+      IsActive = product.IsActive,
+      IsSoldOut = product.IsSoldOut || unavailableSlot is not null,
+      Status = status,
+      CanSellWithoutOverride = status is RestaurantSaleReadinessStatuses.Ready or RestaurantSaleReadinessStatuses.Warning,
+      RequiresSupervisor = status == RestaurantSaleReadinessStatuses.SupervisorRequired,
+      EstimatedSellableUnits = bottleneck?.EstimatedSellableUnits,
+      LeafIngredientCount = productIngredients.Count,
+      ErrorCount = configurationMessages.Count
+        + productIngredients.Count(ingredient => ingredient.Status is RestaurantSaleReadinessStatuses.InventoryBlocked or RestaurantSaleReadinessStatuses.SupervisorRequired)
+        + evaluations.Sum(evaluation => evaluation.Modifier?.ErrorCount ?? 0)
+        + (product.IsSoldOut || unavailableSlot is not null ? 1 : 0),
+      WarningCount = warningCount,
+      BottleneckMaterial = bottleneck is null ? null : $"{bottleneck.MaterialCode} · {bottleneck.MaterialName}",
+      PredictedPosMessage = message,
+      SuggestedAction = SuggestedProductAction(status)
+    });
   }
 
   private static async Task<OperationalContext> LoadOperationalContextAsync(
@@ -439,6 +700,7 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
             OptionName = option.Name,
             PriceDelta = option.PriceDelta,
             MaterialId = delta.MaterialId,
+            EffectKind = delta.EffectKind,
             QuantityDelta = delta.QuantityDelta,
             DeltaUnit = delta.Unit
           };
@@ -452,26 +714,42 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
           {
             row.MaterialCode = material.Code;
             row.MaterialName = material.Name;
-            var factor = RestaurantSaleRequirementCalculator.FindConversionFactor(graph, material.Id, delta.UnitId);
-            row.ConversionFactor = factor;
-            if (!factor.HasValue)
+            var effectKind = RestaurantModifierEffectKinds.Normalize(delta.EffectKind);
+            if (effectKind == RestaurantModifierEffectKinds.RemoveIngredient)
             {
-              row.Status = RestaurantSaleReadinessStatuses.ConfigurationBlocked;
-              row.Message = "Falta una conversión para los ingredientes de un modificador.";
-              optionBlocked = true;
+              var removedQuantity = baseCalculation.Requirements.GetValueOrDefault(material.Id);
+              row.BaseQuantityImpact = -RoundQuantity(removedQuantity);
+              row.AvailableAfterBaseProduct = null;
+              row.Status = RestaurantSaleReadinessStatuses.Ready;
+              row.Message = removedQuantity > 0
+                ? "Elimina por completo este ingrediente de la receta expandida."
+                : "El ingrediente no aparece en la receta expandida actual.";
             }
             else
             {
-              var impact = delta.QuantityDelta * factor.Value;
-              var totalRequirement = Math.Max(0, baseCalculation.Requirements.GetValueOrDefault(material.Id) + impact);
-              row.BaseQuantityImpact = RoundQuantity(impact);
-              var inventory = EvaluateInventory(material, totalRequirement, context.StockBalances, context.LotBalances, at, allowSupervisorDeficit, fallbackLocationExists);
-              row.AvailableAfterBaseProduct = RoundQuantity(inventory.UsableQuantity - baseCalculation.Requirements.GetValueOrDefault(material.Id));
-              row.Status = inventory.Status;
-              row.Message = inventory.Message ?? "La opción no agrega un bloqueo de inventario.";
-              optionBlocked |= inventory.Status is RestaurantSaleReadinessStatuses.InventoryBlocked;
-              optionSupervisor |= inventory.Status is RestaurantSaleReadinessStatuses.SupervisorRequired;
-              optionWarning |= inventory.Status is RestaurantSaleReadinessStatuses.Warning;
+              var factor = delta.UnitId.HasValue
+                ? RestaurantSaleRequirementCalculator.FindConversionFactor(graph, material.Id, delta.UnitId.Value)
+                : null;
+              row.ConversionFactor = factor;
+              if (!factor.HasValue)
+              {
+                row.Status = RestaurantSaleReadinessStatuses.ConfigurationBlocked;
+                row.Message = "Falta una conversión para los ingredientes de un modificador.";
+                optionBlocked = true;
+              }
+              else
+              {
+                var impact = delta.QuantityDelta * factor.Value;
+                var totalRequirement = Math.Max(0, baseCalculation.Requirements.GetValueOrDefault(material.Id) + impact);
+                row.BaseQuantityImpact = RoundQuantity(impact);
+                var inventory = EvaluateInventory(material, totalRequirement, context.StockBalances, context.LotBalances, at, allowSupervisorDeficit, fallbackLocationExists);
+                row.AvailableAfterBaseProduct = RoundQuantity(inventory.UsableQuantity - baseCalculation.Requirements.GetValueOrDefault(material.Id));
+                row.Status = inventory.Status;
+                row.Message = inventory.Message ?? "La opción no agrega un bloqueo de inventario.";
+                optionBlocked |= inventory.Status is RestaurantSaleReadinessStatuses.InventoryBlocked;
+                optionSupervisor |= inventory.Status is RestaurantSaleReadinessStatuses.SupervisorRequired;
+                optionWarning |= inventory.Status is RestaurantSaleReadinessStatuses.Warning;
+              }
             }
           }
           result.Rows.Add(row);
@@ -795,6 +1073,16 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
       ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
 
   private sealed record MenuProduct(RestaurantProductDto Product, string Sections);
+
+  private sealed record ComboOptionEvaluation(
+    RestaurantComboSlotDto Slot,
+    RestaurantComboSlotOptionDto Option,
+    RestaurantProductDto? Component,
+    RestaurantSaleRequirementCalculation? Calculation,
+    ModifierEvaluation? Modifier,
+    bool ConfigurationBlocked,
+    bool InventoryBlocked,
+    bool SupervisorRequired);
 
   private sealed record InventoryEvaluation(
     decimal StockQuantity,

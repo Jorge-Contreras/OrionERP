@@ -10,6 +10,8 @@ public interface IRestaurantCatalogService
   Task<(byte[] Bytes, string ContentType)?> GetProductImageAsync(string rfc, long productId, bool thumbnail, CancellationToken ct = default);
   Task<IReadOnlyList<RestaurantMenuAdminDto>> GetMenusAsync(string rfc, CancellationToken ct = default);
   Task<RestaurantCommandResult> SaveMenuAsync(RestaurantMenuSaveRequest request, CancellationToken ct = default);
+  Task<IReadOnlyList<RestaurantComboAdminDto>> GetCombosAsync(string rfc, CancellationToken ct = default);
+  Task<RestaurantCommandResult> SaveComboAsync(RestaurantComboSaveRequest request, CancellationToken ct = default);
   Task<IReadOnlyList<RestaurantModifierAdminDto>> GetModifierGroupsAsync(string rfc, CancellationToken ct = default);
   Task<RestaurantCommandResult> SaveModifierGroupAsync(RestaurantModifierSaveRequest request, CancellationToken ct = default);
   Task<IReadOnlyList<RestaurantKitchenStationLookupDto>> GetKitchenStationsAsync(string rfc, CancellationToken ct = default);

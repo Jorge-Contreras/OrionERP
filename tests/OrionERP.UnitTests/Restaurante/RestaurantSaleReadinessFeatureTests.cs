@@ -27,7 +27,19 @@ public sealed class RestaurantSaleReadinessFeatureTests
     Assert.Contains("RestaurantSaleRequirementCalculator.Calculate", orderService, StringComparison.Ordinal);
   }
 
+  [Fact]
+  public void ComboReadinessEvaluatesComponentRecipesInventoryAndModifiers()
+  {
+    var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantSaleReadinessService.cs");
+
+    Assert.Contains("option.ComponentProduct", service, StringComparison.Ordinal);
+    Assert.Contains("component.MaterialId.Value", service, StringComparison.Ordinal);
+    Assert.Contains("option.Quantity", service, StringComparison.Ordinal);
+    Assert.Contains("EvaluateModifiers(", service, StringComparison.Ordinal);
+    Assert.Contains("defaultRequirements", service, StringComparison.Ordinal);
+    Assert.Contains("EvaluateInventory(material, requirement.Value", service, StringComparison.Ordinal);
+  }
+
   private static string ReadRepoFile(string relativePath)
     => File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../", relativePath)));
 }
-

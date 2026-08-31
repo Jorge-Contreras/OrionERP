@@ -118,7 +118,12 @@
                       <div class="kds-line__copy">
                         <strong><b>@line.Quantity.ToString("0.##")×</b> @line.ProductName</strong>
                         @if (line.IsCustom) { <small class="kds-custom-label">Cargo personalizado</small> }
-                        @if (line.Modifiers.Count > 0) { <small>@string.Join(" · ", line.Modifiers)</small> }
+                        @if (line.LineKind == RestaurantOrderLineKinds.ComboComponent)
+                        {
+                          <small class="kds-combo-label">@ComboContext(line)</small>
+                        }
+                        @if (line.StructuredModifiers.Count > 0) { <small>@string.Join(" · ", line.StructuredModifiers.Select(ModifierInstruction))</small> }
+                        else if (line.Modifiers.Count > 0) { <small>@string.Join(" · ", line.Modifiers)</small> }
                         @if (!string.IsNullOrWhiteSpace(line.Notes)) { <em>@line.Notes</em> }
                       </div>
                       <div class="kds-line__action">
@@ -299,7 +304,8 @@
     }
 
     result[CustomSectionKey] = new(CustomSectionKey, null, "Cargo Personalizado", int.MaxValue - 1, SectionColor(CustomSectionKey));
-    foreach (var line in board.Orders.SelectMany(order => order.Lines).Where(line => line.Status != "Cancelled"))
+    foreach (var line in board.Orders.SelectMany(order => order.Lines)
+      .Where(line => line.Status != "Cancelled" && line.LineKind != RestaurantOrderLineKinds.Combo))
     {
       var section = SectionForLine(line);
       result[section.Key] = section;
@@ -315,7 +321,7 @@
     foreach (var order in OrderedOrders)
     {
       foreach (var lineGroup in order.Lines
-        .Where(line => line.Status != "Cancelled")
+        .Where(line => line.Status != "Cancelled" && line.LineKind != RestaurantOrderLineKinds.Combo)
         .GroupBy(line => SectionForLine(line).Key, StringComparer.Ordinal))
       {
         if (disabledSectionKeys.Contains(lineGroup.Key)) continue;
@@ -428,6 +434,10 @@
   }
   private static string SectionDomId(string key) => key.Replace(':', '-');
   private static string OrderTypeLabel(string type) => type switch { "Pickup" => "Recoger", "Table" => "Mesa", "Delivery" => "Domicilio", _ => type };
+  private static string ComboContext(RestaurantOrderLineDto line)
+    => $"COMBO: {line.ParentProductName}{(string.IsNullOrWhiteSpace(line.ComboSlotName) ? string.Empty : $" · {line.ComboSlotName}")}";
+  private static string ModifierInstruction(RestaurantOrderLineModifierDto modifier)
+    => RestaurantComboOrderRules.FormatModifierInstruction(modifier);
   public ValueTask DisposeAsync() { Realtime.EventReceived -= OnRealtimeEventAsync; disposeCts.Cancel(); disposeCts.Dispose(); return ValueTask.CompletedTask; }
 
   private sealed record KitchenSectionDefinition(string Key, long? Id, string Name, int SortOrder, string Color);

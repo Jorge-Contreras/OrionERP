@@ -8,26 +8,128 @@
 @inject IMaterialService MaterialService
 @inject ICurrentCompanyContext RfcState
 
-<PageTitle>Restaurante · Menús y modificadores</PageTitle>
+<PageTitle>Restaurante · Menús, combos y modificadores</PageTitle>
 
 <main class="menu-admin-shell">
-  <header class="menu-admin-hero"><div><span>Catálogo comercial</span><h1>Menús y modificadores</h1><p>Publicación por horario, secciones táctiles, opciones y cambios exactos a ingredientes.</p></div><button type="button" class="btn btn-light" @onclick="LoadAsync">Actualizar</button></header>
-  @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(isError ? "alert-danger" : "alert-success")">@message</div> }
-  <nav class="menu-admin-tabs"><button type="button" class="@(tab=="menus"?"is-active":null)" @onclick='()=>tab="menus"'>Menús</button><button type="button" class="@(tab=="modifiers"?"is-active":null)" @onclick='()=>tab="modifiers"'>Modificadores</button></nav>
+  <header class="menu-admin-hero">
+    <div><span>Catálogo comercial</span><h1>Menús, combos y modificadores</h1><p>Publica la oferta, arma paquetes y describe los cambios de ingredientes con claridad.</p></div>
+    <button type="button" class="btn btn-light" @onclick="LoadAsync" disabled="@isBusy">@(isBusy ? "Actualizando…" : "Actualizar")</button>
+  </header>
+  @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @(isError ? "alert-danger" : "alert-success")" role="status">@message</div> }
+
+  <nav class="menu-admin-tabs" role="tablist" aria-label="Configuración comercial">
+    <button type="button" role="tab" aria-selected="@(tab == "menus")" class="@(tab=="menus"?"is-active":null)" @onclick='()=>tab="menus"'>Menús</button>
+    <button type="button" role="tab" aria-selected="@(tab == "combos")" class="@(tab=="combos"?"is-active":null)" @onclick='()=>tab="combos"'>Combos <span>@ComboProducts.Count</span></button>
+    <button type="button" role="tab" aria-selected="@(tab == "modifiers")" class="@(tab=="modifiers"?"is-active":null)" @onclick='()=>tab="modifiers"'>Modificadores</button>
+  </nav>
 
   @if (tab == "menus")
   {
     <section class="menu-admin-layout">
       <aside class="menu-admin-list"><header><h2>Menús</h2><button type="button" class="btn btn-outline-primary btn-sm" @onclick="NewMenu">Nuevo</button></header>@foreach(var menu in menus){<button type="button" class="@(menuEditor.Id==menu.Id?"is-active":null)" @onclick="()=>EditMenu(menu)"><span><strong>@menu.Name</strong><small>@menu.MenuCode · @menu.Sections.Count sección(es)</small></span><b>@(menu.IsPublished?"Publicado":"Borrador")</b></button>}@if(menus.Count==0){<p>Sin menús configurados.</p>}</aside>
-      <section class="menu-admin-editor">
+      <section class="menu-admin-editor" @key="menuEditor">
         <div class="menu-admin-fields"><label>Código<input @bind="menuEditor.MenuCode" /></label><label>Nombre<input @bind="menuEditor.Name" /></label><label class="menu-admin-check"><input type="checkbox" @bind="menuEditor.IsActive" /> Activo</label><label class="menu-admin-check"><input type="checkbox" @bind="menuEditor.IsPublished" /> Publicado</label></div>
         <article class="menu-admin-card"><header><div><span>Disponibilidad</span><h2>Horarios por sede</h2></div><button type="button" @onclick="AddSchedule">Agregar horario</button></header>@foreach(var schedule in menuEditor.Schedules){<div class="menu-admin-schedule"><select @bind="schedule.SiteId"><option value="0">Sede…</option>@foreach(var site in sites){<option value="@site.Id">@site.Name</option>}</select><select @bind="schedule.DayOfWeek">@for(byte day=0;day<7;day++){<option value="@day">@DayName(day)</option>}</select><input type="time" value="@FormatTime(schedule.StartsAt)" @onchange="e=>SetStart(schedule,e.Value)" /><span>a</span><input type="time" value="@FormatTime(schedule.EndsAt)" @onchange="e=>SetEnd(schedule,e.Value)" /><button type="button" aria-label="Eliminar" @onclick="()=>menuEditor.Schedules.Remove(schedule)">×</button></div>}@if(menuEditor.Schedules.Count==0){<p class="menu-admin-hint">Sin horarios: el menú publicado funcionará como menú general.</p>}</article>
         @foreach(var section in menuEditor.Sections.OrderBy(item=>item.SortOrder))
         {
-          <article class="menu-admin-card"><header><div class="menu-admin-section-title"><input @bind="section.Name" placeholder="Nombre de sección" /><input type="number" @bind="section.SortOrder" title="Orden" /></div><button type="button" @onclick="()=>menuEditor.Sections.Remove(section)">Eliminar sección</button></header><div class="menu-admin-product-grid">@foreach(var product in products){<label class="@(section.ProductIds.Contains(product.Id)?"is-selected":null)"><input type="checkbox" checked="@section.ProductIds.Contains(product.Id)" @onchange="()=>ToggleProduct(section.ProductIds,product.Id)" /><span><strong>@product.Name</strong><small>@product.Sku @(string.IsNullOrWhiteSpace(product.VariantName)?null:$"· {product.VariantName}")</small></span><b>@product.Price.ToString("C")</b></label>}</div>
-          </article>
+          <article class="menu-admin-card" @key="section"><header><div class="menu-admin-section-title"><input @bind="section.Name" placeholder="Nombre de sección" aria-label="Nombre de sección" /><input type="number" @bind="section.SortOrder" title="Orden" aria-label="Orden" /></div><button type="button" @onclick="()=>menuEditor.Sections.Remove(section)">Eliminar sección</button></header><div class="menu-admin-product-grid">@foreach(var product in products){<label class="@(section.ProductIds.Contains(product.Id)?"is-selected":null)"><input type="checkbox" checked="@section.ProductIds.Contains(product.Id)" @onchange="()=>ToggleProduct(section.ProductIds,product.Id)" /><span><strong>@product.Name @if(product.ProductKind==RestaurantProductKinds.Combo){<em>Combo</em>}</strong><small>@product.Sku @(string.IsNullOrWhiteSpace(product.VariantName)?null:$"· {product.VariantName}")</small></span><b>@product.Price.ToString("C")</b></label>}</div></article>
         }
         <footer class="menu-admin-actions"><button type="button" class="btn btn-outline-primary" @onclick="AddSection">Agregar sección</button><button type="button" class="btn btn-primary" disabled="@isBusy" @onclick="SaveMenuAsync">Guardar menú</button></footer>
+      </section>
+    </section>
+  }
+  else if (tab == "combos")
+  {
+    <section class="menu-admin-layout">
+      <aside class="menu-admin-list">
+        <header><div><small>Productos tipo Combo</small><h2>Combos</h2></div><a class="btn btn-outline-primary btn-sm" href="/restaurante/admin">Crear producto</a></header>
+        @foreach (var product in ComboProducts)
+        {
+          var configured = combos.FirstOrDefault(item => item.ProductId == product.Id);
+          <button type="button" class="@(comboEditor.ProductId==product.Id?"is-active":null)" @onclick="()=>EditCombo(product, configured)">
+            <span><strong>@product.Name</strong><small>@product.Sku · @(configured?.Slots.Count ?? 0) grupo(s)</small></span><b>@(configured?.Slots.Count > 0 ? "Configurado" : "Pendiente")</b>
+          </button>
+        }
+        @if (ComboProducts.Count == 0) { <p>Crea primero un producto de tipo Combo en Administración.</p> }
+      </aside>
+
+      <section class="menu-admin-editor menu-admin-combo-editor" @key="comboEditor">
+        @if (SelectedComboProduct is null)
+        {
+          <div class="menu-admin-empty-editor"><span class="oi oi-layers" aria-hidden="true"></span><h2>Selecciona un combo</h2><p>Sus grupos aparecerán aquí para definir qué incluye y qué puede elegir el cliente.</p></div>
+        }
+        else
+        {
+          <header class="menu-admin-combo-heading">
+            <div><span>Definición del combo</span><h2>@SelectedComboProduct.Name</h2><p>@SelectedComboProduct.Sku · Precio base @SelectedComboProduct.Price.ToString("C")</p></div>
+            <div class="menu-admin-combo-heading__actions"><label class="menu-admin-search"><span class="oi oi-magnifying-glass" aria-hidden="true"></span><input type="search" @bind="componentSearch" @bind:event="oninput" placeholder="Filtrar componentes…" aria-label="Filtrar componentes" /></label><button type="button" class="btn btn-outline-primary" @onclick="AddComboSlot">Agregar grupo</button></div>
+          </header>
+
+          @foreach (var slot in comboEditor.Slots.OrderBy(item => item.SortOrder))
+          {
+            <article class="menu-admin-card menu-admin-combo-slot" @key="slot">
+              <header>
+                <div class="menu-admin-slot-fields">
+                  <label>Nombre del grupo<input @bind="slot.Name" @bind:event="oninput" placeholder="Ej. Bebida" /></label>
+                  <label>Mínimo<input type="number" min="0" max="50" @bind="slot.MinSelections" @bind:event="oninput" /></label>
+                  <label>Máximo<input type="number" min="1" max="50" @bind="slot.MaxSelections" @bind:event="oninput" /></label>
+                  <label>Orden<input type="number" @bind="slot.SortOrder" @bind:event="oninput" /></label>
+                  <label class="menu-admin-check"><input type="checkbox" @bind="slot.IsActive" /> Activo</label>
+                </div>
+                <button type="button" @onclick="()=>comboEditor.Slots.Remove(slot)">Eliminar grupo</button>
+              </header>
+              <p class="menu-admin-slot-help">@(slot.MinSelections == 0 ? "Opcional" : "Obligatorio") · El cliente elige entre @slot.MinSelections y @slot.MaxSelections opción(es).</p>
+
+              @foreach (var option in slot.Options.OrderBy(item => item.SortOrder))
+              {
+                <section class="menu-admin-combo-option" @key="option">
+                  <div class="menu-admin-combo-option__main">
+                    <label>Producto componente
+                      <select @bind="option.ComponentProductId">
+                        <option value="0">Seleccionar producto…</option>
+                        @foreach (var component in ComponentChoices(option.ComponentProductId)) { <option value="@component.Id">@component.Name · @component.Sku</option> }
+                      </select>
+                    </label>
+                    <label>Cantidad<input type="number" min="0.0001" step="0.0001" @bind="option.Quantity" @bind:event="oninput" /></label>
+                    <label>Suplemento<input type="number" min="0" step="0.01" @bind="option.PriceDelta" @bind:event="oninput" /></label>
+                    <label>Orden<input type="number" @bind="option.SortOrder" @bind:event="oninput" /></label>
+                    <label class="menu-admin-check"><input type="checkbox" checked="@option.IsDefault" @onchange="args=>SetDefault(slot,option,args.Value as bool? == true)" /> Predeterminada</label>
+                    <label class="menu-admin-check"><input type="checkbox" @bind="option.IsActive" /> Activa</label>
+                    <button type="button" class="menu-admin-remove" aria-label="Eliminar opción" @onclick="()=>slot.Options.Remove(option)">×</button>
+                  </div>
+                  <div class="menu-admin-routes">
+                    <div><strong>Ruta de comanda</strong><small>Solo es necesaria cuando el producto aparece en más de una sección del menú.</small></div>
+                    @foreach (var route in option.Routes)
+                    {
+                      <div class="menu-admin-route-row" @key="route">
+                        <select aria-label="Menú de la ruta" value="@route.MenuId" @onchange="e=>SetRouteMenu(route,e.Value)"><option value="0">Menú…</option>@foreach(var menu in menus){<option value="@menu.Id">@menu.Name</option>}</select>
+                        <select aria-label="Sección de la ruta" @bind="route.MenuSectionId"><option value="0">Sección…</option>@foreach(var section in SectionsFor(route.MenuId)){<option value="@section.Id">@section.Name</option>}</select>
+                        <button type="button" aria-label="Eliminar ruta" @onclick="()=>option.Routes.Remove(route)">×</button>
+                      </div>
+                    }
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="()=>AddRoute(option)">Agregar ruta</button>
+                  </div>
+                </section>
+              }
+              <button type="button" class="btn btn-sm btn-outline-primary menu-admin-add-option" @onclick="()=>AddComboOption(slot)">Agregar opción a @slot.Name</button>
+            </article>
+          }
+
+          @if (comboEditor.Slots.Count > 0)
+          {
+            <aside class="menu-admin-preview" aria-label="Previsualización del combo">
+              <div><span>Vista previa en caja</span><h3>@SelectedComboProduct.Name</h3><p>Desde @SelectedComboProduct.Price.ToString("C")</p></div>
+              <ol>
+                @foreach (var slot in comboEditor.Slots.Where(item=>item.IsActive).OrderBy(item=>item.SortOrder))
+                {
+                  <li><strong>@slot.Name</strong><span>@DefaultOptionSummary(slot)</span></li>
+                }
+              </ol>
+              @foreach (var warning in ComboWarnings) { <small class="menu-admin-warning"><span class="oi oi-warning" aria-hidden="true"></span>@warning</small> }
+            </aside>
+          }
+          <footer class="menu-admin-actions"><span>Los cambios se validan otra vez al capturar y cobrar en POS.</span><button type="button" class="btn btn-primary" disabled="@(isBusy || comboEditor.Slots.Count == 0)" @onclick="SaveComboAsync">Guardar combo</button></footer>
+        }
       </section>
     </section>
   }
@@ -35,12 +137,37 @@
   {
     <section class="menu-admin-layout">
       <aside class="menu-admin-list"><header><h2>Grupos</h2><button type="button" class="btn btn-outline-primary btn-sm" @onclick="NewModifier">Nuevo</button></header>@foreach(var group in modifiers){<button type="button" class="@(modifierEditor.Id==group.Id?"is-active":null)" @onclick="()=>EditModifier(group)"><span><strong>@group.Name</strong><small>@group.Options.Count opción(es)</small></span><b>@group.MinSelections–@group.MaxSelections</b></button>}@if(modifiers.Count==0){<p>Sin grupos configurados.</p>}</aside>
-      <section class="menu-admin-editor">
-        <div class="menu-admin-fields menu-admin-fields--modifier"><label>Nombre<input @bind="modifierEditor.Name" /></label><label>Mínimo<input type="number" min="0" @bind="modifierEditor.MinSelections" /></label><label>Máximo<input type="number" min="0" @bind="modifierEditor.MaxSelections" /></label><label class="menu-admin-check"><input type="checkbox" @bind="modifierEditor.IsActive" /> Activo</label></div>
-        <article class="menu-admin-card"><header><div><span>Aplicación</span><h2>Productos que usan el grupo</h2></div></header><div class="menu-admin-product-grid">@foreach(var product in products){<label class="@(modifierEditor.ProductIds.Contains(product.Id)?"is-selected":null)"><input type="checkbox" checked="@modifierEditor.ProductIds.Contains(product.Id)" @onchange="()=>ToggleProduct(modifierEditor.ProductIds,product.Id)" /><span><strong>@product.Name</strong><small>@product.Sku</small></span></label>}</div></article>
+      <section class="menu-admin-editor" @key="modifierEditor">
+        <div class="menu-admin-fields menu-admin-fields--modifier"><label>Nombre<input @bind="modifierEditor.Name" @bind:event="oninput" /></label><label>Mínimo<input type="number" min="0" @bind="modifierEditor.MinSelections" @bind:event="oninput" /></label><label>Máximo<input type="number" min="0" @bind="modifierEditor.MaxSelections" @bind:event="oninput" /></label><label class="menu-admin-check"><input type="checkbox" @bind="modifierEditor.IsActive" /> Activo</label></div>
+        <article class="menu-admin-card"><header><div><span>Aplicación</span><h2>Productos que usan el grupo</h2></div><label class="menu-admin-search"><span class="oi oi-magnifying-glass" aria-hidden="true"></span><input type="search" @bind="productSearch" @bind:event="oninput" placeholder="Buscar producto…" aria-label="Buscar producto" /></label></header><div class="menu-admin-product-grid">@foreach(var product in FilteredProducts){<label class="@(modifierEditor.ProductIds.Contains(product.Id)?"is-selected":null)"><input type="checkbox" checked="@modifierEditor.ProductIds.Contains(product.Id)" @onchange="()=>ToggleProduct(modifierEditor.ProductIds,product.Id)" /><span><strong>@product.Name</strong><small>@product.Sku</small></span></label>}</div></article>
         @foreach(var option in modifierEditor.Options.OrderBy(item=>item.SortOrder))
         {
-          <article class="menu-admin-card menu-admin-option"><header><div class="menu-admin-option-fields"><input @bind="option.Name" placeholder="Nombre de opción" /><label>Precio<input type="number" step="0.01" @bind="option.PriceDelta" /></label><label>Orden<input type="number" @bind="option.SortOrder" /></label></div><button type="button" @onclick="()=>modifierEditor.Options.Remove(option)">Eliminar opción</button></header><div class="menu-admin-deltas"><strong>Cambios de ingredientes</strong>@foreach(var delta in option.IngredientDeltas){<div><RestaurantMaterialPicker Options="@materialOptions" @bind-Value="delta.MaterialId" Compact="true" Placeholder="Buscar material…" /><input type="number" step="0.0001" @bind="delta.QuantityDelta" title="Cantidad; negativa para quitar" /><select @bind="delta.UnitId"><option value="0">Unidad…</option>@foreach(var unit in materialCatalog.Units){<option value="@unit.Id">@unit.Code</option>}</select><button type="button" @onclick="()=>option.IngredientDeltas.Remove(delta)">×</button></div>}<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="()=>AddDelta(option)">Agregar cambio</button></div></article>
+          <article class="menu-admin-card menu-admin-option" @key="option">
+            <header><div class="menu-admin-option-fields"><input @bind="option.Name" @bind:event="oninput" placeholder="Nombre de opción" aria-label="Nombre de opción" /><label>Suplemento<input type="number" step="0.01" @bind="option.PriceDelta" @bind:event="oninput" /></label><label>Orden<input type="number" @bind="option.SortOrder" @bind:event="oninput" /></label></div><button type="button" @onclick="()=>modifierEditor.Options.Remove(option)">Eliminar opción</button></header>
+            <div class="menu-admin-effects">
+              <div class="menu-admin-effects__heading"><div><strong>Efectos en ingredientes</strong><small>Describe la intención; OrionERP hará las conversiones de receta, unidad y merma.</small></div><button type="button" class="btn btn-sm btn-outline-secondary" @onclick="()=>AddSubstitution(option)">Crear sustitución</button></div>
+              @foreach(var delta in option.IngredientDeltas)
+              {
+                <div class="menu-admin-effect-row @(delta.EffectKind==RestaurantModifierEffectKinds.RemoveIngredient?"is-removal":null)" @key="delta">
+                  <select @bind="delta.EffectKind" aria-label="Tipo de cambio"><option value="@RestaurantModifierEffectKinds.AddQuantity">Agregar ingrediente</option><option value="@RestaurantModifierEffectKinds.RemoveIngredient">Quitar ingrediente</option><option value="@RestaurantModifierEffectKinds.AdjustQuantity">Ajuste histórico</option></select>
+                  <RestaurantMaterialPicker Options="@materialOptions" @bind-Value="delta.MaterialId" Compact="true" Placeholder="Buscar ingrediente…" />
+                  @if (delta.EffectKind != RestaurantModifierEffectKinds.RemoveIngredient)
+                  {
+                    <input type="number" min="@(delta.EffectKind==RestaurantModifierEffectKinds.AddQuantity?"0.0001":null)" step="0.0001" @bind="delta.QuantityDelta" @bind:event="oninput" aria-label="Cantidad" />
+                    <select @bind="delta.UnitId" aria-label="Unidad"><option value="">Unidad…</option>@foreach(var unit in materialCatalog.Units){<option value="@unit.Id">@unit.Code</option>}</select>
+                  }
+                  else
+                  {
+                    <span class="menu-admin-remove-copy">Quita toda su contribución después de receta y merma.</span>
+                  }
+                  <button type="button" aria-label="Eliminar efecto" @onclick="()=>option.IngredientDeltas.Remove(delta)">×</button>
+                </div>
+              }
+              @if (option.IngredientDeltas.Any(item=>item.EffectKind==RestaurantModifierEffectKinds.RemoveIngredient)) { <p class="menu-admin-warning"><span class="oi oi-warning" aria-hidden="true"></span>Verifica que el ingrediente exista en la receta de todos los productos asociados; el guardado lo validará.</p> }
+              @if (option.IngredientDeltas.Any(item=>item.EffectKind==RestaurantModifierEffectKinds.AdjustQuantity)) { <p class="menu-admin-legacy">“Ajuste histórico” se conserva para datos anteriores. Para nuevas opciones usa Agregar o Quitar ingrediente.</p> }
+              <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="()=>AddEffect(option,RestaurantModifierEffectKinds.AddQuantity)">Agregar efecto</button>
+            </div>
+          </article>
         }
         <footer class="menu-admin-actions"><button type="button" class="btn btn-outline-primary" @onclick="AddOption">Agregar opción</button><button type="button" class="btn btn-primary" disabled="@isBusy" @onclick="SaveModifierAsync">Guardar modificador</button></footer>
       </section>
@@ -49,18 +176,168 @@
 </main>
 
 @code {
-  private List<RestaurantSiteDto> sites=[]; private List<RestaurantProductDto> products=[]; private List<RestaurantMenuAdminDto> menus=[]; private List<RestaurantModifierAdminDto> modifiers=[]; private List<MaterialListItemDto> materials=[]; private IReadOnlyList<RestaurantMaterialOption> materialOptions=[]; private MaterialCatalogDto materialCatalog=new();
-  private RestaurantMenuSaveRequest menuEditor=NewMenuEditor(); private RestaurantModifierSaveRequest modifierEditor=NewModifierEditor();
-  private string tab="menus"; private string? message; private bool isError; private bool isBusy; private string CurrentRfc=>RfcState.RequireRfc();
+  private List<RestaurantSiteDto> sites=[];
+  private List<RestaurantProductDto> products=[];
+  private List<RestaurantMenuAdminDto> menus=[];
+  private List<RestaurantModifierAdminDto> modifiers=[];
+  private List<RestaurantComboAdminDto> combos=[];
+  private IReadOnlyList<RestaurantMaterialOption> materialOptions=[];
+  private MaterialCatalogDto materialCatalog=new();
+  private RestaurantMenuSaveRequest menuEditor=NewMenuEditor();
+  private RestaurantModifierSaveRequest modifierEditor=NewModifierEditor();
+  private RestaurantComboSaveRequest comboEditor=new();
+  private string tab="menus";
+  private string productSearch=string.Empty;
+  private string componentSearch=string.Empty;
+  private string? message;
+  private bool isError;
+  private bool isBusy;
+  private string CurrentRfc=>RfcState.RequireRfc();
+  private List<RestaurantProductDto> ComboProducts=>products.Where(item=>item.ProductKind==RestaurantProductKinds.Combo).OrderBy(item=>item.Name).ToList();
+  private RestaurantProductDto? SelectedComboProduct=>products.FirstOrDefault(item=>item.Id==comboEditor.ProductId);
+  private IEnumerable<RestaurantProductDto> FilteredProducts=>products.Where(item=>ProductMatches(item,productSearch));
+  private IReadOnlyList<string> ComboWarnings=>ValidateCombo(includeRequiredMessage:false);
+
   protected override async Task OnInitializedAsync(){await LoadAsync();}
-  private async Task LoadAsync(){isBusy=true;try{var rfc=CurrentRfc;sites=(await CatalogService.GetSitesAsync(rfc)).ToList();products=(await CatalogService.GetProductsAsync(rfc)).ToList();menus=(await CatalogService.GetMenusAsync(rfc)).ToList();modifiers=(await CatalogService.GetModifierGroupsAsync(rfc)).ToList();materials=(await MaterialService.GetMaterialsAsync(new(){Rfc=rfc,Status="ACTIVO",Take=0})).ToList();materialOptions=RestaurantMaterialOption.FromMaterials(materials);materialCatalog=await MaterialService.GetCatalogAsync(rfc);}catch(Exception ex){Show(ex.Message,true);}finally{isBusy=false;}}
-  private void NewMenu(){menuEditor=NewMenuEditor();menuEditor.Rfc=CurrentRfc;} private void AddSection()=>menuEditor.Sections.Add(new(){Name=$"Sección {menuEditor.Sections.Count+1}",SortOrder=menuEditor.Sections.Count}); private void AddSchedule()=>menuEditor.Schedules.Add(new(){SiteId=sites.FirstOrDefault()?.Id??0,StartsAt=new(6,0,0),EndsAt=new(23,0,0)});
+
+  private async Task LoadAsync()
+  {
+    isBusy=true;
+    try
+    {
+      var rfc=CurrentRfc;
+      sites=(await CatalogService.GetSitesAsync(rfc)).ToList();
+      products=(await CatalogService.GetProductsAsync(rfc)).ToList();
+      menus=(await CatalogService.GetMenusAsync(rfc)).ToList();
+      modifiers=(await CatalogService.GetModifierGroupsAsync(rfc)).ToList();
+      combos=(await CatalogService.GetCombosAsync(rfc)).ToList();
+      var materials=await MaterialService.GetMaterialsAsync(new(){Rfc=rfc,Status="ACTIVO",Take=0});
+      materialOptions=RestaurantMaterialOption.FromMaterials(materials);
+      materialCatalog=await MaterialService.GetCatalogAsync(rfc);
+      if(comboEditor.ProductId>0)
+      {
+        var product=products.FirstOrDefault(item=>item.Id==comboEditor.ProductId);
+        if(product is not null) EditCombo(product,combos.FirstOrDefault(item=>item.ProductId==product.Id));
+      }
+    }
+    catch(Exception ex){Show(ex.Message,true);}
+    finally{isBusy=false;}
+  }
+
+  private void NewMenu(){menuEditor=NewMenuEditor();menuEditor.Rfc=CurrentRfc;}
+  private void AddSection()=>menuEditor.Sections.Add(new(){Name=$"Sección {menuEditor.Sections.Count+1}",SortOrder=menuEditor.Sections.Count});
+  private void AddSchedule()=>menuEditor.Schedules.Add(new(){SiteId=sites.FirstOrDefault()?.Id??0,StartsAt=new(6,0,0),EndsAt=new(23,0,0)});
   private void EditMenu(RestaurantMenuAdminDto menu)=>menuEditor=new(){Rfc=CurrentRfc,Id=menu.Id,MenuCode=menu.MenuCode,Name=menu.Name,IsPublished=menu.IsPublished,IsActive=menu.IsActive,Schedules=menu.Schedules.Select(row=>new RestaurantMenuScheduleSaveRequest{SiteId=row.SiteId,DayOfWeek=row.DayOfWeek,StartsAt=row.StartsAt,EndsAt=row.EndsAt}).ToList(),Sections=menu.Sections.Select(row=>new RestaurantMenuSectionSaveRequest{Name=row.Name,SortOrder=row.SortOrder,ProductIds=row.ProductIds.ToList()}).ToList()};
   private async Task SaveMenuAsync(){menuEditor.Rfc=CurrentRfc;await SaveAsync(()=>CatalogService.SaveMenuAsync(menuEditor),"menus");}
-  private void NewModifier(){modifierEditor=NewModifierEditor();modifierEditor.Rfc=CurrentRfc;} private void AddOption()=>modifierEditor.Options.Add(new(){Name=$"Opción {modifierEditor.Options.Count+1}",SortOrder=modifierEditor.Options.Count}); private void AddDelta(RestaurantModifierOptionSaveRequest option)=>option.IngredientDeltas.Add(new(){UnitId=materialCatalog.Units.FirstOrDefault()?.Id??0,QuantityDelta=1});
-  private void EditModifier(RestaurantModifierAdminDto group)=>modifierEditor=new(){Rfc=CurrentRfc,Id=group.Id,Name=group.Name,MinSelections=group.MinSelections,MaxSelections=group.MaxSelections,SortOrder=group.SortOrder,IsActive=group.IsActive,ProductIds=group.ProductIds.ToList(),Options=group.Options.Select(option=>new RestaurantModifierOptionSaveRequest{Id=option.Id,Name=option.Name,PriceDelta=option.PriceDelta,SortOrder=option.SortOrder,IngredientDeltas=option.IngredientDeltas.Select(delta=>new RestaurantModifierDeltaSaveRequest{MaterialId=delta.MaterialId,QuantityDelta=delta.QuantityDelta,UnitId=delta.UnitId}).ToList()}).ToList()};
-  private async Task SaveModifierAsync(){modifierEditor.Rfc=CurrentRfc;await SaveAsync(()=>CatalogService.SaveModifierGroupAsync(modifierEditor),"modifiers");}
-  private async Task SaveAsync(Func<Task<RestaurantCommandResult>> action,string selected){isBusy=true;try{var result=await action();Show(result.Message,!result.Success);if(result.Success){await LoadAsync();if(selected=="menus"&&result.EntityId.HasValue){var found=menus.FirstOrDefault(x=>x.Id==result.EntityId);if(found is not null)EditMenu(found);}if(selected=="modifiers"&&result.EntityId.HasValue){var found=modifiers.FirstOrDefault(x=>x.Id==result.EntityId);if(found is not null)EditModifier(found);}}}catch(Exception ex){Show(ex.Message,true);}finally{isBusy=false;}}
-  private static void ToggleProduct(List<long> ids,long id){if(!ids.Remove(id))ids.Add(id);} private static string DayName(byte day)=>day switch{0=>"Domingo",1=>"Lunes",2=>"Martes",3=>"Miércoles",4=>"Jueves",5=>"Viernes",6=>"Sábado",_=>"Día"}; private static string FormatTime(TimeSpan value)=>value.ToString(@"hh\:mm"); private static void SetStart(RestaurantMenuScheduleSaveRequest row,object? value){if(TimeSpan.TryParse(value?.ToString(),out var time))row.StartsAt=time;} private static void SetEnd(RestaurantMenuScheduleSaveRequest row,object? value){if(TimeSpan.TryParse(value?.ToString(),out var time))row.EndsAt=time;}
-  private void Show(string value,bool error){message=value;isError=error;} private static RestaurantMenuSaveRequest NewMenuEditor()=>new(){IsActive=true,Sections=[new(){Name="Principal"}]}; private static RestaurantModifierSaveRequest NewModifierEditor()=>new(){IsActive=true,MaxSelections=1,Options=[new(){Name="Opción 1"}]};
+
+  private void EditCombo(RestaurantProductDto product,RestaurantComboAdminDto? combo)
+  {
+    componentSearch=string.Empty;
+    comboEditor=new RestaurantComboSaveRequest
+    {
+      Rfc=CurrentRfc,
+      ProductId=product.Id,
+      Slots=combo?.Slots.Select(slot=>new RestaurantComboSlotSaveRequest
+      {
+        Id=slot.Id,Name=slot.Name,MinSelections=slot.MinSelections,MaxSelections=slot.MaxSelections,SortOrder=slot.SortOrder,IsActive=slot.IsActive,
+        Options=slot.Options.Select(option=>new RestaurantComboSlotOptionSaveRequest
+        {
+          Id=option.Id,ComponentProductId=option.ComponentProductId,Quantity=option.Quantity,PriceDelta=option.PriceDelta,IsDefault=option.IsDefault,SortOrder=option.SortOrder,IsActive=option.IsActive,
+          Routes=option.Routes.Select(route=>new RestaurantComboOptionRouteSaveRequest{MenuId=route.MenuId,MenuSectionId=route.MenuSectionId}).ToList()
+        }).ToList()
+      }).ToList()??[]
+    };
+  }
+  private void AddComboSlot()=>comboEditor.Slots.Add(new(){Name=$"Grupo {comboEditor.Slots.Count+1}",MinSelections=1,MaxSelections=1,SortOrder=comboEditor.Slots.Count,IsActive=true});
+  private void AddComboOption(RestaurantComboSlotSaveRequest slot)=>slot.Options.Add(new(){Quantity=1,SortOrder=slot.Options.Count,IsActive=true,IsDefault=slot.Options.Count<slot.MinSelections});
+  private void SetDefault(RestaurantComboSlotSaveRequest slot,RestaurantComboSlotOptionSaveRequest option,bool selected)
+  {
+    option.IsDefault=selected;
+    if(selected&&slot.MaxSelections==1) foreach(var other in slot.Options.Where(item=>!ReferenceEquals(item,option))) other.IsDefault=false;
+  }
+  private void AddRoute(RestaurantComboSlotOptionSaveRequest option)
+  {
+    var menu=menus.FirstOrDefault();
+    option.Routes.Add(new(){MenuId=menu?.Id??0,MenuSectionId=menu?.Sections.FirstOrDefault()?.Id??0});
+  }
+  private void SetRouteMenu(RestaurantComboOptionRouteSaveRequest route,object? value)
+  {
+    route.MenuId=long.TryParse(value?.ToString(),out var id)?id:0;
+    route.MenuSectionId=menus.FirstOrDefault(item=>item.Id==route.MenuId)?.Sections.FirstOrDefault()?.Id??0;
+  }
+  private IEnumerable<RestaurantMenuSectionAdminDto> SectionsFor(long menuId)=>menus.FirstOrDefault(item=>item.Id==menuId)?.Sections??[];
+  private IEnumerable<RestaurantProductDto> ComponentChoices(long selectedId)=>products.Where(item=>item.ProductKind==RestaurantProductKinds.Standard&&item.IsActive&&(item.Id==selectedId||ProductMatches(item,componentSearch))).OrderBy(item=>item.Name);
+  private string DefaultOptionSummary(RestaurantComboSlotSaveRequest slot)
+  {
+    var names=slot.Options.Where(item=>item.IsActive&&item.IsDefault).Select(item=>ComponentName(item.ComponentProductId)).Where(item=>!string.IsNullOrWhiteSpace(item)).ToList();
+    return names.Count==0?"Sin opción predeterminada":string.Join(" + ",names);
+  }
+  private string ComponentName(long id)=>products.FirstOrDefault(item=>item.Id==id)?.Name??"Producto pendiente";
+  private List<string> ValidateCombo(bool includeRequiredMessage)
+  {
+    var warnings=new List<string>();
+    if(comboEditor.Slots.Count==0&&includeRequiredMessage) warnings.Add("Agrega al menos un grupo al combo.");
+    foreach(var slot in comboEditor.Slots)
+    {
+      if(string.IsNullOrWhiteSpace(slot.Name)) warnings.Add("Todos los grupos necesitan nombre.");
+      if(slot.MinSelections<0||slot.MaxSelections<1||slot.MinSelections>slot.MaxSelections) warnings.Add($"{slot.Name}: revisa el mínimo y máximo.");
+      var active=slot.Options.Where(item=>item.IsActive).ToList();
+      if(active.Count<slot.MinSelections) warnings.Add($"{slot.Name}: faltan opciones activas para cubrir el mínimo.");
+      var defaults=active.Count(item=>item.IsDefault);
+      if(defaults<slot.MinSelections||defaults>slot.MaxSelections) warnings.Add($"{slot.Name}: configura entre {slot.MinSelections} y {slot.MaxSelections} opciones predeterminadas.");
+      if(active.Any(item=>item.ComponentProductId<=0)) warnings.Add($"{slot.Name}: selecciona el producto de todas las opciones.");
+      if(active.Any(item=>products.FirstOrDefault(product=>product.Id==item.ComponentProductId)?.ProductKind==RestaurantProductKinds.Combo)) warnings.Add($"{slot.Name}: un combo no puede contener otro combo.");
+      if(active.Any(item=>item.Quantity<=0)) warnings.Add($"{slot.Name}: las cantidades deben ser mayores a cero.");
+      if(active.SelectMany(item=>item.Routes).Any(route=>route.MenuId<=0||route.MenuSectionId<=0)) warnings.Add($"{slot.Name}: completa o elimina las rutas incompletas.");
+    }
+    return warnings.Distinct().ToList();
+  }
+  private async Task SaveComboAsync()
+  {
+    comboEditor.Rfc=CurrentRfc;
+    var warnings=ValidateCombo(includeRequiredMessage:true);
+    if(warnings.Count>0){Show(string.Join(" ",warnings),true);return;}
+    await SaveAsync(()=>CatalogService.SaveComboAsync(comboEditor),"combos");
+  }
+
+  private void NewModifier(){modifierEditor=NewModifierEditor();modifierEditor.Rfc=CurrentRfc;productSearch=string.Empty;}
+  private void AddOption()=>modifierEditor.Options.Add(new(){Name=$"Opción {modifierEditor.Options.Count+1}",SortOrder=modifierEditor.Options.Count});
+  private void AddEffect(RestaurantModifierOptionSaveRequest option,string effectKind)=>option.IngredientDeltas.Add(new(){EffectKind=effectKind,UnitId=effectKind==RestaurantModifierEffectKinds.RemoveIngredient?null:materialCatalog.Units.FirstOrDefault()?.Id,QuantityDelta=effectKind==RestaurantModifierEffectKinds.RemoveIngredient?0:1});
+  private void AddSubstitution(RestaurantModifierOptionSaveRequest option){AddEffect(option,RestaurantModifierEffectKinds.RemoveIngredient);AddEffect(option,RestaurantModifierEffectKinds.AddQuantity);}
+  private void EditModifier(RestaurantModifierAdminDto group)=>modifierEditor=new(){Rfc=CurrentRfc,Id=group.Id,Name=group.Name,MinSelections=group.MinSelections,MaxSelections=group.MaxSelections,SortOrder=group.SortOrder,IsActive=group.IsActive,ProductIds=group.ProductIds.ToList(),Options=group.Options.Select(option=>new RestaurantModifierOptionSaveRequest{Id=option.Id,Name=option.Name,PriceDelta=option.PriceDelta,SortOrder=option.SortOrder,IngredientDeltas=option.IngredientDeltas.Select(delta=>new RestaurantModifierDeltaSaveRequest{MaterialId=delta.MaterialId,EffectKind=delta.EffectKind,QuantityDelta=delta.QuantityDelta,UnitId=delta.UnitId}).ToList()}).ToList()};
+  private async Task SaveModifierAsync()
+  {
+    modifierEditor.Rfc=CurrentRfc;
+    foreach(var effect in modifierEditor.Options.SelectMany(item=>item.IngredientDeltas).Where(item=>item.EffectKind==RestaurantModifierEffectKinds.RemoveIngredient)){effect.QuantityDelta=0;effect.UnitId=null;}
+    await SaveAsync(()=>CatalogService.SaveModifierGroupAsync(modifierEditor),"modifiers");
+  }
+
+  private async Task SaveAsync(Func<Task<RestaurantCommandResult>> action,string selected)
+  {
+    isBusy=true;
+    try
+    {
+      var result=await action();Show(result.Message,!result.Success);
+      if(result.Success)
+      {
+        var comboProductId=comboEditor.ProductId;
+        await LoadAsync();
+        if(selected=="menus"&&result.EntityId.HasValue){var found=menus.FirstOrDefault(x=>x.Id==result.EntityId);if(found is not null)EditMenu(found);}
+        if(selected=="modifiers"&&result.EntityId.HasValue){var found=modifiers.FirstOrDefault(x=>x.Id==result.EntityId);if(found is not null)EditModifier(found);}
+        if(selected=="combos"){var product=products.FirstOrDefault(x=>x.Id==comboProductId);if(product is not null)EditCombo(product,combos.FirstOrDefault(x=>x.ProductId==comboProductId));}
+      }
+    }
+    catch(Exception ex){Show(ex.Message,true);}
+    finally{isBusy=false;}
+  }
+
+  private static bool ProductMatches(RestaurantProductDto product,string search)=>string.IsNullOrWhiteSpace(search)||product.Name.Contains(search,StringComparison.OrdinalIgnoreCase)||product.Sku.Contains(search,StringComparison.OrdinalIgnoreCase)||(product.VariantName?.Contains(search,StringComparison.OrdinalIgnoreCase)??false);
+  private static void ToggleProduct(List<long> ids,long id){if(!ids.Remove(id))ids.Add(id);}
+  private static string DayName(byte day)=>day switch{0=>"Domingo",1=>"Lunes",2=>"Martes",3=>"Miércoles",4=>"Jueves",5=>"Viernes",6=>"Sábado",_=>"Día"};
+  private static string FormatTime(TimeSpan value)=>value.ToString(@"hh\:mm");
+  private static void SetStart(RestaurantMenuScheduleSaveRequest row,object? value){if(TimeSpan.TryParse(value?.ToString(),out var time))row.StartsAt=time;}
+  private static void SetEnd(RestaurantMenuScheduleSaveRequest row,object? value){if(TimeSpan.TryParse(value?.ToString(),out var time))row.EndsAt=time;}
+  private void Show(string value,bool error){message=value;isError=error;}
+  private static RestaurantMenuSaveRequest NewMenuEditor()=>new(){IsActive=true,Sections=[new(){Name="Principal"}]};
+  private static RestaurantModifierSaveRequest NewModifierEditor()=>new(){IsActive=true,MaxSelections=1,Options=[new(){Name="Opción 1"}]};
 }

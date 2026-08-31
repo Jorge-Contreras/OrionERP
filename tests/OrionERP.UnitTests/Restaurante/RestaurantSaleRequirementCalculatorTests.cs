@@ -115,6 +115,96 @@ public sealed class RestaurantSaleRequirementCalculatorTests
     Assert.Equal(2.1m, result.Requirements[300]);
   }
 
+  [Fact]
+  public void Calculate_RemoveIngredient_ClearsExpandedRequirementAfterWasteAndConversion()
+  {
+    var graph = Graph(
+      materials:
+      [
+        Material(100, "CHILA", "Chilaquiles", "MakeToOrder", 1),
+        Material(200, "ONION", "Cebolla morada", "StockItem", 1),
+        Material(300, "TORTILLA", "Totopos", "StockItem", 1)
+      ],
+      boms: [Bom(100, 10, 1, Component(1, 200, 30, 2, 10), Component(2, 300, 200, 2, 0))],
+      conversions:
+      [
+        new RestaurantSaleUnitConversionNode { MaterialId = 200, FromUnitId = 2, ToUnitId = 1, Factor = 0.001m },
+        new RestaurantSaleUnitConversionNode { MaterialId = 300, FromUnitId = 2, ToUnitId = 1, Factor = 0.001m }
+      ],
+      deltas:
+      [
+        new RestaurantSaleModifierDeltaNode
+        {
+          OptionId = 7,
+          MaterialId = 200,
+          EffectKind = RestaurantModifierEffectKinds.RemoveIngredient,
+          QuantityDelta = 0
+        }
+      ]);
+
+    var result = RestaurantSaleRequirementCalculator.Calculate(graph, 100, "CHILA-01", 1, [7]);
+
+    Assert.Empty(result.Issues);
+    Assert.False(result.Requirements.ContainsKey(200));
+    Assert.Equal(0.2m, result.Requirements[300]);
+  }
+
+  [Fact]
+  public void Calculate_Substitution_RemovesOriginalAndAddsReplacement()
+  {
+    var graph = Graph(
+      materials:
+      [
+        Material(100, "DISH", "Platillo", "MakeToOrder", 1),
+        Material(200, "ONION", "Cebolla", "StockItem", 1),
+        Material(400, "PEPPER", "Pimiento", "StockItem", 1)
+      ],
+      boms: [Bom(100, 10, 1, Component(1, 200, 30, 2, 10))],
+      conversions:
+      [
+        new RestaurantSaleUnitConversionNode { MaterialId = 200, FromUnitId = 2, ToUnitId = 1, Factor = 0.001m },
+        new RestaurantSaleUnitConversionNode { MaterialId = 400, FromUnitId = 2, ToUnitId = 1, Factor = 0.001m }
+      ],
+      deltas:
+      [
+        new RestaurantSaleModifierDeltaNode { OptionId = 9, MaterialId = 200, EffectKind = RestaurantModifierEffectKinds.RemoveIngredient },
+        new RestaurantSaleModifierDeltaNode { OptionId = 9, MaterialId = 400, EffectKind = RestaurantModifierEffectKinds.AddQuantity, QuantityDelta = 25, UnitId = 2 }
+      ]);
+
+    var result = RestaurantSaleRequirementCalculator.Calculate(graph, 100, "DISH-01", 2, [9]);
+
+    Assert.Empty(result.Issues);
+    Assert.False(result.Requirements.ContainsKey(200));
+    Assert.Equal(0.05m, result.Requirements[400]);
+  }
+
+  [Fact]
+  public void Calculate_AdjustQuantity_PreservesHistoricalSignedDeltaCompatibility()
+  {
+    var graph = Graph(
+      materials: [Material(300, "MEAT", "Carne", "StockItem", 1)],
+      deltas:
+      [
+        new RestaurantSaleModifierDeltaNode
+        {
+          OptionId = 11,
+          MaterialId = 300,
+          EffectKind = RestaurantModifierEffectKinds.AdjustQuantity,
+          QuantityDelta = -250,
+          UnitId = 2
+        }
+      ],
+      conversions:
+      [
+        new RestaurantSaleUnitConversionNode { MaterialId = 300, FromUnitId = 2, ToUnitId = 1, Factor = 0.001m }
+      ]);
+
+    var result = RestaurantSaleRequirementCalculator.Calculate(graph, 300, "MEAT-01", 2, [11]);
+
+    Assert.Empty(result.Issues);
+    Assert.Equal(1.5m, result.Requirements[300]);
+  }
+
   private static RestaurantSaleRequirementGraph Graph(
     IReadOnlyList<RestaurantSaleMaterialNode> materials,
     IReadOnlyList<RestaurantSaleBomNode>? boms = null,
@@ -164,4 +254,3 @@ public sealed class RestaurantSaleRequirementCalculatorTests
       SortOrder = (int)id
     };
 }
-

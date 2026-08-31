@@ -26,6 +26,45 @@ public static class RestaurantPaymentStatuses
   public const string PendingSettlement = "PendingSettlement";
 }
 
+public static class RestaurantProductKinds
+{
+  public const string Standard = "Standard";
+  public const string Combo = "Combo";
+
+  public static bool IsValid(string? value)
+    => string.Equals(value, Standard, StringComparison.OrdinalIgnoreCase)
+       || string.Equals(value, Combo, StringComparison.OrdinalIgnoreCase);
+
+  public static string Normalize(string? value)
+    => string.Equals(value, Combo, StringComparison.OrdinalIgnoreCase) ? Combo : Standard;
+}
+
+public static class RestaurantOrderLineKinds
+{
+  public const string Standard = "Standard";
+  public const string Combo = "Combo";
+  public const string ComboComponent = "ComboComponent";
+}
+
+public static class RestaurantModifierEffectKinds
+{
+  public const string AddQuantity = "AddQuantity";
+  public const string RemoveIngredient = "RemoveIngredient";
+  public const string AdjustQuantity = "AdjustQuantity";
+
+  public static bool IsValid(string? value)
+    => string.Equals(value, AddQuantity, StringComparison.OrdinalIgnoreCase)
+       || string.Equals(value, RemoveIngredient, StringComparison.OrdinalIgnoreCase)
+       || string.Equals(value, AdjustQuantity, StringComparison.OrdinalIgnoreCase);
+
+  public static string Normalize(string? value)
+    => string.Equals(value, AddQuantity, StringComparison.OrdinalIgnoreCase)
+      ? AddQuantity
+      : string.Equals(value, RemoveIngredient, StringComparison.OrdinalIgnoreCase)
+        ? RemoveIngredient
+        : AdjustQuantity;
+}
+
 public sealed class RestaurantSiteDto
 {
   public int Id { get; set; }
@@ -60,8 +99,9 @@ public sealed class RestaurantProductDto
 {
   public long Id { get; set; }
   public long ProductCardId { get; set; }
-  public int MaterialId { get; set; }
-  public int MaterialCategoryId { get; set; }
+  public int? MaterialId { get; set; }
+  public int? MaterialCategoryId { get; set; }
+  public string ProductKind { get; set; } = RestaurantProductKinds.Standard;
   public string Sku { get; set; } = string.Empty;
   public string Name { get; set; } = string.Empty;
   public string? Description { get; set; }
@@ -80,6 +120,7 @@ public sealed class RestaurantProductDto
   public IReadOnlyList<string> Allergens { get; set; } = Array.Empty<string>();
   public IReadOnlyList<string> DietaryTags { get; set; } = Array.Empty<string>();
   public IReadOnlyList<RestaurantModifierGroupDto> ModifierGroups { get; set; } = Array.Empty<RestaurantModifierGroupDto>();
+  public IReadOnlyList<RestaurantComboSlotDto> ComboSlots { get; set; } = Array.Empty<RestaurantComboSlotDto>();
 }
 
 public sealed class RestaurantProductUpsertRequest
@@ -87,7 +128,8 @@ public sealed class RestaurantProductUpsertRequest
   [Required] public string Rfc { get; set; } = string.Empty;
   public long? Id { get; set; }
   public long? ProductCardId { get; set; }
-  [Required] public int MaterialId { get; set; }
+  public int? MaterialId { get; set; }
+  [Required, StringLength(20)] public string ProductKind { get; set; } = RestaurantProductKinds.Standard;
   /// <summary>
   /// Rol de producción del material. Sustituye a los antiguos campos independientes
   /// ProductType/FulfillmentMode, que podían quedar en combinaciones contradictorias.
@@ -127,6 +169,54 @@ public sealed class RestaurantModifierOptionDto
   public long Id { get; set; }
   public string Name { get; set; } = string.Empty;
   public decimal PriceDelta { get; set; }
+  public IReadOnlyList<RestaurantModifierEffectDto> IngredientEffects { get; set; } = Array.Empty<RestaurantModifierEffectDto>();
+}
+
+public sealed class RestaurantModifierEffectDto
+{
+  public int MaterialId { get; set; }
+  public string MaterialName { get; set; } = string.Empty;
+  public string EffectKind { get; set; } = RestaurantModifierEffectKinds.AdjustQuantity;
+  public decimal Quantity { get; set; }
+  public int? UnitId { get; set; }
+  public string? UnitName { get; set; }
+}
+
+public sealed class RestaurantComboSlotDto
+{
+  public long Id { get; set; }
+  public string Name { get; set; } = string.Empty;
+  public int MinSelections { get; set; }
+  public int MaxSelections { get; set; }
+  public int SortOrder { get; set; }
+  public bool IsActive { get; set; }
+  public IReadOnlyList<RestaurantComboSlotOptionDto> Options { get; set; } = Array.Empty<RestaurantComboSlotOptionDto>();
+}
+
+public sealed class RestaurantComboSlotOptionDto
+{
+  public long Id { get; set; }
+  public long ComponentProductId { get; set; }
+  public string ComponentProductName { get; set; } = string.Empty;
+  public string ComponentSku { get; set; } = string.Empty;
+  public decimal Quantity { get; set; } = 1;
+  public decimal PriceDelta { get; set; }
+  public bool IsDefault { get; set; }
+  public int SortOrder { get; set; }
+  public bool IsActive { get; set; }
+  public bool IsSoldOut { get; set; }
+  public IReadOnlyList<string> Allergens { get; set; } = Array.Empty<string>();
+  public IReadOnlyList<RestaurantModifierGroupDto> ComponentModifierGroups { get; set; } = Array.Empty<RestaurantModifierGroupDto>();
+  public RestaurantProductDto? ComponentProduct { get; set; }
+  public IReadOnlyList<RestaurantComboOptionRouteDto> Routes { get; set; } = Array.Empty<RestaurantComboOptionRouteDto>();
+}
+
+public sealed class RestaurantComboOptionRouteDto
+{
+  public long MenuId { get; set; }
+  public string MenuName { get; set; } = string.Empty;
+  public long MenuSectionId { get; set; }
+  public string MenuSectionName { get; set; } = string.Empty;
 }
 
 public sealed class RestaurantMenuSectionDto
@@ -203,8 +293,17 @@ public sealed class RestaurantOrderLineCreateRequest
   [Range(typeof(decimal), "0.01", "999999999")] public decimal? CustomUnitPrice { get; set; }
   [Range(typeof(decimal), "0.0001", "999999")] public decimal Quantity { get; set; } = 1;
   public decimal DiscountAmount { get; set; }
-  public string? Notes { get; set; }
+  [StringLength(500)] public string? Notes { get; set; }
   public List<long> ModifierOptionIds { get; set; } = [];
+  public List<RestaurantComboSelectionCreateRequest> ComboSelections { get; set; } = [];
+}
+
+public sealed class RestaurantComboSelectionCreateRequest
+{
+  public long ComboSlotId { get; set; }
+  public long ComboSlotOptionId { get; set; }
+  public List<long> ModifierOptionIds { get; set; } = [];
+  [StringLength(500)] public string? Notes { get; set; }
 }
 
 public sealed class RestaurantPaymentCreateRequest
@@ -365,11 +464,20 @@ public sealed class RestaurantReceiptLineDto
   public int? MenuSectionSortOrder { get; set; }
   public string ProductName { get; set; } = string.Empty;
   public bool IsCustom { get; set; }
+  public string LineKind { get; set; } = RestaurantOrderLineKinds.Standard;
+  public long? ParentOrderLineId { get; set; }
+  public long? ComboSlotId { get; set; }
+  public long? ComboSlotOptionId { get; set; }
+  public string? ParentProductName { get; set; }
+  public string? ComboSlotName { get; set; }
   public decimal Quantity { get; set; }
   public decimal UnitPrice { get; set; }
+  public decimal BaseUnitPrice { get; set; }
+  public decimal ChoicePriceDelta { get; set; }
   public decimal DiscountAmount { get; set; }
   public string? Notes { get; set; }
   public IReadOnlyList<string> Modifiers { get; set; } = Array.Empty<string>();
+  public IReadOnlyList<RestaurantOrderLineModifierDto> StructuredModifiers { get; set; } = Array.Empty<RestaurantOrderLineModifierDto>();
 }
 
 public sealed class RestaurantOrderLineDto
@@ -381,13 +489,33 @@ public sealed class RestaurantOrderLineDto
   public int? MenuSectionSortOrder { get; set; }
   public string ProductName { get; set; } = string.Empty;
   public bool IsCustom { get; set; }
+  public string LineKind { get; set; } = RestaurantOrderLineKinds.Standard;
+  public long? ParentOrderLineId { get; set; }
+  public long? ComboSlotId { get; set; }
+  public long? ComboSlotOptionId { get; set; }
+  public string? ParentProductName { get; set; }
+  public string? ComboSlotName { get; set; }
   public decimal Quantity { get; set; }
+  public decimal UnitPrice { get; set; }
+  public decimal BaseUnitPrice { get; set; }
+  public decimal ChoicePriceDelta { get; set; }
   public string Status { get; set; } = string.Empty;
   public string? Notes { get; set; }
   public int? PreparationMinutes { get; set; }
   public DateTime? StartedAt { get; set; }
   public DateTime? ReadyAt { get; set; }
   public IReadOnlyList<string> Modifiers { get; set; } = Array.Empty<string>();
+  public IReadOnlyList<RestaurantOrderLineModifierDto> StructuredModifiers { get; set; } = Array.Empty<RestaurantOrderLineModifierDto>();
+}
+
+public sealed class RestaurantOrderLineModifierDto
+{
+  public long ModifierOptionId { get; set; }
+  public string GroupName { get; set; } = string.Empty;
+  public string Name { get; set; } = string.Empty;
+  public decimal PriceDelta { get; set; }
+  public int Quantity { get; set; } = 1;
+  public string EffectKind { get; set; } = RestaurantModifierEffectKinds.AdjustQuantity;
 }
 
 public sealed class RestaurantOrderEventDto
@@ -831,6 +959,51 @@ public sealed class RestaurantMenuSectionSaveRequest
   public List<long> ProductIds { get; set; } = [];
 }
 
+public sealed class RestaurantComboAdminDto
+{
+  public long ProductId { get; set; }
+  public string ProductName { get; set; } = string.Empty;
+  public string Sku { get; set; } = string.Empty;
+  public bool IsActive { get; set; }
+  public IReadOnlyList<RestaurantComboSlotDto> Slots { get; set; } = Array.Empty<RestaurantComboSlotDto>();
+}
+
+public sealed class RestaurantComboSaveRequest
+{
+  [Required] public string Rfc { get; set; } = string.Empty;
+  public long ProductId { get; set; }
+  [MinLength(1)] public List<RestaurantComboSlotSaveRequest> Slots { get; set; } = [];
+}
+
+public sealed class RestaurantComboSlotSaveRequest
+{
+  public long? Id { get; set; }
+  [Required, StringLength(120)] public string Name { get; set; } = string.Empty;
+  [Range(0, 50)] public int MinSelections { get; set; }
+  [Range(1, 50)] public int MaxSelections { get; set; } = 1;
+  public int SortOrder { get; set; }
+  public bool IsActive { get; set; } = true;
+  [MinLength(1)] public List<RestaurantComboSlotOptionSaveRequest> Options { get; set; } = [];
+}
+
+public sealed class RestaurantComboSlotOptionSaveRequest
+{
+  public long? Id { get; set; }
+  public long ComponentProductId { get; set; }
+  [Range(typeof(decimal), "0.0001", "999999")] public decimal Quantity { get; set; } = 1;
+  [Range(typeof(decimal), "0", "999999999")] public decimal PriceDelta { get; set; }
+  public bool IsDefault { get; set; }
+  public int SortOrder { get; set; }
+  public bool IsActive { get; set; } = true;
+  public List<RestaurantComboOptionRouteSaveRequest> Routes { get; set; } = [];
+}
+
+public sealed class RestaurantComboOptionRouteSaveRequest
+{
+  public long MenuId { get; set; }
+  public long MenuSectionId { get; set; }
+}
+
 public sealed class RestaurantModifierAdminDto
 {
   public long Id { get; set; }
@@ -855,8 +1028,11 @@ public sealed class RestaurantModifierOptionAdminDto
 public sealed class RestaurantModifierDeltaAdminDto
 {
   public int MaterialId { get; set; }
+  public string MaterialName { get; set; } = string.Empty;
+  public string EffectKind { get; set; } = RestaurantModifierEffectKinds.AdjustQuantity;
   public decimal QuantityDelta { get; set; }
-  public int UnitId { get; set; }
+  public int? UnitId { get; set; }
+  public string? UnitName { get; set; }
 }
 
 public sealed class RestaurantModifierSaveRequest
@@ -884,8 +1060,9 @@ public sealed class RestaurantModifierOptionSaveRequest
 public sealed class RestaurantModifierDeltaSaveRequest
 {
   public int MaterialId { get; set; }
+  [Required, StringLength(20)] public string EffectKind { get; set; } = RestaurantModifierEffectKinds.AdjustQuantity;
   public decimal QuantityDelta { get; set; }
-  public int UnitId { get; set; }
+  public int? UnitId { get; set; }
 }
 
 public sealed class RestaurantKitchenStationAdminDto

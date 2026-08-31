@@ -21,7 +21,7 @@ public static class RestaurantKitchenProgressRules
     ArgumentNullException.ThrowIfNull(lines);
 
     var activeLines = lines
-      .Where(line => line.Status != "Cancelled")
+      .Where(line => line.Status != "Cancelled" && line.LineKind != RestaurantOrderLineKinds.Combo)
       .ToList();
     if (activeLines.Count == 0)
     {

@@ -1,0 +1,5 @@
+# Archivos temporales usados únicamente para renderizar e inspeccionar el manual.
+.manual-build/
+
+# Encuadre alterno de la misma captura; el manual usa 03-modal-personalizacion-pos.png.
+capturas/03-pos-modal-personalizacion.png

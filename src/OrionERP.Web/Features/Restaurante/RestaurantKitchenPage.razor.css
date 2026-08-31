@@ -25,6 +25,7 @@
 .kds-ticket__section{display:inline-flex;align-items:center;gap:.35rem;border:1px solid color-mix(in srgb,var(--section-accent) 55%,#fff 5%);border-radius:999px;background:color-mix(in srgb,var(--section-accent) 12%,transparent);color:#fff!important;padding:.23rem .45rem;letter-spacing:.04em!important}
 .kds-ticket__section i{width:.48rem;height:.48rem;border-radius:50%;background:var(--section-accent)}
 .kds-custom-label{width:max-content;border-radius:999px;background:rgba(242,189,76,.14);color:#f4cf79!important;padding:.12rem .45rem;font-size:.68rem;font-weight:900;text-transform:uppercase}
+.kds-combo-label{width:max-content;border-radius:.45rem;background:rgba(90,169,255,.14);color:#93c8ff!important;padding:.15rem .48rem;font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.025em}
 .kds-empty--filtered{gap:.65rem}
 .kds-empty--filtered h2,.kds-empty--filtered p{margin:0}
 .kds-empty--filtered button{margin-top:.55rem}

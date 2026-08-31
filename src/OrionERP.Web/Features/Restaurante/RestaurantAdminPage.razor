@@ -87,7 +87,10 @@
               <span class="restaurant-admin__thumb">
                 @if (images.TryGetValue(product.Id, out var image)) { <img src="@image" alt="" /> } else { <span class="oi oi-image" aria-hidden="true"></span> }
               </span>
-              <span><strong>@product.Name</strong><small>@product.Sku @(string.IsNullOrWhiteSpace(product.VariantName) ? null : $"· {product.VariantName}")</small></span>
+              <span>
+                <strong>@product.Name @if (product.ProductKind == RestaurantProductKinds.Combo) { <em class="restaurant-admin__kind">Combo</em> }</strong>
+                <small>@product.Sku @(string.IsNullOrWhiteSpace(product.VariantName) ? null : $"· {product.VariantName}")</small>
+              </span>
               <b>@product.Price.ToString("C")</b>
             </button>
           }
@@ -102,18 +105,40 @@
         <DataAnnotationsValidator />
         <div class="restaurant-admin__panel-title"><div><span>Venta</span><h2>@(productEditor.Id.HasValue ? "Editar producto" : "Nuevo producto")</h2></div></div>
         <ValidationSummary />
-        <RestaurantMaterialPicker Label="Material logístico"
-                                  Options="@materialOptions"
-                                  @bind-Value="productEditor.MaterialId"
-                                  Placeholder="Buscar material por código o nombre…" />
+        <label>Tipo de producto
+          <InputSelect @bind-Value="productEditor.ProductKind" @bind-Value:after="OnProductKindChanged">
+            <option value="@RestaurantProductKinds.Standard">Producto estándar</option>
+            <option value="@RestaurantProductKinds.Combo">Combo</option>
+          </InputSelect>
+          <small>@(IsComboProduct
+            ? "El combo se cobra como una sola partida. Sus componentes se preparan e imprimen por separado y se configuran en Menús y modificadores."
+            : "El producto estándar usa su material o receta para calcular inventario y preparación.")</small>
+        </label>
+        @if (!IsComboProduct)
+        {
+          <RestaurantMaterialPicker Label="Material logístico"
+                                    Options="@materialOptions"
+                                    Value="@(productEditor.MaterialId ?? 0)"
+                                    ValueChanged="value => productEditor.MaterialId = value > 0 ? value : null"
+                                    Placeholder="Buscar material por código o nombre…" />
+        }
+        else
+        {
+          <div class="restaurant-admin__combo-note" role="note">
+            <span class="oi oi-layers" aria-hidden="true"></span>
+            <div><strong>El combo no consume inventario directamente.</strong><small>Guarda el producto y después define sus grupos, productos incluidos y suplementos en <a href="/restaurante/menus">Menús y modificadores › Combos</a>.</small></div>
+          </div>
+        }
         <div class="restaurant-admin__form-row">
-          <label>SKU <InputText @bind-Value="productEditor.Sku" /></label>
-          <label>Precio <InputNumber @bind-Value="productEditor.Price" /></label>
+          <label>SKU <input @bind="productEditor.Sku" @bind:event="oninput" /></label>
+          <label>Precio <input type="number" min="0" step="0.01" @bind="productEditor.Price" @bind:event="oninput" /></label>
         </div>
-        <label>Nombre comercial <InputText @bind-Value="productEditor.Name" /></label>
-        <label>Variante <InputText @bind-Value="productEditor.VariantName" placeholder="Ej. grande, sin azúcar" /></label>
-        <label>Descripción <InputTextArea @bind-Value="productEditor.Description" /></label>
-        <label>Etiquetas de dieta <InputText @bind-Value="dietaryTagsText" placeholder="Vegetariano, sin gluten, vegano…" /><small>Separadas por coma. Verifica ingredientes y contacto cruzado antes de publicar.</small></label>
+        <label>Nombre comercial <input @bind="productEditor.Name" @bind:event="oninput" /></label>
+        <label>Variante <input @bind="productEditor.VariantName" @bind:event="oninput" placeholder="Ej. grande, sin azúcar" /></label>
+        <label>Descripción <textarea @bind="productEditor.Description" @bind:event="oninput"></textarea></label>
+        <label>Etiquetas de dieta <input @bind="dietaryTagsText" @bind:event="oninput" placeholder="Vegetariano, sin gluten, vegano…" /><small>Separadas por coma. Verifica ingredientes y contacto cruzado antes de publicar.</small></label>
+        @if (!IsComboProduct)
+        {
         <label>Rol de producción
           <InputSelect @bind-Value="productEditor.ProductionRole">
             @if (productEditor.ProductionRole == MaterialProductionRoles.Unclassified)
@@ -154,6 +179,7 @@
           <InputNumber @bind-Value="productEditor.PreparationMinutes" min="0" step="1" />
           <small>Tiempo estimado que tarda esta variante. Déjalo vacío si no aplica.</small>
         </label>
+        }
         <label class="restaurant-admin__check"><InputCheckbox @bind-Value="productEditor.IsActive" /> Producto activo</label>
         <label class="restaurant-admin__check"><InputCheckbox @bind-Value="productEditor.SoldOutOverride" /> Marcar agotado manualmente</label>
         <label>Fotografía familiar (compartida por variantes)
@@ -202,6 +228,7 @@
       MaterialProductionRoles.Find(productEditor.ProductionRole)?.FulfillmentMode,
       "MakeToOrder",
       StringComparison.OrdinalIgnoreCase);
+  private bool IsComboProduct => productEditor.ProductKind == RestaurantProductKinds.Combo;
 
   protected override async Task OnInitializedAsync()
   {
@@ -278,6 +305,7 @@
     productEditor = new RestaurantProductUpsertRequest
     {
       Rfc = CurrentRfc, Id = product.Id, ProductCardId = product.ProductCardId, MaterialId = product.MaterialId,
+      ProductKind = product.ProductKind,
       Sku = product.Sku, Name = product.Name, Description = product.Description, VariantName = product.VariantName,
       Price = product.Price, KitchenStationId = product.KitchenStationId, PreparationMinutes = product.PreparationMinutes,
       IsActive = product.IsActive, SoldOutOverride = product.IsSoldOut,
@@ -292,7 +320,14 @@
   private async Task SaveProductAsync()
   {
     productEditor.Rfc = CurrentRfc;
-    if (productEditor.MaterialId <= 0) { Show("Selecciona un material.", true); return; }
+    if (!IsComboProduct && productEditor.MaterialId is null or <= 0) { Show("Selecciona un material.", true); return; }
+    if (IsComboProduct)
+    {
+      productEditor.MaterialId = null;
+      productEditor.KitchenStationId = null;
+      productEditor.PreparationMinutes = null;
+      productEditor.ProductionRole = MaterialProductionRoles.Unclassified;
+    }
     productEditor.DietaryTags = dietaryTagsText.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     await SaveAsync(() => CatalogService.SaveProductAsync(productEditor), "products");
   }
@@ -404,6 +439,14 @@
   }
 
   private void Show(string value, bool error) { message = value; isError = error; }
+  private void OnProductKindChanged()
+  {
+    if (!IsComboProduct) return;
+    productEditor.MaterialId = null;
+    productEditor.KitchenStationId = null;
+    productEditor.PreparationMinutes = null;
+    productEditor.ProductionRole = MaterialProductionRoles.Unclassified;
+  }
   private static RestaurantSiteUpsertRequest NewSiteEditor() => new();
-  private static RestaurantProductUpsertRequest NewProductEditor() => new() { IsActive = true };
+  private static RestaurantProductUpsertRequest NewProductEditor() => new() { IsActive = true, ProductKind = RestaurantProductKinds.Standard };
 }

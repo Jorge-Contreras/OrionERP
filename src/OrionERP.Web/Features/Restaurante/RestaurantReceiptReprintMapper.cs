@@ -29,17 +29,26 @@ public static class RestaurantReceiptReprintMapper
         ProductName = line.ProductName,
         Quantity = line.Quantity,
         UnitPrice = line.UnitPrice,
+        BaseUnitPrice = line.BaseUnitPrice,
+        ChoicePriceDelta = line.ChoicePriceDelta,
         DiscountAmount = line.DiscountAmount,
         Notes = line.Notes,
         Modifiers = line.Modifiers,
+        StructuredModifiers = line.StructuredModifiers,
         IsCustom = line.IsCustom,
+        LineKind = line.LineKind,
+        ParentOrderLineId = line.ParentOrderLineId,
+        ParentProductName = line.ParentProductName,
+        ComboSlotName = line.ComboSlotName,
         SectionName = line.MenuSectionName ?? section?.Name,
         SectionSortOrder = line.MenuSectionSortOrder ?? section?.SortOrder ?? int.MaxValue
       };
     }).ToList();
 
     var merchandiseSubtotal = decimal.Round(
-      lines.Sum(line => line.UnitPrice * line.Quantity),
+      lines
+        .Where(line => line.LineKind != RestaurantOrderLineKinds.ComboComponent)
+        .Sum(line => line.UnitPrice * line.Quantity),
       2,
       MidpointRounding.AwayFromZero);
     var subtotalBeforeTax = decimal.Round(

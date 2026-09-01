@@ -1,4 +1,5 @@
 using System.Globalization;
+using OrionERP.Application.Features.Restaurante;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -219,19 +220,25 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
 
   private static void ComposeCustomerLine(IContainer container, RestaurantReceiptPdfLineModel line, bool pricesIncludeTax)
   {
-    container.Column(column =>
+    var isComponent = line.LineKind == RestaurantOrderLineKinds.ComboComponent;
+    container.PaddingLeft(isComponent ? 10 : 0).Column(column =>
     {
       column.Spacing(1);
       column.Item().Row(row =>
       {
         row.ConstantItem(29).Text(FormatQuantity(line.Quantity)).SemiBold();
-        row.RelativeItem().Text(line.ProductName).SemiBold();
-        row.ConstantItem(52).AlignRight().Text(FormatMoney(LineAmount(line)));
+        row.RelativeItem().Text(isComponent
+          ? $"↳ {(string.IsNullOrWhiteSpace(line.ComboSlotName) ? string.Empty : $"{line.ComboSlotName}: ")}{line.ProductName}"
+          : line.ProductName).SemiBold();
+        row.ConstantItem(52).AlignRight().Text(isComponent
+          ? line.ChoicePriceDelta > 0 ? $"+{FormatMoney(line.ChoicePriceDelta)}" : "incluido"
+          : FormatMoney(LineAmount(line)));
       });
 
-      if (line.Modifiers.Count > 0)
+      var modifierLabels = ModifierLabels(line);
+      if (modifierLabels.Count > 0)
       {
-        column.Item().PaddingLeft(29).Text($"+ {string.Join(", ", line.Modifiers)}")
+        column.Item().PaddingLeft(29).Text(string.Join(" · ", modifierLabels))
           .FontSize(7)
           .FontColor(MutedColor);
       }
@@ -241,13 +248,13 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
           .FontSize(7)
           .FontColor(MutedColor);
       }
-      if (line.DiscountAmount > 0)
+      if (!isComponent && line.DiscountAmount > 0)
       {
         column.Item().PaddingLeft(29).Text($"Descuento de partida: {FormatMoney(line.DiscountAmount)}")
           .FontSize(7)
           .FontColor(MutedColor);
       }
-      if (!pricesIncludeTax)
+      if (!isComponent && !pricesIncludeTax)
       {
         column.Item().PaddingLeft(29).Text("Importe antes de IVA")
           .FontSize(6.5f)
@@ -311,9 +318,17 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
         text.Span(line.ProductName).FontSize(11).Bold();
       });
 
-      if (line.Modifiers.Count > 0)
+      if (line.LineKind == RestaurantOrderLineKinds.ComboComponent && !string.IsNullOrWhiteSpace(line.ParentProductName))
       {
-        column.Item().PaddingLeft(8).Text($"+ {string.Join(", ", line.Modifiers)}").FontSize(9).SemiBold();
+        column.Item().PaddingLeft(8).Text($"COMBO: {line.ParentProductName}" +
+          (string.IsNullOrWhiteSpace(line.ComboSlotName) ? string.Empty : $" · {line.ComboSlotName}"))
+          .FontSize(8).Bold();
+      }
+
+      var modifierLabels = ModifierLabels(line);
+      if (modifierLabels.Count > 0)
+      {
+        column.Item().PaddingLeft(8).Text(string.Join(" · ", modifierLabels)).FontSize(9).SemiBold();
       }
       if (!string.IsNullOrWhiteSpace(line.Notes))
       {
@@ -346,6 +361,17 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
         amountText.FontSize(8).SemiBold();
       }
     });
+  }
+
+  private static IReadOnlyList<string> ModifierLabels(RestaurantReceiptPdfLineModel line)
+  {
+    if (line.StructuredModifiers.Count == 0)
+    {
+      return line.Modifiers.Select(modifier => $"+ {modifier}").ToList();
+    }
+    return line.StructuredModifiers
+      .Select(RestaurantComboOrderRules.FormatModifierInstruction)
+      .ToList();
   }
 
   private static string OrderTypeLabel(RestaurantReceiptPdfDocumentModel model)

@@ -27,13 +27,23 @@ else
         <div class="menu-grid">
           @foreach (var product in section.Products)
           {
-            <article class="menu-card @(product.IsSoldOut ? "is-sold-out" : null)">
+            <article class="menu-card @(product.ProductKind == RestaurantProductKinds.Combo ? "is-combo" : null) @(product.IsSoldOut ? "is-sold-out" : null)">
               <div class="menu-card__image">
                 @if (product.HasImage) { <img src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" loading="lazy" /> }
                 else { <span>Bruno's</span> }
                 @if (product.IsSoldOut) { <b>Agotado por hoy</b> }
               </div>
-              <div class="menu-card__copy"><h3>@product.Name</h3><strong>@product.Price.ToString("C0")</strong><p>@product.Description</p>
+              <div class="menu-card__copy">
+                @if (product.ProductKind == RestaurantProductKinds.Combo) { <span class="menu-card__combo-badge">Combo</span> }
+                <h3>@product.Name</h3><strong>@(product.ProductKind == RestaurantProductKinds.Combo ? $"Desde {product.Price:C0}" : product.Price.ToString("C0"))</strong><p>@product.Description</p>
+                @if (product.ProductKind == RestaurantProductKinds.Combo && product.ComboSlots.Count > 0)
+                {
+                  <div class="menu-card__combo-summary" aria-label="Contenido del combo">
+                    <b>Arma tu combo</b>
+                    <ul>@foreach(var slot in product.ComboSlots.Where(item=>item.IsActive).OrderBy(item=>item.SortOrder)){<li><strong>@slot.Name:</strong> @ComboSlotSummary(slot)</li>}</ul>
+                    <small>Personalízalo al ordenar en caja. Los suplementos se indican antes de cobrar.</small>
+                  </div>
+                }
                 @if (product.Allergens.Count > 0) { <small>Alérgenos declarados: @string.Join(", ", product.Allergens).</small> }
                 @if (product.DietaryTags.Count > 0) { <small>Etiquetas: @string.Join(", ", product.DietaryTags). Consulta al personal para confirmar preparación y contacto cruzado.</small> }
               </div>
@@ -53,6 +63,11 @@ else
   {
     try { catalog = await CatalogService.GetCatalogAsync(BrunoSiteConstants.Rfc, BrunoSiteConstants.SiteCode, DateTimeOffset.Now); }
     finally { isLoading = false; }
+  }
+  private static string ComboSlotSummary(RestaurantComboSlotDto slot)
+  {
+    var options=slot.Options.Where(item=>item.IsActive).OrderBy(item=>item.SortOrder).Select(item=>item.PriceDelta>0?$"{item.ComponentProductName} (+{item.PriceDelta:C0})":item.ComponentProductName).ToList();
+    return options.Count==0?"Consulta disponibilidad":string.Join(" · ",options);
   }
   private static string Slug(string value) => new(value.ToLowerInvariant().Select(character => char.IsLetterOrDigit(character) ? character : '-').ToArray());
 }

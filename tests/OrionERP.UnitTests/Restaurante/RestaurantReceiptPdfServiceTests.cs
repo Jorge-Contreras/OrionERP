@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using OrionERP.Application.Features.Restaurante;
 using OrionERP.Web.Features.Restaurante;
 
 namespace OrionERP.UnitTests.Restaurante;
@@ -27,6 +28,61 @@ public sealed class RestaurantReceiptPdfServiceTests
     var pdfText = Encoding.Latin1.GetString(pdf);
     var pageObjects = Regex.Matches(pdfText, @"/Type\s*/Page(?!s)\b").Count;
     Assert.Equal(5, pageObjects);
+  }
+
+  [Fact]
+  public void Generate_ComboHeaderIsFinancialAndOnlyComponentsCreateSectionTickets()
+  {
+    var model = new RestaurantReceiptPdfDocumentModel
+    {
+      SiteName = "Bruno's",
+      Folio = 7,
+      CustomerName = "Cliente Capacitación",
+      CreatedAt = DateTimeOffset.UtcNow,
+      Subtotal = 110m,
+      Total = 110m,
+      Lines =
+      [
+        new()
+        {
+          ProductName = "Combo capacitación",
+          Quantity = 1,
+          UnitPrice = 110m,
+          LineKind = RestaurantOrderLineKinds.Combo,
+          SectionName = "Combos"
+        },
+        new()
+        {
+          ProductName = "Chilaquiles",
+          Quantity = 1,
+          LineKind = RestaurantOrderLineKinds.ComboComponent,
+          ParentProductName = "Combo capacitación",
+          ComboSlotName = "Platillo",
+          ChoicePriceDelta = 15m,
+          SectionName = "Comida",
+          StructuredModifiers =
+          [
+            new()
+            {
+              Name = "Cebolla",
+              EffectKind = RestaurantModifierEffectKinds.RemoveIngredient
+            },
+            new()
+            {
+              Name = "Carne",
+              EffectKind = RestaurantModifierEffectKinds.AddQuantity
+            }
+          ]
+        }
+      ]
+    };
+
+    var pdf = new RestaurantReceiptPdfService().Generate(model);
+
+    Assert.Equal(1, model.SectionTicketCount);
+    Assert.True(pdf.Length > 1_000);
+    Assert.Equal("%PDF-", Encoding.ASCII.GetString(pdf, 0, 5));
+    Assert.Equal(3, Regex.Matches(Encoding.Latin1.GetString(pdf), @"/Type\s*/Page(?!s)\b").Count);
   }
 
   internal static RestaurantReceiptPdfDocumentModel CreateSampleModel()

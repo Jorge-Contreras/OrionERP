@@ -105,54 +105,112 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
 
       await ValidateOperationalReferencesAsync(conn, tx, rfc, request, ct);
       var catalogLines = request.Lines.Where(line => !line.IsCustom).ToList();
-      var productIds = catalogLines.Select(line => line.ProductId!.Value).Distinct().ToArray();
-      var products = productIds.Length == 0
-        ? []
-        : (await conn.QueryAsync<ProductRow>(new CommandDefinition(
-          """
-          SELECT product.Id, product.MaterialId, material.CategoryId AS MaterialCategoryId,
-                 product.Sku, card.[Name], product.VariantName,
-                 product.Price, product.KitchenStationId, product.PreparationMinutes,
-                 material.FulfillmentMode, material.BaseUnitId, material.TrackLots,
-                 CAST(ISNULL(activeBom.FrozenTheoreticalCost, 0) AS decimal(18,6)) AS TheoreticalCost
-          FROM restaurante.Product product
-          JOIN restaurante.ProductCard card ON card.Rfc = product.Rfc AND card.Id = product.ProductCardId
-          JOIN logistica.Material material ON material.Rfc = product.Rfc AND material.Id = product.MaterialId
-          OUTER APPLY
-          (
-            SELECT TOP (1) bomVersion.FrozenTheoreticalCost
-            FROM logistica.BomHeader bomHeader
-            JOIN logistica.BomVersion bomVersion ON bomVersion.Rfc = bomHeader.Rfc AND bomVersion.BomHeaderId = bomHeader.Id
-            WHERE bomHeader.Rfc = product.Rfc AND bomHeader.ProductMaterialId = product.MaterialId AND bomVersion.[Status] = 'Active'
-          ) activeBom
-          WHERE product.Rfc = @Rfc AND product.Id IN @ProductIds AND product.IsActive = 1
-            AND (@AllowInventoryOverride = 1 OR product.SoldOutOverride = 0);
-          """, new { Rfc = rfc, ProductIds = productIds, AllowInventoryOverride = request.AllowInventoryDeficit }, tx, cancellationToken: ct))).AsList();
-      if (products.Count != productIds.Length)
+      var requestedProductIds = catalogLines.Select(line => line.ProductId!.Value).Distinct().ToArray();
+      var products = (await LoadProductsAsync(
+        conn, tx, rfc, requestedProductIds, request.AllowInventoryDeficit, ct)).ToList();
+      if (products.Count != requestedProductIds.Length)
       {
         throw new InvalidOperationException("Uno o más productos están inactivos o pertenecen a otro RFC.");
       }
 
       var timeZone = TimeZoneInfo.FindSystemTimeZoneById(site.TimeZoneId);
       var localNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, timeZone);
-      var menuSections = await LoadMenuSectionSnapshotsAsync(
-        conn, tx, rfc, request.SiteId, productIds, localNow, ct);
+      var activeMenuId = await LoadActiveMenuIdAsync(conn, tx, rfc, request.SiteId, localNow, ct);
+      var comboParentIds = products
+        .Where(product => string.Equals(product.ProductKind, RestaurantProductKinds.Combo, StringComparison.OrdinalIgnoreCase))
+        .Select(product => product.Id)
+        .ToArray();
+      var comboRows = await LoadComboOptionsAsync(conn, tx, rfc, comboParentIds, activeMenuId, ct);
+      var selectedComboOptionIds = catalogLines
+        .SelectMany(line => line.ComboSelections)
+        .Select(selection => selection.ComboSlotOptionId)
+        .Distinct()
+        .ToHashSet();
+      var componentProductIds = RestaurantComboOrderRules.ResolveSelectedComponentProductIds(
+        comboRows
+          .Where(row => row.ComboSlotOptionId.HasValue && row.ComponentProductId.HasValue)
+          .Select(row => new RestaurantComboOrderOptionRule(
+            row.ComboSlotId,
+            row.ComboSlotOptionId!.Value,
+            row.ComponentProductId!.Value))
+          .ToList(),
+        selectedComboOptionIds).ToArray();
+      var components = await LoadProductsAsync(
+        conn, tx, rfc, componentProductIds, request.AllowInventoryDeficit, ct);
+      if (components.Count != componentProductIds.Length)
+      {
+        throw new InvalidOperationException("Uno o más componentes del combo están inactivos, agotados o pertenecen a otro RFC.");
+      }
+      products.AddRange(components.Where(component => products.All(product => product.Id != component.Id)));
+      if (components.Any(component => string.Equals(component.ProductKind, RestaurantProductKinds.Combo, StringComparison.OrdinalIgnoreCase)))
+      {
+        throw new InvalidOperationException("La versión actual no permite incluir un combo dentro de otro combo.");
+      }
 
-      var requestedOptionIds = catalogLines.SelectMany(line => line.ModifierOptionIds).Distinct().ToArray();
-      var modifierRows = requestedOptionIds.Length == 0
+      var allOperationalProductIds = requestedProductIds
+        .Concat(componentProductIds)
+        .Distinct()
+        .ToArray();
+      var menuSections = await LoadMenuSectionSnapshotsAsync(
+        conn, tx, rfc, activeMenuId, allOperationalProductIds, ct);
+      var menuMemberships = menuSections.Select(item => new RestaurantMenuSectionMembershipRule(
+        item.ProductId,
+        item.MenuSectionId,
+        item.MenuSectionName,
+        item.MenuSectionSortOrder)).ToList();
+
+      var modifierProductIds = products
+        .Where(product => !string.Equals(product.ProductKind, RestaurantProductKinds.Combo, StringComparison.OrdinalIgnoreCase))
+        .Select(product => product.Id)
+        .Distinct()
+        .ToArray();
+      var modifierRows = modifierProductIds.Length == 0
         ? []
         : (await conn.QueryAsync<ModifierRow>(new CommandDefinition(
           """
           SELECT productGroup.ProductId, groupInfo.Id AS ModifierGroupId, groupInfo.[Name] AS GroupName,
                  groupInfo.MinSelections, groupInfo.MaxSelections,
-                 optionInfo.Id, optionInfo.[Name], optionInfo.PriceDelta
+                 optionInfo.Id, optionInfo.[Name], optionInfo.PriceDelta,
+                 CASE
+                   WHEN COUNT(deltaInfo.Id) = 0 THEN NULL
+                   WHEN MIN(deltaInfo.EffectKind) = MAX(deltaInfo.EffectKind) THEN MIN(deltaInfo.EffectKind)
+                   ELSE 'Mixed'
+                 END AS EffectKind
           FROM restaurante.ProductModifierGroup productGroup
           JOIN restaurante.ModifierGroup groupInfo ON groupInfo.Rfc = productGroup.Rfc AND groupInfo.Id = productGroup.ModifierGroupId
           JOIN restaurante.ModifierOption optionInfo ON optionInfo.Rfc = groupInfo.Rfc AND optionInfo.ModifierGroupId = groupInfo.Id
-          WHERE productGroup.Rfc = @Rfc AND optionInfo.Id IN @OptionIds
-            AND groupInfo.IsActive = 1 AND optionInfo.IsActive = 1;
-          """, new { Rfc = rfc, OptionIds = requestedOptionIds }, tx, cancellationToken: ct))).AsList();
-      ValidateModifiers(request, modifierRows);
+          LEFT JOIN restaurante.ModifierIngredientDelta deltaInfo
+            ON deltaInfo.Rfc=optionInfo.Rfc AND deltaInfo.ModifierOptionId=optionInfo.Id
+          WHERE productGroup.Rfc = @Rfc AND productGroup.ProductId IN @ProductIds
+            AND groupInfo.IsActive = 1 AND optionInfo.IsActive = 1
+          GROUP BY productGroup.ProductId,groupInfo.Id,groupInfo.[Name],groupInfo.MinSelections,groupInfo.MaxSelections,
+                   optionInfo.Id,optionInfo.[Name],optionInfo.PriceDelta;
+          """, new { Rfc = rfc, ProductIds = modifierProductIds }, tx, cancellationToken: ct))).AsList();
+      if (modifierRows.Count > 0)
+      {
+        var modifierEffects = (await conn.QueryAsync<ModifierEffectRow>(new CommandDefinition(
+          """
+          SELECT deltaInfo.ModifierOptionId,deltaInfo.EffectKind,
+                 material.[Description] AS MaterialName
+          FROM restaurante.ModifierIngredientDelta deltaInfo
+          JOIN logistica.Material material
+            ON material.Rfc=deltaInfo.Rfc AND material.Id=deltaInfo.MaterialId
+          WHERE deltaInfo.Rfc=@Rfc AND deltaInfo.ModifierOptionId IN @ModifierOptionIds
+          ORDER BY deltaInfo.ModifierOptionId,deltaInfo.Id;
+          """,
+          new { Rfc = rfc, ModifierOptionIds = modifierRows.Select(item => item.Id).Distinct().ToArray() },
+          tx,
+          cancellationToken: ct))).AsList();
+        foreach (var modifier in modifierRows)
+        {
+          modifier.Effects = modifierEffects
+            .Where(effect => effect.ModifierOptionId == modifier.Id)
+            .Select(effect => new ModifierEffectSnapshot(effect.MaterialName, effect.EffectKind))
+            .ToList();
+        }
+      }
+      var comboPlans = BuildComboPlans(request, products, comboRows, menuSections, modifierRows);
+      ValidateModifiers(request, products, modifierRows);
 
       var pricedLines = new List<PricedLine>();
       decimal subtotalBeforeDiscount = 0;
@@ -170,6 +228,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         decimal unitPrice;
         decimal gross;
         MenuSectionSnapshotRow? menuSection = null;
+        IReadOnlyList<PricedComboComponent> comboComponents = [];
         if (line.IsCustom)
         {
           var custom = RestaurantCustomItemRules.CreateSnapshot(line);
@@ -183,22 +242,37 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         {
           var productId = line.ProductId!.Value;
           product = products.Single(item => item.Id == productId);
-          var productSections = menuSections.Where(item => item.ProductId == productId).ToList();
-          if (line.MenuSectionId.HasValue)
+          var membership = RestaurantComboOrderRules.RequireActiveMenuMembership(
+            productId,
+            line.MenuSectionId,
+            menuMemberships);
+          menuSection = new MenuSectionSnapshotRow
           {
-            menuSection = productSections.SingleOrDefault(item => item.MenuSectionId == line.MenuSectionId.Value)
-              ?? throw new InvalidOperationException("La sección seleccionada no contiene el producto en el menú activo.");
-          }
-          else
-          {
-            menuSection = productSections.FirstOrDefault();
-          }
-          modifiers = modifierRows.Where(item => item.ProductId == productId && line.ModifierOptionIds.Contains(item.Id)).ToList();
+            ProductId = productId,
+            MenuSectionId = membership.MenuSectionId,
+            MenuSectionName = membership.MenuSectionName,
+            MenuSectionSortOrder = membership.MenuSectionSortOrder
+          };
+          var isCombo = string.Equals(product.ProductKind, RestaurantProductKinds.Combo, StringComparison.OrdinalIgnoreCase);
+          modifiers = isCombo
+            ? []
+            : modifierRows.Where(item => item.ProductId == productId && line.ModifierOptionIds.Contains(item.Id)).ToList();
           productName = string.IsNullOrWhiteSpace(product.VariantName)
             ? product.Name
             : $"{product.Name} · {product.VariantName}";
           sku = product.Sku;
-          unitPrice = product.Price + modifiers.Sum(item => item.PriceDelta);
+          if (isCombo)
+          {
+            var comboPlan = comboPlans[line];
+            comboComponents = comboPlan.Components;
+            unitPrice = RestaurantComboPricingRules.CalculateUnitPrice(
+              product.Price,
+              comboComponents.Select(ToPriceSelection));
+          }
+          else
+          {
+            unitPrice = product.Price + modifiers.Sum(item => item.PriceDelta);
+          }
           gross = decimal.Round(unitPrice * line.Quantity, 2, MidpointRounding.AwayFromZero);
         }
         if (line.DiscountAmount < 0 || line.DiscountAmount > gross)
@@ -219,7 +293,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           line.IsCustom,
           menuSection?.MenuSectionId,
           menuSection?.MenuSectionName,
-          menuSection?.MenuSectionSortOrder));
+          menuSection?.MenuSectionSortOrder,
+          comboComponents));
       }
 
       var member = await RestaurantLoyaltyTransaction.ValidateMemberAsync(conn, tx, rfc, request.MemberId, ct);
@@ -385,7 +460,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         : RestaurantOrderStatuses.AwaitingPayment;
       var balanceDue = decimal.Round(total - paymentAmount, 2, MidpointRounding.AwayFromZero);
       var tips = request.Payments.Sum(payment => payment.TipAmount);
-      var theoreticalCost = pricedLines.Sum(line => (line.Product?.TheoreticalCost ?? 0) * line.Request.Quantity);
+      var theoreticalCost = await CalculateRequirementCostAsync(conn, tx, rfc, inventoryPlan.Requirements, ct);
 
       await conn.ExecuteAsync(new CommandDefinition(
         """
@@ -505,16 +580,26 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           : decimal.Round(discountedLine * site.TaxRate, 2, MidpointRounding.AwayFromZero);
         var lineTotal = site.PricesIncludeTax ? discountedLine : discountedLine + lineTax;
         const string lineStatus = "Pending";
+        var lineKind = pricedLine.Product is not null &&
+                       string.Equals(pricedLine.Product.ProductKind, RestaurantProductKinds.Combo, StringComparison.OrdinalIgnoreCase)
+          ? RestaurantOrderLineKinds.Combo
+          : RestaurantOrderLineKinds.Standard;
+        var baseUnitPrice = pricedLine.IsCustom
+          ? pricedLine.UnitPrice
+          : pricedLine.Product?.Price ?? pricedLine.UnitPrice;
         var lineId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
           """
           INSERT INTO restaurante.OrderLine
             (Rfc, OrderId, ProductId, IsCustom, ProductNameSnapshot, SkuSnapshot, Quantity, UnitPrice,
              DiscountAmount, TaxAmount, LineTotal, [Status], KitchenStationId, Notes,
-             MenuSectionIdSnapshot, MenuSectionNameSnapshot, MenuSectionSortOrderSnapshot)
+             MenuSectionIdSnapshot, MenuSectionNameSnapshot, MenuSectionSortOrderSnapshot,
+             LineKind,ParentOrderLineId,ComboSlotId,ComboSlotOptionId,ParentProductNameSnapshot,
+             ComboSlotNameSnapshot,BaseUnitPrice,ChoicePriceDelta)
           VALUES
             (@Rfc, @OrderId, @ProductId, @IsCustom, @ProductName, @Sku, @Quantity, @UnitPrice,
              @DiscountAmount, @TaxAmount, @LineTotal, @Status, @KitchenStationId, @Notes,
-             @MenuSectionId, @MenuSectionName, @MenuSectionSortOrder);
+             @MenuSectionId, @MenuSectionName, @MenuSectionSortOrder,
+             @LineKind,NULL,NULL,NULL,NULL,NULL,@BaseUnitPrice,@ChoicePriceDelta);
           SELECT CAST(SCOPE_IDENTITY() AS bigint);
           """, new
           {
@@ -534,16 +619,64 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             Notes = NullIfWhiteSpace(pricedLine.Request.Notes),
             pricedLine.MenuSectionId,
             pricedLine.MenuSectionName,
-            pricedLine.MenuSectionSortOrder
+            pricedLine.MenuSectionSortOrder,
+            LineKind = lineKind,
+            BaseUnitPrice = baseUnitPrice,
+            ChoicePriceDelta = decimal.Round(pricedLine.UnitPrice - baseUnitPrice, 2, MidpointRounding.AwayFromZero)
           }, tx, cancellationToken: ct));
         lineIds[pricedLine.LineKey] = lineId;
         foreach (var modifier in pricedLine.Modifiers)
         {
-          await conn.ExecuteAsync(new CommandDefinition(
+          await InsertLineModifierAsync(conn, tx, rfc, lineId, modifier, ct);
+        }
+
+        foreach (var component in pricedLine.ComboComponents)
+        {
+          var componentName = string.IsNullOrWhiteSpace(component.Product.VariantName)
+            ? component.Product.Name
+            : $"{component.Product.Name} · {component.Product.VariantName}";
+          var componentQuantity = component.TotalQuantity(pricedLine.Request.Quantity);
+          var componentChoiceDelta = RestaurantComboPricingRules.CalculateUnitSupplement([ToPriceSelection(component)]);
+          var componentLineId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
             """
-            INSERT INTO restaurante.OrderLineModifier (Rfc, OrderLineId, ModifierOptionId, [Name], PriceDelta)
-            VALUES (@Rfc, @OrderLineId, @ModifierOptionId, @Name, @PriceDelta);
-            """, new { Rfc = rfc, OrderLineId = lineId, ModifierOptionId = modifier.Id, modifier.Name, modifier.PriceDelta }, tx, cancellationToken: ct));
+            INSERT INTO restaurante.OrderLine
+              (Rfc,OrderId,ProductId,IsCustom,ProductNameSnapshot,SkuSnapshot,Quantity,UnitPrice,
+               DiscountAmount,TaxAmount,LineTotal,[Status],KitchenStationId,Notes,
+               MenuSectionIdSnapshot,MenuSectionNameSnapshot,MenuSectionSortOrderSnapshot,
+               LineKind,ParentOrderLineId,ComboSlotId,ComboSlotOptionId,ParentProductNameSnapshot,
+               ComboSlotNameSnapshot,BaseUnitPrice,ChoicePriceDelta)
+            VALUES
+              (@Rfc,@OrderId,@ProductId,0,@ProductName,@Sku,@Quantity,0,
+               0,0,0,'Pending',@KitchenStationId,@Notes,
+               @MenuSectionId,@MenuSectionName,@MenuSectionSortOrder,
+               @LineKind,@ParentOrderLineId,@ComboSlotId,@ComboSlotOptionId,@ParentProductName,
+               @ComboSlotName,0,@ChoicePriceDelta);
+            SELECT CAST(SCOPE_IDENTITY() AS bigint);
+            """, new
+            {
+              Rfc = rfc,
+              OrderId = orderId,
+              ProductId = component.Product.Id,
+              ProductName = componentName,
+              Sku = component.Product.Sku,
+              Quantity = componentQuantity,
+              component.Product.KitchenStationId,
+              Notes = NullIfWhiteSpace(component.Notes),
+              component.MenuSectionId,
+              component.MenuSectionName,
+              component.MenuSectionSortOrder,
+              LineKind = RestaurantOrderLineKinds.ComboComponent,
+              ParentOrderLineId = lineId,
+              component.ComboSlotId,
+              ComboSlotOptionId = component.ComboSlotOptionId,
+              ParentProductName = pricedLine.ProductName,
+              ComboSlotName = component.SlotName,
+              ChoicePriceDelta = componentChoiceDelta
+            }, tx, cancellationToken: ct));
+          foreach (var modifier in component.Modifiers)
+          {
+            await InsertLineModifierAsync(conn, tx, rfc, componentLineId, modifier, ct);
+          }
         }
       }
 
@@ -781,17 +914,32 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
              lineInfo.IsCustom,lineInfo.Quantity,lineInfo.UnitPrice,lineInfo.DiscountAmount,
              lineInfo.Notes,lineInfo.MenuSectionIdSnapshot AS MenuSectionId,
              lineInfo.MenuSectionNameSnapshot AS MenuSectionName,
-             lineInfo.MenuSectionSortOrderSnapshot AS MenuSectionSortOrder
+             lineInfo.MenuSectionSortOrderSnapshot AS MenuSectionSortOrder,
+             lineInfo.LineKind,lineInfo.ParentOrderLineId,lineInfo.ComboSlotId,lineInfo.ComboSlotOptionId,
+             lineInfo.ParentProductNameSnapshot AS ParentProductName,
+             lineInfo.ComboSlotNameSnapshot AS ComboSlotName,
+             lineInfo.BaseUnitPrice,lineInfo.ChoicePriceDelta
       FROM restaurante.OrderLine lineInfo
       WHERE lineInfo.Rfc=@Rfc AND lineInfo.OrderId=@OrderId
-      ORDER BY lineInfo.Id;
+      ORDER BY CASE WHEN lineInfo.ParentOrderLineId IS NULL THEN lineInfo.Id ELSE lineInfo.ParentOrderLineId END,
+               CASE WHEN lineInfo.ParentOrderLineId IS NULL THEN 0 ELSE 1 END,lineInfo.Id;
 
-      SELECT modifier.OrderLineId,modifier.[Name]
+      SELECT modifier.OrderLineId,modifier.ModifierOptionId,
+             modifier.ModifierGroupNameSnapshot AS GroupName,
+             COALESCE(effectInfo.MaterialNameSnapshot,modifier.[Name]) AS [Name],
+             CASE
+               WHEN effectInfo.Id IS NULL
+                 OR effectInfo.Id=MIN(effectInfo.Id) OVER (PARTITION BY modifier.Id)
+               THEN modifier.PriceDelta ELSE 0
+             END AS PriceDelta,
+             modifier.Quantity,COALESCE(effectInfo.EffectKind,modifier.EffectKind) AS EffectKind
       FROM restaurante.OrderLineModifier modifier
       JOIN restaurante.OrderLine lineInfo
         ON lineInfo.Rfc=modifier.Rfc AND lineInfo.Id=modifier.OrderLineId
+      LEFT JOIN restaurante.OrderLineModifierIngredientEffect effectInfo
+        ON effectInfo.Rfc=modifier.Rfc AND effectInfo.OrderLineModifierId=modifier.Id
       WHERE modifier.Rfc=@Rfc AND lineInfo.OrderId=@OrderId
-      ORDER BY modifier.Id;
+      ORDER BY modifier.Id,effectInfo.Id;
 
       SELECT paymentInfo.Id,paymentInfo.PaymentMethod,paymentInfo.Amount,paymentInfo.TipAmount,
              paymentInfo.RefundedAmount,paymentInfo.[Status],paymentInfo.PaidAt
@@ -821,10 +969,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     var modifiers = (await multi.ReadAsync<OrderLineModifierRow>()).AsList();
     foreach (var line in lines)
     {
-      line.Modifiers = modifiers
-        .Where(item => item.OrderLineId == line.Id)
-        .Select(item => item.Name)
-        .ToList();
+      var lineModifiers = modifiers.Where(item => item.OrderLineId == line.Id).ToList();
+      line.Modifiers = lineModifiers.Select(item => item.Name).ToList();
+      line.StructuredModifiers = lineModifiers.Select(ToModifierDto).ToList();
     }
 
     receipt.Lines = lines;
@@ -849,6 +996,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           WHERE lineInfo.Rfc = orderInfo.Rfc
             AND lineInfo.OrderId = orderInfo.Id
             AND lineInfo.[Status] <> 'Cancelled'
+            AND lineInfo.LineKind <> 'Combo'
         )
       ORDER BY orderInfo.OperationalDate, orderInfo.Folio, orderInfo.CreatedAt, orderInfo.Id;
       """;
@@ -859,6 +1007,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       var order = await LoadOrderAsync(conn, null, normalizedRfc, id, ct);
       if (order is not null)
       {
+        order.Lines = order.Lines
+          .Where(line => line.LineKind != RestaurantOrderLineKinds.Combo)
+          .ToList();
         orders.Add(order);
       }
     }
@@ -982,7 +1133,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           CompletedAt=CASE WHEN @Status='Completed' THEN SYSUTCDATETIME() ELSE CompletedAt END
         WHERE Rfc=@Rfc AND Id=@Id;
         UPDATE restaurante.OrderLine SET [Status]='Delivered',DeliveredAt=COALESCE(DeliveredAt,SYSUTCDATETIME())
-        WHERE Rfc=@Rfc AND OrderId=@Id AND @Status IN ('Delivered','Completed') AND [Status]='Ready';
+        WHERE Rfc=@Rfc AND OrderId=@Id AND @Status IN ('Delivered','Completed')
+          AND [Status]='Ready' AND LineKind<>'Combo';
         UPDATE restaurante.Delivery SET [Status]=@Status,
           DispatchedAt=CASE WHEN @Status='Dispatched' THEN COALESCE(DispatchedAt,SYSUTCDATETIME()) ELSE DispatchedAt END,
           DeliveredAt=CASE WHEN @Status IN ('Delivered','Completed') THEN COALESCE(DeliveredAt,SYSUTCDATETIME()) ELSE DeliveredAt END
@@ -1029,7 +1181,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     {
       var line = await conn.QuerySingleOrDefaultAsync<LineIdentityRow>(new CommandDefinition(
         """
-        SELECT lineInfo.Id, lineInfo.OrderId, lineInfo.ProductNameSnapshot, lineInfo.IsCustom,
+        SELECT lineInfo.Id, lineInfo.OrderId, lineInfo.ProductNameSnapshot, lineInfo.IsCustom,lineInfo.LineKind,
                lineInfo.[Status], orderInfo.SiteId, orderInfo.InventoryReservationId
         FROM restaurante.OrderLine lineInfo WITH (UPDLOCK, HOLDLOCK)
         JOIN restaurante.[Order] orderInfo ON orderInfo.Rfc = lineInfo.Rfc AND orderInfo.Id = lineInfo.OrderId
@@ -1039,6 +1191,11 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       {
         await tx.RollbackAsync(ct);
         return RestaurantCommandResult.Fail("La partida no existe en el RFC seleccionado.");
+      }
+      if (string.Equals(line.LineKind, RestaurantOrderLineKinds.Combo, StringComparison.OrdinalIgnoreCase))
+      {
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail("El encabezado del combo no es accionable; actualice sus componentes.");
       }
       if (!IsLineTransitionAllowed(line.Status, normalizedStatus))
       {
@@ -1117,7 +1274,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     {
       var line = await conn.QuerySingleOrDefaultAsync<LineIdentityRow>(new CommandDefinition(
         """
-        SELECT lineInfo.Id,lineInfo.OrderId,lineInfo.ProductNameSnapshot,lineInfo.IsCustom,
+        SELECT lineInfo.Id,lineInfo.OrderId,lineInfo.ProductNameSnapshot,lineInfo.IsCustom,lineInfo.LineKind,
                lineInfo.[Status],orderInfo.SiteId,orderInfo.InventoryReservationId
         FROM restaurante.OrderLine lineInfo WITH (UPDLOCK,HOLDLOCK)
         JOIN restaurante.[Order] orderInfo ON orderInfo.Rfc=lineInfo.Rfc AND orderInfo.Id=lineInfo.OrderId
@@ -1127,6 +1284,11 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       {
         await tx.RollbackAsync(ct);
         return RestaurantCommandResult.Fail("Sólo una partida marcada lista puede regresar a preparación.");
+      }
+      if (string.Equals(line.LineKind, RestaurantOrderLineKinds.Combo, StringComparison.OrdinalIgnoreCase))
+      {
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail("El encabezado del combo no es accionable; actualice sus componentes.");
       }
       await conn.ExecuteAsync(new CommandDefinition(
         "UPDATE restaurante.OrderLine SET [Status]='Preparing',ReadyAt=NULL WHERE Rfc=@Rfc AND Id=@LineId AND [Status]='Ready';",
@@ -1705,13 +1867,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     }
   }
 
-  private static async Task<IReadOnlyList<MenuSectionSnapshotRow>> LoadMenuSectionSnapshotsAsync(
+  private static async Task<IReadOnlyList<ProductRow>> LoadProductsAsync(
     DbConnection conn,
     DbTransaction tx,
     string rfc,
-    int siteId,
     IReadOnlyCollection<long> productIds,
-    DateTimeOffset localNow,
+    bool allowInventoryOverride,
     CancellationToken ct)
   {
     if (productIds.Count == 0)
@@ -1721,34 +1882,240 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
 
     const string sql =
       """
-      DECLARE @MenuId bigint =
+      SELECT product.Id,product.ProductKind,product.MaterialId,material.CategoryId AS MaterialCategoryId,
+             product.Sku,card.[Name],product.VariantName,product.Price,product.KitchenStationId,
+             product.PreparationMinutes,material.FulfillmentMode,material.BaseUnitId,material.TrackLots,
+             CAST(COALESCE(activeBom.FrozenTheoreticalCost,
+               CASE WHEN material.FulfillmentMode='StockItem' THEN material.BaseUnitPrice END,0) AS decimal(18,6)) AS TheoreticalCost
+      FROM restaurante.Product product
+      JOIN restaurante.ProductCard card
+        ON card.Rfc=product.Rfc AND card.Id=product.ProductCardId
+      LEFT JOIN logistica.Material material
+        ON material.Rfc=product.Rfc AND material.Id=product.MaterialId
+      OUTER APPLY
       (
-        SELECT TOP (1) menuInfo.Id
-        FROM restaurante.Menu menuInfo
-        LEFT JOIN restaurante.MenuSchedule scheduleInfo
-          ON scheduleInfo.Rfc=menuInfo.Rfc
-         AND scheduleInfo.MenuId=menuInfo.Id
-         AND scheduleInfo.SiteId=@SiteId
-        WHERE menuInfo.Rfc=@Rfc
-          AND menuInfo.IsActive=1
-          AND menuInfo.IsPublished=1
-          AND
+        SELECT TOP (1) bomVersion.FrozenTheoreticalCost
+        FROM logistica.BomHeader bomHeader
+        JOIN logistica.BomVersion bomVersion
+          ON bomVersion.Rfc=bomHeader.Rfc AND bomVersion.BomHeaderId=bomHeader.Id
+        WHERE bomHeader.Rfc=product.Rfc
+          AND bomHeader.ProductMaterialId=product.MaterialId
+          AND bomVersion.[Status]='Active'
+        ORDER BY bomVersion.Id DESC
+      ) activeBom
+      WHERE product.Rfc=@Rfc AND product.Id IN @ProductIds AND product.IsActive=1
+        AND (@AllowInventoryOverride = 1 OR product.SoldOutOverride = 0);
+      """;
+    return (await conn.QueryAsync<ProductRow>(new CommandDefinition(
+      sql,
+      new { Rfc = rfc, ProductIds = productIds, AllowInventoryOverride = allowInventoryOverride },
+      tx,
+      cancellationToken: ct))).AsList();
+  }
+
+  private static async Task<long?> LoadActiveMenuIdAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    string rfc,
+    int siteId,
+    DateTimeOffset localNow,
+    CancellationToken ct)
+    => await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
+      """
+      SELECT TOP (1) menuInfo.Id
+      FROM restaurante.Menu menuInfo
+      LEFT JOIN restaurante.MenuSchedule scheduleInfo
+        ON scheduleInfo.Rfc=menuInfo.Rfc
+       AND scheduleInfo.MenuId=menuInfo.Id
+       AND scheduleInfo.SiteId=@SiteId
+      WHERE menuInfo.Rfc=@Rfc
+        AND menuInfo.IsActive=1
+        AND menuInfo.IsPublished=1
+        AND
+        (
+          scheduleInfo.Id IS NULL
+          OR
           (
-            scheduleInfo.Id IS NULL
-            OR
+            scheduleInfo.DayOfWeek=@DayOfWeek
+            AND
             (
-              scheduleInfo.DayOfWeek=@DayOfWeek
-              AND
-              (
-                (scheduleInfo.StartsAt<scheduleInfo.EndsAt AND @LocalTime>=scheduleInfo.StartsAt AND @LocalTime<scheduleInfo.EndsAt)
-                OR
-                (scheduleInfo.StartsAt>scheduleInfo.EndsAt AND (@LocalTime>=scheduleInfo.StartsAt OR @LocalTime<scheduleInfo.EndsAt))
-              )
+              (scheduleInfo.StartsAt<scheduleInfo.EndsAt AND @LocalTime>=scheduleInfo.StartsAt AND @LocalTime<scheduleInfo.EndsAt)
+              OR
+              (scheduleInfo.StartsAt>scheduleInfo.EndsAt AND (@LocalTime>=scheduleInfo.StartsAt OR @LocalTime<scheduleInfo.EndsAt))
             )
           )
-        ORDER BY CASE WHEN scheduleInfo.Id IS NULL THEN 1 ELSE 0 END,menuInfo.Id
-      );
+        )
+      ORDER BY CASE WHEN scheduleInfo.Id IS NULL THEN 1 ELSE 0 END,menuInfo.Id;
+      """,
+      new
+      {
+        Rfc = rfc,
+        SiteId = siteId,
+        DayOfWeek = (byte)localNow.DayOfWeek,
+        LocalTime = localNow.TimeOfDay
+      },
+      tx,
+      cancellationToken: ct));
 
+  private static async Task<IReadOnlyList<ComboOptionRow>> LoadComboOptionsAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    string rfc,
+    IReadOnlyCollection<long> comboProductIds,
+    long? activeMenuId,
+    CancellationToken ct)
+  {
+    if (comboProductIds.Count == 0)
+    {
+      return [];
+    }
+    const string sql =
+      """
+      SELECT slotInfo.ComboProductId,slotInfo.Id AS ComboSlotId,slotInfo.[Name] AS SlotName,
+             slotInfo.MinSelections,slotInfo.MaxSelections,slotInfo.SortOrder AS SlotSortOrder,
+             optionInfo.Id AS ComboSlotOptionId,optionInfo.ComponentProductId,optionInfo.Quantity AS OptionQuantity,
+             optionInfo.PriceDelta AS OptionPriceDelta,optionInfo.IsDefault,optionInfo.SortOrder AS OptionSortOrder,
+             routeInfo.MenuId AS RouteMenuId,routeInfo.MenuSectionId AS RouteMenuSectionId,
+             routeSection.[Name] AS RouteMenuSectionName,routeSection.SortOrder AS RouteMenuSectionSortOrder
+      FROM restaurante.ComboSlot slotInfo
+      LEFT JOIN restaurante.ComboSlotOption optionInfo
+        ON optionInfo.Rfc=slotInfo.Rfc AND optionInfo.ComboSlotId=slotInfo.Id AND optionInfo.IsActive=1
+      LEFT JOIN restaurante.ComboSlotOptionRoute routeInfo
+        ON routeInfo.Rfc=optionInfo.Rfc AND routeInfo.ComboSlotOptionId=optionInfo.Id AND routeInfo.MenuId=@MenuId
+      LEFT JOIN restaurante.MenuSection routeSection
+        ON routeSection.Rfc=routeInfo.Rfc AND routeSection.Id=routeInfo.MenuSectionId
+      WHERE slotInfo.Rfc=@Rfc AND slotInfo.ComboProductId IN @ComboProductIds AND slotInfo.IsActive=1
+      ORDER BY slotInfo.ComboProductId,slotInfo.SortOrder,slotInfo.Id,optionInfo.SortOrder,optionInfo.Id;
+      """;
+    return (await conn.QueryAsync<ComboOptionRow>(new CommandDefinition(
+      sql,
+      new { Rfc = rfc, ComboProductIds = comboProductIds, MenuId = activeMenuId },
+      tx,
+      cancellationToken: ct))).AsList();
+  }
+
+  private static IReadOnlyDictionary<RestaurantOrderLineCreateRequest, ComboPlan> BuildComboPlans(
+    RestaurantOrderCreateRequest request,
+    IReadOnlyList<ProductRow> products,
+    IReadOnlyList<ComboOptionRow> comboRows,
+    IReadOnlyList<MenuSectionSnapshotRow> menuSections,
+    IReadOnlyList<ModifierRow> modifierRows)
+  {
+    var plans = new Dictionary<RestaurantOrderLineCreateRequest, ComboPlan>();
+    foreach (var line in request.Lines.Where(line => !line.IsCustom))
+    {
+      var product = products.Single(item => item.Id == line.ProductId!.Value);
+      if (!string.Equals(product.ProductKind, RestaurantProductKinds.Combo, StringComparison.OrdinalIgnoreCase))
+      {
+        if (line.ComboSelections.Count > 0)
+        {
+          throw new InvalidOperationException("Solo los productos tipo combo aceptan selecciones de combo.");
+        }
+        continue;
+      }
+      if (line.ModifierOptionIds.Count > 0)
+      {
+        throw new InvalidOperationException("Los modificadores de un combo deben capturarse en cada componente.");
+      }
+      var productSlots = comboRows
+        .Where(row => row.ComboProductId == product.Id)
+        .GroupBy(row => row.ComboSlotId)
+        .OrderBy(group => group.First().SlotSortOrder)
+        .ThenBy(group => group.Key)
+        .ToList();
+      var slotRules = productSlots.Select(slot =>
+      {
+        var definition = slot.First();
+        return new RestaurantComboOrderSlotRule(
+          slot.Key,
+          definition.SlotName,
+          definition.MinSelections,
+          definition.MaxSelections,
+          slot.Where(option => option.ComboSlotOptionId.HasValue && option.ComponentProductId.HasValue)
+            .Select(option => new RestaurantComboOrderOptionRule(
+              slot.Key,
+              option.ComboSlotOptionId!.Value,
+              option.ComponentProductId!.Value))
+            .ToList());
+      }).ToList();
+      _ = RestaurantComboOrderRules.ValidateAndResolveSelections(product.Sku, slotRules, line.ComboSelections);
+
+      var components = new List<PricedComboComponent>();
+      foreach (var slot in productSlots)
+      {
+        var selections = line.ComboSelections.Where(selection => selection.ComboSlotId == slot.Key).ToList();
+        foreach (var selection in selections)
+        {
+          if (selection.Notes?.Trim().Length > 500)
+          {
+            throw new InvalidOperationException("La nota de un componente no puede exceder 500 caracteres.");
+          }
+          var option = slot.SingleOrDefault(row => row.ComboSlotOptionId == selection.ComboSlotOptionId && row.ComponentProductId.HasValue)
+            ?? throw new InvalidOperationException("Una opción está inactiva o no pertenece al combo y RFC seleccionados.");
+          var component = products.Single(item => item.Id == option.ComponentProductId!.Value);
+          var selectedModifiers = ValidateProductModifierSelection(
+            component.Id,
+            selection.ModifierOptionIds,
+            modifierRows,
+            $"el componente {component.Sku}");
+          MenuSectionSnapshotRow route;
+          if (option.RouteMenuSectionId.HasValue)
+          {
+            route = new MenuSectionSnapshotRow
+            {
+              ProductId = component.Id,
+              MenuSectionId = option.RouteMenuSectionId.Value,
+              MenuSectionName = option.RouteMenuSectionName
+                ?? throw new InvalidOperationException("La ruta operacional del componente no tiene sección válida."),
+              MenuSectionSortOrder = option.RouteMenuSectionSortOrder ?? int.MaxValue
+            };
+          }
+          else
+          {
+            var inferredRoutes = menuSections.Where(item => item.ProductId == component.Id).ToList();
+            if (inferredRoutes.Count != 1)
+            {
+              throw new InvalidOperationException(
+                inferredRoutes.Count == 0
+                  ? $"El componente {component.Sku} no tiene una ruta operacional en el menú activo."
+                  : $"El componente {component.Sku} aparece en varias secciones; configura su ruta operacional en el combo.");
+            }
+            route = inferredRoutes[0];
+          }
+          components.Add(new PricedComboComponent(
+            option.ComboSlotId,
+            option.ComboSlotOptionId!.Value,
+            option.SlotName,
+            component,
+            option.OptionQuantity,
+            option.OptionPriceDelta,
+            selectedModifiers,
+            NullIfWhiteSpace(selection.Notes),
+            route.MenuSectionId,
+            route.MenuSectionName,
+            route.MenuSectionSortOrder));
+        }
+      }
+      plans[line] = new ComboPlan(components);
+    }
+    return plans;
+  }
+
+  private static async Task<IReadOnlyList<MenuSectionSnapshotRow>> LoadMenuSectionSnapshotsAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    string rfc,
+    long? activeMenuId,
+    IReadOnlyCollection<long> productIds,
+    CancellationToken ct)
+  {
+    if (productIds.Count == 0)
+    {
+      return [];
+    }
+
+    const string sql =
+      """
       SELECT item.ProductId,
              sectionInfo.Id AS MenuSectionId,
              sectionInfo.[Name] AS MenuSectionName,
@@ -1767,9 +2134,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       new
       {
         Rfc = rfc,
-        SiteId = siteId,
-        DayOfWeek = (byte)localNow.DayOfWeek,
-        LocalTime = localNow.TimeOfDay,
+        MenuId = activeMenuId,
         ProductIds = productIds
       },
       tx,
@@ -1832,31 +2197,55 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     }
   }
 
-  private static void ValidateModifiers(RestaurantOrderCreateRequest request, IReadOnlyList<ModifierRow> modifierRows)
+  private static void ValidateModifiers(
+    RestaurantOrderCreateRequest request,
+    IReadOnlyList<ProductRow> products,
+    IReadOnlyList<ModifierRow> modifierRows)
   {
     foreach (var line in request.Lines.Where(line => !line.IsCustom))
     {
-      if (line.ModifierOptionIds.Count != line.ModifierOptionIds.Distinct().Count())
+      if (line.Notes?.Trim().Length > 500)
       {
-        throw new InvalidOperationException("No se puede repetir el mismo modificador en una partida.");
+        throw new InvalidOperationException("La nota de una partida no puede exceder 500 caracteres.");
       }
-      foreach (var optionId in line.ModifierOptionIds)
+      var product = products.Single(item => item.Id == line.ProductId!.Value);
+      if (string.Equals(product.ProductKind, RestaurantProductKinds.Combo, StringComparison.OrdinalIgnoreCase))
       {
-        if (!modifierRows.Any(row => row.ProductId == line.ProductId!.Value && row.Id == optionId))
-        {
-          throw new InvalidOperationException("Un modificador no corresponde al producto o al RFC seleccionado.");
-        }
+        continue;
       }
-      foreach (var group in modifierRows.Where(row => row.ProductId == line.ProductId!.Value).GroupBy(row => row.ModifierGroupId))
+      _ = ValidateProductModifierSelection(product.Id, line.ModifierOptionIds, modifierRows, $"el producto {product.Sku}");
+    }
+  }
+
+  private static List<ModifierRow> ValidateProductModifierSelection(
+    long productId,
+    IReadOnlyList<long> selectedOptionIds,
+    IReadOnlyList<ModifierRow> modifierRows,
+    string context)
+  {
+    if (selectedOptionIds.Count != selectedOptionIds.Distinct().Count())
+    {
+      throw new InvalidOperationException($"No se puede repetir el mismo modificador en {context}.");
+    }
+    var productModifiers = modifierRows.Where(row => row.ProductId == productId).ToList();
+    foreach (var optionId in selectedOptionIds)
+    {
+      if (productModifiers.All(row => row.Id != optionId))
       {
-        var selected = group.Count(row => line.ModifierOptionIds.Contains(row.Id));
-        var definition = group.First();
-        if (selected < definition.MinSelections || selected > definition.MaxSelections)
-        {
-          throw new InvalidOperationException($"El grupo {definition.GroupName} requiere entre {definition.MinSelections} y {definition.MaxSelections} opciones.");
-        }
+        throw new InvalidOperationException($"Un modificador no corresponde a {context} o al RFC seleccionado.");
       }
     }
+    foreach (var group in productModifiers.GroupBy(row => row.ModifierGroupId))
+    {
+      var selected = group.Count(row => selectedOptionIds.Contains(row.Id));
+      var definition = group.First();
+      if (selected < definition.MinSelections || selected > definition.MaxSelections)
+      {
+        throw new InvalidOperationException(
+          $"El grupo {definition.GroupName} requiere entre {definition.MinSelections} y {definition.MaxSelections} opciones para {context}.");
+      }
+    }
+    return productModifiers.Where(row => selectedOptionIds.Contains(row.Id)).ToList();
   }
 
   private static async Task<InventoryRequirementPlan> BuildRequirementsAsync(
@@ -1867,7 +2256,11 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     bool allowInventoryOverride,
     CancellationToken ct)
   {
-    var selectedOptionIds = lines.SelectMany(line => line.Modifiers).Select(modifier => modifier.Id).Distinct().ToArray();
+    var selectedOptionIds = lines
+      .SelectMany(line => line.Modifiers.Concat(line.ComboComponents.SelectMany(component => component.Modifiers)))
+      .Select(modifier => modifier.Id)
+      .Distinct()
+      .ToArray();
     var graph = await RestaurantRequirementGraphLoader.LoadAsync(conn, tx, rfc, selectedOptionIds, ct);
     var requirements = new Dictionary<int, decimal>();
     var overrideReasons = new List<string>();
@@ -1877,27 +2270,99 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       {
         continue;
       }
-      var calculation = RestaurantSaleRequirementCalculator.Calculate(
-        graph,
-        line.Product.MaterialId,
-        line.Product.Sku,
-        line.Request.Quantity,
-        line.Modifiers.Select(modifier => modifier.Id).ToArray());
-      var issue = calculation.Issues.FirstOrDefault();
-      if (issue is not null)
+      if (line.ComboComponents.Count > 0)
       {
-        if (!allowInventoryOverride)
+        foreach (var component in line.ComboComponents)
         {
-          throw new InvalidOperationException(issue.Message);
+          AddProductRequirements(
+            component.Product,
+            component.TotalQuantity(line.Request.Quantity),
+            component.Modifiers,
+            graph,
+            requirements,
+            overrideReasons,
+            allowInventoryOverride);
         }
-        overrideReasons.Add(issue.Message);
       }
-      foreach (var requirement in calculation.Requirements)
-        AddRequirement(requirements, requirement.Key, requirement.Value);
+      else
+      {
+        AddProductRequirements(
+          line.Product,
+          line.Request.Quantity,
+          line.Modifiers,
+          graph,
+          requirements,
+          overrideReasons,
+          allowInventoryOverride);
+      }
     }
     return new InventoryRequirementPlan(
       requirements.Where(item => item.Value > 0).ToDictionary(item => item.Key, item => item.Value),
       overrideReasons.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+  }
+
+  private static void AddProductRequirements(
+    ProductRow product,
+    decimal quantity,
+    IReadOnlyList<ModifierRow> modifiers,
+    RestaurantSaleRequirementGraph graph,
+    IDictionary<int, decimal> requirements,
+    ICollection<string> overrideReasons,
+    bool allowInventoryOverride)
+  {
+    if (!product.MaterialId.HasValue)
+    {
+      var message = $"El producto {product.Sku} no tiene material para calcular inventario.";
+      if (!allowInventoryOverride)
+      {
+        throw new InvalidOperationException(message);
+      }
+      overrideReasons.Add(message);
+      return;
+    }
+    var calculation = RestaurantSaleRequirementCalculator.Calculate(
+      graph,
+      product.MaterialId.Value,
+      product.Sku,
+      quantity,
+      modifiers.Select(modifier => modifier.Id).ToArray());
+    var issue = calculation.Issues.FirstOrDefault();
+    if (issue is not null)
+    {
+      if (!allowInventoryOverride)
+      {
+        throw new InvalidOperationException(issue.Message);
+      }
+      overrideReasons.Add(issue.Message);
+    }
+    foreach (var requirement in calculation.Requirements)
+    {
+      AddRequirement(requirements, requirement.Key, requirement.Value);
+    }
+  }
+
+  private static async Task<decimal> CalculateRequirementCostAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    string rfc,
+    IReadOnlyDictionary<int, decimal> requirements,
+    CancellationToken ct)
+  {
+    if (requirements.Count == 0)
+    {
+      return 0;
+    }
+    var costs = (await conn.QueryAsync<MaterialCostRow>(new CommandDefinition(
+      """
+      SELECT Id,CAST(ISNULL(BaseUnitPrice,0) AS decimal(18,6)) AS BaseUnitPrice
+      FROM logistica.Material
+      WHERE Rfc=@Rfc AND Id IN @MaterialIds;
+      """,
+      new { Rfc = rfc, MaterialIds = requirements.Keys.ToArray() },
+      tx,
+      cancellationToken: ct))).ToDictionary(item => item.Id, item => item.BaseUnitPrice);
+    return decimal.Round(requirements.Sum(requirement =>
+      requirement.Value * costs.GetValueOrDefault(requirement.Key)), 6, MidpointRounding.AwayFromZero);
   }
 
   private static async Task<ReservationResult> ReserveInventoryAsync(DbConnection conn, DbTransaction tx, string rfc, int siteId,
@@ -2109,13 +2574,32 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       new { Rfc = rfc, OrderId = orderId }, tx, cancellationToken: ct));
     if (current is null || current is "Cancelled" or "Completed") return null;
     var statuses = (await conn.QueryAsync<string>(new CommandDefinition(
-      "SELECT [Status] FROM restaurante.OrderLine WHERE Rfc=@Rfc AND OrderId=@OrderId;",
+      "SELECT [Status] FROM restaurante.OrderLine WHERE Rfc=@Rfc AND OrderId=@OrderId AND LineKind<>'Combo';",
       new { Rfc = rfc, OrderId = orderId }, tx, cancellationToken: ct))).AsList();
     var next = statuses.All(status => status is "Ready" or "Delivered" or "Cancelled")
       ? "Ready"
       : statuses.Any(status => status == "Preparing") ? "Preparing" : "Sent";
     await conn.ExecuteAsync(new CommandDefinition(
       """
+      UPDATE comboParent
+      SET [Status]=componentState.[Status],
+          StartedAt=CASE WHEN componentState.[Status]='Preparing' AND comboParent.StartedAt IS NULL
+                         THEN SYSUTCDATETIME() ELSE comboParent.StartedAt END,
+          ReadyAt=CASE WHEN componentState.[Status]='Ready' AND comboParent.ReadyAt IS NULL
+                       THEN SYSUTCDATETIME() ELSE comboParent.ReadyAt END
+      FROM restaurante.OrderLine comboParent
+      CROSS APPLY
+      (
+        SELECT CASE
+          WHEN COUNT(*)=SUM(CASE WHEN child.[Status] IN ('Ready','Delivered','Cancelled') THEN 1 ELSE 0 END) THEN 'Ready'
+          WHEN SUM(CASE WHEN child.[Status]='Preparing' THEN 1 ELSE 0 END)>0 THEN 'Preparing'
+          ELSE 'Pending'
+        END AS [Status]
+        FROM restaurante.OrderLine child
+        WHERE child.Rfc=comboParent.Rfc AND child.ParentOrderLineId=comboParent.Id
+      ) componentState
+      WHERE comboParent.Rfc=@Rfc AND comboParent.OrderId=@OrderId AND comboParent.LineKind='Combo';
+
       UPDATE restaurante.[Order]
       SET [Status]=@Status,
           ReadyAt=CASE WHEN @Status='Ready' AND ReadyAt IS NULL THEN SYSUTCDATETIME() ELSE ReadyAt END
@@ -2145,14 +2629,30 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
              product.PreparationMinutes,lineInfo.StartedAt,lineInfo.ReadyAt,
              lineInfo.MenuSectionIdSnapshot AS MenuSectionId,
              lineInfo.MenuSectionNameSnapshot AS MenuSectionName,
-             lineInfo.MenuSectionSortOrderSnapshot AS MenuSectionSortOrder
+             lineInfo.MenuSectionSortOrderSnapshot AS MenuSectionSortOrder,
+             lineInfo.LineKind,lineInfo.ParentOrderLineId,lineInfo.ComboSlotId,lineInfo.ComboSlotOptionId,
+             lineInfo.ParentProductNameSnapshot AS ParentProductName,
+             lineInfo.ComboSlotNameSnapshot AS ComboSlotName,
+             lineInfo.UnitPrice,lineInfo.BaseUnitPrice,lineInfo.ChoicePriceDelta
       FROM restaurante.OrderLine lineInfo
       LEFT JOIN restaurante.Product product ON product.Rfc=lineInfo.Rfc AND product.Id=lineInfo.ProductId
-      WHERE lineInfo.Rfc=@Rfc AND lineInfo.OrderId=@OrderId ORDER BY lineInfo.Id;
-      SELECT modifier.OrderLineId, modifier.[Name]
+      WHERE lineInfo.Rfc=@Rfc AND lineInfo.OrderId=@OrderId
+      ORDER BY CASE WHEN lineInfo.ParentOrderLineId IS NULL THEN lineInfo.Id ELSE lineInfo.ParentOrderLineId END,
+               CASE WHEN lineInfo.ParentOrderLineId IS NULL THEN 0 ELSE 1 END,lineInfo.Id;
+      SELECT modifier.OrderLineId,modifier.ModifierOptionId,
+             modifier.ModifierGroupNameSnapshot AS GroupName,
+             COALESCE(effectInfo.MaterialNameSnapshot,modifier.[Name]) AS [Name],
+             CASE
+               WHEN effectInfo.Id IS NULL
+                 OR effectInfo.Id=MIN(effectInfo.Id) OVER (PARTITION BY modifier.Id)
+               THEN modifier.PriceDelta ELSE 0
+             END AS PriceDelta,
+             modifier.Quantity,COALESCE(effectInfo.EffectKind,modifier.EffectKind) AS EffectKind
       FROM restaurante.OrderLineModifier modifier
       JOIN restaurante.OrderLine lineInfo ON lineInfo.Rfc=modifier.Rfc AND lineInfo.Id=modifier.OrderLineId
-      WHERE modifier.Rfc=@Rfc AND lineInfo.OrderId=@OrderId ORDER BY modifier.Id;
+      LEFT JOIN restaurante.OrderLineModifierIngredientEffect effectInfo
+        ON effectInfo.Rfc=modifier.Rfc AND effectInfo.OrderLineModifierId=modifier.Id
+      WHERE modifier.Rfc=@Rfc AND lineInfo.OrderId=@OrderId ORDER BY modifier.Id,effectInfo.Id;
       """;
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(sql, new { Rfc = rfc, OrderId = orderId }, tx, cancellationToken: ct));
     var order = await multi.ReadSingleOrDefaultAsync<RestaurantOrderDto>();
@@ -2161,7 +2661,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     if (order is null) return null;
     foreach (var line in lines)
     {
-      line.Modifiers = modifiers.Where(item => item.OrderLineId == line.Id).Select(item => item.Name).ToList();
+      var lineModifiers = modifiers.Where(item => item.OrderLineId == line.Id).ToList();
+      line.Modifiers = lineModifiers.Select(item => item.Name).ToList();
+      line.StructuredModifiers = lineModifiers.Select(ToModifierDto).ToList();
     }
     order.Lines = lines;
     return order;
@@ -2172,6 +2674,54 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     => conn.ExecuteAsync(new CommandDefinition(
       "INSERT INTO restaurante.EventOutbox (Rfc, SiteId, EventType, AggregateId, Payload) VALUES (@Rfc,@SiteId,@EventType,@AggregateId,@Payload);",
       new { Rfc = rfc, SiteId = siteId, EventType = eventType, AggregateId = aggregateId, Payload = JsonSerializer.Serialize(payload) }, tx, cancellationToken: ct));
+
+  private static Task InsertLineModifierAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    string rfc,
+    long orderLineId,
+    ModifierRow modifier,
+    CancellationToken ct)
+    => conn.ExecuteAsync(new CommandDefinition(
+      """
+      INSERT INTO restaurante.OrderLineModifier
+        (Rfc,OrderLineId,ModifierOptionId,[Name],PriceDelta,Quantity,ModifierGroupNameSnapshot,EffectKind)
+      VALUES
+        (@Rfc,@OrderLineId,@ModifierOptionId,@Name,@PriceDelta,1,@GroupName,@EffectKind);
+      """,
+      new
+      {
+        Rfc = rfc,
+        OrderLineId = orderLineId,
+        ModifierOptionId = modifier.Id,
+        modifier.Name,
+        modifier.PriceDelta,
+        GroupName = modifier.GroupName,
+        EffectKind = string.IsNullOrWhiteSpace(modifier.EffectKind)
+          ? RestaurantModifierEffectKinds.AdjustQuantity
+          : modifier.EffectKind
+      },
+      tx,
+      cancellationToken: ct));
+
+  private static RestaurantOrderLineModifierDto ToModifierDto(OrderLineModifierRow modifier)
+    => new()
+    {
+      ModifierOptionId = modifier.ModifierOptionId,
+      GroupName = modifier.GroupName,
+      Name = modifier.Name,
+      PriceDelta = modifier.PriceDelta,
+      Quantity = modifier.Quantity,
+      EffectKind = string.IsNullOrWhiteSpace(modifier.EffectKind)
+        ? RestaurantModifierEffectKinds.AdjustQuantity
+        : modifier.EffectKind
+    };
+
+  private static RestaurantComboPriceSelection ToPriceSelection(PricedComboComponent component)
+    => new(
+      component.OptionPriceDelta,
+      component.OptionQuantity,
+      component.Modifiers.Select(modifier => modifier.PriceDelta).ToArray());
 
   private static async Task PersistPromotionSnapshotsAsync(
     DbConnection conn,
@@ -2536,7 +3086,26 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     bool IsCustom,
     long? MenuSectionId,
     string? MenuSectionName,
-    int? MenuSectionSortOrder);
+    int? MenuSectionSortOrder,
+    IReadOnlyList<PricedComboComponent> ComboComponents);
+  private sealed record ComboPlan(
+    IReadOnlyList<PricedComboComponent> Components);
+  private sealed record PricedComboComponent(
+    long ComboSlotId,
+    long ComboSlotOptionId,
+    string SlotName,
+    ProductRow Product,
+    decimal OptionQuantity,
+    decimal OptionPriceDelta,
+    List<ModifierRow> Modifiers,
+    string? Notes,
+    long MenuSectionId,
+    string MenuSectionName,
+    int MenuSectionSortOrder)
+  {
+    public decimal TotalQuantity(decimal comboQuantity)
+      => decimal.Round(OptionQuantity * comboQuantity, 4, MidpointRounding.AwayFromZero);
+  }
   private sealed class MenuSectionSnapshotRow
   {
     public long ProductId { get; set; }
@@ -2567,8 +3136,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   private sealed class ProductRow
   {
     public long Id { get; set; }
-    public int MaterialId { get; set; }
-    public int MaterialCategoryId { get; set; }
+    public string ProductKind { get; set; } = RestaurantProductKinds.Standard;
+    public int? MaterialId { get; set; }
+    public int? MaterialCategoryId { get; set; }
     public string Sku { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string? VariantName { get; set; }
@@ -2590,13 +3160,42 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     public long Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public decimal PriceDelta { get; set; }
+    public string? EffectKind { get; set; }
+    public List<ModifierEffectSnapshot> Effects { get; set; } = [];
+  }
+  private sealed record ModifierEffectSnapshot(string Name, string EffectKind);
+  private sealed class ModifierEffectRow
+  {
+    public long ModifierOptionId { get; set; }
+    public string EffectKind { get; set; } = RestaurantModifierEffectKinds.AdjustQuantity;
+    public string MaterialName { get; set; } = string.Empty;
+  }
+  private sealed class ComboOptionRow
+  {
+    public long ComboProductId { get; set; }
+    public long ComboSlotId { get; set; }
+    public string SlotName { get; set; } = string.Empty;
+    public int MinSelections { get; set; }
+    public int MaxSelections { get; set; }
+    public int SlotSortOrder { get; set; }
+    public long? ComboSlotOptionId { get; set; }
+    public long? ComponentProductId { get; set; }
+    public decimal OptionQuantity { get; set; }
+    public decimal OptionPriceDelta { get; set; }
+    public bool IsDefault { get; set; }
+    public int OptionSortOrder { get; set; }
+    public long? RouteMenuId { get; set; }
+    public long? RouteMenuSectionId { get; set; }
+    public string? RouteMenuSectionName { get; set; }
+    public int? RouteMenuSectionSortOrder { get; set; }
   }
   private sealed class MaterialInventoryRow { public int Id { get; set; } public bool TrackLots { get; set; } }
+  private sealed class MaterialCostRow { public int Id { get; set; } public decimal BaseUnitPrice { get; set; } }
   private sealed class LotAvailabilityRow { public long MaterialLotId { get; set; } public int LocationId { get; set; } public decimal AvailableQuantity { get; set; } public decimal UnitCost { get; set; } }
   private sealed class BalanceAvailabilityRow { public int LocationId { get; set; } public decimal AvailableQuantity { get; set; } public decimal AverageUnitCost { get; set; } }
   private sealed class ReservationLineRow { public long Id { get; set; } public int MaterialId { get; set; } public int LocationId { get; set; } public long? MaterialLotId { get; set; } public decimal ReservedQuantity { get; set; } public decimal FrozenUnitCost { get; set; } }
   private sealed class StockBalanceRow { public int Id { get; set; } public decimal Quantity { get; set; } public decimal ReservedQuantity { get; set; } }
-  private sealed class LineIdentityRow { public long Id { get; set; } public Guid OrderId { get; set; } public string ProductNameSnapshot { get; set; } = string.Empty; public bool IsCustom { get; set; } public string Status { get; set; } = string.Empty; public int SiteId { get; set; } public long? InventoryReservationId { get; set; } }
+  private sealed class LineIdentityRow { public long Id { get; set; } public Guid OrderId { get; set; } public string ProductNameSnapshot { get; set; } = string.Empty; public bool IsCustom { get; set; } public string LineKind { get; set; } = RestaurantOrderLineKinds.Standard; public string Status { get; set; } = string.Empty; public int SiteId { get; set; } public long? InventoryReservationId { get; set; } }
   private sealed class CancelOrderRow { public Guid Id { get; set; } public int SiteId { get; set; } public string Status { get; set; } = string.Empty; public long? InventoryReservationId { get; set; } }
   private sealed class OrderFulfillmentRow { public Guid Id { get; set; } public int SiteId { get; set; } public string OrderType { get; set; } = string.Empty; public string Status { get; set; } = string.Empty; public string PaymentStatus { get; set; } = string.Empty; }
   private sealed class PaymentOrderRow
@@ -2629,5 +3228,14 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     public int? PerMemberLimit { get; set; }
     public int RedemptionCount { get; set; }
   }
-  private sealed class OrderLineModifierRow { public long OrderLineId { get; set; } public string Name { get; set; } = string.Empty; }
+  private sealed class OrderLineModifierRow
+  {
+    public long OrderLineId { get; set; }
+    public long ModifierOptionId { get; set; }
+    public string GroupName { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public decimal PriceDelta { get; set; }
+    public int Quantity { get; set; } = 1;
+    public string EffectKind { get; set; } = RestaurantModifierEffectKinds.AdjustQuantity;
+  }
 }

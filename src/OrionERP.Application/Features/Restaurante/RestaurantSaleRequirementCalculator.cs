@@ -56,8 +56,9 @@ public sealed class RestaurantSaleModifierDeltaNode
 {
   public long OptionId { get; init; }
   public int MaterialId { get; init; }
+  public string EffectKind { get; init; } = RestaurantModifierEffectKinds.AdjustQuantity;
   public decimal QuantityDelta { get; init; }
-  public int UnitId { get; init; }
+  public int? UnitId { get; init; }
   public string Unit { get; init; } = string.Empty;
 }
 
@@ -134,14 +135,32 @@ public static class RestaurantSaleRequirementCalculator
 
     if (modifierOptionIds is { Count: > 0 })
     {
-      foreach (var delta in graph.ModifierDeltas.Where(delta => modifierOptionIds.Contains(delta.OptionId)))
+      var selectedEffects = graph.ModifierDeltas.Where(delta => modifierOptionIds.Contains(delta.OptionId)).ToList();
+      foreach (var effect in selectedEffects.Where(effect =>
+                 RestaurantModifierEffectKinds.Normalize(effect.EffectKind) == RestaurantModifierEffectKinds.RemoveIngredient))
+      {
+        if (!graph.Materials.TryGetValue(effect.MaterialId, out var material))
+        {
+          state.AddIssue("MODIFIER_MATERIAL_MISSING", $"Un modificador referencia el material inexistente {effect.MaterialId}.", effect.MaterialId, $"Modificador > material {effect.MaterialId}");
+          continue;
+        }
+        state.RemoveRequirement(material.Id);
+      }
+
+      foreach (var delta in selectedEffects.Where(effect =>
+                 RestaurantModifierEffectKinds.Normalize(effect.EffectKind) != RestaurantModifierEffectKinds.RemoveIngredient))
       {
         if (!graph.Materials.TryGetValue(delta.MaterialId, out var material))
         {
           state.AddIssue("MODIFIER_MATERIAL_MISSING", $"Un modificador referencia el material inexistente {delta.MaterialId}.", delta.MaterialId, $"Modificador > material {delta.MaterialId}");
           continue;
         }
-        var factor = FindFactor(graph, material, delta.UnitId);
+        if (!delta.UnitId.HasValue)
+        {
+          state.AddIssue("MODIFIER_UNIT_MISSING", "Falta la unidad para los ingredientes de un modificador.", material.Id, $"Modificador > {MaterialLabel(material)}");
+          continue;
+        }
+        var factor = FindFactor(graph, material, delta.UnitId.Value);
         if (!factor.HasValue)
         {
           state.AddIssue("MODIFIER_CONVERSION_MISSING", "Falta una conversión para los ingredientes de un modificador.", material.Id, $"Modificador > {MaterialLabel(material)}");
@@ -341,6 +360,13 @@ public static class RestaurantSaleRequirementCalculator
       if (!_depths.TryGetValue(material.Id, out var currentDepth) || depth > currentDepth) _depths[material.Id] = depth;
     }
 
+    public void RemoveRequirement(int materialId)
+    {
+      _requirements.Remove(materialId);
+      _paths.Remove(materialId);
+      _depths.Remove(materialId);
+    }
+
     public void AddIssue(string code, string message, int? materialId, string path)
       => Issues.Add(new RestaurantSaleRequirementIssue { Code = code, Message = message, MaterialId = materialId, Path = path });
 
@@ -359,4 +385,3 @@ public static class RestaurantSaleRequirementCalculator
     }
   }
 }
-

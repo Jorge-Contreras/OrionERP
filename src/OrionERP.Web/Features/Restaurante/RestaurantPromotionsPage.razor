@@ -138,7 +138,7 @@
             }
           </div>
           <div class="category-picks">
-            @foreach (var categoryId in products.Select(product => product.MaterialCategoryId).Distinct().Order())
+            @foreach (var categoryId in products.Where(product => product.MaterialCategoryId.HasValue).Select(product => product.MaterialCategoryId!.Value).Distinct().Order())
             {
               <label><input type="checkbox" checked="@editor.MaterialCategoryIds.Contains(categoryId)" @onchange="_ => ToggleCategory(categoryId)" /> Categoría logística #@categoryId</label>
             }

@@ -39,6 +39,7 @@ public sealed class RestaurantBackofficeService : IRestaurantBackofficeService
       FROM restaurante.OrderLine lineInfo JOIN restaurante.[Order] orderInfo ON orderInfo.Rfc=lineInfo.Rfc AND orderInfo.Id=lineInfo.OrderId
       WHERE lineInfo.Rfc=@Rfc AND orderInfo.SiteId=@SiteId AND orderInfo.OperationalDate>=@Start AND orderInfo.OperationalDate<@End
         AND orderInfo.PaymentStatus='Paid' AND lineInfo.[Status]<>'Cancelled'
+        AND lineInfo.LineKind<>'ComboComponent'
       GROUP BY lineInfo.ProductNameSnapshot ORDER BY Sales DESC,Quantity DESC;
       SELECT OperationalDate,COUNT(*) AS OrderCount,CAST(SUM(Total) AS decimal(18,2)) AS Sales,CAST(SUM(TheoreticalCost) AS decimal(18,2)) AS Cost
       FROM restaurante.[Order] WHERE Rfc=@Rfc AND SiteId=@SiteId AND OperationalDate>=@Start AND OperationalDate<@End AND PaymentStatus='Paid' AND [Status]<>'Cancelled'

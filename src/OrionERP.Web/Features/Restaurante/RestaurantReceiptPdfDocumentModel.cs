@@ -45,7 +45,9 @@ public sealed class RestaurantReceiptPdfDocumentModel
       .Count();
 
   internal static string? GetTicketSectionName(RestaurantReceiptPdfLineModel line)
-    => line.IsCustom
+    => line.LineKind == RestaurantOrderLineKinds.Combo
+      ? null
+      : line.IsCustom
       ? CustomItemSectionName
       : string.IsNullOrWhiteSpace(line.SectionName) ? null : line.SectionName.Trim();
 }
@@ -55,10 +57,17 @@ public sealed class RestaurantReceiptPdfLineModel
   public string ProductName { get; init; } = string.Empty;
   public decimal Quantity { get; init; }
   public decimal UnitPrice { get; init; }
+  public decimal BaseUnitPrice { get; init; }
+  public decimal ChoicePriceDelta { get; init; }
   public decimal DiscountAmount { get; init; }
   public string? Notes { get; init; }
   public IReadOnlyList<string> Modifiers { get; init; } = Array.Empty<string>();
+  public IReadOnlyList<RestaurantOrderLineModifierDto> StructuredModifiers { get; init; } = Array.Empty<RestaurantOrderLineModifierDto>();
   public bool IsCustom { get; init; }
+  public string LineKind { get; init; } = RestaurantOrderLineKinds.Standard;
+  public long? ParentOrderLineId { get; init; }
+  public string? ParentProductName { get; init; }
+  public string? ComboSlotName { get; init; }
   public string? SectionName { get; init; }
   public int SectionSortOrder { get; init; }
 }

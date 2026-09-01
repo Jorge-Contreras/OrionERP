@@ -53,6 +53,24 @@ public sealed class RestaurantKitchenBoardTests
     Assert.Equal(RestaurantKitchenProgress.Preparing, progress);
   }
 
+  [Fact]
+  public void KitchenProgress_IgnoresComboParentAndUsesItsComponents()
+  {
+    var order = new RestaurantOrderDto
+    {
+      Lines =
+      [
+        new() { LineKind = RestaurantOrderLineKinds.Combo, Status = "Pending" },
+        new() { LineKind = RestaurantOrderLineKinds.ComboComponent, Status = "Ready" },
+        new() { LineKind = RestaurantOrderLineKinds.ComboComponent, Status = "Ready" }
+      ]
+    };
+
+    var progress = RestaurantKitchenProgressRules.Classify(order);
+
+    Assert.Equal(RestaurantKitchenProgress.Ready, progress);
+  }
+
   [Theory]
   [InlineData("Pending", RestaurantKitchenProgress.NotStarted)]
   [InlineData("Preparing", RestaurantKitchenProgress.Preparing)]
@@ -92,6 +110,7 @@ public sealed class RestaurantKitchenBoardTests
     Assert.DoesNotContain("ORDER BY orderInfo.Priority", kitchenQuery, StringComparison.Ordinal);
     Assert.DoesNotContain("CASE orderInfo.[Status]", kitchenQuery, StringComparison.Ordinal);
     Assert.Contains("AND lineInfo.[Status] <> 'Cancelled'", kitchenQuery, StringComparison.Ordinal);
+    Assert.Contains("AND lineInfo.LineKind <> 'Combo'", kitchenQuery, StringComparison.Ordinal);
     Assert.DoesNotContain("lineInfo.IsCustom = 0", kitchenQuery, StringComparison.Ordinal);
   }
 

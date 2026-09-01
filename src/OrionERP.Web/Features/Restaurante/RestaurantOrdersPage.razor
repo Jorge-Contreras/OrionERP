@@ -46,7 +46,7 @@
         </header>
         <div class="order-card__summary">
           @if(!string.IsNullOrWhiteSpace(order.TableName)){<span class="oi oi-map-marker"></span><strong>@order.TableName</strong>}
-          <span>@order.Lines.Sum(x=>x.Quantity).ToString("0.##") producto(s)</span>
+          <span>@order.Lines.Where(x=>x.LineKind!=RestaurantOrderLineKinds.ComboComponent).Sum(x=>x.Quantity).ToString("0.##") producto(s)</span>
           <span>@order.Total.ToString("C")</span>
         </div>
         @if(!string.IsNullOrWhiteSpace(order.Notes))
@@ -59,7 +59,7 @@
         <ul>
           @foreach(var line in order.Lines.Where(x=>x.Status!="Cancelled"))
           {
-            <li><b>@line.Quantity.ToString("0.##")×</b><span>@line.ProductName@if(line.IsCustom){<small>Cargo personalizado</small>}else if(line.Modifiers.Count>0){<small>@string.Join(" · ",line.Modifiers)</small>}</span><em>@StatusLabel(line.Status)</em></li>
+            <li class="@(line.LineKind==RestaurantOrderLineKinds.ComboComponent?"is-combo-component":null)"><b>@line.Quantity.ToString("0.##")×</b><span>@line.ProductName@if(line.IsCustom){<small>Cargo personalizado</small>}else if(line.LineKind==RestaurantOrderLineKinds.Combo){<small>Combo</small>}else if(line.LineKind==RestaurantOrderLineKinds.ComboComponent){<small>@line.ComboSlotName · @line.ParentProductName</small>}@if(line.StructuredModifiers.Count>0){<small>@string.Join(" · ",line.StructuredModifiers.Select(ModifierInstruction))</small>}else if(line.Modifiers.Count>0){<small>@string.Join(" · ",line.Modifiers)</small>}@if(!string.IsNullOrWhiteSpace(line.Notes)){<small>Nota: @line.Notes</small>}</span><em>@StatusLabel(line.Status)</em></li>
           }
         </ul>
         <footer>
@@ -562,6 +562,8 @@
   private static string FilterLabel(string value) => value switch { "Active" => "Activas", "Ready" => "Listas", "Dispatched" => "Despachadas", "Delivered" => "Entregadas", "Completed" => "Completadas", "Cancelled" => "Canceladas", _ => value };
   private static string TypeLabel(string value) => value switch { "Pickup" => "Recoger", "Table" => "Mesa", "Delivery" => "Domicilio", _ => value };
   private static string StatusLabel(string value) => value switch { "AwaitingPayment" => "Pendiente de pago", "Sent" => "Pendiente", "Preparing" => "Preparando", "Ready" => "Lista", "Dispatched" => "Despachada", "Delivered" => "Entregada", "Completed" => "Completada", "Cancelled" => "Cancelada", "Pending" => "Pendiente", _ => value };
+  private static string ModifierInstruction(RestaurantOrderLineModifierDto modifier)
+    => RestaurantComboOrderRules.FormatModifierInstruction(modifier);
   private static string KitchenProgressClass(RestaurantOrderDto order) => RestaurantKitchenProgressRules.Classify(order) switch
   {
     RestaurantKitchenProgress.Ready => "order-card--complete",

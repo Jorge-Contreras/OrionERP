@@ -50,7 +50,7 @@ internal static class RestaurantRequirementGraphLoader
       FROM logistica.UnitConversion
       WHERE IsActive = 1;
 
-      SELECT delta.ModifierOptionId AS OptionId, delta.MaterialId, delta.QuantityDelta,
+      SELECT delta.ModifierOptionId AS OptionId, delta.MaterialId, delta.EffectKind, delta.QuantityDelta,
              delta.UnitId, COALESCE(NULLIF(unitInfo.Abbreviation, ''), unitInfo.UnitName) AS Unit
       FROM restaurante.ModifierIngredientDelta delta
       LEFT JOIN logistica.UnitOfMeasure unitInfo ON unitInfo.Id = delta.UnitId
@@ -127,6 +127,7 @@ internal static class RestaurantRequirementGraphLoader
       {
         OptionId = row.OptionId,
         MaterialId = row.MaterialId,
+        EffectKind = row.EffectKind,
         QuantityDelta = row.QuantityDelta,
         UnitId = row.UnitId,
         Unit = row.Unit
@@ -182,8 +183,9 @@ internal static class RestaurantRequirementGraphLoader
   {
     public long OptionId { get; set; }
     public int MaterialId { get; set; }
+    public string EffectKind { get; set; } = RestaurantModifierEffectKinds.AdjustQuantity;
     public decimal QuantityDelta { get; set; }
-    public int UnitId { get; set; }
+    public int? UnitId { get; set; }
     public string Unit { get; set; } = string.Empty;
   }
 }

@@ -1153,9 +1153,22 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     {
       var productIds=request.ProductIds.Distinct().ToArray();
       var materialIds=request.Options.SelectMany(option=>option.IngredientDeltas).Select(delta=>delta.MaterialId).Distinct().ToArray();
-      var validProducts=productIds.Length==0?0:await conn.ExecuteScalarAsync<int>(new CommandDefinition("SELECT COUNT(*) FROM restaurante.Product WHERE Rfc=@Rfc AND Id IN @Ids AND ProductKind='Standard' AND IsActive=1;",new{Rfc=rfc,Ids=productIds},tx,cancellationToken:ct));
-      var validMaterials=materialIds.Length==0?0:await conn.ExecuteScalarAsync<int>(new CommandDefinition("SELECT COUNT(*) FROM logistica.Material WHERE Rfc=@Rfc AND Id IN @Ids AND IsActive=1;",new{Rfc=rfc,Ids=materialIds},tx,cancellationToken:ct));
-      if(validProducts!=productIds.Length||validMaterials!=materialIds.Length){await tx.RollbackAsync(ct);return RestaurantCommandResult.Fail("Un producto o material no pertenece al RFC activo o está inactivo.");}
+      var validProducts=productIds.Length==0?new HashSet<long>():(await conn.QueryAsync<long>(new CommandDefinition("SELECT Id FROM restaurante.Product WHERE Rfc=@Rfc AND Id IN @Ids AND ProductKind='Standard' AND IsActive=1;",new{Rfc=rfc,Ids=productIds},tx,cancellationToken:ct))).ToHashSet();
+      var validMaterials=materialIds.Length==0?new HashSet<long>():(await conn.QueryAsync<long>(new CommandDefinition("SELECT Id FROM logistica.Material WHERE Rfc=@Rfc AND Id IN @Ids AND IsActive=1;",new{Rfc=rfc,Ids=materialIds},tx,cancellationToken:ct))).ToHashSet();
+      if(validProducts.Count!=productIds.Length||validMaterials.Count!=materialIds.Length)
+      {
+        var rejectedProducts=productIds.Where(id=>!validProducts.Contains(id)).ToArray();
+        var rejectedMaterials=materialIds.Where(id=>!validMaterials.Contains(id)).ToArray();
+        var rejectedNames=new List<string>();
+        if(rejectedProducts.Length>0)
+          rejectedNames.AddRange(await conn.QueryAsync<string>(new CommandDefinition("SELECT card.[Name] FROM restaurante.Product item JOIN restaurante.ProductCard card ON card.Rfc=item.Rfc AND card.Id=item.ProductCardId WHERE item.Rfc=@Rfc AND item.Id IN @Ids ORDER BY card.[Name];",new{Rfc=rfc,Ids=rejectedProducts},tx,cancellationToken:ct)));
+        if(rejectedMaterials.Length>0)
+          rejectedNames.AddRange(await conn.QueryAsync<string>(new CommandDefinition("SELECT [Description] FROM logistica.Material WHERE Rfc=@Rfc AND Id IN @Ids ORDER BY [Description];",new{Rfc=rfc,Ids=rejectedMaterials},tx,cancellationToken:ct)));
+        await tx.RollbackAsync(ct);
+        return RestaurantCommandResult.Fail(rejectedNames.Count==0
+          ? "Un producto o material no pertenece al RFC activo o está inactivo."
+          : $"No se puede usar en modificadores porque está inactivo, es un combo o pertenece a otro RFC: {string.Join(", ",rejectedNames)}.");
+      }
 
       var graph=await RestaurantRequirementGraphLoader.LoadAsync(conn,tx,rfc,null,ct);
       foreach(var effect in request.Options.SelectMany(option=>option.IngredientDeltas))

@@ -73,6 +73,21 @@ public sealed class RestaurantPosPointsRedemptionFlowTests
   }
 
   [Fact]
+  public void InventoryReservation_MapsPhysicalMaterialColumnsToFriendlyNames()
+  {
+    var orderService = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantOrderService.cs");
+
+    Assert.Contains(
+      "SELECT Id, MaterialCode AS Code, [Description] AS [Name], TrackLots FROM logistica.Material",
+      orderService,
+      StringComparison.Ordinal);
+    Assert.DoesNotContain(
+      "SELECT Id, Code, Name, TrackLots FROM logistica.Material",
+      orderService,
+      StringComparison.Ordinal);
+  }
+
+  [Fact]
   public void Pos_PutsClubBrunosFirstAndKeepsSupervisorCredentialsInTheContextualModal()
   {
     var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantPosPage.razor");

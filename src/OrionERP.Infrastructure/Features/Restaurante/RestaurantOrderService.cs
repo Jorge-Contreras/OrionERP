@@ -2404,7 +2404,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       var needed = decimal.Round(requirement.Value, 4, MidpointRounding.AwayFromZero);
       var remaining = needed;
       var material = await conn.QuerySingleAsync<MaterialInventoryRow>(new CommandDefinition(
-        "SELECT Id, Code, Name, TrackLots FROM logistica.Material WHERE Rfc=@Rfc AND Id=@MaterialId;",
+        "SELECT Id, MaterialCode AS Code, [Description] AS [Name], TrackLots FROM logistica.Material WHERE Rfc=@Rfc AND Id=@MaterialId;",
         new { Rfc = rfc, MaterialId = requirement.Key }, tx, cancellationToken: ct));
       if (material.TrackLots)
       {

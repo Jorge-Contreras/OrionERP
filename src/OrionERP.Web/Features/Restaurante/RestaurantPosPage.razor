@@ -270,32 +270,8 @@
               <strong>Datos, pago y total</strong>
             </header>
             <section class="pos-order-options">
-          <div class="pos-segmented" role="group" aria-label="Modalidad">
-            @foreach (var type in new[] { ("Pickup", "Recoger"), ("Table", "Mesa"), ("Delivery", "Domicilio") })
-            {
-              <button type="button" class="@(orderType == type.Item1 ? "is-active" : null)" @onclick="() => SetOrderTypeAsync(type.Item1)">@type.Item2</button>
-            }
-          </div>
-          @if (orderType == "Table")
-          {
-            <label>Mesa<select @bind="diningTableId"><option value="">Seleccionar…</option>@foreach (var table in catalog.Tables) { <option value="@table.Id">@table.Name</option> }</select></label>
-          }
-          <div class="pos-form-row">
-            <label class="pos-required-label">
-              <span>Cliente <b aria-hidden="true">*</b></span>
-              <input @bind="customerName"
-                     @bind:event="oninput"
-                     required
-                     maxlength="150"
-                     autocomplete="name"
-                     aria-required="true"
-                     placeholder="Nombre obligatorio" />
-              <small>Obligatorio para enviar la orden.</small>
-            </label>
-            <label>Teléfono <input @bind="customerPhone" placeholder="Opcional" /></label>
-          </div>
           <section class="pos-membership" aria-label="Membresía y promociones">
-            <header><div><span>Club Bruno’s</span><strong>Identifica al miembro antes de cobrar</strong></div></header>
+            <header><div><span>Club Bruno’s</span><strong>Pregunta primero si el cliente es miembro</strong></div></header>
             <div class="pos-membership__lookup">
               <label>QR, número, correo o teléfono
                 <input @bind="memberIdentifier" @bind:event="oninput" autocomplete="off" placeholder="Ej. teléfono de 10 dígitos" />
@@ -363,6 +339,30 @@
               </div>
             }
           </section>
+          <div class="pos-segmented" role="group" aria-label="Modalidad">
+            @foreach (var type in new[] { ("Pickup", "Recoger"), ("Table", "Mesa"), ("Delivery", "Domicilio") })
+            {
+              <button type="button" class="@(orderType == type.Item1 ? "is-active" : null)" @onclick="() => SetOrderTypeAsync(type.Item1)">@type.Item2</button>
+            }
+          </div>
+          @if (orderType == "Table")
+          {
+            <label>Mesa<select @bind="diningTableId"><option value="">Seleccionar…</option>@foreach (var table in catalog.Tables) { <option value="@table.Id">@table.Name</option> }</select></label>
+          }
+          <div class="pos-form-row">
+            <label class="pos-required-label">
+              <span>Cliente <b aria-hidden="true">*</b></span>
+              <input @bind="customerName"
+                     @bind:event="oninput"
+                     required
+                     maxlength="150"
+                     autocomplete="name"
+                     aria-required="true"
+                     placeholder="Nombre obligatorio" />
+              <small>Obligatorio para enviar la orden.</small>
+            </label>
+            <label>Teléfono <input @bind="customerPhone" placeholder="Opcional" /></label>
+          </div>
           @if (orderType == "Delivery")
           {
             <label>Dirección <textarea @bind="deliveryAddress" rows="2"></textarea></label>
@@ -376,12 +376,10 @@
           }
           <label>Notas de la orden<textarea @bind="orderNotes" rows="2"></textarea></label>
           <details class="pos-discounts">
-            <summary>Descuento o excepción de inventario</summary>
+            <summary>Descuento manual</summary>
             <div class="pos-form-row"><label>Tipo<select @bind="discountMode" @bind:after="InvalidateRedemption"><option value="Amount">Importe</option><option value="Percent">Porcentaje</option></select></label><label>Valor <input type="number" min="0" step="0.01" @bind="discountValue" @bind:after="InvalidateRedemption" /></label></div>
             <label>Motivo <input @bind="discountReason" /></label>
-            <label><input type="checkbox" @bind="allowInventoryDeficit" /> Autorizar cualquier excepción de inventario</label>
-            <small>Con PIN válido, permite cobrar aunque falten existencias, saldos, ubicaciones o configuración de ingredientes.</small>
-            <div class="pos-form-row"><label>Supervisor <input @bind="supervisorIdentity" autocomplete="username" /></label><label>PIN <input type="password" inputmode="numeric" @bind="supervisorPin" autocomplete="current-password" /></label></div>
+            <small>Si aplicas un descuento, el supervisor lo revisará y autorizará al cobrar.</small>
           </details>
             </section>
 
@@ -497,6 +495,71 @@
       <button type="button" class="pos-submit" disabled="@(!CanAddCustomItem)" @onclick="AddCustomItemAsync">
         Agregar cargo a la orden
       </button>
+    </section>
+  </div>
+}
+
+@if (isSupervisorOverrideOpen)
+{
+  <div class="pos-modal-backdrop pos-supervisor-backdrop" @onclick="CloseSupervisorOverride">
+    <section class="pos-modal pos-supervisor-modal @(SupervisorOverrideIsInventory ? "is-inventory" : "is-discount")"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="supervisor-override-title"
+             aria-describedby="supervisor-override-description"
+             @onclick:stopPropagation>
+      <header>
+        <div><span>Revisión obligatoria</span><h2 id="supervisor-override-title">@SupervisorOverrideTitle</h2></div>
+        <button type="button" @onclick="CloseSupervisorOverride" disabled="@isSupervisorOverrideBusy" aria-label="Cerrar autorización">×</button>
+      </header>
+
+      <div class="pos-supervisor-summary" role="alert">
+        <span class="oi oi-warning-sign" aria-hidden="true"></span>
+        <div>
+          <strong>@(SupervisorOverrideIsInventory ? "La orden no puede continuar con el inventario actual" : "La orden contiene un descuento manual")</strong>
+          <p id="supervisor-override-description">@supervisorOverrideMessage</p>
+        </div>
+      </div>
+
+      <div class="pos-supervisor-scope">
+        <strong>Al autorizar</strong>
+        @if (SupervisorOverrideIsInventory)
+        {
+          <p>Se reintentará esta misma orden permitiendo el faltante descrito arriba. La excepción y el supervisor quedarán registrados para auditoría.</p>
+        }
+        else
+        {
+          <p>Se conservará el descuento capturado y quedarán registrados el motivo y el supervisor que lo aprobó.</p>
+        }
+      </div>
+
+      <form @onsubmit="AuthorizeSupervisorOverrideAsync" @onsubmit:preventDefault>
+        @if (!SupervisorOverrideIsInventory)
+        {
+          <label class="pos-supervisor-reason">Motivo del descuento
+            <input @bind="discountReason" @bind:event="oninput" maxlength="500" autocomplete="off" placeholder="Describe por qué se autoriza" />
+          </label>
+        }
+        <div class="pos-supervisor-fields">
+          <label>Supervisor
+            <input @bind="supervisorIdentity" @bind:event="oninput" maxlength="256" autocomplete="username" placeholder="Usuario o correo" />
+          </label>
+          <label>PIN de caja
+            <input type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" @bind="supervisorPin" @bind:event="oninput" autocomplete="current-password" placeholder="4 a 8 dígitos" />
+          </label>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(supervisorOverrideError))
+        {
+          <p class="pos-supervisor-error" role="alert">@supervisorOverrideError</p>
+        }
+        <footer class="pos-supervisor-actions">
+          <button type="button" class="pos-supervisor-cancel" @onclick="CloseSupervisorOverride" disabled="@isSupervisorOverrideBusy">Cancelar</button>
+          <button type="submit" class="pos-supervisor-authorize" disabled="@(!CanAuthorizeSupervisorOverride)">
+            <span class="oi oi-lock-locked" aria-hidden="true"></span>
+            @(isSupervisorOverrideBusy ? "Verificando…" : SupervisorOverrideActionLabel)
+          </button>
+        </footer>
+      </form>
     </section>
   </div>
 }
@@ -679,9 +742,13 @@
   private string discountMode = "Amount";
   private decimal discountValue;
   private string? discountReason;
-  private bool allowInventoryDeficit;
   private string? supervisorIdentity;
   private string? supervisorPin;
+  private bool isSupervisorOverrideOpen;
+  private bool isSupervisorOverrideBusy;
+  private string? supervisorOverrideError;
+  private string supervisorOverrideMessage = string.Empty;
+  private SupervisorOverrideKind supervisorOverrideKind;
   private decimal cashReceived;
   private decimal cardAmount;
   private decimal transferAmount;
@@ -716,6 +783,7 @@
       Math.Max(0, CartSubtotal - PromotionDiscountTotal - LineDiscountTotal)),
     2);
   private decimal NonLoyaltyDiscountTotal => decimal.Round(PromotionDiscountTotal + LineDiscountTotal + OrderDiscountAmount, 2);
+  private bool HasManualDiscount => LineDiscountTotal + OrderDiscountAmount > 0;
   private decimal MerchandiseBeforeRedemption => decimal.Round(Math.Max(0, CartSubtotal - NonLoyaltyDiscountTotal), 2);
   private int MaximumOrderRedemptionPoints => redemptionPreview is null
     ? 0
@@ -767,6 +835,19 @@
     && (string.IsNullOrWhiteSpace(promotionCode) || promotionQuote?.CodeAccepted == true)
     && ElectronicPaymentExcess <= 0.01m
     && (!RequiresFullPayment || PosCash.Shortfall <= 0.01m);
+  private bool SupervisorOverrideIsInventory => supervisorOverrideKind == SupervisorOverrideKind.Inventory;
+  private string SupervisorOverrideTitle => SupervisorOverrideIsInventory
+    ? "Autorizar excepción de inventario"
+    : "Autorizar descuento";
+  private string SupervisorOverrideActionLabel => SupervisorOverrideIsInventory
+    ? "Autorizar y reintentar"
+    : "Autorizar y cobrar";
+  private bool SupervisorPinLooksValid => supervisorPin is { Length: >= 4 and <= 8 }
+    && supervisorPin.All(char.IsDigit);
+  private bool CanAuthorizeSupervisorOverride => !isSupervisorOverrideBusy
+    && !string.IsNullOrWhiteSpace(supervisorIdentity)
+    && SupervisorPinLooksValid
+    && (SupervisorOverrideIsInventory || !string.IsNullOrWhiteSpace(discountReason));
   private decimal SelectedProductPrice => selectedProduct is null
     ? 0
     : selectedProduct.ProductKind == RestaurantProductKinds.Combo
@@ -1422,7 +1503,13 @@
     }
   }
 
-  private async Task SubmitAsync()
+  private Task SubmitAsync()
+    => ExecuteSubmissionAsync(null, allowInventoryDeficit: false, promptForManualDiscount: true);
+
+  private async Task ExecuteSubmissionAsync(
+    string? supervisorAuthorizedBy,
+    bool allowInventoryDeficit,
+    bool promptForManualDiscount)
   {
     if (catalog is null || cart.Count == 0 || isSubmitting) return;
     isSubmitting = true; error = null; drawerWarning = null;
@@ -1444,21 +1531,23 @@
       if (shift is null) { error = "Selecciona un turno de caja abierto para registrar la venta."; return; }
       if (ElectronicPaymentExcess > 0.01m) { error = "Los pagos electrónicos no pueden exceder el total de la orden."; return; }
       if (RequiresFullPayment && PosCash.Shortfall > 0.01m) { error = $"Falta cubrir {PosCash.Shortfall:C} para cobrar esta orden."; return; }
+      if (HasManualDiscount && (promptForManualDiscount || string.IsNullOrWhiteSpace(supervisorAuthorizedBy)))
+      {
+        OpenSupervisorOverride(
+          SupervisorOverrideKind.Discount,
+          $"Se capturaron {(LineDiscountTotal + OrderDiscountAmount):C} en descuentos manuales. Revisa el motivo antes de aprobar el cobro.");
+        return;
+      }
+      if (HasManualDiscount && string.IsNullOrWhiteSpace(discountReason))
+      {
+        OpenSupervisorOverride(
+          SupervisorOverrideKind.Discount,
+          "El descuento necesita un motivo claro antes de que el supervisor pueda autorizarlo.");
+        return;
+      }
+
       var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
       var userName = auth.User.Identity?.Name ?? "restaurante";
-      string? supervisorAuthorizedBy = null;
-      if (LineDiscountTotal + OrderDiscountAmount > 0 || allowInventoryDeficit)
-      {
-        if (string.IsNullOrWhiteSpace(supervisorIdentity) || string.IsNullOrWhiteSpace(supervisorPin))
-          throw new InvalidOperationException("El descuento o déficit requiere turno, supervisor y PIN.");
-        var verification = await QuickPinService.VerifySupervisorPinAsync(new()
-        {
-          Rfc = CurrentRfc, CashRegisterId = shift.CashRegisterId,
-          UserNameOrEmail = supervisorIdentity, Pin = supervisorPin
-        });
-        if (!verification.Success) throw new InvalidOperationException(verification.Message);
-        supervisorAuthorizedBy = verification.UserName;
-      }
       var payments = new List<RestaurantPaymentCreateRequest>();
       var shouldOpenCashDrawer = cashReceived > 0.01m;
       if (PosCash.CashAppliedToOrder > 0.01m || tipAmount > 0.01m) payments.Add(new() { PaymentMethod = "Cash", Amount = PosCash.CashAppliedToOrder, TipAmount = tipAmount, IdempotencyKey = $"{idempotencyKey}:cash" });
@@ -1515,10 +1604,95 @@
       cart = [];
       idempotencyKey = Guid.NewGuid().ToString("N");
       await PersistCartAsync();
-      cashReceived = cardAmount = transferAmount = tipAmount = 0; customerName = customerPhone = deliveryAddress = deliveryReferences = externalReference = orderNotes = discountReason = supervisorIdentity = supervisorPin = memberIdentifier = promotionCode = null; selectedMember = null; redemptionPreview = null; redemptionPoints = appliedRedemptionPoints = 0; promotionQuote = null; deliveryCost = commissionAmount = discountValue = 0; allowInventoryDeficit = false;
+      cashReceived = cardAmount = transferAmount = tipAmount = 0; customerName = customerPhone = deliveryAddress = deliveryReferences = externalReference = orderNotes = discountReason = memberIdentifier = promotionCode = null; selectedMember = null; redemptionPreview = null; redemptionPoints = appliedRedemptionPoints = 0; promotionQuote = null; deliveryCost = commissionAmount = discountValue = 0;
+      ResetSupervisorOverride();
+    }
+    catch (RestaurantInventoryOverrideRequiredException ex)
+    {
+      OpenSupervisorOverride(SupervisorOverrideKind.Inventory, ex.Message);
     }
     catch (Exception ex) { error = ex.Message; }
     finally { isSubmitting = false; }
+  }
+
+  private void OpenSupervisorOverride(SupervisorOverrideKind kind, string message)
+  {
+    supervisorOverrideKind = kind;
+    supervisorOverrideMessage = message;
+    supervisorOverrideError = null;
+    supervisorIdentity = null;
+    supervisorPin = null;
+    isSupervisorOverrideOpen = true;
+  }
+
+  private void CloseSupervisorOverride()
+  {
+    if (isSupervisorOverrideBusy) return;
+    ResetSupervisorOverride();
+  }
+
+  private void ResetSupervisorOverride()
+  {
+    isSupervisorOverrideOpen = false;
+    supervisorOverrideKind = SupervisorOverrideKind.None;
+    supervisorOverrideMessage = string.Empty;
+    supervisorOverrideError = null;
+    supervisorIdentity = null;
+    supervisorPin = null;
+  }
+
+  private async Task AuthorizeSupervisorOverrideAsync()
+  {
+    if (!CanAuthorizeSupervisorOverride) return;
+    var shift = SelectedShift;
+    if (shift is null)
+    {
+      supervisorOverrideError = "Ya no hay un turno de caja abierto. Selecciona o abre un turno antes de autorizar.";
+      return;
+    }
+
+    isSupervisorOverrideBusy = true;
+    supervisorOverrideError = null;
+    try
+    {
+      var verification = await QuickPinService.VerifySupervisorPinAsync(new()
+      {
+        Rfc = CurrentRfc,
+        CashRegisterId = shift.CashRegisterId,
+        UserNameOrEmail = supervisorIdentity!,
+        Pin = supervisorPin!
+      });
+      if (!verification.Success || string.IsNullOrWhiteSpace(verification.UserName))
+      {
+        supervisorOverrideError = verification.Message;
+        supervisorPin = null;
+        return;
+      }
+
+      var allowInventoryDeficit = SupervisorOverrideIsInventory;
+      var supervisorAuthorizedBy = verification.UserName;
+      ResetSupervisorOverride();
+      await ExecuteSubmissionAsync(
+        supervisorAuthorizedBy,
+        allowInventoryDeficit,
+        promptForManualDiscount: false);
+    }
+    catch (Exception ex)
+    {
+      supervisorOverrideError = ex.Message;
+      supervisorPin = null;
+    }
+    finally
+    {
+      isSupervisorOverrideBusy = false;
+    }
+  }
+
+  private enum SupervisorOverrideKind
+  {
+    None,
+    Discount,
+    Inventory
   }
 
   private async Task PersistCartAsync()

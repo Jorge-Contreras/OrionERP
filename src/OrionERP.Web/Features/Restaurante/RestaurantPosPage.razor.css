@@ -188,7 +188,8 @@
   align-content: start;
   min-height: 245px;
   padding: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid #d9e1df;
   border-radius: 1.25rem;
   background: #fff;
@@ -1043,6 +1044,208 @@
   display: block;
   color: #687771;
   font-weight: 600;
+}
+
+.pos-supervisor-backdrop {
+  z-index: 1300;
+  background: rgba(8, 22, 18, .76);
+  backdrop-filter: blur(4px);
+}
+
+.pos-supervisor-modal {
+  width: min(580px, 100%);
+  display: grid;
+  gap: 1rem;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .55);
+}
+
+.pos-supervisor-modal > header {
+  padding: 1.1rem 1.2rem;
+  background: #203d31;
+  color: #fff;
+}
+
+.pos-supervisor-modal > header span {
+  color: #bfd8cc;
+}
+
+.pos-supervisor-modal > header h2 {
+  color: #fff;
+}
+
+.pos-supervisor-modal > header button {
+  background: rgba(255, 255, 255, .14);
+  color: #fff;
+}
+
+.pos-supervisor-modal > header button:hover:not(:disabled),
+.pos-supervisor-modal > header button:focus-visible {
+  background: rgba(255, 255, 255, .24);
+  outline: 3px solid rgba(255, 255, 255, .22);
+}
+
+.pos-supervisor-summary,
+.pos-supervisor-scope,
+.pos-supervisor-modal form {
+  margin-inline: 1.2rem;
+}
+
+.pos-supervisor-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .8rem;
+  align-items: start;
+  padding: .9rem;
+  border: 1px solid #edca78;
+  border-radius: .85rem;
+  background: #fff7df;
+  color: #6f4b09;
+}
+
+.pos-supervisor-summary > .oi {
+  display: grid;
+  place-items: center;
+  width: 2.45rem;
+  height: 2.45rem;
+  border-radius: .7rem;
+  background: #f4d98f;
+  font-size: 1.15rem;
+}
+
+.pos-supervisor-summary strong {
+  display: block;
+  color: #624006;
+}
+
+.pos-supervisor-summary p,
+.pos-supervisor-scope p {
+  margin: .28rem 0 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.pos-supervisor-scope {
+  padding: .8rem .9rem;
+  border-left: 4px solid #3f806c;
+  border-radius: .15rem .75rem .75rem .15rem;
+  background: #edf7f3;
+  color: #315548;
+}
+
+.pos-supervisor-modal form {
+  display: grid;
+  gap: .8rem;
+  margin-bottom: 1.2rem;
+}
+
+.pos-supervisor-modal form label {
+  display: grid;
+  gap: .3rem;
+  color: #3f5149;
+  font-size: .78rem;
+  font-weight: 850;
+}
+
+.pos-supervisor-modal form input {
+  width: 100%;
+  min-height: 2.8rem;
+  padding: .6rem .7rem;
+  border: 1px solid #bdccc3;
+  border-radius: .7rem;
+  background: #fff;
+  color: #24382f;
+}
+
+.pos-supervisor-modal form input:hover {
+  border-color: #7f9e8e;
+}
+
+.pos-supervisor-modal form input:focus-visible {
+  border-color: #286044;
+  outline: 3px solid rgba(40, 96, 68, .16);
+  outline-offset: 1px;
+}
+
+.pos-supervisor-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .7rem;
+}
+
+.pos-supervisor-error {
+  margin: 0;
+  padding: .7rem .8rem;
+  border-radius: .7rem;
+  background: #fee9e7;
+  color: #962e25;
+  font-weight: 800;
+}
+
+.pos-supervisor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .55rem;
+  padding-top: .8rem;
+  border-top: 1px solid #e1e8e5;
+}
+
+.pos-supervisor-actions button {
+  min-height: 2.8rem;
+  padding: .6rem .9rem;
+  border-radius: .7rem;
+  font-weight: 900;
+}
+
+.pos-supervisor-cancel {
+  border: 1px solid #bdccc3;
+  background: #fff;
+  color: #3c5047;
+}
+
+.pos-supervisor-authorize {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  border: 1px solid #286044;
+  background: #286044;
+  color: #fff;
+}
+
+.pos-supervisor-actions button:hover:not(:disabled),
+.pos-supervisor-actions button:focus-visible {
+  filter: brightness(.96);
+  outline: 3px solid rgba(40, 96, 68, .16);
+  outline-offset: 1px;
+}
+
+.pos-supervisor-actions button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+@media (max-width: 600px) {
+  .pos-supervisor-backdrop {
+    align-items: end;
+    padding: .6rem;
+  }
+
+  .pos-supervisor-modal {
+    width: 100%;
+    max-height: calc(100dvh - 1.2rem);
+    border-radius: 1.15rem 1.15rem .75rem .75rem;
+  }
+
+  .pos-supervisor-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-supervisor-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .pos-modifier {

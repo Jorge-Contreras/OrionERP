@@ -11,6 +11,7 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
   private static readonly CultureInfo MexicanCulture = CultureInfo.GetCultureInfo("es-MX");
   private const string MutedColor = "#3F3F3F";
   private const string LightColor = "#D5D5D5";
+  private const string DividerColor = "#A8A8A8";
   private const float ThermalWidthMillimetres = 80f;
   private const float ThermalMarginMillimetres = 4f;
   private const float PointsPerMillimetre = 72f / 25.4f;
@@ -114,16 +115,38 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
       column.Item().AlignCenter().Text(model.IsReprint ? "REIMPRESIÓN · TICKET DE CLIENTE" : "TICKET DE CLIENTE")
         .FontSize(7).SemiBold().LetterSpacing(0.08f);
       column.Item().AlignCenter().Text($"ORDEN {model.Folio:000}").FontSize(18).Bold();
-      column.Item().AlignCenter().Text(model.CustomerName).FontSize(11).Bold();
+      if (!string.IsNullOrWhiteSpace(model.CustomerName))
+      {
+        column.Item().AlignCenter().Text(model.CustomerName).FontSize(11).Bold();
+      }
       column.Item().AlignCenter().Text($"{OrderTypeLabel(model)}  |  {model.CreatedAt:dd/MM/yyyy HH:mm}")
         .FontSize(7)
         .FontColor(MutedColor);
 
       column.Item().PaddingVertical(2).LineHorizontal(1).LineColor(Colors.Black);
 
+      column.Item().PaddingBottom(1).Row(row =>
+      {
+        row.RelativeItem().Text("CANT. x ARTÍCULO")
+          .FontSize(6)
+          .SemiBold()
+          .FontColor(MutedColor);
+        row.ConstantItem(52).AlignRight().Text("IMPORTE")
+          .FontSize(6)
+          .SemiBold()
+          .FontColor(MutedColor);
+      });
+
+      var hasCustomerLines = false;
       foreach (var line in model.Lines)
       {
+        var isComponent = line.LineKind == RestaurantOrderLineKinds.ComboComponent;
+        if (!isComponent && hasCustomerLines)
+        {
+          column.Item().PaddingVertical(1).LineHorizontal(0.6f).LineColor(DividerColor);
+        }
         column.Item().Element(item => ComposeCustomerLine(item, line, model.PricesIncludeTax));
+        hasCustomerLines = true;
       }
 
       if (!string.IsNullOrWhiteSpace(model.OrderNotes))
@@ -152,7 +175,7 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
       foreach (var promotion in model.Promotions)
       {
         var code = string.IsNullOrWhiteSpace(promotion.Code) ? string.Empty : $" · {promotion.Code}";
-        column.Item().PaddingLeft(4).Text($"Promo: {promotion.PromotionName}{code} (-{promotion.DiscountAmount:C})")
+        column.Item().PaddingLeft(4).Text($"Promo: {promotion.PromotionName}{code} (-{FormatMoney(promotion.DiscountAmount)})")
           .FontSize(7)
           .FontColor(MutedColor);
       }
@@ -203,7 +226,7 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
         column.Item().PaddingTop(2).Text($"Membresía {model.MembershipNumber}").FontSize(8).SemiBold();
         if (model.PointsRedeemed > 0)
         {
-          column.Item().Text($"Puntos canjeados: {model.PointsRedeemed} (-{model.RedemptionValue:C})").FontSize(8);
+          column.Item().Text($"Puntos canjeados: {model.PointsRedeemed} (-{FormatMoney(model.RedemptionValue)})").FontSize(8);
         }
         column.Item().Text($"Puntos de esta compra: {model.PointsEarned}").FontSize(8);
         if (model.PointsBalance.HasValue)
@@ -221,42 +244,78 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
   private static void ComposeCustomerLine(IContainer container, RestaurantReceiptPdfLineModel line, bool pricesIncludeTax)
   {
     var isComponent = line.LineKind == RestaurantOrderLineKinds.ComboComponent;
-    container.PaddingLeft(isComponent ? 10 : 0).Column(column =>
+    var lineContainer = isComponent
+      ? container
+        .PaddingLeft(8)
+        .BorderLeft(1)
+        .BorderColor(DividerColor)
+        .PaddingLeft(5)
+        .PaddingVertical(1)
+      : container.PaddingVertical(1);
+
+    lineContainer.Column(column =>
     {
       column.Spacing(1);
       column.Item().Row(row =>
       {
-        row.ConstantItem(29).Text(FormatQuantity(line.Quantity)).SemiBold();
-        row.RelativeItem().Text(isComponent
-          ? $"↳ {(string.IsNullOrWhiteSpace(line.ComboSlotName) ? string.Empty : $"{line.ComboSlotName}: ")}{line.ProductName}"
-          : line.ProductName).SemiBold();
-        row.ConstantItem(52).AlignRight().Text(isComponent
-          ? line.ChoicePriceDelta > 0 ? $"+{FormatMoney(line.ChoicePriceDelta)}" : "incluido"
-          : FormatMoney(LineAmount(line)));
+        row.RelativeItem().Text(text =>
+        {
+          if (isComponent && !string.IsNullOrWhiteSpace(line.ComboSlotName))
+          {
+            text.Span($"{line.ComboSlotName}: ")
+              .FontSize(7.5f)
+              .SemiBold()
+              .FontColor(MutedColor);
+          }
+
+          text.Span($"{FormatQuantity(line.Quantity)} x ")
+            .FontSize(isComponent ? 8.5f : 9)
+            .Bold();
+          text.Span(line.ProductName)
+            .FontSize(isComponent ? 8 : 8.5f)
+            .SemiBold();
+        });
+        var amountContainer = row.ConstantItem(52).AlignRight();
+        if (!isComponent)
+        {
+          amountContainer.Text(FormatMoney(LineAmount(line))).SemiBold();
+        }
+        else if (line.ChoicePriceDelta > 0)
+        {
+          amountContainer.Text(text =>
+          {
+            text.Span($"+{FormatMoney(line.ChoicePriceDelta)}").SemiBold();
+            text.Span("\npor combo").FontSize(6).FontColor(MutedColor);
+          });
+        }
+        else
+        {
+          amountContainer.Text("incluido").FontSize(7).FontColor(MutedColor);
+        }
       });
 
       var modifierLabels = ModifierLabels(line);
       if (modifierLabels.Count > 0)
       {
-        column.Item().PaddingLeft(29).Text(string.Join(" · ", modifierLabels))
-          .FontSize(7)
+        column.Item().PaddingLeft(isComponent ? 0 : 12).Text(string.Join(" · ", modifierLabels))
+          .FontSize(7.5f)
           .FontColor(MutedColor);
       }
       if (!string.IsNullOrWhiteSpace(line.Notes))
       {
-        column.Item().PaddingLeft(29).Text($"Nota: {line.Notes.Trim()}")
-          .FontSize(7)
+        column.Item().PaddingLeft(isComponent ? 0 : 12).Text($"Nota: {line.Notes.Trim()}")
+          .FontSize(7.5f)
           .FontColor(MutedColor);
       }
       if (!isComponent && line.DiscountAmount > 0)
       {
-        column.Item().PaddingLeft(29).Text($"Descuento de partida: {FormatMoney(line.DiscountAmount)}")
+        column.Item().PaddingLeft(12).Text($"Descuento de partida: {FormatMoney(line.DiscountAmount)}")
           .FontSize(7)
           .FontColor(MutedColor);
       }
       if (!isComponent && !pricesIncludeTax)
       {
-        column.Item().PaddingLeft(29).Text("Importe antes de IVA")
+        column.Item().PaddingLeft(12).Text("Importe antes de IVA")
           .FontSize(6.5f)
           .FontColor(MutedColor);
       }
@@ -279,25 +338,28 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
       }
       column.Item().AlignCenter().Text($"SECCIÓN: {sectionName.ToUpper(MexicanCulture)}").FontSize(13).Bold();
       column.Item().AlignCenter().Text($"ORDEN {model.Folio:000}").FontSize(20).Bold();
-      column.Item().AlignCenter().Text(model.CustomerName).FontSize(12).Bold();
+      if (!string.IsNullOrWhiteSpace(model.CustomerName))
+      {
+        column.Item().AlignCenter().Text(model.CustomerName).FontSize(12).Bold();
+      }
       column.Item().AlignCenter().Text($"{OrderTypeLabel(model)}  |  {model.CreatedAt:dd/MM/yyyy HH:mm}")
         .FontSize(7)
         .FontColor(MutedColor);
 
       column.Item().PaddingVertical(2).LineHorizontal(1.2f).LineColor(Colors.Black);
 
-      foreach (var line in lines)
-      {
-        column.Item().Element(item => ComposeSectionLine(item, line));
-      }
-
       if (!string.IsNullOrWhiteSpace(model.OrderNotes))
       {
-        column.Item().PaddingTop(3).BorderTop(1).BorderColor(LightColor).PaddingTop(3).Text(text =>
+        column.Item().PaddingBottom(2).Border(1).BorderColor(Colors.Black).Padding(3).Text(text =>
         {
           text.Span("NOTA DE LA ORDEN: ").Bold();
           text.Span(model.OrderNotes.Trim()).Bold();
         });
+      }
+
+      foreach (var line in lines)
+      {
+        column.Item().Element(item => ComposeSectionLine(item, line));
       }
 
       column.Item().PaddingTop(5).LineHorizontal(1).LineColor(Colors.Black);

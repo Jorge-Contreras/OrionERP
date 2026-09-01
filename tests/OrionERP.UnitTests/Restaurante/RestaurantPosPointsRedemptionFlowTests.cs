@@ -50,9 +50,15 @@ public sealed class RestaurantPosPointsRedemptionFlowTests
     var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantPosPage.razor");
     var orderService = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantOrderService.cs");
 
-    Assert.Contains("Autorizar cualquier excepción de inventario", page, StringComparison.Ordinal);
+    Assert.DoesNotContain("Autorizar cualquier excepción de inventario", page, StringComparison.Ordinal);
+    Assert.Contains("RestaurantInventoryOverrideRequiredException", orderService, StringComparison.Ordinal);
+    Assert.Contains("catch (RestaurantInventoryOverrideRequiredException ex)", page, StringComparison.Ordinal);
+    Assert.Contains("OpenSupervisorOverride(SupervisorOverrideKind.Inventory", page, StringComparison.Ordinal);
+    Assert.Contains("Autorizar y reintentar", page, StringComparison.Ordinal);
     Assert.Contains("if (!allowInventoryOverride)", orderService, StringComparison.Ordinal);
     Assert.Contains("@AllowInventoryOverride = 1 OR product.SoldOutOverride = 0", orderService, StringComparison.Ordinal);
+    Assert.Contains("productsWithInventoryOverride", orderService, StringComparison.Ordinal);
+    Assert.Contains("componentsWithInventoryOverride", orderService, StringComparison.Ordinal);
     Assert.Contains("fallbackLocation.HasValue", orderService, StringComparison.Ordinal);
     Assert.Contains("no tiene una ubicación de inventario configurada", orderService, StringComparison.Ordinal);
     Assert.Contains("InventoryDeficitAuthorized", orderService, StringComparison.Ordinal);
@@ -64,6 +70,32 @@ public sealed class RestaurantPosPointsRedemptionFlowTests
       "?? throw new InvalidOperationException(\"No hay una ubicación de inventario configurada",
       orderService,
       StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void Pos_PutsClubBrunosFirstAndKeepsSupervisorCredentialsInTheContextualModal()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantPosPage.razor");
+    var checkoutStart = page.IndexOf("<section class=\"pos-order-options\">", StringComparison.Ordinal);
+
+    Assert.True(checkoutStart >= 0);
+    var membershipStart = page.IndexOf("<section class=\"pos-membership\"", checkoutStart, StringComparison.Ordinal);
+    var orderModeStart = page.IndexOf("<div class=\"pos-segmented\"", checkoutStart, StringComparison.Ordinal);
+    var discountsStart = page.IndexOf("<details class=\"pos-discounts\">", checkoutStart, StringComparison.Ordinal);
+    Assert.True(discountsStart > orderModeStart);
+    var discountsEnd = page.IndexOf("</details>", discountsStart, StringComparison.Ordinal);
+
+    Assert.True(membershipStart > checkoutStart);
+    Assert.True(orderModeStart > membershipStart);
+    Assert.True(discountsEnd > discountsStart);
+    var discountSection = page[discountsStart..discountsEnd];
+    Assert.Contains("Pregunta primero si el cliente es miembro", page, StringComparison.Ordinal);
+    Assert.DoesNotContain("supervisorIdentity", discountSection, StringComparison.Ordinal);
+    Assert.DoesNotContain("supervisorPin", discountSection, StringComparison.Ordinal);
+    Assert.DoesNotContain("Autorizar cualquier excepción", discountSection, StringComparison.Ordinal);
+    Assert.Contains("isSupervisorOverrideOpen", page, StringComparison.Ordinal);
+    Assert.Contains("Motivo del descuento", page, StringComparison.Ordinal);
+    Assert.Contains("VerifySupervisorPinAsync", page, StringComparison.Ordinal);
   }
 
   private static string ReadRepoFile(string relativePath)

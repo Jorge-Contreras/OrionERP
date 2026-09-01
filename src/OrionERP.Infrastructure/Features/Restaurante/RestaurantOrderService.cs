@@ -110,6 +110,16 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         conn, tx, rfc, requestedProductIds, request.AllowInventoryDeficit, ct)).ToList();
       if (products.Count != requestedProductIds.Length)
       {
+        if (!request.AllowInventoryDeficit)
+        {
+          var productsWithInventoryOverride = await LoadProductsAsync(
+            conn, tx, rfc, requestedProductIds, true, ct);
+          if (productsWithInventoryOverride.Count == requestedProductIds.Length)
+          {
+            throw new RestaurantInventoryOverrideRequiredException(
+              "Uno o más productos de la orden están marcados como agotados.");
+          }
+        }
         throw new InvalidOperationException("Uno o más productos están inactivos o pertenecen a otro RFC.");
       }
 
@@ -139,6 +149,16 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         conn, tx, rfc, componentProductIds, request.AllowInventoryDeficit, ct);
       if (components.Count != componentProductIds.Length)
       {
+        if (!request.AllowInventoryDeficit)
+        {
+          var componentsWithInventoryOverride = await LoadProductsAsync(
+            conn, tx, rfc, componentProductIds, true, ct);
+          if (componentsWithInventoryOverride.Count == componentProductIds.Length)
+          {
+            throw new RestaurantInventoryOverrideRequiredException(
+              "Uno o más componentes del combo están marcados como agotados.");
+          }
+        }
         throw new InvalidOperationException("Uno o más componentes del combo están inactivos, agotados o pertenecen a otro RFC.");
       }
       products.AddRange(components.Where(component => products.All(product => product.Id != component.Id)));
@@ -2315,7 +2335,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       var message = $"El producto {product.Sku} no tiene material para calcular inventario.";
       if (!allowInventoryOverride)
       {
-        throw new InvalidOperationException(message);
+        throw new RestaurantInventoryOverrideRequiredException(message);
       }
       overrideReasons.Add(message);
       return;
@@ -2331,7 +2351,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     {
       if (!allowInventoryOverride)
       {
-        throw new InvalidOperationException(issue.Message);
+        throw new RestaurantInventoryOverrideRequiredException(issue.Message);
       }
       overrideReasons.Add(issue.Message);
     }
@@ -2384,7 +2404,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       var needed = decimal.Round(requirement.Value, 4, MidpointRounding.AwayFromZero);
       var remaining = needed;
       var material = await conn.QuerySingleAsync<MaterialInventoryRow>(new CommandDefinition(
-        "SELECT Id, TrackLots FROM logistica.Material WHERE Rfc=@Rfc AND Id=@MaterialId;",
+        "SELECT Id, Code, Name, TrackLots FROM logistica.Material WHERE Rfc=@Rfc AND Id=@MaterialId;",
         new { Rfc = rfc, MaterialId = requirement.Key }, tx, cancellationToken: ct));
       if (material.TrackLots)
       {
@@ -2444,7 +2464,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       {
         if (!allowDeficit)
         {
-          throw new InvalidOperationException($"Inventario insuficiente para el material {requirement.Key}. Faltan {remaining:N4}.");
+          throw new RestaurantInventoryOverrideRequiredException(
+            $"Inventario insuficiente para {material.Code} · {material.Name}. Faltan {remaining:N4}.");
         }
         var fallbackLocation = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
           """
@@ -3189,7 +3210,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     public string? RouteMenuSectionName { get; set; }
     public int? RouteMenuSectionSortOrder { get; set; }
   }
-  private sealed class MaterialInventoryRow { public int Id { get; set; } public bool TrackLots { get; set; } }
+  private sealed class MaterialInventoryRow { public int Id { get; set; } public string Code { get; set; } = string.Empty; public string Name { get; set; } = string.Empty; public bool TrackLots { get; set; } }
   private sealed class MaterialCostRow { public int Id { get; set; } public decimal BaseUnitPrice { get; set; } }
   private sealed class LotAvailabilityRow { public long MaterialLotId { get; set; } public int LocationId { get; set; } public decimal AvailableQuantity { get; set; } public decimal UnitCost { get; set; } }
   private sealed class BalanceAvailabilityRow { public int LocationId { get; set; } public decimal AvailableQuantity { get; set; } public decimal AverageUnitCost { get; set; } }

@@ -363,6 +363,16 @@ builder.Services.AddRateLimiter(options =>
     limiter.Window = TimeSpan.FromMinutes(1);
     limiter.QueueLimit = 0;
   });
+  // Los tableros de señalización son anónimos y devuelven imágenes de varios MB.
+  // Una TV sana pide cada imagen una vez (la URL lleva ?v={hash} y se sirve como
+  // inmutable) y consulta el manifiesto cada pocos minutos, así que este límite
+  // sobra para el uso legítimo y acota el abuso.
+  options.AddFixedWindowLimiter("menu-signage", limiter =>
+  {
+    limiter.PermitLimit = 120;
+    limiter.Window = TimeSpan.FromMinutes(1);
+    limiter.QueueLimit = 0;
+  });
 });
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
@@ -556,6 +566,7 @@ app.MapRazorPages();
 app.MapBlazorHub();
 app.MapHub<RestaurantEventsHub>("/hubs/restaurante");
 app.MapRestaurantProductImagesApi();
+app.MapRestaurantSignageApi();
 app.MapTrainingReadiness();
 app.MapRestaurantQzTraySigningApi();
 app.MapOpenClawReservationsApi();

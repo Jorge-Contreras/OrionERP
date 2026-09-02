@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Bruno's · Tablero de comida</title>
+<link rel="stylesheet" href="board.css" />
+<style>
+  .comida { flex: 1; display: grid; grid-template-columns: 1fr 424px; gap: 16px; min-height: 0; }
+  .comida__column { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  /* Filas de ancho completo en lugar de una retícula fija: con 11 platillos la
+     última fila lleva 3 tarjetas que reparten todo el ancho, en vez de dejar un
+     hueco que se lee como un error de composición. */
+  .comida__grid { flex: 1; display: flex; flex-direction: column; gap: 11px; min-height: 0; }
+  .comida__row { flex: 1; display: flex; gap: 11px; min-height: 0; }
+  .comida__row > .card { flex: 1; min-width: 0; }
+  .postres__list { flex: 1; display: grid; grid-auto-rows: 1fr; gap: 11px; min-height: 0; }
+
+  /* Los postres se presentan en horizontal: la foto ocupa el lado izquierdo y
+     deja el nombre y el precio alineados a la derecha. */
+  .postre { flex-direction: row; align-items: stretch; padding: 10px; gap: 12px; }
+  .postre .card__photo { flex: none; width: 178px; }
+  .postre__body { flex: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 8px; }
+  .postre .card__name { margin-top: 0; text-align: left; font-size: 27px; }
+  .postre .card__price { margin-top: 0; width: auto; text-align: left; border-top: 2px solid var(--red); padding-top: 6px; }
+</style>
+</head>
+<body>
+<div class="board">
+  <header class="board__header">
+    <img class="board__logo" src="logo.png" alt="" />
+    <div class="board__title">
+      <div class="board__brand">BRUNO<em>'</em>S <em>·</em> GARDEN &amp; SNACKS</div>
+      <h1 class="board__heading">MENÚ</h1>
+    </div>
+    <div class="board__rule"><span></span></div>
+  </header>
+
+  <div class="comida">
+    <section class="comida__column">
+      <div class="plate" id="foodPlate">Comida</div>
+      <div class="comida__grid" id="foodGrid"></div>
+    </section>
+    <section class="comida__column">
+      <div class="plate" id="dessertPlate">Postres</div>
+      <div class="postres__list" id="dessertList"></div>
+    </section>
+  </div>
+
+  <footer class="board__footer">
+    <span>Precios en pesos · IVA incluido</span>
+    <span><strong>Bruno's</strong> Garden &amp; Snacks</span>
+  </footer>
+</div>
+
+<script src="menu-data.js"></script>
+<script>
+  const data = window.MENU_DATA;
+  const bySection = (name) => data.items.filter((item) => item.section === name);
+
+  const photoNode = (item) =>
+    item.photo
+      ? `<div class="card__photo"><img src="${item.photo}" alt="" /></div>`
+      : '<div class="card__photo"></div>';
+
+  const cardMarkup = (item) => `
+      <article class="card card--${item.tier}">
+        ${photoNode(item)}
+        <div class="card__name">${item.name}</div>
+        <div class="card__price">${item.price}</div>
+      </article>`;
+
+  const food = bySection("COMIDA/DESAYUNO");
+  // Se reparte en filas de hasta 4 y la última se queda con lo que sobre; cada
+  // tarjeta es flex:1, así que una fila de 3 llena el ancho igual que una de 4.
+  const columns = 4;
+  const rows = [];
+  for (let index = 0; index < food.length; index += columns) {
+    rows.push(food.slice(index, index + columns));
+  }
+  document.getElementById("foodGrid").innerHTML = rows
+    .map((row) => `<div class="comida__row">${row.map(cardMarkup).join("")}</div>`)
+    .join("");
+
+  const dessertList = document.getElementById("dessertList");
+  dessertList.innerHTML = bySection("POSTRES")
+    .map(
+      (item) => `
+      <article class="card card--${item.tier} postre">
+        ${photoNode(item)}
+        <div class="postre__body">
+          <div class="card__name">${item.name}</div>
+          <div class="card__price">${item.price}</div>
+        </div>
+      </article>`
+    )
+    .join("");
+</script>
+</body>
+</html>

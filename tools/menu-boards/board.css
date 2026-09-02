@@ -1,0 +1,272 @@
+/* Dirección de arte de los tableros de Bruno's: fondo de metal oscuro, acentos
+   rojos y tipografía condensada pesada. Todo se diseña a 1920x1080 px CSS; el
+   render duplica la escala para obtener 3840x2160 reales. */
+
+@font-face { font-family: "Board Display"; src: url("fonts/anton-400.woff2") format("woff2"); font-weight: 400; font-display: block; }
+@font-face { font-family: "Board Text"; src: url("fonts/oswald-500.woff2") format("woff2"); font-weight: 500; font-display: block; }
+@font-face { font-family: "Board Text"; src: url("fonts/oswald-700.woff2") format("woff2"); font-weight: 700; font-display: block; }
+
+:root {
+  --ink: #ece7dd;
+  --ink-dim: #a9a094;
+  --red: #a8231f;
+  --red-deep: #6d1512;
+  --steel: #57575a;
+  --steel-light: #8d8d92;
+  --panel: #101012;
+  --panel-soft: #17171a;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: #050506;
+  color: var(--ink);
+  font-family: "Board Text", "Arial Narrow", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.board {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  padding: 26px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background:
+    radial-gradient(120% 80% at 50% 0%, #1c1c20 0%, #0a0a0c 55%, #050506 100%),
+    repeating-linear-gradient(135deg, rgba(255,255,255,.014) 0 2px, transparent 2px 5px);
+  border: 3px solid var(--steel);
+  outline: 6px solid #050506;
+  outline-offset: -9px;
+}
+
+/* Remaches de las esquinas: el mismo lenguaje de placa metálica de los tableros
+   originales, resuelto con gradientes en vez de una textura pesada. */
+.board::before,
+.board::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  height: 10px;
+  background: repeating-linear-gradient(90deg, var(--steel-light) 0 3px, transparent 3px 46px);
+  opacity: .5;
+}
+.board::before { top: 12px; }
+.board::after { bottom: 12px; }
+
+/* ------------------------------------------------------------------ cabecera */
+
+.board__header {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  height: 118px;
+  flex: none;
+  padding: 0 14px;
+}
+
+.board__logo {
+  height: 112px;
+  width: 112px;
+  object-fit: contain;
+  flex: none;
+}
+
+.board__title { display: flex; flex-direction: column; justify-content: center; }
+
+.board__brand {
+  font-family: "Board Display", Impact, sans-serif;
+  font-size: 40px;
+  letter-spacing: .16em;
+  line-height: 1;
+  color: var(--ink);
+  text-shadow: 0 2px 0 #000;
+}
+
+.board__brand em { font-style: normal; color: var(--red); }
+
+.board__heading {
+  font-family: "Board Display", Impact, sans-serif;
+  font-size: 74px;
+  line-height: .96;
+  letter-spacing: .015em;
+  margin-top: 2px;
+  text-shadow: 0 3px 0 #000, 0 0 26px rgba(168,35,31,.35);
+}
+
+.board__rule {
+  flex: 1;
+  height: 118px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.board__rule span {
+  display: block;
+  width: 100%;
+  height: 14px;
+  background: linear-gradient(90deg, transparent, var(--red-deep) 25%, var(--red) 100%);
+  clip-path: polygon(0 40%, 3% 0, 100% 0, 100% 100%, 3% 100%);
+}
+
+/* -------------------------------------------------------------------- placas */
+
+.plate {
+  flex: none;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: linear-gradient(180deg, var(--red) 0%, var(--red-deep) 100%);
+  border: 2px solid var(--steel);
+  border-radius: 4px;
+  font-family: "Board Display", Impact, sans-serif;
+  font-size: 27px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: #fff;
+  text-shadow: 0 2px 2px rgba(0,0,0,.55);
+}
+
+.plate::before,
+.plate::after { content: "◆"; font-size: 12px; opacity: .65; }
+
+/* --------------------------------------------------------------- tarjeta foto */
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 10px 10px;
+  background: linear-gradient(180deg, var(--panel-soft) 0%, var(--panel) 100%);
+  border: 2px solid #2c2c30;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.card__photo {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.card__photo img { width: 100%; height: 100%; display: block; }
+
+/* Las tomas de estudio llenan la tarjeta a sangre. Las de baja resolución usan
+   scale-down, que reduce si sobra tamaño pero nunca amplía: se ven más chicas
+   en la misma tarjeta en lugar de verse borrosas. */
+.card--hero .card__photo img { object-fit: cover; }
+.card--compact .card__photo img,
+.card--text .card__photo img,
+.card--none .card__photo img { object-fit: scale-down; }
+
+.card__name {
+  font-weight: 700;
+  font-size: 25px;
+  line-height: 1.04;
+  letter-spacing: .012em;
+  text-align: center;
+  text-transform: uppercase;
+  margin-top: 8px;
+  color: var(--ink);
+}
+
+.card__price {
+  font-family: "Board Display", Impact, sans-serif;
+  font-size: 44px;
+  line-height: 1;
+  margin-top: 6px;
+  color: #fff;
+  text-shadow: 0 2px 0 #000;
+}
+
+.card__price::before { content: "$"; font-size: .66em; vertical-align: .16em; margin-right: .04em; color: var(--red); }
+
+.card__name + .card__price { border-top: 2px solid var(--red); padding-top: 6px; width: 78%; text-align: center; }
+
+/* ----------------------------------------------------------------- fila lista */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px;
+}
+
+.row__thumb {
+  width: 54px;
+  height: 54px;
+  flex: none;
+  border: 1px solid #34343a;
+  border-radius: 4px;
+  background: #0c0c0e;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.row__thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+.row__thumb--empty::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--steel);
+  transform: rotate(45deg);
+}
+
+.row__name {
+  font-weight: 500;
+  font-size: 27px;
+  line-height: 1.08;
+  text-transform: uppercase;
+  letter-spacing: .01em;
+  color: var(--ink);
+}
+
+.row__dots {
+  flex: 1;
+  height: 24px;
+  border-bottom: 3px dotted #4a3f3e;
+  min-width: 12px;
+}
+
+.row__price {
+  font-family: "Board Display", Impact, sans-serif;
+  font-size: 34px;
+  line-height: 1;
+  flex: none;
+  color: #fff;
+}
+
+.row__price::before { content: "$"; font-size: .68em; vertical-align: .14em; color: var(--red); }
+
+/* ------------------------------------------------------------------ pie de página */
+
+.board__footer {
+  flex: none;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  font-size: 17px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  border-top: 2px solid #26262a;
+}
+
+.board__footer strong { color: var(--red); font-weight: 700; }

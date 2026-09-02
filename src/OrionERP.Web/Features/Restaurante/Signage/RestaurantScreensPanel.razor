@@ -1,0 +1,346 @@
+@using Microsoft.AspNetCore.Components.Forms
+@using OrionERP.Application.Features.Restaurante
+@using OrionERP.Web.State
+@inject IRestaurantSignageService SignageService
+@inject IRestaurantCatalogService CatalogService
+@inject ICurrentCompanyContext RfcState
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+
+<section class="restaurant-admin__grid">
+  <article class="restaurant-admin__panel">
+    <div class="restaurant-admin__panel-title">
+      <div><span>Señalización</span><h2>Pantallas</h2></div>
+      <button type="button" class="btn btn-outline-primary btn-sm" @onclick="NewScreen">Nueva pantalla</button>
+    </div>
+    <div class="restaurant-admin__list">
+      @foreach (var screen in screens)
+      {
+        <button type="button" class="restaurant-admin__list-item" @key="screen.Id" @onclick="() => SelectScreenAsync(screen)">
+          <span>
+            <strong>@screen.Name</strong>
+            <small>
+              /menus/@CurrentRfc/@screen.ScreenKey · @screen.Images.Count imagen@(screen.Images.Count == 1 ? "" : "es")
+              @if (screen.RotatesImages)
+              {
+                <text> · rota cada @screen.RotationSeconds s</text>
+              }
+            </small>
+          </span>
+          <span class="badge @(screen.IsEnabled ? "text-bg-success" : "text-bg-secondary")">@(screen.IsEnabled ? "Activa" : "Inactiva")</span>
+        </button>
+      }
+      @if (screens.Count == 0)
+      {
+        <p class="restaurant-admin__empty">
+          Aún no hay pantallas. Crea una por cada televisor del local; cada una recibe su propia URL pública.
+        </p>
+      }
+    </div>
+  </article>
+
+  <div class="restaurant-admin__panel restaurant-admin__form">
+    <EditForm Model="screenEditor" OnValidSubmit="SaveScreenAsync" class="restaurant-admin__form">
+      <DataAnnotationsValidator />
+      <div class="restaurant-admin__panel-title">
+        <div><span>Detalle</span><h2>@(screenEditor.Id.HasValue ? "Editar pantalla" : "Nueva pantalla")</h2></div>
+        @if (screenEditor.Id.HasValue)
+        {
+          <button type="button" class="btn btn-outline-danger btn-sm" @onclick="DeleteScreenAsync" disabled="@isBusy">Eliminar</button>
+        }
+      </div>
+      <ValidationSummary />
+
+      <label>Nombre <InputText @bind-Value="screenEditor.Name" placeholder="Pantalla 1 — Comida" /></label>
+      <label>
+        Clave para la URL
+        <InputText @bind-Value="screenEditor.ScreenKey" placeholder="comida" />
+        <small class="restaurant-admin__muted">Solo minúsculas, números y guiones. Es la parte final de la dirección que se carga en el televisor.</small>
+      </label>
+
+      <label>
+        Sede
+        <InputSelect @bind-Value="screenEditor.SiteId">
+          <option value="">Sin sede específica</option>
+          @foreach (var site in sites)
+          {
+            <option value="@site.Id">@site.Name</option>
+          }
+        </InputSelect>
+      </label>
+
+      <div class="restaurant-admin__form-row">
+        <label>
+          Segundos por imagen
+          <InputNumber @bind-Value="screenEditor.RotationSeconds" step="1" />
+          <small class="restaurant-admin__muted">Solo aplica con dos o más imágenes.</small>
+        </label>
+        <label>
+          Segundos entre refrescos
+          <InputNumber @bind-Value="screenEditor.RefreshSeconds" step="30" />
+          <small class="restaurant-admin__muted">Cada cuánto busca el televisor una versión nueva.</small>
+        </label>
+      </div>
+
+      <label class="restaurant-admin__check"><InputCheckbox @bind-Value="screenEditor.IsEnabled" /> Pantalla activa</label>
+
+      <button type="submit" class="btn btn-primary" disabled="@(isBusy || isUploadingBoard)">
+        @(isBusy ? "Guardando…" : "Guardar pantalla")
+      </button>
+    </EditForm>
+
+    @if (screenEditor.Id.HasValue)
+    {
+      <div class="restaurant-admin__url">
+        <code>@PublicScreenUrl()</code>
+        <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="CopyScreenUrlAsync">Copiar</button>
+        <a class="btn btn-outline-primary btn-sm" href="@PublicScreenUrl()" target="_blank" rel="noopener">Abrir</a>
+      </div>
+
+      <div class="restaurant-admin__boards">
+        <div class="restaurant-admin__panel-title">
+          <div><span>Contenido</span><h2>Imágenes</h2></div>
+        </div>
+
+        @foreach (var image in SelectedImages)
+        {
+          <div class="restaurant-admin__board-row" @key="image.Id">
+            <div class="restaurant-admin__thumb">
+              <img src="@($"/api/restaurant/signage/images/{image.Id}/thumbnail")" alt="@(image.AltText ?? image.FileName)" />
+            </div>
+            <span>
+              <strong>@image.FileName</strong>
+              <small>@image.DimensionsLabel · @image.SizeLabel</small>
+            </span>
+            <span class="restaurant-admin__board-actions">
+              <button type="button" class="btn btn-outline-secondary btn-sm" title="Subir" disabled="@isBusy"
+                      @onclick="() => MoveImageAsync(image.Id, -1)">↑</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" title="Bajar" disabled="@isBusy"
+                      @onclick="() => MoveImageAsync(image.Id, 1)">↓</button>
+              <button type="button" class="btn btn-outline-danger btn-sm" title="Eliminar" disabled="@isBusy"
+                      @onclick="() => DeleteImageAsync(image.Id)">✕</button>
+            </span>
+          </div>
+        }
+
+        @if (SelectedImages.Count == 0)
+        {
+          <p class="restaurant-admin__empty">
+            Esta pantalla no tiene imágenes. Mientras esté vacía, el televisor mostrará el tablero de respaldo.
+          </p>
+        }
+
+        <label>
+          Agregar imagen
+          <InputFile OnChange="OnBoardImageSelectedAsync" accept="image/png,image/jpeg,image/webp" disabled="@isUploadingBoard" />
+          <small class="restaurant-admin__muted">
+            PNG, JPEG o WebP de hasta 25 MB. La imagen se guarda a resolución completa, sin recomprimir.
+          </small>
+        </label>
+
+        @if (isUploadingBoard)
+        {
+          <div class="restaurant-admin__uploading" role="status" aria-live="polite">
+            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Guardando el tablero…
+          </div>
+        }
+      </div>
+    }
+  </div>
+</section>
+
+@code {
+  [Parameter] public EventCallback<(string Message, bool IsError)> OnMessage { get; set; }
+
+  private List<RestaurantSignageScreenDto> screens = [];
+  private List<RestaurantSiteDto> sites = [];
+  private RestaurantSignageScreenSaveRequest screenEditor = NewScreenEditor();
+  private bool isBusy;
+  private bool isUploadingBoard;
+
+  private string CurrentRfc => RfcState.RequireRfc();
+
+  private List<RestaurantSignageImageDto> SelectedImages
+    => screens.FirstOrDefault(screen => screen.Id == screenEditor.Id)?.Images ?? [];
+
+  protected override async Task OnInitializedAsync()
+  {
+    // El RFC forma parte del contexto de sesión y debe estar en el editor antes
+    // de que DataAnnotations valide el primer envío del formulario.
+    NewScreen();
+    await ReloadAsync();
+  }
+
+  private async Task ReloadAsync()
+  {
+    isBusy = true;
+    try
+    {
+      var rfc = CurrentRfc;
+      screens = (await SignageService.GetScreensAsync(rfc)).ToList();
+      sites = (await CatalogService.GetSitesAsync(rfc)).ToList();
+    }
+    catch (Exception ex) { await ShowAsync(ex.Message, true); }
+    finally { isBusy = false; }
+  }
+
+  private static RestaurantSignageScreenSaveRequest NewScreenEditor() => new()
+  {
+    RotationSeconds = RestaurantSignageDefaults.RotationSeconds,
+    RefreshSeconds = RestaurantSignageDefaults.RefreshSeconds,
+    TransitionMs = RestaurantSignageDefaults.TransitionMs,
+    IsEnabled = true
+  };
+
+  private void NewScreen()
+  {
+    screenEditor = NewScreenEditor();
+    screenEditor.Rfc = CurrentRfc;
+  }
+
+  private Task SelectScreenAsync(RestaurantSignageScreenDto screen)
+  {
+    screenEditor = new RestaurantSignageScreenSaveRequest
+    {
+      Rfc = CurrentRfc,
+      Id = screen.Id,
+      SiteId = screen.SiteId,
+      ScreenKey = screen.ScreenKey,
+      Name = screen.Name,
+      RotationSeconds = screen.RotationSeconds,
+      RefreshSeconds = screen.RefreshSeconds,
+      TransitionMs = screen.TransitionMs,
+      SortOrder = screen.SortOrder,
+      IsEnabled = screen.IsEnabled
+    };
+    return Task.CompletedTask;
+  }
+
+  private async Task SaveScreenAsync()
+  {
+    screenEditor.Rfc = CurrentRfc;
+    screenEditor.ScreenKey = RestaurantSignageDefaults.NormalizeKey(screenEditor.ScreenKey);
+    await RunAsync(() => SignageService.SaveScreenAsync(screenEditor), result =>
+    {
+      if (result.EntityId.HasValue) screenEditor.Id = (int)result.EntityId.Value;
+    });
+  }
+
+  private async Task DeleteScreenAsync()
+  {
+    if (screenEditor.Id is not { } screenId) return;
+    await RunAsync(() => SignageService.DeleteScreenAsync(CurrentRfc, screenId), _ => NewScreen());
+  }
+
+  private async Task MoveImageAsync(long imageId, int delta)
+  {
+    if (screenEditor.Id is not { } screenId) return;
+
+    var ordered = SelectedImages.Select(image => image.Id).ToList();
+    var index = ordered.IndexOf(imageId);
+    var target = index + delta;
+    if (index < 0 || target < 0 || target >= ordered.Count) return;
+
+    (ordered[index], ordered[target]) = (ordered[target], ordered[index]);
+
+    await RunAsync(() => SignageService.ReorderImagesAsync(new RestaurantSignageOrderRequest
+    {
+      Rfc = CurrentRfc,
+      ScreenId = screenId,
+      ImageIdsInOrder = ordered
+    }));
+  }
+
+  private async Task DeleteImageAsync(long imageId)
+    => await RunAsync(() => SignageService.DeleteImageAsync(CurrentRfc, imageId));
+
+  private async Task OnBoardImageSelectedAsync(InputFileChangeEventArgs args)
+  {
+    if (isUploadingBoard || screenEditor.Id is not { } screenId) return;
+
+    var file = args.File;
+    if (file.Size <= 0 || file.Size > RestaurantSignageDefaults.MaxImageBytes)
+    {
+      await ShowAsync("La imagen del tablero debe pesar entre 1 byte y 25 MB.", true);
+      return;
+    }
+
+    isUploadingBoard = true;
+    await InvokeAsync(StateHasChanged);
+    using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+    try
+    {
+      // El archivo se envía tal cual: el ayudante de imágenes de productos
+      // recodifica a JPEG y reduce la imagen, lo que arruinaría la nitidez del
+      // texto de un tablero 4K en la televisión. Un solo stream remoto abierto
+      // a la vez, como en el resto del módulo.
+      await using var source = file.OpenReadStream(RestaurantSignageDefaults.MaxImageBytes, timeout.Token);
+      using var buffer = new MemoryStream(capacity: (int)file.Size);
+      await source.CopyToAsync(buffer, 64 * 1024, timeout.Token);
+      if (buffer.Length == 0) throw new InvalidOperationException("El navegador devolvió una imagen vacía.");
+
+      var result = await SignageService.AddImageAsync(new RestaurantSignageImageUploadRequest
+      {
+        Rfc = CurrentRfc,
+        ScreenId = screenId,
+        FileName = file.Name,
+        Content = buffer.ToArray()
+      }, timeout.Token);
+
+      await ShowAsync(result.Message, !result.Success);
+      if (result.Success) await ReloadAsync();
+    }
+    catch (TimeoutException)
+    {
+      await ShowAsync("La carga tardó demasiado. Verifica la conexión e inténtalo de nuevo.", true);
+    }
+    catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+    {
+      await ShowAsync("La carga tardó demasiado. Verifica la conexión e inténtalo de nuevo.", true);
+    }
+    catch (Exception ex) { await ShowAsync(ex.Message, true); }
+    finally
+    {
+      isUploadingBoard = false;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  private async Task RunAsync(Func<Task<RestaurantCommandResult>> action, Action<RestaurantCommandResult>? onSuccess = null)
+  {
+    isBusy = true;
+    try
+    {
+      var result = await action();
+      await ShowAsync(result.Message, !result.Success);
+      if (result.Success)
+      {
+        onSuccess?.Invoke(result);
+        await ReloadAsync();
+      }
+    }
+    catch (Exception ex) { await ShowAsync(ex.Message, true); }
+    finally { isBusy = false; }
+  }
+
+  private string PublicScreenUrl()
+  {
+    var key = RestaurantSignageDefaults.NormalizeKey(screenEditor.ScreenKey);
+    return new Uri(new Uri(Nav.BaseUri), $"menus/{CurrentRfc}/{key}").ToString();
+  }
+
+  private async Task CopyScreenUrlAsync()
+  {
+    try
+    {
+      await Js.InvokeVoidAsync("navigator.clipboard.writeText", PublicScreenUrl());
+      await ShowAsync("La dirección de la pantalla fue copiada al portapapeles.", false);
+    }
+    catch (Exception ex) { await ShowAsync(ex.Message, true); }
+  }
+
+  private async Task ShowAsync(string message, bool isError)
+  {
+    if (OnMessage.HasDelegate) await OnMessage.InvokeAsync((message, isError));
+  }
+}

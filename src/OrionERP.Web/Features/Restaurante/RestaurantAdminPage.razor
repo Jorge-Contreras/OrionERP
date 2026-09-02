@@ -3,6 +3,7 @@
 @using OrionERP.Application.Features.Logistica.Materials
 @using OrionERP.Application.Features.Logistica.Shared
 @using OrionERP.Application.Features.Restaurante
+@using OrionERP.Web.Features.Restaurante.Signage
 @using OrionERP.Web.State
 @inject IRestaurantCatalogService CatalogService
 @inject IMaterialService MaterialService
@@ -28,6 +29,7 @@
   <nav class="restaurant-admin__tabs" aria-label="Secciones administrativas">
     <button type="button" class="@(tab == "sites" ? "is-active" : null)" @onclick='() => tab = "sites"'>Sedes</button>
     <button type="button" class="@(tab == "products" ? "is-active" : null)" @onclick='() => tab = "products"'>Productos</button>
+    <button type="button" class="@(tab == "screens" ? "is-active" : null)" @onclick='() => tab = "screens"'>Pantallas</button>
   </nav>
 
   @if (tab == "sites")
@@ -71,6 +73,10 @@
         <button type="submit" class="btn btn-primary" disabled="@isSaving">@(isSaving ? "Guardando…" : "Guardar sede")</button>
       </EditForm>
     </section>
+  }
+  else if (tab == "screens")
+  {
+    <RestaurantScreensPanel OnMessage="OnScreensMessage" />
   }
   else
   {
@@ -439,6 +445,7 @@
   }
 
   private void Show(string value, bool error) { message = value; isError = error; }
+  private void OnScreensMessage((string Message, bool IsError) notification) => Show(notification.Message, notification.IsError);
   private void OnProductKindChanged()
   {
     if (!IsComboProduct) return;

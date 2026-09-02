@@ -1,12 +1,15 @@
-@page "/menus"
+@page "/menus/{rfc?}/{screenKey?}"
 @model OrionERP.Web.Pages.MenusModel
 @inject Microsoft.AspNetCore.Mvc.ViewFeatures.IFileVersionProvider FileVersionProvider
 @{
     Layout = null;
     const string principalMenuPath = "/Images/Brunos/Menus/menu-principal.png";
     const string beveragesMenuPath = "/Images/Brunos/Menus/menu-bebidas.png";
-    var principalMenuUrl = FileVersionProvider.AddFileVersionToPath(Model.HttpContext.Request.PathBase, principalMenuPath);
-    var beveragesMenuUrl = FileVersionProvider.AddFileVersionToPath(Model.HttpContext.Request.PathBase, beveragesMenuPath);
+    var pathBase = Model.HttpContext.Request.PathBase;
+    var principalMenuUrl = FileVersionProvider.AddFileVersionToPath(pathBase, principalMenuPath);
+    var beveragesMenuUrl = FileVersionProvider.AddFileVersionToPath(pathBase, beveragesMenuPath);
+    var screen = Model.Screen;
+    var title = screen is null ? "Menús de Bruno's" : screen.Name;
 }
 <!DOCTYPE html>
 <html lang="es">
@@ -14,24 +17,48 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>Menús de Bruno's</title>
-    <link rel="stylesheet" href="/css/brunos-menus-signage.css" />
-    <script src="/js/brunos-menus-signage.js" defer></script>
+    <title>@title</title>
+    <link rel="stylesheet" href="~/css/menu-signage.css" />
+    <script src="~/js/menu-signage.js" defer></script>
 </head>
 <body>
+@if (Model.UseLegacyStaticBoards)
+{
+    @* Respaldo heredado: los dos tableros estáticos, tal como funcionaban antes
+       de que las pantallas vivieran en la base de datos. *@
     <main class="menu-signage"
           data-menu-signage
           data-interval-ms="8000"
-          aria-label="Menús de Bruno's Garden & Snacks">
+          aria-label="Menús de Bruno's Garden &amp; Snacks">
         <img class="menu-signage__slide is-active"
              src="@principalMenuUrl"
-             data-source="@principalMenuPath"
-             alt="Menú principal de alimentos de Bruno's Garden & Snacks"
+             alt="Menú principal de alimentos de Bruno's Garden &amp; Snacks"
              fetchpriority="high" />
         <img class="menu-signage__slide"
              src="@beveragesMenuUrl"
-             data-source="@beveragesMenuPath"
-             alt="Menú de bebidas de Bruno's Garden & Snacks" />
+             alt="Menú de bebidas de Bruno's Garden &amp; Snacks" />
     </main>
+}
+else
+{
+    <main class="menu-signage"
+          data-menu-signage
+          data-manifest="@($"{pathBase}/menus/{screen!.Rfc}/{screen.ScreenKey}/manifest.json")"
+          data-interval-ms="@(screen.RotationSeconds * 1000)"
+          data-refresh-ms="@(screen.RefreshSeconds * 1000)"
+          style="--menu-signage-transition: @(screen.TransitionMs)ms"
+          aria-label="@screen.Name">
+        @for (var index = 0; index < screen.Images.Count; index++)
+        {
+            var image = screen.Images[index];
+            <img class="menu-signage__slide @(index == 0 ? "is-active" : null)"
+                 src="@($"{pathBase}/menus/{screen.Rfc}/media/{image.Id}?v={image.ContentHash}")"
+                 data-image-id="@image.Id"
+                 data-version="@image.ContentHash"
+                 alt="@(image.AltText ?? screen.Name)"
+                 fetchpriority="@(index == 0 ? "high" : "auto")" />
+        }
+    </main>
+}
 </body>
 </html>

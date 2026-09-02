@@ -37,17 +37,17 @@ Public base URLs are operational configuration and are not secrets. Keep public 
 
 ## Bruno's Menu Images
 
-The canonical Bruno's menu images live outside this repository under
-`C:\Users\Orion\Grupo Carpio Dropbox\Grupo Orion\Bruno's\assets\menus`, but the
-OrionERP `/menus` page serves its runtime copies from
-`src/OrionERP.Web/wwwroot/Images/Brunos/Menus`.
+The runtime source of truth for Bruno's menu-board screens is now the
+`restaurante.SignageScreen` / `restaurante.SignageScreenImage` data model,
+managed from OrionERP's `/restaurante/admin` Pantallas tab and served by the
+public `/menus/{rfc}/{screenKey}` routes.
 
-Whenever the user asks to update a current Bruno's menu image, update both the
-canonical image and its matching repository copy in `wwwroot`. Preserve the
-stable filenames `menu-principal.png` and `menu-bebidas.png`, follow the
-canonical folder's archive procedure, and verify that the canonical and
-repository copies have matching hashes after the change. Do not rely solely on
-the build-time copy target to leave the working tree ready.
+The Dropbox folder
+`C:\Users\Orion\Grupo Carpio Dropbox\Grupo Orion\Bruno's\assets\menus` remains
+the canonical design archive for generated menu-board PNGs and should keep its
+existing versioning/archive convention. Runtime website fallback PNGs under
+`src/OrionERP.Web/wwwroot/Images/Brunos/Menus` are kept only as a compatibility
+backup for `/menus` when no configured database screen resolves.
 
 ## UI Control Design Defaults
 

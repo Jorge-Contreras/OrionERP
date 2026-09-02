@@ -166,6 +166,7 @@ public static class ServiceRegistration
     services.AddScoped<IInventoryMovementService, InventoryMovementService>();
     services.AddScoped<IPhysicalCountService, PhysicalCountService>();
     services.AddScoped<IRestaurantCatalogService, RestaurantCatalogService>();
+    services.AddScoped<IRestaurantSignageService, RestaurantSignageService>();
     services.AddScoped<IBomRecipeService, BomRecipeService>();
     services.AddScoped<IRestaurantOrderService, RestaurantOrderService>();
     services.AddScoped<IRestaurantSaleReadinessService, RestaurantSaleReadinessService>();

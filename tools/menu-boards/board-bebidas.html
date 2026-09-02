@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Bruno's · Tablero de bebidas</title>
+<link rel="stylesheet" href="board.css" />
+<style>
+  .bebidas { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; min-height: 0; }
+  .bebidas__column { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .bebidas__list { flex: 1; display: grid; grid-auto-rows: 1fr; gap: 2px; min-height: 0;
+                   background: linear-gradient(180deg, var(--panel-soft) 0%, var(--panel) 100%);
+                   border: 2px solid #2c2c30; border-radius: 6px; padding: 8px 4px; }
+  .bebidas__list .row:nth-child(even) { background: rgba(255,255,255,.022); }
+
+  /* La columna del centro tiene solo cinco cocteles. Sus filas conservan la
+     misma altura que las de las columnas vecinas —estirarlas rompería la
+     lectura horizontal del tablero— y el espacio sobrante lo ocupan las
+     fotografías de mayor resolución. */
+  .bebidas__column--cocteles .bebidas__list { flex: none; grid-auto-rows: 74px; }
+  .bebidas__hero { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .bebidas__hero figure { position: relative; border: 2px solid #2c2c30; border-radius: 6px; overflow: hidden; background: #0c0c0e; }
+  .bebidas__hero img { width: 100%; height: 100%; object-fit: cover; }
+  .bebidas__hero figure::after { content: ""; position: absolute; inset: 0;
+                                 background: linear-gradient(180deg, transparent 55%, rgba(5,5,6,.72) 100%); }
+</style>
+</head>
+<body>
+<div class="board">
+  <header class="board__header">
+    <img class="board__logo" src="logo.png" alt="" />
+    <div class="board__title">
+      <div class="board__brand">BRUNO<em>'</em>S <em>·</em> GARDEN &amp; SNACKS</div>
+      <h1 class="board__heading">BEBIDAS</h1>
+    </div>
+    <div class="board__rule"><span></span></div>
+  </header>
+
+  <div class="bebidas">
+    <section class="bebidas__column">
+      <div class="plate">Sin alcohol</div>
+      <div class="bebidas__list" id="sinAlcohol"></div>
+    </section>
+    <section class="bebidas__column bebidas__column--cocteles">
+      <div class="plate">Cocteles</div>
+      <div class="bebidas__list" id="conAlcohol"></div>
+      <div class="bebidas__hero" id="hero"></div>
+    </section>
+    <section class="bebidas__column">
+      <div class="plate">Cervezas</div>
+      <div class="bebidas__list" id="cervezas"></div>
+    </section>
+  </div>
+
+  <footer class="board__footer">
+    <span>Precios en pesos · IVA incluido</span>
+    <span>Venta de alcohol solo a mayores de <strong>18</strong> años</span>
+  </footer>
+</div>
+
+<script src="menu-data.js"></script>
+<script>
+  const data = window.MENU_DATA;
+  const bySection = (name) => data.items.filter((item) => item.section === name);
+
+  const rowMarkup = (item) => {
+    // Las tomas de muy baja resolución se sustituyen por un rombo: un thumbnail
+    // borroso ensucia la fila más de lo que ayuda a reconocer el producto.
+    const thumb =
+      item.tier === "hero" || item.tier === "compact"
+        ? `<span class="row__thumb"><img src="${item.photo}" alt="" /></span>`
+        : `<span class="row__thumb row__thumb--empty"></span>`;
+    return `
+      <div class="row">
+        ${thumb}
+        <span class="row__name">${item.name}</span>
+        <span class="row__dots"></span>
+        <span class="row__price">${item.price}</span>
+      </div>`;
+  };
+
+  const render = (id, section) => {
+    document.getElementById(id).innerHTML = bySection(section).map(rowMarkup).join("");
+  };
+
+  render("sinAlcohol", "BEBIDAS S/A");
+  render("conAlcohol", "BEBIDAS ALCOHOL");
+  render("cervezas", "CERVEZAS");
+
+  const heroCandidates = bySection("BEBIDAS ALCOHOL")
+    .concat(bySection("BEBIDAS S/A"))
+    .filter((item) => item.tier === "hero")
+    .slice(0, 3);
+  document.getElementById("hero").innerHTML = heroCandidates
+    .map((item) => `<figure><img src="${item.photo}" alt="" /></figure>`)
+    .join("");
+</script>
+</body>
+</html>

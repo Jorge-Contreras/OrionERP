@@ -29,7 +29,7 @@ body {
   opacity: 0;
   pointer-events: none;
   user-select: none;
-  transition: opacity 450ms ease;
+  transition: opacity var(--menu-signage-transition, 450ms) ease;
 }
 
 .menu-signage__slide.is-active {

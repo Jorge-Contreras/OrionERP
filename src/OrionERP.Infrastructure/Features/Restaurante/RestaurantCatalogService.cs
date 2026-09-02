@@ -22,7 +22,9 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     const string sql =
       """
       SELECT Id, Rfc, SiteCode, [Name], TimeZoneId, OperationalDayCutoff, TaxRate,
-             PricesIncludeTax, IsEnabled, AllowSupervisorDeficit, CrossContaminationWarning
+             PricesIncludeTax, IsEnabled, AllowSupervisorDeficit, CrossContaminationWarning,
+             TransferBankName, TransferAccountHolder, TransferAccountNumber,
+             TransferClabe, TransferCardNumber, TransferInstructions
       FROM restaurante.Site
       WHERE Rfc = @Rfc
       ORDER BY [Name], Id;
@@ -55,6 +57,12 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
               IsEnabled = @IsEnabled,
               AllowSupervisorDeficit = @AllowSupervisorDeficit,
               CrossContaminationWarning = @CrossContaminationWarning,
+              TransferBankName = @TransferBankName,
+              TransferAccountHolder = @TransferAccountHolder,
+              TransferAccountNumber = @TransferAccountNumber,
+              TransferClabe = @TransferClabe,
+              TransferCardNumber = @TransferCardNumber,
+              TransferInstructions = @TransferInstructions,
               UpdatedAt = SYSUTCDATETIME()
           WHERE Rfc = @Rfc AND Id = @Id;
           """;
@@ -70,7 +78,13 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
           request.PricesIncludeTax,
           request.IsEnabled,
           request.AllowSupervisorDeficit,
-          request.CrossContaminationWarning
+          request.CrossContaminationWarning,
+          TransferBankName = RestaurantTransferPaymentRules.NormalizeText(request.TransferBankName),
+          TransferAccountHolder = RestaurantTransferPaymentRules.NormalizeText(request.TransferAccountHolder),
+          TransferAccountNumber = RestaurantTransferPaymentRules.NormalizeDigits(request.TransferAccountNumber),
+          TransferClabe = RestaurantTransferPaymentRules.NormalizeDigits(request.TransferClabe),
+          TransferCardNumber = RestaurantTransferPaymentRules.NormalizeDigits(request.TransferCardNumber),
+          TransferInstructions = RestaurantTransferPaymentRules.NormalizeText(request.TransferInstructions)
         }, cancellationToken: ct));
         return affected == 1
           ? RestaurantCommandResult.Ok("La sede fue actualizada.", request.Id)
@@ -81,10 +95,14 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
         """
         INSERT INTO restaurante.Site
           (Rfc, SiteCode, [Name], TimeZoneId, OperationalDayCutoff, TaxRate, PricesIncludeTax,
-           IsEnabled, AllowSupervisorDeficit, CrossContaminationWarning)
+           IsEnabled, AllowSupervisorDeficit, CrossContaminationWarning,
+           TransferBankName, TransferAccountHolder, TransferAccountNumber,
+           TransferClabe, TransferCardNumber, TransferInstructions)
         VALUES
           (@Rfc, @SiteCode, @Name, @TimeZoneId, @OperationalDayCutoff, @TaxRate, @PricesIncludeTax,
-           @IsEnabled, @AllowSupervisorDeficit, @CrossContaminationWarning);
+           @IsEnabled, @AllowSupervisorDeficit, @CrossContaminationWarning,
+           @TransferBankName, @TransferAccountHolder, @TransferAccountNumber,
+           @TransferClabe, @TransferCardNumber, @TransferInstructions);
         SELECT CAST(SCOPE_IDENTITY() AS int);
         """;
       var id = await conn.ExecuteScalarAsync<int>(new CommandDefinition(insertSql, new
@@ -98,7 +116,13 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
         request.PricesIncludeTax,
         request.IsEnabled,
         request.AllowSupervisorDeficit,
-        request.CrossContaminationWarning
+        request.CrossContaminationWarning,
+        TransferBankName = RestaurantTransferPaymentRules.NormalizeText(request.TransferBankName),
+        TransferAccountHolder = RestaurantTransferPaymentRules.NormalizeText(request.TransferAccountHolder),
+        TransferAccountNumber = RestaurantTransferPaymentRules.NormalizeDigits(request.TransferAccountNumber),
+        TransferClabe = RestaurantTransferPaymentRules.NormalizeDigits(request.TransferClabe),
+        TransferCardNumber = RestaurantTransferPaymentRules.NormalizeDigits(request.TransferCardNumber),
+        TransferInstructions = RestaurantTransferPaymentRules.NormalizeText(request.TransferInstructions)
       }, cancellationToken: ct));
       return RestaurantCommandResult.Ok("La sede fue creada. Permanece deshabilitada hasta completar su configuración.", id);
     }

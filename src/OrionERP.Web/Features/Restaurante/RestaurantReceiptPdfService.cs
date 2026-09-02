@@ -69,6 +69,98 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
       .GeneratePdf();
   }
 
+  public byte[] GenerateTransferSlip(RestaurantTransferSlipDocumentModel model)
+  {
+    ArgumentNullException.ThrowIfNull(model);
+
+    return Document.Create(document =>
+      {
+        document.Page(page =>
+        {
+          ConfigureThermalPage(page);
+          page.Content().Element(container => ComposeTransferSlip(container, model));
+        });
+      })
+      .GeneratePdf();
+  }
+
+  private static void ComposeTransferSlip(IContainer container, RestaurantTransferSlipDocumentModel model)
+  {
+    container.Column(column =>
+    {
+      column.Spacing(3);
+      column.Item().AlignCenter().Text(model.SiteName).FontSize(12).Bold();
+      column.Item().AlignCenter().Text("DATOS PARA TRANSFERENCIA")
+        .FontSize(8).SemiBold().LetterSpacing(0.08f);
+      column.Item().AlignCenter().Text("Transferencia electrónica de fondos · SPEI")
+        .FontSize(7).FontColor(MutedColor);
+      column.Item().PaddingVertical(2).LineHorizontal(1).LineColor(Colors.Black);
+
+      if (model.Amount > 0)
+      {
+        column.Item().AlignCenter().Text("IMPORTE A TRANSFERIR").FontSize(7).SemiBold().FontColor(MutedColor);
+        column.Item().AlignCenter().Text(FormatMoney(model.Amount)).FontSize(16).Bold();
+        column.Item().PaddingVertical(1).LineHorizontal(0.6f).LineColor(DividerColor);
+      }
+
+      ComposeTransferField(column, "TITULAR", model.AccountHolder, 10);
+      if (!string.IsNullOrWhiteSpace(model.BankName))
+      {
+        ComposeTransferField(column, "BANCO", model.BankName!, 9);
+      }
+
+      // Los dígitos van agrupados y en cuerpo grande: el cliente los teclea desde
+      // la banca móvil mirando el papel térmico.
+      if (!string.IsNullOrWhiteSpace(model.Clabe))
+      {
+        ComposeTransferField(column, "CLABE INTERBANCARIA", RestaurantTransferPaymentRules.FormatClabe(model.Clabe), 11);
+      }
+
+      if (!string.IsNullOrWhiteSpace(model.AccountNumber))
+      {
+        ComposeTransferField(column, "CUENTA", RestaurantTransferPaymentRules.FormatAccountNumber(model.AccountNumber), 11);
+      }
+
+      if (!string.IsNullOrWhiteSpace(model.CardNumber))
+      {
+        ComposeTransferField(column, "NÚMERO DE TARJETA", RestaurantTransferPaymentRules.FormatCardNumber(model.CardNumber), 11);
+      }
+
+      if (!string.IsNullOrWhiteSpace(model.Reference))
+      {
+        column.Item().PaddingVertical(1).LineHorizontal(0.6f).LineColor(DividerColor);
+        ComposeTransferField(
+          column,
+          model.Folio.HasValue ? $"CONCEPTO · ORDEN {model.Folio.Value:000}" : "CONCEPTO / REFERENCIA",
+          model.Reference!,
+          9);
+      }
+      else if (model.Folio.HasValue)
+      {
+        column.Item().PaddingVertical(1).LineHorizontal(0.6f).LineColor(DividerColor);
+        ComposeTransferField(column, "CONCEPTO / REFERENCIA", $"Orden {model.Folio.Value:000}", 9);
+      }
+
+      column.Item().PaddingTop(3).LineHorizontal(1).LineColor(Colors.Black);
+      column.Item().AlignCenter().Text("Muestra el comprobante de tu transferencia en caja antes de retirarte.")
+        .FontSize(7).SemiBold();
+      if (!string.IsNullOrWhiteSpace(model.Instructions))
+      {
+        column.Item().AlignCenter().Text(model.Instructions!).FontSize(7).FontColor(MutedColor);
+      }
+
+      column.Item().AlignCenter().Text($"{model.CreatedAt:dd/MM/yyyy HH:mm}")
+        .FontSize(7).FontColor(MutedColor);
+      column.Item().Height(3, Unit.Millimetre);
+    });
+  }
+
+  private static void ComposeTransferField(ColumnDescriptor column, string label, string value, float valueFontSize)
+  {
+    column.Item().PaddingTop(2).Text(label).FontSize(7).SemiBold().FontColor(MutedColor).LetterSpacing(0.06f);
+    column.Item().Text(value).FontSize(valueFontSize).Bold();
+  }
+
   private static void ConfigureThermalPage(PageDescriptor page)
   {
     page.ContinuousSize(ThermalWidthMillimetres, Unit.Millimetre);

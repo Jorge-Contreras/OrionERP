@@ -388,9 +388,24 @@
           <div class="pos-payment-grid">
             <label>Recibido en efectivo <input type="number" min="0" step="0.01" inputmode="decimal" @bind="cashReceived" @bind:event="oninput" /></label>
             <label>Tarjeta externa <input type="number" min="0" step="0.01" inputmode="decimal" @bind="cardAmount" @bind:event="oninput" /></label>
-            <label>Transferencia <input type="number" min="0" step="0.01" inputmode="decimal" @bind="transferAmount" @bind:event="oninput" /></label>
+            <div class="pos-transfer">
+              <label>Transferencia <input type="number" min="0" step="0.01" inputmode="decimal" @bind="transferAmount" @bind:event="oninput" /></label>
+              <button type="button"
+                      class="pos-transfer__print"
+                      @onclick="PrintTransferDetailsAsync"
+                      disabled="@(!CanPrintTransferDetails)"
+                      title="@TransferPrintHint"
+                      aria-label="Imprimir datos de transferencia SPEI">
+                <span class="@(isPrintingTransferSlip ? "spinner-border spinner-border-sm" : "oi oi-print")" aria-hidden="true"></span>
+                @(isPrintingTransferSlip ? "Imprimiendo…" : "Datos SPEI")
+              </button>
+            </div>
             <label>Propina <input type="number" min="0" step="0.01" inputmode="decimal" @bind="tipAmount" @bind:event="oninput" /></label>
           </div>
+          @if (!string.IsNullOrWhiteSpace(transferSlipWarning))
+          {
+            <p class="pos-transfer__warning" role="alert">@transferSlipWarning</p>
+          }
           <div class="pos-cash-summary @(PosCash.Shortfall > 0 ? "is-short" : "is-ready")" aria-live="polite">
             <div><span>A cobrar en efectivo</span><b>@PosCash.CashRequired.ToString("C")</b></div>
             @if (PosCash.Shortfall > 0)
@@ -786,6 +801,8 @@
   private bool isLookingUpMember;
   private bool isQuotingPromotions;
   private bool isPrinting;
+  private bool isPrintingTransferSlip;
+  private string? transferSlipWarning;
   private bool isOpeningDrawer;
   private bool isDownloadingReadiness;
   private bool lastOrderReceivedCash;
@@ -850,6 +867,17 @@
     cashReceived,
     tipAmount);
   private decimal ElectronicPaymentExcess => decimal.Round(Math.Max(0, cardAmount + transferAmount - GrandTotal), 2, MidpointRounding.AwayFromZero);
+  // El comprobante se imprime antes de cobrar: si el cajero aún no captura el
+  // importe por transferencia, se ofrece el saldo que falta por cubrir.
+  private decimal TransferSlipAmount => decimal.Round(
+    transferAmount > 0 ? transferAmount : Math.Max(0, GrandTotal - cardAmount - cashReceived),
+    2,
+    MidpointRounding.AwayFromZero);
+  private bool HasTransferPaymentDetails => catalog?.Site.HasTransferPaymentDetails == true;
+  private bool CanPrintTransferDetails => HasTransferPaymentDetails && !isPrintingTransferSlip;
+  private string TransferPrintHint => HasTransferPaymentDetails
+    ? "Imprime los datos bancarios (SPEI) para que el cliente haga la transferencia."
+    : "Captura los datos de transferencia en Restaurante › Administración › Sedes.";
   private bool IsCustomerNameMissing => string.IsNullOrWhiteSpace(customerName);
   private bool RequiresFullPayment => orderType is "Pickup" or "Table";
   private RestaurantCashShiftDto? SelectedShift => openShifts.FirstOrDefault(shift => shift.Id == selectedShiftId);
@@ -1948,6 +1976,38 @@
     }
   }
 
+  private async Task PrintTransferDetailsAsync()
+  {
+    if (catalog is null || !catalog.Site.HasTransferPaymentDetails)
+    {
+      return;
+    }
+
+    isPrintingTransferSlip = true;
+    transferSlipWarning = null;
+    try
+    {
+      var slip = RestaurantTransferSlipDocumentModel.FromSite(
+        catalog.Site,
+        TransferSlipAmount,
+        customerName,
+        GetReceiptLocalTime(catalog.Site.TimeZoneId),
+        lastOrder?.Folio);
+      await Js.InvokeVoidAsync(
+        "restaurantUi.printPdf",
+        Convert.ToBase64String(ReceiptPdfService.GenerateTransferSlip(slip)),
+        "datos-transferencia.pdf");
+    }
+    catch (Exception ex)
+    {
+      transferSlipWarning = $"No se pudieron imprimir los datos de transferencia. {ex.Message}";
+    }
+    finally
+    {
+      isPrintingTransferSlip = false;
+    }
+  }
+
   private async Task OpenCashDrawerAsync()
   {
     isOpeningDrawer = true;
@@ -1973,6 +2033,7 @@
     lastOrder = null;
     lastReceipt = null;
     drawerWarning = null;
+    transferSlipWarning = null;
     lastOrderReceivedCash = false;
     ShowMenu();
   }

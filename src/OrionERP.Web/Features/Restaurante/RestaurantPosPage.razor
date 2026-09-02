@@ -191,7 +191,7 @@
                     @if (line.Modifiers.Count > 0)
                     {
                       <div class="pos-cart-customizations">
-                        @foreach (var modifier in line.Modifiers) { <small><b>@modifier.GroupName:</b> @modifier.OptionName @if(modifier.PriceDelta>0){<span> +@modifier.PriceDelta.ToString("C")</span>}</small> }
+                        @foreach (var modifier in line.Modifiers) { <small><b>@modifier.GroupName:</b> @ModifierDisplayName(modifier) @if(modifier.PriceDelta>0){<span> +@((modifier.PriceDelta*modifier.Quantity).ToString("C"))</span>}</small> }
                         @foreach (var effect in line.Modifiers.SelectMany(item=>item.Effects)) { <small class="@EffectClass(effect.EffectKind)"><span aria-hidden="true">@(effect.EffectKind==RestaurantModifierEffectKinds.RemoveIngredient?"−":"+")</span> @EffectLabel(effect)</small> }
                       </div>
                     }
@@ -205,7 +205,7 @@
                             <div>
                               <strong>@FormatComponentQuantity(component.Quantity) @component.ProductName</strong>
                               <small>@component.SlotName @if(component.PriceDelta>0){<b> · +@component.PriceDelta.ToString("C")</b>}</small>
-                              @foreach (var modifier in component.Modifiers) { <small><b>@modifier.GroupName:</b> @modifier.OptionName @if(modifier.PriceDelta>0){<span> +@modifier.PriceDelta.ToString("C")</span>}</small> }
+                              @foreach (var modifier in component.Modifiers) { <small><b>@modifier.GroupName:</b> @ModifierDisplayName(modifier) @if(modifier.PriceDelta>0){<span> +@((modifier.PriceDelta*modifier.Quantity).ToString("C"))</span>}</small> }
                               @foreach (var effect in component.Modifiers.SelectMany(item=>item.Effects)) { <small class="@EffectClass(effect.EffectKind)"><span aria-hidden="true">@(effect.EffectKind==RestaurantModifierEffectKinds.RemoveIngredient?"−":"+")</span> @EffectLabel(effect)</small> }
                               @if (!string.IsNullOrWhiteSpace(component.Notes)) { <small class="pos-cart-line__notes"><b>Nota:</b> @component.Notes</small> }
                             </div>
@@ -605,7 +605,20 @@
                             <fieldset><legend>@group.Name <small>@ModifierInstruction(group)</small></legend>
                               @foreach (var modifier in group.Options)
                               {
-                                <label class="pos-modifier"><input type="checkbox" checked="@componentDraft.ModifierIds.Contains(modifier.Id)" @onchange="args=>ToggleComponentModifier(componentDraft,group,modifier,args.Value as bool? == true)" /><span>@modifier.Name</span><b>@(modifier.PriceDelta==0?"Incluido":$"+{modifier.PriceDelta:C}")</b></label>
+                                @if (group.MaxSelections > 1)
+                                {
+                                  <div class="pos-modifier pos-modifier--stepper"><span>@modifier.Name</span><b>@(modifier.PriceDelta==0?"Incluido":$"+{modifier.PriceDelta:C}")</b>
+                                    <div class="pos-modifier__stepper">
+                                      <button type="button" aria-label="Quitar una unidad de @modifier.Name" disabled="@(ModifierCount(componentDraft.ModifierIds,modifier.Id)==0)" @onclick="()=>StepModifier(componentDraft.ModifierIds,group,modifier,-1)">&#8722;</button>
+                                      <b aria-label="Cantidad de @modifier.Name">@ModifierCount(componentDraft.ModifierIds,modifier.Id)</b>
+                                      <button type="button" aria-label="Agregar una unidad de @modifier.Name" disabled="@(GroupSelectionCount(componentDraft.ModifierIds,group)>=group.MaxSelections)" @onclick="()=>StepModifier(componentDraft.ModifierIds,group,modifier,1)">+</button>
+                                    </div>
+                                  </div>
+                                }
+                                else
+                                {
+                                  <label class="pos-modifier"><input type="checkbox" checked="@componentDraft.ModifierIds.Contains(modifier.Id)" @onchange="args=>ToggleComponentModifier(componentDraft,group,modifier,args.Value as bool? == true)" /><span>@modifier.Name</span><b>@(modifier.PriceDelta==0?"Incluido":$"+{modifier.PriceDelta:C}")</b></label>
+                                }
                               }
                             </fieldset>
                           }
@@ -625,7 +638,20 @@
               <fieldset><legend>@group.Name <small>@ModifierInstruction(group)</small></legend>
                 @foreach (var option in group.Options)
                 {
-                  <label class="pos-modifier"><input type="checkbox" checked="@selectedModifierIds.Contains(option.Id)" @onchange="args => ToggleModifier(group, option, args.Value as bool? == true)" /><span>@option.Name</span><b>@(option.PriceDelta == 0 ? "Incluido" : $"+{option.PriceDelta:C}")</b></label>
+                  @if (group.MaxSelections > 1)
+                  {
+                    <div class="pos-modifier pos-modifier--stepper"><span>@option.Name</span><b>@(option.PriceDelta == 0 ? "Incluido" : $"+{option.PriceDelta:C}")</b>
+                      <div class="pos-modifier__stepper">
+                        <button type="button" aria-label="Quitar una unidad de @option.Name" disabled="@(ModifierCount(selectedModifierIds, option.Id) == 0)" @onclick="() => StepModifier(selectedModifierIds, group, option, -1)">&#8722;</button>
+                        <b aria-label="Cantidad de @option.Name">@ModifierCount(selectedModifierIds, option.Id)</b>
+                        <button type="button" aria-label="Agregar una unidad de @option.Name" disabled="@(GroupSelectionCount(selectedModifierIds, group) >= group.MaxSelections)" @onclick="() => StepModifier(selectedModifierIds, group, option, 1)">+</button>
+                      </div>
+                    </div>
+                  }
+                  else
+                  {
+                    <label class="pos-modifier"><input type="checkbox" checked="@selectedModifierIds.Contains(option.Id)" @onchange="args => ToggleModifier(group, option, args.Value as bool? == true)" /><span>@option.Name</span><b>@(option.PriceDelta == 0 ? "Incluido" : $"+{option.PriceDelta:C}")</b></label>
+                  }
                 }
               </fieldset>
             }
@@ -710,7 +736,7 @@
   private int selectedSiteId;
   private RestaurantProductDto? selectedProduct;
   private RestaurantMenuSectionDto? selectedMenuSection;
-  private HashSet<long> selectedModifierIds = [];
+  private List<long> selectedModifierIds = [];
   private Dictionary<long, HashSet<long>> selectedComboOptionIds = [];
   private Dictionary<string, ComponentSelectionDraft> selectedComponentDrafts = [];
   private string? selectedProductNotes;
@@ -865,8 +891,7 @@
           var draft = GetComponentDraftForOption(option) ?? new ComponentSelectionDraft();
           var modifierDeltas = option.ComponentModifierGroups
             .SelectMany(group => group.Options)
-            .Where(modifier => draft.ModifierIds.Contains(modifier.Id))
-            .Select(modifier => modifier.PriceDelta)
+            .SelectMany(modifier => Enumerable.Repeat(modifier.PriceDelta, ModifierCount(draft.ModifierIds, modifier.Id)))
             .ToArray();
           return new RestaurantComboPriceSelection(option.PriceDelta, option.Quantity, modifierDeltas);
         })
@@ -883,7 +908,9 @@
         return selectedProduct.ModifierGroups
           .SelectMany(group => group.Options)
           .Where(option => selectedModifierIds.Contains(option.Id) && option.PriceDelta > 0)
-          .Select(option => new PriceSupplement(option.Name, option.PriceDelta))
+          .Select(option => new PriceSupplement(
+            SupplementName(option.Name, ModifierCount(selectedModifierIds, option.Id)),
+            option.PriceDelta * ModifierCount(selectedModifierIds, option.Id)))
           .ToList();
       }
       var supplements = new List<PriceSupplement>();
@@ -902,9 +929,9 @@
           supplements.AddRange(option.ComponentModifierGroups.SelectMany(group => group.Options)
             .Where(modifier => draft.ModifierIds.Contains(modifier.Id) && modifier.PriceDelta > 0)
             .Select(modifier => new PriceSupplement(
-              $"{option.ComponentProductName} · {modifier.Name}",
+              $"{option.ComponentProductName} · {SupplementName(modifier.Name, ModifierCount(draft.ModifierIds, modifier.Id))}",
               RestaurantComboPricingRules.CalculateUnitSupplement(
-                [new RestaurantComboPriceSelection(0, option.Quantity, [modifier.PriceDelta])]))));
+                [new RestaurantComboPriceSelection(0, option.Quantity, Enumerable.Repeat(modifier.PriceDelta, ModifierCount(draft.ModifierIds, modifier.Id)).ToArray())]))));
         }
       }
       return supplements;
@@ -1066,7 +1093,7 @@
     selectedProduct = product;
     selectedMenuSection = section;
     editingLine = line;
-    selectedModifierIds = line?.ModifierIds.ToHashSet() ?? [];
+    selectedModifierIds = line?.ModifierIds.ToList() ?? [];
     selectedProductNotes = line?.Notes;
     selectedComboOptionIds = [];
     selectedComponentDrafts = [];
@@ -1086,7 +1113,7 @@
           {
             SlotId = slot.Id,
             OptionId = optionId,
-            ModifierIds = component?.ModifierIds.ToHashSet() ?? [],
+            ModifierIds = component?.ModifierIds.ToList() ?? [],
             Notes = component?.Notes
           };
         }
@@ -1156,12 +1183,37 @@
   {
     if (selected)
     {
-      var groupOptionIds = group.Options.Select(item => item.Id).ToHashSet();
-      if (selectedModifierIds.Count(groupOptionIds.Contains) >= group.MaxSelections) return;
+      if (GroupSelectionCount(selectedModifierIds, group) >= group.MaxSelections) return;
       selectedModifierIds.Add(option.Id);
     }
     else selectedModifierIds.Remove(option.Id);
   }
+
+  /// <summary>El máximo del grupo es un presupuesto de selecciones, así que una opción puede repetirse.</summary>
+  private void StepModifier(List<long> selection, RestaurantModifierGroupDto group, RestaurantModifierOptionDto option, int delta)
+  {
+    if (delta < 0)
+    {
+      var last = selection.LastIndexOf(option.Id);
+      if (last >= 0) selection.RemoveAt(last);
+    }
+    else if (GroupSelectionCount(selection, group) >= group.MaxSelections)
+    {
+      error = $"{group.Name}: solo puedes elegir {group.MaxSelections} en total.";
+      return;
+    }
+    else selection.Add(option.Id);
+    error = null;
+  }
+
+  private static int ModifierCount(IReadOnlyList<long> selection, long optionId) => selection.Count(item => item == optionId);
+  private static int GroupSelectionCount(IReadOnlyList<long> selection, RestaurantModifierGroupDto group)
+  {
+    var groupOptionIds = group.Options.Select(item => item.Id).ToHashSet();
+    return selection.Count(groupOptionIds.Contains);
+  }
+  private static string SupplementName(string name, int quantity) => quantity > 1 ? $"{quantity}× {name}" : name;
+  private static string ModifierDisplayName(CartModifierDetail modifier) => SupplementName(modifier.OptionName, modifier.Quantity);
 
   private void ToggleComboOption(RestaurantComboSlotDto slot, RestaurantComboSlotOptionDto option, bool selected)
   {
@@ -1190,7 +1242,7 @@
     if (selected)
     {
       var groupOptionIds = group.Options.Select(item => item.Id).ToHashSet();
-      if (group.MaxSelections == 1) draft.ModifierIds.RemoveWhere(groupOptionIds.Contains);
+      if (group.MaxSelections == 1) draft.ModifierIds.RemoveAll(groupOptionIds.Contains);
       else if (draft.ModifierIds.Count(groupOptionIds.Contains) >= group.MaxSelections) return;
       draft.ModifierIds.Add(option.Id);
     }
@@ -1201,7 +1253,6 @@
   {
     if (selectedProduct is null) return;
     if (!CanSavePersonalization) { error = "Completa las elecciones obligatorias y revisa las notas antes de continuar."; return; }
-    var options = selectedProduct.ModifierGroups.SelectMany(group => group.Options).Where(option => selectedModifierIds.Contains(option.Id)).ToList();
     var modifierDetails = CreateModifierDetails(selectedProduct.ModifierGroups, selectedModifierIds);
     var components = CreateComboComponents(selectedProduct);
     var sectionId = selectedMenuSection?.Id;
@@ -1218,8 +1269,8 @@
       BaseUnitPrice = selectedProduct.Price,
       UnitPrice = SelectedProductPrice,
       Notes = normalizedNotes,
-      ModifierIds = options.Select(option => option.Id).ToList(),
-      ModifierNames = options.Select(option => option.Name).ToList(),
+      ModifierIds = modifierDetails.SelectMany(item => Enumerable.Repeat(item.OptionId, item.Quantity)).Order().ToList(),
+      ModifierNames = modifierDetails.Select(ModifierDisplayName).ToList(),
       Modifiers = modifierDetails,
       ComboComponents = components
     };
@@ -1256,9 +1307,9 @@
     var count = SelectedOptionCount(slot);
     return count >= slot.MinSelections && count <= slot.MaxSelections;
   }
-  private static bool ModifierSelectionIsValid(RestaurantModifierGroupDto group, IReadOnlySet<long> selectionIds)
+  private static bool ModifierSelectionIsValid(RestaurantModifierGroupDto group, IReadOnlyList<long> selectionIds)
   {
-    var count = group.Options.Count(option => selectionIds.Contains(option.Id));
+    var count = GroupSelectionCount(selectionIds, group);
     return count >= group.MinSelections && count <= group.MaxSelections;
   }
   private static string SelectionInstruction(RestaurantComboSlotDto slot)
@@ -1266,9 +1317,11 @@
       ? slot.MaxSelections == 1 ? "Opcional · elige hasta 1" : $"Opcional · elige hasta {slot.MaxSelections}"
       : slot.MinSelections == slot.MaxSelections ? $"Elige {slot.MinSelections}" : $"Elige {slot.MinSelections}–{slot.MaxSelections}";
   private static string ModifierInstruction(RestaurantModifierGroupDto group)
-    => group.MinSelections == 0
-      ? group.MaxSelections == 1 ? "Opcional" : $"Hasta {group.MaxSelections}"
-      : group.MinSelections == group.MaxSelections ? $"Elige {group.MinSelections}" : $"Elige {group.MinSelections}–{group.MaxSelections}";
+    => group.MaxSelections == 1
+      ? group.MinSelections == 0 ? "Opcional" : "Elige 1"
+      : group.MinSelections == 0 ? $"Opcional · hasta {group.MaxSelections} en total"
+      : group.MinSelections == group.MaxSelections ? $"Elige {group.MinSelections} en total"
+      : $"Elige {group.MinSelections}–{group.MaxSelections} en total";
   private static string ComponentDraftKey(long slotId,long optionId)=>$"{slotId}:{optionId}";
   private ComponentSelectionDraft GetComponentDraft(long slotId,long optionId)
   {
@@ -1293,10 +1346,11 @@
     _=>$"Ajuste de {effect.MaterialName}"
   };
 
-  private static List<CartModifierDetail> CreateModifierDetails(IEnumerable<RestaurantModifierGroupDto> groups,IReadOnlySet<long> selectedIds)
+  private static List<CartModifierDetail> CreateModifierDetails(IEnumerable<RestaurantModifierGroupDto> groups,IReadOnlyList<long> selectedIds)
     => groups.SelectMany(group=>group.Options.Where(option=>selectedIds.Contains(option.Id)).Select(option=>new CartModifierDetail
     {
       GroupId=group.Id,GroupName=group.Name,OptionId=option.Id,OptionName=option.Name,PriceDelta=option.PriceDelta,
+      Quantity=ModifierCount(selectedIds,option.Id),
       Effects=option.IngredientEffects.Select(effect=>new CartModifierEffect{EffectKind=effect.EffectKind,MaterialName=effect.MaterialName,Quantity=effect.Quantity,UnitName=effect.UnitName}).ToList()
     })).ToList();
 
@@ -1314,7 +1368,7 @@
         {
           SlotId=slot.Id,SlotName=slot.Name,OptionId=option.Id,ProductId=option.ComponentProductId,ProductName=option.ComponentProductName,
           ProductSku=option.ComponentSku,Quantity=option.Quantity,PriceDelta=option.PriceDelta,ModifierIds=draft.ModifierIds.Order().ToList(),
-          ModifierNames=modifiers.Select(item=>item.OptionName).ToList(),Modifiers=modifiers,Notes=NormalizeNotes(draft.Notes),
+          ModifierNames=modifiers.Select(ModifierDisplayName).ToList(),Modifiers=modifiers,Notes=NormalizeNotes(draft.Notes),
           MenuSectionId=route?.Id,MenuSectionName=route?.Name,MenuSectionSortOrder=route?.SortOrder
         });
       }
@@ -1752,7 +1806,7 @@
         if(product is null) continue;
         line.ProductKind=product.ProductKind;
         if(line.BaseUnitPrice<=0) line.BaseUnitPrice=product.Price;
-        if(line.Modifiers.Count==0&&line.ModifierIds.Count>0) line.Modifiers=CreateModifierDetails(product.ModifierGroups,line.ModifierIds.ToHashSet());
+        if(line.Modifiers.Count==0&&line.ModifierIds.Count>0) line.Modifiers=CreateModifierDetails(product.ModifierGroups,line.ModifierIds);
         line.Key=BuildCartKey(line);
       }
       if(restoredVersion<2) await PersistCartAsync();
@@ -1769,7 +1823,8 @@
       item.GroupName,
       item.OptionName,
       item.PriceDelta,
-      item.Effects.Select(effect=>new RestaurantModifierEffectSnapshotInput(effect.MaterialName,effect.EffectKind)).ToList())))
+      item.Effects.Select(effect=>new RestaurantModifierEffectSnapshotInput(effect.MaterialName,effect.EffectKind)).ToList(),
+      item.Quantity)))
       .ToList();
 
   private RestaurantReceiptPdfDocumentModel BuildReceiptModel(RestaurantOrderResult order)
@@ -1988,6 +2043,7 @@
     public long OptionId { get; set; }
     public string OptionName { get; set; } = string.Empty;
     public decimal PriceDelta { get; set; }
+    public int Quantity { get; set; } = 1;
     public List<CartModifierEffect> Effects { get; set; } = [];
   }
 
@@ -2003,7 +2059,7 @@
   {
     public long SlotId { get; set; }
     public long OptionId { get; set; }
-    public HashSet<long> ModifierIds { get; set; } = [];
+    public List<long> ModifierIds { get; set; } = [];
     public string? Notes { get; set; }
   }
 

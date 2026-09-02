@@ -1739,3 +1739,33 @@ summary:focus-visible {
   .pos-cart-line__customize { min-height:2.8rem; font-size:0; }
   .pos-cart-line__customize .oi { font-size:1rem; }
 }
+
+.pos-modifier--stepper {
+  grid-template-columns: 1fr auto auto;
+}
+
+.pos-modifier__stepper {
+  display: grid;
+  grid-template-columns: 2.4rem 1.75rem 2.4rem;
+  align-items: center;
+  gap: .25rem;
+}
+
+.pos-modifier__stepper button {
+  min-width: 2.4rem;
+  min-height: 2.4rem;
+  border: 0;
+  border-radius: .6rem;
+  background: #e5eeeb;
+  color: #173d32;
+  font-size: 1.2rem;
+  font-weight: 900;
+}
+
+.pos-modifier__stepper button:disabled {
+  opacity: .45;
+}
+
+.pos-modifier__stepper b {
+  text-align: center;
+}

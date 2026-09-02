@@ -242,7 +242,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           throw new InvalidOperationException("La cantidad de cada producto debe ser mayor que cero.");
         }
         ProductRow? product = null;
-        List<ModifierRow> modifiers;
+        List<PricedModifier> modifiers;
         string productName;
         string sku;
         decimal unitPrice;
@@ -276,7 +276,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           var isCombo = string.Equals(product.ProductKind, RestaurantProductKinds.Combo, StringComparison.OrdinalIgnoreCase);
           modifiers = isCombo
             ? []
-            : modifierRows.Where(item => item.ProductId == productId && line.ModifierOptionIds.Contains(item.Id)).ToList();
+            : SelectModifiers(productId, line.ModifierOptionIds, modifierRows);
           productName = string.IsNullOrWhiteSpace(product.VariantName)
             ? product.Name
             : $"{product.Name} · {product.VariantName}";
@@ -291,7 +291,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           }
           else
           {
-            unitPrice = product.Price + modifiers.Sum(item => item.PriceDelta);
+            unitPrice = product.Price + modifiers.Sum(item => item.Option.PriceDelta * item.Quantity);
           }
           gross = decimal.Round(unitPrice * line.Quantity, 2, MidpointRounding.AwayFromZero);
         }
@@ -2237,18 +2237,14 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     }
   }
 
-  private static List<ModifierRow> ValidateProductModifierSelection(
+  private static List<PricedModifier> ValidateProductModifierSelection(
     long productId,
     IReadOnlyList<long> selectedOptionIds,
     IReadOnlyList<ModifierRow> modifierRows,
     string context)
   {
-    if (selectedOptionIds.Count != selectedOptionIds.Distinct().Count())
-    {
-      throw new InvalidOperationException($"No se puede repetir el mismo modificador en {context}.");
-    }
     var productModifiers = modifierRows.Where(row => row.ProductId == productId).ToList();
-    foreach (var optionId in selectedOptionIds)
+    foreach (var optionId in selectedOptionIds.Distinct())
     {
       if (productModifiers.All(row => row.Id != optionId))
       {
@@ -2257,7 +2253,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     }
     foreach (var group in productModifiers.GroupBy(row => row.ModifierGroupId))
     {
-      var selected = group.Count(row => selectedOptionIds.Contains(row.Id));
+      var groupOptionIds = group.Select(row => row.Id).ToHashSet();
+      var selected = selectedOptionIds.Count(groupOptionIds.Contains);
       var definition = group.First();
       if (selected < definition.MinSelections || selected > definition.MaxSelections)
       {
@@ -2265,8 +2262,18 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           $"El grupo {definition.GroupName} requiere entre {definition.MinSelections} y {definition.MaxSelections} opciones para {context}.");
       }
     }
-    return productModifiers.Where(row => selectedOptionIds.Contains(row.Id)).ToList();
+    return SelectModifiers(productId, selectedOptionIds, modifierRows);
   }
+
+  /// <summary>Cada repetición de un id en la selección cuenta como una unidad más de esa opción.</summary>
+  private static List<PricedModifier> SelectModifiers(
+    long productId,
+    IReadOnlyList<long> selectedOptionIds,
+    IReadOnlyList<ModifierRow> modifierRows)
+    => modifierRows
+      .Where(row => row.ProductId == productId && selectedOptionIds.Contains(row.Id))
+      .Select(row => new PricedModifier(row, selectedOptionIds.Count(optionId => optionId == row.Id)))
+      .ToList();
 
   private static async Task<InventoryRequirementPlan> BuildRequirementsAsync(
     DbConnection conn,
@@ -2278,7 +2285,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   {
     var selectedOptionIds = lines
       .SelectMany(line => line.Modifiers.Concat(line.ComboComponents.SelectMany(component => component.Modifiers)))
-      .Select(modifier => modifier.Id)
+      .Select(modifier => modifier.Option.Id)
       .Distinct()
       .ToArray();
     var graph = await RestaurantRequirementGraphLoader.LoadAsync(conn, tx, rfc, selectedOptionIds, ct);
@@ -2324,7 +2331,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   private static void AddProductRequirements(
     ProductRow product,
     decimal quantity,
-    IReadOnlyList<ModifierRow> modifiers,
+    IReadOnlyList<PricedModifier> modifiers,
     RestaurantSaleRequirementGraph graph,
     IDictionary<int, decimal> requirements,
     ICollection<string> overrideReasons,
@@ -2345,7 +2352,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       product.MaterialId.Value,
       product.Sku,
       quantity,
-      modifiers.Select(modifier => modifier.Id).ToArray());
+      modifiers.SelectMany(modifier => Enumerable.Repeat(modifier.Option.Id, modifier.Quantity)).ToArray());
     var issue = calculation.Issues.FirstOrDefault();
     if (issue is not null)
     {
@@ -2701,26 +2708,27 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     DbTransaction tx,
     string rfc,
     long orderLineId,
-    ModifierRow modifier,
+    PricedModifier modifier,
     CancellationToken ct)
     => conn.ExecuteAsync(new CommandDefinition(
       """
       INSERT INTO restaurante.OrderLineModifier
         (Rfc,OrderLineId,ModifierOptionId,[Name],PriceDelta,Quantity,ModifierGroupNameSnapshot,EffectKind)
       VALUES
-        (@Rfc,@OrderLineId,@ModifierOptionId,@Name,@PriceDelta,1,@GroupName,@EffectKind);
+        (@Rfc,@OrderLineId,@ModifierOptionId,@Name,@PriceDelta,@Quantity,@GroupName,@EffectKind);
       """,
       new
       {
         Rfc = rfc,
         OrderLineId = orderLineId,
-        ModifierOptionId = modifier.Id,
-        modifier.Name,
-        modifier.PriceDelta,
-        GroupName = modifier.GroupName,
-        EffectKind = string.IsNullOrWhiteSpace(modifier.EffectKind)
+        ModifierOptionId = modifier.Option.Id,
+        modifier.Option.Name,
+        modifier.Option.PriceDelta,
+        modifier.Quantity,
+        GroupName = modifier.Option.GroupName,
+        EffectKind = string.IsNullOrWhiteSpace(modifier.Option.EffectKind)
           ? RestaurantModifierEffectKinds.AdjustQuantity
-          : modifier.EffectKind
+          : modifier.Option.EffectKind
       },
       tx,
       cancellationToken: ct));
@@ -2742,7 +2750,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     => new(
       component.OptionPriceDelta,
       component.OptionQuantity,
-      component.Modifiers.Select(modifier => modifier.PriceDelta).ToArray());
+      component.Modifiers.SelectMany(modifier => Enumerable.Repeat(modifier.Option.PriceDelta, modifier.Quantity)).ToArray());
 
   private static async Task PersistPromotionSnapshotsAsync(
     DbConnection conn,
@@ -3099,7 +3107,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     string LineKey,
     RestaurantOrderLineCreateRequest Request,
     ProductRow? Product,
-    List<ModifierRow> Modifiers,
+    List<PricedModifier> Modifiers,
     string ProductName,
     string Sku,
     decimal UnitPrice,
@@ -3118,7 +3126,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     ProductRow Product,
     decimal OptionQuantity,
     decimal OptionPriceDelta,
-    List<ModifierRow> Modifiers,
+    List<PricedModifier> Modifiers,
     string? Notes,
     long MenuSectionId,
     string MenuSectionName,
@@ -3184,6 +3192,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     public string? EffectKind { get; set; }
     public List<ModifierEffectSnapshot> Effects { get; set; } = [];
   }
+  /// <summary>Opción elegida y cuántas veces se pidió; el máximo del grupo es un presupuesto de selecciones.</summary>
+  private sealed record PricedModifier(ModifierRow Option, int Quantity);
   private sealed record ModifierEffectSnapshot(string Name, string EffectKind);
   private sealed class ModifierEffectRow
   {

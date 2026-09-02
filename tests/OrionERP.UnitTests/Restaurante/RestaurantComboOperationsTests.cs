@@ -14,7 +14,7 @@ public sealed class RestaurantComboOperationsTests
     Assert.Contains("ParentProductNameSnapshot", service, StringComparison.Ordinal);
     Assert.Contains("ComboSlotNameSnapshot", service, StringComparison.Ordinal);
     Assert.Contains("ModifierGroupNameSnapshot", service, StringComparison.Ordinal);
-    Assert.Contains("component.Modifiers.Select(modifier => modifier.PriceDelta)", service, StringComparison.Ordinal);
+    Assert.Contains("component.Modifiers.SelectMany(modifier => Enumerable.Repeat(modifier.Option.PriceDelta, modifier.Quantity))", service, StringComparison.Ordinal);
   }
 
   [Fact]

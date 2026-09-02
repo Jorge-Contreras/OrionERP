@@ -205,6 +205,26 @@ public sealed class RestaurantSaleRequirementCalculatorTests
     Assert.Equal(1.5m, result.Requirements[300]);
   }
 
+  [Fact]
+  public void Calculate_RepeatedModifierOption_MultipliesItsIngredientEffect()
+  {
+    var graph = Graph(
+      materials: [Material(300, "MEAT", "Carne", "StockItem", 1)],
+      deltas:
+      [
+        new RestaurantSaleModifierDeltaNode { OptionId = 7, MaterialId = 300, QuantityDelta = 50, UnitId = 2, Unit = "g" }
+      ],
+      conversions:
+      [
+        new RestaurantSaleUnitConversionNode { MaterialId = 300, FromUnitId = 2, ToUnitId = 1, Factor = 0.001m }
+      ]);
+
+    var result = RestaurantSaleRequirementCalculator.Calculate(graph, 300, "MEAT-01", 2, [7, 7, 7]);
+
+    Assert.Empty(result.Issues);
+    Assert.Equal(2.3m, result.Requirements[300]);
+  }
+
   private static RestaurantSaleRequirementGraph Graph(
     IReadOnlyList<RestaurantSaleMaterialNode> materials,
     IReadOnlyList<RestaurantSaleBomNode>? boms = null,

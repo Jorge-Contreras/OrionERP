@@ -80,6 +80,47 @@ public abstract class WorkforceServiceBase
     return connection;
   }
 
+  /// <summary>
+  /// Fija el RFC de la conexion para la seguridad a nivel de fila del esquema rh.
+  ///
+  /// La fabrica de conexiones escribe la literal '__UNSCOPED__' en
+  /// SESSION_CONTEXT('OrionRfc') cuando no hay RFC de sesion, y el predicado de rh
+  /// solo deja pasar la fila cuando ese contexto es NULL o coincide con su Rfc. El
+  /// kiosco es anonimo por diseno: la tableta no inicia sesion. Sin este ajuste el
+  /// registro veria cero filas y el evento quedaria bloqueado justo en produccion,
+  /// aunque todo funcione con una sesion iniciada.
+  ///
+  /// El RFC nunca lo elige quien usa el kiosco: sale del dispositivo ya vinculado
+  /// o del comando que la propia aplicacion construyo.
+  /// </summary>
+  public static Task PinRfcScopeAsync(
+    IDbConnection connection,
+    IDbTransaction? transaction,
+    string rfc,
+    CancellationToken ct)
+    => connection.ExecuteAsync(new CommandDefinition(
+      "EXEC sys.sp_set_session_context @key=N'OrionRfc', @value=@Rfc, @read_only=0;",
+      new { Rfc = NormalizeRfc(rfc) },
+      transaction,
+      cancellationToken: ct));
+
+  /// <summary>
+  /// Deja la conexion sin RFC para las tareas que recorren todas las empresas.
+  ///
+  /// La unica que lo necesita es la retencion programada, que anonimiza evidencia
+  /// de ubicacion agrupando por Rfc. Corre en un BackgroundService, fuera de toda
+  /// peticion HTTP, asi que la fabrica la dejaria en '__UNSCOPED__' y el predicado
+  /// la filtraria por completo: purgaria cero filas sin reportar ningun error.
+  /// </summary>
+  public static Task ClearRfcScopeAsync(
+    IDbConnection connection,
+    IDbTransaction? transaction,
+    CancellationToken ct)
+    => connection.ExecuteAsync(new CommandDefinition(
+      "EXEC sys.sp_set_session_context @key=N'OrionRfc', @value=NULL, @read_only=0;",
+      transaction: transaction,
+      cancellationToken: ct));
+
   public static async Task WriteAuditAsync(
     IDbConnection connection,
     IDbTransaction? transaction,

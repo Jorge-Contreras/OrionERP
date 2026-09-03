@@ -46,6 +46,7 @@ public sealed class AttendanceRecorder : IAttendanceRecorder
 
     using var connection = _connectionFactory.Create();
     if (connection.State != ConnectionState.Open) connection.Open();
+    await WorkforceServiceBase.PinRfcScopeAsync(connection, null, command.Rfc, ct);
     using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
     try
     {

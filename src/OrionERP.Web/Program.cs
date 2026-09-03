@@ -412,6 +412,13 @@ builder.Services.AddAuthorization(options =>
     policy.RequireCompanyRoles("CapitalHumanoAdmin", "CapitalHumanoSupervisor", "CapitalHumanoNomina");
     policy.RequireAssertion(context => AttendanceIsEnabled(context, builder.Configuration));
   });
+  // El expediente de empleados es anterior al modulo de asistencia y no depende de
+  // el: por eso esta politica no lleva la condicion AttendanceIsEnabled. Apagar la
+  // asistencia no debe esconder el maestro de personal.
+  options.AddPolicy("CapitalHumanoExpediente", policy =>
+  {
+    policy.RequireCompanyRoles("CapitalHumanoAdmin");
+  });
   options.AddPolicy("CapacitacionEmployee", policy =>
   {
     policy.RequireCompanySession();

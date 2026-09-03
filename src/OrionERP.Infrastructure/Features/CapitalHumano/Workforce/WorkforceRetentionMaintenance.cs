@@ -39,6 +39,7 @@ public sealed class WorkforceMaintenanceService : IWorkforceMaintenanceService
     var calculatedDays = Math.Clamp(_options.CalculatedAttendanceRetentionDays, 365, 7300);
     using var connection = _connectionFactory.Create();
     connection.Open();
+    await WorkforceServiceBase.ClearRfcScopeAsync(connection, null, ct);
     using var transaction = connection.BeginTransaction();
     var purged = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
       """

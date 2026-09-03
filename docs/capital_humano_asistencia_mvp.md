@@ -14,10 +14,27 @@ Rutas principales:
 - `/capital-humano/ausencias`: políticas, inscripciones, solicitudes, saldos y acumulación.
 - `/capital-humano/pre-nomina`: validación, bloqueo, reapertura versionada y exportación.
 
+## Estado actual (verificado el 2026-09-03)
+
+El esquema `rh` ya está aplicado en `Orion_Sandbox` y en `grupocarpio`: las 31
+tablas existen en ambas, con los catálogos sembrados y sin datos operativos.
+
+`AttendanceEnabled` está en `true` tanto en el `appsettings.json` del repositorio
+como en el desplegado en producción, así que el paso 2 de abajo describe la
+intención original y no el estado real. El alcance de esa exposición es acotado:
+quien tenga el claim `employee_id` ve `/mi-trabajo` en el menú, pero al registrar
+recibe «El empleado no tiene una asignación de trabajo vigente» porque falta la
+configuración; no se escribe ningún evento ni se guarda ubicación.
+
 ## Despliegue
 
-1. Ejecutar de forma idempotente `src/OrionERP.Infrastructure/Features/CapitalHumano/Workforce/Sql/20260805_workforce_attendance_mvp.sql` contra `Orion_Sandbox`.
-2. Mantener `CapitalHumano:AttendanceEnabled=false` en producción durante la preparación.
+1. Aplicar el esquema y su seguridad a nivel de fila con
+   `Install-CapitalHumanoSchema.ps1`. Sin `-Apply` valida todo dentro de una
+   transacción que se revierte; con `-Apply` confirma. Cubre
+   `20260805_workforce_attendance_mvp.sql` y `20260903_zz_rh_rls.sql`, en ese
+   orden, porque la política necesita que las tablas ya existan.
+2. Mantener `CapitalHumano:AttendanceEnabled=false` en producción durante la
+   preparación.
 3. Publicar y activar el aviso de privacidad aprobado desde Configuración de tiempo.
 4. Crear explícitamente el sitio piloto con coordenadas confirmadas, zona horaria y geocerca. No inferirlo del texto heredado de sucursal.
 5. Crear horario, grupo de pago, política, asignación de trabajo, supervisor e inscripción de ausencia para cada participante piloto.
@@ -40,3 +57,19 @@ El registro usa la hora de recepción del servidor. El reloj del navegador es di
 El bloqueo falla si falta una asignación, existe una excepción o ausencia pendiente, un día sigue sin conciliar, el tiempo extra candidato no tiene decisión, o falta la aprobación del supervisor. La reapertura crea un periodo hijo con nueva versión; el snapshot y las exportaciones anteriores permanecen intactos.
 
 Las exportaciones almacenan los bytes y hashes SHA-256 de XLSX y ZIP. El XLSX contiene `Resumen`, `Detalle`, `HorasExtra`, `Incidencias`, `Ausencias` y `Validaciones`; el ZIP contiene los CSV UTF-8 equivalentes y `manifest.json`.
+
+## Aislamiento entre empresas
+
+`20260903_zz_rh_rls.sql` crea `rh.RfcSecurityPolicy` sobre las 22 tablas de `rh`
+que tienen columna `Rfc`. Las otras 8 no la tienen: cuelgan de un padre protegido.
+
+`rh.KioskDevice` queda deliberadamente fuera. El kiosco es anónimo: localiza su
+dispositivo por el hash SHA-256 del token antes de saber a qué empresa pertenece,
+así que dentro de la política esa consulta devolvería cero filas y el kiosco no
+funcionaría nunca. Una vez resuelto el dispositivo,
+`WorkforceServiceBase.PinRfcScopeAsync` fija el RFC en la conexión y de ahí en
+adelante credenciales, eventos y bitácora sí pasan por la política. La retención
+programada usa `ClearRfcScopeAsync` porque recorre todas las empresas a propósito.
+
+La fábrica de conexiones escribe `'__UNSCOPED__'` cuando no hay RFC de sesión, no
+`NULL`; por eso estas tres rutas necesitan fijarlo o limpiarlo de forma explícita.

@@ -388,19 +388,18 @@
           <div class="pos-payment-grid">
             <label>Recibido en efectivo <input type="number" min="0" step="0.01" inputmode="decimal" @bind="cashReceived" @bind:event="oninput" /></label>
             <label>Tarjeta externa <input type="number" min="0" step="0.01" inputmode="decimal" @bind="cardAmount" @bind:event="oninput" /></label>
-            <div class="pos-transfer">
-              <label>Transferencia <input type="number" min="0" step="0.01" inputmode="decimal" @bind="transferAmount" @bind:event="oninput" /></label>
-              <button type="button"
-                      class="pos-transfer__print"
-                      @onclick="PrintTransferDetailsAsync"
-                      disabled="@(!CanPrintTransferDetails)"
-                      title="@TransferPrintHint"
-                      aria-label="Imprimir datos de transferencia SPEI">
-                <span class="@(isPrintingTransferSlip ? "spinner-border spinner-border-sm" : "oi oi-print")" aria-hidden="true"></span>
-                @(isPrintingTransferSlip ? "Imprimiendo…" : "Datos SPEI")
-              </button>
-            </div>
+            <label>Transferencia <input type="number" min="0" step="0.01" inputmode="decimal" @bind="transferAmount" @bind:event="oninput" /></label>
             <label>Propina <input type="number" min="0" step="0.01" inputmode="decimal" @bind="tipAmount" @bind:event="oninput" /></label>
+            @* Celda propia bajo Transferencia: dentro del campo estiraba la fila y descuadraba Propina. *@
+            <button type="button"
+                    class="pos-transfer__print"
+                    @onclick="PrintTransferDetailsAsync"
+                    disabled="@(!CanPrintTransferDetails)"
+                    title="@TransferPrintHint"
+                    aria-label="Imprimir datos de transferencia SPEI">
+              <span class="@(isPrintingTransferSlip ? "spinner-border spinner-border-sm" : "oi oi-print")" aria-hidden="true"></span>
+              @(isPrintingTransferSlip ? "Imprimiendo…" : "Datos SPEI")
+            </button>
           </div>
           @if (!string.IsNullOrWhiteSpace(transferSlipWarning))
           {

@@ -183,6 +183,7 @@ public class AttendancePolicyDto
   public int RoundingMinutes { get; set; }
   public bool LocationRequired { get; set; }
   public bool IsActive { get; set; }
+  public bool RequiresReview { get; set; } = true;
 }
 
 public sealed class AttendancePolicySaveRequest : AttendancePolicyDto;
@@ -291,6 +292,7 @@ public sealed class WorkforceSetupSnapshotDto
   public IReadOnlyList<SupervisorAssignmentDto> SupervisorAssignments { get; set; } = [];
   public IReadOnlyList<WorkforceReadinessDto> Readiness { get; set; } = [];
   public IReadOnlyList<KioskDeviceDto> Kiosks { get; set; } = [];
+  public IReadOnlyList<KioskCredentialDto> KioskCredentials { get; set; } = [];
   public IReadOnlyList<HolidayDto> Holidays { get; set; } = [];
   public IReadOnlyList<PrivacyNoticeDto> PrivacyNotices { get; set; } = [];
 }
@@ -625,12 +627,33 @@ public sealed class KioskDeviceDto
   public int SiteId { get; set; }
   public string SiteName { get; set; } = string.Empty;
   public bool IsActive { get; set; }
+  public bool IsPaired { get; set; }
   public DateTime? LastSeenAtUtc { get; set; }
+}
+
+public sealed class KioskDeviceSaveRequest
+{
+  public int Id { get; set; }
+  [Required, StringLength(50)] public string Rfc { get; set; } = string.Empty;
+  [Range(1, int.MaxValue)] public int SiteId { get; set; }
+  [Required, StringLength(150)] public string Name { get; set; } = string.Empty;
+  public bool IsActive { get; set; } = true;
+}
+
+public sealed class KioskCredentialDto
+{
+  public int EmployeeId { get; set; }
+  public string EmployeeName { get; set; } = string.Empty;
+  public bool IsActive { get; set; }
+  public int FailedAttempts { get; set; }
+  public DateTime? LockedUntilUtc { get; set; }
+  public DateTime CreatedAtUtc { get; set; }
 }
 
 public sealed class KioskPairingCreateRequest
 {
   [Required, StringLength(50)] public string Rfc { get; set; } = string.Empty;
+  public int? DeviceId { get; set; }
   [Range(1, int.MaxValue)] public int SiteId { get; set; }
   [Required, StringLength(150)] public string DeviceName { get; set; } = string.Empty;
 }

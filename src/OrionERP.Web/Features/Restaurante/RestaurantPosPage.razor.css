@@ -625,19 +625,16 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: .5rem;
-}
-
-.pos-transfer {
-  display: grid;
-  gap: .35rem;
-  align-content: start;
+  /* Sin esto, la celda mas alta estira los demas campos de la fila. */
+  align-items: start;
 }
 
 .pos-transfer__print {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: .4rem;
+  width: 100%;
   min-height: 2.5rem;
   padding: 0 .75rem;
   border: 1px solid #17634f;
@@ -1601,6 +1598,12 @@ summary:focus-visible {
   .pos-form-row,
   .pos-payment-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* En una sola columna, Propina se va al final para que el boton siga pegado
+     al campo de Transferencia al que pertenece. */
+  .pos-payment-grid > label:nth-child(4) {
+    order: 1;
   }
 
   .pos-membership__lookup {

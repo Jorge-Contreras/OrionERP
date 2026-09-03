@@ -6,13 +6,16 @@ public sealed class RestaurantTransferSlipWiringTests
   public void PosPage_PrintsTheSpeiSlipFromAButtonNextToTheTransferField()
   {
     var source = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantPosPage.razor");
-    var transferField = source.IndexOf("<label>Transferencia <input", StringComparison.Ordinal);
+    var grid = source.IndexOf("<div class=\"pos-payment-grid\">", StringComparison.Ordinal);
+    var transferField = source.IndexOf("<label>Transferencia <input", grid, StringComparison.Ordinal);
     var printButton = source.IndexOf("PrintTransferDetailsAsync", transferField, StringComparison.Ordinal);
-    var tipField = source.IndexOf("<label>Propina <input", transferField, StringComparison.Ordinal);
+    var gridEnd = source.IndexOf("transferSlipWarning", grid, StringComparison.Ordinal);
 
     Assert.True(transferField >= 0);
-    // El botón vive dentro de la celda de Transferencia, antes del siguiente campo.
-    Assert.InRange(printButton, transferField, tipField - 1);
+    // El botón es una celda más de la rejilla de pagos: dentro del campo estiraba
+    // la fila y descuadraba Propina.
+    Assert.InRange(printButton, transferField, gridEnd - 1);
+    Assert.DoesNotContain("<div class=\"pos-transfer\">", source, StringComparison.Ordinal);
     Assert.Contains("disabled=\"@(!CanPrintTransferDetails)\"", source, StringComparison.Ordinal);
     Assert.Contains("restaurantUi.printPdf", source, StringComparison.Ordinal);
     Assert.Contains("ReceiptPdfService.GenerateTransferSlip(slip)", source, StringComparison.Ordinal);

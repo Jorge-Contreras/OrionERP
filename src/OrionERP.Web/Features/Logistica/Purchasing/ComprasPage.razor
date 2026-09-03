@@ -768,24 +768,6 @@
                                                 {
                                                     <p class="compras-price-hint">Referencia de la orden: @FormatMoney(suggestedTotal). Confirma el importe real del ticket.</p>
                                                 }
-
-                                                @if (item.RequiresLot)
-                                                {
-                                                    <div class="compras-lot-fields">
-                                                        <label><span>Lote <strong>obligatorio</strong></span><input class="form-control" value="@item.LotCode" @oninput="args => UpdateReceiveLotCode(item, args)" /></label>
-                                                        <label><span>Caducidad <strong>obligatoria</strong></span><input type="date" class="form-control" value="@FormatDateInput(item.ExpiresAt)" @oninput="args => UpdateReceiveExpiration(item, args)" /></label>
-                                                    </div>
-                                                }
-                                                else
-                                                {
-                                                    <details class="compras-optional-fields">
-                                                        <summary>Agregar lote o caducidad (opcional)</summary>
-                                                        <div class="compras-lot-fields">
-                                                            <label><span>Lote</span><input class="form-control" value="@item.LotCode" @oninput="args => UpdateReceiveLotCode(item, args)" /></label>
-                                                            <label><span>Caducidad</span><input type="date" class="form-control" value="@FormatDateInput(item.ExpiresAt)" @oninput="args => UpdateReceiveExpiration(item, args)" /></label>
-                                                        </div>
-                                                    </details>
-                                                }
                                             </article>
                                         }
                                     </div>
@@ -802,10 +784,6 @@
                                         @if (ReceiptMissingAmountCount > 0)
                                         {
                                             <p class="compras-ticket-warning">Falta el total de @ReceiptMissingAmountCount artículo(s).</p>
-                                        }
-                                        else if (ReceiptMissingLotCount > 0)
-                                        {
-                                            <p class="compras-ticket-warning">Falta lote o caducidad de @ReceiptMissingLotCount artículo(s).</p>
                                         }
                                         else if (ReceiptCapturedItemCount == 0)
                                         {

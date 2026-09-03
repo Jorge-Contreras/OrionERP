@@ -186,16 +186,6 @@ public sealed class PhysicalCountService : IPhysicalCountService
       WHERE line.SessionId = @SessionId
       ORDER BY attachment.CreatedAt DESC, attachment.Id DESC;
 
-      SELECT lotLine.Id,lotLine.PhysicalCountLineId,lotLine.MaterialLotId,materialLot.LotCode,materialLot.ExpiresAt,
-             CAST(lotLine.ExpectedQuantity AS decimal(18,4)) AS ExpectedQuantity,
-             CAST(lotLine.CountedQuantity AS decimal(18,4)) AS CountedQuantity,
-             CAST(lotLine.VarianceQuantity AS decimal(18,4)) AS VarianceQuantity
-      FROM logistica.PhysicalCountLotLine lotLine
-      JOIN logistica.PhysicalCountLine line ON line.Rfc=lotLine.Rfc AND line.Id=lotLine.PhysicalCountLineId
-      JOIN logistica.MaterialLot materialLot ON materialLot.Rfc=lotLine.Rfc AND materialLot.Id=lotLine.MaterialLotId
-      WHERE line.SessionId=@SessionId
-      ORDER BY materialLot.ExpiresAt,materialLot.LotCode;
-
       SELECT
           audit.EventType,
           audit.OccurredAt,
@@ -411,7 +401,6 @@ public sealed class PhysicalCountService : IPhysicalCountService
 
     var lines = (await multi.ReadAsync<PhysicalCountLineDto>()).AsList();
     var attachments = (await multi.ReadAsync<PhysicalCountAttachmentDto>()).AsList();
-    var lots = (await multi.ReadAsync<PhysicalCountLotLineDto>()).AsList();
     var auditEvents = (await multi.ReadAsync<PhysicalCountAuditEventDto>()).AsList();
     var attachmentsByLine = attachments
       .GroupBy(attachment => attachment.PhysicalCountLineId)
@@ -422,7 +411,6 @@ public sealed class PhysicalCountService : IPhysicalCountService
       line.Attachments = attachmentsByLine.TryGetValue(line.Id, out var lineAttachments)
         ? lineAttachments
         : Array.Empty<PhysicalCountAttachmentDto>();
-      line.Lots = lots.Where(lot => lot.PhysicalCountLineId == line.Id).ToList();
     }
 
     session.Lines = lines;
@@ -546,21 +534,6 @@ public sealed class PhysicalCountService : IPhysicalCountService
           tx,
           cancellationToken: ct));
 
-      await conn.ExecuteAsync(
-        new CommandDefinition(
-          """
-          INSERT INTO logistica.PhysicalCountLotLine
-            (Rfc,PhysicalCountLineId,MaterialLotId,ExpectedQuantity)
-          SELECT countLine.Rfc,countLine.Id,lotBalance.MaterialLotId,lotBalance.Quantity
-          FROM logistica.PhysicalCountLine countLine
-          JOIN logistica.LotBalance lotBalance
-            ON lotBalance.Rfc=countLine.Rfc AND lotBalance.MaterialId=countLine.MaterialId AND lotBalance.LocationId=countLine.LocationId
-          WHERE countLine.SessionId=@SessionId AND lotBalance.Quantity<>0;
-          """,
-          new { SessionId = sessionId },
-          tx,
-          cancellationToken: ct));
-
       var lineCount = await conn.ExecuteScalarAsync<int>(
         new CommandDefinition(
           "SELECT COUNT(*) FROM logistica.PhysicalCountLine WHERE SessionId = @SessionId;",
@@ -632,39 +605,6 @@ public sealed class PhysicalCountService : IPhysicalCountService
       {
         await tx.RollbackAsync(ct);
         return LogisticsCommandResult.Fail("Otro empleado actualizó este material. Se recargó el conteo para proteger su captura.");
-      }
-
-      var expectedLots = (await conn.QueryAsync<PhysicalCountLotLineDto>(new CommandDefinition(
-        """
-        SELECT lotLine.MaterialLotId,lotLine.ExpectedQuantity,lotLine.CountedQuantity
-        FROM logistica.PhysicalCountLotLine lotLine WITH (UPDLOCK,HOLDLOCK)
-        JOIN logistica.PhysicalCountLine countLine ON countLine.Rfc=lotLine.Rfc AND countLine.Id=lotLine.PhysicalCountLineId
-        WHERE lotLine.PhysicalCountLineId=@LineId AND countLine.SessionId=@SessionId;
-        """, new { request.LineId, request.SessionId }, tx, cancellationToken: ct))).AsList();
-      if (expectedLots.Count > 0)
-      {
-        var capturedLots = request.Lots.GroupBy(lot => lot.MaterialLotId).ToDictionary(group => group.Key, group => group.Single().CountedQuantity);
-        if (capturedLots.Count != expectedLots.Count || expectedLots.Any(lot => !capturedLots.TryGetValue(lot.MaterialLotId, out var quantity) || !quantity.HasValue || quantity.Value < 0))
-        {
-          await tx.RollbackAsync(ct);
-          return LogisticsCommandResult.Fail("Captura una cantidad no negativa para cada lote del material.");
-        }
-        var lotTotal = capturedLots.Values.Sum(quantity => quantity ?? 0);
-        if (Math.Abs(lotTotal - request.CountedQuantity) > 0.0001m)
-        {
-          await tx.RollbackAsync(ct);
-          return LogisticsCommandResult.Fail("La suma contada por lote debe coincidir con el total de la línea.");
-        }
-        foreach (var lot in expectedLots)
-        {
-          var counted = capturedLots[lot.MaterialLotId]!.Value;
-          await conn.ExecuteAsync(new CommandDefinition(
-            """
-            UPDATE logistica.PhysicalCountLotLine
-            SET CountedQuantity=@CountedQuantity
-            WHERE PhysicalCountLineId=@LineId AND MaterialLotId=@MaterialLotId;
-            """, new { request.LineId, lot.MaterialLotId, CountedQuantity = counted }, tx, cancellationToken: ct));
-        }
       }
 
       var affectedLine = await conn.ExecuteAsync(
@@ -799,6 +739,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
           tx,
           cancellationToken: ct));
 
+      // Los conteos ya no se capturan por lote; el DELETE solo purga renglones heredados.
       await conn.ExecuteAsync(
         new CommandDefinition(
           """
@@ -1134,7 +1075,6 @@ public sealed class PhysicalCountService : IPhysicalCountService
                 CapturedBy = NULL
             WHERE Id = @LineId
               AND SessionId = @SessionId;
-            UPDATE logistica.PhysicalCountLotLine SET CountedQuantity=NULL WHERE PhysicalCountLineId=@LineId;
             """,
             new
             {
@@ -1347,25 +1287,52 @@ public sealed class PhysicalCountService : IPhysicalCountService
       {
         var countedQuantity = line.CountedQuantity ?? 0m;
         var lineDrifted = PhysicalCountVarianceMath.MovedDuringCount(line.ExpectedQuantity, line.SystemQuantity);
-        var lotLines = (await conn.QueryAsync<LotPostingRow>(new CommandDefinition(
+        // El conteo se captura como total de la línea, sin desglose por lote. Si el material
+        // arrastra saldos de lote de etapas anteriores, la diferencia se reparte por FEFO para
+        // que la suma de los lotes siga cuadrando con la existencia contabilizada.
+        var lotBalances = (await conn.QueryAsync<LotPostingRow>(new CommandDefinition(
           """
-          SELECT countLot.MaterialLotId,countLot.CountedQuantity,lotBalance.ReservedQuantity
-          FROM logistica.PhysicalCountLotLine countLot
-          JOIN logistica.LotBalance lotBalance
-            ON lotBalance.Rfc=countLot.Rfc AND lotBalance.MaterialLotId=countLot.MaterialLotId AND lotBalance.LocationId=@LocationId
-          WHERE countLot.PhysicalCountLineId=@LineId;
-          """, new { LineId = line.Id, line.LocationId }, tx, cancellationToken: ct))).AsList();
-        if (lotLines.Any(lot => !lot.CountedQuantity.HasValue || lot.CountedQuantity < lot.ReservedQuantity))
+          SELECT lotBalance.MaterialLotId,
+                 CAST(lotBalance.Quantity AS decimal(18,4)) AS Quantity,
+                 CAST(lotBalance.ReservedQuantity AS decimal(18,4)) AS ReservedQuantity
+          FROM logistica.LotBalance lotBalance WITH (UPDLOCK,HOLDLOCK)
+          JOIN logistica.MaterialLot materialLot
+            ON materialLot.Rfc=lotBalance.Rfc AND materialLot.Id=lotBalance.MaterialLotId
+          WHERE lotBalance.MaterialId=@MaterialId AND lotBalance.LocationId=@LocationId
+          ORDER BY CASE WHEN materialLot.ExpiresAt IS NULL THEN 1 ELSE 0 END,materialLot.ExpiresAt,materialLot.Id;
+          """, new { line.MaterialId, line.LocationId }, tx, cancellationToken: ct))).AsList();
+        if (lotBalances.Count > 0)
         {
-          await tx.RollbackAsync(ct);
-          return LogisticsCommandResult.Fail("Todos los lotes deben estar contados y conservar su cantidad reservada.");
+          var pendingLotDelta = countedQuantity - lotBalances.Sum(lot => lot.Quantity);
+          if (pendingLotDelta < 0m)
+          {
+            foreach (var lot in lotBalances)
+            {
+              if (pendingLotDelta >= 0m) break;
+              var reducible = Math.Min(lot.Quantity - lot.ReservedQuantity, -pendingLotDelta);
+              if (reducible <= 0m) continue;
+              lot.Quantity -= reducible;
+              pendingLotDelta += reducible;
+            }
+            if (pendingLotDelta < -0.0001m)
+            {
+              await tx.RollbackAsync(ct);
+              return LogisticsCommandResult.Fail("No se puede contabilizar una cantidad menor que la existencia reservada.");
+            }
+          }
+          else if (pendingLotDelta > 0m)
+          {
+            lotBalances[^1].Quantity += pendingLotDelta;
+          }
+
+          foreach (var lot in lotBalances)
+            await conn.ExecuteAsync(new CommandDefinition(
+              """
+              UPDATE logistica.LotBalance SET Quantity=@Quantity,UpdatedAt=SYSUTCDATETIME()
+              WHERE MaterialLotId=@MaterialLotId AND LocationId=@LocationId;
+              """, new { lot.Quantity, lot.MaterialLotId, line.LocationId }, tx, cancellationToken: ct));
         }
-        foreach (var lot in lotLines)
-          await conn.ExecuteAsync(new CommandDefinition(
-            """
-            UPDATE logistica.LotBalance SET Quantity=@CountedQuantity,UpdatedAt=SYSUTCDATETIME()
-            WHERE MaterialLotId=@MaterialLotId AND LocationId=@LocationId;
-            """, new { CountedQuantity = lot.CountedQuantity!.Value, lot.MaterialLotId, line.LocationId }, tx, cancellationToken: ct));
+
         await conn.ExecuteAsync(
           new CommandDefinition(
             """
@@ -1595,7 +1562,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
   private sealed class LotPostingRow
   {
     public long MaterialLotId { get; set; }
-    public decimal? CountedQuantity { get; set; }
+    public decimal Quantity { get; set; }
     public decimal ReservedQuantity { get; set; }
   }
 }

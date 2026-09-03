@@ -424,47 +424,25 @@
                                     <div><span>Esperado</span><strong>@SelectedLine.ExpectedQuantity.ToString("N2")</strong><small>@unitLabel</small></div>
                                     <label class="conteos-count-input-wrap">
                                         <span>¿Cuánto contaste?</span>
-                                        @if (SelectedLine.Lots.Count > 0)
-                                        {
-                                            <input class="conteos-count-input" type="text" value="@CountedQuantityInput" disabled />
-                                        }
-                                        else
-                                        {
-                                            <input class="conteos-count-input"
-                                                   type="text"
-                                                   inputmode="decimal"
-                                                   enterkeyhint="done"
-                                                   autocomplete="off"
-                                                   spellcheck="false"
-                                                   data-orion-prevent-keys="Enter"
-                                                   aria-label="Cantidad contada en @unitLabel"
-                                                   value="@CountedQuantityInput"
-                                                   @oninput="OnCountedQuantityInput"
-                                                   @onblur="OnCountedQuantityBlur"
-                                                   @onfocus="() => SelectCountedQuantityAsync()"
-                                                   @onclick="() => SelectCountedQuantityAsync()"
-                                                   @onkeydown="HandleMobileCountedQuantityKeyDownAsync"
-                                                   @ref="CountedQuantityInputRef" />
-                                        }
+                                        <input class="conteos-count-input"
+                                               type="text"
+                                               inputmode="decimal"
+                                               enterkeyhint="done"
+                                               autocomplete="off"
+                                               spellcheck="false"
+                                               data-orion-prevent-keys="Enter"
+                                               aria-label="Cantidad contada en @unitLabel"
+                                               value="@CountedQuantityInput"
+                                               @oninput="OnCountedQuantityInput"
+                                               @onblur="OnCountedQuantityBlur"
+                                               @onfocus="() => SelectCountedQuantityAsync()"
+                                               @onclick="() => SelectCountedQuantityAsync()"
+                                               @onkeydown="HandleMobileCountedQuantityKeyDownAsync"
+                                               @ref="CountedQuantityInputRef" />
                                         <small>@unitLabel</small>
                                     </label>
                                     <div class="@GetCurrentVarianceClass()"><span>Diferencia</span><strong>@CurrentVarianceText</strong><small>@unitLabel</small></div>
                                 </div>
-
-                                @if (SelectedLine.Lots.Count > 0)
-                                {
-                                    <div class="conteos-lots">
-                                        <div><strong>Cuenta cada lote</strong><small>El total se calcula automáticamente.</small></div>
-                                        @foreach (var lot in SelectedLine.Lots)
-                                        {
-                                            var captureLot = LineCapture.Lots.Single(item => item.MaterialLotId == lot.MaterialLotId);
-                                            <label>
-                                                <span><strong>@lot.LotCode</strong><small>Esperado @lot.ExpectedQuantity.ToString("N2")@if (lot.ExpiresAt.HasValue) { <text> · vence @lot.ExpiresAt.Value.ToString("d")</text> }</small></span>
-                                                <InputNumber class="form-control" min="0" step="0.0001" @bind-Value="captureLot.CountedQuantity" @bind-Value:after="UpdateTotalFromLots" />
-                                            </label>
-                                        }
-                                    </div>
-                                }
 
                                 <details class="conteos-extra-details" open="@ShouldOpenLineDetails">
                                     <summary><span class="oi oi-chevron-bottom" aria-hidden="true"></span> Agregar detalles <small>Opcional</small></summary>

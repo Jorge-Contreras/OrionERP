@@ -58,11 +58,6 @@ public class PhysicalCountServiceTests
     attachmentTable.Columns.Add("PhysicalCountLineId", typeof(int));
     results.Tables.Add(attachmentTable);
 
-    var lotTable = new DataTable();
-    lotTable.Columns.Add("Id", typeof(long));
-    lotTable.Columns.Add("PhysicalCountLineId", typeof(int));
-    results.Tables.Add(lotTable);
-
     var auditTable = new DataTable();
     auditTable.Columns.Add("EventType", typeof(string));
     auditTable.Columns.Add("OccurredAt", typeof(DateTime));

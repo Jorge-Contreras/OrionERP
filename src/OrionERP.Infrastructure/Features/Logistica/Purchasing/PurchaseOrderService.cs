@@ -178,11 +178,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           CAST(line.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice,
           CAST(line.OrderedQuantity AS decimal(18,4)) AS OrderedQuantity,
           CAST(line.ReceivedQuantity AS decimal(18,4)) AS ReceivedQuantity,
-          CAST(line.OrderedQuantity - line.ReceivedQuantity AS decimal(18,4)) AS RemainingQuantity,
-          CAST(CASE WHEN material.TrackLots = 1 OR material.IsPerishable = 1 THEN 1 ELSE 0 END AS bit) AS RequiresLot
+          CAST(line.OrderedQuantity - line.ReceivedQuantity AS decimal(18,4)) AS RemainingQuantity
       FROM logistica.PurchaseOrderLine line
-      JOIN logistica.Material material
-        ON material.Id = line.MaterialId
       WHERE line.PurchaseOrderId = @PurchaseOrderId
       ORDER BY line.MaterialDescriptionSnapshot, line.MaterialCodeSnapshot, line.Id;
 
@@ -547,18 +544,11 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       foreach (var item in groupedLines)
       {
         var allocation = allocationRows[item.Key];
-        var receiptInput = receiptLinesByAllocation[item.Key];
         var remainingQuantity = allocation.PlannedQuantity - allocation.ReceivedQuantity;
         if (item.Value > remainingQuantity)
         {
           await tx.RollbackAsync(ct);
           return LogisticsCommandResult.Fail($"La recepción excede la cantidad pendiente para {allocation.MaterialDescription} en {allocation.LocationName}.");
-        }
-
-        if (allocation.TrackLots && (string.IsNullOrWhiteSpace(receiptInput.LotCode) || !receiptInput.ExpiresAt.HasValue))
-        {
-          await tx.RollbackAsync(ct);
-          return LogisticsCommandResult.Fail($"{allocation.MaterialDescription} requiere lote y caducidad para su recepción.");
         }
       }
 
@@ -753,43 +743,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           }
         }
 
+        // La recepción ya no captura lotes: la existencia se controla por material y ubicación.
         long? materialLotId = null;
-        if (allocation.TrackLots)
-        {
-          materialLotId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
-            """
-            DECLARE @LotId bigint =
-            (
-              SELECT Id FROM logistica.MaterialLot WITH (UPDLOCK, HOLDLOCK)
-              WHERE MaterialId=@MaterialId AND LotCode=@LotCode
-            );
-            IF @LotId IS NULL
-            BEGIN
-              INSERT INTO logistica.MaterialLot
-                (Rfc, MaterialId, LotCode, ExpiresAt, UnitCost, SourceType, SourceId, CreatedBy)
-              VALUES
-                (CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')), @MaterialId, @LotCode, @ExpiresAt, @UnitCost, 'PurchaseReceipt', @ReceiptId, @CreatedBy);
-              SET @LotId = SCOPE_IDENTITY();
-            END;
-            MERGE logistica.LotBalance AS target
-            USING (SELECT @LotId AS MaterialLotId, @MaterialId AS MaterialId, @LocationId AS LocationId) AS source
-              ON target.MaterialLotId=source.MaterialLotId AND target.LocationId=source.LocationId
-            WHEN MATCHED THEN UPDATE SET Quantity=target.Quantity+@Quantity, UpdatedAt=SYSUTCDATETIME()
-            WHEN NOT MATCHED THEN INSERT (Rfc, MaterialLotId, MaterialId, LocationId, Quantity)
-              VALUES (CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')), source.MaterialLotId, source.MaterialId, source.LocationId, @Quantity);
-            SELECT @LotId;
-            """, new
-            {
-              allocation.MaterialId,
-              LotCode = receiptInput.LotCode!.Trim().ToUpperInvariant(),
-              ExpiresAt = receiptInput.ExpiresAt!.Value.Date,
-              UnitCost = unitCost,
-              ReceiptId = receiptId,
-              CreatedBy = actor,
-              allocation.LocationId,
-              Quantity = quantity
-            }, tx, cancellationToken: ct));
-        }
 
         await conn.ExecuteAsync(
           new CommandDefinition(
@@ -1958,14 +1913,11 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             CAST(allocation.PlannedQuantity AS decimal(18,4)) AS PlannedQuantity,
             CAST(allocation.ReceivedQuantity AS decimal(18,4)) AS ReceivedQuantity
             ,CAST(line.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice
-            ,CAST(CASE WHEN material.TrackLots=1 OR material.IsPerishable=1 THEN 1 ELSE 0 END AS bit) AS TrackLots
         FROM logistica.PurchaseOrderLineAllocation allocation
         JOIN logistica.PurchaseOrderLine line
           ON line.Id = allocation.PurchaseOrderLineId
         JOIN logistica.Location location
           ON location.Id = allocation.LocationId
-        JOIN logistica.Material material
-          ON material.Id = line.MaterialId
         WHERE allocation.Id IN @AllocationIds
           AND line.PurchaseOrderId = @PurchaseOrderId;
         """,
@@ -2286,7 +2238,6 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     public decimal PlannedQuantity { get; set; }
     public decimal ReceivedQuantity { get; set; }
     public decimal? BaseUnitPrice { get; set; }
-    public bool TrackLots { get; set; }
   }
 
   private sealed class StockBalanceStateRow

@@ -106,8 +106,7 @@ public partial class ComprasPage : ComponentBase
     && ReceiveItems.Any(item => item.ReceiveNowQuantity > 0m)
     && ReceiveItems
       .Where(item => item.ReceiveNowQuantity > 0m)
-      .All(item => item.TotalAmount.GetValueOrDefault() > 0m
-        && (!item.RequiresLot || (!string.IsNullOrWhiteSpace(item.LotCode) && item.ExpiresAt.HasValue)));
+      .All(item => item.TotalAmount.GetValueOrDefault() > 0m);
   protected bool CanComplete => SelectedPurchaseOrder is not null
     && string.Equals(SelectedPurchaseOrder.Status, PurchaseOrderStatuses.PartiallyReceived, StringComparison.OrdinalIgnoreCase)
     && !IsMutating;
@@ -128,9 +127,6 @@ public partial class ComprasPage : ComponentBase
   protected int CurrentPendingAllocationCount => Lines.Sum(line => line.Allocations.Count(allocation => allocation.RemainingQuantity > 0m));
   protected int ReceiptCapturedItemCount => ReceiveItems.Count(item => item.ReceiveNowQuantity > 0m);
   protected int ReceiptMissingAmountCount => ReceiveItems.Count(item => item.ReceiveNowQuantity > 0m && item.TotalAmount.GetValueOrDefault() <= 0m);
-  protected int ReceiptMissingLotCount => ReceiveItems.Count(item => item.ReceiveNowQuantity > 0m
-    && item.RequiresLot
-    && (string.IsNullOrWhiteSpace(item.LotCode) || !item.ExpiresAt.HasValue));
   protected PurchaseReceiptAmounts CurrentReceiptAmounts
   {
     get
@@ -302,7 +298,6 @@ public partial class ComprasPage : ComponentBase
             PurchaseQuantity = NormalizePurchaseQuantity(line.PurchaseQuantity),
             PurchaseUnitName = line.PurchaseUnitName,
             BaseUnitPrice = line.BaseUnitPrice,
-            RequiresLot = line.RequiresLot,
             LocationId = allocation.LocationId,
             LocationName = allocation.LocationName,
             LocationCode = allocation.LocationCode,
@@ -709,9 +704,7 @@ public partial class ComprasPage : ComponentBase
         PurchaseOrderLineAllocationId = item.AllocationId,
         Quantity = item.ReceiveNowQuantity,
         TotalAmount = item.TotalAmount.GetValueOrDefault(),
-        IncludesIva = item.IncludesIva,
-        LotCode = item.LotCode,
-        ExpiresAt = item.ExpiresAt
+        IncludesIva = item.IncludesIva
       })
       .ToList();
 
@@ -1066,25 +1059,6 @@ public partial class ComprasPage : ComponentBase
           : item.TotalAmount;
   }
 
-  protected void UpdateReceiveLotCode(ReceiveAllocationInput item, ChangeEventArgs args)
-    => item.LotCode = args.Value?.ToString();
-
-  protected void UpdateReceiveExpiration(ReceiveAllocationInput item, ChangeEventArgs args)
-  {
-    var text = args.Value?.ToString();
-    item.ExpiresAt = DateTime.TryParseExact(
-      text,
-      "yyyy-MM-dd",
-      CultureInfo.InvariantCulture,
-      DateTimeStyles.None,
-      out var expiration)
-      ? expiration
-      : null;
-  }
-
-  protected string? FormatDateInput(DateTime? value)
-    => value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-
   protected bool HasInvalidPurchaseMultiple(EditablePurchaseLine line)
     => RequiresWholePurchaseMultiple(line.PurchaseQuantity, line.PurchaseUnitName)
       && !IsWholePurchaseMultiple(line.OrderedQuantity, line.PurchaseQuantity, line.PurchaseUnitName);
@@ -1368,7 +1342,6 @@ public partial class ComprasPage : ComponentBase
     public decimal PurchaseQuantity { get; set; } = 1m;
     public string? PurchaseUnitName { get; set; }
     public decimal? BaseUnitPrice { get; set; }
-    public bool RequiresLot { get; set; }
     public int LocationId { get; set; }
     public string LocationName { get; set; } = string.Empty;
     public string? LocationCode { get; set; }
@@ -1378,7 +1351,5 @@ public partial class ComprasPage : ComponentBase
     public decimal ReceiveNowQuantity { get; set; }
     public decimal? TotalAmount { get; set; }
     public bool IncludesIva { get; set; }
-    public string? LotCode { get; set; }
-    public DateTime? ExpiresAt { get; set; }
   }
 }

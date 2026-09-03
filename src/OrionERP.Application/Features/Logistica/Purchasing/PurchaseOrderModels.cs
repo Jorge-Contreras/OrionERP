@@ -99,7 +99,6 @@ public sealed class PurchaseOrderLineDto
   public decimal OrderedQuantity { get; set; }
   public decimal ReceivedQuantity { get; set; }
   public decimal RemainingQuantity { get; set; }
-  public bool RequiresLot { get; set; }
   public IReadOnlyList<PurchaseOrderAllocationDto> Allocations { get; set; } = Array.Empty<PurchaseOrderAllocationDto>();
 }
 
@@ -231,11 +230,6 @@ public sealed class PurchaseReceiptLineCreateRequest
   public decimal TotalAmount { get; set; }
 
   public bool IncludesIva { get; set; }
-
-  [StringLength(80)]
-  public string? LotCode { get; set; }
-
-  public DateTime? ExpiresAt { get; set; }
 }
 
 public sealed class PurchaseOrderCatalogDto

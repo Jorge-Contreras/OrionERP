@@ -109,19 +109,6 @@ public sealed class PhysicalCountLineDto
   public string? RecountRequestedBy { get; set; }
   public int AttachmentCount { get; set; }
   public IReadOnlyList<PhysicalCountAttachmentDto> Attachments { get; set; } = Array.Empty<PhysicalCountAttachmentDto>();
-  public IReadOnlyList<PhysicalCountLotLineDto> Lots { get; set; } = Array.Empty<PhysicalCountLotLineDto>();
-}
-
-public sealed class PhysicalCountLotLineDto
-{
-  public long Id { get; set; }
-  public int PhysicalCountLineId { get; set; }
-  public long MaterialLotId { get; set; }
-  public string LotCode { get; set; } = string.Empty;
-  public DateTime? ExpiresAt { get; set; }
-  public decimal ExpectedQuantity { get; set; }
-  public decimal? CountedQuantity { get; set; }
-  public decimal? VarianceQuantity { get; set; }
 }
 
 public sealed class PhysicalCountAuditEventDto
@@ -210,8 +197,6 @@ public sealed class PhysicalCountLineCaptureRequest
   [StringLength(256)]
   public string? CapturedBy { get; set; }
 
-  public List<PhysicalCountLotCaptureRequest> Lots { get; set; } = [];
-
   public byte[]? AttachmentBytes { get; set; }
 
   [StringLength(200)]
@@ -225,12 +210,6 @@ public sealed class PhysicalCountLineCaptureRequest
 
   [StringLength(500)]
   public string? AttachmentDescription { get; set; }
-}
-
-public sealed class PhysicalCountLotCaptureRequest
-{
-  public long MaterialLotId { get; set; }
-  public decimal? CountedQuantity { get; set; }
 }
 
 public sealed class PhysicalCountRecountRequest

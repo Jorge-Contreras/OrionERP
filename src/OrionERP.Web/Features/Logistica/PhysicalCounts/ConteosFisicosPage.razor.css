@@ -992,42 +992,6 @@
   color: #236846;
 }
 
-.conteos-lots {
-  display: grid;
-  gap: 0.55rem;
-  margin-top: 1rem;
-  padding: 0.85rem;
-  border: 1px solid #cfe0e7;
-  border-radius: 0.9rem;
-  background: #f5f9fb;
-}
-
-.conteos-lots > div,
-.conteos-lots label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.8rem;
-}
-
-.conteos-lots > div > small,
-.conteos-lots label > span {
-  display: grid;
-}
-
-.conteos-lots small {
-  color: var(--count-muted);
-  font-size: 0.7rem;
-}
-
-.conteos-lots input {
-  width: 8.5rem;
-  min-height: 2.75rem;
-  font-size: 1.05rem;
-  font-weight: 800;
-  text-align: right;
-}
-
 .conteos-extra-details {
   margin-top: 1rem;
   border: 1px solid var(--count-border);
@@ -2220,17 +2184,6 @@
 
   .conteos-status-badge {
     white-space: normal;
-    text-align: center;
-  }
-
-  .conteos-lots > div,
-  .conteos-lots label {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .conteos-lots input {
-    width: 100%;
     text-align: center;
   }
 

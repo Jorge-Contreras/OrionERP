@@ -462,12 +462,7 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
       Notes = line.Notes,
       IsMissing = line.IsMissing,
       IsDamaged = line.IsDamaged,
-      CapturedBy = CurrentUserName,
-      Lots = line.Lots.Select(lot => new PhysicalCountLotCaptureRequest
-      {
-        MaterialLotId = lot.MaterialLotId,
-        CountedQuantity = lot.CountedQuantity
-      }).ToList()
+      CapturedBy = CurrentUserName
     };
 
     PendingLineAttachmentBytes = null;
@@ -548,17 +543,6 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
   protected void CerrarListaMovil() => ShowMobileMaterialList = false;
   protected void SetCaptureFilter(LineFilterMode filter) => CaptureFilter = filter;
   protected void SetReviewFilter(LineFilterMode filter) => ReviewFilter = filter;
-
-  protected void UpdateTotalFromLots()
-  {
-    if (LineCapture.Lots.Count == 0)
-    {
-      return;
-    }
-
-    LineCapture.CountedQuantity = LineCapture.Lots.Sum(lot => lot.CountedQuantity ?? 0m);
-    UpdateCountedQuantityInputFromCapture();
-  }
 
   protected async Task OnLineAttachmentSelectedAsync(InputFileChangeEventArgs args)
   {
@@ -1477,7 +1461,7 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
   }
 
   private void QueueCountedQuantityFocus()
-    => _focusCountedQuantityInputPending = CanCaptureLine && SelectedLine?.Lots.Count == 0;
+    => _focusCountedQuantityInputPending = CanCaptureLine;
 
   private async Task ApplyQuerySessionSelectionAsync()
   {

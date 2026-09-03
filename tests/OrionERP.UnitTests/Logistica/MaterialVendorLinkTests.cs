@@ -127,7 +127,8 @@ public class MaterialVendorLinkTests
 
     Assert.NotNull(connection.LastCommandText);
     Assert.Contains("AS IsHighlightedVendorMaterial", connection.LastCommandText!, StringComparison.Ordinal);
-    // Marcar no es filtrar: la búsqueda de Compras debe seguir viendo todo el catálogo.
+    // Marcar no es filtrar: sin VendorId la consulta no acota nada, aunque Compras normalmente
+    // sí lo mande para quedarse con el catálogo del proveedor.
     Assert.DoesNotContain("fv.BusinessPartnerId = @VendorId", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.Contains(connection.LastParameters, parameter => parameter.Name.TrimStart('@') == "HighlightVendorId" && Equals(parameter.Value, 11));
   }
@@ -154,12 +155,32 @@ public class MaterialVendorLinkTests
   }
 
   [Fact]
-  public void ComprasPage_SearchesTheWholeCatalogAndOffersToRegisterTheVendor()
+  public void ComprasPage_ListsOnlyWhatTheVendorSupplies()
   {
     var page = RepoFile.Read("src/OrionERP.Web/Features/Logistica/Purchasing/ComprasPage.razor");
     var codeBehind = RepoFile.Read("src/OrionERP.Web/Features/Logistica/Purchasing/ComprasPage.razor.cs");
 
     Assert.Contains("protected bool CanSearchMaterials => IsDraftMode;", codeBehind, StringComparison.Ordinal);
+    // El alcance de arranque acota al catálogo del proveedor de la orden.
+    Assert.Contains(
+      "protected bool IsVendorScopedSearch => HasVendorSelected && !SearchOutsideVendorCatalog;",
+      codeBehind,
+      StringComparison.Ordinal);
+    Assert.Contains("VendorId = vendorScoped ? Editor.BusinessPartnerId : null,", codeBehind, StringComparison.Ordinal);
+    // Cambiar de proveedor no puede dejar en pantalla la lista del anterior.
+    Assert.Contains("@bind-Value:after=\"OnVendorChanged\"", page, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void ComprasPage_KeepsTheWholeCatalogOneClickAwayAndOffersToRegisterTheVendor()
+  {
+    var page = RepoFile.Read("src/OrionERP.Web/Features/Logistica/Purchasing/ComprasPage.razor");
+    var codeBehind = RepoFile.Read("src/OrionERP.Web/Features/Logistica/Purchasing/ComprasPage.razor.cs");
+
+    // Comprar con otro proveedor sigue a un clic: es la excepción, no el arranque.
+    Assert.Contains("BuscarEnTodoElCatalogoAsync", codeBehind, StringComparison.Ordinal);
+    Assert.Contains("BuscarEnTodoElCatalogoAsync", page, StringComparison.Ordinal);
+    Assert.Contains("Buscar otros materiales", page, StringComparison.Ordinal);
     Assert.Contains("HighlightVendorId", codeBehind, StringComparison.Ordinal);
     Assert.Contains("UnlinkedMaterialNames", codeBehind, StringComparison.Ordinal);
     Assert.Contains("LinkMaterialsToVendor = LinkMaterialsToVendor", codeBehind, StringComparison.Ordinal);

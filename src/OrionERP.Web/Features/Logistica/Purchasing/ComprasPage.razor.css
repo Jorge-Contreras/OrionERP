@@ -754,3 +754,12 @@
 .compras-vendor-link-notice {
   padding: 0.75rem 0.9rem;
 }
+
+.compras-material-scope .btn-group {
+  flex-wrap: wrap;
+}
+
+.compras-material-scope .btn {
+  font-size: 0.78rem;
+  font-weight: 600;
+}

@@ -15,6 +15,7 @@ namespace OrionERP.Web.Features.Logistica.Purchasing;
 public partial class ComprasPage : ComponentBase
 {
   private const int MaterialSearchTake = 25;
+  private const int VendorMaterialSearchTake = 100;
 
   [Inject] private IPurchaseOrderService PurchaseOrderService { get; set; } = default!;
   [Inject] private IMaterialService MaterialService { get; set; } = default!;
@@ -61,10 +62,29 @@ public partial class ComprasPage : ComponentBase
   protected bool IsDraftMode => SelectedPurchaseOrder is null || string.Equals(SelectedPurchaseOrder.Status, PurchaseOrderStatuses.Draft, StringComparison.OrdinalIgnoreCase);
   protected bool CanEditVendor => IsDraftMode && Lines.Count == 0;
   /// <summary>
-  /// La búsqueda recorre todo el catálogo: cuando el proveedor habitual no tiene el producto hay
-  /// que poder comprarlo con otro sin reasignar el material.
+  /// La búsqueda arranca acotada a lo que surte el proveedor de la orden. Abrir el catálogo
+  /// completo sigue disponible porque cuando el proveedor habitual no tiene el producto hay que
+  /// poder comprarlo con otro sin reasignar el material, pero es una decisión del usuario.
   /// </summary>
   protected bool CanSearchMaterials => IsDraftMode;
+
+  /// <summary>Sin proveedor no hay catálogo que acotar: la búsqueda recorre todo el inventario.</summary>
+  protected bool HasVendorSelected => Editor.BusinessPartnerId > 0;
+
+  /// <summary>Lo enciende el usuario cuando el proveedor no surte lo que necesita comprar.</summary>
+  protected bool SearchOutsideVendorCatalog { get; set; }
+
+  /// <summary>Alcance con el que saldría la próxima búsqueda.</summary>
+  protected bool IsVendorScopedSearch => HasVendorSelected && !SearchOutsideVendorCatalog;
+
+  /// <summary>Alcance con el que se trajo <see cref="MaterialSearchResults"/>.</summary>
+  protected bool LastSearchWasVendorScoped { get; private set; }
+
+  /// <summary>La búsqueda llenó el tope de renglones: quedaron materiales fuera de la lista.</summary>
+  protected bool MaterialSearchHitLimit { get; private set; }
+
+  /// <summary>Tope de renglones que aplicó la última búsqueda.</summary>
+  protected int MaterialSearchLimit { get; private set; } = MaterialSearchTake;
 
   /// <summary>Materiales agregados a la orden que este proveedor no surte de costumbre.</summary>
   protected List<string> UnlinkedMaterialNames { get; } = [];
@@ -194,14 +214,12 @@ public partial class ComprasPage : ComponentBase
     ResetAutoPoRequest(GetPreferredVendorId());
     Lines = [];
     SelectedLine = null;
-    MaterialSearchText = string.Empty;
-    MaterialSearchResults = [];
+    ResetMaterialSearch();
     ReceiveItems = [];
     ReceiptDate = DateTime.Today;
     ReceiptNotes = null;
     PendingAllocationLocationId = 0;
     PendingAllocationQuantity = 1m;
-    HasExecutedMaterialSearch = false;
     MaterialThumbnailDataUrls = [];
     UnlinkedMaterialNames.Clear();
     LinkMaterialsToVendor = true;
@@ -297,9 +315,7 @@ public partial class ComprasPage : ComponentBase
 
       ReceiptDate = DateTime.Today;
       ReceiptNotes = null;
-      MaterialSearchResults = [];
-      MaterialSearchText = string.Empty;
-      HasExecutedMaterialSearch = false;
+      ResetMaterialSearch();
       PendingAllocationLocationId = 0;
       PendingAllocationQuantity = GetDefaultPendingAllocationBaseQuantity(SelectedLine);
       await RefreshThumbnailsAsync();
@@ -324,6 +340,11 @@ public partial class ComprasPage : ComponentBase
       return;
     }
 
+    // El alcance se congela al disparar la consulta: la lista y sus avisos tienen que describir
+    // lo que se trajo, no lo que el usuario alcance a cambiar después.
+    var vendorScoped = IsVendorScopedSearch;
+    var take = vendorScoped ? VendorMaterialSearchTake : MaterialSearchTake;
+
     IsSearchingMaterials = true;
     HasExecutedMaterialSearch = true;
     try
@@ -331,12 +352,17 @@ public partial class ComprasPage : ComponentBase
       MaterialSearchResults = (await MaterialService.GetMaterialsAsync(new MaterialFilter
       {
         Rfc = CurrentRfc,
-        HighlightVendorId = Editor.BusinessPartnerId > 0 ? Editor.BusinessPartnerId : null,
+        VendorId = vendorScoped ? Editor.BusinessPartnerId : null,
+        HighlightVendorId = HasVendorSelected ? Editor.BusinessPartnerId : null,
         SearchText = MaterialSearchText,
         Status = "ACTIVO",
         Skip = 0,
-        Take = MaterialSearchTake
+        Take = take
       })).ToList();
+
+      LastSearchWasVendorScoped = vendorScoped;
+      MaterialSearchLimit = take;
+      MaterialSearchHitLimit = MaterialSearchResults.Count >= take;
 
       await RefreshThumbnailsAsync();
     }
@@ -352,6 +378,35 @@ public partial class ComprasPage : ComponentBase
 
   protected Task OnMaterialSearchKeyUpAsync(KeyboardEventArgs args)
     => args.Key == "Enter" ? BuscarMaterialesAsync() : Task.CompletedTask;
+
+  /// <summary>Regresa la búsqueda al catálogo del proveedor de la orden.</summary>
+  protected Task BuscarSoloDelProveedorAsync()
+  {
+    SearchOutsideVendorCatalog = false;
+    return BuscarMaterialesAsync();
+  }
+
+  /// <summary>Abre la búsqueda a todo el catálogo cuando el proveedor no surte lo que se necesita.</summary>
+  protected Task BuscarEnTodoElCatalogoAsync()
+  {
+    SearchOutsideVendorCatalog = true;
+    return BuscarMaterialesAsync();
+  }
+
+  /// <summary>Cambiar de proveedor invalida la lista: era el catálogo del proveedor anterior.</summary>
+  protected void OnVendorChanged() => ResetMaterialSearch();
+
+  /// <summary>Deja la búsqueda en su alcance de arranque: sólo lo que surte el proveedor.</summary>
+  private void ResetMaterialSearch()
+  {
+    MaterialSearchText = string.Empty;
+    MaterialSearchResults = [];
+    HasExecutedMaterialSearch = false;
+    SearchOutsideVendorCatalog = false;
+    LastSearchWasVendorScoped = false;
+    MaterialSearchHitLimit = false;
+    MaterialSearchLimit = MaterialSearchTake;
+  }
 
   protected async Task AgregarMaterialAsync(MaterialListItemDto item)
   {

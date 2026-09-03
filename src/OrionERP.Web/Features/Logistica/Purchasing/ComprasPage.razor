@@ -223,7 +223,7 @@
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label">Proveedor</label>
-                                <InputSelect class="form-select" @bind-Value="Editor.BusinessPartnerId" disabled="@(!CanEditVendor)">
+                                <InputSelect class="form-select" @bind-Value="Editor.BusinessPartnerId" @bind-Value:after="OnVendorChanged" disabled="@(!CanEditVendor)">
                                     <option value="0">Selecciona un proveedor</option>
                                     @foreach (var vendor in VendorOptions)
                                     {
@@ -275,13 +275,38 @@
                                 </div>
                             </div>
 
-                            @if (!CanSearchMaterials)
+                            @if (!HasVendorSelected)
                             {
                                 <div class="alert alert-light border mt-3 mb-0">
-                                    Selecciona el proveedor primero para saber cuáles de estos materiales te surte de costumbre.
+                                    Selecciona el proveedor primero para que la lista muestre únicamente los materiales que te surte.
                                 </div>
                             }
-                            else if (HasExecutedMaterialSearch)
+                            else
+                            {
+                                <div class="compras-material-scope mt-3">
+                                    <div class="btn-group btn-group-sm" role="group" aria-label="Alcance de la búsqueda de materiales">
+                                        <button type="button"
+                                                class="btn @(IsVendorScopedSearch ? "btn-primary" : "btn-outline-secondary")"
+                                                @onclick="BuscarSoloDelProveedorAsync"
+                                                disabled="@IsSearchingMaterials">
+                                            Sólo lo que surte este proveedor
+                                        </button>
+                                        <button type="button"
+                                                class="btn @(IsVendorScopedSearch ? "btn-outline-secondary" : "btn-primary")"
+                                                @onclick="BuscarEnTodoElCatalogoAsync"
+                                                disabled="@IsSearchingMaterials">
+                                            Buscar otros materiales
+                                        </button>
+                                    </div>
+                                    <div class="form-text mt-1">
+                                        @(IsVendorScopedSearch
+                                            ? $"La lista sólo trae el catálogo de {CurrentVendorName}."
+                                            : $"La lista recorre todo el catálogo; lo que {CurrentVendorName} no surte de costumbre queda marcado y podrás registrarlo como proveedor alternativo al guardar.")
+                                    </div>
+                                </div>
+                            }
+
+                            @if (HasExecutedMaterialSearch)
                             {
                                 <div class="table-responsive mt-3 compras-material-search-scroll">
                                     <table class="table table-sm table-hover align-middle compras-material-search-table">
@@ -298,7 +323,19 @@
                                             @if (MaterialSearchResults.Count == 0)
                                             {
                                                 <tr>
-                                                    <td colspan="5" class="text-center text-muted py-3">Ningún material coincide con esa búsqueda.</td>
+                                                    <td colspan="5" class="text-center text-muted py-3">
+                                                        @if (LastSearchWasVendorScoped)
+                                                        {
+                                                            <div class="mb-2">@CurrentVendorName no surte ningún material que coincida con esa búsqueda.</div>
+                                                            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="BuscarEnTodoElCatalogoAsync" disabled="@IsSearchingMaterials">
+                                                                Buscar otros materiales en todo el catálogo
+                                                            </button>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span>Ningún material coincide con esa búsqueda.</span>
+                                                        }
+                                                    </td>
                                                 </tr>
                                             }
                                             else
@@ -321,16 +358,19 @@
                                                         <td>
                                                             <div class="fw-semibold">@materialTitle</div>
                                                             <small class="text-muted">@item.MaterialCode</small>
-                                                            @if (item.IsHighlightedVendorMaterial)
+                                                            @if (!LastSearchWasVendorScoped)
                                                             {
-                                                                <span class="badge compras-vendor-badge is-usual ms-2">Lo surte este proveedor</span>
-                                                            }
-                                                            else
-                                                            {
-                                                                <span class="badge compras-vendor-badge is-new ms-2"
-                                                                      title="@(string.IsNullOrWhiteSpace(item.VendorName) ? "El material no tiene proveedor registrado." : $"Lo surte {item.VendorName}.")">
-                                                                    @(string.IsNullOrWhiteSpace(item.VendorName) ? "Sin proveedor registrado" : $"Habitual: {item.VendorName}")
-                                                                </span>
+                                                                @if (item.IsHighlightedVendorMaterial)
+                                                                {
+                                                                    <span class="badge compras-vendor-badge is-usual ms-2">Lo surte este proveedor</span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span class="badge compras-vendor-badge is-new ms-2"
+                                                                          title="@(string.IsNullOrWhiteSpace(item.VendorName) ? "El material no tiene proveedor registrado." : $"Lo surte {item.VendorName}.")">
+                                                                        @(string.IsNullOrWhiteSpace(item.VendorName) ? "Sin proveedor registrado" : $"Habitual: {item.VendorName}")
+                                                                    </span>
+                                                                }
                                                             }
                                                         </td>
                                                         <td>@(string.IsNullOrWhiteSpace(item.BaseUnitName) ? "Sin unidad" : item.BaseUnitName)</td>
@@ -346,6 +386,13 @@
                                         </tbody>
                                     </table>
                                 </div>
+
+                                @if (MaterialSearchHitLimit)
+                                {
+                                    <div class="form-text mt-2">
+                                        Se muestran los primeros @MaterialSearchLimit materiales. Escribe parte del código o de la descripción para acotar la lista.
+                                    </div>
+                                }
                             }
                         </div>
                     </section>

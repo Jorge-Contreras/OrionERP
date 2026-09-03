@@ -30,6 +30,9 @@ public partial class BancoMovimientoLinkingPage : ComponentBase
   [Inject]
   public NavigationManager NavManager { get; set; } = default!;
 
+  [Inject]
+  public IOperationErrorPresenter Errors { get; set; } = default!;
+
   protected BankMovementLinkingWorkspaceDto Workspace { get; private set; } = new();
   protected BankMovementLinkingSummaryDto? Summary => Workspace.Summary;
   protected List<LinkEditor> Editors { get; } = [];
@@ -262,7 +265,7 @@ public partial class BancoMovimientoLinkingPage : ComponentBase
     }
     catch (Exception ex)
     {
-      ErrorMessage = $"No se pudo cargar el espacio de ligado: {ex.Message}";
+      ErrorMessage = Errors.ToUserMessage(ex, "cargar el espacio de ligado de movimientos bancarios", new { FocusTransaccionId });
     }
     finally
     {

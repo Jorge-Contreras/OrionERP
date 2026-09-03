@@ -110,7 +110,7 @@ internal static class SatZipIngestion
 
           buf.Position = 0;
           using var sr = new StreamReader(buf, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
-          text = await sr.ReadToEndAsync();
+          text = await sr.ReadToEndAsync(ct);
         }
 
         lineCount = text.Split('\n').Length;

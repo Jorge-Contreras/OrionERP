@@ -1456,7 +1456,9 @@ WHERE ID = @TransaccionId;";
     catch (Exception ex)
     {
       try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
-      return TransaccionGuardarCerrarResult.Fail($"Error al guardar: {ex.Message}");
+      _logger.LogError(ex, "Error al guardar y cerrar la transacción {TransaccionId}", request.TransaccionId);
+      return TransaccionGuardarCerrarResult.Fail(
+          "No se pudo guardar la transacción. Verifica los datos de la póliza (fecha, cuenta, tipo de póliza y forma de pago) e inténtalo de nuevo; si el problema persiste, reporta el incidente al área de sistemas.");
     }
   }
 
@@ -1893,6 +1895,15 @@ ORDER BY T.Fecha, T.OrdenBalance, T.ID;";
       if (request is null)
           throw new ArgumentNullException(nameof(request));
 
+      var cuadreError = MovimientosCuadreValidator.Validate(request.Movimientos);
+      if (cuadreError is not null)
+      {
+          _logger.LogWarning(
+              "Póliza descuadrada rechazada para la transacción {TransaccionId}: {Detalle}",
+              request.TransaccionId, cuadreError);
+          return TransaccionCommandResult.Fail(cuadreError);
+      }
+
       using var conn = await OpenConnectionWithAuditContextAsync(ct);
       using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
 
@@ -2003,7 +2014,8 @@ WHERE ID = @MovimientoId
       {
           try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
           _logger.LogError(ex, "Error al guardar movimientos para la transacción {TransaccionId}", request.TransaccionId);
-          return TransaccionCommandResult.Fail($"Ocurrió un error al guardar los movimientos: {ex.Message}");
+          return TransaccionCommandResult.Fail(
+              "No se pudieron guardar los movimientos contables. Revisa que las cuentas y los importes sean válidos e inténtalo de nuevo; si el problema persiste, reporta el incidente al área de sistemas.");
       }
   }
 

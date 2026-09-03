@@ -1312,6 +1312,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
               line.LocationId,
               CAST(line.ExpectedQuantity AS decimal(18,4)) AS ExpectedQuantity,
               CAST(line.CountedQuantity AS decimal(18,4)) AS CountedQuantity,
+              CAST(stockBalance.Quantity AS decimal(18,4)) AS SystemQuantity,
               CAST(stockBalance.ReservedQuantity AS decimal(18,4)) AS ReservedQuantity
           FROM logistica.PhysicalCountLine line
           JOIN logistica.StockBalance stockBalance ON stockBalance.Rfc=line.Rfc AND stockBalance.Id=line.StockBalanceId
@@ -1335,9 +1336,17 @@ public sealed class PhysicalCountService : IPhysicalCountService
 
       var safePostedBy = string.IsNullOrWhiteSpace(postedBy) ? "OrionERP" : postedBy.Trim();
 
+      // Si la existencia del sistema ya no coincide con la que se fotografió al abrir el conteo,
+      // hubo movimientos (compras, consumos, traspasos) mientras se contaba. El post sigue
+      // sobrescribiendo con lo contado, pero el delta del kardex debe medirse contra la
+      // existencia real y hay que avisar para que se revise si esos movimientos ya estaban
+      // reflejados en el conteo físico.
+      var driftedLines = lines.Count(line => PhysicalCountVarianceMath.MovedDuringCount(line.ExpectedQuantity, line.SystemQuantity));
+
       foreach (var line in lines)
       {
         var countedQuantity = line.CountedQuantity ?? 0m;
+        var lineDrifted = PhysicalCountVarianceMath.MovedDuringCount(line.ExpectedQuantity, line.SystemQuantity);
         var lotLines = (await conn.QueryAsync<LotPostingRow>(new CommandDefinition(
           """
           SELECT countLot.MaterialLotId,countLot.CountedQuantity,lotBalance.ReservedQuantity
@@ -1410,10 +1419,12 @@ public sealed class PhysicalCountService : IPhysicalCountService
               line.StockBalanceId,
               line.LocationId,
               line.MaterialId,
-              QuantityDelta = countedQuantity - line.ExpectedQuantity,
+              QuantityDelta = PhysicalCountVarianceMath.PostingDelta(countedQuantity, line.SystemQuantity),
               QuantityAfter = countedQuantity,
               ReferenceId = sessionId,
-              Notes = $"Conteo físico contabilizado desde sesión {sessionId}.",
+              Notes = lineDrifted
+                ? $"Conteo físico contabilizado desde sesión {sessionId}. Existencia esperada al abrir el conteo: {line.ExpectedQuantity:0.####}; existencia del sistema al contabilizar: {line.SystemQuantity:0.####} (hubo movimientos durante el conteo)."
+                : $"Conteo físico contabilizado desde sesión {sessionId}.",
               PerformedBy = safePostedBy
             },
             tx,
@@ -1438,7 +1449,11 @@ public sealed class PhysicalCountService : IPhysicalCountService
           cancellationToken: ct));
 
       await tx.CommitAsync(ct);
-      return LogisticsCommandResult.Ok("Sesión contabilizada correctamente.", sessionId);
+      return driftedLines == 0
+        ? LogisticsCommandResult.Ok("Sesión contabilizada correctamente.", sessionId)
+        : LogisticsCommandResult.Ok(
+            $"Sesión contabilizada. Atención: {driftedLines} línea(s) tuvieron movimientos de inventario (compras, consumos o traspasos) mientras se contaba. Verifica que esos movimientos ya estuvieran reflejados en el conteo físico; si no, solicita un reconteo de esos materiales.",
+            sessionId);
     }
     catch
     {
@@ -1572,6 +1587,8 @@ public sealed class PhysicalCountService : IPhysicalCountService
     public int LocationId { get; set; }
     public decimal ExpectedQuantity { get; set; }
     public decimal? CountedQuantity { get; set; }
+    /// <summary>Existencia real en el momento de contabilizar (puede diferir de <see cref="ExpectedQuantity"/> si hubo movimientos durante el conteo).</summary>
+    public decimal SystemQuantity { get; set; }
     public decimal ReservedQuantity { get; set; }
   }
 

@@ -23,6 +23,7 @@ public partial class ComprasPage : ComponentBase
   [Inject] private IPurchaseOrderPdfService PurchaseOrderPdfService { get; set; } = default!;
   [Inject] private IPurchaseOrderPdfDocumentFactory PurchaseOrderPdfDocumentFactory { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
+  [Inject] private IOperationErrorPresenter Errors { get; set; } = default!;
   [Inject] private IJSRuntime Js { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
   [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
@@ -323,7 +324,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo cargar la orden de compra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar la orden de compra", new { purchaseOrderId }));
     }
     finally
     {
@@ -368,7 +369,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron cargar los materiales. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar los materiales", new { MaterialSearchText, Editor.BusinessPartnerId, vendorScoped }));
     }
     finally
     {
@@ -468,7 +469,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo agregar el material. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "agregar el material a la orden", new { MaterialId = item.Id, item.MaterialCode }));
     }
   }
 
@@ -541,7 +542,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo generar el Auto PO. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "generar la orden de compra automática", new { AutoPoRequest.BusinessPartnerId, RoomCount = AutoPoRequest.RoomIds?.Count ?? 0 }));
     }
     finally
     {
@@ -655,7 +656,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo guardar la orden de compra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "guardar la orden de compra", new { SelectedPurchaseOrder?.Id, Editor.BusinessPartnerId, LineCount = Lines.Count }));
     }
     finally
     {
@@ -686,7 +687,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo emitir la orden de compra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "emitir la orden de compra", new { SelectedPurchaseOrder?.Id }));
     }
     finally
     {
@@ -749,7 +750,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo registrar la recepción. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "registrar la recepción", new { SelectedPurchaseOrder?.Id, LineCount = lines.Count }));
     }
     finally
     {
@@ -830,7 +831,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo cerrar la orden de compra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cerrar la cantidad pendiente de la orden", new { SelectedPurchaseOrder?.Id }));
     }
     finally
     {
@@ -867,7 +868,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo cancelar la orden de compra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cancelar la orden de compra", new { SelectedPurchaseOrder?.Id }));
     }
     finally
     {
@@ -900,7 +901,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo generar el PDF de la orden de compra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "generar el PDF de la orden de compra", new { SelectedPurchaseOrder?.Id }));
     }
     finally
     {
@@ -1152,7 +1153,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron cargar las órdenes de compra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar las órdenes de compra", new { Filter.VendorId, Filter.OpenOnly, Filter.SearchText }));
     }
     finally
     {

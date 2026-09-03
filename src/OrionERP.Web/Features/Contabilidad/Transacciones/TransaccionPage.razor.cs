@@ -83,6 +83,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   [Inject] public IDeclaracionPreviaService DeclaracionPreviaService { get; set; } = default!;
   [Inject] public IRecurrentApService RecurrentApService { get; set; } = default!;
   [Inject] public IAjustesService AjustesService { get; set; } = default!;
+  [Inject] public IOperationErrorPresenter Errors { get; set; } = default!;
 
   protected TransaccionHeaderModel? Header { get; private set; }
   protected EditContext? HeaderEditContext { get; private set; }
@@ -381,7 +382,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron cargar las plantillas contables: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar las plantillas contables"));
     }
     finally
     {
@@ -660,7 +661,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      ErrorMessage = ex.Message;
+      ErrorMessage = Errors.ToUserMessage(ex, "abrir la póliza contable", new { Id });
     }
     finally
     {
@@ -719,7 +720,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError(ex.Message);
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "buscar vencimientos de cuentas por pagar", new { Rfc = Header?.Rfc, ApOccurrenceSearchTerm }));
     }
     finally
     {
@@ -753,7 +754,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError(ex.Message);
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "ligar el vencimiento de cuentas por pagar a la póliza", new { occurrence.Id, TransaccionId = Header.Id }));
     }
     finally
     {
@@ -773,7 +774,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError(ex.Message);
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "quitar la liga de cuentas por pagar", new { link.PaymentId }));
     }
     finally
     {
@@ -898,7 +899,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"Error al guardar: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "guardar la póliza contable", new { HeaderId = Header?.Id }));
     }
     finally
     {
@@ -1029,7 +1030,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo timbrar el CFDI público: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "timbrar el CFDI público", new { HeaderId = Header?.Id }));
     }
     finally
     {
@@ -1270,7 +1271,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo aplicar la plantilla contable: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "aplicar la plantilla contable", new { SelectedPlantillaContableId, HeaderId = Header?.Id }));
     }
     finally
     {
@@ -1768,7 +1769,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron cargar las reservaciones ligadas: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar las reservaciones ligadas a la póliza", new { Id }));
     }
     finally
     {
@@ -1876,7 +1877,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron cargar las reservaciones candidatas: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "buscar reservaciones para ligar a la póliza"));
     }
     finally
     {
@@ -2019,7 +2020,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo guardar la asignación de la reservación: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "guardar la asignación de la reservación", new { Id }));
     }
     finally
     {
@@ -2060,7 +2061,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo eliminar la asignación de la reservación: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "eliminar la asignación de la reservación", new { Id }));
     }
     finally
     {
@@ -2086,7 +2087,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron cargar los movimientos bancarios: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar los movimientos bancarios ligados", new { Id }));
     }
     finally
     {
@@ -2327,7 +2328,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron regenerar los movimientos: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "regenerar los movimientos contables desde el comprobante", new { Id }));
     }
     finally
     {
@@ -2372,7 +2373,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo desligar el comprobante: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "desligar el comprobante de la póliza", new { Id }));
     }
     finally
     {
@@ -2404,7 +2405,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo desligar el documento Pago20: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "desligar el documento de pago (Pago20) de la póliza", new { Id }));
     }
     finally
     {
@@ -2482,7 +2483,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo cancelar el CFDI: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cancelar el CFDI", new { Id }));
     }
     finally
     {
@@ -2523,7 +2524,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo desligar el movimiento bancario: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "desligar el movimiento bancario de la póliza", new { Id }));
     }
     finally
     {
@@ -2558,7 +2559,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"Error al descargar adjunto: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "descargar el archivo adjunto"));
     }
     finally
     {
@@ -2595,7 +2596,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo validar el XML: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "validar el XML del comprobante"));
       return;
     }
 
@@ -2619,7 +2620,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo validar el vínculo del comprobante: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "validar el vínculo del comprobante"));
       return;
     }
 
@@ -2685,7 +2686,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo actualizar el archivo adjunto: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "actualizar el archivo adjunto"));
     }
     finally
     {
@@ -2726,7 +2727,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo eliminar el movimiento: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "eliminar el movimiento contable", new { Id }));
     }
     finally
     {
@@ -2799,7 +2800,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"Error al cargar el archivo: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar el archivo adjunto"));
     }
     finally
     {
@@ -2844,7 +2845,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       }
       catch (Exception ex)
       {
-          UiMessages.ShowError($"Ocurrió un error al intentar eliminar la transacción: {ex.Message}");
+          UiMessages.ShowError(Errors.ToUserMessage(ex, "eliminar la transacción", new { Id }));
       }
       finally
       {

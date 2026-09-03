@@ -494,6 +494,7 @@ builder.Services.AddTrainingEnvironment(
   isMarkedTrainingService,
   builder.Configuration["AllowedHosts"]);
 builder.Services.AddScoped<IUiMessageService, UiMessageService>();
+builder.Services.AddScoped<IOperationErrorPresenter, OperationErrorPresenter>();
 builder.Services.AddHostedService<RestaurantEventBroadcaster>();
 
 builder.Host.UseWindowsService();

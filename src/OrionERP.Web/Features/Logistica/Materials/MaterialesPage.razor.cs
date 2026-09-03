@@ -79,9 +79,6 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   private bool _catalogRetryPending;
   private bool _catalogRecoveryAttempted;
   private decimal? _purchasePresentationPrice;
-  private string _purchaseQuantityInputText = "1";
-  private string _baseUnitPriceInputText = string.Empty;
-  private string _purchasePresentationPriceInputText = string.Empty;
 
   protected int LoadedWithStockCount => Materials.Count(material => material.TotalQuantity > 0);
   protected int LoadedMissingVendorCount => Materials.Count(material => string.IsNullOrWhiteSpace(material.VendorName));
@@ -146,6 +143,8 @@ public partial class MaterialesPage : ComponentBase, IDisposable
 
   protected bool CanCalculatePurchasePresentationPrice
     => Editor.PurchaseUnitId.HasValue && Editor.PurchaseQuantity > 0m;
+
+  protected decimal? PurchasePresentationPrice => _purchasePresentationPrice;
 
   protected string BaseUnitPriceLabel
   {
@@ -359,7 +358,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
       Editor.BaseUnitId = Catalog.Units[0].Id;
     }
 
-    SyncPurchasePresentationPriceFromBase();
+    UpdatePurchasePresentationPriceFromBase();
   }
 
   protected async Task SeleccionarMaterialAsync(int materialId)
@@ -410,7 +409,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
         Vendors = detail.Vendors.Select(ToVendorRequest).ToList()
       };
 
-      SyncPurchasePresentationPriceFromBase();
+      UpdatePurchasePresentationPriceFromBase();
 
       await LoadImageAsync(detail.Id);
       await LoadInventoryAsync(detail.Id);
@@ -923,63 +922,37 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   protected void OnPurchaseUnitChanged(int? purchaseUnitId)
   {
     Editor.PurchaseUnitId = purchaseUnitId;
-    SyncPurchasePresentationPriceFromBase();
+    UpdatePurchasePresentationPriceFromBase();
   }
 
-  protected void OnPurchaseQuantityChanged(ChangeEventArgs args)
+  protected void OnPurchaseQuantityChanged(decimal purchaseQuantity)
   {
-    _purchaseQuantityInputText = Convert.ToString(args.Value, CultureInfo.InvariantCulture)?.Trim() ?? string.Empty;
-    if (decimal.TryParse(_purchaseQuantityInputText, NumberStyles.Number, CultureInfo.InvariantCulture, out var purchaseQuantity))
-    {
-      Editor.PurchaseQuantity = purchaseQuantity;
-      UpdatePurchasePresentationPriceFromBase();
-      return;
-    }
-
-    Editor.PurchaseQuantity = 0m;
-    _purchasePresentationPrice = null;
-    _purchasePresentationPriceInputText = string.Empty;
+    Editor.PurchaseQuantity = purchaseQuantity;
+    UpdatePurchasePresentationPriceFromBase();
   }
 
-  protected void OnBaseUnitPriceChanged(ChangeEventArgs args)
+  protected void OnBaseUnitPriceChanged(decimal? baseUnitPrice)
   {
-    _baseUnitPriceInputText = Convert.ToString(args.Value, CultureInfo.InvariantCulture)?.Trim() ?? string.Empty;
-    if (string.IsNullOrEmpty(_baseUnitPriceInputText))
-    {
-      Editor.BaseUnitPrice = null;
-      _purchasePresentationPrice = null;
-      _purchasePresentationPriceInputText = string.Empty;
-      return;
-    }
-
-    if (decimal.TryParse(_baseUnitPriceInputText, NumberStyles.Number, CultureInfo.InvariantCulture, out var baseUnitPrice))
-    {
-      Editor.BaseUnitPrice = MaterialPriceCalculator.NormalizeBaseUnitPrice(baseUnitPrice);
-      UpdatePurchasePresentationPriceFromBase();
-    }
+    Editor.BaseUnitPrice = MaterialPriceCalculator.NormalizeBaseUnitPrice(baseUnitPrice);
+    UpdatePurchasePresentationPriceFromBase();
   }
 
-  protected void OnPurchasePresentationPriceChanged(ChangeEventArgs args)
+  protected void OnPurchasePresentationPriceChanged(decimal? purchasePresentationPrice)
   {
-    _purchasePresentationPriceInputText = Convert.ToString(args.Value, CultureInfo.InvariantCulture)?.Trim() ?? string.Empty;
-    if (string.IsNullOrEmpty(_purchasePresentationPriceInputText))
+    if (!purchasePresentationPrice.HasValue)
     {
       _purchasePresentationPrice = null;
       Editor.BaseUnitPrice = null;
-      _baseUnitPriceInputText = string.Empty;
       return;
     }
 
-    if (!decimal.TryParse(_purchasePresentationPriceInputText, NumberStyles.Number, CultureInfo.InvariantCulture, out var purchasePresentationPrice))
-    {
-      return;
-    }
-
-    _purchasePresentationPrice = decimal.Round(purchasePresentationPrice, MaterialPriceCalculator.PurchasePresentationPriceScale, MidpointRounding.AwayFromZero);
+    _purchasePresentationPrice = decimal.Round(
+      purchasePresentationPrice.Value,
+      MaterialPriceCalculator.PurchasePresentationPriceScale,
+      MidpointRounding.AwayFromZero);
     Editor.BaseUnitPrice = MaterialPriceCalculator.CalculateBaseUnitPrice(
       _purchasePresentationPrice,
       Editor.PurchaseQuantity);
-    _baseUnitPriceInputText = FormatBaseUnitPriceInput(Editor.BaseUnitPrice);
   }
 
   protected async Task AbrirImagenMaterialAsync(MaterialListItemDto item)
@@ -1721,23 +1694,10 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   private static string GetUnitShortName(LookupOptionDto unit)
     => string.IsNullOrWhiteSpace(unit.Code) ? unit.Name : unit.Code;
 
-  private void SyncPurchasePresentationPriceFromBase()
-  {
-    _purchaseQuantityInputText = Editor.PurchaseQuantity.ToString("0.####", CultureInfo.InvariantCulture);
-    _baseUnitPriceInputText = FormatBaseUnitPriceInput(Editor.BaseUnitPrice);
-    UpdatePurchasePresentationPriceFromBase();
-  }
-
   private void UpdatePurchasePresentationPriceFromBase()
-  {
-    _purchasePresentationPrice = CanCalculatePurchasePresentationPrice
+    => _purchasePresentationPrice = CanCalculatePurchasePresentationPrice
       ? MaterialPriceCalculator.CalculatePurchasePresentationPrice(Editor.BaseUnitPrice, Editor.PurchaseQuantity)
       : null;
-    _purchasePresentationPriceInputText = _purchasePresentationPrice?.ToString("0.00", CultureInfo.InvariantCulture) ?? string.Empty;
-  }
-
-  private static string FormatBaseUnitPriceInput(decimal? baseUnitPrice)
-    => baseUnitPrice?.ToString("0.######", CultureInfo.InvariantCulture) ?? string.Empty;
 
   private static MaterialUpsertRequest CreateNewEditor()
     => new()

@@ -1032,32 +1032,10 @@ public partial class ComprasPage : ComponentBase
       item.PurchaseQuantity,
       item.PurchaseUnitName);
 
-  protected string FormatNumberInput(decimal value)
-    => value.ToString(CultureInfo.InvariantCulture);
-
-  protected void UpdatePendingAllocationDisplayQuantity(ChangeEventArgs args)
-    => SetPendingAllocationDisplayQuantity(ParseNumberInput(args, GetPendingAllocationDisplayQuantity()));
-
-  protected void UpdateAllocationDisplayQuantity(EditablePurchaseLine line, EditablePurchaseAllocation allocation, ChangeEventArgs args)
-    => SetAllocationDisplayQuantity(
-      line,
-      allocation,
-      ParseNumberInput(args, GetAllocationDisplayQuantity(line, allocation)));
-
-  protected void UpdateReceiveNowDisplayQuantity(ReceiveAllocationInput item, ChangeEventArgs args)
-    => SetReceiveNowDisplayQuantity(item, ParseNumberInput(args, GetReceiveNowDisplayQuantity(item)));
-
-  protected void UpdateReceiveTotalAmount(ReceiveAllocationInput item, ChangeEventArgs args)
-  {
-    var text = args.Value?.ToString();
-    item.TotalAmount = string.IsNullOrWhiteSpace(text)
-      ? null
-      : decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var invariantValue)
-        ? decimal.Round(invariantValue, 2, MidpointRounding.AwayFromZero)
-        : decimal.TryParse(text, NumberStyles.Number, CultureInfo.CurrentCulture, out var currentValue)
-          ? decimal.Round(currentValue, 2, MidpointRounding.AwayFromZero)
-          : item.TotalAmount;
-  }
+  protected void UpdateReceiveTotalAmount(ReceiveAllocationInput item, decimal? amount)
+    => item.TotalAmount = amount.HasValue
+      ? decimal.Round(amount.Value, 2, MidpointRounding.AwayFromZero)
+      : null;
 
   protected bool HasInvalidPurchaseMultiple(EditablePurchaseLine line)
     => RequiresWholePurchaseMultiple(line.PurchaseQuantity, line.PurchaseUnitName)
@@ -1216,29 +1194,6 @@ public partial class ComprasPage : ComponentBase
         1m,
         line.PurchaseQuantity,
         line.PurchaseUnitName);
-
-  private static decimal ParseNumberInput(ChangeEventArgs args, decimal fallbackValue)
-  {
-    if (args.Value is decimal decimalValue)
-    {
-      return decimalValue;
-    }
-
-    var text = Convert.ToString(args.Value, CultureInfo.InvariantCulture);
-    if (string.IsNullOrWhiteSpace(text))
-    {
-      return 0m;
-    }
-
-    if (decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var invariantValue))
-    {
-      return invariantValue;
-    }
-
-    return decimal.TryParse(text, NumberStyles.Number, CultureInfo.CurrentCulture, out var currentCultureValue)
-      ? currentCultureValue
-      : fallbackValue;
-  }
 
   private IReadOnlyList<int> GetNormalizedAutoPoRoomIds()
   {

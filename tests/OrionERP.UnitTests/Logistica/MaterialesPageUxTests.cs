@@ -41,8 +41,8 @@ public class MaterialesPageUxTests
     Assert.Contains("Precio por presentación", codeBehind, StringComparison.Ordinal);
     Assert.Contains("OnBaseUnitPriceChanged", codeBehind, StringComparison.Ordinal);
     Assert.Contains("OnPurchasePresentationPriceChanged", codeBehind, StringComparison.Ordinal);
-    Assert.Contains("@oninput=\"OnBaseUnitPriceChanged\"", page, StringComparison.Ordinal);
-    Assert.Contains("@oninput=\"OnPurchasePresentationPriceChanged\"", page, StringComparison.Ordinal);
+    Assert.Contains("ValueChanged=\"@OnBaseUnitPriceChanged\"", page, StringComparison.Ordinal);
+    Assert.Contains("ValueChanged=\"@OnPurchasePresentationPriceChanged\"", page, StringComparison.Ordinal);
     Assert.Contains("BaseUnitPrice = @BaseUnitPrice", materialService, StringComparison.Ordinal);
     Assert.Contains("material.BaseUnitPrice", bomService, StringComparison.Ordinal);
     Assert.DoesNotContain("Editor.Price", page, StringComparison.Ordinal);

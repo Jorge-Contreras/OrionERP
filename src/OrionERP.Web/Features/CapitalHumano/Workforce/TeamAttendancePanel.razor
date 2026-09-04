@@ -24,9 +24,9 @@
 
       <section class="workforce-card workforce-span-12">
         <div class="workforce-card__header"><h2>Excepciones</h2><span class="workforce-status @(dashboard.Exceptions.Count > 0 ? "workforce-status--warn" : "")">@dashboard.Exceptions.Count pendientes</span></div>
-        <div class="table-responsive"><table class="table table-hover workforce-table"><thead><tr><th>Empleado</th><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Decisión</th></tr></thead><tbody>
-          @if(dashboard.Exceptions.Count==0){<tr><td colspan="5" class="workforce-empty">Sin excepciones pendientes.</td></tr>}
-          @foreach(var item in dashboard.Exceptions){<tr><td class="fw-semibold">@item.EmployeeName</td><td>@item.WorkDate.ToString("dd MMM")</td><td>@item.ExceptionType</td><td>@item.Detail</td><td><div class="workforce-actions"><button class="btn btn-sm btn-success" @onclick="() => DecideExceptionAsync(item.Id,true)">Aprobar</button><button class="btn btn-sm btn-outline-secondary" @onclick="() => ReturnExceptionAsync(item.Id)">Devolver</button><button class="btn btn-sm btn-outline-danger" @onclick="() => DecideExceptionAsync(item.Id,false)">Rechazar</button></div></td></tr>}
+        <div class="table-responsive"><table class="table table-hover workforce-table"><thead><tr><th>Empleado</th><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Ubicación del día</th><th>Decisión</th></tr></thead><tbody>
+          @if(dashboard.Exceptions.Count==0){<tr><td colspan="6" class="workforce-empty">Sin excepciones pendientes.</td></tr>}
+          @foreach(var item in dashboard.Exceptions){<tr><td class="fw-semibold">@item.EmployeeName</td><td>@item.WorkDate.ToString("dd MMM")</td><td>@item.ExceptionType</td><td>@item.Detail</td><td>@LocationCell(item)</td><td><div class="workforce-actions"><button class="btn btn-sm btn-success" @onclick="() => DecideExceptionAsync(item.Id,true)">Aprobar</button><button class="btn btn-sm btn-outline-secondary" @onclick="() => ReturnExceptionAsync(item.Id)">Devolver</button><button class="btn btn-sm btn-outline-danger" @onclick="() => DecideExceptionAsync(item.Id,false)">Rechazar</button></div></td></tr>}
         </tbody></table></div>
       </section>
 
@@ -91,4 +91,37 @@
   private int OvertimeValue(AttendanceDayDto day)=>overtime.TryGetValue(day.Id,out var value)?value:day.OvertimeApprovedMinutes;
   private void SetOvertime(long id,object? value){if(int.TryParse(Convert.ToString(value),out var parsed))overtime[id]=Math.Max(0,parsed);}
   private void Show(string text,bool error){message=text;messageIsError=error;}
+
+  /// <summary>
+  /// Resume la evidencia de ubicación para que el supervisor decida con datos y no
+  /// con una etiqueta. Lo que más pesa es distinguir dos casos que el estado
+  /// INACCURATE mezcla: la persona quedó lejos del sitio, o el equipo simplemente
+  /// no supo ubicarla con la precisión que exige la política.
+  /// </summary>
+  private static MarkupString LocationCell(AttendanceExceptionDto item)
+  {
+    if (item.DistanceMeters is null)
+    {
+      return new MarkupString("<span class=\"workforce-label\">Sin lectura</span>");
+    }
+
+    var distance = $"{item.DistanceMeters:0} m del sitio";
+    if (item.SiteRadiusMeters is not null) distance += $" (radio {item.SiteRadiusMeters} m)";
+
+    var accuracy = item.AccuracyMeters is null
+      ? "precisión desconocida"
+      : $"precisión ±{item.AccuracyMeters:0} m";
+    if (item.SiteMaxAccuracyMeters is not null && item.AccuracyMeters > item.SiteMaxAccuracyMeters)
+      accuracy += $", la política pide ±{item.SiteMaxAccuracyMeters} m";
+
+    var verdict = item.MeasuredInsideRadius switch
+    {
+      true => "<span class=\"workforce-status\">Dentro del radio</span>",
+      false => "<span class=\"workforce-status workforce-status--warn\">Fuera del radio</span>",
+      _ => string.Empty
+    };
+
+    return new MarkupString(
+      $"{verdict}<div class=\"workforce-label\">{distance}</div><div class=\"workforce-label\">{accuracy}</div>");
+  }
 }

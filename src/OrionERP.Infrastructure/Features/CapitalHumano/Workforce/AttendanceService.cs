@@ -444,8 +444,18 @@ public sealed class AttendanceService : WorkforceServiceBase, IAttendanceService
     var exceptions = (await connection.QueryAsync<AttendanceExceptionDto>(new CommandDefinition(
       """
       SELECT x.Id,x.EmployeeId,COALESCE(NULLIF(ch.NombreCorto,''),CONCAT(ch.Nombre,' ',ch.ApellidoPaterno)) EmployeeName,
-        x.WorkDate,x.ExceptionType,x.Detail,x.Resolution,x.[Status],x.CreatedAtUtc
+        x.WorkDate,x.ExceptionType,x.Detail,x.Resolution,x.[Status],x.CreatedAtUtc,
+        loc.LocationStatus,loc.DistanceMeters,loc.AccuracyMeters,loc.SiteRadiusMeters,loc.SiteMaxAccuracyMeters,loc.SiteName
       FROM rh.AttendanceException x INNER JOIN dbo.Capital_Humano ch ON ch.ID=x.EmployeeId
+      OUTER APPLY (
+        SELECT TOP (1) evidence.LocationStatus, evidence.DistanceMeters, evidence.AccuracyMeters,
+               site.RadiusMeters SiteRadiusMeters, site.MaxAccuracyMeters SiteMaxAccuracyMeters, site.[Name] SiteName
+        FROM rh.TimeEvent evidence
+        LEFT JOIN rh.WorkSite site ON site.Id = evidence.SiteId
+        WHERE evidence.Rfc = x.Rfc AND evidence.EmployeeId = x.EmployeeId AND evidence.WorkDate = x.WorkDate
+          AND evidence.DistanceMeters IS NOT NULL
+        ORDER BY evidence.OccurredAtUtc DESC, evidence.Id DESC
+      ) loc
       WHERE x.Rfc=@Rfc AND x.EmployeeId=@EmployeeId AND x.[Status] IN ('PENDING','RETURNED') ORDER BY x.CreatedAtUtc DESC;
       """, new { Rfc = normalizedRfc, EmployeeId = employeeId }, cancellationToken: ct))).AsList();
     var correctionRequests = (await connection.QueryAsync<AttendanceCorrectionRequestDto>(new CommandDefinition(
@@ -552,8 +562,18 @@ public sealed class AttendanceService : WorkforceServiceBase, IAttendanceService
       """, args, cancellationToken: ct))).AsList();
     var exceptions = (await connection.QueryAsync<AttendanceExceptionDto>(new CommandDefinition($"""
       SELECT x.Id,x.EmployeeId,COALESCE(NULLIF(ch.NombreCorto,''),CONCAT(ch.Nombre,' ',ch.ApellidoPaterno)) EmployeeName,
-        x.WorkDate,x.ExceptionType,x.Detail,x.Resolution,x.[Status],x.CreatedAtUtc
+        x.WorkDate,x.ExceptionType,x.Detail,x.Resolution,x.[Status],x.CreatedAtUtc,
+        loc.LocationStatus,loc.DistanceMeters,loc.AccuracyMeters,loc.SiteRadiusMeters,loc.SiteMaxAccuracyMeters,loc.SiteName
       FROM rh.AttendanceException x INNER JOIN dbo.Capital_Humano ch ON ch.ID=x.EmployeeId
+      OUTER APPLY (
+        SELECT TOP (1) evidence.LocationStatus, evidence.DistanceMeters, evidence.AccuracyMeters,
+               site.RadiusMeters SiteRadiusMeters, site.MaxAccuracyMeters SiteMaxAccuracyMeters, site.[Name] SiteName
+        FROM rh.TimeEvent evidence
+        LEFT JOIN rh.WorkSite site ON site.Id = evidence.SiteId
+        WHERE evidence.Rfc = x.Rfc AND evidence.EmployeeId = x.EmployeeId AND evidence.WorkDate = x.WorkDate
+          AND evidence.DistanceMeters IS NOT NULL
+        ORDER BY evidence.OccurredAtUtc DESC, evidence.Id DESC
+      ) loc
       WHERE x.Rfc=@Rfc AND x.WorkDate BETWEEN @From AND @To AND x.[Status] IN ('PENDING','RETURNED') AND {scope.Replace("employeeId", "x.EmployeeId")}
       ORDER BY x.CreatedAtUtc;
       """, args, cancellationToken: ct))).AsList();

@@ -368,6 +368,23 @@ public sealed class AttendanceExceptionDto
   public string? Resolution { get; set; }
   public string Status { get; set; } = ApprovalStatuses.Pending;
   public DateTime CreatedAtUtc { get; set; }
+
+  // Evidencia de ubicacion del ultimo registro del dia que si trajo lectura GPS.
+  // El supervisor decide mucho mejor viendo que tan lejos quedo del sitio y con
+  // cuanta precision se midio, que leyendo solo "la precision no cumple".
+  public string? LocationStatus { get; set; }
+  public decimal? DistanceMeters { get; set; }
+  public decimal? AccuracyMeters { get; set; }
+  public int? SiteRadiusMeters { get; set; }
+  public int? SiteMaxAccuracyMeters { get; set; }
+  public string? SiteName { get; set; }
+
+  /// <summary>
+  /// El punto medido cae dentro del perimetro, aunque la precision no alcance la
+  /// politica. Es la diferencia entre "estaba lejos" y "el equipo no supo ubicarlo".
+  /// </summary>
+  public bool? MeasuredInsideRadius
+    => DistanceMeters is null || SiteRadiusMeters is null ? null : DistanceMeters <= SiteRadiusMeters;
 }
 
 public sealed class AttendanceCorrectionRequestDto

@@ -2199,3 +2199,327 @@
     transition: none;
   }
 }
+
+
+/* ------------------------------------------------------------------------ */
+/* Alcance del conteo: por ubicacion o por material                          */
+/* ------------------------------------------------------------------------ */
+
+.conteos-dialog-wide {
+  width: min(100%, 640px);
+}
+
+.conteos-scope-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 0.9rem;
+}
+
+.conteos-scope-tabs > button {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid #c8d5dd;
+  border-radius: 0.85rem;
+  background: #fff;
+  color: var(--count-ink);
+  text-align: left;
+}
+
+.conteos-scope-tabs > button > span:last-child {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.conteos-scope-tabs strong {
+  font-size: 0.85rem;
+  font-weight: 850;
+}
+
+.conteos-scope-tabs small {
+  color: var(--count-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.conteos-scope-tabs > button.is-active {
+  border-color: #126a88;
+  background: #eaf5fa;
+  box-shadow: 0 0 0 3px rgba(18, 106, 136, 0.13);
+}
+
+.conteos-scope-picker {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.conteos-scope-search {
+  display: flex;
+  align-items: stretch;
+  gap: 0.45rem;
+}
+
+.conteos-scope-search input {
+  flex: 1 1 auto;
+}
+
+.conteos-scope-search .btn {
+  flex: 0 0 auto;
+  min-height: 2.75rem;
+  white-space: nowrap;
+}
+
+.conteos-scope-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.conteos-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.4rem 0.3rem 0.65rem;
+  border-radius: 999px;
+  background: #dff1f6;
+  color: #0f6179;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.conteos-scope-chip > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(15, 97, 121, 0.14);
+  color: inherit;
+  font-size: 0.62rem;
+}
+
+.conteos-scope-results {
+  display: grid;
+  gap: 0.3rem;
+  max-height: 13rem;
+  padding-right: 0.15rem;
+  overflow-y: auto;
+}
+
+.conteos-scope-results > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #dfe8ee;
+  border-radius: 0.7rem;
+  background: #fff;
+  color: var(--count-ink);
+  text-align: left;
+}
+
+.conteos-scope-results > button > span:first-child {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.conteos-scope-results strong {
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.conteos-scope-results small {
+  color: var(--count-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.conteos-scope-results > button.is-selected {
+  border-color: #7cc0a6;
+  background: #f0faf5;
+  color: #1c6b4d;
+}
+
+.conteos-scope-empty {
+  margin: 0;
+  padding: 0.7rem 0.75rem;
+  border-radius: 0.7rem;
+  background: #f4f8fa;
+  color: var(--count-muted);
+  font-size: 0.77rem;
+  font-weight: 600;
+}
+
+.conteos-scope-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  margin: 0.9rem 0;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.8rem;
+  background: #eef6f9;
+  color: #2c5c72;
+}
+
+.conteos-scope-preview > div {
+  min-width: 0;
+}
+
+.conteos-scope-preview strong {
+  font-size: 0.85rem;
+  font-weight: 850;
+}
+
+.conteos-scope-preview.has-conflicts {
+  background: #fff0e5;
+  color: #814a25;
+}
+
+.conteos-scope-breakdown {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conteos-scope-breakdown li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.conteos-scope-conflicts {
+  margin: 0.4rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+.conteos-dialog > .conteos-scope-picker + .conteos-field,
+.conteos-dialog > .conteos-dialog-info + .conteos-field,
+.conteos-dialog > .conteos-scope-preview + .conteos-field {
+  margin-top: 0.75rem;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Recorrido: una parada por ubicacion                                       */
+/* ------------------------------------------------------------------------ */
+
+.conteos-location-group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+  padding: 0.42rem 0.6rem;
+  border-radius: 0.55rem;
+  background: #e7eff4;
+  color: #2c5c72;
+}
+
+.conteos-location-group:first-child {
+  margin-top: 0;
+}
+
+.conteos-location-group > span:last-child {
+  display: grid;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.conteos-location-group strong {
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.conteos-location-group small {
+  color: #5c7c8d;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.conteos-focus-location {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.85rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.8rem;
+  background: #126a88;
+  color: #fff;
+}
+
+.conteos-focus-location > div {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.conteos-focus-location > div > span {
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.78;
+}
+
+.conteos-focus-location strong {
+  font-size: 1rem;
+  font-weight: 850;
+}
+
+.conteos-focus-location > b {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  font-weight: 800;
+  opacity: 0.85;
+}
+
+.conteos-zero-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  margin-top: 1rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.8rem;
+  background: #f4f8fa;
+  color: #45606f;
+}
+
+.conteos-zero-hint p {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+@media (max-width: 540px) {
+  .conteos-scope-tabs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .conteos-scope-search {
+    flex-wrap: wrap;
+  }
+
+  .conteos-scope-search .btn {
+    width: 100%;
+  }
+
+  .conteos-focus-location {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}

@@ -65,13 +65,23 @@ public class PhysicalCountServiceTests
     auditTable.Columns.Add("MaterialId", typeof(int));
     auditTable.Columns.Add("MaterialCode", typeof(string));
     auditTable.Columns.Add("MaterialDescription", typeof(string));
+    auditTable.Columns.Add("LocationName", typeof(string));
     auditTable.Columns.Add("ExpectedQuantity", typeof(decimal));
     auditTable.Columns.Add("CountedQuantity", typeof(decimal));
     auditTable.Columns.Add("Details", typeof(string));
-    auditTable.Rows.Add(PhysicalCountAuditEventTypes.Submitted, submittedAt, "contador@orionerp.local", DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value);
-    auditTable.Rows.Add(PhysicalCountAuditEventTypes.LineCounted, countedAt, "contador@orionerp.local", 810, "MAT-810", "Aceite", 6m, 5m, "Envase abierto.");
-    auditTable.Rows.Add(PhysicalCountAuditEventTypes.SessionStarted, startedAt, "jefe@orionerp.local", DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value, "Conteo mensual.");
+    auditTable.Rows.Add(PhysicalCountAuditEventTypes.Submitted, submittedAt, "contador@orionerp.local", DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value);
+    auditTable.Rows.Add(PhysicalCountAuditEventTypes.LineCounted, countedAt, "contador@orionerp.local", 810, "MAT-810", "Aceite", "Estante A-3", 6m, 5m, "Envase abierto.");
+    auditTable.Rows.Add(PhysicalCountAuditEventTypes.SessionStarted, startedAt, "jefe@orionerp.local", DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value, DBNull.Value, "Conteo mensual.");
     results.Tables.Add(auditTable);
+
+    var scopeMaterialTable = new DataTable();
+    scopeMaterialTable.Columns.Add("MaterialId", typeof(int));
+    scopeMaterialTable.Columns.Add("MaterialCode", typeof(string));
+    scopeMaterialTable.Columns.Add("MaterialDescription", typeof(string));
+    scopeMaterialTable.Columns.Add("LineCount", typeof(int));
+    scopeMaterialTable.Columns.Add("LocationCount", typeof(int));
+    scopeMaterialTable.Rows.Add(810, "MAT-810", "Aceite", 4, 4);
+    results.Tables.Add(scopeMaterialTable);
 
     var connection = new FakeQueryDbConnection
     {
@@ -89,10 +99,19 @@ public class PhysicalCountServiceTests
     Assert.Equal("Aceite", capture.MaterialDescription);
     Assert.Equal(5m, capture.CountedQuantity);
 
+    // Sin la ubicación, un conteo por material repite la misma línea una vez por parada.
+    Assert.Equal("Estante A-3", capture.LocationName);
+
+    var scopeMaterial = Assert.Single(result.Materials);
+    Assert.Equal(810, scopeMaterial.MaterialId);
+    Assert.Equal(4, scopeMaterial.LocationCount);
+
     var commandText = Assert.Single(connection.ExecutedCommands).CommandText;
     Assert.Contains("recountLine.PreviousCapturedAt", commandText, StringComparison.Ordinal);
     Assert.Contains("'EvidenceAdded'", commandText, StringComparison.Ordinal);
     Assert.Contains("ORDER BY audit.OccurredAt DESC", commandText, StringComparison.Ordinal);
+    Assert.Contains("logistica.PhysicalCountSessionMaterial sessionMaterial", commandText, StringComparison.Ordinal);
+    Assert.Contains("ORDER BY line.CountSequence", commandText, StringComparison.Ordinal);
   }
 
   [Fact]
@@ -458,9 +477,287 @@ public class PhysicalCountServiceTests
     var lineDelete = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("DELETE FROM logistica.PhysicalCountLine", StringComparison.Ordinal));
     AssertParameter(lineDelete.Parameters, "@SessionId", 51);
 
-    var sessionDelete = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("DELETE FROM logistica.PhysicalCountSession", StringComparison.Ordinal));
+    // Los materiales del alcance apuntan a la sesión: si no se purgan, la llave foránea impide borrarla.
+    var scopeDelete = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("DELETE FROM logistica.PhysicalCountSessionMaterial", StringComparison.Ordinal));
+    AssertParameter(scopeDelete.Parameters, "@SessionId", 51);
+
+    var sessionDelete = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("DELETE FROM logistica.PhysicalCountSession WHERE", StringComparison.Ordinal));
     AssertParameter(sessionDelete.Parameters, "@SessionId", 51);
+
+    // La sesión se borra al final, cuando ya nada la referencia.
+    Assert.Equal(
+      connection.ExecutedCommands.Count - 1,
+      connection.ExecutedCommands.ToList().FindIndex(command => command.CommandText.Contains("DELETE FROM logistica.PhysicalCountSession WHERE", StringComparison.Ordinal)));
   }
+
+  [Fact]
+  public async Task CreateSessionAsync_MaterialScope_WalksEveryLocationInRouteOrder()
+  {
+    var connection = BuildScopeConnection(lineCount: 6);
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CreateSessionAsync(new PhysicalCountSessionCreateRequest
+    {
+      ScopeType = PhysicalCountSessionScopeTypes.Material,
+      MaterialIds = [7113],
+      CreatedBy = "jefe@orionerp.local"
+    });
+
+    Assert.True(result.Success);
+    Assert.Equal(42, result.EntityId);
+
+    var lineInsert = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("INSERT INTO logistica.PhysicalCountLine", StringComparison.Ordinal));
+
+    // Sin restriccion de ubicacion el recorrido abarca todo el almacen.
+    AssertParameter(lineInsert.Parameters, "@LocationId", DBNull.Value);
+    AssertParameter(lineInsert.Parameters, "@HasMaterialFilter", true);
+
+    // El orden de recorrido es ubicacion primero: sala, codigo de ubicacion y luego material.
+    Assert.Contains("ORDER BY room.ROOM_NAME, loc.LocationCode, material.[Description]", lineInsert.CommandText, StringComparison.Ordinal);
+    Assert.Contains("CountSequence", lineInsert.CommandText, StringComparison.Ordinal);
+
+    var scopeInsert = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("INSERT INTO logistica.PhysicalCountSessionMaterial", StringComparison.Ordinal));
+    AssertParameter(scopeInsert.Parameters, "@SessionId", 42);
+
+    var sessionInsert = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("INSERT INTO logistica.PhysicalCountSession\r\n", StringComparison.Ordinal)
+              || command.CommandText.Contains("INSERT INTO logistica.PhysicalCountSession\n", StringComparison.Ordinal));
+    AssertParameter(sessionInsert.Parameters, "@ScopeType", PhysicalCountSessionScopeTypes.Material);
+    Assert.True(connection.LastTransaction!.WasCommitted);
+  }
+
+  [Fact]
+  public async Task CreateSessionAsync_LocationScope_KeepsSubtreeGenerator()
+  {
+    var connection = BuildScopeConnection(lineCount: 12);
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CreateSessionAsync(new PhysicalCountSessionCreateRequest
+    {
+      LocationId = 5,
+      CreatedBy = "jefe@orionerp.local"
+    });
+
+    Assert.True(result.Success);
+
+    var lineInsert = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("INSERT INTO logistica.PhysicalCountLine", StringComparison.Ordinal));
+
+    AssertParameter(lineInsert.Parameters, "@LocationId", 5);
+    AssertParameter(lineInsert.Parameters, "@HasMaterialFilter", false);
+    Assert.Contains("JOIN LocationScope parent", lineInsert.CommandText, StringComparison.Ordinal);
+
+    // El generador historico nunca filtro por cantidad; excluir los ceros cambiaria lo que se cuenta.
+    Assert.DoesNotContain("sb.Quantity <> 0", lineInsert.CommandText, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public async Task CreateSessionAsync_MaterialScope_VisitsLocationsTheSystemBelievesEmpty()
+  {
+    var connection = BuildScopeConnection(lineCount: 3);
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    await service.CreateSessionAsync(new PhysicalCountSessionCreateRequest
+    {
+      ScopeType = PhysicalCountSessionScopeTypes.Material,
+      MaterialIds = [7113]
+    });
+
+    var lineInsert = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("INSERT INTO logistica.PhysicalCountLine", StringComparison.Ordinal));
+
+    // Un conteo por material afirma donde esta el material, asi que tiene que poder probar el vacio:
+    // el unico filtro sobre los saldos sigue siendo el borrado logico.
+    Assert.DoesNotContain("sb.Quantity <> 0", lineInsert.CommandText, StringComparison.Ordinal);
+    Assert.Contains("ISNULL(sb.IsRemoved, 0) = 0", lineInsert.CommandText, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public async Task CreateSessionAsync_CapsLocationsPerMaterial_PreferringTheStalest()
+  {
+    var connection = BuildScopeConnection(lineCount: 2);
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    await service.CreateSessionAsync(new PhysicalCountSessionCreateRequest
+    {
+      ScopeType = PhysicalCountSessionScopeTypes.Material,
+      MaterialIds = [7113],
+      MaxLocationsPerMaterial = 2
+    });
+
+    var lineInsert = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("INSERT INTO logistica.PhysicalCountLine", StringComparison.Ordinal));
+
+    AssertParameter(lineInsert.Parameters, "@MaxLocationsPerMaterial", 2);
+    Assert.Contains("PARTITION BY sb.MaterialId", lineInsert.CommandText, StringComparison.Ordinal);
+    Assert.Contains("CASE WHEN sb.LastCountedAt IS NULL THEN 0 ELSE 1 END", lineInsert.CommandText, StringComparison.Ordinal);
+    Assert.Contains("candidate.MaterialRank <= @MaxLocationsPerMaterial", lineInsert.CommandText, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public async Task CreateSessionAsync_BlocksWhenAnOpenSessionAlreadyClaimsTheSameBalances()
+  {
+    var conflicts = new DataTable();
+    conflicts.Columns.Add("SessionCode", typeof(string));
+    conflicts.Rows.Add("PC-000012");
+
+    var connection = BuildScopeConnection(lineCount: 6, conflictTable: conflicts);
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CreateSessionAsync(new PhysicalCountSessionCreateRequest
+    {
+      ScopeType = PhysicalCountSessionScopeTypes.Material,
+      MaterialIds = [7113]
+    });
+
+    Assert.False(result.Success);
+    Assert.Contains("PC-000012", result.Message, StringComparison.Ordinal);
+    Assert.True(connection.LastTransaction!.WasRolledBack);
+
+    // Dos sesiones sobre el mismo saldo significan que la segunda en aplicarse pisa a la primera.
+    Assert.DoesNotContain(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("INSERT INTO logistica.PhysicalCountLine", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public async Task CreateSessionAsync_EmptyMaterialScope_SaysMaterialsNotLocation()
+  {
+    var connection = BuildScopeConnection(lineCount: 0);
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CreateSessionAsync(new PhysicalCountSessionCreateRequest
+    {
+      ScopeType = PhysicalCountSessionScopeTypes.Material,
+      MaterialIds = [7113]
+    });
+
+    Assert.False(result.Success);
+    Assert.Equal("Los materiales seleccionados no tienen existencias registradas en ninguna ubicación.", result.Message);
+    Assert.True(connection.LastTransaction!.WasRolledBack);
+  }
+
+  [Fact]
+  public async Task CreateSessionAsync_MaterialScope_RequiresAtLeastOneMaterial()
+  {
+    var connection = new FakeQueryDbConnection();
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CreateSessionAsync(new PhysicalCountSessionCreateRequest
+    {
+      ScopeType = PhysicalCountSessionScopeTypes.Material
+    });
+
+    Assert.False(result.Success);
+    Assert.Equal("Selecciona al menos un material para el conteo.", result.Message);
+    Assert.Empty(connection.ExecutedCommands);
+  }
+
+  [Fact]
+  public async Task PreviewScopeAsync_ReportsRouteSizeAndOpenConflicts()
+  {
+    var results = new DataSet();
+
+    var totals = new DataTable();
+    totals.Columns.Add("LineCount", typeof(int));
+    totals.Columns.Add("LocationCount", typeof(int));
+    totals.Columns.Add("MaterialCount", typeof(int));
+    totals.Rows.Add(9, 6, 2);
+    results.Tables.Add(totals);
+
+    var materials = new DataTable();
+    materials.Columns.Add("MaterialId", typeof(int));
+    materials.Columns.Add("MaterialCode", typeof(string));
+    materials.Columns.Add("MaterialDescription", typeof(string));
+    materials.Columns.Add("LocationCount", typeof(int));
+    materials.Columns.Add("TotalQuantity", typeof(decimal));
+    materials.Rows.Add(7113, "7113", "Tornillo hex", 6, 148m);
+    results.Tables.Add(materials);
+
+    var conflicts = new DataTable();
+    conflicts.Columns.Add("SessionId", typeof(int));
+    conflicts.Columns.Add("SessionCode", typeof(string));
+    conflicts.Columns.Add("Status", typeof(string));
+    conflicts.Columns.Add("MaterialCode", typeof(string));
+    conflicts.Columns.Add("MaterialDescription", typeof(string));
+    conflicts.Columns.Add("LocationName", typeof(string));
+    conflicts.Columns.Add("OverlappingLineCount", typeof(int));
+    conflicts.Rows.Add(12, "PC-000012", "Draft", "7113", "Tornillo hex", "Estante A-3", 1);
+    results.Tables.Add(conflicts);
+
+    var connection = new FakeQueryDbConnection
+    {
+      MultiResultReaderFactory = (_, _) => results
+    };
+    var service = new PhysicalCountService(new FakeQueryConnectionFactory(connection));
+
+    var preview = await service.PreviewScopeAsync(new PhysicalCountScopePreviewRequest
+    {
+      ScopeType = PhysicalCountSessionScopeTypes.Material,
+      MaterialIds = [7113, 8420]
+    });
+
+    Assert.Equal(9, preview.LineCount);
+    Assert.Equal(6, preview.LocationCount);
+    Assert.Equal(2, preview.MaterialCount);
+    Assert.Equal(6, Assert.Single(preview.Materials).LocationCount);
+    Assert.True(preview.HasConflicts);
+    Assert.Equal("PC-000012", Assert.Single(preview.Conflicts).SessionCode);
+  }
+
+  /// <summary>
+  /// Encadena las respuestas que espera <c>CreateSessionAsync</c>: validaciones, guardia de
+  /// solapamiento, alta de la sesion y conteo final de renglones.
+  /// </summary>
+  private static FakeQueryDbConnection BuildScopeConnection(int lineCount, DataTable? conflictTable = null)
+    => new()
+    {
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM logistica.Location", StringComparison.Ordinal)
+          && commandText.Contains("THEN 1 ELSE 0 END AS bit", StringComparison.Ordinal))
+        {
+          return true;
+        }
+
+        if (commandText.Contains("FROM logistica.Material", StringComparison.Ordinal)
+          && commandText.Contains("AND IsActive = 1", StringComparison.Ordinal))
+        {
+          return 1;
+        }
+
+        if (commandText.Contains("INSERT INTO logistica.PhysicalCountSession", StringComparison.Ordinal))
+        {
+          return 42;
+        }
+
+        if (commandText.Contains("FROM logistica.PhysicalCountLine WHERE SessionId", StringComparison.Ordinal))
+        {
+          return lineCount;
+        }
+
+        return null;
+      },
+      ReaderResultFactory = (_, _) =>
+      {
+        if (conflictTable is not null)
+        {
+          return conflictTable;
+        }
+
+        var empty = new DataTable();
+        empty.Columns.Add("SessionCode", typeof(string));
+        return empty;
+      }
+    };
 
   private static void AssertParameter(IReadOnlyList<FakeQueryParameter> parameters, string name, object expectedValue)
   {

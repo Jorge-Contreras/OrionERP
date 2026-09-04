@@ -78,6 +78,16 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
   protected string? MaterialImageModalTitle { get; set; }
   protected string? MaterialImageModalDataUrl { get; set; }
 
+  protected List<MaterialListItemDto> ScopeMaterialResults { get; set; } = [];
+  protected List<MaterialListItemDto> ScopeMaterials { get; set; } = [];
+  protected string ScopeMaterialSearch { get; set; } = string.Empty;
+  protected bool IsSearchingScopeMaterials { get; set; }
+  protected bool HasSearchedScopeMaterials { get; set; }
+  protected PhysicalCountScopePreviewDto? ScopePreview { get; set; }
+  protected bool IsLoadingScopePreview { get; set; }
+
+  private const int ScopeMaterialSearchTake = 25;
+
   protected IReadOnlyList<FilterOption> CaptureFilters { get; } =
   [
     new(LineFilterMode.All, "Todos"),
@@ -115,6 +125,9 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
   protected bool CanApprove => CanManageCounts && SelectedSession is not null && IsSubmittedStatus(SelectedSession.Status);
   protected bool CanPost => CanManageCounts && SelectedSession is not null && IsApprovedStatus(SelectedSession.Status);
   protected bool CanCaptureLine => CanSubmit && SelectedLine is not null;
+  protected bool IsMaterialScopeCreation => PhysicalCountSessionScopeTypes.IsMaterialScope(SessionCreateRequest.ScopeType);
+  protected bool HasScopeConflicts => ScopePreview?.HasConflicts == true;
+  protected bool CanConfirmCreation => !IsCreatingSession && !HasScopeConflicts;
   protected bool CameraScanningAllowed => true;
   protected string SelectedSessionStatusBadgeClass => GetSessionStatusBadgeClass(SelectedSession?.Status);
   protected string SelectedSessionStatusLabel => GetSessionStatusLabel(SelectedSession?.Status);
@@ -147,12 +160,52 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
     }
   }
 
-  protected IReadOnlyList<PhysicalCountLineDto> FilteredSessionLines => CaptureSessionLines
-    .Where(MatchesMaterialSearch)
-    .Where(line => MatchesFilter(line, CaptureFilter))
-    .OrderBy(line => line.CountedQuantity.HasValue)
-    .ThenByDescending(HasRecountIssue)
-    .ThenBy(GetMaterialTitle, StringComparer.CurrentCultureIgnoreCase)
+  /// <summary>
+  /// Cuando el conteo cruza ubicaciones, el orden de recorrido manda: reordenar por estado haria que
+  /// el contador saltara de un pasillo a otro y regresara. En un conteo de una sola ubicacion se
+  /// conserva el orden de siempre, que pone lo pendiente arriba.
+  /// </summary>
+  protected IReadOnlyList<PhysicalCountLineDto> FilteredSessionLines
+  {
+    get
+    {
+      var visibleLines = CaptureSessionLines
+        .Where(MatchesMaterialSearch)
+        .Where(line => MatchesFilter(line, CaptureFilter));
+
+      return SessionSpansMultipleLocations
+        ? visibleLines.ToList()
+        : visibleLines
+          .OrderBy(line => line.CountedQuantity.HasValue)
+          .ThenByDescending(HasRecountIssue)
+          .ThenBy(GetMaterialTitle, StringComparer.CurrentCultureIgnoreCase)
+          .ToList();
+    }
+  }
+
+  protected bool SessionSpansMultipleLocations => CaptureLocationOrder.Count > 1;
+
+  /// <summary>Las ubicaciones en el orden en que hay que visitarlas.</summary>
+  protected IReadOnlyList<int> CaptureLocationOrder => CaptureSessionLines
+    .Select(line => line.LocationId)
+    .Distinct()
+    .ToList();
+
+  protected int CaptureLocationCount => CaptureLocationOrder.Count;
+
+  protected int CurrentLocationPosition => SelectedLine is null
+    ? 0
+    : Math.Max(1, CaptureLocationOrder.ToList().IndexOf(SelectedLine.LocationId) + 1);
+
+  /// <summary>La lista lateral agrupada por parada, para cerrar una ubicacion antes de pasar a la siguiente.</summary>
+  protected IReadOnlyList<CaptureLocationGroup> GroupedSessionLines => FilteredSessionLines
+    .GroupBy(line => line.LocationId)
+    .Select(group => new CaptureLocationGroup(
+      group.Key,
+      group.First().LocationName,
+      group.First().RoomName,
+      group.ToList(),
+      group.Count(line => !line.CountedQuantity.HasValue)))
     .ToList();
 
   protected IReadOnlyList<PhysicalCountLineDto> FilteredReviewLines => (SelectedSession?.Lines ?? Array.Empty<PhysicalCountLineDto>())
@@ -269,6 +322,7 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
     }
 
     SessionCreateRequest = new();
+    ResetScopeSelection();
     ShowCreateModal = true;
   }
 
@@ -281,6 +335,7 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
 
     ShowCreateModal = false;
     SessionCreateRequest = new();
+    ResetScopeSelection();
   }
 
   protected async Task CrearSesionAsync()
@@ -290,9 +345,23 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
       return;
     }
 
-    if (SessionCreateRequest.LocationId <= 0)
+    if (IsMaterialScopeCreation)
+    {
+      if (ScopeMaterials.Count == 0)
+      {
+        UiMessages.ShowWarning("Elige al menos un material para el conteo.");
+        return;
+      }
+    }
+    else if (SessionCreateRequest.LocationId is null or <= 0)
     {
       UiMessages.ShowWarning("Selecciona la ubicación que se va a contar.");
+      return;
+    }
+
+    if (HasScopeConflicts)
+    {
+      UiMessages.ShowWarning("Hay conteos abiertos sobre esos materiales. Termínalos o cancélalos antes de crear otro.");
       return;
     }
 
@@ -300,6 +369,7 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
     try
     {
       SessionCreateRequest.CreatedBy = CurrentUserName;
+      SessionCreateRequest.MaterialIds = ScopeMaterials.Select(material => material.Id).ToArray();
       var result = await PhysicalCountService.CreateSessionAsync(SessionCreateRequest);
       if (!result.Success)
       {
@@ -309,6 +379,7 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
 
       ShowCreateModal = false;
       SessionCreateRequest = new();
+      ResetScopeSelection();
       UiMessages.ShowSuccess("Conteo creado. Ya puedes comenzar a capturar materiales.");
       await CargarSesionesAsync();
       if (result.EntityId.HasValue)
@@ -325,6 +396,166 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
       IsCreatingSession = false;
     }
   }
+
+  protected void ResetScopeSelection()
+  {
+    ScopeMaterials = [];
+    ScopeMaterialResults = [];
+    ScopeMaterialSearch = string.Empty;
+    HasSearchedScopeMaterials = false;
+    IsSearchingScopeMaterials = false;
+    ScopePreview = null;
+  }
+
+  protected async Task CambiarAlcanceAsync(string scopeType)
+  {
+    var normalizedScope = PhysicalCountSessionScopeTypes.Normalize(scopeType);
+    if (IsCreatingSession || string.Equals(SessionCreateRequest.ScopeType, normalizedScope, StringComparison.OrdinalIgnoreCase))
+    {
+      return;
+    }
+
+    SessionCreateRequest.ScopeType = normalizedScope;
+    SessionCreateRequest.LocationId = null;
+    SessionCreateRequest.MaxLocationsPerMaterial = null;
+    ResetScopeSelection();
+    await RefrescarVistaPreviaAsync();
+  }
+
+  protected async Task BuscarMaterialesAlcanceAsync()
+  {
+    var search = ScopeMaterialSearch.Trim();
+    IsSearchingScopeMaterials = true;
+    HasSearchedScopeMaterials = true;
+    try
+    {
+      ScopeMaterialResults = (await MaterialService.GetMaterialsAsync(new MaterialFilter
+      {
+        Rfc = RfcState.RequireRfc(),
+        SearchText = search.Length == 0 ? null : search,
+        HasStock = true,
+        Skip = 0,
+        Take = ScopeMaterialSearchTake
+      })).ToList();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudieron buscar los materiales. {ex.Message}");
+    }
+    finally
+    {
+      IsSearchingScopeMaterials = false;
+    }
+  }
+
+  protected Task OnScopeMaterialSearchKeyDownAsync(KeyboardEventArgs args)
+    => string.Equals(args.Key, "Enter", StringComparison.OrdinalIgnoreCase)
+      ? BuscarMaterialesAlcanceAsync()
+      : Task.CompletedTask;
+
+  protected async Task AgregarMaterialAlAlcanceAsync(MaterialListItemDto material)
+  {
+    if (IsMaterialInScope(material.Id))
+    {
+      return;
+    }
+
+    ScopeMaterials.Add(material);
+    await RefrescarVistaPreviaAsync();
+  }
+
+  protected async Task QuitarMaterialDelAlcanceAsync(int materialId)
+  {
+    ScopeMaterials.RemoveAll(material => material.Id == materialId);
+    await RefrescarVistaPreviaAsync();
+  }
+
+  protected bool IsMaterialInScope(int materialId)
+    => ScopeMaterials.Any(material => material.Id == materialId);
+
+  protected async Task OnScopeLocationChangedAsync(ChangeEventArgs args)
+  {
+    SessionCreateRequest.LocationId = TryParseOptionalId(args.Value);
+    await RefrescarVistaPreviaAsync();
+  }
+
+  protected async Task OnScopeMaxLocationsChangedAsync(ChangeEventArgs args)
+  {
+    SessionCreateRequest.MaxLocationsPerMaterial = TryParseOptionalId(args.Value);
+    await RefrescarVistaPreviaAsync();
+  }
+
+  /// <summary>
+  /// Lo que se va a generar, antes de generarlo: cuantos materiales, cuantas paradas de recorrido y
+  /// que conteos abiertos chocan con este alcance.
+  /// </summary>
+  protected async Task RefrescarVistaPreviaAsync()
+  {
+    var hasScope = IsMaterialScopeCreation
+      ? ScopeMaterials.Count > 0
+      : SessionCreateRequest.LocationId is > 0;
+
+    if (!hasScope)
+    {
+      ScopePreview = null;
+      return;
+    }
+
+    IsLoadingScopePreview = true;
+    try
+    {
+      ScopePreview = await PhysicalCountService.PreviewScopeAsync(new PhysicalCountScopePreviewRequest
+      {
+        ScopeType = SessionCreateRequest.ScopeType,
+        LocationId = SessionCreateRequest.LocationId,
+        MaterialIds = ScopeMaterials.Select(material => material.Id).ToArray(),
+        MaxLocationsPerMaterial = SessionCreateRequest.MaxLocationsPerMaterial
+      });
+    }
+    catch (Exception ex)
+    {
+      ScopePreview = null;
+      UiMessages.ShowError($"No se pudo calcular la vista previa del conteo. {ex.Message}");
+    }
+    finally
+    {
+      IsLoadingScopePreview = false;
+    }
+  }
+
+  protected string GetScopePreviewSummary()
+  {
+    if (ScopePreview is null)
+    {
+      return IsMaterialScopeCreation
+        ? "Elige los materiales para ver cuántas ubicaciones habrá que recorrer."
+        : "Elige una ubicación para ver cuántos materiales se van a contar.";
+    }
+
+    if (ScopePreview.LineCount == 0)
+    {
+      return "Ese alcance no genera ningún material por contar.";
+    }
+
+    var materials = ScopePreview.MaterialCount == 1 ? "1 material" : $"{ScopePreview.MaterialCount} materiales";
+    var locations = PhysicalCountScopeLabel.FormatLocationCount(ScopePreview.LocationCount) ?? "sin ubicaciones";
+    var lines = ScopePreview.LineCount == 1 ? "1 renglón por contar" : $"{ScopePreview.LineCount} renglones por contar";
+    return $"{materials} · {locations} · {lines}";
+  }
+
+  protected static string GetSessionScopeLabel(PhysicalCountSessionSummaryDto session)
+    => PhysicalCountScopeLabel.Format(session);
+
+  protected static string GetSessionScopeLabel(PhysicalCountSessionDetailDto session)
+    => PhysicalCountScopeLabel.Format(session);
+
+  protected static string GetScopeMaterialTitle(MaterialListItemDto material)
+    => string.IsNullOrWhiteSpace(material.Description) ? material.MaterialCode : material.Description;
+
+  private static int? TryParseOptionalId(object? rawValue)
+    => int.TryParse(Convert.ToString(rawValue), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed > 0
+      ? parsed
+      : null;
 
   protected async Task SeleccionarSesionAsync(int sessionId, bool includeHistorical = false)
   {
@@ -996,6 +1227,22 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
       return true;
     }
 
+    // Un conteo por material encuentra el mismo codigo en varias ubicaciones: eso no es ambiguedad,
+    // es el recorrido. Solo hay ambiguedad real si el codigo apunta a materiales distintos.
+    if (matches.Count > 1 && matches.Select(line => line.MaterialId).Distinct().Count() == 1)
+    {
+      var nextStop = matches.FirstOrDefault(line => !line.CountedQuantity.HasValue) ?? matches[0];
+      await InvokeAsync(async () =>
+      {
+        await CerrarEscanerAsync();
+        CaptureFilter = LineFilterMode.All;
+        SeleccionarLinea(nextStop);
+        UiMessages.ShowInfo($"{GetMaterialTitle(nextStop)} está en {matches.Count} ubicaciones. Vas en {GetLineLocationLabel(nextStop)}.");
+        StateHasChanged();
+      });
+      return true;
+    }
+
     await InvokeAsync(() =>
     {
       ScannerMessage = matches.Count > 1
@@ -1026,18 +1273,39 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
   protected static string GetLineStateIcon(PhysicalCountLineDto line)
     => !line.CountedQuantity.HasValue ? (HasRecountIssue(line) ? "↻" : "•") : "✓";
 
-  protected static string GetMaterialListSubtitle(PhysicalCountLineDto line)
+  protected string GetMaterialListSubtitle(PhysicalCountLineDto line)
   {
     var unit = GetCountUnitLabel(line.BaseUnitName);
-    if (!line.CountedQuantity.HasValue)
+    var state = !line.CountedQuantity.HasValue
+      ? HasRecountIssue(line) ? "Recontar" : "Pendiente"
+      : line.VarianceQuantity is not null and not 0m
+        ? $"Diferencia {FormatSignedQuantity(line.VarianceQuantity)}"
+        : "Contado";
+
+    // La ubicacion solo aporta cuando el conteo cruza varias: en una sola es ruido repetido.
+    return SessionSpansMultipleLocations && !string.IsNullOrWhiteSpace(line.LocationName)
+      ? $"{state} · {line.LocationName} · {unit}"
+      : $"{state} · {unit}";
+  }
+
+  protected static string GetLineLocationLabel(PhysicalCountLineDto? line)
+  {
+    if (line is null || string.IsNullOrWhiteSpace(line.LocationName))
     {
-      return HasRecountIssue(line) ? $"Recontar · {unit}" : $"Pendiente · {unit}";
+      return PhysicalCountScopeLabel.UnnamedLocation;
     }
 
-    return line.VarianceQuantity is not null and not 0m
-      ? $"Diferencia {FormatSignedQuantity(line.VarianceQuantity)} · {unit}"
-      : $"Contado · {unit}";
+    return string.IsNullOrWhiteSpace(line.RoomName)
+      ? line.LocationName
+      : $"{line.RoomName} · {line.LocationName}";
   }
+
+  protected static string GetLocationGroupSubtitle(CaptureLocationGroup group)
+    => group.PendingCount == 0
+      ? "Ubicación lista"
+      : group.PendingCount == 1
+        ? "1 pendiente"
+        : $"{group.PendingCount} pendientes";
 
   protected IReadOnlyList<PhysicalCountLineDto> GetOperatorReviewLines()
     => CaptureSessionLines
@@ -1178,6 +1446,12 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
       if (auditEvent.ExpectedQuantity.HasValue)
       {
         description += $" · esperado {auditEvent.ExpectedQuantity.Value:N2}";
+      }
+
+      // Sin la ubicación, un conteo por material repite la misma línea una vez por parada.
+      if (!string.IsNullOrWhiteSpace(auditEvent.LocationName))
+      {
+        description += $" · en {auditEvent.LocationName.Trim()}";
       }
 
       if (!string.IsNullOrWhiteSpace(auditEvent.Details))
@@ -1413,7 +1687,9 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
     return search.Length == 0
       || GetMaterialTitle(line).Contains(search, StringComparison.CurrentCultureIgnoreCase)
       || line.MaterialCode.Contains(search, StringComparison.OrdinalIgnoreCase)
-      || (line.Barcode?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false);
+      || (line.Barcode?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)
+      || line.LocationName.Contains(search, StringComparison.CurrentCultureIgnoreCase)
+      || line.LocationCode.Contains(search, StringComparison.OrdinalIgnoreCase);
   }
 
   private static bool MatchesFilter(PhysicalCountLineDto line, LineFilterMode filter)
@@ -1689,6 +1965,14 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
   }
 
   protected sealed record FilterOption(LineFilterMode Value, string Label);
+
+  /// <summary>Una parada del recorrido: la ubicacion y lo que hay que contar en ella.</summary>
+  protected sealed record CaptureLocationGroup(
+    int LocationId,
+    string LocationName,
+    string? RoomName,
+    IReadOnlyList<PhysicalCountLineDto> Lines,
+    int PendingCount);
 
   protected sealed class RecountLineEditor
   {

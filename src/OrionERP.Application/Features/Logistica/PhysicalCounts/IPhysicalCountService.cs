@@ -9,6 +9,12 @@ public interface IPhysicalCountService
   Task<IReadOnlyList<PhysicalCountSessionSummaryDto>> GetSessionsAsync(CancellationToken ct = default);
   Task<PhysicalCountSessionDetailDto?> GetSessionAsync(int sessionId, CancellationToken ct = default);
   Task<LogisticsCommandResult> CreateSessionAsync(PhysicalCountSessionCreateRequest request, CancellationToken ct = default);
+
+  /// <summary>
+  /// Qué generaría ese alcance sin crear nada: materiales, ubicaciones, renglones y los choques con
+  /// sesiones abiertas que ya reclamaron los mismos saldos.
+  /// </summary>
+  Task<PhysicalCountScopePreviewDto> PreviewScopeAsync(PhysicalCountScopePreviewRequest request, CancellationToken ct = default);
   Task<LogisticsCommandResult> CaptureLineAsync(PhysicalCountLineCaptureRequest request, CancellationToken ct = default);
   Task<LogisticsCommandResult> DeleteDraftSessionAsync(int sessionId, CancellationToken ct = default);
   Task<LogisticsCommandResult> SubmitSessionAsync(int sessionId, string submittedBy, CancellationToken ct = default);

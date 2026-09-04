@@ -11,7 +11,7 @@
         <div>
             <span class="conteos-eyebrow">Inventario físico</span>
             <h1>Conteos fáciles, paso a paso</h1>
-            <p>Elige una ubicación, cuenta cada material y envía el resultado para revisión.</p>
+            <p>Elige una ubicación o un material, recorre cada parada y envía el resultado para revisión.</p>
         </div>
         <div class="conteos-hero-actions">
             <button class="btn btn-light" type="button" @onclick="CargarSesionesAsync" disabled="@IsLoadingSessions">
@@ -72,8 +72,12 @@
                                     <span class="conteos-session-code">@item.SessionCode</span>
                                     <span class="@GetSessionStatusBadgeClass(item.Status)">@GetSessionStatusLabel(item.Status)</span>
                                 </span>
-                                <strong>@item.LocationName</strong>
-                                @if (!string.IsNullOrWhiteSpace(item.RoomName))
+                                <strong>@GetSessionScopeLabel(item)</strong>
+                                @if (item.LocationCount > 1)
+                                {
+                                    <small>Recorrido por @item.LocationCount ubicaciones</small>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(item.RoomName))
                                 {
                                     <small>@item.RoomName</small>
                                 }
@@ -123,7 +127,7 @@
                                     <span class="conteos-session-code">@item.SessionCode</span>
                                     <span class="@GetSessionStatusBadgeClass(item.Status)">@GetSessionStatusLabel(item.Status)</span>
                                 </span>
-                                <strong>@item.LocationName</strong>
+                                <strong>@GetSessionScopeLabel(item)</strong>
                                 <span class="conteos-session-tile-footer">
                                     <span>@item.VarianceLineCount diferencias</span>
                                     <b>@(CanManageCounts ? "Revisar" : "Ver estado") <span aria-hidden="true">→</span></b>
@@ -151,7 +155,7 @@
                             @foreach (var item in HistoricalSessions)
                             {
                                 <button type="button" @onclick="() => SeleccionarSesionAsync(item.Id, includeHistorical: true)">
-                                    <span><strong>@item.SessionCode</strong><small>@item.LocationName</small></span>
+                                    <span><strong>@item.SessionCode</strong><small>@GetSessionScopeLabel(item)</small></span>
                                     <span class="@GetSessionStatusBadgeClass(item.Status)">@GetSessionStatusLabel(item.Status)</span>
                                 </button>
                             }
@@ -171,8 +175,12 @@
                     </button>
                     <div>
                         <span class="conteos-section-kicker">@SelectedSession.SessionCode</span>
-                        <h2>@SelectedSession.LocationName</h2>
-                        @if (!string.IsNullOrWhiteSpace(SelectedSession.RoomName))
+                        <h2>@GetSessionScopeLabel(SelectedSession)</h2>
+                        @if (SelectedSession.LocationCount > 1)
+                        {
+                            <p>Recorrido por @SelectedSession.LocationCount ubicaciones</p>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(SelectedSession.RoomName))
                         {
                             <p>@SelectedSession.RoomName</p>
                         }
@@ -291,7 +299,7 @@
                                 <button type="button" @onclick="() => EditarLinea(line)">
                                     <span>
                                         <strong>@GetMaterialTitle(line)</strong>
-                                        <small>@(line.CountedQuantity.HasValue ? $"Contado {line.CountedQuantity.Value:N2} · Esperado {line.ExpectedQuantity:N2}" : "Pendiente de captura")</small>
+                                        <small>@(SessionSpansMultipleLocations ? $"{line.LocationName} · " : string.Empty)@(line.CountedQuantity.HasValue ? $"Contado {line.CountedQuantity.Value:N2} · Esperado {line.ExpectedQuantity:N2}" : "Pendiente de captura")</small>
                                     </span>
                                     @if (!line.CountedQuantity.HasValue)
                                     {
@@ -364,16 +372,26 @@
                                 }
                             </div>
                             <div class="conteos-material-list">
-                                @foreach (var line in FilteredSessionLines)
+                                @foreach (var group in GroupedSessionLines)
                                 {
-                                    <button class="@GetMaterialListItemClass(line)" type="button" @onclick="() => SeleccionarLinea(line)">
-                                        <span class="conteos-material-list-state">@GetLineStateIcon(line)</span>
-                                        <span><strong>@GetMaterialTitle(line)</strong><small>@GetMaterialListSubtitle(line)</small></span>
-                                        @if (line.CountedQuantity.HasValue)
-                                        {
-                                            <b>@line.CountedQuantity.Value.ToString("N2")</b>
-                                        }
-                                    </button>
+                                    @if (SessionSpansMultipleLocations)
+                                    {
+                                        <div class="conteos-location-group">
+                                            <span class="oi oi-map-marker" aria-hidden="true"></span>
+                                            <span><strong>@group.LocationName</strong><small>@GetLocationGroupSubtitle(group)</small></span>
+                                        </div>
+                                    }
+                                    @foreach (var line in group.Lines)
+                                    {
+                                        <button class="@GetMaterialListItemClass(line)" type="button" @onclick="() => SeleccionarLinea(line)">
+                                            <span class="conteos-material-list-state">@GetLineStateIcon(line)</span>
+                                            <span><strong>@GetMaterialTitle(line)</strong><small>@GetMaterialListSubtitle(line)</small></span>
+                                            @if (line.CountedQuantity.HasValue)
+                                            {
+                                                <b>@line.CountedQuantity.Value.ToString("N2")</b>
+                                            }
+                                        </button>
+                                    }
                                 }
                                 @if (FilteredSessionLines.Count == 0)
                                 {
@@ -402,6 +420,14 @@
                                 }
                             </div>
                             <div class="conteos-focus-body">
+                                @if (SessionSpansMultipleLocations)
+                                {
+                                    <div class="conteos-focus-location">
+                                        <span class="oi oi-map-marker" aria-hidden="true"></span>
+                                        <div><span>Ve a</span><strong>@GetLineLocationLabel(SelectedLine)</strong></div>
+                                        <b>Ubicación @CurrentLocationPosition de @CaptureLocationCount</b>
+                                    </div>
+                                }
                                 <div class="conteos-focus-heading">
                                     <span class="conteos-section-kicker">Material @CurrentLinePosition de @CaptureTotalLineCount</span>
                                     <h2 id="conteos-material-title">@materialTitle</h2>
@@ -417,6 +443,14 @@
                                     <div class="conteos-recount-instruction">
                                         <span class="oi oi-loop" aria-hidden="true"></span>
                                         <div><strong>Reconteo solicitado: @GetRecountIssueLabel(SelectedLine.RecountIssueCode)</strong><p>@SelectedLine.RecountReason</p></div>
+                                    </div>
+                                }
+
+                                @if (SelectedLine.ExpectedQuantity == 0m)
+                                {
+                                    <div class="conteos-zero-hint">
+                                        <span class="oi oi-info" aria-hidden="true"></span>
+                                        <p>El sistema dice que aquí no hay nada. Confirma con 0 o captura lo que encuentres.</p>
                                     </div>
                                 }
 
@@ -532,6 +566,10 @@
 
                     <div class="conteos-summary-grid">
                         <div><span>Materiales</span><strong>@SelectedSession.Lines.Count</strong></div>
+                        @if (SelectedSession.LocationCount > 1)
+                        {
+                            <div><span>Ubicaciones</span><strong>@SelectedSession.LocationCount</strong></div>
+                        }
                         <div><span>Sin diferencia</span><strong>@MatchingLineCount</strong></div>
                         <div class="@(VarianceLineCount > 0 ? "is-warning" : string.Empty)"><span>Con diferencia</span><strong>@VarianceLineCount</strong></div>
                         <div class="@(FlaggedLineCount > 0 ? "is-warning" : string.Empty)"><span>Con incidencia</span><strong>@FlaggedLineCount</strong></div>
@@ -566,7 +604,7 @@
                                     {
                                         <label class="conteos-recount-check"><InputCheckbox @bind-Value="recountEditor.IsSelected" /><span>Recontar</span></label>
                                     }
-                                    <div><strong>@GetMaterialTitle(line)</strong><small>@line.MaterialCode · @GetCountUnitLabel(line.BaseUnitName)</small></div>
+                                    <div><strong>@GetMaterialTitle(line)</strong><small>@line.MaterialCode · @(SelectedSession.LocationCount > 1 ? $"{GetLineLocationLabel(line)} · " : string.Empty)@GetCountUnitLabel(line.BaseUnitName)</small></div>
                                     <span class="@(line.VarianceQuantity is not null and not 0m ? "conteos-variance-label" : "conteos-ok-label")">@(line.VarianceQuantity is not null and not 0m ? FormatSignedQuantity(line.VarianceQuantity) : "Sin diferencia")</span>
                                 </header>
                                 <div class="conteos-review-quantities">
@@ -627,12 +665,124 @@
 @if (ShowCreateModal)
 {
     <div class="conteos-overlay" role="dialog" aria-modal="true" aria-labelledby="conteos-create-title">
-        <section class="conteos-dialog">
+        <section class="conteos-dialog conteos-dialog-wide">
             <header><div><span class="conteos-section-kicker">Administración</span><h2 id="conteos-create-title">Nuevo conteo</h2></div><button type="button" @onclick="CerrarCreacion" aria-label="Cerrar"><span class="oi oi-x" aria-hidden="true"></span></button></header>
+            <div class="conteos-scope-tabs" role="group" aria-label="Tipo de conteo">
+                <button type="button" class="@(IsMaterialScopeCreation ? string.Empty : "is-active")" @onclick='() => CambiarAlcanceAsync(PhysicalCountSessionScopeTypes.Location)'>
+                    <span class="oi oi-map-marker" aria-hidden="true"></span>
+                    <span><strong>Por ubicación</strong><small>Cuenta todo lo que hay en un lugar.</small></span>
+                </button>
+                <button type="button" class="@(IsMaterialScopeCreation ? "is-active" : string.Empty)" @onclick='() => CambiarAlcanceAsync(PhysicalCountSessionScopeTypes.Material)'>
+                    <span class="oi oi-tags" aria-hidden="true"></span>
+                    <span><strong>Por material</strong><small>Sigue un material por todas sus ubicaciones.</small></span>
+                </button>
+            </div>
+
             <div class="conteos-dialog-info"><span class="oi oi-info" aria-hidden="true"></span><p>Se tomará una fotografía de la existencia actual. El inventario no cambiará hasta que el conteo sea revisado, aprobado y aplicado.</p></div>
-            <label class="conteos-field"><span>Ubicación</span><select @bind="SessionCreateRequest.LocationId"><option value="0">Selecciona una ubicación</option>@foreach (var option in LocationOptions) { <option value="@option.Id">@option.Name</option> }</select></label>
+
+            @if (IsMaterialScopeCreation)
+            {
+                <div class="conteos-scope-picker">
+                    <label class="conteos-field">
+                        <span>Buscar material</span>
+                        <span class="conteos-scope-search">
+                            <input type="search" placeholder="Nombre o código, ej. 7113" @bind="ScopeMaterialSearch" @bind:event="oninput" @onkeydown="OnScopeMaterialSearchKeyDownAsync" />
+                            <button class="btn btn-outline-secondary" type="button" @onclick="BuscarMaterialesAlcanceAsync" disabled="@IsSearchingScopeMaterials">@(IsSearchingScopeMaterials ? "Buscando…" : "Buscar")</button>
+                        </span>
+                    </label>
+
+                    @if (ScopeMaterials.Count > 0)
+                    {
+                        <div class="conteos-scope-chips" aria-label="Materiales elegidos">
+                            @foreach (var material in ScopeMaterials)
+                            {
+                                <span class="conteos-scope-chip">
+                                    <span>@GetScopeMaterialTitle(material)</span>
+                                    <button type="button" @onclick="() => QuitarMaterialDelAlcanceAsync(material.Id)" aria-label="Quitar del conteo"><span class="oi oi-x" aria-hidden="true"></span></button>
+                                </span>
+                            }
+                        </div>
+                    }
+
+                    <div class="conteos-scope-results">
+                        @if (ScopeMaterialResults.Count == 0)
+                        {
+                            <p class="conteos-scope-empty">@(HasSearchedScopeMaterials ? "No encontramos materiales con existencia para esa búsqueda." : "Busca el material que quieres seguir por todas sus ubicaciones.")</p>
+                        }
+                        else
+                        {
+                            @foreach (var material in ScopeMaterialResults)
+                            {
+                                <button type="button" class="@(IsMaterialInScope(material.Id) ? "is-selected" : string.Empty)" @onclick="() => AgregarMaterialAlAlcanceAsync(material)" disabled="@IsMaterialInScope(material.Id)">
+                                    <span><strong>@GetScopeMaterialTitle(material)</strong><small>@material.MaterialCode · @(PhysicalCountScopeLabel.FormatLocationCount(material.LocationCount) ?? "sin ubicaciones") · @material.TotalQuantity.ToString("N2")</small></span>
+                                    <span class="oi @(IsMaterialInScope(material.Id) ? "oi-check" : "oi-plus")" aria-hidden="true"></span>
+                                </button>
+                            }
+                        }
+                    </div>
+                </div>
+
+                <label class="conteos-field">
+                    <span>Limitar a una ubicación <small>Opcional</small></span>
+                    <select value="@(SessionCreateRequest.LocationId?.ToString() ?? "0")" @onchange="OnScopeLocationChangedAsync">
+                        <option value="0">Todas las ubicaciones</option>
+                        @foreach (var option in LocationOptions) { <option value="@option.Id">@option.Name</option> }
+                    </select>
+                </label>
+
+                <label class="conteos-field">
+                    <span>Máximo de ubicaciones por material <small>Opcional</small></span>
+                    <input type="text" inputmode="numeric" autocomplete="off" placeholder="Todas" value="@(SessionCreateRequest.MaxLocationsPerMaterial?.ToString() ?? string.Empty)" @onchange="OnScopeMaxLocationsChangedAsync" />
+                    <small>Prioriza lo que lleva más tiempo sin contarse.</small>
+                </label>
+
+                <div class="conteos-dialog-info"><span class="oi oi-info" aria-hidden="true"></span><p>El recorrido incluye las ubicaciones donde el sistema dice cero: son justo las que hay que ir a comprobar.</p></div>
+            }
+            else
+            {
+                <label class="conteos-field">
+                    <span>Ubicación</span>
+                    <select value="@(SessionCreateRequest.LocationId?.ToString() ?? "0")" @onchange="OnScopeLocationChangedAsync">
+                        <option value="0">Selecciona una ubicación</option>
+                        @foreach (var option in LocationOptions) { <option value="@option.Id">@option.Name</option> }
+                    </select>
+                </label>
+            }
+
+            <div class="conteos-scope-preview @(HasScopeConflicts ? "has-conflicts" : string.Empty)">
+                <span class="oi @(IsLoadingScopePreview ? "oi-clock" : "oi-calculator")" aria-hidden="true"></span>
+                <div>
+                    <strong>@(IsLoadingScopePreview ? "Calculando…" : GetScopePreviewSummary())</strong>
+                    @if (ScopePreview is not null && ScopePreview.Materials.Count > 1)
+                    {
+                        <ul class="conteos-scope-breakdown">
+                            @foreach (var material in ScopePreview.Materials)
+                            {
+                                <li><span>@material.MaterialDescription</span><b>@(PhysicalCountScopeLabel.FormatLocationCount(material.LocationCount) ?? "sin ubicaciones")</b></li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+
+            @if (HasScopeConflicts && ScopePreview is not null)
+            {
+                <div class="conteos-dialog-warning">
+                    <span class="oi oi-warning" aria-hidden="true"></span>
+                    <div>
+                        <p>Estos conteos siguen abiertos sobre el mismo material y la misma ubicación. Si se aplicaran los dos, el segundo borraría el resultado del primero.</p>
+                        <ul class="conteos-scope-conflicts">
+                            @foreach (var conflict in ScopePreview.Conflicts)
+                            {
+                                <li><strong>@conflict.SessionCode</strong> · @conflict.MaterialCode en @conflict.LocationName</li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+            }
+
             <label class="conteos-field"><span>Nota <small>Opcional</small></span><InputTextArea rows="3" placeholder="Instrucciones para el equipo de conteo" @bind-Value="SessionCreateRequest.Notes" /></label>
-            <footer><button class="btn btn-outline-secondary" type="button" @onclick="CerrarCreacion">Cerrar</button><button class="btn btn-primary btn-lg" type="button" @onclick="CrearSesionAsync" disabled="@IsCreatingSession">@(IsCreatingSession ? "Creando…" : "Crear y abrir conteo")</button></footer>
+            <footer><button class="btn btn-outline-secondary" type="button" @onclick="CerrarCreacion">Cerrar</button><button class="btn btn-primary btn-lg" type="button" @onclick="CrearSesionAsync" disabled="@(!CanConfirmCreation)">@(IsCreatingSession ? "Creando…" : "Crear y abrir conteo")</button></footer>
         </section>
     </div>
 }
@@ -653,13 +803,23 @@
                 }
             </div>
             <div class="conteos-material-list">
-                @foreach (var line in FilteredSessionLines)
+                @foreach (var group in GroupedSessionLines)
                 {
-                    <button class="@GetMaterialListItemClass(line)" type="button" @onclick="() => SeleccionarLineaDesdeLista(line)">
-                        <span class="conteos-material-list-state">@GetLineStateIcon(line)</span>
-                        <span><strong>@GetMaterialTitle(line)</strong><small>@GetMaterialListSubtitle(line)</small></span>
-                        @if (line.CountedQuantity.HasValue) { <b>@line.CountedQuantity.Value.ToString("N2")</b> }
-                    </button>
+                    @if (SessionSpansMultipleLocations)
+                    {
+                        <div class="conteos-location-group">
+                            <span class="oi oi-map-marker" aria-hidden="true"></span>
+                            <span><strong>@group.LocationName</strong><small>@GetLocationGroupSubtitle(group)</small></span>
+                        </div>
+                    }
+                    @foreach (var line in group.Lines)
+                    {
+                        <button class="@GetMaterialListItemClass(line)" type="button" @onclick="() => SeleccionarLineaDesdeLista(line)">
+                            <span class="conteos-material-list-state">@GetLineStateIcon(line)</span>
+                            <span><strong>@GetMaterialTitle(line)</strong><small>@GetMaterialListSubtitle(line)</small></span>
+                            @if (line.CountedQuantity.HasValue) { <b>@line.CountedQuantity.Value.ToString("N2")</b> }
+                        </button>
+                    }
                 }
             </div>
             <footer><button class="btn btn-outline-secondary w-100" type="button" @onclick="MostrarRevisionDesdeLista">Revisar todo el conteo</button></footer>

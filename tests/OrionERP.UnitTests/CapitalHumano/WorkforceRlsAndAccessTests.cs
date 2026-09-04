@@ -107,6 +107,20 @@ public class WorkforceRlsAndAccessTests
     Assert.DoesNotContain("\"/capital-humano\"", catalog[adminSectionStart..], StringComparison.Ordinal);
   }
 
+  /// <summary>
+  /// Razor trata <c>letra@palabra.palabra</c> como una direccion de correo y lo emite
+  /// literal, asi que <c>v@p.Version</c> pintaba el texto "v@p.Version" en la columna
+  /// Version en vez del numero. Los parentesis rompen esa heuristica.
+  /// </summary>
+  [Fact]
+  public void Prenomina_PintaLaVersionYNoElTextoDeLaExpresion()
+  {
+    var page = RepoFile.Read("src/OrionERP.Web/Features/CapitalHumano/Workforce/PrenominaPage.razor");
+
+    Assert.Contains("v@(p.Version)", page, StringComparison.Ordinal);
+    Assert.DoesNotContain("v@p.Version", page, StringComparison.Ordinal);
+  }
+
   private static int CountOccurrences(string haystack, string needle)
   {
     var count = 0;

@@ -1,9 +1,19 @@
-.workforce-page {
+/* Los tokens viven en los dos contenedores raiz del modulo, no solo en uno.
+   El kiosco usa .workforce-kiosk y nunca .workforce-page: mientras las variables
+   se definieron solo aqui, dentro del kiosco var(--wf-accent) quedaba indefinida,
+   el degradado de .workforce-punch se invalidaba por completo y el boton
+   "Confirmar registro" quedaba con texto blanco sobre el panel blanco, invisible.
+   Sin ese boton no se registra la entrada ni la salida. */
+.workforce-page,
+.workforce-kiosk {
   --wf-ink: #173042;
   --wf-muted: #617383;
   --wf-accent: #087f8c;
   --wf-accent-dark: #075e67;
   --wf-warm: #f3b33d;
+}
+
+.workforce-page {
   color: var(--wf-ink);
   max-width: 1500px;
   margin: 0 auto;
@@ -93,7 +103,7 @@
 .workforce-status--warn { background: #fff3d5; color: #875a00; }
 .workforce-status--danger { background: #fee9e8; color: #a02e2a; }
 .workforce-status--muted { background: #edf2f4; color: #5b6d78; }
-.workforce-punch { min-width: min(100%, 18rem); min-height: 4.25rem; border: 0; border-radius: .9rem; padding: .8rem 1.2rem; background: linear-gradient(135deg, var(--wf-accent), var(--wf-accent-dark)); color: #fff; font-size: 1.05rem; font-weight: 800; box-shadow: 0 9px 20px rgba(8,127,140,.24); }
+.workforce-punch { min-width: min(100%, 18rem); min-height: 4.25rem; border: 0; border-radius: .9rem; padding: .8rem 1.2rem; background: linear-gradient(135deg, var(--wf-accent, #087f8c), var(--wf-accent-dark, #075e67)); color: #fff; font-size: 1.05rem; font-weight: 800; box-shadow: 0 9px 20px rgba(8,127,140,.24); }
 .workforce-punch:disabled { opacity: .55; box-shadow: none; }
 .workforce-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .workforce-filterbar {

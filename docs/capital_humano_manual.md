@@ -136,6 +136,15 @@ sequenceDiagram
   KIO->>RH: Registro con la hora del servidor
 ```
 
+El registro es de dos pasos a propósito: primero se elige el movimiento y después
+se confirma. **Ningún movimiento viene preseleccionado**, el botón de confirmar
+permanece deshabilitado hasta que se elige uno, y una vez elegido el botón dice
+exactamente qué va a enviar (`Confirmar Inicio descanso`). Al terminar cada
+registro el kiosco se limpia por completo: gafete, PIN y movimiento. Es
+deliberado, porque el kiosco lo comparte todo el personal y una selección que se
+quedara pegada haría que la siguiente persona marcara con el movimiento de la
+anterior.
+
 Puntos que conviene cuidar en la operación:
 
 - El código de vinculación es de **un solo uso** y expira. Si alguien lo gasta por

@@ -549,13 +549,13 @@
                                 @if (HasInvalidPurchaseAllocationMultiple(SelectedLine))
                                 {
                                     <div class="alert alert-warning py-2">
-                                        Cada ubicación planeada debe quedar en unidades completas de compra antes de guardar.
+                                        Cada ubicación planeada debe quedar en múltiplos de @GetPurchaseIncrementRequirement(SelectedLine) antes de guardar.
                                     </div>
                                 }
                                 else if (HasInvalidPurchaseMultiple(SelectedLine))
                                 {
                                     <div class="alert alert-warning py-2">
-                                        La cantidad total planeada debe quedar en unidades completas de compra antes de guardar.
+                                        La cantidad total planeada debe quedar en múltiplos de @GetPurchaseIncrementRequirement(SelectedLine) antes de guardar.
                                     </div>
                                 }
 

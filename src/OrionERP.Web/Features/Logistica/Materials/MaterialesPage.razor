@@ -563,7 +563,18 @@
                                                             <DecimalInput class="form-control" @bind-Value="vendorRow.LastUnitPrice" />
                                                         </div>
                                                     </div>
-                                                    <div class="col-12">
+                                                    <div class="col-md-4">
+                                                        <label class="form-label">Cómo lo vende</label>
+                                                        <select class="form-select"
+                                                                aria-label="Cómo lo vende este proveedor"
+                                                                value="@VendorPurchaseIncrementValue(vendorRow)"
+                                                                @onchange="@(args => OnVendorPurchaseIncrementChanged(vendorRow, args.Value?.ToString()))">
+                                                            <option value="">Igual que el material</option>
+                                                            <option value="1">Solo presentaciones completas</option>
+                                                            <option value="0">Se puede comprar fraccionado</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-8">
                                                         <label class="form-label">Liga de compra</label>
                                                         <div class="materiales-input-with-icon">
                                                             <i class="bi bi-link-45deg" aria-hidden="true"></i>
@@ -649,6 +660,36 @@
                                     <span>@PurchaseConversionSummary</span>
                                 </div>
                             </div>
+                            @if (CanConfigurePurchaseIncrement)
+                            {
+                                <div class="col-12">
+                                    <label class="form-label">Cómo lo vende el proveedor</label>
+                                    <div class="materiales-purchase-increment" role="radiogroup" aria-label="Cómo lo vende el proveedor">
+                                        <label class="materiales-purchase-increment-option @(BuysWholePresentationsOnly ? "is-selected" : null)" for="material-purchase-whole">
+                                            <input type="radio"
+                                                   id="material-purchase-whole"
+                                                   name="material-purchase-increment"
+                                                   checked="@BuysWholePresentationsOnly"
+                                                   @onchange="@(() => OnPurchaseIncrementChanged(true))" />
+                                            <span>
+                                                <strong>Solo presentaciones completas</strong>
+                                                <small>El proveedor solo vende la presentación cerrada, como el paquete de papel.</small>
+                                            </span>
+                                        </label>
+                                        <label class="materiales-purchase-increment-option @(BuysWholePresentationsOnly ? null : "is-selected")" for="material-purchase-fractional">
+                                            <input type="radio"
+                                                   id="material-purchase-fractional"
+                                                   name="material-purchase-increment"
+                                                   checked="@(!BuysWholePresentationsOnly)"
+                                                   @onchange="@(() => OnPurchaseIncrementChanged(false))" />
+                                            <span>
+                                                <strong>Se puede comprar fraccionado</strong>
+                                                <small>El proveedor vende fracciones de la presentación, como 1.5 kg de pollo.</small>
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                            }
 
                         </div>
                     </section>

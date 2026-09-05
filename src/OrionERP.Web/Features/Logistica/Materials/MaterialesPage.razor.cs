@@ -137,9 +137,31 @@ public partial class MaterialesPage : ComponentBase, IDisposable
         return "Define la presentación de compra para visualizar la conversión.";
       }
 
-      return $"1 {GetUnitShortName(purchaseUnit)} = {Editor.PurchaseQuantity:N2} {GetUnitShortName(baseUnit)}";
+      return $"1 {GetUnitShortName(purchaseUnit)} = {Editor.PurchaseQuantity:N2} {GetUnitShortName(baseUnit)} · {MaterialPurchaseIncrement.DescribeMode(Editor.PurchaseIncrement)}";
     }
   }
+
+  /// <summary>El escalón sólo tiene sentido cuando el material tiene presentación de compra.</summary>
+  protected bool CanConfigurePurchaseIncrement => Editor.PurchaseUnitId.HasValue;
+
+  protected bool BuysWholePresentationsOnly
+    => !MaterialPurchaseIncrement.AllowsAnyQuantity(Editor.PurchaseIncrement);
+
+  protected void OnPurchaseIncrementChanged(bool wholePresentationsOnly)
+    => Editor.PurchaseIncrement = wholePresentationsOnly
+      ? MaterialPurchaseIncrement.WholePresentation
+      : MaterialPurchaseIncrement.Fractional;
+
+  /// <summary>Escalón del proveedor como texto para el selector: vacío significa "igual que el material".</summary>
+  protected static string VendorPurchaseIncrementValue(MaterialVendorLinkRequest row)
+    => row.PurchaseIncrement.HasValue
+      ? row.PurchaseIncrement.Value.ToString(CultureInfo.InvariantCulture)
+      : string.Empty;
+
+  protected static void OnVendorPurchaseIncrementChanged(MaterialVendorLinkRequest row, string? value)
+    => row.PurchaseIncrement = decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
+      ? parsed
+      : null;
 
   protected bool CanCalculatePurchasePresentationPrice
     => Editor.PurchaseUnitId.HasValue && Editor.PurchaseQuantity > 0m;
@@ -392,6 +414,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
         Description = detail.Description,
         BaseUnitId = detail.BaseUnitId,
         PurchaseQuantity = detail.PurchaseQuantity,
+        PurchaseIncrement = detail.PurchaseIncrement,
         PurchaseUnitId = detail.PurchaseUnitId,
         BaseUnitPrice = detail.BaseUnitPrice,
         Brand = detail.Brand,
@@ -914,6 +937,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
       VendorCode = vendor.VendorCode,
       PurchaseQuantity = vendor.PurchaseQuantity,
       PurchaseUnitId = vendor.PurchaseUnitId,
+      PurchaseIncrement = vendor.PurchaseIncrement,
       PurchaseLink = vendor.PurchaseLink,
       LastUnitPrice = vendor.LastUnitPrice,
       Notes = vendor.Notes
@@ -1703,6 +1727,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     => new()
     {
       PurchaseQuantity = 1m,
+      PurchaseIncrement = MaterialPurchaseIncrement.WholePresentation,
       MaterialClass = "Consumable",
       Status = "ACTIVO",
       ProductionRole = MaterialProductionRoles.PurchasedInput,

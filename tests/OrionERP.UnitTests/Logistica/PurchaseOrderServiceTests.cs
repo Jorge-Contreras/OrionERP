@@ -1123,6 +1123,202 @@ public class PurchaseOrderServiceTests
   }
 
   [Fact]
+  public async Task SaveDraftAsync_AcceptsFractionalQuantity_WhenTheVendorSellsFractions()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM logistica.Material m", StringComparison.Ordinal))
+        {
+          // Pollo: se controla en gramos, el proveedor lo vende por kilo y despacha 1.5 kg.
+          return CreateMaterialRowsTable(
+            new MaterialTestRow(61, "MAT-000061", "Pollo", "PO-KG", "Gramo", "Kilo", 1000m, 0.09m, PurchaseIncrement: 0m));
+        }
+
+        if (commandText.Contains("FROM logistica.Location l", StringComparison.Ordinal))
+        {
+          return CreateLocationRowsTable(new LocationTestRow(4, "Cocina", "LOC-000004"));
+        }
+
+        return new DataTable();
+      },
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
+        {
+          return true;
+        }
+
+        return 501;
+      }
+    };
+
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.SaveDraftAsync(new PurchaseOrderUpsertRequest
+    {
+      BusinessPartnerId = 7,
+      OrderDate = new DateTime(2026, 9, 5),
+      Lines =
+      [
+        new PurchaseOrderLineUpsertRequest
+        {
+          MaterialId = 61,
+          PurchaseQuantitySnapshot = 1000m,
+          PurchaseUnitNameSnapshot = "Kilo",
+          PurchaseIncrementSnapshot = 0m,
+          Allocations =
+          [
+            new PurchaseOrderAllocationUpsertRequest { LocationId = 4, PlannedQuantity = 1500m }
+          ]
+        }
+      ]
+    }, "Ana");
+
+    Assert.True(result.Success, result.Message);
+
+    var lineInsert = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO logistica.PurchaseOrderLine", StringComparison.Ordinal)
+      && !command.CommandText.Contains("PurchaseOrderLineAllocation", StringComparison.Ordinal));
+    AssertParameter(lineInsert.Parameters, "@OrderedQuantity", 1500m);
+    AssertParameter(lineInsert.Parameters, "@PurchaseIncrementSnapshot", 0m);
+  }
+
+  [Fact]
+  public async Task SaveDraftAsync_Fails_WhenTheSameMaterialOnlySellsWholePresentations()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM logistica.Material m", StringComparison.Ordinal))
+        {
+          return CreateMaterialRowsTable(
+            new MaterialTestRow(61, "MAT-000061", "Pollo", "PO-KG", "Gramo", "Kilo", 1000m, 0.09m));
+        }
+
+        if (commandText.Contains("FROM logistica.Location l", StringComparison.Ordinal))
+        {
+          return CreateLocationRowsTable(new LocationTestRow(4, "Cocina", "LOC-000004"));
+        }
+
+        return new DataTable();
+      },
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
+        {
+          return true;
+        }
+
+        return null;
+      }
+    };
+
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.SaveDraftAsync(new PurchaseOrderUpsertRequest
+    {
+      BusinessPartnerId = 7,
+      OrderDate = new DateTime(2026, 9, 5),
+      Lines =
+      [
+        new PurchaseOrderLineUpsertRequest
+        {
+          MaterialId = 61,
+          PurchaseQuantitySnapshot = 1000m,
+          PurchaseUnitNameSnapshot = "Kilo",
+          Allocations =
+          [
+            new PurchaseOrderAllocationUpsertRequest { LocationId = 4, PlannedQuantity = 1500m }
+          ]
+        }
+      ]
+    }, "Ana");
+
+    Assert.False(result.Success);
+    Assert.Contains("debe ser múltiplo", result.Message, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO logistica.PurchaseOrder", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public async Task CreateAutoDraftAsync_OrdersTheRawNeed_WhenTheVendorSellsFractions()
+  {
+    var nextLineId = 601;
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM logistica.StockBalance sb", StringComparison.Ordinal))
+        {
+          return CreateAutoPurchaseCandidateTable(
+            new AutoCandidateTestRow(
+              MaterialId: 61,
+              MaterialCode: "MAT-000061",
+              MaterialDescription: "Pollo",
+              PurchaseQuantity: 1000m,
+              BaseUnitPrice: 0.09m,
+              LocationId: 4,
+              LocationName: "Cocina",
+              RawNeedQuantity: 1370m,
+              CurrentQuantity: 630m,
+              MinQuantity: 1000m,
+              MaxQuantity: 2000m,
+              RemainingOpenQuantity: 0m,
+              ProjectedQuantity: 630m,
+              VendorCode: "PO-KG",
+              BaseUnitName: "Gramo",
+              PurchaseUnitName: "Kilo",
+              LocationCode: "LOC-000004",
+              PurchaseIncrement: 0m));
+        }
+
+        if (commandText.Contains("FROM logistica.Material m", StringComparison.Ordinal))
+        {
+          return CreateMaterialRowsTable(
+            new MaterialTestRow(61, "MAT-000061", "Pollo", "PO-KG", "Gramo", "Kilo", 1000m, 0.09m, PurchaseIncrement: 0m));
+        }
+
+        if (commandText.Contains("FROM logistica.Location l", StringComparison.Ordinal))
+        {
+          return CreateLocationRowsTable(new LocationTestRow(4, "Cocina", "LOC-000004"));
+        }
+
+        return new DataTable();
+      },
+      ScalarResultFactory = (commandText, _) =>
+      {
+        if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
+        {
+          return true;
+        }
+
+        if (commandText.Contains("INSERT INTO logistica.PurchaseOrderLine", StringComparison.Ordinal))
+        {
+          return nextLineId++;
+        }
+
+        return 701;
+      }
+    };
+
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.CreateAutoDraftAsync(new AutoPurchaseOrderCreateRequest
+    {
+      BusinessPartnerId = 7,
+      OrderDate = new DateTime(2026, 9, 5)
+    }, "Ana");
+
+    Assert.True(result.Success, result.Message);
+
+    var lineInsert = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("INSERT INTO logistica.PurchaseOrderLine", StringComparison.Ordinal)
+      && !command.CommandText.Contains("PurchaseOrderLineAllocation", StringComparison.Ordinal));
+    AssertParameter(lineInsert.Parameters, "@OrderedQuantity", 1370m);
+    AssertParameter(lineInsert.Parameters, "@PurchaseIncrementSnapshot", 0m);
+  }
+
+  [Fact]
   public async Task SaveDraftAsync_Fails_WhenLineTotalIsNotWholePurchaseMultiple()
   {
     var connection = new FakeQueryDbConnection
@@ -1552,6 +1748,7 @@ public class PurchaseOrderServiceTests
     table.Columns.Add("BaseUnitName", typeof(string));
     table.Columns.Add("PurchaseUnitName", typeof(string));
     table.Columns.Add("PurchaseQuantity", typeof(decimal));
+    table.Columns.Add("PurchaseIncrement", typeof(decimal));
     table.Columns.Add("BaseUnitPrice", typeof(decimal));
     table.Columns.Add("LocationId", typeof(int));
     table.Columns.Add("LocationName", typeof(string));
@@ -1573,6 +1770,7 @@ public class PurchaseOrderServiceTests
         row.BaseUnitName,
         row.PurchaseUnitName,
         row.PurchaseQuantity,
+        row.PurchaseIncrement,
         row.BaseUnitPrice,
         row.LocationId,
         row.LocationName,
@@ -1598,6 +1796,7 @@ public class PurchaseOrderServiceTests
     table.Columns.Add("BaseUnitName", typeof(string));
     table.Columns.Add("PurchaseUnitName", typeof(string));
     table.Columns.Add("PurchaseQuantity", typeof(decimal));
+    table.Columns.Add("PurchaseIncrement", typeof(decimal));
     table.Columns.Add("BaseUnitPrice", typeof(decimal));
 
     foreach (var row in rows)
@@ -1610,6 +1809,7 @@ public class PurchaseOrderServiceTests
         row.BaseUnitName,
         row.PurchaseUnitName,
         row.PurchaseQuantity,
+        row.PurchaseIncrement,
         row.BaseUnitPrice);
     }
 
@@ -1648,7 +1848,8 @@ public class PurchaseOrderServiceTests
     string VendorCode = "TP-24",
     string BaseUnitName = "Pieza",
     string PurchaseUnitName = "Paquete",
-    string LocationCode = "LOC");
+    string LocationCode = "LOC",
+    decimal PurchaseIncrement = 1m);
 
   private sealed record MaterialTestRow(
     int Id,
@@ -1658,7 +1859,8 @@ public class PurchaseOrderServiceTests
     string? BaseUnitName,
     string? PurchaseUnitName,
     decimal PurchaseQuantity,
-    decimal? BaseUnitPrice);
+    decimal? BaseUnitPrice,
+    decimal PurchaseIncrement = 1m);
 
   private sealed record LocationTestRow(int Id, string LocationName, string LocationCode);
   private sealed record RoomLookupTestRow(int Id, string Name, string Code);

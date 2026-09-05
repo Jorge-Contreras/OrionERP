@@ -1244,6 +1244,64 @@
   color: var(--materials-accent);
 }
 
+.materiales-purchase-increment {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.materiales-purchase-increment-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid rgba(31, 138, 174, 0.16);
+  border-radius: 0.75rem;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.materiales-purchase-increment-option:hover {
+  border-color: rgba(31, 138, 174, 0.36);
+  background: rgba(31, 138, 174, 0.04);
+}
+
+.materiales-purchase-increment-option.is-selected {
+  border-color: var(--materials-accent);
+  background: rgba(31, 138, 174, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(31, 138, 174, 0.18);
+}
+
+.materiales-purchase-increment-option:focus-within {
+  outline: 2px solid rgba(31, 138, 174, 0.45);
+  outline-offset: 2px;
+}
+
+.materiales-purchase-increment-option input[type="radio"] {
+  margin-top: 0.18rem;
+  accent-color: var(--materials-accent);
+  flex: none;
+}
+
+.materiales-purchase-increment-option span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.materiales-purchase-increment-option strong {
+  font-size: 0.79rem;
+  font-weight: 600;
+  color: #27526a;
+}
+
+.materiales-purchase-increment-option small {
+  font-size: 0.72rem;
+  color: var(--materials-muted);
+}
+
 .materiales-input-with-icon {
   position: relative;
 }

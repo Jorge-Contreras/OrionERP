@@ -131,6 +131,26 @@ public class MaterialesPageUxTests
     Assert.Contains("versionInfo.[Status] IN ('Draft', 'Active')", service, StringComparison.Ordinal);
   }
 
+  [Fact]
+  public void Page_LetsTheUserSayWhetherThePresentationIsSoldWhole()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor");
+    var codeBehind = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor.cs");
+
+    Assert.Contains("material-purchase-whole", page, StringComparison.Ordinal);
+    Assert.Contains("material-purchase-fractional", page, StringComparison.Ordinal);
+    Assert.Contains("Solo presentaciones completas", page, StringComparison.Ordinal);
+    Assert.Contains("Se puede comprar fraccionado", page, StringComparison.Ordinal);
+
+    // El escalón sólo se ofrece cuando el material tiene presentación de compra.
+    Assert.Contains("CanConfigurePurchaseIncrement", page, StringComparison.Ordinal);
+    Assert.Contains("OnPurchaseIncrementChanged", codeBehind, StringComparison.Ordinal);
+
+    // Cada proveedor puede sobreescribir el modo del material.
+    Assert.Contains("OnVendorPurchaseIncrementChanged", page, StringComparison.Ordinal);
+    Assert.Contains("Igual que el material", page, StringComparison.Ordinal);
+  }
+
   private static string ReadRepoFile(string relativePath)
   {
     var current = new DirectoryInfo(AppContext.BaseDirectory);

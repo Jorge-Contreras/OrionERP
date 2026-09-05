@@ -220,6 +220,53 @@ public class MaterialVendorLinkTests
         < migration.IndexOf("ALTER TABLE logistica.Material DROP COLUMN BusinessPartnerId", StringComparison.Ordinal));
   }
 
+  [Fact]
+  public async Task SaveMaterialAsync_LetsAVendorOverrideThePurchaseIncrement()
+  {
+    var connection = CreateConnection(scopedPartnerCount: 2);
+    var service = new MaterialService(new FakeQueryConnectionFactory(connection));
+
+    // El habitual vende el pollo por kilos cerrados; el otro despacha fracciones.
+    var result = await service.SaveMaterialAsync(CreateRequest(
+    [
+      new MaterialVendorLinkRequest { BusinessPartnerId = 11, IsPrimary = true, PurchaseIncrement = MaterialPurchaseIncrement.WholePresentation },
+      new MaterialVendorLinkRequest { BusinessPartnerId = 22, PurchaseIncrement = MaterialPurchaseIncrement.Fractional }
+    ]));
+
+    Assert.True(result.Success);
+
+    var upserts = connection.ExecutedCommands
+      .Where(command => command.CommandText.Contains("MERGE logistica.MaterialVendor", StringComparison.Ordinal))
+      .ToList();
+
+    Assert.Equal(2, upserts.Count);
+    Assert.All(upserts, command => Assert.Contains("PurchaseIncrement = @PurchaseIncrement", command.CommandText, StringComparison.Ordinal));
+    Assert.Contains(upserts[0].Parameters, parameter => parameter.Name.TrimStart('@') == "PurchaseIncrement" && Equals(parameter.Value, 1m));
+    Assert.Contains(upserts[1].Parameters, parameter => parameter.Name.TrimStart('@') == "PurchaseIncrement" && Equals(parameter.Value, 0m));
+  }
+
+  [Fact]
+  public async Task SaveMaterialAsync_LeavesTheVendorIncrementNull_WhenItInheritsFromTheMaterial()
+  {
+    var connection = CreateConnection(scopedPartnerCount: 1);
+    var service = new MaterialService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.SaveMaterialAsync(CreateRequest(
+    [
+      new MaterialVendorLinkRequest { BusinessPartnerId = 11, IsPrimary = true }
+    ]));
+
+    Assert.True(result.Success);
+
+    var upsert = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("MERGE logistica.MaterialVendor", StringComparison.Ordinal));
+
+    Assert.Contains(
+      upsert.Parameters,
+      parameter => parameter.Name.TrimStart('@') == "PurchaseIncrement" && parameter.Value is null or DBNull);
+  }
+
   private static MaterialUpsertRequest CreateRequest(List<MaterialVendorLinkRequest>? vendors)
     => new()
     {

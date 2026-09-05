@@ -264,6 +264,7 @@ public partial class ComprasPage : ComponentBase
           BaseUnitName = line.BaseUnitName,
           PurchaseQuantity = NormalizePurchaseQuantity(line.PurchaseQuantity),
           PurchaseUnitName = line.PurchaseUnitName,
+          PurchaseIncrement = MaterialPurchaseIncrement.Normalize(line.PurchaseIncrement),
           BaseUnitPrice = line.BaseUnitPrice,
           ReceivedQuantity = line.ReceivedQuantity,
           Allocations = line.Allocations
@@ -439,6 +440,7 @@ public partial class ComprasPage : ComponentBase
         BaseUnitName = detail.BaseUnitName ?? item.BaseUnitName,
         PurchaseQuantity = NormalizePurchaseQuantity(vendorLink?.PurchaseQuantity ?? detail.PurchaseQuantity),
         PurchaseUnitName = vendorLink?.PurchaseUnitName ?? detail.PurchaseUnitName,
+        PurchaseIncrement = MaterialPurchaseIncrement.Normalize(vendorLink?.PurchaseIncrement ?? detail.PurchaseIncrement),
         BaseUnitPrice = vendorLink?.LastUnitPrice ?? detail.BaseUnitPrice,
         ReceivedQuantity = 0
       };
@@ -1038,16 +1040,15 @@ public partial class ComprasPage : ComponentBase
       : null;
 
   protected bool HasInvalidPurchaseMultiple(EditablePurchaseLine line)
-    => RequiresWholePurchaseMultiple(line.PurchaseQuantity, line.PurchaseUnitName)
-      && !IsWholePurchaseMultiple(line.OrderedQuantity, line.PurchaseQuantity, line.PurchaseUnitName);
+    => !MaterialPurchaseIncrement.IsValidQuantity(
+      line.OrderedQuantity, line.PurchaseQuantity, line.PurchaseUnitName, line.PurchaseIncrement);
 
   protected bool HasInvalidPurchaseAllocationMultiple(EditablePurchaseLine line)
-    => RequiresWholePurchaseMultiple(line.PurchaseQuantity, line.PurchaseUnitName)
-      && line.Allocations.Any(allocation => !IsWholePurchaseMultiple(allocation.PlannedQuantity, line.PurchaseQuantity, line.PurchaseUnitName));
+    => line.Allocations.Any(allocation => HasInvalidPurchaseAllocationMultiple(line, allocation));
 
   protected bool HasInvalidPurchaseAllocationMultiple(EditablePurchaseLine line, EditablePurchaseAllocation allocation)
-    => RequiresWholePurchaseMultiple(line.PurchaseQuantity, line.PurchaseUnitName)
-      && !IsWholePurchaseMultiple(allocation.PlannedQuantity, line.PurchaseQuantity, line.PurchaseUnitName);
+    => !MaterialPurchaseIncrement.IsValidQuantity(
+      allocation.PlannedQuantity, line.PurchaseQuantity, line.PurchaseUnitName, line.PurchaseIncrement);
 
   protected bool HasInvalidPurchasePackConfiguration(EditablePurchaseLine line)
     => HasInvalidPurchaseMultiple(line) || HasInvalidPurchaseAllocationMultiple(line);
@@ -1079,6 +1080,15 @@ public partial class ComprasPage : ComponentBase
     AutoPoSelectedRoomIds.Clear();
   }
 
+  /// <summary>El escalón del renglón en palabras: "24.00 Rollo por Paquete", "1 Kilo".</summary>
+  protected string GetPurchaseIncrementRequirement(EditablePurchaseLine line)
+    => MaterialPurchaseIncrement.DescribeRequirement(
+      line.BaseUnitName,
+      line.PurchaseUnitName,
+      line.PurchaseQuantity,
+      line.PurchaseIncrement,
+      CultureInfo.CurrentCulture);
+
   protected string? GetPurchaseAllocationValidationMessage(EditablePurchaseLine line, EditablePurchaseAllocation allocation)
   {
     if (!HasInvalidPurchaseAllocationMultiple(line, allocation))
@@ -1086,14 +1096,11 @@ public partial class ComprasPage : ComponentBase
       return null;
     }
 
-    var purchaseUnitName = string.IsNullOrWhiteSpace(line.PurchaseUnitName)
-      ? "unidad de compra"
-      : line.PurchaseUnitName.Trim();
     var locationLabel = string.IsNullOrWhiteSpace(allocation.LocationCode)
       ? allocation.LocationName
       : allocation.LocationCode;
 
-    return $"{locationLabel}: ajusta la cantidad a unidades completas de compra en {purchaseUnitName}.";
+    return $"{locationLabel}: ajusta la cantidad a múltiplos de {GetPurchaseIncrementRequirement(line)}.";
   }
 
   private async Task LoadOrdersAsync()
@@ -1131,6 +1138,7 @@ public partial class ComprasPage : ComponentBase
           BaseUnitPrice = line.BaseUnitPrice,
           PurchaseQuantitySnapshot = NormalizePurchaseQuantity(line.PurchaseQuantity),
           PurchaseUnitNameSnapshot = line.PurchaseUnitName,
+          PurchaseIncrementSnapshot = MaterialPurchaseIncrement.Normalize(line.PurchaseIncrement),
           Allocations = line.Allocations
             .Select(allocation => new PurchaseOrderAllocationUpsertRequest
             {
@@ -1215,22 +1223,6 @@ public partial class ComprasPage : ComponentBase
   private static decimal NormalizePurchaseQuantity(decimal value)
     => value > 0m ? value : 1m;
 
-  private static bool RequiresWholePurchaseMultiple(decimal purchaseQuantity, string? purchaseUnitName)
-    => NormalizePurchaseQuantity(purchaseQuantity) > 1m
-      || !string.IsNullOrWhiteSpace(purchaseUnitName);
-
-  private static bool IsWholePurchaseMultiple(decimal quantity, decimal purchaseQuantity, string? purchaseUnitName)
-  {
-    var normalizedPurchaseQuantity = NormalizePurchaseQuantity(purchaseQuantity);
-    if (!RequiresWholePurchaseMultiple(normalizedPurchaseQuantity, purchaseUnitName))
-    {
-      return true;
-    }
-
-    var quotient = quantity / normalizedPurchaseQuantity;
-    return quotient == decimal.Truncate(quotient);
-  }
-
   private static string FormatQuantity(decimal value)
     => value.ToString("N2", CultureInfo.CurrentCulture);
 
@@ -1268,6 +1260,10 @@ public partial class ComprasPage : ComponentBase
     public string? BaseUnitName { get; set; }
     public decimal PurchaseQuantity { get; set; } = 1m;
     public string? PurchaseUnitName { get; set; }
+
+    /// <summary>Escalón mínimo de compra vigente para este renglón. Ver <see cref="MaterialPurchaseIncrement"/>.</summary>
+    public decimal PurchaseIncrement { get; set; } = MaterialPurchaseIncrement.WholePresentation;
+
     public decimal? BaseUnitPrice { get; set; }
     public decimal ReceivedQuantity { get; set; }
     public List<EditablePurchaseAllocation> Allocations { get; set; } = [];

@@ -71,6 +71,10 @@ public sealed class MaterialDetailDto
   public int BaseUnitId { get; set; }
   public string? BaseUnitName { get; set; }
   public decimal PurchaseQuantity { get; set; }
+
+  /// <summary>Escalón mínimo de compra en unidades de compra: 1 = presentaciones completas, 0 = fraccionable.</summary>
+  public decimal PurchaseIncrement { get; set; } = MaterialPurchaseIncrement.WholePresentation;
+
   public int? PurchaseUnitId { get; set; }
   public string? PurchaseUnitName { get; set; }
   public decimal? BaseUnitPrice { get; set; }
@@ -121,6 +125,10 @@ public sealed class MaterialVendorLinkDto
   public decimal? PurchaseQuantity { get; set; }
   public int? PurchaseUnitId { get; set; }
   public string? PurchaseUnitName { get; set; }
+
+  /// <summary>Escalón propio del proveedor. En <c>null</c> hereda el del material.</summary>
+  public decimal? PurchaseIncrement { get; set; }
+
   public string? PurchaseLink { get; set; }
   public decimal? LastUnitPrice { get; set; }
   public DateTime? LastPurchaseDate { get; set; }
@@ -143,6 +151,11 @@ public sealed class MaterialVendorLinkRequest
   public decimal? PurchaseQuantity { get; set; }
 
   public int? PurchaseUnitId { get; set; }
+
+  /// <summary>En <c>null</c> el proveedor hereda el escalón del material.</summary>
+  [Range(typeof(decimal), "0", "999999999", ErrorMessage = "El escalón de compra no puede ser negativo.")]
+  public decimal? PurchaseIncrement { get; set; }
+
   public string? PurchaseLink { get; set; }
 
   [Range(typeof(decimal), "0", "999999999", ErrorMessage = "El precio no puede ser negativo.")]
@@ -170,6 +183,13 @@ public sealed class MaterialUpsertRequest
   public decimal PurchaseQuantity { get; set; } = 1m;
 
   public int? PurchaseUnitId { get; set; }
+
+  /// <summary>
+  /// Escalón mínimo de compra en unidades de compra: <c>1</c> obliga a presentaciones completas y
+  /// <c>0</c> permite fracciones. Ver <see cref="MaterialPurchaseIncrement"/>.
+  /// </summary>
+  [Range(typeof(decimal), "0", "999999999", ErrorMessage = "El escalón de compra no puede ser negativo.")]
+  public decimal PurchaseIncrement { get; set; } = MaterialPurchaseIncrement.WholePresentation;
 
   [Range(typeof(decimal), "0", "999999999", ErrorMessage = "El precio por unidad base no puede ser negativo.")]
   public decimal? BaseUnitPrice { get; set; }

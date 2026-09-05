@@ -71,10 +71,11 @@
 
                 <div class="materiales-search-shell">
                     <i class="bi bi-search" aria-hidden="true"></i>
-                    <input type="search"
+                    <input @key="SearchBoxKey"
+                           type="search"
                            autocomplete="off"
                            placeholder="Nombre, código, barras o código de proveedor"
-                           value="@Filter.SearchText"
+                           value="@SearchBoxValue"
                            aria-label="Buscar materiales"
                            @oninput="OnSearchInput"
                            @onkeyup="OnSearchKeyUpAsync" />

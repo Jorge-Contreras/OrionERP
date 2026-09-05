@@ -73,6 +73,9 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     => string.Equals(DeletionConfirmationText, "Delete", StringComparison.Ordinal);
 
   private CancellationTokenSource? _listRequestCts;
+
+  protected string SearchBoxValue { get; set; } = string.Empty;
+  protected int SearchBoxKey { get; set; }
   private CancellationTokenSource? _lifecycleAssessmentCts;
   private CancellationTokenSource? _inventoryRequestCts;
   private CancellationTokenSource? _movementRequestCts;
@@ -244,9 +247,21 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     }
   }
 
+  // The value attribute is intentionally rendered from SearchBoxValue instead of
+  // Filter.SearchText: while the user types we keep it frozen so the render that
+  // follows each keystroke never writes a stale value back into the input and eats
+  // characters. Programmatic changes go through SetSearchText, which bumps
+  // SearchBoxKey to force the input to be re-created with the new value.
   protected void OnSearchInput(ChangeEventArgs args)
   {
     Filter.SearchText = args.Value?.ToString();
+  }
+
+  protected void SetSearchText(string? value)
+  {
+    Filter.SearchText = value;
+    SearchBoxValue = value ?? string.Empty;
+    SearchBoxKey++;
   }
 
   protected async Task OnSearchKeyUpAsync(KeyboardEventArgs args)
@@ -259,7 +274,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
 
   protected async Task ClearSearchAsync()
   {
-    Filter.SearchText = null;
+    SetSearchText(null);
     await BuscarAsync();
   }
 
@@ -314,6 +329,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   protected async Task ResetFiltersAsync()
   {
     Filter = new MaterialFilter();
+    SetSearchText(null);
     await BuscarAsync();
   }
 

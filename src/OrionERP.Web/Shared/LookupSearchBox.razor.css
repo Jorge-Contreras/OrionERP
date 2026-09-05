@@ -1,0 +1,18 @@
+.lookup-search-box {
+  position: relative;
+}
+
+.lookup-search-box-list {
+  position: absolute;
+  z-index: 1060;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 16rem;
+  overflow-y: auto;
+  margin-top: .125rem;
+}
+
+.lookup-search-box-list .list-group-item {
+  cursor: pointer;
+}

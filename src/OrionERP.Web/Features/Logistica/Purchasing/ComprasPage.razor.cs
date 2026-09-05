@@ -393,6 +393,22 @@ public partial class ComprasPage : ComponentBase
   /// <summary>Cambiar de proveedor invalida la lista: era el catálogo del proveedor anterior.</summary>
   protected void OnVendorChanged() => ResetMaterialSearch();
 
+  /// <summary>La caja de búsqueda entrega el id elegido; el editor guarda 0 cuando no hay proveedor.</summary>
+  protected Task OnEditorVendorSelectedAsync(int vendorId)
+  {
+    Editor.BusinessPartnerId = vendorId;
+    OnVendorChanged();
+
+    return Task.CompletedTask;
+  }
+
+  /// <summary>El filtro usa nulo para "todos"; la caja de búsqueda usa 0.</summary>
+  protected int FilterVendorId
+  {
+    get => Filter.VendorId ?? 0;
+    set => Filter.VendorId = value == 0 ? null : value;
+  }
+
   /// <summary>Deja la búsqueda en su alcance de arranque: sólo lo que surte el proveedor.</summary>
   private void ResetMaterialSearch()
   {

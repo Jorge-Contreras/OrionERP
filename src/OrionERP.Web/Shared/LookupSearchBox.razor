@@ -1,0 +1,202 @@
+@using OrionERP.Application.Features.Logistica.Shared
+
+@* Caja de búsqueda para catálogos de lookup. Sustituye al <select> cuando la lista es
+   larga: el usuario teclea parte del nombre o del código en lugar de recorrer el desplegable. *@
+<div class="lookup-search-box @(IsOpen ? "is-open" : null)">
+  <div class="input-group">
+    <input class="form-control @CssClass"
+           type="search"
+           role="combobox"
+           aria-expanded="@IsOpen"
+           autocomplete="off"
+           spellcheck="false"
+           placeholder="@Placeholder"
+           disabled="@Disabled"
+           value="@Text"
+           @oninput="OnInputAsync"
+           @onfocusin="OnFocusIn"
+           @onfocusout="OnFocusOut"
+           @onkeydown="OnKeyDownAsync" />
+    @if (Value != 0 && !Disabled)
+    {
+      <button class="btn btn-outline-secondary"
+              type="button"
+              title="Limpiar selección"
+              @onmousedown:preventDefault="true"
+              @onclick="ClearAsync">
+        &times;
+      </button>
+    }
+  </div>
+
+  @if (IsOpen)
+  {
+    <ul class="lookup-search-box-list list-group shadow-sm">
+      @if (Matches.Count == 0)
+      {
+        <li class="list-group-item text-muted small">Sin coincidencias.</li>
+      }
+      else
+      {
+        @for (var index = 0; index < Matches.Count; index++)
+        {
+          var position = index;
+          var option = Matches[position];
+          <li class="list-group-item list-group-item-action @(position == HighlightIndex ? "active" : null)"
+              @onmousedown:preventDefault="true"
+              @onclick="() => SelectAsync(option)">
+            <span>@option.Name</span>
+            @if (!string.IsNullOrWhiteSpace(option.Code))
+            {
+              <span class="small ms-2 opacity-75">@option.Code</span>
+            }
+          </li>
+        }
+
+        @if (HasMoreMatches)
+        {
+          <li class="list-group-item text-muted small">Escribe más para acotar la lista.</li>
+        }
+      }
+    </ul>
+  }
+</div>
+
+@code {
+  private const int MaxMatches = 50;
+
+  private string Text = string.Empty;
+  private bool IsEditing;
+  private bool IsOpen;
+  private int HighlightIndex;
+  private List<LookupOptionDto> Matches = [];
+  private bool HasMoreMatches;
+
+  /// <summary>Catálogo completo del que se elige; el filtrado ocurre en memoria.</summary>
+  [Parameter] public IReadOnlyList<LookupOptionDto> Options { get; set; } = [];
+
+  /// <summary>Id seleccionado; 0 significa que no hay selección.</summary>
+  [Parameter] public int Value { get; set; }
+
+  [Parameter] public EventCallback<int> ValueChanged { get; set; }
+
+  [Parameter] public string Placeholder { get; set; } = "Busca por nombre o código";
+
+  [Parameter] public bool Disabled { get; set; }
+
+  /// <summary>Clases extra para el input, por ejemplo <c>form-control-sm</c>.</summary>
+  [Parameter] public string? CssClass { get; set; }
+
+  protected override void OnParametersSet()
+  {
+    if (IsEditing)
+    {
+      return;
+    }
+
+    Text = SelectedName();
+  }
+
+  private string SelectedName()
+    => Options.FirstOrDefault(option => option.Id == Value)?.Name ?? string.Empty;
+
+  private void OnFocusIn()
+  {
+    if (Disabled)
+    {
+      return;
+    }
+
+    // Al entrar al campo el texto seleccionado estorba: se limpia para teclear de nuevo,
+    // y si el usuario sale sin elegir nada se restaura en OnFocusOut.
+    IsEditing = true;
+    Text = string.Empty;
+    UpdateMatches(string.Empty);
+    IsOpen = true;
+  }
+
+  private void OnFocusOut()
+  {
+    IsEditing = false;
+    IsOpen = false;
+    Text = SelectedName();
+  }
+
+  private Task OnInputAsync(ChangeEventArgs args)
+  {
+    IsEditing = true;
+    Text = args.Value?.ToString() ?? string.Empty;
+    UpdateMatches(Text);
+    IsOpen = true;
+
+    return Task.CompletedTask;
+  }
+
+  private async Task OnKeyDownAsync(KeyboardEventArgs args)
+  {
+    switch (args.Key)
+    {
+      case "ArrowDown":
+        IsOpen = true;
+        HighlightIndex = Matches.Count == 0 ? 0 : Math.Min(HighlightIndex + 1, Matches.Count - 1);
+        break;
+      case "ArrowUp":
+        HighlightIndex = Math.Max(HighlightIndex - 1, 0);
+        break;
+      case "Enter":
+        if (IsOpen && HighlightIndex < Matches.Count)
+        {
+          await SelectAsync(Matches[HighlightIndex]);
+        }
+
+        break;
+      case "Escape":
+        IsOpen = false;
+        IsEditing = false;
+        Text = SelectedName();
+        break;
+    }
+  }
+
+  private async Task SelectAsync(LookupOptionDto option)
+  {
+    IsEditing = false;
+    IsOpen = false;
+    Text = option.Name;
+
+    if (option.Id != Value)
+    {
+      Value = option.Id;
+      await ValueChanged.InvokeAsync(option.Id);
+    }
+  }
+
+  private async Task ClearAsync()
+  {
+    IsEditing = false;
+    IsOpen = false;
+    Text = string.Empty;
+    UpdateMatches(string.Empty);
+
+    if (Value != 0)
+    {
+      Value = 0;
+      await ValueChanged.InvokeAsync(0);
+    }
+  }
+
+  private void UpdateMatches(string term)
+  {
+    var trimmed = term.Trim();
+    var source = string.IsNullOrEmpty(trimmed)
+      ? Options
+      : Options.Where(option => Contains(option.Name, trimmed) || Contains(option.Code, trimmed)).ToList();
+
+    Matches = source.Take(MaxMatches).ToList();
+    HasMoreMatches = source.Count > Matches.Count;
+    HighlightIndex = 0;
+  }
+
+  private static bool Contains(string? value, string term)
+    => !string.IsNullOrWhiteSpace(value) && value.Contains(term, StringComparison.OrdinalIgnoreCase);
+}

@@ -83,13 +83,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Proveedor</label>
-                            <select class="form-select" @bind="Filter.VendorId">
-                                <option value="">Todos</option>
-                                @foreach (var vendor in VendorOptions)
-                                {
-                                    <option value="@vendor.Id">@vendor.Name</option>
-                                }
-                            </select>
+                            <LookupSearchBox Options="VendorOptions" @bind-Value="FilterVendorId" Placeholder="Todos" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Estado</label>
@@ -223,13 +217,11 @@
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label">Proveedor</label>
-                                <InputSelect class="form-select" @bind-Value="Editor.BusinessPartnerId" @bind-Value:after="OnVendorChanged" disabled="@(!CanEditVendor)">
-                                    <option value="0">Selecciona un proveedor</option>
-                                    @foreach (var vendor in VendorOptions)
-                                    {
-                                        <option value="@vendor.Id">@vendor.Name</option>
-                                    }
-                                </InputSelect>
+                                <LookupSearchBox Options="VendorOptions"
+                                                 Value="Editor.BusinessPartnerId"
+                                                 ValueChanged="OnEditorVendorSelectedAsync"
+                                                 Placeholder="Busca un proveedor"
+                                                 Disabled="@(!CanEditVendor)" />
                                 @if (!CanEditVendor)
                                 {
                                     <div class="form-text">El proveedor se bloquea cuando ya existen materiales en la orden.</div>
@@ -885,13 +877,10 @@
 
                     <div class="mb-3">
                         <label class="form-label">Proveedor</label>
-                        <select class="form-select" @bind="AutoPoRequest.BusinessPartnerId">
-                            <option value="0">Selecciona un proveedor</option>
-                            @foreach (var vendor in VendorOptions)
-                            {
-                                <option value="@vendor.Id">@vendor.Name</option>
-                            }
-                        </select>
+                        <LookupSearchBox Options="VendorOptions"
+                                         @bind-Value="AutoPoRequest.BusinessPartnerId"
+                                         Placeholder="Busca un proveedor"
+                                         Disabled="@IsCreatingAutoPo" />
                     </div>
 
                     <div class="compras-auto-po-room-panel">

@@ -1,4 +1,4 @@
-@page "/logistica/conteos"
+﻿@page "/logistica/conteos"
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using OrionERP.Application.Features.Logistica.PhysicalCounts
@@ -707,7 +707,7 @@
                     <div class="conteos-scope-results">
                         @if (ScopeMaterialResults.Count == 0)
                         {
-                            <p class="conteos-scope-empty">@(HasSearchedScopeMaterials ? "No encontramos materiales con existencia para esa búsqueda." : "Busca el material que quieres seguir por todas sus ubicaciones.")</p>
+                            <p class="conteos-scope-empty">@(HasSearchedScopeMaterials ? "No encontramos materiales con ubicación asignada para esa búsqueda." : "Busca el material que quieres seguir por todas sus ubicaciones.")</p>
                         }
                         else
                         {

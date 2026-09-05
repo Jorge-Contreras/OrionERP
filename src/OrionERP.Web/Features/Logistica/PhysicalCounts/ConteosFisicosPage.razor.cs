@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.IO;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -433,7 +433,9 @@ public partial class ConteosFisicosPage : ComponentBase, IAsyncDisposable
       {
         Rfc = RfcState.RequireRfc(),
         SearchText = search.Length == 0 ? null : search,
-        HasStock = true,
+        // Un material listado en una ubicación se cuenta aunque esté en cero: el cero es justo
+        // lo que hay que ir a comprobar.
+        HasLocation = true,
         Skip = 0,
         Take = ScopeMaterialSearchTake
       })).ToList();

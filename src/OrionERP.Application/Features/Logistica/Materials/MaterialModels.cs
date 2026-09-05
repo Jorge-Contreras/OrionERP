@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using OrionERP.Application.Features.Logistica.Shared;
 
 namespace OrionERP.Application.Features.Logistica.Materials;
@@ -24,6 +24,12 @@ public sealed class MaterialFilter
   public bool IncludeInactive { get; set; }
   public bool? HasImage { get; set; }
   public bool? HasStock { get; set; }
+
+  /// <summary>
+  /// Materiales dados de alta en al menos una ubicación, tengan o no existencia. Es lo que necesita
+  /// un conteo: una ubicación en cero es justo la que hay que ir a comprobar.
+  /// </summary>
+  public bool? HasLocation { get; set; }
   public bool NeedsAttention { get; set; }
   public int Skip { get; set; }
   public int Take { get; set; }

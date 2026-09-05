@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using System.Data.Common;
 using System.Text;
 using Dapper;
@@ -185,6 +185,13 @@ public sealed class MaterialService : IMaterialService
       sql.AppendLine(filter.HasStock.Value
         ? " AND ISNULL(st.TotalQuantity, 0) > 0"
         : " AND ISNULL(st.TotalQuantity, 0) <= 0");
+    }
+
+    if (filter.HasLocation.HasValue)
+    {
+      sql.AppendLine(filter.HasLocation.Value
+        ? " AND ISNULL(st.LocationCount, 0) > 0"
+        : " AND ISNULL(st.LocationCount, 0) = 0");
     }
 
     if (filter.NeedsAttention)

@@ -1,4 +1,4 @@
-@page "/menu"
+﻿@page "/menu"
 @inject IBrunoPublicCatalogService CatalogService
 
 <PageTitle>Menú · Bruno's Garden & Snacks</PageTitle>
@@ -29,7 +29,11 @@ else
           {
             <article class="menu-card @(product.ProductKind == RestaurantProductKinds.Combo ? "is-combo" : null) @(product.IsSoldOut ? "is-sold-out" : null)">
               <div class="menu-card__image">
-                @if (product.HasImage) { <img src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" loading="lazy" /> }
+                @if (product.HasImage)
+                {
+                  <img class="menu-card__image-backdrop" src="/media/productos/@product.Id?thumbnail=false" alt="" aria-hidden="true" loading="lazy" />
+                  <img class="menu-card__image-main" src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" loading="lazy" />
+                }
                 else { <span>Bruno's</span> }
                 @if (product.IsSoldOut) { <b>Agotado por hoy</b> }
               </div>

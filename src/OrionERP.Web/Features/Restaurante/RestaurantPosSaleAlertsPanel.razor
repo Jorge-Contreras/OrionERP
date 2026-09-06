@@ -1,0 +1,388 @@
+@using OrionERP.Application.Features.Logistica.PhysicalCounts
+@using OrionERP.Application.Features.Restaurante
+@inject IPhysicalCountService PhysicalCountService
+
+<div class="alerts-backdrop" @onclick="CloseAsync">
+  <aside class="alerts-drawer"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="pos-sale-alerts-title"
+         @onclick:stopPropagation>
+    <header class="alerts-header">
+      <div>
+        <span>Antes de cobrar</span>
+        <h2 id="pos-sale-alerts-title">Faltantes que detendrán una venta</h2>
+        <p class="alerts-header__stamp">
+          @if (IsLoading)
+          {
+            <span>Analizando el menú contra el inventario…</span>
+          }
+          else if (Board is not null)
+          {
+            <span>Analizado a las @Board.GeneratedAtLocal.ToString("HH:mm") · el inventario puede moverse después.</span>
+          }
+        </p>
+      </div>
+      <div class="alerts-header__actions">
+        <button type="button"
+                class="alerts-refresh"
+                title="Volver a analizar"
+                aria-label="Volver a analizar"
+                @onclick="RefreshAsync"
+                disabled="@IsLoading">
+          <span class="@(IsLoading ? "spinner-border spinner-border-sm" : "oi oi-reload")" aria-hidden="true"></span>
+        </button>
+        <button type="button" class="alerts-close" @onclick="CloseAsync" aria-label="Cerrar faltantes">×</button>
+      </div>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(LoadError))
+    {
+      <p class="alerts-error" role="alert">@LoadError</p>
+    }
+
+    @if (Board is not null)
+    {
+      <div class="alerts-summary" role="status">
+        <span class="is-blocked"><strong>@Board.BlockedCount</strong> bloqueados</span>
+        <span class="is-supervisor"><strong>@Board.SupervisorCount</strong> con supervisor</span>
+        <span class="is-warning"><strong>@Board.WarningCount</strong> bajo mínimo</span>
+        @if (Board.ConfigurationIssueCount > 0)
+        {
+          <span class="is-config"><strong>@Board.ConfigurationIssueCount</strong> de configuración</span>
+        }
+      </div>
+    }
+
+    <div class="alerts-body">
+      @if (Board is null && IsLoading)
+      {
+        <p class="alerts-placeholder"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Analizando…</p>
+      }
+      else if (Board is not null && Board.IsClean)
+      {
+        <p class="alerts-clean">
+          <span class="oi oi-check" aria-hidden="true"></span>
+          Ningún material bloqueará una venta con el inventario actual.
+        </p>
+      }
+      else if (Board is not null)
+      {
+        @if (Board.Materials.Count > 0)
+        {
+          <ul class="alerts-list">
+            @foreach (var material in Board.Materials)
+            {
+              var isUncountable = uncountableMaterialIds.Contains(material.MaterialId);
+              var conflict = ConflictFor(material.MaterialCode);
+              <li class="alerts-item @StatusClass(material.Status) @(isUncountable || conflict is not null ? "is-unavailable" : null)">
+                <label class="alerts-item__pick">
+                  <input type="checkbox"
+                         checked="@selectedMaterialIds.Contains(material.MaterialId)"
+                         @onchange="args => ToggleMaterial(material.MaterialId, args)"
+                         aria-label="@($"Incluir {material.Label} en el conteo")" />
+                </label>
+                <div class="alerts-item__body">
+                  <div class="alerts-item__title">
+                    <strong title="@material.PredictedPosMessage">@material.Label</strong>
+                    <em class="alerts-badge @StatusClass(material.Status)">@StatusLabel(material.Status)</em>
+                  </div>
+                  <div class="alerts-item__figures">
+                    @if (material.ShortageQuantity > 0)
+                    {
+                      <span class="is-shortage">Faltan <strong>@Quantity(material.ShortageQuantity) @material.BaseUnit</strong></span>
+                    }
+                    else
+                    {
+                      <span>Quedaría en <strong>@Quantity(material.UsableQuantity) @material.BaseUnit</strong>, mínimo @Quantity(material.MinimumQuantity)</span>
+                    }
+                    <span>Disponible: @Quantity(material.UsableQuantity) @material.BaseUnit</span>
+                    <span title="@string.Join(", ", material.AffectedProducts)">
+                      @material.AffectedProductCount platillo(s): @AffectedProductsLabel(material)
+                    </span>
+                  </div>
+                  @if (!string.IsNullOrWhiteSpace(material.RecommendedAction))
+                  {
+                    <p class="alerts-item__action">@material.RecommendedAction</p>
+                  }
+                  @if (conflict is not null)
+                  {
+                    <p class="alerts-item__flag">
+                      Ya lo está contando @conflict.SessionCode (@conflict.Status). Queda fuera de este conteo.
+                    </p>
+                  }
+                  else if (isUncountable)
+                  {
+                    <p class="alerts-item__flag">
+                      Sin ubicación asignada: no genera renglones de conteo. Regístralo en Logística › Materiales.
+                    </p>
+                  }
+                </div>
+              </li>
+            }
+          </ul>
+        }
+
+        @if (Board.ProductIssues.Count > 0)
+        {
+          <section class="alerts-config">
+            <h3>No se resuelve contando</h3>
+            <p>Estos productos fallan por configuración; el conteo no los arregla.</p>
+            <ul>
+              @foreach (var product in Board.ProductIssues)
+              {
+                <li>
+                  <strong>@product.ProductName</strong>
+                  <span>@product.PredictedPosMessage</span>
+                  <em>@product.SuggestedAction</em>
+                </li>
+              }
+            </ul>
+          </section>
+        }
+      }
+    </div>
+
+    <AuthorizeView Policy="RestaurantAdmin">
+      <Authorized>
+        <footer class="alerts-footer">
+          @if (!string.IsNullOrWhiteSpace(countSuccess))
+          {
+            <p class="alerts-count-success" role="status">
+              <span class="oi oi-check" aria-hidden="true"></span> @countSuccess
+            </p>
+          }
+          @if (!string.IsNullOrWhiteSpace(countError))
+          {
+            <p class="alerts-count-error" role="alert">@countError</p>
+          }
+          @if (hasReviewedPlan && !string.IsNullOrWhiteSpace(planSummary))
+          {
+            <p class="alerts-count-plan" role="status">@planSummary</p>
+          }
+          <button type="button"
+                  class="alerts-create"
+                  @onclick="PrepareOrCreateCountAsync"
+                  disabled="@(!CanSubmitCount)">
+            @if (isWorkingOnCount)
+            {
+              <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+              <span>@(hasReviewedPlan ? "Creando conteo…" : "Revisando alcance…")</span>
+            }
+            else
+            {
+              <span class="oi oi-list-rich" aria-hidden="true"></span>
+              <span>@CreateButtonLabel</span>
+            }
+          </button>
+        </footer>
+      </Authorized>
+    </AuthorizeView>
+  </aside>
+</div>
+
+@code {
+  [Parameter] public RestaurantSaleAlertBoard? Board { get; set; }
+  [Parameter] public bool IsLoading { get; set; }
+  [Parameter] public string? LoadError { get; set; }
+  [Parameter] public string SiteName { get; set; } = string.Empty;
+  [Parameter] public string CreatedBy { get; set; } = string.Empty;
+  [Parameter] public EventCallback OnRefresh { get; set; }
+  [Parameter] public EventCallback OnClose { get; set; }
+
+  private readonly HashSet<int> selectedMaterialIds = [];
+  private HashSet<int> uncountableMaterialIds = [];
+  private Dictionary<string, PhysicalCountScopeConflictDto> conflictsByMaterialCode = new(StringComparer.OrdinalIgnoreCase);
+  private bool hasReviewedPlan;
+  private bool isWorkingOnCount;
+  private string? planSummary;
+  private string? countError;
+  private string? countSuccess;
+  private DateTimeOffset? lastBoardStamp;
+
+  private bool CanSubmitCount => !isWorkingOnCount && selectedMaterialIds.Count > 0;
+
+  private string CreateButtonLabel => hasReviewedPlan
+    ? $"Crear conteo con {CountableSelection().Count} material(es)"
+    : $"Crear conteo con {selectedMaterialIds.Count} seleccionado(s)";
+
+  protected override void OnParametersSet()
+  {
+    if (Board is null || Board.GeneratedAtLocal == lastBoardStamp) return;
+
+    // Cada análisis nuevo repuebla la selección: entran marcados los bloqueos y los que piden
+    // supervisor; las advertencias no, porque ésas todavía dejan cobrar de corrido.
+    lastBoardStamp = Board.GeneratedAtLocal;
+    selectedMaterialIds.Clear();
+    foreach (var material in Board.Materials.Where(item => item.IsBlocking))
+    {
+      selectedMaterialIds.Add(material.MaterialId);
+    }
+    ResetPlan();
+  }
+
+  private PhysicalCountScopeConflictDto? ConflictFor(string? materialCode)
+    => conflictsByMaterialCode.GetValueOrDefault(materialCode ?? string.Empty);
+
+  private static string AffectedProductsLabel(RestaurantSaleAlertMaterial material)
+  {
+    var names = string.Join(", ", material.AffectedProducts);
+    return material.AffectedProductCount > material.AffectedProducts.Count ? $"{names}…" : names;
+  }
+
+  private void ToggleMaterial(int materialId, ChangeEventArgs args)
+  {
+    if (args.Value is true) selectedMaterialIds.Add(materialId);
+    else selectedMaterialIds.Remove(materialId);
+    ResetPlan();
+  }
+
+  private void ResetPlan()
+  {
+    hasReviewedPlan = false;
+    planSummary = null;
+    countError = null;
+    uncountableMaterialIds = [];
+    conflictsByMaterialCode = new(StringComparer.OrdinalIgnoreCase);
+  }
+
+  /// <summary>Lo que de verdad se puede contar: sin choques y con al menos una ubicación.</summary>
+  private List<int> CountableSelection()
+    => Board is null
+      ? []
+      : Board.Materials
+        .Where(material => selectedMaterialIds.Contains(material.MaterialId))
+        .Where(material => !uncountableMaterialIds.Contains(material.MaterialId))
+        .Where(material => ConflictFor(material.MaterialCode) is null)
+        .Select(material => material.MaterialId)
+        .ToList();
+
+  /// <summary>
+  /// Primero revisa el alcance y sólo crea de golpe cuando no hay nada que advertir. Crear con un
+  /// choque abierto aborta la sesión entera del lado del servicio, así que conviene descubrirlo
+  /// antes y no después.
+  /// </summary>
+  private async Task PrepareOrCreateCountAsync()
+  {
+    if (isWorkingOnCount || selectedMaterialIds.Count == 0) return;
+    isWorkingOnCount = true;
+    countError = null;
+    countSuccess = null;
+    try
+    {
+      if (!hasReviewedPlan)
+      {
+        var preview = await PhysicalCountService.PreviewScopeAsync(new PhysicalCountScopePreviewRequest
+        {
+          ScopeType = PhysicalCountSessionScopeTypes.Material,
+          MaterialIds = selectedMaterialIds.ToArray()
+        });
+
+        conflictsByMaterialCode = preview.Conflicts
+          .GroupBy(conflict => conflict.MaterialCode ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+          .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+        // Un material sin saldo en ninguna ubicación no aparece en la vista previa y no generaría
+        // renglón; es el caso típico aquí, porque lo que nunca se recibió es justo lo que falta.
+        var previewed = preview.Materials.Select(material => material.MaterialId).ToHashSet();
+        uncountableMaterialIds = selectedMaterialIds.Where(materialId => !previewed.Contains(materialId)).ToHashSet();
+
+        hasReviewedPlan = true;
+        var countable = CountableSelection();
+        if (uncountableMaterialIds.Count > 0 || conflictsByMaterialCode.Count > 0)
+        {
+          if (countable.Count == 0)
+          {
+            planSummary = "Ningún material seleccionado se puede contar ahora. Revisa la nota de cada renglón.";
+            return;
+          }
+
+          // Los totales de la primera vista previa todavía incluyen lo que se acaba de excluir; se
+          // vuelve a medir sobre lo que de verdad se va a contar para no prometer de más.
+          var reduced = await PhysicalCountService.PreviewScopeAsync(new PhysicalCountScopePreviewRequest
+          {
+            ScopeType = PhysicalCountSessionScopeTypes.Material,
+            MaterialIds = countable
+          });
+          planSummary = $"Se contarán {reduced.MaterialCount} material(es) · {reduced.LocationCount} ubicación(es) · {reduced.LineCount} renglón(es). Los señalados abajo quedan fuera; vuelve a pulsar para crear el conteo.";
+          return;
+        }
+
+        planSummary = $"{preview.MaterialCount} material(es) · {preview.LocationCount} ubicación(es) · {preview.LineCount} renglón(es).";
+      }
+
+      var materialIds = CountableSelection();
+      if (materialIds.Count == 0)
+      {
+        countError = "No queda ningún material que se pueda contar con esta selección.";
+        return;
+      }
+
+      var result = await PhysicalCountService.CreateSessionAsync(new PhysicalCountSessionCreateRequest
+      {
+        ScopeType = PhysicalCountSessionScopeTypes.Material,
+        MaterialIds = materialIds,
+        CreatedBy = string.IsNullOrWhiteSpace(CreatedBy) ? null : CreatedBy,
+        Notes = $"Generado desde el punto de venta · {SiteName} · faltantes detectados el {DateTime.Now:dd/MM/yyyy HH:mm}."
+      });
+
+      if (!result.Success)
+      {
+        countError = result.Message;
+        return;
+      }
+
+      // El folio es lo que busca quien va a contar, y CreateSessionAsync sólo devuelve el id.
+      var sessionCode = result.EntityId.HasValue
+        ? (await PhysicalCountService.GetSessionAsync(result.EntityId.Value))?.SessionCode
+        : null;
+      countSuccess = string.IsNullOrWhiteSpace(sessionCode)
+        ? $"{result.Message} Captúralo en Logística › Conteos."
+        : $"Conteo {sessionCode} creado con {materialIds.Count} material(es). Captúralo en Logística › Conteos.";
+
+      // Se sueltan los materiales recién enviados: volver a pulsar sólo chocaría contra la sesión
+      // que se acaba de crear.
+      foreach (var materialId in materialIds) selectedMaterialIds.Remove(materialId);
+      planSummary = null;
+      hasReviewedPlan = false;
+    }
+    catch (Exception ex)
+    {
+      countError = $"No se pudo crear el conteo. {ex.Message}";
+    }
+    finally
+    {
+      isWorkingOnCount = false;
+    }
+  }
+
+  private async Task RefreshAsync()
+  {
+    countSuccess = null;
+    ResetPlan();
+    if (OnRefresh.HasDelegate) await OnRefresh.InvokeAsync();
+  }
+
+  private async Task CloseAsync()
+  {
+    if (OnClose.HasDelegate) await OnClose.InvokeAsync();
+  }
+
+  private static string Quantity(decimal value) => value.ToString("#,0.####");
+
+  private static string StatusClass(string status) => status switch
+  {
+    RestaurantSaleReadinessStatuses.InventoryBlocked => "is-blocked",
+    RestaurantSaleReadinessStatuses.SupervisorRequired => "is-supervisor",
+    RestaurantSaleReadinessStatuses.Warning => "is-warning",
+    _ => "is-neutral"
+  };
+
+  private static string StatusLabel(string status) => status switch
+  {
+    RestaurantSaleReadinessStatuses.InventoryBlocked => "Bloquea la venta",
+    RestaurantSaleReadinessStatuses.SupervisorRequired => "Pide supervisor",
+    RestaurantSaleReadinessStatuses.Warning => "Bajo mínimo",
+    _ => status
+  };
+}

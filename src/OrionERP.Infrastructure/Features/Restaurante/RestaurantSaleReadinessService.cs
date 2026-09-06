@@ -864,7 +864,9 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
       : null;
     if (shortage > 0)
     {
-      var message = $"Inventario insuficiente para el material {material.Id}. Faltan {shortage:N4}.";
+      // El mismo texto que lanza RestaurantOrderService al cobrar, para que la caja reconozca en
+      // el modal el mensaje que ya vio en el panel de faltantes.
+      var message = $"Inventario insuficiente para {material.Code} · {material.Name}. Faltan {shortage:N4}.";
       return new InventoryEvaluation(
         stockQuantity, reserved, usable, excluded, projected, minimumQuantity, shortage,
         estimatedUnits, locationSummary,

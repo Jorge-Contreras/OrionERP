@@ -1467,6 +1467,69 @@
   opacity: .5;
 }
 
+/* Aviso permanente de lo que va a reventar al cobrar. El color lo dicta la gravedad, para que se
+   lea de reojo desde la caja sin abrir el panel. */
+.pos-header__actions .pos-sale-alerts {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  min-height: 3rem;
+  padding: .6rem .85rem;
+  font-size: .82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.pos-header__actions .pos-sale-alerts.is-critical {
+  border-color: #e0a29c;
+  background: #fdeceb;
+  color: #99231b;
+}
+
+.pos-header__actions .pos-sale-alerts.is-attention {
+  border-color: #e2c48c;
+  background: #fdf3e2;
+  color: #8a5a10;
+}
+
+.pos-header__actions .pos-sale-alerts.is-warning {
+  border-color: #ddd69a;
+  background: #fbf8e4;
+  color: #74671a;
+}
+
+.pos-header__actions .pos-sale-alerts.is-clear {
+  border-color: #b6d4c9;
+  background: #eff7f4;
+  color: #17634f;
+}
+
+.pos-header__actions .pos-sale-alerts.is-unknown {
+  color: #53615c;
+}
+
+.pos-header__actions .pos-sale-alerts:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+.pos-sale-alerts__count {
+  min-width: 1.5rem;
+  padding: .05rem .35rem;
+  border-radius: 999px;
+  background: currentColor;
+  font-size: .78rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+/* El número se lee sobre el color del propio estado: el fondo toma `currentColor` y el dígito
+   recorta el fondo del botón. */
+.pos-sale-alerts.is-critical .pos-sale-alerts__count { color: #fdeceb; background: #99231b; }
+.pos-sale-alerts.is-attention .pos-sale-alerts__count { color: #fdf3e2; background: #8a5a10; }
+.pos-sale-alerts.is-warning .pos-sale-alerts__count { color: #fbf8e4; background: #74671a; }
+.pos-sale-alerts.is-clear .pos-sale-alerts__count { color: #eff7f4; background: #17634f; }
+
 button,
 input,
 select,

@@ -35,6 +35,19 @@
           @foreach (var site in sites) { <option value="@site.Id" selected="@(site.Id == selectedSiteId)">@site.Name</option> }
         </select>
       }
+      <button type="button"
+              class="pos-sale-alerts @SaleAlertsToneClass"
+              title="Materiales que detendrán una venta"
+              aria-label="@SaleAlertsAriaLabel"
+              @onclick="OpenSaleAlertsAsync"
+              disabled="@(catalog is null)">
+        <span class="@(isAnalyzingAlerts ? "spinner-border spinner-border-sm" : "oi oi-warning")" aria-hidden="true"></span>
+        <span>Faltantes</span>
+        @if (saleAlerts is not null && saleAlerts.BadgeCount > 0)
+        {
+          <b class="pos-sale-alerts__count">@saleAlerts.BadgeCount</b>
+        }
+      </button>
       <AuthorizeView Policy="RestaurantAdmin">
         <Authorized>
           <button type="button"
@@ -513,6 +526,17 @@
   </div>
 }
 
+@if (isSaleAlertsOpen)
+{
+  <RestaurantPosSaleAlertsPanel Board="saleAlerts"
+                                IsLoading="isAnalyzingAlerts"
+                                LoadError="@saleAlertsError"
+                                SiteName="@(catalog?.Site.Name ?? string.Empty)"
+                                CreatedBy="@currentUserName"
+                                OnRefresh="RefreshSaleAlertsAsync"
+                                OnClose="CloseSaleAlerts" />
+}
+
 @if (isSupervisorOverrideOpen)
 {
   <div class="pos-modal-backdrop pos-supervisor-backdrop" @onclick="CloseSupervisorOverride">
@@ -804,11 +828,28 @@
   private string? transferSlipWarning;
   private bool isOpeningDrawer;
   private bool isDownloadingReadiness;
+  private RestaurantSaleAlertBoard? saleAlerts;
+  private bool isAnalyzingAlerts;
+  private bool isSaleAlertsOpen;
+  private string? saleAlertsError;
+  private string currentUserName = "restaurante";
   private bool lastOrderReceivedCash;
   private string idempotencyKey = Guid.NewGuid().ToString("N");
   private RestaurantOrderResult? lastOrder;
   private RestaurantReceiptPdfDocumentModel? lastReceipt;
   private string CurrentRfc => RfcState.RequireRfc();
+  private string SaleAlertsToneClass => saleAlerts is null
+    ? "is-unknown"
+    : saleAlerts.HasBlockers
+      ? "is-critical"
+      : saleAlerts.BadgeCount > 0
+        ? "is-attention"
+        : saleAlerts.WarningCount > 0 ? "is-warning" : "is-clear";
+  private string SaleAlertsAriaLabel => saleAlerts is null
+    ? "Faltantes: todavía sin analizar"
+    : saleAlerts.BadgeCount == 0
+      ? "Faltantes: ningún material detendrá una venta"
+      : $"Faltantes: {saleAlerts.BadgeCount} detendrán una venta";
   private IEnumerable<RestaurantProductDto> ActiveProducts => catalog?.Sections.FirstOrDefault(section => section.Id == activeSectionId)?.Products ?? [];
   private string ActiveSectionName => catalog?.Sections.FirstOrDefault(section => section.Id == activeSectionId)?.Name ?? "Menú";
   private int CartItemCount => cart.Sum(item => item.Quantity);
@@ -1019,6 +1060,8 @@
     if (!firstRender) return;
     await LoadAsync();
     StateHasChanged();
+    await RefreshSaleAlertsAsync();
+    StateHasChanged();
   }
 
   private async Task LoadAsync()
@@ -1026,6 +1069,8 @@
     isBusy = true; error = null;
     try
     {
+      var loadAuth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+      currentUserName = loadAuth.User.Identity?.Name ?? "restaurante";
       sites = (await CatalogService.GetSitesAsync(CurrentRfc)).Where(site => site.IsEnabled).ToList();
       if (sites.Count == 0) { catalog = null; return; }
       if (!sites.Any(site => site.Id == selectedSiteId)) selectedSiteId = sites[0].Id;
@@ -1060,8 +1105,11 @@
     promotionCode = null;
     isMenuOpen = true;
     hasInitializedWorkspace = true;
+    saleAlerts = null;
+    saleAlertsError = null;
     await Realtime.SubscribeAsync(CurrentRfc, selectedSiteId);
     await LoadAsync();
+    await RefreshSaleAlertsAsync();
   }
 
   private void ShowOrder() => isMenuOpen = false;
@@ -1078,6 +1126,42 @@
     activeSectionId = sectionId;
     isMenuOpen = true;
   }
+
+  /// <summary>
+  /// El mismo análisis que produce el Excel de diagnóstico, proyectado por material para operarlo
+  /// en caja. No corre en un temporizador: recorre todas las existencias del RFC y repetirlo por
+  /// cada caja abierta saldría caro. Se recalcula al abrir el POS, al cambiar de sede, después de
+  /// cada venta y cuando el usuario lo pide.
+  /// </summary>
+  private async Task RefreshSaleAlertsAsync()
+  {
+    if (catalog is null || selectedSiteId <= 0 || isAnalyzingAlerts) return;
+    isAnalyzingAlerts = true;
+    saleAlertsError = null;
+    try
+    {
+      var report = await SaleReadinessService.AnalyzeAsync(CurrentRfc, selectedSiteId, DateTimeOffset.UtcNow);
+      saleAlerts = RestaurantSaleAlertBuilder.Build(report);
+    }
+    catch (Exception ex)
+    {
+      // No se escribe en `error`: ese renglón es para lo que impide cobrar, y un diagnóstico caído
+      // no debe tapar el mensaje de una venta.
+      saleAlertsError = $"No se pudo analizar el inventario: {ex.Message}";
+    }
+    finally
+    {
+      isAnalyzingAlerts = false;
+    }
+  }
+
+  private async Task OpenSaleAlertsAsync()
+  {
+    isSaleAlertsOpen = true;
+    if (saleAlerts is null) await RefreshSaleAlertsAsync();
+  }
+
+  private void CloseSaleAlerts() => isSaleAlertsOpen = false;
 
   private async Task DownloadSaleReadinessAsync()
   {
@@ -1593,6 +1677,7 @@
     bool promptForManualDiscount)
   {
     if (catalog is null || cart.Count == 0 || isSubmitting) return;
+    var orderCompleted = false;
     isSubmitting = true; error = null; drawerWarning = null;
     try
     {
@@ -1687,6 +1772,7 @@
       await PersistCartAsync();
       cashReceived = cardAmount = transferAmount = tipAmount = 0; customerName = customerPhone = deliveryAddress = deliveryReferences = externalReference = orderNotes = discountReason = memberIdentifier = promotionCode = null; selectedMember = null; redemptionPreview = null; redemptionPoints = appliedRedemptionPoints = 0; promotionQuote = null; deliveryCost = commissionAmount = discountValue = 0;
       ResetSupervisorOverride();
+      orderCompleted = true;
     }
     catch (RestaurantInventoryOverrideRequiredException ex)
     {
@@ -1694,6 +1780,10 @@
     }
     catch (Exception ex) { error = ex.Message; }
     finally { isSubmitting = false; }
+
+    // El inventario acaba de moverse. Se recalcula ya cerrado el cobro, no dentro, para no sumarle
+    // latencia a la venta.
+    if (orderCompleted) await RefreshSaleAlertsAsync();
   }
 
   private void OpenSupervisorOverride(SupervisorOverrideKind kind, string message)

@@ -1,78 +1,82 @@
+/* ==========================================================================
+   Bruno's Garden & Snacks — Club Bruno account area
+   Loaded only under /cuenta.
+   ========================================================================== */
+
 .account-error--notice {
-  padding: .75rem .85rem;
-  border: 1px solid #9d4e44;
-  border-radius: .4rem;
-  background: #3b211e;
-  line-height: 1.45;
+  padding: .9rem 1rem;
+  border: 1px solid #c9382a5c;
+  border-radius: var(--radius-sm);
+  background: #c9382a1a;
+  line-height: 1.5;
 }
 
-.account-form button:disabled {
-  cursor: not-allowed;
-  opacity: .55;
-  transform: none;
-  box-shadow: none;
+/* --- Redeemable balance callout ----------------------------------------- */
+.redeem-banner {
+  display: grid;
+  gap: .4rem;
+  margin: 1.5rem 0 0;
+  padding: 1.3rem 1.5rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--text-faint);
+  border-radius: var(--radius);
+  background: linear-gradient(160deg, var(--surface-2), var(--surface));
 }
 
-.member-panel--wide {
-  grid-column: 1 / -1;
+.redeem-banner.is-ready {
+  border-color: #4f9c6347;
+  border-left-color: var(--green);
+  background:
+    radial-gradient(80% 140% at 0% 0%, #4f9c6321, transparent 62%),
+    linear-gradient(160deg, var(--surface-2), var(--surface));
 }
 
+.redeem-banner strong { color: var(--text); }
+.redeem-banner.is-ready strong { color: #b7e7c4; }
+.redeem-banner p { margin: .25rem 0 0; color: var(--text-muted); line-height: 1.6; }
+.redeem-banner small { color: var(--ember); font-weight: 700; font-size: .8rem; }
+
+/* --- Tables -------------------------------------------------------------- */
 .member-table-scroll {
   overflow-x: auto;
   border: 1px solid var(--line);
-  border-radius: .45rem;
-  background: #fffaf1;
+  border-radius: var(--radius-sm);
+  background: #ffffff05;
 }
 
 .member-table-scroll .ledger th {
-  white-space: nowrap;
-  color: #62584d;
-  background: #efe2cf;
-  font-size: .7rem;
-  letter-spacing: .06em;
+  position: sticky;
+  top: 0;
+  background: var(--surface-3);
+  color: var(--text-muted);
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .1em;
   text-transform: uppercase;
-}
-
-.member-orders td:nth-last-child(-n+2),
-.member-orders th:nth-last-child(-n+2) {
-  text-align: right;
   white-space: nowrap;
 }
 
-.member-orders__cancelled {
-  color: #776e65;
-  background: #f2ece3;
-}
+.member-orders td:nth-last-child(-n + 2),
+.member-orders th:nth-last-child(-n + 2) { text-align: right; white-space: nowrap; }
 
+.member-orders__cancelled td { color: var(--text-faint); }
+
+/* --- Order status pills -------------------------------------------------- */
 .order-status {
   display: inline-flex;
   align-items: center;
   min-height: 1.65rem;
-  padding: .2rem .55rem;
-  border-radius: 999px;
-  background: #e9dfcf;
-  color: #403a34;
+  padding: .2rem .65rem;
+  border: 1px solid transparent;
+  border-radius: var(--pill);
+  background: #ffffff0f;
+  color: var(--text-muted);
   font-size: .72rem;
-  font-weight: 800;
+  font-weight: 750;
   white-space: nowrap;
 }
 
-.order-status--active {
-  background: #f5dfb7;
-  color: #704814;
-}
-
-.order-status--ready {
-  background: #dbe7cf;
-  color: #315333;
-}
-
-.order-status--completed {
-  background: #d4e8da;
-  color: #28533a;
-}
-
-.order-status--cancelled {
-  background: #ead5d1;
-  color: #7b2d25;
-}
+.order-status--active { border-color: #f0a93f3d; background: #f0a93f1a; color: var(--ember-soft); }
+.order-status--ready { border-color: #4f9c6347; background: #4f9c631f; color: #a7dcb6; }
+.order-status--completed { border-color: #4f9c6333; background: #4f9c6317; color: #92cfa4; }
+.order-status--cancelled { border-color: #c9382a4d; background: #c9382a1f; color: #f0a597; }

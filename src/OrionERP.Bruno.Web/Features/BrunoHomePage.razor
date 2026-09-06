@@ -3,18 +3,27 @@
 @inject IWebHostEnvironment Environment
 
 <PageTitle>Bruno's Garden & Snacks · Calpulalpan</PageTitle>
-<HeadContent><meta name="description" content="@settings.SeoDescription" /></HeadContent>
+<HeadContent>
+  <meta name="description" content="@settings.SeoDescription" />
+  <link rel="preload" as="image" type="image/webp" href="/Images/Brunos/brunos-food-hero.webp" fetchpriority="high" />
+</HeadContent>
 
 <section class="hero">
   <div class="hero__shade"></div>
   <div class="hero__brand-visual" aria-hidden="true">
-    <img class="hero__logo-badge" src="/Images/Brunos/brunos-logo.png" alt="" />
-    <img class="hero__mascot" src="/Images/Brunos/bruno-hero-mascot.png" alt="" />
+    <img class="hero__logo-badge" src="/Images/Brunos/brunos-logo-512.webp" alt="" width="512" height="512" />
+    <img class="hero__mascot" src="/Images/Brunos/bruno-hero-mascot.webp" alt="" width="880" height="1100" fetchpriority="high" />
   </div>
   <div class="hero__content">
     <span>@settings.HeroEyebrow</span>
     <h1>@settings.HeroTitle</h1>
     <p>@settings.HeroDescription</p>
+    <a class="hero__hours" href="/visitanos">
+      <i class="dot @(IsOpenNow ? "dot--open" : "dot--closed")" aria-hidden="true"></i>
+      <strong>@OpenStateLabel</strong>
+      <span>@TodayHours</span>
+      <small>Cómo llegar</small>
+    </a>
     <div class="hero__actions">
       @if (membershipEnabled)
       {
@@ -26,18 +35,33 @@
         <a class="button button--ghost" href="/membresia">Conocer Club Bruno</a>
       }
     </div>
-    <small class="hero__authenticity">Chicken fingers y hamburguesas de Bruno's</small>
+    <ul class="hero__marks">
+      <li>Chicken fingers</li>
+      <li>Hamburguesas</li>
+      <li>Pet friendly</li>
+    </ul>
   </div>
-  <a class="hero__hours" href="/visitanos"><span>Hoy</span><strong>@TodayHours</strong><small>Cómo llegar →</small></a>
 </section>
+
+<div class="ticker" aria-hidden="true">
+  <div class="ticker__track">
+    @for (var pass = 0; pass < 2; pass++)
+    {
+      @foreach (var word in TickerWords)
+      {
+        <span>@word</span>
+      }
+    }
+  </div>
+</div>
 
 @if (membershipEnabled)
 {
   <section class="club-spotlight" aria-labelledby="club-spotlight-title">
     <figure class="club-spotlight__visual">
-      <img class="club-spotlight__photo" src="/Images/Brunos/brunos-real-club.jpg" alt="Mesas y luces del jardín real de Bruno's Garden & Snacks" />
-      <img class="club-spotlight__logo" src="/Images/Brunos/brunos-logo.png" alt="" aria-hidden="true" />
-      <img class="club-spotlight__mascot" src="/Images/Brunos/bruno-club-mascot.png" alt="" aria-hidden="true" />
+      <img class="club-spotlight__photo" src="/Images/Brunos/brunos-real-club.webp" alt="Mesas y luces del jardín real de Bruno's Garden & Snacks" width="1086" height="1448" loading="lazy" />
+      <img class="club-spotlight__logo" src="/Images/Brunos/brunos-logo-512.webp" alt="" aria-hidden="true" width="512" height="512" loading="lazy" />
+      <img class="club-spotlight__mascot" src="/Images/Brunos/bruno-club-mascot.webp" alt="" aria-hidden="true" width="880" height="1100" loading="lazy" />
     </figure>
     <div class="club-spotlight__content">
       <span>Club Bruno</span>
@@ -61,11 +85,12 @@
     @foreach (var product in featuredProducts)
     {
       <article>
-        @if (product.HasImage) { <img src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" /> }
-        <div><small>@product.Sku</small><h3>@product.Name</h3><p>@product.Description</p><strong>@product.Price.ToString("C0")</strong></div>
+        @if (product.HasImage) { <img src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" loading="lazy" decoding="async" /> }
+        <div><h3>@product.Name</h3><p>@product.Description</p><strong>@product.Price.ToString("C0")</strong></div>
       </article>
     }
   </div>
+  <div class="featured__more"><a class="button button--ghost" href="/menu">Ver el menú completo</a></div>
 </section>
 
 <section class="order-preview">
@@ -74,6 +99,12 @@
 </section>
 
 @code {
+  private static readonly string[] TickerWords =
+  [
+    "Chicken fingers", "Hamburguesas", "Snacks", "Bebidas",
+    "Pet friendly", "Jardín al aire libre", "Martes a domingo 9–22"
+  ];
+
   private BrunoPublicSiteSettingsDto settings = new()
   {
     HeroEyebrow = "Jardín pet friendly en Calpulalpan",
@@ -83,7 +114,11 @@
   };
   private List<RestaurantProductDto> featuredProducts = [];
   private bool membershipEnabled;
-  private string TodayHours => DateTime.Now.DayOfWeek == DayOfWeek.Monday ? "Cerrado" : "9:00–22:00";
+
+  private static bool IsClosedToday => DateTime.Now.DayOfWeek == DayOfWeek.Monday;
+  private string TodayHours => IsClosedToday ? "Hoy cerrado" : "Hoy 9:00–22:00";
+  private bool IsOpenNow => !IsClosedToday && DateTime.Now.Hour >= 9 && DateTime.Now.Hour < 22;
+  private string OpenStateLabel => IsOpenNow ? "Abierto ahora" : "Cerrado ahora";
 
   protected override async Task OnInitializedAsync()
   {

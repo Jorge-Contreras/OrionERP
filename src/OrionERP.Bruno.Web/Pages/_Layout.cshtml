@@ -13,7 +13,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#171512" />
+  <meta name="theme-color" content="#0d0b09" />
+  <meta name="color-scheme" content="dark" />
   <meta name="description" content="Bruno's Garden & Snacks: jardín pet friendly, ambiente familiar, chicken fingers, hamburguesas, snacks y bebidas en Calpulalpan." />
   <link rel="canonical" href="https://brunosgarden.com@canonicalPath" />
   @if (shouldNoIndex)
@@ -30,14 +31,17 @@
   <meta name="twitter:card" content="summary_large_image" />
   <title>@(ViewData["Title"] ?? "Bruno's Garden & Snacks")</title>
   <base href="~/" />
-  <link rel="icon" type="image/png" href="~/Images/Brunos/brunos-logo.png" />
+  <link rel="icon" type="image/png" sizes="64x64" href="~/Images/Brunos/brunos-logo-64.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="~/Images/Brunos/brunos-logo-180.png" />
+  <link rel="preload" as="font" type="font/woff2" href="~/fonts/anton-latin.woff2" crossorigin />
+  <link rel="preload" as="font" type="font/woff2" href="~/fonts/inter-latin.woff2" crossorigin />
   <link rel="stylesheet" href="~/css/brunos-site.css" asp-append-version="true" />
+  <link rel="stylesheet" href="~/css/brunos-improvements.css" asp-append-version="true" />
   <link rel="stylesheet" href="~/css/brunos-responsive.css" asp-append-version="true" />
   @if (isAccountPage)
   {
     <link rel="stylesheet" href="~/css/brunos-account.css" asp-append-version="true" />
   }
-  <link rel="stylesheet" href="~/css/brunos-improvements.css" asp-append-version="true" />
   <link rel="stylesheet" href="~/OrionERP.Bruno.Web.styles.css" asp-append-version="true" />
   <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
   <script type="application/ld+json">
@@ -61,9 +65,10 @@
 <body>
   @if (isAccountPage)
   {
-    <a class="account-brand" href="/" aria-label="Volver a Bruno's Garden & Snacks"><img src="~/Images/Brunos/brunos-logo.png" alt="" /><span>Volver al sitio</span></a>
+    <a class="account-brand" href="/" aria-label="Volver a Bruno's Garden & Snacks"><img src="~/Images/Brunos/brunos-logo-512.webp" alt="" width="512" height="512" /><span>Volver al sitio</span></a>
   }
   @RenderBody()
+  <script src="~/js/brunos-ui.js" asp-append-version="true" defer></script>
   <script src="~/_framework/blazor.server.js"></script>
   @if (Turnstile.Value.IsConfigured)
   {

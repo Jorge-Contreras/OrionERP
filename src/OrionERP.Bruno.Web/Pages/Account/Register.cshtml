@@ -35,7 +35,7 @@
       </fieldset>
       @if (Turnstile.Value.IsConfigured)
       {
-        <div class="cf-turnstile" data-sitekey="@Turnstile.Value.SiteKey" data-action="membership-register"></div>
+        <div class="cf-turnstile" data-theme="dark" data-sitekey="@Turnstile.Value.SiteKey" data-action="membership-register"></div>
       }
       <button class="button button--accent club-cta" type="submit" disabled="@(!canValidateRequest)"><span>Crear mi membresía gratis</span><small>Unirme a Club Bruno</small></button>
     </form>

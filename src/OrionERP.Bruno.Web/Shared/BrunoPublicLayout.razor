@@ -7,26 +7,31 @@
   <a class="skip-link" href="#contenido-principal">Saltar al contenido</a>
   <header class="site-header">
     <a class="brand" href="/" aria-label="Bruno's Garden & Snacks, inicio">
-      <img src="/Images/Brunos/brunos-logo.png" alt="Bruno's Garden & Snacks" />
+      <img src="/Images/Brunos/brunos-logo-512.webp" alt="Bruno's Garden & Snacks" width="512" height="512" />
     </a>
-    <button class="nav-toggle" type="button" aria-label="@(menuOpen ? "Cerrar navegación" : "Abrir navegación")" aria-controls="navegacion-principal" aria-expanded="@menuOpen" @onclick="() => menuOpen = !menuOpen"><span></span><span></span><span></span></button>
-    <nav id="navegacion-principal" class="@(menuOpen ? "is-open" : null)" aria-label="Navegación principal">
-      <NavLink href="/" Match="NavLinkMatch.All" @onclick="CloseMenu">Inicio</NavLink>
-      <NavLink href="/menu" @onclick="CloseMenu">Menú</NavLink>
-      <NavLink href="/promociones" @onclick="CloseMenu">Promociones</NavLink>
-      <NavLink href="/membresia" @onclick="CloseMenu">Club Bruno</NavLink>
-      <NavLink href="/visitanos" @onclick="CloseMenu">Visítanos</NavLink>
+    <div id="navegacion-principal" class="site-nav @(menuOpen ? "is-open" : null)">
+      <nav aria-label="Navegación principal">
+        <NavLink href="/" Match="NavLinkMatch.All" @onclick="CloseMenu">Inicio</NavLink>
+        <NavLink href="/menu" @onclick="CloseMenu">Menú</NavLink>
+        <NavLink href="/promociones" @onclick="CloseMenu">Promociones</NavLink>
+        <NavLink href="/membresia" @onclick="CloseMenu">Club Bruno</NavLink>
+        <NavLink href="/visitanos" @onclick="CloseMenu">Visítanos</NavLink>
+      </nav>
       @if (membershipEnabled)
       {
-        <AuthorizeView>
-          <Authorized><a class="account-link" href="/cuenta" target="_top">Mi cuenta</a></Authorized>
-          <NotAuthorized>
-            <a class="account-login-link" href="/cuenta/acceso" target="_top">Ingresar</a>
-            <a class="club-join-link" href="/cuenta/registro" target="_top"><span>Club Bruno</span><strong>Únete gratis</strong></a>
-          </NotAuthorized>
-        </AuthorizeView>
+        <div class="site-nav__actions">
+          <AuthorizeView>
+            <Authorized><a class="account-link" href="/cuenta" target="_top">Mi cuenta</a></Authorized>
+            <NotAuthorized>
+              <a class="account-login-link" href="/cuenta/acceso" target="_top">Ingresar</a>
+              <a class="club-join-link" href="/cuenta/registro" target="_top"><span>Club Bruno</span><strong>Únete gratis</strong></a>
+            </NotAuthorized>
+          </AuthorizeView>
+        </div>
       }
-    </nav>
+    </div>
+    @* aria-expanded needs the literal string: a bool renders as a bare attribute. *@
+    <button class="nav-toggle" type="button" aria-label="@(menuOpen ? "Cerrar navegación" : "Abrir navegación")" aria-controls="navegacion-principal" aria-expanded="@(menuOpen ? "true" : "false")" @onclick="() => menuOpen = !menuOpen"><span></span><span></span><span></span></button>
   </header>
 
   <main id="contenido-principal">@Body</main>
@@ -39,23 +44,26 @@
   }
 
   <footer class="site-footer">
-    <div class="footer-brand"><img src="/Images/Brunos/brunos-logo.png" alt="" /><p>Snacks, jardín y buenos momentos.</p></div>
+    <div class="footer-brand">
+      <img src="/Images/Brunos/brunos-logo-512.webp" alt="" width="512" height="512" loading="lazy" />
+      <p>Snacks, jardín y buenos momentos en Calpulalpan.</p>
+    </div>
     <div><strong>Visítanos</strong><p>Calle Camino Nacional #5<br />Col. Francisco Sarabia<br />Calpulalpan, Tlaxcala · C.P. 90207</p></div>
     <div><strong>Horario</strong><p>Martes a domingo<br />9:00 a 22:00<br />Lunes cerrado</p></div>
     <div><strong>Información</strong><a href="/privacidad">Aviso de privacidad</a><a href="/terminos">Términos del sitio y membresía</a>@if (membershipEnabled) { <a href="/cuenta/baja" target="_top">Solicitud de baja</a> }</div>
     <div class="footer-connect">
       <strong>Síguenos</strong>
       <div class="footer-social">
-        @if (!string.IsNullOrWhiteSpace(settings?.FacebookUrl)) { <a href="@settings.FacebookUrl" target="_blank" rel="noopener">Facebook</a> }
-        @if (!string.IsNullOrWhiteSpace(settings?.InstagramUrl)) { <a href="@settings.InstagramUrl" target="_blank" rel="noopener">Instagram</a> }
-        @if (!string.IsNullOrWhiteSpace(settings?.TikTokUrl)) { <a href="@settings.TikTokUrl" target="_blank" rel="noopener">TikTok</a> }
+        @if (!string.IsNullOrWhiteSpace(settings?.FacebookUrl)) { <a href="@settings.FacebookUrl" target="_blank" rel="noopener" aria-label="Facebook de Bruno's Garden & Snacks">@FacebookIcon</a> }
+        @if (!string.IsNullOrWhiteSpace(settings?.InstagramUrl)) { <a href="@settings.InstagramUrl" target="_blank" rel="noopener" aria-label="Instagram de Bruno's Garden & Snacks">@InstagramIcon</a> }
+        @if (!string.IsNullOrWhiteSpace(settings?.TikTokUrl)) { <a href="@settings.TikTokUrl" target="_blank" rel="noopener" aria-label="TikTok de Bruno's Garden & Snacks">@TikTokIcon</a> }
       </div>
       @if (!string.IsNullOrWhiteSpace(settings?.WhatsAppPhone))
       {
-        <a class="footer-whatsapp" href="https://wa.me/@settings.WhatsAppPhone" target="_blank" rel="noopener">Escríbenos por WhatsApp</a>
+        <a class="footer-whatsapp" href="https://wa.me/@settings.WhatsAppPhone" target="_blank" rel="noopener">@WhatsAppIcon<span>Escríbenos por WhatsApp</span></a>
       }
     </div>
-    <small>© @DateTime.Now.Year Bruno's Garden & Snacks S.A. de C.V.</small>
+    <small>© @DateTime.Now.Year Bruno's Garden &amp; Snacks S.A. de C.V.</small>
   </footer>
 </div>
 
@@ -64,6 +72,14 @@
   private bool membershipEnabled;
   private BrunoPublicSiteSettingsDto? settings;
   private bool IsHomePage => string.Equals(new Uri(Navigation.Uri).AbsolutePath, "/", StringComparison.Ordinal);
+
+  private static readonly MarkupString FacebookIcon = new("""<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07Z"/></svg>""");
+
+  private static readonly MarkupString InstagramIcon = new("""<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true" focusable="false"><rect x="2.6" y="2.6" width="18.8" height="18.8" rx="5.4"/><circle cx="12" cy="12" r="4.4"/><circle cx="17.3" cy="6.7" r="1.15" fill="currentColor" stroke="none"/></svg>""");
+
+  private static readonly MarkupString TikTokIcon = new("""<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M16.9 2h-3.1v13.2a2.7 2.7 0 1 1-2.2-2.65V9.4a5.8 5.8 0 1 0 5.3 5.78V9.1a7.3 7.3 0 0 0 4.1 1.27V7.28A4.4 4.4 0 0 1 16.9 2Z"/></svg>""");
+
+  private static readonly MarkupString WhatsAppIcon = new("""<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false" width="18" height="18"><path d="M12.05 2A9.86 9.86 0 0 0 2.2 11.86c0 1.74.46 3.44 1.32 4.94L2.1 22l5.35-1.4a9.85 9.85 0 0 0 4.6 1.17h.01a9.86 9.86 0 0 0 0-19.72Zm0 18.05h-.01a8.2 8.2 0 0 1-4.17-1.14l-.3-.18-3.1.81.83-3.02-.2-.31a8.17 8.17 0 1 1 6.95 3.84Zm4.5-6.12c-.25-.13-1.46-.72-1.68-.8-.23-.08-.39-.13-.55.12-.17.25-.64.8-.78.97-.15.16-.29.18-.53.06-.25-.13-1.04-.38-1.98-1.22a7.4 7.4 0 0 1-1.37-1.7c-.14-.25-.01-.38.11-.5.11-.11.25-.29.37-.44.12-.15.16-.25.25-.42.08-.16.04-.31-.02-.43-.06-.13-.55-1.34-.76-1.83-.2-.48-.4-.41-.55-.42h-.47c-.16 0-.43.06-.65.31-.22.25-.85.83-.85 2.03s.87 2.35.99 2.51c.12.17 1.71 2.61 4.15 3.66.58.25 1.03.4 1.39.51.58.19 1.11.16 1.53.1.47-.07 1.46-.6 1.66-1.18.21-.58.21-1.07.15-1.18-.06-.1-.23-.16-.48-.29Z"/></svg>""");
 
   protected override async Task OnInitializedAsync()
   {

@@ -9,7 +9,7 @@
         "--project",
         "src/OrionERP.Bruno.Web/OrionERP.Bruno.Web.csproj"
       ],
-      "port": 5020
+      "port": 5220
     },
     {
       "name": "orionerp-web",

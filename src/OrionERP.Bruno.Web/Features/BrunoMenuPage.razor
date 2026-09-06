@@ -17,6 +17,7 @@ else if (catalog is null)
 else
 {
   <nav class="section-jump" aria-label="Secciones del menú">
+    @* Absolute path, not a bare fragment: <base href="/"> would resolve "#x" against the site root. *@
     @foreach (var section in catalog.Menu.Sections) { <a href="/menu#@Slug(section.Name)" target="_top">@section.Name</a> }
   </nav>
   <div class="menu-page">
@@ -31,8 +32,8 @@ else
               <div class="menu-card__image">
                 @if (product.HasImage)
                 {
-                  <img class="menu-card__image-backdrop" src="/media/productos/@product.Id?thumbnail=false" alt="" aria-hidden="true" loading="lazy" />
-                  <img class="menu-card__image-main" src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" loading="lazy" />
+                  <img class="menu-card__image-backdrop" src="/media/productos/@product.Id?thumbnail=false" alt="" aria-hidden="true" loading="lazy" decoding="async" />
+                  <img class="menu-card__image-main" src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" loading="lazy" decoding="async" />
                 }
                 else { <span>Bruno's</span> }
                 @if (product.IsSoldOut) { <b>Agotado por hoy</b> }

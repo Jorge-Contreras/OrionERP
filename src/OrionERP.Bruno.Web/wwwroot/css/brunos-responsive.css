@@ -1,157 +1,127 @@
-/* Shared interaction and accessibility refinements. */
-.skip-link {
-  position: fixed;
-  top: 0.75rem;
-  left: 0.75rem;
-  z-index: 100;
-  padding: 0.65rem 0.9rem;
-  border-radius: 0.35rem;
-  background: #fff7e9;
-  color: #171512;
-  font-weight: 800;
-  text-decoration: none;
-  transform: translateY(-180%);
+/* ==========================================================================
+   Bruno's Garden & Snacks — adaptive layer
+   Container queries, input-modality tweaks, wide screens, print and
+   forced-colors. Loaded after the section styles so it gets the last word.
+   ========================================================================== */
+
+/* --- Cards adapt to their own column, not just the viewport -------------- */
+.menu-grid,
+.featured__products,
+.promotion-grid,
+.visit-grid,
+.intro-grid,
+.club-explainer { container-type: inline-size; }
+
+.menu-card,
+.promotion-grid article { container-type: inline-size; }
+
+@container (max-width: 15rem) {
+  .menu-card__copy { grid-template-columns: 1fr; }
+  .menu-card__copy > strong { justify-self: start; }
+  .menu-card__copy h3 { font-size: 1.12rem; }
 }
 
-.skip-link:focus {
-  transform: translateY(0);
+/* --- Touch devices: no hover lift, larger tap targets -------------------- */
+@media (hover: none) {
+  .button:hover,
+  .menu-card:hover,
+  .intro-grid article:hover,
+  .promotion-grid article:hover,
+  .visit-grid article:hover,
+  .club-explainer article:hover,
+  .featured__products article:hover,
+  .club-fab:hover,
+  .club-join-link:hover,
+  .order-preview__steps span:hover { transform: none; }
+
+  .featured__products article:hover img,
+  .menu-card:hover .menu-card__image-main { transform: none; }
+
+  .site-nav nav a { min-height: 2.75rem; display: flex; align-items: center; }
+  .section-jump a { padding-block: .7rem; }
 }
 
-a:focus-visible,
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
-summary:focus-visible {
-  outline: 3px solid #e8a247;
-  outline-offset: 3px;
+/* --- Very wide screens: keep the reading measure sane -------------------- */
+@media (min-width: 1600px) {
+  :root { --pad-x: clamp(4rem, 9vw, 11rem); }
+  .hero h1 { font-size: 7rem; }
+  .menu-grid { grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); }
 }
 
-/* Blazor focuses the route heading after navigation for screen readers. */
-h1[tabindex="-1"]:focus {
-  outline: none;
+/* --- Short viewports: don't let the hero eat the fold -------------------- */
+@media (max-height: 620px) and (min-width: 901px) {
+  .hero { min-height: 40rem; }
 }
 
-.button,
-.site-header nav a,
-.section-jump a {
-  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+/* --- Backdrop-filter fallback ------------------------------------------- */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .site-header::before { background: #0b0908f2; }
+  .section-jump { background: #0b0908f7; }
+  .hero__hours,
+  .club-status,
+  .account-brand { background: #0d0b09f2; }
 }
 
-.page-hero__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.7rem;
-  margin-top: 0.7rem;
+/* --- Windows high-contrast ---------------------------------------------- */
+@media (forced-colors: active) {
+  .button,
+  .chip,
+  .menu-card,
+  .promotion-grid article,
+  .visit-grid article,
+  .intro-grid article,
+  .club-explainer article,
+  .member-panel,
+  .member-kpis article { border: 1px solid CanvasText; }
+
+  .hero__shade,
+  .featured__products article > div,
+  body::after { display: none; }
+
+  .site-nav nav a.active { outline: 2px solid CanvasText; }
 }
 
-.page-hero__actions .button {
-  margin-top: 0;
-}
-
-.club-status {
-  display: grid;
-  gap: 0.25rem;
-  width: min(100%, 38rem);
-  margin-top: 0.9rem;
-  padding: 1rem 1.1rem;
-  border-left: 4px solid #e8a247;
-  background: #171512d9;
-}
-
-.club-status strong {
-  color: #fff;
-}
-
-.club-status span {
-  color: #dfd7cc;
-  line-height: 1.5;
-}
-
-.account-brand {
-  position: fixed;
-  top: 1rem;
-  left: 1rem;
-  z-index: 10;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.35rem 0.7rem 0.35rem 0.35rem;
-  border: 1px solid #ffffff2b;
-  border-radius: 999px;
-  background: #171512d9;
-  color: #fff;
-  font-size: 0.78rem;
-  font-weight: 800;
-  text-decoration: none;
-  backdrop-filter: blur(12px);
-}
-
-.account-brand img {
-  width: 2.2rem;
-  height: 2.2rem;
-  object-fit: contain;
-}
-
-.account-form input,
-.account-form select,
-.account-form textarea {
-  width: 100%;
-  padding: 0.72rem 0.8rem;
-  border: 1px solid #5b554e;
-  border-radius: 0.35rem;
-  background: #2b2723;
-  color: #fff;
-}
-
-.account-form input:hover,
-.account-form select:hover,
-.account-form textarea:hover {
-  border-color: #8a8177;
-}
-
-.account-form textarea {
-  resize: vertical;
-}
-
-.account-form small {
-  color: #aaa196;
-  font-size: 0.72rem;
-  font-weight: 500;
-  line-height: 1.4;
-}
-
-.account-form .check input {
-  width: 1rem;
-  height: 1rem;
-  accent-color: #c44838;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
+/* --- Print: the menu should be genuinely printable ---------------------- */
+@media print {
+  :root {
+    --bg: #fff;
+    --bg-lift: #fff;
+    --surface: #fff;
+    --surface-2: #fff;
+    --surface-3: #fff;
+    --text: #111;
+    --text-muted: #333;
+    --text-faint: #555;
+    --line: #ccc;
+    --line-strong: #999;
   }
 
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
-  }
-}
+  body { background: #fff; color: #111; }
+  body::after { display: none; }
 
-@media (max-width: 600px) {
-  .account-brand {
-    position: absolute;
-  }
+  .site-header,
+  .section-jump,
+  .club-fab,
+  .skip-link,
+  .ticker,
+  .hero__brand-visual,
+  .page-hero__brand-visual,
+  .promo-join,
+  .site-footer .footer-social,
+  .site-footer .footer-whatsapp { display: none !important; }
 
-  .account-panel {
-    padding-top: 6.5rem;
-  }
+  .page-hero,
+  .hero { min-height: auto; padding: 1.5rem 0; background: none; color: #111; }
+  .page-hero::before,
+  .page-hero::after,
+  .hero::after,
+  .hero__shade { display: none; }
 
-  .menu-section > header h2 {
-    font-size: 1.55rem;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
+  .menu-grid { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
+  .menu-card { break-inside: avoid; border-color: #ccc; box-shadow: none; }
+  .menu-card__image { display: none; }
+  .menu-card__copy > strong { border-color: #999; background: none; color: #111; }
+  .menu-section { break-inside: avoid-page; margin-bottom: 1.5rem; }
+
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: .7em; color: #666; }
 }

@@ -1,317 +1,247 @@
-/* Bruno visual surfaces */
+/* ==========================================================================
+   Bruno's Garden & Snacks — page sections
+   Home, menu, promotions, Club Bruno and Visit.
+   ========================================================================== */
+
+/* --- Scroll reveal ------------------------------------------------------
+   Only armed once the script runs, so content is never hidden by a failure. */
+html.reveal-ready [data-reveal] {
+  opacity: 0;
+  transform: translateY(1.4rem);
+  transition: opacity .7s var(--ease), transform .7s var(--ease);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+html.reveal-ready [data-reveal].is-revealed { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  html.reveal-ready [data-reveal] { opacity: 1; transform: none; }
+}
+
+/* ==========================================================================
+   HERO
+   ========================================================================== */
 .hero {
+  position: relative;
   isolation: isolate;
-  background-image: url("/Images/Brunos/brunos-food-hero.jpg");
-  background-position: center;
+  min-height: clamp(33rem, 92svh, 52rem);
+  display: flex;
+  align-items: flex-end;
+  padding: calc(var(--header-h) + 2rem) var(--pad-x) clamp(3rem, 6vw, 5.5rem);
+  overflow: hidden;
+  background: #0d0b09 url("/Images/Brunos/brunos-food-hero.webp") center 55% / cover no-repeat;
+  color: #fff;
 }
 
+/* Directional darkening: readable at the left, food and mascot alive at the right. */
 .hero__shade {
-  z-index: 0;
+  position: absolute;
+  z-index: 1;
+  inset: 0;
   background:
-    linear-gradient(90deg, #171512f2 0%, #171512d1 36%, #17151255 59%, #17151214 100%),
-    linear-gradient(0deg, #171512de 0%, transparent 58%);
+    radial-gradient(58% 62% at 78% 30%, #f0a93f2b, transparent 70%),
+    linear-gradient(94deg, #0d0b09f7 0%, #0d0b09df 34%, #0d0b0980 60%, #0d0b0926 100%),
+    linear-gradient(0deg, #0d0b09e6 0%, #0d0b0959 34%, transparent 62%);
 }
 
-.hero__content {
+.hero::after {
+  content: "";
+  position: absolute;
   z-index: 2;
-  width: min(55vw, 48rem);
+  inset: auto 0 0;
+  height: 8rem;
+  background: linear-gradient(transparent, var(--bg));
+  pointer-events: none;
 }
 
 .hero__brand-visual {
   position: absolute;
-  z-index: 1;
-  top: 1.5rem;
-  right: clamp(1rem, 3vw, 3rem);
+  z-index: 3;
+  top: var(--header-h);
+  right: clamp(.5rem, 3vw, 3rem);
   bottom: 0;
-  width: min(34vw, 33rem);
+  width: min(36vw, 34rem);
   pointer-events: none;
 }
 
 .hero__logo-badge {
   position: absolute;
-  z-index: 0;
   top: clamp(1rem, 4vh, 3rem);
   right: 0;
-  width: clamp(8rem, 13vw, 12rem);
+  width: clamp(7rem, 12vw, 11rem);
   height: auto;
-  filter: drop-shadow(0 14px 24px #00000078);
+  filter: drop-shadow(0 16px 30px #000000a6);
+  mask-image: radial-gradient(closest-side, #000 74%, transparent 99%);
+  -webkit-mask-image: radial-gradient(closest-side, #000 74%, transparent 99%);
+  animation: float-slow 7s ease-in-out infinite;
 }
 
 .hero__mascot {
   position: absolute;
-  z-index: 1;
-  right: clamp(1rem, 3vw, 3rem);
-  bottom: -1.5rem;
-  width: min(100%, 32rem);
-  max-height: 88%;
-  object-fit: contain;
-  object-position: right bottom;
-  filter: drop-shadow(0 20px 24px #00000070);
-}
-
-.hero__hours {
-  z-index: 3;
-}
-
-.page-hero::before {
-  background:
-    linear-gradient(90deg, #171512f1, #1715127a),
-    url("/Images/Brunos/brunos-real-hero.jpg") center 58% / cover;
-  filter: saturate(.88) contrast(1.02);
-}
-
-.page-hero--club::before {
-  background:
-    linear-gradient(90deg, #171512f5 0%, #171512b8 46%, #17151250 100%),
-    url("/Images/Brunos/brunos-real-club.jpg") center 58% / cover;
-}
-
-.page-hero--club {
-  min-height: 31rem;
-}
-
-.page-hero--club > span,
-.page-hero--club > h1,
-.page-hero--club > p,
-.page-hero--club > .page-hero__actions,
-.page-hero--club > .club-status {
-  z-index: 2;
-  max-width: min(50vw, 42rem);
-}
-
-.page-hero > .page-hero__brand-visual {
-  position: absolute;
-  z-index: 1;
-  top: 1rem;
-  right: clamp(2rem, 7vw, 7rem);
-  bottom: 0;
-  width: min(39vw, 33rem);
-  max-width: none;
-  pointer-events: none;
-}
-
-.page-hero__logo {
-  position: absolute;
-  top: 1rem;
-  right: 0;
-  width: clamp(7rem, 10vw, 9rem);
-  filter: drop-shadow(0 12px 20px #00000070);
-}
-
-.page-hero__mascot {
-  position: absolute;
-  right: clamp(1rem, 3vw, 3rem);
+  right: clamp(0rem, 2vw, 2rem);
   bottom: -1rem;
-  width: min(100%, 31rem);
-  max-height: 90%;
+  width: min(100%, 32rem);
+  max-height: 86%;
   object-fit: contain;
   object-position: right bottom;
-  filter: drop-shadow(0 18px 22px #00000070);
+  filter: drop-shadow(0 26px 30px #000000a1);
 }
 
-.account-art {
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-.55rem); }
+}
+
+.hero__content {
   position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  background:
-    linear-gradient(90deg, #1d1a1726 0%, #1d1a17cf 100%),
-    url("/Images/Brunos/brunos-real-club.jpg") center 58% / cover;
+  z-index: 4;
+  width: min(56vw, 46rem);
 }
 
-.account-art::before {
-  content: "";
-  position: absolute;
-  z-index: 1;
-  inset: 8% 4% -2% 18%;
-  background: url("/Images/Brunos/bruno-club-mascot.png") right bottom / contain no-repeat;
-  filter: drop-shadow(0 20px 24px #00000075);
+.hero h1 { margin: .5rem 0 .9rem; text-shadow: 0 6px 30px #000000b3; }
+
+.hero p {
+  max-width: 34rem;
+  margin: 0;
+  color: #e9e0d4;
+  font-size: clamp(1rem, 1.5vw, 1.2rem);
+  line-height: 1.65;
 }
 
-.account-art::after {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  top: clamp(2rem, 7vh, 5rem);
-  left: clamp(2rem, 5vw, 5rem);
-  width: clamp(7rem, 13vw, 11rem);
-  aspect-ratio: 1;
-  background: url("/Images/Brunos/brunos-logo.png") center / contain no-repeat;
-  filter: drop-shadow(0 12px 20px #00000070);
-}
-
-.hero__authenticity {
+/* Live opening status — replaces the old corner box and reads as a real signal. */
+.hero__hours {
   display: inline-flex;
   align-items: center;
-  gap: .45rem;
-  margin-top: 1rem;
-  padding: .38rem .62rem;
-  border: 1px solid #ffffff30;
-  border-radius: 999px;
-  background: #1715128c;
-  color: #f2e8dc;
-  font-size: .72rem;
-  font-weight: 760;
-  letter-spacing: .04em;
-  backdrop-filter: blur(8px);
-}
-
-.hero__authenticity::before {
-  content: "●";
-  color: #e8a247;
-  font-size: .6rem;
-}
-
-/* Keep product media inside its card at every source aspect ratio. */
-.menu-card__image {
-  overflow: hidden;
-}
-
-.menu-card__image img {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-/* Club Bruno conversion path */
-.club-cta {
-  position: relative;
-  isolation: isolate;
-  display: inline-grid;
-  gap: .08rem;
-  min-width: min(100%, 15rem);
-  overflow: hidden;
-  border-color: #f0b15d;
-  background: linear-gradient(135deg, #a73527 0%, #7d2018 64%, #a73527 100%);
-  box-shadow: 0 0 0 1px #f4c77f26, 0 10px 30px #00000035, 0 0 26px #e8a24730;
-  text-align: center;
-  animation: club-pulse 3.2s ease-in-out infinite;
-}
-
-.club-cta::after,
-.club-join-link::after,
-.club-fab::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  top: -60%;
-  bottom: -60%;
-  left: -35%;
-  width: 22%;
-  transform: rotate(18deg);
-  background: linear-gradient(90deg, transparent, #ffffff62, transparent);
-  animation: club-shimmer 3.8s ease-in-out infinite;
-}
-
-.club-cta > span {
-  font-weight: 900;
-  line-height: 1.1;
-}
-
-.club-cta > small {
-  color: #ffe4ba;
-  font-size: .66rem;
-  font-weight: 800;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-}
-
-.club-cta:hover {
-  border-color: #ffd18a;
-  background: linear-gradient(135deg, #bd4030, #8f271c 64%, #bd4030);
-  box-shadow: 0 12px 34px #00000045, 0 0 34px #e8a24752;
-}
-
-.site-header nav .account-login-link {
-  color: #f0e8dd;
-  text-decoration: underline;
-  text-decoration-color: #ffffff4f;
-  text-underline-offset: .22rem;
-}
-
-.site-header nav .club-join-link {
-  position: relative;
-  isolation: isolate;
-  display: grid;
-  gap: .02rem;
-  min-width: 7.8rem;
-  margin-left: .35rem;
-  overflow: hidden;
-  border: 1px solid #e5a658;
-  background: linear-gradient(135deg, #a73527, #711b15);
-  color: #fff;
-  text-align: center;
-  box-shadow: 0 0 20px #e8a24729;
-}
-
-.site-header nav .club-join-link:hover {
-  background: linear-gradient(135deg, #bd4030, #852219);
-  color: #fff;
-}
-
-.club-join-link span,
-.club-fab span {
-  color: #ffd79a;
-  font-size: .58rem;
-  font-weight: 850;
-  letter-spacing: .12em;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-.club-join-link strong,
-.club-fab strong {
-  font-size: .78rem;
-  line-height: 1.1;
-}
-
-.club-fab {
-  position: fixed;
-  z-index: 24;
-  right: 1.15rem;
-  bottom: 1.15rem;
-  isolation: isolate;
-  display: grid;
-  gap: .18rem;
-  min-width: 9.6rem;
-  overflow: hidden;
-  padding: .8rem 1rem;
-  border: 1px solid #f1b261;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #a73527, #681812);
-  color: #fff;
-  text-align: center;
+  gap: .6rem;
+  margin-top: 1.3rem;
+  padding: .5rem 1rem .5rem .8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--pill);
+  background: #0d0b0999;
+  color: var(--text);
   text-decoration: none;
-  box-shadow: 0 14px 36px #150d0a73, 0 0 28px #e8a24742;
-  animation: club-pulse 3.2s ease-in-out infinite;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: border-color var(--t-fast), background-color var(--t-fast);
 }
 
-.club-fab:hover {
-  transform: translateY(-2px);
-  background: linear-gradient(135deg, #bf4332, #812119);
+.hero__hours:hover { border-color: var(--ember); background: #0d0b09cc; }
+.hero__hours strong { font-size: .86rem; font-weight: 750; }
+.hero__hours span { color: var(--text-muted); font-size: .86rem; font-variant-numeric: tabular-nums; }
+
+.hero__hours small {
+  padding-left: .6rem;
+  border-left: 1px solid var(--line);
+  color: var(--ember);
+  font-size: .74rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
 }
 
+.hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .7rem;
+  margin-top: 1.5rem;
+}
+
+.hero__marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hero__marks li {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .34rem .8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  background: #ffffff0d;
+  color: #ece3d7;
+  font-size: .74rem;
+  font-weight: 650;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.hero__marks li::before { content: "●"; color: var(--ember); font-size: .45rem; }
+
+/* ==========================================================================
+   TICKER
+   ========================================================================== */
+.ticker {
+  position: relative;
+  z-index: 5;
+  overflow: hidden;
+  padding: .85rem 0;
+  border-block: 1px solid #ffffff1f;
+  background: linear-gradient(90deg, var(--red-deep), var(--red) 50%, var(--red-deep));
+  user-select: none;
+}
+
+.ticker__track {
+  display: flex;
+  width: max-content;
+  gap: 2.5rem;
+  padding-left: 2.5rem;
+  animation: ticker-slide 34s linear infinite;
+}
+
+.ticker__track span {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5rem;
+  color: #fff2e2;
+  font-family: var(--font-display);
+  font-size: .95rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ticker__track span::after { content: "✦"; color: var(--ember-soft); font-size: .7rem; }
+
+/* WCAG 2.2.2: give people a way to stop the movement. */
+.ticker:hover .ticker__track,
+.ticker:focus-within .ticker__track { animation-play-state: paused; }
+
+@keyframes ticker-slide {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker__track { animation: none; }
+}
+
+/* ==========================================================================
+   CLUB SPOTLIGHT (home)
+   ========================================================================== */
 .club-spotlight {
   display: grid;
-  grid-template-columns: minmax(18rem, .9fr) minmax(22rem, 1.1fr);
-  min-height: 33rem;
-  margin: clamp(.8rem, 1.4vw, 1.4rem);
-  border: clamp(.4rem, .65vw, .65rem) solid #eee1ce;
-  outline: 1px solid #8f271c;
-  background: #191612;
-  color: #fff;
-  box-shadow: 0 18px 48px #1b120c2e;
+  grid-template-columns: minmax(18rem, .95fr) minmax(21rem, 1.05fr);
+  margin: var(--section-y) var(--pad-x);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-2);
 }
 
 .club-spotlight__visual {
   position: relative;
-  min-height: 28rem;
+  isolation: isolate;
+  min-height: 26rem;
   margin: 0;
   overflow: hidden;
-  isolation: isolate;
-  background: #171512;
+  background: #0d0b09;
 }
 
 .club-spotlight__visual::after {
@@ -319,439 +249,859 @@
   position: absolute;
   z-index: 1;
   inset: 0;
-  background: linear-gradient(0deg, #171512c9 0%, transparent 46%);
+  background:
+    radial-gradient(70% 60% at 30% 20%, #f0a93f2e, transparent 65%),
+    linear-gradient(0deg, #0d0b09d9 0%, transparent 52%);
   pointer-events: none;
 }
 
-.club-spotlight__photo {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center 57%;
-}
+.club-spotlight__photo { width: 100%; height: 100%; object-fit: cover; object-position: center 57%; }
 
 .club-spotlight__logo {
   position: absolute;
   z-index: 2;
-  top: clamp(1rem, 3vw, 2rem);
-  left: clamp(1rem, 3vw, 2rem);
-  width: clamp(6.5rem, 11vw, 9rem);
+  top: clamp(1rem, 2.5vw, 1.8rem);
+  left: clamp(1rem, 2.5vw, 1.8rem);
+  width: clamp(5.5rem, 9vw, 8rem);
   height: auto;
-  filter: drop-shadow(0 12px 20px #00000078);
+  filter: drop-shadow(0 12px 22px #000000b3);
+  mask-image: radial-gradient(closest-side, #000 72%, transparent 99%);
+  -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent 99%);
 }
 
 .club-spotlight__mascot {
   position: absolute;
   z-index: 2;
-  right: clamp(-1rem, 1vw, 1rem);
-  bottom: -1.25rem;
-  width: min(78%, 31rem);
-  max-height: 94%;
+  right: clamp(-1.5rem, -1vw, 0rem);
+  bottom: -1rem;
+  width: min(76%, 30rem);
+  max-height: 92%;
   object-fit: contain;
   object-position: right bottom;
-  filter: drop-shadow(0 18px 22px #00000072);
+  filter: drop-shadow(0 20px 26px #000000ab);
 }
 
 .club-spotlight__content {
   display: grid;
   align-content: center;
   justify-items: start;
-  padding: clamp(2.5rem, 7vw, 6rem);
+  padding: clamp(2.25rem, 5vw, 4.5rem);
   background:
-    radial-gradient(circle at 85% 15%, #8f271c2e, transparent 35%),
-    #191612;
+    radial-gradient(90% 70% at 100% 0%, #c9382a26, transparent 60%),
+    linear-gradient(160deg, var(--surface-2), var(--surface));
 }
 
-.club-spotlight__content > span {
-  color: #efb266;
-  font-size: .76rem;
-  font-weight: 900;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-}
-
-.club-spotlight__content h2 {
-  max-width: 35rem;
-  margin: .45rem 0 .8rem;
-  font-family: Georgia, serif;
-  font-size: clamp(2.3rem, 5vw, 4.5rem);
-  line-height: 1;
-}
-
-.club-spotlight__content p {
-  max-width: 39rem;
-  color: #d7cec3;
-  font-size: 1.02rem;
-  line-height: 1.7;
-}
+.club-spotlight__content h2 { max-width: 22ch; margin: .5rem 0 .8rem; }
+.club-spotlight__content p { max-width: 40ch; margin: 0; color: var(--text-muted); font-size: 1.02rem; line-height: 1.7; }
 
 .club-spotlight__content ul {
   display: flex;
   flex-wrap: wrap;
-  gap: .55rem;
-  margin: .5rem 0 1.5rem;
+  gap: .5rem;
+  margin: 1.2rem 0 1.6rem;
   padding: 0;
   list-style: none;
 }
 
 .club-spotlight__content li {
-  padding: .42rem .7rem;
-  border: 1px solid #ffffff1f;
-  border-radius: 999px;
-  background: #ffffff0c;
-  color: #f4eadf;
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .42rem .8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  background: #ffffff09;
+  color: #ece3d7;
   font-size: .76rem;
-  font-weight: 760;
+  font-weight: 650;
 }
 
-.club-spotlight__actions {
+.club-spotlight__content li::before { content: "✓"; color: var(--ember); font-weight: 800; }
+
+.club-spotlight__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.4rem; }
+
+.club-spotlight__actions > a:not(.button) {
+  color: var(--ember);
+  font-size: .85rem;
+  font-weight: 700;
+  text-decoration: none;
+  text-underline-offset: .25rem;
+}
+
+.club-spotlight__actions > a:not(.button):hover { text-decoration: underline; }
+
+/* ==========================================================================
+   INTRO GRID (home)
+   ========================================================================== */
+.intro-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1rem;
+  padding: 0 var(--pad-x) var(--section-y);
+}
+
+.intro-grid article {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: .5rem;
+  padding: clamp(1.6rem, 3vw, 2.4rem);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(165deg, var(--surface-2), var(--surface));
+  transition: border-color var(--t), transform var(--t), box-shadow var(--t);
+}
+
+.intro-grid article::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(80% 90% at 100% 0%, #f0a93f1a, transparent 60%);
+  opacity: 0;
+  transition: opacity var(--t);
+}
+
+.intro-grid article:hover { transform: translateY(-4px); border-color: #f0a93f4d; box-shadow: var(--shadow-2); }
+.intro-grid article:hover::before { opacity: 1; }
+
+.intro-grid article > span {
+  position: absolute;
+  right: 1.2rem;
+  top: .5rem;
+  font-family: var(--font-display);
+  font-size: 4.5rem;
+  line-height: 1;
+  color: #ffffff0d;
+}
+
+.intro-grid h2 { position: relative; margin: .1rem 0 .2rem; }
+.intro-grid p { position: relative; margin: 0; color: var(--text-muted); line-height: 1.65; }
+
+.intro-grid a {
+  position: relative;
+  justify-self: start;
+  margin-top: .5rem;
+  color: var(--ember);
+  font-size: .78rem;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: gap var(--t-fast), color var(--t-fast);
+}
+
+.intro-grid a:hover { color: var(--ember-soft); text-decoration: underline; text-underline-offset: .25rem; }
+
+/* ==========================================================================
+   FEATURED PRODUCTS (home)
+   ========================================================================== */
+.featured {
+  padding: var(--section-y) var(--pad-x);
+  background: linear-gradient(180deg, var(--bg), var(--bg-lift) 45%, var(--bg));
+}
+
+.featured > div:first-child { max-width: 40rem; }
+.featured h2 { margin: .5rem 0 .7rem; }
+.featured > div > p { margin: 0; color: var(--text-muted); line-height: 1.7; }
+
+.featured__products {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 1rem;
+  margin-top: 2.5rem;
+}
+
+.featured__products article {
+  position: relative;
+  min-height: 24rem;
   display: flex;
-  flex-wrap: wrap;
+  align-items: flex-end;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  transition: transform var(--t), border-color var(--t), box-shadow var(--t);
+}
+
+.featured__products article:hover { transform: translateY(-4px); border-color: #ffffff40; box-shadow: var(--shadow-2); }
+
+.featured__products img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 700ms var(--ease), filter var(--t);
+}
+
+.featured__products article:hover img { transform: scale(1.06); }
+
+.featured__products article > div {
+  position: relative;
+  width: 100%;
+  display: grid;
+  gap: .3rem;
+  padding: 5rem 1.4rem 1.4rem;
+  background: linear-gradient(transparent, #0d0b09d9 42%, #0d0b09f7);
+}
+
+.featured__products h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.55rem;
+  line-height: 1.05;
+  letter-spacing: .01em;
+  text-transform: uppercase;
+}
+
+.featured__products p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: .86rem;
+  line-height: 1.55;
+  text-transform: lowercase;
+}
+
+.featured__products p::first-letter { text-transform: uppercase; }
+
+.featured__products strong {
+  justify-self: start;
+  margin-top: .5rem;
+  padding: .35rem .8rem;
+  border-radius: var(--pill);
+  background: var(--ember);
+  color: #1b1206;
+  font-size: .9rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.featured__more { display: flex; justify-content: center; margin-top: 2.5rem; }
+
+/* ==========================================================================
+   ORDER PREVIEW (home)
+   ========================================================================== */
+.order-preview {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
   align-items: center;
+  gap: clamp(2rem, 5vw, 4rem);
+  margin: 0 var(--pad-x) var(--section-y);
+  padding: clamp(2.25rem, 5vw, 4rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(70% 100% at 0% 0%, #c9382a1f, transparent 60%),
+    linear-gradient(160deg, var(--surface-2), var(--surface));
+}
+
+.order-preview h2 { margin: .5rem 0 .7rem; }
+.order-preview p { margin: 0; color: var(--text-muted); line-height: 1.7; }
+
+.order-preview__steps { display: grid; gap: .6rem; }
+
+.order-preview__steps span {
+  display: flex;
+  align-items: center;
+  gap: .9rem;
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  background: #ffffff08;
+  color: var(--text);
+  font-size: .92rem;
+  font-weight: 650;
+  transition: border-color var(--t), background-color var(--t), transform var(--t);
+}
+
+.order-preview__steps span:hover { transform: translateX(4px); border-color: #f0a93f4d; background: #f0a93f12; }
+
+.order-preview__steps b {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 50%;
+  background: linear-gradient(140deg, var(--red-bright), var(--red-deep));
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+/* ==========================================================================
+   MENU
+   ========================================================================== */
+.page-hero--menu::before {
+  background:
+    linear-gradient(100deg, #0d0b09f2 6%, #0d0b09c4 44%, #0d0b0966 100%),
+    url("/Images/Brunos/brunos-food-hero.webp") center 58% / cover no-repeat;
+}
+
+.section-jump {
+  position: sticky;
+  top: var(--header-h);
+  z-index: 12;
+  display: flex;
+  gap: .45rem;
+  padding: .85rem var(--pad-x);
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: #0b0908e8;
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  mask-image: linear-gradient(90deg, transparent, #000 1.5rem, #000 calc(100% - 1.5rem), transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 1.5rem, #000 calc(100% - 1.5rem), transparent);
+}
+
+.section-jump::-webkit-scrollbar { display: none; }
+
+.section-jump a {
+  flex: none;
+  padding: .55rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  background: #ffffff08;
+  color: var(--text-muted);
+  font-size: .8rem;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--t-fast), border-color var(--t-fast), background-color var(--t-fast);
+}
+
+.section-jump a:hover { color: var(--text); border-color: var(--line-strong); background: #ffffff14; }
+
+.section-jump a.is-current {
+  border-color: transparent;
+  background: var(--ember);
+  color: #1b1206;
+  font-weight: 800;
+}
+
+.menu-page { padding: clamp(2.5rem, 6vw, 4.5rem) var(--pad-x) var(--section-y); }
+/* Adds to html's scroll-padding-top so the category strip clears too. */
+.menu-section { scroll-margin-top: 4rem; margin-bottom: clamp(3rem, 6vw, 5rem); }
+.menu-section > header { margin-bottom: 1.5rem; }
+.menu-section > header h2 { margin: .25rem 0 0; }
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17.5rem, 1fr));
+  /* Descriptions are optional in the catalogue; let each card take the height
+     it needs instead of padding short ones out to match the tallest sibling. */
+  align-items: start;
   gap: 1rem;
 }
 
-.club-spotlight__actions > a:not(.button) {
-  color: #f1b261;
-  font-size: .8rem;
-  font-weight: 850;
-  text-underline-offset: .22rem;
-}
-
-.account-benefits {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .45rem;
-  margin: 1rem 0;
-}
-
-.account-benefits span {
-  padding: .38rem .55rem;
-  border: 1px solid #ffffff20;
-  border-radius: 999px;
-  background: #ffffff0b;
-  color: #e8dfd4;
-  font-size: .7rem;
-  font-weight: 750;
-}
-
-.account-form fieldset {
+.menu-card {
   display: grid;
-  gap: .6rem;
-  margin: .2rem 0;
-  padding: .9rem;
-  border: 1px solid #5b554e;
-  border-radius: .45rem;
-  background: #ffffff05;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(170deg, var(--surface-2), var(--surface));
+  transition: transform var(--t), border-color var(--t), box-shadow var(--t);
 }
 
-.account-form legend {
-  padding: 0 .35rem;
-  color: #e8dfd4;
+.menu-card:hover { transform: translateY(-4px); border-color: #ffffff3d; box-shadow: var(--shadow-2); }
+
+.menu-card__image {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: #16120f;
+  color: var(--text-faint);
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.menu-card__image img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition: transform 700ms var(--ease);
+}
+
+.menu-card:hover .menu-card__image-main { transform: scale(1.05); }
+
+.menu-card__image b {
+  position: absolute;
+  z-index: 2;
+  left: .7rem;
+  bottom: .7rem;
+  padding: .32rem .7rem;
+  border-radius: var(--pill);
+  background: var(--red);
+  color: #fff;
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.menu-card__copy {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-content: start;
+  gap: .45rem .8rem;
+  padding: 1.15rem 1.25rem 1.35rem;
+}
+
+.menu-card__copy h3 {
+  margin: 0;
+  align-self: center;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.28rem;
+  line-height: 1.06;
+  letter-spacing: .012em;
+  text-transform: uppercase;
+}
+
+.menu-card__copy > strong {
+  align-self: center;
+  padding: .3rem .7rem;
+  border-radius: var(--pill);
+  background: #f0a93f1f;
+  border: 1px solid #f0a93f3d;
+  color: var(--ember-soft);
+  font-size: .85rem;
+  font-weight: 800;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.menu-card__copy p,
+.menu-card__copy > small {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.menu-card__copy p { font-size: .88rem; text-transform: lowercase; }
+.menu-card__copy p::first-letter { text-transform: uppercase; }
+
+.menu-card__copy > small {
+  padding-top: .5rem;
+  border-top: 1px solid var(--line);
+  color: var(--text-faint);
+  font-size: .72rem;
+}
+
+.menu-card.is-sold-out { opacity: .72; }
+.menu-card.is-sold-out .menu-card__copy h3 { color: var(--text-muted); }
+
+.allergen-note { margin-top: 1rem; }
+
+/* ==========================================================================
+   PROMOTIONS
+   ========================================================================== */
+.page-hero--promos::before {
+  background:
+    linear-gradient(100deg, #0d0b09f2 6%, #0d0b09bd 46%, #0d0b0959 100%),
+    url("/Images/Brunos/brunos-real-hero.webp") center 62% / cover no-repeat;
+}
+
+.promotion-page { padding: clamp(2.5rem, 6vw, 4.5rem) var(--pad-x) var(--section-y); }
+
+.promotion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 1rem;
+}
+
+.promotion-grid article {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: .55rem;
+  padding: clamp(1.5rem, 3vw, 2.2rem);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(165deg, var(--surface-2), var(--surface));
+  transition: transform var(--t), border-color var(--t), box-shadow var(--t);
+}
+
+.promotion-grid article::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--red-bright), var(--ember));
+  opacity: .8;
+}
+
+.promotion-grid article:hover { transform: translateY(-4px); border-color: #f0a93f47; box-shadow: var(--shadow-2); }
+.promotion-grid h2 { margin: .35rem 0 .2rem; }
+.promotion-grid p { margin: 0; color: var(--text-muted); line-height: 1.65; }
+
+.validity {
+  justify-self: start;
+  padding: .42rem .8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  background: #ffffff08;
+  color: var(--text-muted);
   font-size: .76rem;
-  font-weight: 850;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
 }
 
-.account-form button.club-cta {
-  border: 1px solid #f0b15d;
+.promotion-grid details { margin-top: .6rem; padding-top: .9rem; border-top: 1px solid var(--line); }
+
+.promotion-grid summary {
+  cursor: pointer;
+  color: var(--ember);
+  font-size: .8rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  list-style: none;
 }
 
-.account-form button.club-cta:disabled,
-.account-form button.club-cta:disabled::after {
-  animation: none;
-}
+.promotion-grid summary::-webkit-details-marker { display: none; }
+.promotion-grid summary::before { content: "+ "; font-weight: 800; }
+.promotion-grid details[open] summary::before { content: "– "; }
+.promotion-grid details p { margin-top: .7rem; font-size: .88rem; color: var(--text-faint); }
 
-.account-form button.club-cta:disabled {
-  border-color: #5b554e;
-  box-shadow: none;
-}
-
-@keyframes club-pulse {
-  0%, 100% { box-shadow: 0 10px 30px #00000035, 0 0 20px #e8a24725; }
-  50% { box-shadow: 0 12px 34px #00000045, 0 0 34px #e8a24755; }
-}
-
-@keyframes club-shimmer {
-  0%, 55% { left: -35%; opacity: 0; }
-  66% { opacity: .95; }
-  86%, 100% { left: 118%; opacity: 0; }
-}
-
-@media (max-width: 1100px) {
-  .site-header nav a {
-    padding-inline: .68rem;
-  }
-
-  .site-header nav .club-join-link {
-    min-width: 7rem;
-  }
-}
-
-@media (max-width: 900px) {
-  .site-header nav .club-join-link {
-    margin-left: 0;
-  }
-
-  .club-spotlight {
-    grid-template-columns: 1fr;
-  }
-
-  .hero__content {
-    width: min(100%, 44rem);
-  }
-
-  .hero__brand-visual {
-    top: 1rem;
-    right: -3.5rem;
-    bottom: auto;
-    width: min(64vw, 27rem);
-    height: 33rem;
-    opacity: .5;
-  }
-
-  .hero__logo-badge {
-    right: 4.5rem;
-    width: clamp(6rem, 18vw, 8rem);
-  }
-
-  .hero__mascot {
-    right: 0;
-    max-height: 90%;
-  }
-
-  .page-hero--club > span,
-  .page-hero--club > h1,
-  .page-hero--club > p,
-  .page-hero--club > .page-hero__actions,
-  .page-hero--club > .club-status {
-    max-width: min(75vw, 36rem);
-  }
-
-  .page-hero > .page-hero__brand-visual {
-    right: -5rem;
-    width: min(65vw, 27rem);
-    opacity: .56;
-  }
-
-  .page-hero__logo {
-    right: 4.5rem;
-    width: 7rem;
-  }
-
-  .club-spotlight__visual {
-    height: min(62vh, 34rem);
-  }
-
-  .club-spotlight__content {
-    padding: clamp(2.5rem, 8vw, 4.5rem) clamp(1rem, 7vw, 4rem);
-  }
-}
-
-@media (max-width: 600px) {
-  .hero__actions .button,
-  .club-spotlight__actions .button {
-    width: 100%;
-  }
-
-  .hero__authenticity {
-    margin-bottom: 1rem;
-  }
-
-  .hero__brand-visual {
-    top: .5rem;
-    right: -4.5rem;
-    width: 19rem;
-    height: 27rem;
-    opacity: .44;
-  }
-
-  .hero__logo-badge {
-    top: .5rem;
-    right: 5rem;
-    width: 6rem;
-  }
-
-  .page-hero--club {
-    min-height: 32rem;
-  }
-
-  .page-hero--club > span,
-  .page-hero--club > h1,
-  .page-hero--club > p,
-  .page-hero--club > .page-hero__actions,
-  .page-hero--club > .club-status {
-    max-width: 100%;
-  }
-
-  .page-hero > .page-hero__brand-visual {
-    right: -6.5rem;
-    width: 23rem;
-    opacity: .35;
-  }
-
-  .page-hero__logo {
-    right: 6rem;
-    width: 6rem;
-  }
-
-  .club-fab {
-    right: .75rem;
-    bottom: .75rem;
-    min-width: 8.8rem;
-    padding: .7rem .85rem;
-  }
-
-  .club-spotlight__visual {
-    min-height: 24rem;
-    height: 55vh;
-  }
-
-  .club-spotlight {
-    margin: .6rem;
-    border-width: .35rem;
-  }
-
-  .club-spotlight__logo {
-    width: 6.5rem;
-  }
-
-  .club-spotlight__mascot {
-    right: -2.5rem;
-    width: 88%;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .club-cta,
-  .club-cta::after,
-  .club-join-link::after,
-  .club-fab,
-  .club-fab::after {
-    animation: none;
-  }
-}
-
-/* Footer: redes sociales y contacto directo por WhatsApp */
-.site-footer {
-  grid-template-columns: 1.2fr repeat(4, 1fr);
-}
-
-.footer-social {
+.promo-join {
   display: flex;
   flex-wrap: wrap;
-  gap: .35rem .9rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+  padding: clamp(1.5rem, 3vw, 2.25rem);
+  border: 1px solid #f0a93f3d;
+  border-radius: var(--radius);
+  background:
+    radial-gradient(70% 130% at 0% 0%, #c9382a2b, transparent 62%),
+    linear-gradient(160deg, var(--surface-2), var(--surface));
 }
 
-.footer-social a {
-  font-weight: 780;
-  text-decoration: none;
-  border-bottom: 1px solid #ffffff2e;
+.promo-join div { display: grid; gap: .35rem; }
+.promo-join p { margin: 0; max-width: 46ch; color: var(--text-muted); line-height: 1.6; }
+
+/* ==========================================================================
+   CLUB BRUNO
+   ========================================================================== */
+.page-hero--club { min-height: clamp(23rem, 46vw, 32rem); }
+
+.page-hero--club::before {
+  background:
+    linear-gradient(100deg, #0d0b09f7 4%, #0d0b09cc 44%, #0d0b096b 100%),
+    url("/Images/Brunos/brunos-real-club.webp") center 58% / cover no-repeat;
 }
 
-.footer-social a:hover {
-  color: #fff;
-  border-bottom-color: var(--red);
+.page-hero--club > span,
+.page-hero--club > h1,
+.page-hero--club > p,
+.page-hero--club > .page-hero__actions,
+.page-hero--club > .club-status { position: relative; z-index: 2; max-width: min(52vw, 40rem); }
+
+.page-hero__brand-visual {
+  position: absolute;
+  z-index: 1;
+  top: var(--header-h);
+  right: clamp(1rem, 5vw, 5rem);
+  bottom: 0;
+  width: min(38vw, 32rem);
+  pointer-events: none;
 }
 
-.footer-whatsapp {
-  justify-self: start;
-  margin-top: .55rem;
-  padding: .5rem .75rem;
-  border: 1px solid #3d7a4d;
-  border-radius: .3rem;
-  background: #1d3a26;
-  color: #cfe8d6 !important;
+.page-hero__logo {
+  position: absolute;
+  top: 1rem;
+  right: 0;
+  width: clamp(6rem, 9vw, 8.5rem);
+  height: auto; /* the markup carries intrinsic width/height for CLS */
+  filter: drop-shadow(0 14px 24px #000000a6);
+  mask-image: radial-gradient(closest-side, #000 74%, transparent 99%);
+  -webkit-mask-image: radial-gradient(closest-side, #000 74%, transparent 99%);
+}
+
+.page-hero__mascot {
+  position: absolute;
+  right: clamp(0rem, 2vw, 2rem);
+  bottom: -.75rem;
+  width: min(100%, 30rem);
+  max-height: 88%;
+  object-fit: contain;
+  object-position: right bottom;
+  filter: drop-shadow(0 22px 26px #000000a6);
+}
+
+.club-status {
+  display: grid;
+  gap: .3rem;
+  width: min(100%, 36rem);
+  margin-top: 1.2rem;
+  padding: 1.1rem 1.3rem;
+  border: 1px solid #f0a93f3d;
+  border-left: 3px solid var(--ember);
+  border-radius: var(--radius-sm);
+  background: #0d0b09cc;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.club-status strong { color: #fff; font-size: .98rem; }
+.club-status span { color: var(--text-muted); line-height: 1.55; font-size: .9rem; }
+
+/* Numbered timeline for the four membership steps. */
+.club-explainer {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+  padding: var(--section-y) var(--pad-x) 0;
+}
+
+.club-explainer article {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: .45rem;
+  padding: 1.9rem 1.5rem 1.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(165deg, var(--surface-2), var(--surface));
+  transition: border-color var(--t), transform var(--t);
+}
+
+.club-explainer article:hover { transform: translateY(-4px); border-color: #f0a93f4d; }
+
+.club-explainer b {
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  margin-bottom: .35rem;
+  border-radius: 50%;
+  border: 1px solid #f0a93f4d;
+  background: #f0a93f14;
+  color: var(--ember);
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 400;
+}
+
+.club-explainer h2 { margin: 0; }
+.club-explainer p { margin: 0; color: var(--text-muted); line-height: 1.65; font-size: .92rem; }
+
+.club-details {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: clamp(2rem, 5vw, 4rem);
+  padding: var(--section-y) var(--pad-x);
+}
+
+.club-details > div { align-self: start; }
+.club-details h2 { margin: .5rem 0 0; }
+.club-details ul { margin: 0; padding: 0; list-style: none; }
+
+.club-details li {
+  position: relative;
+  padding: .95rem 0 .95rem 2rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.club-details li:last-child { border-bottom: 0; }
+
+.club-details li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: .95rem;
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: #f0a93f1f;
+  color: var(--ember);
+  font-size: .7rem;
   font-weight: 800;
-  text-decoration: none;
 }
 
-.footer-whatsapp:hover {
-  background: #265033;
-  color: #fff !important;
-}
-
-/* Promociones: invitación a registrarse en Club Bruno */
-.promo-join {
+.club-details__action {
+  grid-column: 2;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
   margin-top: 1.5rem;
-  padding: 1.4rem clamp(1.1rem, 3vw, 2rem);
-  border-left: 4px solid var(--red);
-  background: #25211d;
-  color: #fff;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid #f0a93f3d;
+  border-radius: var(--radius);
+  background:
+    radial-gradient(80% 140% at 0% 0%, #c9382a29, transparent 62%),
+    var(--surface);
 }
 
-.promo-join div {
+.club-details__action strong { font-size: 1rem; }
+
+/* ==========================================================================
+   VISIT
+   ========================================================================== */
+.page-hero--visit::before {
+  background:
+    linear-gradient(100deg, #0d0b09f2 6%, #0d0b09b3 46%, #0d0b0947 100%),
+    url("/Images/Brunos/brunos-real-club.webp") center 62% / cover no-repeat;
+}
+
+.visit-grid {
   display: grid;
-  gap: .25rem;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 1rem;
+  padding: clamp(2.5rem, 6vw, 4.5rem) var(--pad-x) var(--section-y);
 }
 
-.promo-join strong {
-  font-family: Georgia, serif;
-  font-size: 1.45rem;
-}
-
-.promo-join p {
-  margin: 0;
-  color: #d3cabf;
-  line-height: 1.5;
-  max-width: 44rem;
-}
-
-@media (max-width: 900px) {
-  .site-footer {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
-@media (max-width: 600px) {
-  .site-footer {
-    grid-template-columns: 1fr;
-  }
-
-  .promo-join {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
-/* Mi cuenta: saldo canjeable */
-.redeem-banner {
+.visit-grid article {
   display: grid;
-  gap: .35rem;
-  margin: 1rem 0 0;
-  padding: 1.1rem 1.25rem;
-  border-left: 4px solid #b8b2a7;
-  background: #efe4d2;
+  align-content: start;
+  gap: .45rem;
+  padding: clamp(1.6rem, 3vw, 2.2rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(165deg, var(--surface-2), var(--surface));
+  transition: border-color var(--t), transform var(--t);
 }
 
-.redeem-banner.is-ready {
-  border-left-color: #39513b;
-  background: #e4ecdf;
+.visit-grid article:hover { transform: translateY(-4px); border-color: var(--line-strong); }
+.visit-grid h2 { margin: .3rem 0 .2rem; }
+.visit-grid p { margin: 0; color: var(--text-muted); line-height: 1.65; }
+.visit-grid .button { justify-self: start; margin-top: 1.1rem; }
+.visit-grid small { margin-top: .9rem; color: var(--text-faint); font-size: .78rem; line-height: 1.5; }
+
+.hours-card {
+  border-color: #f0a93f3d !important;
+  background:
+    radial-gradient(90% 120% at 100% 0%, #f0a93f1f, transparent 60%),
+    linear-gradient(165deg, var(--surface-2), var(--surface)) !important;
 }
 
-.redeem-banner strong {
-  font-family: Georgia, serif;
-  font-size: 1.25rem;
-  color: #171512;
+.hours-card strong {
+  margin-top: .5rem;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  font-weight: 400;
+  line-height: 1;
+  color: var(--ember);
+  font-variant-numeric: tabular-nums;
 }
 
-.redeem-banner p {
-  margin: .2rem 0 0;
-  line-height: 1.5;
-  color: #5b534a;
-}
-
-.redeem-banner small {
-  color: #8f271c;
+.visit-grid .hours-card__state {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  margin-top: .85rem;
+  padding: .4rem .9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--pill);
+  background: #ffffff0a;
+  color: var(--text);
+  font-size: .82rem;
   font-weight: 700;
 }
 
-@media (min-width: 901px) {
-  .club-explainer {
-    grid-template-columns: repeat(4, 1fr);
+.social-links { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.1rem; }
+
+.social-links a {
+  padding: .45rem .9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  background: #ffffff08;
+  color: var(--text-muted);
+  font-size: .8rem;
+  font-weight: 650;
+  text-decoration: none;
+  transition: color var(--t-fast), border-color var(--t-fast), background-color var(--t-fast);
+}
+
+.social-links a:hover { border-color: var(--ember); background: #f0a93f14; color: var(--ember-soft); }
+
+/* ==========================================================================
+   RESPONSIVE
+   ========================================================================== */
+@media (max-width: 1080px) {
+  .hero__content { width: min(64vw, 40rem); }
+  .club-details { grid-template-columns: 1fr; }
+  .club-details__action { grid-column: auto; }
+}
+
+@media (max-width: 900px) {
+  .hero { align-items: flex-end; min-height: clamp(32rem, 88svh, 46rem); }
+  .hero__content { width: 100%; max-width: 40rem; }
+
+  /* The header already carries the mark; a second badge here just collides
+     with the mascot once the columns stack. */
+  .hero__logo-badge,
+  .page-hero__logo { display: none; }
+
+  .hero__brand-visual {
+    top: auto;
+    right: -3rem;
+    bottom: 0;
+    width: min(62vw, 26rem);
+    height: 26rem;
+    opacity: .5;
   }
+
+  .hero__mascot { right: -1rem; max-height: 100%; }
+
+  .club-spotlight { grid-template-columns: 1fr; }
+  .club-spotlight__visual { min-height: 0; height: min(56vh, 26rem); }
+
+  .order-preview { grid-template-columns: 1fr; }
+
+  .page-hero--club > span,
+  .page-hero--club > h1,
+  .page-hero--club > p,
+  .page-hero--club > .page-hero__actions,
+  .page-hero--club > .club-status { max-width: min(72vw, 34rem); }
+
+  .page-hero__brand-visual { top: auto; right: -4rem; bottom: 0; width: min(60vw, 24rem); height: 22rem; opacity: .5; }
+}
+
+@media (max-width: 600px) {
+  .hero { padding-bottom: 3rem; }
+  .hero__actions .button,
+  .club-spotlight__actions .button,
+  .page-hero__actions .button { width: 100%; }
+
+  .hero__brand-visual { right: -4.5rem; width: 18rem; height: 21rem; opacity: .34; }
+
+  .hero__hours { flex-wrap: wrap; row-gap: .15rem; border-radius: 1.1rem; padding: .65rem 1rem; }
+  .hero__hours small { padding-left: 0; border-left: 0; flex-basis: 100%; }
+
+  .page-hero--club > span,
+  .page-hero--club > h1,
+  .page-hero--club > p,
+  .page-hero--club > .page-hero__actions,
+  .page-hero--club > .club-status { max-width: 100%; }
+
+  .page-hero__brand-visual { right: -6rem; width: 17rem; height: 18rem; opacity: .3; }
+
+  .club-spotlight { margin-inline: 1rem; }
+  .club-spotlight__mascot { right: -2.5rem; width: 86%; }
+
+  .featured__products article { min-height: 20rem; }
+  .menu-grid { grid-template-columns: 1fr; }
+  .promo-join .button { width: 100%; }
 }

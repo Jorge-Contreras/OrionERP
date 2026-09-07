@@ -1,0 +1,113 @@
+@using OrionERP.Application.Features.ReportesFinancieros.Models
+
+@*
+    Asiento que salda 118-01 contra 208-01 y manda el neto a IVA por pagar o a
+    IVA a favor.
+
+    Se calcula sobre el saldo vivo de esas cuentas, no sobre el movimiento del
+    mes: un periodo ya cerrado devuelve cero renglones, que es la respuesta
+    correcta, y uno que arrastra saldo de meses anteriores lo arrastra tambien
+    al cierre.
+*@
+
+@if (YaGenerado)
+{
+    <div class="alert alert-success">
+        El cierre de este periodo ya se generó en la póliza <strong>@TransaccionId</strong>.
+    </div>
+}
+else if (Filas.Count == 0)
+{
+    <div class="alert alert-info">
+        Las cuentas 118-01 y 208-01 no tienen saldo por cerrar en este periodo.
+    </div>
+}
+else
+{
+    @if (HayHallazgosAltos)
+    {
+        <div class="alert alert-danger">
+            <strong>Hay hallazgos de severidad alta en este periodo.</strong>
+            Un CFDI sin póliza o con IVA distinto al contabilizado significa que 118 y 208 todavía no
+            tienen el saldo correcto; cerrar sobre saldos equivocados manda la diferencia a IVA a favor
+            o por pagar y la arrastra a los meses siguientes. Corrige los hallazgos y vuelve.
+        </div>
+    }
+
+    <div class="table-responsive report-table-shell">
+        <table class="table table-sm table-bordered compact-table report-table">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">Cuenta</th>
+                    <th scope="col">Nombre</th>
+                    <th scope="col" class="num">Debe</th>
+                    <th scope="col" class="num">Haber</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var fila in Filas)
+                {
+                    <tr>
+                        <td><code>@fila.Cuenta</code></td>
+                        <td>@fila.NombreCuenta</td>
+                        <td class="num">@Money(fila.Debe)</td>
+                        <td class="num">@Money(fila.Haber)</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot class="table-light">
+                <tr>
+                    <th scope="row" colspan="2">Totales</th>
+                    <td class="num fw-bold">@Money(Filas.Sum(x => x.Debe))</td>
+                    <td class="num fw-bold">@Money(Filas.Sum(x => x.Haber))</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <p class="text-muted">
+        Fecha de la póliza: <strong>@(Filas[0].Fecha.ToString("dd/MM/yyyy"))</strong> ·
+        Concepto: <strong>@Filas[0].Concepto</strong> ·
+        Neto: <strong>@Money(Math.Abs(Filas[0].Neto))</strong>
+        @(Filas[0].EsFavor ? "a favor" : "por pagar")
+    </p>
+
+    <div class="no-print">
+        @if (!Confirmando)
+        {
+            <button type="button" class="btn btn-primary" disabled="@(!PuedeGenerar)" @onclick="OnPedirConfirmacion">
+                <i class="bi bi-journal-plus"></i> Generar póliza de cierre
+            </button>
+        }
+        else
+        {
+            <div class="alert alert-warning">
+                <p class="mb-2">
+                    Se va a registrar esta póliza en la contabilidad de <strong>@Rfc</strong>.
+                    Una vez creada no se puede borrar: para deshacerla habría que cancelarla con un
+                    asiento inverso.
+                </p>
+                <button type="button" class="btn btn-danger me-2" @onclick="OnConfirmar">Sí, generar</button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="OnCancelar">Cancelar</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<DeclaracionCierreRow> Filas { get; set; } = [];
+    [Parameter, EditorRequired] public string Rfc { get; set; } = string.Empty;
+    [Parameter] public bool YaGenerado { get; set; }
+    [Parameter] public int? TransaccionId { get; set; }
+    [Parameter] public bool HayHallazgosAltos { get; set; }
+    [Parameter] public bool PuedeGenerar { get; set; }
+    [Parameter] public bool Confirmando { get; set; }
+    [Parameter] public EventCallback OnPedirConfirmacion { get; set; }
+    [Parameter] public EventCallback OnConfirmar { get; set; }
+    [Parameter] public EventCallback OnCancelar { get; set; }
+
+    private static readonly System.Globalization.CultureInfo Mx =
+        System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+
+    private static string Money(decimal valor) => valor.ToString("N2", Mx);
+}

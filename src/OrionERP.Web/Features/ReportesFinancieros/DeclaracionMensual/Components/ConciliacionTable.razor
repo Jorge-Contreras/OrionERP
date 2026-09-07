@@ -1,0 +1,103 @@
+@using OrionERP.Application.Features.ReportesFinancieros.Models
+
+@*
+    CFDI contra contabilidad contra declarado.
+
+    Para IVA acreditable se compara contra el DEBE de 118-01 y para IVA
+    trasladado contra el HABER de 208-01, no contra el saldo neto: la poliza de
+    cierre deja ambas cuentas en cero, asi que despues de cerrar el mes el neto
+    no diria nada.
+*@
+
+<h3 class="report-panel__title">CFDI contra contabilidad</h3>
+
+<div class="table-responsive report-table-shell">
+    <table class="table table-sm table-bordered compact-table report-table">
+        <thead class="table-light">
+            <tr>
+                <th scope="col">Concepto</th>
+                <th scope="col">Cuenta</th>
+                <th scope="col" class="num">CFDI</th>
+                <th scope="col" class="num">Contabilidad</th>
+                <th scope="col" class="num">Declarado</th>
+                <th scope="col" class="num">Diferencia</th>
+                <th scope="col">Estado</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var fila in Filas)
+            {
+                <tr class="@FilaClase(fila.Estado)">
+                    <th scope="row" class="fw-normal">@fila.Concepto</th>
+                    <td><code>@fila.Cuenta</code></td>
+                    <td class="num">@Money(fila.ValorCfdi)</td>
+                    <td class="num">@Money(fila.ValorContable)</td>
+                    <td class="num">@Money(fila.ValorDeclarado)</td>
+                    <td class="num">@Money(fila.DifCfdiContable)</td>
+                    <td>
+                        <span class="@PillClase(fila.Estado)">
+                            @(fila.NoComparable ? "Informativo" : fila.Estado)
+                        </span>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<h3 class="report-panel__title mt-4">Retenciones</h3>
+
+<div class="table-responsive report-table-shell">
+    <table class="table table-sm table-bordered compact-table report-table">
+        <thead class="table-light">
+            <tr>
+                <th scope="col">Concepto</th>
+                <th scope="col">Cuenta</th>
+                <th scope="col" class="num">CFDI</th>
+                <th scope="col" class="num">Contabilidad</th>
+                <th scope="col" class="num">Diferencia</th>
+                <th scope="col">Estado</th>
+                <th scope="col">Nota</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var fila in Retenciones)
+            {
+                <tr class="@FilaClase(fila.Estado)">
+                    <th scope="row" class="fw-normal">@fila.Concepto</th>
+                    <td><code>@fila.Cuenta</code></td>
+                    <td class="num">@Money(fila.ValorCfdi)</td>
+                    <td class="num">@Money(fila.ValorContable)</td>
+                    <td class="num">@Money(fila.DifCfdiContable)</td>
+                    <td><span class="@PillClase(fila.Estado)">@fila.Estado</span></td>
+                    <td class="text-muted small">@fila.Nota</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<DeclaracionConciliacionRow> Filas { get; set; } = [];
+    [Parameter, EditorRequired] public IReadOnlyList<DeclaracionRetencionRow> Retenciones { get; set; } = [];
+
+    private static readonly System.Globalization.CultureInfo Mx =
+        System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+
+    private static string Money(decimal? valor) =>
+        valor is null ? "—" : valor.Value.ToString("N2", Mx);
+
+    private static string PillClase(string? estado) => estado switch
+    {
+        "OK" => "pill pill--ok",
+        "DIFERENCIA" => "pill pill--bad",
+        _ => "pill pill--muted"
+    };
+
+    private static string? FilaClase(string? estado) => estado switch
+    {
+        "DIFERENCIA" => "is-bad",
+        "NA" => "is-muted",
+        _ => null
+    };
+}

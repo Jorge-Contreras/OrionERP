@@ -158,6 +158,7 @@ public static class ServiceRegistration
     services.AddHttpClient<IMicrosoftGraphMailClient<GraphMailOptions>, MicrosoftGraphMailClient<GraphMailOptions>>();
     services.AddScoped<IEmailSender, MicrosoftGraphEmailSender>();
     services.AddScoped<IReportesFinancierosService, ReportesFinancierosService>();
+    services.AddScoped<IDeclaracionMensualService, DeclaracionMensualService>();
     services.AddScoped<IBusinessPartnerService, BusinessPartnerService>();
     services.AddScoped<IMaterialService, MaterialService>();
     services.AddScoped<ILocationService, LocationService>();

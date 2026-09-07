@@ -380,98 +380,17 @@ WHERE DoctoRelacionado_Id = @DoctoRelacionado_Id;";
       return;
     }
 
+    // La consulta vivia aqui embebida y ahora es fiscal.fn_Congruencia_Cfdi, la
+    // misma que usa Declaracion Mensual. Con dos copias, una pantalla podia
+    // decir que un CFDI cuadra y la otra que no, y el desacuerdo no era de
+    // datos sino de que habia dos definiciones de "cuadra".
+    //
+    // Esto ata esta pantalla al esquema fiscal: hay que aplicar
+    // 20260907_fiscal_declaracion_objetos.sql antes de desplegar este codigo.
     const string sql = @"
-;WITH TargetIds AS
-(
-    SELECT DISTINCT TRY_CONVERT(int, value) AS ComprobanteId
-    FROM STRING_SPLIT(@ComprobanteIds, ',')
-    WHERE TRY_CONVERT(int, value) IS NOT NULL
-),
-RegularLinks AS
-(
-    SELECT
-        cd.Comprobante_Id AS ComprobanteId,
-        tc.Transaccion_ID AS TransaccionId,
-        CAST(tc.Monto AS decimal(19, 4)) AS MontoAsignado,
-        CAST(cd.Total AS decimal(19, 4)) AS Total,
-        CAST(cd.IVA AS decimal(19, 4)) AS Iva,
-        CASE
-            WHEN cd.RFC_EMISOR = @ContextRfc THEN 'Emitido'
-            WHEN cd.RFC_RECEPTOR = @ContextRfc THEN 'Recibido'
-            ELSE 'Otro'
-        END AS Direccion,
-        CAST(ISNULL(txAssigned.AsignadoRegular, 0) AS decimal(19, 4)) AS TransaccionAsignadoRegular,
-        CAST(
-            CASE
-                WHEN cd.RFC_EMISOR = @ContextRfc AND cd.TipoDeComprobante = 'E'
-                    THEN ISNULL(iva208.Debe, 0) - ISNULL(iva208.Haber, 0)
-                WHEN cd.RFC_EMISOR = @ContextRfc
-                    THEN ISNULL(iva208.Haber, 0) - ISNULL(iva208.Debe, 0)
-                WHEN cd.RFC_RECEPTOR = @ContextRfc AND cd.TipoDeComprobante = 'E'
-                    THEN ISNULL(iva118.Haber, 0) - ISNULL(iva118.Debe, 0)
-                WHEN cd.RFC_RECEPTOR = @ContextRfc
-                    THEN ISNULL(iva118.Debe, 0) - ISNULL(iva118.Haber, 0)
-                ELSE 0
-            END AS decimal(19, 4)
-        ) AS IvaContableTransaccion
-    FROM TargetIds AS ids
-    JOIN cfdi.Comprobante_Detalle AS cd
-        ON cd.Comprobante_Id = ids.ComprobanteId
-    JOIN dbo.Transaccion_Comprobante AS tc
-        ON tc.Comprobante_ID = cd.Comprobante_Id
-    JOIN dbo.Transacciones AS t
-        ON t.ID = tc.Transaccion_ID
-    OUTER APPLY
-    (
-        SELECT SUM(CAST(tc2.Monto AS decimal(19, 4))) AS AsignadoRegular
-        FROM dbo.Transaccion_Comprobante AS tc2
-        JOIN cfdi.Comprobante AS c2
-            ON c2.Comprobante_Id = tc2.Comprobante_ID
-        WHERE tc2.Transaccion_ID = tc.Transaccion_ID
-          AND c2.TipoDeComprobante IN ('I', 'N', 'E')
-    ) AS txAssigned
-    OUTER APPLY
-    (
-        SELECT SUM(CAST(rc.Debe AS decimal(19, 4))) AS Debe, SUM(CAST(rc.Haber AS decimal(19, 4))) AS Haber
-        FROM dbo.Registro_Contable AS rc
-        WHERE rc.TransaccionID = tc.Transaccion_ID
-          AND rc.Nivel1 = '208'
-    ) AS iva208
-    OUTER APPLY
-    (
-        SELECT SUM(CAST(rc.Debe AS decimal(19, 4))) AS Debe, SUM(CAST(rc.Haber AS decimal(19, 4))) AS Haber
-        FROM dbo.Registro_Contable AS rc
-        WHERE rc.TransaccionID = tc.Transaccion_ID
-          AND rc.Nivel1 = '118'
-    ) AS iva118
-    WHERE cd.TipoDeComprobante IN ('I', 'N', 'E')
-),
-RegularStatus AS
-(
-    SELECT
-        rl.ComprobanteId,
-        rl.TransaccionId,
-        rl.MontoAsignado,
-        rl.Total,
-        rl.Direccion,
-        CAST(CASE WHEN rl.Total <> 0 THEN rl.Iva * (rl.MontoAsignado / rl.Total) ELSE 0 END AS decimal(19, 4)) AS IvaEsperado,
-        CAST(CASE WHEN rl.TransaccionAsignadoRegular <> 0 THEN rl.IvaContableTransaccion * (rl.MontoAsignado / rl.TransaccionAsignadoRegular) ELSE 0 END AS decimal(19, 4)) AS IvaContable
-    FROM RegularLinks AS rl
-)
-SELECT
-    ComprobanteId,
-    SUM(IvaEsperado) AS IvaEsperado,
-    SUM(IvaContable) AS IvaContable,
-    CAST(SUM(IvaEsperado) - SUM(IvaContable) AS decimal(19, 4)) AS IvaDiferencia,
-    CASE WHEN ABS(MAX(Total) - SUM(MontoAsignado)) <= @Tolerancia THEN 'OK' ELSE 'DIFERENCIA' END AS TotalCfdiStatus,
-    CASE WHEN COUNT(DISTINCT TransaccionId) > 0 THEN 'OK' ELSE 'DIFERENCIA' END AS TransaccionAsignacionStatus,
-    CASE
-        WHEN MAX(Direccion) = 'Otro' OR MAX(Total) = 0 THEN 'NA'
-        WHEN ABS(SUM(IvaEsperado) - SUM(IvaContable)) <= @Tolerancia THEN 'OK'
-        ELSE 'DIFERENCIA'
-    END AS IvaStatus
-FROM RegularStatus
-GROUP BY ComprobanteId;";
+SELECT ComprobanteId, IvaEsperado, IvaContable, IvaDiferencia,
+       TotalCfdiStatus, TransaccionAsignacionStatus, IvaStatus
+FROM fiscal.fn_Congruencia_Cfdi(@ComprobanteIds, @ContextRfc, @Tolerancia);";
 
     var rows = (await conn.QueryAsync<DeclaracionCfdiCongruenceRow>(
       sql,

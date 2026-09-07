@@ -1,0 +1,45 @@
+/* La pantalla se usa con el portal del SAT abierto al lado, asi que las tablas
+   tienen que caber en media pantalla sin perder legibilidad: tipografia algo
+   mas chica y columnas de cifras con ancho de digito fijo para poder comparar
+   verticalmente. */
+
+.declaracion-page ::deep .report-table {
+    font-size: .86rem;
+}
+
+.declaracion-page ::deep .report-table th[scope="row"] {
+    font-weight: 400;
+    min-width: 16rem;
+}
+
+.declaracion-page ::deep .report-table td.num,
+.declaracion-page ::deep .report-table th.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* El boton de copiar se queda siempre visible, aunque sean quince renglones por
+   bloque: copiar cada cifra al portal del SAT es la accion principal de esta
+   pantalla y esconderla tras el hover la volveria dificil de encontrar y de
+   alcanzar con teclado. Se atenua en reposo para que no compita con las cifras. */
+.declaracion-page ::deep .report-table tbody tr .btn-link {
+    opacity: .45;
+    transition: opacity .12s ease-in-out;
+}
+
+.declaracion-page ::deep .report-table tbody tr:hover .btn-link,
+.declaracion-page ::deep .report-table tbody tr .btn-link:focus-visible,
+.declaracion-page ::deep .report-table tbody tr .btn-link:hover {
+    opacity: 1;
+}
+
+.declaracion-page ::deep .nav-tabs .badge {
+    margin-left: .35rem;
+}
+
+@media print {
+    .declaracion-page ::deep .report-table {
+        font-size: .78rem;
+    }
+}

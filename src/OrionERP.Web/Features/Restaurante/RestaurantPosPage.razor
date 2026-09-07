@@ -348,7 +348,30 @@
                 {
                   <span><strong>@adjustment.PromotionName</strong><b>-@adjustment.DiscountAmount.ToString("C")</b></span>
                 }
-                @if (!string.IsNullOrWhiteSpace(promotionQuote.Message)) { <small>@promotionQuote.Message</small> }
+                @if (promotionQuote.CodeAccepted)
+                {
+                  @if (!string.IsNullOrWhiteSpace(promotionQuote.Message)) { <small>@promotionQuote.Message</small> }
+                }
+                else
+                {
+                  <div class="pos-code-reject" role="status" aria-live="polite">
+                    <strong>El código @promotionQuote.NormalizedCode no se aplicó</strong>
+                    <p>@(string.IsNullOrWhiteSpace(promotionQuote.CodeRejectionDetail) ? promotionQuote.Message : promotionQuote.CodeRejectionDetail)</p>
+                    @if (!string.IsNullOrWhiteSpace(promotionQuote.CodeRejectionFix))
+                    {
+                      <em>@promotionQuote.CodeRejectionFix</em>
+                    }
+                    @if (promotionQuote.CodeRejections.Count > 1)
+                    {
+                      <ul>
+                        @foreach (var rejection in promotionQuote.CodeRejections.Skip(1))
+                        {
+                          <li><b>@rejection.PromotionName</b>: @rejection.Detail</li>
+                        }
+                      </ul>
+                    }
+                  </div>
+                }
               </div>
             }
           </section>

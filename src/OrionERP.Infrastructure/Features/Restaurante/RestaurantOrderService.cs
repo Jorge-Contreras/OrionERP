@@ -351,6 +351,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           IsCustom = pricedLine.IsCustom
         }).ToList()
       };
+      var normalizedPromotionCode = RestaurantPromotionEngine.NormalizeCode(request.PromotionCode);
       RestaurantPromotionQuoteDto promotionQuote;
       if (promotionsEnabled)
       {
@@ -361,15 +362,39 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           request.SiteId,
           member?.Id,
           request.PromotionCode,
-          includeInactive: false,
+          includeInactive: normalizedPromotionCode is not null,
           ct);
         promotionQuote = RestaurantPromotionEngine.Quote(promotionRequest, definitions, localNow);
+        if (normalizedPromotionCode is not null && !promotionQuote.CodeAccepted)
+        {
+          promotionQuote = await RestaurantPromotionService.ExplainCodeRejectionAsync(
+            conn,
+            tx,
+            rfc,
+            request.SiteId,
+            normalizedPromotionCode,
+            promotionQuote,
+            ct);
+        }
       }
       else
       {
         promotionQuote = RestaurantPromotionEngine.Quote(promotionRequest, [], localNow);
+        if (normalizedPromotionCode is not null)
+        {
+          promotionQuote = RestaurantPromotionEngine.DescribeRejections(
+            promotionQuote,
+            [
+              new RestaurantPromotionCodeRejectionDto
+              {
+                Reason = RestaurantPromotionRejectionReasons.PromotionsDisabled,
+                Detail = "Las promociones están deshabilitadas para esta sede.",
+                Fix = "Un supervisor debe activarlas en la configuración de la sede."
+              }
+            ]);
+        }
       }
-      if (!string.IsNullOrWhiteSpace(request.PromotionCode) && !promotionQuote.CodeAccepted)
+      if (normalizedPromotionCode is not null && !promotionQuote.CodeAccepted)
       {
         throw new InvalidOperationException(promotionQuote.Message ?? "El código promocional no es elegible.");
       }
@@ -2797,16 +2822,16 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           },
           tx,
           cancellationToken: ct))
-          ?? throw new InvalidOperationException("El código promocional dejó de estar disponible.");
+          ?? throw new InvalidOperationException($"El código {adjustment.Code} de «{adjustment.PromotionName}» se desactivó mientras se cobraba la orden.");
         if (code.GlobalLimit.HasValue && code.RedemptionCount >= code.GlobalLimit.Value)
         {
-          throw new InvalidOperationException("El código promocional alcanzó su límite global.");
+          throw new InvalidOperationException($"El código {adjustment.Code} alcanzó su tope de {code.GlobalLimit.Value} usos mientras se cobraba la orden.");
         }
         if (code.PerMemberLimit.HasValue)
         {
           if (!memberId.HasValue)
           {
-            throw new InvalidOperationException("El código requiere una membresía verificada.");
+            throw new InvalidOperationException($"El código {adjustment.Code} permite {code.PerMemberLimit.Value} canje(s) por socio y la orden no tiene membresía vinculada.");
           }
           var memberUses = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
             """
@@ -2818,7 +2843,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             cancellationToken: ct));
           if (memberUses >= code.PerMemberLimit.Value)
           {
-            throw new InvalidOperationException("La membresía ya alcanzó el límite de este código.");
+            throw new InvalidOperationException($"Este socio ya canjeó {adjustment.Code} {memberUses} de {code.PerMemberLimit.Value} vez(veces) permitida(s).");
           }
         }
         var codeUpdated = await conn.ExecuteAsync(new CommandDefinition(
@@ -2833,7 +2858,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           cancellationToken: ct));
         if (codeUpdated != 1)
         {
-          throw new InvalidOperationException("El código promocional alcanzó su límite mientras se cobraba la orden.");
+          throw new InvalidOperationException($"El código {adjustment.Code} alcanzó su límite mientras se cobraba la orden.");
         }
         codeId = code.Id;
       }

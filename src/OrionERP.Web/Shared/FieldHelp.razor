@@ -1,0 +1,22 @@
+@* Botón «?» que se coloca junto a la etiqueta de un campo. Abre una burbuja con la
+   explicación del campo en lenguaje del negocio: qué se captura, en qué unidad y un
+   ejemplo. Usa <details> para no depender de JS ni de estado del componente.
+   Align="end" ancla la burbuja a la derecha, para los campos de la última columna. *@
+<details class="help @(string.Equals(Align, "end", StringComparison.Ordinal) ? "help--end" : null)">
+  <summary title="@($"Qué es {Title}")" aria-label="@($"Qué es {Title}")">?</summary>
+  <div class="help__bubble" role="note">
+    <strong>@Title</strong>
+    <p>@Text</p>
+    @if (!string.IsNullOrWhiteSpace(Example))
+    {
+      <p class="help__example">@Example</p>
+    }
+  </div>
+</details>
+
+@code {
+  [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+  [Parameter, EditorRequired] public string Text { get; set; } = string.Empty;
+  [Parameter] public string? Example { get; set; }
+  [Parameter] public string? Align { get; set; }
+}

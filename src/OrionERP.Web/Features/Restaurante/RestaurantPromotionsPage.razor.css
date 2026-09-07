@@ -91,3 +91,55 @@
   font-size: .84rem;
   color: #34454f;
 }
+
+.field-caption {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+}
+
+.subpanel h3 {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+
+.repeat-row,
+.repeat-row--code {
+  align-items: end;
+}
+
+.repeat-row > label {
+  display: grid;
+  gap: .3rem;
+  font-size: .8rem;
+  font-weight: 750;
+}
+
+.repeat-row__sep {
+  padding-bottom: .62rem;
+  color: #6f7d75;
+  text-align: center;
+}
+
+.repeat-row--code .check-cell {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  padding-bottom: .6rem;
+  font-size: .8rem;
+  font-weight: 750;
+}
+
+.repeat-row--code .check-cell input {
+  width: auto;
+}
+
+.empty--warn {
+  margin: .5rem 0 0;
+  padding: .55rem .7rem;
+  border-left: 3px solid #c9862b;
+  border-radius: .35rem;
+  background: #fdf5e7;
+  color: #7a5312;
+}

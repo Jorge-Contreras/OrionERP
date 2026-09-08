@@ -25,8 +25,14 @@ rescatar ni reconstruir el worktree `d460`.
 
 ## Pendientes, en orden
 
+Actualización desde `main` del 2026-09-08: el fixture SQL específico de
+Restaurante quedó cerrado con **5/5 pruebas aprobadas** en Release y SQL
+habilitado. Ver [evidencia focalizada](restaurant-production-scope-20260908.md).
+No se repitieron suites completas ni navegador en ese incremento.
+
 1. **Validación focalizada y UX.** Añadir fixture SQL propio de
-   `RestaurantProductionService` y `GetSiteOperations/SaveSiteOperations`:
+   `RestaurantProductionService` y `GetSiteOperations/SaveSiteOperations` (ya
+   validado en el incremento descrito arriba):
    destino, insumos, prioridades, orden completa, contexto ausente y otra sede
    del mismo RFC. Repetir navegador del selector, OT, ubicaciones/compras/conteos
    y POS con roles reales. Añadir prueba concurrente de proyecto genérico que

@@ -108,25 +108,40 @@ public static class LogisticsLocationScope
   }
 
   // A root must have no parent. Orphans/cycles therefore never enter this set.
+  // The room check delimits sites *within* Hospitality. A company without an
+  // enabled Hospitality site has no site to delimit, and dbo.ROOM is hidden from
+  // it by that module's own fail-closed policy, so requiring a room match would
+  // hide its own logistics rows. There, Rfc alone is the authority.
   // HOLDLOCK revalidates and retains ancestor/room locks within a write transaction.
   // Excessively deep historical trees fail closed at SQL's recursion bound.
   private const string VisibilitySetSql = """
     IF OBJECT_ID('tempdb..#OrionVisibleLocations') IS NOT NULL DROP TABLE #OrionVisibleLocations;
     CREATE TABLE #OrionVisibleLocations(LocationId int NOT NULL PRIMARY KEY,Rfc varchar(50) NOT NULL);
+    DECLARE @HospitalityApplies bit = CASE WHEN EXISTS (
+      SELECT 1 FROM orion.Company company
+      JOIN orion.CompanyModule companyModule ON companyModule.CompanyId=company.CompanyId AND companyModule.ModuleCode='HOSPITALITY'
+      JOIN orion.Module module ON module.ModuleCode=companyModule.ModuleCode AND module.IsActive=1
+      JOIN orion.SiteCapability capability ON capability.CompanyId=company.CompanyId AND capability.ModuleCode=companyModule.ModuleCode AND capability.IsEnabled=1
+      JOIN orion.Site site ON site.CompanyId=company.CompanyId AND site.SiteId=capability.SiteId AND site.IsActive=1
+      WHERE company.Rfc=CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc')) AND company.IsActive=1
+        AND companyModule.Status='Enabled'
+        AND (companyModule.EffectiveFromUtc IS NULL OR companyModule.EffectiveFromUtc<=SYSUTCDATETIME())
+        AND (companyModule.EffectiveToUtc IS NULL OR companyModule.EffectiveToUtc>SYSUTCDATETIME())) THEN 1 ELSE 0 END;
     ;WITH Eligible AS (
       SELECT location.Id,location.Rfc,location.ParentLocationId
       FROM logistica.Location location WITH (HOLDLOCK)
       WHERE location.Rfc=CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc'))
-        AND (location.RoomId IS NULL OR EXISTS (
-          SELECT 1 FROM dbo.ROOM room WITH (HOLDLOCK)
-          WHERE room.ID=location.RoomId
-            AND room.OrionCompanyId=TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))
-            AND room.OrionSiteId=TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'))))
-        AND (location.LegacyRoomId IS NULL OR EXISTS (
-          SELECT 1 FROM dbo.ROOM legacyRoom WITH (HOLDLOCK)
-          WHERE legacyRoom.ID=location.LegacyRoomId
-            AND legacyRoom.OrionCompanyId=TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))
-            AND legacyRoom.OrionSiteId=TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'))))
+        AND (@HospitalityApplies=0 OR (
+          (location.RoomId IS NULL OR EXISTS (
+            SELECT 1 FROM dbo.ROOM room WITH (HOLDLOCK)
+            WHERE room.ID=location.RoomId
+              AND room.OrionCompanyId=TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))
+              AND room.OrionSiteId=TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'))))
+          AND (location.LegacyRoomId IS NULL OR EXISTS (
+            SELECT 1 FROM dbo.ROOM legacyRoom WITH (HOLDLOCK)
+            WHERE legacyRoom.ID=location.LegacyRoomId
+              AND legacyRoom.OrionCompanyId=TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))
+              AND legacyRoom.OrionSiteId=TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'))))))
     ),LocationTree AS (
       SELECT Id,Rfc FROM Eligible WHERE ParentLocationId IS NULL
       UNION ALL

@@ -1,5 +1,10 @@
 # Continuidad multiempresa desde main
 
+**Backlog vigente:** los pendientes de esta página se ejecutan desde
+[el backlog de código](entregas-cortas/README.md), que los reduce a ocho entregas
+sin smoke tests ni E2E porque producción ya opera. Este documento se conserva como
+registro del checkpoint; no se reescribe.
+
 **Actualización posterior:** el usuario autorizó el corte productivo y se publicaron los
 tres servicios con siete migraciones productivas verificadas y readiness/HTTP público 200.
 Código publicado: `91e2362`. El [acta de ejecución](production-cutover-executed-20260908.md)

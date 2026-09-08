@@ -101,7 +101,7 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
   }
 
   protected LookupOptionDto? SelectedRoom => RoomOptions.FirstOrDefault(room => room.Id == SelectedRoomId);
-  protected string SelectedRoomName => SelectedRoom?.Name ?? "Selecciona una suite";
+  protected string SelectedRoomName => SelectedRoom?.Name ?? "Todas las ubicaciones";
   protected LocationListItemDto? SelectedLocation => Locations.FirstOrDefault(item => item.Id == SelectedLocationId);
   protected bool CanAddMaterialToSelectedLocation => SelectedLocation is { IsActive: true, IsInventoryEnabled: true };
   protected IReadOnlyList<LocationListItemDto> OperationalLocations => Locations
@@ -168,6 +168,10 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
       _ => CurrentUserName
     };
     await LoadLookupsAsync();
+    // Sin esta carga la lista sólo se llenaba al elegir una habitación o al
+    // restaurar una selección previa, así que una empresa sin habitaciones
+    // nunca llegaba a consultar sus ubicaciones.
+    await LoadLocationsForSelectedRoomAsync();
   }
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -528,12 +532,6 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
 
   protected async Task NuevaUbicacionAsync()
   {
-    if (!SelectedRoomId.HasValue)
-    {
-      UiMessages.ShowWarning("Selecciona una suite antes de crear una ubicación.");
-      return;
-    }
-
     if (!await CanDiscardLocationEditorAsync())
     {
       return;
@@ -546,16 +544,12 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
 
   protected async Task GuardarUbicacionAsync()
   {
-    if (!SelectedRoomId.HasValue)
-    {
-      UiMessages.ShowWarning("Selecciona una suite antes de guardar la ubicación.");
-      return;
-    }
-
     IsSavingLocation = true;
     try
     {
-      LocationEditor.RoomId = SelectedRoomId;
+      // Una ubicación nueva hereda la habitación elegida; una existente conserva
+      // la suya, para que guardar no la desligue de su habitación.
+      LocationEditor.RoomId ??= SelectedRoomId;
       var result = await LocationService.SaveLocationAsync(LocationEditor);
       if (!result.Success)
       {
@@ -997,11 +991,8 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
       ShowLocationEditor = false;
       Locations = [];
 
-      if (!SelectedRoomId.HasValue)
-      {
-        return;
-      }
-
+      // Logística es universal. Sin habitación seleccionada se listan todas las
+      // ubicaciones de la empresa; una empresa sin habitaciones no queda sin página.
       Locations = (await LocationService.GetLocationsAsync(new LocationFilter
       {
         RoomId = SelectedRoomId,
@@ -1030,12 +1021,6 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
 
   private async Task RefreshLocationListAsync()
   {
-    if (!SelectedRoomId.HasValue)
-    {
-      Locations = [];
-      return;
-    }
-
     Locations = (await LocationService.GetLocationsAsync(new LocationFilter
     {
       RoomId = SelectedRoomId,

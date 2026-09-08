@@ -47,7 +47,7 @@
                     <div>
                         <span class="ubicaciones-section-kicker">Primero</span>
                         <h2 id="ubicaciones-context-title">¿Dónde vas a trabajar?</h2>
-                        <p>Selecciona la suite y después la ubicación que deseas consultar.</p>
+                        <p>Elige la ubicación que deseas consultar. La suite es un filtro opcional.</p>
                     </div>
                     @if (SelectedLocation is not null)
                     {
@@ -58,9 +58,9 @@
                 <div class="ubicaciones-context-controls">
                     <label class="ubicaciones-step-field">
                         <span class="ubicaciones-step-number">1</span>
-                        <span class="ubicaciones-step-copy"><strong>Suite</strong><small>Elige el espacio general.</small></span>
+                        <span class="ubicaciones-step-copy"><strong>Suite</strong><small>Filtro opcional del espacio.</small></span>
                         <select class="form-select" value="@SelectedRoomId" @onchange="OnRoomChangedAsync" disabled="@IsLoadingLocations">
-                            <option value="">Selecciona una suite</option>
+                            <option value="">Todas las suites</option>
                             @foreach (var room in RoomOptions)
                             {
                                 <option value="@room.Id">@room.Name</option>
@@ -71,7 +71,7 @@
                     <label class="ubicaciones-step-field">
                         <span class="ubicaciones-step-number">2</span>
                         <span class="ubicaciones-step-copy"><strong>Ubicación</strong><small>Elige el lugar exacto.</small></span>
-                        <select class="form-select" value="@SelectedLocationId" @onchange="OnLocationChangedAsync" disabled="@(!SelectedRoomId.HasValue || IsLoadingLocations)">
+                        <select class="form-select" value="@SelectedLocationId" @onchange="OnLocationChangedAsync" disabled="@IsLoadingLocations">
                             <option value="">Selecciona una ubicación</option>
                             @if (OperationalLocations.Count > 0)
                             {
@@ -99,18 +99,18 @@
                 {
                     <div class="ubicaciones-inline-status" role="status">Cargando ubicaciones…</div>
                 }
-                else if (SelectedRoomId.HasValue && Locations.Count == 0)
+                else if (Locations.Count == 0)
                 {
                     <div class="ubicaciones-empty-state">
                         <span class="oi oi-map-marker" aria-hidden="true"></span>
-                        <div><strong>Esta suite todavía no tiene ubicaciones</strong><p>Abre “Administrar ubicaciones” para crear la primera.</p></div>
+                        <div><strong>@(SelectedRoomId.HasValue ? "Esta suite todavía no tiene ubicaciones" : "Todavía no hay ubicaciones registradas")</strong><p>Abre “Administrar ubicaciones” para crear la primera.</p></div>
                     </div>
                 }
                 else if (SelectedLocation is null)
                 {
                     <div class="ubicaciones-context-help">
                         <span class="oi oi-info" aria-hidden="true"></span>
-                        <span>@(SelectedRoomId.HasValue ? "Ahora elige una ubicación para cargar su inventario." : "Comienza seleccionando una suite.")</span>
+                        <span>Elige una ubicación para cargar su inventario.</span>
                     </div>
                 }
                 else
@@ -321,23 +321,23 @@
                 <label>
                     <span>Suite que deseas organizar</span>
                     <select class="form-select" value="@SelectedRoomId" @onchange="OnRoomChangedAsync" disabled="@IsLoadingLocations">
-                        <option value="">Selecciona una suite</option>
+                        <option value="">Todas las suites</option>
                         @foreach (var room in RoomOptions)
                         {
                             <option value="@room.Id">@room.Name</option>
                         }
                     </select>
                 </label>
-                <button class="btn btn-primary" type="button" @onclick="NuevaUbicacionAsync" disabled="@(!SelectedRoomId.HasValue || IsLoadingLocations)">
+                <button class="btn btn-primary" type="button" @onclick="NuevaUbicacionAsync" disabled="@IsLoadingLocations">
                     <span class="oi oi-plus" aria-hidden="true"></span> Nueva ubicación
                 </button>
             </section>
 
-            @if (!SelectedRoomId.HasValue)
+            @if (!SelectedRoomId.HasValue && Locations.Count == 0)
             {
                 <div class="ubicaciones-empty-state ubicaciones-empty-state-large">
                     <span class="oi oi-map-marker" aria-hidden="true"></span>
-                    <div><strong>Selecciona una suite</strong><p>Después podrás revisar, crear o modificar sus ubicaciones.</p></div>
+                    <div><strong>Esta empresa todavía no tiene ubicaciones</strong><p>Usa “Nueva ubicación” para crear la primera.</p></div>
                 </div>
             }
             else
@@ -385,7 +385,7 @@
                     {
                         <section class="ubicaciones-location-editor" role="dialog" aria-modal="true" aria-labelledby="ubicaciones-editor-title">
                             <header>
-                                <div><span class="ubicaciones-section-kicker">@(LocationEditor.Id.HasValue ? "Editar" : "Nueva")</span><h2 id="ubicaciones-editor-title">@(LocationEditor.Id.HasValue ? LocationEditor.LocationName : "Nueva ubicación")</h2><p>Suite: @SelectedRoomName</p></div>
+                                <div><span class="ubicaciones-section-kicker">@(LocationEditor.Id.HasValue ? "Editar" : "Nueva")</span><h2 id="ubicaciones-editor-title">@(LocationEditor.Id.HasValue ? LocationEditor.LocationName : "Nueva ubicación")</h2><p>@(SelectedRoom is null ? "Sin suite" : $"Suite: {SelectedRoomName}")</p></div>
                                 <button type="button" @onclick="CerrarEditorUbicacionAsync" aria-label="Cerrar editor"><span class="oi oi-x" aria-hidden="true"></span></button>
                             </header>
                             <EditForm EditContext="LocationEditContext" OnValidSubmit="GuardarUbicacionAsync">

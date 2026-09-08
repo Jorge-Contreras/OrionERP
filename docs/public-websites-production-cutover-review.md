@@ -9,6 +9,13 @@ El trabajo autorizado actual comprende código y `Orion_Sandbox`.
 
 ## Bloqueos de salida
 
+Actualización del 2026-09-08: el usuario clasificó los 288 vínculos OHM/BSU
+como **errores históricos**. La decisión ya está tomada; continúa pendiente
+su corrección con evidencia de las relaciones correctas y el baseline posterior.
+Esta aclaración no autoriza una reasignación inferida ni cambia el estado
+productivo del expediente. El [estado contable](multiempresa-accounting-status-20260908.md)
+detalla las garantías aún parciales que deben considerarse en el paquete.
+
 1. La fase de Hospedaje multiempresa no está cerrada: el inventario de Sandbox
    identificó **288 pagos cruzados** que necesitan atribución con evidencia. No
    se reasignan por coincidencia de nombre, fecha o RFC heredado.

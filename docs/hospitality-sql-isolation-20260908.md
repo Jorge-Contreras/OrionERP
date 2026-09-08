@@ -193,6 +193,13 @@ la preparación productiva independiente.
 
 ## Checkpoint para main
 
+Actualización posterior desde `main`: el usuario confirmó el 2026-09-08 que
+los 288 vínculos OHM/BSU son **errores históricos**. Sigue pendiente preparar
+su corrección con relaciones verificadas; no se han alterado datos ni importes.
+La carrera proyecto/calendario tiene ahora 4/4 pruebas SQL propias aprobadas
+(`HospitalityProjectConcurrencyTests`), con bloqueo real observado y resolución
+tras commit/rollback del vínculo concurrente. Véase el backlog actualizado.
+
 Validación final conjunta: build Release sin errores/advertencias, **1,306
 unitarias y 71 integraciones aprobadas** con SQL Sandbox habilitado. Incluye
 `HospitalityInventoryMovementTests` (workspace, transferencias, ajustes, replay

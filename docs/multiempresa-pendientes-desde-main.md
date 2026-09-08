@@ -30,18 +30,18 @@ Restaurante quedó cerrado con **5/5 pruebas aprobadas** en Release y SQL
 habilitado. Ver [evidencia focalizada](restaurant-production-scope-20260908.md).
 No se repitieron suites completas ni navegador en ese incremento.
 
-1. **Validación focalizada y UX.** Añadir fixture SQL propio de
-   `RestaurantProductionService` y `GetSiteOperations/SaveSiteOperations` (ya
-   validado en el incremento descrito arriba):
-   destino, insumos, prioridades, orden completa, contexto ausente y otra sede
-   del mismo RFC. Repetir navegador del selector, OT, ubicaciones/compras/conteos
-   y POS con roles reales. Añadir prueba concurrente de proyecto genérico que
-   se vincula a calendario mientras se intenta editar/eliminar.
-2. **Decisión contable pendiente.** Los 288 vínculos de reservas
+1. **Validación focalizada y UX.** Fixture de producción/prioridades cerrado
+   en `765e1a2` (5/5 SQL). Carrera proyecto/calendario cerrada: 4/4 SQL en
+   `HospitalityProjectConcurrencyTests`, edición y eliminación esperan un
+   bloqueo real observado en SQL; si el vínculo confirma se rechazan y si
+   revierte continúan. Pendiente navegador del selector, OT,
+   ubicaciones/compras/conteos y POS con roles reales.
+2. **Corrección histórica pendiente.** Los 288 vínculos de reservas
    `OHM191112Q26` con pagos `BSU210121M77` permanecen almacenados y ocultos por
-   la política. Confirmar si son cobros interempresa legítimos o errores
-   históricos antes de diseñar su conciliación. No reasignar ni alterar pagos
-   para hacer coincidir totales.
+   la política. El usuario confirmó el 2026-09-08: **son errores históricos**.
+   La clasificación empresarial está resuelta; falta identificar los vínculos
+   correctos con evidencia antes de corregirlos. No reasignar por inferencia ni
+   alterar pagos para hacer coincidir totales.
 3. **Mappings legacy.** Resolver los cuatro mappings Outlook huérfanos y
    configurar plantillas, cuentas/categorías y propietarios por empresa/sede.
    `CreateActividadForReservation` y `CreateTransaccionesForRoom` están
@@ -88,3 +88,23 @@ Referencias: [plan y evidencia](public-websites-rebaseline-20260908.md),
 [matriz SQL y consumidores](hospitality-sql-isolation-20260908.md),
 [calendarios](hospitality-calendar-sync-isolation-20260908.md),
 [expediente productivo](public-websites-production-cutover-review.md).
+
+## Núcleo contable y segunda validación desde main
+
+La [matriz contable vigente](multiempresa-accounting-status-20260908.md)
+reconcilia los diez objetivos originales contra código y metadatos de Sandbox.
+No presenta el aislamiento de Hospedaje como cierre contable: identifica RLS
+legacy permisiva sin contexto, el acceso de adjuntos por ID aún sin delimitar,
+permisos de servicio pendientes y el ciclo contable formal/bandeja durable que
+faltan. El corte debe declarar los invariantes realmente cubiertos.
+
+`HospitalityProjectConcurrencyTests`: **4/4 aprobadas** en Release, SQL
+habilitado y exportación opcional desactivada. Usa tres conexiones reales,
+`sys.dm_exec_requests` para comprobar espera por bloqueo y una transacción de
+vinculación que confirma o revierte. El catálogo ejecuta sus métodos reales
+de edición/eliminación y preserva la operación ganadora; limpia los proyectos
+y vínculos propios. Recibo local:
+`artifacts/test-results/hospitality-project-concurrency.trx`.
+No verifica el orden inverso de adquisición de bloqueos ni representa E2E de
+navegador. No requirió cambios a servicios ni migraciones; no se repitió la suite
+completa. La decisión sobre los 288 vínculos no produjo cambios de datos.

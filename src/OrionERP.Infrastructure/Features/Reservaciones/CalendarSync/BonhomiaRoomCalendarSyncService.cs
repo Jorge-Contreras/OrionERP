@@ -13,6 +13,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OrionERP.Application.Features.Reservaciones.CalendarSync;
+using OrionERP.Application.Features.Reservaciones;
 
 namespace OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 
@@ -21,6 +22,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
   private const string MappingScriptPath = "src/OrionERP.Infrastructure/Features/Reservaciones/ListaReservaciones/Sql/20260327_room_calendar_outlook_sync.sql";
   private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+  private readonly IHospitalityScopeAccessor _scopeAccessor;
   private readonly HttpClient _httpClient;
   private readonly IOutlookRoomCalendarSyncRepository _repository;
   private readonly IOptions<BonhomiaGraphCalendarSyncOptions> _options;
@@ -30,8 +32,10 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
     HttpClient httpClient,
     IOutlookRoomCalendarSyncRepository repository,
     IOptions<BonhomiaGraphCalendarSyncOptions> options,
-    ILogger<BonhomiaRoomCalendarSyncService> logger)
+    ILogger<BonhomiaRoomCalendarSyncService> logger,
+    IHospitalityScopeAccessor scopeAccessor)
   {
+    _scopeAccessor = scopeAccessor ?? throw new ArgumentNullException(nameof(scopeAccessor));
     _httpClient = httpClient;
     _repository = repository;
     _options = options;
@@ -51,7 +55,10 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
     }
 
     var options = _options.Value;
-    EnsureConfigured(options);
+    if (!options.Enabled)
+      throw new InvalidOperationException("La sincronización de Outlook está deshabilitada.");
+    var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
+    EnsureConfigured(options, scope);
 
     var targetCalendars = options.GetTargetCalendars();
     var result = new BonhomiaRoomCalendarSyncResult
@@ -60,15 +67,12 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
       EndDateExclusive = syncEndDateExclusive
     };
 
-    var accessToken = await RequestAccessTokenAsync(options, ct);
-    var calendarLookup = await GetCalendarLookupAsync(options.MailboxAddress, accessToken, ct);
-
     IReadOnlyList<OrionRoomCalendarBlock> localBlocks;
     IReadOnlyList<OutlookRoomCalendarSyncMapping> mappings;
     try
     {
-      localBlocks = await _repository.GetBlockedBlocksAsync(syncStartDate, syncEndDateExclusive, targetCalendars, ct);
-      mappings = await _repository.GetMappingsAsync(syncStartDate, syncEndDateExclusive, targetCalendars, ct);
+      localBlocks = await _repository.GetBlockedBlocksAsync(scope, syncStartDate, syncEndDateExclusive, targetCalendars, ct);
+      mappings = await _repository.GetMappingsAsync(scope, syncStartDate, syncEndDateExclusive, targetCalendars, ct);
     }
     catch (SqlException ex) when (IsMissingMappingTable(ex))
     {
@@ -77,6 +81,15 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
         ex);
     }
 
+    foreach (var block in localBlocks)
+    {
+      block.CompanyId = scope.CompanyId;
+      block.SiteId = scope.SiteId;
+    }
+
+    // Resolve and validate the local scope before any OAuth or Graph request.
+    var accessToken = await RequestAccessTokenAsync(options, ct);
+    var calendarLookup = await GetCalendarLookupAsync(options.MailboxAddress, accessToken, ct);
     var roomResults = new List<BonhomiaRoomCalendarRoomResult>();
     foreach (var roomName in targetCalendars)
     {
@@ -196,12 +209,12 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
 
         if (mappingUpserts.Count > 0)
         {
-          await _repository.UpsertMappingsAsync(mappingUpserts, ct);
+          await _repository.UpsertMappingsAsync(scope, mappingUpserts, ct);
         }
 
         if (mappingDeletes.Count > 0)
         {
-          await _repository.DeleteMappingsAsync(mappingDeletes.Distinct().ToArray(), ct);
+          await _repository.DeleteMappingsAsync(scope, mappingDeletes.Distinct().ToArray(), ct);
         }
       }
       catch (SqlException ex) when (IsMissingMappingTable(ex))
@@ -310,7 +323,8 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
       .Select(MapRemoteEvent)
       .Where(item =>
         item is not null &&
-        (!string.IsNullOrWhiteSpace(item.SourceKey) || mappedIds.Contains(item.Id)))
+        (BonhomiaCalendarSyncPayloadBuilder.BelongsToScope(item.BodyHtml, options.CompanyId, options.SiteId)
+          || (!BonhomiaCalendarSyncPayloadBuilder.HasScopeMarker(item.BodyHtml) && mappedIds.Contains(item.Id))))
       .Cast<BonhomiaGraphCalendarRemoteEvent>()
       .ToArray();
   }
@@ -470,8 +484,16 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
     };
   }
 
-  private static void EnsureConfigured(BonhomiaGraphCalendarSyncOptions options)
+  private static void EnsureConfigured(BonhomiaGraphCalendarSyncOptions options, HospitalityScope scope)
   {
+    if (options.CompanyId <= 0 || options.SiteId <= 0 || string.IsNullOrWhiteSpace(options.CompanyRfc))
+      throw new InvalidOperationException("La sincronización de Outlook requiere empresa y sede explícitas.");
+    if (options.CompanyId != scope.CompanyId || options.SiteId != scope.SiteId ||
+        !string.Equals(options.CompanyRfc.Trim(), scope.CompanyRfc, StringComparison.OrdinalIgnoreCase))
+      throw new UnauthorizedAccessException("El calendario configurado no pertenece a la empresa y sede de la sesión.");
+    if (options.GetTargetCalendars().Count == 0)
+      throw new InvalidOperationException("Configura explícitamente los calendarios de la sede.");
+
     if (string.IsNullOrWhiteSpace(options.TenantId) ||
         string.IsNullOrWhiteSpace(options.ClientId) ||
         string.IsNullOrWhiteSpace(options.ClientSecret) ||

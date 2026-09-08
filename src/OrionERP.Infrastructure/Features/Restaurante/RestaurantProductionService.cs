@@ -6,23 +6,27 @@ using Microsoft.Data.SqlClient;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Restaurante;
+using OrionERP.Application.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Logistica.Shared;
 
 namespace OrionERP.Infrastructure.Features.Restaurante;
 
 public sealed class RestaurantProductionService : IRestaurantProductionService
 {
   private readonly IDbConnectionFactory _connectionFactory;
+  private readonly IHospitalityScopeAccessor? _hospitalityScope;
 
-  public RestaurantProductionService(IDbConnectionFactory connectionFactory)
+  public RestaurantProductionService(IDbConnectionFactory connectionFactory, IHospitalityScopeAccessor? hospitalityScope = null)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+    _hospitalityScope = hospitalityScope;
   }
 
   public async Task<RestaurantProductionWorkspaceDto> GetWorkspaceAsync(string rfc, int siteId, CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
-    const string sql =
-      """
+    var sql =
+      $$"""
       SELECT production.Id, production.ProductionCode, production.SiteId, site.[Name] AS SiteName,
              production.ProductMaterialId, material.[Description] AS ProductName, production.BomVersionId,
              versionInfo.VersionNumber AS BomVersionNumber, production.PlannedQuantity, production.ActualQuantity,
@@ -38,6 +42,7 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
       JOIN logistica.Location locationInfo ON locationInfo.Rfc=production.Rfc AND locationInfo.Id=production.OutputLocationId
       LEFT JOIN logistica.MaterialLot outputLot ON outputLot.Rfc=production.Rfc AND outputLot.Id=production.OutputLotId
       WHERE production.Rfc=@Rfc AND production.SiteId=@SiteId
+        AND {{ProductionVisibilitySql}}
       ORDER BY CASE production.[Status] WHEN 'Started' THEN 0 WHEN 'Planned' THEN 1 ELSE 2 END,
                production.PlannedAt DESC;
 
@@ -56,6 +61,7 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
              CONCAT(locationInfo.LocationName, ' · ', locationInfo.LocationCode) AS Label
       FROM logistica.Location locationInfo
       WHERE locationInfo.Rfc=@Rfc AND locationInfo.IsActive=1 AND locationInfo.IsInventoryEnabled=1
+        AND {{LogisticsLocationScope.VisibilitySql("locationInfo")}}
       ORDER BY locationInfo.LocationName, locationInfo.Id;
 
       -- Sólo los que están atorados: tienen receta activa pero se clasificaron como comprados,
@@ -70,7 +76,8 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
       WHERE material.Rfc=@Rfc AND material.IsActive=1 AND material.FulfillmentMode='StockItem'
       ORDER BY material.[Description];
       """;
-    using var conn = CreateConnection();
+    await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory,_hospitalityScope,ct);
+    await LogisticsLocationScope.EnsureRfcAsync(conn,null,normalizedRfc,ct);
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(sql, new { Rfc = normalizedRfc, SiteId = siteId }, cancellationToken: ct));
     return new RestaurantProductionWorkspaceDto
     {
@@ -90,17 +97,20 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
       return RestaurantCommandResult.Fail("La cantidad y la clave de idempotencia son obligatorias.");
     }
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory,_hospitalityScope,ct);
+    await LogisticsLocationScope.EnsureRfcAsync(conn,null,rfc,ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
+      await LogisticsLocationScope.EnsureLocationAsync(conn,tx,request.OutputLocationId,ct);
       var reservationKey = $"PRODUCTION:{request.IdempotencyKey.Trim()}";
       var existing = await conn.ExecuteScalarAsync<Guid?>(new CommandDefinition(
         "SELECT ReferenceId FROM logistica.InventoryReservation WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND IdempotencyKey=@Key;",
         new { Rfc = rfc, Key = reservationKey }, tx, cancellationToken: ct));
       if (existing.HasValue)
       {
+        if (await GetLockedOrderAsync(conn,tx,rfc,existing.Value,ct) is null)
+          return await RollbackFailAsync(tx,"La producción existente no pertenece a las ubicaciones autorizadas.",ct);
         await tx.CommitAsync(ct);
         return RestaurantCommandResult.Ok("La orden de producción ya había sido planeada.");
       }
@@ -173,8 +183,8 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
   public async Task<RestaurantCommandResult> StartAsync(string rfc, Guid productionOrderId, string userName, CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory,_hospitalityScope,ct);
+    await LogisticsLocationScope.EnsureRfcAsync(conn,null,normalizedRfc,ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
@@ -200,8 +210,8 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
     if (request.ActualQuantity <= 0 || string.IsNullOrWhiteSpace(request.OutputLotCode))
       return RestaurantCommandResult.Fail("La cantidad real y el lote de salida son obligatorios.");
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory,_hospitalityScope,ct);
+    await LogisticsLocationScope.EnsureRfcAsync(conn,null,rfc,ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
@@ -279,8 +289,8 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
   public async Task<RestaurantCommandResult> CancelAsync(string rfc, Guid productionOrderId, string userName, CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory,_hospitalityScope,ct);
+    await LogisticsLocationScope.EnsureRfcAsync(conn,null,normalizedRfc,ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
@@ -360,13 +370,14 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
       if (trackLots)
       {
         var lots = (await conn.QueryAsync<AvailabilityRow>(new CommandDefinition(
-          """
+          $$"""
           SELECT lotBalance.LocationId,lotBalance.MaterialLotId,lotBalance.Quantity-lotBalance.ReservedQuantity AS AvailableQuantity,lot.UnitCost
           FROM logistica.LotBalance lotBalance WITH (UPDLOCK,HOLDLOCK)
           JOIN logistica.MaterialLot lot ON lot.Rfc=lotBalance.Rfc AND lot.Id=lotBalance.MaterialLotId
           LEFT JOIN restaurante.SiteLocationPriority priorityInfo ON priorityInfo.Rfc=lotBalance.Rfc AND priorityInfo.SiteId=@SiteId AND priorityInfo.LocationId=lotBalance.LocationId
           WHERE lotBalance.Rfc=@Rfc AND lotBalance.MaterialId=@MaterialId AND lotBalance.Quantity>lotBalance.ReservedQuantity
             AND lot.IsBlocked=0 AND (lot.ExpiresAt IS NULL OR lot.ExpiresAt>=CONVERT(date,SYSUTCDATETIME()))
+            AND {{LogisticsLocationScope.ForLocationIdSql("lotBalance.LocationId","lotBalance.Rfc")}}
           ORDER BY ISNULL(priorityInfo.Priority,2147483647),CASE WHEN lot.ExpiresAt IS NULL THEN 1 ELSE 0 END,lot.ExpiresAt,lot.Id;
           """, new { Rfc = rfc, SiteId = siteId, MaterialId = requirement.Key }, tx, cancellationToken: ct))).AsList();
         foreach (var lot in lots.Where(_ => remaining > 0))
@@ -386,11 +397,12 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
       else
       {
         var balances = (await conn.QueryAsync<AvailabilityRow>(new CommandDefinition(
-          """
+          $$"""
           SELECT balance.LocationId,CAST(NULL AS bigint) AS MaterialLotId,balance.Quantity-balance.ReservedQuantity AS AvailableQuantity,balance.AverageUnitCost AS UnitCost
           FROM logistica.StockBalance balance WITH (UPDLOCK,HOLDLOCK)
           LEFT JOIN restaurante.SiteLocationPriority priorityInfo ON priorityInfo.Rfc=balance.Rfc AND priorityInfo.SiteId=@SiteId AND priorityInfo.LocationId=balance.LocationId
           WHERE balance.Rfc=@Rfc AND balance.MaterialId=@MaterialId AND balance.IsRemoved=0 AND balance.Quantity>balance.ReservedQuantity
+            AND {{LogisticsLocationScope.ForLocationIdSql("balance.LocationId","balance.Rfc")}}
           ORDER BY ISNULL(priorityInfo.Priority,2147483647),balance.LocationId;
           """, new { Rfc = rfc, SiteId = siteId, MaterialId = requirement.Key }, tx, cancellationToken: ct))).AsList();
         foreach (var balance in balances.Where(_ => remaining > 0))
@@ -465,10 +477,26 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
       new { Rfc = rfc, Id = reservationId }, tx, cancellationToken: ct));
   }
 
-  private static Task<ProductionOrderRow?> GetLockedOrderAsync(DbConnection conn, DbTransaction tx, string rfc, Guid id, CancellationToken ct)
-    => conn.QuerySingleOrDefaultAsync<ProductionOrderRow>(new CommandDefinition(
-      "SELECT Id,SiteId,ProductionCode,ProductMaterialId,OutputLocationId,ReservationId,[Status],FrozenTheoreticalCost FROM logistica.ProductionOrder WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND Id=@Id;",
-      new { Rfc = rfc, Id = id }, tx, cancellationToken: ct));
+  private static readonly string ProductionVisibilitySql=$$"""
+    {{LogisticsLocationScope.ForLocationIdSql("production.OutputLocationId","production.Rfc")}}
+    AND EXISTS (SELECT 1 FROM logistica.InventoryReservation ownedReservation WITH (HOLDLOCK)
+      WHERE ownedReservation.Rfc=production.Rfc AND ownedReservation.Id=production.ReservationId
+        AND ownedReservation.ReferenceId=production.Id AND ownedReservation.SiteId=production.SiteId)
+    AND NOT EXISTS (SELECT 1 FROM logistica.InventoryReservationLine inputLine WITH (HOLDLOCK)
+      WHERE inputLine.Rfc=production.Rfc AND inputLine.ReservationId=production.ReservationId
+        AND NOT {{LogisticsLocationScope.ForLocationIdSql("inputLine.LocationId","inputLine.Rfc")}})
+    """;
+
+  private static async Task<ProductionOrderRow?> GetLockedOrderAsync(DbConnection conn, DbTransaction tx, string rfc, Guid id, CancellationToken ct)
+  {
+    await LogisticsLocationScope.RefreshAsync(conn,tx,ct);
+    return await conn.QuerySingleOrDefaultAsync<ProductionOrderRow>(new CommandDefinition($$"""
+      SELECT production.Id,production.SiteId,production.ProductionCode,production.ProductMaterialId,
+        production.OutputLocationId,production.ReservationId,production.[Status],production.FrozenTheoreticalCost
+      FROM logistica.ProductionOrder production WITH (UPDLOCK,HOLDLOCK)
+      WHERE production.Rfc=@Rfc AND production.Id=@Id AND {{ProductionVisibilitySql}};
+      """,new { Rfc=rfc,Id=id },tx,cancellationToken:ct));
+  }
 
   private static Task AddEventAsync(DbConnection conn, DbTransaction tx, string rfc, int siteId, string eventType, Guid id, CancellationToken ct)
     => conn.ExecuteAsync(new CommandDefinition(
@@ -480,9 +508,6 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
 
   private static async Task<RestaurantCommandResult> CommitOkAsync(DbTransaction tx, string message, CancellationToken ct)
   { await tx.CommitAsync(ct); return RestaurantCommandResult.Ok(message); }
-
-  private DbConnection CreateConnection()
-    => _connectionFactory.Create() as DbConnection ?? throw new InvalidOperationException("La fábrica no devolvió una DbConnection.");
 
   private sealed class ProductionDefinitionRow
   { public long BomVersionId { get; set; } public long BomHeaderId { get; set; } public decimal YieldQuantity { get; set; } public int YieldUnitId { get; set; } public decimal TheoreticalCost { get; set; } public int ProductMaterialId { get; set; } }

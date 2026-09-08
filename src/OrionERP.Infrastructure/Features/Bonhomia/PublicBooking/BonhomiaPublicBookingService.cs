@@ -1,3 +1,5 @@
+using OrionERP.Application.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Reservaciones;
 using System.Data;
 using System.Net.Mail;
 using Dapper;
@@ -6,7 +8,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
-using OrionERP.Application.Features.Reservaciones;
 using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
@@ -223,7 +224,7 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
     }
 
     await using var conn = new SqlConnection(_connectionString);
-    await conn.OpenAsync(ct);
+    await HospitalityConnectionFactory.InitializeAsync(conn, new HospitalityScope(scope.CompanyId, scope.SiteId, scope.CompanyRfc), ct);
     await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
     try

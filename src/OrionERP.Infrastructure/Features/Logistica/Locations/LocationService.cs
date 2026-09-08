@@ -5,16 +5,20 @@ using Microsoft.Data.SqlClient;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Logistica.Locations;
 using OrionERP.Application.Features.Logistica.Shared;
+using OrionERP.Application.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Logistica.Shared;
 
 namespace OrionERP.Infrastructure.Features.Logistica.Locations;
 
 public sealed class LocationService : ILocationService
 {
   private readonly IDbConnectionFactory _connectionFactory;
+  private readonly IHospitalityScopeAccessor? _hospitalityScope;
 
-  public LocationService(IDbConnectionFactory connectionFactory)
+  public LocationService(IDbConnectionFactory connectionFactory, IHospitalityScopeAccessor? hospitalityScope = null)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+    _hospitalityScope = hospitalityScope;
   }
 
   public async Task<IReadOnlyList<LocationListItemDto>> GetLocationsAsync(LocationFilter filter, CancellationToken ct = default)
@@ -22,18 +26,18 @@ public sealed class LocationService : ILocationService
     filter ??= new LocationFilter();
 
     var sql = new StringBuilder(
-      """
+      $$"""
       WITH ChildCounts AS (
-          SELECT ParentLocationId, COUNT(*) AS ChildCount
-          FROM logistica.Location
-          WHERE ParentLocationId IS NOT NULL
-          GROUP BY ParentLocationId
+          SELECT childLocation.ParentLocationId, COUNT(*) AS ChildCount
+          FROM logistica.Location childLocation
+          WHERE childLocation.ParentLocationId IS NOT NULL AND {{LogisticsLocationScope.VisibilitySql("childLocation")}}
+          GROUP BY childLocation.ParentLocationId
       ),
       MaterialCounts AS (
-          SELECT LocationId, COUNT(*) AS MaterialCount
-          FROM logistica.StockBalance
-          WHERE ISNULL(IsRemoved, 0) = 0
-          GROUP BY LocationId
+          SELECT stock.LocationId, COUNT(*) AS MaterialCount
+          FROM logistica.StockBalance stock
+          WHERE ISNULL(stock.IsRemoved, 0) = 0 AND {{LogisticsLocationScope.ForLocationIdSql("stock.LocationId", "stock.Rfc")}}
+          GROUP BY stock.LocationId
       )
       SELECT
           l.Id,
@@ -50,14 +54,14 @@ public sealed class LocationService : ILocationService
           ISNULL(mc.MaterialCount, 0) AS MaterialCount
       FROM logistica.Location l
       LEFT JOIN logistica.Location parent
-        ON parent.Id = l.ParentLocationId
+        ON parent.Id = l.ParentLocationId AND parent.Rfc=l.Rfc
       LEFT JOIN dbo.ROOM room
         ON room.ID = l.RoomId
       LEFT JOIN ChildCounts cc
         ON cc.ParentLocationId = l.Id
       LEFT JOIN MaterialCounts mc
         ON mc.LocationId = l.Id
-      WHERE 1 = 1
+      WHERE {{LogisticsLocationScope.VisibilitySql("l")}}
       """);
 
     var parameters = new DynamicParameters();
@@ -81,7 +85,7 @@ public sealed class LocationService : ILocationService
 
     sql.AppendLine("ORDER BY COALESCE(room.ROOM_NAME, l.LocationName), l.ParentLocationId, l.LocationName, l.Id;");
 
-    using var conn = CreateConnection();
+    await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     var rows = await conn.QueryAsync<LocationListItemDto>(
       new CommandDefinition(sql.ToString(), parameters, cancellationToken: ct));
 
@@ -90,8 +94,8 @@ public sealed class LocationService : ILocationService
 
   public async Task<LocationDetailDto?> GetLocationAsync(int locationId, CancellationToken ct = default)
   {
-    const string sql =
-      """
+    var sql =
+      $$"""
       SELECT
           l.Id,
           l.LocationCode,
@@ -105,18 +109,18 @@ public sealed class LocationService : ILocationService
           l.LegacyEspacioId,
           l.LegacyRoomId
       FROM logistica.Location l
-      WHERE l.Id = @LocationId;
+      WHERE l.Id = @LocationId AND {{LogisticsLocationScope.VisibilitySql("l")}};
       """;
 
-    using var conn = CreateConnection();
+    await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     return await conn.QueryFirstOrDefaultAsync<LocationDetailDto>(
       new CommandDefinition(sql, new { LocationId = locationId }, cancellationToken: ct));
   }
 
   public async Task<IReadOnlyList<LocationTreeNodeDto>> GetLocationTreeAsync(CancellationToken ct = default)
   {
-    const string sql =
-      """
+    var sql =
+      $$"""
       SELECT
           l.Id,
           l.LocationCode,
@@ -126,11 +130,11 @@ public sealed class LocationService : ILocationService
           l.RoomId,
           l.IsInventoryEnabled
       FROM logistica.Location l
-      WHERE l.IsActive = 1
+      WHERE l.IsActive = 1 AND {{LogisticsLocationScope.VisibilitySql("l")}}
       ORDER BY COALESCE(l.ParentLocationId, l.Id), l.LocationName, l.Id;
       """;
 
-    using var conn = CreateConnection();
+    await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     var rows = (await conn.QueryAsync<LocationTreeRow>(
       new CommandDefinition(sql, cancellationToken: ct))).AsList();
 
@@ -166,13 +170,13 @@ public sealed class LocationService : ILocationService
   public async Task<IReadOnlyList<LookupOptionDto>> GetLocationLookupAsync(bool inventoryOnly = false, CancellationToken ct = default)
   {
     var sql = new StringBuilder(
-      """
+      $$"""
       SELECT
           l.Id,
           l.LocationName AS Name,
           l.LocationCode AS Code
       FROM logistica.Location l
-      WHERE l.IsActive = 1
+      WHERE l.IsActive = 1 AND {{LogisticsLocationScope.VisibilitySql("l")}}
       """);
 
     if (inventoryOnly)
@@ -182,7 +186,7 @@ public sealed class LocationService : ILocationService
 
     sql.AppendLine("ORDER BY l.LocationName, l.Id;");
 
-    using var conn = CreateConnection();
+    await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     var rows = await conn.QueryAsync<LookupOptionDto>(
       new CommandDefinition(sql.ToString(), cancellationToken: ct));
 
@@ -198,7 +202,8 @@ public sealed class LocationService : ILocationService
           r.ROOM_NAME AS Name,
           r.ROOM_TYPE AS Code
       FROM dbo.ROOM r
-      WHERE 1 = 1
+      WHERE r.OrionCompanyId=TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))
+        AND r.OrionSiteId=TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'))
       """);
 
     var parameters = new DynamicParameters();
@@ -210,7 +215,7 @@ public sealed class LocationService : ILocationService
 
     sql.AppendLine("ORDER BY r.ROOM_NAME, r.ID;");
 
-    using var conn = CreateConnection();
+    await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     var rows = await conn.QueryAsync<LookupOptionDto>(
       new CommandDefinition(sql.ToString(), parameters, cancellationToken: ct));
     return rows.AsList();
@@ -229,13 +234,32 @@ public sealed class LocationService : ILocationService
       return LogisticsCommandResult.Fail("El nombre de la ubicación es obligatorio.");
     }
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
-    using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+    await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
+    using var tx = (SqlTransaction)await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
     try
     {
       var locationId = request.Id ?? 0;
+
+      // Rebuild under transaction locks: parents or room ownership must not be
+      // trusted from an earlier read. A copied location name is protected too.
+      if (locationId > 0)
+        await LogisticsLocationScope.EnsureLocationAsync(conn, tx, locationId, ct);
+      if (request.ParentLocationId is > 0)
+        await LogisticsLocationScope.EnsureLocationAsync(conn, tx, request.ParentLocationId.Value, ct);
+      await conn.ExecuteAsync(new CommandDefinition("""
+        IF @RoomId IS NOT NULL AND NOT EXISTS (
+          SELECT 1 FROM dbo.ROOM room WITH (HOLDLOCK)
+          WHERE room.ID=@RoomId
+            AND room.OrionCompanyId=TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))
+            AND room.OrionSiteId=TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalitySiteId')))
+          THROW 51934,'La habitacion no pertenece a la empresa y sede autorizadas.',1;
+        IF @LocationId>0 AND EXISTS (
+          SELECT 1 FROM logistica.Location location WITH (UPDLOCK,HOLDLOCK)
+          WHERE location.Id=@LocationId AND location.Rfc=CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc'))
+            AND (ISNULL(location.RoomId,0)<>ISNULL(@RoomId,0) OR ISNULL(location.ParentLocationId,0)<>ISNULL(@ParentLocationId,0)))
+          THROW 51933,'La habitacion y el padre de una ubicacion existente son inmutables; crea una ubicacion nueva para conservar su alcance historico.',1;
+        """,new { LocationId=locationId,request.RoomId,request.ParentLocationId },tx,cancellationToken:ct));
 
       if (request.Id.HasValue && request.Id.Value > 0)
       {
@@ -251,7 +275,7 @@ public sealed class LocationService : ILocationService
               IsInventoryEnabled = @IsInventoryEnabled,
               IsActive = @IsActive,
               UpdatedAt = SYSUTCDATETIME()
-          WHERE Id = @Id;
+          WHERE Id = @Id AND Rfc=CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc'));
           """;
 
         await conn.ExecuteAsync(
@@ -325,7 +349,7 @@ public sealed class LocationService : ILocationService
             """
             UPDATE logistica.Location
             SET LocationCode = @LocationCode
-            WHERE Id = @LocationId;
+            WHERE Id = @LocationId AND Rfc=CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc'));
             """,
             new
             {
@@ -346,16 +370,17 @@ public sealed class LocationService : ILocationService
       await tx.RollbackAsync(ct);
       return LogisticsCommandResult.Fail("Ya existe una ubicación con la misma clave interna.");
     }
+    catch (SqlException ex) when (ex.Number is 51932 or 51933 or 51934)
+    {
+      await tx.RollbackAsync(ct);
+      return LogisticsCommandResult.Fail(ex.Message);
+    }
     catch
     {
       await tx.RollbackAsync(ct);
       throw;
     }
   }
-
-  private SqlConnection CreateConnection()
-    => _connectionFactory.Create() as SqlConnection
-      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una SqlConnection.");
 
   private static string? NullIfWhiteSpace(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

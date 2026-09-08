@@ -1,3 +1,4 @@
+using OrionERP.Application.Features.Reservaciones;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -15,10 +16,15 @@ public sealed class ReservacionExperiencesService : IReservacionExperiencesServi
 {
   private readonly string _connectionString;
 
-  public ReservacionExperiencesService(IConfiguration configuration)
+  private readonly HospitalityConnectionFactory? _hospitalityConnections;
+  private Task<SqlConnection> OpenScopedAsync(CancellationToken ct)
+    => (_hospitalityConnections ?? throw new UnauthorizedAccessException("Falta el alcance autorizado de Hospedaje.")).OpenAsync(ct);
+
+  public ReservacionExperiencesService(IConfiguration configuration, HospitalityConnectionFactory? hospitalityConnections = null)
   {
     _connectionString = configuration.GetConnectionString("OrionDb")
       ?? throw new InvalidOperationException("Missing ConnectionStrings:OrionDb.");
+    _hospitalityConnections = hospitalityConnections;
   }
 
   public Task<IReadOnlyList<ExperienceCatalogItemDto>> GetActiveExperienceCatalogAsync(CancellationToken ct = default)
@@ -71,8 +77,7 @@ WHERE re.ReservationID = @ReservationId
 ORDER BY rea.ReservationExperienceAddOnID;
 """;
 
-    await using var conn = new SqlConnection(_connectionString);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
     if (!await ReservationExperienceTablesExistAsync(conn, ct))
     {
       return Array.Empty<ReservacionExperienceDto>();
@@ -106,8 +111,7 @@ ORDER BY rea.ReservationExperienceAddOnID;
     if (!validation.Success)
       return ReservacionCommandResult.Fail(validation.Message);
 
-    await using var conn = new SqlConnection(_connectionString);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
     await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
 
     try
@@ -137,8 +141,7 @@ ORDER BY rea.ReservationExperienceAddOnID;
     if (!validation.Success)
       return ReservacionCommandResult.Fail(validation.Message);
 
-    await using var conn = new SqlConnection(_connectionString);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
     await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
 
     try
@@ -204,8 +207,7 @@ DELETE FROM dbo.Reservation_Experience WHERE ReservationExperienceID=@Id;
 SELECT @ReservationId;
 """;
 
-    await using var conn = new SqlConnection(_connectionString);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
     if (!await ReservationExperienceTablesExistAsync(conn, ct))
     {
       return ReservacionCommandResult.Fail("La infraestructura de experiencias aun no esta instalada.");
@@ -299,8 +301,7 @@ WHERE e.IsActive = 1
 ORDER BY ea.ExperienceID, ea.DisplayOrder, ea.[Name];
 """;
 
-    await using var conn = new SqlConnection(_connectionString);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
     if (!await CatalogTablesExistAsync(conn, ct))
     {
       return Array.Empty<ExperienceCatalogItemDto>();

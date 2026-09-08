@@ -8,6 +8,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OrionERP.Application.Features.Reservaciones.CalendarSync;
+using OrionERP.Application.Features.Reservaciones;
 using OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 
 namespace OrionERP.UnitTests.Reservaciones;
@@ -106,11 +107,11 @@ public class BonhomiaCalendarSyncTests
   }
 
   [Fact]
-  public void CalendarOptions_UseSharedGraphCredentials_WhenClientIdMatches()
+  public void CalendarOptions_UseSharedGraphCredentials_WhenTenantAndClientIdMatch()
   {
     var options = new BonhomiaGraphCalendarSyncOptions
     {
-      TenantId = "old-tenant",
+      TenantId = "aea961c0-7e15-4be8-9f81-2388eb2f9e96",
       ClientId = "6bfe945f-8423-4eef-b78c-934cc41876b7",
       ClientSecret = "stale-secret"
     };
@@ -143,6 +144,19 @@ public class BonhomiaCalendarSyncTests
     Assert.Equal("calendar-tenant", options.TenantId);
     Assert.Equal("calendar-client", options.ClientId);
     Assert.Equal("calendar-secret", options.ClientSecret);
+  }
+
+  [Theory]
+  [InlineData("", "")]
+  [InlineData("", "shared-client")]
+  [InlineData("other-tenant", "shared-client")]
+  public void CalendarOptions_DoNotAdoptSharedIdentityWithoutExplicitMatchingTenant(string tenantId, string clientId)
+  {
+    var options = new BonhomiaGraphCalendarSyncOptions { TenantId = tenantId, ClientId = clientId };
+    options.ApplySharedGraphCredentials("shared-tenant", "shared-client", "fake-shared-secret");
+    Assert.Equal(tenantId, options.TenantId);
+    Assert.Equal(clientId, options.ClientId);
+    Assert.Empty(options.ClientSecret);
   }
 
   [Fact]
@@ -265,6 +279,10 @@ public class BonhomiaCalendarSyncTests
       repository,
       Options.Create(new BonhomiaGraphCalendarSyncOptions
       {
+        Enabled = true,
+        CompanyId = 1,
+        SiteId = 10,
+        CompanyRfc = "TEST010101AAA",
         TenantId = "tenant",
         ClientId = "client",
         ClientSecret = "secret",
@@ -272,7 +290,8 @@ public class BonhomiaCalendarSyncTests
         TimeZone = "America/Mexico_City",
         TargetCalendars = new List<string> { "BERLIN" }
       }),
-      NullLogger<BonhomiaRoomCalendarSyncService>.Instance);
+      NullLogger<BonhomiaRoomCalendarSyncService>.Instance,
+      new FakeScopeAccessor());
 
     var result = await service.SyncAsync(new DateTime(2026, 3, 27), new DateTime(2027, 1, 1));
 
@@ -284,6 +303,158 @@ public class BonhomiaCalendarSyncTests
     Assert.Contains(handler.Requests, item => item.Method == HttpMethod.Get && item.RequestUri!.AbsoluteUri.Contains("/calendars?$select=id,name", StringComparison.Ordinal));
     Assert.Contains(handler.Requests, item => item.Method == HttpMethod.Get && item.RequestUri!.AbsoluteUri.Contains("/calendarView", StringComparison.Ordinal));
     Assert.Contains(handler.Requests, item => item.Method == HttpMethod.Post && item.RequestUri!.AbsoluteUri.Contains("/events", StringComparison.Ordinal));
+  }
+
+  [Theory]
+  [InlineData(false, 1, 10, "TEST010101AAA")]
+  [InlineData(true, 0, 10, "TEST010101AAA")]
+  [InlineData(true, 1, 0, "TEST010101AAA")]
+  [InlineData(true, 1, 10, "")]
+  [InlineData(true, 2, 10, "TEST010101AAA")]
+  [InlineData(true, 1, 20, "TEST010101AAA")]
+  [InlineData(true, 1, 10, "OTHER010101AA")]
+  public async Task SyncService_RejectsDisabledOrDifferentScope_BeforeSqlAndHttp(
+    bool enabled, long companyId, long siteId, string rfc)
+  {
+    var repository = new FakeSyncRepository([], []);
+    var handler = new FakeHttpMessageHandler();
+    var options = CreateOptions();
+    options.Enabled = enabled;
+    options.CompanyId = companyId;
+    options.SiteId = siteId;
+    options.CompanyRfc = rfc;
+    using var http = new HttpClient(handler);
+    var service = CreateService(http, repository, options);
+
+    await Assert.ThrowsAnyAsync<Exception>(() => service.SyncAsync(new DateTime(2026, 3, 27), new DateTime(2026, 3, 30)));
+
+    Assert.Empty(handler.Requests);
+    Assert.Equal(0, repository.ReadCount);
+  }
+
+  [Fact]
+  public async Task SyncService_LocalScopeRejection_PrecedesOAuth()
+  {
+    var repository = new FakeSyncRepository([], []) { ThrowOnRead = true };
+    var handler = new FakeHttpMessageHandler();
+    using var http = new HttpClient(handler);
+    var service = CreateService(http, repository, CreateOptions());
+    await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.SyncAsync(new DateTime(2026, 3, 27), new DateTime(2026, 3, 30)));
+    Assert.Empty(handler.Requests);
+  }
+
+  [Theory]
+  [InlineData(2, 10)]
+  [InlineData(1, 20)]
+  [InlineData(0, 0)]
+  public async Task SyncService_DoesNotTouchForeignOrUnattributedRemoteMarkers(long companyId, long siteId)
+  {
+    var block = CreateLocalBlock();
+    block.CompanyId = companyId;
+    block.SiteId = siteId;
+    var handler = new FakeHttpMessageHandler();
+    handler.EnqueueJson("""{"access_token":"fake-token"}""");
+    handler.EnqueueJson("""{"value":[{"id":"cal-berlin","name":"BERLIN"}]}""");
+    handler.EnqueueJson(JsonSerializer.Serialize(new { value = new[] { new {
+      id = "foreign-event", subject = BonhomiaCalendarSyncPayloadBuilder.Subject,
+      body = new { content = BonhomiaCalendarSyncPayloadBuilder.BuildBodyHtml(block) },
+      start = new { dateTime = "2026-03-27T00:00:00", timeZone = "UTC" },
+      end = new { dateTime = "2026-03-30T00:00:00", timeZone = "UTC" },
+      isAllDay = true, showAs = "busy"
+    } } }));
+    var repository = new FakeSyncRepository([], []);
+    using var http = new HttpClient(handler);
+    var result = await CreateService(http, repository, CreateOptions())
+      .SyncAsync(new DateTime(2026, 3, 27), new DateTime(2026, 3, 30));
+    Assert.Equal(0, result.ErrorCount);
+    Assert.Equal(0, result.DeletedCount);
+    Assert.Equal(0, Assert.Single(result.Rooms).RemoteOwnedEventCount);
+    Assert.Equal(3, handler.Requests.Count);
+    Assert.Empty(repository.UpsertedMappings);
+    Assert.All(repository.Scopes, scope => Assert.Equal(new HospitalityScope(1, 10, "TEST010101AAA"), scope));
+  }
+
+  [Fact]
+  public void PayloadBuilder_ScopeMarkerDistinguishesCompaniesAndSites()
+  {
+    var block = CreateLocalBlock();
+    block.CompanyId = 1;
+    block.SiteId = 10;
+    var body = BonhomiaCalendarSyncPayloadBuilder.BuildBodyHtml(block);
+    Assert.True(BonhomiaCalendarSyncPayloadBuilder.BelongsToScope(body, 1, 10));
+    Assert.False(BonhomiaCalendarSyncPayloadBuilder.BelongsToScope(body, 2, 10));
+    Assert.False(BonhomiaCalendarSyncPayloadBuilder.BelongsToScope(body, 1, 20));
+    Assert.False(BonhomiaCalendarSyncPayloadBuilder.BelongsToScope(body + "<!-- OrionScope:1:10 -->", 1, 10));
+    var hash = BonhomiaCalendarSyncPayloadBuilder.ComputeContentHash(block);
+    block.SiteId = 20;
+    Assert.NotEqual(hash, BonhomiaCalendarSyncPayloadBuilder.ComputeContentHash(block));
+  }
+
+  [Theory]
+  [InlineData(false)]
+  [InlineData(true)]
+  public async Task SyncService_PreservesOwnedEvent_AndRecoversOrUpgradesMapping(bool legacyMappedEvent)
+  {
+    var block = CreateLocalBlock();
+    if (!legacyMappedEvent)
+    {
+      block.CompanyId = 1;
+      block.SiteId = 10;
+    }
+    var existingMappings = legacyMappedEvent
+      ? new[] { CreateMapping(block, "cal-berlin", "existing-event") }
+      : Array.Empty<OutlookRoomCalendarSyncMapping>();
+    var handler = new FakeHttpMessageHandler();
+    handler.EnqueueJson("""{"access_token":"fake-token"}""");
+    handler.EnqueueJson("""{"value":[{"id":"cal-berlin","name":"BERLIN"}]}""");
+    handler.EnqueueJson(JsonSerializer.Serialize(new { value = new[] { new {
+      id = "existing-event", subject = BonhomiaCalendarSyncPayloadBuilder.Subject,
+      body = new { content = BonhomiaCalendarSyncPayloadBuilder.BuildBodyHtml(block) },
+      start = new { dateTime = "2026-03-27T00:00:00", timeZone = "UTC" },
+      end = new { dateTime = "2026-03-30T00:00:00", timeZone = "UTC" },
+      isAllDay = true, showAs = "busy"
+    } } }));
+    if (legacyMappedEvent) handler.EnqueueJson("{}");
+    var repository = new FakeSyncRepository([block], existingMappings);
+    using var http = new HttpClient(handler);
+
+    var result = await CreateService(http, repository, CreateOptions())
+      .SyncAsync(new DateTime(2026, 3, 27), new DateTime(2026, 3, 30));
+
+    Assert.Equal(0, result.ErrorCount);
+    Assert.Equal(0, result.CreatedCount);
+    Assert.Equal(0, result.DeletedCount);
+    Assert.Equal(legacyMappedEvent ? 1 : 0, result.UpdatedCount);
+    Assert.Equal(legacyMappedEvent ? 0 : 1, result.RecoveredMappingCount);
+    Assert.Equal("existing-event", Assert.Single(repository.UpsertedMappings).OutlookEventId);
+    Assert.All(repository.Scopes, scope => Assert.Equal(new HospitalityScope(1, 10, "TEST010101AAA"), scope));
+  }
+
+  [Fact]
+  public void CalendarOptions_HaveNoEnabledOrNamedTenantFallback()
+  {
+    var options = new BonhomiaGraphCalendarSyncOptions();
+    Assert.False(options.Enabled);
+    Assert.Empty(options.MailboxAddress);
+    Assert.Empty(options.GetTargetCalendars());
+  }
+
+  private static BonhomiaGraphCalendarSyncOptions CreateOptions() => new()
+  {
+    Enabled = true, CompanyId = 1, SiteId = 10, CompanyRfc = "TEST010101AAA",
+    TenantId = "fake-tenant", ClientId = "fake-client", ClientSecret = "fake-secret",
+    MailboxAddress = "calendar@example.test", TargetCalendars = ["BERLIN"]
+  };
+
+  private static BonhomiaRoomCalendarSyncService CreateService(
+    HttpClient http, FakeSyncRepository repository, BonhomiaGraphCalendarSyncOptions options)
+    => new(http, repository, Options.Create(options),
+      NullLogger<BonhomiaRoomCalendarSyncService>.Instance, new FakeScopeAccessor());
+
+  private sealed class FakeScopeAccessor : IHospitalityScopeAccessor
+  {
+    public Task<HospitalityScope> ResolveRequiredAsync(CancellationToken ct = default)
+      => Task.FromResult(new HospitalityScope(1, 10, "TEST010101AAA"));
   }
 
   private static OrionRoomCalendarBlock CreateLocalBlock()
@@ -324,31 +495,48 @@ public class BonhomiaCalendarSyncTests
       _mappings = mappings;
     }
 
+    public int ReadCount { get; private set; }
+    public bool ThrowOnRead { get; set; }
+    public List<HospitalityScope> Scopes { get; } = new();
     public List<OutlookRoomCalendarSyncMappingUpsert> UpsertedMappings { get; } = new();
 
     public Task<IReadOnlyList<OrionRoomCalendarBlock>> GetBlockedBlocksAsync(
+      HospitalityScope scope,
       DateTime startDate,
       DateTime endDateExclusive,
       IReadOnlyCollection<string> roomNames,
       CancellationToken ct = default)
-      => Task.FromResult(_blocks);
+    {
+      ReadCount++;
+      Scopes.Add(scope);
+      if (ThrowOnRead) throw new UnauthorizedAccessException("Rejected local scope");
+      return Task.FromResult(_blocks);
+    }
 
     public Task<IReadOnlyList<OutlookRoomCalendarSyncMapping>> GetMappingsAsync(
+      HospitalityScope scope,
       DateTime startDate,
       DateTime endDateExclusive,
       IReadOnlyCollection<string> roomNames,
       CancellationToken ct = default)
-      => Task.FromResult(_mappings);
+    {
+      ReadCount++;
+      Scopes.Add(scope);
+      return Task.FromResult(_mappings);
+    }
 
     public Task UpsertMappingsAsync(
+      HospitalityScope scope,
       IReadOnlyCollection<OutlookRoomCalendarSyncMappingUpsert> mappings,
       CancellationToken ct = default)
     {
+      Scopes.Add(scope);
       UpsertedMappings.AddRange(mappings);
       return Task.CompletedTask;
     }
 
     public Task DeleteMappingsAsync(
+      HospitalityScope scope,
       IReadOnlyCollection<int> mappingIds,
       CancellationToken ct = default)
       => Task.CompletedTask;

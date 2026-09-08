@@ -1,0 +1,61 @@
+@page "/reservaciones/sede"
+@attribute [Authorize(Roles = "Administrador,SatOperator")]
+@using OrionERP.Application.Features.Reservaciones
+@using OrionERP.Infrastructure.Features.Reservaciones
+@inject HospitalityAdministrationScopeAccessor ScopeAccessor
+@inject HospitalitySiteSelection Selection
+@inject NavigationManager Navigation
+
+<PageTitle>Sede de Hospedaje</PageTitle>
+<div class="container py-4" style="max-width:640px">
+    <h1 class="h3">Sede de Hospedaje</h1>
+    <p class="text-muted">La sede seleccionada se aplica a reservas, clientes, documentos, calendarios y operaciones vinculadas a habitaciones.</p>
+    @if (_error is not null)
+    {
+        <div class="alert alert-warning" role="alert">@_error</div>
+    }
+    <label class="form-label" for="hospitality-site">Sede operativa</label>
+    <select id="hospitality-site" class="form-select" @bind="_selected" disabled="@(_sites.Count == 0)">
+        <option value="0">Selecciona una sede</option>
+        @foreach (var site in _sites)
+        {
+            <option value="@site.SiteId">@site.DisplayName</option>
+        }
+    </select>
+    <button class="btn btn-primary mt-3" disabled="@(_selected <= 0)" @onclick="ContinueAsync">Aplicar sede</button>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "returnUrl")] public string? ReturnUrl { get; set; }
+    private IReadOnlyList<HospitalitySiteOption> _sites = Array.Empty<HospitalitySiteOption>();
+    private long _selected;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _sites = await ScopeAccessor.GetSitesAsync();
+            _selected = Selection.SiteId ?? (_sites.Count == 1 ? _sites[0].SiteId : 0);
+            if (_sites.Count == 0) _error = "La empresa no tiene sedes de Hospedaje habilitadas.";
+        }
+        catch (Exception) { _error = "No fue posible consultar las sedes de la sesión."; }
+    }
+
+    private async Task ContinueAsync()
+    {
+        try
+        {
+            Selection.Select(_selected);
+            await ScopeAccessor.ResolveRequiredAsync();
+            var destination = ReturnUrl is { } path && !path.Contains('\\') &&
+                (path.StartsWith("/logistica/", StringComparison.Ordinal) ||
+                 path == "/ordenes-trabajo" || path.StartsWith("/ordenes-trabajo/", StringComparison.Ordinal) ||
+                 path.StartsWith("/reservaciones/", StringComparison.Ordinal)) &&
+                !path.StartsWith("/reservaciones/sede", StringComparison.Ordinal)
+                ? path : "/reservaciones/lista";
+            Navigation.NavigateTo(destination);
+        }
+        catch (UnauthorizedAccessException ex) { _error = ex.Message; }
+    }
+}

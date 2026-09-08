@@ -5,6 +5,8 @@ using Dapper;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Restaurante;
+using OrionERP.Application.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Logistica.Shared;
 
 namespace OrionERP.Infrastructure.Features.Restaurante;
 
@@ -12,9 +14,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
 {
   private readonly IDbConnectionFactory _connectionFactory;
 
-  public RestaurantOrderService(IDbConnectionFactory connectionFactory)
+  private readonly IHospitalityScopeAccessor? _hospitalityScope;
+
+  public RestaurantOrderService(IDbConnectionFactory connectionFactory, IHospitalityScopeAccessor? hospitalityScope = null)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+    _hospitalityScope = hospitalityScope;
   }
 
   public async Task<RestaurantOrderResult> CreateOrderAsync(RestaurantOrderCreateRequest request, string userName, CancellationToken ct = default)
@@ -56,11 +61,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       }
     }
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenScopedAsync(request.Rfc, ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
+      await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
+      await EnsureOrderScopeAsync(conn, tx, ct, key: request.IdempotencyKey.Trim(), siteId: request.SiteId);
       var duplicate = await FindDuplicateAsync(conn, tx, rfc, request.SiteId, request.IdempotencyKey.Trim(), ct);
       if (duplicate is not null)
       {
@@ -918,14 +924,14 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   public async Task<RestaurantOrderDto?> GetOrderAsync(string rfc, Guid orderId, CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     return await LoadOrderAsync(conn, null, normalizedRfc, orderId, ct);
   }
 
   public async Task<RestaurantReceiptDto?> GetReceiptAsync(string rfc, Guid orderId, CancellationToken ct = default)
   {
-    const string sql =
-      """
+    var sql =
+      $"""
       SELECT orderInfo.Id AS OrderId,orderInfo.SiteId,siteInfo.[Name] AS SiteName,
              siteInfo.TimeZoneId AS SiteTimeZoneId,orderInfo.Folio,orderInfo.OrderType,
              orderInfo.[Status],orderInfo.PaymentStatus,orderInfo.CustomerName,
@@ -953,7 +959,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           AND ledger.EntryType IN ('Redeem','Earn')
         ORDER BY ledger.Id DESC
       ) orderPoints
-      WHERE orderInfo.Rfc=@Rfc AND orderInfo.Id=@OrderId;
+      WHERE orderInfo.Rfc=@Rfc AND orderInfo.Id=@OrderId AND {OrderVisibilitySql("orderInfo")};
 
       SELECT lineInfo.Id,lineInfo.ProductId,lineInfo.ProductNameSnapshot AS ProductName,
              lineInfo.IsCustom,lineInfo.Quantity,lineInfo.UnitPrice,lineInfo.DiscountAmount,
@@ -990,6 +996,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
              paymentInfo.RefundedAmount,paymentInfo.[Status],paymentInfo.PaidAt
       FROM restaurante.Payment paymentInfo
       WHERE paymentInfo.Rfc=@Rfc AND paymentInfo.OrderId=@OrderId
+        AND EXISTS (SELECT 1 FROM restaurante.[Order] orderInfo WHERE orderInfo.Id=paymentInfo.OrderId AND orderInfo.Rfc=paymentInfo.Rfc AND {OrderVisibilitySql("orderInfo")})
       ORDER BY paymentInfo.PaidAt,paymentInfo.Id;
 
       SELECT PromotionId,PromotionNameSnapshot AS PromotionName,
@@ -999,7 +1006,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       ORDER BY Id;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(
       sql,
       new { Rfc = LogisticsRfc.Require(rfc), OrderId = orderId },
@@ -1028,11 +1035,11 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   public async Task<RestaurantKitchenBoardDto> GetKitchenBoardAsync(string rfc, int siteId, CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
-    using var conn = CreateConnection();
-    const string sql =
-      """
+    using var conn = await OpenScopedAsync(rfc, ct);
+    var sql =
+      $"""
       SELECT orderInfo.Id FROM restaurante.[Order] orderInfo
-      WHERE orderInfo.Rfc = @Rfc AND orderInfo.SiteId = @SiteId
+      WHERE orderInfo.Rfc = @Rfc AND orderInfo.SiteId = @SiteId AND {OrderVisibilitySql("orderInfo")}
         AND orderInfo.[Status] IN ('Sent', 'Preparing', 'Ready')
         AND orderInfo.CreatedAt >= DATEADD(day, -1, SYSUTCDATETIME())
         AND EXISTS
@@ -1063,18 +1070,18 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
 
   public async Task<IReadOnlyList<RestaurantPublicOrderDto>> GetPublicBoardAsync(string rfc, int siteId, CancellationToken ct = default)
   {
-    const string sql =
-      """
+    var sql =
+      $"""
       SELECT orderInfo.Id, orderInfo.Folio, orderInfo.CustomerName, orderInfo.OrderType,
              diningTable.[Name] AS TableName, orderInfo.[Status]
       FROM restaurante.[Order] orderInfo
       LEFT JOIN restaurante.DiningTable diningTable ON diningTable.Rfc = orderInfo.Rfc AND diningTable.Id = orderInfo.DiningTableId
-      WHERE orderInfo.Rfc = @Rfc AND orderInfo.SiteId = @SiteId
+      WHERE orderInfo.Rfc = @Rfc AND orderInfo.SiteId = @SiteId AND {OrderVisibilitySql("orderInfo")}
         AND orderInfo.[Status] IN ('Sent', 'Preparing', 'Ready', 'Dispatched')
         AND orderInfo.CreatedAt >= DATEADD(day, -1, SYSUTCDATETIME())
       ORDER BY CASE orderInfo.[Status] WHEN 'Ready' THEN 0 WHEN 'Dispatched' THEN 1 ELSE 2 END, orderInfo.Folio;
       """;
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     return (await conn.QueryAsync<RestaurantPublicOrderDto>(new CommandDefinition(sql, new
     {
       Rfc = LogisticsRfc.Require(rfc),
@@ -1089,7 +1096,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     var timeZoneId = await conn.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
       "SELECT TimeZoneId FROM restaurante.Site WHERE Rfc=@Rfc AND Id=@SiteId;",
       new { Rfc = normalizedRfc, SiteId = siteId },
@@ -1126,17 +1133,17 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     Guid orderId,
     CancellationToken ct = default)
   {
-    const string sql =
-      """
+    var sql =
+      $"""
       SELECT eventInfo.Id,eventInfo.EventType,eventInfo.Category,eventInfo.Title,
              eventInfo.[Description],eventInfo.Actor,eventInfo.OccurredAt
       FROM restaurante.OrderEvent eventInfo
       JOIN restaurante.[Order] orderInfo
         ON orderInfo.Rfc=eventInfo.Rfc AND orderInfo.Id=eventInfo.OrderId
-      WHERE eventInfo.Rfc=@Rfc AND eventInfo.OrderId=@OrderId
+      WHERE eventInfo.Rfc=@Rfc AND eventInfo.OrderId=@OrderId AND {OrderVisibilitySql("orderInfo")}
       ORDER BY eventInfo.OccurredAt,eventInfo.Id;
       """;
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     return (await conn.QueryAsync<RestaurantOrderEventDto>(new CommandDefinition(
       sql,
       new { Rfc = LogisticsRfc.Require(rfc), OrderId = orderId },
@@ -1153,11 +1160,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       "Completed" => "Completed",
       _ => throw new InvalidOperationException("Estado de entrega no válido.")
     };
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenScopedAsync(rfc, ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
+      await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
+      await EnsureOrderScopeAsync(conn, tx, ct, orderId: orderId);
       var current = await conn.QuerySingleOrDefaultAsync<OrderFulfillmentRow>(new CommandDefinition(
         "SELECT Id,SiteId,OrderType,[Status],PaymentStatus FROM restaurante.[Order] WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND Id=@Id;",
         new { Rfc = normalizedRfc, Id = orderId }, tx, cancellationToken: ct));
@@ -1219,11 +1227,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       "Delivered" => "Delivered",
       _ => throw new InvalidOperationException("Transición de cocina no válida.")
     };
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenScopedAsync(rfc, ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
+      await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
+      await EnsureOrderScopeAsync(conn, tx, ct, lineId: lineId);
       var line = await conn.QuerySingleOrDefaultAsync<LineIdentityRow>(new CommandDefinition(
         """
         SELECT lineInfo.Id, lineInfo.OrderId, lineInfo.ProductNameSnapshot, lineInfo.IsCustom,lineInfo.LineKind,
@@ -1312,11 +1321,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   public async Task<RestaurantCommandResult> RevertLineStatusAsync(string rfc, long lineId, string userName, CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenScopedAsync(rfc, ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
+      await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
+      await EnsureOrderScopeAsync(conn, tx, ct, lineId: lineId);
       var line = await conn.QuerySingleOrDefaultAsync<LineIdentityRow>(new CommandDefinition(
         """
         SELECT lineInfo.Id,lineInfo.OrderId,lineInfo.ProductNameSnapshot,lineInfo.IsCustom,lineInfo.LineKind,
@@ -1366,11 +1376,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     var normalizedRfc = LogisticsRfc.Require(rfc);
     if (priority > 1 || (priority > 0 && string.IsNullOrWhiteSpace(reason)) || string.IsNullOrWhiteSpace(supervisorUserName))
       return RestaurantCommandResult.Fail("La prioridad requiere motivo y supervisor.");
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenScopedAsync(rfc, ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
+      await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
+      await EnsureOrderScopeAsync(conn, tx, ct, orderId: orderId);
       var siteId = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
         "SELECT SiteId FROM restaurante.[Order] WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND Id=@OrderId AND [Status] IN ('Sent','Preparing','Ready');",
         new { Rfc = normalizedRfc, OrderId = orderId }, tx, cancellationToken: ct));
@@ -1408,11 +1419,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     {
       return RestaurantCommandResult.Fail("La cancelación requiere motivo y supervisor.");
     }
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenScopedAsync(rfc, ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
+      await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
+      await EnsureOrderScopeAsync(conn, tx, ct, orderId: orderId);
       var order = await conn.QuerySingleOrDefaultAsync<CancelOrderRow>(new CommandDefinition(
         """
         SELECT Id, SiteId, [Status], InventoryReservationId
@@ -1520,16 +1532,17 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
 
   public async Task<IReadOnlyList<RestaurantPaymentDto>> GetPaymentsAsync(string rfc, Guid orderId, CancellationToken ct = default)
   {
-    const string sql =
-      """
+    var sql =
+      $"""
       SELECT paymentInfo.Id,paymentInfo.PaymentMethod,paymentInfo.Amount,paymentInfo.TipAmount,
              paymentInfo.RefundedAmount,paymentInfo.[Status],paymentInfo.PaidAt
       FROM restaurante.Payment paymentInfo
       JOIN restaurante.[Order] orderInfo ON orderInfo.Rfc=paymentInfo.Rfc AND orderInfo.Id=paymentInfo.OrderId
       WHERE paymentInfo.Rfc=@Rfc AND paymentInfo.OrderId=@OrderId
+        AND EXISTS (SELECT 1 FROM restaurante.[Order] orderInfo WHERE orderInfo.Id=paymentInfo.OrderId AND orderInfo.Rfc=paymentInfo.Rfc AND {OrderVisibilitySql("orderInfo")})
       ORDER BY paymentInfo.PaidAt,paymentInfo.Id;
       """;
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     return (await conn.QueryAsync<RestaurantPaymentDto>(new CommandDefinition(
       sql, new { Rfc = LogisticsRfc.Require(rfc), OrderId = orderId }, cancellationToken: ct))).AsList();
   }
@@ -1555,11 +1568,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       return RestaurantCommandResult.Fail("Los cargos en efectivo requieren un turno de caja abierto.");
     }
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenScopedAsync(request.Rfc, ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
+      await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
+      await EnsureOrderScopeAsync(conn, tx, ct, orderId: request.OrderId);
       var duplicate = await conn.ExecuteScalarAsync<Guid?>(new CommandDefinition(
         "SELECT Id FROM restaurante.Payment WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND IdempotencyKey=@Key;",
         new { Rfc = rfc, Key = request.IdempotencyKey.Trim() }, tx, cancellationToken: ct));
@@ -1733,11 +1747,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       return RestaurantCommandResult.Fail("El reembolso requiere motivo y autorización de supervisor.");
     }
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenScopedAsync(request.Rfc, ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
+      await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
+      await EnsureOrderScopeAsync(conn, tx, ct, paymentId: request.PaymentId);
       if (await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
         "SELECT CAST(CASE WHEN EXISTS(SELECT 1 FROM restaurante.PaymentRefund WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND IdempotencyKey=@Key) THEN 1 ELSE 0 END AS bit);",
         new { Rfc = rfc, Key = request.IdempotencyKey.Trim() }, tx, cancellationToken: ct)))
@@ -1925,8 +1940,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       return [];
     }
 
-    const string sql =
-      """
+    var sql =
+      $"""
       SELECT product.Id,product.ProductKind,product.MaterialId,material.CategoryId AS MaterialCategoryId,
              product.Sku,card.[Name],product.VariantName,product.Price,product.KitchenStationId,
              product.PreparationMinutes,material.FulfillmentMode,material.BaseUnitId,material.TrackLots,
@@ -2028,8 +2043,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     {
       return [];
     }
-    const string sql =
-      """
+    var sql =
+      $"""
       SELECT slotInfo.ComboProductId,slotInfo.Id AS ComboSlotId,slotInfo.[Name] AS SlotName,
              slotInfo.MinSelections,slotInfo.MaxSelections,slotInfo.SortOrder AS SlotSortOrder,
              optionInfo.Id AS ComboSlotOptionId,optionInfo.ComponentProductId,optionInfo.Quantity AS OptionQuantity,
@@ -2173,8 +2188,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       return [];
     }
 
-    const string sql =
-      """
+    var sql =
+      $"""
       SELECT item.ProductId,
              sectionInfo.Id AS MenuSectionId,
              sectionInfo.[Name] AS MenuSectionName,
@@ -2464,6 +2479,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           LEFT JOIN restaurante.SiteLocationPriority priorityInfo
             ON priorityInfo.Rfc = lotBalance.Rfc AND priorityInfo.SiteId = @SiteId AND priorityInfo.LocationId = lotBalance.LocationId
           WHERE lotBalance.Rfc=@Rfc AND lotBalance.MaterialId=@MaterialId
+            AND EXISTS (SELECT 1 FROM #OrionVisibleLocations visibleLocation WHERE visibleLocation.LocationId=lotBalance.LocationId AND visibleLocation.Rfc=lotBalance.Rfc)
             AND lotBalance.Quantity > lotBalance.ReservedQuantity AND lot.IsBlocked=0
             AND (lot.ExpiresAt IS NULL OR lot.ExpiresAt >= CONVERT(date, SYSUTCDATETIME()))
           ORDER BY ISNULL(priorityInfo.Priority, 2147483647), CASE WHEN lot.ExpiresAt IS NULL THEN 1 ELSE 0 END, lot.ExpiresAt, lot.Id;
@@ -2492,6 +2508,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           LEFT JOIN restaurante.SiteLocationPriority priorityInfo
             ON priorityInfo.Rfc=balance.Rfc AND priorityInfo.SiteId=@SiteId AND priorityInfo.LocationId=balance.LocationId
           WHERE balance.Rfc=@Rfc AND balance.MaterialId=@MaterialId AND balance.IsRemoved=0
+            AND EXISTS (SELECT 1 FROM #OrionVisibleLocations visibleLocation WHERE visibleLocation.LocationId=balance.LocationId AND visibleLocation.Rfc=balance.Rfc)
             AND balance.Quantity > balance.ReservedQuantity
           ORDER BY ISNULL(priorityInfo.Priority, 2147483647), balance.LocationId;
           """, new { Rfc = rfc, SiteId = siteId, MaterialId = requirement.Key }, tx, cancellationToken: ct))).AsList();
@@ -2520,6 +2537,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           LEFT JOIN restaurante.SiteLocationPriority priorityInfo
             ON priorityInfo.Rfc=locationInfo.Rfc AND priorityInfo.SiteId=@SiteId AND priorityInfo.LocationId=locationInfo.Id
           WHERE locationInfo.Rfc=@Rfc AND locationInfo.IsActive=1 AND locationInfo.IsInventoryEnabled=1
+            AND EXISTS (SELECT 1 FROM #OrionVisibleLocations visibleLocation WHERE visibleLocation.LocationId=locationInfo.Id AND visibleLocation.Rfc=locationInfo.Rfc)
           ORDER BY ISNULL(priorityInfo.Priority, 2147483647), locationInfo.Id;
           """, new { Rfc = rfc, SiteId = siteId }, tx, cancellationToken: ct));
         if (fallbackLocation.HasValue)
@@ -2679,8 +2697,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
 
   private static async Task<RestaurantOrderDto?> LoadOrderAsync(DbConnection conn, DbTransaction? tx, string rfc, Guid orderId, CancellationToken ct)
   {
-    const string sql =
-      """
+    var sql =
+      $"""
       SELECT orderInfo.Id, orderInfo.Folio, orderInfo.OperationalDate, orderInfo.OrderType, orderInfo.[Status],
              orderInfo.PaymentStatus, orderInfo.CustomerName, diningTable.[Name] AS TableName, orderInfo.Notes,
               orderInfo.Total, orderInfo.BalanceDue,orderInfo.PromotionDiscountTotal,
@@ -2690,7 +2708,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
               orderInfo.Priority,orderInfo.PriorityReason,orderInfo.PrioritizedBy,orderInfo.CreatedAt
       FROM restaurante.[Order] orderInfo
       LEFT JOIN restaurante.DiningTable diningTable ON diningTable.Rfc=orderInfo.Rfc AND diningTable.Id=orderInfo.DiningTableId
-      WHERE orderInfo.Rfc=@Rfc AND orderInfo.Id=@OrderId;
+      WHERE orderInfo.Rfc=@Rfc AND orderInfo.Id=@OrderId AND {OrderVisibilitySql("orderInfo")};
       SELECT lineInfo.Id,lineInfo.ProductId,lineInfo.ProductNameSnapshot AS ProductName,
              lineInfo.IsCustom,lineInfo.Quantity,lineInfo.[Status],lineInfo.Notes,
              product.PreparationMinutes,lineInfo.StartedAt,lineInfo.ReadyAt,
@@ -3138,9 +3156,47 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
 
   private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-  private DbConnection CreateConnection()
-    => _connectionFactory.Create() as DbConnection
-      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
+  private async Task<DbConnection> OpenScopedAsync(string rfc, CancellationToken ct)
+  {
+    var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
+    try
+    {
+      await LogisticsLocationScope.EnsureRfcAsync(conn, null, LogisticsRfc.Require(rfc), ct);
+      return conn;
+    }
+    catch { await conn.DisposeAsync(); throw; }
+  }
+
+  private static string OrderVisibilitySql(string alias) => $"""
+    ({alias}.Rfc={LogisticsLocationScope.CurrentRfcSql} AND
+      ({alias}.InventoryReservationId IS NULL OR EXISTS
+      (SELECT 1 FROM logistica.InventoryReservation scopeReservation WITH (HOLDLOCK)
+       WHERE scopeReservation.Id={alias}.InventoryReservationId AND scopeReservation.Rfc={alias}.Rfc
+         AND scopeReservation.SiteId={alias}.SiteId
+         AND scopeReservation.ReferenceType='RestaurantOrder' AND scopeReservation.ReferenceId={alias}.Id
+         AND NOT EXISTS
+         (SELECT 1 FROM logistica.InventoryReservationLine scopeLine WITH (HOLDLOCK)
+          WHERE scopeLine.ReservationId=scopeReservation.Id AND
+            (scopeLine.Rfc<>scopeReservation.Rfc
+             OR NOT {LogisticsLocationScope.ForLocationIdSql("scopeLine.LocationId", "scopeLine.Rfc")}
+             OR NOT EXISTS (SELECT 1 FROM logistica.Material scopeMaterial WHERE scopeMaterial.Id=scopeLine.MaterialId AND scopeMaterial.Rfc=scopeLine.Rfc)
+             OR (scopeLine.MaterialLotId IS NOT NULL AND NOT EXISTS
+               (SELECT 1 FROM logistica.MaterialLot scopeLot WHERE scopeLot.Id=scopeLine.MaterialLotId AND scopeLot.Rfc=scopeLine.Rfc AND scopeLot.MaterialId=scopeLine.MaterialId)))))))
+    """;
+
+  private static Task EnsureOrderScopeAsync(DbConnection conn, DbTransaction tx, CancellationToken ct,
+    Guid? orderId = null, long? lineId = null, Guid? paymentId = null, string? key = null, int? siteId = null)
+    => conn.ExecuteAsync(new CommandDefinition($"""
+      IF EXISTS
+      (SELECT 1 FROM restaurante.[Order] scopeOrder WITH (UPDLOCK,HOLDLOCK)
+       WHERE scopeOrder.Rfc={LogisticsLocationScope.CurrentRfcSql}
+         AND (scopeOrder.Id=@OrderId
+           OR (@LineId IS NOT NULL AND EXISTS (SELECT 1 FROM restaurante.OrderLine scopeOrderLine WITH (HOLDLOCK) WHERE scopeOrderLine.Id=@LineId AND scopeOrderLine.Rfc=scopeOrder.Rfc AND scopeOrderLine.OrderId=scopeOrder.Id))
+           OR (@PaymentId IS NOT NULL AND EXISTS (SELECT 1 FROM restaurante.Payment scopePayment WITH (HOLDLOCK) WHERE scopePayment.Id=@PaymentId AND scopePayment.Rfc=scopeOrder.Rfc AND scopePayment.OrderId=scopeOrder.Id))
+           OR (@Key IS NOT NULL AND scopeOrder.IdempotencyKey=@Key AND scopeOrder.SiteId=@SiteId))
+         AND NOT {OrderVisibilitySql("scopeOrder")})
+        THROW 51936,'La orden contiene inventario fuera de la empresa o sede autorizadas.',1;
+      """, new { OrderId=orderId, LineId=lineId, PaymentId=paymentId, Key=key, SiteId=siteId }, tx, cancellationToken:ct));
 
   private sealed record PricedLine(
     string LineKey,

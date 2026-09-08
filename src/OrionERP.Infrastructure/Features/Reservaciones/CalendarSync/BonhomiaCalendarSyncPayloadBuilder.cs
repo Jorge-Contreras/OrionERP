@@ -11,6 +11,7 @@ public static class BonhomiaCalendarSyncPayloadBuilder
 {
   public const string Subject = "ORION BLOCKED";
   private const string MarkerPrefix = "<!-- OrionSync:";
+  private const string ScopeMarkerPrefix = "<!-- OrionScope:";
   private const string MarkerSuffix = " -->";
 
   public static string BuildBodyHtml(OrionRoomCalendarBlock block)
@@ -26,6 +27,7 @@ public static class BonhomiaCalendarSyncPayloadBuilder
     return $"""
 <p>Managed by OrionERP calendar sync.</p>
 {MarkerPrefix}{sourceKey}{MarkerSuffix}
+{BuildScopeMarker(block.CompanyId, block.SiteId)}
 <!-- Room:{roomName} -->
 <!-- Reservation:{reservationId} -->
 <!-- Start:{startDate} -->
@@ -38,7 +40,7 @@ public static class BonhomiaCalendarSyncPayloadBuilder
     ArgumentNullException.ThrowIfNull(block);
     return ComputeHash(
       Subject,
-      block.SourceKey,
+      block.SourceKey + BuildScopeMarker(block.CompanyId, block.SiteId),
       block.StartDate,
       block.EndDateExclusive,
       isAllDay: true,
@@ -50,7 +52,7 @@ public static class BonhomiaCalendarSyncPayloadBuilder
     ArgumentNullException.ThrowIfNull(remoteEvent);
     return ComputeHash(
       remoteEvent.Subject,
-      remoteEvent.SourceKey ?? string.Empty,
+      (remoteEvent.SourceKey ?? string.Empty) + ExtractScopeMarker(remoteEvent.BodyHtml),
       remoteEvent.StartDate,
       remoteEvent.EndDateExclusive,
       remoteEvent.IsAllDay,
@@ -80,6 +82,31 @@ public static class BonhomiaCalendarSyncPayloadBuilder
 
     sourceKey = WebUtility.HtmlDecode(bodyHtml[startIndex..endIndex]).Trim();
     return !string.IsNullOrWhiteSpace(sourceKey);
+  }
+
+  public static bool HasScopeMarker(string? bodyHtml)
+    => bodyHtml?.Contains(ScopeMarkerPrefix, StringComparison.OrdinalIgnoreCase) == true;
+
+  public static bool BelongsToScope(string? bodyHtml, long companyId, long siteId)
+    => string.Equals(ExtractScopeMarker(bodyHtml), BuildScopeMarker(companyId, siteId), StringComparison.Ordinal)
+       && companyId > 0 && siteId > 0;
+
+  private static string BuildScopeMarker(long companyId, long siteId)
+    => companyId > 0 && siteId > 0
+      ? string.Create(CultureInfo.InvariantCulture, $"{ScopeMarkerPrefix}{companyId}:{siteId}{MarkerSuffix}")
+      : string.Empty;
+
+  private static string ExtractScopeMarker(string? bodyHtml)
+  {
+    if (string.IsNullOrWhiteSpace(bodyHtml)) return string.Empty;
+    var start = bodyHtml.IndexOf(ScopeMarkerPrefix, StringComparison.OrdinalIgnoreCase);
+    if (start < 0) return string.Empty;
+    var end = bodyHtml.IndexOf(MarkerSuffix, start, StringComparison.Ordinal);
+    if (end < 0) return string.Empty;
+    // Multiple scope declarations are ambiguous and must not grant ownership.
+    if (bodyHtml.IndexOf(ScopeMarkerPrefix, start + ScopeMarkerPrefix.Length, StringComparison.OrdinalIgnoreCase) >= 0)
+      return string.Empty;
+    return bodyHtml[start..(end + MarkerSuffix.Length)];
   }
 
   private static string ComputeHash(

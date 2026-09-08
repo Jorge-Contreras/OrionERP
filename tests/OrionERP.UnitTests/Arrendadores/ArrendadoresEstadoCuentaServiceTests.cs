@@ -7,29 +7,23 @@ namespace OrionERP.UnitTests.Arrendadores;
 public class ArrendadoresEstadoCuentaServiceTests
 {
   [Fact]
-  public async Task GetArrendadoresAsync_PassesOwnerIdScope()
+  public async Task GetArrendadoresAsync_RejectsMissingHospitalityScopeBeforeOpeningConnection()
   {
     var connection = new FakeQueryDbConnection();
     var service = new ArrendadoresEstadoCuentaService(new FakeQueryConnectionFactory(connection));
 
-    await service.GetArrendadoresAsync("georgina", ownerIdScope: 42);
-
-    Assert.Contains("@OwnerIdScope", connection.LastCommandText, StringComparison.OrdinalIgnoreCase);
-    var scopeParameter = Assert.Single(connection.LastParameters, parameter => parameter.Name == "OwnerIdScope");
-    Assert.Equal(42, scopeParameter.Value);
+    await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetArrendadoresAsync("georgina", ownerIdScope: 42));
+    Assert.True(string.IsNullOrEmpty(connection.LastCommandText));
   }
 
   [Fact]
-  public async Task GetRoomsAsync_PassesOwnerIdScope()
+  public async Task GetRoomsAsync_RejectsMissingHospitalityScopeBeforeOpeningConnection()
   {
     var connection = new FakeQueryDbConnection();
     var service = new ArrendadoresEstadoCuentaService(new FakeQueryConnectionFactory(connection));
 
-    await service.GetRoomsAsync(42, ownerIdScope: 42);
-
-    Assert.Contains("@OwnerIdScope", connection.LastCommandText, StringComparison.OrdinalIgnoreCase);
-    var scopeParameter = Assert.Single(connection.LastParameters, parameter => parameter.Name == "OwnerIdScope");
-    Assert.Equal(42, scopeParameter.Value);
+    await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetRoomsAsync(42, ownerIdScope: 42));
+    Assert.True(string.IsNullOrEmpty(connection.LastCommandText));
   }
 
   [Fact]

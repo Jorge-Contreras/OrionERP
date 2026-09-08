@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using OrionERP.Infrastructure.Auth
 @inject ICurrentCompanyContext CompanyContext
+@inject NavigationManager Navigation
 
 <AuthorizeView>
     <Authorized Context="context">
@@ -23,6 +24,10 @@
             </div>
 
             <div class="security-header__actions">
+                @if (context.User.IsInRole("Administrador") || context.User.IsInRole("SatOperator"))
+                {
+                    <a class="btn btn-link btn-sm" href="@SiteSelectionUrl">Sede de Hospedaje</a>
+                }
                 <button type="submit"
                         form="orionerp-logout-form"
                         class="btn btn-link btn-sm security-header__logout">Cerrar sesión</button>
@@ -41,6 +46,9 @@
     private static readonly CultureInfo SpanishMexico = CultureInfo.GetCultureInfo("es-MX");
 
     [Parameter] public bool CompactMobile { get; set; }
+
+    private string SiteSelectionUrl => "/reservaciones/sede?returnUrl=" +
+        Uri.EscapeDataString("/" + Navigation.ToBaseRelativePath(Navigation.Uri));
 
     private string HeaderCssClass => CompactMobile
         ? "security-header security-header--compact-mobile"

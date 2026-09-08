@@ -1,3 +1,5 @@
+using OrionERP.Application.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Reservaciones;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using OrionERP.Application.Common;
@@ -99,6 +101,12 @@ public static class ServiceRegistration
     services.AddScoped<IHtmlCfdiService, HtmlCfdiService>();
     services.AddScoped<ICfdiPdfService, CfdiPdfService>();
     services.AddScoped<IRecurrentApService, RecurrentApService>();
+    services.AddScoped<HospitalitySiteSelection>();
+    services.AddScoped<IHospitalityAdministrationAccessValidator, HospitalityAdministrationAccessValidator>();
+    services.AddScoped<HospitalityAdministrationSessionGuard>();
+    services.AddScoped<HospitalityAdministrationScopeAccessor>();
+    services.AddScoped<IHospitalityScopeAccessor>(sp => sp.GetRequiredService<HospitalityAdministrationScopeAccessor>());
+    services.AddScoped<HospitalityConnectionFactory>();
     services.AddScoped<ReservacionesIListaReservacionesService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionExperiencesService, ReservacionExperiencesService>();
     services.AddScoped<IReservationCfdiService, ReservationCfdiService>();
@@ -194,6 +202,12 @@ public static class ServiceRegistration
     services.AddScoped<ITransactionAttachmentRepository, TransactionAttachmentRepository>();
     services.AddScoped<IHtmlCfdiService, HtmlCfdiService>();
     services.AddScoped<ICfdiPdfService, CfdiPdfService>();
+    services.AddScoped<HospitalitySiteSelection>();
+    services.AddScoped<IHospitalityAdministrationAccessValidator, HospitalityAdministrationAccessValidator>();
+    services.AddScoped<HospitalityAdministrationSessionGuard>();
+    services.AddScoped<HospitalityAdministrationScopeAccessor>();
+    services.AddScoped<IHospitalityScopeAccessor>(sp => sp.GetRequiredService<HospitalityAdministrationScopeAccessor>());
+    services.AddScoped<HospitalityConnectionFactory>();
     services.AddScoped<ReservacionesIListaReservacionesService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionExperiencesService, ReservacionExperiencesService>();
     services.AddScoped<IReservationCfdiService, ReservationCfdiService>();

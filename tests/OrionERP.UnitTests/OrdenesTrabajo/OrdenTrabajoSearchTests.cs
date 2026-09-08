@@ -10,7 +10,7 @@ public class OrdenTrabajoSearchTests
   public async Task SearchWorkOrdersAsync_FiltersByCreatorWhenActorIsProvided()
   {
     var connection = new FakeQueryDbConnection();
-    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
+    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection), companyContext: new TestCompanyContext("BRUNOS260707L26"));
 
     await service.SearchWorkOrdersAsync(new OrdenTrabajoSearchFilter
     {
@@ -29,7 +29,7 @@ public class OrdenTrabajoSearchTests
   public async Task SearchWorkOrdersAsync_OmitsCreatorFilterWhenActorIsBlank()
   {
     var connection = new FakeQueryDbConnection();
-    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
+    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection), companyContext: new TestCompanyContext("BRUNOS260707L26"));
 
     await service.SearchWorkOrdersAsync(new OrdenTrabajoSearchFilter
     {
@@ -47,7 +47,7 @@ public class OrdenTrabajoSearchTests
   public async Task SearchWorkOrdersAsync_UsesOperationalPriorityAndOverdueFilter()
   {
     var connection = new FakeQueryDbConnection();
-    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
+    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection), companyContext: new TestCompanyContext("BRUNOS260707L26"));
 
     await service.SearchWorkOrdersAsync(new OrdenTrabajoSearchFilter
     {
@@ -72,7 +72,7 @@ public class OrdenTrabajoSearchTests
   public async Task SearchWorkOrdersAsync_ClosedOnlyIncludesClosedAndCancelledStatuses()
   {
     var connection = new FakeQueryDbConnection();
-    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
+    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection), companyContext: new TestCompanyContext("BRUNOS260707L26"));
 
     await service.SearchWorkOrdersAsync(new OrdenTrabajoSearchFilter
     {

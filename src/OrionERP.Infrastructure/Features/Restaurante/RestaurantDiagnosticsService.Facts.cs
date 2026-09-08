@@ -172,17 +172,17 @@ public sealed partial class RestaurantDiagnosticsService
           SELECT CAST(ISNULL(SUM(saldo.Quantity * ISNULL(material.BaseUnitPrice, 0)), 0) AS decimal(18,2))
           FROM logistica.StockBalance saldo
           JOIN logistica.Material material ON material.Rfc = saldo.Rfc AND material.Id = saldo.MaterialId
-          WHERE saldo.Rfc = @Rfc AND saldo.IsRemoved = 0
+          WHERE saldo.Rfc = @Rfc AND EXISTS (SELECT 1 FROM #OrionVisibleLocations visible WHERE visible.LocationId=saldo.LocationId AND visible.Rfc=saldo.Rfc) AND saldo.IsRemoved = 0
         ) AS ValorInventario,
         (
           SELECT COUNT(*)
           FROM logistica.StockBalance saldo
-          WHERE saldo.Rfc = @Rfc AND saldo.IsRemoved = 0 AND saldo.Quantity <> 0
+          WHERE saldo.Rfc = @Rfc AND EXISTS (SELECT 1 FROM #OrionVisibleLocations visible WHERE visible.LocationId=saldo.LocationId AND visible.Rfc=saldo.Rfc) AND saldo.IsRemoved = 0 AND saldo.Quantity <> 0
         ) AS SaldosInventario,
         (
           SELECT COUNT(*)
           FROM logistica.StockTransaction movimiento
-          WHERE movimiento.Rfc = @Rfc AND ABS(movimiento.QuantityDelta) >= @ConteoUmbral
+          WHERE movimiento.Rfc = @Rfc AND EXISTS (SELECT 1 FROM #OrionVisibleLocations visible WHERE visible.LocationId=movimiento.LocationId AND visible.Rfc=movimiento.Rfc) AND ABS(movimiento.QuantityDelta) >= @ConteoUmbral
         ) AS ConteosAtipicos;
 
       /* 11. Ejemplos de conteos imposibles */
@@ -190,7 +190,7 @@ public sealed partial class RestaurantDiagnosticsService
              CAST(ABS(movimiento.QuantityDelta) AS decimal(28,0)) AS Cantidad
       FROM logistica.StockTransaction movimiento
       JOIN logistica.Material material ON material.Rfc = movimiento.Rfc AND material.Id = movimiento.MaterialId
-      WHERE movimiento.Rfc = @Rfc AND ABS(movimiento.QuantityDelta) >= @ConteoUmbral
+      WHERE movimiento.Rfc = @Rfc AND EXISTS (SELECT 1 FROM #OrionVisibleLocations visible WHERE visible.LocationId=movimiento.LocationId AND visible.Rfc=movimiento.Rfc) AND ABS(movimiento.QuantityDelta) >= @ConteoUmbral
       ORDER BY ABS(movimiento.QuantityDelta) DESC;
 
       /* 12. Existencia de productos que se preparan al momento */
@@ -200,7 +200,8 @@ public sealed partial class RestaurantDiagnosticsService
       FROM logistica.Material material
       JOIN logistica.StockBalance saldo
         ON saldo.Rfc = material.Rfc AND saldo.MaterialId = material.Id AND saldo.IsRemoved = 0
-      WHERE material.Rfc = @Rfc AND material.FulfillmentMode = 'MakeToOrder' AND saldo.Quantity > 0;
+      WHERE material.Rfc = @Rfc AND material.FulfillmentMode = 'MakeToOrder' AND saldo.Quantity > 0
+        AND EXISTS (SELECT 1 FROM #OrionVisibleLocations visible WHERE visible.LocationId=saldo.LocationId AND visible.Rfc=saldo.Rfc);
 
       /* 13. Materiales cuyo costo unitario es su precio de venta */
       SELECT COUNT(DISTINCT material.Id) AS Materiales

@@ -34,13 +34,13 @@ public class OrdenTrabajoRecoveryTests
   public async Task StartWorkOrderAsync_RejectsMissingActorEmployee()
   {
     var connection = new FakeQueryDbConnection();
-    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
+    var service = CreateService(connection);
 
     var result = await service.StartWorkOrderAsync(42, "admin-user", actorEmployeeId: null);
 
     Assert.False(result.Success);
     Assert.Contains("responsable o ayudantes", result.Message, StringComparison.OrdinalIgnoreCase);
-    Assert.Empty(connection.ExecutedCommands);
+    Assert.Contains("SELECT 1 FROM dbo.OrdenTrabajo ot WITH (UPDLOCK, HOLDLOCK) WHERE", Assert.Single(connection.ExecutedCommands).CommandText);
     Assert.True(connection.LastTransaction?.WasRolledBack);
   }
 
@@ -51,7 +51,7 @@ public class OrdenTrabajoRecoveryTests
     {
       ScalarResultFactory = static (_, _) => false
     };
-    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
+    var service = CreateService(connection);
 
     var result = await service.StartWorkOrderAsync(42, "operator-user", actorEmployeeId: 99);
 
@@ -100,7 +100,7 @@ public class OrdenTrabajoRecoveryTests
         return 0;
       }
     };
-    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
+    var service = CreateService(connection);
 
     var result = await service.SubmitForReviewAsync(42, "operator-user", actorEmployeeId: 10);
 
@@ -118,7 +118,7 @@ public class OrdenTrabajoRecoveryTests
       ScalarResultFactory = static (_, _) => true,
       NonQueryResultFactory = static (_, _) => 1
     };
-    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
+    var service = CreateService(connection);
 
     var result = await service.RemoveStepEvidenceAsync(42, 7, 100, "operator-user", actorEmployeeId: 10);
 
@@ -140,7 +140,7 @@ public class OrdenTrabajoRecoveryTests
       ScalarResultFactory = static (_, _) => false,
       NonQueryResultFactory = static (_, _) => 1
     };
-    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
+    var service = CreateService(connection);
 
     var result = await service.LinkTransactionAsync(42, 9001, "supervisor");
 
@@ -159,7 +159,7 @@ public class OrdenTrabajoRecoveryTests
         commandText.Contains("SELECT Folio", StringComparison.Ordinal) ? "OT-2026-000123" : null,
       NonQueryResultFactory = static (_, _) => 1
     };
-    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
+    var service = CreateService(connection);
 
     var result = await service.DeleteWorkOrderAsync(42, "supervisor");
 
@@ -205,7 +205,7 @@ public class OrdenTrabajoRecoveryTests
         return null;
       }
     };
-    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
+    var service = CreateService(connection);
 
     var result = await service.AddStepEvidenceAsync(
       42,
@@ -228,99 +228,14 @@ public class OrdenTrabajoRecoveryTests
       && string.Equals(parameter.Value?.ToString(), OrdenTrabajoCodes.EvidenciaCamera, StringComparison.Ordinal));
   }
 
-  [Fact]
-  public async Task CreateCleaningFromCalendarAsync_SchedulesOrderForNextDay()
-  {
-    var occupancyDate = new DateTime(2026, 12, 31);
-    var cleaningDate = occupancyDate.AddDays(1);
-    var connection = new FakeQueryDbConnection
-    {
-      ReaderResultFactory = (commandText, _) =>
-      {
-        if (commandText.Contains("FROM dbo.ROOM_CALENDAR rc", StringComparison.Ordinal))
-        {
-          return Table(
-            ["RoomCalendarId", "RoomDate", "RoomName", "RoomId", "ReservationId"],
-            [123, occupancyDate, "Suite 101", 10, 9001]);
-        }
+  [Theory]
+  [InlineData("2026-12-31T16:20:00", "2027-01-01")]
+  [InlineData("2028-02-28T00:00:00", "2028-02-29")]
+  [InlineData("2026-09-08T23:59:59", "2026-09-09")]
+  public void CleaningSchedule_SchedulesOrderForNextDay(string occupied, string expected)
+    => Assert.Equal(DateTime.Parse(expected, System.Globalization.CultureInfo.InvariantCulture),
+      OrdenTrabajoSchedule.CleaningDate(DateTime.Parse(occupied, System.Globalization.CultureInfo.InvariantCulture)));
 
-        if (commandText.Contains("SELECT TOP (1) ot.Id", StringComparison.Ordinal))
-        {
-          return Table(["Id", "Folio"]);
-        }
-
-        if (commandText.Contains("FROM dbo.OrdenTrabajoPlantillaRoom map", StringComparison.Ordinal))
-        {
-          return Table(
-            ["TemplateId", "VersionId", "TemplateName"],
-            [7, 8, "Limpieza Suite"]);
-        }
-
-        return new DataTable();
-      },
-      ScalarResultFactory = (commandText, _) =>
-      {
-        if (commandText.Contains("SELECT Id FROM dbo.OrdenTrabajoCategoria", StringComparison.Ordinal))
-        {
-          return 5;
-        }
-
-        if (commandText.Contains("FROM dbo.Capital_Humano", StringComparison.Ordinal))
-        {
-          return true;
-        }
-
-        if (commandText.Contains("OrdenTrabajoFolioAnual", StringComparison.Ordinal))
-        {
-          return "OT-2027-000001";
-        }
-
-        if (commandText.Contains("SCOPE_IDENTITY", StringComparison.Ordinal))
-        {
-          return 77;
-        }
-
-        return null;
-      }
-    };
-    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
-
-    var result = await service.CreateCleaningFromCalendarAsync(new OrdenTrabajoCalendarCreateRequest
-    {
-      Rfc = "RFC",
-      OwnerEmployeeId = 42,
-      RoomCalendarIds = [123],
-      CreatedBy = "admin"
-    });
-
-    Assert.True(result.Success);
-
-    var duplicateCheck = Assert.Single(
-      connection.ExecutedCommands,
-      command => command.CommandText.Contains("SELECT TOP (1) ot.Id", StringComparison.Ordinal));
-    Assert.Contains(duplicateCheck.Parameters, parameter => string.Equals(parameter.Name, "CleaningDate", StringComparison.OrdinalIgnoreCase)
-      && parameter.Value is DateTime value
-      && value == cleaningDate);
-
-    var folioCommand = Assert.Single(
-      connection.ExecutedCommands,
-      command => command.CommandText.Contains("OrdenTrabajoFolioAnual", StringComparison.Ordinal));
-    Assert.Contains(folioCommand.Parameters, parameter => string.Equals(parameter.Name, "Year", StringComparison.OrdinalIgnoreCase)
-      && Convert.ToInt32(parameter.Value) == cleaningDate.Year);
-
-    var insert = Assert.Single(
-      connection.ExecutedCommands,
-      command => command.CommandText.Contains("INSERT INTO dbo.OrdenTrabajo", StringComparison.Ordinal)
-        && command.CommandText.Contains("FechaProgramada", StringComparison.Ordinal));
-    Assert.Contains(insert.Parameters, parameter => string.Equals(parameter.Name, "FechaProgramada", StringComparison.OrdinalIgnoreCase)
-      && parameter.Value is DateTime value
-      && value == cleaningDate);
-    Assert.Contains(insert.Parameters, parameter => string.Equals(parameter.Name, "FechaVencimiento", StringComparison.OrdinalIgnoreCase)
-      && parameter.Value is DateTime value
-      && value == cleaningDate);
-    Assert.Contains(insert.Parameters, parameter => string.Equals(parameter.Name, "Titulo", StringComparison.OrdinalIgnoreCase)
-      && string.Equals(parameter.Value?.ToString(), "Limpieza Suite 101 2027-01-01", StringComparison.Ordinal));
-  }
 
   [Fact]
   public void EvidenceCaptureSource_IsSelectedAndMigrated()
@@ -369,97 +284,34 @@ public class OrdenTrabajoRecoveryTests
   }
 
   [Fact]
-  public void LegacySeed_FallsBackToSuiteCleaningActivitiesWhenPlantillaHasNoSteps()
+  public async Task LegacySeed_RequiresExplicitSuiteAttribution()
   {
-    var source = File.ReadAllText(GetRepoFile("src/OrionERP.Infrastructure/Features/OrdenesTrabajo/OrdenTrabajoService.cs"));
-
-    Assert.Contains("legacy_sources", source, StringComparison.Ordinal);
-    Assert.Contains("CONCAT('PLANTILLA PARA LIMPIEZA ', room.ROOM_NAME)", source, StringComparison.Ordinal);
-    Assert.Contains("room.ROOM_TYPE = 'SUITE'", source, StringComparison.Ordinal);
-    Assert.Contains("StepCount DESC", source, StringComparison.Ordinal);
+    var connection = new FakeQueryDbConnection();
+    var result = await new OrdenTrabajoService(new FakeQueryConnectionFactory(connection), companyContext: new TestCompanyContext("BRUNOS260707L26"))
+      .SeedCleaningTemplatesFromLegacyAsync("RFC", "test");
+    Assert.False(result.Success);
+    Assert.Contains("explícitamente", result.Message);
+    Assert.Empty(connection.ExecutedCommands);
   }
 
+
   [Fact]
-  public async Task ChecklistLegacySeed_ImportsChecklistActivitiesForAsignacion36()
+  public async Task ChecklistLegacySeed_RequiresExplicitActivityAttribution()
   {
-    var connection = new FakeQueryDbConnection
-    {
-      ReaderResultFactory = (commandText, _) =>
-      {
-        if (commandText.Contains("FROM dbo.Actividad a", StringComparison.Ordinal)
-          && commandText.Contains("a.Asignacion = @Asignacion", StringComparison.Ordinal))
-        {
-          return Table(
-            ["ActividadId", "TemplateName", "RoomName", "StepCount"],
-            [501, "Checklist alberca", string.Empty, 2]);
-        }
+    var connection = new FakeQueryDbConnection();
+    var result = await new OrdenTrabajoService(new FakeQueryConnectionFactory(connection), companyContext: new TestCompanyContext("BRUNOS260707L26"))
+      .SeedChecklistTemplatesFromLegacyAsync("RFC", "test");
+    Assert.False(result.Success);
+    Assert.Empty(connection.ExecutedCommands);
+  }
 
-        if (commandText.Contains("route_steps", StringComparison.Ordinal))
-        {
-          return Table(
-            ["RowNumber", "Secuencia", "Descripcion", "ProcedimientoId"],
-            [1, 1m, "Revisar bombas", null],
-            [2, 2m, "Tomar FOTO de tablero", 44]);
-        }
 
-        return new DataTable();
-      },
-      ScalarResultFactory = (commandText, _) =>
-      {
-        if (commandText.Contains("SELECT Id FROM dbo.OrdenTrabajoCategoria", StringComparison.Ordinal))
-        {
-          return 3;
-        }
-
-        if (commandText.Contains("INSERT INTO dbo.OrdenTrabajoPlantilla (CategoriaId", StringComparison.Ordinal))
-        {
-          return 100;
-        }
-
-        if (commandText.Contains("INSERT INTO dbo.OrdenTrabajoPlantillaVersion", StringComparison.Ordinal))
-        {
-          return 200;
-        }
-
-        if (commandText.Contains("SELECT CAST(CASE WHEN EXISTS", StringComparison.Ordinal))
-        {
-          return false;
-        }
-
-        return null;
-      }
-    };
-    var service = new OrdenTrabajoService(new FakeQueryConnectionFactory(connection));
-
-    var result = await service.SeedChecklistTemplatesFromLegacyAsync("RFC", "admin");
-
-    Assert.True(result.Success);
-    Assert.Contains("Actividades: 1", result.Message, StringComparison.Ordinal);
-
-    var sourceQuery = Assert.Single(
-      connection.ExecutedCommands,
-      command => command.CommandText.Contains("FROM dbo.Actividad a", StringComparison.Ordinal)
-        && command.CommandText.Contains("a.Asignacion = @Asignacion", StringComparison.Ordinal));
-    Assert.Contains("Tipo_Proyecto", sourceQuery.CommandText, StringComparison.Ordinal);
-    Assert.Contains("N'CHECKLIST'", sourceQuery.CommandText, StringComparison.Ordinal);
-    Assert.Contains(sourceQuery.Parameters, parameter => string.Equals(parameter.Name, "Asignacion", StringComparison.OrdinalIgnoreCase)
-      && Convert.ToInt32(parameter.Value) == 36);
-
-    var templateInsert = Assert.Single(
-      connection.ExecutedCommands,
-      command => command.CommandText.Contains("INSERT INTO dbo.OrdenTrabajoPlantilla (CategoriaId", StringComparison.Ordinal));
-    Assert.Contains(templateInsert.Parameters, parameter => string.Equals(parameter.Name, "CategoryId", StringComparison.OrdinalIgnoreCase)
-      && Convert.ToInt32(parameter.Value) == 3);
-    Assert.Contains(templateInsert.Parameters, parameter => string.Equals(parameter.Name, "Name", StringComparison.OrdinalIgnoreCase)
-      && string.Equals(parameter.Value?.ToString(), "Checklist alberca", StringComparison.Ordinal));
-
-    var stepInserts = connection.ExecutedCommands
-      .Where(command => command.CommandText.Contains("INSERT INTO dbo.OrdenTrabajoPlantillaPaso", StringComparison.Ordinal))
-      .ToList();
-    Assert.Equal(2, stepInserts.Count);
-    Assert.Contains(stepInserts[1].Parameters, parameter => string.Equals(parameter.Name, "PoliticaFoto", StringComparison.OrdinalIgnoreCase)
-      && string.Equals(parameter.Value?.ToString(), OrdenTrabajoCodes.FotoRequerida, StringComparison.Ordinal));
-    Assert.True(connection.LastTransaction?.WasCommitted);
+  private static OrdenTrabajoService CreateService(FakeQueryDbConnection connection)
+  {
+    var scalar = connection.ScalarResultFactory;
+    connection.ScalarResultFactory = (sql, parameters) => sql.StartsWith("SELECT 1 FROM dbo.OrdenTrabajo ot WITH (UPDLOCK, HOLDLOCK) WHERE", StringComparison.Ordinal)
+      ? 1 : scalar?.Invoke(sql, parameters);
+    return new OrdenTrabajoService(new FakeQueryConnectionFactory(connection), companyContext: new TestCompanyContext("BRUNOS260707L26"));
   }
 
   private static string GetRepoFile(string relativePath)

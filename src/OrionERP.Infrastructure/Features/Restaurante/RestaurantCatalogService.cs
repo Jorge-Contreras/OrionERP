@@ -5,16 +5,20 @@ using OrionERP.Application.Common;
 using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Restaurante;
+using OrionERP.Application.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Logistica.Shared;
 
 namespace OrionERP.Infrastructure.Features.Restaurante;
 
 public sealed class RestaurantCatalogService : IRestaurantCatalogService
 {
   private readonly IDbConnectionFactory _connectionFactory;
+  private readonly IHospitalityScopeAccessor? _hospitalityScope;
 
-  public RestaurantCatalogService(IDbConnectionFactory connectionFactory)
+  public RestaurantCatalogService(IDbConnectionFactory connectionFactory, IHospitalityScopeAccessor? hospitalityScope = null)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+    _hospitalityScope = hospitalityScope;
   }
 
   public async Task<IReadOnlyList<RestaurantSiteDto>> GetSitesAsync(string rfc, CancellationToken ct = default)
@@ -1379,8 +1383,8 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
   public async Task<RestaurantSiteOperationsDto> GetSiteOperationsAsync(string rfc, int siteId, CancellationToken ct = default)
   {
     var normalizedRfc=LogisticsRfc.Require(rfc);
-    const string sql=
-      """
+    var sql=
+      $$"""
       IF NOT EXISTS (SELECT 1 FROM restaurante.Site WHERE Rfc=@Rfc AND Id=@SiteId)
         THROW 51040,'La sede no pertenece al RFC activo.',1;
       SELECT Id,TableCode AS Code,[Name],Capacity,IsActive FROM restaurante.DiningTable WHERE Rfc=@Rfc AND SiteId=@SiteId ORDER BY [Name],Id;
@@ -1388,13 +1392,17 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
       SELECT Id,ProviderCode AS Code,[Name],DefaultCommissionRate,IsActive FROM restaurante.ExternalProvider WHERE Rfc=@Rfc AND SiteId=@SiteId ORDER BY [Name],Id;
       SELECT priorityInfo.LocationId,locationInfo.LocationName,priorityInfo.StationCode,priorityInfo.Priority
       FROM restaurante.SiteLocationPriority priorityInfo JOIN logistica.Location locationInfo ON locationInfo.Rfc=priorityInfo.Rfc AND locationInfo.Id=priorityInfo.LocationId
-      WHERE priorityInfo.Rfc=@Rfc AND priorityInfo.SiteId=@SiteId ORDER BY priorityInfo.StationCode,priorityInfo.Priority;
-      SELECT CAST(Id AS bigint) AS Id,CONCAT(LocationName,' · ',LocationCode) AS Label FROM logistica.Location WHERE Rfc=@Rfc AND IsActive=1 AND IsInventoryEnabled=1 ORDER BY LocationName;
+      WHERE priorityInfo.Rfc=@Rfc AND priorityInfo.SiteId=@SiteId AND {{LogisticsLocationScope.VisibilitySql("locationInfo")}} ORDER BY priorityInfo.StationCode,priorityInfo.Priority;
+      SELECT CAST(locationInfo.Id AS bigint) AS Id,CONCAT(locationInfo.LocationName,' · ',locationInfo.LocationCode) AS Label
+      FROM logistica.Location locationInfo
+      WHERE locationInfo.Rfc=@Rfc AND locationInfo.IsActive=1 AND locationInfo.IsInventoryEnabled=1
+        AND {{LogisticsLocationScope.VisibilitySql("locationInfo")}} ORDER BY locationInfo.LocationName;
       SELECT CashAccount,CardBankAccount,TransferBankAccount,PlatformReceivableAccount,SalesAccount,VatAccount,DiscountAccount,
              TipsPayableAccount,PlatformCommissionAccount,InventoryAccount,CostOfSalesAccount,WasteAccount,DailyPolicyEnabled
       FROM restaurante.AccountingConfiguration WHERE Rfc=@Rfc AND SiteId=@SiteId;
       """;
-    using var conn=CreateConnection();
+    await using var conn=await LogisticsLocationScope.OpenAsync(_connectionFactory,_hospitalityScope,ct);
+    await LogisticsLocationScope.EnsureRfcAsync(conn,null,normalizedRfc,ct);
     using var multi=await conn.QueryMultipleAsync(new CommandDefinition(sql,new{Rfc=normalizedRfc,SiteId=siteId},cancellationToken:ct));
     return new RestaurantSiteOperationsDto
     {
@@ -1413,9 +1421,20 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     var rfc=LogisticsRfc.Require(request.Rfc);
     if(request.LocationPriorities.GroupBy(item=>new{Code=item.StationCode.Trim().ToUpperInvariant(),item.Priority}).Any(group=>group.Count()>1))
       return RestaurantCommandResult.Fail("No se puede repetir la prioridad dentro de una estación.");
-    using var conn=CreateConnection(); await conn.OpenAsync(ct); await using var tx=await conn.BeginTransactionAsync(ct);
+    await using var conn=await LogisticsLocationScope.OpenAsync(_connectionFactory,_hospitalityScope,ct);
+    await LogisticsLocationScope.EnsureRfcAsync(conn,null,rfc,ct);
+    await using var tx=await conn.BeginTransactionAsync(System.Data.IsolationLevel.Serializable,ct);
     try
     {
+      await LogisticsLocationScope.RefreshAsync(conn,tx,ct);
+      await conn.ExecuteAsync(new CommandDefinition($$"""
+        IF EXISTS (SELECT 1 FROM restaurante.SiteLocationPriority existing WITH (UPDLOCK,HOLDLOCK)
+          WHERE existing.Rfc=@Rfc AND existing.SiteId=@SiteId
+            AND NOT {{LogisticsLocationScope.ForLocationIdSql("existing.LocationId","existing.Rfc")}})
+          THROW 51932,'La configuracion existente contiene ubicaciones de otra sede.',1;
+        """,new { Rfc=rfc,request.SiteId },tx,cancellationToken:ct));
+      foreach(var locationId in request.LocationPriorities.Select(item=>item.LocationId).Distinct())
+        await LogisticsLocationScope.EnsureLocationAsync(conn,tx,locationId,ct);
       if(!await conn.ExecuteScalarAsync<bool>(new CommandDefinition("SELECT CAST(CASE WHEN EXISTS(SELECT 1 FROM restaurante.Site WHERE Rfc=@Rfc AND Id=@SiteId) THEN 1 ELSE 0 END AS bit);",new{Rfc=rfc,request.SiteId},tx,cancellationToken:ct)))
       {await tx.RollbackAsync(ct);return RestaurantCommandResult.Fail("La sede no pertenece al RFC activo.");}
       if(request.OperationalDayCutoff<TimeSpan.Zero||request.OperationalDayCutoff>=TimeSpan.FromHours(24))

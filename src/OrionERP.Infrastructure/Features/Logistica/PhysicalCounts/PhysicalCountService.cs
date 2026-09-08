@@ -2,6 +2,8 @@ using System.Data;
 using System.Data.Common;
 using Dapper;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Logistica.Shared;
 using OrionERP.Application.Features.Logistica.PhysicalCounts;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Infrastructure.Features.Logistica.Support;
@@ -11,16 +13,18 @@ namespace OrionERP.Infrastructure.Features.Logistica.PhysicalCounts;
 public sealed class PhysicalCountService : IPhysicalCountService
 {
   private readonly IDbConnectionFactory _connectionFactory;
+  private readonly IHospitalityScopeAccessor? _hospitalityScope;
 
-  public PhysicalCountService(IDbConnectionFactory connectionFactory)
+  public PhysicalCountService(IDbConnectionFactory connectionFactory, IHospitalityScopeAccessor? hospitalityScope = null)
   {
+    _hospitalityScope = hospitalityScope;
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
   }
 
   public async Task<IReadOnlyList<PhysicalCountSessionSummaryDto>> GetSessionsAsync(CancellationToken ct = default)
   {
-    const string sql =
-      """
+    var sql =
+      $$"""
       SELECT
           s.Id,
           s.SessionCode,
@@ -58,7 +62,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
           COUNT(activePlanLine.Id) AS RecountLineCount
       FROM logistica.PhysicalCountSession s
       LEFT JOIN logistica.Location l
-        ON l.Id = s.LocationId
+        ON l.Id = s.LocationId AND l.Rfc = s.Rfc
       LEFT JOIN dbo.ROOM room
         ON room.ID = l.RoomId
       OUTER APPLY
@@ -73,13 +77,14 @@ public sealed class PhysicalCountService : IPhysicalCountService
           WHERE sessionMaterial.SessionId = s.Id
       ) scope
       LEFT JOIN logistica.PhysicalCountLine line
-        ON line.SessionId = s.Id
+        ON line.SessionId = s.Id AND line.Rfc = s.Rfc
       LEFT JOIN logistica.PhysicalCountRecountPlan activePlan
-        ON activePlan.SessionId = s.Id
+        ON activePlan.SessionId = s.Id AND activePlan.Rfc = s.Rfc
        AND activePlan.CompletedAt IS NULL
       LEFT JOIN logistica.PhysicalCountRecountPlanLine activePlanLine
         ON activePlanLine.RecountPlanId = activePlan.Id
        AND activePlanLine.PhysicalCountLineId = line.Id
+      WHERE {{SessionVisibilitySql("s")}}
       GROUP BY
           s.Id,
           s.SessionCode,
@@ -106,7 +111,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
       ORDER BY s.CreatedAt DESC, s.Id DESC;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     var rows = await conn.QueryAsync<PhysicalCountSessionSummaryDto>(
       new CommandDefinition(sql, cancellationToken: ct));
 
@@ -115,8 +120,8 @@ public sealed class PhysicalCountService : IPhysicalCountService
 
   public async Task<PhysicalCountSessionDetailDto?> GetSessionAsync(int sessionId, CancellationToken ct = default)
   {
-    const string sql =
-      """
+    var sql =
+      $$"""
       SELECT
           s.Id,
           s.SessionCode,
@@ -150,7 +155,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
           activePlan.RequestedBy AS RecountRequestedBy
       FROM logistica.PhysicalCountSession s
       LEFT JOIN logistica.Location l
-        ON l.Id = s.LocationId
+        ON l.Id = s.LocationId AND l.Rfc = s.Rfc
       LEFT JOIN dbo.ROOM room
         ON room.ID = l.RoomId
       OUTER APPLY
@@ -165,9 +170,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
           WHERE sessionMaterial.SessionId = s.Id
       ) scope
       LEFT JOIN logistica.PhysicalCountRecountPlan activePlan
-        ON activePlan.SessionId = s.Id
+        ON activePlan.SessionId = s.Id AND activePlan.Rfc = s.Rfc
        AND activePlan.CompletedAt IS NULL
-      WHERE s.Id = @SessionId;
+      WHERE s.Id = @SessionId AND {{SessionVisibilitySql("s")}};
 
       SELECT
           line.Id,
@@ -477,7 +482,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
       ORDER BY material.[Description], material.MaterialCode;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     using var multi = await conn.QueryMultipleAsync(
       new CommandDefinition(sql, new { SessionId = sessionId }, cancellationToken: ct));
 
@@ -515,13 +520,14 @@ public sealed class PhysicalCountService : IPhysicalCountService
   /// nunca se ha contado y lo más antiguo. Lo comparten la creación, la vista previa y la guardia de
   /// solapamiento para que las tres vean exactamente los mismos renglones.
   /// </summary>
-  private const string ScopeCteSql =
-    """
+  private static readonly string ScopeCteSql =
+    $$"""
     WITH LocationScope AS (
         SELECT rootLocation.Id
         FROM logistica.Location rootLocation
-        WHERE (@LocationId IS NOT NULL AND rootLocation.Id = @LocationId)
-           OR (@LocationId IS NULL AND rootLocation.IsActive = 1 AND rootLocation.IsInventoryEnabled = 1)
+        WHERE {{LogisticsLocationScope.VisibilitySql("rootLocation")}}
+          AND ((@LocationId IS NOT NULL AND rootLocation.Id = @LocationId)
+           OR (@LocationId IS NULL AND rootLocation.IsActive = 1 AND rootLocation.IsInventoryEnabled = 1))
 
         UNION ALL
 
@@ -529,7 +535,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
         FROM logistica.Location child
         JOIN LocationScope parent
           ON parent.Id = child.ParentLocationId
-        WHERE @LocationId IS NOT NULL
+        WHERE @LocationId IS NOT NULL AND {{LogisticsLocationScope.VisibilitySql("child")}}
     ),
     ScopeCandidate AS (
         SELECT
@@ -552,6 +558,8 @@ public sealed class PhysicalCountService : IPhysicalCountService
         -- Sin filtro de cantidad: una ubicacion en cero es justo la que hay que ir a comprobar,
         -- y es lo que el generador por ubicacion ha hecho desde siempre.
         WHERE ISNULL(sb.IsRemoved, 0) = 0
+          AND sb.Rfc = {{LogisticsLocationScope.CurrentRfcSql}}
+          AND EXISTS (SELECT 1 FROM logistica.Material ownedMaterial WHERE ownedMaterial.Id = sb.MaterialId AND ownedMaterial.Rfc = sb.Rfc)
           AND (@HasMaterialFilter = 0 OR sb.MaterialId IN @MaterialIds)
     ),
     ScopeLine AS (
@@ -571,16 +579,17 @@ public sealed class PhysicalCountService : IPhysicalCountService
   /// Sesiones todavía abiertas que ya reclamaron alguno de esos saldos. Dos sesiones sobre el mismo
   /// saldo significan que la segunda en aplicarse pisa a la primera.
   /// </summary>
-  private const string ConflictSelectSql =
-    """
-    SELECT TOP (50)
-        openSession.Id AS SessionId,
-        openSession.SessionCode,
-        openSession.[Status],
+  private static readonly string ConflictSelectSql =
+    $$"""
+    , VisibleConflicts AS (
+    SELECT
+        CASE WHEN {{SessionVisibilitySql("openSession")}} THEN openSession.Id ELSE 0 END AS SessionId,
+        CASE WHEN {{SessionVisibilitySql("openSession")}} THEN openSession.SessionCode ELSE 'CONTEO FUERA DEL ALCANCE' END AS SessionCode,
+        CASE WHEN {{SessionVisibilitySql("openSession")}} THEN openSession.[Status] ELSE 'No disponible' END AS [Status],
         material.MaterialCode,
         material.[Description] AS MaterialDescription,
         loc.LocationName,
-        COUNT(*) AS OverlappingLineCount
+        line.StockBalanceId
     FROM ScopeLine line
     JOIN logistica.PhysicalCountLine openLine
       ON openLine.StockBalanceId = line.StockBalanceId
@@ -591,14 +600,12 @@ public sealed class PhysicalCountService : IPhysicalCountService
     JOIN logistica.Location loc
       ON loc.Id = line.LocationId
     WHERE openSession.[Status] NOT IN ('Posted', 'Canceled')
-    GROUP BY
-        openSession.Id,
-        openSession.SessionCode,
-        openSession.[Status],
-        material.MaterialCode,
-        material.[Description],
-        loc.LocationName
-    ORDER BY openSession.SessionCode, loc.LocationName, material.MaterialCode;
+    )
+    SELECT TOP (50) SessionId, SessionCode, [Status], MaterialCode, MaterialDescription, LocationName,
+        COUNT(*) AS OverlappingLineCount
+    FROM VisibleConflicts
+    GROUP BY SessionId, SessionCode, [Status], MaterialCode, MaterialDescription, LocationName
+    ORDER BY SessionCode, LocationName, MaterialCode;
     """;
 
   public async Task<LogisticsCommandResult> CreateSessionAsync(PhysicalCountSessionCreateRequest request, CancellationToken ct = default)
@@ -624,9 +631,10 @@ public sealed class PhysicalCountService : IPhysicalCountService
 
     var scopeParameters = BuildScopeParameters(request, materialIds);
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
-    using var tx = await conn.BeginTransactionAsync(ct);
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
+    using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
+    if (request.LocationId is > 0) await LogisticsLocationScope.EnsureLocationAsync(conn, tx, request.LocationId.Value, ct);
 
     try
     {
@@ -661,7 +669,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
             """
             SELECT COUNT(*)
             FROM logistica.Material
-            WHERE Id IN @MaterialIds
+            WHERE Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')) AND Id IN @MaterialIds
               AND IsActive = 1;
             """,
             new { MaterialIds = materialIds },
@@ -678,16 +686,16 @@ public sealed class PhysicalCountService : IPhysicalCountService
       var conflictingSessionCodes = (await conn.QueryAsync<string>(
         new CommandDefinition(
           ScopeCteSql +
-          """
+          $$"""
 
-          SELECT DISTINCT openSession.SessionCode
+          SELECT DISTINCT CASE WHEN {{SessionVisibilitySql("openSession")}} THEN openSession.SessionCode ELSE 'CONTEO FUERA DEL ALCANCE' END AS SessionCode
           FROM ScopeLine line
           JOIN logistica.PhysicalCountLine openLine WITH (UPDLOCK, HOLDLOCK)
             ON openLine.StockBalanceId = line.StockBalanceId
           JOIN logistica.PhysicalCountSession openSession
             ON openSession.Id = openLine.SessionId
           WHERE openSession.[Status] NOT IN ('Posted', 'Canceled')
-          ORDER BY openSession.SessionCode;
+          ORDER BY SessionCode;
           """,
           scopeParameters,
           tx,
@@ -757,7 +765,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
             INSERT INTO logistica.PhysicalCountSessionMaterial (SessionId, MaterialId)
             SELECT @SessionId, material.Id
             FROM logistica.Material material
-            WHERE material.Id IN @MaterialIds;
+            WHERE material.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')) AND material.Id IN @MaterialIds;
             """,
             new { SessionId = sessionId, MaterialIds = materialIds },
             tx,
@@ -872,7 +880,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
       ScopeCteSql +
       "\n\n" + ConflictSelectSql;
 
-    using var conn = CreateConnection();
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     using var multi = await conn.QueryMultipleAsync(
       new CommandDefinition(sql, BuildScopeParameters(request, materialIds), cancellationToken: ct));
 
@@ -945,9 +953,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
       throw new ArgumentNullException(nameof(request));
     }
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureSessionVisibleAsync(conn, tx, request.SessionId, ct);
 
     try
     {
@@ -1082,9 +1090,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
 
   public async Task<LogisticsCommandResult> DeleteDraftSessionAsync(int sessionId, CancellationToken ct = default)
   {
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureSessionVisibleAsync(conn, tx, sessionId, ct);
 
     try
     {
@@ -1167,9 +1175,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
 
   public async Task<LogisticsCommandResult> SubmitSessionAsync(int sessionId, string submittedBy, CancellationToken ct = default)
   {
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureSessionVisibleAsync(conn, tx, sessionId, ct);
 
     try
     {
@@ -1255,7 +1263,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
 
   public async Task<LogisticsCommandResult> ApproveSessionAsync(int sessionId, string approvedBy, CancellationToken ct = default)
   {
-    using var conn = CreateConnection();
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
+    using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureSessionVisibleAsync(conn, tx, sessionId, ct);
     var affected = await conn.ExecuteAsync(
       new CommandDefinition(
         """
@@ -1271,8 +1281,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
           SessionId = sessionId,
           ApprovedBy = string.IsNullOrWhiteSpace(approvedBy) ? "OrionERP" : approvedBy.Trim()
         },
-        cancellationToken: ct));
+        tx, cancellationToken: ct));
 
+    await tx.CommitAsync(ct);
     return affected == 0
       ? LogisticsCommandResult.Fail("La sesión debe estar enviada para poder aprobarse.")
       : LogisticsCommandResult.Ok("Sesión aprobada correctamente.", sessionId);
@@ -1315,9 +1326,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
       }
     }
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureSessionVisibleAsync(conn, tx, request.SessionId, ct);
 
     try
     {
@@ -1510,9 +1521,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
       return LogisticsCommandResult.Fail("Captura una razón para cancelar el conteo.");
     }
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureSessionVisibleAsync(conn, tx, request.SessionId, ct);
 
     try
     {
@@ -1602,9 +1613,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
 
   public async Task<LogisticsCommandResult> PostSessionAsync(int sessionId, string postedBy, CancellationToken ct = default)
   {
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    await EnsureSessionVisibleAsync(conn, tx, sessionId, ct);
 
     try
     {
@@ -1644,7 +1655,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
               CAST(stockBalance.Quantity AS decimal(18,4)) AS SystemQuantity,
               CAST(stockBalance.ReservedQuantity AS decimal(18,4)) AS ReservedQuantity
           FROM logistica.PhysicalCountLine line
-          JOIN logistica.StockBalance stockBalance ON stockBalance.Rfc=line.Rfc AND stockBalance.Id=line.StockBalanceId
+          JOIN logistica.StockBalance stockBalance WITH (UPDLOCK,HOLDLOCK) ON stockBalance.Rfc=line.Rfc AND stockBalance.Id=line.StockBalanceId
           WHERE line.SessionId = @SessionId
           ORDER BY line.Id;
           """,
@@ -1687,7 +1698,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
           FROM logistica.LotBalance lotBalance WITH (UPDLOCK,HOLDLOCK)
           JOIN logistica.MaterialLot materialLot
             ON materialLot.Rfc=lotBalance.Rfc AND materialLot.Id=lotBalance.MaterialLotId
-          WHERE lotBalance.MaterialId=@MaterialId AND lotBalance.LocationId=@LocationId
+          WHERE lotBalance.Rfc=CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc')) AND lotBalance.MaterialId=@MaterialId AND lotBalance.LocationId=@LocationId
           ORDER BY CASE WHEN materialLot.ExpiresAt IS NULL THEN 1 ELSE 0 END,materialLot.ExpiresAt,materialLot.Id;
           """, new { line.MaterialId, line.LocationId }, tx, cancellationToken: ct))).AsList();
         if (lotBalances.Count > 0)
@@ -1718,7 +1729,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
             await conn.ExecuteAsync(new CommandDefinition(
               """
               UPDATE logistica.LotBalance SET Quantity=@Quantity,UpdatedAt=SYSUTCDATETIME()
-              WHERE MaterialLotId=@MaterialLotId AND LocationId=@LocationId;
+              WHERE Rfc=CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc')) AND MaterialLotId=@MaterialLotId AND LocationId=@LocationId;
               """, new { lot.Quantity, lot.MaterialLotId, line.LocationId }, tx, cancellationToken: ct));
         }
 
@@ -1728,7 +1739,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
             UPDATE logistica.StockBalance
             SET Quantity = @CountedQuantity,
                 LastCountedAt = SYSUTCDATETIME()
-            WHERE Id = @StockBalanceId;
+            WHERE Rfc=CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc')) AND Id = @StockBalanceId;
             """,
             new
             {
@@ -1820,8 +1831,8 @@ public sealed class PhysicalCountService : IPhysicalCountService
 
   public async Task<IReadOnlyList<PhysicalCountPendingRecountDto>> GetPendingRecountsAsync(CancellationToken ct = default)
   {
-    const string sql =
-      """
+    var sql =
+      $$"""
       SELECT
           s.Id,
           s.SessionCode,
@@ -1838,7 +1849,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
           COALESCE(STRING_AGG(CONVERT(varchar(max), activePlanLine.IssueCode), ', '), '') AS IssueSummary
       FROM logistica.PhysicalCountSession s
       LEFT JOIN logistica.Location l
-        ON l.Id = s.LocationId
+        ON l.Id = s.LocationId AND l.Rfc = s.Rfc
       LEFT JOIN dbo.ROOM room
         ON room.ID = l.RoomId
       OUTER APPLY
@@ -1853,14 +1864,14 @@ public sealed class PhysicalCountService : IPhysicalCountService
           WHERE sessionMaterial.SessionId = s.Id
       ) scope
       JOIN logistica.PhysicalCountRecountPlan activePlan
-        ON activePlan.SessionId = s.Id
+        ON activePlan.SessionId = s.Id AND activePlan.Rfc = s.Rfc
        AND activePlan.CompletedAt IS NULL
       LEFT JOIN logistica.PhysicalCountLine line
-        ON line.SessionId = s.Id
+        ON line.SessionId = s.Id AND line.Rfc = s.Rfc
       LEFT JOIN logistica.PhysicalCountRecountPlanLine activePlanLine
         ON activePlanLine.RecountPlanId = activePlan.Id
        AND activePlanLine.PhysicalCountLineId = line.Id
-      WHERE s.[Status] = 'Recount'
+      WHERE s.[Status] = 'Recount' AND {{SessionVisibilitySql("s")}}
       GROUP BY
           s.Id,
           s.SessionCode,
@@ -1874,7 +1885,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
       ORDER BY activePlan.RequestedAt DESC, s.Id DESC;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     var rows = await conn.QueryAsync<PhysicalCountPendingRecountDto>(
       new CommandDefinition(sql, cancellationToken: ct));
 
@@ -1883,18 +1894,20 @@ public sealed class PhysicalCountService : IPhysicalCountService
 
   public async Task<LogisticsBinaryContent?> GetAttachmentContentAsync(int attachmentId, CancellationToken ct = default)
   {
-    const string sql =
-      """
+    var sql =
+      $$"""
       SELECT
           attachment.Id,
           attachment.FileName,
           attachment.ContentType,
           attachment.Attachment AS Bytes
       FROM logistica.PhysicalCountAttachment attachment
-      WHERE attachment.Id = @AttachmentId;
+      INNER JOIN logistica.PhysicalCountLine ownedLine ON ownedLine.Id = attachment.PhysicalCountLineId AND ownedLine.Rfc = attachment.Rfc
+      INNER JOIN logistica.PhysicalCountSession s ON s.Id = ownedLine.SessionId AND s.Rfc = ownedLine.Rfc
+      WHERE {{SessionVisibilitySql("s")}} AND attachment.Id = @AttachmentId;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     var row = await conn.QueryFirstOrDefaultAsync<LogisticsBinaryContent>(
       new CommandDefinition(sql, new { AttachmentId = attachmentId }, cancellationToken: ct));
 
@@ -1907,9 +1920,30 @@ public sealed class PhysicalCountService : IPhysicalCountService
     return row;
   }
 
-  private DbConnection CreateConnection()
-    => _connectionFactory.Create() as DbConnection
-      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
+  private static string SessionVisibilitySql(string alias) => $"""
+    {alias}.Rfc = {LogisticsLocationScope.CurrentRfcSql}
+    AND ({alias}.LocationId IS NULL OR {LogisticsLocationScope.ForLocationIdSql(alias + ".LocationId", alias + ".Rfc")})
+    AND NOT EXISTS (
+      SELECT 1 FROM logistica.PhysicalCountLine scopedLine WITH (HOLDLOCK)
+      WHERE scopedLine.SessionId = {alias}.Id AND (
+        scopedLine.Rfc <> {alias}.Rfc
+        OR NOT ({LogisticsLocationScope.ForLocationIdSql("scopedLine.LocationId", "scopedLine.Rfc")})
+        OR NOT EXISTS (SELECT 1 FROM logistica.Material scopedMaterial WITH (HOLDLOCK) WHERE scopedMaterial.Id = scopedLine.MaterialId AND scopedMaterial.Rfc = {alias}.Rfc)
+        OR NOT EXISTS (SELECT 1 FROM logistica.StockBalance scopedStock WITH (HOLDLOCK) WHERE scopedStock.Id = scopedLine.StockBalanceId AND scopedStock.Rfc = {alias}.Rfc AND scopedStock.MaterialId = scopedLine.MaterialId AND scopedStock.LocationId = scopedLine.LocationId)))
+    AND NOT EXISTS (
+      SELECT 1 FROM logistica.PhysicalCountSessionMaterial selectedMaterial WITH (HOLDLOCK)
+      WHERE selectedMaterial.SessionId = {alias}.Id AND (
+        selectedMaterial.Rfc <> {alias}.Rfc OR NOT EXISTS (
+          SELECT 1 FROM logistica.Material ownedMaterial WHERE ownedMaterial.Id = selectedMaterial.MaterialId AND ownedMaterial.Rfc = {alias}.Rfc)))
+    """;
+
+  private static async Task EnsureSessionVisibleAsync(DbConnection conn, DbTransaction tx, int sessionId, CancellationToken ct)
+  {
+    await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
+    await conn.ExecuteAsync(new CommandDefinition(
+      "IF NOT EXISTS (SELECT 1 FROM logistica.PhysicalCountSession s WITH (UPDLOCK,HOLDLOCK) WHERE s.Id=@SessionId AND " + SessionVisibilitySql("s") + ") THROW 51933, 'El conteo contiene ubicaciones o datos fuera de la empresa y sede autorizadas.', 1;",
+      new { SessionId = sessionId }, tx, cancellationToken: ct));
+  }
 
   private static string? NullIfWhiteSpace(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

@@ -1,3 +1,10 @@
+using Dapper;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Components.Authorization;
+using OrionERP.Infrastructure.Auth;
+using Microsoft.Extensions.Configuration;
+using OrionERP.Application.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Reservaciones;
 using System.Data;
 using Microsoft.Data.SqlClient;
 using OrionERP.Application.Common;
@@ -87,15 +94,21 @@ WHERE CHECKIN>='20260801' AND CHECKIN<'20260825';
     if (!string.Equals(Environment.GetEnvironmentVariable("ORION_RUN_SQL_INTEGRATION"), "1", StringComparison.Ordinal))
       return;
 
-    var service = new ReportesFinancierosService(new SandboxConnectionFactory(GetSandboxConnectionString()));
+    var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+    { ["ConnectionStrings:OrionDb"] = GetSandboxConnectionString() }).Build();
+    var company = new TestCompany("AOBA880201779");
+    var sessionGuard = new HospitalityAdministrationSessionGuard(new TestAuthentication(), company, new TestAccessValidator());
+    var scopeAccessor = new HospitalityAdministrationScopeAccessor(configuration, company, new HospitalitySiteSelection(), sessionGuard);
+    var service = new ReportesFinancierosService(new SandboxConnectionFactory(GetSandboxConnectionString()),
+      new HospitalityConnectionFactory(configuration, scopeAccessor), scopeAccessor, company);
     var report = await service.GetSaludEmpresaAsync(new SaludEmpresaQuery(
       2026, 8, 2026, 8, "AOBA880201779", new DateTime(2026, 8, 24)));
-    var configuration = await service.GetSaludEmpresaConfigurationAsync("AOBA880201779");
+    var reportConfiguration = await service.GetSaludEmpresaConfigurationAsync("AOBA880201779");
     var targets = await service.GetSaludEmpresaTargetsAsync(
       "AOBA880201779", new DateTime(2026, 1, 1), new DateTime(2027, 8, 1));
 
     Assert.False(report.Metadata.LodgingEnabled);
-    Assert.False(configuration.LodgingEnabled);
+    Assert.False(reportConfiguration.LodgingEnabled);
     Assert.Equal(20, targets.Count);
     Assert.Empty(report.SuitePerformance);
     Assert.All(report.ExecutiveIndicators, row =>
@@ -126,11 +139,46 @@ WHERE CHECKIN>='20260801' AND CHECKIN<'20260825';
       row.Type is "Reservacion" or "Pipeline" or "Calendario");
   }
 
+  private sealed class TestAuthentication : AuthenticationStateProvider
+  {
+    public override Task<AuthenticationState> GetAuthenticationStateAsync() => Task.FromResult(new AuthenticationState(
+      new ClaimsPrincipal(new ClaimsIdentity([
+        new Claim(ClaimTypes.NameIdentifier, "integration-test-actor"),
+        new Claim(ClaimTypes.Role, "SatOperator"),
+        new Claim(CompanyClaimTypes.Rfc, "AOBA880201779")], "Test"))));
+  }
+
+  private sealed class TestAccessValidator : IHospitalityAdministrationAccessValidator
+  {
+    public Task EnsureAuthorizedAsync(string actorUserId, string companyRfc, CancellationToken ct = default)
+    {
+      Assert.Equal("integration-test-actor", actorUserId);
+      Assert.Equal("AOBA880201779", companyRfc);
+      return Task.CompletedTask;
+    }
+  }
+
+  private sealed class TestCompany(string rfc) : ICurrentCompanyContext
+  {
+    public string? CurrentRfc => rfc;
+    public string? DisplayName => "Test";
+    public int? EmployeeId => null;
+    public string RequireRfc() => rfc;
+    public void EnsureRfc(string value)
+    { if (!string.Equals(value, rfc, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException(); }
+  }
+
   private static async Task<SqlConnection> OpenSandboxAsync()
   {
     var connection = new SqlConnection(GetSandboxConnectionString());
     await connection.OpenAsync();
     Assert.Equal("Orion_Sandbox", connection.Database, ignoreCase: true);
+    var scope = await connection.QuerySingleAsync<HospitalityScope>("""
+      SELECT p.CompanyId, p.SiteId, c.Rfc AS CompanyRfc
+      FROM orion.PublicSite p JOIN orion.Company c ON c.CompanyId=p.CompanyId
+      WHERE p.PublicSiteKey='bonhomia-main' AND p.ModuleCode='HOSPITALITY';
+      """);
+    await HospitalityConnectionFactory.InitializeAsync(connection, scope);
     return connection;
   }
 

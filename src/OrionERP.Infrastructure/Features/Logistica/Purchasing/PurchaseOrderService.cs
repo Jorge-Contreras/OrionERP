@@ -5,6 +5,8 @@ using System.Text;
 using System.Globalization;
 using Dapper;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Logistica.Shared;
 using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Purchasing;
 using OrionERP.Application.Features.Logistica.Shared;
@@ -16,10 +18,35 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
   private const string SuiteRoomType = "SUITE";
   private readonly IDbConnectionFactory _connectionFactory;
 
-  public PurchaseOrderService(IDbConnectionFactory connectionFactory)
+  private readonly IHospitalityScopeAccessor? _hospitalityScope;
+
+  public PurchaseOrderService(IDbConnectionFactory connectionFactory, IHospitalityScopeAccessor? hospitalityScope = null)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+    _hospitalityScope = hospitalityScope;
   }
+
+  // A purchase document is visible only when every original destination is visible.
+  // Do not return partial totals or expose snapshots from a different hospitality site.
+  private const string OrderVisibilitySql = """
+      po.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+      AND NOT EXISTS (
+          SELECT 1 FROM logistica.PurchaseOrderRoomScope scope
+          WHERE scope.PurchaseOrderId = po.Id
+            AND NOT EXISTS (SELECT 1 FROM dbo.[ROOM] scopeRoom WHERE scopeRoom.ID = scope.RoomId))
+      AND NOT EXISTS (
+          SELECT 1 FROM logistica.PurchaseOrderLine line
+          JOIN logistica.PurchaseOrderLineAllocation allocation ON allocation.PurchaseOrderLineId = line.Id
+          WHERE line.PurchaseOrderId = po.Id
+            AND NOT EXISTS (SELECT 1 FROM #OrionVisibleLocations visible
+                            WHERE visible.LocationId = allocation.LocationId AND visible.Rfc = po.Rfc))
+      AND NOT EXISTS (
+          SELECT 1 FROM logistica.PurchaseReceipt receipt
+          JOIN logistica.PurchaseReceiptLine receiptLine ON receiptLine.PurchaseReceiptId = receipt.Id
+          WHERE receipt.PurchaseOrderId = po.Id
+            AND NOT EXISTS (SELECT 1 FROM #OrionVisibleLocations visible
+                            WHERE visible.LocationId = receiptLine.LocationId AND visible.Rfc = po.Rfc))
+      """;
 
   public async Task<IReadOnlyList<PurchaseOrderListItemDto>> GetPurchaseOrdersAsync(PurchaseOrderFilter filter, CancellationToken ct = default)
   {
@@ -73,6 +100,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       WHERE 1 = 1
       """);
 
+    sql.AppendLine(" AND " + OrderVisibilitySql);
     var parameters = new DynamicParameters();
 
     if (filter.VendorId.HasValue)
@@ -120,7 +148,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       sql.AppendLine(";");
     }
 
-    using var conn = CreateConnection();
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     var rows = await conn.QueryAsync<PurchaseOrderListItemDto>(
       new CommandDefinition(sql.ToString(), parameters, cancellationToken: ct));
 
@@ -129,8 +157,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
 
   public async Task<PurchaseOrderDetailDto?> GetPurchaseOrderAsync(int purchaseOrderId, CancellationToken ct = default)
   {
-    const string sql =
-      """
+    var sql =
+      $"""
       SELECT
           po.Id,
           po.PurchaseOrderCode,
@@ -164,7 +192,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           FROM logistica.PurchaseOrderLine line
           WHERE line.PurchaseOrderId = po.Id
       ) lineTotals
-      WHERE po.Id = @PurchaseOrderId;
+      WHERE po.Id = @PurchaseOrderId AND {OrderVisibilitySql};
 
       SELECT
           line.Id,
@@ -245,9 +273,11 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       ORDER BY room.ROOM_NAME, room.ID;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
     using var multi = await conn.QueryMultipleAsync(
-      new CommandDefinition(sql, new { PurchaseOrderId = purchaseOrderId }, cancellationToken: ct));
+      new CommandDefinition(sql, new { PurchaseOrderId = purchaseOrderId }, tx, cancellationToken: ct));
 
     var detail = await multi.ReadFirstOrDefaultAsync<PurchaseOrderDetailDto>();
     if (detail is null)
@@ -287,6 +317,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           bp.Rfc AS Code
       FROM dbo.BusinessPartner bp
       WHERE bp.IsActive = 1
+        AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRfcScope vendorScope
+                    WHERE vendorScope.BusinessPartnerId = bp.Id AND vendorScope.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')))
         AND (
             EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
             OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.BusinessPartnerId = bp.Id)
@@ -298,7 +330,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           l.LocationName AS Name,
           l.LocationCode AS Code
       FROM logistica.Location l
-      WHERE l.IsActive = 1
+      WHERE EXISTS (SELECT 1 FROM #OrionVisibleLocations visible WHERE visible.LocationId = l.Id AND visible.Rfc = l.Rfc)
+        AND l.IsActive = 1
         AND l.IsInventoryEnabled = 1
       ORDER BY l.LocationName, l.Id;
 
@@ -311,7 +344,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       ORDER BY room.ROOM_NAME, room.ID;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(
       sql,
       new { RoomType = SuiteRoomType },
@@ -339,8 +372,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       return LogisticsCommandResult.Fail(validationResults[0].ErrorMessage ?? "La solicitud de Auto PO no es válida.");
     }
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
 
     if (!await VendorExistsAsync(conn, tx: null, request.BusinessPartnerId, ct))
     {
@@ -380,7 +412,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     }
 
     var draftRequest = BuildAutoDraftRequest(request, candidateRows, defaultLeadTimeDays);
-    await using var tx = await conn.BeginTransactionAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
 
     try
     {
@@ -415,9 +448,9 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       return LogisticsCommandResult.Fail(validationMessage);
     }
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
-    await using var tx = await conn.BeginTransactionAsync(ct);
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
 
     try
     {
@@ -440,9 +473,9 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
 
   public async Task<LogisticsCommandResult> IssueAsync(int purchaseOrderId, string? issuedBy, CancellationToken ct = default)
   {
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
-    await using var tx = await conn.BeginTransactionAsync(ct);
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
 
     try
     {
@@ -511,9 +544,9 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       return LogisticsCommandResult.Fail(validationMessage);
     }
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
 
     try
     {
@@ -541,6 +574,9 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         await tx.RollbackAsync(ct);
         return LogisticsCommandResult.Fail("Todas las líneas recibidas deben pertenecer a la orden seleccionada.");
       }
+
+      foreach (var locationId in allocationRows.Values.Select(row => row.LocationId).Distinct())
+        await LogisticsLocationScope.EnsureLocationAsync(conn, tx, locationId, ct);
 
       foreach (var item in groupedLines)
       {
@@ -862,9 +898,9 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
 
   public async Task<LogisticsCommandResult> CompleteAsync(int purchaseOrderId, string? completedBy, CancellationToken ct = default)
   {
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
-    await using var tx = await conn.BeginTransactionAsync(ct);
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
 
     try
     {
@@ -925,9 +961,9 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
 
   public async Task<LogisticsCommandResult> CancelAsync(int purchaseOrderId, string? cancelledBy, CancellationToken ct = default)
   {
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
-    await using var tx = await conn.BeginTransactionAsync(ct);
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
 
     try
     {
@@ -1033,6 +1069,16 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       .Distinct()
       .ToArray();
 
+    foreach (var locationId in locationIds)
+      await LogisticsLocationScope.EnsureLocationAsync(conn, tx, locationId, ct);
+    if (roomScopeIds is { Count: > 0 })
+    {
+      var visibleRooms = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+        "SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK) WHERE ID IN @RoomIds;",
+        new { RoomIds = roomScopeIds }, tx, cancellationToken: ct));
+      if (visibleRooms != roomScopeIds.Distinct().Count())
+        throw new UnauthorizedAccessException("Las suites de la compra no pertenecen a la sede autorizada.");
+    }
     var locationRows = await LoadLocationRowsAsync(conn, tx, locationIds, ct);
     if (locationRows.Count != locationIds.Length)
     {
@@ -1373,10 +1419,6 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     }
   }
 
-  private DbConnection CreateConnection()
-    => _connectionFactory.Create() as DbConnection
-      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
-
   private static string? ValidateDraftRequest(PurchaseOrderUpsertRequest request)
   {
     var validationResults = new List<ValidationResult>();
@@ -1495,11 +1537,6 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       return NormalizedRoomScopeResult.Fail("Las suites seleccionadas no existen o ya no están disponibles para Auto PO.");
     }
 
-    if (suiteRooms.Count > 0 && normalizedRoomIds.Length == suiteRooms.Count)
-    {
-      return NormalizedRoomScopeResult.Ok([]);
-    }
-
     return NormalizedRoomScopeResult.Ok(normalizedRoomIds);
   }
 
@@ -1520,6 +1557,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             SELECT 1
             FROM dbo.BusinessPartner bp
             WHERE bp.Id = @BusinessPartnerId
+              AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRfcScope vendorScope
+                          WHERE vendorScope.BusinessPartnerId = bp.Id AND vendorScope.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')))
               AND bp.IsActive = 1
               AND (
                   EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
@@ -1542,10 +1581,11 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     {
       return await conn.QueryFirstOrDefaultAsync<int?>(
         new CommandDefinition(
-          """
+          $"""
           SELECT TOP (1) po.Id
           FROM logistica.PurchaseOrder po
-          WHERE po.BusinessPartnerId = @BusinessPartnerId
+          WHERE {OrderVisibilitySql}
+            AND po.BusinessPartnerId = @BusinessPartnerId
             AND po.[Status] = @Status
             AND NOT EXISTS (
                 SELECT 1
@@ -1564,10 +1604,11 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
 
     return await conn.QueryFirstOrDefaultAsync<int?>(
       new CommandDefinition(
-        """
+        $"""
         SELECT TOP (1) po.Id
         FROM logistica.PurchaseOrder po
-        WHERE po.BusinessPartnerId = @BusinessPartnerId
+        WHERE {OrderVisibilitySql}
+            AND po.BusinessPartnerId = @BusinessPartnerId
           AND po.[Status] = @Status
           AND NOT EXISTS (
               SELECT 1
@@ -1662,7 +1703,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     CancellationToken ct)
   {
     var sql = new StringBuilder(
-      """
+      $"""
       WITH OpenPurchaseAllocations AS (
           SELECT
               line.MaterialId,
@@ -1673,7 +1714,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             ON line.PurchaseOrderId = po.Id
           JOIN logistica.PurchaseOrderLineAllocation allocation
             ON allocation.PurchaseOrderLineId = line.Id
-          WHERE po.BusinessPartnerId = @BusinessPartnerId
+          WHERE {OrderVisibilitySql}
+            AND po.BusinessPartnerId = @BusinessPartnerId
             AND po.[Status] IN @ProjectedStatuses
           GROUP BY line.MaterialId, allocation.LocationId
       ),
@@ -1731,6 +1773,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         ON recentConsumption.MaterialId=sb.MaterialId
        AND recentConsumption.LocationId=sb.LocationId
       WHERE m.IsActive = 1
+        AND EXISTS (SELECT 1 FROM #OrionVisibleLocations visible WHERE visible.LocationId = location.Id AND visible.Rfc = location.Rfc)
         AND location.IsActive = 1
         AND location.IsInventoryEnabled = 1
         AND ISNULL(sb.IsRemoved, 0) = 0
@@ -1850,7 +1893,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             l.LocationName,
             l.LocationCode
         FROM logistica.Location l
-        WHERE l.Id IN @LocationIds
+        WHERE EXISTS (SELECT 1 FROM #OrionVisibleLocations visible WHERE visible.LocationId = l.Id AND visible.Rfc = l.Rfc)
+          AND l.Id IN @LocationIds
           AND l.IsActive = 1
           AND l.IsInventoryEnabled = 1;
         """,
@@ -1869,12 +1913,12 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
   {
     return await conn.QueryFirstOrDefaultAsync<PurchaseOrderStateRow>(
       new CommandDefinition(
-        """
+        $"""
         SELECT
             po.Id,
             po.[Status] AS [Status]
-        FROM logistica.PurchaseOrder po
-        WHERE po.Id = @PurchaseOrderId;
+        FROM logistica.PurchaseOrder po WITH (UPDLOCK, HOLDLOCK)
+        WHERE po.Id = @PurchaseOrderId AND {OrderVisibilitySql};
         """,
         new { PurchaseOrderId = purchaseOrderId },
         tx,

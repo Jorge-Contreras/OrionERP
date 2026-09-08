@@ -1,6 +1,8 @@
 using System.Data.Common;
 using Dapper;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Logistica.Shared;
 using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Restaurante;
@@ -11,13 +13,16 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
 {
   private readonly IDbConnectionFactory _connectionFactory;
   private readonly IRestaurantCatalogService _catalogService;
+  private readonly IHospitalityScopeAccessor? _hospitalityScope;
 
   public RestaurantSaleReadinessService(
     IDbConnectionFactory connectionFactory,
-    IRestaurantCatalogService catalogService)
+    IRestaurantCatalogService catalogService,
+    IHospitalityScopeAccessor? hospitalityScope = null)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
     _catalogService = catalogService ?? throw new ArgumentNullException(nameof(catalogService));
+    _hospitalityScope = hospitalityScope;
   }
 
   public async Task<RestaurantSaleReadinessReport> AnalyzeAsync(
@@ -27,6 +32,7 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
     CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
+    using var connection = await OpenScopedAsync(normalizedRfc, ct);
     var generatedAtUtc = at.ToUniversalTime();
     var catalog = await _catalogService.GetPosCatalogAsync(normalizedRfc, siteId, generatedAtUtc, ct);
     var timeZone = TimeZoneInfo.FindSystemTimeZoneById(catalog.Site.TimeZoneId);
@@ -49,8 +55,6 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
       .Distinct()
       .ToArray();
 
-    using var connection = CreateConnection();
-    await connection.OpenAsync(ct);
     var graph = await RestaurantRequirementGraphLoader.LoadAsync(connection, null, normalizedRfc, optionIds, ct);
     var context = await LoadOperationalContextAsync(connection, normalizedRfc, siteId, ct);
     var fallbackLocationExists = context.Locations.Any(location => location.IsActive && location.IsInventoryEnabled);
@@ -588,7 +592,8 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
         WHERE sitePriority.Rfc = balance.Rfc AND sitePriority.SiteId = @SiteId
           AND sitePriority.LocationId = balance.LocationId
       ) priorityInfo
-      WHERE balance.Rfc = @Rfc AND balance.IsRemoved = 0;
+      WHERE balance.Rfc = @Rfc AND balance.IsRemoved = 0
+        AND EXISTS (SELECT 1 FROM #OrionVisibleLocations visible WHERE visible.LocationId=balance.LocationId AND visible.Rfc=balance.Rfc);
 
       SELECT lotBalance.MaterialLotId, lotBalance.MaterialId, lotBalance.LocationId,
              lotBalance.Quantity, lotBalance.ReservedQuantity, lot.LotCode, lot.ExpiresAt,
@@ -604,10 +609,12 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
         WHERE sitePriority.Rfc = lotBalance.Rfc AND sitePriority.SiteId = @SiteId
           AND sitePriority.LocationId = lotBalance.LocationId
       ) priorityInfo
-      WHERE lotBalance.Rfc = @Rfc;
+      WHERE lotBalance.Rfc = @Rfc
+        AND EXISTS (SELECT 1 FROM #OrionVisibleLocations visible WHERE visible.LocationId=lotBalance.LocationId AND visible.Rfc=lotBalance.Rfc);
 
       SELECT Id, LocationCode, LocationName, IsActive, IsInventoryEnabled
-      FROM logistica.Location WHERE Rfc = @Rfc;
+      FROM logistica.Location locationInfo WHERE Rfc = @Rfc
+        AND EXISTS (SELECT 1 FROM #OrionVisibleLocations visible WHERE visible.LocationId=locationInfo.Id AND visible.Rfc=locationInfo.Rfc);
 
       SELECT Id, StationCode, [Name], IsActive
       FROM restaurante.KitchenStation WHERE Rfc = @Rfc AND SiteId = @SiteId;
@@ -615,8 +622,9 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
       SELECT COUNT(*) FROM restaurante.CashShift
       WHERE Rfc = @Rfc AND SiteId = @SiteId AND [Status] = 'Open';
 
-      SELECT COUNT(*) FROM restaurante.SiteLocationPriority
-      WHERE Rfc = @Rfc AND SiteId = @SiteId;
+      SELECT COUNT(*) FROM restaurante.SiteLocationPriority priorityInfo
+      WHERE Rfc = @Rfc AND SiteId = @SiteId
+        AND EXISTS (SELECT 1 FROM #OrionVisibleLocations visible WHERE visible.LocationId=priorityInfo.LocationId AND visible.Rfc=priorityInfo.Rfc);
       """;
 
     using var multi = await connection.QueryMultipleAsync(new CommandDefinition(
@@ -1071,9 +1079,18 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
   private static decimal RoundQuantity(decimal value)
     => decimal.Round(value, 4, MidpointRounding.AwayFromZero);
 
-  private DbConnection CreateConnection()
-    => _connectionFactory.Create() as DbConnection
-      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
+  private async Task<DbConnection> OpenScopedAsync(string rfc, CancellationToken ct)
+  {
+    var connection = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
+    try
+    {
+      await connection.ExecuteAsync(new CommandDefinition(
+        "IF @Rfc <> CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc')) THROW 51936, 'Requested company does not match the authenticated session.', 1;",
+        new { Rfc = rfc }, cancellationToken: ct));
+      return connection;
+    }
+    catch { await connection.DisposeAsync(); throw; }
+  }
 
   private sealed record MenuProduct(RestaurantProductDto Product, string Sections);
 

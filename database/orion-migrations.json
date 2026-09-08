@@ -49,6 +49,14 @@
       "allowedDatabases": [
         "Orion_Sandbox"
       ]
+    },
+    {
+      "id": "20260908_hospitality_administration_scope_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260908_hospitality_administration_scope_sandbox.sql",
+      "description": "Aislamiento RLS fail-closed de Hospedaje administrativo y clientes fiscales, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
     }
   ]
 }

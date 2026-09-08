@@ -1,3 +1,4 @@
+using OrionERP.Infrastructure.Features.Reservaciones;
 using System.Data;
 using System.Data.Common;
 using Dapper;
@@ -9,10 +10,12 @@ namespace OrionERP.Infrastructure.Features.Arrendadores;
 public sealed class ArrendadoresEstadoCuentaService : IArrendadoresEstadoCuentaService
 {
   private readonly IDbConnectionFactory _connectionFactory;
+  private readonly HospitalityConnectionFactory? _hospitalityConnections;
 
-  public ArrendadoresEstadoCuentaService(IDbConnectionFactory connectionFactory)
+  public ArrendadoresEstadoCuentaService(IDbConnectionFactory connectionFactory, HospitalityConnectionFactory? hospitalityConnections = null)
   {
     _connectionFactory = connectionFactory;
+    _hospitalityConnections = hospitalityConnections;
   }
 
   public async Task<IReadOnlyList<ArrendadorListItemDto>> GetArrendadoresAsync(
@@ -20,8 +23,7 @@ public sealed class ArrendadoresEstadoCuentaService : IArrendadoresEstadoCuentaS
     int? ownerIdScope = null,
     CancellationToken ct = default)
   {
-    using var connection = _connectionFactory.Create();
-    await OpenConnectionAsync(connection, ct).ConfigureAwait(false);
+    using var connection = await (_hospitalityConnections ?? throw new UnauthorizedAccessException("Falta el alcance autorizado de Hospedaje.")).OpenAsync(ct);
 
     const string sql = """
 SELECT
@@ -58,8 +60,7 @@ ORDER BY p.RazonSocial;
     int? ownerIdScope = null,
     CancellationToken ct = default)
   {
-    using var connection = _connectionFactory.Create();
-    await OpenConnectionAsync(connection, ct).ConfigureAwait(false);
+    using var connection = await (_hospitalityConnections ?? throw new UnauthorizedAccessException("Falta el alcance autorizado de Hospedaje.")).OpenAsync(ct);
 
     const string sql = """
 SELECT
@@ -97,8 +98,7 @@ ORDER BY r.ROOM_NAME;
       throw new ArgumentOutOfRangeException(nameof(month), "El mes debe estar entre 1 y 12.");
     }
 
-    using var connection = _connectionFactory.Create();
-    await OpenConnectionAsync(connection, ct).ConfigureAwait(false);
+    using var connection = await (_hospitalityConnections ?? throw new UnauthorizedAccessException("Falta el alcance autorizado de Hospedaje.")).OpenAsync(ct);
 
     var startDate = new DateTime(year, month, 1);
     var endDate = startDate.AddMonths(1);

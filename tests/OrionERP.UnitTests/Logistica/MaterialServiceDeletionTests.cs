@@ -79,7 +79,7 @@ public class MaterialServiceLifecycleTests
     Assert.Equal(ExpectedDependencyCodes.Select((_, index) => (long)index + 2).Sum(), assessment.TotalReferences);
     Assert.All(assessment.Dependencies, dependency => Assert.Single(dependency.Examples));
 
-    var command = Assert.Single(connection.ExecutedCommands);
+    var command = Assert.Single(LifecycleCommands(connection));
     foreach (var tableName in ExpectedDependencyCodes)
     {
       var sqlTableName = tableName == "RestaurantProduct" ? "restaurante.Product" : tableName;
@@ -152,7 +152,7 @@ public class MaterialServiceLifecycleTests
 
     await service.GetMaterialLifecycleAssessmentAsync(Rfc, 42);
 
-    var sql = Assert.Single(connection.ExecutedCommands).CommandText;
+    var sql = Assert.Single(LifecycleCommands(connection)).CommandText;
     Assert.Contains("countSession.Status IN ('Posted', 'Canceled')", sql, StringComparison.Ordinal);
     Assert.Contains("reservationInfo.Status IN ('Released', 'Consumed')", sql, StringComparison.Ordinal);
     Assert.Contains("transferInfo.Status = 'Posted'", sql, StringComparison.Ordinal);
@@ -173,9 +173,9 @@ public class MaterialServiceLifecycleTests
     await service.GetMaterialsAsync(new MaterialFilter { Rfc = Rfc, Take = 0 });
     await service.GetMaterialsAsync(new MaterialFilter { Rfc = Rfc, IncludeInactive = true, Take = 0 });
 
-    Assert.Contains("m.IsActive = 1", connection.ExecutedCommands[0].CommandText, StringComparison.Ordinal);
-    Assert.DoesNotContain("m.IsActive = 1", connection.ExecutedCommands[1].CommandText, StringComparison.Ordinal);
-    Assert.Contains("m.IsActive", connection.ExecutedCommands[1].CommandText, StringComparison.Ordinal);
+    Assert.Contains("m.IsActive = 1", LifecycleCommands(connection)[0].CommandText, StringComparison.Ordinal);
+    Assert.DoesNotContain("m.IsActive = 1", LifecycleCommands(connection)[1].CommandText, StringComparison.Ordinal);
+    Assert.Contains("m.IsActive", LifecycleCommands(connection)[1].CommandText, StringComparison.Ordinal);
   }
 
   [Theory]
@@ -198,7 +198,7 @@ public class MaterialServiceLifecycleTests
 
     Assert.False(result.Success);
     Assert.Contains("Delete", result.Message, StringComparison.Ordinal);
-    Assert.Empty(connection.ExecutedCommands);
+    Assert.Empty(LifecycleCommands(connection));
   }
 
   [Fact]
@@ -218,10 +218,10 @@ public class MaterialServiceLifecycleTests
     Assert.True(connection.LastTransaction.WasRolledBack);
     Assert.False(connection.LastTransaction.WasCommitted);
     Assert.DoesNotContain(
-      connection.ExecutedCommands,
+      LifecycleCommands(connection),
       command => command.CommandText.StartsWith("DELETE FROM logistica.Material", StringComparison.Ordinal));
     Assert.Contains(
-      connection.ExecutedCommands,
+      LifecycleCommands(connection),
       command => command.CommandText.Contains("UPDLOCK, HOLDLOCK", StringComparison.Ordinal));
   }
 
@@ -238,17 +238,17 @@ public class MaterialServiceLifecycleTests
     Assert.True(connection.LastTransaction!.WasCommitted);
     Assert.False(connection.LastTransaction.WasRolledBack);
 
-    var lockIndex = connection.ExecutedCommands.ToList().FindIndex(
+    var lockIndex = LifecycleCommands(connection).ToList().FindIndex(
       command => command.CommandText.Contains("UPDLOCK, HOLDLOCK", StringComparison.Ordinal));
-    var assessmentIndex = connection.ExecutedCommands.ToList().FindIndex(
+    var assessmentIndex = LifecycleCommands(connection).ToList().FindIndex(
       command => command.CommandText.Contains("WITH DependencyRows", StringComparison.Ordinal));
-    var deleteIndex = connection.ExecutedCommands.ToList().FindIndex(
+    var deleteIndex = LifecycleCommands(connection).ToList().FindIndex(
       command => command.CommandText.StartsWith("DELETE FROM logistica.Material", StringComparison.Ordinal));
 
     Assert.True(lockIndex >= 0);
     Assert.True(assessmentIndex > lockIndex);
     Assert.True(deleteIndex > assessmentIndex);
-    Assert.All(connection.ExecutedCommands, command =>
+    Assert.All(LifecycleCommands(connection), command =>
     {
       AssertParameter(command.Parameters, "Rfc", Rfc);
       AssertParameter(command.Parameters, "MaterialId", 42);
@@ -269,7 +269,7 @@ public class MaterialServiceLifecycleTests
     Assert.False(result.Success);
     Assert.Contains("ya no existe", result.Message, StringComparison.OrdinalIgnoreCase);
     Assert.True(connection.LastTransaction!.WasRolledBack);
-    Assert.Single(connection.ExecutedCommands);
+    Assert.Single(LifecycleCommands(connection));
   }
 
   [Fact]
@@ -310,13 +310,13 @@ public class MaterialServiceLifecycleTests
     Assert.Equal(IsolationLevel.Serializable, connection.LastTransaction!.IsolationLevel);
     Assert.True(connection.LastTransaction.WasCommitted);
     Assert.False(connection.LastTransaction.WasRolledBack);
-    var assessmentIndex = connection.ExecutedCommands.ToList().FindIndex(command => command.CommandText.Contains("WITH DependencyRows", StringComparison.Ordinal));
-    var updateIndex = connection.ExecutedCommands.ToList().FindIndex(command => command.CommandText.Contains("SET IsActive = 0", StringComparison.Ordinal));
+    var assessmentIndex = LifecycleCommands(connection).ToList().FindIndex(command => command.CommandText.Contains("WITH DependencyRows", StringComparison.Ordinal));
+    var updateIndex = LifecycleCommands(connection).ToList().FindIndex(command => command.CommandText.Contains("SET IsActive = 0", StringComparison.Ordinal));
     Assert.True(assessmentIndex >= 0);
     Assert.True(updateIndex > assessmentIndex);
-    Assert.Contains("UPDLOCK, HOLDLOCK", connection.ExecutedCommands[assessmentIndex].CommandText, StringComparison.Ordinal);
-    Assert.Contains("MaterialStatus = 'INACTIVO'", connection.ExecutedCommands[updateIndex].CommandText, StringComparison.Ordinal);
-    Assert.All(connection.ExecutedCommands, command =>
+    Assert.Contains("UPDLOCK, HOLDLOCK", LifecycleCommands(connection)[assessmentIndex].CommandText, StringComparison.Ordinal);
+    Assert.Contains("MaterialStatus = 'INACTIVO'", LifecycleCommands(connection)[updateIndex].CommandText, StringComparison.Ordinal);
+    Assert.All(LifecycleCommands(connection), command =>
     {
       AssertParameter(command.Parameters, "Rfc", Rfc);
       AssertParameter(command.Parameters, "MaterialId", 42);
@@ -335,7 +335,7 @@ public class MaterialServiceLifecycleTests
     Assert.False(operationalResult.Success);
     Assert.Contains("operativo", operationalResult.Message, StringComparison.OrdinalIgnoreCase);
     Assert.True(operationalConnection.LastTransaction!.WasRolledBack);
-    Assert.Single(operationalConnection.ExecutedCommands);
+    Assert.Single(LifecycleCommands(operationalConnection));
 
     var configurationTable = CreateAssessmentTable();
     AddAssessmentRow(configurationTable, "MaterialUnitConversion", MaterialDependencyKinds.Configuration, 180, 1, "Conversión inactiva");
@@ -346,7 +346,7 @@ public class MaterialServiceLifecycleTests
     Assert.False(configurationResult.Success);
     Assert.Contains("no tiene historial", configurationResult.Message, StringComparison.OrdinalIgnoreCase);
     Assert.True(configurationConnection.LastTransaction!.WasRolledBack);
-    Assert.Single(configurationConnection.ExecutedCommands);
+    Assert.Single(LifecycleCommands(configurationConnection));
   }
 
   [Fact]
@@ -388,9 +388,9 @@ public class MaterialServiceLifecycleTests
     Assert.True(result.Success);
     Assert.True(connection.LastTransaction!.WasCommitted);
     Assert.Equal(IsolationLevel.Serializable, connection.LastTransaction.IsolationLevel);
-    Assert.Contains("UPDLOCK, HOLDLOCK", connection.ExecutedCommands[0].CommandText, StringComparison.Ordinal);
-    Assert.Contains("MaterialStatus = 'ACTIVO'", connection.ExecutedCommands[1].CommandText, StringComparison.Ordinal);
-    Assert.All(connection.ExecutedCommands, command => AssertParameter(command.Parameters, "Rfc", Rfc));
+    Assert.Contains("UPDLOCK, HOLDLOCK", LifecycleCommands(connection)[0].CommandText, StringComparison.Ordinal);
+    Assert.Contains("MaterialStatus = 'ACTIVO'", LifecycleCommands(connection)[1].CommandText, StringComparison.Ordinal);
+    Assert.All(LifecycleCommands(connection), command => AssertParameter(command.Parameters, "Rfc", Rfc));
   }
 
   [Fact]
@@ -403,8 +403,14 @@ public class MaterialServiceLifecycleTests
     Assert.False(result.Success);
     Assert.Contains("ya está activo", result.Message, StringComparison.OrdinalIgnoreCase);
     Assert.True(connection.LastTransaction!.WasRolledBack);
-    Assert.Single(connection.ExecutedCommands);
+    Assert.Single(LifecycleCommands(connection));
   }
+
+  // Assertions below describe business queries; authorization/setup batches are
+  // verified separately by StockMaterialLocationScopeTests.
+  private static IReadOnlyList<FakeQueryCommandLog> LifecycleCommands(FakeQueryDbConnection connection)
+    => connection.ExecutedCommands.Where(command =>
+      !command.CommandText.TrimStart().StartsWith("IF ", StringComparison.Ordinal)).ToArray();
 
   private static FakeQueryDbConnection CreateDeleteConnection(DataTable assessmentTable, int deleteResult)
     => new()

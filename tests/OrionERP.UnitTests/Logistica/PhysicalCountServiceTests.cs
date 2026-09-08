@@ -27,7 +27,7 @@ public class PhysicalCountServiceTests
     var session = Assert.Single(result);
     Assert.Equal(8, session.LineCount);
     Assert.Equal(3, session.CountedLineCount);
-    var commandText = Assert.Single(connection.ExecutedCommands).CommandText;
+    var commandText = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("FROM logistica.PhysicalCountSession s", StringComparison.Ordinal)).CommandText;
     Assert.Contains("s.[Status] = 'Recount'", commandText, StringComparison.Ordinal);
     Assert.Contains("activePlanLine.Id IS NOT NULL AND line.CountedQuantity IS NOT NULL", commandText, StringComparison.Ordinal);
   }
@@ -106,7 +106,7 @@ public class PhysicalCountServiceTests
     Assert.Equal(810, scopeMaterial.MaterialId);
     Assert.Equal(4, scopeMaterial.LocationCount);
 
-    var commandText = Assert.Single(connection.ExecutedCommands).CommandText;
+    var commandText = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("FROM logistica.PhysicalCountSession s", StringComparison.Ordinal)).CommandText;
     Assert.Contains("recountLine.PreviousCapturedAt", commandText, StringComparison.Ordinal);
     Assert.Contains("'EvidenceAdded'", commandText, StringComparison.Ordinal);
     Assert.Contains("ORDER BY audit.OccurredAt DESC", commandText, StringComparison.Ordinal);

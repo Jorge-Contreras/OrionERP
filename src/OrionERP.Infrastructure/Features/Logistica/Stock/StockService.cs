@@ -4,6 +4,8 @@ using System.ComponentModel.DataAnnotations;
 using System.Text;
 using Dapper;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Logistica.Shared;
 using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Logistica.Stock;
@@ -14,9 +16,11 @@ namespace OrionERP.Infrastructure.Features.Logistica.Stock;
 public sealed class StockService : IStockService
 {
   private readonly IDbConnectionFactory _connectionFactory;
+  private readonly IHospitalityScopeAccessor? _hospitalityScope;
 
-  public StockService(IDbConnectionFactory connectionFactory)
+  public StockService(IDbConnectionFactory connectionFactory, IHospitalityScopeAccessor? hospitalityScope = null)
   {
+    _hospitalityScope = hospitalityScope;
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
   }
 
@@ -35,6 +39,8 @@ public sealed class StockService : IStockService
               COUNT(*) AS AttachmentCount
           FROM logistica.LocationMaterialAttachment a
           WHERE ISNULL(a.IsDeleted, 0) = 0
+            AND a.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+            AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = a.LocationId AND scopeLocation.Rfc = a.Rfc)
           GROUP BY a.LocationId, a.MaterialId
       )
       SELECT
@@ -69,11 +75,11 @@ public sealed class StockService : IStockService
           sb.RemovedBy
       FROM logistica.StockBalance sb
       JOIN logistica.Location l
-        ON l.Id = sb.LocationId
+        ON l.Id = sb.LocationId AND l.Rfc = sb.Rfc
       LEFT JOIN dbo.ROOM room
         ON room.ID = l.RoomId
       JOIN logistica.Material m
-        ON m.Id = sb.MaterialId
+        ON m.Id = sb.MaterialId AND m.Rfc = sb.Rfc
       LEFT JOIN logistica.UnitOfMeasure u
         ON u.Id = m.BaseUnitId
       LEFT JOIN logistica.MaterialVendor primaryVendor
@@ -83,7 +89,8 @@ public sealed class StockService : IStockService
       LEFT JOIN AttachmentCounts ac
         ON ac.LocationId = sb.LocationId
        AND ac.MaterialId = sb.MaterialId
-      WHERE 1 = 1
+      WHERE sb.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+        AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = l.Id AND scopeLocation.Rfc = l.Rfc)
       """);
 
     var parameters = new DynamicParameters();
@@ -157,7 +164,7 @@ public sealed class StockService : IStockService
       sql.AppendLine(";");
     }
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(ct);
     var rows = await conn.QueryAsync<StockListItemDto>(
       new CommandDefinition(sql.ToString(), parameters, cancellationToken: ct));
 
@@ -181,12 +188,12 @@ public sealed class StockService : IStockService
       return LogisticsCommandResult.Fail("Selecciona un material válido.");
     }
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
-    await using var tx = await conn.BeginTransactionAsync(ct);
+    using var conn = await OpenScopedAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
     try
     {
+      await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
       var location = await GetLocationStateAsync(conn, request.LocationId, tx, ct);
       if (location is null)
       {
@@ -239,6 +246,8 @@ public sealed class StockService : IStockService
                 RemovedBy = NULL,
                 UpdatedAt = SYSUTCDATETIME()
             WHERE Id = @StockBalanceId
+              AND Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+              AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = logistica.StockBalance.LocationId AND scopeLocation.Rfc = logistica.StockBalance.Rfc)
               AND ISNULL(IsRemoved, 0) = 1;
             """,
             new { StockBalanceId = stockBalance.Id },
@@ -259,6 +268,8 @@ public sealed class StockService : IStockService
                 DeletedAt = NULL,
                 DeletedBy = NULL
             WHERE LocationId = @LocationId
+              AND Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+              AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = logistica.LocationMaterialAttachment.LocationId AND scopeLocation.Rfc = logistica.LocationMaterialAttachment.Rfc)
               AND MaterialId = @MaterialId
               AND ISNULL(IsDeleted, 0) = 1;
             """,
@@ -288,6 +299,7 @@ public sealed class StockService : IStockService
           """
           INSERT INTO logistica.StockBalance
           (
+              Rfc,
               LocationId,
               MaterialId,
               Quantity,
@@ -296,6 +308,7 @@ public sealed class StockService : IStockService
           )
           VALUES
           (
+              CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')),
               @LocationId,
               @MaterialId,
               0,
@@ -354,8 +367,10 @@ public sealed class StockService : IStockService
       return LogisticsCommandResult.Fail(validationResults[0].ErrorMessage ?? "Los parámetros de inventario no son válidos.");
     }
 
-    using var conn = CreateConnection();
-    var stockBalance = await GetStockBalanceStateAsync(conn, request.StockBalanceId, tx: null, ct);
+    using var conn = await OpenScopedAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
+    var stockBalance = await GetStockBalanceStateAsync(conn, request.StockBalanceId, tx, ct);
     if (stockBalance is null)
     {
       return LogisticsCommandResult.Fail("El registro de inventario ya no existe.");
@@ -373,6 +388,8 @@ public sealed class StockService : IStockService
           MaxQuantity = @MaxQuantity,
           UpdatedAt = SYSUTCDATETIME()
       WHERE Id = @StockBalanceId
+              AND Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+              AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = logistica.StockBalance.LocationId AND scopeLocation.Rfc = logistica.StockBalance.Rfc)
         AND ISNULL(IsRemoved, 0) = 0;
       """;
 
@@ -385,8 +402,9 @@ public sealed class StockService : IStockService
           request.MinQuantity,
           request.MaxQuantity
         },
-        cancellationToken: ct));
+        transaction: tx, cancellationToken: ct));
 
+    await tx.CommitAsync(ct);
     return affected == 0
       ? LogisticsCommandResult.Fail("El registro de inventario ya no existe.")
       : LogisticsCommandResult.Ok("Parámetros de inventario guardados correctamente.", request.StockBalanceId);
@@ -408,10 +426,13 @@ public sealed class StockService : IStockService
           st.PerformedBy
       FROM logistica.StockTransaction st
       WHERE st.StockBalanceId = @StockBalanceId
+        AND st.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+        AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = st.LocationId AND scopeLocation.Rfc = st.Rfc)
+        AND EXISTS (SELECT 1 FROM logistica.StockBalance sb WHERE sb.Rfc=st.Rfc AND sb.Id=st.StockBalanceId AND sb.LocationId=st.LocationId AND sb.MaterialId=st.MaterialId)
       ORDER BY st.OccurredAt DESC, st.Id DESC;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(ct);
     var rows = await conn.QueryAsync<StockTransactionDto>(
       new CommandDefinition(sql, new { StockBalanceId = stockBalanceId }, cancellationToken: ct));
 
@@ -436,11 +457,13 @@ public sealed class StockService : IStockService
       FROM logistica.LocationMaterialAttachment a
       WHERE a.LocationId = @LocationId
         AND a.MaterialId = @MaterialId
+        AND a.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+        AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = a.LocationId AND scopeLocation.Rfc = a.Rfc)
         AND (@IncludeDeleted = 1 OR ISNULL(a.IsDeleted, 0) = 0)
       ORDER BY ISNULL(a.IsDeleted, 0), a.CreatedAt DESC, a.Id DESC;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(ct);
     var rows = await conn.QueryAsync<LocationMaterialAttachmentDto>(
       new CommandDefinition(
         sql,
@@ -465,10 +488,12 @@ public sealed class StockService : IStockService
           a.ContentType,
           a.Attachment AS Bytes
       FROM logistica.LocationMaterialAttachment a
-      WHERE a.Id = @AttachmentId;
+      WHERE a.Id = @AttachmentId
+        AND a.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+        AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = a.LocationId AND scopeLocation.Rfc = a.Rfc);
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(ct);
     var row = await conn.QueryFirstOrDefaultAsync<LogisticsBinaryContent>(
       new CommandDefinition(sql, new { AttachmentId = attachmentId }, cancellationToken: ct));
 
@@ -493,8 +518,10 @@ public sealed class StockService : IStockService
       return LogisticsCommandResult.Fail("Debes adjuntar un archivo para guardar evidencia.");
     }
 
-    using var conn = CreateConnection();
-    var stockBalance = await GetStockBalanceStateAsync(conn, request.LocationId, request.MaterialId, tx: null, ct);
+    using var conn = await OpenScopedAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
+    var stockBalance = await GetStockBalanceStateAsync(conn, request.LocationId, request.MaterialId, tx, ct);
     if (stockBalance is null)
     {
       return LogisticsCommandResult.Fail("No existe un registro de inventario para ese material en la ubicación seleccionada.");
@@ -509,6 +536,7 @@ public sealed class StockService : IStockService
       """
       INSERT INTO logistica.LocationMaterialAttachment
       (
+              Rfc,
           LocationId,
           MaterialId,
           FileName,
@@ -520,6 +548,7 @@ public sealed class StockService : IStockService
       )
       VALUES
       (
+              CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')),
           @LocationId,
           @MaterialId,
           @FileName,
@@ -547,19 +576,20 @@ public sealed class StockService : IStockService
           Attachment = request.Bytes,
           CreatedBy = "OrionERP"
         },
-        cancellationToken: ct));
+        transaction: tx, cancellationToken: ct));
 
+    await tx.CommitAsync(ct);
     return LogisticsCommandResult.Ok("Adjunto de inventario guardado correctamente.", id);
   }
 
   public async Task<LogisticsCommandResult> RemoveLocationMaterialAsync(int stockBalanceId, string? removedBy, CancellationToken ct = default)
   {
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
-    await using var tx = await conn.BeginTransactionAsync(ct);
+    using var conn = await OpenScopedAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
     try
     {
+      await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
       var stockBalance = await GetStockBalanceStateAsync(conn, stockBalanceId, tx, ct);
       if (stockBalance is null)
       {
@@ -590,6 +620,8 @@ public sealed class StockService : IStockService
               RemovedBy = @RemovedBy,
               UpdatedAt = SYSUTCDATETIME()
           WHERE Id = @StockBalanceId
+              AND Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+              AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = logistica.StockBalance.LocationId AND scopeLocation.Rfc = logistica.StockBalance.Rfc)
             AND ISNULL(IsRemoved, 0) = 0;
           """,
           new
@@ -614,6 +646,8 @@ public sealed class StockService : IStockService
               DeletedAt = SYSUTCDATETIME(),
               DeletedBy = @DeletedBy
           WHERE LocationId = @LocationId
+              AND Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+              AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = logistica.LocationMaterialAttachment.LocationId AND scopeLocation.Rfc = logistica.LocationMaterialAttachment.Rfc)
             AND MaterialId = @MaterialId
             AND ISNULL(IsDeleted, 0) = 0;
           """,
@@ -647,12 +681,12 @@ public sealed class StockService : IStockService
 
   public async Task<LogisticsCommandResult> ReactivateLocationMaterialAsync(int stockBalanceId, string? reactivatedBy, CancellationToken ct = default)
   {
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
-    await using var tx = await conn.BeginTransactionAsync(ct);
+    using var conn = await OpenScopedAsync(ct);
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
     try
     {
+      await LogisticsLocationScope.RefreshAsync(conn, tx, ct);
       var stockBalance = await GetStockBalanceStateAsync(conn, stockBalanceId, tx, ct);
       if (stockBalance is null)
       {
@@ -677,6 +711,8 @@ public sealed class StockService : IStockService
               RemovedBy = NULL,
               UpdatedAt = SYSUTCDATETIME()
           WHERE Id = @StockBalanceId
+              AND Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+              AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = logistica.StockBalance.LocationId AND scopeLocation.Rfc = logistica.StockBalance.Rfc)
             AND ISNULL(IsRemoved, 0) = 1;
           """,
           new { StockBalanceId = stockBalance.Id },
@@ -697,6 +733,8 @@ public sealed class StockService : IStockService
               DeletedAt = NULL,
               DeletedBy = NULL
           WHERE LocationId = @LocationId
+              AND Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+              AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = logistica.LocationMaterialAttachment.LocationId AND scopeLocation.Rfc = logistica.LocationMaterialAttachment.Rfc)
             AND MaterialId = @MaterialId
             AND ISNULL(IsDeleted, 0) = 1;
           """,
@@ -727,9 +765,8 @@ public sealed class StockService : IStockService
     }
   }
 
-  private DbConnection CreateConnection()
-    => _connectionFactory.Create() as DbConnection
-      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
+  private Task<DbConnection> OpenScopedAsync(CancellationToken ct)
+    => LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
 
   private static async Task InsertStockAuditAsync(
     DbConnection conn,
@@ -745,6 +782,7 @@ public sealed class StockService : IStockService
         """
         INSERT INTO logistica.StockTransaction
         (
+              Rfc,
             StockBalanceId,
             LocationId,
             MaterialId,
@@ -759,6 +797,7 @@ public sealed class StockService : IStockService
         )
         VALUES
         (
+              CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')),
             @StockBalanceId,
             @LocationId,
             @MaterialId,
@@ -803,7 +842,9 @@ public sealed class StockService : IStockService
           CAST(l.IsInventoryEnabled AS bit) AS IsInventoryEnabled,
           CAST(l.IsActive AS bit) AS IsActive
       FROM logistica.Location l
-      WHERE l.Id = @LocationId;
+      WHERE l.Id = @LocationId
+        AND l.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+        AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = l.Id AND scopeLocation.Rfc = l.Rfc);
       """;
 
     return await conn.QueryFirstOrDefaultAsync<LocationStateRow>(
@@ -823,7 +864,8 @@ public sealed class StockService : IStockService
           m.MaterialStatus,
           CAST(m.IsActive AS bit) AS IsActive
       FROM logistica.Material m
-      WHERE m.Id = @MaterialId;
+      WHERE m.Id = @MaterialId
+        AND m.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'));
       """;
 
     return await conn.QueryFirstOrDefaultAsync<MaterialStateRow>(
@@ -845,7 +887,9 @@ public sealed class StockService : IStockService
           CAST(sb.Quantity AS decimal(18,4)) AS Quantity,
           CAST(ISNULL(sb.IsRemoved, 0) AS bit) AS IsRemoved
       FROM logistica.StockBalance sb
-      WHERE sb.Id = @StockBalanceId;
+      WHERE sb.Id = @StockBalanceId
+        AND sb.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+        AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = sb.LocationId AND scopeLocation.Rfc = sb.Rfc);
       """;
 
     return await conn.QueryFirstOrDefaultAsync<StockBalanceStateRow>(
@@ -871,6 +915,8 @@ public sealed class StockService : IStockService
       FROM logistica.StockBalance sb
       WHERE sb.LocationId = @LocationId
         AND sb.MaterialId = @MaterialId
+        AND sb.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+        AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = sb.LocationId AND scopeLocation.Rfc = sb.Rfc)
       ORDER BY sb.Id;
       """;
 

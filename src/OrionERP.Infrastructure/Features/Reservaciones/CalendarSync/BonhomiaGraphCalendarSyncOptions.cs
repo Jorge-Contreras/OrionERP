@@ -8,24 +8,18 @@ public sealed class BonhomiaGraphCalendarSyncOptions
 {
   public const string SectionName = "BonhomiaGraphCalendarSync";
 
-  private static readonly string[] DefaultCalendars =
-  {
-    "BERLIN",
-    "MANHATTAN",
-    "SEUL",
-    "PARIS",
-    "MOSCU",
-    "PENTHOUSE",
-    "LONDON",
-    "GRECIA"
-  };
+  // Disabled until an operator binds this integration to a verified company/site.
+  public bool Enabled { get; set; }
+  public long CompanyId { get; set; }
+  public long SiteId { get; set; }
+  public string CompanyRfc { get; set; } = string.Empty;
 
   public string TenantId { get; set; } = string.Empty;
   public string ClientId { get; set; } = string.Empty;
   public string ClientSecret { get; set; } = string.Empty;
-  public string MailboxAddress { get; set; } = "recepcion@bonhomiasuites.com";
+  public string MailboxAddress { get; set; } = string.Empty;
   public string TimeZone { get; set; } = "America/Mexico_City";
-  public List<string> TargetCalendars { get; set; } = DefaultCalendars.ToList();
+  public List<string> TargetCalendars { get; set; } = new();
 
   public void ApplySharedGraphCredentials(string? tenantId, string? clientId, string? clientSecret)
   {
@@ -36,7 +30,11 @@ public sealed class BonhomiaGraphCalendarSyncOptions
       return;
     }
 
-    if (!string.IsNullOrWhiteSpace(ClientId) &&
+    // Shared secret rotation is allowed only after the calendar integration
+    // explicitly identifies the same tenant and application. Empty calendar
+    // configuration must never adopt the shared mail identity implicitly.
+    if (string.IsNullOrWhiteSpace(TenantId) || string.IsNullOrWhiteSpace(ClientId) ||
+        !string.Equals(TenantId.Trim(), tenantId.Trim(), StringComparison.OrdinalIgnoreCase) ||
         !string.Equals(ClientId.Trim(), clientId.Trim(), StringComparison.OrdinalIgnoreCase))
     {
       return;
@@ -49,12 +47,12 @@ public sealed class BonhomiaGraphCalendarSyncOptions
 
   public IReadOnlyList<string> GetTargetCalendars()
   {
-    var values = TargetCalendars
+    var values = (TargetCalendars ?? new List<string>())
       .Where(item => !string.IsNullOrWhiteSpace(item))
       .Select(item => item.Trim())
       .Distinct(StringComparer.OrdinalIgnoreCase)
       .ToArray();
 
-    return values.Length > 0 ? values : DefaultCalendars;
+    return values;
   }
 }

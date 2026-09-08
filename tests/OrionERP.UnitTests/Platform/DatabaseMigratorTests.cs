@@ -163,7 +163,8 @@ public sealed class DatabaseMigrationManifestTests
       "20260903_hospitality_public_scope_sandbox",
       "20260903_restaurant_public_identity_scope_sandbox",
       "20260904_public_site_presentation_transition_sandbox",
-      "20260905_hospitality_legal_consent_sandbox"
+      "20260905_hospitality_legal_consent_sandbox",
+      "20260908_hospitality_administration_scope_sandbox"
     })
     {
       var sandboxOnlyMigration = Manifest.Migrations.Single(item => item.Id == sandboxOnlyId);
@@ -189,6 +190,8 @@ public sealed class DatabaseMigrationManifestTests
       "src/OrionERP.Infrastructure/Features/Bonhomia/PublicBooking/Sql/20260905_hospitality_legal_consent_sandbox.sql"));
     actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260903_restaurant_public_identity_scope_sandbox.sql"));
+
+    actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260908_hospitality_administration_scope_sandbox.sql"));
 
     Assert.Equal(
       actual.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
@@ -250,6 +253,13 @@ public sealed class DatabaseMigrationManifestTests
           Assert.Contains("PrivacyVersionAccepted", sql, StringComparison.Ordinal);
           Assert.Contains("TermsVersionAccepted", sql, StringComparison.Ordinal);
           Assert.Contains("LegalAcceptedAtUtc", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260908_hospitality_administration_scope_sandbox":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("CREATE SECURITY POLICY orion.HospitalityScopePolicy", sql, StringComparison.Ordinal);
+          Assert.Contains("ADD BLOCK PREDICATE", sql, StringComparison.Ordinal);
           Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
           break;
         default:

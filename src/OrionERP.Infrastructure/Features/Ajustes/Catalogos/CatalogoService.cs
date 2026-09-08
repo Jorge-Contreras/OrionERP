@@ -2,8 +2,10 @@ using System.Data;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
+using OrionERP.Application.Common;
 using OrionERP.Application.Features.Ajustes;
 using OrionERP.Application.Features.Ajustes.Catalogos;
+using OrionERP.Infrastructure.Features.Reservaciones;
 
 namespace OrionERP.Infrastructure.Features.Ajustes.Catalogos;
 
@@ -239,15 +241,57 @@ SELECT (SELECT COUNT(*) FROM dbo.OrdenTrabajo WHERE CategoriaId = @id)
     };
 
   private readonly string _connectionString;
+  private readonly HospitalityConnectionFactory? _hospitalityConnections;
+  private readonly ICurrentCompanyContext? _companyContext;
 
-  public CatalogoService(IConfiguration configuration)
+  public CatalogoService(IConfiguration configuration, HospitalityConnectionFactory? hospitalityConnections = null,
+    ICurrentCompanyContext? companyContext = null)
   {
+    _hospitalityConnections = hospitalityConnections;
+    _companyContext = companyContext;
     _connectionString = configuration.GetConnectionString("OrionDb")
         ?? throw new InvalidOperationException("Missing connection string 'OrionDb'.");
   }
 
   public IReadOnlyList<CatalogoDescriptorDto> GetDescriptors()
     => Catalogos.Values.Select(catalogo => catalogo.Descriptor).ToList();
+
+  private async Task<SqlConnection> OpenCatalogConnectionAsync(CatalogoKey key, string? rfc, CancellationToken ct)
+  {
+    if (key == CatalogoKey.Arrendadores)
+      return await (_hospitalityConnections ?? throw new UnauthorizedAccessException("Selecciona una sede autorizada de Hospedaje.")).OpenAsync(ct);
+    if (key == CatalogoKey.Proyectos)
+    {
+      (_companyContext ?? throw new UnauthorizedAccessException("Selecciona una empresa autorizada.")).EnsureRfc(rfc ?? throw new UnauthorizedAccessException("Selecciona una empresa autorizada."));
+      if (_hospitalityConnections is not null)
+      {
+        try { return await _hospitalityConnections.OpenAsync(ct); }
+        catch (UnauthorizedAccessException) { /* General projects have no hospitality references. */ }
+      }
+    }
+    var connection = new SqlConnection(_connectionString);
+    try
+    {
+      await connection.OpenAsync(ct);
+      if (key == CatalogoKey.Proyectos)
+        await connection.ExecuteAsync(new CommandDefinition("""
+          EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalityCompanyId',@value=NULL;
+          EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalitySiteId',@value=NULL;
+          EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalityRfc',@value=NULL;
+          """, cancellationToken: ct));
+      return connection;
+    }
+    catch { await connection.DisposeAsync(); throw; }
+  }
+
+  private static Task<bool> HasHospitalityActivityLinksAsync(SqlConnection connection, IDbTransaction? transaction, string id, string rfc, CancellationToken ct)
+    => connection.ExecuteScalarAsync<bool>(new CommandDefinition("""
+      SELECT CONVERT(bit,CASE WHEN EXISTS (
+        SELECT 1 FROM dbo.Actividad activity WITH (UPDLOCK, HOLDLOCK)
+        JOIN dbo.Actividad_RoomCalendar activityLink WITH (UPDLOCK, HOLDLOCK) ON activityLink.Actividad_ID=activity.ID
+        WHERE activity.ID=TRY_CONVERT(int,@Id) AND activity.RFC=@Rfc
+      ) THEN 1 ELSE 0 END);
+      """, new { Id = id, Rfc = rfc }, transaction, cancellationToken: ct));
 
   public async Task<IReadOnlyList<CatalogoItemDto>> GetItemsAsync(
       CatalogoKey key,
@@ -268,6 +312,10 @@ SELECT (SELECT COUNT(*) FROM dbo.OrdenTrabajo WHERE CategoriaId = @id)
     var activo = catalogo.ActivoColumna is null ? "CONVERT(bit, 1)" : $"item.[{catalogo.ActivoColumna}]";
 
     var filters = new List<string>();
+    if (key == CatalogoKey.Arrendadores)
+      filters.Add("EXISTS (SELECT 1 FROM dbo.ROOM ownedRoom WHERE ownedRoom.OWNER_ID = item.id)");
+    if (key == CatalogoKey.Proyectos)
+      filters.Add("NOT EXISTS (SELECT 1 FROM dbo.Actividad_RoomCalendar activityLink WHERE activityLink.Actividad_ID = item.ID AND NOT EXISTS (SELECT 1 FROM dbo.ROOM_CALENDAR ownedCalendar WHERE ownedCalendar.ID = activityLink.RoomCalendar_ID))");
     if (catalogo.RfcColumna is not null)
     {
       filters.Add($"item.[{catalogo.RfcColumna}] = @rfc");
@@ -303,7 +351,7 @@ FROM {catalogo.Tabla} AS item
 {where}
 ORDER BY {(catalogo.OrdenColumna is not null ? $"item.[{catalogo.OrdenColumna}], " : string.Empty)}{(catalogo.CodigoColumna is not null ? $"item.[{catalogo.CodigoColumna}], " : string.Empty)}item.[{catalogo.NombreColumna}];";
 
-    using var connection = new SqlConnection(_connectionString);
+    using var connection = await OpenCatalogConnectionAsync(key, normalizedRfc, ct);
     var rows = await connection.QueryAsync<CatalogoRow>(
         new CommandDefinition(
             sql,
@@ -326,6 +374,8 @@ ORDER BY {(catalogo.OrdenColumna is not null ? $"item.[{catalogo.OrdenColumna}],
 
   public async Task<AjustesCommandResult> SaveItemAsync(CatalogoSaveRequest request, CancellationToken ct = default)
   {
+    if (request.Key == CatalogoKey.Arrendadores)
+      return AjustesCommandResult.Fail("El maestro de arrendadores es compartido. Antes de modificarlo se requiere una asociación exclusiva y verificada por empresa y sede.");
     var catalogo = Resolve(request.Key);
     var descriptor = catalogo.Descriptor;
 
@@ -373,137 +423,154 @@ ORDER BY {(catalogo.OrdenColumna is not null ? $"item.[{catalogo.OrdenColumna}],
         $"La clave {codigo} pertenece al catálogo SAT y ya debería existir. Búscala en la lista en lugar de crearla.");
     }
 
-    using var connection = new SqlConnection(_connectionString);
-    await connection.OpenAsync(ct);
-
-    // Duplicate probe on the natural key: the code when there is one, otherwise
-    // the name. Tenant-scoped catalogs compare inside their own RFC only.
-    var duplicateColumn = catalogo.CodigoColumna ?? catalogo.NombreColumna;
-    var duplicateValue = catalogo.CodigoColumna is null ? nombre : codigo!;
-    var duplicateSql = $@"
-SELECT TOP (1) CONVERT(nvarchar(50), item.[{catalogo.LlaveColumna}])
-FROM {catalogo.Tabla} AS item
-WHERE UPPER(LTRIM(RTRIM(CONVERT(nvarchar(400), item.[{duplicateColumn}])))) = UPPER(@value)
-{(catalogo.RfcColumna is not null ? $"  AND item.[{catalogo.RfcColumna}] = @rfc" : string.Empty)}
-  AND (@id IS NULL OR CONVERT(nvarchar(50), item.[{catalogo.LlaveColumna}]) <> @id);";
-
-    var duplicate = await connection.ExecuteScalarAsync<string?>(
-        new CommandDefinition(duplicateSql, new { value = duplicateValue, rfc, id }, cancellationToken: ct));
-    if (duplicate is not null)
+    using var connection = await OpenCatalogConnectionAsync(request.Key, rfc, ct);
+    await using var transaction = request.Key == CatalogoKey.Proyectos
+      ? await connection.BeginTransactionAsync(IsolationLevel.Serializable, ct) : null;
+    var committed = false;
+    try
     {
-      return AjustesCommandResult.Fail($"Ya existe un registro con ese valor ({duplicateValue}).");
-    }
+      if (request.Key == CatalogoKey.Proyectos && !isInsert && await HasHospitalityActivityLinksAsync(connection, transaction, id!, rfc!, ct))
+        return AjustesCommandResult.Fail("Los proyectos vinculados a habitaciones se administran desde el flujo de Hospedaje de su sede.");
 
-    if (isInsert)
-    {
-      var columns = new List<string>();
-      var values = new List<string>();
+      // Duplicate probe on the natural key: the code when there is one, otherwise
+      // the name. Tenant-scoped catalogs compare inside their own RFC only.
+      var duplicateColumn = catalogo.CodigoColumna ?? catalogo.NombreColumna;
+      var duplicateValue = catalogo.CodigoColumna is null ? nombre : codigo!;
+      var duplicateSql = $@"
+  SELECT TOP (1) CONVERT(nvarchar(50), item.[{catalogo.LlaveColumna}])
+  FROM {catalogo.Tabla} AS item
+  WHERE UPPER(LTRIM(RTRIM(CONVERT(nvarchar(400), item.[{duplicateColumn}])))) = UPPER(@value)
+  {(catalogo.RfcColumna is not null ? $"  AND item.[{catalogo.RfcColumna}] = @rfc" : string.Empty)}
+    AND (@id IS NULL OR CONVERT(nvarchar(50), item.[{catalogo.LlaveColumna}]) <> @id);";
 
-      if (catalogo.LlaveEsTexto)
+      var duplicate = await connection.ExecuteScalarAsync<string?>(
+          new CommandDefinition(duplicateSql, new { value = duplicateValue, rfc, id }, transaction: transaction, cancellationToken: ct));
+      if (duplicate is not null)
       {
-        // A text key is supplied by the caller rather than generated.
-        columns.Add($"[{catalogo.LlaveColumna}]");
-        values.Add("@codigo");
+        return AjustesCommandResult.Fail($"Ya existe un registro con ese valor ({duplicateValue}).");
       }
+
+      if (isInsert)
+      {
+        var columns = new List<string>();
+        var values = new List<string>();
+
+        if (catalogo.LlaveEsTexto)
+        {
+          // A text key is supplied by the caller rather than generated.
+          columns.Add($"[{catalogo.LlaveColumna}]");
+          values.Add("@codigo");
+        }
+        if (catalogo.CodigoColumna is not null && !catalogo.LlaveEsTexto)
+        {
+          columns.Add($"[{catalogo.CodigoColumna}]");
+          values.Add("@codigo");
+        }
+        columns.Add($"[{catalogo.NombreColumna}]");
+        values.Add("@nombre");
+        if (catalogo.OrdenColumna is not null)
+        {
+          columns.Add($"[{catalogo.OrdenColumna}]");
+          values.Add("@orden");
+        }
+        if (catalogo.ActivoColumna is not null)
+        {
+          columns.Add($"[{catalogo.ActivoColumna}]");
+          values.Add("@activo");
+        }
+        if (catalogo.RfcColumna is not null)
+        {
+          columns.Add($"[{catalogo.RfcColumna}]");
+          values.Add("@rfc");
+        }
+        if (catalogo.ColumnasExtraInsert is not null)
+        {
+          columns.Add(catalogo.ColumnasExtraInsert);
+          values.Add(catalogo.ValoresExtraInsert!);
+        }
+
+        // dbo.Actividad, dbo.Compra, dbo.Servicios and dbo.Proveedores predate the
+        // migration folder and may or may not have an identity key, so the key is
+        // generated here when the table does not generate it itself.
+        var needsGeneratedKey = !catalogo.LlaveEsTexto;
+        var insertSql = needsGeneratedKey
+          ? $@"
+  DECLARE @hasIdentity bit = CONVERT(bit, ISNULL(OBJECTPROPERTY(OBJECT_ID(N'{catalogo.Tabla}'), 'TableHasIdentity'), 0));
+
+  IF @hasIdentity = 1
+  BEGIN
+      INSERT INTO {catalogo.Tabla} ({string.Join(", ", columns)})
+      OUTPUT CONVERT(nvarchar(50), INSERTED.[{catalogo.LlaveColumna}])
+      VALUES ({string.Join(", ", values)});
+  END
+  ELSE
+  BEGIN
+      DECLARE @nextId int;
+      SELECT @nextId = ISNULL(MAX([{catalogo.LlaveColumna}]), 0) + 1
+      FROM {catalogo.Tabla} WITH (UPDLOCK, HOLDLOCK);
+
+      INSERT INTO {catalogo.Tabla} ([{catalogo.LlaveColumna}], {string.Join(", ", columns)})
+      OUTPUT CONVERT(nvarchar(50), INSERTED.[{catalogo.LlaveColumna}])
+      VALUES (@nextId, {string.Join(", ", values)});
+  END;"
+          : $@"
+  INSERT INTO {catalogo.Tabla} ({string.Join(", ", columns)})
+  VALUES ({string.Join(", ", values)});
+  SELECT @codigo;";
+
+        var newId = await connection.ExecuteScalarAsync<string?>(
+            new CommandDefinition(
+                insertSql,
+                new { codigo, nombre, orden = request.Orden ?? 0, activo = request.Activo, rfc },
+                transaction: transaction, cancellationToken: ct));
+
+        committed = true;
+        return AjustesCommandResult.Ok(
+          $"{descriptor.Titulo}: registro creado correctamente.",
+          int.TryParse(newId, out var parsedNew) ? parsedNew : null);
+      }
+
+      var assignments = new List<string> { $"[{catalogo.NombreColumna}] = @nombre" };
       if (catalogo.CodigoColumna is not null && !catalogo.LlaveEsTexto)
       {
-        columns.Add($"[{catalogo.CodigoColumna}]");
-        values.Add("@codigo");
+        assignments.Add($"[{catalogo.CodigoColumna}] = @codigo");
       }
-      columns.Add($"[{catalogo.NombreColumna}]");
-      values.Add("@nombre");
       if (catalogo.OrdenColumna is not null)
       {
-        columns.Add($"[{catalogo.OrdenColumna}]");
-        values.Add("@orden");
+        assignments.Add($"[{catalogo.OrdenColumna}] = @orden");
       }
       if (catalogo.ActivoColumna is not null)
       {
-        columns.Add($"[{catalogo.ActivoColumna}]");
-        values.Add("@activo");
-      }
-      if (catalogo.RfcColumna is not null)
-      {
-        columns.Add($"[{catalogo.RfcColumna}]");
-        values.Add("@rfc");
-      }
-      if (catalogo.ColumnasExtraInsert is not null)
-      {
-        columns.Add(catalogo.ColumnasExtraInsert);
-        values.Add(catalogo.ValoresExtraInsert!);
+        assignments.Add($"[{catalogo.ActivoColumna}] = @activo");
       }
 
-      // dbo.Actividad, dbo.Compra, dbo.Servicios and dbo.Proveedores predate the
-      // migration folder and may or may not have an identity key, so the key is
-      // generated here when the table does not generate it itself.
-      var needsGeneratedKey = !catalogo.LlaveEsTexto;
-      var insertSql = needsGeneratedKey
-        ? $@"
-DECLARE @hasIdentity bit = CONVERT(bit, ISNULL(OBJECTPROPERTY(OBJECT_ID(N'{catalogo.Tabla}'), 'TableHasIdentity'), 0));
+      var updateSql = $@"
+  UPDATE {catalogo.Tabla}
+  SET {string.Join(", ", assignments)}
+  WHERE CONVERT(nvarchar(50), [{catalogo.LlaveColumna}]) = @id
+  {(catalogo.RfcColumna is not null ? $"  AND [{catalogo.RfcColumna}] = @rfc" : string.Empty)};";
 
-IF @hasIdentity = 1
-BEGIN
-    INSERT INTO {catalogo.Tabla} ({string.Join(", ", columns)})
-    OUTPUT CONVERT(nvarchar(50), INSERTED.[{catalogo.LlaveColumna}])
-    VALUES ({string.Join(", ", values)});
-END
-ELSE
-BEGIN
-    DECLARE @nextId int;
-    SELECT @nextId = ISNULL(MAX([{catalogo.LlaveColumna}]), 0) + 1
-    FROM {catalogo.Tabla} WITH (UPDLOCK, HOLDLOCK);
-
-    INSERT INTO {catalogo.Tabla} ([{catalogo.LlaveColumna}], {string.Join(", ", columns)})
-    OUTPUT CONVERT(nvarchar(50), INSERTED.[{catalogo.LlaveColumna}])
-    VALUES (@nextId, {string.Join(", ", values)});
-END;"
-        : $@"
-INSERT INTO {catalogo.Tabla} ({string.Join(", ", columns)})
-VALUES ({string.Join(", ", values)});
-SELECT @codigo;";
-
-      var newId = await connection.ExecuteScalarAsync<string?>(
+      var affected = await connection.ExecuteAsync(
           new CommandDefinition(
-              insertSql,
-              new { codigo, nombre, orden = request.Orden ?? 0, activo = request.Activo, rfc },
-              cancellationToken: ct));
+              updateSql,
+              new { id, codigo, nombre, orden = request.Orden ?? 0, activo = request.Activo, rfc },
+              transaction: transaction, cancellationToken: ct));
 
-      return AjustesCommandResult.Ok(
-        $"{descriptor.Titulo}: registro creado correctamente.",
-        int.TryParse(newId, out var parsedNew) ? parsedNew : null);
+      committed = affected > 0;
+      return affected == 0
+        ? AjustesCommandResult.Fail("El registro seleccionado ya no existe.")
+        : AjustesCommandResult.Ok(
+            $"{descriptor.Titulo}: registro actualizado correctamente.",
+            int.TryParse(id, out var parsed) ? parsed : null);
     }
-
-    var assignments = new List<string> { $"[{catalogo.NombreColumna}] = @nombre" };
-    if (catalogo.CodigoColumna is not null && !catalogo.LlaveEsTexto)
+    finally
     {
-      assignments.Add($"[{catalogo.CodigoColumna}] = @codigo");
+      if (transaction is not null)
+      {
+        if (committed) await transaction.CommitAsync(ct);
+        else await transaction.RollbackAsync(CancellationToken.None);
+      }
     }
-    if (catalogo.OrdenColumna is not null)
-    {
-      assignments.Add($"[{catalogo.OrdenColumna}] = @orden");
-    }
-    if (catalogo.ActivoColumna is not null)
-    {
-      assignments.Add($"[{catalogo.ActivoColumna}] = @activo");
-    }
-
-    var updateSql = $@"
-UPDATE {catalogo.Tabla}
-SET {string.Join(", ", assignments)}
-WHERE CONVERT(nvarchar(50), [{catalogo.LlaveColumna}]) = @id
-{(catalogo.RfcColumna is not null ? $"  AND [{catalogo.RfcColumna}] = @rfc" : string.Empty)};";
-
-    var affected = await connection.ExecuteAsync(
-        new CommandDefinition(
-            updateSql,
-            new { id, codigo, nombre, orden = request.Orden ?? 0, activo = request.Activo, rfc },
-            cancellationToken: ct));
-
-    return affected == 0
-      ? AjustesCommandResult.Fail("El registro seleccionado ya no existe.")
-      : AjustesCommandResult.Ok(
-          $"{descriptor.Titulo}: registro actualizado correctamente.",
-          int.TryParse(id, out var parsed) ? parsed : null);
   }
 
   public async Task<AjustesCommandResult> DeleteItemAsync(
@@ -512,6 +579,8 @@ WHERE CONVERT(nvarchar(50), [{catalogo.LlaveColumna}]) = @id
       string? rfc,
       CancellationToken ct = default)
   {
+    if (key == CatalogoKey.Arrendadores)
+      return AjustesCommandResult.Fail("El maestro de arrendadores es compartido. Antes de eliminarlo se requiere una asociación exclusiva y verificada por empresa y sede.");
     var catalogo = Resolve(key);
     var descriptor = catalogo.Descriptor;
 
@@ -537,50 +606,67 @@ WHERE CONVERT(nvarchar(50), [{catalogo.LlaveColumna}]) = @id
       }
     }
 
-    using var connection = new SqlConnection(_connectionString);
-    await connection.OpenAsync(ct);
-
-    // Deactivation is always safe, so the referential check only gates a real
-    // delete. Reporting the count beats letting SQL Server raise error 547.
-    if (catalogo.ActivoColumna is null)
+    using var connection = await OpenCatalogConnectionAsync(key, normalizedRfc, ct);
+    await using var transaction = key == CatalogoKey.Proyectos
+      ? await connection.BeginTransactionAsync(IsolationLevel.Serializable, ct) : null;
+    var committed = false;
+    try
     {
-      var references = await connection.ExecuteScalarAsync<int>(
-          new CommandDefinition(
-              catalogo.ReferenciasSql,
-              new { id = normalizedId, rfc = normalizedRfc },
-              cancellationToken: ct));
+      if (key == CatalogoKey.Proyectos && await HasHospitalityActivityLinksAsync(connection, transaction, normalizedId, normalizedRfc!, ct))
+        return AjustesCommandResult.Fail("Los proyectos vinculados a habitaciones se administran desde el flujo de Hospedaje de su sede.");
 
-      if (references > 0)
+      // Deactivation is always safe, so the referential check only gates a real
+      // delete. Reporting the count beats letting SQL Server raise error 547.
+      if (catalogo.ActivoColumna is null)
       {
-        return AjustesCommandResult.Fail(
-          $"No se puede eliminar: {references} registro(s) siguen usando este valor.");
+        var references = await connection.ExecuteScalarAsync<int>(
+            new CommandDefinition(
+                catalogo.ReferenciasSql,
+                new { id = normalizedId, rfc = normalizedRfc },
+                transaction: transaction, cancellationToken: ct));
+
+        if (references > 0)
+        {
+          return AjustesCommandResult.Fail(
+            $"No se puede eliminar: {references} registro(s) siguen usando este valor.");
+        }
+
+        var deleteSql = $@"
+  DELETE FROM {catalogo.Tabla}
+  WHERE CONVERT(nvarchar(50), [{catalogo.LlaveColumna}]) = @id
+  {(catalogo.RfcColumna is not null ? $"  AND [{catalogo.RfcColumna}] = @rfc" : string.Empty)};";
+
+        var removed = await connection.ExecuteAsync(
+            new CommandDefinition(deleteSql, new { id = normalizedId, rfc = normalizedRfc }, transaction: transaction, cancellationToken: ct));
+
+        committed = removed > 0;
+        return removed == 0
+          ? AjustesCommandResult.Fail("El registro seleccionado ya no existe.")
+          : AjustesCommandResult.Ok($"{descriptor.Titulo}: registro eliminado correctamente.");
       }
 
-      var deleteSql = $@"
-DELETE FROM {catalogo.Tabla}
-WHERE CONVERT(nvarchar(50), [{catalogo.LlaveColumna}]) = @id
-{(catalogo.RfcColumna is not null ? $"  AND [{catalogo.RfcColumna}] = @rfc" : string.Empty)};";
+      var deactivateSql = $@"
+  UPDATE {catalogo.Tabla}
+  SET [{catalogo.ActivoColumna}] = 0
+  WHERE CONVERT(nvarchar(50), [{catalogo.LlaveColumna}]) = @id
+  {(catalogo.RfcColumna is not null ? $"  AND [{catalogo.RfcColumna}] = @rfc" : string.Empty)};";
 
-      var removed = await connection.ExecuteAsync(
-          new CommandDefinition(deleteSql, new { id = normalizedId, rfc = normalizedRfc }, cancellationToken: ct));
+      var deactivated = await connection.ExecuteAsync(
+          new CommandDefinition(deactivateSql, new { id = normalizedId, rfc = normalizedRfc }, transaction: transaction, cancellationToken: ct));
 
-      return removed == 0
+      committed = deactivated > 0;
+      return deactivated == 0
         ? AjustesCommandResult.Fail("El registro seleccionado ya no existe.")
-        : AjustesCommandResult.Ok($"{descriptor.Titulo}: registro eliminado correctamente.");
+        : AjustesCommandResult.Ok($"{descriptor.Titulo}: registro desactivado correctamente.");
     }
-
-    var deactivateSql = $@"
-UPDATE {catalogo.Tabla}
-SET [{catalogo.ActivoColumna}] = 0
-WHERE CONVERT(nvarchar(50), [{catalogo.LlaveColumna}]) = @id
-{(catalogo.RfcColumna is not null ? $"  AND [{catalogo.RfcColumna}] = @rfc" : string.Empty)};";
-
-    var deactivated = await connection.ExecuteAsync(
-        new CommandDefinition(deactivateSql, new { id = normalizedId, rfc = normalizedRfc }, cancellationToken: ct));
-
-    return deactivated == 0
-      ? AjustesCommandResult.Fail("El registro seleccionado ya no existe.")
-      : AjustesCommandResult.Ok($"{descriptor.Titulo}: registro desactivado correctamente.");
+    finally
+    {
+      if (transaction is not null)
+      {
+        if (committed) await transaction.CommitAsync(ct);
+        else await transaction.RollbackAsync(CancellationToken.None);
+      }
+    }
   }
 
   public async Task<IReadOnlyList<CuentaContableNodeDto>> GetCuentasAsync(

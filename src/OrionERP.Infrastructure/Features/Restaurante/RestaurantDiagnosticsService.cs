@@ -1,6 +1,7 @@
 using System.Data.Common;
 using Dapper;
 using OrionERP.Application.Common;
+using OrionERP.Infrastructure.Features.Logistica.Shared;
 using OrionERP.Application.Features.Contabilidad.ContabilidadRegistros;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Restaurante;
@@ -43,7 +44,7 @@ public sealed partial class RestaurantDiagnosticsService : IRestaurantDiagnostic
     if (to < from) (from, to) = (to, from);
     var toExclusive = to.AddDays(1);
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     var facts = await LoadFactsAsync(conn, rfc, query.SiteId, from, to, toExclusive, ct);
     var missing = await GetMissingAccountsAsync(rfc, ct);
 
@@ -79,7 +80,7 @@ public sealed partial class RestaurantDiagnosticsService : IRestaurantDiagnostic
     CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(normalizedRfc, ct);
 
     const string sql =
       """
@@ -101,7 +102,8 @@ public sealed partial class RestaurantDiagnosticsService : IRestaurantDiagnostic
       SELECT Id, CorridaId, ReglaClave, Severidad, Titulo, Detalle, Agrupadores,
              MontoExpuesto, Conteo, AccionSugerida, Estado, Justificacion, ResueltoEn, ResueltoPor
       FROM restaurante.DiagnosticoHallazgo
-      WHERE Rfc = @Rfc AND CorridaId IN @Ids;
+      WHERE Rfc = @Rfc AND CorridaId IN @Ids
+        AND ReglaClave NOT IN ('R13','R16','R17');
       """, new { Rfc = normalizedRfc, Ids = ids }, cancellationToken: ct))).AsList();
 
     foreach (var run in runs)
@@ -114,6 +116,14 @@ public sealed partial class RestaurantDiagnosticsService : IRestaurantDiagnostic
         .ToList();
     }
 
+    // Historical inventory findings lack location provenance; their original totals
+    // cannot be returned after excluding those findings.
+    foreach (var run in runs)
+    {
+      run.HallazgosTotal = run.Findings.Count;
+      run.Criticos = run.Findings.Count(f => f.Severidad == RestaurantDiagnosticSeverities.Critica);
+      run.MontoExpuesto = decimal.Round(run.Findings.Sum(f => f.MontoExpuesto), 2);
+    }
     return runs;
   }
 
@@ -128,7 +138,7 @@ public sealed partial class RestaurantDiagnosticsService : IRestaurantDiagnostic
     if (string.IsNullOrWhiteSpace(justificacion) || justificacion.Trim().Length < 15)
       return RestaurantCommandResult.Fail("Escribe una justificación de al menos 15 caracteres para aceptar el hallazgo.");
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(normalizedRfc, ct);
     var affected = await conn.ExecuteAsync(new CommandDefinition(
       """
       UPDATE restaurante.DiagnosticoHallazgo
@@ -136,7 +146,8 @@ public sealed partial class RestaurantDiagnosticsService : IRestaurantDiagnostic
           Justificacion = @Justificacion,
           ResueltoEn = SYSUTCDATETIME(),
           ResueltoPor = @UserName
-      WHERE Rfc = @Rfc AND Id = @Id AND Estado = 'Abierto';
+      WHERE Rfc = @Rfc AND Id = @Id AND Estado = 'Abierto'
+        AND ReglaClave NOT IN ('R13','R16','R17');
       """,
       new
       {
@@ -156,7 +167,7 @@ public sealed partial class RestaurantDiagnosticsService : IRestaurantDiagnostic
     CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(normalizedRfc, ct);
 
     const string sql =
       """
@@ -246,7 +257,7 @@ public sealed partial class RestaurantDiagnosticsService : IRestaurantDiagnostic
         Message = "El rango no puede exceder 120 días para generar pólizas en bloque."
       };
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     var pendientes = (await conn.QueryAsync<PendingDayRow>(new CommandDefinition(
       """
       SELECT orderInfo.OperationalDate AS Fecha,
@@ -512,7 +523,7 @@ public sealed partial class RestaurantDiagnosticsService : IRestaurantDiagnostic
     {
       findings.Add(new RestaurantDiagnosticFindingDto
       {
-        ReglaClave = "R13",
+        ReglaClave = "R13-G",
         Severidad = RestaurantDiagnosticSeverities.Alta,
         Titulo = "No existe inventario contable",
         Detalle = $"El almacén reporta {facts.ValorInventario:C} en {facts.SaldosInventario} saldo(s) con existencia y el agrupador 115 no tiene " +
@@ -594,7 +605,7 @@ public sealed partial class RestaurantDiagnosticsService : IRestaurantDiagnostic
     {
       findings.Add(new RestaurantDiagnosticFindingDto
       {
-        ReglaClave = "R16",
+        ReglaClave = "R16-G",
         Severidad = RestaurantDiagnosticSeverities.Media,
         Titulo = "Conteos físicos con cantidades imposibles",
         Detalle = $"{facts.ConteosAtipicos} captura(s) de conteo superaron {ConteoAtipicoUmbral:N0} unidades. " +
@@ -611,7 +622,7 @@ public sealed partial class RestaurantDiagnosticsService : IRestaurantDiagnostic
     {
       findings.Add(new RestaurantDiagnosticFindingDto
       {
-        ReglaClave = "R17",
+        ReglaClave = "R17-G",
         Severidad = RestaurantDiagnosticSeverities.Alta,
         Titulo = "Productos preparados al momento con existencia en almacén",
         Detalle = $"{facts.MaterialesFantasma} material(es) marcados como preparación a pedido acumulan {facts.UnidadesFantasma:N0} unidades " +
@@ -827,7 +838,7 @@ public sealed partial class RestaurantDiagnosticsService : IRestaurantDiagnostic
 
   private async Task<string> NextNivel3Async(string rfc, string nivel1, string nivel2, CancellationToken ct)
   {
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     var max = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
       """
       SELECT MAX(TRY_CONVERT(int, cuenta.Nivel3))
@@ -840,9 +851,20 @@ public sealed partial class RestaurantDiagnosticsService : IRestaurantDiagnostic
   private static string? Truncate(string? value, int max)
     => string.IsNullOrEmpty(value) || value.Length <= max ? value : value[..max];
 
-  private DbConnection CreateConnection()
-    => _connectionFactory.Create() as DbConnection
-      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
+  private async Task<DbConnection> OpenScopedAsync(string rfc, CancellationToken ct)
+  {
+    // Persistent restaurant diagnostics are company-wide. Only general locations
+    // may feed their inventory rules; hospitality never flows into this snapshot.
+    var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, null, ct);
+    try
+    {
+      await conn.ExecuteAsync(new CommandDefinition(
+        "IF @Rfc <> CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc')) THROW 51936, 'Requested company does not match the authenticated session.', 1;",
+        new { Rfc = rfc }, cancellationToken: ct));
+      return conn;
+    }
+    catch { await conn.DisposeAsync(); throw; }
+  }
 
   private sealed class CatalogRow
   {

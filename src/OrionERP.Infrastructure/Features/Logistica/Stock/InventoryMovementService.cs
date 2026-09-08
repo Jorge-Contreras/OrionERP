@@ -4,6 +4,8 @@ using Dapper;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Logistica.Stock;
+using OrionERP.Application.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Logistica.Shared;
 
 namespace OrionERP.Infrastructure.Features.Logistica.Stock;
 
@@ -11,24 +13,27 @@ public sealed class InventoryMovementService : IInventoryMovementService
 {
   private const int MaxEvidenceBytes = 10 * 1024 * 1024;
   private readonly IDbConnectionFactory _connectionFactory;
+  private readonly IHospitalityScopeAccessor? _hospitalityScope;
 
-  public InventoryMovementService(IDbConnectionFactory connectionFactory)
+  public InventoryMovementService(IDbConnectionFactory connectionFactory, IHospitalityScopeAccessor? hospitalityScope = null)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+    _hospitalityScope = hospitalityScope;
   }
 
   public async Task<InventoryMovementWorkspaceDto> GetWorkspaceAsync(string rfc, CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
-    const string sql =
-      """
-      SELECT Id,LocationCode AS Code,LocationName AS [Name]
-      FROM logistica.Location
-      WHERE Rfc=@Rfc AND IsActive=1 AND IsInventoryEnabled=1
-      ORDER BY LocationName,LocationCode;
+    var sql =
+      $$"""
+      SELECT locationInfo.Id,locationInfo.LocationCode AS Code,locationInfo.LocationName AS [Name]
+      FROM logistica.Location locationInfo
+      WHERE locationInfo.Rfc=@Rfc AND locationInfo.IsActive=1 AND locationInfo.IsInventoryEnabled=1
+        AND {{LogisticsLocationScope.VisibilitySql("locationInfo")}}
+      ORDER BY locationInfo.LocationName,locationInfo.LocationCode;
 
       SELECT balanceInfo.MaterialId,balanceInfo.LocationId,material.MaterialCode,
-             material.[Description] AS MaterialName,unitInfo.UnitCode,
+             material.[Description] AS MaterialName,unitInfo.Abbreviation AS UnitCode,
              balanceInfo.Quantity,balanceInfo.ReservedQuantity,balanceInfo.AverageUnitCost,material.TrackLots
       FROM logistica.StockBalance balanceInfo
       JOIN logistica.Material material ON material.Rfc=balanceInfo.Rfc AND material.Id=balanceInfo.MaterialId
@@ -36,17 +41,20 @@ public sealed class InventoryMovementService : IInventoryMovementService
       LEFT JOIN logistica.UnitOfMeasure unitInfo ON unitInfo.Id=material.BaseUnitId
       WHERE balanceInfo.Rfc=@Rfc AND ISNULL(balanceInfo.IsRemoved,0)=0
         AND material.IsActive=1 AND locationInfo.IsActive=1 AND locationInfo.IsInventoryEnabled=1
+        AND {{LogisticsLocationScope.VisibilitySql("locationInfo")}}
       ORDER BY material.[Description],material.MaterialCode,locationInfo.LocationName;
 
-      SELECT lotInfo.Id,lotInfo.MaterialId,lotBalance.LocationId,lotInfo.LotCode,lotInfo.ExpirationDate,
+      SELECT lotInfo.Id,lotInfo.MaterialId,lotBalance.LocationId,lotInfo.LotCode,lotInfo.ExpiresAt AS ExpirationDate,
              lotBalance.Quantity,lotBalance.ReservedQuantity
       FROM logistica.MaterialLot lotInfo
       JOIN logistica.LotBalance lotBalance ON lotBalance.Rfc=lotInfo.Rfc AND lotBalance.MaterialLotId=lotInfo.Id
-      WHERE lotInfo.Rfc=@Rfc AND lotInfo.[Status]='Active'
+      WHERE lotInfo.Rfc=@Rfc AND lotInfo.IsBlocked=0
         AND lotBalance.Quantity-lotBalance.ReservedQuantity>0
-      ORDER BY COALESCE(lotInfo.ExpirationDate,'9999-12-31'),lotInfo.LotCode;
+        AND {{LogisticsLocationScope.ForLocationIdSql("lotBalance.LocationId","lotBalance.Rfc")}}
+      ORDER BY COALESCE(lotInfo.ExpiresAt,'9999-12-31'),lotInfo.LotCode;
       """;
-    using var conn = CreateConnection();
+    await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory,_hospitalityScope,ct);
+    await LogisticsLocationScope.EnsureRfcAsync(conn,null,normalizedRfc,ct);
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(sql, new { Rfc = normalizedRfc }, cancellationToken: ct));
     return new InventoryMovementWorkspaceDto
     {
@@ -80,11 +88,20 @@ public sealed class InventoryMovementService : IInventoryMovementService
     if (lines.Any(line => line.MaterialId <= 0 || line.Quantity <= 0))
       return LogisticsCommandResult.Fail("Todas las partidas deben tener material y cantidad positiva.");
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory,_hospitalityScope,ct);
+    await LogisticsLocationScope.EnsureRfcAsync(conn,null,rfc,ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
+      await LogisticsLocationScope.EnsureLocationAsync(conn,tx,request.FromLocationId,ct);
+      await LogisticsLocationScope.EnsureLocationAsync(conn,tx,request.ToLocationId,ct);
+      await conn.ExecuteAsync(new CommandDefinition($$"""
+        IF EXISTS (SELECT 1 FROM logistica.InventoryTransfer existing WITH (UPDLOCK,HOLDLOCK)
+          WHERE existing.Rfc=@Rfc AND existing.TransferCode=@Code
+            AND (NOT {{LogisticsLocationScope.ForLocationIdSql("existing.FromLocationId","existing.Rfc")}}
+              OR NOT {{LogisticsLocationScope.ForLocationIdSql("existing.ToLocationId","existing.Rfc")}}))
+          THROW 51932,'El traspaso existente pertenece a otra sede.',1;
+        """,new { Rfc=rfc,Code=request.TransferCode.Trim().ToUpperInvariant() },tx,cancellationToken:ct));
       var existing = await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
         "SELECT Id FROM logistica.InventoryTransfer WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND TransferCode=@Code;",
         new { Rfc = rfc, Code = request.TransferCode.Trim().ToUpperInvariant() }, tx, cancellationToken: ct));
@@ -257,12 +274,22 @@ public sealed class InventoryMovementService : IInventoryMovementService
       })
       .Where(line => line.QuantityDelta != 0)
       .ToList();
+    if (lines.Count==0) return LogisticsCommandResult.Fail("El ajuste requiere una diferencia neta distinta de cero.");
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory,_hospitalityScope,ct);
+    await LogisticsLocationScope.EnsureRfcAsync(conn,null,rfc,ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
+      foreach(var locationId in lines.Select(line=>line.LocationId).Distinct())
+        await LogisticsLocationScope.EnsureLocationAsync(conn,tx,locationId,ct);
+      await conn.ExecuteAsync(new CommandDefinition($$"""
+        IF EXISTS (SELECT 1 FROM logistica.InventoryAdjustment existing WITH (UPDLOCK,HOLDLOCK)
+          JOIN logistica.InventoryAdjustmentLine line WITH (HOLDLOCK) ON line.Rfc=existing.Rfc AND line.AdjustmentId=existing.Id
+          WHERE existing.Rfc=@Rfc AND existing.AdjustmentCode=@Code
+            AND NOT {{LogisticsLocationScope.ForLocationIdSql("line.LocationId","line.Rfc")}})
+          THROW 51932,'El ajuste existente contiene ubicaciones de otra sede.',1;
+        """,new { Rfc=rfc,Code=request.AdjustmentCode.Trim().ToUpperInvariant() },tx,cancellationToken:ct));
       var existing = await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
         "SELECT Id FROM logistica.InventoryAdjustment WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND AdjustmentCode=@Code;",
         new { Rfc = rfc, Code = request.AdjustmentCode.Trim().ToUpperInvariant() }, tx, cancellationToken: ct));
@@ -418,17 +445,13 @@ public sealed class InventoryMovementService : IInventoryMovementService
       JOIN logistica.LotBalance lotBalance WITH (UPDLOCK,HOLDLOCK)
         ON lotBalance.Rfc=lotInfo.Rfc AND lotBalance.MaterialLotId=lotInfo.Id
       WHERE lotInfo.Rfc=@Rfc AND lotInfo.Id=@LotId AND lotInfo.MaterialId=@MaterialId
-        AND lotBalance.LocationId=@LocationId AND lotInfo.[Status]='Active';
+        AND lotBalance.LocationId=@LocationId AND lotInfo.IsBlocked=0;
       """, new { Rfc = rfc, LocationId = locationId, MaterialId = materialId, LotId = lotId }, tx, cancellationToken: ct));
 
   private static Task<MovementLotRow?> LoadMaterialLotAsync(DbConnection conn, DbTransaction tx, string rfc, int materialId, long lotId, CancellationToken ct)
     => conn.QuerySingleOrDefaultAsync<MovementLotRow>(new CommandDefinition(
-      "SELECT Id,LotCode FROM logistica.MaterialLot WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND Id=@LotId AND MaterialId=@MaterialId AND [Status]='Active';",
+      "SELECT Id,LotCode FROM logistica.MaterialLot WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND Id=@LotId AND MaterialId=@MaterialId AND IsBlocked=0;",
       new { Rfc = rfc, MaterialId = materialId, LotId = lotId }, tx, cancellationToken: ct));
-
-  private DbConnection CreateConnection()
-    => _connectionFactory.Create() as DbConnection
-      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
 
   private sealed class MovementMaterialRow { public int Id { get; set; } public string MaterialCode { get; set; } = string.Empty; public bool TrackLots { get; set; } }
   private sealed class MovementBalanceRow { public int Id { get; set; } public decimal Quantity { get; set; } public decimal ReservedQuantity { get; set; } public decimal AverageUnitCost { get; set; } }

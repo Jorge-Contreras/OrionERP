@@ -128,6 +128,10 @@
                     {
                         <div class="home-empty">Cargando reservaciones...</div>
                     }
+                    else if (!string.IsNullOrWhiteSpace(ReservationScopeMessage))
+                    {
+                        <div class="home-empty">@ReservationScopeMessage</div>
+                    }
                     else
                     {
                         <div class="home-reservation-days">
@@ -426,6 +430,7 @@
     private bool HasCalendarioRole { get; set; }
     private bool IsLoading { get; set; }
     private string? ErrorMessage { get; set; }
+    private string? ReservationScopeMessage { get; set; }
     private int ApNotificationDays { get; set; } = AjustesGeneralSettingsDto.DefaultApOccurrenceNotificationDays;
 
     private string CurrentRfc => RfcState.RequireRfc();
@@ -599,23 +604,32 @@
 
     private async Task LoadUpcomingPaidReservationsAsync()
     {
+        ReservationScopeMessage = null;
         if (!IsAuthenticated || !HasCalendarioRole)
         {
             UpcomingPaidReservations.Clear();
             return;
         }
 
-        var syncResult = await ReservacionesService.SyncPaidReservationStatusesAsync();
-        if (!syncResult.Success)
+        try
         {
-            ErrorMessage = syncResult.Message;
-        }
+            var syncResult = await ReservacionesService.SyncPaidReservationStatusesAsync();
+            if (!syncResult.Success)
+            {
+                ReservationScopeMessage = syncResult.Message;
+            }
 
-        UpcomingPaidReservations = (await ReservacionesService.GetUpcomingPaidReservationsAsync(DateTime.Today, 3))
-            .OrderBy(item => item.RoomDate ?? DateTime.MaxValue)
-            .ThenBy(item => item.CheckIn ?? DateTime.MaxValue)
-            .ThenBy(item => item.Id)
-            .ToList();
+            UpcomingPaidReservations = (await ReservacionesService.GetUpcomingPaidReservationsAsync(DateTime.Today, 3))
+                .OrderBy(item => item.RoomDate ?? DateTime.MaxValue)
+                .ThenBy(item => item.CheckIn ?? DateTime.MaxValue)
+                .ThenBy(item => item.Id)
+                .ToList();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            UpcomingPaidReservations.Clear();
+            ReservationScopeMessage = "Las reservas requieren acceso autorizado y una sede de Hospedaje seleccionada.";
+        }
     }
 
     private async Task LoadApNotificationSettingsAsync()

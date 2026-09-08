@@ -4,6 +4,8 @@ namespace OrionERP.Application.Features.Reservaciones.CalendarSync;
 
 public sealed class OrionRoomCalendarBlock
 {
+  public long CompanyId { get; set; }
+  public long SiteId { get; set; }
   public string SourceKey { get; set; } = string.Empty;
   public string RoomName { get; set; } = string.Empty;
   public int? ReservationId { get; set; }

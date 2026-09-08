@@ -5,6 +5,8 @@ using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Logistica.Shared;
 using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Infrastructure.Features.Logistica.Support;
@@ -42,12 +44,14 @@ public sealed class MaterialService : IMaterialService
     }.ToDictionary(definition => definition.Code, StringComparer.Ordinal);
 
   private readonly IDbConnectionFactory _connectionFactory;
+  private readonly IHospitalityScopeAccessor? _hospitalityScope;
   private readonly ILogger<MaterialService>? _logger;
 
-  public MaterialService(IDbConnectionFactory connectionFactory, ILogger<MaterialService>? logger = null)
+  public MaterialService(IDbConnectionFactory connectionFactory, ILogger<MaterialService>? logger = null, IHospitalityScopeAccessor? hospitalityScope = null)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
     _logger = logger;
+    _hospitalityScope = hospitalityScope;
   }
 
   public async Task<IReadOnlyList<MaterialListItemDto>> GetMaterialsAsync(MaterialFilter filter, CancellationToken ct = default)
@@ -66,6 +70,7 @@ public sealed class MaterialService : IMaterialService
               COUNT(*) AS LocationCount
           FROM logistica.StockBalance sb
           WHERE sb.Rfc = @Rfc
+            AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = sb.LocationId AND scopeLocation.Rfc = sb.Rfc)
             AND ISNULL(sb.IsRemoved, 0) = 0
           GROUP BY sb.MaterialId
       ),
@@ -223,7 +228,7 @@ public sealed class MaterialService : IMaterialService
       sql.AppendLine(";");
     }
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     var rows = await conn.QueryAsync<MaterialListItemDto>(
       new CommandDefinition(sql.ToString(), parameters, cancellationToken: ct));
 
@@ -299,7 +304,7 @@ public sealed class MaterialService : IMaterialService
       ORDER BY mv.IsPrimary DESC, bp.PartnerName, mv.Id;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     using var multi = await conn.QueryMultipleAsync(
       new CommandDefinition(sql, new { Rfc = LogisticsRfc.Require(rfc), MaterialId = materialId }, cancellationToken: ct));
 
@@ -379,7 +384,7 @@ public sealed class MaterialService : IMaterialService
       ORDER BY bp.PartnerName, bp.Id;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(sql, new { Rfc = LogisticsRfc.Require(rfc) }, cancellationToken: ct));
 
     return new MaterialCatalogDto
@@ -407,7 +412,7 @@ public sealed class MaterialService : IMaterialService
         AND m.PrimaryImage IS NOT NULL;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     var row = await conn.QueryFirstOrDefaultAsync<LogisticsBinaryContent>(
       new CommandDefinition(sql, new { Rfc = LogisticsRfc.Require(rfc), MaterialId = materialId }, cancellationToken: ct));
 
@@ -435,7 +440,7 @@ public sealed class MaterialService : IMaterialService
         AND m.PrimaryImageThumbnail IS NOT NULL;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     var row = await conn.QueryFirstOrDefaultAsync<LogisticsBinaryContent>(
       new CommandDefinition(sql, new { Rfc = LogisticsRfc.Require(rfc), MaterialId = materialId }, cancellationToken: ct));
 
@@ -473,7 +478,7 @@ public sealed class MaterialService : IMaterialService
         AND m.PrimaryImageThumbnail IS NOT NULL;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     var rows = (await conn.QueryAsync<LogisticsBinaryContent>(
       new CommandDefinition(sql, new { Rfc = LogisticsRfc.Require(rfc), MaterialIds = ids }, cancellationToken: ct))).AsList();
 
@@ -542,6 +547,7 @@ public sealed class MaterialService : IMaterialService
         ON locationInfo.Rfc = balance.Rfc AND locationInfo.Id = balance.LocationId
       LEFT JOIN logistica.Location parentInfo
         ON parentInfo.Rfc = locationInfo.Rfc AND parentInfo.Id = locationInfo.ParentLocationId
+       AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeParent WHERE scopeParent.LocationId = parentInfo.Id AND scopeParent.Rfc = parentInfo.Rfc)
       LEFT JOIN dbo.ROOM room
         ON room.ID = locationInfo.RoomId
       OUTER APPLY
@@ -552,6 +558,8 @@ public sealed class MaterialService : IMaterialService
           FROM logistica.StockTransaction movement
           WHERE movement.Rfc = balance.Rfc
             AND movement.StockBalanceId = balance.Id
+            AND movement.LocationId = balance.LocationId
+            AND movement.MaterialId = balance.MaterialId
       ) movementInfo
       OUTER APPLY
       (
@@ -563,6 +571,7 @@ public sealed class MaterialService : IMaterialService
             AND ISNULL(attachmentRow.IsDeleted, 0) = 0
       ) attachmentInfo
       WHERE balance.Rfc = @Rfc
+            AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = balance.LocationId AND scopeLocation.Rfc = balance.Rfc)
         AND balance.MaterialId = @MaterialId
       ORDER BY
           ISNULL(balance.IsRemoved, 0),
@@ -577,12 +586,13 @@ public sealed class MaterialService : IMaterialService
           MAX(movement.OccurredAt) AS LastOccurredAt
       FROM logistica.StockTransaction movement
       WHERE movement.Rfc = @Rfc
+            AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = movement.LocationId AND scopeLocation.Rfc = movement.Rfc)
         AND movement.MaterialId = @MaterialId
       GROUP BY movement.TransactionType
       ORDER BY COUNT(*) DESC, movement.TransactionType;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     using var reader = await conn.QueryMultipleAsync(
       new CommandDefinition(
         sql,
@@ -610,6 +620,7 @@ public sealed class MaterialService : IMaterialService
       return Array.Empty<MaterialMovementDto>();
     }
 
+    var rfc = LogisticsRfc.Require(filter.Rfc);
     var skip = Math.Max(filter.Skip, 0);
     var take = Math.Max(filter.Take, 0);
 
@@ -635,6 +646,7 @@ public sealed class MaterialService : IMaterialService
       LEFT JOIN dbo.ROOM room
         ON room.ID = locationInfo.RoomId
       WHERE movement.Rfc = @Rfc
+            AND EXISTS (SELECT 1 FROM #OrionVisibleLocations scopeLocation WHERE scopeLocation.LocationId = movement.LocationId AND scopeLocation.Rfc = movement.Rfc)
         AND movement.MaterialId = @MaterialId
       """);
 
@@ -698,7 +710,7 @@ public sealed class MaterialService : IMaterialService
       sql.AppendLine(";");
     }
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     var rows = await conn.QueryAsync<MaterialMovementDto>(
       new CommandDefinition(sql.ToString(), parameters, cancellationToken: ct));
 
@@ -715,14 +727,17 @@ public sealed class MaterialService : IMaterialService
       return new MaterialLifecycleAssessmentDto();
     }
 
-    using var conn = CreateConnection();
-    return await LoadMaterialLifecycleAssessmentAsync(
+    using var conn = await OpenScopedAsync(rfc, ct);
+    await using var transaction = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    var assessment = await LoadMaterialLifecycleAssessmentAsync(
       conn,
-      transaction: null,
+      transaction,
       LogisticsRfc.Require(rfc),
       materialId,
       lockMaterial: false,
       ct);
+    await transaction.CommitAsync(ct);
+    return assessment;
   }
 
   public async Task<LogisticsCommandResult> DeleteMaterialAsync(MaterialDeleteRequest request, CancellationToken ct = default)
@@ -742,8 +757,7 @@ public sealed class MaterialService : IMaterialService
     var rfc = LogisticsRfc.Require(request.Rfc);
     var deletedBy = NullIfWhiteSpace(request.DeletedBy) ?? "OrionERP";
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenScopedAsync(rfc, ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
     try
@@ -836,8 +850,7 @@ public sealed class MaterialService : IMaterialService
 
     var rfc = LogisticsRfc.Require(request.Rfc);
     var deactivatedBy = NullIfWhiteSpace(request.DeactivatedBy) ?? "OrionERP";
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenScopedAsync(rfc, ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
     try
@@ -913,12 +926,12 @@ public sealed class MaterialService : IMaterialService
 
     var rfc = LogisticsRfc.Require(request.Rfc);
     var reactivatedBy = NullIfWhiteSpace(request.ReactivatedBy) ?? "OrionERP";
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenScopedAsync(rfc, ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
     try
     {
+      await EnsureLifecycleLocationsAsync(conn, tx, rfc, request.MaterialId, ct);
       var material = await conn.QuerySingleOrDefaultAsync<MaterialLifecycleStateRow>(new CommandDefinition(
         """
         SELECT Id, MaterialCode, [Description], IsActive
@@ -996,8 +1009,7 @@ public sealed class MaterialService : IMaterialService
 
     var baseUnitPrice = MaterialPriceCalculator.NormalizeBaseUnitPrice(request.BaseUnitPrice);
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenScopedAsync(rfc, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
 
     try
@@ -1575,7 +1587,7 @@ public sealed class MaterialService : IMaterialService
       return LogisticsCommandResult.Fail("El rol de producción no es válido.");
     }
 
-    using var conn = CreateConnection();
+    using var conn = await OpenScopedAsync(rfc, ct);
     var affected = await conn.ExecuteAsync(new CommandDefinition(
       """
       UPDATE logistica.Material
@@ -1639,7 +1651,7 @@ public sealed class MaterialService : IMaterialService
 
     try
     {
-      using var conn = CreateConnection();
+      using var conn = await OpenScopedAsync(rfc, ct);
       var categoryId = await conn.ExecuteScalarAsync<int>(
         new CommandDefinition(
           sql,
@@ -1693,7 +1705,7 @@ public sealed class MaterialService : IMaterialService
 
     try
     {
-      using var conn = CreateConnection();
+      using var conn = await OpenScopedAsync(null, ct);
       var unitId = await conn.ExecuteScalarAsync<int>(
         new CommandDefinition(
           sql,
@@ -1721,6 +1733,7 @@ public sealed class MaterialService : IMaterialService
     bool lockMaterial,
     CancellationToken ct)
   {
+    await EnsureLifecycleLocationsAsync(connection, transaction, rfc, materialId, ct);
     var sql = MaterialLifecycleAssessmentSql.Replace(
       "/*MATERIAL_LOCK*/",
       lockMaterial ? "WITH (UPDLOCK, HOLDLOCK)" : string.Empty,
@@ -2191,9 +2204,73 @@ public sealed class MaterialService : IMaterialService
       dependency.ExampleOrdinal;
     """;
 
-  private DbConnection CreateConnection()
-    => _connectionFactory.Create() as DbConnection
-      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
+  private async Task<DbConnection> OpenScopedAsync(string? rfc, CancellationToken ct)
+  {
+    var connection = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
+    try
+    {
+      if (rfc is not null)
+      {
+        await connection.ExecuteAsync(new CommandDefinition("""
+          IF @RequestedRfc <> CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+            THROW 51861, 'El RFC solicitado no pertenece a la sesion de logistica.', 1;
+          """, new { RequestedRfc = LogisticsRfc.Require(rfc) }, cancellationToken: ct));
+      }
+      return connection;
+    }
+    catch { await connection.DisposeAsync(); throw; }
+  }
+
+  private static async Task EnsureLifecycleLocationsAsync(DbConnection connection, DbTransaction? transaction, string rfc, int materialId, CancellationToken ct)
+  {
+    await LogisticsLocationScope.RefreshAsync(connection, transaction, ct);
+    await connection.ExecuteAsync(new CommandDefinition("""
+      IF EXISTS (
+        SELECT 1 FROM (
+          SELECT Rfc,LocationId FROM logistica.StockBalance WHERE Rfc=@Rfc AND MaterialId=@MaterialId
+          UNION ALL SELECT Rfc,LocationId FROM logistica.StockTransaction WHERE Rfc=@Rfc AND MaterialId=@MaterialId
+          UNION ALL SELECT Rfc,LocationId FROM logistica.LocationMaterialAttachment WHERE Rfc=@Rfc AND MaterialId=@MaterialId
+          UNION ALL SELECT Rfc,LocationId FROM logistica.PhysicalCountLine WHERE Rfc=@Rfc AND MaterialId=@MaterialId
+          UNION ALL SELECT Rfc,LocationId FROM logistica.LotBalance WHERE Rfc=@Rfc AND MaterialId=@MaterialId
+          UNION ALL SELECT Rfc,LocationId FROM logistica.InventoryReservationLine WHERE Rfc=@Rfc AND MaterialId=@MaterialId
+          UNION ALL SELECT transferInfo.Rfc,transferInfo.FromLocationId FROM logistica.InventoryTransfer transferInfo
+            JOIN logistica.InventoryTransferLine line ON line.Rfc=transferInfo.Rfc AND line.TransferId=transferInfo.Id
+            WHERE line.Rfc=@Rfc AND line.MaterialId=@MaterialId
+          UNION ALL SELECT transferInfo.Rfc,transferInfo.ToLocationId FROM logistica.InventoryTransfer transferInfo
+            JOIN logistica.InventoryTransferLine line ON line.Rfc=transferInfo.Rfc AND line.TransferId=transferInfo.Id
+            WHERE line.Rfc=@Rfc AND line.MaterialId=@MaterialId
+          UNION ALL SELECT Rfc,LocationId FROM logistica.InventoryAdjustmentLine WHERE Rfc=@Rfc AND MaterialId=@MaterialId
+          UNION ALL SELECT Rfc,LocationId FROM logistica.PurchaseReceiptLine WHERE Rfc=@Rfc AND MaterialId=@MaterialId
+        ) dependencyLocation
+        WHERE dependencyLocation.LocationId IS NULL OR NOT EXISTS
+          (SELECT 1 FROM #OrionVisibleLocations visibleLocation
+           WHERE visibleLocation.LocationId=dependencyLocation.LocationId AND visibleLocation.Rfc=dependencyLocation.Rfc)
+      ) THROW 51862, 'El material conserva dependencias fuera del alcance de ubicaciones autorizado. No se muestran ni modifican.', 1;
+      IF EXISTS (
+        SELECT 1 FROM logistica.PurchaseOrder po
+        WHERE po.Rfc=@Rfc
+          AND EXISTS (SELECT 1 FROM logistica.PurchaseOrderLine materialLine
+            WHERE materialLine.Rfc=po.Rfc AND materialLine.PurchaseOrderId=po.Id AND materialLine.MaterialId=@MaterialId)
+          AND (
+            EXISTS (SELECT 1 FROM logistica.PurchaseOrderRoomScope roomScope
+              WHERE roomScope.Rfc=po.Rfc AND roomScope.PurchaseOrderId=po.Id
+                AND NOT EXISTS (SELECT 1 FROM dbo.ROOM room WHERE room.ID=roomScope.RoomId
+                  AND room.OrionCompanyId=TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))
+                  AND room.OrionSiteId=TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'))))
+            OR EXISTS (SELECT 1 FROM logistica.PurchaseOrderLineAllocation allocation
+              JOIN logistica.PurchaseOrderLine orderLine ON orderLine.Rfc=allocation.Rfc AND orderLine.Id=allocation.PurchaseOrderLineId
+              WHERE orderLine.Rfc=po.Rfc AND orderLine.PurchaseOrderId=po.Id
+                AND NOT EXISTS (SELECT 1 FROM #OrionVisibleLocations visibleLocation
+                  WHERE visibleLocation.Rfc=allocation.Rfc AND visibleLocation.LocationId=allocation.LocationId))
+            OR EXISTS (SELECT 1 FROM logistica.PurchaseReceiptLine receiptLine
+              JOIN logistica.PurchaseReceipt receipt ON receipt.Rfc=receiptLine.Rfc AND receipt.Id=receiptLine.PurchaseReceiptId
+              WHERE receipt.Rfc=po.Rfc AND receipt.PurchaseOrderId=po.Id
+                AND NOT EXISTS (SELECT 1 FROM #OrionVisibleLocations visibleLocation
+                  WHERE visibleLocation.Rfc=receiptLine.Rfc AND visibleLocation.LocationId=receiptLine.LocationId))
+          )
+      ) THROW 51863, 'El material conserva documentos fuera del alcance de ubicaciones autorizado.', 1;
+      """, new { Rfc = rfc, MaterialId = materialId }, transaction, cancellationToken: ct));
+  }
 
   private static string? NullIfWhiteSpace(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

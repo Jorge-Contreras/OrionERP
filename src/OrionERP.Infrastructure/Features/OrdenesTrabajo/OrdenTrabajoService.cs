@@ -5,6 +5,8 @@ using Dapper;
 using Microsoft.Data.SqlClient;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.OrdenesTrabajo;
+using OrionERP.Application.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Reservaciones;
 
 namespace OrionERP.Infrastructure.Features.OrdenesTrabajo;
 
@@ -29,9 +31,28 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
   };
 
   private readonly IDbConnectionFactory _connectionFactory;
+  private readonly IHospitalityScopeAccessor? _hospitalityScope;
+  private readonly ICurrentCompanyContext? _companyContext;
 
-  public OrdenTrabajoService(IDbConnectionFactory connectionFactory)
+  // Text, evidence and assignments on an OT are snapshots too. Hide the entire
+  // hospitality order unless every original reference belongs to the selected site.
+  private const string HospitalityOrderVisibilitySql = """
+    ot.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionERP.WorkOrderRfc')) AND
+    (
+      (ot.RoomId IS NULL AND ot.RoomCalendarId IS NULL AND ot.ReservationId IS NULL)
+      OR (
+        ot.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionERP.HospitalityRfc'))
+        AND (ot.RoomId IS NULL OR EXISTS (SELECT 1 FROM dbo.ROOM ownedRoom WITH (HOLDLOCK) WHERE ownedRoom.ID = ot.RoomId AND ownedRoom.OrionCompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')) AND ownedRoom.OrionSiteId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'))))
+        AND (ot.RoomCalendarId IS NULL OR EXISTS (SELECT 1 FROM dbo.ROOM_CALENDAR ownedCell WITH (HOLDLOCK) WHERE ownedCell.ID = ot.RoomCalendarId AND ownedCell.OrionCompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')) AND ownedCell.OrionSiteId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'))))
+        AND (ot.ReservationId IS NULL OR EXISTS (SELECT 1 FROM dbo.RESERVATION ownedReservation WITH (HOLDLOCK) WHERE ownedReservation.ID = ot.ReservationId AND ownedReservation.OrionCompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')) AND ownedReservation.OrionSiteId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'))))
+      )
+    )
+    """;
+
+  public OrdenTrabajoService(IDbConnectionFactory connectionFactory, IHospitalityScopeAccessor? hospitalityScope = null, ICurrentCompanyContext? companyContext = null)
   {
+    _hospitalityScope = hospitalityScope;
+    _companyContext = companyContext;
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
   }
 
@@ -58,6 +79,8 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<IReadOnlyList<OrdenTrabajoLookupDto>> GetActiveEmployeeOptionsAsync(string? rfc = null, CancellationToken ct = default)
   {
+    rfc = RequireCompanyRfc(rfc);
+
     const string sql =
       """
       SELECT
@@ -85,10 +108,12 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
           r.ROOM_NAME AS [Name],
           r.ROOM_TYPE AS Code
       FROM dbo.ROOM r
+      WHERE r.OrionCompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))
+        AND r.OrionSiteId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'))
       ORDER BY r.ROOM_TYPE, r.ROOM_NAME;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     var rows = await conn.QueryAsync<OrdenTrabajoLookupDto>(new CommandDefinition(sql, cancellationToken: ct));
     return rows.AsList();
   }
@@ -98,6 +123,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
     filter ??= new OrdenTrabajoDashboardFilter();
     var where = new StringBuilder("WHERE ot.Estado <> 'CANCELADA'");
     var p = new DynamicParameters();
+    where.Append(" AND ").Append(HospitalityOrderVisibilitySql);
     AppendDashboardScope(where, p, filter);
 
     var sql =
@@ -191,7 +217,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
     try
     {
-      using var conn = CreateConnection();
+      using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
       using var multi = await conn.QueryMultipleAsync(new CommandDefinition(sql, p, cancellationToken: ct));
       return new OrdenTrabajoDashboardDto
       {
@@ -254,6 +280,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
       WHERE 1 = 1
       """);
 
+    sql.Append(" AND ").AppendLine(HospitalityOrderVisibilitySql);
     AppendWorkOrderFilters(sql, p, filter);
     if (filter.SortMode == OrdenTrabajoSearchSort.OperationalPriority)
     {
@@ -288,7 +315,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
     try
     {
-      using var conn = CreateConnection();
+      using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
       var rows = await conn.QueryAsync<OrdenTrabajoListItemDto>(new CommandDefinition(sql.ToString(), p, cancellationToken: ct));
       return rows.AsList();
     }
@@ -300,8 +327,8 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoDetailDto?> GetWorkOrderDetailAsync(int id, CancellationToken ct = default)
   {
-    const string sql =
-      """
+    var sql =
+      $$"""
       SELECT
           ot.Id,
           ot.Folio,
@@ -361,7 +388,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
           JOIN dbo.Transacciones t ON t.ID = link.TransaccionId
           WHERE link.OrdenTrabajoId = ot.Id
       ) tx
-      WHERE ot.Id = @Id;
+      WHERE ot.Id = @Id AND {{HospitalityOrderVisibilitySql}};
 
       SELECT
           p.EmployeeId,
@@ -432,7 +459,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
     try
     {
-      using var conn = CreateConnection();
+      using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
       using var multi = await conn.QueryMultipleAsync(new CommandDefinition(sql, new { Id = id }, cancellationToken: ct));
       var detail = await multi.ReadFirstOrDefaultAsync<OrdenTrabajoDetailDto>();
       if (detail is null)
@@ -466,6 +493,9 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoCommandResult> CreateManualAsync(OrdenTrabajoCreateRequest request, CancellationToken ct = default)
   {
+    ArgumentNullException.ThrowIfNull(request);
+    request.Rfc = RequireCompanyRfc(request.Rfc);
+
     if (request is null)
     {
       throw new ArgumentNullException(nameof(request));
@@ -474,12 +504,17 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
     var actor = NormalizeActor(request.CreatedBy);
     var normalizedCategory = NormalizeCode(request.CategoriaCodigo, OrdenTrabajoCodes.CategoriaMantenimiento);
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    var hasHospitalityReference = request.RoomId.HasValue || request.RoomCalendarId.HasValue || request.ReservationId.HasValue;
+    using var conn = hasHospitalityReference
+      ? await OpenHospitalityAwareAsync(required: true, requestedRfc: request.Rfc, ct)
+      : await OpenHospitalityAwareAsync(required: false, requestedRfc: request.Rfc, ct);
+    if (conn.State != ConnectionState.Open) await conn.OpenAsync(ct);
     using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
     try
     {
+      if (hasHospitalityReference)
+        await ValidateHospitalityReferencesAsync(conn, tx, request.RoomId, request.RoomCalendarId, request.ReservationId, ct);
       var categoryId = await ResolveCategoryIdAsync(conn, tx, normalizedCategory, ct);
       if (categoryId is null)
       {
@@ -547,6 +582,9 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoCalendarCreateResult> CreateCleaningFromCalendarAsync(OrdenTrabajoCalendarCreateRequest request, CancellationToken ct = default)
   {
+    ArgumentNullException.ThrowIfNull(request);
+    request.Rfc = RequireCompanyRfc(request.Rfc);
+
     if (request is null)
     {
       throw new ArgumentNullException(nameof(request));
@@ -564,8 +602,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
       };
     }
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: true, requestedRfc: request.Rfc, ct);
     using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
     var results = new List<OrdenTrabajoCalendarCellResult>();
@@ -595,9 +632,10 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
                 rc.ROOM_DATE AS RoomDate,
                 rc.ROOM AS RoomName,
                 room.ID AS RoomId,
-                TRY_CONVERT(int, NULLIF(LTRIM(RTRIM(CAST(rc.LOCK_DESCRIPTION AS varchar(50)))), '')) AS ReservationId
+                rc.ReservationId AS ReservationId
             FROM dbo.ROOM_CALENDAR rc
-            LEFT JOIN dbo.ROOM room ON room.ROOM_NAME = rc.ROOM
+            INNER JOIN dbo.ROOM room ON room.ID = rc.RoomId
+              AND room.OrionCompanyId = rc.OrionCompanyId AND room.OrionSiteId = rc.OrionSiteId
             WHERE rc.id = @RoomCalendarId;
             """,
             new { RoomCalendarId = roomCalendarId },
@@ -610,13 +648,14 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
           continue;
         }
 
-        var cleaningDate = context.RoomDate.Date.AddDays(1);
+        var cleaningDate = OrdenTrabajoSchedule.CleaningDate(context.RoomDate);
         var duplicate = await conn.QueryFirstOrDefaultAsync<(int Id, string Folio)>(
           new CommandDefinition(
             """
             SELECT TOP (1) ot.Id, ot.Folio
             FROM dbo.OrdenTrabajo ot
             WHERE ot.RoomId = @RoomId
+              AND ot.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionERP.HospitalityRfc'))
               AND ot.FechaProgramada = @CleaningDate
               AND ot.CategoriaId = @CategoryId
               AND ot.Estado IN ('BORRADOR','ASIGNADA','EN_PROCESO','EN_REVISION','RECHAZADA')
@@ -715,15 +754,16 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoCommandResult> UpdateWorkOrderAsync(int id, OrdenTrabajoUpdateRequest request, CancellationToken ct = default)
   {
+
     if (request is null)
     {
       throw new ArgumentNullException(nameof(request));
     }
 
     var actor = NormalizeActor(request.UpdatedBy);
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureWorkOrderVisibleAsync(conn, tx, id, ct);
 
     try
     {
@@ -796,6 +836,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoCommandResult> ReplaceWorkOrderStepsAsync(int id, OrdenTrabajoStepsSaveRequest request, CancellationToken ct = default)
   {
+
     if (request is null)
     {
       throw new ArgumentNullException(nameof(request));
@@ -822,9 +863,9 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
       return OrdenTrabajoCommandResult.Fail("Agrega al menos un paso a la ruta critica.");
     }
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureWorkOrderVisibleAsync(conn, tx, id, ct);
 
     try
     {
@@ -930,6 +971,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoCommandResult> CancelWorkOrderAsync(int id, string reason, string actor, CancellationToken ct = default)
   {
+
     var safeActor = NormalizeActor(actor);
     var safeReason = RequireText(reason, "El motivo de cancelacion es obligatorio.");
     const string sql =
@@ -946,9 +988,9 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
         AND Estado <> 'CANCELADA';
       """;
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureWorkOrderVisibleAsync(conn, tx, id, ct);
     var affected = await conn.ExecuteAsync(new CommandDefinition(sql, new { Id = id, Actor = safeActor, Reason = safeReason }, tx, cancellationToken: ct));
     if (affected == 0)
     {
@@ -963,11 +1005,12 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoCommandResult> DeleteWorkOrderAsync(int id, string actor, CancellationToken ct = default)
   {
+
     _ = NormalizeActor(actor);
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureWorkOrderVisibleAsync(conn, tx, id, ct);
 
     try
     {
@@ -1023,10 +1066,11 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoCommandResult> StartWorkOrderAsync(int id, string actor, int? actorEmployeeId = null, CancellationToken ct = default)
   {
+
     var safeActor = NormalizeActor(actor);
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureWorkOrderVisibleAsync(conn, tx, id, ct);
 
     if (!await CanActorWorkAsync(conn, tx, id, actorEmployeeId, ct))
     {
@@ -1062,6 +1106,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoCommandResult> UpdateStepAsync(int workOrderId, int stepId, OrdenTrabajoStepUpdateRequest request, CancellationToken ct = default)
   {
+
     if (request is null)
     {
       throw new ArgumentNullException(nameof(request));
@@ -1069,9 +1114,9 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
     var safeActor = NormalizeActor(request.UpdatedBy);
     var stepStatus = NormalizeStepStatus(request.Estado);
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureWorkOrderVisibleAsync(conn, tx, workOrderId, ct);
 
     try
     {
@@ -1161,6 +1206,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoCommandResult> AddStepEvidenceAsync(int workOrderId, int stepId, OrdenTrabajoEvidenceCreateRequest request, CancellationToken ct = default)
   {
+
     if (request is null)
     {
       throw new ArgumentNullException(nameof(request));
@@ -1172,9 +1218,9 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
     }
 
     var safeActor = NormalizeActor(request.CapturedBy);
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureWorkOrderVisibleAsync(conn, tx, workOrderId, ct);
 
     try
     {
@@ -1273,10 +1319,11 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoCommandResult> RemoveStepEvidenceAsync(int workOrderId, int stepId, int evidenceId, string actor, int? actorEmployeeId = null, CancellationToken ct = default)
   {
+
     var safeActor = NormalizeActor(actor);
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureWorkOrderVisibleAsync(conn, tx, workOrderId, ct);
 
     if (!await CanActorWorkAsync(conn, tx, workOrderId, actorEmployeeId, ct))
     {
@@ -1345,17 +1392,22 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
           AND Eliminada = 0;
         """;
 
-    using var conn = CreateConnection();
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
+    var visible = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
+      "SELECT 1 FROM dbo.OrdenTrabajoEvidencia e JOIN dbo.OrdenTrabajoPaso p ON p.Id = e.PasoId JOIN dbo.OrdenTrabajo ot ON ot.Id = p.OrdenTrabajoId WHERE e.Id = @EvidenceId AND " + HospitalityOrderVisibilitySql,
+      new { EvidenceId = evidenceId }, cancellationToken: ct));
+    if (!visible.HasValue) return null;
     return await conn.QueryFirstOrDefaultAsync<OrdenTrabajoBinaryContent>(
       new CommandDefinition(sql, new { EvidenceId = evidenceId }, cancellationToken: ct));
   }
 
   public async Task<OrdenTrabajoCommandResult> SubmitForReviewAsync(int id, string actor, int? actorEmployeeId = null, CancellationToken ct = default)
   {
+
     var safeActor = NormalizeActor(actor);
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureWorkOrderVisibleAsync(conn, tx, id, ct);
 
     try
     {
@@ -1405,10 +1457,11 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoCommandResult> ApproveAsync(int id, string actor, CancellationToken ct = default)
   {
+
     var safeActor = NormalizeActor(actor);
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureWorkOrderVisibleAsync(conn, tx, id, ct);
 
     var affected = await conn.ExecuteAsync(
       new CommandDefinition(
@@ -1438,11 +1491,12 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoCommandResult> RejectAsync(int id, string reason, string actor, CancellationToken ct = default)
   {
+
     var safeActor = NormalizeActor(actor);
     var safeReason = RequireText(reason, "El motivo de rechazo es obligatorio.");
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureWorkOrderVisibleAsync(conn, tx, id, ct);
 
     var affected = await conn.ExecuteAsync(
       new CommandDefinition(
@@ -1474,9 +1528,10 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<IReadOnlyList<OrdenTrabajoTransactionSearchItemDto>> SearchTransactionsAsync(int workOrderId, string? search, CancellationToken ct = default)
   {
-    const string sql =
-      """
-      DECLARE @Rfc varchar(50) = (SELECT Rfc FROM dbo.OrdenTrabajo WHERE Id = @WorkOrderId);
+
+    var sql =
+      $$"""
+      DECLARE @Rfc varchar(50) = (SELECT ot.Rfc FROM dbo.OrdenTrabajo ot WHERE ot.Id = @WorkOrderId AND {{HospitalityOrderVisibilitySql}});
 
       SELECT TOP (25)
           t.ID AS Id,
@@ -1497,7 +1552,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
       """;
 
     var normalizedSearch = NullIfWhiteSpace(search);
-    using var conn = CreateConnection();
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     var rows = await conn.QueryAsync<OrdenTrabajoTransactionSearchItemDto>(
       new CommandDefinition(
         sql,
@@ -1508,10 +1563,11 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoCommandResult> LinkTransactionAsync(int workOrderId, int transaccionId, string actor, CancellationToken ct = default)
   {
+
     var safeActor = NormalizeActor(actor);
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureWorkOrderVisibleAsync(conn, tx, workOrderId, ct);
 
     var sameRfc = await conn.ExecuteScalarAsync<bool>(
       new CommandDefinition(
@@ -1559,10 +1615,11 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoCommandResult> UnlinkTransactionAsync(int workOrderId, int transaccionId, string actor, CancellationToken ct = default)
   {
+
     var safeActor = NormalizeActor(actor);
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureWorkOrderVisibleAsync(conn, tx, workOrderId, ct);
     var affected = await conn.ExecuteAsync(
       new CommandDefinition(
         """
@@ -1587,6 +1644,8 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<IReadOnlyList<OrdenTrabajoTemplateSummaryDto>> GetTemplatesAsync(string? rfc = null, string? categoryCode = null, CancellationToken ct = default)
   {
+    rfc = RequireCompanyRfc(rfc);
+
     var sql = new StringBuilder(
       """
       SELECT
@@ -1660,7 +1719,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
             AND v.Estado = 'BORRADOR'
           ORDER BY v.NumeroVersion DESC
       ) draft
-      WHERE tpl.Id = @Id;
+      WHERE tpl.Id = @Id AND tpl.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionERP.WorkOrderRfc'));
 
       SELECT
           step.Id,
@@ -1686,18 +1745,21 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
           room.ID AS RoomId,
           room.ROOM_NAME AS RoomName,
           room.ROOM_TYPE AS RoomType,
-          map.PlantillaId AS TemplateId,
+          mapped.Id AS TemplateId,
           mapped.Nombre AS TemplateName
       FROM dbo.ROOM room
       LEFT JOIN dbo.OrdenTrabajoPlantillaRoom map ON map.RoomId = room.ID
       LEFT JOIN dbo.OrdenTrabajoPlantilla mapped ON mapped.Id = map.PlantillaId
+        AND mapped.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionERP.HospitalityRfc'))
       WHERE room.ROOM_TYPE = 'SUITE'
+        AND room.OrionCompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))
+        AND room.OrionSiteId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'))
       ORDER BY room.ROOM_NAME;
       """;
 
     try
     {
-      using var conn = CreateConnection();
+      using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
       using var multi = await conn.QueryMultipleAsync(new CommandDefinition(sql, new { Id = id }, cancellationToken: ct));
       var detail = await multi.ReadFirstOrDefaultAsync<OrdenTrabajoTemplateDetailDto>();
       if (detail is null)
@@ -1717,6 +1779,9 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
   public async Task<OrdenTrabajoCommandResult> SaveTemplateDraftAsync(OrdenTrabajoTemplateSaveRequest request, CancellationToken ct = default)
   {
+    ArgumentNullException.ThrowIfNull(request);
+    request.Rfc = RequireCompanyRfc(request.Rfc);
+
     if (request is null)
     {
       throw new ArgumentNullException(nameof(request));
@@ -1725,9 +1790,9 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
     var actor = NormalizeActor(request.SavedBy);
     var categoryCode = NormalizeCode(request.CategoriaCodigo, OrdenTrabajoCodes.CategoriaLimpieza);
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    if (request.TemplateId.HasValue) await EnsureTemplateCompanyAsync(conn, tx, request.TemplateId.Value, ct);
 
     try
     {
@@ -1891,9 +1956,9 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
   public async Task<OrdenTrabajoCommandResult> PublishTemplateAsync(int templateId, string actor, CancellationToken ct = default)
   {
     var safeActor = NormalizeActor(actor);
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: null, ct);
     using var tx = await conn.BeginTransactionAsync(ct);
+    await EnsureTemplateCompanyAsync(conn, tx, templateId, ct);
 
     try
     {
@@ -1974,6 +2039,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
         JOIN dbo.OrdenTrabajoCategoria cat ON cat.Id = tpl.CategoriaId
         JOIN dbo.OrdenTrabajoPlantillaVersion ver ON ver.PlantillaId = tpl.Id AND ver.Estado = 'PUBLICADA'
         WHERE tpl.Id = @TemplateId
+          AND tpl.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionERP.HospitalityRfc'))
           AND cat.Codigo = 'LIMPIEZA'
           AND tpl.Activa = 1
       )
@@ -1994,7 +2060,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
       SELECT CAST(1 AS int);
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await OpenHospitalityAwareAsync(required: true, requestedRfc: null, ct);
     var result = await conn.ExecuteScalarAsync<int>(
       new CommandDefinition(sql, new { RoomId = roomId, TemplateId = templateId, Actor = safeActor }, cancellationToken: ct));
 
@@ -2006,523 +2072,20 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
     };
   }
 
-  public async Task<OrdenTrabajoCommandResult> SeedCleaningTemplatesFromLegacyAsync(string rfc, string actor, CancellationToken ct = default)
-  {
-    var safeRfc = RequireText(rfc, "El RFC es obligatorio.");
-    var safeActor = NormalizeActor(actor);
+  public Task<OrdenTrabajoCommandResult> SeedCleaningTemplatesFromLegacyAsync(string rfc, string actor, CancellationToken ct = default)
+    => Task.FromResult(OrdenTrabajoCommandResult.Fail(
+      "La importación automática desde actividades heredadas está deshabilitada. Crea una plantilla y asigna cada suite explícitamente en su empresa y sede."));
 
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
-    using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
-    try
-    {
-      var categoryId = await ResolveCategoryIdAsync(conn, tx, OrdenTrabajoCodes.CategoriaLimpieza, ct);
-      if (categoryId is null)
-      {
-        await tx.RollbackAsync(ct);
-        return OrdenTrabajoCommandResult.Fail("No existe la categoria Limpieza.");
-      }
+  public Task<OrdenTrabajoCommandResult> SeedChecklistTemplatesFromLegacyAsync(string rfc, string actor, int asignacion = 36, CancellationToken ct = default)
+    => Task.FromResult(OrdenTrabajoCommandResult.Fail(
+      "La importación automática desde actividades heredadas está deshabilitada. Crea una plantilla y asigna cada suite explícitamente en su empresa y sede."));
 
-      var legacyTemplates = (await conn.QueryAsync<LegacyTemplateHeader>(
-        new CommandDefinition(
-          """
-          ;WITH legacy_sources AS (
-            SELECT
-                a.ID AS ActividadId,
-                a.Descripcion AS TemplateName,
-                LTRIM(RTRIM(REPLACE(a.Descripcion, 'PLANTILLA PARA LIMPIEZA ', ''))) AS RoomName,
-                0 AS SourceRank
-            FROM dbo.Actividad a
-            WHERE a.Descripcion LIKE 'PLANTILLA PARA LIMPIEZA %'
-
-            UNION ALL
-
-            SELECT
-                a.ID AS ActividadId,
-                CONCAT('PLANTILLA PARA LIMPIEZA ', room.ROOM_NAME) AS TemplateName,
-                room.ROOM_NAME AS RoomName,
-                1 AS SourceRank
-            FROM dbo.Actividad a
-            JOIN dbo.ROOM room
-              ON room.ROOM_TYPE = 'SUITE'
-             AND a.Descripcion LIKE '%LIMPIEZA%'
-             AND a.Descripcion LIKE '%' + room.ROOM_NAME + '%'
-            WHERE a.Descripcion NOT LIKE 'PLANTILLA PARA LIMPIEZA %'
-          ),
-          candidates AS (
-            SELECT
-                src.ActividadId,
-                src.TemplateName,
-                src.RoomName,
-                src.SourceRank,
-                COUNT(rc.ID) AS StepCount
-            FROM legacy_sources src
-            LEFT JOIN dbo.Actividad_Ruta_Critica rc ON rc.Actividad_ID = src.ActividadId
-            GROUP BY src.ActividadId, src.TemplateName, src.RoomName, src.SourceRank
-          ),
-          ranked AS (
-            SELECT
-                ActividadId,
-                TemplateName,
-                RoomName,
-                StepCount,
-                ROW_NUMBER() OVER (
-                  PARTITION BY RoomName
-                  ORDER BY
-                    CASE WHEN SourceRank = 0 AND StepCount > 0 THEN 0 ELSE SourceRank END,
-                    StepCount DESC,
-                    ActividadId DESC
-                ) AS rn
-            FROM candidates
-            WHERE StepCount > 0
-          )
-          SELECT ActividadId, TemplateName, RoomName, StepCount
-          FROM ranked
-          WHERE rn = 1
-          ORDER BY RoomName;
-          """,
-          transaction: tx,
-          cancellationToken: ct))).AsList();
-
-      var created = 0;
-      var mapped = 0;
-      foreach (var legacy in legacyTemplates)
-      {
-        var templateId = await conn.ExecuteScalarAsync<int?>(
-          new CommandDefinition(
-            "SELECT Id FROM dbo.OrdenTrabajoPlantilla WHERE Rfc = @Rfc AND Nombre = @Name;",
-            new { Rfc = safeRfc, Name = legacy.TemplateName },
-            tx,
-            cancellationToken: ct));
-
-        if (!templateId.HasValue)
-        {
-          templateId = await conn.ExecuteScalarAsync<int>(
-            new CommandDefinition(
-              """
-              INSERT INTO dbo.OrdenTrabajoPlantilla (CategoriaId, Rfc, Nombre, Activa, CreadaPor)
-              VALUES (@CategoryId, @Rfc, @Name, 1, @Actor);
-              SELECT CAST(SCOPE_IDENTITY() AS int);
-              """,
-              new { CategoryId = categoryId.Value, Rfc = safeRfc, Name = legacy.TemplateName, Actor = safeActor },
-              tx,
-              cancellationToken: ct));
-          created++;
-        }
-
-        var hasPublishedWithSteps = await conn.ExecuteScalarAsync<bool>(
-          new CommandDefinition(
-            """
-            SELECT CAST(CASE WHEN EXISTS (
-              SELECT 1
-              FROM dbo.OrdenTrabajoPlantillaVersion ver
-              WHERE ver.PlantillaId = @TemplateId
-                AND ver.Estado = 'PUBLICADA'
-                AND EXISTS (
-                  SELECT 1
-                  FROM dbo.OrdenTrabajoPlantillaPaso step
-                  WHERE step.PlantillaVersionId = ver.Id
-                )
-            ) THEN 1 ELSE 0 END AS bit);
-            """,
-            new { TemplateId = templateId.Value },
-            tx,
-            cancellationToken: ct));
-
-        if (!hasPublishedWithSteps)
-        {
-          await conn.ExecuteAsync(
-            new CommandDefinition(
-              """
-              UPDATE dbo.OrdenTrabajoPlantillaVersion
-              SET Estado = 'ARCHIVADA'
-              WHERE PlantillaId = @TemplateId
-                AND Estado = 'PUBLICADA';
-              """,
-              new { TemplateId = templateId.Value },
-              tx,
-              cancellationToken: ct));
-
-          var versionId = await conn.ExecuteScalarAsync<int>(
-            new CommandDefinition(
-              """
-              INSERT INTO dbo.OrdenTrabajoPlantillaVersion (PlantillaId, NumeroVersion, Estado, CreadaPor, PublicadaEn, PublicadaPor)
-              SELECT @TemplateId, ISNULL(MAX(NumeroVersion), 0) + 1, 'PUBLICADA', @Actor, SYSUTCDATETIME(), @Actor
-              FROM dbo.OrdenTrabajoPlantillaVersion
-              WHERE PlantillaId = @TemplateId;
-              SELECT CAST(SCOPE_IDENTITY() AS int);
-              """,
-              new { TemplateId = templateId.Value, Actor = safeActor },
-              tx,
-              cancellationToken: ct));
-
-          var legacySteps = (await conn.QueryAsync<LegacyTemplateStep>(
-            new CommandDefinition(
-              """
-              SELECT
-                  ROW_NUMBER() OVER (ORDER BY rc.Paso_Numero, rc.ID) AS RowNumber,
-                  CAST(rc.Paso_Numero AS decimal(9,2)) AS Secuencia,
-                  rc.Descripcion,
-                  rc.Procedimiento_ID AS ProcedimientoId
-              FROM dbo.Actividad_Ruta_Critica rc
-              WHERE rc.Actividad_ID = @ActividadId
-              ORDER BY rc.Paso_Numero, rc.ID;
-              """,
-              new { legacy.ActividadId },
-              tx,
-              cancellationToken: ct))).AsList();
-
-          foreach (var step in legacySteps)
-          {
-            var title = BuildStepTitle(step.RowNumber, step.Descripcion);
-            await conn.ExecuteAsync(
-              new CommandDefinition(
-                """
-                INSERT INTO dbo.OrdenTrabajoPlantillaPaso
-                (
-                    PlantillaVersionId,
-                    Secuencia,
-                    Titulo,
-                    Descripcion,
-                    PoliticaFoto,
-                    RequiereNotasEnIncidencia,
-                    RequiereNotasEnNoAplica,
-                    ProcedimientoId
-                )
-                VALUES
-                (
-                    @VersionId,
-                    @Secuencia,
-                    @Titulo,
-                    @Descripcion,
-                    @PoliticaFoto,
-                    1,
-                    1,
-                    @ProcedimientoId
-                );
-                """,
-                new
-                {
-                  VersionId = versionId,
-                  Secuencia = step.Secuencia == 0 ? step.RowNumber : step.Secuencia,
-                  Titulo = title,
-                  Descripcion = RequireText(step.Descripcion, "Paso sin descripcion."),
-                  PoliticaFoto = InferLegacyPhotoPolicy(step.Descripcion),
-                  step.ProcedimientoId
-                },
-                tx,
-                cancellationToken: ct));
-          }
-        }
-
-        var roomId = await conn.ExecuteScalarAsync<int?>(
-          new CommandDefinition(
-            "SELECT TOP (1) ID FROM dbo.ROOM WHERE ROOM_TYPE = 'SUITE' AND ROOM_NAME = @RoomName;",
-            new { legacy.RoomName },
-            tx,
-            cancellationToken: ct));
-
-        if (roomId.HasValue)
-        {
-          await conn.ExecuteAsync(
-            new CommandDefinition(
-              """
-              MERGE dbo.OrdenTrabajoPlantillaRoom AS target
-              USING (SELECT @RoomId AS RoomId, @TemplateId AS PlantillaId) AS source
-              ON target.RoomId = source.RoomId
-              WHEN MATCHED THEN
-                UPDATE SET PlantillaId = source.PlantillaId, ActualizadaEn = SYSUTCDATETIME(), ActualizadaPor = @Actor
-              WHEN NOT MATCHED THEN
-                INSERT (RoomId, PlantillaId, ActualizadaPor)
-                VALUES (source.RoomId, source.PlantillaId, @Actor);
-              """,
-              new { RoomId = roomId.Value, TemplateId = templateId.Value, Actor = safeActor },
-              tx,
-              cancellationToken: ct));
-          mapped++;
-        }
-      }
-
-      await tx.CommitAsync(ct);
-      return OrdenTrabajoCommandResult.Ok($"Seed terminado. Plantillas nuevas: {created}. Mapeos de suite: {mapped}.");
-    }
-    catch
-    {
-      await tx.RollbackAsync(ct);
-      throw;
-    }
-  }
-
-  public async Task<OrdenTrabajoCommandResult> SeedChecklistTemplatesFromLegacyAsync(string rfc, string actor, int asignacion = 36, CancellationToken ct = default)
-  {
-    if (asignacion <= 0)
-    {
-      return OrdenTrabajoCommandResult.Fail("La asignacion legacy debe ser mayor a cero.");
-    }
-
-    var safeRfc = RequireText(rfc, "El RFC es obligatorio.");
-    var safeActor = NormalizeActor(actor);
-
-    using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
-    using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
-
-    try
-    {
-      var categoryId = await ResolveCategoryIdAsync(conn, tx, OrdenTrabajoCodes.CategoriaChecklist, ct);
-      if (categoryId is null)
-      {
-        await tx.RollbackAsync(ct);
-        return OrdenTrabajoCommandResult.Fail("No existe la categoria Checklist.");
-      }
-
-      var legacyTemplates = (await conn.QueryAsync<LegacyTemplateHeader>(
-        new CommandDefinition(
-          """
-          ;WITH checklist_sources AS (
-            SELECT
-                a.ID AS ActividadId,
-                COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), a.Descripcion))), ''), CONCAT(N'Checklist ', a.ID)) AS BaseTemplateName,
-                COUNT(rc.ID) AS StepCount
-            FROM dbo.Actividad a
-            LEFT JOIN dbo.Actividad_Ruta_Critica rc ON rc.Actividad_ID = a.ID
-            WHERE UPPER(LTRIM(RTRIM(ISNULL(CONVERT(nvarchar(50), a.Tipo_Proyecto), N'')))) = N'CHECKLIST'
-              AND a.Asignacion = @Asignacion
-            GROUP BY
-                a.ID,
-                COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), a.Descripcion))), ''), CONCAT(N'Checklist ', a.ID))
-          ),
-          ranked AS (
-            SELECT
-                ActividadId,
-                BaseTemplateName,
-                StepCount,
-                COUNT(*) OVER (PARTITION BY BaseTemplateName) AS DuplicateNameCount
-            FROM checklist_sources
-          )
-          SELECT
-              ActividadId,
-              CASE
-                WHEN DuplicateNameCount > 1
-                  THEN CONVERT(nvarchar(200), CONCAT(LEFT(BaseTemplateName, 175), N' (Actividad ', ActividadId, N')'))
-                ELSE BaseTemplateName
-              END AS TemplateName,
-              CAST(N'' AS nvarchar(100)) AS RoomName,
-              StepCount
-          FROM ranked
-          ORDER BY TemplateName, ActividadId;
-          """,
-          new { Asignacion = asignacion },
-          tx,
-          cancellationToken: ct))).AsList();
-
-      if (legacyTemplates.Count == 0)
-      {
-        await tx.CommitAsync(ct);
-        return OrdenTrabajoCommandResult.Ok("No se encontraron checklists legacy para importar.");
-      }
-
-      var created = 0;
-      var published = 0;
-      var fallbackSteps = 0;
-      foreach (var legacy in legacyTemplates)
-      {
-        var templateName = Truncate(RequireText(legacy.TemplateName, "Actividad sin descripcion."), 200);
-        var templateMatch = await FindTemplateByNameAsync(conn, tx, safeRfc, templateName, ct);
-        if (templateMatch is not null
-          && !string.Equals(templateMatch.CategoriaCodigo, OrdenTrabajoCodes.CategoriaChecklist, StringComparison.OrdinalIgnoreCase))
-        {
-          templateName = Truncate($"{Truncate(templateName, 170)} (Actividad {legacy.ActividadId})", 200);
-          templateMatch = await FindTemplateByNameAsync(conn, tx, safeRfc, templateName, ct);
-        }
-
-        if (templateMatch is not null
-          && !string.Equals(templateMatch.CategoriaCodigo, OrdenTrabajoCodes.CategoriaChecklist, StringComparison.OrdinalIgnoreCase))
-        {
-          await tx.RollbackAsync(ct);
-          return OrdenTrabajoCommandResult.Fail($"Ya existe una plantilla llamada {templateName} en otra categoria.");
-        }
-
-        var templateId = templateMatch?.Id;
-        if (!templateId.HasValue)
-        {
-          templateId = await conn.ExecuteScalarAsync<int>(
-            new CommandDefinition(
-              """
-              INSERT INTO dbo.OrdenTrabajoPlantilla (CategoriaId, Rfc, Nombre, Activa, CreadaPor)
-              VALUES (@CategoryId, @Rfc, @Name, 1, @Actor);
-              SELECT CAST(SCOPE_IDENTITY() AS int);
-              """,
-              new { CategoryId = categoryId.Value, Rfc = safeRfc, Name = templateName, Actor = safeActor },
-              tx,
-              cancellationToken: ct));
-          created++;
-        }
-        else
-        {
-          await conn.ExecuteAsync(
-            new CommandDefinition(
-              """
-              UPDATE dbo.OrdenTrabajoPlantilla
-              SET Activa = 1,
-                  ActualizadaEn = SYSUTCDATETIME(),
-                  ActualizadaPor = @Actor
-              WHERE Id = @TemplateId
-                AND Activa = 0;
-              """,
-              new { TemplateId = templateId.Value, Actor = safeActor },
-              tx,
-              cancellationToken: ct));
-        }
-
-        var hasPublishedWithSteps = await conn.ExecuteScalarAsync<bool>(
-          new CommandDefinition(
-            """
-            SELECT CAST(CASE WHEN EXISTS (
-              SELECT 1
-              FROM dbo.OrdenTrabajoPlantillaVersion ver
-              WHERE ver.PlantillaId = @TemplateId
-                AND ver.Estado = 'PUBLICADA'
-                AND EXISTS (
-                  SELECT 1
-                  FROM dbo.OrdenTrabajoPlantillaPaso step
-                  WHERE step.PlantillaVersionId = ver.Id
-                )
-            ) THEN 1 ELSE 0 END AS bit);
-            """,
-            new { TemplateId = templateId.Value },
-            tx,
-            cancellationToken: ct));
-
-        if (hasPublishedWithSteps)
-        {
-          continue;
-        }
-
-        await conn.ExecuteAsync(
-          new CommandDefinition(
-            """
-            UPDATE dbo.OrdenTrabajoPlantillaVersion
-            SET Estado = 'ARCHIVADA'
-            WHERE PlantillaId = @TemplateId
-              AND Estado = 'PUBLICADA';
-            """,
-            new { TemplateId = templateId.Value },
-            tx,
-            cancellationToken: ct));
-
-        var versionId = await conn.ExecuteScalarAsync<int>(
-          new CommandDefinition(
-            """
-            INSERT INTO dbo.OrdenTrabajoPlantillaVersion (PlantillaId, NumeroVersion, Estado, CreadaPor, PublicadaEn, PublicadaPor)
-            SELECT @TemplateId, ISNULL(MAX(NumeroVersion), 0) + 1, 'PUBLICADA', @Actor, SYSUTCDATETIME(), @Actor
-            FROM dbo.OrdenTrabajoPlantillaVersion
-            WHERE PlantillaId = @TemplateId;
-            SELECT CAST(SCOPE_IDENTITY() AS int);
-            """,
-            new { TemplateId = templateId.Value, Actor = safeActor },
-            tx,
-            cancellationToken: ct));
-        published++;
-
-        var legacySteps = (await conn.QueryAsync<LegacyTemplateStep>(
-          new CommandDefinition(
-            """
-            ;WITH route_steps AS (
-              SELECT
-                  ROW_NUMBER() OVER (ORDER BY rc.Paso_Numero, rc.ID) AS RowNumber,
-                  CAST(ISNULL(rc.Paso_Numero, 0) AS decimal(9,2)) AS Secuencia,
-                  COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(1000), rc.Descripcion))), ''), @TemplateName) AS Descripcion,
-                  rc.Procedimiento_ID AS ProcedimientoId
-              FROM dbo.Actividad_Ruta_Critica rc
-              WHERE rc.Actividad_ID = @ActividadId
-            ),
-            fallback_step AS (
-              SELECT
-                  1 AS RowNumber,
-                  CAST(1 AS decimal(9,2)) AS Secuencia,
-                  @TemplateName AS Descripcion,
-                  CAST(NULL AS int) AS ProcedimientoId
-              WHERE NOT EXISTS (
-                SELECT 1
-                FROM dbo.Actividad_Ruta_Critica rc
-                WHERE rc.Actividad_ID = @ActividadId
-              )
-            )
-            SELECT RowNumber, Secuencia, Descripcion, ProcedimientoId
-            FROM route_steps
-            UNION ALL
-            SELECT RowNumber, Secuencia, Descripcion, ProcedimientoId
-            FROM fallback_step
-            ORDER BY RowNumber;
-            """,
-            new { legacy.ActividadId, TemplateName = templateName },
-            tx,
-            cancellationToken: ct))).AsList();
-
-        if (legacy.StepCount == 0)
-        {
-          fallbackSteps++;
-        }
-
-        foreach (var step in legacySteps)
-        {
-          var title = BuildStepTitle(step.RowNumber, step.Descripcion);
-          await conn.ExecuteAsync(
-            new CommandDefinition(
-              """
-              INSERT INTO dbo.OrdenTrabajoPlantillaPaso
-              (
-                  PlantillaVersionId,
-                  Secuencia,
-                  Titulo,
-                  Descripcion,
-                  PoliticaFoto,
-                  RequiereNotasEnIncidencia,
-                  RequiereNotasEnNoAplica,
-                  ProcedimientoId
-              )
-              VALUES
-              (
-                  @VersionId,
-                  @Secuencia,
-                  @Titulo,
-                  @Descripcion,
-                  @PoliticaFoto,
-                  1,
-                  1,
-                  @ProcedimientoId
-              );
-              """,
-              new
-              {
-                VersionId = versionId,
-                Secuencia = step.Secuencia == 0 ? step.RowNumber : step.Secuencia,
-                Titulo = title,
-                Descripcion = Truncate(RequireText(step.Descripcion, "Paso sin descripcion."), 1000),
-                PoliticaFoto = InferLegacyPhotoPolicy(step.Descripcion),
-                step.ProcedimientoId
-              },
-              tx,
-              cancellationToken: ct));
-        }
-      }
-
-      await tx.CommitAsync(ct);
-      return OrdenTrabajoCommandResult.Ok($"Importacion checklist terminada. Actividades: {legacyTemplates.Count}. Plantillas nuevas: {created}. Versiones publicadas: {published}. Pasos fallback: {fallbackSteps}.");
-    }
-    catch
-    {
-      await tx.RollbackAsync(ct);
-      throw;
-    }
-  }
 
   public async Task<IReadOnlyList<OrdenTrabajoCalendarBadgeDto>> GetCalendarBadgesAsync(DateTime startDate, DateTime endDateExclusive, CancellationToken ct = default)
   {
-    const string sql =
-      """
+    var sql =
+      $$"""
       SELECT
           ot.RoomCalendarId,
           ot.Id AS WorkOrderId,
@@ -2545,6 +2108,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
           ).value('.', 'nvarchar(max)'), 1, 1, '') AS HelperNames
       ) helpers
       WHERE ot.RoomCalendarId IS NOT NULL
+        AND {{HospitalityOrderVisibilitySql}}
         AND ot.FechaProgramada >= @StartDate
         AND ot.FechaProgramada < @EndDateExclusive
         AND cat.Codigo = 'LIMPIEZA'
@@ -2554,7 +2118,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
     try
     {
-      using var conn = CreateConnection();
+      using var conn = await OpenHospitalityAwareAsync(required: true, requestedRfc: null, ct);
       var rows = await conn.QueryAsync<OrdenTrabajoCalendarBadgeDto>(
         new CommandDefinition(sql, new { StartDate = startDate.Date, EndDateExclusive = endDateExclusive.Date }, cancellationToken: ct));
       return rows.AsList();
@@ -3070,6 +2634,87 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
         """);
       p.Add("@EmployeeId", filter.EmployeeId.Value);
     }
+  }
+
+  private async Task<DbConnection> OpenHospitalityAwareAsync(bool required, string? requestedRfc, CancellationToken ct)
+  {
+    var companyRfc = RequireCompanyRfc(requestedRfc);
+    HospitalityScope? scope = null;
+    if (_hospitalityScope is not null)
+    {
+      try { scope = await _hospitalityScope.ResolveRequiredAsync(ct); }
+      catch (UnauthorizedAccessException) when (!required) { /* Generic OT remain usable; hospitality OT remain hidden. */ }
+    }
+    if (required && scope is null)
+      throw new UnauthorizedAccessException("Selecciona una sede de Hospedaje habilitada antes de operar suites o reservaciones en órdenes de trabajo.");
+    if (scope is not null && !string.IsNullOrWhiteSpace(requestedRfc)
+        && !string.Equals(scope.CompanyRfc, requestedRfc.Trim(), StringComparison.OrdinalIgnoreCase))
+      throw new UnauthorizedAccessException("El RFC de la orden no coincide con la empresa de Hospedaje seleccionada.");
+
+    var conn = CreateConnection();
+    try
+    {
+      if (scope is not null)
+      {
+        if (conn is not SqlConnection sqlConnection) throw new InvalidOperationException("Hospedaje requiere SQL Server.");
+        await HospitalityConnectionFactory.InitializeAsync(sqlConnection, scope, ct);
+      }
+      else if (conn is SqlConnection)
+      {
+        await conn.OpenAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition("""
+EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalityCompanyId', @value=NULL;
+EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalitySiteId', @value=NULL;
+EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalityRfc', @value=NULL;
+""", cancellationToken: ct));
+      }
+      if (conn is SqlConnection)
+        await conn.ExecuteAsync(new CommandDefinition("EXEC sys.sp_set_session_context @key=N'OrionERP.WorkOrderRfc', @value=@Rfc;", new { Rfc = companyRfc }, cancellationToken: ct));
+      return conn;
+    }
+    catch { await conn.DisposeAsync(); throw; }
+  }
+
+  private string RequireCompanyRfc(string? requestedRfc = null)
+  {
+    var company = _companyContext ?? throw new UnauthorizedAccessException("Falta la empresa autenticada para órdenes de trabajo.");
+    var rfc = company.RequireRfc();
+    if (!string.IsNullOrWhiteSpace(requestedRfc)) company.EnsureRfc(requestedRfc);
+    return rfc;
+  }
+
+  private static async Task EnsureWorkOrderVisibleAsync(DbConnection conn, IDbTransaction tx, int workOrderId, CancellationToken ct)
+  {
+    var visible = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
+      "SELECT 1 FROM dbo.OrdenTrabajo ot WITH (UPDLOCK, HOLDLOCK) WHERE ot.Id = @Id AND " + HospitalityOrderVisibilitySql,
+      new { Id = workOrderId }, tx, cancellationToken: ct));
+    if (visible != 1)
+      throw new UnauthorizedAccessException("La orden no existe o pertenece a otra empresa o sede.");
+  }
+
+  private static async Task EnsureTemplateCompanyAsync(DbConnection conn, IDbTransaction tx, int templateId, CancellationToken ct)
+  {
+    var visible = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
+      "SELECT 1 FROM dbo.OrdenTrabajoPlantilla WITH (UPDLOCK, HOLDLOCK) WHERE Id = @Id AND Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionERP.WorkOrderRfc'));",
+      new { Id = templateId }, tx, cancellationToken: ct));
+    if (visible != 1) throw new UnauthorizedAccessException("La plantilla no pertenece a la empresa de la sesión.");
+  }
+
+  private static async Task ValidateHospitalityReferencesAsync(DbConnection conn, IDbTransaction tx,
+    int? roomId, int? roomCalendarId, int? reservationId, CancellationToken ct)
+  {
+    var valid = await conn.ExecuteScalarAsync<int?>(new CommandDefinition("""
+SELECT 1 WHERE
+  (@RoomId IS NULL OR EXISTS (SELECT 1 FROM dbo.ROOM WHERE ID = @RoomId))
+  AND (@ReservationId IS NULL OR EXISTS (SELECT 1 FROM dbo.RESERVATION WHERE ID = @ReservationId))
+  AND (@RoomCalendarId IS NULL OR EXISTS (
+    SELECT 1 FROM dbo.ROOM_CALENDAR cell
+    WHERE cell.ID = @RoomCalendarId
+      AND (@RoomId IS NULL OR cell.RoomId = @RoomId)
+      AND (@ReservationId IS NULL OR cell.ReservationId = @ReservationId)));
+""", new { RoomId = roomId, RoomCalendarId = roomCalendarId, ReservationId = reservationId }, tx, cancellationToken: ct));
+    if (!valid.HasValue)
+      throw new UnauthorizedAccessException("La suite, celda o reservación no pertenecen a la sede seleccionada o sus referencias no coinciden.");
   }
 
   private DbConnection CreateConnection()

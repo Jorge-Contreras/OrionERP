@@ -57,8 +57,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -168,8 +170,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -267,8 +271,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -381,8 +387,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -443,8 +451,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -501,8 +511,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -582,8 +594,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -678,8 +692,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -731,8 +747,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -781,8 +799,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -867,8 +887,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -906,7 +928,7 @@ public class PurchaseOrderServiceTests
   }
 
   [Fact]
-  public async Task CreateAutoDraftAsync_NormalizesAllRoomsSelection_ToUnscopedBehavior()
+  public async Task CreateAutoDraftAsync_PreservesExplicitAllRoomsSelection_WithoutExpandingToGeneralLocations()
   {
     var nextLineId = 811;
     var connection = new FakeQueryDbConnection
@@ -962,8 +984,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -997,10 +1021,10 @@ public class PurchaseOrderServiceTests
     Assert.Equal(491, result.EntityId);
 
     var draftLookup = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("SELECT TOP (1) po.Id", StringComparison.Ordinal));
-    Assert.DoesNotContain("scope.RoomId NOT IN", draftLookup.CommandText, StringComparison.OrdinalIgnoreCase);
+    Assert.Contains("scope.RoomId NOT IN", draftLookup.CommandText, StringComparison.OrdinalIgnoreCase);
 
     var candidateQuery = Assert.Single(connection.ExecutedCommands, command => command.CommandText.Contains("WITH OpenPurchaseAllocations", StringComparison.Ordinal));
-    Assert.DoesNotContain("location.RoomId IN", candidateQuery.CommandText, StringComparison.OrdinalIgnoreCase);
+    Assert.Contains("location.RoomId IN", candidateQuery.CommandText, StringComparison.OrdinalIgnoreCase);
   }
 
   [Fact]
@@ -1084,8 +1108,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -1143,8 +1169,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -1204,8 +1232,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -1286,8 +1316,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -1338,8 +1370,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -1397,8 +1431,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal))
         {
           return true;
@@ -1546,8 +1582,10 @@ public class PurchaseOrderServiceTests
 
         return new DataTable();
       },
-      ScalarResultFactory = (commandText, _) =>
+      ScalarResultFactory = (commandText, parameters) =>
       {
+        if (commandText.Contains("SELECT COUNT(*) FROM dbo.ROOM WITH (HOLDLOCK)", StringComparison.Ordinal))
+          return parameters.Count(parameter => parameter.Name.StartsWith("RoomIds", StringComparison.OrdinalIgnoreCase) || parameter.Name.StartsWith("@RoomIds", StringComparison.OrdinalIgnoreCase));
         if (commandText.Contains("INSERT INTO logistica.PurchaseReceipt", StringComparison.Ordinal))
         {
           return 70;

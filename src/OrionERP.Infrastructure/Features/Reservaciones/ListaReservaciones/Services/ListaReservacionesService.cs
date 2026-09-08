@@ -1,3 +1,4 @@
+using OrionERP.Application.Features.Reservaciones;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -25,11 +26,16 @@ public sealed class ListaReservacionesService : IListaReservacionesService
   private readonly string _cs;
   private readonly ILogger<ListaReservacionesService> _logger;
 
-  public ListaReservacionesService(IConfiguration cfg, ILogger<ListaReservacionesService> logger)
+  private readonly HospitalityConnectionFactory? _hospitalityConnections;
+  private Task<SqlConnection> OpenScopedAsync(CancellationToken ct)
+    => (_hospitalityConnections ?? throw new UnauthorizedAccessException("Falta el alcance autorizado de Hospedaje.")).OpenAsync(ct);
+
+  public ListaReservacionesService(IConfiguration cfg, ILogger<ListaReservacionesService> logger, HospitalityConnectionFactory? hospitalityConnections = null)
   {
     _cs = cfg.GetConnectionString("OrionDb")
       ?? throw new InvalidOperationException("Missing connection string: OrionDb");
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    _hospitalityConnections = hospitalityConnections;
   }
 
   public async Task<IReadOnlyList<ListaReservacionItemDto>> GetListaAsync(
@@ -55,7 +61,7 @@ SELECT
     r.NOTES AS Notes
 FROM dbo.RESERVATION r
 LEFT JOIN dbo.Clientes c
-  ON c.ID = r.CLIENTE_ID
+  ON c.ID = r.CLIENTE_ID AND EXISTS (SELECT 1 FROM orion.HospitalitySiteCustomer sc WHERE sc.ClienteId = c.ID)
 WHERE 1=1");
 
     if (!filter.IncluirCanceladas)
@@ -79,7 +85,7 @@ ORDER BY r.CHECKIN DESC, r.ID DESC");
     AppendListaPagination(sql, p, skip, take);
     sql.Append(';');
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     var rows = (await conn.QueryAsync<ListaReservacionListRow>(
       new CommandDefinition(sql.ToString(), p, cancellationToken: ct))).AsList();
 
@@ -115,7 +121,7 @@ FROM dbo.RESERVATION r
 INNER JOIN dbo.ROOM_CALENDAR rc
   ON r.ID = TRY_CAST(rc.LOCK_DESCRIPTION AS int)
 LEFT JOIN dbo.Clientes c
-  ON c.ID = r.CLIENTE_ID
+  ON c.ID = r.CLIENTE_ID AND EXISTS (SELECT 1 FROM orion.HospitalitySiteCustomer sc WHERE sc.ClienteId = c.ID)
 WHERE UPPER(LTRIM(RTRIM(ISNULL(r.STATUS, '')))) = @PagadaStatus
   AND rc.ROOM_DATE >= @FromDate
   AND rc.ROOM_DATE < @ToDate
@@ -131,7 +137,7 @@ GROUP BY
     r.NOTES
 ORDER BY CAST(rc.ROOM_DATE AS date) ASC, r.CHECKIN ASC, r.ID ASC;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     var rows = (await conn.QueryAsync<ListaReservacionListRow>(
       new CommandDefinition(
         sql,
@@ -165,7 +171,7 @@ SELECT TOP (@Take)
     r.NOTES AS Notes
 FROM dbo.RESERVATION r
 LEFT JOIN dbo.Clientes c
-  ON c.ID = r.CLIENTE_ID
+  ON c.ID = r.CLIENTE_ID AND EXISTS (SELECT 1 FROM orion.HospitalitySiteCustomer sc WHERE sc.ClienteId = c.ID)
 WHERE r.ID > @LastId
   AND UPPER(LTRIM(RTRIM(ISNULL(r.STATUS, '')))) NOT IN (@PagadaStatus, @CanceladaStatus, @CanceladoStatus)
 ORDER BY r.ID ASC;";
@@ -181,8 +187,7 @@ UPDATE dbo.ROOM_CALENDAR
 SET STATUS = @PagadaStatus
 WHERE TRY_CAST(LOCK_DESCRIPTION AS int) IN @ReservationIds;";
 
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
 
     var updatedCount = 0;
     var lastId = 0;
@@ -321,8 +326,8 @@ SELECT
     rt.ReservationID AS ReservationId,
     CAST(ISNULL(rt.Amount, ISNULL(t.Monto, 0)) AS decimal(18,2)) AS Amount
 FROM dbo.Reservation_Transacciones rt
-LEFT JOIN dbo.Transacciones t
-  ON t.ID = rt.TransaccionID
+INNER JOIN dbo.Transacciones t
+  ON t.ID = rt.TransaccionID AND t.RFC = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionERP.HospitalityRfc'))
 WHERE rt.ReservationID IN @ReservationIds;
 
 WITH ReservationPayments AS
@@ -552,11 +557,13 @@ FETCH NEXT @Take ROWS ONLY");
     var status = ReservationStatuses.NormalizeOrDefault(request.Status);
 
     const string sql = @"
-INSERT INTO dbo.RESERVATION (CLIENTE_ID, STATUS, NOTES)
-VALUES (@ClienteId, @Status, @Notes);
+IF NOT EXISTS (SELECT 1 FROM orion.HospitalitySiteCustomer WHERE ClienteId = @ClienteId)
+  THROW 51901, 'Cliente ajeno a la sede.', 1;
+INSERT INTO dbo.RESERVATION (CLIENTE_ID, STATUS, NOTES, RFC)
+VALUES (@ClienteId, @Status, @Notes, CONVERT(varchar(50), SESSION_CONTEXT(N'OrionERP.HospitalityRfc')));
 SELECT CAST(SCOPE_IDENTITY() AS int);";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     return await conn.ExecuteScalarAsync<int>(
       new CommandDefinition(
         sql,
@@ -576,6 +583,7 @@ SELECT TOP (1)
     c.ID AS Id,
     c.Nombre AS Nombre
 FROM dbo.Clientes c
+INNER JOIN orion.HospitalitySiteCustomer customerScope ON customerScope.ClienteId = c.ID
 WHERE c.Nombre LIKE '%COTIZAC%'
 ORDER BY
     CASE
@@ -587,7 +595,7 @@ ORDER BY
     LEN(LTRIM(RTRIM(c.Nombre))),
     c.ID;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     return await conn.QueryFirstOrDefaultAsync<ClienteOptionDto>(
       new CommandDefinition(sql, cancellationToken: ct));
   }
@@ -599,7 +607,7 @@ UPDATE dbo.RESERVATION
 SET NOTES = @Notes
 WHERE ID = @ReservationId;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     var affected = await conn.ExecuteAsync(
       new CommandDefinition(
         sql,
@@ -673,8 +681,7 @@ SELECT @@ROWCOUNT;";
 
     try
     {
-      await using var conn = new SqlConnection(_cs);
-      await conn.OpenAsync(ct);
+      await using var conn = await OpenScopedAsync(ct);
 
       await using var cmd = conn.CreateCommand();
       cmd.CommandText = sql;
@@ -722,8 +729,10 @@ DELETE FROM dbo.Actividad
 WHERE ID IN (
   SELECT ar.Actividad_ID
   FROM dbo.Actividad_RoomCalendar ar
-  WHERE ar.RoomCalendar_ID IN @Ids
-);";
+  WHERE ar.RoomCalendar_ID IN @Ids AND EXISTS (SELECT 1 FROM dbo.ROOM_CALENDAR rc WHERE rc.ID = ar.RoomCalendar_ID)
+) AND NOT EXISTS (SELECT 1 FROM dbo.Actividad_RoomCalendar otherLink
+  WHERE otherLink.Actividad_ID = dbo.Actividad.ID AND (otherLink.RoomCalendar_ID NOT IN @Ids OR NOT EXISTS (
+    SELECT 1 FROM dbo.ROOM_CALENDAR ownedCalendar WHERE ownedCalendar.ID = otherLink.RoomCalendar_ID)));";
 
     const string unlockSuitesSql = @"
 UPDATE dbo.ROOM_CALENDAR
@@ -749,8 +758,7 @@ END;";
 DELETE FROM dbo.RESERVATION
 WHERE ID = @ReservationId;";
 
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
     await using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
 
     try
@@ -826,7 +834,7 @@ SELECT TOP (1)
     r.NOTES AS Notes
 FROM dbo.RESERVATION r
 LEFT JOIN dbo.Clientes c
-  ON c.ID = r.CLIENTE_ID
+  ON c.ID = r.CLIENTE_ID AND EXISTS (SELECT 1 FROM orion.HospitalitySiteCustomer sc WHERE sc.ClienteId = c.ID)
 WHERE r.ID = @ReservationId;
 
 SELECT
@@ -936,8 +944,8 @@ SELECT
     ISNULL(t.Concepto, '') AS Concepto,
     CAST(ISNULL(rt.Amount, ISNULL(t.Monto, 0)) AS decimal(18,2)) AS Monto
 FROM dbo.Reservation_Transacciones rt
-LEFT JOIN dbo.Transacciones t
-  ON t.ID = rt.TransaccionID
+INNER JOIN dbo.Transacciones t
+  ON t.ID = rt.TransaccionID AND t.RFC = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionERP.HospitalityRfc'))
 WHERE rt.ReservationID = @ReservationId
 ORDER BY t.Fecha DESC, rt.TransaccionID DESC;
 
@@ -1001,8 +1009,7 @@ BEGIN
         CAST(NULL AS datetime2) AS UpdatedAtUtc;
 END;";
 
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
     using var multi = await conn.QueryMultipleAsync(
       new CommandDefinition(detailSql, new { ReservationId = reservationId }, cancellationToken: ct));
 
@@ -1047,12 +1054,13 @@ SELECT TOP (@MaxResults)
     c.ID AS Id,
     c.Nombre AS Nombre
 FROM dbo.Clientes c
+INNER JOIN orion.HospitalitySiteCustomer customerScope ON customerScope.ClienteId = c.ID
 WHERE (@Search IS NULL OR c.Nombre LIKE @Search)
 ORDER BY c.Nombre;";
 
     var take = maxResults <= 0 ? 5 : maxResults;
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     var rows = await conn.QueryAsync<ClienteOptionDto>(
       new CommandDefinition(
         sql,
@@ -1070,7 +1078,7 @@ ORDER BY c.Nombre;";
   {
     var normalizedName = NormalizeClienteNombre(clienteNombre);
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
 
     if (clienteId.HasValue && clienteId.Value > 0)
     {
@@ -1079,6 +1087,7 @@ SELECT TOP (1)
     c.ID AS Id,
     c.Nombre AS Nombre
 FROM dbo.Clientes c
+INNER JOIN orion.HospitalitySiteCustomer customerScope ON customerScope.ClienteId = c.ID
 WHERE c.ID = @ClienteId;";
 
       var clientePorId = await conn.QueryFirstOrDefaultAsync<ClienteOptionDto>(
@@ -1100,6 +1109,7 @@ SELECT TOP (1)
     c.ID AS Id,
     c.Nombre AS Nombre
 FROM dbo.Clientes c
+INNER JOIN orion.HospitalitySiteCustomer customerScope ON customerScope.ClienteId = c.ID
 WHERE UPPER(LTRIM(RTRIM(c.Nombre))) = UPPER(@Nombre)
 ORDER BY c.ID;";
 
@@ -1118,16 +1128,19 @@ SELECT TOP (1)
     c.ID AS Id,
     c.Nombre AS Nombre
 FROM dbo.Clientes c
+INNER JOIN orion.HospitalitySiteCustomer customerScope ON customerScope.ClienteId = c.ID
 WHERE UPPER(LTRIM(RTRIM(c.Nombre))) = UPPER(@Nombre)
 ORDER BY c.ID;";
 
     const string insertSql = @"
 INSERT INTO dbo.Clientes (Nombre)
 VALUES (@Nombre);
-SELECT CAST(SCOPE_IDENTITY() AS int);";
+DECLARE @NewClienteId int = CONVERT(int, SCOPE_IDENTITY());
+INSERT orion.HospitalitySiteCustomer (CompanyId,SiteId,ClienteId)
+VALUES(CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')),CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalitySiteId')),@NewClienteId);
+SELECT @NewClienteId;";
 
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct) as SqlTransaction;
 
     try
@@ -1175,7 +1188,7 @@ FROM dbo.Extra e
 WHERE e.IsActive = 1
 ORDER BY e.[Name], e.ExtraID;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     var rows = await conn.QueryAsync<ExtraCatalogItemDto>(new CommandDefinition(sql, cancellationToken: ct));
     return rows.AsList();
   }
@@ -1190,7 +1203,7 @@ ORDER BY e.[Name], e.ExtraID;";
     if (endDateExclusive <= startDate)
       throw new ArgumentException("EndDateExclusive must be after StartDate.", nameof(filter));
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     using var multi = await conn.QueryMultipleAsync(
       new CommandDefinition(
         "dbo.Calendar_GetRoomTimeline",
@@ -1231,7 +1244,7 @@ FROM dbo.ROOM_CALENDAR rc
 WHERE TRY_CAST(rc.LOCK_DESCRIPTION AS int) = @ReservationId
 ORDER BY rc.ROOM_DATE, rc.ROOM;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     var rows = await conn.QueryAsync<ReservacionSuiteDto>(
       new CommandDefinition(sql, new { ReservationId = reservationId }, cancellationToken: ct));
 
@@ -1253,7 +1266,7 @@ EXEC ROOMS_BY_DATE_AND_ROOM
      @FINAL_DATE = @FinalDate,
      @ROOM = @Room;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     var rows = await conn.QueryAsync(
       new CommandDefinition(
         sql,
@@ -1314,7 +1327,7 @@ FROM dbo.Reservation_Extra re
 WHERE re.ReservationID = @ReservationId
 ORDER BY re.ReservationExtraID;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     var rows = await conn.QueryAsync<ReservacionExtraDto>(
       new CommandDefinition(sql, new { ReservationId = reservationId }, cancellationToken: ct));
 
@@ -1330,12 +1343,12 @@ SELECT
     ISNULL(t.Concepto, '') AS Concepto,
     CAST(ISNULL(rt.Amount, ISNULL(t.Monto, 0)) AS decimal(18,2)) AS Monto
 FROM dbo.Reservation_Transacciones rt
-LEFT JOIN dbo.Transacciones t
-  ON t.ID = rt.TransaccionID
+INNER JOIN dbo.Transacciones t
+  ON t.ID = rt.TransaccionID AND t.RFC = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionERP.HospitalityRfc'))
 WHERE rt.ReservationID = @ReservationId
 ORDER BY t.Fecha DESC, rt.TransaccionID DESC;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     var rows = await conn.QueryAsync<ReservacionPagoDto>(
       new CommandDefinition(sql, new { ReservationId = reservationId }, cancellationToken: ct));
     return rows.AsList();
@@ -1355,7 +1368,7 @@ FROM dbo.RESERVATION_ATTACHMENT ra
 WHERE ra.ReservationID = @ReservationId
 ORDER BY ra.ID DESC;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     var rows = await conn.QueryAsync<ReservacionAttachmentDto>(
       new CommandDefinition(sql, new { ReservationId = reservationId }, cancellationToken: ct));
 
@@ -1394,7 +1407,7 @@ SELECT
 FROM dbo.RESERVATION_ATTACHMENT ra
 WHERE ra.ID = @AttachmentId;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     var attachmentId = await conn.ExecuteScalarAsync<int>(
       new CommandDefinition(
         insertSql,
@@ -1427,7 +1440,7 @@ SELECT TOP (1)
 FROM dbo.RESERVATION_ATTACHMENT ra
 WHERE ra.ID = @AttachmentId;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     var row = await conn.QueryFirstOrDefaultAsync<(string? AttachmentName, string? AttachmentExtension, byte[]? Attachment)>(
       new CommandDefinition(sql, new { AttachmentId = attachmentId }, cancellationToken: ct));
 
@@ -1454,7 +1467,7 @@ WHERE ra.ID = @AttachmentId;";
   {
     const string sql = @"DELETE FROM dbo.RESERVATION_ATTACHMENT WHERE ID = @AttachmentId;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     await conn.ExecuteAsync(new CommandDefinition(sql, new { AttachmentId = attachmentId }, cancellationToken: ct));
   }
 
@@ -1493,7 +1506,7 @@ SET
     SUITE_DISCOUNT_PERCENT = @SuiteDiscountPercent
 WHERE ID = @Id;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     var affected = await conn.ExecuteAsync(
       new CommandDefinition(
         sql,
@@ -1524,7 +1537,7 @@ UPDATE dbo.ROOM_CALENDAR
 SET STATUS = @Status
 WHERE TRY_CAST(LOCK_DESCRIPTION AS int) = @ReservationId;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     await conn.ExecuteAsync(
       new CommandDefinition(
         sql,
@@ -1543,8 +1556,8 @@ WHERE TRY_CAST(LOCK_DESCRIPTION AS int) = @ReservationId;";
     var clienteNombre = string.Empty;
     if (clienteId.HasValue)
     {
-      const string clienteSql = @"SELECT TOP (1) Nombre FROM dbo.Clientes WHERE ID = @ClienteId;";
-      await using var connCliente = new SqlConnection(_cs);
+      const string clienteSql = @"SELECT TOP (1) Nombre FROM dbo.Clientes c WHERE ID = @ClienteId AND EXISTS (SELECT 1 FROM orion.HospitalitySiteCustomer sc WHERE sc.ClienteId = c.ID);";
+      await using var connCliente = await OpenScopedAsync(ct);
       clienteNombre = (await connCliente.ExecuteScalarAsync<string?>(
         new CommandDefinition(clienteSql, new { ClienteId = clienteId.Value }, cancellationToken: ct))) ?? string.Empty;
     }
@@ -1554,7 +1567,7 @@ UPDATE dbo.ROOM_CALENDAR
 SET LOCKED_BY = @ClienteNombre
 WHERE TRY_CAST(LOCK_DESCRIPTION AS int) = @ReservationId;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
     await conn.ExecuteAsync(
       new CommandDefinition(sql, new { ClienteNombre = clienteNombre, ReservationId = reservationId }, cancellationToken: ct));
 
@@ -1567,6 +1580,10 @@ WHERE TRY_CAST(LOCK_DESCRIPTION AS int) = @ReservationId;";
       return ReservacionCommandResult.Fail("Selecciona al menos una fecha/suite para agregar.");
 
     const string validateSql = @"
+IF NOT EXISTS (SELECT 1 FROM dbo.RESERVATION WHERE ID = @ReservationId)
+  THROW 51903, 'La reserva no pertenece a la sede seleccionada.', 1;
+IF (SELECT COUNT(*) FROM dbo.ROOM_CALENDAR WHERE ID IN @Ids) <> @ExpectedCount
+  THROW 51904, 'Una o mas fechas no pertenecen a la sede seleccionada.', 1;
 SELECT COUNT(1)
 FROM dbo.ROOM_CALENDAR
 WHERE ID IN @Ids
@@ -1581,11 +1598,12 @@ SET
     STATUS = @Status
 WHERE ID IN @Ids;";
 
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
+    await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    await ValidateCalendarIdsAsync(conn, tx, roomCalendarIds, ct);
 
     var blocked = await conn.ExecuteScalarAsync<int>(
-      new CommandDefinition(validateSql, new { Ids = roomCalendarIds.ToArray() }, cancellationToken: ct));
+      new CommandDefinition(validateSql, new { Ids = roomCalendarIds.Distinct().ToArray(), ExpectedCount = roomCalendarIds.Distinct().Count(), ReservationId = reservationId }, tx, cancellationToken: ct));
 
     if (blocked > 0)
       return ReservacionCommandResult.Fail("Una o más suites seleccionadas ya están bloqueadas.");
@@ -1600,8 +1618,9 @@ WHERE ID IN @Ids;";
           ReservationId = reservationId.ToString(CultureInfo.InvariantCulture),
           Status = string.IsNullOrWhiteSpace(status) ? string.Empty : status.Trim()
         },
-        cancellationToken: ct));
+        transaction: tx, cancellationToken: ct));
 
+    await tx.CommitAsync(ct);
     return ReservacionCommandResult.Ok($"Se agregaron {affected} suites a la reservación.");
   }
 
@@ -1624,12 +1643,14 @@ DELETE FROM dbo.Actividad
 WHERE ID IN (
   SELECT ar.Actividad_ID
   FROM dbo.Actividad_RoomCalendar ar
-  WHERE ar.RoomCalendar_ID IN @Ids
-);";
+  WHERE ar.RoomCalendar_ID IN @Ids AND EXISTS (SELECT 1 FROM dbo.ROOM_CALENDAR rc WHERE rc.ID = ar.RoomCalendar_ID)
+) AND NOT EXISTS (SELECT 1 FROM dbo.Actividad_RoomCalendar otherLink
+  WHERE otherLink.Actividad_ID = dbo.Actividad.ID AND (otherLink.RoomCalendar_ID NOT IN @Ids OR NOT EXISTS (
+    SELECT 1 FROM dbo.ROOM_CALENDAR ownedCalendar WHERE ownedCalendar.ID = otherLink.RoomCalendar_ID)));";
 
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
     await using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
+    await ValidateCalendarIdsAsync(conn, tx!, roomCalendarIds, ct);
 
     try
     {
@@ -1663,9 +1684,9 @@ WHERE ID IN (
 
     const string sql = @"UPDATE dbo.ROOM_CALENDAR SET PRECIO = @Price WHERE ID IN @Ids;";
 
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
     await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+    await ValidateCalendarIdsAsync(conn, tx!, roomCalendarIds, ct);
     var reservationIds = (await conn.QueryAsync<int>(new CommandDefinition(
       "SELECT DISTINCT TRY_CONVERT(int,NULLIF(LTRIM(RTRIM(LOCK_DESCRIPTION)),'')) FROM dbo.ROOM_CALENDAR WITH (UPDLOCK) WHERE ID IN @Ids;",
       new { Ids = roomCalendarIds.ToArray() }, tx, cancellationToken: ct))).Where(id => id > 0).ToArray();
@@ -1691,10 +1712,13 @@ WHERE ID IN (
 
     const string sql = @"UPDATE dbo.ROOM_CALENDAR SET Limpieza_Profunda = @State WHERE ID IN @Ids;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenScopedAsync(ct);
+    await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+    await ValidateCalendarIdsAsync(conn, tx, roomCalendarIds, ct);
     var affected = await conn.ExecuteAsync(
-      new CommandDefinition(sql, new { State = nextState, Ids = roomCalendarIds.ToArray() }, cancellationToken: ct));
+      new CommandDefinition(sql, new { State = nextState, Ids = roomCalendarIds.ToArray() }, tx, cancellationToken: ct));
 
+    await tx.CommitAsync(ct);
     return ReservacionCommandResult.Ok($"Limpieza profunda actualizada para {affected} suites.");
   }
 
@@ -1710,9 +1734,9 @@ WHERE ID IN (
     var ids = roomCalendarIds.Distinct().ToArray();
     var grossAmounts = SplitCurrency(totalWithIva, ids.Length);
 
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
     await using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
+    await ValidateCalendarIdsAsync(conn, tx!, roomCalendarIds, ct);
 
     try
     {
@@ -1856,8 +1880,7 @@ BEGIN
     );
 END;";
 
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct) as SqlTransaction;
 
     try
@@ -2018,7 +2041,7 @@ SELECT @Result;
 
     try
     {
-      await using var conn = new SqlConnection(_cs);
+      await using var conn = await OpenScopedAsync(ct);
       var result = await conn.ExecuteScalarAsync<int>(
           new CommandDefinition(sql, new { ReservationId = reservationId }, cancellationToken: ct));
 
@@ -2086,8 +2109,7 @@ FROM dbo.Extra e
 WHERE e.ExtraID = @ExtraId
   AND e.IsActive = 1;";
 
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
     await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
     var affected = await conn.ExecuteAsync(
       new CommandDefinition(
@@ -2139,8 +2161,7 @@ WHERE re.ReservationExtraID = @Id
   AND re.ReservationID = @ReservationId
   AND e.IsActive = 1;";
 
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
     await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
     var affected = await conn.ExecuteAsync(
       new CommandDefinition(
@@ -2172,8 +2193,7 @@ DECLARE @ReservationId int=(SELECT ReservationID FROM dbo.Reservation_Extra WITH
 DELETE FROM dbo.Reservation_Extra WHERE ReservationExtraID=@Id;
 SELECT @ReservationId;";
 
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenScopedAsync(ct);
     await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
     var reservationId = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(sql, new { Id = reservationExtraId }, tx, cancellationToken: ct));
     var affected = reservationId.HasValue ? 1 : 0;
@@ -2305,6 +2325,17 @@ SELECT @ReservationId;";
 
   private static string ToStringSafe(object? value)
     => value is null || value is DBNull ? string.Empty : value.ToString() ?? string.Empty;
+
+  private static async Task ValidateCalendarIdsAsync(SqlConnection connection, SqlTransaction transaction,
+    IReadOnlyCollection<int> ids, CancellationToken ct)
+  {
+    var distinctIds = ids.Distinct().ToArray();
+    var count = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+      "SELECT COUNT(*) FROM dbo.ROOM_CALENDAR WITH (UPDLOCK,HOLDLOCK) WHERE ID IN @Ids;",
+      new { Ids = distinctIds }, transaction, cancellationToken: ct));
+    if (count != distinctIds.Length)
+      throw new UnauthorizedAccessException("Una o más fechas no pertenecen a la sede seleccionada.");
+  }
 
   private static string? NormalizeClienteNombre(string? clienteNombre)
     => string.IsNullOrWhiteSpace(clienteNombre) ? null : clienteNombre.Trim();

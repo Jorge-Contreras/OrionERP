@@ -1,3 +1,4 @@
+using OrionERP.Infrastructure.Features.Reservaciones;
 using Dapper;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.ReportesFinancieros;
@@ -15,10 +16,35 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
     public class ReportesFinancierosService : IReportesFinancierosService
     {
         private readonly IDbConnectionFactory _connectionFactory;
+        private readonly HospitalityConnectionFactory? _hospitalityConnections;
+        private readonly HospitalityAdministrationScopeAccessor? _hospitalityScope;
+        private readonly ICurrentCompanyContext? _companyContext;
 
-        public ReportesFinancierosService(IDbConnectionFactory connectionFactory)
+        public ReportesFinancierosService(IDbConnectionFactory connectionFactory, HospitalityConnectionFactory? hospitalityConnections = null,
+            HospitalityAdministrationScopeAccessor? hospitalityScope = null, ICurrentCompanyContext? companyContext = null)
         {
             _connectionFactory = connectionFactory;
+            _hospitalityConnections = hospitalityConnections;
+            _hospitalityScope = hospitalityScope;
+            _companyContext = companyContext;
+        }
+
+        private void EnsureCompanyRfc(string? rfc)
+        {
+            if (string.IsNullOrWhiteSpace(rfc))
+                throw new UnauthorizedAccessException("El reporte requiere la empresa de la sesion.");
+            (_companyContext ?? throw new UnauthorizedAccessException("Falta la empresa autorizada.")).EnsureRfc(rfc);
+        }
+
+        private async Task<IDbConnection> OpenSaludConnectionAsync(string rfc, CancellationToken ct)
+        {
+            EnsureCompanyRfc(rfc);
+            var sites = await (_hospitalityScope ?? throw new UnauthorizedAccessException("Falta el contexto de Hospedaje.")).GetSitesAsync(ct);
+            if (sites.Count > 0)
+                return await (_hospitalityConnections ?? throw new UnauthorizedAccessException("Falta el alcance de Hospedaje.")).OpenAsync(ct);
+            var connection = _connectionFactory.Create();
+            try { await OpenConnectionAsync(connection, ct); return connection; }
+            catch { connection.Dispose(); throw; }
         }
 
         public async Task<IReadOnlyList<BalanzaComprobacionRow>> GetBalanzaComprobacionAsync(
@@ -26,6 +52,7 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
             int? mes,
             string? rfc)
         {
+            EnsureCompanyRfc(rfc);
             using var connection = _connectionFactory.Create();
             await OpenConnectionAsync(connection).ConfigureAwait(false);
 
@@ -45,6 +72,7 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
             DateTime endDate,
             string? rfc)
         {
+            EnsureCompanyRfc(rfc);
             using var connection = _connectionFactory.Create();
             await OpenConnectionAsync(connection).ConfigureAwait(false);
 
@@ -75,8 +103,7 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
             SaludEmpresaQuery query,
             CancellationToken cancellationToken = default)
         {
-            using var connection = _connectionFactory.Create();
-            await OpenConnectionAsync(connection, cancellationToken).ConfigureAwait(false);
+            using var connection = await OpenSaludConnectionAsync(query.Rfc, cancellationToken);
 
             var parameters = new
             {
@@ -130,8 +157,7 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
             SaludEmpresaReconciliationQuery query,
             CancellationToken cancellationToken = default)
         {
-            using var connection = _connectionFactory.Create();
-            await OpenConnectionAsync(connection, cancellationToken).ConfigureAwait(false);
+            using var connection = await OpenSaludConnectionAsync(query.Rfc, cancellationToken);
             var parameters = new
             {
                 RFC = query.Rfc,
@@ -171,6 +197,7 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
             DateTime endMonth,
             CancellationToken cancellationToken = default)
         {
+            EnsureCompanyRfc(rfc);
             const string sql = """
 ;WITH Months AS
 (
@@ -207,6 +234,7 @@ OPTION (MAXRECURSION 1000);
             string userName,
             CancellationToken cancellationToken = default)
         {
+            EnsureCompanyRfc(target.Rfc);
             const string sql = """
 UPDATE reporteFinanciero.SaludEmpresaMeta
 SET IngresoHabitacionMeta=@RoomRevenueTarget,IngresoComplementarioMeta=@ComplementaryRevenueTarget,
@@ -241,6 +269,7 @@ IF @@ROWCOUNT=0 THROW 51101,'La meta cambio desde que fue consultada. Recarga an
             string rfc,
             CancellationToken cancellationToken = default)
         {
+            EnsureCompanyRfc(rfc);
             const string sql = """
 MERGE reporteFinanciero.SaludEmpresaConfiguracion WITH (HOLDLOCK) AS target
 USING (SELECT @Rfc RFC) AS source ON source.RFC=target.RFC
@@ -263,6 +292,7 @@ FROM reporteFinanciero.SaludEmpresaConfiguracion WHERE RFC=@Rfc;
             string userName,
             CancellationToken cancellationToken = default)
         {
+            EnsureCompanyRfc(configuration.Rfc);
             const string sql = """
 MERGE reporteFinanciero.SaludEmpresaConfiguracion WITH (HOLDLOCK) AS target
 USING (SELECT @Rfc RFC) AS source ON source.RFC=target.RFC
@@ -292,8 +322,7 @@ SELECT ID RoomId,ROOM_NAME RoomName,ROOM_TYPE RoomType,CAST(ISNULL(BASE_PRICE,0)
        IsActive,IsRentable
 FROM dbo.ROOM ORDER BY IsRentable DESC,ROOM_NAME;
 """;
-            using var connection = _connectionFactory.Create();
-            await OpenConnectionAsync(connection, cancellationToken).ConfigureAwait(false);
+            using var connection = await (_hospitalityConnections ?? throw new UnauthorizedAccessException("Falta el alcance autorizado de Hospedaje.")).OpenAsync(cancellationToken);
             var rows = await connection.QueryAsync<SaludEmpresaRoomConfiguration>(new CommandDefinition(
                 sql, cancellationToken: cancellationToken)).ConfigureAwait(false);
             return rows.AsList();
@@ -304,13 +333,13 @@ FROM dbo.ROOM ORDER BY IsRentable DESC,ROOM_NAME;
             CancellationToken cancellationToken = default)
         {
             const string sql = "UPDATE dbo.ROOM SET IsActive=@IsActive,IsRentable=@IsRentable WHERE ID=@RoomId;";
-            using var connection = _connectionFactory.Create();
-            await OpenConnectionAsync(connection, cancellationToken).ConfigureAwait(false);
+            using var connection = await (_hospitalityConnections ?? throw new UnauthorizedAccessException("Falta el alcance autorizado de Hospedaje.")).OpenAsync(cancellationToken);
             await connection.ExecuteAsync(new CommandDefinition(sql, new { room.RoomId, room.IsActive, room.IsRentable }, cancellationToken: cancellationToken)).ConfigureAwait(false);
         }
 
         public async Task<HojaTrabajoViewModel> GetHojaTrabajoAsync(int anio, string rfc)
         {
+            EnsureCompanyRfc(rfc);
             using var connection = _connectionFactory.Create();
             await OpenConnectionAsync(connection).ConfigureAwait(false);
 

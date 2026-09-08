@@ -1,3 +1,4 @@
+using OrionERP.Application.Features.Reservaciones;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
@@ -40,6 +41,7 @@ public sealed class BonhomiaScopedPublicDataReader : IBonhomiaScopedPublicDataRe
 
     var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
     await using var conn = new SqlConnection(_connectionString);
+    await HospitalityConnectionFactory.InitializeAsync(conn, new HospitalityScope(scope.CompanyId, scope.SiteId, scope.CompanyRfc), ct);
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(
       CalendarTimelineSql,
       new
@@ -69,6 +71,7 @@ public sealed class BonhomiaScopedPublicDataReader : IBonhomiaScopedPublicDataRe
   {
     var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
     await using var conn = new SqlConnection(_connectionString);
+    await HospitalityConnectionFactory.InitializeAsync(conn, new HospitalityScope(scope.CompanyId, scope.SiteId, scope.CompanyRfc), ct);
     var rows = (await conn.QueryAsync<ExtraCatalogRow>(new CommandDefinition(
       ExtraCatalogSql,
       ScopeParameters(scope),
@@ -114,7 +117,7 @@ public sealed class BonhomiaScopedPublicDataReader : IBonhomiaScopedPublicDataRe
   {
     var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
     await using var conn = new SqlConnection(_connectionString);
-    await conn.OpenAsync(ct);
+    await HospitalityConnectionFactory.InitializeAsync(conn, new HospitalityScope(scope.CompanyId, scope.SiteId, scope.CompanyRfc), ct);
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(
       ExperienceCatalogSql,
       new
@@ -170,6 +173,7 @@ public sealed class BonhomiaScopedPublicDataReader : IBonhomiaScopedPublicDataRe
   {
     var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
     await using var conn = new SqlConnection(_connectionString);
+    await HospitalityConnectionFactory.InitializeAsync(conn, new HospitalityScope(scope.CompanyId, scope.SiteId, scope.CompanyRfc), ct);
     var ids = await conn.QueryAsync<int>(new CommandDefinition(
       RoomCalendarIdsSql,
       new
@@ -190,7 +194,7 @@ public sealed class BonhomiaScopedPublicDataReader : IBonhomiaScopedPublicDataRe
   {
     var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
     await using var conn = new SqlConnection(_connectionString);
-    await conn.OpenAsync(ct);
+    await HospitalityConnectionFactory.InitializeAsync(conn, new HospitalityScope(scope.CompanyId, scope.SiteId, scope.CompanyRfc), ct);
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(
       ReservationDetailSql,
       new
@@ -237,6 +241,7 @@ public sealed class BonhomiaScopedPublicDataReader : IBonhomiaScopedPublicDataRe
   {
     var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
     await using var conn = new SqlConnection(_connectionString);
+    await HospitalityConnectionFactory.InitializeAsync(conn, new HospitalityScope(scope.CompanyId, scope.SiteId, scope.CompanyRfc), ct);
     var valid = await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
       SchemaReadinessSql,
       ScopeParameters(scope),
@@ -567,8 +572,8 @@ SELECT link.TransaccionID AS TransaccionId, payment.Fecha,
        ISNULL(payment.Concepto, '') AS Concepto,
        CAST(ISNULL(link.Amount, ISNULL(payment.Monto, 0)) AS decimal(18,2)) AS Monto
 FROM dbo.Reservation_Transacciones link
-LEFT JOIN dbo.Transacciones payment
-  ON payment.ID = link.TransaccionID
+INNER JOIN dbo.Transacciones payment
+  ON payment.ID = link.TransaccionID AND payment.RFC = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionERP.HospitalityRfc'))
 WHERE link.ReservationID = @ReservationId
   AND link.OrionCompanyId = @ScopeCompanyId
   AND link.OrionSiteId = @ScopeSiteId

@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Cfdi.Facturama;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
+using OrionERP.Application.Features.Reservaciones;
 using OrionERP.Application.Features.Reservaciones.Cfdi;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Application.Features.Rfcs.Contracts;
@@ -30,6 +31,7 @@ public sealed class ReservationCfdiService : IReservationCfdiService
   private const int CustomerSuggestionLimit = 12;
 
   private readonly IDbConnectionFactory _connectionFactory;
+  private readonly IHospitalityScopeAccessor? _scopeAccessor;
   private readonly IConfiguration _configuration;
   private readonly IListaReservacionesService _reservacionesService;
   private readonly ITransaccionService _transaccionService;
@@ -46,8 +48,10 @@ public sealed class ReservationCfdiService : IReservationCfdiService
       IFacturamaApiClient facturamaApiClient,
       ISatRfcProfileRepository satRfcProfileRepository,
       ICfdiStampingService cfdiStampingService,
-      ILogger<ReservationCfdiService> logger)
+      ILogger<ReservationCfdiService> logger,
+      IHospitalityScopeAccessor? scopeAccessor = null)
   {
+    _scopeAccessor = scopeAccessor;
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
     _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
     _reservacionesService = reservacionesService ?? throw new ArgumentNullException(nameof(reservacionesService));
@@ -70,6 +74,7 @@ public sealed class ReservationCfdiService : IReservationCfdiService
     if (string.IsNullOrWhiteSpace(issuerRfc))
       throw new InvalidOperationException("Selecciona un RFC antes de preparar el CFDI.");
 
+    await EnsureIssuerAsync(issuerRfc, ct);
     var detail = await _reservacionesService.GetReservacionDetailAsync(reservationId, ct)
         ?? throw new InvalidOperationException("No se encontró la reservación seleccionada.");
 
@@ -125,9 +130,10 @@ SELECT
     ISNULL(t.Concepto, '') AS Concepto,
     CAST(ISNULL(rt.Amount, ISNULL(t.Monto, 0)) AS decimal(18,2)) AS Monto
 FROM dbo.Reservation_Transacciones rt
-LEFT JOIN dbo.Transacciones t
+INNER JOIN dbo.Transacciones t
     ON t.ID = rt.TransaccionID
 WHERE rt.ReservationID = @ReservationId
+  AND EXISTS (SELECT 1 FROM dbo.Transacciones scopedTransaction WHERE scopedTransaction.ID = rt.TransaccionID AND scopedTransaction.RFC = (SELECT Rfc FROM orion.Company WHERE CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))))
 ORDER BY t.Fecha DESC, rt.TransaccionID DESC;
 
 WITH ReservationPayments AS
@@ -135,6 +141,7 @@ WITH ReservationPayments AS
     SELECT DISTINCT rt.TransaccionID AS TransaccionId
     FROM dbo.Reservation_Transacciones rt
     WHERE rt.ReservationID = @ReservationId
+  AND EXISTS (SELECT 1 FROM dbo.Transacciones scopedTransaction WHERE scopedTransaction.ID = rt.TransaccionID AND scopedTransaction.RFC = (SELECT Rfc FROM orion.Company WHERE CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))))
 ),
 Evidence AS
 (
@@ -154,6 +161,7 @@ Evidence AS
     LEFT JOIN cfdi.TimbreFiscalDigital tfd
         ON tfd.Comprobante_ID = c.Comprobante_Id
     WHERE ISNULL(c.TipoDeComprobante, '') <> 'P'
+      AND EXISTS (SELECT 1 FROM cfdi.Emisor scopedIssuer WHERE scopedIssuer.Comprobante_ID = c.Comprobante_Id AND scopedIssuer.Rfc = (SELECT Rfc FROM orion.Company WHERE CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))))
       AND c.FechaCancelacion IS NULL
       AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
 
@@ -177,6 +185,7 @@ Evidence AS
     LEFT JOIN cfdi.TimbreFiscalDigital tfd
         ON tfd.Comprobante_ID = c.Comprobante_Id
     WHERE c.TipoDeComprobante = 'P'
+      AND EXISTS (SELECT 1 FROM cfdi.Emisor scopedIssuer WHERE scopedIssuer.Comprobante_ID = c.Comprobante_Id AND scopedIssuer.Rfc = (SELECT Rfc FROM orion.Company WHERE CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))))
       AND c.FechaCancelacion IS NULL
       AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
 
@@ -203,7 +212,8 @@ Evidence AS
         ON c.Comprobante_Id = p20.Comprobante_Id
     LEFT JOIN cfdi.TimbreFiscalDigital tfd
         ON tfd.Comprobante_ID = c.Comprobante_Id
-    WHERE c.FechaCancelacion IS NULL
+    WHERE EXISTS (SELECT 1 FROM cfdi.Emisor scopedIssuer WHERE scopedIssuer.Comprobante_ID = c.Comprobante_Id AND scopedIssuer.Rfc = (SELECT Rfc FROM orion.Company WHERE CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))))
+      AND c.FechaCancelacion IS NULL
       AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
 )
 SELECT DISTINCT
@@ -218,7 +228,7 @@ FROM Evidence
 ORDER BY TransaccionId, EvidenceType, Fecha DESC, ComprobanteId DESC, DoctoRelacionadoId DESC;
 """;
 
-    await using var conn = CreateConnection();
+    await using var conn = await OpenConnectionAsync(ct);
     using var multi = await conn.QueryMultipleAsync(
         new CommandDefinition(sql, new { ReservationId = reservationId }, cancellationToken: ct));
 
@@ -255,8 +265,7 @@ ORDER BY TransaccionId, EvidenceType, Fecha DESC, ComprobanteId DESC, DoctoRelac
   {
     var normalizedSearch = string.IsNullOrWhiteSpace(searchText) ? null : searchText.Trim();
 
-    await using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenConnectionAsync(ct);
 
     var persisted = await GetPersistedCustomersAsync(conn, normalizedSearch, CustomerSuggestionLimit, ct);
     var historical = await GetHistoricalCustomersAsync(conn, normalizedSearch, CustomerSuggestionLimit, ct);
@@ -271,6 +280,7 @@ ORDER BY TransaccionId, EvidenceType, Fecha DESC, ComprobanteId DESC, DoctoRelac
     if (request is null)
       throw new ArgumentNullException(nameof(request));
 
+    await RequireScopeAsync(ct);
     var normalized = NormalizeReceiver(request);
     return await ValidateReceiverCoreAsync(normalized, ct);
   }
@@ -286,8 +296,7 @@ ORDER BY TransaccionId, EvidenceType, Fecha DESC, ComprobanteId DESC, DoctoRelac
     {
       var normalized = NormalizeReceiver(request);
 
-      await using var conn = CreateConnection();
-      await conn.OpenAsync(ct);
+      await using var conn = await OpenConnectionAsync(ct);
 
       if (!await HasCfdiProfileTableAsync(conn, ct))
       {
@@ -365,6 +374,13 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
                   tx,
                   cancellationToken: ct));
         }
+
+        await conn.ExecuteAsync(new CommandDefinition("""
+IF NOT EXISTS (SELECT 1 FROM orion.HospitalityFiscalCustomer WHERE BusinessPartnerId = @BusinessPartnerId)
+    INSERT INTO orion.HospitalityFiscalCustomer (CompanyId, SiteId, BusinessPartnerId)
+    VALUES (TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')),
+            TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId')), @BusinessPartnerId);
+""", new { BusinessPartnerId = businessPartnerId.Value }, tx, cancellationToken: ct));
 
         const string ensureCustomerRoleSql = """
 IF NOT EXISTS (
@@ -454,6 +470,7 @@ WHEN NOT MATCHED THEN
 
     try
     {
+      await EnsureIssuerAsync(issuerRfc, ct);
       var detail = await _reservacionesService.GetReservacionDetailAsync(request.ReservationId, ct);
       if (detail is null)
       {
@@ -495,6 +512,7 @@ WHEN NOT MATCHED THEN
 
     try
     {
+      await EnsureIssuerAsync(issuerRfc, ct);
       var detail = await _reservacionesService.GetReservacionDetailAsync(request.ReservationId, ct);
       if (detail is null)
       {
@@ -721,7 +739,7 @@ WHEN NOT MATCHED THEN
       Fecha = DateTime.Now,
       Concepto = $"PAGO POR RESERVACION#{detail.Id} - {cliente}",
       Monto = detail.TotalPrice,
-      Cuenta = "ORION HABITAT DE MEXICO",
+      Cuenta = null,
       TipoPoliza = "INGRESO",
       FormaPago = paymentForm
     }, ct);
@@ -742,6 +760,11 @@ WHEN NOT MATCHED THEN
   {
     var breakdown = detail.AirbnbBreakdown
         ?? throw new InvalidOperationException("La reservación no tiene desglose Airbnb.");
+
+    var target = await GetTransaccionTargetAsync(transaccionId, detail.Id, ct);
+    if (target is null || !target.IsLinkedToReservation
+        || !string.Equals(NormalizeRfc(target.Rfc), issuerRfc, StringComparison.Ordinal))
+      return TransaccionCommandResult.Fail("La póliza no pertenece a la reservación y empresa seleccionadas.");
 
     var concept = BuildReservationConcept(detail);
     var accounts = await GetAirbnbAccountsAsync(issuerRfc, ct);
@@ -791,7 +814,7 @@ WHERE cc.RFC = @IssuerRfc
   );
 """;
 
-    await using var conn = CreateConnection();
+    await using var conn = await OpenConnectionAsync(ct);
     var rows = (await conn.QueryAsync<AirbnbAccountingAccount>(
         new CommandDefinition(sql, new { IssuerRfc = issuerRfc }, cancellationToken: ct))).AsList();
 
@@ -1066,7 +1089,8 @@ SELECT
         INNER JOIN cfdi.Comprobante c
             ON c.Comprobante_Id = tc.Comprobante_ID
         WHERE tc.Transaccion_ID = t.ID
-          AND c.FechaCancelacion IS NULL
+          AND EXISTS (SELECT 1 FROM cfdi.Emisor scopedIssuer WHERE scopedIssuer.Comprobante_ID = c.Comprobante_Id AND scopedIssuer.Rfc = (SELECT Rfc FROM orion.Company WHERE CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))))
+      AND c.FechaCancelacion IS NULL
           AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
     ) THEN 1 ELSE 0 END AS bit) AS HasExistingCfdi,
     CAST(CASE WHEN ABS(ISNULL(rt.Amount, ISNULL(t.Monto, 0)) - @ReservationTotal) <= @Tolerance
@@ -1080,7 +1104,8 @@ SELECT
                        INNER JOIN cfdi.Comprobante c
                            ON c.Comprobante_Id = tc.Comprobante_ID
                        WHERE tc.Transaccion_ID = t.ID
-                         AND c.FechaCancelacion IS NULL
+                         AND EXISTS (SELECT 1 FROM cfdi.Emisor scopedIssuer WHERE scopedIssuer.Comprobante_ID = c.Comprobante_Id AND scopedIssuer.Rfc = (SELECT Rfc FROM orion.Company WHERE CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))))
+      AND c.FechaCancelacion IS NULL
                          AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
                    )
         THEN 1 ELSE 0 END AS bit) AS IsEligible
@@ -1088,6 +1113,7 @@ FROM dbo.Reservation_Transacciones rt
 INNER JOIN dbo.Transacciones t
     ON t.ID = rt.TransaccionID
 WHERE rt.ReservationID = @ReservationId
+  AND EXISTS (SELECT 1 FROM dbo.Transacciones scopedTransaction WHERE scopedTransaction.ID = rt.TransaccionID AND scopedTransaction.RFC = (SELECT Rfc FROM orion.Company WHERE CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))))
 ORDER BY
     CASE WHEN t.Tipo_Poliza = 'INGRESO'
               AND t.RFC = @IssuerRfc
@@ -1098,7 +1124,8 @@ ORDER BY
                   INNER JOIN cfdi.Comprobante c
                       ON c.Comprobante_Id = tc.Comprobante_ID
                   WHERE tc.Transaccion_ID = t.ID
-                    AND c.FechaCancelacion IS NULL
+                    AND EXISTS (SELECT 1 FROM cfdi.Emisor scopedIssuer WHERE scopedIssuer.Comprobante_ID = c.Comprobante_Id AND scopedIssuer.Rfc = (SELECT Rfc FROM orion.Company WHERE CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))))
+      AND c.FechaCancelacion IS NULL
                     AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
               )
          THEN 0 ELSE 1 END,
@@ -1106,7 +1133,7 @@ ORDER BY
     t.ID DESC;
 """;
 
-    await using var conn = CreateConnection();
+    await using var conn = await OpenConnectionAsync(ct);
     var rows = await conn.QueryAsync<ReservationCfdiPolizaOptionDto>(
         new CommandDefinition(
             sql,
@@ -1147,12 +1174,14 @@ LEFT JOIN cfdi.Receptor r
 LEFT JOIN cfdi.TimbreFiscalDigital tfd
     ON tfd.Comprobante_ID = c.Comprobante_Id
 WHERE rt.ReservationID = @ReservationId
-  AND c.FechaCancelacion IS NULL
+  AND EXISTS (SELECT 1 FROM dbo.Transacciones scopedTransaction WHERE scopedTransaction.ID = rt.TransaccionID AND scopedTransaction.RFC = (SELECT Rfc FROM orion.Company WHERE CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))))
+  AND EXISTS (SELECT 1 FROM cfdi.Emisor scopedIssuer WHERE scopedIssuer.Comprobante_ID = c.Comprobante_Id AND scopedIssuer.Rfc = (SELECT Rfc FROM orion.Company WHERE CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))))
+      AND c.FechaCancelacion IS NULL
   AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
 ORDER BY c.Fecha DESC, c.Comprobante_Id DESC;
 """;
 
-    await using var conn = CreateConnection();
+    await using var conn = await OpenConnectionAsync(ct);
     var rows = await conn.QueryAsync<ReservationCfdiLinkedDocumentDto>(
         new CommandDefinition(sql, new { ReservationId = reservationId }, cancellationToken: ct));
 
@@ -1170,12 +1199,14 @@ SELECT
     CAST(ISNULL(rc.PRECIO, 0) AS decimal(18,2)) AS Price
 FROM dbo.ROOM_CALENDAR rc
 LEFT JOIN dbo.ROOM r
-    ON r.ROOM_NAME = rc.ROOM
-WHERE TRY_CAST(rc.LOCK_DESCRIPTION AS int) = @ReservationId
+    ON r.ID = rc.RoomId
+   AND r.OrionCompanyId = rc.OrionCompanyId
+   AND r.OrionSiteId = rc.OrionSiteId
+WHERE rc.ReservationId = @ReservationId
 ORDER BY rc.ROOM_DATE, rc.ROOM;
 """;
 
-    await using var conn = CreateConnection();
+    await using var conn = await OpenConnectionAsync(ct);
     var rows = await conn.QueryAsync<ReservationCfdiSuiteSource>(
         new CommandDefinition(sql, new { ReservationId = reservationId }, cancellationToken: ct));
 
@@ -1192,10 +1223,14 @@ ORDER BY rc.ROOM_DATE, rc.ROOM;
     const string sql = """
 SELECT TOP (1) c.Email
 FROM dbo.Clientes c
+INNER JOIN orion.HospitalitySiteCustomer customerScope
+    ON customerScope.ClienteId = c.ID
+   AND customerScope.CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))
+   AND customerScope.SiteId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'))
 WHERE c.ID = @ClienteId;
 """;
 
-    await using var conn = CreateConnection();
+    await using var conn = await OpenConnectionAsync(ct);
     return await conn.ExecuteScalarAsync<string?>(
         new CommandDefinition(sql, new { ClienteId = clienteId.Value }, cancellationToken: ct));
   }
@@ -1231,6 +1266,7 @@ INNER JOIN dbo.BusinessPartnerRole role
 INNER JOIN dbo.BusinessPartnerCfdiProfile profile
     ON profile.BusinessPartnerId = bp.Id
 WHERE bp.IsActive = 1
+  AND EXISTS (SELECT 1 FROM orion.HospitalityFiscalCustomer customerScope WHERE customerScope.BusinessPartnerId = bp.Id AND customerScope.CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')) AND customerScope.SiteId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId')))
   AND (
       @SearchText IS NULL
       OR bp.PartnerName LIKE @SearchLike
@@ -1282,6 +1318,8 @@ FROM cfdi.Receptor r
 INNER JOIN cfdi.Comprobante c
     ON c.Comprobante_Id = r.Comprobante_ID
 WHERE r.Rfc <> 'XAXX010101000'
+  AND EXISTS (SELECT 1 FROM cfdi.Emisor issuer WHERE issuer.Comprobante_ID = c.Comprobante_Id AND issuer.Rfc = (SELECT Rfc FROM orion.Company WHERE CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))))
+  AND EXISTS (SELECT 1 FROM dbo.Transaccion_Comprobante tc INNER JOIN dbo.Reservation_Transacciones rt ON rt.TransaccionID = tc.Transaccion_ID WHERE tc.Comprobante_ID = c.Comprobante_Id)
   AND (
       @SearchText IS NULL
       OR r.Rfc LIKE @SearchLike
@@ -1470,17 +1508,19 @@ SELECT TOP (1)
         INNER JOIN cfdi.Comprobante c
             ON c.Comprobante_Id = tc.Comprobante_ID
         WHERE tc.Transaccion_ID = t.ID
-          AND c.FechaCancelacion IS NULL
+          AND EXISTS (SELECT 1 FROM cfdi.Emisor scopedIssuer WHERE scopedIssuer.Comprobante_ID = c.Comprobante_Id AND scopedIssuer.Rfc = (SELECT Rfc FROM orion.Company WHERE CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'))))
+      AND c.FechaCancelacion IS NULL
           AND ISNULL(c.Estatus, '') NOT LIKE 'Cancel%'
     ) THEN 1 ELSE 0 END AS bit) AS HasExistingCfdi
 FROM dbo.Transacciones t
 LEFT JOIN dbo.Reservation_Transacciones rt
     ON rt.TransaccionID = t.ID
    AND rt.ReservationID = @ReservationId
-WHERE t.ID = @TransaccionId;
+WHERE t.ID = @TransaccionId
+  AND t.RFC = (SELECT Rfc FROM orion.Company WHERE CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')));
 """;
 
-    await using var conn = CreateConnection();
+    await using var conn = await OpenConnectionAsync(ct);
     return await conn.QueryFirstOrDefaultAsync<ReservationTransaccionTargetRow>(
         new CommandDefinition(
             sql,
@@ -1497,11 +1537,11 @@ WHERE t.ID = @TransaccionId;
     const string sql = """
 UPDATE dbo.Transacciones
 SET Forma_Pago = @FormaPago
-WHERE ID = @TransaccionId;
+WHERE ID = @TransaccionId
+  AND RFC = (SELECT Rfc FROM orion.Company WHERE CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')));
 """;
 
-    await using var conn = CreateConnection();
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenConnectionAsync(ct);
     await conn.ExecuteAsync(
         new CommandDefinition(
             sql,
@@ -1524,15 +1564,12 @@ WHERE ID = @TransaccionId;
     {
       var byId = await conn.ExecuteScalarAsync<int?>(
           new CommandDefinition(
-              "SELECT TOP (1) Id FROM dbo.BusinessPartner WHERE Id = @Id;",
+              "SELECT TOP (1) bp.Id FROM dbo.BusinessPartner bp INNER JOIN orion.HospitalityFiscalCustomer customerScope ON customerScope.BusinessPartnerId = bp.Id WHERE bp.Id = @Id AND customerScope.CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')) AND customerScope.SiteId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'));",
               new { Id = requestedId.Value },
               tx,
               cancellationToken: ct));
 
-      if (byId.HasValue)
-      {
-        return byId.Value;
-      }
+      return byId ?? throw new UnauthorizedAccessException("El cliente fiscal no pertenece a la sede seleccionada.");
     }
 
     return await conn.ExecuteScalarAsync<int?>(
@@ -1541,6 +1578,7 @@ WHERE ID = @TransaccionId;
 SELECT TOP (1) bp.Id
 FROM dbo.BusinessPartner bp
 WHERE bp.Rfc = @Rfc
+  AND EXISTS (SELECT 1 FROM orion.HospitalityFiscalCustomer customerScope WHERE customerScope.BusinessPartnerId = bp.Id AND customerScope.CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')) AND customerScope.SiteId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId')))
 ORDER BY bp.IsActive DESC, bp.Id;
 """,
             new { Rfc = rfc },
@@ -1687,9 +1725,34 @@ ORDER BY bp.IsActive DESC, bp.Id;
   private static decimal RoundCurrency(decimal value)
     => decimal.Round(value, 2, MidpointRounding.ToEven);
 
-  private SqlConnection CreateConnection()
-    => _connectionFactory.Create() as SqlConnection
-      ?? throw new InvalidOperationException("La fabrica de conexiones no devolvio una SqlConnection.");
+  private Task<HospitalityScope> RequireScopeAsync(CancellationToken ct)
+    => (_scopeAccessor ?? throw new InvalidOperationException("Selecciona una empresa y sede de hospedaje antes de operar CFDI."))
+        .ResolveRequiredAsync(ct);
+
+  private async Task EnsureIssuerAsync(string issuerRfc, CancellationToken ct)
+  {
+    var scope = await RequireScopeAsync(ct);
+    if (!string.Equals(NormalizeRfc(scope.CompanyRfc), issuerRfc, StringComparison.Ordinal))
+      throw new UnauthorizedAccessException("El RFC emisor no corresponde a la empresa de hospedaje seleccionada.");
+  }
+
+  private async Task<SqlConnection> OpenConnectionAsync(CancellationToken ct)
+  {
+    var scope = await RequireScopeAsync(ct);
+    var conn = _connectionFactory.Create() as SqlConnection
+        ?? throw new InvalidOperationException("El proveedor configurado debe ser SQL Server.");
+    try
+    {
+      await conn.OpenAsync(ct);
+      await HospitalityConnectionFactory.InitializeAsync(conn, scope, ct);
+      return conn;
+    }
+    catch
+    {
+      await conn.DisposeAsync();
+      throw;
+    }
+  }
 
   private sealed record ResolvedTransaccionTarget(int TransaccionId, string FormaPago, bool CreatedNew);
   private sealed record PaymentSelection(string PaymentForm, string PaymentMethod);

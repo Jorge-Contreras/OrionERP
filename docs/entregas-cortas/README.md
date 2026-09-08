@@ -55,7 +55,7 @@ no reinicies producción.
 
 | Entrega | Qué se escribe | Depende de | Estado |
 | --- | --- | --- | --- |
-| [E1 — Guardas de suspensión de Restaurante](E1-guardas-restaurante.md) | Scope accessor de Restaurante aplicado a contabilidad, producción, operaciones de sede y el job registrado | — | Pendiente |
+| [E1 — Guardas de suspensión de Restaurante](E1-guardas-restaurante.md) | Scope accessor de Restaurante aplicado a contabilidad, producción, operaciones de sede y el job registrado | — | Entregada en `7c4105e` |
 | [E2 — Identidades SQL por website](E2-identidades-sql-websites.md) | Dos scripts de permisos mínimos, uno por instancia pública | — | Pendiente (apagada) |
 | [E3 — Identidad contable y contrato CFDI](E3-identidad-contable-cfdi.md) | `CompanyId` de sesión, fábrica de conexiones contables, predicado emisor/receptor único | — | Pendiente |
 | [E4 — Ciclo contable formal](E4-ciclo-contable.md) | Periodos, `Draft/Posted/Reversed`, publicación atómica, inmutabilidad y reversa | E3 | Pendiente (apagada) |
@@ -67,6 +67,8 @@ no reinicies producción.
 Orden sugerido: **E1** primero, que cierra la estabilización sin tocar contabilidad.
 Después **E3 → E4 → E5/E6**, que es la cadena larga. **E2**, **E7** y **E8c** no
 dependen de nada y pueden adelantarse.
+
+Con E1 entregada, el siguiente de la cadena larga es **E3**.
 
 "Apagada" significa que el mecanismo se implementa y se entrega desactivado: falta
 un dato empresarial o una decisión del usuario para encenderlo, no código.
@@ -103,6 +105,18 @@ De las veinte restantes se quitó el encabezado repetido y la sección
 | Propietarios asociados, plantillas y creación de actividades | E7 |
 | RLS contable y bypass de políticas legacy | E8 |
 | Dos empresas por rama, procesos, puertos y túneles | Fuera: validación y operación |
+
+## Hallazgos abiertos
+
+**El broadcaster de Restaurante no publica nada.** `RestaurantEventBroadcaster`
+corre en un alcance de fondo sin sesión, así que `SqlConnectionFactory` le fija
+`OrionRfc='__UNSCOPED__'`; `logistica.RfcSecurityPolicy` cubre
+`restaurante.EventOutbox` y filtra el lote a cero filas. Comprobado en Sandbox:
+2058 eventos sin contexto, 0 con `__UNSCOPED__`. La guarda de módulo que agregó
+E1 es correcta pero no llega a ejercerse. Corregir el contexto del trabajo es un
+cambio de conducta aparte —encendería SignalR y drenaría el rezago acumulado de
+una vez— y necesita decisión del usuario antes de tocarlo. Cabe en **E8c**, que
+ya separa el contexto de trabajos del de usuario.
 
 ## Bloqueos que siguen deliberados
 

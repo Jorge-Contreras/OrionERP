@@ -7,8 +7,13 @@ parametrizable y verificable la identidad y presentación de cada proceso. Las
 fases `20260903` aíslan el recorrido público de Hospedaje y
 Identity/membresías de Restaurante; `20260904` agrega una activación versionada
 con reversión temporal, y `20260905` añade evidencia indivisible del
-consentimiento legal al checkout de Hospedaje. Todavía no se autoriza el alta ni la publicación de una
-segunda empresa en ninguno de los dos hosts.
+consentimiento legal al checkout de Hospedaje. El alta productiva de una segunda
+empresa sigue pendiente de los aislamientos y validaciones descritos abajo.
+
+El [plan revisado de septiembre](public-websites-rebaseline-20260908.md)
+registra la integración con `main` y el orden de las fases restantes. Se conserva
+un proyecto compartido por rama: cada cliente recibe su perfil e instancia,
+sin duplicar el código del website.
 
 El alcance ejecutable continúa siendo exclusivamente `Orion_Sandbox`. No se ha
 migrado `grupocarpio`, desplegado una versión productiva, cambiado un servicio
@@ -37,6 +42,9 @@ El mismo recorrido exige la aceptación explícita de las versiones vigentes del
 aviso de privacidad y de los términos antes de crear o capturar una orden. La
 hora aceptada se genera en UTC en el servidor y las tres evidencias se guardan
 juntas en `dbo.RESERVATION`; los registros históricos permanecen nulos.
+El servicio de persistencia también compara las versiones contra el perfil
+vigente del proceso antes de resolver el alcance o abrir SQL; esta comprobación
+no depende exclusivamente del API HTTP.
 
 La interfaz histórica de OpenClaw fue retirada y ya no forma parte de la
 arquitectura ni de sus pendientes. Siguen bloqueando un segundo RFC los CRUD,
@@ -60,12 +68,20 @@ exactos. El endpoint público de imágenes también exige la sede resuelta y só
 acepta productos globales o asociados a esa misma sede. Las reglas de puntos
 siguen su catálogo operativo.
 
+El menú público exige un menú activo y publicado del RFC. Cuando ese menú tiene
+horarios, sólo es elegible en la sede y franja configuradas, incluyendo la
+continuación del día anterior en turnos que cruzan medianoche. Un menú publicado
+sin horarios mantiene su alcance general dentro del RFC. Si no hay un menú
+elegible, el website muestra el estado vacío; sólo el POS conserva el fallback
+al catálogo operativo. El recorrido público no carga mesas ni proveedores.
+
 El administrador ya toma el RFC autorizado de la sesión, solicita una sede
 explícita cuando existen varias y usa la ruta canónica
-`/restaurante/sitio-publico`; la ruta histórica sólo redirige. No quedan
-pendientes conocidos de aislamiento por sede en el recorrido público hoy
-habilitado. Como mantenimiento posterior puede decidirse qué columnas
-duplicadas de identidad se eliminan de `PublicSiteSettings`. Los roles públicos
+`/restaurante/sitio-publico`; la ruta histórica sólo redirige. El recorrido
+habilitado cuenta con guardas por sede; su aceptación con dos empresas
+simultáneas sigue pendiente de las pruebas E2E. Como mantenimiento posterior
+puede decidirse qué columnas duplicadas de identidad se eliminan de
+`PublicSiteSettings`. Los roles públicos
 y logins externos sí requerirán aislamiento adicional si se habilitan; hoy no
 forman parte de ese recorrido.
 
@@ -147,6 +163,12 @@ elegir empresa, sede o módulo.
 
 Esta topología es una decisión futura de despliegue. Las fases descritas aquí
 no crearon, modificaron ni probaron túneles Cloudflare.
+
+`CanonicalHost` forma parte de la identidad operativa, no de la presentación.
+Para cambiarlo se debe desactivar y guardar primero el website, finalizar o
+revertir cualquier ventana de presentación, actualizar el perfil y el túnel,
+validar el nuevo destino y sólo entonces reactivarlo. La consola rechaza el
+cambio mientras el website esté activo o exista una reversión vigente.
 
 Antes del primer despliegue productivo de esta versión se debe retirar de la
 configuración del servicio cualquier override de direcciones heredado. El

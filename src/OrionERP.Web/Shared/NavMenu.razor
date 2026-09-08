@@ -321,6 +321,9 @@
     private static bool CanSeeWorkforceItem(NavEntryDefinition item, bool enabled, bool employee, bool supervisor, bool admin, bool payroll)
     {
         var path = NormalizePath(item.Href);
+        // El expediente de empleados no depende del flag de asistencia: existia antes
+        // del modulo y sigue siendo util con la asistencia apagada.
+        if (path == "capital-humano") return admin;
         if (path == "mi-trabajo") return enabled && employee;
         if (path == "mi-equipo") return enabled && supervisor;
         if (path == "capital-humano/asistencia") return enabled && (supervisor || admin || payroll);

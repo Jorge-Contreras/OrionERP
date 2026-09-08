@@ -299,8 +299,10 @@ app.Use(async (context, next) =>
           <meta name="robots" content="noindex,nofollow">
           <title>{{publicName}}</title>
           <style>
-            body{margin:0;min-height:100vh;display:grid;place-items:center;background:{{primaryDark}};color:#fff;font:18px/1.5 system-ui,sans-serif;text-align:center}
-            main{max-width:40rem;padding:3rem 1.5rem}img{width:min(16rem,70vw);height:auto}h1{font-size:clamp(2rem,7vw,4rem);margin:.6rem 0}p{color:{{accent}}}
+            body{margin:0;min-height:100vh;display:grid;place-items:center;background:{{primaryDark}};color:#fff;font:18px/1.6 system-ui,sans-serif;text-align:center}
+            main{max-width:40rem;padding:3rem 1.5rem}
+            img{width:min(15rem,64vw);height:auto;-webkit-mask-image:radial-gradient(closest-side,#000 76%,transparent 99%);mask-image:radial-gradient(closest-side,#000 76%,transparent 99%)}
+            h1{font-size:clamp(2rem,7vw,3.6rem);margin:1rem 0 .4rem;letter-spacing:.01em}p{color:{{accent}}}
           </style>
         </head>
         <body><main><img src="{{logoPath}}" alt="{{publicName}}"><h1>Estamos preparando el sitio.</h1><p>{{tagline}}</p></main></body>

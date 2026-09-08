@@ -175,14 +175,12 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           line.BaseUnitNameSnapshot AS BaseUnitName,
           CAST(line.PurchaseQuantitySnapshot AS decimal(18,4)) AS PurchaseQuantity,
           line.PurchaseUnitNameSnapshot AS PurchaseUnitName,
+          CAST(line.PurchaseIncrementSnapshot AS decimal(18,4)) AS PurchaseIncrement,
           CAST(line.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice,
           CAST(line.OrderedQuantity AS decimal(18,4)) AS OrderedQuantity,
           CAST(line.ReceivedQuantity AS decimal(18,4)) AS ReceivedQuantity,
-          CAST(line.OrderedQuantity - line.ReceivedQuantity AS decimal(18,4)) AS RemainingQuantity,
-          CAST(CASE WHEN material.TrackLots = 1 OR material.IsPerishable = 1 THEN 1 ELSE 0 END AS bit) AS RequiresLot
+          CAST(line.OrderedQuantity - line.ReceivedQuantity AS decimal(18,4)) AS RemainingQuantity
       FROM logistica.PurchaseOrderLine line
-      JOIN logistica.Material material
-        ON material.Id = line.MaterialId
       WHERE line.PurchaseOrderId = @PurchaseOrderId
       ORDER BY line.MaterialDescriptionSnapshot, line.MaterialCodeSnapshot, line.Id;
 
@@ -547,18 +545,11 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       foreach (var item in groupedLines)
       {
         var allocation = allocationRows[item.Key];
-        var receiptInput = receiptLinesByAllocation[item.Key];
         var remainingQuantity = allocation.PlannedQuantity - allocation.ReceivedQuantity;
         if (item.Value > remainingQuantity)
         {
           await tx.RollbackAsync(ct);
           return LogisticsCommandResult.Fail($"La recepción excede la cantidad pendiente para {allocation.MaterialDescription} en {allocation.LocationName}.");
-        }
-
-        if (allocation.TrackLots && (string.IsNullOrWhiteSpace(receiptInput.LotCode) || !receiptInput.ExpiresAt.HasValue))
-        {
-          await tx.RollbackAsync(ct);
-          return LogisticsCommandResult.Fail($"{allocation.MaterialDescription} requiere lote y caducidad para su recepción.");
         }
       }
 
@@ -753,43 +744,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           }
         }
 
+        // La recepción ya no captura lotes: la existencia se controla por material y ubicación.
         long? materialLotId = null;
-        if (allocation.TrackLots)
-        {
-          materialLotId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
-            """
-            DECLARE @LotId bigint =
-            (
-              SELECT Id FROM logistica.MaterialLot WITH (UPDLOCK, HOLDLOCK)
-              WHERE MaterialId=@MaterialId AND LotCode=@LotCode
-            );
-            IF @LotId IS NULL
-            BEGIN
-              INSERT INTO logistica.MaterialLot
-                (Rfc, MaterialId, LotCode, ExpiresAt, UnitCost, SourceType, SourceId, CreatedBy)
-              VALUES
-                (CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')), @MaterialId, @LotCode, @ExpiresAt, @UnitCost, 'PurchaseReceipt', @ReceiptId, @CreatedBy);
-              SET @LotId = SCOPE_IDENTITY();
-            END;
-            MERGE logistica.LotBalance AS target
-            USING (SELECT @LotId AS MaterialLotId, @MaterialId AS MaterialId, @LocationId AS LocationId) AS source
-              ON target.MaterialLotId=source.MaterialLotId AND target.LocationId=source.LocationId
-            WHEN MATCHED THEN UPDATE SET Quantity=target.Quantity+@Quantity, UpdatedAt=SYSUTCDATETIME()
-            WHEN NOT MATCHED THEN INSERT (Rfc, MaterialLotId, MaterialId, LocationId, Quantity)
-              VALUES (CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')), source.MaterialLotId, source.MaterialId, source.LocationId, @Quantity);
-            SELECT @LotId;
-            """, new
-            {
-              allocation.MaterialId,
-              LotCode = receiptInput.LotCode!.Trim().ToUpperInvariant(),
-              ExpiresAt = receiptInput.ExpiresAt!.Value.Date,
-              UnitCost = unitCost,
-              ReceiptId = receiptId,
-              CreatedBy = actor,
-              allocation.LocationId,
-              Quantity = quantity
-            }, tx, cancellationToken: ct));
-        }
 
         await conn.ExecuteAsync(
           new CommandDefinition(
@@ -1089,22 +1045,24 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       var totalQuantity = lineRequest.Allocations.Sum(allocation => allocation.PlannedQuantity);
       var purchaseQuantity = NormalizePurchaseQuantity(lineRequest.PurchaseQuantitySnapshot, material.PurchaseQuantity);
       var purchaseUnitName = ResolvePurchaseUnitName(lineRequest.PurchaseUnitNameSnapshot, material.PurchaseUnitName);
+      var purchaseIncrement = NormalizePurchaseIncrement(lineRequest.PurchaseIncrementSnapshot, material.PurchaseIncrement);
 
       foreach (var allocationRequest in lineRequest.Allocations)
       {
-        if (!IsWholePurchaseMultiple(allocationRequest.PlannedQuantity, purchaseQuantity, purchaseUnitName))
+        if (!MaterialPurchaseIncrement.IsValidQuantity(allocationRequest.PlannedQuantity, purchaseQuantity, purchaseUnitName, purchaseIncrement))
         {
           return LogisticsCommandResult.Fail(
             BuildPurchaseAllocationMultipleValidationMessage(
               material,
               locationRows[allocationRequest.LocationId],
-              purchaseQuantity));
+              purchaseQuantity,
+              purchaseIncrement));
         }
       }
 
-      if (!IsWholePurchaseMultiple(totalQuantity, purchaseQuantity, purchaseUnitName))
+      if (!MaterialPurchaseIncrement.IsValidQuantity(totalQuantity, purchaseQuantity, purchaseUnitName, purchaseIncrement))
       {
-        return LogisticsCommandResult.Fail(BuildPurchaseMultipleValidationMessage(material, purchaseQuantity));
+        return LogisticsCommandResult.Fail(BuildPurchaseMultipleValidationMessage(material, purchaseQuantity, purchaseIncrement));
       }
     }
 
@@ -1273,6 +1231,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
               BaseUnitNameSnapshot,
               PurchaseQuantitySnapshot,
               PurchaseUnitNameSnapshot,
+              PurchaseIncrementSnapshot,
               BaseUnitPrice,
               OrderedQuantity,
               ReceivedQuantity,
@@ -1289,6 +1248,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
               @BaseUnitNameSnapshot,
               @PurchaseQuantitySnapshot,
               @PurchaseUnitNameSnapshot,
+              @PurchaseIncrementSnapshot,
               @BaseUnitPrice,
               @OrderedQuantity,
               0,
@@ -1308,6 +1268,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             BaseUnitNameSnapshot = NullIfWhiteSpace(material.BaseUnitName),
             PurchaseQuantitySnapshot = NormalizePurchaseQuantity(lineRequest.PurchaseQuantitySnapshot, material.PurchaseQuantity),
             PurchaseUnitNameSnapshot = ResolvePurchaseUnitName(lineRequest.PurchaseUnitNameSnapshot, material.PurchaseUnitName),
+            PurchaseIncrementSnapshot = NormalizePurchaseIncrement(lineRequest.PurchaseIncrementSnapshot, material.PurchaseIncrement),
             BaseUnitPrice = MaterialPriceCalculator.NormalizeBaseUnitPrice(lineRequest.BaseUnitPrice),
             OrderedQuantity = orderedQuantity
           },
@@ -1659,13 +1620,14 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         var first = group.First();
         var packSize = NormalizePurchaseQuantity(first.PurchaseQuantity);
         var purchaseUnitName = ResolvePurchaseUnitName(first.PurchaseUnitName, fallbackValue: null);
+        var purchaseIncrement = MaterialPurchaseIncrement.Normalize(first.PurchaseIncrement);
         var allocations = group
           .OrderBy(item => item.LocationId)
           .Select(item => new PurchaseOrderAllocationUpsertRequest
           {
             LocationId = item.LocationId,
-            PlannedQuantity = RequiresWholePurchaseMultiple(packSize, purchaseUnitName)
-              ? RoundUpToPurchaseMultiple(item.RawNeedQuantity, packSize)
+            PlannedQuantity = MaterialPurchaseIncrement.UsesPurchasePresentation(packSize, purchaseUnitName)
+              ? MaterialPurchaseIncrement.RoundUpToIncrement(item.RawNeedQuantity, packSize, purchaseIncrement)
               : item.RawNeedQuantity
           })
           .ToList();
@@ -1676,6 +1638,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           BaseUnitPrice = first.BaseUnitPrice,
           PurchaseQuantitySnapshot = packSize,
           PurchaseUnitNameSnapshot = purchaseUnitName,
+          PurchaseIncrementSnapshot = purchaseIncrement,
           Allocations = allocations
         };
       })
@@ -1737,6 +1700,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                 OR COALESCE(mv.PurchaseQuantity, m.PurchaseQuantity) <= 0 THEN 1
               ELSE COALESCE(mv.PurchaseQuantity, m.PurchaseQuantity)
           END AS decimal(18,4)) AS PurchaseQuantity,
+          CAST(COALESCE(mv.PurchaseIncrement, m.PurchaseIncrement, 1) AS decimal(18,4)) AS PurchaseIncrement,
           CAST(COALESCE(mv.LastUnitPrice, m.BaseUnitPrice) AS decimal(18,6)) AS BaseUnitPrice,
           sb.LocationId,
           location.LocationName,
@@ -1842,6 +1806,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                   OR COALESCE(mv.PurchaseQuantity, m.PurchaseQuantity) <= 0 THEN 1
                 ELSE COALESCE(mv.PurchaseQuantity, m.PurchaseQuantity)
             END AS decimal(18,4)) AS PurchaseQuantity,
+            CAST(COALESCE(mv.PurchaseIncrement, m.PurchaseIncrement, 1) AS decimal(18,4)) AS PurchaseIncrement,
             CAST(COALESCE(mv.LastUnitPrice, m.BaseUnitPrice) AS decimal(18,6)) AS BaseUnitPrice,
             CAST(CASE WHEN mv.Id IS NULL THEN 0 ELSE 1 END AS bit) AS IsVendorLinked
         FROM logistica.Material m
@@ -1958,14 +1923,11 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             CAST(allocation.PlannedQuantity AS decimal(18,4)) AS PlannedQuantity,
             CAST(allocation.ReceivedQuantity AS decimal(18,4)) AS ReceivedQuantity
             ,CAST(line.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice
-            ,CAST(CASE WHEN material.TrackLots=1 OR material.IsPerishable=1 THEN 1 ELSE 0 END AS bit) AS TrackLots
         FROM logistica.PurchaseOrderLineAllocation allocation
         JOIN logistica.PurchaseOrderLine line
           ON line.Id = allocation.PurchaseOrderLineId
         JOIN logistica.Location location
           ON location.Id = allocation.LocationId
-        JOIN logistica.Material material
-          ON material.Id = line.MaterialId
         WHERE allocation.Id IN @AllocationIds
           AND line.PurchaseOrderId = @PurchaseOrderId;
         """,
@@ -2157,32 +2119,9 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       .ToArray()
       ?? [];
 
-  private static decimal RoundUpToPurchaseMultiple(decimal quantity, decimal purchaseQuantity)
-  {
-    var normalizedPurchaseQuantity = NormalizePurchaseQuantity(purchaseQuantity);
-    if (quantity <= 0m)
-    {
-      return 0m;
-    }
-
-    return decimal.Ceiling(quantity / normalizedPurchaseQuantity) * normalizedPurchaseQuantity;
-  }
-
-  private static bool RequiresWholePurchaseMultiple(decimal purchaseQuantity, string? purchaseUnitName)
-    => NormalizePurchaseQuantity(purchaseQuantity) > 1m
-      || !string.IsNullOrWhiteSpace(purchaseUnitName);
-
-  private static bool IsWholePurchaseMultiple(decimal quantity, decimal purchaseQuantity, string? purchaseUnitName)
-  {
-    var normalizedPurchaseQuantity = NormalizePurchaseQuantity(purchaseQuantity);
-    if (!RequiresWholePurchaseMultiple(normalizedPurchaseQuantity, purchaseUnitName))
-    {
-      return true;
-    }
-
-    var quotient = quantity / normalizedPurchaseQuantity;
-    return quotient == decimal.Truncate(quotient);
-  }
+  /// <summary>El escalón vigente del renglón: el que congeló la orden, o el del material si no lo trae.</summary>
+  private static decimal NormalizePurchaseIncrement(decimal? snapshot, decimal? materialValue = null)
+    => MaterialPurchaseIncrement.Normalize(snapshot ?? materialValue);
 
   private static string? ResolvePurchaseUnitName(string? preferredValue, string? fallbackValue)
   {
@@ -2190,10 +2129,10 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     return normalizedPreferred ?? NullIfWhiteSpace(fallbackValue);
   }
 
-  private static string BuildPurchaseMultipleValidationMessage(MaterialRow material, decimal purchaseQuantity)
-    => $"La cantidad total para {material.Description} debe ser múltiplo de {BuildPurchaseMultipleRequirementText(material, purchaseQuantity)}.";
+  private static string BuildPurchaseMultipleValidationMessage(MaterialRow material, decimal purchaseQuantity, decimal purchaseIncrement)
+    => $"La cantidad total para {material.Description} debe ser múltiplo de {BuildPurchaseMultipleRequirementText(material, purchaseQuantity, purchaseIncrement)}.";
 
-  private static string BuildPurchaseAllocationMultipleValidationMessage(MaterialRow material, LocationRow location, decimal purchaseQuantity)
+  private static string BuildPurchaseAllocationMultipleValidationMessage(MaterialRow material, LocationRow location, decimal purchaseQuantity, decimal purchaseIncrement)
   {
     var locationName = string.IsNullOrWhiteSpace(location.LocationName)
       ? "la ubicación seleccionada"
@@ -2203,28 +2142,16 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       ? locationName
       : $"{locationCode} ({locationName})";
 
-    return $"La cantidad planeada para {material.Description} en {locationLabel} debe ser múltiplo de {BuildPurchaseMultipleRequirementText(material, purchaseQuantity)}.";
+    return $"La cantidad planeada para {material.Description} en {locationLabel} debe ser múltiplo de {BuildPurchaseMultipleRequirementText(material, purchaseQuantity, purchaseIncrement)}.";
   }
 
-  private static string BuildPurchaseMultipleRequirementText(MaterialRow material, decimal purchaseQuantity)
-  {
-    var culture = CultureInfo.CurrentCulture;
-    var normalizedPurchaseQuantity = NormalizePurchaseQuantity(purchaseQuantity);
-    var purchaseQuantityText = normalizedPurchaseQuantity.ToString("N2", culture);
-    var purchaseUnitText = string.IsNullOrWhiteSpace(material.PurchaseUnitName)
-      ? "unidad de compra"
-      : material.PurchaseUnitName.Trim();
-    var baseUnitText = string.IsNullOrWhiteSpace(material.BaseUnitName)
-      ? "unidad base"
-      : material.BaseUnitName.Trim();
-
-    if (normalizedPurchaseQuantity == 1m && RequiresWholePurchaseMultiple(normalizedPurchaseQuantity, material.PurchaseUnitName))
-    {
-      return $"1 {purchaseUnitText}";
-    }
-
-    return $"{purchaseQuantityText} {baseUnitText} por {purchaseUnitText}";
-  }
+  private static string BuildPurchaseMultipleRequirementText(MaterialRow material, decimal purchaseQuantity, decimal purchaseIncrement)
+    => MaterialPurchaseIncrement.DescribeRequirement(
+      material.BaseUnitName,
+      material.PurchaseUnitName,
+      NormalizePurchaseQuantity(purchaseQuantity),
+      purchaseIncrement,
+      CultureInfo.CurrentCulture);
 
   private sealed class PurchaseOrderStateRow
   {
@@ -2262,6 +2189,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     public string? BaseUnitName { get; set; }
     public string? PurchaseUnitName { get; set; }
     public decimal PurchaseQuantity { get; set; }
+    public decimal PurchaseIncrement { get; set; } = MaterialPurchaseIncrement.WholePresentation;
     public decimal? BaseUnitPrice { get; set; }
 
     /// <summary>Falso cuando el material se le está comprando a un proveedor que no lo surte de costumbre.</summary>
@@ -2286,7 +2214,6 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     public decimal PlannedQuantity { get; set; }
     public decimal ReceivedQuantity { get; set; }
     public decimal? BaseUnitPrice { get; set; }
-    public bool TrackLots { get; set; }
   }
 
   private sealed class StockBalanceStateRow
@@ -2306,6 +2233,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     public string? BaseUnitName { get; set; }
     public string? PurchaseUnitName { get; set; }
     public decimal PurchaseQuantity { get; set; }
+    public decimal PurchaseIncrement { get; set; } = MaterialPurchaseIncrement.WholePresentation;
     public decimal? BaseUnitPrice { get; set; }
     public int LocationId { get; set; }
     public string LocationName { get; set; } = string.Empty;

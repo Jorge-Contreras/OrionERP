@@ -41,8 +41,8 @@ public class MaterialesPageUxTests
     Assert.Contains("Precio por presentación", codeBehind, StringComparison.Ordinal);
     Assert.Contains("OnBaseUnitPriceChanged", codeBehind, StringComparison.Ordinal);
     Assert.Contains("OnPurchasePresentationPriceChanged", codeBehind, StringComparison.Ordinal);
-    Assert.Contains("@oninput=\"OnBaseUnitPriceChanged\"", page, StringComparison.Ordinal);
-    Assert.Contains("@oninput=\"OnPurchasePresentationPriceChanged\"", page, StringComparison.Ordinal);
+    Assert.Contains("ValueChanged=\"@OnBaseUnitPriceChanged\"", page, StringComparison.Ordinal);
+    Assert.Contains("ValueChanged=\"@OnPurchasePresentationPriceChanged\"", page, StringComparison.Ordinal);
     Assert.Contains("BaseUnitPrice = @BaseUnitPrice", materialService, StringComparison.Ordinal);
     Assert.Contains("material.BaseUnitPrice", bomService, StringComparison.Ordinal);
     Assert.DoesNotContain("Editor.Price", page, StringComparison.Ordinal);
@@ -129,6 +129,26 @@ public class MaterialesPageUxTests
     Assert.Contains("string.Equals(version.Status, \"Active\"", service, StringComparison.Ordinal);
     Assert.Contains("[Status] IN ('Planned', 'Started')", service, StringComparison.Ordinal);
     Assert.Contains("versionInfo.[Status] IN ('Draft', 'Active')", service, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void Page_LetsTheUserSayWhetherThePresentationIsSoldWhole()
+  {
+    var page = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor");
+    var codeBehind = ReadRepoFile("src/OrionERP.Web/Features/Logistica/Materials/MaterialesPage.razor.cs");
+
+    Assert.Contains("material-purchase-whole", page, StringComparison.Ordinal);
+    Assert.Contains("material-purchase-fractional", page, StringComparison.Ordinal);
+    Assert.Contains("Solo presentaciones completas", page, StringComparison.Ordinal);
+    Assert.Contains("Se puede comprar fraccionado", page, StringComparison.Ordinal);
+
+    // El escalón sólo se ofrece cuando el material tiene presentación de compra.
+    Assert.Contains("CanConfigurePurchaseIncrement", page, StringComparison.Ordinal);
+    Assert.Contains("OnPurchaseIncrementChanged", codeBehind, StringComparison.Ordinal);
+
+    // Cada proveedor puede sobreescribir el modo del material.
+    Assert.Contains("OnVendorPurchaseIncrementChanged", page, StringComparison.Ordinal);
+    Assert.Contains("Igual que el material", page, StringComparison.Ordinal);
   }
 
   private static string ReadRepoFile(string relativePath)

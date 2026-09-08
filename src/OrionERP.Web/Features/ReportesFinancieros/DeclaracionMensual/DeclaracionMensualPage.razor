@@ -1,0 +1,233 @@
+@page "/ReportesFinancieros/DeclaracionMensual"
+@page "/reportes-financieros/declaracion-mensual"
+@using Microsoft.AspNetCore.Authorization
+@using OrionERP.Web.Features.ReportesFinancieros.DeclaracionMensual.Components
+@attribute [Authorize(Roles = "Administrador")]
+
+<PageTitle>Declaración Mensual ISR e IVA</PageTitle>
+
+<div class="report-page declaracion-page">
+    <div class="report-page__header">
+        <h1 class="report-page__title">Declaración Mensual ISR e IVA</h1>
+    </div>
+
+    <section aria-labelledby="filtros-heading" class="card report-panel report-panel--filters no-print">
+        <div class="card-body">
+            <div class="report-panel__header">
+                <div>
+                    <h2 id="filtros-heading" class="report-panel__title">Periodo</h2>
+                    <p class="report-panel__subtitle">
+                        Se declara entre el 1 y el 17 del mes siguiente. La pantalla abre en el mes anterior.
+                    </p>
+                </div>
+            </div>
+
+            <div class="row g-3 align-items-end report-filter-row">
+                <div class="col-12 col-md-2">
+                    <label class="form-label" for="anio-selector">Año</label>
+                    <select id="anio-selector" class="form-select" @bind="Anio" @bind:after="OnFiltroCambiadoAsync">
+                        @for (var year = DateTime.Today.Year + 1; year >= 2020; year--)
+                        {
+                            <option value="@year">@year</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label" for="mes-selector">Mes</label>
+                    <select id="mes-selector" class="form-select" @bind="Mes" @bind:after="OnFiltroCambiadoAsync">
+                        @for (var m = 1; m <= 12; m++)
+                        {
+                            <option value="@m">@NombresMes[m - 1]</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-12 col-md-6 d-flex gap-2 justify-content-md-end">
+                    <button type="button" class="btn btn-outline-secondary btn-sm"
+                            disabled="@IsLoading" @onclick="ImprimirAsync">
+                        <i class="bi bi-printer"></i> Imprimir
+                    </button>
+                    <button type="button" class="btn btn-outline-primary btn-sm"
+                            disabled="@(IsLoading || IsWorking || Reporte is null)" @onclick="ExportarExcelAsync">
+                        <i class="bi bi-file-excel"></i> Exportar a Excel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="alert alert-danger no-print"><strong>Error:</strong> @ErrorMessage</div>
+    }
+
+    @if (!string.IsNullOrEmpty(Aviso))
+    {
+        <div class="alert alert-success no-print">@Aviso</div>
+    }
+
+    @if (IsLoading)
+    {
+        <span class="orion-loading"><span class="orion-spinner"></span><span class="orion-strong">Cargando…</span></span>
+    }
+    else if (Reporte?.Encabezado is { } cab)
+    {
+        <div id="declaracion-mensual-print-root" class="card report-panel report-panel--results">
+            <div class="card-body">
+
+                <div class="recon__kpis">
+                    <article class="@VencimientoClase(cab.DiasParaVencimiento)">
+                        <span>Vencimiento</span>
+                        <strong>@cab.FechaVencimiento.ToString("dd/MM/yyyy")</strong>
+                        <small>@TextoVencimiento(cab.DiasParaVencimiento)</small>
+                    </article>
+                    <article class="@(cab.TieneDeclaracion ? "is-ok" : "is-warn")">
+                        <span>Declaración</span>
+                        <strong>@TextoDeclaracion(cab)</strong>
+                        <small>@(string.IsNullOrEmpty(cab.NumeroOperacion) ? "—" : $"Op. {cab.NumeroOperacion}")</small>
+                    </article>
+                    <article class="@HallazgosClase()">
+                        <span>Hallazgos</span>
+                        <strong>@(Reporte.HallazgosResumen?.Total ?? 0)</strong>
+                        <small>@(Reporte.HallazgosResumen?.Altas ?? 0) de severidad alta</small>
+                    </article>
+                    <article class="is-ok">
+                        <span>ISR a cargo</span>
+                        <strong>@Money(cab.IsrACargo)</strong>
+                        <small>Coeficiente @Tasa(cab.Coeficiente)@OrigenCoeficiente(cab)</small>
+                    </article>
+                    <article class="is-ok">
+                        <span>@(cab.IvaSaldoAFavor > 0 ? "IVA a favor" : "IVA a cargo")</span>
+                        <strong>@Money(cab.IvaSaldoAFavor > 0 ? cab.IvaSaldoAFavor : cab.IvaACargo)</strong>
+                        <small>Definitivo del periodo</small>
+                    </article>
+                </div>
+
+                @if (!cab.EsPersonaMoral)
+                {
+                    <div class="alert alert-warning">
+                        <strong>@Rfc está registrado como Persona Física.</strong>
+                        Esta versión sólo calcula el ISR de Persona Moral, que usa coeficiente de utilidad y tasa
+                        fija; el de Persona Física se determina con tarifa progresiva y no se muestra aquí. Las
+                        secciones de IVA, conciliación y hallazgos sí aplican por igual.
+                    </div>
+                }
+
+                @if (!cab.TienePerfil)
+                {
+                    <div class="alert alert-warning">
+                        No hay perfil fiscal para @Rfc en <code>fiscal.PerfilFiscal</code>. Se asumió Persona Moral
+                        al 30% con vencimiento el día 17. Captura el perfil antes de usar estas cifras para declarar.
+                    </div>
+                }
+
+                @if (!cab.TieneCoeficiente)
+                {
+                    <div class="alert alert-danger">
+                        No hay coeficiente de utilidad aplicable a este periodo en
+                        <code>fiscal.CoeficienteUtilidad</code>. El ISR mostrado es cero y
+                        <strong>no sirve para declarar</strong>.
+                    </div>
+                }
+
+                @if (!cab.TieneHistorialAnterior)
+                {
+                    <div class="alert alert-warning">
+                        Faltan las declaraciones de los meses anteriores de @Anio. El ISR provisional es acumulado,
+                        así que la columna <em>SAT</em> queda vacía hasta importar los acuses en la pestaña
+                        <em>Ejercicio</em>.
+                    </div>
+                }
+
+                <ul class="nav nav-tabs mb-3 no-print" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @Activo(Pestana.Cifras)" type="button" role="tab"
+                                @onclick="() => SetPestana(Pestana.Cifras)">Cifras para el SAT</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @Activo(Pestana.Conciliacion)" type="button" role="tab"
+                                @onclick="() => SetPestana(Pestana.Conciliacion)">Conciliación</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @Activo(Pestana.Hallazgos)" type="button" role="tab"
+                                @onclick="() => SetPestana(Pestana.Hallazgos)">
+                            Hallazgos <span class="badge bg-secondary">@(Reporte.HallazgosResumen?.Total ?? 0)</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @Activo(Pestana.Ejercicio)" type="button" role="tab"
+                                @onclick="() => SetPestana(Pestana.Ejercicio)">Ejercicio @Anio</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @Activo(Pestana.Cierre)" type="button" role="tab"
+                                @onclick="() => SetPestana(Pestana.Cierre)">Cierre</button>
+                    </li>
+                </ul>
+
+                @if (Activa == Pestana.Cifras)
+                {
+                    <p class="report-panel__subtitle">
+                        <strong>SAT</strong> es lo que el portal va a precargar, con su regla estricta.
+                        <strong>Nuestro</strong> es lo que sostiene la contabilidad, sobre base de flujo y
+                        respetando las exclusiones manuales. <strong>Declarado</strong> es lo que ya se presentó.
+                        Cada diferencia entre las dos primeras se explica documento por documento en
+                        <em>Hallazgos</em>.
+                    </p>
+
+                    <div class="row g-4">
+                        <div class="col-12 col-xxl-6">
+                            <CifrasTable Titulo="ISR provisional" Filas="Reporte.Isr" OnCopiar="CopiarAsync" />
+                        </div>
+                        <div class="col-12 col-xxl-6">
+                            <CifrasTable Titulo="IVA definitivo" Filas="Reporte.Iva" OnCopiar="CopiarAsync" />
+                        </div>
+                    </div>
+                }
+                else if (Activa == Pestana.Conciliacion)
+                {
+                    <ConciliacionTable Filas="Reporte.Conciliacion" Retenciones="Reporte.Retenciones" />
+                }
+                else if (Activa == Pestana.Hallazgos)
+                {
+                    <HallazgosTable Filas="Reporte.Hallazgos" OnAbrir="AbrirDetalleAsync" />
+                }
+                else if (Activa == Pestana.Ejercicio)
+                {
+                    <ImportarAcusesPanel Previsualizadas="Previsualizadas"
+                                         Ocupado="IsWorking"
+                                         Error="@ErrorImportacion"
+                                         OnArchivos="OnAcusesSeleccionadosAsync"
+                                         OnConfirmar="ConfirmarImportacionAsync"
+                                         OnDescartar="DescartarImportacion" />
+                    <EjercicioTable Filas="Ejercicio" />
+                }
+                else if (Activa == Pestana.Cierre)
+                {
+                    <CierrePanel Filas="Reporte.Cierre"
+                                 Rfc="@Rfc"
+                                 YaGenerado="CierreYaGenerado"
+                                 TransaccionId="cab.TransaccionIdCierre"
+                                 HayHallazgosAltos="HayHallazgosAltos"
+                                 PuedeGenerar="PuedeGenerarCierre"
+                                 Confirmando="ConfirmandoCierre"
+                                 OnPedirConfirmacion="PedirConfirmacionCierre"
+                                 OnConfirmar="GenerarCierreAsync"
+                                 OnCancelar="CancelarCierre" />
+
+                    @if (cab.EsPersonaMoral)
+                    {
+                        <IsrProvisionalPanel Filas="Reporte.CierreIsr"
+                                             Rfc="@Rfc"
+                                             YaGenerado="IsrYaGenerado"
+                                             TransaccionId="cab.TransaccionIdIsr"
+                                             HayHallazgosAltos="HayHallazgosAltos"
+                                             PuedeGenerar="PuedeGenerarIsr"
+                                             Confirmando="ConfirmandoIsr"
+                                             OnPedirConfirmacion="PedirConfirmacionIsr"
+                                             OnConfirmar="GenerarIsrAsync"
+                                             OnCancelar="CancelarIsr" />
+                    }
+                }
+            </div>
+        </div>
+    }
+</div>

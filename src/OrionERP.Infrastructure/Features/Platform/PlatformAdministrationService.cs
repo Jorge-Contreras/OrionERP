@@ -411,7 +411,19 @@ public sealed class PlatformAdministrationService : IPlatformAdministrationServi
           || contentVersion < publicSite.ContentVersion)
         throw Invalid("Las versiones de marca y contenido no pueden disminuir.");
 
+      var canonicalHostChanged = !string.Equals(
+        publicSite.CanonicalHost,
+        canonicalHost,
+        StringComparison.OrdinalIgnoreCase);
       EnsureValidPresentationFallback(publicSite);
+      if (canonicalHostChanged)
+      {
+        if (publicSite.IsActive || command.IsActive)
+          throw Invalid("Desactiva el website antes de cambiar su dominio; actívalo de nuevo sólo después de desplegar el perfil y ajustar el túnel.");
+        if (publicSite.FallbackUntilUtc > now)
+          throw Invalid("Finaliza o revierte la activación de presentación vigente antes de cambiar el dominio.");
+      }
+
       var presentationChanged = brandingVersion != publicSite.BrandingVersion
         || contentVersion != publicSite.ContentVersion;
       if (presentationChanged)

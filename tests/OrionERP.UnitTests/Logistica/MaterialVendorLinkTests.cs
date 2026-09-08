@@ -127,7 +127,8 @@ public class MaterialVendorLinkTests
 
     Assert.NotNull(connection.LastCommandText);
     Assert.Contains("AS IsHighlightedVendorMaterial", connection.LastCommandText!, StringComparison.Ordinal);
-    // Marcar no es filtrar: la búsqueda de Compras debe seguir viendo todo el catálogo.
+    // Marcar no es filtrar: sin VendorId la consulta no acota nada, aunque Compras normalmente
+    // sí lo mande para quedarse con el catálogo del proveedor.
     Assert.DoesNotContain("fv.BusinessPartnerId = @VendorId", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.Contains(connection.LastParameters, parameter => parameter.Name.TrimStart('@') == "HighlightVendorId" && Equals(parameter.Value, 11));
   }
@@ -154,12 +155,33 @@ public class MaterialVendorLinkTests
   }
 
   [Fact]
-  public void ComprasPage_SearchesTheWholeCatalogAndOffersToRegisterTheVendor()
+  public void ComprasPage_ListsOnlyWhatTheVendorSupplies()
   {
     var page = RepoFile.Read("src/OrionERP.Web/Features/Logistica/Purchasing/ComprasPage.razor");
     var codeBehind = RepoFile.Read("src/OrionERP.Web/Features/Logistica/Purchasing/ComprasPage.razor.cs");
 
     Assert.Contains("protected bool CanSearchMaterials => IsDraftMode;", codeBehind, StringComparison.Ordinal);
+    // El alcance de arranque acota al catálogo del proveedor de la orden.
+    Assert.Contains(
+      "protected bool IsVendorScopedSearch => HasVendorSelected && !SearchOutsideVendorCatalog;",
+      codeBehind,
+      StringComparison.Ordinal);
+    Assert.Contains("VendorId = vendorScoped ? Editor.BusinessPartnerId : null,", codeBehind, StringComparison.Ordinal);
+    // Cambiar de proveedor no puede dejar en pantalla la lista del anterior.
+    Assert.Contains("ValueChanged=\"OnEditorVendorSelectedAsync\"", page, StringComparison.Ordinal);
+    Assert.Contains("OnVendorChanged();", codeBehind, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void ComprasPage_KeepsTheWholeCatalogOneClickAwayAndOffersToRegisterTheVendor()
+  {
+    var page = RepoFile.Read("src/OrionERP.Web/Features/Logistica/Purchasing/ComprasPage.razor");
+    var codeBehind = RepoFile.Read("src/OrionERP.Web/Features/Logistica/Purchasing/ComprasPage.razor.cs");
+
+    // Comprar con otro proveedor sigue a un clic: es la excepción, no el arranque.
+    Assert.Contains("BuscarEnTodoElCatalogoAsync", codeBehind, StringComparison.Ordinal);
+    Assert.Contains("BuscarEnTodoElCatalogoAsync", page, StringComparison.Ordinal);
+    Assert.Contains("Buscar otros materiales", page, StringComparison.Ordinal);
     Assert.Contains("HighlightVendorId", codeBehind, StringComparison.Ordinal);
     Assert.Contains("UnlinkedMaterialNames", codeBehind, StringComparison.Ordinal);
     Assert.Contains("LinkMaterialsToVendor = LinkMaterialsToVendor", codeBehind, StringComparison.Ordinal);
@@ -197,6 +219,53 @@ public class MaterialVendorLinkTests
     Assert.True(
       migration.IndexOf("THROW 51502", StringComparison.Ordinal)
         < migration.IndexOf("ALTER TABLE logistica.Material DROP COLUMN BusinessPartnerId", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public async Task SaveMaterialAsync_LetsAVendorOverrideThePurchaseIncrement()
+  {
+    var connection = CreateConnection(scopedPartnerCount: 2);
+    var service = new MaterialService(new FakeQueryConnectionFactory(connection));
+
+    // El habitual vende el pollo por kilos cerrados; el otro despacha fracciones.
+    var result = await service.SaveMaterialAsync(CreateRequest(
+    [
+      new MaterialVendorLinkRequest { BusinessPartnerId = 11, IsPrimary = true, PurchaseIncrement = MaterialPurchaseIncrement.WholePresentation },
+      new MaterialVendorLinkRequest { BusinessPartnerId = 22, PurchaseIncrement = MaterialPurchaseIncrement.Fractional }
+    ]));
+
+    Assert.True(result.Success);
+
+    var upserts = connection.ExecutedCommands
+      .Where(command => command.CommandText.Contains("MERGE logistica.MaterialVendor", StringComparison.Ordinal))
+      .ToList();
+
+    Assert.Equal(2, upserts.Count);
+    Assert.All(upserts, command => Assert.Contains("PurchaseIncrement = @PurchaseIncrement", command.CommandText, StringComparison.Ordinal));
+    Assert.Contains(upserts[0].Parameters, parameter => parameter.Name.TrimStart('@') == "PurchaseIncrement" && Equals(parameter.Value, 1m));
+    Assert.Contains(upserts[1].Parameters, parameter => parameter.Name.TrimStart('@') == "PurchaseIncrement" && Equals(parameter.Value, 0m));
+  }
+
+  [Fact]
+  public async Task SaveMaterialAsync_LeavesTheVendorIncrementNull_WhenItInheritsFromTheMaterial()
+  {
+    var connection = CreateConnection(scopedPartnerCount: 1);
+    var service = new MaterialService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.SaveMaterialAsync(CreateRequest(
+    [
+      new MaterialVendorLinkRequest { BusinessPartnerId = 11, IsPrimary = true }
+    ]));
+
+    Assert.True(result.Success);
+
+    var upsert = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("MERGE logistica.MaterialVendor", StringComparison.Ordinal));
+
+    Assert.Contains(
+      upsert.Parameters,
+      parameter => parameter.Name.TrimStart('@') == "PurchaseIncrement" && parameter.Value is null or DBNull);
   }
 
   private static MaterialUpsertRequest CreateRequest(List<MaterialVendorLinkRequest>? vendors)

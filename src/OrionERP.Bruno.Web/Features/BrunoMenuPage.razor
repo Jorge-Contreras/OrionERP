@@ -1,4 +1,4 @@
-@page "/menu"
+﻿@page "/menu"
 @inject IBrunoPublicCatalogService CatalogService
 @inject IPublicWebsiteInstanceContext Website
 @inject PublicWebsitePresentationDefinition Presentation
@@ -12,13 +12,14 @@
 {
   <section class="state-card"><h2>Cargando el menú…</h2></section>
 }
-else if (catalog is null)
+else if (catalog is null || !catalog.Menu.Sections.Any(section => section.Products.Count > 0))
 {
   <section class="state-card"><h2>Estamos preparando el menú</h2><p>Vuelve pronto o escríbenos por WhatsApp para consultar disponibilidad.</p></section>
 }
 else
 {
   <nav class="section-jump" aria-label="Secciones del menú">
+    @* Absolute path, not a bare fragment: <base href="/"> would resolve "#x" against the site root. *@
     @foreach (var section in catalog.Menu.Sections) { <a href="/menu#@Slug(section.Name)" target="_top">@section.Name</a> }
   </nav>
   <div class="menu-page">
@@ -31,7 +32,11 @@ else
           {
             <article class="menu-card @(product.ProductKind == RestaurantProductKinds.Combo ? "is-combo" : null) @(product.IsSoldOut ? "is-sold-out" : null)">
               <div class="menu-card__image">
-                @if (product.HasImage) { <img src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" loading="lazy" /> }
+                @if (product.HasImage)
+                {
+                  <img class="menu-card__image-backdrop" src="/media/productos/@product.Id?thumbnail=false" alt="" aria-hidden="true" loading="lazy" decoding="async" />
+                  <img class="menu-card__image-main" src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" loading="lazy" decoding="async" />
+                }
                 else { <span>@Presentation.ShortName</span> }
                 @if (product.IsSoldOut) { <b>Agotado por hoy</b> }
               </div>
@@ -42,8 +47,8 @@ else
                 {
                   <div class="menu-card__combo-summary" aria-label="Contenido del combo">
                     <b>Arma tu combo</b>
-                    <ul>@foreach(var slot in product.ComboSlots.Where(item=>item.IsActive).OrderBy(item=>item.SortOrder)){<li><strong>@slot.Name:</strong> @ComboSlotSummary(slot)</li>}</ul>
-                    <small>Personalízalo al ordenar en caja. Los suplementos se indican antes de cobrar.</small>
+                    <ul>@foreach(var slot in product.ComboSlots.Where(item=>item.IsActive).OrderBy(item=>item.SortOrder)){<li><strong>@slot.Name</strong> @ComboSlotSummary(slot)</li>}</ul>
+                    <small>Cada línea es a elegir, no se sirven todas las opciones. Personalízalo al ordenar en caja y los suplementos se indican antes de cobrar.</small>
                   </div>
                 }
                 @if (product.Allergens.Count > 0) { <small>Alérgenos declarados: @string.Join(", ", product.Allergens).</small> }
@@ -73,8 +78,15 @@ else
   }
   private static string ComboSlotSummary(RestaurantComboSlotDto slot)
   {
-    var options=slot.Options.Where(item=>item.IsActive).OrderBy(item=>item.SortOrder).Select(item=>item.PriceDelta>0?$"{item.ComponentProductName} (+{item.PriceDelta:C0})":item.ComponentProductName).ToList();
-    return options.Count==0?"Consulta disponibilidad":string.Join(" · ",options);
+    var options=slot.Options.Where(item=>item.IsActive).OrderBy(item=>item.SortOrder).Select(item=>item.PriceDelta>0?$"{item.ComponentProductName} +{item.PriceDelta:C0}":item.ComponentProductName).ToList();
+    if (options.Count==0) { return "(consulta disponibilidad)"; }
+    return slot.MaxSelections>1
+      ? $"({ComboSlotInstruction(slot)}: {string.Join(" · ",options)})"
+      : slot.MinSelections==0 ? $"(opcional: {string.Join(" o ",options)})" : $"({string.Join(" o ",options)})";
   }
+  private static string ComboSlotInstruction(RestaurantComboSlotDto slot)
+    => slot.MinSelections==0 ? $"opcional, elige hasta {slot.MaxSelections}"
+      : slot.MinSelections==slot.MaxSelections ? $"elige {slot.MinSelections}"
+      : $"elige {slot.MinSelections}–{slot.MaxSelections}";
   private static string Slug(string value) => new(value.ToLowerInvariant().Select(character => char.IsLetterOrDigit(character) ? character : '-').ToArray());
 }

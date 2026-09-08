@@ -25,9 +25,13 @@ public sealed class PhysicalCountService : IPhysicalCountService
           s.Id,
           s.SessionCode,
           s.[Status],
+          s.ScopeType,
           s.LocationId,
           l.LocationName,
           room.ROOM_NAME AS RoomName,
+          scope.MaterialCount,
+          scope.PrimaryMaterialLabel,
+          COUNT(DISTINCT line.LocationId) AS LocationCount,
           s.CreatedAt,
           s.CreatedBy,
           s.SubmittedAt,
@@ -53,10 +57,21 @@ public sealed class PhysicalCountService : IPhysicalCountService
           SUM(CASE WHEN line.VarianceQuantity IS NOT NULL AND line.VarianceQuantity <> 0 THEN 1 ELSE 0 END) AS VarianceLineCount,
           COUNT(activePlanLine.Id) AS RecountLineCount
       FROM logistica.PhysicalCountSession s
-      JOIN logistica.Location l
+      LEFT JOIN logistica.Location l
         ON l.Id = s.LocationId
       LEFT JOIN dbo.ROOM room
         ON room.ID = l.RoomId
+      OUTER APPLY
+      (
+          SELECT
+              COUNT(*) AS MaterialCount,
+              MIN(CONCAT(material.MaterialCode, ' · ', material.[Description])) AS PrimaryMaterialLabel
+          FROM logistica.PhysicalCountSessionMaterial sessionMaterial
+          JOIN logistica.Material material
+            ON material.Rfc = sessionMaterial.Rfc
+           AND material.Id = sessionMaterial.MaterialId
+          WHERE sessionMaterial.SessionId = s.Id
+      ) scope
       LEFT JOIN logistica.PhysicalCountLine line
         ON line.SessionId = s.Id
       LEFT JOIN logistica.PhysicalCountRecountPlan activePlan
@@ -69,9 +84,12 @@ public sealed class PhysicalCountService : IPhysicalCountService
           s.Id,
           s.SessionCode,
           s.[Status],
+          s.ScopeType,
           s.LocationId,
           l.LocationName,
           room.ROOM_NAME,
+          scope.MaterialCount,
+          scope.PrimaryMaterialLabel,
           s.CreatedAt,
           s.CreatedBy,
           s.SubmittedAt,
@@ -103,9 +121,18 @@ public sealed class PhysicalCountService : IPhysicalCountService
           s.Id,
           s.SessionCode,
           s.[Status],
+          s.ScopeType,
           s.LocationId,
           l.LocationName,
           room.ROOM_NAME AS RoomName,
+          s.MaxLocationsPerMaterial,
+          scope.MaterialCount,
+          scope.PrimaryMaterialLabel,
+          (
+            SELECT COUNT(DISTINCT scopeLine.LocationId)
+            FROM logistica.PhysicalCountLine scopeLine
+            WHERE scopeLine.SessionId = s.Id
+          ) AS LocationCount,
           s.Notes,
           s.CreatedAt,
           s.CreatedBy,
@@ -122,10 +149,21 @@ public sealed class PhysicalCountService : IPhysicalCountService
           activePlan.RequestedAt AS RecountRequestedAt,
           activePlan.RequestedBy AS RecountRequestedBy
       FROM logistica.PhysicalCountSession s
-      JOIN logistica.Location l
+      LEFT JOIN logistica.Location l
         ON l.Id = s.LocationId
       LEFT JOIN dbo.ROOM room
         ON room.ID = l.RoomId
+      OUTER APPLY
+      (
+          SELECT
+              COUNT(*) AS MaterialCount,
+              MIN(CONCAT(material.MaterialCode, ' · ', material.[Description])) AS PrimaryMaterialLabel
+          FROM logistica.PhysicalCountSessionMaterial sessionMaterial
+          JOIN logistica.Material material
+            ON material.Rfc = sessionMaterial.Rfc
+           AND material.Id = sessionMaterial.MaterialId
+          WHERE sessionMaterial.SessionId = s.Id
+      ) scope
       LEFT JOIN logistica.PhysicalCountRecountPlan activePlan
         ON activePlan.SessionId = s.Id
        AND activePlan.CompletedAt IS NULL
@@ -140,6 +178,11 @@ public sealed class PhysicalCountService : IPhysicalCountService
           m.Barcode,
           m.MaterialClass,
           u.UnitName AS BaseUnitName,
+          line.LocationId,
+          loc.LocationCode,
+          loc.LocationName,
+          lineRoom.ROOM_NAME AS RoomName,
+          line.CountSequence,
           CAST(line.ExpectedQuantity AS decimal(18,4)) AS ExpectedQuantity,
           CAST(line.CountedQuantity AS decimal(18,4)) AS CountedQuantity,
           CAST(line.VarianceQuantity AS decimal(18,4)) AS VarianceQuantity,
@@ -160,6 +203,10 @@ public sealed class PhysicalCountService : IPhysicalCountService
       FROM logistica.PhysicalCountLine line
       JOIN logistica.Material m
         ON m.Id = line.MaterialId
+      JOIN logistica.Location loc
+        ON loc.Id = line.LocationId
+      LEFT JOIN dbo.ROOM lineRoom
+        ON lineRoom.ID = loc.RoomId
       LEFT JOIN logistica.UnitOfMeasure u
         ON u.Id = m.BaseUnitId
       LEFT JOIN logistica.PhysicalCountRecountPlan activePlan
@@ -169,7 +216,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
         ON activePlanLine.RecountPlanId = activePlan.Id
        AND activePlanLine.PhysicalCountLineId = line.Id
       WHERE line.SessionId = @SessionId
-      ORDER BY m.[Description], m.MaterialCode, line.Id;
+      ORDER BY line.CountSequence, loc.LocationCode, m.[Description], m.MaterialCode, line.Id;
 
       SELECT
           attachment.Id,
@@ -186,16 +233,6 @@ public sealed class PhysicalCountService : IPhysicalCountService
       WHERE line.SessionId = @SessionId
       ORDER BY attachment.CreatedAt DESC, attachment.Id DESC;
 
-      SELECT lotLine.Id,lotLine.PhysicalCountLineId,lotLine.MaterialLotId,materialLot.LotCode,materialLot.ExpiresAt,
-             CAST(lotLine.ExpectedQuantity AS decimal(18,4)) AS ExpectedQuantity,
-             CAST(lotLine.CountedQuantity AS decimal(18,4)) AS CountedQuantity,
-             CAST(lotLine.VarianceQuantity AS decimal(18,4)) AS VarianceQuantity
-      FROM logistica.PhysicalCountLotLine lotLine
-      JOIN logistica.PhysicalCountLine line ON line.Rfc=lotLine.Rfc AND line.Id=lotLine.PhysicalCountLineId
-      JOIN logistica.MaterialLot materialLot ON materialLot.Rfc=lotLine.Rfc AND materialLot.Id=lotLine.MaterialLotId
-      WHERE line.SessionId=@SessionId
-      ORDER BY materialLot.ExpiresAt,materialLot.LotCode;
-
       SELECT
           audit.EventType,
           audit.OccurredAt,
@@ -203,6 +240,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
           audit.MaterialId,
           audit.MaterialCode,
           audit.MaterialDescription,
+          audit.LocationName,
           audit.ExpectedQuantity,
           audit.CountedQuantity,
           audit.Details
@@ -215,6 +253,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
               CAST(NULL AS int) AS MaterialId,
               CAST(NULL AS varchar(100)) AS MaterialCode,
               CAST(NULL AS varchar(500)) AS MaterialDescription,
+              CAST(NULL AS varchar(200)) AS LocationName,
               CAST(NULL AS decimal(18,4)) AS ExpectedQuantity,
               CAST(NULL AS decimal(18,4)) AS CountedQuantity,
               CAST(sessionInfo.Notes AS varchar(1000)) AS Details,
@@ -231,6 +270,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
               countLine.MaterialId,
               material.MaterialCode,
               material.[Description],
+              auditLocation.LocationName,
               CAST(countLine.ExpectedQuantity AS decimal(18,4)),
               CAST(countLine.CountedQuantity AS decimal(18,4)),
               CAST(countLine.Notes AS varchar(1000)),
@@ -239,6 +279,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
           JOIN logistica.Material material
             ON material.Rfc = countLine.Rfc
            AND material.Id = countLine.MaterialId
+          LEFT JOIN logistica.Location auditLocation
+            ON auditLocation.Rfc = countLine.Rfc
+           AND auditLocation.Id = countLine.LocationId
           WHERE countLine.SessionId = @SessionId
             AND countLine.CapturedAt IS NOT NULL
 
@@ -251,6 +294,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
               countLine.MaterialId,
               material.MaterialCode,
               material.[Description],
+              auditLocation.LocationName,
               CAST(countLine.ExpectedQuantity AS decimal(18,4)),
               CAST(recountLine.PreviousCountedQuantity AS decimal(18,4)),
               CAST(recountLine.PreviousNotes AS varchar(1000)),
@@ -265,6 +309,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
           JOIN logistica.Material material
             ON material.Rfc = countLine.Rfc
            AND material.Id = countLine.MaterialId
+          LEFT JOIN logistica.Location auditLocation
+            ON auditLocation.Rfc = countLine.Rfc
+           AND auditLocation.Id = countLine.LocationId
           WHERE recountPlan.SessionId = @SessionId
             AND recountLine.PreviousCapturedAt IS NOT NULL
 
@@ -277,6 +324,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
               countLine.MaterialId,
               material.MaterialCode,
               material.[Description],
+              auditLocation.LocationName,
               CAST(NULL AS decimal(18,4)),
               CAST(NULL AS decimal(18,4)),
               CAST(attachment.FileName AS varchar(1000)),
@@ -288,6 +336,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
           JOIN logistica.Material material
             ON material.Rfc = countLine.Rfc
            AND material.Id = countLine.MaterialId
+          LEFT JOIN logistica.Location auditLocation
+            ON auditLocation.Rfc = countLine.Rfc
+           AND auditLocation.Id = countLine.LocationId
           WHERE countLine.SessionId = @SessionId
 
           UNION ALL
@@ -296,6 +347,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
               'Submitted',
               sessionInfo.SubmittedAt,
               sessionInfo.SubmittedBy,
+              NULL,
               NULL,
               NULL,
               NULL,
@@ -313,6 +365,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
               'RecountRequested',
               recountPlan.RequestedAt,
               recountPlan.RequestedBy,
+              NULL,
               NULL,
               NULL,
               NULL,
@@ -340,6 +393,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
               NULL,
               NULL,
               NULL,
+              NULL,
               60
           FROM logistica.PhysicalCountRecountPlan recountPlan
           WHERE recountPlan.SessionId = @SessionId
@@ -351,6 +405,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
               'Approved',
               sessionInfo.ApprovedAt,
               sessionInfo.ApprovedBy,
+              NULL,
               NULL,
               NULL,
               NULL,
@@ -374,6 +429,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
               NULL,
               NULL,
               NULL,
+              NULL,
               80
           FROM logistica.PhysicalCountSession sessionInfo
           WHERE sessionInfo.Id = @SessionId
@@ -390,6 +446,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
               NULL,
               NULL,
               NULL,
+              NULL,
               CAST(sessionInfo.CancelReason AS varchar(1000)),
               90
           FROM logistica.PhysicalCountSession sessionInfo
@@ -397,6 +454,27 @@ public sealed class PhysicalCountService : IPhysicalCountService
             AND sessionInfo.CanceledAt IS NOT NULL
       ) audit
       ORDER BY audit.OccurredAt DESC, audit.EventSort DESC;
+
+      SELECT
+          sessionMaterial.MaterialId,
+          material.MaterialCode,
+          material.[Description] AS MaterialDescription,
+          COUNT(countLine.Id) AS LineCount,
+          COUNT(DISTINCT countLine.LocationId) AS LocationCount
+      FROM logistica.PhysicalCountSessionMaterial sessionMaterial
+      JOIN logistica.Material material
+        ON material.Rfc = sessionMaterial.Rfc
+       AND material.Id = sessionMaterial.MaterialId
+      LEFT JOIN logistica.PhysicalCountLine countLine
+        ON countLine.Rfc = sessionMaterial.Rfc
+       AND countLine.SessionId = sessionMaterial.SessionId
+       AND countLine.MaterialId = sessionMaterial.MaterialId
+      WHERE sessionMaterial.SessionId = @SessionId
+      GROUP BY
+          sessionMaterial.MaterialId,
+          material.MaterialCode,
+          material.[Description]
+      ORDER BY material.[Description], material.MaterialCode;
       """;
 
     using var conn = CreateConnection();
@@ -411,8 +489,8 @@ public sealed class PhysicalCountService : IPhysicalCountService
 
     var lines = (await multi.ReadAsync<PhysicalCountLineDto>()).AsList();
     var attachments = (await multi.ReadAsync<PhysicalCountAttachmentDto>()).AsList();
-    var lots = (await multi.ReadAsync<PhysicalCountLotLineDto>()).AsList();
     var auditEvents = (await multi.ReadAsync<PhysicalCountAuditEventDto>()).AsList();
+    var scopeMaterials = (await multi.ReadAsync<PhysicalCountMaterialScopeDto>()).AsList();
     var attachmentsByLine = attachments
       .GroupBy(attachment => attachment.PhysicalCountLineId)
       .ToDictionary(group => group.Key, group => (IReadOnlyList<PhysicalCountAttachmentDto>)group.ToList());
@@ -422,13 +500,106 @@ public sealed class PhysicalCountService : IPhysicalCountService
       line.Attachments = attachmentsByLine.TryGetValue(line.Id, out var lineAttachments)
         ? lineAttachments
         : Array.Empty<PhysicalCountAttachmentDto>();
-      line.Lots = lots.Where(lot => lot.PhysicalCountLineId == line.Id).ToList();
     }
 
     session.Lines = lines;
     session.AuditEvents = auditEvents;
+    session.Materials = scopeMaterials;
     return session;
   }
+
+  /// <summary>
+  /// Alcance de un conteo, en un solo lugar. <c>LocationScope</c> resuelve el subárbol de ubicaciones
+  /// (o todas, cuando no se restringe); <c>ScopeCandidate</c> aplica el filtro de materiales y el de
+  /// saldos en cero; <c>ScopeLine</c> aplica el tope de ubicaciones por material, priorizando lo que
+  /// nunca se ha contado y lo más antiguo. Lo comparten la creación, la vista previa y la guardia de
+  /// solapamiento para que las tres vean exactamente los mismos renglones.
+  /// </summary>
+  private const string ScopeCteSql =
+    """
+    WITH LocationScope AS (
+        SELECT rootLocation.Id
+        FROM logistica.Location rootLocation
+        WHERE (@LocationId IS NOT NULL AND rootLocation.Id = @LocationId)
+           OR (@LocationId IS NULL AND rootLocation.IsActive = 1 AND rootLocation.IsInventoryEnabled = 1)
+
+        UNION ALL
+
+        SELECT child.Id
+        FROM logistica.Location child
+        JOIN LocationScope parent
+          ON parent.Id = child.ParentLocationId
+        WHERE @LocationId IS NOT NULL
+    ),
+    ScopeCandidate AS (
+        SELECT
+            sb.Id AS StockBalanceId,
+            sb.LocationId,
+            sb.MaterialId,
+            sb.Quantity,
+            sb.LastCountedAt,
+            ROW_NUMBER() OVER (
+                PARTITION BY sb.MaterialId
+                ORDER BY
+                    CASE WHEN sb.LastCountedAt IS NULL THEN 0 ELSE 1 END,
+                    sb.LastCountedAt,
+                    sb.Quantity DESC,
+                    sb.Id
+            ) AS MaterialRank
+        FROM logistica.StockBalance sb
+        JOIN LocationScope scope
+          ON scope.Id = sb.LocationId
+        -- Sin filtro de cantidad: una ubicacion en cero es justo la que hay que ir a comprobar,
+        -- y es lo que el generador por ubicacion ha hecho desde siempre.
+        WHERE ISNULL(sb.IsRemoved, 0) = 0
+          AND (@HasMaterialFilter = 0 OR sb.MaterialId IN @MaterialIds)
+    ),
+    ScopeLine AS (
+        SELECT
+            candidate.StockBalanceId,
+            candidate.LocationId,
+            candidate.MaterialId,
+            candidate.Quantity,
+            candidate.LastCountedAt
+        FROM ScopeCandidate candidate
+        WHERE @MaxLocationsPerMaterial IS NULL
+           OR candidate.MaterialRank <= @MaxLocationsPerMaterial
+    )
+    """;
+
+  /// <summary>
+  /// Sesiones todavía abiertas que ya reclamaron alguno de esos saldos. Dos sesiones sobre el mismo
+  /// saldo significan que la segunda en aplicarse pisa a la primera.
+  /// </summary>
+  private const string ConflictSelectSql =
+    """
+    SELECT TOP (50)
+        openSession.Id AS SessionId,
+        openSession.SessionCode,
+        openSession.[Status],
+        material.MaterialCode,
+        material.[Description] AS MaterialDescription,
+        loc.LocationName,
+        COUNT(*) AS OverlappingLineCount
+    FROM ScopeLine line
+    JOIN logistica.PhysicalCountLine openLine
+      ON openLine.StockBalanceId = line.StockBalanceId
+    JOIN logistica.PhysicalCountSession openSession
+      ON openSession.Id = openLine.SessionId
+    JOIN logistica.Material material
+      ON material.Id = line.MaterialId
+    JOIN logistica.Location loc
+      ON loc.Id = line.LocationId
+    WHERE openSession.[Status] NOT IN ('Posted', 'Canceled')
+    GROUP BY
+        openSession.Id,
+        openSession.SessionCode,
+        openSession.[Status],
+        material.MaterialCode,
+        material.[Description],
+        loc.LocationName
+    ORDER BY openSession.SessionCode, loc.LocationName, material.MaterialCode;
+    """;
 
   public async Task<LogisticsCommandResult> CreateSessionAsync(PhysicalCountSessionCreateRequest request, CancellationToken ct = default)
   {
@@ -437,31 +608,95 @@ public sealed class PhysicalCountService : IPhysicalCountService
       throw new ArgumentNullException(nameof(request));
     }
 
+    var scopeType = PhysicalCountSessionScopeTypes.Normalize(request.ScopeType);
+    var isMaterialScope = PhysicalCountSessionScopeTypes.IsMaterialScope(scopeType);
+    var materialIds = NormalizeMaterialIds(request.MaterialIds, isMaterialScope);
+
+    if (isMaterialScope && materialIds.Length == 0)
+    {
+      return LogisticsCommandResult.Fail("Selecciona al menos un material para el conteo.");
+    }
+
+    if (!isMaterialScope && (request.LocationId is null || request.LocationId <= 0))
+    {
+      return LogisticsCommandResult.Fail("Selecciona la ubicación que se va a contar.");
+    }
+
+    var scopeParameters = BuildScopeParameters(request, materialIds);
+
     using var conn = CreateConnection();
     await conn.OpenAsync(ct);
     using var tx = await conn.BeginTransactionAsync(ct);
 
     try
     {
-      var locationExists = await conn.ExecuteScalarAsync<bool>(
-        new CommandDefinition(
-          """
-          SELECT CAST(CASE WHEN EXISTS (
-              SELECT 1
-              FROM logistica.Location
-              WHERE Id = @LocationId
-                AND IsActive = 1
-                AND IsInventoryEnabled = 1
-          ) THEN 1 ELSE 0 END AS bit);
-          """,
-          new { request.LocationId },
-          tx,
-          cancellationToken: ct));
+      if (request.LocationId is > 0)
+      {
+        var locationExists = await conn.ExecuteScalarAsync<bool>(
+          new CommandDefinition(
+            """
+            SELECT CAST(CASE WHEN EXISTS (
+                SELECT 1
+                FROM logistica.Location
+                WHERE Id = @LocationId
+                  AND IsActive = 1
+                  AND IsInventoryEnabled = 1
+            ) THEN 1 ELSE 0 END AS bit);
+            """,
+            new { request.LocationId },
+            tx,
+            cancellationToken: ct));
 
-      if (!locationExists)
+        if (!locationExists)
+        {
+          await tx.RollbackAsync(ct);
+          return LogisticsCommandResult.Fail("La ubicación seleccionada no existe o no está habilitada para inventario.");
+        }
+      }
+
+      if (materialIds.Length > 0)
+      {
+        var knownMaterialCount = await conn.ExecuteScalarAsync<int>(
+          new CommandDefinition(
+            """
+            SELECT COUNT(*)
+            FROM logistica.Material
+            WHERE Id IN @MaterialIds
+              AND IsActive = 1;
+            """,
+            new { MaterialIds = materialIds },
+            tx,
+            cancellationToken: ct));
+
+        if (knownMaterialCount != materialIds.Length)
+        {
+          await tx.RollbackAsync(ct);
+          return LogisticsCommandResult.Fail("Alguno de los materiales seleccionados ya no existe o está inactivo.");
+        }
+      }
+
+      var conflictingSessionCodes = (await conn.QueryAsync<string>(
+        new CommandDefinition(
+          ScopeCteSql +
+          """
+
+          SELECT DISTINCT openSession.SessionCode
+          FROM ScopeLine line
+          JOIN logistica.PhysicalCountLine openLine WITH (UPDLOCK, HOLDLOCK)
+            ON openLine.StockBalanceId = line.StockBalanceId
+          JOIN logistica.PhysicalCountSession openSession
+            ON openSession.Id = openLine.SessionId
+          WHERE openSession.[Status] NOT IN ('Posted', 'Canceled')
+          ORDER BY openSession.SessionCode;
+          """,
+          scopeParameters,
+          tx,
+          cancellationToken: ct))).AsList();
+
+      if (conflictingSessionCodes.Count > 0)
       {
         await tx.RollbackAsync(ct);
-        return LogisticsCommandResult.Fail("La ubicación seleccionada no existe o no está habilitada para inventario.");
+        return LogisticsCommandResult.Fail(BuildOverlapMessage(conflictingSessionCodes));
       }
 
       var sessionId = await conn.ExecuteScalarAsync<int>(
@@ -470,7 +705,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
           INSERT INTO logistica.PhysicalCountSession
           (
               SessionCode,
+              ScopeType,
               LocationId,
+              MaxLocationsPerMaterial,
               [Status],
               Notes,
               CreatedAt,
@@ -479,7 +716,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
           VALUES
           (
               CONCAT('TMP-', LEFT(REPLACE(CONVERT(varchar(36), NEWID()), '-', ''), 20)),
+              @ScopeType,
               @LocationId,
+              @MaxLocationsPerMaterial,
               'Draft',
               @Notes,
               SYSUTCDATETIME(),
@@ -490,7 +729,9 @@ public sealed class PhysicalCountService : IPhysicalCountService
           """,
           new
           {
-            request.LocationId,
+            ScopeType = scopeType,
+            LocationId = NormalizeLocationId(request.LocationId),
+            request.MaxLocationsPerMaterial,
             Notes = NullIfWhiteSpace(request.Notes),
             CreatedBy = NullIfWhiteSpace(request.CreatedBy) ?? "OrionERP"
           },
@@ -508,56 +749,53 @@ public sealed class PhysicalCountService : IPhysicalCountService
           tx,
           cancellationToken: ct));
 
+      if (materialIds.Length > 0)
+      {
+        await conn.ExecuteAsync(
+          new CommandDefinition(
+            """
+            INSERT INTO logistica.PhysicalCountSessionMaterial (SessionId, MaterialId)
+            SELECT @SessionId, material.Id
+            FROM logistica.Material material
+            WHERE material.Id IN @MaterialIds;
+            """,
+            new { SessionId = sessionId, MaterialIds = materialIds },
+            tx,
+            cancellationToken: ct));
+      }
+
       await conn.ExecuteAsync(
         new CommandDefinition(
+          ScopeCteSql +
           """
-          ;WITH LocationScope AS (
-              SELECT Id
-              FROM logistica.Location
-              WHERE Id = @LocationId
 
-              UNION ALL
-
-              SELECT child.Id
-              FROM logistica.Location child
-              JOIN LocationScope parent
-                ON parent.Id = child.ParentLocationId
-          )
           INSERT INTO logistica.PhysicalCountLine
           (
               SessionId,
               StockBalanceId,
               LocationId,
               MaterialId,
-              ExpectedQuantity
+              ExpectedQuantity,
+              CountSequence
           )
           SELECT
               @SessionId,
-              sb.Id,
-              sb.LocationId,
-              sb.MaterialId,
-              sb.Quantity
-          FROM logistica.StockBalance sb
-          JOIN LocationScope scope
-            ON scope.Id = sb.LocationId
-          WHERE ISNULL(sb.IsRemoved, 0) = 0;
+              line.StockBalanceId,
+              line.LocationId,
+              line.MaterialId,
+              line.Quantity,
+              ROW_NUMBER() OVER (
+                  ORDER BY room.ROOM_NAME, loc.LocationCode, material.[Description], material.MaterialCode, line.StockBalanceId
+              )
+          FROM ScopeLine line
+          JOIN logistica.Location loc
+            ON loc.Id = line.LocationId
+          LEFT JOIN dbo.ROOM room
+            ON room.ID = loc.RoomId
+          JOIN logistica.Material material
+            ON material.Id = line.MaterialId;
           """,
-          new { SessionId = sessionId, request.LocationId },
-          tx,
-          cancellationToken: ct));
-
-      await conn.ExecuteAsync(
-        new CommandDefinition(
-          """
-          INSERT INTO logistica.PhysicalCountLotLine
-            (Rfc,PhysicalCountLineId,MaterialLotId,ExpectedQuantity)
-          SELECT countLine.Rfc,countLine.Id,lotBalance.MaterialLotId,lotBalance.Quantity
-          FROM logistica.PhysicalCountLine countLine
-          JOIN logistica.LotBalance lotBalance
-            ON lotBalance.Rfc=countLine.Rfc AND lotBalance.MaterialId=countLine.MaterialId AND lotBalance.LocationId=countLine.LocationId
-          WHERE countLine.SessionId=@SessionId AND lotBalance.Quantity<>0;
-          """,
-          new { SessionId = sessionId },
+          BuildScopeParameters(request, materialIds, sessionId),
           tx,
           cancellationToken: ct));
 
@@ -571,7 +809,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
       if (lineCount == 0)
       {
         await tx.RollbackAsync(ct);
-        return LogisticsCommandResult.Fail("La ubicación no tiene existencias para generar un conteo físico.");
+        return LogisticsCommandResult.Fail(BuildEmptyScopeMessage(isMaterialScope, request.LocationId));
       }
 
       await tx.CommitAsync(ct);
@@ -582,6 +820,122 @@ public sealed class PhysicalCountService : IPhysicalCountService
       await tx.RollbackAsync(ct);
       throw;
     }
+  }
+
+  public async Task<PhysicalCountScopePreviewDto> PreviewScopeAsync(PhysicalCountScopePreviewRequest request, CancellationToken ct = default)
+  {
+    if (request is null)
+    {
+      throw new ArgumentNullException(nameof(request));
+    }
+
+    var scopeType = PhysicalCountSessionScopeTypes.Normalize(request.ScopeType);
+    var isMaterialScope = PhysicalCountSessionScopeTypes.IsMaterialScope(scopeType);
+    var materialIds = NormalizeMaterialIds(request.MaterialIds, isMaterialScope);
+
+    if (isMaterialScope && materialIds.Length == 0)
+    {
+      return new PhysicalCountScopePreviewDto();
+    }
+
+    if (!isMaterialScope && (request.LocationId is null || request.LocationId <= 0))
+    {
+      return new PhysicalCountScopePreviewDto();
+    }
+
+    var sql =
+      ScopeCteSql +
+      """
+
+      SELECT
+          COUNT(*) AS LineCount,
+          COUNT(DISTINCT line.LocationId) AS LocationCount,
+          COUNT(DISTINCT line.MaterialId) AS MaterialCount
+      FROM ScopeLine line;
+      """ +
+      ScopeCteSql +
+      """
+
+      SELECT
+          line.MaterialId,
+          material.MaterialCode,
+          material.[Description] AS MaterialDescription,
+          COUNT(DISTINCT line.LocationId) AS LocationCount,
+          CAST(SUM(line.Quantity) AS decimal(18,4)) AS TotalQuantity,
+          MAX(line.LastCountedAt) AS LastCountedAt
+      FROM ScopeLine line
+      JOIN logistica.Material material
+        ON material.Id = line.MaterialId
+      GROUP BY line.MaterialId, material.MaterialCode, material.[Description]
+      ORDER BY material.[Description], material.MaterialCode;
+      """ +
+      ScopeCteSql +
+      "\n\n" + ConflictSelectSql;
+
+    using var conn = CreateConnection();
+    using var multi = await conn.QueryMultipleAsync(
+      new CommandDefinition(sql, BuildScopeParameters(request, materialIds), cancellationToken: ct));
+
+    var totals = await multi.ReadFirstOrDefaultAsync<ScopeTotalsRow>();
+    var materials = (await multi.ReadAsync<PhysicalCountScopeMaterialPreviewDto>()).AsList();
+    var conflicts = (await multi.ReadAsync<PhysicalCountScopeConflictDto>()).AsList();
+
+    return new PhysicalCountScopePreviewDto
+    {
+      LineCount = totals?.LineCount ?? 0,
+      LocationCount = totals?.LocationCount ?? 0,
+      MaterialCount = totals?.MaterialCount ?? 0,
+      Materials = materials,
+      Conflicts = conflicts
+    };
+  }
+
+  private static int[] NormalizeMaterialIds(IReadOnlyList<int>? materialIds, bool isMaterialScope)
+    => isMaterialScope && materialIds is not null
+      ? materialIds.Where(materialId => materialId > 0).Distinct().OrderBy(materialId => materialId).ToArray()
+      : Array.Empty<int>();
+
+  private static int? NormalizeLocationId(int? locationId)
+    => locationId is > 0 ? locationId : null;
+
+  private static object BuildScopeParameters(
+    PhysicalCountScopeRequest request,
+    int[] materialIds,
+    int sessionId = 0)
+    => new
+    {
+      SessionId = sessionId,
+      LocationId = NormalizeLocationId(request.LocationId),
+      MaterialIds = materialIds.Length > 0 ? materialIds : new[] { 0 },
+      HasMaterialFilter = materialIds.Length > 0,
+      request.MaxLocationsPerMaterial
+    };
+
+  private static string BuildOverlapMessage(IReadOnlyList<string> sessionCodes)
+  {
+    var codes = string.Join(", ", sessionCodes);
+    return sessionCodes.Count == 1
+      ? $"El conteo {codes} ya está abierto sobre esos materiales y ubicaciones. Termínalo o cancélalo antes de crear otro."
+      : $"Los conteos {codes} ya están abiertos sobre esos materiales y ubicaciones. Termínalos o cancélalos antes de crear otro.";
+  }
+
+  private static string BuildEmptyScopeMessage(bool isMaterialScope, int? locationId)
+  {
+    if (!isMaterialScope)
+    {
+      return "La ubicación no tiene existencias para generar un conteo físico.";
+    }
+
+    return locationId is > 0
+      ? "Los materiales seleccionados no tienen existencias registradas en esa ubicación."
+      : "Los materiales seleccionados no tienen existencias registradas en ninguna ubicación.";
+  }
+
+  private sealed class ScopeTotalsRow
+  {
+    public int LineCount { get; set; }
+    public int LocationCount { get; set; }
+    public int MaterialCount { get; set; }
   }
 
   public async Task<LogisticsCommandResult> CaptureLineAsync(PhysicalCountLineCaptureRequest request, CancellationToken ct = default)
@@ -632,39 +986,6 @@ public sealed class PhysicalCountService : IPhysicalCountService
       {
         await tx.RollbackAsync(ct);
         return LogisticsCommandResult.Fail("Otro empleado actualizó este material. Se recargó el conteo para proteger su captura.");
-      }
-
-      var expectedLots = (await conn.QueryAsync<PhysicalCountLotLineDto>(new CommandDefinition(
-        """
-        SELECT lotLine.MaterialLotId,lotLine.ExpectedQuantity,lotLine.CountedQuantity
-        FROM logistica.PhysicalCountLotLine lotLine WITH (UPDLOCK,HOLDLOCK)
-        JOIN logistica.PhysicalCountLine countLine ON countLine.Rfc=lotLine.Rfc AND countLine.Id=lotLine.PhysicalCountLineId
-        WHERE lotLine.PhysicalCountLineId=@LineId AND countLine.SessionId=@SessionId;
-        """, new { request.LineId, request.SessionId }, tx, cancellationToken: ct))).AsList();
-      if (expectedLots.Count > 0)
-      {
-        var capturedLots = request.Lots.GroupBy(lot => lot.MaterialLotId).ToDictionary(group => group.Key, group => group.Single().CountedQuantity);
-        if (capturedLots.Count != expectedLots.Count || expectedLots.Any(lot => !capturedLots.TryGetValue(lot.MaterialLotId, out var quantity) || !quantity.HasValue || quantity.Value < 0))
-        {
-          await tx.RollbackAsync(ct);
-          return LogisticsCommandResult.Fail("Captura una cantidad no negativa para cada lote del material.");
-        }
-        var lotTotal = capturedLots.Values.Sum(quantity => quantity ?? 0);
-        if (Math.Abs(lotTotal - request.CountedQuantity) > 0.0001m)
-        {
-          await tx.RollbackAsync(ct);
-          return LogisticsCommandResult.Fail("La suma contada por lote debe coincidir con el total de la línea.");
-        }
-        foreach (var lot in expectedLots)
-        {
-          var counted = capturedLots[lot.MaterialLotId]!.Value;
-          await conn.ExecuteAsync(new CommandDefinition(
-            """
-            UPDATE logistica.PhysicalCountLotLine
-            SET CountedQuantity=@CountedQuantity
-            WHERE PhysicalCountLineId=@LineId AND MaterialLotId=@MaterialLotId;
-            """, new { request.LineId, lot.MaterialLotId, CountedQuantity = counted }, tx, cancellationToken: ct));
-        }
       }
 
       var affectedLine = await conn.ExecuteAsync(
@@ -799,6 +1120,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
           tx,
           cancellationToken: ct));
 
+      // Los conteos ya no se capturan por lote; el DELETE solo purga renglones heredados.
       await conn.ExecuteAsync(
         new CommandDefinition(
           """
@@ -808,6 +1130,14 @@ public sealed class PhysicalCountService : IPhysicalCountService
           WHERE countLine.SessionId=@SessionId;
           DELETE FROM logistica.PhysicalCountLine WHERE SessionId = @SessionId;
           """,
+          new { SessionId = sessionId },
+          tx,
+          cancellationToken: ct));
+
+      // Los materiales del alcance apuntan a la sesión, así que se purgan antes que ella.
+      await conn.ExecuteAsync(
+        new CommandDefinition(
+          "DELETE FROM logistica.PhysicalCountSessionMaterial WHERE SessionId = @SessionId;",
           new { SessionId = sessionId },
           tx,
           cancellationToken: ct));
@@ -1134,7 +1464,6 @@ public sealed class PhysicalCountService : IPhysicalCountService
                 CapturedBy = NULL
             WHERE Id = @LineId
               AND SessionId = @SessionId;
-            UPDATE logistica.PhysicalCountLotLine SET CountedQuantity=NULL WHERE PhysicalCountLineId=@LineId;
             """,
             new
             {
@@ -1312,6 +1641,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
               line.LocationId,
               CAST(line.ExpectedQuantity AS decimal(18,4)) AS ExpectedQuantity,
               CAST(line.CountedQuantity AS decimal(18,4)) AS CountedQuantity,
+              CAST(stockBalance.Quantity AS decimal(18,4)) AS SystemQuantity,
               CAST(stockBalance.ReservedQuantity AS decimal(18,4)) AS ReservedQuantity
           FROM logistica.PhysicalCountLine line
           JOIN logistica.StockBalance stockBalance ON stockBalance.Rfc=line.Rfc AND stockBalance.Id=line.StockBalanceId
@@ -1335,28 +1665,63 @@ public sealed class PhysicalCountService : IPhysicalCountService
 
       var safePostedBy = string.IsNullOrWhiteSpace(postedBy) ? "OrionERP" : postedBy.Trim();
 
+      // Si la existencia del sistema ya no coincide con la que se fotografió al abrir el conteo,
+      // hubo movimientos (compras, consumos, traspasos) mientras se contaba. El post sigue
+      // sobrescribiendo con lo contado, pero el delta del kardex debe medirse contra la
+      // existencia real y hay que avisar para que se revise si esos movimientos ya estaban
+      // reflejados en el conteo físico.
+      var driftedLines = lines.Count(line => PhysicalCountVarianceMath.MovedDuringCount(line.ExpectedQuantity, line.SystemQuantity));
+
       foreach (var line in lines)
       {
         var countedQuantity = line.CountedQuantity ?? 0m;
-        var lotLines = (await conn.QueryAsync<LotPostingRow>(new CommandDefinition(
+        var lineDrifted = PhysicalCountVarianceMath.MovedDuringCount(line.ExpectedQuantity, line.SystemQuantity);
+        // El conteo se captura como total de la línea, sin desglose por lote. Si el material
+        // arrastra saldos de lote de etapas anteriores, la diferencia se reparte por FEFO para
+        // que la suma de los lotes siga cuadrando con la existencia contabilizada.
+        var lotBalances = (await conn.QueryAsync<LotPostingRow>(new CommandDefinition(
           """
-          SELECT countLot.MaterialLotId,countLot.CountedQuantity,lotBalance.ReservedQuantity
-          FROM logistica.PhysicalCountLotLine countLot
-          JOIN logistica.LotBalance lotBalance
-            ON lotBalance.Rfc=countLot.Rfc AND lotBalance.MaterialLotId=countLot.MaterialLotId AND lotBalance.LocationId=@LocationId
-          WHERE countLot.PhysicalCountLineId=@LineId;
-          """, new { LineId = line.Id, line.LocationId }, tx, cancellationToken: ct))).AsList();
-        if (lotLines.Any(lot => !lot.CountedQuantity.HasValue || lot.CountedQuantity < lot.ReservedQuantity))
+          SELECT lotBalance.MaterialLotId,
+                 CAST(lotBalance.Quantity AS decimal(18,4)) AS Quantity,
+                 CAST(lotBalance.ReservedQuantity AS decimal(18,4)) AS ReservedQuantity
+          FROM logistica.LotBalance lotBalance WITH (UPDLOCK,HOLDLOCK)
+          JOIN logistica.MaterialLot materialLot
+            ON materialLot.Rfc=lotBalance.Rfc AND materialLot.Id=lotBalance.MaterialLotId
+          WHERE lotBalance.MaterialId=@MaterialId AND lotBalance.LocationId=@LocationId
+          ORDER BY CASE WHEN materialLot.ExpiresAt IS NULL THEN 1 ELSE 0 END,materialLot.ExpiresAt,materialLot.Id;
+          """, new { line.MaterialId, line.LocationId }, tx, cancellationToken: ct))).AsList();
+        if (lotBalances.Count > 0)
         {
-          await tx.RollbackAsync(ct);
-          return LogisticsCommandResult.Fail("Todos los lotes deben estar contados y conservar su cantidad reservada.");
+          var pendingLotDelta = countedQuantity - lotBalances.Sum(lot => lot.Quantity);
+          if (pendingLotDelta < 0m)
+          {
+            foreach (var lot in lotBalances)
+            {
+              if (pendingLotDelta >= 0m) break;
+              var reducible = Math.Min(lot.Quantity - lot.ReservedQuantity, -pendingLotDelta);
+              if (reducible <= 0m) continue;
+              lot.Quantity -= reducible;
+              pendingLotDelta += reducible;
+            }
+            if (pendingLotDelta < -0.0001m)
+            {
+              await tx.RollbackAsync(ct);
+              return LogisticsCommandResult.Fail("No se puede contabilizar una cantidad menor que la existencia reservada.");
+            }
+          }
+          else if (pendingLotDelta > 0m)
+          {
+            lotBalances[^1].Quantity += pendingLotDelta;
+          }
+
+          foreach (var lot in lotBalances)
+            await conn.ExecuteAsync(new CommandDefinition(
+              """
+              UPDATE logistica.LotBalance SET Quantity=@Quantity,UpdatedAt=SYSUTCDATETIME()
+              WHERE MaterialLotId=@MaterialLotId AND LocationId=@LocationId;
+              """, new { lot.Quantity, lot.MaterialLotId, line.LocationId }, tx, cancellationToken: ct));
         }
-        foreach (var lot in lotLines)
-          await conn.ExecuteAsync(new CommandDefinition(
-            """
-            UPDATE logistica.LotBalance SET Quantity=@CountedQuantity,UpdatedAt=SYSUTCDATETIME()
-            WHERE MaterialLotId=@MaterialLotId AND LocationId=@LocationId;
-            """, new { CountedQuantity = lot.CountedQuantity!.Value, lot.MaterialLotId, line.LocationId }, tx, cancellationToken: ct));
+
         await conn.ExecuteAsync(
           new CommandDefinition(
             """
@@ -1410,10 +1775,12 @@ public sealed class PhysicalCountService : IPhysicalCountService
               line.StockBalanceId,
               line.LocationId,
               line.MaterialId,
-              QuantityDelta = countedQuantity - line.ExpectedQuantity,
+              QuantityDelta = PhysicalCountVarianceMath.PostingDelta(countedQuantity, line.SystemQuantity),
               QuantityAfter = countedQuantity,
               ReferenceId = sessionId,
-              Notes = $"Conteo físico contabilizado desde sesión {sessionId}.",
+              Notes = lineDrifted
+                ? $"Conteo físico contabilizado desde sesión {sessionId}. Existencia esperada al abrir el conteo: {line.ExpectedQuantity:0.####}; existencia del sistema al contabilizar: {line.SystemQuantity:0.####} (hubo movimientos durante el conteo)."
+                : $"Conteo físico contabilizado desde sesión {sessionId}.",
               PerformedBy = safePostedBy
             },
             tx,
@@ -1438,7 +1805,11 @@ public sealed class PhysicalCountService : IPhysicalCountService
           cancellationToken: ct));
 
       await tx.CommitAsync(ct);
-      return LogisticsCommandResult.Ok("Sesión contabilizada correctamente.", sessionId);
+      return driftedLines == 0
+        ? LogisticsCommandResult.Ok("Sesión contabilizada correctamente.", sessionId)
+        : LogisticsCommandResult.Ok(
+            $"Sesión contabilizada. Atención: {driftedLines} línea(s) tuvieron movimientos de inventario (compras, consumos o traspasos) mientras se contaba. Verifica que esos movimientos ya estuvieran reflejados en el conteo físico; si no, solicita un reconteo de esos materiales.",
+            sessionId);
     }
     catch
     {
@@ -1454,18 +1825,33 @@ public sealed class PhysicalCountService : IPhysicalCountService
       SELECT
           s.Id,
           s.SessionCode,
+          s.ScopeType,
           l.LocationName,
           room.ROOM_NAME AS RoomName,
+          scope.MaterialCount,
+          scope.PrimaryMaterialLabel,
+          COUNT(DISTINCT line.LocationId) AS LocationCount,
           activePlan.RequestedAt AS RecountRequestedAt,
           activePlan.RequestedBy AS RecountRequestedBy,
           COUNT(line.Id) AS LineCount,
           COUNT(activePlanLine.Id) AS RecountLineCount,
           COALESCE(STRING_AGG(CONVERT(varchar(max), activePlanLine.IssueCode), ', '), '') AS IssueSummary
       FROM logistica.PhysicalCountSession s
-      JOIN logistica.Location l
+      LEFT JOIN logistica.Location l
         ON l.Id = s.LocationId
       LEFT JOIN dbo.ROOM room
         ON room.ID = l.RoomId
+      OUTER APPLY
+      (
+          SELECT
+              COUNT(*) AS MaterialCount,
+              MIN(CONCAT(material.MaterialCode, ' · ', material.[Description])) AS PrimaryMaterialLabel
+          FROM logistica.PhysicalCountSessionMaterial sessionMaterial
+          JOIN logistica.Material material
+            ON material.Rfc = sessionMaterial.Rfc
+           AND material.Id = sessionMaterial.MaterialId
+          WHERE sessionMaterial.SessionId = s.Id
+      ) scope
       JOIN logistica.PhysicalCountRecountPlan activePlan
         ON activePlan.SessionId = s.Id
        AND activePlan.CompletedAt IS NULL
@@ -1478,8 +1864,11 @@ public sealed class PhysicalCountService : IPhysicalCountService
       GROUP BY
           s.Id,
           s.SessionCode,
+          s.ScopeType,
           l.LocationName,
           room.ROOM_NAME,
+          scope.MaterialCount,
+          scope.PrimaryMaterialLabel,
           activePlan.RequestedAt,
           activePlan.RequestedBy
       ORDER BY activePlan.RequestedAt DESC, s.Id DESC;
@@ -1572,13 +1961,15 @@ public sealed class PhysicalCountService : IPhysicalCountService
     public int LocationId { get; set; }
     public decimal ExpectedQuantity { get; set; }
     public decimal? CountedQuantity { get; set; }
+    /// <summary>Existencia real en el momento de contabilizar (puede diferir de <see cref="ExpectedQuantity"/> si hubo movimientos durante el conteo).</summary>
+    public decimal SystemQuantity { get; set; }
     public decimal ReservedQuantity { get; set; }
   }
 
   private sealed class LotPostingRow
   {
     public long MaterialLotId { get; set; }
-    public decimal? CountedQuantity { get; set; }
+    public decimal Quantity { get; set; }
     public decimal ReservedQuantity { get; set; }
   }
 }

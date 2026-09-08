@@ -105,6 +105,10 @@ public static class RestaurantSaleRequirementCalculator
 {
   private const int MaximumBomDepth = 32;
 
+  /// <summary>
+  /// Calcula el consumo de materiales de una venta. <paramref name="modifierOptionIds"/> es un multiconjunto:
+  /// repetir un id significa que esa opción se pidió más de una vez y sus efectos se multiplican por igual.
+  /// </summary>
   public static RestaurantSaleRequirementCalculation Calculate(
     RestaurantSaleRequirementGraph graph,
     int rootMaterialId,
@@ -135,7 +139,10 @@ public static class RestaurantSaleRequirementCalculator
 
     if (modifierOptionIds is { Count: > 0 })
     {
-      var selectedEffects = graph.ModifierDeltas.Where(delta => modifierOptionIds.Contains(delta.OptionId)).ToList();
+      var selectedCounts = modifierOptionIds
+        .GroupBy(optionId => optionId)
+        .ToDictionary(group => group.Key, group => group.Count());
+      var selectedEffects = graph.ModifierDeltas.Where(delta => selectedCounts.ContainsKey(delta.OptionId)).ToList();
       foreach (var effect in selectedEffects.Where(effect =>
                  RestaurantModifierEffectKinds.Normalize(effect.EffectKind) == RestaurantModifierEffectKinds.RemoveIngredient))
       {
@@ -166,7 +173,7 @@ public static class RestaurantSaleRequirementCalculator
           state.AddIssue("MODIFIER_CONVERSION_MISSING", "Falta una conversión para los ingredientes de un modificador.", material.Id, $"Modificador > {MaterialLabel(material)}");
           continue;
         }
-        state.AddRequirement(material, delta.QuantityDelta * factor.Value * quantity, $"Modificador > {MaterialLabel(material)}", 0);
+        state.AddRequirement(material, delta.QuantityDelta * factor.Value * quantity * selectedCounts[delta.OptionId], $"Modificador > {MaterialLabel(material)}", 0);
       }
     }
 

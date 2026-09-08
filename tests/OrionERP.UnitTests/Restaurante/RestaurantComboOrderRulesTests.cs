@@ -96,4 +96,25 @@ public sealed class RestaurantComboOrderRulesTests
     Assert.Equal("SIN Pollo", RestaurantComboOrderRules.FormatModifierInstruction(snapshots[0]));
     Assert.Equal("AGREGAR Carne", RestaurantComboOrderRules.FormatModifierInstruction(snapshots[1]));
   }
+
+  [Fact]
+  public void FormatModifierInstruction_AnnouncesRepeatedOptionsButNeverRepeatsARemoval()
+  {
+    var modifier = new RestaurantModifierSnapshotInput(
+      44,
+      "Extras",
+      "Pollo extra",
+      35m,
+      [
+        new RestaurantModifierEffectSnapshotInput("Cebolla", RestaurantModifierEffectKinds.RemoveIngredient),
+        new RestaurantModifierEffectSnapshotInput("Pollo", RestaurantModifierEffectKinds.AddQuantity)
+      ],
+      Quantity: 3);
+
+    var snapshots = RestaurantComboOrderRules.ExpandModifierSnapshot(modifier);
+
+    Assert.All(snapshots, snapshot => Assert.Equal(3, snapshot.Quantity));
+    Assert.Equal("SIN Cebolla", RestaurantComboOrderRules.FormatModifierInstruction(snapshots[0]));
+    Assert.Equal("3× AGREGAR Pollo", RestaurantComboOrderRules.FormatModifierInstruction(snapshots[1]));
+  }
 }

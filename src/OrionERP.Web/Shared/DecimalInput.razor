@@ -1,0 +1,127 @@
+@typeparam TValue
+@using System.Globalization
+@using System.Linq.Expressions
+
+@* Captura decimal tolerante: conserva lo que el usuario teclea (incluido el punto intermedio)
+   en lugar de dejar que el navegador limpie el campo numérico nativo a media captura. *@
+<input @attributes="AdditionalAttributes"
+       type="text"
+       inputmode="decimal"
+       autocomplete="off"
+       spellcheck="false"
+       value="@Text"
+       @oninput="OnInput"
+       @onfocus="OnFocus"
+       @onblur="OnBlur" />
+
+@code {
+  private const string DefaultFormat = "0.######";
+
+  private static readonly bool AllowsNull = Nullable.GetUnderlyingType(typeof(TValue)) is not null;
+  private static readonly Type SupportedType = Nullable.GetUnderlyingType(typeof(TValue)) ?? typeof(TValue);
+
+  private string Text = string.Empty;
+  private bool IsEditing;
+
+  [Parameter(CaptureUnmatchedValues = true)]
+  public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
+
+  [Parameter] public TValue Value { get; set; } = default!;
+
+  [Parameter] public EventCallback<TValue> ValueChanged { get; set; }
+
+  [Parameter] public Expression<Func<TValue>>? ValueExpression { get; set; }
+
+  /// <summary>Formato usado al mostrar el valor; solo aplica cuando el campo no está en edición.</summary>
+  [Parameter] public string Format { get; set; } = DefaultFormat;
+
+  private decimal? CurrentValue => Value is decimal value ? value : null;
+
+  protected override void OnInitialized()
+  {
+    if (SupportedType != typeof(decimal))
+    {
+      throw new InvalidOperationException("DecimalInput solo admite valores decimal o decimal?.");
+    }
+  }
+
+  protected override void OnParametersSet()
+  {
+    if (IsEditing)
+    {
+      return;
+    }
+
+    Text = FormatValue(CurrentValue);
+  }
+
+  private void OnFocus() => IsEditing = true;
+
+  private Task OnInput(ChangeEventArgs args)
+  {
+    IsEditing = true;
+    Text = args.Value?.ToString() ?? string.Empty;
+
+    return TryParseDecimal(Text, out var parsed)
+      ? EmitAsync(parsed)
+      : Task.CompletedTask;
+  }
+
+  private async Task OnBlur()
+  {
+    IsEditing = false;
+
+    if (TryParseDecimal(Text, out var parsed))
+    {
+      await EmitAsync(parsed);
+    }
+
+    Text = FormatValue(CurrentValue);
+  }
+
+  private async Task EmitAsync(decimal? parsed)
+  {
+    var next = ConvertToValue(parsed);
+    if (EqualityComparer<TValue>.Default.Equals(next, Value))
+    {
+      return;
+    }
+
+    Value = next;
+    await ValueChanged.InvokeAsync(next);
+  }
+
+  private string FormatValue(decimal? value)
+    => value?.ToString(string.IsNullOrWhiteSpace(Format) ? DefaultFormat : Format, CultureInfo.InvariantCulture)
+      ?? string.Empty;
+
+  private static TValue ConvertToValue(decimal? parsed)
+    => parsed is null && AllowsNull
+      ? default!
+      : (TValue)(object)(parsed ?? 0m);
+
+  private static bool TryParseDecimal(string? text, out decimal? value)
+  {
+    var trimmed = text?.Trim();
+    if (string.IsNullOrEmpty(trimmed))
+    {
+      value = null;
+      return true;
+    }
+
+    if (decimal.TryParse(trimmed, NumberStyles.Number, CultureInfo.InvariantCulture, out var invariantValue))
+    {
+      value = invariantValue;
+      return true;
+    }
+
+    if (decimal.TryParse(trimmed, NumberStyles.Number, CultureInfo.CurrentCulture, out var currentCultureValue))
+    {
+      value = currentCultureValue;
+      return true;
+    }
+
+    value = null;
+    return false;
+  }
+}

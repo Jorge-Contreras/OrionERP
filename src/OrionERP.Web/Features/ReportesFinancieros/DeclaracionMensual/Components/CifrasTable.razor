@@ -1,0 +1,79 @@
+@using OrionERP.Application.Features.ReportesFinancieros.Models
+
+@*
+    Un bloque del formato del SAT (ISR o IVA) con sus tres columnas.
+
+    El orden de los renglones es el del acuse, no uno "logico": quien captura
+    va bajando por la pantalla del portal y necesita encontrarlos en la misma
+    secuencia. Por eso tambien el boton de copiar entrega pesos enteros, que es
+    como los pide el formulario.
+*@
+
+<h3 class="report-panel__title">@Titulo</h3>
+
+<div class="table-responsive report-table-shell">
+    <table class="table table-sm table-bordered compact-table report-table">
+        <thead class="table-light">
+            <tr>
+                <th scope="col">Concepto</th>
+                <th scope="col" class="num">SAT</th>
+                <th scope="col" class="num">Nuestro</th>
+                <th scope="col" class="num">Declarado</th>
+                <th scope="col" class="num">Dif. SAT</th>
+                <th scope="col">Estado</th>
+                <th scope="col" class="no-print"><span class="visually-hidden">Copiar</span></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var fila in Filas)
+            {
+                <tr class="@FilaClase(fila.Estado)">
+                    <th scope="row" class="@(fila.EsTotal ? "fw-bold" : "fw-normal")">@fila.Concepto</th>
+                    <td class="num">@Formatear(fila, fila.ValorSat)</td>
+                    <td class="num @(fila.EsTotal ? "fw-bold" : null)">@Formatear(fila, fila.ValorNuestro)</td>
+                    <td class="num">@Formatear(fila, fila.ValorDeclarado)</td>
+                    <td class="num">@Diferencia(fila)</td>
+                    <td><span class="@PillClase(fila.Estado)">@fila.Estado</span></td>
+                    <td class="no-print">
+                        @if (!fila.EsTasa && fila.ValorNuestro is not null)
+                        {
+                            <button type="button" class="btn btn-sm btn-link p-0"
+                                    title="Copiar en pesos enteros"
+                                    @onclick="() => OnCopiar.InvokeAsync(fila.ValorNuestro)">
+                                <i class="bi bi-clipboard"></i>
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Titulo { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public IReadOnlyList<DeclaracionRenglonRow> Filas { get; set; } = [];
+    [Parameter] public EventCallback<decimal?> OnCopiar { get; set; }
+
+    private static readonly System.Globalization.CultureInfo Mx =
+        System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+
+    private static string Formatear(DeclaracionRenglonRow fila, decimal? valor) =>
+        valor is null ? "—" : valor.Value.ToString(fila.EsTasa ? "0.0000" : "N2", Mx);
+
+    private static string Diferencia(DeclaracionRenglonRow fila) =>
+        fila.DifSatNuestro is null || fila.DifSatNuestro == 0
+            ? string.Empty
+            : fila.DifSatNuestro.Value.ToString("N2", Mx);
+
+    private static string PillClase(string? estado) => estado switch
+    {
+        "OK" => "pill pill--ok",
+        "DIFERENCIA" => "pill pill--bad",
+        "PENDIENTE" => "pill pill--info",
+        _ => "pill pill--muted"
+    };
+
+    private static string? FilaClase(string? estado) =>
+        estado == "DIFERENCIA" ? "is-bad" : null;
+}

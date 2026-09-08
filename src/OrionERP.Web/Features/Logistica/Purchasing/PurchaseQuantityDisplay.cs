@@ -28,7 +28,13 @@ public static class PurchaseQuantityDisplay
       return displayQuantity;
     }
 
-    return displayQuantity * NormalizePurchaseQuantity(purchaseQuantity);
+    // Se redondea a la escala real de las columnas de cantidad. Con presentaciones completas el
+    // producto siempre fue exacto; al permitir fracciones evita que lo validado y lo guardado
+    // difieran en la última cifra.
+    return decimal.Round(
+      displayQuantity * NormalizePurchaseQuantity(purchaseQuantity),
+      MaterialPurchaseIncrement.QuantityScale,
+      MidpointRounding.AwayFromZero);
   }
 
   public static string FormatQuantity(

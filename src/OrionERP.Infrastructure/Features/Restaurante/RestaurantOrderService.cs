@@ -242,7 +242,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           throw new InvalidOperationException("La cantidad de cada producto debe ser mayor que cero.");
         }
         ProductRow? product = null;
-        List<ModifierRow> modifiers;
+        List<PricedModifier> modifiers;
         string productName;
         string sku;
         decimal unitPrice;
@@ -276,7 +276,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           var isCombo = string.Equals(product.ProductKind, RestaurantProductKinds.Combo, StringComparison.OrdinalIgnoreCase);
           modifiers = isCombo
             ? []
-            : modifierRows.Where(item => item.ProductId == productId && line.ModifierOptionIds.Contains(item.Id)).ToList();
+            : SelectModifiers(productId, line.ModifierOptionIds, modifierRows);
           productName = string.IsNullOrWhiteSpace(product.VariantName)
             ? product.Name
             : $"{product.Name} · {product.VariantName}";
@@ -291,7 +291,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           }
           else
           {
-            unitPrice = product.Price + modifiers.Sum(item => item.PriceDelta);
+            unitPrice = product.Price + modifiers.Sum(item => item.Option.PriceDelta * item.Quantity);
           }
           gross = decimal.Round(unitPrice * line.Quantity, 2, MidpointRounding.AwayFromZero);
         }
@@ -351,6 +351,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           IsCustom = pricedLine.IsCustom
         }).ToList()
       };
+      var normalizedPromotionCode = RestaurantPromotionEngine.NormalizeCode(request.PromotionCode);
       RestaurantPromotionQuoteDto promotionQuote;
       if (promotionsEnabled)
       {
@@ -361,15 +362,39 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           request.SiteId,
           member?.Id,
           request.PromotionCode,
-          includeInactive: false,
+          includeInactive: normalizedPromotionCode is not null,
           ct);
         promotionQuote = RestaurantPromotionEngine.Quote(promotionRequest, definitions, localNow);
+        if (normalizedPromotionCode is not null && !promotionQuote.CodeAccepted)
+        {
+          promotionQuote = await RestaurantPromotionService.ExplainCodeRejectionAsync(
+            conn,
+            tx,
+            rfc,
+            request.SiteId,
+            normalizedPromotionCode,
+            promotionQuote,
+            ct);
+        }
       }
       else
       {
         promotionQuote = RestaurantPromotionEngine.Quote(promotionRequest, [], localNow);
+        if (normalizedPromotionCode is not null)
+        {
+          promotionQuote = RestaurantPromotionEngine.DescribeRejections(
+            promotionQuote,
+            [
+              new RestaurantPromotionCodeRejectionDto
+              {
+                Reason = RestaurantPromotionRejectionReasons.PromotionsDisabled,
+                Detail = "Las promociones están deshabilitadas para esta sede.",
+                Fix = "Un supervisor debe activarlas en la configuración de la sede."
+              }
+            ]);
+        }
       }
-      if (!string.IsNullOrWhiteSpace(request.PromotionCode) && !promotionQuote.CodeAccepted)
+      if (normalizedPromotionCode is not null && !promotionQuote.CodeAccepted)
       {
         throw new InvalidOperationException(promotionQuote.Message ?? "El código promocional no es elegible.");
       }
@@ -1944,34 +1969,48 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       """
       SELECT TOP (1) menuInfo.Id
       FROM restaurante.Menu menuInfo
-      LEFT JOIN restaurante.MenuSchedule scheduleInfo
-        ON scheduleInfo.Rfc=menuInfo.Rfc
-       AND scheduleInfo.MenuId=menuInfo.Id
-       AND scheduleInfo.SiteId=@SiteId
+      OUTER APPLY
+      (
+        SELECT TOP (1) CAST(1 AS bit) AS HasAny
+        FROM restaurante.MenuSchedule anySchedule
+        WHERE anySchedule.Rfc=menuInfo.Rfc
+          AND anySchedule.MenuId=menuInfo.Id
+      ) scheduleInventory
+      OUTER APPLY
+      (
+        SELECT TOP (1) CAST(1 AS bit) AS IsActiveNow
+        FROM restaurante.MenuSchedule currentSchedule
+        WHERE currentSchedule.Rfc=menuInfo.Rfc
+          AND currentSchedule.MenuId=menuInfo.Id
+          AND currentSchedule.SiteId=@SiteId
+          AND
+          (
+            (currentSchedule.DayOfWeek=@DayOfWeek AND
+              (
+                (currentSchedule.StartsAt<currentSchedule.EndsAt AND
+                  @LocalTime>=currentSchedule.StartsAt AND @LocalTime<currentSchedule.EndsAt)
+                OR
+                (currentSchedule.StartsAt>currentSchedule.EndsAt AND
+                  @LocalTime>=currentSchedule.StartsAt)
+              ))
+            OR
+            (currentSchedule.DayOfWeek=@PreviousDayOfWeek AND
+              currentSchedule.StartsAt>currentSchedule.EndsAt AND
+              @LocalTime<currentSchedule.EndsAt)
+          )
+      ) currentScheduleMatch
       WHERE menuInfo.Rfc=@Rfc
         AND menuInfo.IsActive=1
         AND menuInfo.IsPublished=1
-        AND
-        (
-          scheduleInfo.Id IS NULL
-          OR
-          (
-            scheduleInfo.DayOfWeek=@DayOfWeek
-            AND
-            (
-              (scheduleInfo.StartsAt<scheduleInfo.EndsAt AND @LocalTime>=scheduleInfo.StartsAt AND @LocalTime<scheduleInfo.EndsAt)
-              OR
-              (scheduleInfo.StartsAt>scheduleInfo.EndsAt AND (@LocalTime>=scheduleInfo.StartsAt OR @LocalTime<scheduleInfo.EndsAt))
-            )
-          )
-        )
-      ORDER BY CASE WHEN scheduleInfo.Id IS NULL THEN 1 ELSE 0 END,menuInfo.Id;
+        AND (scheduleInventory.HasAny IS NULL OR currentScheduleMatch.IsActiveNow=1)
+      ORDER BY CASE WHEN currentScheduleMatch.IsActiveNow=1 THEN 0 ELSE 1 END,menuInfo.Id;
       """,
       new
       {
         Rfc = rfc,
         SiteId = siteId,
         DayOfWeek = (byte)localNow.DayOfWeek,
+        PreviousDayOfWeek = (byte)(((int)localNow.DayOfWeek + 6) % 7),
         LocalTime = localNow.TimeOfDay
       },
       tx,
@@ -2237,18 +2276,14 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     }
   }
 
-  private static List<ModifierRow> ValidateProductModifierSelection(
+  private static List<PricedModifier> ValidateProductModifierSelection(
     long productId,
     IReadOnlyList<long> selectedOptionIds,
     IReadOnlyList<ModifierRow> modifierRows,
     string context)
   {
-    if (selectedOptionIds.Count != selectedOptionIds.Distinct().Count())
-    {
-      throw new InvalidOperationException($"No se puede repetir el mismo modificador en {context}.");
-    }
     var productModifiers = modifierRows.Where(row => row.ProductId == productId).ToList();
-    foreach (var optionId in selectedOptionIds)
+    foreach (var optionId in selectedOptionIds.Distinct())
     {
       if (productModifiers.All(row => row.Id != optionId))
       {
@@ -2257,7 +2292,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     }
     foreach (var group in productModifiers.GroupBy(row => row.ModifierGroupId))
     {
-      var selected = group.Count(row => selectedOptionIds.Contains(row.Id));
+      var groupOptionIds = group.Select(row => row.Id).ToHashSet();
+      var selected = selectedOptionIds.Count(groupOptionIds.Contains);
       var definition = group.First();
       if (selected < definition.MinSelections || selected > definition.MaxSelections)
       {
@@ -2265,8 +2301,18 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           $"El grupo {definition.GroupName} requiere entre {definition.MinSelections} y {definition.MaxSelections} opciones para {context}.");
       }
     }
-    return productModifiers.Where(row => selectedOptionIds.Contains(row.Id)).ToList();
+    return SelectModifiers(productId, selectedOptionIds, modifierRows);
   }
+
+  /// <summary>Cada repetición de un id en la selección cuenta como una unidad más de esa opción.</summary>
+  private static List<PricedModifier> SelectModifiers(
+    long productId,
+    IReadOnlyList<long> selectedOptionIds,
+    IReadOnlyList<ModifierRow> modifierRows)
+    => modifierRows
+      .Where(row => row.ProductId == productId && selectedOptionIds.Contains(row.Id))
+      .Select(row => new PricedModifier(row, selectedOptionIds.Count(optionId => optionId == row.Id)))
+      .ToList();
 
   private static async Task<InventoryRequirementPlan> BuildRequirementsAsync(
     DbConnection conn,
@@ -2278,7 +2324,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   {
     var selectedOptionIds = lines
       .SelectMany(line => line.Modifiers.Concat(line.ComboComponents.SelectMany(component => component.Modifiers)))
-      .Select(modifier => modifier.Id)
+      .Select(modifier => modifier.Option.Id)
       .Distinct()
       .ToArray();
     var graph = await RestaurantRequirementGraphLoader.LoadAsync(conn, tx, rfc, selectedOptionIds, ct);
@@ -2324,7 +2370,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   private static void AddProductRequirements(
     ProductRow product,
     decimal quantity,
-    IReadOnlyList<ModifierRow> modifiers,
+    IReadOnlyList<PricedModifier> modifiers,
     RestaurantSaleRequirementGraph graph,
     IDictionary<int, decimal> requirements,
     ICollection<string> overrideReasons,
@@ -2345,7 +2391,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       product.MaterialId.Value,
       product.Sku,
       quantity,
-      modifiers.Select(modifier => modifier.Id).ToArray());
+      modifiers.SelectMany(modifier => Enumerable.Repeat(modifier.Option.Id, modifier.Quantity)).ToArray());
     var issue = calculation.Issues.FirstOrDefault();
     if (issue is not null)
     {
@@ -2701,26 +2747,27 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     DbTransaction tx,
     string rfc,
     long orderLineId,
-    ModifierRow modifier,
+    PricedModifier modifier,
     CancellationToken ct)
     => conn.ExecuteAsync(new CommandDefinition(
       """
       INSERT INTO restaurante.OrderLineModifier
         (Rfc,OrderLineId,ModifierOptionId,[Name],PriceDelta,Quantity,ModifierGroupNameSnapshot,EffectKind)
       VALUES
-        (@Rfc,@OrderLineId,@ModifierOptionId,@Name,@PriceDelta,1,@GroupName,@EffectKind);
+        (@Rfc,@OrderLineId,@ModifierOptionId,@Name,@PriceDelta,@Quantity,@GroupName,@EffectKind);
       """,
       new
       {
         Rfc = rfc,
         OrderLineId = orderLineId,
-        ModifierOptionId = modifier.Id,
-        modifier.Name,
-        modifier.PriceDelta,
-        GroupName = modifier.GroupName,
-        EffectKind = string.IsNullOrWhiteSpace(modifier.EffectKind)
+        ModifierOptionId = modifier.Option.Id,
+        modifier.Option.Name,
+        modifier.Option.PriceDelta,
+        modifier.Quantity,
+        GroupName = modifier.Option.GroupName,
+        EffectKind = string.IsNullOrWhiteSpace(modifier.Option.EffectKind)
           ? RestaurantModifierEffectKinds.AdjustQuantity
-          : modifier.EffectKind
+          : modifier.Option.EffectKind
       },
       tx,
       cancellationToken: ct));
@@ -2742,7 +2789,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     => new(
       component.OptionPriceDelta,
       component.OptionQuantity,
-      component.Modifiers.Select(modifier => modifier.PriceDelta).ToArray());
+      component.Modifiers.SelectMany(modifier => Enumerable.Repeat(modifier.Option.PriceDelta, modifier.Quantity)).ToArray());
 
   private static async Task PersistPromotionSnapshotsAsync(
     DbConnection conn,
@@ -2789,16 +2836,16 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           },
           tx,
           cancellationToken: ct))
-          ?? throw new InvalidOperationException("El código promocional dejó de estar disponible.");
+          ?? throw new InvalidOperationException($"El código {adjustment.Code} de «{adjustment.PromotionName}» se desactivó mientras se cobraba la orden.");
         if (code.GlobalLimit.HasValue && code.RedemptionCount >= code.GlobalLimit.Value)
         {
-          throw new InvalidOperationException("El código promocional alcanzó su límite global.");
+          throw new InvalidOperationException($"El código {adjustment.Code} alcanzó su tope de {code.GlobalLimit.Value} usos mientras se cobraba la orden.");
         }
         if (code.PerMemberLimit.HasValue)
         {
           if (!memberId.HasValue)
           {
-            throw new InvalidOperationException("El código requiere una membresía verificada.");
+            throw new InvalidOperationException($"El código {adjustment.Code} permite {code.PerMemberLimit.Value} canje(s) por socio y la orden no tiene membresía vinculada.");
           }
           var memberUses = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
             """
@@ -2810,7 +2857,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             cancellationToken: ct));
           if (memberUses >= code.PerMemberLimit.Value)
           {
-            throw new InvalidOperationException("La membresía ya alcanzó el límite de este código.");
+            throw new InvalidOperationException($"Este socio ya canjeó {adjustment.Code} {memberUses} de {code.PerMemberLimit.Value} vez(veces) permitida(s).");
           }
         }
         var codeUpdated = await conn.ExecuteAsync(new CommandDefinition(
@@ -2825,7 +2872,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           cancellationToken: ct));
         if (codeUpdated != 1)
         {
-          throw new InvalidOperationException("El código promocional alcanzó su límite mientras se cobraba la orden.");
+          throw new InvalidOperationException($"El código {adjustment.Code} alcanzó su límite mientras se cobraba la orden.");
         }
         codeId = code.Id;
       }
@@ -3099,7 +3146,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     string LineKey,
     RestaurantOrderLineCreateRequest Request,
     ProductRow? Product,
-    List<ModifierRow> Modifiers,
+    List<PricedModifier> Modifiers,
     string ProductName,
     string Sku,
     decimal UnitPrice,
@@ -3118,7 +3165,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     ProductRow Product,
     decimal OptionQuantity,
     decimal OptionPriceDelta,
-    List<ModifierRow> Modifiers,
+    List<PricedModifier> Modifiers,
     string? Notes,
     long MenuSectionId,
     string MenuSectionName,
@@ -3184,6 +3231,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     public string? EffectKind { get; set; }
     public List<ModifierEffectSnapshot> Effects { get; set; } = [];
   }
+  /// <summary>Opción elegida y cuántas veces se pidió; el máximo del grupo es un presupuesto de selecciones.</summary>
+  private sealed record PricedModifier(ModifierRow Option, int Quantity);
   private sealed record ModifierEffectSnapshot(string Name, string EffectKind);
   private sealed class ModifierEffectRow
   {

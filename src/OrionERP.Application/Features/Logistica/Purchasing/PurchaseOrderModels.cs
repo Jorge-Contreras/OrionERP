@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Shared;
 
 namespace OrionERP.Application.Features.Logistica.Purchasing;
@@ -95,11 +96,11 @@ public sealed class PurchaseOrderLineDto
   public string? BaseUnitName { get; set; }
   public decimal PurchaseQuantity { get; set; } = 1m;
   public string? PurchaseUnitName { get; set; }
+  public decimal PurchaseIncrement { get; set; } = MaterialPurchaseIncrement.WholePresentation;
   public decimal? BaseUnitPrice { get; set; }
   public decimal OrderedQuantity { get; set; }
   public decimal ReceivedQuantity { get; set; }
   public decimal RemainingQuantity { get; set; }
-  public bool RequiresLot { get; set; }
   public IReadOnlyList<PurchaseOrderAllocationDto> Allocations { get; set; } = Array.Empty<PurchaseOrderAllocationDto>();
 }
 
@@ -191,6 +192,13 @@ public sealed class PurchaseOrderLineUpsertRequest
   [StringLength(50)]
   public string? PurchaseUnitNameSnapshot { get; set; }
 
+  /// <summary>
+  /// Escalón de compra congelado al capturar la orden. En <c>null</c> se toma el del material, que es
+  /// lo que debe pasar cuando quien arma la orden no lo conoce. Ver <see cref="MaterialPurchaseIncrement"/>.
+  /// </summary>
+  [Range(typeof(decimal), "0", "999999999", ErrorMessage = "El escalón de compra no puede ser negativo.")]
+  public decimal? PurchaseIncrementSnapshot { get; set; }
+
   public List<PurchaseOrderAllocationUpsertRequest> Allocations { get; set; } = [];
 }
 
@@ -231,11 +239,6 @@ public sealed class PurchaseReceiptLineCreateRequest
   public decimal TotalAmount { get; set; }
 
   public bool IncludesIva { get; set; }
-
-  [StringLength(80)]
-  public string? LotCode { get; set; }
-
-  public DateTime? ExpiresAt { get; set; }
 }
 
 public sealed class PurchaseOrderCatalogDto

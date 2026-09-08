@@ -502,6 +502,7 @@ VALUES
   (N'REPORTES-FINANCIEROS', N'OPERAR', 3, 2, N'ENLACE', N'Abrir balanza de comprobación', N'/ReportesFinancieros/BalanzaComprobacion', N'Acceso local a la balanza de comprobación del periodo.'),
   (N'REPORTES-FINANCIEROS', N'OPERAR', 3, 3, N'ENLACE', N'Abrir estado de pérdidas y ganancias', N'/ReportesFinancieros/EstadoPerdidasGanancias', N'Acceso local al estado de resultados del periodo.'),
   (N'REPORTES-FINANCIEROS', N'OPERAR', 3, 4, N'ENLACE', N'Abrir salud financiera', N'/ReportesFinancieros/SaludEmpresa', N'Acceso local al tablero de salud financiera.'),
+  (N'REPORTES-FINANCIEROS', N'OPERAR', 3, 5, N'ENLACE', N'Abrir declaración mensual', N'/ReportesFinancieros/DeclaracionMensual', N'Acceso local a la declaración mensual y sus conciliaciones fiscales.'),
 
   (N'LOGISTICA-COMPRAS', N'OPERAR', 3, 1, N'ENLACE', N'Abrir proveedores', N'/logistica/proveedores', N'Acceso local al catálogo de proveedores ficticios.'),
   (N'LOGISTICA-COMPRAS', N'OPERAR', 3, 2, N'ENLACE', N'Abrir compras', N'/logistica/compras', N'Acceso local a órdenes de compra y recepciones del entorno de práctica.'),

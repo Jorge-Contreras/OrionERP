@@ -56,6 +56,7 @@ public partial class BancosPage : ComponentBase, IDisposable
   [Inject] public IContabilidadRegistrosService RegistrosService { get; set; } = default!;
   [Inject] public ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
+  [Inject] public IOperationErrorPresenter Errors { get; set; } = default!;
   [Inject] public IJSRuntime JsRuntime { get; set; } = default!;
   [Inject] public NavigationManager NavManager { get; set; } = default!;
 
@@ -883,7 +884,7 @@ public partial class BancosPage : ComponentBase, IDisposable
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron crear las pólizas automáticas. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "crear las pólizas automáticas desde los movimientos bancarios"));
     }
     finally
     {

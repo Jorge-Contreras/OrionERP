@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using System.Data.Common;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
@@ -76,8 +76,10 @@ public sealed class StockService : IStockService
         ON m.Id = sb.MaterialId
       LEFT JOIN logistica.UnitOfMeasure u
         ON u.Id = m.BaseUnitId
+      LEFT JOIN logistica.MaterialVendor primaryVendor
+        ON primaryVendor.Rfc = m.Rfc AND primaryVendor.MaterialId = m.Id AND primaryVendor.IsPrimary = 1
       LEFT JOIN dbo.BusinessPartner bp
-        ON bp.Id = m.BusinessPartnerId
+        ON bp.Id = primaryVendor.BusinessPartnerId
       LEFT JOIN AttachmentCounts ac
         ON ac.LocationId = sb.LocationId
        AND ac.MaterialId = sb.MaterialId

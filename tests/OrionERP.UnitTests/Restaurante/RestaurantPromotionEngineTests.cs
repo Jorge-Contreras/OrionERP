@@ -163,6 +163,23 @@ public sealed class RestaurantPromotionEngineTests
     Assert.Equal(10m, result.PromotionDiscountTotal);
   }
 
+  [Fact]
+  public void PromotionWithoutSchedulesAppliesAtAnyDayAndHour()
+  {
+    var promotion = Promotion(RestaurantPromotionRuleTypes.PercentOff);
+    promotion.PercentOff = 10;
+    var request = QuoteRequest(Line("line", 1, 1, 100));
+
+    var beforeOpening = RestaurantPromotionEngine.Quote(
+      request, [promotion], new DateTimeOffset(2026, 8, 3, 3, 0, 0, TimeSpan.FromHours(-6)));
+    var afterClosing = RestaurantPromotionEngine.Quote(
+      request, [promotion], new DateTimeOffset(2026, 8, 9, 23, 59, 0, TimeSpan.FromHours(-6)));
+
+    Assert.Empty(promotion.Schedules);
+    Assert.Equal(10m, beforeOpening.PromotionDiscountTotal);
+    Assert.Equal(10m, afterClosing.PromotionDiscountTotal);
+  }
+
   private static RestaurantPromotionQuoteRequest QuoteRequest(params RestaurantPromotionQuoteLineRequest[] lines)
     => new()
     {

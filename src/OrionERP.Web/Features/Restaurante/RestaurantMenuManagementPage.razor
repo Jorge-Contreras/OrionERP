@@ -6,6 +6,7 @@
 @using OrionERP.Web.State
 @inject IRestaurantCatalogService CatalogService
 @inject IMaterialService MaterialService
+@inject IBomRecipeService BomService
 @inject ICurrentCompanyContext RfcState
 
 <PageTitle>Restaurante · Menús, combos y modificadores</PageTitle>
@@ -149,12 +150,12 @@
               @foreach(var delta in option.IngredientDeltas)
               {
                 <div class="menu-admin-effect-row @(delta.EffectKind==RestaurantModifierEffectKinds.RemoveIngredient?"is-removal":null)" @key="delta">
-                  <select @bind="delta.EffectKind" aria-label="Tipo de cambio"><option value="@RestaurantModifierEffectKinds.AddQuantity">Agregar ingrediente</option><option value="@RestaurantModifierEffectKinds.RemoveIngredient">Quitar ingrediente</option><option value="@RestaurantModifierEffectKinds.AdjustQuantity">Ajuste histórico</option></select>
-                  <RestaurantMaterialPicker Options="@materialOptions" @bind-Value="delta.MaterialId" Compact="true" Placeholder="Buscar ingrediente…" />
+                  <select @bind="delta.EffectKind" @bind:after="()=>SyncEffectUnit(delta)" aria-label="Tipo de cambio"><option value="@RestaurantModifierEffectKinds.AddQuantity">Agregar ingrediente</option><option value="@RestaurantModifierEffectKinds.RemoveIngredient">Quitar ingrediente</option><option value="@RestaurantModifierEffectKinds.AdjustQuantity">Ajuste histórico</option></select>
+                  <RestaurantMaterialPicker Options="@materialOptions" @bind-Value="delta.MaterialId" Changed="materialId=>SetEffectMaterial(delta,materialId)" Compact="true" Placeholder="Buscar ingrediente…" />
                   @if (delta.EffectKind != RestaurantModifierEffectKinds.RemoveIngredient)
                   {
                     <input type="number" min="@(delta.EffectKind==RestaurantModifierEffectKinds.AddQuantity?"0.0001":null)" step="0.0001" @bind="delta.QuantityDelta" @bind:event="oninput" aria-label="Cantidad" />
-                    <select @bind="delta.UnitId" aria-label="Unidad"><option value="">Unidad…</option>@foreach(var unit in materialCatalog.Units){<option value="@unit.Id">@unit.Code</option>}</select>
+                    <select @bind="delta.UnitId" aria-label="Unidad" disabled="@(delta.MaterialId<=0)"><option value="">Unidad…</option>@foreach(var unit in EffectUnitOptions(delta)){<option value="@unit.UnitId">@EffectUnitLabel(unit)</option>}</select>
                   }
                   else
                   {
@@ -182,6 +183,7 @@
   private List<RestaurantModifierAdminDto> modifiers=[];
   private List<RestaurantComboAdminDto> combos=[];
   private IReadOnlyList<RestaurantMaterialOption> materialOptions=[];
+  private List<RecipeUnitOptionDto> recipeUnitOptions=[];
   private MaterialCatalogDto materialCatalog=new();
   private RestaurantMenuSaveRequest menuEditor=NewMenuEditor();
   private RestaurantModifierSaveRequest modifierEditor=NewModifierEditor();
@@ -215,6 +217,7 @@
       var materials=await MaterialService.GetMaterialsAsync(new(){Rfc=rfc,Status="ACTIVO",Take=0});
       materialOptions=RestaurantMaterialOption.FromMaterials(materials);
       materialCatalog=await MaterialService.GetCatalogAsync(rfc);
+      recipeUnitOptions=(await BomService.GetRecipeUnitOptionsAsync(rfc)).ToList();
       if(comboEditor.ProductId>0)
       {
         var product=products.FirstOrDefault(item=>item.Id==comboEditor.ProductId);
@@ -303,8 +306,25 @@
 
   private void NewModifier(){modifierEditor=NewModifierEditor();modifierEditor.Rfc=CurrentRfc;productSearch=string.Empty;}
   private void AddOption()=>modifierEditor.Options.Add(new(){Name=$"Opción {modifierEditor.Options.Count+1}",SortOrder=modifierEditor.Options.Count});
-  private void AddEffect(RestaurantModifierOptionSaveRequest option,string effectKind)=>option.IngredientDeltas.Add(new(){EffectKind=effectKind,UnitId=effectKind==RestaurantModifierEffectKinds.RemoveIngredient?null:materialCatalog.Units.FirstOrDefault()?.Id,QuantityDelta=effectKind==RestaurantModifierEffectKinds.RemoveIngredient?0:1});
+  private void AddEffect(RestaurantModifierOptionSaveRequest option,string effectKind)=>option.IngredientDeltas.Add(new(){EffectKind=effectKind,QuantityDelta=effectKind==RestaurantModifierEffectKinds.RemoveIngredient?0:1});
   private void AddSubstitution(RestaurantModifierOptionSaveRequest option){AddEffect(option,RestaurantModifierEffectKinds.RemoveIngredient);AddEffect(option,RestaurantModifierEffectKinds.AddQuantity);}
+  private void SetEffectMaterial(RestaurantModifierDeltaSaveRequest delta,int materialId){delta.MaterialId=materialId;delta.UnitId=null;SyncEffectUnit(delta);}
+  private void SyncEffectUnit(RestaurantModifierDeltaSaveRequest delta)
+  {
+    if(delta.EffectKind==RestaurantModifierEffectKinds.RemoveIngredient){delta.QuantityDelta=0;delta.UnitId=null;return;}
+    if(delta.QuantityDelta==0) delta.QuantityDelta=1;
+    if(!HasUnit(delta.MaterialId,delta.UnitId)) delta.UnitId=recipeUnitOptions.FirstOrDefault(item=>item.MaterialId==delta.MaterialId&&item.IsBase)?.UnitId;
+  }
+  private bool HasUnit(int materialId,int? unitId)=>unitId is int value&&recipeUnitOptions.Any(item=>item.MaterialId==materialId&&item.UnitId==value);
+  /// <summary>Unidad base del material más sus conversiones activas; conserva la unidad guardada aunque ya no tenga conversión.</summary>
+  private List<RecipeUnitOptionDto> EffectUnitOptions(RestaurantModifierDeltaSaveRequest delta)
+  {
+    var options=recipeUnitOptions.Where(item=>item.MaterialId==delta.MaterialId).OrderByDescending(item=>item.IsBase).ThenBy(item=>item.UnitName).ToList();
+    if(delta.UnitId is int unitId&&!HasUnit(delta.MaterialId,unitId)) options.Add(new(){MaterialId=delta.MaterialId,UnitId=unitId,UnitCode=UnitCode(unitId),UnitName=UnitCode(unitId)});
+    return options;
+  }
+  private string UnitCode(int unitId)=>materialCatalog.Units.FirstOrDefault(item=>item.Id==unitId) is {} unit?(string.IsNullOrWhiteSpace(unit.Code)?unit.Name:unit.Code):$"Unidad {unitId}";
+  private static string EffectUnitLabel(RecipeUnitOptionDto unit)=>unit.IsBase?$"{unit.UnitCode} · base":unit.FactorToBase==0?$"{unit.UnitCode} · sin conversión":unit.UnitCode;
   private void EditModifier(RestaurantModifierAdminDto group)=>modifierEditor=new(){Rfc=CurrentRfc,Id=group.Id,Name=group.Name,MinSelections=group.MinSelections,MaxSelections=group.MaxSelections,SortOrder=group.SortOrder,IsActive=group.IsActive,ProductIds=group.ProductIds.ToList(),Options=group.Options.Select(option=>new RestaurantModifierOptionSaveRequest{Id=option.Id,Name=option.Name,PriceDelta=option.PriceDelta,SortOrder=option.SortOrder,IngredientDeltas=option.IngredientDeltas.Select(delta=>new RestaurantModifierDeltaSaveRequest{MaterialId=delta.MaterialId,EffectKind=delta.EffectKind,QuantityDelta=delta.QuantityDelta,UnitId=delta.UnitId}).ToList()}).ToList()};
   private async Task SaveModifierAsync()
   {

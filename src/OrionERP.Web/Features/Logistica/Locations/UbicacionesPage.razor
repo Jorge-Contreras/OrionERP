@@ -441,8 +441,8 @@
                     <EditForm Model="ThresholdEditor" OnValidSubmit="GuardarThresholdsAsync">
                         <DataAnnotationsValidator /><ValidationSummary />
                         <div class="ubicaciones-threshold-grid">
-                            <label><span>Mínimo</span><InputNumber class="form-control" @bind-Value="ThresholdEditor.MinQuantity" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)" /><small>Déjalo vacío si no necesitas límite.</small></label>
-                            <label><span>Máximo</span><InputNumber class="form-control" @bind-Value="ThresholdEditor.MaxQuantity" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)" /><small>Déjalo vacío si no necesitas límite.</small></label>
+                            <label><span>Mínimo</span><DecimalInput class="form-control" @bind-Value="ThresholdEditor.MinQuantity" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)" /><small>Déjalo vacío si no necesitas límite.</small></label>
+                            <label><span>Máximo</span><DecimalInput class="form-control" @bind-Value="ThresholdEditor.MaxQuantity" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)" /><small>Déjalo vacío si no necesitas límite.</small></label>
                         </div>
                         <div class="ubicaciones-detail-form-actions"><button class="btn btn-outline-secondary" type="button" @onclick="RestablecerThresholdEditor" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)">Restablecer</button><button class="btn btn-primary" type="submit" disabled="@(!CanEditSelectedStock || IsSavingThresholds || IsMutatingStock)">@(IsSavingThresholds ? "Guardando…" : "Guardar límites")</button></div>
                     </EditForm>

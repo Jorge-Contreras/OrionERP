@@ -625,6 +625,49 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: .5rem;
+  /* Sin esto, la celda mas alta estira los demas campos de la fila. */
+  align-items: start;
+}
+
+.pos-transfer__print {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0 .75rem;
+  border: 1px solid #17634f;
+  border-radius: .7rem;
+  background: #eef7f4;
+  color: #17634f;
+  font-size: .82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.pos-transfer__print:hover:not(:disabled) {
+  background: #17634f;
+  color: white;
+}
+
+.pos-transfer__print:focus-visible {
+  outline: 3px solid rgba(23, 99, 79, .32);
+  outline-offset: 1px;
+}
+
+.pos-transfer__print:disabled {
+  border-color: #cfd8d5;
+  background: #f2f4f4;
+  color: #8a9490;
+  cursor: not-allowed;
+}
+
+.pos-transfer__warning {
+  margin: .35rem 0 0;
+  color: #8a3d12;
+  font-size: .82rem;
+  font-weight: 700;
 }
 
 .pos-payments__title {
@@ -879,6 +922,40 @@
 
 .pos-membership__quote small {
   font-weight: 700;
+}
+
+.pos-code-reject {
+  display: grid;
+  gap: .25rem;
+}
+
+.pos-code-reject strong {
+  font-size: .78rem;
+  font-weight: 950;
+}
+
+.pos-code-reject p {
+  margin: 0;
+  font-size: .76rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.pos-code-reject em {
+  color: #6f2820;
+  font-size: .72rem;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.pos-code-reject ul {
+  display: grid;
+  gap: .12rem;
+  margin: .15rem 0 0;
+  padding-left: 1rem;
+  font-size: .7rem;
+  font-weight: 650;
+  line-height: 1.3;
 }
 
 .pos-redemption {
@@ -1424,6 +1501,69 @@
   opacity: .5;
 }
 
+/* Aviso permanente de lo que va a reventar al cobrar. El color lo dicta la gravedad, para que se
+   lea de reojo desde la caja sin abrir el panel. */
+.pos-header__actions .pos-sale-alerts {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  min-height: 3rem;
+  padding: .6rem .85rem;
+  font-size: .82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.pos-header__actions .pos-sale-alerts.is-critical {
+  border-color: #e0a29c;
+  background: #fdeceb;
+  color: #99231b;
+}
+
+.pos-header__actions .pos-sale-alerts.is-attention {
+  border-color: #e2c48c;
+  background: #fdf3e2;
+  color: #8a5a10;
+}
+
+.pos-header__actions .pos-sale-alerts.is-warning {
+  border-color: #ddd69a;
+  background: #fbf8e4;
+  color: #74671a;
+}
+
+.pos-header__actions .pos-sale-alerts.is-clear {
+  border-color: #b6d4c9;
+  background: #eff7f4;
+  color: #17634f;
+}
+
+.pos-header__actions .pos-sale-alerts.is-unknown {
+  color: #53615c;
+}
+
+.pos-header__actions .pos-sale-alerts:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+.pos-sale-alerts__count {
+  min-width: 1.5rem;
+  padding: .05rem .35rem;
+  border-radius: 999px;
+  background: currentColor;
+  font-size: .78rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+/* El número se lee sobre el color del propio estado: el fondo toma `currentColor` y el dígito
+   recorta el fondo del botón. */
+.pos-sale-alerts.is-critical .pos-sale-alerts__count { color: #fdeceb; background: #99231b; }
+.pos-sale-alerts.is-attention .pos-sale-alerts__count { color: #fdf3e2; background: #8a5a10; }
+.pos-sale-alerts.is-warning .pos-sale-alerts__count { color: #fbf8e4; background: #74671a; }
+.pos-sale-alerts.is-clear .pos-sale-alerts__count { color: #eff7f4; background: #17634f; }
+
 button,
 input,
 select,
@@ -1555,6 +1695,12 @@ summary:focus-visible {
   .pos-form-row,
   .pos-payment-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* En una sola columna, Propina se va al final para que el boton siga pegado
+     al campo de Transferencia al que pertenece. */
+  .pos-payment-grid > label:nth-child(4) {
+    order: 1;
   }
 
   .pos-membership__lookup {
@@ -1738,4 +1884,34 @@ summary:focus-visible {
   .pos-combo-slot>legend span { flex-basis:65%; }
   .pos-cart-line__customize { min-height:2.8rem; font-size:0; }
   .pos-cart-line__customize .oi { font-size:1rem; }
+}
+
+.pos-modifier--stepper {
+  grid-template-columns: 1fr auto auto;
+}
+
+.pos-modifier__stepper {
+  display: grid;
+  grid-template-columns: 2.4rem 1.75rem 2.4rem;
+  align-items: center;
+  gap: .25rem;
+}
+
+.pos-modifier__stepper button {
+  min-width: 2.4rem;
+  min-height: 2.4rem;
+  border: 0;
+  border-radius: .6rem;
+  background: #e5eeeb;
+  color: #173d32;
+  font-size: 1.2rem;
+  font-weight: 900;
+}
+
+.pos-modifier__stepper button:disabled {
+  opacity: .45;
+}
+
+.pos-modifier__stepper b {
+  text-align: center;
 }

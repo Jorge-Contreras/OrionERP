@@ -226,6 +226,80 @@ public sealed class PlatformAdministrationServiceTests
   }
 
   [Fact]
+  public async Task UpdatePublicSite_RejectsHostChangesUntilTheWebsiteIsAlreadyInactive()
+  {
+    await using var db = CreateContext();
+    await SeedCompaniesAsync(db);
+    await SeedPublicSiteAsync(db, brandingVersion: 1, contentVersion: 1);
+    var stored = await db.PublicSites.SingleAsync(item => item.PublicSiteId == 111);
+    stored.IsActive = true;
+    await db.SaveChangesAsync();
+    db.ChangeTracker.Clear();
+    var service = CreateService(db, "AAA010101AAA");
+
+    var exception = await Assert.ThrowsAsync<PlatformAdministrationValidationException>(() =>
+      service.UpdatePublicSiteAsync(new(
+        111,
+        "nuevo.example.com",
+        false,
+        1,
+        1,
+        Token(6))));
+
+    Assert.Contains("Desactiva", exception.Message, StringComparison.OrdinalIgnoreCase);
+    var publicSite = await db.PublicSites.AsNoTracking().SingleAsync(item => item.PublicSiteId == 111);
+    Assert.Equal("reservaciones.example.com", publicSite.CanonicalHost);
+    Assert.True(publicSite.IsActive);
+  }
+
+  [Fact]
+  public async Task UpdatePublicSite_RejectsHostChangesDuringAPresentationFallback()
+  {
+    await using var db = CreateContext();
+    await SeedCompaniesAsync(db);
+    await SeedPublicSiteAsync(
+      db,
+      brandingVersion: 2,
+      contentVersion: 3,
+      fallbackBrandingVersion: 1,
+      fallbackContentVersion: 1,
+      fallbackUntilUtc: Now.AddMinutes(10));
+    var service = CreateService(db, "AAA010101AAA");
+
+    var exception = await Assert.ThrowsAsync<PlatformAdministrationValidationException>(() =>
+      service.UpdatePublicSiteAsync(new(
+        111,
+        "nuevo.example.com",
+        false,
+        2,
+        3,
+        Token(6))));
+
+    Assert.Contains("presentación", exception.Message, StringComparison.OrdinalIgnoreCase);
+  }
+
+  [Fact]
+  public async Task UpdatePublicSite_AllowsHostChangeAfterDeactivationAndOutsideFallback()
+  {
+    await using var db = CreateContext();
+    await SeedCompaniesAsync(db);
+    await SeedPublicSiteAsync(db, brandingVersion: 1, contentVersion: 1);
+    var service = CreateService(db, "AAA010101AAA");
+
+    await service.UpdatePublicSiteAsync(new(
+      111,
+      "nuevo.example.com",
+      false,
+      1,
+      1,
+      Token(6)));
+
+    var publicSite = await db.PublicSites.AsNoTracking().SingleAsync(item => item.PublicSiteId == 111);
+    Assert.Equal("nuevo.example.com", publicSite.CanonicalHost);
+    Assert.False(publicSite.IsActive);
+  }
+
+  [Fact]
   public async Task UpdatePublicSite_PreparesThePreviousPresentationPairForRollback()
   {
     await using var db = CreateContext();

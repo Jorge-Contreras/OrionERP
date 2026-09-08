@@ -78,9 +78,25 @@ public sealed class RestaurantSiteDto
   public bool IsEnabled { get; set; }
   public bool AllowSupervisorDeficit { get; set; }
   public string CrossContaminationWarning { get; set; } = string.Empty;
+  public string? TransferBankName { get; set; }
+  public string? TransferAccountHolder { get; set; }
+  public string? TransferAccountNumber { get; set; }
+  public string? TransferClabe { get; set; }
+  public string? TransferCardNumber { get; set; }
+  public string? TransferInstructions { get; set; }
+
+  /// <summary>
+  /// El comprobante de transferencia sólo puede imprimirse cuando hay un titular
+  /// y al menos un destino al cual depositar.
+  /// </summary>
+  public bool HasTransferPaymentDetails
+    => !string.IsNullOrWhiteSpace(TransferAccountHolder)
+       && (!string.IsNullOrWhiteSpace(TransferClabe)
+           || !string.IsNullOrWhiteSpace(TransferAccountNumber)
+           || !string.IsNullOrWhiteSpace(TransferCardNumber));
 }
 
-public sealed class RestaurantSiteUpsertRequest
+public sealed class RestaurantSiteUpsertRequest : IValidatableObject
 {
   [Required] public string Rfc { get; set; } = string.Empty;
   public int? Id { get; set; }
@@ -93,6 +109,53 @@ public sealed class RestaurantSiteUpsertRequest
   public bool IsEnabled { get; set; }
   public bool AllowSupervisorDeficit { get; set; }
   [Required, StringLength(300)] public string CrossContaminationWarning { get; set; } = "Puede existir contaminación cruzada. Consulte al personal si tiene alergias.";
+  [StringLength(120)] public string? TransferBankName { get; set; }
+  [StringLength(160)] public string? TransferAccountHolder { get; set; }
+  [StringLength(30)] public string? TransferAccountNumber { get; set; }
+  [StringLength(30)] public string? TransferClabe { get; set; }
+  [StringLength(30)] public string? TransferCardNumber { get; set; }
+  [StringLength(300)] public string? TransferInstructions { get; set; }
+
+  public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+  {
+    if (RestaurantTransferPaymentRules.NormalizeDigits(TransferAccountNumber) is not null
+        && !RestaurantTransferPaymentRules.IsValidAccountNumber(TransferAccountNumber))
+    {
+      yield return new ValidationResult(
+        $"La cuenta bancaria debe tener entre {RestaurantTransferPaymentRules.MinimumAccountLength} y {RestaurantTransferPaymentRules.MaximumAccountLength} dígitos.",
+        [nameof(TransferAccountNumber)]);
+    }
+
+    if (RestaurantTransferPaymentRules.NormalizeDigits(TransferClabe) is not null
+        && !RestaurantTransferPaymentRules.IsValidClabe(TransferClabe))
+    {
+      yield return new ValidationResult(
+        "La CLABE debe tener 18 dígitos y un dígito verificador válido.",
+        [nameof(TransferClabe)]);
+    }
+
+    if (RestaurantTransferPaymentRules.NormalizeDigits(TransferCardNumber) is not null
+        && !RestaurantTransferPaymentRules.IsValidCardNumber(TransferCardNumber))
+    {
+      yield return new ValidationResult(
+        "El número de tarjeta no es válido. Verifica los dígitos capturados.",
+        [nameof(TransferCardNumber)]);
+    }
+
+    if (!string.IsNullOrWhiteSpace(TransferAccountHolder))
+    {
+      yield break;
+    }
+
+    if (RestaurantTransferPaymentRules.NormalizeDigits(TransferClabe) is not null
+        || RestaurantTransferPaymentRules.NormalizeDigits(TransferAccountNumber) is not null
+        || RestaurantTransferPaymentRules.NormalizeDigits(TransferCardNumber) is not null)
+    {
+      yield return new ValidationResult(
+        "Captura el titular de la cuenta para poder imprimir los datos de transferencia.",
+        [nameof(TransferAccountHolder)]);
+    }
+  }
 }
 
 public sealed class RestaurantProductDto

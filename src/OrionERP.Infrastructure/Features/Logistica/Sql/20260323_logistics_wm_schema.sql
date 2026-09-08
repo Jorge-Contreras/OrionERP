@@ -157,6 +157,7 @@ BEGIN
         [Description] varchar(800) NOT NULL,
         BaseUnitId int NOT NULL,
         PurchaseQuantity decimal(18,4) NOT NULL CONSTRAINT DF_Material_PurchaseQuantity DEFAULT (1),
+        PurchaseIncrement decimal(18,4) NOT NULL CONSTRAINT DF_Material_PurchaseIncrement DEFAULT (1),
         PurchaseUnitId int NULL,
         BusinessPartnerId int NULL,
         BaseUnitPrice decimal(18,6) NULL,

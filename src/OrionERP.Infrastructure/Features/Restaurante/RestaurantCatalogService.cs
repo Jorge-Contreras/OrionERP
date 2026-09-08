@@ -22,7 +22,9 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     const string sql =
       """
       SELECT Id, Rfc, SiteCode, [Name], TimeZoneId, OperationalDayCutoff, TaxRate,
-             PricesIncludeTax, IsEnabled, AllowSupervisorDeficit, CrossContaminationWarning
+             PricesIncludeTax, IsEnabled, AllowSupervisorDeficit, CrossContaminationWarning,
+             TransferBankName, TransferAccountHolder, TransferAccountNumber,
+             TransferClabe, TransferCardNumber, TransferInstructions
       FROM restaurante.Site
       WHERE Rfc = @Rfc
       ORDER BY [Name], Id;
@@ -55,6 +57,12 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
               IsEnabled = @IsEnabled,
               AllowSupervisorDeficit = @AllowSupervisorDeficit,
               CrossContaminationWarning = @CrossContaminationWarning,
+              TransferBankName = @TransferBankName,
+              TransferAccountHolder = @TransferAccountHolder,
+              TransferAccountNumber = @TransferAccountNumber,
+              TransferClabe = @TransferClabe,
+              TransferCardNumber = @TransferCardNumber,
+              TransferInstructions = @TransferInstructions,
               UpdatedAt = SYSUTCDATETIME()
           WHERE Rfc = @Rfc AND Id = @Id;
           """;
@@ -70,7 +78,13 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
           request.PricesIncludeTax,
           request.IsEnabled,
           request.AllowSupervisorDeficit,
-          request.CrossContaminationWarning
+          request.CrossContaminationWarning,
+          TransferBankName = RestaurantTransferPaymentRules.NormalizeText(request.TransferBankName),
+          TransferAccountHolder = RestaurantTransferPaymentRules.NormalizeText(request.TransferAccountHolder),
+          TransferAccountNumber = RestaurantTransferPaymentRules.NormalizeDigits(request.TransferAccountNumber),
+          TransferClabe = RestaurantTransferPaymentRules.NormalizeDigits(request.TransferClabe),
+          TransferCardNumber = RestaurantTransferPaymentRules.NormalizeDigits(request.TransferCardNumber),
+          TransferInstructions = RestaurantTransferPaymentRules.NormalizeText(request.TransferInstructions)
         }, cancellationToken: ct));
         return affected == 1
           ? RestaurantCommandResult.Ok("La sede fue actualizada.", request.Id)
@@ -81,10 +95,14 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
         """
         INSERT INTO restaurante.Site
           (Rfc, SiteCode, [Name], TimeZoneId, OperationalDayCutoff, TaxRate, PricesIncludeTax,
-           IsEnabled, AllowSupervisorDeficit, CrossContaminationWarning)
+           IsEnabled, AllowSupervisorDeficit, CrossContaminationWarning,
+           TransferBankName, TransferAccountHolder, TransferAccountNumber,
+           TransferClabe, TransferCardNumber, TransferInstructions)
         VALUES
           (@Rfc, @SiteCode, @Name, @TimeZoneId, @OperationalDayCutoff, @TaxRate, @PricesIncludeTax,
-           @IsEnabled, @AllowSupervisorDeficit, @CrossContaminationWarning);
+           @IsEnabled, @AllowSupervisorDeficit, @CrossContaminationWarning,
+           @TransferBankName, @TransferAccountHolder, @TransferAccountNumber,
+           @TransferClabe, @TransferCardNumber, @TransferInstructions);
         SELECT CAST(SCOPE_IDENTITY() AS int);
         """;
       var id = await conn.ExecuteScalarAsync<int>(new CommandDefinition(insertSql, new
@@ -98,7 +116,13 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
         request.PricesIncludeTax,
         request.IsEnabled,
         request.AllowSupervisorDeficit,
-        request.CrossContaminationWarning
+        request.CrossContaminationWarning,
+        TransferBankName = RestaurantTransferPaymentRules.NormalizeText(request.TransferBankName),
+        TransferAccountHolder = RestaurantTransferPaymentRules.NormalizeText(request.TransferAccountHolder),
+        TransferAccountNumber = RestaurantTransferPaymentRules.NormalizeDigits(request.TransferAccountNumber),
+        TransferClabe = RestaurantTransferPaymentRules.NormalizeDigits(request.TransferClabe),
+        TransferCardNumber = RestaurantTransferPaymentRules.NormalizeDigits(request.TransferCardNumber),
+        TransferInstructions = RestaurantTransferPaymentRules.NormalizeText(request.TransferInstructions)
       }, cancellationToken: ct));
       return RestaurantCommandResult.Ok("La sede fue creada. Permanece deshabilitada hasta completar su configuración.", id);
     }
@@ -507,7 +531,26 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     }
   }
 
-  public async Task<RestaurantPosCatalogDto> GetPosCatalogAsync(string rfc, int siteId, DateTimeOffset at, CancellationToken ct = default)
+  public Task<RestaurantPosCatalogDto> GetPosCatalogAsync(
+    string rfc,
+    int siteId,
+    DateTimeOffset at,
+    CancellationToken ct = default)
+    => GetCatalogCoreAsync(rfc, siteId, at, includeActiveProductFallback: true, ct);
+
+  public Task<RestaurantPosCatalogDto> GetPublicCatalogAsync(
+    string rfc,
+    int siteId,
+    DateTimeOffset at,
+    CancellationToken ct = default)
+    => GetCatalogCoreAsync(rfc, siteId, at, includeActiveProductFallback: false, ct);
+
+  private async Task<RestaurantPosCatalogDto> GetCatalogCoreAsync(
+    string rfc,
+    int siteId,
+    DateTimeOffset at,
+    bool includeActiveProductFallback,
+    CancellationToken ct)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
     var sites = await GetSitesAsync(normalizedRfc, ct);
@@ -528,13 +571,39 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
       (
         SELECT TOP (1) menuInfo.Id
         FROM restaurante.Menu menuInfo
-        LEFT JOIN restaurante.MenuSchedule scheduleInfo
-          ON scheduleInfo.Rfc = menuInfo.Rfc AND scheduleInfo.MenuId = menuInfo.Id AND scheduleInfo.SiteId = @SiteId
+        OUTER APPLY
+        (
+          SELECT TOP (1) CAST(1 AS bit) AS HasAny
+          FROM restaurante.MenuSchedule anySchedule
+          WHERE anySchedule.Rfc = menuInfo.Rfc
+            AND anySchedule.MenuId = menuInfo.Id
+        ) scheduleInventory
+        OUTER APPLY
+        (
+          SELECT TOP (1) CAST(1 AS bit) AS IsActiveNow
+          FROM restaurante.MenuSchedule currentSchedule
+          WHERE currentSchedule.Rfc = menuInfo.Rfc
+            AND currentSchedule.MenuId = menuInfo.Id
+            AND currentSchedule.SiteId = @SiteId
+            AND
+            (
+              (currentSchedule.DayOfWeek = @DayOfWeek AND
+                (
+                  (currentSchedule.StartsAt < currentSchedule.EndsAt AND
+                    @LocalTime >= currentSchedule.StartsAt AND @LocalTime < currentSchedule.EndsAt)
+                  OR
+                  (currentSchedule.StartsAt > currentSchedule.EndsAt AND
+                    @LocalTime >= currentSchedule.StartsAt)
+                ))
+              OR
+              (currentSchedule.DayOfWeek = @PreviousDayOfWeek AND
+                currentSchedule.StartsAt > currentSchedule.EndsAt AND
+                @LocalTime < currentSchedule.EndsAt)
+            )
+        ) currentScheduleMatch
         WHERE menuInfo.Rfc = @Rfc AND menuInfo.IsActive = 1 AND menuInfo.IsPublished = 1
-          AND (scheduleInfo.Id IS NULL OR (scheduleInfo.DayOfWeek = @DayOfWeek AND
-              ((scheduleInfo.StartsAt < scheduleInfo.EndsAt AND @LocalTime >= scheduleInfo.StartsAt AND @LocalTime < scheduleInfo.EndsAt)
-               OR (scheduleInfo.StartsAt > scheduleInfo.EndsAt AND (@LocalTime >= scheduleInfo.StartsAt OR @LocalTime < scheduleInfo.EndsAt)))))
-        ORDER BY CASE WHEN scheduleInfo.Id IS NULL THEN 1 ELSE 0 END, menuInfo.Id
+          AND (scheduleInventory.HasAny IS NULL OR currentScheduleMatch.IsActiveNow = 1)
+        ORDER BY CASE WHEN currentScheduleMatch.IsActiveNow = 1 THEN 0 ELSE 1 END, menuInfo.Id
       );
 
       SELECT ISNULL((SELECT [Name] FROM restaurante.Menu WHERE Rfc = @Rfc AND Id = @MenuId), 'Menú') AS MenuName;
@@ -548,9 +617,9 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
         (SELECT Id FROM restaurante.MenuSection WHERE Rfc = @Rfc AND MenuId = @MenuId)
       ORDER BY item.MenuSectionId, item.SortOrder, item.ProductId;
       SELECT Id, TableCode AS Code, [Name] FROM restaurante.DiningTable
-      WHERE Rfc = @Rfc AND SiteId = @SiteId AND IsActive = 1 ORDER BY [Name], Id;
+      WHERE @IncludeOperations = 1 AND Rfc = @Rfc AND SiteId = @SiteId AND IsActive = 1 ORDER BY [Name], Id;
       SELECT Id, [Name] FROM restaurante.ExternalProvider
-      WHERE Rfc = @Rfc AND SiteId = @SiteId AND IsActive = 1 ORDER BY [Name], Id;
+      WHERE @IncludeOperations = 1 AND Rfc = @Rfc AND SiteId = @SiteId AND IsActive = 1 ORDER BY [Name], Id;
       """;
 
     using var conn = CreateConnection();
@@ -559,7 +628,9 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
       Rfc = normalizedRfc,
       SiteId = siteId,
       DayOfWeek = (byte)local.DayOfWeek,
-      LocalTime = local.TimeOfDay
+      PreviousDayOfWeek = (byte)(((int)local.DayOfWeek + 6) % 7),
+      LocalTime = local.TimeOfDay,
+      IncludeOperations = includeActiveProductFallback
     }, cancellationToken: ct));
     var menuName = await multi.ReadSingleAsync<string>();
     var sections = (await multi.ReadAsync<MenuSectionRow>()).AsList();
@@ -578,7 +649,7 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
         .Cast<RestaurantProductDto>()
         .ToList()
     }).ToList();
-    if (sectionDtos.Count == 0)
+    if (sectionDtos.Count == 0 && includeActiveProductFallback)
     {
       sectionDtos.Add(new RestaurantMenuSectionDto
       {

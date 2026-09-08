@@ -17,6 +17,10 @@ public class PhysicalCountAuditUxTests
     Assert.Contains("PhysicalCountAuditEventTypes.LineCounted", codeBehind, StringComparison.Ordinal);
     Assert.Contains("FirstCaptureEvent", codeBehind, StringComparison.Ordinal);
     Assert.Contains("DateTime.SpecifyKind(value, DateTimeKind.Utc)", codeBehind, StringComparison.Ordinal);
+
+    // Un conteo por material toca el mismo material una vez por ubicación: sin el lugar, la
+    // bitácora repite la misma línea y nadie puede distinguir una parada de otra.
+    Assert.Contains("auditEvent.LocationName", codeBehind, StringComparison.Ordinal);
   }
 
   [Fact]

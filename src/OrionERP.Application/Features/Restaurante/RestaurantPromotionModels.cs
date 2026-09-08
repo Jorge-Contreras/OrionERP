@@ -27,6 +27,31 @@ public static class RestaurantPromotionRuleTypes
     StringComparer.OrdinalIgnoreCase);
 }
 
+public static class RestaurantPromotionRejectionReasons
+{
+  public const string UnknownCode = "UnknownCode";
+  public const string OtherSite = "OtherSite";
+  public const string CodeInactive = "CodeInactive";
+  public const string PromotionNotActive = "PromotionNotActive";
+  public const string NotStarted = "NotStarted";
+  public const string Expired = "Expired";
+  public const string PromotionLimitReached = "PromotionLimitReached";
+  public const string ChannelDisabled = "ChannelDisabled";
+  public const string MemberRequired = "MemberRequired";
+  public const string OutsideSchedule = "OutsideSchedule";
+  public const string CodeLimitReached = "CodeLimitReached";
+  public const string MemberLimitReached = "MemberLimitReached";
+  public const string NoEligibleItems = "NoEligibleItems";
+  public const string MinimumQuantity = "MinimumQuantity";
+  public const string MinimumSubtotal = "MinimumSubtotal";
+  public const string RuleNotSatisfied = "RuleNotSatisfied";
+  public const string RuleMisconfigured = "RuleMisconfigured";
+  public const string NoSavings = "NoSavings";
+  public const string NotCombinable = "NotCombinable";
+  public const string AlreadyApplied = "AlreadyApplied";
+  public const string PromotionsDisabled = "PromotionsDisabled";
+}
+
 public static class RestaurantSalesChannels
 {
   public const string Pos = "POS";
@@ -169,9 +194,22 @@ public sealed class RestaurantPromotionQuoteDto
   public decimal PromotionDiscountTotal { get; set; }
   public decimal DiscountedMerchandise { get; set; }
   public bool CodeAccepted { get; set; }
+  public string? CodeRejectionReason { get; set; }
+  public string? CodeRejectionDetail { get; set; }
+  public string? CodeRejectionFix { get; set; }
+  public IReadOnlyList<RestaurantPromotionCodeRejectionDto> CodeRejections { get; set; } = Array.Empty<RestaurantPromotionCodeRejectionDto>();
   public string? Message { get; set; }
   public IReadOnlyList<RestaurantPromotionAdjustmentDto> Adjustments { get; set; } = Array.Empty<RestaurantPromotionAdjustmentDto>();
   public IReadOnlyList<RestaurantPromotionLineAdjustmentDto> LineAdjustments { get; set; } = Array.Empty<RestaurantPromotionLineAdjustmentDto>();
+}
+
+public sealed class RestaurantPromotionCodeRejectionDto
+{
+  public string Reason { get; set; } = RestaurantPromotionRejectionReasons.UnknownCode;
+  public long PromotionId { get; set; }
+  public string PromotionName { get; set; } = string.Empty;
+  public string Detail { get; set; } = string.Empty;
+  public string? Fix { get; set; }
 }
 
 public sealed class RestaurantPromotionAdjustmentDto

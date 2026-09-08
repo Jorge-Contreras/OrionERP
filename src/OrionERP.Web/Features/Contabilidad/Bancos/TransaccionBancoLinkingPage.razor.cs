@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using OrionERP.Application.Features.Contabilidad.Bancos;
+using OrionERP.Web.Services;
 
 namespace OrionERP.Web.Features.Contabilidad.Bancos;
 
@@ -19,6 +20,9 @@ public partial class TransaccionBancoLinkingPage : ComponentBase
 
   [Inject]
   public NavigationManager NavManager { get; set; } = default!;
+
+  [Inject]
+  public IOperationErrorPresenter Errors { get; set; } = default!;
 
   protected BankTransactionMovementWorkspaceDto Workspace { get; private set; } = new();
   protected BankTransactionMovementSummaryDto? Summary => Workspace.Summary;
@@ -103,7 +107,7 @@ public partial class TransaccionBancoLinkingPage : ComponentBase
     }
     catch (Exception ex)
     {
-      ErrorMessage = $"No se pudo cargar el ligado bancario de la póliza: {ex.Message}";
+      ErrorMessage = Errors.ToUserMessage(ex, "cargar el ligado bancario de la póliza", new { TransaccionId });
     }
     finally
     {

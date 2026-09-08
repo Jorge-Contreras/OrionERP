@@ -10,6 +10,15 @@ namespace OrionERP.Infrastructure.Features.Restaurante;
 public sealed class RestaurantPromotionService : IRestaurantPromotionService
 {
   private readonly IDbConnectionFactory _connectionFactory;
+  private static readonly IReadOnlySet<string> ScopeRejectionReasons = new HashSet<string>(
+    [
+      RestaurantPromotionRejectionReasons.NoEligibleItems,
+      RestaurantPromotionRejectionReasons.MinimumQuantity,
+      RestaurantPromotionRejectionReasons.MinimumSubtotal,
+      RestaurantPromotionRejectionReasons.RuleNotSatisfied,
+      RestaurantPromotionRejectionReasons.NoSavings
+    ],
+    StringComparer.Ordinal);
 
   public RestaurantPromotionService(IDbConnectionFactory connectionFactory)
   {
@@ -42,6 +51,7 @@ public sealed class RestaurantPromotionService : IRestaurantPromotionService
       return EmptyQuote(request, localAt, "Las promociones están deshabilitadas para esta sede.");
     }
 
+    var normalizedCode = RestaurantPromotionEngine.NormalizeCode(request.Code);
     var definitions = await LoadDefinitionsAsync(
       conn,
       null,
@@ -49,9 +59,12 @@ public sealed class RestaurantPromotionService : IRestaurantPromotionService
       request.SiteId,
       request.MemberId,
       request.Code,
-      includeInactive: false,
+      includeInactive: normalizedCode is not null,
       ct);
-    return RestaurantPromotionEngine.Quote(request, definitions, localAt);
+    var quote = RestaurantPromotionEngine.Quote(request, definitions, localAt);
+    return normalizedCode is null || quote.CodeAccepted
+      ? quote
+      : await ExplainCodeRejectionAsync(conn, null, rfc, request.SiteId, normalizedCode, quote, ct);
   }
 
   public async Task<IReadOnlyList<RestaurantPromotionDto>> GetPromotionsAsync(
@@ -571,6 +584,114 @@ public sealed class RestaurantPromotionService : IRestaurantPromotionService
     }
   }
 
+  /// <summary>
+  /// Completa el diagnóstico del código con datos que solo viven en la base:
+  /// promociones de otra sede y los productos que sí participan.
+  /// </summary>
+  internal static async Task<RestaurantPromotionQuoteDto> ExplainCodeRejectionAsync(
+    DbConnection conn,
+    DbTransaction? tx,
+    string rfc,
+    int siteId,
+    string normalizedCode,
+    RestaurantPromotionQuoteDto quote,
+    CancellationToken ct)
+  {
+    var rejections = quote.CodeRejections.ToList();
+    if (rejections.Count == 0)
+    {
+      return quote;
+    }
+
+    var headline = rejections[0];
+    if (headline.Reason == RestaurantPromotionRejectionReasons.UnknownCode)
+    {
+      var foreign = await conn.QueryFirstOrDefaultAsync<ForeignCodeRow>(new CommandDefinition(
+        """
+        SELECT TOP (1) promotion.[Name] AS PromotionName,siteInfo.[Name] AS SiteName
+        FROM restaurante.PromotionCode codeInfo
+        JOIN restaurante.Promotion promotion
+          ON promotion.Rfc=codeInfo.Rfc AND promotion.Id=codeInfo.PromotionId
+        LEFT JOIN restaurante.Site siteInfo
+          ON siteInfo.Rfc=promotion.Rfc AND siteInfo.Id=promotion.SiteId
+        WHERE codeInfo.Rfc=@Rfc AND codeInfo.Code=@Code
+          AND promotion.SiteId IS NOT NULL AND promotion.SiteId<>@SiteId
+        ORDER BY promotion.Id;
+        """,
+        new { Rfc = rfc, Code = normalizedCode, SiteId = siteId },
+        tx,
+        cancellationToken: ct));
+      if (foreign is null)
+      {
+        return quote;
+      }
+      rejections[0] = new RestaurantPromotionCodeRejectionDto
+      {
+        Reason = RestaurantPromotionRejectionReasons.OtherSite,
+        PromotionName = foreign.PromotionName,
+        Detail = $"El código {normalizedCode} pertenece a «{foreign.PromotionName}», exclusiva de la sede {foreign.SiteName ?? "asignada"}.",
+        Fix = "En esta sede no puede canjearse."
+      };
+      return RestaurantPromotionEngine.DescribeRejections(quote, rejections);
+    }
+
+    if (headline.PromotionId <= 0 || !ScopeRejectionReasons.Contains(headline.Reason))
+    {
+      return quote;
+    }
+    var scope = await LoadScopeLabelsAsync(conn, tx, rfc, headline.PromotionId, ct);
+    if (scope.Count == 0)
+    {
+      return quote;
+    }
+    rejections[0] = new RestaurantPromotionCodeRejectionDto
+    {
+      Reason = headline.Reason,
+      PromotionId = headline.PromotionId,
+      PromotionName = headline.PromotionName,
+      Detail = $"{headline.Detail} Participan: {string.Join(", ", scope)}.",
+      Fix = headline.Fix
+    };
+    return RestaurantPromotionEngine.DescribeRejections(quote, rejections);
+  }
+
+  private static async Task<IReadOnlyList<string>> LoadScopeLabelsAsync(
+    DbConnection conn,
+    DbTransaction? tx,
+    string rfc,
+    long promotionId,
+    CancellationToken ct)
+  {
+    var products = (await conn.QueryAsync<string>(new CommandDefinition(
+      """
+      SELECT TOP (6) LTRIM(RTRIM(card.[Name]+ISNULL(' · '+NULLIF(LTRIM(RTRIM(product.VariantName)),''),''))) AS Label
+      FROM restaurante.PromotionProduct link
+      JOIN restaurante.Product product ON product.Rfc=link.Rfc AND product.Id=link.ProductId
+      JOIN restaurante.ProductCard card ON card.Rfc=product.Rfc AND card.Id=product.ProductCardId
+      WHERE link.Rfc=@Rfc AND link.PromotionId=@PromotionId
+      ORDER BY Label;
+      """,
+      new { Rfc = rfc, PromotionId = promotionId },
+      tx,
+      cancellationToken: ct))).AsList();
+    var categories = (await conn.QueryAsync<string>(new CommandDefinition(
+      """
+      SELECT TOP (6) category.CategoryName
+      FROM restaurante.PromotionMaterialCategory link
+      JOIN logistica.MaterialCategory category ON category.Rfc=link.Rfc AND category.Id=link.MaterialCategoryId
+      WHERE link.Rfc=@Rfc AND link.PromotionId=@PromotionId
+      ORDER BY category.CategoryName;
+      """,
+      new { Rfc = rfc, PromotionId = promotionId },
+      tx,
+      cancellationToken: ct))).AsList();
+    return products
+      .Concat(categories.Select(category => $"categoría {category}"))
+      .Where(label => !string.IsNullOrWhiteSpace(label))
+      .Take(6)
+      .ToList();
+  }
+
   private static RestaurantPromotionQuoteDto EmptyQuote(
     RestaurantPromotionQuoteRequest request,
     DateTimeOffset localAt,
@@ -578,7 +699,7 @@ public sealed class RestaurantPromotionService : IRestaurantPromotionService
   {
     var subtotal = decimal.Round(request.Lines.Sum(line => line.UnitPrice * line.Quantity), 2, MidpointRounding.AwayFromZero);
     var manual = decimal.Round(request.Lines.Sum(line => Math.Clamp(line.ManualDiscountAmount, 0, line.UnitPrice * line.Quantity)), 2, MidpointRounding.AwayFromZero);
-    return new RestaurantPromotionQuoteDto
+    var quote = new RestaurantPromotionQuoteDto
     {
       EvaluatedAt = localAt,
       NormalizedCode = RestaurantPromotionEngine.NormalizeCode(request.Code),
@@ -588,6 +709,18 @@ public sealed class RestaurantPromotionService : IRestaurantPromotionService
       CodeAccepted = string.IsNullOrWhiteSpace(request.Code),
       Message = message
     };
+    return quote.CodeAccepted
+      ? quote
+      : RestaurantPromotionEngine.DescribeRejections(
+          quote,
+          [
+            new RestaurantPromotionCodeRejectionDto
+            {
+              Reason = RestaurantPromotionRejectionReasons.PromotionsDisabled,
+              Detail = message,
+              Fix = "Un supervisor debe activar las promociones en la configuración de la sede."
+            }
+          ]);
   }
 
   private static DateTimeOffset ConvertToSiteTime(DateTimeOffset at, string timeZoneId)
@@ -610,6 +743,11 @@ public sealed class RestaurantPromotionService : IRestaurantPromotionService
   {
     public string TimeZoneId { get; set; } = string.Empty;
     public bool IsPromotionsEnabled { get; set; }
+  }
+  private sealed class ForeignCodeRow
+  {
+    public string PromotionName { get; set; } = string.Empty;
+    public string? SiteName { get; set; }
   }
   private sealed class PromotionScheduleRow
   {

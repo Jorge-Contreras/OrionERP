@@ -20,14 +20,17 @@ builder.Configuration.Sources.Clear();
 builder.Configuration
   .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
   .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
-  .AddJsonFile("appsettings.Instance.json", optional: true, reloadOnChange: false)
-  .AddEnvironmentVariables(prefix: "ASPNETCORE_")
-  .AddEnvironmentVariables(prefix: "DOTNET_");
+  .AddJsonFile("appsettings.Instance.json", optional: true, reloadOnChange: false);
 
 if (builder.Environment.IsDevelopment())
 {
   builder.Configuration.AddUserSecrets<Program>(optional: true);
 }
+
+builder.Configuration
+  .AddEnvironmentVariables(prefix: "ASPNETCORE_")
+  .AddEnvironmentVariables(prefix: "DOTNET_")
+  .AddCommandLine(args);
 
 var publicWebsite = PublicWebsiteInstancePolicy.Create(
   builder.Configuration
@@ -155,8 +158,8 @@ if (string.IsNullOrWhiteSpace(conn))
 {
   throw new InvalidOperationException(
     "Missing/empty ConnectionStrings:OrionDb. In Development, set it with User Secrets, " +
-    "a local appsettings.Development.json, or ConnectionStrings__OrionDb. In Production, " +
-    "use ASPNETCORE_ConnectionStrings__OrionDb.");
+    "a local appsettings.Development.json, or ASPNETCORE_ConnectionStrings__OrionDb. " +
+    "In Production, use ASPNETCORE_ConnectionStrings__OrionDb.");
 }
 
 var checkoutValidationErrors = BonhomiaCheckoutOptionsValidator.ValidateForEnvironment(

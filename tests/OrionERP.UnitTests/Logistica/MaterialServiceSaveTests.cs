@@ -146,6 +146,71 @@ public class MaterialServiceSaveTests
     Assert.DoesNotContain(connection.ExecutedCommands, command => command.CommandText.Contains("UPDATE logistica.Material", StringComparison.Ordinal));
   }
 
+  [Fact]
+  public async Task SaveMaterialAsync_StoresThePurchaseIncrement_WhenTheVendorSellsFractions()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (_, _) => CreateLifecycleStateTable(isActive: true),
+      NonQueryResultFactory = (_, _) => 1
+    };
+    var service = new MaterialService(new FakeQueryConnectionFactory(connection));
+
+    // Pollo: unidad base gramo, presentación kilo, el proveedor despacha fracciones.
+    var result = await service.SaveMaterialAsync(new MaterialUpsertRequest
+    {
+      Rfc = "OHM191112Q26",
+      Id = 42,
+      Description = "Pollo",
+      BaseUnitId = 1,
+      PurchaseQuantity = 1000m,
+      PurchaseUnitId = 5,
+      PurchaseIncrement = MaterialPurchaseIncrement.Fractional,
+      Status = "ACTIVO",
+      MaterialClass = "Consumable"
+    });
+
+    Assert.True(result.Success);
+
+    var update = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("UPDATE logistica.Material", StringComparison.Ordinal));
+
+    Assert.Contains("PurchaseIncrement = @PurchaseIncrement", update.CommandText, StringComparison.Ordinal);
+    Assert.Contains(update.Parameters, parameter => parameter.Name.TrimStart('@') == "PurchaseIncrement" && Equals(parameter.Value, 0m));
+  }
+
+  [Fact]
+  public async Task SaveMaterialAsync_DefaultsToWholePresentations()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (_, _) => CreateLifecycleStateTable(isActive: true),
+      NonQueryResultFactory = (_, _) => 1
+    };
+    var service = new MaterialService(new FakeQueryConnectionFactory(connection));
+
+    var result = await service.SaveMaterialAsync(new MaterialUpsertRequest
+    {
+      Rfc = "OHM191112Q26",
+      Id = 42,
+      Description = "Papel higiénico",
+      BaseUnitId = 1,
+      PurchaseQuantity = 24m,
+      PurchaseUnitId = 5,
+      Status = "ACTIVO",
+      MaterialClass = "Consumable"
+    });
+
+    Assert.True(result.Success);
+
+    var update = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("UPDATE logistica.Material", StringComparison.Ordinal));
+
+    Assert.Contains(update.Parameters, parameter => parameter.Name.TrimStart('@') == "PurchaseIncrement" && Equals(parameter.Value, 1m));
+  }
+
   private static DataTable CreateLifecycleStateTable(bool isActive)
   {
     var table = new DataTable();

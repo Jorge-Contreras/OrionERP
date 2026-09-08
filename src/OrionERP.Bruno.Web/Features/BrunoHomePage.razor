@@ -4,7 +4,10 @@
 @inject PublicWebsitePresentationDefinition Presentation
 
 <PageTitle>@Presentation.PublicName · @Presentation.LocationName</PageTitle>
-<HeadContent><meta name="description" content="@Presentation.SeoDescription" /></HeadContent>
+<HeadContent>
+  <meta name="description" content="@Presentation.SeoDescription" />
+  <link rel="preload" as="image" href="@Presentation.Asset("home-hero")" fetchpriority="high" />
+</HeadContent>
 
 @if (settings is null)
 {
@@ -15,13 +18,19 @@ else
   <section class="hero">
     <div class="hero__shade"></div>
     <div class="hero__brand-visual" aria-hidden="true">
-      <img class="hero__logo-badge" src="@Presentation.LogoPath" alt="" />
-      <img class="hero__mascot" src="@Presentation.Asset("hero-decoration")" alt="" />
+      <img class="hero__logo-badge" src="@Presentation.LogoPath" alt="" width="512" height="512" />
+      <img class="hero__mascot" src="@Presentation.Asset("hero-decoration")" alt="" width="880" height="1100" fetchpriority="high" />
     </div>
     <div class="hero__content">
       <span>@settings.HeroEyebrow</span>
       <h1>@settings.HeroTitle</h1>
       <p>@settings.HeroDescription</p>
+      <a class="hero__hours" href="/visitanos">
+        <i class="dot @(IsOpenNow switch { true => "dot--open", false => "dot--closed", null => string.Empty })" aria-hidden="true"></i>
+        <strong>@OpenStateLabel</strong>
+        <span>@TodayHours</span>
+        <small>Cómo llegar</small>
+      </a>
       <div class="hero__actions">
         @if (membershipEnabled)
         {
@@ -33,18 +42,33 @@ else
           <a class="button button--ghost" href="/membresia">Conocer @MembershipName</a>
         }
       </div>
-      <small class="hero__authenticity">La cocina de @Presentation.ShortName</small>
+      <ul class="hero__marks">
+        <li>Menú actualizado</li>
+        <li>Promociones</li>
+        <li>Buena compañía</li>
+      </ul>
     </div>
-    <a class="hero__hours" href="/visitanos"><span>Hoy</span><strong>@TodayHours</strong><small>Cómo llegar →</small></a>
   </section>
+
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker__track">
+      @for (var pass = 0; pass < 2; pass++)
+      {
+        @foreach (var word in TickerWords)
+        {
+          <span>@word</span>
+        }
+      }
+    </div>
+  </div>
 
   @if (membershipEnabled)
   {
     <section class="club-spotlight" aria-labelledby="club-spotlight-title">
       <figure class="club-spotlight__visual">
-        <img class="club-spotlight__photo" src="@Presentation.Asset("membership-hero")" alt="Espacio de @Presentation.PublicName" />
-        <img class="club-spotlight__logo" src="@Presentation.LogoPath" alt="" aria-hidden="true" />
-        <img class="club-spotlight__mascot" src="@Presentation.Asset("membership-decoration")" alt="" aria-hidden="true" />
+        <img class="club-spotlight__photo" src="@Presentation.Asset("membership-hero")" alt="Espacio de @Presentation.PublicName" width="1086" height="1448" loading="lazy" />
+        <img class="club-spotlight__logo" src="@Presentation.LogoPath" alt="" aria-hidden="true" width="512" height="512" loading="lazy" />
+        <img class="club-spotlight__mascot" src="@Presentation.Asset("membership-decoration")" alt="" aria-hidden="true" width="880" height="1100" loading="lazy" />
       </figure>
       <div class="club-spotlight__content">
         <span>@MembershipName</span>
@@ -57,11 +81,11 @@ else
   }
 
   <section class="intro-grid">
-    <article><span>01</span><h2>Opciones para compartir</h2><p>Consulta alimentos, bebidas y disponibilidad directamente en el menú actualizado.</p><a href="/menu">Explorar el menú →</a></article>
-    <article><span>02</span><h2>Planea tu visita</h2><p>Revisa la ubicación, el horario vigente y nuestros canales de contacto.</p><a href="/visitanos">Ver información →</a></article>
+    <article><span>01</span><h2>Algo para cada antojo</h2><p>Explora el menú vigente, sus precios y la disponibilidad de cada opción.</p><a href="/menu">Explorar el menú →</a></article>
+    <article><span>02</span><h2>Planea tu visita</h2><p>Consulta la ubicación, los horarios y los medios de contacto antes de venir.</p><a href="/visitanos">Ver cómo llegar →</a></article>
     @if (Presentation.MembershipProgramName is not null)
     {
-      <article><span>03</span><h2>Tus visitas suman</h2><p>Conoce @MembershipName y las reglas vigentes para acumular puntos en compras elegibles.</p><a href="/membresia">Cómo funciona →</a></article>
+      <article><span>03</span><h2>Tus visitas suman</h2><p>Regístrate en @MembershipName, identifícate antes de pagar y acumula puntos en compras elegibles.</p><a href="/membresia">Cómo funciona →</a></article>
     }
   </section>
 
@@ -71,15 +95,16 @@ else
       @foreach (var product in featuredProducts)
       {
         <article>
-          @if (product.HasImage) { <img src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" /> }
-          <div><small>@product.Sku</small><h3>@product.Name</h3><p>@product.Description</p><strong>@product.Price.ToString("C0")</strong></div>
+          @if (product.HasImage) { <img src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" loading="lazy" decoding="async" /> }
+          <div><h3>@product.Name</h3><p>@product.Description</p><strong>@product.Price.ToString("C0")</strong></div>
         </article>
       }
     </div>
+    <div class="featured__more"><a class="button button--ghost" href="/menu">Ver el menú completo</a></div>
   </section>
 
   <section class="order-preview">
-    <div><span>Próximamente</span><h2>Ordena como te convenga</h2><p>Estamos preparando pedidos en línea para recolección y entrega. Mientras tanto, visítanos para disfrutar el menú completo.</p></div>
+    <div><span>Próximamente</span><h2>Ordena como te convenga</h2><p>Estamos preparando pedidos en línea para recolección y entrega. Mientras tanto, visítanos en el jardín para disfrutar el menú completo.</p></div>
     <div class="order-preview__steps"><span><b>1</b> Confirma ubicación</span><span><b>2</b> Elige recolección o entrega</span><span><b>3</b> Arma y paga tu orden</span></div>
   </section>
 }
@@ -89,8 +114,23 @@ else
   private List<RestaurantProductDto> featuredProducts = [];
   private bool membershipEnabled;
   private string timeZoneId = "UTC";
-  private string MembershipName => Presentation.MembershipProgramName ?? "la membresía";
+  private string MembershipName => Presentation.MembershipProgramName ?? "Membresía";
   private string TodayHours => RestaurantOpeningHours.Today(settings?.OpeningHoursJson, timeZoneId, DateTimeOffset.UtcNow);
+  private bool? IsOpenNow => RestaurantOpeningHours.IsOpen(
+    settings?.OpeningHoursJson,
+    timeZoneId,
+    DateTimeOffset.UtcNow);
+  private string OpenStateLabel => IsOpenNow switch
+  {
+    true => "Abierto ahora",
+    false => "Cerrado ahora",
+    null => "Consulta el horario"
+  };
+  private IEnumerable<string> TickerWords =>
+  [
+    "Recién preparado", "Para compartir", "Bebidas", "Promociones",
+    "Buenos momentos", Presentation.Tagline, Presentation.LocationName
+  ];
 
   protected override async Task OnInitializedAsync()
   {
@@ -106,7 +146,8 @@ else
       }
 
       settings = catalog.Settings;
-      membershipEnabled = catalog.Settings.IsMembershipEnabled;
+      membershipEnabled = Presentation.MembershipProgramName is not null
+        && catalog.Settings.IsMembershipEnabled;
       featuredProducts = catalog.Menu.Sections
         .SelectMany(section => section.Products)
         .Where(product => !product.IsSoldOut)
@@ -119,4 +160,5 @@ else
       membershipEnabled = false;
     }
   }
+
 }

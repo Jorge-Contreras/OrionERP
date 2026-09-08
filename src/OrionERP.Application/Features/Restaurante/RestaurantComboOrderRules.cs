@@ -28,7 +28,8 @@ public sealed record RestaurantModifierSnapshotInput(
   string GroupName,
   string OptionName,
   decimal PriceDelta,
-  IReadOnlyList<RestaurantModifierEffectSnapshotInput> Effects);
+  IReadOnlyList<RestaurantModifierEffectSnapshotInput> Effects,
+  int Quantity = 1);
 
 public static class RestaurantComboOrderRules
 {
@@ -126,6 +127,7 @@ public static class RestaurantComboOrderRules
           GroupName = modifier.GroupName,
           Name = modifier.OptionName,
           PriceDelta = modifier.PriceDelta,
+          Quantity = modifier.Quantity,
           EffectKind = RestaurantModifierEffectKinds.AdjustQuantity
         }
       ];
@@ -136,6 +138,7 @@ public static class RestaurantComboOrderRules
       GroupName = modifier.GroupName,
       Name = effect.Name,
       PriceDelta = index == 0 ? modifier.PriceDelta : 0,
+      Quantity = modifier.Quantity,
       EffectKind = RestaurantModifierEffectKinds.Normalize(effect.EffectKind)
     }).ToList();
   }
@@ -143,11 +146,15 @@ public static class RestaurantComboOrderRules
   public static string FormatModifierInstruction(RestaurantOrderLineModifierDto modifier)
   {
     ArgumentNullException.ThrowIfNull(modifier);
-    return modifier.EffectKind switch
+    var instruction = modifier.EffectKind switch
     {
       RestaurantModifierEffectKinds.RemoveIngredient => $"SIN {modifier.Name}",
       RestaurantModifierEffectKinds.AddQuantity => $"AGREGAR {modifier.Name}",
       _ => modifier.Name
     };
+    // "Sin cebolla" no se multiplica por más que se haya pedido dos veces la misma opción.
+    return modifier.Quantity > 1 && modifier.EffectKind != RestaurantModifierEffectKinds.RemoveIngredient
+      ? $"{modifier.Quantity}× {instruction}"
+      : instruction;
   }
 }

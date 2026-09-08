@@ -29,7 +29,6 @@ public sealed class SatMassiveClient : ISatMassiveService
     private const string SoapNs = "http://schemas.xmlsoap.org/soap/envelope/";
     private const string WsseNs = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd";
     private const string WsuNs = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd";
-    private const string DsNs = "http://www.w3.org/2000/09/xmldsig#";
     private const string SatNs = "http://DescargaMasivaTerceros.gob.mx";
     private const string X509V3ValueType = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3";
     private const string Base64Encoding = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary";
@@ -45,13 +44,13 @@ public sealed class SatMassiveClient : ISatMassiveService
         // 4) Parse token from response into _token
 
         var soapXml = BuildAuthEnvelope(cert);
-        var req = new HttpRequestMessage(HttpMethod.Post, AuthUrl)
+        using var req = new HttpRequestMessage(HttpMethod.Post, AuthUrl)
         {
             Content = new StringContent(soapXml, Encoding.UTF8, "text/xml")
         };
         req.Headers.Add("SOAPAction", "http://DescargaMasivaTerceros.gob.mx/IAutenticacion/Autentica");
 
-        var resp = await _http.SendAsync(req, ct);
+        using var resp = await _http.SendAsync(req, ct);
         var xml = await resp.Content.ReadAsStringAsync(ct);
         resp.EnsureSuccessStatusCode();
         _cert = cert;
@@ -72,14 +71,14 @@ public sealed class SatMassiveClient : ISatMassiveService
             ? "http://DescargaMasivaTerceros.sat.gob.mx/ISolicitaDescargaService/SolicitaDescargaEmitidos"
             : "http://DescargaMasivaTerceros.sat.gob.mx/ISolicitaDescargaService/SolicitaDescargaRecibidos";
 
-        var req = new HttpRequestMessage(HttpMethod.Post, RequestUrl)
+        using var req = new HttpRequestMessage(HttpMethod.Post, RequestUrl)
         {
             Content = new StringContent(envelope, Encoding.UTF8, "text/xml")
         };
         req.Headers.Add("SOAPAction", action);
         req.Headers.TryAddWithoutValidation("Authorization", $@"WRAP access_token=""{_token}""");
 
-        var resp = await _http.SendAsync(req, ct);
+        using var resp = await _http.SendAsync(req, ct);
         var xml = await resp.Content.ReadAsStringAsync(ct);
         resp.EnsureSuccessStatusCode();
 
@@ -91,14 +90,14 @@ public sealed class SatMassiveClient : ISatMassiveService
         EnsureToken();
         var envelope = BuildVerifyEnvelope(idSolicitud, rfcSolicitante);
 
-        var req = new HttpRequestMessage(HttpMethod.Post, VerifyUrl)
+        using var req = new HttpRequestMessage(HttpMethod.Post, VerifyUrl)
         {
             Content = new StringContent(envelope, Encoding.UTF8, "text/xml")
         };
         req.Headers.Add("SOAPAction", "http://DescargaMasivaTerceros.sat.gob.mx/IVerificaSolicitudDescargaService/VerificaSolicitudDescarga");
         req.Headers.TryAddWithoutValidation("Authorization", $@"WRAP access_token=""{_token}""");
 
-        var resp = await _http.SendAsync(req, ct);
+        using var resp = await _http.SendAsync(req, ct);
         var xml = await resp.Content.ReadAsStringAsync(ct);
         resp.EnsureSuccessStatusCode();
 
@@ -111,14 +110,14 @@ public sealed class SatMassiveClient : ISatMassiveService
         EnsureToken();
         var envelope = BuildDownloadEnvelope(idPaquete, rfcSolicitante); // signature inside
 
-        var req = new HttpRequestMessage(HttpMethod.Post, DownloadUrl)
+        using var req = new HttpRequestMessage(HttpMethod.Post, DownloadUrl)
         {
             Content = new StringContent(envelope, Encoding.UTF8, "text/xml")
         };
         req.Headers.Add("SOAPAction", "http://DescargaMasivaTerceros.sat.gob.mx/IDescargaMasivaTercerosService/Descargar");
         req.Headers.TryAddWithoutValidation("Authorization", $@"WRAP access_token=""{_token}""");
 
-        var resp = await _http.SendAsync(req, ct);
+        using var resp = await _http.SendAsync(req, ct);
         var xml = await resp.Content.ReadAsStringAsync(ct);
         resp.EnsureSuccessStatusCode();
 

@@ -1,0 +1,102 @@
+@using Microsoft.AspNetCore.Components.Forms
+@using OrionERP.Application.Features.ReportesFinancieros.Models
+
+@*
+    Importacion de acuses del SAT.
+
+    Nada se guarda hasta que se ve el detalle de lo leido: un acuse mal
+    interpretado contaminaria el historial con el que se decide presentar
+    complementarias, y ese historial es justo lo que esta pantalla existe para
+    hacer confiable.
+
+    Un acuse de cualquier mes trae las tablas de periodos anteriores del
+    ejercicio, asi que cargar el mas reciente reconstruye el ano completo -pero
+    solo con ingresos nominales, ISR a cargo y numero de operacion. Esos
+    renglones se marcan "parcial" y el acuse propio de cada mes los completa
+    despues sin pisar lo que ya se sabia.
+*@
+
+<div class="border rounded p-3 mb-3 no-print">
+    <h3 class="report-panel__title">Importar acuses del SAT</h3>
+    <p class="report-panel__subtitle">
+        Selecciona uno o varios PDF de declaración. Se leen sin guardar nada; primero verás qué
+        entendió el sistema.
+    </p>
+
+    <InputFile OnChange="OnArchivos" multiple accept=".pdf" class="form-control" disabled="@Ocupado" />
+
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <div class="alert alert-warning mt-3 mb-0">@Error</div>
+    }
+
+    @if (Previsualizadas.Count > 0)
+    {
+        <div class="table-responsive report-table-shell mt-3">
+            <table class="table table-sm table-bordered compact-table report-table">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Archivo</th>
+                        <th scope="col">RFC</th>
+                        <th scope="col">Periodo</th>
+                        <th scope="col">Tipo</th>
+                        <th scope="col">Operación</th>
+                        <th scope="col" class="num">Ingresos</th>
+                        <th scope="col" class="num">ISR a cargo</th>
+                        <th scope="col" class="num">IVA a cargo</th>
+                        <th scope="col" class="num">IVA acred.</th>
+                        <th scope="col" class="num">Meses previos</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var doc in Previsualizadas)
+                    {
+                        <tr class="@(doc.EsValida ? null : "is-bad")">
+                            <td>@doc.ArchivoNombre</td>
+                            <td>@doc.Rfc</td>
+                            <td>@(doc.EsValida ? $"{doc.Periodo:00}/{doc.Ejercicio}" : "—")</td>
+                            <td>@(doc.TipoDeclaracion == "C" ? $"Complementaria {doc.NumeroComplementaria}" : "Normal")</td>
+                            <td>@doc.NumeroOperacion</td>
+                            <td class="num">@Campo(doc, "IngresosNominalesPeriodo")</td>
+                            <td class="num">@Campo(doc, "IsrACargo")</td>
+                            <td class="num">@Campo(doc, "TotalIvaACargo")</td>
+                            <td class="num">@Campo(doc, "TotalIvaAcreditable")</td>
+                            <td class="num">@doc.Anteriores.Count</td>
+                        </tr>
+
+                        @if (!doc.EsValida)
+                        {
+                            <tr class="is-bad">
+                                <td colspan="10" class="small">@doc.Error</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <button type="button" class="btn btn-primary me-2" disabled="@Ocupado" @onclick="OnConfirmar">
+            <i class="bi bi-save"></i> Guardar
+        </button>
+        <button type="button" class="btn btn-outline-secondary" disabled="@Ocupado" @onclick="OnDescartar">
+            Descartar
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<DeclaracionImportada> Previsualizadas { get; set; } = [];
+    [Parameter] public bool Ocupado { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public EventCallback<InputFileChangeEventArgs> OnArchivos { get; set; }
+    [Parameter] public EventCallback OnConfirmar { get; set; }
+    [Parameter] public EventCallback OnDescartar { get; set; }
+
+    private static readonly System.Globalization.CultureInfo Mx =
+        System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+
+    private static string Campo(DeclaracionImportada doc, string nombre) =>
+        doc.Campos.TryGetValue(nombre, out var valor) && valor is not null
+            ? valor.Value.ToString("N2", Mx)
+            : "—";
+}

@@ -4,15 +4,25 @@ public interface IWorkforceConfigurationService
 {
   Task<WorkforceSetupSnapshotDto> GetSetupAsync(string rfc, CancellationToken ct = default);
   Task<WorkforceCommandResult> SaveSiteAsync(WorkSiteSaveRequest request, CancellationToken ct = default);
+  Task<WorkforceCommandResult> DeleteSiteAsync(int siteId, string rfc, CancellationToken ct = default);
   Task<WorkforceCommandResult> SaveScheduleAsync(ScheduleTemplateSaveRequest request, CancellationToken ct = default);
+  Task<WorkforceCommandResult> DeleteScheduleAsync(int scheduleTemplateId, string rfc, CancellationToken ct = default);
   Task<WorkforceCommandResult> SavePolicyAsync(AttendancePolicySaveRequest request, CancellationToken ct = default);
+  Task<WorkforceCommandResult> ApprovePolicyAsync(int policyId, string rfc, CancellationToken ct = default);
   Task<WorkforceCommandResult> SavePayGroupAsync(PayGroupSaveRequest request, CancellationToken ct = default);
+  Task<WorkforceCommandResult> DeletePayGroupAsync(int payGroupId, string rfc, CancellationToken ct = default);
   Task<WorkforceCommandResult> SaveWorkAssignmentAsync(EmployeeWorkAssignmentSaveRequest request, CancellationToken ct = default);
+  Task<WorkforceCommandResult> DeleteWorkAssignmentAsync(int assignmentId, string rfc, CancellationToken ct = default);
   Task<WorkforceCommandResult> SaveSupervisorAssignmentAsync(SupervisorAssignmentSaveRequest request, CancellationToken ct = default);
+  Task<WorkforceCommandResult> DeleteSupervisorAssignmentAsync(int assignmentId, string rfc, CancellationToken ct = default);
   Task<WorkforceCommandResult> SaveHolidayAsync(HolidaySaveRequest request, CancellationToken ct = default);
+  Task<WorkforceCommandResult> DeleteHolidayAsync(int holidayId, string rfc, CancellationToken ct = default);
   Task<WorkforceCommandResult> SavePrivacyNoticeAsync(PrivacyNoticeSaveRequest request, CancellationToken ct = default);
   Task<KioskPairingCodeDto> CreateKioskPairingCodeAsync(KioskPairingCreateRequest request, CancellationToken ct = default);
+  Task<WorkforceCommandResult> SaveKioskDeviceAsync(KioskDeviceSaveRequest request, CancellationToken ct = default);
+  Task<WorkforceCommandResult> DeleteKioskDeviceAsync(int deviceId, string rfc, CancellationToken ct = default);
   Task<KioskCredentialResult> CreateKioskCredentialAsync(KioskCredentialCreateRequest request, CancellationToken ct = default);
+  Task<WorkforceCommandResult> RevokeKioskCredentialAsync(int employeeId, string rfc, CancellationToken ct = default);
 }
 
 public interface IAttendanceService

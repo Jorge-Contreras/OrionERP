@@ -1,9 +1,32 @@
+/*
+  Capital Humano - asistencia, ausencias y pre-nomina (MVP workforce).
+
+  Ejecutar con SQLCMD variables:
+    ExpectedDatabase = Orion_Sandbox | grupocarpio
+    ApplyChanges     = 0 | 1
+
+  El modo ApplyChanges=0 ejecuta todas las validaciones y revierte la transaccion.
+
+  Idempotente: cada objeto esta protegido por su propia guarda, asi que volver a
+  correrlo sobre una base que ya lo tiene no cambia nada. Los eventos de
+  rh.TimeEvent y los snapshots de pre-nomina nunca se actualizan ni se borran
+  aqui; las correcciones se registran como eventos nuevos.
+*/
 SET ANSI_NULLS ON;
 GO
 SET QUOTED_IDENTIFIER ON;
 GO
 SET XACT_ABORT ON;
 GO
+
+DECLARE @ExpectedDatabase sysname = N'$(ExpectedDatabase)';
+DECLARE @ApplyChanges bit = TRY_CONVERT(bit, N'$(ApplyChanges)');
+
+IF @ApplyChanges IS NULL
+  THROW 51000, 'ApplyChanges debe ser 0 o 1.', 1;
+
+IF DB_NAME() <> @ExpectedDatabase
+  THROW 51001, 'La base conectada no coincide con ExpectedDatabase.', 1;
 
 BEGIN TRANSACTION;
 
@@ -805,5 +828,22 @@ VALUES
   (source.Rfc,source.LeaveTypeId,'MX-VACACIONES',N'Vacaciones legales Mexico',CONVERT(date,'20260101'),
    'MEXICO_STATUTORY',1,1,N'Migracion workforce MVP - requiere validacion RH');
 
-COMMIT TRANSACTION;
+IF OBJECT_ID(N'rh.TimeEvent', N'U') IS NULL
+   OR OBJECT_ID(N'rh.AttendanceDay', N'U') IS NULL
+   OR OBJECT_ID(N'rh.PrenominaPeriod', N'U') IS NULL
+   OR OBJECT_ID(N'rh.PrenominaSnapshotLine', N'U') IS NULL
+   OR OBJECT_ID(N'rh.KioskDevice', N'U') IS NULL
+   OR OBJECT_ID(N'rh.PrivacyNotice', N'U') IS NULL
+  THROW 51002, 'La validacion del esquema de Capital Humano no fue satisfactoria.', 1;
+
+IF @ApplyChanges = 1
+BEGIN
+  COMMIT TRANSACTION;
+  SELECT N'APLICADO' AS Estado, DB_NAME() AS BaseDatos;
+END
+ELSE
+BEGIN
+  ROLLBACK TRANSACTION;
+  SELECT N'VALIDADO_SIN_CAMBIOS' AS Estado, DB_NAME() AS BaseDatos;
+END;
 GO

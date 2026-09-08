@@ -98,6 +98,7 @@ public sealed class HospitalityWebsiteDefinition
   private readonly IReadOnlyDictionary<string, HospitalityRoomPresentation> _roomsByAlias;
 
   internal HospitalityWebsiteDefinition(
+    PublicWebsitePresentationDefinition presentation,
     string reservationSourceLabel,
     string accountingAccount,
     string pdfFilePrefix,
@@ -117,6 +118,7 @@ public sealed class HospitalityWebsiteDefinition
     IReadOnlyList<HospitalityRoomPresentation> rooms,
     IReadOnlyDictionary<string, HospitalityRoomPresentation> roomsByAlias)
   {
+    Presentation = presentation;
     ReservationSourceLabel = reservationSourceLabel;
     AccountingAccount = accountingAccount;
     PdfFilePrefix = pdfFilePrefix;
@@ -137,6 +139,7 @@ public sealed class HospitalityWebsiteDefinition
     _roomsByAlias = roomsByAlias;
   }
 
+  public PublicWebsitePresentationDefinition Presentation { get; }
   public string ReservationSourceLabel { get; }
   public string AccountingAccount { get; }
   public string PdfFilePrefix { get; }
@@ -187,6 +190,7 @@ public static class HospitalityWebsitePolicy
     var rooms = NormalizeRooms(options.Rooms, presentation, out var roomsByAlias);
 
     return new HospitalityWebsiteDefinition(
+      presentation,
       RequiredText(options.ReservationSourceLabel, nameof(options.ReservationSourceLabel), 100),
       RequiredText(options.AccountingAccount, nameof(options.AccountingAccount), 200),
       NormalizeSlug(options.PdfFilePrefix, nameof(options.PdfFilePrefix)),

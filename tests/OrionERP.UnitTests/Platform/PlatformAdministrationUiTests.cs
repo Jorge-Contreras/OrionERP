@@ -18,6 +18,7 @@ public sealed class PlatformAdministrationUiTests
     Assert.Contains("Confirmar reversión después de restaurar release", source, StringComparison.Ordinal);
     Assert.Contains("Finalizar activación", source, StringComparison.Ordinal);
     Assert.Contains("IsPresentationRollbackAvailable", source, StringComparison.Ordinal);
+    Assert.Contains("primero desactiva y guarda el website", source, StringComparison.Ordinal);
   }
 
   [Fact]

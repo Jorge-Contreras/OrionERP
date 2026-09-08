@@ -180,7 +180,19 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
         "invalid_legal_acceptance",
         "La aceptacion legal no tiene un sello de tiempo valido.");
     }
-    var legalAcceptedAtUtc = legalAcceptance.AcceptedAtUtc.UtcDateTime;
+
+    // Do not rely solely on the HTTP endpoint to issue this value. Other
+    // callers of the application service must also prove that the customer
+    // accepted the legal documents served by this website process.
+    var currentLegalAcceptance = BonhomiaLegalConsentPolicy.EnsureAccepted(
+      accepted: true,
+      acceptedPrivacyVersion,
+      acceptedTermsVersion,
+      _website.Presentation,
+      legalAcceptance.AcceptedAtUtc);
+    acceptedPrivacyVersion = currentLegalAcceptance.PrivacyVersion;
+    acceptedTermsVersion = currentLegalAcceptance.TermsVersion;
+    var legalAcceptedAtUtc = currentLegalAcceptance.AcceptedAtUtc.UtcDateTime;
 
     var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
     HospitalityWebsiteScopePolicy.EnsureQuoteBelongsToScope(quote, scope);

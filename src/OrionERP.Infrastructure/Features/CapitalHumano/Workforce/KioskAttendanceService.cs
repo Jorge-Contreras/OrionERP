@@ -42,6 +42,7 @@ public sealed class KioskAttendanceService : IKioskAttendanceService
       return Failure("El codigo expiro o ya fue utilizado.");
     }
 
+    await WorkforceServiceBase.PinRfcScopeAsync(connection, transaction, device.Rfc, ct);
     var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     await connection.ExecuteAsync(new CommandDefinition(
       """
@@ -83,6 +84,7 @@ public sealed class KioskAttendanceService : IKioskAttendanceService
         return PunchFailure("Este dispositivo no esta vinculado o fue desactivado.");
       }
 
+      await WorkforceServiceBase.PinRfcScopeAsync(connection, transaction, device.Rfc, ct);
       credential = await connection.QuerySingleOrDefaultAsync<CredentialRow>(new CommandDefinition(
         """
         SELECT Id,EmployeeId,PinHash,FailedAttempts,LockedUntilUtc

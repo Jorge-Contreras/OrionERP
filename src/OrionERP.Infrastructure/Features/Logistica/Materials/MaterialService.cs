@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using System.Data.Common;
 using System.Text;
 using Dapper;
@@ -187,6 +187,13 @@ public sealed class MaterialService : IMaterialService
         : " AND ISNULL(st.TotalQuantity, 0) <= 0");
     }
 
+    if (filter.HasLocation.HasValue)
+    {
+      sql.AppendLine(filter.HasLocation.Value
+        ? " AND ISNULL(st.LocationCount, 0) > 0"
+        : " AND ISNULL(st.LocationCount, 0) = 0");
+    }
+
     if (filter.NeedsAttention)
     {
       sql.AppendLine(
@@ -235,6 +242,7 @@ public sealed class MaterialService : IMaterialService
           m.BaseUnitId,
           baseU.UnitName AS BaseUnitName,
           CAST(m.PurchaseQuantity AS decimal(18,4)) AS PurchaseQuantity,
+          CAST(m.PurchaseIncrement AS decimal(18,4)) AS PurchaseIncrement,
           m.PurchaseUnitId,
           purchaseU.UnitName AS PurchaseUnitName,
           CAST(m.BaseUnitPrice AS decimal(18,6)) AS BaseUnitPrice,
@@ -276,6 +284,7 @@ public sealed class MaterialService : IMaterialService
           CAST(mv.PurchaseQuantity AS decimal(18,4)) AS PurchaseQuantity,
           mv.PurchaseUnitId,
           purchaseU.UnitName AS PurchaseUnitName,
+          CAST(mv.PurchaseIncrement AS decimal(18,4)) AS PurchaseIncrement,
           mv.PurchaseLink,
           CAST(mv.LastUnitPrice AS decimal(18,6)) AS LastUnitPrice,
           mv.LastPurchaseDate,
@@ -1045,6 +1054,7 @@ public sealed class MaterialService : IMaterialService
           SET [Description] = @Description,
               BaseUnitId = @BaseUnitId,
               PurchaseQuantity = @PurchaseQuantity,
+              PurchaseIncrement = @PurchaseIncrement,
               PurchaseUnitId = @PurchaseUnitId,
               BaseUnitPrice = @BaseUnitPrice,
               UpdatedDate = CONVERT(date, SYSUTCDATETIME()),
@@ -1098,6 +1108,7 @@ public sealed class MaterialService : IMaterialService
               Description = description,
               request.BaseUnitId,
               request.PurchaseQuantity,
+              PurchaseIncrement = MaterialPurchaseIncrement.Normalize(request.PurchaseIncrement),
               request.PurchaseUnitId,
               BaseUnitPrice = baseUnitPrice,
               Brand = NullIfWhiteSpace(request.Brand),
@@ -1151,6 +1162,7 @@ public sealed class MaterialService : IMaterialService
               [Description],
               BaseUnitId,
               PurchaseQuantity,
+              PurchaseIncrement,
               PurchaseUnitId,
               BaseUnitPrice,
               CreatedDate,
@@ -1182,6 +1194,7 @@ public sealed class MaterialService : IMaterialService
               @Description,
               @BaseUnitId,
               @PurchaseQuantity,
+              @PurchaseIncrement,
               @PurchaseUnitId,
               @BaseUnitPrice,
               CONVERT(date, SYSUTCDATETIME()),
@@ -1219,6 +1232,7 @@ public sealed class MaterialService : IMaterialService
               Rfc = rfc,
               request.BaseUnitId,
               request.PurchaseQuantity,
+              PurchaseIncrement = MaterialPurchaseIncrement.Normalize(request.PurchaseIncrement),
               request.PurchaseUnitId,
               BaseUnitPrice = baseUnitPrice,
               Brand = NullIfWhiteSpace(request.Brand),
@@ -1392,15 +1406,16 @@ public sealed class MaterialService : IMaterialService
           VendorCode = @VendorCode,
           PurchaseQuantity = @PurchaseQuantity,
           PurchaseUnitId = @PurchaseUnitId,
+          PurchaseIncrement = @PurchaseIncrement,
           PurchaseLink = @PurchaseLink,
           LastUnitPrice = @LastUnitPrice,
           Notes = @Notes,
           UpdatedAt = SYSUTCDATETIME()
       WHEN NOT MATCHED THEN
         INSERT (Rfc, MaterialId, BusinessPartnerId, IsPrimary, IsActive,
-                VendorCode, PurchaseQuantity, PurchaseUnitId, PurchaseLink, LastUnitPrice, Notes)
+                VendorCode, PurchaseQuantity, PurchaseUnitId, PurchaseIncrement, PurchaseLink, LastUnitPrice, Notes)
         VALUES (@Rfc, @MaterialId, @BusinessPartnerId, 0, @IsActive,
-                @VendorCode, @PurchaseQuantity, @PurchaseUnitId, @PurchaseLink, @LastUnitPrice, @Notes);
+                @VendorCode, @PurchaseQuantity, @PurchaseUnitId, @PurchaseIncrement, @PurchaseLink, @LastUnitPrice, @Notes);
       """;
 
     foreach (var link in links)
@@ -1416,6 +1431,7 @@ public sealed class MaterialService : IMaterialService
           VendorCode = NullIfWhiteSpace(link.VendorCode),
           PurchaseQuantity = link.PurchaseQuantity > 0 ? link.PurchaseQuantity : null,
           link.PurchaseUnitId,
+          PurchaseIncrement = link.PurchaseIncrement >= 0 ? link.PurchaseIncrement : null,
           PurchaseLink = NullIfWhiteSpace(link.PurchaseLink),
           link.LastUnitPrice,
           Notes = NullIfWhiteSpace(link.Notes)

@@ -43,7 +43,7 @@ public static class MaterialProductionRoles
       RequiresRecipe: false, KeepsOwnStock: true, IsProducible: false),
 
     new(BatchSubProduct,
-      "Subproducto por lote",
+      "Subproducto por tanda",
       "Semielaborado que se produce en tanda y vive en inventario con su propia unidad. Las recetas que lo usan descuentan ese inventario.",
       "SemiFinished", "MakeToStock",
       RequiresRecipe: true, KeepsOwnStock: true, IsProducible: true),
@@ -61,7 +61,7 @@ public static class MaterialProductionRoles
       RequiresRecipe: true, KeepsOwnStock: false, IsProducible: false),
 
     new(BatchFinishedGood,
-      "Producto terminado por lote",
+      "Producto terminado por tanda",
       "Se produce en tanda y se vende del inventario resultante, como pan o postres.",
       "FinishedGood", "MakeToStock",
       RequiresRecipe: true, KeepsOwnStock: true, IsProducible: true)

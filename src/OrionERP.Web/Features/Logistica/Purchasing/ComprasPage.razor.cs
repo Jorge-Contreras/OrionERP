@@ -15,6 +15,7 @@ namespace OrionERP.Web.Features.Logistica.Purchasing;
 public partial class ComprasPage : ComponentBase
 {
   private const int MaterialSearchTake = 25;
+  private const int VendorMaterialSearchTake = 100;
 
   [Inject] private IPurchaseOrderService PurchaseOrderService { get; set; } = default!;
   [Inject] private IMaterialService MaterialService { get; set; } = default!;
@@ -22,6 +23,7 @@ public partial class ComprasPage : ComponentBase
   [Inject] private IPurchaseOrderPdfService PurchaseOrderPdfService { get; set; } = default!;
   [Inject] private IPurchaseOrderPdfDocumentFactory PurchaseOrderPdfDocumentFactory { get; set; } = default!;
   [Inject] private IUiMessageService UiMessages { get; set; } = default!;
+  [Inject] private IOperationErrorPresenter Errors { get; set; } = default!;
   [Inject] private IJSRuntime Js { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
   [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
@@ -61,10 +63,29 @@ public partial class ComprasPage : ComponentBase
   protected bool IsDraftMode => SelectedPurchaseOrder is null || string.Equals(SelectedPurchaseOrder.Status, PurchaseOrderStatuses.Draft, StringComparison.OrdinalIgnoreCase);
   protected bool CanEditVendor => IsDraftMode && Lines.Count == 0;
   /// <summary>
-  /// La búsqueda recorre todo el catálogo: cuando el proveedor habitual no tiene el producto hay
-  /// que poder comprarlo con otro sin reasignar el material.
+  /// La búsqueda arranca acotada a lo que surte el proveedor de la orden. Abrir el catálogo
+  /// completo sigue disponible porque cuando el proveedor habitual no tiene el producto hay que
+  /// poder comprarlo con otro sin reasignar el material, pero es una decisión del usuario.
   /// </summary>
   protected bool CanSearchMaterials => IsDraftMode;
+
+  /// <summary>Sin proveedor no hay catálogo que acotar: la búsqueda recorre todo el inventario.</summary>
+  protected bool HasVendorSelected => Editor.BusinessPartnerId > 0;
+
+  /// <summary>Lo enciende el usuario cuando el proveedor no surte lo que necesita comprar.</summary>
+  protected bool SearchOutsideVendorCatalog { get; set; }
+
+  /// <summary>Alcance con el que saldría la próxima búsqueda.</summary>
+  protected bool IsVendorScopedSearch => HasVendorSelected && !SearchOutsideVendorCatalog;
+
+  /// <summary>Alcance con el que se trajo <see cref="MaterialSearchResults"/>.</summary>
+  protected bool LastSearchWasVendorScoped { get; private set; }
+
+  /// <summary>La búsqueda llenó el tope de renglones: quedaron materiales fuera de la lista.</summary>
+  protected bool MaterialSearchHitLimit { get; private set; }
+
+  /// <summary>Tope de renglones que aplicó la última búsqueda.</summary>
+  protected int MaterialSearchLimit { get; private set; } = MaterialSearchTake;
 
   /// <summary>Materiales agregados a la orden que este proveedor no surte de costumbre.</summary>
   protected List<string> UnlinkedMaterialNames { get; } = [];
@@ -85,8 +106,7 @@ public partial class ComprasPage : ComponentBase
     && ReceiveItems.Any(item => item.ReceiveNowQuantity > 0m)
     && ReceiveItems
       .Where(item => item.ReceiveNowQuantity > 0m)
-      .All(item => item.TotalAmount.GetValueOrDefault() > 0m
-        && (!item.RequiresLot || (!string.IsNullOrWhiteSpace(item.LotCode) && item.ExpiresAt.HasValue)));
+      .All(item => item.TotalAmount.GetValueOrDefault() > 0m);
   protected bool CanComplete => SelectedPurchaseOrder is not null
     && string.Equals(SelectedPurchaseOrder.Status, PurchaseOrderStatuses.PartiallyReceived, StringComparison.OrdinalIgnoreCase)
     && !IsMutating;
@@ -107,9 +127,6 @@ public partial class ComprasPage : ComponentBase
   protected int CurrentPendingAllocationCount => Lines.Sum(line => line.Allocations.Count(allocation => allocation.RemainingQuantity > 0m));
   protected int ReceiptCapturedItemCount => ReceiveItems.Count(item => item.ReceiveNowQuantity > 0m);
   protected int ReceiptMissingAmountCount => ReceiveItems.Count(item => item.ReceiveNowQuantity > 0m && item.TotalAmount.GetValueOrDefault() <= 0m);
-  protected int ReceiptMissingLotCount => ReceiveItems.Count(item => item.ReceiveNowQuantity > 0m
-    && item.RequiresLot
-    && (string.IsNullOrWhiteSpace(item.LotCode) || !item.ExpiresAt.HasValue));
   protected PurchaseReceiptAmounts CurrentReceiptAmounts
   {
     get
@@ -194,14 +211,12 @@ public partial class ComprasPage : ComponentBase
     ResetAutoPoRequest(GetPreferredVendorId());
     Lines = [];
     SelectedLine = null;
-    MaterialSearchText = string.Empty;
-    MaterialSearchResults = [];
+    ResetMaterialSearch();
     ReceiveItems = [];
     ReceiptDate = DateTime.Today;
     ReceiptNotes = null;
     PendingAllocationLocationId = 0;
     PendingAllocationQuantity = 1m;
-    HasExecutedMaterialSearch = false;
     MaterialThumbnailDataUrls = [];
     UnlinkedMaterialNames.Clear();
     LinkMaterialsToVendor = true;
@@ -249,6 +264,7 @@ public partial class ComprasPage : ComponentBase
           BaseUnitName = line.BaseUnitName,
           PurchaseQuantity = NormalizePurchaseQuantity(line.PurchaseQuantity),
           PurchaseUnitName = line.PurchaseUnitName,
+          PurchaseIncrement = MaterialPurchaseIncrement.Normalize(line.PurchaseIncrement),
           BaseUnitPrice = line.BaseUnitPrice,
           ReceivedQuantity = line.ReceivedQuantity,
           Allocations = line.Allocations
@@ -283,7 +299,6 @@ public partial class ComprasPage : ComponentBase
             PurchaseQuantity = NormalizePurchaseQuantity(line.PurchaseQuantity),
             PurchaseUnitName = line.PurchaseUnitName,
             BaseUnitPrice = line.BaseUnitPrice,
-            RequiresLot = line.RequiresLot,
             LocationId = allocation.LocationId,
             LocationName = allocation.LocationName,
             LocationCode = allocation.LocationCode,
@@ -297,9 +312,7 @@ public partial class ComprasPage : ComponentBase
 
       ReceiptDate = DateTime.Today;
       ReceiptNotes = null;
-      MaterialSearchResults = [];
-      MaterialSearchText = string.Empty;
-      HasExecutedMaterialSearch = false;
+      ResetMaterialSearch();
       PendingAllocationLocationId = 0;
       PendingAllocationQuantity = GetDefaultPendingAllocationBaseQuantity(SelectedLine);
       await RefreshThumbnailsAsync();
@@ -307,7 +320,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo cargar la orden de compra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar la orden de compra", new { purchaseOrderId }));
     }
     finally
     {
@@ -324,6 +337,11 @@ public partial class ComprasPage : ComponentBase
       return;
     }
 
+    // El alcance se congela al disparar la consulta: la lista y sus avisos tienen que describir
+    // lo que se trajo, no lo que el usuario alcance a cambiar después.
+    var vendorScoped = IsVendorScopedSearch;
+    var take = vendorScoped ? VendorMaterialSearchTake : MaterialSearchTake;
+
     IsSearchingMaterials = true;
     HasExecutedMaterialSearch = true;
     try
@@ -331,18 +349,23 @@ public partial class ComprasPage : ComponentBase
       MaterialSearchResults = (await MaterialService.GetMaterialsAsync(new MaterialFilter
       {
         Rfc = CurrentRfc,
-        HighlightVendorId = Editor.BusinessPartnerId > 0 ? Editor.BusinessPartnerId : null,
+        VendorId = vendorScoped ? Editor.BusinessPartnerId : null,
+        HighlightVendorId = HasVendorSelected ? Editor.BusinessPartnerId : null,
         SearchText = MaterialSearchText,
         Status = "ACTIVO",
         Skip = 0,
-        Take = MaterialSearchTake
+        Take = take
       })).ToList();
+
+      LastSearchWasVendorScoped = vendorScoped;
+      MaterialSearchLimit = take;
+      MaterialSearchHitLimit = MaterialSearchResults.Count >= take;
 
       await RefreshThumbnailsAsync();
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron cargar los materiales. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar los materiales", new { MaterialSearchText, Editor.BusinessPartnerId, vendorScoped }));
     }
     finally
     {
@@ -352,6 +375,51 @@ public partial class ComprasPage : ComponentBase
 
   protected Task OnMaterialSearchKeyUpAsync(KeyboardEventArgs args)
     => args.Key == "Enter" ? BuscarMaterialesAsync() : Task.CompletedTask;
+
+  /// <summary>Regresa la búsqueda al catálogo del proveedor de la orden.</summary>
+  protected Task BuscarSoloDelProveedorAsync()
+  {
+    SearchOutsideVendorCatalog = false;
+    return BuscarMaterialesAsync();
+  }
+
+  /// <summary>Abre la búsqueda a todo el catálogo cuando el proveedor no surte lo que se necesita.</summary>
+  protected Task BuscarEnTodoElCatalogoAsync()
+  {
+    SearchOutsideVendorCatalog = true;
+    return BuscarMaterialesAsync();
+  }
+
+  /// <summary>Cambiar de proveedor invalida la lista: era el catálogo del proveedor anterior.</summary>
+  protected void OnVendorChanged() => ResetMaterialSearch();
+
+  /// <summary>La caja de búsqueda entrega el id elegido; el editor guarda 0 cuando no hay proveedor.</summary>
+  protected Task OnEditorVendorSelectedAsync(int vendorId)
+  {
+    Editor.BusinessPartnerId = vendorId;
+    OnVendorChanged();
+
+    return Task.CompletedTask;
+  }
+
+  /// <summary>El filtro usa nulo para "todos"; la caja de búsqueda usa 0.</summary>
+  protected int FilterVendorId
+  {
+    get => Filter.VendorId ?? 0;
+    set => Filter.VendorId = value == 0 ? null : value;
+  }
+
+  /// <summary>Deja la búsqueda en su alcance de arranque: sólo lo que surte el proveedor.</summary>
+  private void ResetMaterialSearch()
+  {
+    MaterialSearchText = string.Empty;
+    MaterialSearchResults = [];
+    HasExecutedMaterialSearch = false;
+    SearchOutsideVendorCatalog = false;
+    LastSearchWasVendorScoped = false;
+    MaterialSearchHitLimit = false;
+    MaterialSearchLimit = MaterialSearchTake;
+  }
 
   protected async Task AgregarMaterialAsync(MaterialListItemDto item)
   {
@@ -388,6 +456,7 @@ public partial class ComprasPage : ComponentBase
         BaseUnitName = detail.BaseUnitName ?? item.BaseUnitName,
         PurchaseQuantity = NormalizePurchaseQuantity(vendorLink?.PurchaseQuantity ?? detail.PurchaseQuantity),
         PurchaseUnitName = vendorLink?.PurchaseUnitName ?? detail.PurchaseUnitName,
+        PurchaseIncrement = MaterialPurchaseIncrement.Normalize(vendorLink?.PurchaseIncrement ?? detail.PurchaseIncrement),
         BaseUnitPrice = vendorLink?.LastUnitPrice ?? detail.BaseUnitPrice,
         ReceivedQuantity = 0
       };
@@ -413,7 +482,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo agregar el material. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "agregar el material a la orden", new { MaterialId = item.Id, item.MaterialCode }));
     }
   }
 
@@ -486,7 +555,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo generar el Auto PO. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "generar la orden de compra automática", new { AutoPoRequest.BusinessPartnerId, RoomCount = AutoPoRequest.RoomIds?.Count ?? 0 }));
     }
     finally
     {
@@ -600,7 +669,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo guardar la orden de compra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "guardar la orden de compra", new { SelectedPurchaseOrder?.Id, Editor.BusinessPartnerId, LineCount = Lines.Count }));
     }
     finally
     {
@@ -631,7 +700,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo emitir la orden de compra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "emitir la orden de compra", new { SelectedPurchaseOrder?.Id }));
     }
     finally
     {
@@ -653,9 +722,7 @@ public partial class ComprasPage : ComponentBase
         PurchaseOrderLineAllocationId = item.AllocationId,
         Quantity = item.ReceiveNowQuantity,
         TotalAmount = item.TotalAmount.GetValueOrDefault(),
-        IncludesIva = item.IncludesIva,
-        LotCode = item.LotCode,
-        ExpiresAt = item.ExpiresAt
+        IncludesIva = item.IncludesIva
       })
       .ToList();
 
@@ -694,7 +761,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo registrar la recepción. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "registrar la recepción", new { SelectedPurchaseOrder?.Id, LineCount = lines.Count }));
     }
     finally
     {
@@ -775,7 +842,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo cerrar la orden de compra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cerrar la cantidad pendiente de la orden", new { SelectedPurchaseOrder?.Id }));
     }
     finally
     {
@@ -812,7 +879,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo cancelar la orden de compra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cancelar la orden de compra", new { SelectedPurchaseOrder?.Id }));
     }
     finally
     {
@@ -845,7 +912,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo generar el PDF de la orden de compra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "generar el PDF de la orden de compra", new { SelectedPurchaseOrder?.Id }));
     }
     finally
     {
@@ -983,63 +1050,21 @@ public partial class ComprasPage : ComponentBase
       item.PurchaseQuantity,
       item.PurchaseUnitName);
 
-  protected string FormatNumberInput(decimal value)
-    => value.ToString(CultureInfo.InvariantCulture);
-
-  protected void UpdatePendingAllocationDisplayQuantity(ChangeEventArgs args)
-    => SetPendingAllocationDisplayQuantity(ParseNumberInput(args, GetPendingAllocationDisplayQuantity()));
-
-  protected void UpdateAllocationDisplayQuantity(EditablePurchaseLine line, EditablePurchaseAllocation allocation, ChangeEventArgs args)
-    => SetAllocationDisplayQuantity(
-      line,
-      allocation,
-      ParseNumberInput(args, GetAllocationDisplayQuantity(line, allocation)));
-
-  protected void UpdateReceiveNowDisplayQuantity(ReceiveAllocationInput item, ChangeEventArgs args)
-    => SetReceiveNowDisplayQuantity(item, ParseNumberInput(args, GetReceiveNowDisplayQuantity(item)));
-
-  protected void UpdateReceiveTotalAmount(ReceiveAllocationInput item, ChangeEventArgs args)
-  {
-    var text = args.Value?.ToString();
-    item.TotalAmount = string.IsNullOrWhiteSpace(text)
-      ? null
-      : decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var invariantValue)
-        ? decimal.Round(invariantValue, 2, MidpointRounding.AwayFromZero)
-        : decimal.TryParse(text, NumberStyles.Number, CultureInfo.CurrentCulture, out var currentValue)
-          ? decimal.Round(currentValue, 2, MidpointRounding.AwayFromZero)
-          : item.TotalAmount;
-  }
-
-  protected void UpdateReceiveLotCode(ReceiveAllocationInput item, ChangeEventArgs args)
-    => item.LotCode = args.Value?.ToString();
-
-  protected void UpdateReceiveExpiration(ReceiveAllocationInput item, ChangeEventArgs args)
-  {
-    var text = args.Value?.ToString();
-    item.ExpiresAt = DateTime.TryParseExact(
-      text,
-      "yyyy-MM-dd",
-      CultureInfo.InvariantCulture,
-      DateTimeStyles.None,
-      out var expiration)
-      ? expiration
+  protected void UpdateReceiveTotalAmount(ReceiveAllocationInput item, decimal? amount)
+    => item.TotalAmount = amount.HasValue
+      ? decimal.Round(amount.Value, 2, MidpointRounding.AwayFromZero)
       : null;
-  }
-
-  protected string? FormatDateInput(DateTime? value)
-    => value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
   protected bool HasInvalidPurchaseMultiple(EditablePurchaseLine line)
-    => RequiresWholePurchaseMultiple(line.PurchaseQuantity, line.PurchaseUnitName)
-      && !IsWholePurchaseMultiple(line.OrderedQuantity, line.PurchaseQuantity, line.PurchaseUnitName);
+    => !MaterialPurchaseIncrement.IsValidQuantity(
+      line.OrderedQuantity, line.PurchaseQuantity, line.PurchaseUnitName, line.PurchaseIncrement);
 
   protected bool HasInvalidPurchaseAllocationMultiple(EditablePurchaseLine line)
-    => RequiresWholePurchaseMultiple(line.PurchaseQuantity, line.PurchaseUnitName)
-      && line.Allocations.Any(allocation => !IsWholePurchaseMultiple(allocation.PlannedQuantity, line.PurchaseQuantity, line.PurchaseUnitName));
+    => line.Allocations.Any(allocation => HasInvalidPurchaseAllocationMultiple(line, allocation));
 
   protected bool HasInvalidPurchaseAllocationMultiple(EditablePurchaseLine line, EditablePurchaseAllocation allocation)
-    => RequiresWholePurchaseMultiple(line.PurchaseQuantity, line.PurchaseUnitName)
-      && !IsWholePurchaseMultiple(allocation.PlannedQuantity, line.PurchaseQuantity, line.PurchaseUnitName);
+    => !MaterialPurchaseIncrement.IsValidQuantity(
+      allocation.PlannedQuantity, line.PurchaseQuantity, line.PurchaseUnitName, line.PurchaseIncrement);
 
   protected bool HasInvalidPurchasePackConfiguration(EditablePurchaseLine line)
     => HasInvalidPurchaseMultiple(line) || HasInvalidPurchaseAllocationMultiple(line);
@@ -1071,6 +1096,15 @@ public partial class ComprasPage : ComponentBase
     AutoPoSelectedRoomIds.Clear();
   }
 
+  /// <summary>El escalón del renglón en palabras: "24.00 Rollo por Paquete", "1 Kilo".</summary>
+  protected string GetPurchaseIncrementRequirement(EditablePurchaseLine line)
+    => MaterialPurchaseIncrement.DescribeRequirement(
+      line.BaseUnitName,
+      line.PurchaseUnitName,
+      line.PurchaseQuantity,
+      line.PurchaseIncrement,
+      CultureInfo.CurrentCulture);
+
   protected string? GetPurchaseAllocationValidationMessage(EditablePurchaseLine line, EditablePurchaseAllocation allocation)
   {
     if (!HasInvalidPurchaseAllocationMultiple(line, allocation))
@@ -1078,14 +1112,11 @@ public partial class ComprasPage : ComponentBase
       return null;
     }
 
-    var purchaseUnitName = string.IsNullOrWhiteSpace(line.PurchaseUnitName)
-      ? "unidad de compra"
-      : line.PurchaseUnitName.Trim();
     var locationLabel = string.IsNullOrWhiteSpace(allocation.LocationCode)
       ? allocation.LocationName
       : allocation.LocationCode;
 
-    return $"{locationLabel}: ajusta la cantidad a unidades completas de compra en {purchaseUnitName}.";
+    return $"{locationLabel}: ajusta la cantidad a múltiplos de {GetPurchaseIncrementRequirement(line)}.";
   }
 
   private async Task LoadOrdersAsync()
@@ -1097,7 +1128,7 @@ public partial class ComprasPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron cargar las órdenes de compra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar las órdenes de compra", new { Filter.VendorId, Filter.OpenOnly, Filter.SearchText }));
     }
     finally
     {
@@ -1123,6 +1154,7 @@ public partial class ComprasPage : ComponentBase
           BaseUnitPrice = line.BaseUnitPrice,
           PurchaseQuantitySnapshot = NormalizePurchaseQuantity(line.PurchaseQuantity),
           PurchaseUnitNameSnapshot = line.PurchaseUnitName,
+          PurchaseIncrementSnapshot = MaterialPurchaseIncrement.Normalize(line.PurchaseIncrement),
           Allocations = line.Allocations
             .Select(allocation => new PurchaseOrderAllocationUpsertRequest
             {
@@ -1187,29 +1219,6 @@ public partial class ComprasPage : ComponentBase
         line.PurchaseQuantity,
         line.PurchaseUnitName);
 
-  private static decimal ParseNumberInput(ChangeEventArgs args, decimal fallbackValue)
-  {
-    if (args.Value is decimal decimalValue)
-    {
-      return decimalValue;
-    }
-
-    var text = Convert.ToString(args.Value, CultureInfo.InvariantCulture);
-    if (string.IsNullOrWhiteSpace(text))
-    {
-      return 0m;
-    }
-
-    if (decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var invariantValue))
-    {
-      return invariantValue;
-    }
-
-    return decimal.TryParse(text, NumberStyles.Number, CultureInfo.CurrentCulture, out var currentCultureValue)
-      ? currentCultureValue
-      : fallbackValue;
-  }
-
   private IReadOnlyList<int> GetNormalizedAutoPoRoomIds()
   {
     var normalized = AutoPoSelectedRoomIds
@@ -1229,22 +1238,6 @@ public partial class ComprasPage : ComponentBase
 
   private static decimal NormalizePurchaseQuantity(decimal value)
     => value > 0m ? value : 1m;
-
-  private static bool RequiresWholePurchaseMultiple(decimal purchaseQuantity, string? purchaseUnitName)
-    => NormalizePurchaseQuantity(purchaseQuantity) > 1m
-      || !string.IsNullOrWhiteSpace(purchaseUnitName);
-
-  private static bool IsWholePurchaseMultiple(decimal quantity, decimal purchaseQuantity, string? purchaseUnitName)
-  {
-    var normalizedPurchaseQuantity = NormalizePurchaseQuantity(purchaseQuantity);
-    if (!RequiresWholePurchaseMultiple(normalizedPurchaseQuantity, purchaseUnitName))
-    {
-      return true;
-    }
-
-    var quotient = quantity / normalizedPurchaseQuantity;
-    return quotient == decimal.Truncate(quotient);
-  }
 
   private static string FormatQuantity(decimal value)
     => value.ToString("N2", CultureInfo.CurrentCulture);
@@ -1283,6 +1276,10 @@ public partial class ComprasPage : ComponentBase
     public string? BaseUnitName { get; set; }
     public decimal PurchaseQuantity { get; set; } = 1m;
     public string? PurchaseUnitName { get; set; }
+
+    /// <summary>Escalón mínimo de compra vigente para este renglón. Ver <see cref="MaterialPurchaseIncrement"/>.</summary>
+    public decimal PurchaseIncrement { get; set; } = MaterialPurchaseIncrement.WholePresentation;
+
     public decimal? BaseUnitPrice { get; set; }
     public decimal ReceivedQuantity { get; set; }
     public List<EditablePurchaseAllocation> Allocations { get; set; } = [];
@@ -1312,7 +1309,6 @@ public partial class ComprasPage : ComponentBase
     public decimal PurchaseQuantity { get; set; } = 1m;
     public string? PurchaseUnitName { get; set; }
     public decimal? BaseUnitPrice { get; set; }
-    public bool RequiresLot { get; set; }
     public int LocationId { get; set; }
     public string LocationName { get; set; } = string.Empty;
     public string? LocationCode { get; set; }
@@ -1322,7 +1318,5 @@ public partial class ComprasPage : ComponentBase
     public decimal ReceiveNowQuantity { get; set; }
     public decimal? TotalAmount { get; set; }
     public bool IncludesIva { get; set; }
-    public string? LotCode { get; set; }
-    public DateTime? ExpiresAt { get; set; }
   }
 }

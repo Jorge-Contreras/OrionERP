@@ -21,6 +21,8 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
         public NavigationManager NavManager { get; set; } = default!;
         [Inject]
         public ICurrentCompanyContext RfcState { get; set; } = default!;
+        [Inject]
+        public IOperationErrorPresenter Errors { get; set; } = default!;
 
         protected TransaccionCreateRequest Model { get; set; } = new();
         protected EditContext EditContext { get; set; } = default!;
@@ -55,7 +57,7 @@ namespace OrionERP.Web.Features.Contabilidad.Transacciones
             }
             catch (Exception ex)
             {
-                UiMessages.ShowError($"Error: {ex.Message}");
+                UiMessages.ShowError(Errors.ToUserMessage(ex, "crear la transacción"));
             }
             finally
             {

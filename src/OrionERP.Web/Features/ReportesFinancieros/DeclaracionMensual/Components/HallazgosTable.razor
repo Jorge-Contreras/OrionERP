@@ -1,0 +1,76 @@
+@using OrionERP.Application.Features.ReportesFinancieros.Models
+
+@*
+    Los hallazgos que explican por que las cifras no cuadran.
+
+    Cada renglon nombra el documento y el motivo, para poder ir a corregirlo.
+    Si alguna cifra de las pestanas anteriores muestra diferencia y aqui no hay
+    nada que la explique, el problema esta en el reporte, no en los datos.
+*@
+
+@if (Filas.Count == 0)
+{
+    <p class="text-muted">Sin hallazgos en el periodo.</p>
+}
+else
+{
+    <div class="table-responsive report-table-shell">
+        <table class="table table-sm table-bordered compact-table report-table">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">Sev.</th>
+                    <th scope="col">Tipo</th>
+                    <th scope="col">Detalle</th>
+                    <th scope="col">Contraparte</th>
+                    <th scope="col">Fecha</th>
+                    <th scope="col" class="num">Monto</th>
+                    <th scope="col" class="no-print"><span class="visually-hidden">Abrir</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var fila in Filas)
+                {
+                    <tr class="@(fila.EsAlta ? "is-bad" : null)">
+                        <td><span class="@PillSeveridad(fila.Severidad)">@fila.Severidad</span></td>
+                        <td>@fila.Tipo</td>
+                        <td>
+                            @fila.Descripcion
+                            @if (!string.IsNullOrWhiteSpace(fila.FolioFiscal))
+                            {
+                                <div class="text-muted small font-monospace">@fila.FolioFiscal</div>
+                            }
+                        </td>
+                        <td>@fila.Contraparte</td>
+                        <td>@(fila.Fecha?.ToString("dd/MM/yyyy") ?? "—")</td>
+                        <td class="num">@(fila.Monto is null ? "—" : fila.Monto.Value.ToString("N2", Mx))</td>
+                        <td class="no-print">
+                            @if (!string.IsNullOrWhiteSpace(fila.RutaDetalle))
+                            {
+                                <button type="button" class="btn btn-sm btn-link p-0"
+                                        title="Abrir el detalle en otra pestaña"
+                                        @onclick="() => OnAbrir.InvokeAsync(fila)">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<DeclaracionHallazgoRow> Filas { get; set; } = [];
+    [Parameter] public EventCallback<DeclaracionHallazgoRow> OnAbrir { get; set; }
+
+    private static readonly System.Globalization.CultureInfo Mx =
+        System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+
+    private static string PillSeveridad(string? severidad) => severidad switch
+    {
+        "Alta" => "pill pill--bad",
+        "Media" => "pill pill--warn",
+        _ => "pill pill--muted"
+    };
+}

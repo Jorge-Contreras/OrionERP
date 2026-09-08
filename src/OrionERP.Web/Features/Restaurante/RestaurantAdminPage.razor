@@ -70,6 +70,19 @@
         <label class="restaurant-admin__check"><InputCheckbox @bind-Value="siteEditor.AllowSupervisorDeficit" /> Permitir venta con déficit supervisado</label>
         <label class="restaurant-admin__check"><InputCheckbox @bind-Value="siteEditor.IsEnabled" /> Habilitar Restaurante en esta sede</label>
         <label>Advertencia de alérgenos <InputTextArea @bind-Value="siteEditor.CrossContaminationWarning" /></label>
+        <fieldset class="restaurant-admin__fieldset">
+          <legend>Transferencia electrónica (SPEI)</legend>
+          <p class="restaurant-admin__hint">El punto de venta imprime estos datos en la impresora de tickets cuando el cliente paga por transferencia. Captura sólo los destinos que quieras entregar; los separadores se agregan al imprimir.</p>
+          <label>Titular de la cuenta <InputText @bind-Value="siteEditor.TransferAccountHolder" maxlength="160" autocomplete="off" /></label>
+          <label>Banco <InputText @bind-Value="siteEditor.TransferBankName" maxlength="120" autocomplete="off" /></label>
+          <div class="restaurant-admin__form-row">
+            <label>Cuenta <InputText @bind-Value="siteEditor.TransferAccountNumber" maxlength="30" inputmode="numeric" autocomplete="off" /></label>
+            <label>CLABE <InputText @bind-Value="siteEditor.TransferClabe" maxlength="30" inputmode="numeric" autocomplete="off" /></label>
+          </div>
+          <label>Número de tarjeta <InputText @bind-Value="siteEditor.TransferCardNumber" maxlength="30" inputmode="numeric" autocomplete="off" /></label>
+          <label>Instrucciones adicionales <InputTextArea @bind-Value="siteEditor.TransferInstructions" maxlength="300" /></label>
+          <p class="restaurant-admin__hint">@TransferSlipPreview</p>
+        </fieldset>
         <button type="submit" class="btn btn-primary" disabled="@isSaving">@(isSaving ? "Guardando…" : "Guardar sede")</button>
       </EditForm>
     </section>
@@ -236,6 +249,31 @@
       StringComparison.OrdinalIgnoreCase);
   private bool IsComboProduct => productEditor.ProductKind == RestaurantProductKinds.Combo;
 
+  /// <summary>Muestra el formato exacto que se imprimirá para detectar capturas erróneas.</summary>
+  private string TransferSlipPreview
+  {
+    get
+    {
+      var destinations = new List<string>(3);
+      if (RestaurantTransferPaymentRules.NormalizeDigits(siteEditor.TransferClabe) is not null)
+      {
+        destinations.Add($"CLABE {RestaurantTransferPaymentRules.FormatClabe(siteEditor.TransferClabe)}");
+      }
+      if (RestaurantTransferPaymentRules.NormalizeDigits(siteEditor.TransferAccountNumber) is not null)
+      {
+        destinations.Add($"Cuenta {RestaurantTransferPaymentRules.FormatAccountNumber(siteEditor.TransferAccountNumber)}");
+      }
+      if (RestaurantTransferPaymentRules.NormalizeDigits(siteEditor.TransferCardNumber) is not null)
+      {
+        destinations.Add($"Tarjeta {RestaurantTransferPaymentRules.FormatCardNumber(siteEditor.TransferCardNumber)}");
+      }
+
+      return destinations.Count == 0
+        ? "Sin datos capturados: el botón de impresión permanecerá deshabilitado en el punto de venta."
+        : $"Se imprimirá: {string.Join(" · ", destinations)}.";
+    }
+  }
+
   protected override async Task OnInitializedAsync()
   {
     // El RFC forma parte del contexto de sesión, no es un dato editable. Debe estar
@@ -283,7 +321,10 @@
       Rfc = CurrentRfc, Id = site.Id, SiteCode = site.SiteCode, Name = site.Name,
       TimeZoneId = site.TimeZoneId, OperationalDayCutoff = site.OperationalDayCutoff,
       TaxRate = site.TaxRate, PricesIncludeTax = site.PricesIncludeTax, IsEnabled = site.IsEnabled,
-      AllowSupervisorDeficit = site.AllowSupervisorDeficit, CrossContaminationWarning = site.CrossContaminationWarning
+      AllowSupervisorDeficit = site.AllowSupervisorDeficit, CrossContaminationWarning = site.CrossContaminationWarning,
+      TransferBankName = site.TransferBankName, TransferAccountHolder = site.TransferAccountHolder,
+      TransferAccountNumber = site.TransferAccountNumber, TransferClabe = site.TransferClabe,
+      TransferCardNumber = site.TransferCardNumber, TransferInstructions = site.TransferInstructions
     };
     cutoffText = site.OperationalDayCutoff.ToString(@"hh\:mm");
   }

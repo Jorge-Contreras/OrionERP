@@ -46,7 +46,7 @@ public sealed class BrunoPublicCatalogService : IBrunoPublicCatalogService
       return null;
     }
 
-    var menu = await _catalogService.GetPosCatalogAsync(normalizedRfc, site.Id, at, ct);
+    var menu = await _catalogService.GetPublicCatalogAsync(normalizedRfc, site.Id, at, ct);
     IReadOnlyList<BrunoPublicPromotionDto> promotions = Array.Empty<BrunoPublicPromotionDto>();
     if (settings.IsPromotionsEnabled)
     {

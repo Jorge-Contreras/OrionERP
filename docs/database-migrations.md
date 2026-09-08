@@ -8,9 +8,11 @@ Esta autorización de Sandbox no incluye despliegues, servicios, dominios ni
 túneles Cloudflare. Las migraciones aquí documentadas preparan y validan la
 base; no publican ninguno de los websites.
 
-Estado comprobado el 2026-09-02: las seis migraciones del manifiesto,
-incluidas las dos `20260903`, `20260904` y `20260905`, están aplicadas y verificadas en
-`Orion_Sandbox`. No se desplegó código ni se modificó infraestructura pública.
+Estado comprobado el 2026-09-08: las seis migraciones del manifiesto están
+aplicadas y verificadas en la `Orion_Sandbox` local actual. Al retomar el trabajo
+las seis figuraban pendientes en ese entorno; se reconciliaron con su propio
+preview y recibo antes de cada aplicación. La verificación final devolvió seis
+resultados `VERIFIED`. No se desplegó código ni se modificó infraestructura pública.
 
 Las migraciones administradas nuevas se declaran en
 `database/orion-migrations.json` y se ejecutan con
@@ -65,9 +67,11 @@ dotnet run --project src/OrionERP.DatabaseMigrator -- --mode verify --database O
 
 El preflight no adjudica maestros globales ambiguos. Las reservaciones sin
 evidencia suficiente permanecen sin scope y se reportan para reconciliación
-explícita; una contradicción de scope sí detiene la migración. En la aplicación
-verificada quedaron sin atribuir únicamente las cotizaciones `24183`, `24209` y
-`24236`. Esta migración habilita solamente el host público; no
+explícita; una contradicción de scope sí detiene la migración. En la Sandbox
+reconciliada el 2026-09-08 quedaron 1,329 reservaciones con alcance y ninguna
+sin atribuir. La evidencia anterior de tres cotizaciones sin alcance corresponde
+al entorno validado el 2 de septiembre y no describe la Sandbox actual.
+Esta migración habilita solamente el host público; no
 convierte en multiempresa el backoffice, CFDI, Outlook/Graph ni los
 procedimientos heredados de Hospedaje.
 
@@ -125,6 +129,8 @@ El API exige `Accepted`, `PrivacyVersion` y `TermsVersion` tanto al crear la
 orden como al capturarla. Compara ambas versiones con la presentación activa
 antes de llamar a PayPal y sólo entrega al servicio de persistencia los valores
 autoritativos junto con `DateTimeOffset.UtcNow`.
+El servicio de reserva vuelve a comprobar las versiones contra la presentación
+del proceso antes de acceder a SQL, incluso si el llamador no usa el API HTTP.
 
 ## Orden entre base y aplicación
 

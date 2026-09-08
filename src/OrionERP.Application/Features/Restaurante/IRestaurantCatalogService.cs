@@ -7,6 +7,7 @@ public interface IRestaurantCatalogService
   Task<IReadOnlyList<RestaurantProductDto>> GetProductsAsync(string rfc, int? siteId = null, CancellationToken ct = default);
   Task<RestaurantCommandResult> SaveProductAsync(RestaurantProductUpsertRequest request, CancellationToken ct = default);
   Task<RestaurantPosCatalogDto> GetPosCatalogAsync(string rfc, int siteId, DateTimeOffset at, CancellationToken ct = default);
+  Task<RestaurantPosCatalogDto> GetPublicCatalogAsync(string rfc, int siteId, DateTimeOffset at, CancellationToken ct = default);
   Task<(byte[] Bytes, string ContentType)?> GetProductImageAsync(string rfc, long productId, bool thumbnail, CancellationToken ct = default);
   Task<(byte[] Bytes, string ContentType)?> GetProductImageAsync(string rfc, long siteId, long productId, bool thumbnail, CancellationToken ct = default);
   Task<IReadOnlyList<RestaurantMenuAdminDto>> GetMenusAsync(string rfc, CancellationToken ct = default);

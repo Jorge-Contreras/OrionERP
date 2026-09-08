@@ -65,69 +65,123 @@
         <ValidationSummary />
 
         <div class="field-grid field-grid--3">
-          <label>Nombre <InputText @bind-Value="editor.Name" /></label>
-          <label>Estado
+          <label>
+            <span class="field-caption">Nombre <FieldHelp Title="Nombre" Text="Cómo se llama la promoción. Se ve en el POS al aplicarla, en el ticket del cliente y en el sitio público si publicas condiciones." Example="Ej. Bienvenida al club" /></span>
+            <InputText @bind-Value="editor.Name" />
+          </label>
+          <label>
+            <span class="field-caption">Estado <FieldHelp Title="Estado" Text="Borrador no aplica en caja. Programada y Activa sí se evalúan. Pausada la detiene sin borrar su historial y Vencida la archiva." /></span>
             <InputSelect @bind-Value="editor.Status">
               @foreach (var status in Statuses) { <option value="@status">@StatusLabel(status)</option> }
             </InputSelect>
           </label>
-          <label>Prioridad <InputNumber @bind-Value="editor.Priority" /></label>
+          <label>
+            <span class="field-caption">Prioridad <FieldHelp Title="Prioridad" Text="Número que desempata cuando dos promociones pueden aplicar a los mismos productos y ahorran lo mismo: gana la del número más alto. El motor siempre prefiere primero la que más le ahorra al cliente." Example="Ej. 90 para la promoción insignia y 10 para las de relleno." Align="end" /></span>
+            <InputNumber @bind-Value="editor.Priority" />
+          </label>
         </div>
         <div class="field-grid">
-          <label>Descripción pública <InputTextArea @bind-Value="editor.PublicDescription" /></label>
-          <label>Condiciones públicas obligatorias <InputTextArea @bind-Value="editor.PublicTerms" /></label>
+          <label>
+            <span class="field-caption">Descripción pública <FieldHelp Title="Descripción pública" Text="Una o dos frases para el cliente. Se publica en el sitio del restaurante junto a la promoción." Example="Ej. Dos platillos a elegir por $159." /></span>
+            <InputTextArea @bind-Value="editor.PublicDescription" />
+          </label>
+          <label>
+            <span class="field-caption">Condiciones públicas obligatorias <FieldHelp Title="Condiciones públicas" Text="La letra chica: vigencia, días, productos participantes, límites y exclusiones. Debe decir exactamente lo que el POS aplica, porque es lo que el cliente puede reclamar." Align="end" /></span>
+            <InputTextArea @bind-Value="editor.PublicTerms" />
+          </label>
         </div>
         <div class="field-grid field-grid--3">
-          <label>Tipo de regla
+          <label>
+            <span class="field-caption">Tipo de regla <FieldHelp Title="Tipo de regla" Text="Cómo se calcula el descuento. Compra X paga Y regala las piezas más baratas del grupo; Porcentaje descuenta un % del importe; Descuento fijo resta pesos; Precio de paquete cobra un precio cerrado por N piezas." /></span>
             <InputSelect @bind-Value="editor.RuleType">
               @foreach (var type in RuleTypes) { <option value="@type">@RuleLabel(type)</option> }
             </InputSelect>
           </label>
-          <label>Sede
+          <label>
+            <span class="field-caption">Sede <FieldHelp Title="Sede" Text="Todas la deja disponible en cualquier sucursal. Si eliges una sede, la promoción solo existe ahí." /></span>
             <InputSelect @bind-Value="editor.SiteId">
               <option value="">Todas</option>
               @foreach (var site in sites) { <option value="@site.Id">@site.Name</option> }
             </InputSelect>
           </label>
-          <label>Límite global <InputNumber @bind-Value="editor.GlobalLimit" /></label>
+          <label>
+            <span class="field-caption">Límite global <FieldHelp Title="Límite global de la promoción" Text="Cuántas veces puede canjearse esta promoción en total, sumando todos los clientes y todas las órdenes. Déjalo vacío para que no tenga tope." Example="Ej. 300: al llegar a 300 canjes deja de aplicar aunque siga vigente." Align="end" /></span>
+            <InputNumber @bind-Value="editor.GlobalLimit" />
+          </label>
         </div>
 
         @if (editor.RuleType == RestaurantPromotionRuleTypes.BuyXPayY)
         {
-          <div class="field-grid"><label>Compra X <InputNumber @bind-Value="editor.BuyQuantity" /></label><label>Paga Y <InputNumber @bind-Value="editor.PayQuantity" /></label></div>
+          <div class="field-grid">
+            <label>
+              <span class="field-caption">Compra X <FieldHelp Title="Compra X" Text="Piezas participantes que debe llevar el cliente para armar un grupo. Se cuentan piezas, no pesos." Example="En un 2x1, X = 2. En un 3x2, X = 3." /></span>
+              <InputNumber @bind-Value="editor.BuyQuantity" />
+            </label>
+            <label>
+              <span class="field-caption">Paga Y <FieldHelp Title="Paga Y" Text="Piezas de ese grupo que sí se cobran. Las demás se regalan y el motor siempre regala las más baratas del grupo." Example="En un 2x1, Y = 1. En un 3x2, Y = 2." Align="end" /></span>
+              <InputNumber @bind-Value="editor.PayQuantity" />
+            </label>
+          </div>
         }
         else if (editor.RuleType == RestaurantPromotionRuleTypes.PercentOff)
         {
-          <label>Porcentaje de descuento <InputNumber @bind-Value="editor.PercentOff" /></label>
+          <label>
+            <span class="field-caption">Porcentaje de descuento <FieldHelp Title="Porcentaje de descuento" Text="Porcentaje, no pesos. Se aplica sobre el importe de los productos participantes de la orden." Example="Escribe 15 para 15%." /></span>
+            <InputNumber @bind-Value="editor.PercentOff" />
+          </label>
         }
         else if (editor.RuleType == RestaurantPromotionRuleTypes.FixedAmountOff)
         {
-          <label>Importe fijo de descuento <InputNumber @bind-Value="editor.FixedAmount" /></label>
+          <label>
+            <span class="field-caption">Importe fijo de descuento <FieldHelp Title="Importe fijo de descuento" Text="Pesos, no porcentaje. Es lo que se resta de la cuenta y nunca descuenta más de lo que suman los productos participantes." Example="Escribe 50 para $50.00 de descuento." /></span>
+            <InputNumber @bind-Value="editor.FixedAmount" />
+          </label>
         }
         else
         {
-          <div class="field-grid"><label>Unidades del paquete <InputNumber @bind-Value="editor.BuyQuantity" /></label><label>Precio fijo del paquete <InputNumber @bind-Value="editor.BundlePrice" /></label></div>
+          <div class="field-grid">
+            <label>
+              <span class="field-caption">Unidades del paquete <FieldHelp Title="Unidades del paquete" Text="Cuántas piezas participantes se agrupan para cobrarse al precio de paquete. Si sobran piezas sueltas, esas se cobran a precio de lista." Example="Ej. 2 hamburguesas por paquete." /></span>
+              <InputNumber @bind-Value="editor.BuyQuantity" />
+            </label>
+            <label>
+              <span class="field-caption">Precio fijo del paquete <FieldHelp Title="Precio fijo del paquete" Text="Pesos que paga el cliente por el grupo completo, no por pieza. Si el precio de lista ya es menor, la promoción no genera descuento." Example="Ej. 159 = $159.00 por las 2 piezas juntas." Align="end" /></span>
+              <InputNumber @bind-Value="editor.BundlePrice" />
+            </label>
+          </div>
         }
 
         <div class="field-grid field-grid--3">
-          <label>Cantidad mínima <InputNumber @bind-Value="editor.MinimumQuantity" /></label>
-          <label>Subtotal mínimo <InputNumber @bind-Value="editor.MinimumSubtotal" /></label>
+          <label>
+            <span class="field-caption">Cantidad mínima <FieldHelp Title="Cantidad mínima" Text="Piezas participantes que debe tener la orden para que la promoción aplique. Déjalo en 0 si no pides mínimo." /></span>
+            <InputNumber @bind-Value="editor.MinimumQuantity" />
+          </label>
+          <label>
+            <span class="field-caption">Subtotal mínimo <FieldHelp Title="Subtotal mínimo" Text="Pesos de mercancía participante que debe alcanzar la orden antes de descuentos. Déjalo en 0 si no pides consumo mínimo." Example="Ej. 200 = la cuenta debe llegar a $200.00." /></span>
+            <InputNumber @bind-Value="editor.MinimumSubtotal" />
+          </label>
           <span></span>
-          <label>Válida desde <InputDate @bind-Value="editor.ValidFromLocal" /></label>
-          <label>Válida hasta <InputDate @bind-Value="editor.ValidToLocal" /></label>
+          <label>
+            <span class="field-caption">Válida desde <FieldHelp Title="Válida desde" Text="Primer día en que la promoción puede aplicar, en hora local de la sede. Vacío = sin fecha de inicio." /></span>
+            <InputDate @bind-Value="editor.ValidFromLocal" />
+          </label>
+          <label>
+            <span class="field-caption">Válida hasta <FieldHelp Title="Válida hasta" Text="La promoción deja de aplicar al llegar esta fecha. Vacío = sin fecha de fin." /></span>
+            <InputDate @bind-Value="editor.ValidToLocal" />
+          </label>
         </div>
 
         <div class="checks">
-          <label><InputCheckbox @bind-Value="editor.PosEnabled" /> POS</label>
-          <label><InputCheckbox @bind-Value="editor.WebEnabled" /> Web</label>
-          <label><InputCheckbox @bind-Value="editor.MemberOnly" /> Solo miembros</label>
-          <label><InputCheckbox @bind-Value="editor.CodeRequired" /> Requiere código</label>
-          <label><InputCheckbox @bind-Value="editor.IsCombinable" /> Combinable sobre remanente</label>
-          <label><InputCheckbox @bind-Value="editor.IsPublic" /> Publicar condiciones</label>
+          <label><InputCheckbox @bind-Value="editor.PosEnabled" /> POS <FieldHelp Title="POS" Text="La promoción se evalúa al cobrar en caja." /></label>
+          <label><InputCheckbox @bind-Value="editor.WebEnabled" /> Web <FieldHelp Title="Web" Text="La promoción se evalúa en los pedidos que entran por el sitio del restaurante." /></label>
+          <label><InputCheckbox @bind-Value="editor.MemberOnly" /> Solo miembros <FieldHelp Title="Solo miembros" Text="Exige identificar al socio del programa de membresía antes de cobrar. Sin membresía vinculada, la promoción no aplica." /></label>
+          <label><InputCheckbox @bind-Value="editor.CodeRequired" /> Requiere código <FieldHelp Title="Requiere código" Text="La promoción solo aplica si el cajero captura uno de los códigos de abajo. Sin esta casilla se aplica sola en cuanto la orden cumple las condiciones." /></label>
+          <label><InputCheckbox @bind-Value="editor.IsCombinable" /> Combinable sobre remanente <FieldHelp Title="Combinable sobre remanente" Text="Permite que se sume a otra promoción y descuente solo sobre el importe que quedó sin descontar. Sin esta casilla no se acumula con otras." Align="end" /></label>
+          <label><InputCheckbox @bind-Value="editor.IsPublic" /> Publicar condiciones <FieldHelp Title="Publicar condiciones" Text="Muestra la promoción y su letra chica en el sitio público. Requiere descripción y condiciones completas." Align="end" /></label>
         </div>
 
         <section class="subpanel">
-          <header><div><span>Alcance</span><h3>Productos y categorías elegibles</h3></div></header>
+          <header><div><span>Alcance</span><h3>Productos y categorías elegibles <FieldHelp Title="Productos y categorías elegibles" Text="Si no marcas nada, la promoción aplica a todo el menú. Las partidas capturadas como concepto libre en caja nunca participan." /></h3></div></header>
           <div class="product-picks">
             @foreach (var product in products)
             {
@@ -146,16 +200,25 @@
         </section>
 
         <section class="subpanel">
-          <header><div><span>Horario local de la sede</span><h3>Días y franjas</h3></div><button type="button" @onclick="AddSchedule">Agregar</button></header>
+          <header><div><span>Horario local de la sede</span><h3>Días y franjas <FieldHelp Title="Días y franjas" Text="Ventanas de día y hora en las que la promoción puede aplicar, en hora local de la sede. Si no agregas ninguna franja, aplica siempre dentro de la vigencia: no queda limitada al horario del negocio." /></h3></div><button type="button" @onclick="AddSchedule">Agregar</button></header>
           @foreach (var schedule in editor.Schedules.Select((value, index) => (value, index)))
           {
             <div class="repeat-row">
-              <select value="@schedule.value.DayOfWeek" @onchange="eventArgs => SetScheduleDay(schedule.index, eventArgs)">
-                @foreach (var day in Days) { <option value="@day.Value">@day.Label</option> }
-              </select>
-              <input type="time" value="@FormatTime(schedule.value.StartsAt)" @onchange="eventArgs => SetScheduleTime(schedule.index, true, eventArgs)" />
-              <span>a</span>
-              <input type="time" value="@FormatTime(schedule.value.EndsAt)" @onchange="eventArgs => SetScheduleTime(schedule.index, false, eventArgs)" />
+              <label>
+                <span class="field-caption">Día</span>
+                <select value="@schedule.value.DayOfWeek" @onchange="eventArgs => SetScheduleDay(schedule.index, eventArgs)">
+                  @foreach (var day in Days) { <option value="@day.Value">@day.Label</option> }
+                </select>
+              </label>
+              <label>
+                <span class="field-caption">Desde</span>
+                <input type="time" value="@FormatTime(schedule.value.StartsAt)" @onchange="eventArgs => SetScheduleTime(schedule.index, true, eventArgs)" />
+              </label>
+              <span class="repeat-row__sep">a</span>
+              <label>
+                <span class="field-caption">Hasta</span>
+                <input type="time" value="@FormatTime(schedule.value.EndsAt)" @onchange="eventArgs => SetScheduleTime(schedule.index, false, eventArgs)" />
+              </label>
               <button type="button" class="danger-link" @onclick="() => RemoveSchedule(schedule.index)">Quitar</button>
             </div>
           }
@@ -163,27 +226,51 @@
         </section>
 
         <section class="subpanel">
-          <header><div><span>Canje compartido</span><h3>Códigos promocionales</h3></div><button type="button" @onclick="AddCode">Agregar</button></header>
+          <header><div><span>Canje compartido</span><h3>Códigos promocionales <FieldHelp Title="Códigos promocionales" Text="Códigos que el cajero teclea en el POS para aplicar esta promoción. Sirven para medir campañas y para limitar cuántas veces se canjea. Si no marcas Requiere código, la promoción también aplica sin teclear nada." /></h3></div><button type="button" @onclick="AddCode">Agregar</button></header>
           @foreach (var code in editor.Codes.Select((value, index) => (value, index)))
           {
             <div class="repeat-row repeat-row--code">
-              <InputText @bind-Value="code.value.Code" placeholder="CÓDIGO" />
-              <InputNumber @bind-Value="code.value.GlobalLimit" placeholder="Límite global" />
-              <InputNumber @bind-Value="code.value.PerMemberLimit" placeholder="Por miembro" />
-              <label><InputCheckbox @bind-Value="code.value.IsActive" /> Activo</label>
+              <label>
+                <span class="field-caption">Código <FieldHelp Title="Código" Text="Lo que teclea el cajero en la caja. De 3 a 32 caracteres, solo letras, números y guiones. No distingue mayúsculas ni espacios sobrantes." Example="Ej. BIENVENIDA o MARTES-2X1" /></span>
+                <InputText @bind-Value="code.value.Code" placeholder="Ej. BIENVENIDA" />
+              </label>
+              <label>
+                <span class="field-caption">Límite global <FieldHelp Title="Límite global del código" Text="Cuántas veces puede canjearse este código entre todos los clientes. Vacío = sin tope. Es independiente del límite global de la promoción." Example="Ej. 300 canjes en total." /></span>
+                <InputNumber @bind-Value="code.value.GlobalLimit" placeholder="Sin tope" />
+              </label>
+              <label>
+                <span class="field-caption">Por miembro <FieldHelp Title="Canjes por miembro" Text="Cuántas veces puede usarlo el mismo socio. Requiere identificar la membresía al cobrar, así que la orden sin socio vinculado no lo acepta. Vacío = sin tope." Example="Ej. 1 = beneficio de una sola vez por socio." /></span>
+                <InputNumber @bind-Value="code.value.PerMemberLimit" placeholder="Sin tope" />
+              </label>
+              <label class="check-cell"><InputCheckbox @bind-Value="code.value.IsActive" /> Activo <FieldHelp Title="Activo" Text="Desactívalo para retirar el código de la caja sin borrar su historial de canjes." Align="end" /></label>
               <button type="button" class="danger-link" @onclick="() => RemoveCode(code.index)">Quitar</button>
             </div>
+          }
+          @if (editor.Codes.Count == 0)
+          {
+            <p class="empty">Sin códigos: la promoción se aplica sola cuando la orden cumple las condiciones.</p>
+          }
+          @if (editor.CodeRequired && !editor.Codes.Any(item => item.IsActive))
+          {
+            <p class="empty empty--warn">Marcaste Requiere código: agrega al menos un código activo o no podrás guardar.</p>
           }
         </section>
 
         <section class="subpanel preview">
-          <header><div><span>Sin afectar ventas</span><h3>Vista previa de ahorro</h3></div><button type="button" @onclick="PreviewPromotion">Calcular</button></header>
+          <header><div><span>Sin afectar ventas</span><h3>Vista previa de ahorro <FieldHelp Title="Vista previa de ahorro" Text="Simula una orden con este producto para ver cuánto ahorraría el cliente con la regla que estás editando. No registra ventas ni consume canjes, y usa la fecha y hora de ahora." /></h3></div><button type="button" @onclick="PreviewPromotion">Calcular</button></header>
           <div class="field-grid field-grid--3">
-            <label>Producto
+            <label>
+              <span class="field-caption">Producto <FieldHelp Title="Producto de prueba" Text="Producto con el que se arma la orden simulada. Elige uno que participe en la promoción para ver el ahorro." /></span>
               <select @bind="previewProductId">@foreach (var product in products) { <option value="@product.Id">@product.Name</option> }</select>
             </label>
-            <label>Cantidad <input type="number" min="0.01" step="0.01" @bind="previewQuantity" /></label>
-            <label>Código <input @bind="previewCode" /></label>
+            <label>
+              <span class="field-caption">Cantidad <FieldHelp Title="Cantidad de prueba" Text="Piezas de ese producto en la orden simulada. Súbela para comprobar cuándo se completa un 2x1 o un paquete." /></span>
+              <input type="number" min="0.01" step="0.01" @bind="previewQuantity" />
+            </label>
+            <label>
+              <span class="field-caption">Código <FieldHelp Title="Código de prueba" Text="Código que teclearía el cajero. Déjalo vacío para simular una orden sin código." Align="end" /></span>
+              <input @bind="previewCode" />
+            </label>
           </div>
           @if (previewQuote is not null)
           {
@@ -298,7 +385,7 @@
   private List<RestaurantSiteDto> sites = [];
   private List<RestaurantProductDto> products = [];
   private List<RestaurantPromotionDto> promotions = [];
-  private RestaurantPromotionSaveRequest editor = NewEditor();
+  private RestaurantPromotionSaveRequest editor = new();
   private RestaurantPromotionQuoteDto? previewQuote;
   private RestaurantPromotionReportDto promotionReport = new();
   private LoyaltyProgramReportDto loyaltyReport = new();
@@ -325,6 +412,7 @@
     try
     {
       _ = CurrentRfc;
+      editor = NewEditor();
     }
     catch (UnauthorizedAccessException)
     {
@@ -490,7 +578,7 @@
   private void SetScheduleDay(int index, ChangeEventArgs args) { if (byte.TryParse(args.Value?.ToString(), out var value)) editor.Schedules[index].DayOfWeek = value; }
   private void SetScheduleTime(int index, bool starts, ChangeEventArgs args) { if (TimeSpan.TryParse(args.Value?.ToString(), out var value)) { if (starts) editor.Schedules[index].StartsAt = value; else editor.Schedules[index].EndsAt = value; } }
   private static string FormatTime(TimeSpan value) => value.ToString(@"hh\:mm");
-  private static RestaurantPromotionSaveRequest NewEditor() => new() { Status = RestaurantPromotionStatuses.Draft, RuleType = RestaurantPromotionRuleTypes.BuyXPayY, BuyQuantity = 2, PayQuantity = 1, PosEnabled = true, IsPublic = true, PublicDescription = "Descripción para clientes.", PublicTerms = "Sujeta a disponibilidad. Consulta vigencia, productos participantes, límites y acumulación antes de publicar." };
+  private RestaurantPromotionSaveRequest NewEditor() => new() { Rfc = CurrentRfc, Status = RestaurantPromotionStatuses.Draft, RuleType = RestaurantPromotionRuleTypes.BuyXPayY, BuyQuantity = 2, PayQuantity = 1, PosEnabled = true, IsPublic = true, PublicDescription = "Descripción para clientes.", PublicTerms = "Sujeta a disponibilidad. Consulta vigencia, productos participantes, límites y acumulación antes de publicar." };
   private static string RuleLabel(string value) => value switch { RestaurantPromotionRuleTypes.BuyXPayY => "Compra X, paga Y", RestaurantPromotionRuleTypes.PercentOff => "Porcentaje", RestaurantPromotionRuleTypes.FixedAmountOff => "Descuento fijo", RestaurantPromotionRuleTypes.FixedBundlePrice => "Precio de paquete", _ => value };
   private static string StatusLabel(string value) => value switch { RestaurantPromotionStatuses.Draft => "Borrador", RestaurantPromotionStatuses.Scheduled => "Programada", RestaurantPromotionStatuses.Active => "Activa", RestaurantPromotionStatuses.Paused => "Pausada", RestaurantPromotionStatuses.Expired => "Vencida", _ => value };
   private string CsvHref => $"data:text/csv;charset=utf-8,{Uri.EscapeDataString(BuildCsv())}";

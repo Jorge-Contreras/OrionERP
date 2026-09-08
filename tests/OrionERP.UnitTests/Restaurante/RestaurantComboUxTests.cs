@@ -52,7 +52,7 @@ public sealed class RestaurantComboUxTests
       page,
       StringComparison.Ordinal);
     Assert.Contains(
-      "new RestaurantComboPriceSelection(0, option.Quantity, [modifier.PriceDelta])",
+      "new RestaurantComboPriceSelection(0, option.Quantity, Enumerable.Repeat(modifier.PriceDelta, ModifierCount(draft.ModifierIds, modifier.Id)).ToArray())",
       page,
       StringComparison.Ordinal);
   }

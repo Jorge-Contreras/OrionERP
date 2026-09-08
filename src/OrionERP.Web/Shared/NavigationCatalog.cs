@@ -72,6 +72,7 @@ public static class NavigationCatalog
             "Asistencia, ausencias, equipos y preparación de incidencias para nómina.",
             "oi-people",
             [
+                new("/capital-humano", "Capital Humano", "Colaboradores, datos laborales, archivos y fotografia.", "oi-people", "Capital Humano", NavLinkMatch.Prefix, false, "HR", "capital", "humano", "recursos humanos", "colaboradores", "empleados", "archivos"),
                 new("/mi-trabajo", "Mi trabajo", "Registro personal, historial, correcciones y saldos de ausencia.", "oi-clock", "Mi trabajo", NavLinkMatch.Prefix, true, "Personal", "asistencia", "entrada", "salida", "ausencias"),
                 new("/mi-equipo", "Mi equipo", "Quién está trabajando y colas de aprobación del supervisor.", "oi-people", "Mi equipo", NavLinkMatch.Prefix, true, "Equipo", "supervisor", "aprobaciones", "excepciones"),
                 new("/capital-humano/asistencia", "Asistencia", "Calendario RH, anomalías, auditoría y preparación del periodo.", "oi-calendar", "Control de asistencia", NavLinkMatch.Prefix, false, "RH", "asistencia", "incidencias", "horas extra"),
@@ -129,6 +130,10 @@ public static class NavigationCatalog
             "oi-spreadsheet",
             [
                 new("/ReportesFinancieros/HojaTrabajo", "Hoja de Trabajo", "Prepara ajustes y revision previa al cierre.", "oi-spreadsheet", "Hoja de Trabajo", NavLinkMatch.Prefix, false, "Work", "hoja de trabajo", "revision", "cierre"),
+                new("/ReportesFinancieros/DeclaracionMensual", "Declaracion Mensual",
+                    "Cifras exactas para el SAT, auditoria del mes y avance del ejercicio.", "oi-calculator",
+                    "Declaracion Mensual ISR e IVA", NavLinkMatch.Prefix, true, "SAT",
+                    "declaracion", "sat", "isr", "iva", "provisional", "complementaria", "impuestos"),
                 new("/ReportesFinancieros/BalanzaComprobacion", "Balanza de Comp", "Saldo y movimientos por cuenta para analisis contable.", "oi-clipboard", "Balanza de Comprobacion", NavLinkMatch.Prefix, true, "Balance", "balanza", "comprobacion", "saldos"),
                 new("/ReportesFinancieros/EstadoPerdidasGanancias", "Perdidas y Ganancias", "Rentabilidad y desempeno financiero del negocio.", "oi-graph", "Estado de Perdidas y Ganancias", NavLinkMatch.Prefix, false, "P&L", "perdidas", "ganancias", "estado financiero"),
                 new("/ReportesFinancieros/SaludEmpresa", "Salud Financiera", "Dashboard ejecutivo de ingresos, flujo, margen, ocupacion y conciliacion.", "oi-pulse", "Salud Financiera", NavLinkMatch.Prefix, true, "Health", "salud", "dashboard", "financiera", "ocupacion", "revpar", "cashflow")
@@ -143,8 +148,7 @@ public static class NavigationCatalog
         [
             new("/admin/empresas", "Empresas", "RFC, branding, disponibilidad y revisiones de acceso.", "oi-building", "Directorio de empresas", NavLinkMatch.Prefix, false, "Admin", "empresas", "rfc", "branding", "membresias"),
             new("/admin/seguridad", "Portal de Seguridad", "Usuarios, permisos y configuracion administrativa.", "oi-lock-locked", "Portal de seguridad", NavLinkMatch.Prefix, false, "Admin", "seguridad", "usuarios", "permisos", "roles"),
-            new("/ajustes", "Ajustes", "Plantillas contables y configuracion operativa.", "oi-cog", "Ajustes", NavLinkMatch.Prefix, false, "Setup", "ajustes", "configuracion", "plantillas"),
-            new("/capital-humano", "Capital Humano", "Colaboradores, datos laborales, archivos y fotografia.", "oi-people", "Capital Humano", NavLinkMatch.Prefix, false, "HR", "capital", "humano", "recursos humanos", "colaboradores", "empleados", "archivos")
+            new("/ajustes", "Ajustes", "Plantillas contables y configuracion operativa.", "oi-cog", "Ajustes", NavLinkMatch.Prefix, false, "Setup", "ajustes", "configuracion", "plantillas")
         ]);
 
     public static bool IsArrendadoresOnly(ClaimsPrincipal user)

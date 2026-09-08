@@ -37,6 +37,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="@Presentation.PrimaryDarkColor" />
+  <meta name="color-scheme" content="dark" />
   <meta name="description" content="@Presentation.SeoDescription" />
   <link rel="canonical" href="@canonicalUrl" />
   @if (shouldNoIndex)
@@ -54,13 +55,16 @@
   <title>@(ViewData["Title"] ?? Presentation.PublicName)</title>
   <base href="~/" />
   <link rel="icon" href="@Presentation.FaviconPath" />
+  <link rel="apple-touch-icon" href="@Presentation.LogoPath" />
+  <link rel="preload" as="font" type="font/woff2" href="~/fonts/anton-latin.woff2" crossorigin />
+  <link rel="preload" as="font" type="font/woff2" href="~/fonts/inter-latin.woff2" crossorigin />
   <link rel="stylesheet" href="~/css/brunos-site.css" asp-append-version="true" />
+  <link rel="stylesheet" href="~/css/brunos-improvements.css" asp-append-version="true" />
   <link rel="stylesheet" href="~/css/brunos-responsive.css" asp-append-version="true" />
   @if (isAccountPage)
   {
     <link rel="stylesheet" href="~/css/brunos-account.css" asp-append-version="true" />
   }
-  <link rel="stylesheet" href="~/css/brunos-improvements.css" asp-append-version="true" />
   <link rel="stylesheet" href="~/OrionERP.Bruno.Web.styles.css" asp-append-version="true" />
   <style>
     :root {
@@ -84,6 +88,7 @@
     <a class="account-brand" href="/" aria-label="Volver a @Presentation.PublicName"><img src="@Presentation.LogoPath" alt="" /><span>Volver al sitio</span></a>
   }
   @RenderBody()
+  <script src="~/js/brunos-ui.js" asp-append-version="true" defer></script>
   <script src="~/_framework/blazor.server.js"></script>
   @if (Turnstile.Value.IsConfigured)
   {

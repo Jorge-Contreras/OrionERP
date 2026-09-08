@@ -1,0 +1,98 @@
+@using OrionERP.Application.Features.ReportesFinancieros.Models
+
+@*
+    Los doce meses del ejercicio: calculado contra declarado.
+
+    Es la vista que decide que meses hay que re-presentar. Un mes se marca para
+    complementaria cuando ya se declaro y alguna de las tres cifras que la
+    definen -ingresos nominales, IVA a cargo o IVA acreditable- se separa mas de
+    un peso de lo calculado.
+
+    El coeficiente se muestra por mes a proposito: cambia a media año, cuando se
+    presenta la anual del ejercicio anterior, y ver la columna evita discutir por
+    que dos meses del mismo año dan ISR distinto sobre ingresos parecidos.
+*@
+
+<div class="table-responsive report-table-shell">
+    <table class="table table-sm table-bordered compact-table report-table">
+        <thead class="table-light">
+            <tr>
+                <th scope="col">Mes</th>
+                <th scope="col" class="num">Ingresos</th>
+                <th scope="col" class="num">Declarado</th>
+                <th scope="col" class="num">Dif.</th>
+                <th scope="col" class="num">Acumulado</th>
+                <th scope="col" class="num">Coef.</th>
+                <th scope="col" class="num">ISR a cargo</th>
+                <th scope="col" class="num">ISR decl.</th>
+                <th scope="col" class="num">IVA a cargo</th>
+                <th scope="col" class="num">IVA acred.</th>
+                <th scope="col" class="num">Saldo a favor</th>
+                <th scope="col">Declaración</th>
+                <th scope="col">Estado</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var fila in Filas)
+            {
+                <tr class="@(fila.RequiereComplementaria ? "is-warn" : !fila.TieneDeclaracion ? "is-muted" : null)">
+                    <th scope="row" class="fw-normal">@fila.NombreMes</th>
+                    <td class="num">@Money(fila.Ingresos)</td>
+                    <td class="num">@Money(fila.IngresosDeclarado)</td>
+                    <td class="num @(EsRelevante(fila.DifIngresos) ? "fw-bold" : null)">@Money(fila.DifIngresos)</td>
+                    <td class="num">@Money(fila.IngresosAcum)</td>
+                    <td class="num">@(fila.Coeficiente is null ? "—" : fila.Coeficiente.Value.ToString("0.0000", Mx))</td>
+                    <td class="num">@Money(fila.IsrACargo)</td>
+                    <td class="num">@Money(fila.IsrACargoDeclarado)</td>
+                    <td class="num">@Money(fila.IvaACargo)</td>
+                    <td class="num">@Money(fila.IvaAcreditable)</td>
+                    <td class="num">@Money(fila.SaldoAFavor)</td>
+                    <td>
+                        @if (fila.TieneDeclaracion)
+                        {
+                            <span class="@(fila.TipoDeclaracion == "C" ? "pill pill--info" : "pill pill--muted")">
+                                @(fila.TipoDeclaracion == "C" ? "Complementaria" : "Normal")
+                            </span>
+                            @if (fila.EsParcial)
+                            {
+                                <span class="pill pill--muted" title="Reconstruida desde el acuse de un mes posterior; sólo trae ingresos nominales e ISR">Parcial</span>
+                            }
+                            <div class="text-muted small">@fila.NumeroOperacion</div>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Sin presentar</span>
+                        }
+                    </td>
+                    <td>
+                        @if (fila.RequiereComplementaria)
+                        {
+                            <span class="pill pill--warn">Complementaria</span>
+                        }
+                        else if (fila.TieneDeclaracion)
+                        {
+                            <span class="pill pill--ok">Conciliado</span>
+                        }
+                        else
+                        {
+                            <span class="pill pill--muted">—</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<DeclaracionEjercicioRow> Filas { get; set; } = [];
+
+    private static readonly System.Globalization.CultureInfo Mx =
+        System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+
+    private static string Money(decimal? valor) =>
+        valor is null ? "—" : valor.Value.ToString("N2", Mx);
+
+    private static bool EsRelevante(decimal? diferencia) =>
+        diferencia is not null && Math.Abs(diferencia.Value) > 1m;
+}

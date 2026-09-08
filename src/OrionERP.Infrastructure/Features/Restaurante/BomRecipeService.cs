@@ -324,7 +324,7 @@ public sealed class BomRecipeService : IBomRecipeService
     if (incompleteSubassembly is not null)
       issues.Add(new() { Section = "ingredients", Code = "subrecipe_missing", Message = $"{incompleteSubassembly.Description} está configurado como subreceta, pero no tiene una receta activa completa." });
     foreach (var subProduct in await FindUnproducibleBatchSubProductsAsync(conn, null, normalizedRfc, bomVersionId, ct))
-      warnings.Add($"{subProduct} se produce por lote pero todavía no tiene receta: sólo podrás venderlo mientras quede existencia.");
+      warnings.Add($"{subProduct} se produce por tanda pero todavía no tiene receta: sólo podrás venderlo mientras quede existencia.");
     var replacesVersion = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
       """
       SELECT TOP (1) activeVersion.VersionNumber

@@ -286,6 +286,19 @@ public sealed class PublicWebsiteInstanceTests
   }
 
   [Fact]
+  public void HospitalityDevelopmentEnvironmentOverridesUserSecrets()
+  {
+    var program = RepoFile.Read("src/OrionERP.Bonhomia.Web/Program.cs");
+    var userSecrets = program.IndexOf("AddUserSecrets<Program>", StringComparison.Ordinal);
+    var environment = program.IndexOf("AddEnvironmentVariables(prefix: \"ASPNETCORE_\")", StringComparison.Ordinal);
+    var commandLine = program.IndexOf("AddCommandLine(args)", StringComparison.Ordinal);
+
+    Assert.True(userSecrets >= 0);
+    Assert.True(environment > userSecrets);
+    Assert.True(commandLine > environment);
+  }
+
+  [Fact]
   public void ProductionPublishEntryPoints_UseTheCommonGitAndRollbackSafetyContract()
   {
     var safety = RepoFile.Read("deployment/Publish-Safety.ps1");

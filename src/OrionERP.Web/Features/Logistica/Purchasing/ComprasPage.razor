@@ -83,13 +83,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Proveedor</label>
-                            <select class="form-select" @bind="Filter.VendorId">
-                                <option value="">Todos</option>
-                                @foreach (var vendor in VendorOptions)
-                                {
-                                    <option value="@vendor.Id">@vendor.Name</option>
-                                }
-                            </select>
+                            <LookupSearchBox Options="VendorOptions" @bind-Value="FilterVendorId" Placeholder="Todos" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Estado</label>
@@ -223,13 +217,11 @@
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label">Proveedor</label>
-                                <InputSelect class="form-select" @bind-Value="Editor.BusinessPartnerId" disabled="@(!CanEditVendor)">
-                                    <option value="0">Selecciona un proveedor</option>
-                                    @foreach (var vendor in VendorOptions)
-                                    {
-                                        <option value="@vendor.Id">@vendor.Name</option>
-                                    }
-                                </InputSelect>
+                                <LookupSearchBox Options="VendorOptions"
+                                                 Value="Editor.BusinessPartnerId"
+                                                 ValueChanged="OnEditorVendorSelectedAsync"
+                                                 Placeholder="Busca un proveedor"
+                                                 Disabled="@(!CanEditVendor)" />
                                 @if (!CanEditVendor)
                                 {
                                     <div class="form-text">El proveedor se bloquea cuando ya existen materiales en la orden.</div>
@@ -275,13 +267,38 @@
                                 </div>
                             </div>
 
-                            @if (!CanSearchMaterials)
+                            @if (!HasVendorSelected)
                             {
                                 <div class="alert alert-light border mt-3 mb-0">
-                                    Selecciona el proveedor primero para saber cuáles de estos materiales te surte de costumbre.
+                                    Selecciona el proveedor primero para que la lista muestre únicamente los materiales que te surte.
                                 </div>
                             }
-                            else if (HasExecutedMaterialSearch)
+                            else
+                            {
+                                <div class="compras-material-scope mt-3">
+                                    <div class="btn-group btn-group-sm" role="group" aria-label="Alcance de la búsqueda de materiales">
+                                        <button type="button"
+                                                class="btn @(IsVendorScopedSearch ? "btn-primary" : "btn-outline-secondary")"
+                                                @onclick="BuscarSoloDelProveedorAsync"
+                                                disabled="@IsSearchingMaterials">
+                                            Sólo lo que surte este proveedor
+                                        </button>
+                                        <button type="button"
+                                                class="btn @(IsVendorScopedSearch ? "btn-outline-secondary" : "btn-primary")"
+                                                @onclick="BuscarEnTodoElCatalogoAsync"
+                                                disabled="@IsSearchingMaterials">
+                                            Buscar otros materiales
+                                        </button>
+                                    </div>
+                                    <div class="form-text mt-1">
+                                        @(IsVendorScopedSearch
+                                            ? $"La lista sólo trae el catálogo de {CurrentVendorName}."
+                                            : $"La lista recorre todo el catálogo; lo que {CurrentVendorName} no surte de costumbre queda marcado y podrás registrarlo como proveedor alternativo al guardar.")
+                                    </div>
+                                </div>
+                            }
+
+                            @if (HasExecutedMaterialSearch)
                             {
                                 <div class="table-responsive mt-3 compras-material-search-scroll">
                                     <table class="table table-sm table-hover align-middle compras-material-search-table">
@@ -298,7 +315,19 @@
                                             @if (MaterialSearchResults.Count == 0)
                                             {
                                                 <tr>
-                                                    <td colspan="5" class="text-center text-muted py-3">Ningún material coincide con esa búsqueda.</td>
+                                                    <td colspan="5" class="text-center text-muted py-3">
+                                                        @if (LastSearchWasVendorScoped)
+                                                        {
+                                                            <div class="mb-2">@CurrentVendorName no surte ningún material que coincida con esa búsqueda.</div>
+                                                            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="BuscarEnTodoElCatalogoAsync" disabled="@IsSearchingMaterials">
+                                                                Buscar otros materiales en todo el catálogo
+                                                            </button>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span>Ningún material coincide con esa búsqueda.</span>
+                                                        }
+                                                    </td>
                                                 </tr>
                                             }
                                             else
@@ -321,16 +350,19 @@
                                                         <td>
                                                             <div class="fw-semibold">@materialTitle</div>
                                                             <small class="text-muted">@item.MaterialCode</small>
-                                                            @if (item.IsHighlightedVendorMaterial)
+                                                            @if (!LastSearchWasVendorScoped)
                                                             {
-                                                                <span class="badge compras-vendor-badge is-usual ms-2">Lo surte este proveedor</span>
-                                                            }
-                                                            else
-                                                            {
-                                                                <span class="badge compras-vendor-badge is-new ms-2"
-                                                                      title="@(string.IsNullOrWhiteSpace(item.VendorName) ? "El material no tiene proveedor registrado." : $"Lo surte {item.VendorName}.")">
-                                                                    @(string.IsNullOrWhiteSpace(item.VendorName) ? "Sin proveedor registrado" : $"Habitual: {item.VendorName}")
-                                                                </span>
+                                                                @if (item.IsHighlightedVendorMaterial)
+                                                                {
+                                                                    <span class="badge compras-vendor-badge is-usual ms-2">Lo surte este proveedor</span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span class="badge compras-vendor-badge is-new ms-2"
+                                                                          title="@(string.IsNullOrWhiteSpace(item.VendorName) ? "El material no tiene proveedor registrado." : $"Lo surte {item.VendorName}.")">
+                                                                        @(string.IsNullOrWhiteSpace(item.VendorName) ? "Sin proveedor registrado" : $"Habitual: {item.VendorName}")
+                                                                    </span>
+                                                                }
                                                             }
                                                         </td>
                                                         <td>@(string.IsNullOrWhiteSpace(item.BaseUnitName) ? "Sin unidad" : item.BaseUnitName)</td>
@@ -346,6 +378,13 @@
                                         </tbody>
                                     </table>
                                 </div>
+
+                                @if (MaterialSearchHitLimit)
+                                {
+                                    <div class="form-text mt-2">
+                                        Se muestran los primeros @MaterialSearchLimit materiales. Escribe parte del código o de la descripción para acotar la lista.
+                                    </div>
+                                }
                             }
                         </div>
                     </section>
@@ -433,10 +472,9 @@
                                                 <td class="text-end">
                                                     @if (IsDraftMode)
                                                     {
-                                                        <InputNumber class="form-control form-control-sm compras-inline-number"
-                                                                     step="0.000001"
-                                                                     aria-label="Precio por unidad base"
-                                                                     @bind-Value="line.BaseUnitPrice" />
+                                                        <DecimalInput class="form-control form-control-sm compras-inline-number"
+                                                                      aria-label="Precio por unidad base"
+                                                                      @bind-Value="line.BaseUnitPrice" />
                                                         <div class="small text-muted">por @(string.IsNullOrWhiteSpace(line.BaseUnitName) ? "unidad base" : line.BaseUnitName)</div>
                                                     }
                                                     else
@@ -503,13 +541,13 @@
                                 @if (HasInvalidPurchaseAllocationMultiple(SelectedLine))
                                 {
                                     <div class="alert alert-warning py-2">
-                                        Cada ubicación planeada debe quedar en unidades completas de compra antes de guardar.
+                                        Cada ubicación planeada debe quedar en múltiplos de @GetPurchaseIncrementRequirement(SelectedLine) antes de guardar.
                                     </div>
                                 }
                                 else if (HasInvalidPurchaseMultiple(SelectedLine))
                                 {
                                     <div class="alert alert-warning py-2">
-                                        La cantidad total planeada debe quedar en unidades completas de compra antes de guardar.
+                                        La cantidad total planeada debe quedar en múltiplos de @GetPurchaseIncrementRequirement(SelectedLine) antes de guardar.
                                     </div>
                                 }
 
@@ -526,12 +564,11 @@
                                     </div>
                                     <div class="col-md-3">
                                         <label class="form-label">Cantidad (@GetPurchaseUnitName(SelectedLine))</label>
-                                        <input type="number"
-                                               step="any"
-                                               min="0"
-                                               class="form-control"
-                                               value="@FormatNumberInput(GetPendingAllocationDisplayQuantity())"
-                                               @onchange="UpdatePendingAllocationDisplayQuantity" />
+                                        <DecimalInput TValue="decimal"
+                                                      class="form-control"
+                                                      aria-label="Cantidad en unidad de compra"
+                                                      Value="@GetPendingAllocationDisplayQuantity()"
+                                                      ValueChanged="@SetPendingAllocationDisplayQuantity" />
                                         <div class="form-text">
                                             Captura cantidades en unidad de compra. El inventario se convierte internamente a unidad base.
                                         </div>
@@ -585,12 +622,11 @@
                                                     <td class="text-end">
                                                         @if (IsDraftMode)
                                                         {
-                                                            <input type="number"
-                                                                   step="any"
-                                                                   min="0"
-                                                                   class="form-control form-control-sm compras-inline-number"
-                                                                   value="@FormatNumberInput(GetAllocationDisplayQuantity(SelectedLine, allocation))"
-                                                                   @onchange="args => UpdateAllocationDisplayQuantity(SelectedLine, allocation, args)" />
+                                                            <DecimalInput TValue="decimal"
+                                                                          class="form-control form-control-sm compras-inline-number"
+                                                                          aria-label="Cantidad planeada"
+                                                                          Value="@GetAllocationDisplayQuantity(SelectedLine, allocation)"
+                                                                          ValueChanged="@(value => SetAllocationDisplayQuantity(SelectedLine, allocation, value))" />
                                                             @if (GetPurchaseAllocationValidationMessage(SelectedLine, allocation) is { } allocationValidationMessage)
                                                             {
                                                                 <div class="small text-danger mt-1 text-start">@allocationValidationMessage</div>
@@ -680,26 +716,23 @@
                                                     <label>
                                                         <span>Cantidad que llegó</span>
                                                         <small>En @GetPurchaseUnitName(item)</small>
-                                                    <input type="number"
-                                                           step="any"
-                                                           min="0"
-                                                               inputmode="decimal"
-                                                           class="form-control compras-receive-number"
-                                                           value="@FormatNumberInput(GetReceiveNowDisplayQuantity(item))"
-                                                           @oninput="args => UpdateReceiveNowDisplayQuantity(item, args)" />
+                                                    <DecimalInput TValue="decimal"
+                                                                  class="form-control compras-receive-number"
+                                                                  aria-label="Cantidad recibida"
+                                                                  Value="@GetReceiveNowDisplayQuantity(item)"
+                                                                  ValueChanged="@(value => SetReceiveNowDisplayQuantity(item, value))" />
                                                     </label>
                                                     <label>
                                                         <span>Total en el ticket</span>
                                                         <small>Por esta cantidad</small>
                                                         <div class="input-group compras-money-input">
                                                             <span class="input-group-text">$</span>
-                                                            <input type="number"
-                                                                   class="form-control"
-                                                                   min="0.01"
-                                                                   step="0.01"
-                                                                   inputmode="decimal"
-                                                                   value="@(item.TotalAmount.HasValue ? FormatNumberInput(item.TotalAmount.Value) : null)"
-                                                                   @oninput="args => UpdateReceiveTotalAmount(item, args)" />
+                                                            <DecimalInput TValue="decimal?"
+                                                                          class="form-control"
+                                                                          Format="0.00"
+                                                                          aria-label="Total del ticket para esta cantidad"
+                                                                          Value="@item.TotalAmount"
+                                                                          ValueChanged="@(value => UpdateReceiveTotalAmount(item, value))" />
                                                         </div>
                                                     </label>
                                                 </div>
@@ -721,24 +754,6 @@
                                                 {
                                                     <p class="compras-price-hint">Referencia de la orden: @FormatMoney(suggestedTotal). Confirma el importe real del ticket.</p>
                                                 }
-
-                                                @if (item.RequiresLot)
-                                                {
-                                                    <div class="compras-lot-fields">
-                                                        <label><span>Lote <strong>obligatorio</strong></span><input class="form-control" value="@item.LotCode" @oninput="args => UpdateReceiveLotCode(item, args)" /></label>
-                                                        <label><span>Caducidad <strong>obligatoria</strong></span><input type="date" class="form-control" value="@FormatDateInput(item.ExpiresAt)" @oninput="args => UpdateReceiveExpiration(item, args)" /></label>
-                                                    </div>
-                                                }
-                                                else
-                                                {
-                                                    <details class="compras-optional-fields">
-                                                        <summary>Agregar lote o caducidad (opcional)</summary>
-                                                        <div class="compras-lot-fields">
-                                                            <label><span>Lote</span><input class="form-control" value="@item.LotCode" @oninput="args => UpdateReceiveLotCode(item, args)" /></label>
-                                                            <label><span>Caducidad</span><input type="date" class="form-control" value="@FormatDateInput(item.ExpiresAt)" @oninput="args => UpdateReceiveExpiration(item, args)" /></label>
-                                                        </div>
-                                                    </details>
-                                                }
                                             </article>
                                         }
                                     </div>
@@ -755,10 +770,6 @@
                                         @if (ReceiptMissingAmountCount > 0)
                                         {
                                             <p class="compras-ticket-warning">Falta el total de @ReceiptMissingAmountCount artículo(s).</p>
-                                        }
-                                        else if (ReceiptMissingLotCount > 0)
-                                        {
-                                            <p class="compras-ticket-warning">Falta lote o caducidad de @ReceiptMissingLotCount artículo(s).</p>
                                         }
                                         else if (ReceiptCapturedItemCount == 0)
                                         {
@@ -866,13 +877,10 @@
 
                     <div class="mb-3">
                         <label class="form-label">Proveedor</label>
-                        <select class="form-select" @bind="AutoPoRequest.BusinessPartnerId">
-                            <option value="0">Selecciona un proveedor</option>
-                            @foreach (var vendor in VendorOptions)
-                            {
-                                <option value="@vendor.Id">@vendor.Name</option>
-                            }
-                        </select>
+                        <LookupSearchBox Options="VendorOptions"
+                                         @bind-Value="AutoPoRequest.BusinessPartnerId"
+                                         Placeholder="Busca un proveedor"
+                                         Disabled="@IsCreatingAutoPo" />
                     </div>
 
                     <div class="compras-auto-po-room-panel">

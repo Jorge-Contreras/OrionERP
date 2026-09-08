@@ -26,6 +26,7 @@ public class SatDescargaPage : ComponentBase
   [Inject] protected ISatRfcProfileRepository RfcProfiles { get; set; } = default!;
   [Inject] protected ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] protected IUiMessageService UiMessages { get; set; } = default!;
+  [Inject] protected IOperationErrorPresenter Errors { get; set; } = default!;
   
 
 
@@ -58,7 +59,7 @@ public class SatDescargaPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"Error al cargar solicitudes: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar las solicitudes de descarga del SAT"));
     }
   }
 
@@ -107,7 +108,8 @@ public class SatDescargaPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"Error al solicitar descarga: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "enviar la solicitud de descarga al SAT",
+        new { Issued, TipoSolicitud, EstadoComprobante, FilterRfc }));
     }
     finally
     {
@@ -142,7 +144,7 @@ public class SatDescargaPage : ComponentBase
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"Error al actualizar estado: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "actualizar el estado de las solicitudes ante el SAT"));
     }
     finally
     {
@@ -160,32 +162,52 @@ public class SatDescargaPage : ComponentBase
       var cert = await LoadCertAsync();
 
       // 1) Download + process
-      LastSummary = await Coordinator.DownloadAndProcessAsync(solicitudId, cert);
+      var summary = await Coordinator.DownloadAndProcessAsync(solicitudId, cert);
+      LastSummary = summary;
 
-      // 2) Mark as Procesada (7) BEFORE notifying the user
+      var processedFiles = SatProcessingOutcome.ProcessedFiles(summary);
+      var failures = SatProcessingOutcome.Failures(summary);
+      var completedCleanly = SatProcessingOutcome.CompletedCleanly(summary);
+
+      // 2) Solo se cierra la solicitud (Procesada / terminada) cuando TODO se descargó y
+      // procesó sin fallas. Cerrarla con paquetes pendientes o con errores dejaría CFDIs
+      // fiscales fuera del sistema sin posibilidad de reintento desde esta pantalla.
       var current = await SolicitudesRepo.GetAsync(solicitudId);
-      await SolicitudesRepo.UpdateVerifySnapshotAsync(
-        solicitudId,
-        new SatVerifySnapshot
-        {
-          Estado = EstadoSolicitud.Procesada, // = 7
-                                              // Keep whatever SAT codes you might already have:
-          CodigoEstadoSolicitud = current?.CodigoEstadoSolicitud,
-          CodEstatus = current?.CodEstatus,
-          Mensaje = "Procesada localmente",
-          NumeroCfdis = current?.NumeroCfdis ?? 0,
-          PackageIds = Array.Empty<string>(),
-          // Also close the lifecycle if it wasn’t already closed:
-          IsTerminated = true
-        });
+      if (completedCleanly)
+      {
+        await SolicitudesRepo.UpdateVerifySnapshotAsync(
+          solicitudId,
+          new SatVerifySnapshot
+          {
+            Estado = EstadoSolicitud.Procesada, // = 7
+            CodigoEstadoSolicitud = current?.CodigoEstadoSolicitud,
+            CodEstatus = current?.CodEstatus,
+            Mensaje = "Procesada localmente",
+            NumeroCfdis = current?.NumeroCfdis ?? processedFiles,
+            PackageIds = Array.Empty<string>(),
+            IsTerminated = true
+          });
+      }
 
       // 3) Refresh grid and notify
       await LoadSolicitudesAsync();
-      UiMessages.ShowSuccess("Descarga y procesamiento completados.");
+
+      if (completedCleanly)
+      {
+        UiMessages.ShowSuccess($"Descarga y procesamiento completados: {processedFiles} comprobante(s) en {summary.Packages} paquete(s).");
+      }
+      else if (SatProcessingOutcome.NoPackagesYet(summary))
+      {
+        UiMessages.ShowWarning("El SAT todavía no tiene listos los paquetes de esta solicitud. Usa \"Actualizar estado\" en unos minutos y vuelve a intentar la descarga. La solicitud sigue abierta.");
+      }
+      else
+      {
+        UiMessages.ShowWarning($"Se procesaron {processedFiles - failures} de {processedFiles} comprobante(s); {failures} con error. La solicitud queda abierta para reintentar los paquetes pendientes. Revisa el detalle por paquete en la lista.");
+      }
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"Error al descargar y procesar: {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "descargar y procesar los paquetes del SAT", new { solicitudId }));
     }
     finally
     {

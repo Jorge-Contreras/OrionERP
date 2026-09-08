@@ -71,10 +71,11 @@
 
                 <div class="materiales-search-shell">
                     <i class="bi bi-search" aria-hidden="true"></i>
-                    <input type="search"
+                    <input @key="SearchBoxKey"
+                           type="search"
                            autocomplete="off"
                            placeholder="Nombre, código, barras o código de proveedor"
-                           value="@Filter.SearchText"
+                           value="@SearchBoxValue"
                            aria-label="Buscar materiales"
                            @oninput="OnSearchInput"
                            @onkeyup="OnSearchKeyUpAsync" />
@@ -554,16 +555,27 @@
                                                     </div>
                                                     <div class="col-md-2">
                                                         <label class="form-label">Contenido</label>
-                                                        <InputNumber class="form-control" step="0.0001" @bind-Value="vendorRow.PurchaseQuantity" />
+                                                        <DecimalInput class="form-control" Format="0.####" @bind-Value="vendorRow.PurchaseQuantity" />
                                                     </div>
                                                     <div class="col-md-3">
                                                         <label class="form-label">Último precio</label>
                                                         <div class="input-group">
                                                             <span class="input-group-text">$</span>
-                                                            <InputNumber class="form-control" step="0.000001" @bind-Value="vendorRow.LastUnitPrice" />
+                                                            <DecimalInput class="form-control" @bind-Value="vendorRow.LastUnitPrice" />
                                                         </div>
                                                     </div>
-                                                    <div class="col-12">
+                                                    <div class="col-md-4">
+                                                        <label class="form-label">Cómo lo vende</label>
+                                                        <select class="form-select"
+                                                                aria-label="Cómo lo vende este proveedor"
+                                                                value="@VendorPurchaseIncrementValue(vendorRow)"
+                                                                @onchange="@(args => OnVendorPurchaseIncrementChanged(vendorRow, args.Value?.ToString()))">
+                                                            <option value="">Igual que el material</option>
+                                                            <option value="1">Solo presentaciones completas</option>
+                                                            <option value="0">Se puede comprar fraccionado</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-8">
                                                         <label class="form-label">Liga de compra</label>
                                                         <div class="materiales-input-with-icon">
                                                             <i class="bi bi-link-45deg" aria-hidden="true"></i>
@@ -605,29 +617,24 @@
                             </div>
                             <div class="col-md-3 col-xxl-2">
                                 <label class="form-label" for="material-purchase-quantity">Contenido</label>
-                                <input type="number"
-                                       id="material-purchase-quantity"
-                                       name="Editor.PurchaseQuantity"
-                                       class="form-control"
-                                       min="0.0001"
-                                       step="0.0001"
-                                       inputmode="decimal"
-                                       value="@_purchaseQuantityInputText"
-                                       @oninput="OnPurchaseQuantityChanged" />
+                                <DecimalInput TValue="decimal"
+                                              id="material-purchase-quantity"
+                                              name="Editor.PurchaseQuantity"
+                                              class="form-control"
+                                              Format="0.####"
+                                              Value="@Editor.PurchaseQuantity"
+                                              ValueChanged="@OnPurchaseQuantityChanged" />
                             </div>
                             <div class="col-md-6 col-xxl-3">
                                 <label class="form-label" for="material-base-unit-price">@BaseUnitPriceLabel</label>
                                 <div class="input-group">
                                     <span class="input-group-text">$</span>
-                                    <input type="number"
-                                           id="material-base-unit-price"
-                                           name="Editor.BaseUnitPrice"
-                                           class="form-control"
-                                           min="0"
-                                           step="0.000001"
-                                           inputmode="decimal"
-                                           value="@_baseUnitPriceInputText"
-                                           @oninput="OnBaseUnitPriceChanged" />
+                                    <DecimalInput TValue="decimal?"
+                                                  id="material-base-unit-price"
+                                                  name="Editor.BaseUnitPrice"
+                                                  class="form-control"
+                                                  Value="@Editor.BaseUnitPrice"
+                                                  ValueChanged="@OnBaseUnitPriceChanged" />
                                 </div>
                                 <ValidationMessage For="@(() => Editor.BaseUnitPrice)" />
                                 <div class="form-text">Costo de referencia almacenado; el costo real de inventario proviene de recepciones y promedio ponderado.</div>
@@ -636,16 +643,14 @@
                                 <label class="form-label" for="material-presentation-price">@PurchasePresentationPriceLabel</label>
                                 <div class="input-group">
                                     <span class="input-group-text">$</span>
-                                    <input type="number"
-                                           id="material-presentation-price"
-                                           name="PurchasePresentationPrice"
-                                           class="form-control"
-                                           min="0"
-                                           step="0.01"
-                                           inputmode="decimal"
-                                           disabled="@(!CanCalculatePurchasePresentationPrice)"
-                                           value="@_purchasePresentationPriceInputText"
-                                           @oninput="OnPurchasePresentationPriceChanged" />
+                                    <DecimalInput TValue="decimal?"
+                                                  id="material-presentation-price"
+                                                  name="PurchasePresentationPrice"
+                                                  class="form-control"
+                                                  Format="0.00"
+                                                  disabled="@(!CanCalculatePurchasePresentationPrice)"
+                                                  Value="@PurchasePresentationPrice"
+                                                  ValueChanged="@OnPurchasePresentationPriceChanged" />
                                 </div>
                                 <div class="form-text">Calculado como precio base × contenido. También puedes capturarlo para recalcular el precio base.</div>
                             </div>
@@ -656,6 +661,36 @@
                                     <span>@PurchaseConversionSummary</span>
                                 </div>
                             </div>
+                            @if (CanConfigurePurchaseIncrement)
+                            {
+                                <div class="col-12">
+                                    <label class="form-label">Cómo lo vende el proveedor</label>
+                                    <div class="materiales-purchase-increment" role="radiogroup" aria-label="Cómo lo vende el proveedor">
+                                        <label class="materiales-purchase-increment-option @(BuysWholePresentationsOnly ? "is-selected" : null)" for="material-purchase-whole">
+                                            <input type="radio"
+                                                   id="material-purchase-whole"
+                                                   name="material-purchase-increment"
+                                                   checked="@BuysWholePresentationsOnly"
+                                                   @onchange="@(() => OnPurchaseIncrementChanged(true))" />
+                                            <span>
+                                                <strong>Solo presentaciones completas</strong>
+                                                <small>El proveedor solo vende la presentación cerrada, como el paquete de papel.</small>
+                                            </span>
+                                        </label>
+                                        <label class="materiales-purchase-increment-option @(BuysWholePresentationsOnly ? null : "is-selected")" for="material-purchase-fractional">
+                                            <input type="radio"
+                                                   id="material-purchase-fractional"
+                                                   name="material-purchase-increment"
+                                                   checked="@(!BuysWholePresentationsOnly)"
+                                                   @onchange="@(() => OnPurchaseIncrementChanged(false))" />
+                                            <span>
+                                                <strong>Se puede comprar fraccionado</strong>
+                                                <small>El proveedor vende fracciones de la presentación, como 1.5 kg de pollo.</small>
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                            }
 
                         </div>
                     </section>
@@ -1456,7 +1491,7 @@
                             <span class="spinner-border" aria-hidden="true"></span>
                             <div>
                                 <strong>Revisando dependencias</strong>
-                                <span>Inventario, compras, conteos, lotes, BOM, recetas y restaurante.</span>
+                                <span>Inventario, compras, conteos, BOM, recetas y restaurante.</span>
                             </div>
                         </div>
                     }

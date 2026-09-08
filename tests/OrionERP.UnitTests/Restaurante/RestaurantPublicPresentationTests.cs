@@ -33,12 +33,121 @@ public sealed class RestaurantPublicPresentationTests
   [InlineData(null)]
   [InlineData("")]
   [InlineData("not-json")]
+  [InlineData("[]")]
+  [InlineData("{}")]
+  [InlineData("{\"Tuesday\":{}}")]
+  [InlineData("{\"Tuesday\":[null]}")]
   [InlineData("{\"Tuesday\":[{\"opens\":\"later\",\"closes\":\"22:00\"}]}")]
+  [InlineData("{\"Tuesday\":[{\"opens\":\"09:00\",\"closes\":\"09:00\"}]}")]
   public void Invalid_opening_hours_never_invent_a_schedule(string? value)
   {
     var at = new DateTimeOffset(2026, 9, 1, 18, 0, 0, TimeSpan.Zero);
 
     Assert.Equal("Consulta el horario", RestaurantOpeningHours.Today(value, "UTC", at));
+    Assert.Equal("Horario no disponible", RestaurantOpeningHours.Week(value)[1].Hours);
+    Assert.Null(RestaurantOpeningHours.IsOpen(value, "UTC", at));
+  }
+
+  [Theory]
+  [InlineData("9", "\"22:00\"")]
+  [InlineData("true", "\"22:00\"")]
+  [InlineData("[]", "\"22:00\"")]
+  [InlineData("{}", "\"22:00\"")]
+  [InlineData("null", "\"22:00\"")]
+  [InlineData("\"09:00\"", "22")]
+  [InlineData("\"09:00\"", "false")]
+  [InlineData("\"09:00\"", "[]")]
+  [InlineData("\"09:00\"", "{}")]
+  [InlineData("\"09:00\"", "null")]
+  public void Non_string_interval_times_leave_both_schedule_and_status_unknown(string opens, string closes)
+  {
+    var hours = $$"""
+      {"Monday":[],"Tuesday":[{"opens":{{opens}},"closes":{{closes}}}]}
+      """;
+    var at = new DateTimeOffset(2026, 9, 1, 18, 0, 0, TimeSpan.Zero);
+
+    Assert.Equal("Consulta el horario", RestaurantOpeningHours.Today(hours, "UTC", at));
+    Assert.Equal("Horario no disponible", RestaurantOpeningHours.Week(hours)[1].Hours);
+    Assert.Null(RestaurantOpeningHours.IsOpen(hours, "UTC", at));
+  }
+
+  [Theory]
+  [InlineData(8, 59, false)]
+  [InlineData(9, 0, true)]
+  [InlineData(13, 59, true)]
+  [InlineData(14, 0, false)]
+  [InlineData(15, 59, false)]
+  [InlineData(16, 0, true)]
+  [InlineData(21, 59, true)]
+  [InlineData(22, 0, false)]
+  public void Split_day_status_includes_opening_and_excludes_closing_and_the_break(
+    int hour,
+    int minute,
+    bool expected)
+  {
+    var at = new DateTimeOffset(2026, 9, 1, hour, minute, 0, TimeSpan.Zero);
+
+    Assert.Equal(expected, RestaurantOpeningHours.IsOpen(HoursJson, "UTC", at));
+  }
+
+  [Theory]
+  [InlineData("2026-09-06T07:00:00Z", "22:00–02:00", false)]
+  [InlineData("2026-09-07T03:59:00Z", "22:00–02:00", false)]
+  [InlineData("2026-09-07T04:00:00Z", "22:00–02:00", true)]
+  [InlineData("2026-09-07T05:59:00Z", "22:00–02:00", true)]
+  [InlineData("2026-09-07T06:00:00Z", "Cerrado", true)]
+  [InlineData("2026-09-07T07:59:00Z", "Cerrado", true)]
+  [InlineData("2026-09-07T08:00:00Z", "Cerrado", false)]
+  public void Overnight_status_follows_the_previous_local_day_across_midnight_and_the_week_boundary(
+    string utcInstant,
+    string expectedToday,
+    bool expectedOpen)
+  {
+    const string hours = """
+      {"Saturday":[],"Sunday":[{"opens":"22:00","closes":"02:00"}],"Monday":[]}
+      """;
+    var at = DateTimeOffset.Parse(utcInstant);
+
+    Assert.Equal(expectedToday, RestaurantOpeningHours.Today(hours, "America/Mexico_City", at));
+    Assert.Equal(expectedOpen, RestaurantOpeningHours.IsOpen(hours, "America/Mexico_City", at));
+  }
+
+  [Theory]
+  [InlineData(1, null)]
+  [InlineData(12, true)]
+  [InlineData(22, null)]
+  public void Partial_schedule_can_prove_open_but_cannot_prove_closed(int hour, bool? expectedOpen)
+  {
+    const string hours = """
+      {"Tuesday":[{"opens":"09:00","closes":"22:00"}]}
+      """;
+    var at = new DateTimeOffset(2026, 9, 1, hour, 0, 0, TimeSpan.Zero);
+
+    Assert.Equal("09:00–22:00", RestaurantOpeningHours.Today(hours, "UTC", at));
+    Assert.Equal(expectedOpen, RestaurantOpeningHours.IsOpen(hours, "UTC", at));
+  }
+
+  [Theory]
+  [InlineData(1, true)]
+  [InlineData(2, null)]
+  public void Previous_overnight_interval_can_prove_open_when_today_is_missing(int hour, bool? expectedOpen)
+  {
+    const string hours = """
+      {"Monday":[{"opens":"22:00","closes":"02:00"}]}
+      """;
+    var at = new DateTimeOffset(2026, 9, 1, hour, 0, 0, TimeSpan.Zero);
+
+    Assert.Equal("Consulta el horario", RestaurantOpeningHours.Today(hours, "UTC", at));
+    Assert.Equal(expectedOpen, RestaurantOpeningHours.IsOpen(hours, "UTC", at));
+  }
+
+  [Fact]
+  public void Unknown_time_zone_leaves_schedule_and_status_unknown()
+  {
+    var at = new DateTimeOffset(2026, 9, 1, 18, 0, 0, TimeSpan.Zero);
+
+    Assert.Equal("Consulta el horario", RestaurantOpeningHours.Today(HoursJson, "Unknown/Restaurant", at));
+    Assert.Null(RestaurantOpeningHours.IsOpen(HoursJson, "Unknown/Restaurant", at));
   }
 
   [Fact]
@@ -116,6 +225,49 @@ public sealed class RestaurantPublicPresentationTests
     Assert.Contains("binding.SiteId", program, StringComparison.Ordinal);
     Assert.Contains("product.KitchenStationId IS NULL OR station.SiteId = @SiteId", catalog, StringComparison.Ordinal);
     Assert.Contains("siteInfo.Id = @SiteId AND siteInfo.IsEnabled = 1", catalog, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void Public_menu_only_uses_a_published_schedule_for_the_bound_site()
+  {
+    var contract = ReadRepoFile(
+      "src/OrionERP.Application/Features/Restaurante/IRestaurantCatalogService.cs");
+    var publicCatalog = ReadRepoFile(
+      "src/OrionERP.Infrastructure/Features/Restaurante/BrunoPublicCatalogService.cs");
+    var catalog = ReadRepoFile(
+      "src/OrionERP.Infrastructure/Features/Restaurante/RestaurantCatalogService.cs");
+    var orders = ReadRepoFile(
+      "src/OrionERP.Infrastructure/Features/Restaurante/RestaurantOrderService.cs");
+
+    Assert.Contains("GetPublicCatalogAsync", contract, StringComparison.Ordinal);
+    Assert.Contains("_catalogService.GetPublicCatalogAsync", publicCatalog, StringComparison.Ordinal);
+    Assert.DoesNotContain("_catalogService.GetPosCatalogAsync", publicCatalog, StringComparison.Ordinal);
+    Assert.Contains("FROM restaurante.MenuSchedule anySchedule", catalog, StringComparison.Ordinal);
+    Assert.Contains("currentSchedule.SiteId = @SiteId", catalog, StringComparison.Ordinal);
+    Assert.Contains(
+      "scheduleInventory.HasAny IS NULL OR currentScheduleMatch.IsActiveNow = 1",
+      catalog,
+      StringComparison.Ordinal);
+    Assert.Contains("currentSchedule.DayOfWeek = @PreviousDayOfWeek", catalog, StringComparison.Ordinal);
+    Assert.Contains(
+      "scheduleInventory.HasAny IS NULL OR currentScheduleMatch.IsActiveNow=1",
+      orders,
+      StringComparison.Ordinal);
+    Assert.Contains("currentSchedule.DayOfWeek=@PreviousDayOfWeek", orders, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void Public_menu_never_falls_back_to_the_private_operational_catalog()
+  {
+    var catalog = ReadRepoFile(
+      "src/OrionERP.Infrastructure/Features/Restaurante/RestaurantCatalogService.cs");
+
+    Assert.Contains("includeActiveProductFallback: false", catalog, StringComparison.Ordinal);
+    Assert.Contains(
+      "sectionDtos.Count == 0 && includeActiveProductFallback",
+      catalog,
+      StringComparison.Ordinal);
+    Assert.Contains("WHERE @IncludeOperations = 1", catalog, StringComparison.Ordinal);
   }
 
   private static string ReadRepoFile(string relativePath)

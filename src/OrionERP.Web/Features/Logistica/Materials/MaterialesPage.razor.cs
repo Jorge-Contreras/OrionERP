@@ -73,15 +73,15 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     => string.Equals(DeletionConfirmationText, "Delete", StringComparison.Ordinal);
 
   private CancellationTokenSource? _listRequestCts;
+
+  protected string SearchBoxValue { get; set; } = string.Empty;
+  protected int SearchBoxKey { get; set; }
   private CancellationTokenSource? _lifecycleAssessmentCts;
   private CancellationTokenSource? _inventoryRequestCts;
   private CancellationTokenSource? _movementRequestCts;
   private bool _catalogRetryPending;
   private bool _catalogRecoveryAttempted;
   private decimal? _purchasePresentationPrice;
-  private string _purchaseQuantityInputText = "1";
-  private string _baseUnitPriceInputText = string.Empty;
-  private string _purchasePresentationPriceInputText = string.Empty;
 
   protected int LoadedWithStockCount => Materials.Count(material => material.TotalQuantity > 0);
   protected int LoadedMissingVendorCount => Materials.Count(material => string.IsNullOrWhiteSpace(material.VendorName));
@@ -140,12 +140,36 @@ public partial class MaterialesPage : ComponentBase, IDisposable
         return "Define la presentación de compra para visualizar la conversión.";
       }
 
-      return $"1 {GetUnitShortName(purchaseUnit)} = {Editor.PurchaseQuantity:N2} {GetUnitShortName(baseUnit)}";
+      return $"1 {GetUnitShortName(purchaseUnit)} = {Editor.PurchaseQuantity:N2} {GetUnitShortName(baseUnit)} · {MaterialPurchaseIncrement.DescribeMode(Editor.PurchaseIncrement)}";
     }
   }
 
+  /// <summary>El escalón sólo tiene sentido cuando el material tiene presentación de compra.</summary>
+  protected bool CanConfigurePurchaseIncrement => Editor.PurchaseUnitId.HasValue;
+
+  protected bool BuysWholePresentationsOnly
+    => !MaterialPurchaseIncrement.AllowsAnyQuantity(Editor.PurchaseIncrement);
+
+  protected void OnPurchaseIncrementChanged(bool wholePresentationsOnly)
+    => Editor.PurchaseIncrement = wholePresentationsOnly
+      ? MaterialPurchaseIncrement.WholePresentation
+      : MaterialPurchaseIncrement.Fractional;
+
+  /// <summary>Escalón del proveedor como texto para el selector: vacío significa "igual que el material".</summary>
+  protected static string VendorPurchaseIncrementValue(MaterialVendorLinkRequest row)
+    => row.PurchaseIncrement.HasValue
+      ? row.PurchaseIncrement.Value.ToString(CultureInfo.InvariantCulture)
+      : string.Empty;
+
+  protected static void OnVendorPurchaseIncrementChanged(MaterialVendorLinkRequest row, string? value)
+    => row.PurchaseIncrement = decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
+      ? parsed
+      : null;
+
   protected bool CanCalculatePurchasePresentationPrice
     => Editor.PurchaseUnitId.HasValue && Editor.PurchaseQuantity > 0m;
+
+  protected decimal? PurchasePresentationPrice => _purchasePresentationPrice;
 
   protected string BaseUnitPriceLabel
   {
@@ -223,9 +247,21 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     }
   }
 
+  // The value attribute is intentionally rendered from SearchBoxValue instead of
+  // Filter.SearchText: while the user types we keep it frozen so the render that
+  // follows each keystroke never writes a stale value back into the input and eats
+  // characters. Programmatic changes go through SetSearchText, which bumps
+  // SearchBoxKey to force the input to be re-created with the new value.
   protected void OnSearchInput(ChangeEventArgs args)
   {
     Filter.SearchText = args.Value?.ToString();
+  }
+
+  protected void SetSearchText(string? value)
+  {
+    Filter.SearchText = value;
+    SearchBoxValue = value ?? string.Empty;
+    SearchBoxKey++;
   }
 
   protected async Task OnSearchKeyUpAsync(KeyboardEventArgs args)
@@ -238,7 +274,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
 
   protected async Task ClearSearchAsync()
   {
-    Filter.SearchText = null;
+    SetSearchText(null);
     await BuscarAsync();
   }
 
@@ -293,6 +329,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   protected async Task ResetFiltersAsync()
   {
     Filter = new MaterialFilter();
+    SetSearchText(null);
     await BuscarAsync();
   }
 
@@ -359,7 +396,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
       Editor.BaseUnitId = Catalog.Units[0].Id;
     }
 
-    SyncPurchasePresentationPriceFromBase();
+    UpdatePurchasePresentationPriceFromBase();
   }
 
   protected async Task SeleccionarMaterialAsync(int materialId)
@@ -393,6 +430,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
         Description = detail.Description,
         BaseUnitId = detail.BaseUnitId,
         PurchaseQuantity = detail.PurchaseQuantity,
+        PurchaseIncrement = detail.PurchaseIncrement,
         PurchaseUnitId = detail.PurchaseUnitId,
         BaseUnitPrice = detail.BaseUnitPrice,
         Brand = detail.Brand,
@@ -410,7 +448,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
         Vendors = detail.Vendors.Select(ToVendorRequest).ToList()
       };
 
-      SyncPurchasePresentationPriceFromBase();
+      UpdatePurchasePresentationPriceFromBase();
 
       await LoadImageAsync(detail.Id);
       await LoadInventoryAsync(detail.Id);
@@ -915,6 +953,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
       VendorCode = vendor.VendorCode,
       PurchaseQuantity = vendor.PurchaseQuantity,
       PurchaseUnitId = vendor.PurchaseUnitId,
+      PurchaseIncrement = vendor.PurchaseIncrement,
       PurchaseLink = vendor.PurchaseLink,
       LastUnitPrice = vendor.LastUnitPrice,
       Notes = vendor.Notes
@@ -923,63 +962,37 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   protected void OnPurchaseUnitChanged(int? purchaseUnitId)
   {
     Editor.PurchaseUnitId = purchaseUnitId;
-    SyncPurchasePresentationPriceFromBase();
+    UpdatePurchasePresentationPriceFromBase();
   }
 
-  protected void OnPurchaseQuantityChanged(ChangeEventArgs args)
+  protected void OnPurchaseQuantityChanged(decimal purchaseQuantity)
   {
-    _purchaseQuantityInputText = Convert.ToString(args.Value, CultureInfo.InvariantCulture)?.Trim() ?? string.Empty;
-    if (decimal.TryParse(_purchaseQuantityInputText, NumberStyles.Number, CultureInfo.InvariantCulture, out var purchaseQuantity))
-    {
-      Editor.PurchaseQuantity = purchaseQuantity;
-      UpdatePurchasePresentationPriceFromBase();
-      return;
-    }
-
-    Editor.PurchaseQuantity = 0m;
-    _purchasePresentationPrice = null;
-    _purchasePresentationPriceInputText = string.Empty;
+    Editor.PurchaseQuantity = purchaseQuantity;
+    UpdatePurchasePresentationPriceFromBase();
   }
 
-  protected void OnBaseUnitPriceChanged(ChangeEventArgs args)
+  protected void OnBaseUnitPriceChanged(decimal? baseUnitPrice)
   {
-    _baseUnitPriceInputText = Convert.ToString(args.Value, CultureInfo.InvariantCulture)?.Trim() ?? string.Empty;
-    if (string.IsNullOrEmpty(_baseUnitPriceInputText))
-    {
-      Editor.BaseUnitPrice = null;
-      _purchasePresentationPrice = null;
-      _purchasePresentationPriceInputText = string.Empty;
-      return;
-    }
-
-    if (decimal.TryParse(_baseUnitPriceInputText, NumberStyles.Number, CultureInfo.InvariantCulture, out var baseUnitPrice))
-    {
-      Editor.BaseUnitPrice = MaterialPriceCalculator.NormalizeBaseUnitPrice(baseUnitPrice);
-      UpdatePurchasePresentationPriceFromBase();
-    }
+    Editor.BaseUnitPrice = MaterialPriceCalculator.NormalizeBaseUnitPrice(baseUnitPrice);
+    UpdatePurchasePresentationPriceFromBase();
   }
 
-  protected void OnPurchasePresentationPriceChanged(ChangeEventArgs args)
+  protected void OnPurchasePresentationPriceChanged(decimal? purchasePresentationPrice)
   {
-    _purchasePresentationPriceInputText = Convert.ToString(args.Value, CultureInfo.InvariantCulture)?.Trim() ?? string.Empty;
-    if (string.IsNullOrEmpty(_purchasePresentationPriceInputText))
+    if (!purchasePresentationPrice.HasValue)
     {
       _purchasePresentationPrice = null;
       Editor.BaseUnitPrice = null;
-      _baseUnitPriceInputText = string.Empty;
       return;
     }
 
-    if (!decimal.TryParse(_purchasePresentationPriceInputText, NumberStyles.Number, CultureInfo.InvariantCulture, out var purchasePresentationPrice))
-    {
-      return;
-    }
-
-    _purchasePresentationPrice = decimal.Round(purchasePresentationPrice, MaterialPriceCalculator.PurchasePresentationPriceScale, MidpointRounding.AwayFromZero);
+    _purchasePresentationPrice = decimal.Round(
+      purchasePresentationPrice.Value,
+      MaterialPriceCalculator.PurchasePresentationPriceScale,
+      MidpointRounding.AwayFromZero);
     Editor.BaseUnitPrice = MaterialPriceCalculator.CalculateBaseUnitPrice(
       _purchasePresentationPrice,
       Editor.PurchaseQuantity);
-    _baseUnitPriceInputText = FormatBaseUnitPriceInput(Editor.BaseUnitPrice);
   }
 
   protected async Task AbrirImagenMaterialAsync(MaterialListItemDto item)
@@ -1721,28 +1734,16 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   private static string GetUnitShortName(LookupOptionDto unit)
     => string.IsNullOrWhiteSpace(unit.Code) ? unit.Name : unit.Code;
 
-  private void SyncPurchasePresentationPriceFromBase()
-  {
-    _purchaseQuantityInputText = Editor.PurchaseQuantity.ToString("0.####", CultureInfo.InvariantCulture);
-    _baseUnitPriceInputText = FormatBaseUnitPriceInput(Editor.BaseUnitPrice);
-    UpdatePurchasePresentationPriceFromBase();
-  }
-
   private void UpdatePurchasePresentationPriceFromBase()
-  {
-    _purchasePresentationPrice = CanCalculatePurchasePresentationPrice
+    => _purchasePresentationPrice = CanCalculatePurchasePresentationPrice
       ? MaterialPriceCalculator.CalculatePurchasePresentationPrice(Editor.BaseUnitPrice, Editor.PurchaseQuantity)
       : null;
-    _purchasePresentationPriceInputText = _purchasePresentationPrice?.ToString("0.00", CultureInfo.InvariantCulture) ?? string.Empty;
-  }
-
-  private static string FormatBaseUnitPriceInput(decimal? baseUnitPrice)
-    => baseUnitPrice?.ToString("0.######", CultureInfo.InvariantCulture) ?? string.Empty;
 
   private static MaterialUpsertRequest CreateNewEditor()
     => new()
     {
       PurchaseQuantity = 1m,
+      PurchaseIncrement = MaterialPurchaseIncrement.WholePresentation,
       MaterialClass = "Consumable",
       Status = "ACTIVO",
       ProductionRole = MaterialProductionRoles.PurchasedInput,

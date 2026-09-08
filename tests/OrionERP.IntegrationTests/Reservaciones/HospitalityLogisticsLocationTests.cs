@@ -50,6 +50,15 @@ public sealed class HospitalityLogisticsLocationTests
       Assert.True(general.Success,general.Message); idsA.Add(general.EntityId!.Value);
       var foreign=await serviceB.SaveLocationAsync(new() { LocationName=marker+"-foreign-general" });
       Assert.True(foreign.Success,foreign.Message); idsB.Add(foreign.EntityId!.Value);
+      var crudLocationRequest=new LocationUpsertRequest { LocationName=marker+"-crud",IsInventoryEnabled=true,IsActive=true };
+      var crudLocation=await generalService.SaveLocationAsync(crudLocationRequest);
+      Assert.True(crudLocation.Success,crudLocation.Message); idsA.Add(crudLocation.EntityId!.Value);
+      crudLocationRequest.Id=crudLocation.EntityId;
+      crudLocationRequest.LocationName=marker+"-crud-edited";
+      Assert.True((await generalService.SaveLocationAsync(crudLocationRequest)).Success);
+      crudLocationRequest.IsActive=false;
+      Assert.True((await generalService.SaveLocationAsync(crudLocationRequest)).Success);
+      Assert.False((await generalService.GetLocationAsync(crudLocation.EntityId.Value))!.IsActive);
 
       Assert.NotNull(await serviceA.GetLocationAsync(root.EntityId.Value));
       Assert.NotNull(await serviceA.GetLocationAsync(grandchild.EntityId.Value));
@@ -103,6 +112,16 @@ public sealed class HospitalityLogisticsLocationTests
       Assert.NotNull(await countsGeneral.GetSessionAsync(countGeneral.EntityId.Value));
       Assert.DoesNotContain(await countsGeneral.GetSessionsAsync(),row=>row.Id==countA.EntityId.Value);
       Assert.Contains(await countsGeneral.GetSessionsAsync(),row=>row.Id==countGeneral.EntityId.Value);
+      var generalCountLine=Assert.Single((await countsGeneral.GetSessionAsync(countGeneral.EntityId.Value))!.Lines);
+      var editedGeneralCount=await countsGeneral.CaptureLineAsync(new()
+      {
+        SessionId=countGeneral.EntityId.Value,LineId=generalCountLine.Id,CountedQuantity=1m,
+        Notes=marker+"-edited",CapturedBy="scope-test"
+      });
+      Assert.True(editedGeneralCount.Success,editedGeneralCount.Message);
+      var deletedGeneralCount=await countsGeneral.DeleteDraftSessionAsync(countGeneral.EntityId.Value);
+      Assert.True(deletedGeneralCount.Success,deletedGeneralCount.Message);
+      Assert.Null(await countsGeneral.GetSessionAsync(countGeneral.EntityId.Value));
       Assert.NotEmpty((await countsA.PreviewScopeAsync(new() { LocationId=grandchild.EntityId })).Conflicts);
       await Assert.ThrowsAsync<SqlException>(()=>countsB.CreateSessionAsync(new() { LocationId=grandchild.EntityId,Notes=marker }));
       await Assert.ThrowsAsync<SqlException>(()=>countsGeneral.CreateSessionAsync(new() { LocationId=grandchild.EntityId,Notes=marker }));
@@ -155,6 +174,12 @@ public sealed class HospitalityLogisticsLocationTests
       var rfcDenied=await Assert.ThrowsAsync<SqlException>(()=>ordersB.GetOrderAsync(a.CompanyRfc,orderIds[0]));
       Assert.Equal(51935,rfcDenied.Number);
       Assert.Equal("Sent",await bootstrap.ExecuteScalarAsync<string>("SELECT [Status] FROM restaurante.[Order] WHERE Id=@Id",new { Id=orderIds[0] }));
+      var prioritized=await ordersGeneral.SetOrderPriorityAsync(a.CompanyRfc,orderIds[1],1,marker,"scope-test");
+      Assert.True(prioritized.Success,prioritized.Message);
+      var cancelled=await ordersGeneral.CancelOrderAsync(a.CompanyRfc,orderIds[1],marker,"scope-test");
+      Assert.True(cancelled.Success,cancelled.Message);
+      Assert.Equal("Cancelled",await bootstrap.ExecuteScalarAsync<string>(
+        "SELECT [Status] FROM restaurante.[Order] WHERE Id=@Id",new { Id=orderIds[1] }));
 
       // Explicit RFC is mandatory even though the historical policy allowed NULL.
       var missingFactory=new CompanyConnectionFactory(cfg,new CompanyRfc(null));
@@ -167,7 +192,12 @@ public sealed class HospitalityLogisticsLocationTests
     {
       await bootstrap.ExecuteAsync("EXEC sys.sp_set_session_context @key=N'OrionRfc',@value=@Rfc",new { Rfc=a.CompanyRfc });
       foreach(var orderId in orderIds)
-        await bootstrap.ExecuteAsync("DELETE restaurante.[Order] WHERE Id=@Id AND CustomerName=@Marker",new { Id=orderId,Marker=marker });
+        await bootstrap.ExecuteAsync("""
+DELETE restaurante.EventOutbox WHERE AggregateId=CONVERT(varchar(36),@Id);
+DELETE restaurante.SupervisorAuthorization WHERE AggregateId=CONVERT(varchar(36),@Id);
+DELETE restaurante.OrderEvent WHERE OrderId=@Id;
+DELETE restaurante.[Order] WHERE Id=@Id AND CustomerName=@Marker;
+""",new { Id=orderId,Marker=marker });
       foreach(var reservationId in reservationIds)
         await bootstrap.ExecuteAsync("DELETE logistica.InventoryReservationLine WHERE ReservationId=@Id; DELETE logistica.InventoryReservation WHERE Id=@Id;",new { Id=reservationId });
       if(restaurantSiteId>0)

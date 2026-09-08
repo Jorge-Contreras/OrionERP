@@ -56,3 +56,56 @@ y cuentas restringidas, usando los proyectos reutilizables. El cierre contable,
 las correcciones históricas verificables y el paquete productivo específico
 continúan según la matriz y el expediente; producción sigue sin consultar ni
 desplegar.
+
+## Cierre focalizado de roles restringidos y revocación
+
+El incremento posterior del 2026-09-08 ejecutó una segunda sesión de navegador
+real en `127.0.0.1:55221`, otra vez con conexión fijada y comprobada contra
+`Orion_Sandbox`, Graph Calendar apagado, mantenimiento de asistencia desactivado
+y almacenamiento local aislado. Se crearon cuatro cuentas efímeras con cinco
+asignaciones de rol; ninguna usó datos productivos.
+
+| Cuenta restringida / empresa | Permitido | Negativos comprobados |
+| --- | --- | --- |
+| SatOperator / OHM | Selector y sede Bonhomia Suites | OT, ubicaciones, compras, conteos y POS |
+| OrdenTrabajoOperador / OHM | Lista de OT | Selector, ubicaciones, compras, conteos y POS |
+| Conteo / OHM | Conteos físicos | Selector, OT, ubicaciones, compras y POS |
+| Logistica / OHM | Ubicaciones, compras y conteos | Selector, OT y POS |
+| RestauranteCaja / Bruno | POS de Bruno | Selector, OT, ubicaciones, compras y conteos |
+
+La cuenta con Logistica y RestauranteCaja también recorrió el selector de
+empresa. En OHM sólo recibió Logística; al abrir una sesión nueva en Bruno sólo
+recibió POS. No hubo herencia cruzada de la asignación de la otra empresa.
+
+La prueba de revocación se hizo sin cerrar la sesión Blazor: mientras el POS de
+Bruno seguía abierto se retiró su asignación RestauranteCaja y se navegó mediante
+un enlace interno a `/restaurante/ordenes`. La autorización volvió a consultar
+usuario, membresía, empresa activa y rol vigente, y mostró “No tienes permiso”.
+La corrección sustituye únicamente las políticas de las rutas de este alcance
+por políticas revocables; conserva los roles declarados y la exigencia previa de
+sesión de empresa, de modo que un rol recién concedido tampoco eleva un principal
+antiguo.
+
+Los ciclos de escritura se ejecutaron por servicios reales contra Sandbox y con
+fixtures propios:
+
+| Agregado | Ciclo acreditado |
+| --- | --- |
+| OT | Crear, editar título/prioridad y borrar |
+| Ubicación | Crear, editar y desactivar; el agregado conserva baja lógica |
+| Compra | Crear borrador, editar y cancelar; no existe borrado físico operativo |
+| Conteo | Crear borrador, capturar/editar renglón y borrar borrador |
+| POS | Crear orden propia, editar prioridad y cancelar; se conservaron sus eventos sólo durante el caso |
+
+La autorización SQL dio **5/5**, los tres fixtures CRUD dieron **1/1** cada uno
+y la carrera proyecto/calendario dio **8/8**. Una compilación limpia volvió a
+aprobar las **51/51** pruebas focalizadas sin SQL. Los recibos finales están en
+`tests/OrionERP.IntegrationTests/TestResults/`. La comprobación posterior sumó
+usuarios, proyectos, OT, reservas, terceros, ubicaciones, conteos, órdenes y
+compras con sus prefijos de fixture: `fixture_residuals=0`. Se eliminaron las
+cuatro cuentas temporales, se detuvo el host y el puerto quedó sin listener.
+
+No se activaron pagos, timbrado, correo, Graph, impresión ni sincronizaciones;
+no hubo migraciones ni cambios históricos. La corrección quedó validada en
+Sandbox y preparada para publicar sólo `OrionERP.Web`; esta sección no declara
+todavía la ejecución productiva.

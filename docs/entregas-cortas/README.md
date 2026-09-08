@@ -20,7 +20,7 @@ Los números de dependencias significan objetivos terminados o evidencia equival
 
 | Prompt | Tokens objetivo | Tiempo objetivo | Depende de | Estado |
 | --- | --- | --- | --- | --- |
-| [01 — Validación de roles y carrera pendiente](01-roles-y-carrera.md) | 6–10k | 30–60 min | — | Pendiente |
+| [01 — Validación de roles y carrera pendiente](01-roles-y-carrera.md) | 6–10k | 30–60 min | — | Validado; corrección de revocación preparada para Consola |
 | [02 — Suspensión en contabilidad de Restaurante](02-permisos-contabilidad-restaurante.md) | 6–10k | 30–60 min | — | Pendiente |
 | [03 — Suspensión en producción, catálogo y trabajos de Restaurante](03-permisos-servicios-restaurante.md) | 8–12k | 45–75 min | 02 | Pendiente |
 | [04 — Cuenta SQL mínima para el website de Hospedaje](04-identidad-sql-hospedaje.md) | 8–12k | 45–90 min | — | Pendiente |

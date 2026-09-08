@@ -98,6 +98,120 @@ public sealed class HospitalityProjectConcurrencyTests
     }
   }
 
+  [Theory, Trait("Category", "SqlIntegration")]
+  [InlineData(false, true)]
+  [InlineData(true, true)]
+  [InlineData(false, false)]
+  [InlineData(true, false)]
+  public async Task CalendarLink_WaitsForConcurrentGenericMutation_AndPreservesTheWinner(bool delete, bool commitMutation)
+  {
+    if (Environment.GetEnvironmentVariable("ORION_RUN_SQL_INTEGRATION") != "1") return;
+    var marker = "project-inverse-race-" + Guid.NewGuid().ToString("N");
+    var builder = new SqlConnectionStringBuilder(Environment.GetEnvironmentVariable("ASPNETCORE_ConnectionStrings__OrionDb")
+      ?? throw new InvalidOperationException("Missing Sandbox connection")) { InitialCatalog = "Orion_Sandbox" };
+    Assert.Equal("Orion_Sandbox", builder.InitialCatalog, ignoreCase: true);
+    await using var observer = await OpenSandboxAsync(builder.ConnectionString);
+    await using var mutator = await OpenSandboxAsync(builder.ConnectionString);
+    builder.ApplicationName = marker + "-linker";
+    await using var linker = await OpenSandboxAsync(builder.ConnectionString);
+    var scope = await observer.QuerySingleAsync<HospitalityScope>("SELECT p.CompanyId,p.SiteId,c.Rfc AS CompanyRfc FROM orion.PublicSite p JOIN orion.Company c ON c.CompanyId=p.CompanyId WHERE p.PublicSiteKey='bonhomia-main'");
+    await HospitalityConnectionFactory.InitializeAsync(observer, scope);
+    await HospitalityConnectionFactory.InitializeAsync(mutator, scope);
+    await HospitalityConnectionFactory.InitializeAsync(linker, scope);
+    var calendarId = await observer.ExecuteScalarAsync<int>("SELECT TOP (1) ID FROM dbo.ROOM_CALENDAR ORDER BY ID");
+    Assert.True(calendarId > 0);
+    var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+    {
+      ["ConnectionStrings:OrionDb"] = new SqlConnectionStringBuilder(builder.ConnectionString) { ApplicationName = marker + "-catalog" }.ConnectionString
+    }).Build();
+    var catalog = new CatalogoService(configuration, companyContext: new FixedCompany(scope.CompanyRfc));
+    var projectId = 0;
+    Task<int>? linkTask = null;
+    using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+    try
+    {
+      var created = await catalog.SaveItemAsync(new() { Key = CatalogoKey.Proyectos, Rfc = scope.CompanyRfc, Nombre = marker });
+      Assert.True(created.Success, created.Message);
+      projectId = await observer.ExecuteScalarAsync<int>("SELECT ID FROM dbo.Actividad WHERE RFC=@Rfc AND Descripcion=@Marker", new { Rfc = scope.CompanyRfc, Marker = marker });
+      Assert.True(projectId > 0);
+
+      await using var mutationTransaction = (SqlTransaction)await mutator.BeginTransactionAsync(IsolationLevel.Serializable, cancellation.Token);
+      var hasLink = await mutator.ExecuteScalarAsync<bool>(new CommandDefinition("""
+        SELECT CONVERT(bit,CASE WHEN EXISTS (
+          SELECT 1 FROM dbo.Actividad activity WITH (UPDLOCK, HOLDLOCK)
+          JOIN dbo.Actividad_RoomCalendar activityLink WITH (UPDLOCK, HOLDLOCK) ON activityLink.Actividad_ID=activity.ID
+          WHERE activity.ID=@ProjectId AND activity.RFC=@Rfc
+        ) THEN 1 ELSE 0 END);
+        """, new { ProjectId = projectId, Rfc = scope.CompanyRfc }, mutationTransaction, cancellationToken: cancellation.Token));
+      Assert.False(hasLink);
+      var affected = delete
+        ? await mutator.ExecuteAsync(new CommandDefinition(
+          "DELETE dbo.Actividad WHERE ID=@ProjectId AND RFC=@Rfc;",
+          new { ProjectId = projectId, Rfc = scope.CompanyRfc }, mutationTransaction, cancellationToken: cancellation.Token))
+        : await mutator.ExecuteAsync(new CommandDefinition(
+          "UPDATE dbo.Actividad SET Descripcion=@Edited WHERE ID=@ProjectId AND RFC=@Rfc;",
+          new { ProjectId = projectId, Rfc = scope.CompanyRfc, Edited = marker + "-edited" }, mutationTransaction, cancellationToken: cancellation.Token));
+      Assert.Equal(1, affected);
+
+      await using var linkTransaction = (SqlTransaction)await linker.BeginTransactionAsync(IsolationLevel.Serializable, cancellation.Token);
+      linkTask = linker.ExecuteAsync(new CommandDefinition(
+        "INSERT dbo.Actividad_RoomCalendar(Actividad_ID,RoomCalendar_ID) VALUES(@ProjectId,@CalendarId);",
+        new { ProjectId = projectId, CalendarId = calendarId }, linkTransaction, cancellationToken: cancellation.Token));
+
+      var elapsed = Stopwatch.StartNew();
+      var blocked = false;
+      while (elapsed.Elapsed < TimeSpan.FromSeconds(8) && !linkTask.IsCompleted)
+      {
+        blocked = await observer.ExecuteScalarAsync<bool>("""
+          SELECT CONVERT(bit,CASE WHEN EXISTS (
+            SELECT 1 FROM sys.dm_exec_requests request
+            JOIN sys.dm_exec_sessions session ON session.session_id=request.session_id
+            WHERE session.program_name=@ApplicationName AND request.database_id=DB_ID()
+              AND request.blocking_session_id=@Mutator AND request.wait_type LIKE 'LCK_M_%'
+          ) THEN 1 ELSE 0 END)
+          """, new { ApplicationName = marker + "-linker", Mutator = mutator.ServerProcessId });
+        if (blocked) break;
+        await Task.Delay(25, cancellation.Token);
+      }
+      Assert.True(blocked, "The calendar link must wait for the earlier generic mutation transaction.");
+      Assert.False(linkTask.IsCompleted);
+
+      if (commitMutation) await mutationTransaction.CommitAsync(cancellation.Token);
+      else await mutationTransaction.RollbackAsync(cancellation.Token);
+
+      if (delete && commitMutation)
+      {
+        var rejected = await Assert.ThrowsAsync<SqlException>(async () => await linkTask);
+        Assert.Equal(547, rejected.Number);
+        await linkTransaction.RollbackAsync(cancellation.Token);
+      }
+      else
+      {
+        Assert.Equal(1, await linkTask);
+        await linkTransaction.CommitAsync(cancellation.Token);
+      }
+
+      var name = await observer.ExecuteScalarAsync<string?>("SELECT Descripcion FROM dbo.Actividad WHERE ID=@Id AND RFC=@Rfc", new { Id = projectId, Rfc = scope.CompanyRfc });
+      Assert.Equal(delete && commitMutation ? null : !delete && commitMutation ? marker + "-edited" : marker, name);
+      Assert.Equal(delete && commitMutation ? 0 : 1,
+        await observer.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Actividad_RoomCalendar WHERE Actividad_ID=@Id", new { Id = projectId }));
+    }
+    finally
+    {
+      await cancellation.CancelAsync();
+      if (linkTask is not null)
+      {
+        try { await linkTask; }
+        catch (OperationCanceledException) { }
+        catch (SqlException) { }
+      }
+      await observer.ExecuteAsync("DELETE dbo.Actividad_RoomCalendar WHERE Actividad_ID=@Id; DELETE dbo.Actividad WHERE ID=@Id AND RFC=@Rfc AND Descripcion LIKE @Marker",
+        new { Id = projectId, Rfc = scope.CompanyRfc, Marker = marker + "%" });
+      using var poolKey = new SqlConnection(builder.ConnectionString);
+      SqlConnection.ClearPool(poolKey);
+    }
+  }
+
   private static async Task<SqlConnection> OpenSandboxAsync(string cs)
   {
     Assert.Equal("Orion_Sandbox", new SqlConnectionStringBuilder(cs).InitialCatalog, ignoreCase: true);

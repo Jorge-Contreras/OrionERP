@@ -97,6 +97,34 @@ public sealed class HospitalityPurchasingScopeTests
       };
       var rejected = await Assert.ThrowsAsync<SqlException>(() => serviceB.SaveDraftAsync(invalidDraft, marker));
       Assert.Equal(51932, rejected.Number);
+      var crudDraft = new PurchaseOrderUpsertRequest
+      {
+        BusinessPartnerId = material.BusinessPartnerId,
+        OrderDate = DateTime.Today,
+        Notes = marker + "-created",
+        LinkMaterialsToVendor = false,
+        Lines = [new()
+        {
+          MaterialId = material.Id,
+          BaseUnitPrice = 1m,
+          PurchaseQuantitySnapshot = 1m,
+          Allocations = [new() { LocationId = generalLocation, PlannedQuantity = 1m }]
+        }]
+      };
+      var createdDraft = await serviceB.SaveDraftAsync(crudDraft, marker);
+      Assert.True(createdDraft.Success, createdDraft.Message);
+      var crudDraftId = createdDraft.EntityId!.Value;
+      orderIds.Add(crudDraftId);
+      crudDraft.Id = crudDraftId;
+      crudDraft.Notes = marker + "-edited";
+      var editedDraft = await serviceB.SaveDraftAsync(crudDraft, marker);
+      Assert.True(editedDraft.Success, editedDraft.Message);
+      Assert.Equal(marker + "-edited", await setup.ExecuteScalarAsync<string>(
+        "SELECT Notes FROM logistica.PurchaseOrder WHERE Id=@Id;", new { Id = crudDraftId }));
+      var cancelledDraft = await serviceB.CancelAsync(crudDraftId, marker);
+      Assert.True(cancelledDraft.Success, cancelledDraft.Message);
+      Assert.Equal(PurchaseOrderStatuses.Cancelled, await setup.ExecuteScalarAsync<string>(
+        "SELECT [Status] FROM logistica.PurchaseOrder WHERE Id=@Id;", new { Id = crudDraftId }));
       var noCompany = new PurchaseOrderService(new CompanyFactory(cs, "__UNSCOPED__"));
       var noCompanyError = await Assert.ThrowsAsync<SqlException>(() => noCompany.GetPurchaseOrdersAsync(new()));
       Assert.Equal(51930, noCompanyError.Number);

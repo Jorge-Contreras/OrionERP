@@ -2,7 +2,8 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using OrionERP.Application.Features.Logistica.PhysicalCounts
-@attribute [Authorize(Roles = "Administrador,Logistica,Conteo")]
+@attribute [Authorize(Policy = CompanyOperationPolicies.PhysicalCounts)]
+@using OrionERP.Web.Identity
 
 <PageTitle>Logística · Conteos físicos</PageTitle>
 

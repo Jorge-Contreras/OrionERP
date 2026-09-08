@@ -10,6 +10,7 @@ using OrionERP.Web.Features.Logistica.Purchasing;
 using OrionERP.Web.Features.Logistica.Vendors;
 using OrionERP.Web.Features.Platform;
 using OrionERP.Web.Features.Reservaciones.ListaReservaciones;
+using OrionERP.Web.Identity;
 
 namespace OrionERP.IntegrationTests.Web;
 
@@ -33,9 +34,6 @@ public class OrionErpRouteProtectionTests
   [Theory]
   [InlineData(typeof(MaterialesPage), "/logistica/materiales", "Administrador,Logistica")]
   [InlineData(typeof(ProveedoresLogisticaPage), "/logistica/proveedores", "Administrador,Logistica")]
-  [InlineData(typeof(ComprasPage), "/logistica/compras", "Administrador,Logistica")]
-  [InlineData(typeof(UbicacionesPage), "/logistica/ubicaciones", "Administrador,Logistica")]
-  [InlineData(typeof(ConteosFisicosPage), "/logistica/conteos", "Administrador,Logistica,Conteo")]
   public void LogisticsRoutes_AcceptTheLogisticaRole(Type componentType, string route, string roles)
   {
     var routeTemplates = componentType.GetCustomAttributes<RouteAttribute>()
@@ -45,6 +43,25 @@ public class OrionErpRouteProtectionTests
 
     Assert.Contains(route, routeTemplates);
     Assert.Contains(authorizeAttributes, attribute => attribute.Roles == roles);
+  }
+
+  [Theory]
+  [InlineData("/reservaciones/sede", CompanyOperationPolicies.HospitalitySite)]
+  [InlineData("/ordenes-trabajo", CompanyOperationPolicies.WorkOrders)]
+  [InlineData("/ordenes-trabajo/{Id:int}", CompanyOperationPolicies.WorkOrders)]
+  [InlineData("/logistica/ubicaciones", CompanyOperationPolicies.Logistics)]
+  [InlineData("/logistica/compras", CompanyOperationPolicies.Logistics)]
+  [InlineData("/logistica/conteos", CompanyOperationPolicies.PhysicalCounts)]
+  [InlineData("/restaurante/pos", "RestaurantPos")]
+  public void TargetOperations_RequireRevocableCompanyPolicy(string route, string policy)
+  {
+    var componentType = typeof(ListaReservacionesPage).Assembly
+      .GetTypes()
+      .Single(type => type.GetCustomAttributes<RouteAttribute>()
+        .Any(attribute => attribute.Template == route));
+
+    Assert.Contains(componentType.GetCustomAttributes<AuthorizeAttribute>(),
+      attribute => attribute.Policy == policy && attribute.Roles is null);
   }
 
   [Fact]

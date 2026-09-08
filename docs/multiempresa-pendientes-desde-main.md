@@ -37,14 +37,16 @@ Restaurante quedó cerrado con **5/5 pruebas aprobadas** en Release y SQL
 habilitado. Ver [evidencia focalizada](restaurant-production-scope-20260908.md).
 No se repitieron suites completas ni navegador en ese incremento.
 
-1. **Validación focalizada y UX.** Fixture de producción/prioridades cerrado
-   en `765e1a2` (5/5 SQL). Carrera proyecto/calendario cerrada: 4/4 SQL en
-   `HospitalityProjectConcurrencyTests`, edición y eliminación esperan un
-   bloqueo real observado en SQL; si el vínculo confirma se rechazan y si
-   revierte continúan. [Smoke de navegador ejecutado](multiempresa-browser-smoke-20260908.md)
-   con roles reales: selector, OT, ubicaciones, formulario de compras, preview
-   de conteos y carrito POS; cambio de sesión OHM/Bruno y rechazo de OT ajena.
-   Falta matriz de cuentas restringidas, CRUD completo y revocación en navegador.
+1. **Validación focalizada y UX, cerrada en Sandbox.** Fixture de
+   producción/prioridades cerrado en `765e1a2` (5/5 SQL). La matriz restringida
+   cubre SatOperator, OrdenTrabajoOperador, Logistica, Conteo y RestauranteCaja,
+   con positivos, negativos, cambio OHM/Bruno y revocación efectiva dentro de
+   la misma sesión Blazor. Los recorridos SQL con datos propios completan el
+   ciclo de OT, ubicación, compra, conteo y orden POS; desactivar o cancelar es
+   la operación terminal cuando el agregado no admite borrado físico. La carrera
+   proyecto/calendario queda en 8/8, incluidos edición/eliminación primero y
+   vínculo después con bloqueo SQL observado, commit y rollback. Véase el
+   [smoke y cierre focalizado](multiempresa-browser-smoke-20260908.md).
 2. **Corrección histórica pendiente.** Los 288 vínculos de reservas
    `OHM191112Q26` con pagos `BSU210121M77` permanecen almacenados y ocultos por
    la política. El usuario confirmó el 2026-09-08: **son errores históricos**.
@@ -107,16 +109,16 @@ legacy permisiva sin contexto, el acceso de adjuntos por ID ahora corregido,
 permisos de servicio pendientes y el ciclo contable formal/bandeja durable que
 faltan. El corte debe declarar los invariantes realmente cubiertos.
 
-`HospitalityProjectConcurrencyTests`: **4/4 aprobadas** en Release, SQL
-habilitado y exportación opcional desactivada. Usa tres conexiones reales,
-`sys.dm_exec_requests` para comprobar espera por bloqueo y una transacción de
-vinculación que confirma o revierte. El catálogo ejecuta sus métodos reales
-de edición/eliminación y preserva la operación ganadora; limpia los proyectos
-y vínculos propios. Recibo local:
-`artifacts/test-results/hospitality-project-concurrency.trx`.
-No verifica el orden inverso de adquisición de bloqueos ni representa E2E de
-navegador. No requirió cambios a servicios ni migraciones; no se repitió la suite
-completa. La decisión sobre los 288 vínculos no produjo cambios de datos.
+`HospitalityProjectConcurrencyTests`: **8/8 aprobadas** en Release, SQL
+habilitado y exportación opcional desactivada. Los cuatro casos originales
+mantienen vínculo primero y mutación genérica después. Los cuatro nuevos toman
+el orden inverso: edición o eliminación dentro de una transacción serializable,
+luego intento de vínculo desde otra conexión. En ambos sentidos se observa la
+espera `LCK_M_%` con `sys.dm_exec_requests`, se cubren commit/rollback y se
+preserva el ganador. Cada caso limpia sus proyectos y vínculos propios. Recibo
+local: `tests/OrionERP.IntegrationTests/TestResults/hospitality-project-concurrency-final.trx`.
+No requirió cambios de esquema. La decisión sobre los 288 vínculos no produjo
+cambios de datos.
 
 ## Incremento contable de adjuntos
 

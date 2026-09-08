@@ -1,6 +1,7 @@
 @page "/ordenes-trabajo"
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize(Roles = "Administrador,OrdenTrabajoAdmin,OrdenTrabajoSupervisor,OrdenTrabajoOperador")]
+@attribute [Authorize(Policy = CompanyOperationPolicies.WorkOrders)]
+@using OrionERP.Web.Identity
 
 <PageTitle>Órdenes de trabajo</PageTitle>
 

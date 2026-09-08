@@ -1,5 +1,6 @@
 @page "/reservaciones/sede"
-@attribute [Authorize(Roles = "Administrador,SatOperator")]
+@attribute [Authorize(Policy = CompanyOperationPolicies.HospitalitySite)]
+@using OrionERP.Web.Identity
 @using OrionERP.Application.Features.Reservaciones
 @using OrionERP.Infrastructure.Features.Reservaciones
 @inject HospitalityAdministrationScopeAccessor ScopeAccessor

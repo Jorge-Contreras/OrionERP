@@ -136,6 +136,21 @@ WHERE ps.PublicSiteKey IN ('bonhomia-main', 'brunos-main');
       Assert.True(genericOrder.Success, genericOrder.Message);
       genericWorkOrderId = genericOrder.EntityId!.Value;
       Assert.NotNull(await genericOrders.GetWorkOrderDetailAsync(genericWorkOrderId));
+      var updatedOrder = await genericOrders.UpdateWorkOrderAsync(genericWorkOrderId, new()
+      {
+        Titulo = marker + "-edited",
+        OwnerEmployeeId = employeeId,
+        FechaProgramada = DateTime.Today,
+        Prioridad = OrdenTrabajoCodes.PrioridadAlta,
+        UpdatedBy = "scope-integration"
+      });
+      Assert.True(updatedOrder.Success, updatedOrder.Message);
+      Assert.Equal(marker + "-edited", await bootstrap.ExecuteScalarAsync<string>(
+        "SELECT Titulo FROM dbo.OrdenTrabajo WHERE Id=@Id;", new { Id = genericWorkOrderId }));
+      var deletedOrder = await genericOrders.DeleteWorkOrderAsync(genericWorkOrderId, "scope-integration");
+      Assert.True(deletedOrder.Success, deletedOrder.Message);
+      Assert.Null(await genericOrders.GetWorkOrderDetailAsync(genericWorkOrderId));
+      genericWorkOrderId = 0;
 
       var catalog = await experiencesA.GetActiveExperienceCatalogAsync();
       var experience = catalog.First(item => item.Packages.Count > 0);
@@ -158,7 +173,7 @@ WHERE ps.PublicSiteKey IN ('bonhomia-main', 'brunos-main');
       // Only IDs created by this run are removed. Both successful and failed tests leave existing data intact.
       await using var cleanup = await factoryA.OpenAsync();
       await cleanup.ExecuteAsync("""
-DELETE FROM dbo.OrdenTrabajo WHERE Id IN (@WorkOrderId, @GenericWorkOrderId) AND Titulo = @Marker;
+DELETE FROM dbo.OrdenTrabajo WHERE Id IN (@WorkOrderId, @GenericWorkOrderId) AND Titulo LIKE @MarkerPattern;
 DELETE addon FROM dbo.Reservation_ExperienceAddOn addon
 INNER JOIN dbo.Reservation_Experience experience ON experience.ReservationExperienceID = addon.ReservationExperienceID
 WHERE experience.ReservationID = @ReservationId;
@@ -174,7 +189,7 @@ DELETE FROM dbo.BusinessPartnerCfdiProfile WHERE BusinessPartnerId = @FiscalId;
 DELETE FROM dbo.BusinessPartnerRole WHERE BusinessPartnerId = @FiscalId;
 DELETE FROM orion.HospitalityFiscalCustomer WHERE BusinessPartnerId = @FiscalId;
 DELETE FROM dbo.BusinessPartner WHERE Id = @FiscalId AND PartnerName = @Marker;
-""", new { ReservationId = reservationId, CustomerId = customerId, FiscalId = fiscalId, TransactionAId = transactionAId, TransactionBId = transactionBId, WorkOrderId = workOrderId, GenericWorkOrderId = genericWorkOrderId, Marker = marker });
+""", new { ReservationId = reservationId, CustomerId = customerId, FiscalId = fiscalId, TransactionAId = transactionAId, TransactionBId = transactionBId, WorkOrderId = workOrderId, GenericWorkOrderId = genericWorkOrderId, Marker = marker, MarkerPattern = marker + "%" });
     }
   }
 

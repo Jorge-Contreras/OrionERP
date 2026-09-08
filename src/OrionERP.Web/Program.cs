@@ -443,7 +443,7 @@ builder.Services.AddAuthorization(options =>
   options.AddPolicy("FinanzasManager", policy => policy.RequireCompanyRoles("FinanzasManager"));
   options.AddPolicy("RestaurantAdmin", policy => policy.RequireCompanyRoles("RestauranteAdmin", "RestauranteSupervisor"));
   options.AddPolicy("RestaurantAdminOnly", policy => policy.RequireCompanyRoles("RestauranteAdmin"));
-  options.AddPolicy("RestaurantPos", policy => policy.RequireCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin"));
+  options.AddPolicy("RestaurantPos", policy => policy.RequireRevocableCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin"));
   options.AddPolicy("RestaurantKitchen", policy => policy.RequireCompanyRoles("RestauranteCocina", "RestauranteSupervisor", "RestauranteAdmin"));
   options.AddPolicy("RestaurantDisplay", policy => policy.RequireCompanyRoles("RestaurantePantalla", "RestauranteSupervisor", "RestauranteAdmin"));
   options.AddPolicy("RestaurantCash", policy => policy.RequireCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin"));
@@ -453,7 +453,9 @@ builder.Services.AddAuthorization(options =>
   options.AddPolicy(
       "RestaurantQzBridge",
       policy => policy.RequireCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin"));
+  options.AddRevocableCompanyOperationPolicies();
 });
+builder.Services.AddScoped<IAuthorizationHandler, RevocableCompanyRoleAuthorizationHandler>();
 
 builder.Services.AddRazorPages();      // Identity UI depends on Razor Pages
 builder.Services.AddServerSideBlazor(options =>

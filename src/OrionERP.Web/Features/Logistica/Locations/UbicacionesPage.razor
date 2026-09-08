@@ -1,7 +1,8 @@
 @page "/logistica/ubicaciones"
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Forms
-@attribute [Authorize(Roles = "Administrador,Logistica")]
+@attribute [Authorize(Policy = CompanyOperationPolicies.Logistics)]
+@using OrionERP.Web.Identity
 
 <PageTitle>Logística · Ubicaciones e inventario</PageTitle>
 

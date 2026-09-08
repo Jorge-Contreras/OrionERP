@@ -182,6 +182,8 @@ public static class ServiceRegistration
     services.AddScoped<IRestaurantCashService, RestaurantCashService>();
     services.AddScoped<IRestaurantProductionService, RestaurantProductionService>();
     services.AddScoped<IRestaurantBackofficeService, RestaurantBackofficeService>();
+    services.AddScoped<RestaurantScopeAccessor>();
+    services.AddScoped<IRestaurantScopeAccessor>(sp => sp.GetRequiredService<RestaurantScopeAccessor>());
     services.AddScoped<IRestaurantAccountingService, RestaurantAccountingService>();
     services.AddScoped<IRestaurantAnalyticsService, RestaurantAnalyticsService>();
     services.AddScoped<IRestaurantDiagnosticsService, RestaurantDiagnosticsService>();

@@ -2,6 +2,7 @@ using System.Data.Common;
 using Dapper;
 using Microsoft.AspNetCore.SignalR;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Restaurante;
 
 namespace OrionERP.Web.Features.Restaurante;
 
@@ -59,6 +60,7 @@ public sealed class RestaurantEventBroadcaster : BackgroundService
   {
     using var scope = _scopeFactory.CreateScope();
     var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+    var moduleScope = scope.ServiceProvider.GetRequiredService<IRestaurantScopeAccessor>();
     using var conn = connectionFactory.Create() as DbConnection
       ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
     await conn.OpenAsync(ct);
@@ -77,9 +79,17 @@ public sealed class RestaurantEventBroadcaster : BackgroundService
       WHERE PublishedAt IS NULL AND Attempts < 20
       ORDER BY Id;
       """, cancellationToken: ct))).AsList();
+    if (events.Count == 0) return;
+
+    // Suspender el módulo no consume el mensaje: se queda pendiente, con sus
+    // intentos intactos, para cuando la empresa vuelva a tenerlo habilitado.
+    var enabled = await moduleScope.GetEnabledCompanyRfcsAsync(
+      events.Select(eventInfo => eventInfo.Rfc).ToArray(), ct);
 
     foreach (var eventInfo in events)
     {
+      if (!enabled.Contains(eventInfo.Rfc)) continue;
+
       try
       {
         await _hub.Clients.Group(RestaurantEventsHub.GroupName(eventInfo.Rfc, eventInfo.SiteId))

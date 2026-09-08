@@ -11,11 +11,16 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
 {
   private readonly IDbConnectionFactory _connectionFactory;
   private readonly ITransaccionService _transactionService;
+  private readonly IRestaurantScopeAccessor _scopeAccessor;
 
-  public RestaurantAccountingService(IDbConnectionFactory connectionFactory, ITransaccionService transactionService)
+  public RestaurantAccountingService(
+    IDbConnectionFactory connectionFactory,
+    ITransaccionService transactionService,
+    IRestaurantScopeAccessor scopeAccessor)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
     _transactionService = transactionService ?? throw new ArgumentNullException(nameof(transactionService));
+    _scopeAccessor = scopeAccessor ?? throw new ArgumentNullException(nameof(scopeAccessor));
   }
 
   public async Task<RestaurantAccountingPreviewDto> GetDailyPreviewAsync(
@@ -25,6 +30,7 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
     CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
+    await _scopeAccessor.ResolveRequiredAsync(normalizedRfc, siteId, ct);
     var date = operationalDate.Date;
     const string sql =
       """
@@ -85,6 +91,7 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
     CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
+    var scope = await _scopeAccessor.ResolveRequiredAsync(normalizedRfc, siteId, ct);
     var date = operationalDate.Date;
     var preview = await GetDailyPreviewAsync(normalizedRfc, siteId, date, ct);
     if (preview.ExistingTransactionId.HasValue)
@@ -115,9 +122,10 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
     try
     {
       var linkedOrders = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
-        """
+        $"""
         SET XACT_ABORT ON;
         BEGIN TRANSACTION;
+        {RestaurantScopeAccessor.EnsureEnabledSql}
         INSERT INTO restaurante.AccountingLink (Rfc,SiteId,OperationalDate,LinkType,TransactionId)
         VALUES (@Rfc,@SiteId,@Date,'DailyConsolidated',@TransactionId);
 
@@ -144,7 +152,7 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
           AND linkInfo.LinkType='DailyConsolidated';
         COMMIT TRANSACTION;
         SELECT @Linked;
-        """, new { Rfc = normalizedRfc, SiteId = siteId, Date = date, TransactionId = transactionId, UserName = userName }, cancellationToken: ct));
+        """, ScopedParameters(scope, new { Rfc = normalizedRfc, SiteId = siteId, Date = date, TransactionId = transactionId, UserName = userName }), cancellationToken: ct));
       if (linkedOrders == 0) throw new InvalidOperationException("Las ventas fueron vinculadas por otro proceso.");
       return RestaurantCommandResult.Ok($"Póliza diaria {transactionId} generada y balanceada para {linkedOrders} venta(s).");
     }
@@ -171,6 +179,7 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
       return RestaurantCommandResult.Fail("Sólo se puede ligar CFDI a una venta pagada y no cancelada.");
     if (order.LinkType == "IndividualCfdi")
       return RestaurantCommandResult.Ok($"La orden ya tiene póliza individual {order.LinkedTransactionId}.");
+    var scope = await _scopeAccessor.ResolveRequiredAsync(normalizedRfc, order.SiteId, ct);
 
     var receipts = (await conn.QueryAsync<RestaurantReportBreakdownDto>(new CommandDefinition(
       """
@@ -220,9 +229,10 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
       try
       {
         await conn.ExecuteAsync(new CommandDefinition(
-          """
+          $"""
           SET XACT_ABORT ON;
           BEGIN TRANSACTION;
+          {RestaurantScopeAccessor.EnsureEnabledSql}
           IF @ReversalTransactionId IS NOT NULL
           BEGIN
             INSERT INTO restaurante.AccountingLink (Rfc,SiteId,OrderId,OperationalDate,LinkType,TransactionId)
@@ -246,7 +256,7 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
              CONCAT(N'Póliza ',@IndividualTransactionId,N' · CFDI ',@CfdiId),@UserName,
              CONCAT('accounting:',CONVERT(varchar(36),@OrderId),':IndividualCfdi:',@IndividualTransactionId));
           COMMIT TRANSACTION;
-          """, new
+          """, ScopedParameters(scope, new
           {
             Rfc = normalizedRfc,
             order.SiteId,
@@ -256,7 +266,7 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
             IndividualTransactionId = individualTransactionId,
             CfdiId = comprobanteId,
             UserName = userName
-          }, cancellationToken: ct));
+          }), cancellationToken: ct));
         return reversalTransactionId.HasValue
           ? RestaurantCommandResult.Ok($"Se generó reversión {reversalTransactionId} y póliza individual {individualTransactionId} ligada al CFDI.")
           : RestaurantCommandResult.Ok($"Póliza individual {individualTransactionId} ligada al CFDI.");
@@ -329,6 +339,13 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
       await _transactionService.DeleteTransaccionAsync(transactionId, ct);
       throw;
     }
+  }
+
+  private static DynamicParameters ScopedParameters(RestaurantScope scope, object parameters)
+  {
+    var merged = new DynamicParameters(parameters);
+    merged.AddDynamicParams(RestaurantScopeAccessor.EnsureEnabledParameters(scope));
+    return merged;
   }
 
   private static List<TransaccionMovimientoUpdateItem> BuildMovements(

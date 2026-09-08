@@ -15,16 +15,28 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
 {
   private readonly IDbConnectionFactory _connectionFactory;
   private readonly IHospitalityScopeAccessor? _hospitalityScope;
+  private readonly IRestaurantScopeAccessor? _restaurantScope;
 
-  public RestaurantProductionService(IDbConnectionFactory connectionFactory, IHospitalityScopeAccessor? hospitalityScope = null)
+  public RestaurantProductionService(
+    IDbConnectionFactory connectionFactory,
+    IHospitalityScopeAccessor? hospitalityScope = null,
+    IRestaurantScopeAccessor? restaurantScope = null)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
     _hospitalityScope = hospitalityScope;
+    _restaurantScope = restaurantScope;
   }
+
+  /// <summary>Sin accessor no hay autorización posible: la ausencia niega, no exime.</summary>
+  private Task<RestaurantScope> RequireScopeAsync(string rfc, int siteId, CancellationToken ct)
+    => (_restaurantScope ?? throw new UnauthorizedAccessException(
+          "Restaurante requiere el alcance de módulo autorizado."))
+        .ResolveRequiredAsync(rfc, siteId, ct);
 
   public async Task<RestaurantProductionWorkspaceDto> GetWorkspaceAsync(string rfc, int siteId, CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
+    await RequireScopeAsync(normalizedRfc, siteId, ct);
     var sql =
       $$"""
       SELECT production.Id, production.ProductionCode, production.SiteId, site.[Name] AS SiteName,
@@ -97,11 +109,13 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
       return RestaurantCommandResult.Fail("La cantidad y la clave de idempotencia son obligatorias.");
     }
 
+    var scope = await RequireScopeAsync(rfc, request.SiteId, ct);
     await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory,_hospitalityScope,ct);
     await LogisticsLocationScope.EnsureRfcAsync(conn,null,rfc,ct);
     await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     try
     {
+      await _restaurantScope!.EnsureStillEnabledAsync(conn,tx,scope,ct);
       await LogisticsLocationScope.EnsureLocationAsync(conn,tx,request.OutputLocationId,ct);
       var reservationKey = $"PRODUCTION:{request.IdempotencyKey.Trim()}";
       var existing = await conn.ExecuteScalarAsync<Guid?>(new CommandDefinition(
@@ -192,6 +206,7 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
       if (order is null) return await RollbackFailAsync(tx, "La orden no existe en el RFC seleccionado.", ct);
       if (order.Status == "Started") return await CommitOkAsync(tx, "La producción ya había iniciado.", ct);
       if (order.Status != "Planned") return await RollbackFailAsync(tx, "Sólo una producción planeada puede iniciar.", ct);
+      await EnsureModuleEnabledAsync(conn, tx, normalizedRfc, order.SiteId, ct);
       await ConsumeAsync(conn, tx, normalizedRfc, order.ReservationId, userName, ct);
       await conn.ExecuteAsync(new CommandDefinition(
         "UPDATE logistica.ProductionOrder SET [Status]='Started',StartedAt=SYSUTCDATETIME() WHERE Rfc=@Rfc AND Id=@Id;",
@@ -219,6 +234,7 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
       if (order is null) return await RollbackFailAsync(tx, "La orden no existe en el RFC seleccionado.", ct);
       if (order.Status == "Completed") return await CommitOkAsync(tx, "La producción ya estaba completada.", ct);
       if (order.Status != "Started") return await RollbackFailAsync(tx, "La producción debe estar iniciada antes de completarse.", ct);
+      await EnsureModuleEnabledAsync(conn, tx, rfc, order.SiteId, ct);
 
       var lotCode = request.OutputLotCode.Trim().ToUpperInvariant();
       var unitCost = decimal.Round(order.FrozenTheoreticalCost / request.ActualQuantity, 6);
@@ -297,6 +313,7 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
       var order = await GetLockedOrderAsync(conn, tx, normalizedRfc, productionOrderId, ct);
       if (order is null) return await RollbackFailAsync(tx, "La orden no existe en el RFC seleccionado.", ct);
       if (order.Status != "Planned") return await RollbackFailAsync(tx, "Sólo una orden planeada puede cancelarse; después de iniciar debe registrarse merma.", ct);
+      await EnsureModuleEnabledAsync(conn, tx, normalizedRfc, order.SiteId, ct);
       await ReleaseAsync(conn, tx, normalizedRfc, order.ReservationId, ct);
       await conn.ExecuteAsync(new CommandDefinition(
         "UPDATE logistica.ProductionOrder SET [Status]='Cancelled',CompletedAt=SYSUTCDATETIME(),CompletedBy=@UserName WHERE Rfc=@Rfc AND Id=@Id;",
@@ -306,6 +323,17 @@ public sealed class RestaurantProductionService : IRestaurantProductionService
       return RestaurantCommandResult.Ok("La orden fue cancelada y sus reservas se liberaron.");
     }
     catch { await tx.RollbackAsync(ct); throw; }
+  }
+
+  /// <summary>
+  /// La sede sale de la orden bloqueada, así que la autorización ocurre aquí y se
+  /// retiene dentro de la misma transacción antes de mutar.
+  /// </summary>
+  private async Task EnsureModuleEnabledAsync(
+    DbConnection conn, DbTransaction tx, string rfc, int siteId, CancellationToken ct)
+  {
+    var scope = await RequireScopeAsync(rfc, siteId, ct);
+    await _restaurantScope!.EnsureStillEnabledAsync(conn, tx, scope, ct);
   }
 
   private static async Task ExpandVersionAsync(DbConnection conn, DbTransaction tx, string rfc, long versionId, decimal multiplier,

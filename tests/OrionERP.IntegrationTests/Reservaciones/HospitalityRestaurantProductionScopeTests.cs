@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
@@ -146,10 +147,12 @@ public sealed class HospitalityRestaurantProductionScopeTests
     Assert.True((await f.Catalog(null).SaveSiteOperationsAsync(f.Operations(f.GeneralLocation))).Success);
 
     var missing = f.Factory(null);
-    Assert.Equal(51930, (await Assert.ThrowsAsync<SqlException>(() => new RestaurantProductionService(missing).GetWorkspaceAsync(f.Rfc, f.RestaurantSite))).Number);
-    Assert.Equal(51930, (await Assert.ThrowsAsync<SqlException>(() => new RestaurantProductionService(missing).PlanAsync(f.Plan(f.GeneralLocation, "missing"), "scope-test"))).Number);
-    Assert.Equal(51930, (await Assert.ThrowsAsync<SqlException>(() => new RestaurantCatalogService(missing).GetSiteOperationsAsync(f.Rfc, f.RestaurantSite))).Number);
-    Assert.Equal(51930, (await Assert.ThrowsAsync<SqlException>(() => new RestaurantCatalogService(missing).SaveSiteOperationsAsync(f.Operations(f.GeneralLocation)))).Number);
+    Assert.Equal(51930, (await Assert.ThrowsAsync<SqlException>(() => new RestaurantProductionService(missing, null, f.ModuleScope).GetWorkspaceAsync(f.Rfc, f.RestaurantSite))).Number);
+    Assert.Equal(51930, (await Assert.ThrowsAsync<SqlException>(() => new RestaurantProductionService(missing, null, f.ModuleScope).PlanAsync(f.Plan(f.GeneralLocation, "missing"), "scope-test"))).Number);
+    Assert.Equal(51930, (await Assert.ThrowsAsync<SqlException>(() => new RestaurantCatalogService(missing, null, f.ModuleScope).GetSiteOperationsAsync(f.Rfc, f.RestaurantSite))).Number);
+    Assert.Equal(51930, (await Assert.ThrowsAsync<SqlException>(() => new RestaurantCatalogService(missing, null, f.ModuleScope).SaveSiteOperationsAsync(f.Operations(f.GeneralLocation)))).Number);
+    // Sin accessor de módulo la operación se niega; la ausencia nunca exime.
+    await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new RestaurantCatalogService(missing).GetSiteOperationsAsync(f.Rfc, f.RestaurantSite));
     Assert.Equal(51935, (await Assert.ThrowsAsync<SqlException>(() => catalog.GetSiteOperationsAsync("BRUNOS260707L26", f.RestaurantSite))).Number);
     Assert.Equal(51935, (await Assert.ThrowsAsync<SqlException>(() => f.Production(null).GetWorkspaceAsync("BRUNOS260707L26", f.RestaurantSite))).Number);
   }
@@ -219,8 +222,12 @@ public sealed class HospitalityRestaurantProductionScopeTests
     }
 
     public CompanyConnectionFactory Factory(string? rfc) => new(_configuration, new CompanyRfc(rfc));
-    public RestaurantProductionService Production(HospitalityScope? scope) => new(Factory(Rfc), scope is null ? null : new FixedScope(scope));
-    public RestaurantCatalogService Catalog(HospitalityScope? scope) => new(Factory(Rfc), scope is null ? null : new FixedScope(scope));
+    // La sede sintética de la fixture no tiene contraparte en orion.Site, así que el
+    // módulo se da por habilitado: lo que estas pruebas delimitan es Logística.
+    public IRestaurantScopeAccessor ModuleScope
+      => new FixedRestaurantScope(new RestaurantScope(Scope.CompanyId, Scope.SiteId, RestaurantSite, Rfc));
+    public RestaurantProductionService Production(HospitalityScope? scope) => new(Factory(Rfc), scope is null ? null : new FixedScope(scope), ModuleScope);
+    public RestaurantCatalogService Catalog(HospitalityScope? scope) => new(Factory(Rfc), scope is null ? null : new FixedScope(scope), ModuleScope);
     public RestaurantProductionPlanRequest Plan(int output, string key) => new() { Rfc = Rfc, SiteId = RestaurantSite, BomVersionId = _bomVersion, PlannedQuantity = 4, OutputLocationId = output, IdempotencyKey = Marker + key };
     public RestaurantSiteOperationsSaveRequest Operations(params int[] locations) => new() { Rfc = Rfc, SiteId = RestaurantSite, LocationPriorities = locations.Select((id, index) => new RestaurantLocationPrioritySaveRequest { LocationId = id, Priority = index + 1 }).ToList() };
     public Task<decimal> ReservedAsync() => Sql.ExecuteScalarAsync<decimal>("SELECT SUM(ReservedQuantity) FROM logistica.StockBalance WHERE MaterialId=@Id", new { Id = InputMaterial });
@@ -260,4 +267,14 @@ public sealed class HospitalityRestaurantProductionScopeTests
   private sealed class CompanyRfc(string? rfc) : ICurrentRfcAccessor { public string? CurrentRfc => rfc; }
   private sealed class FixedScope(HospitalityScope scope) : IHospitalityScopeAccessor
   { public Task<HospitalityScope> ResolveRequiredAsync(CancellationToken ct = default) => Task.FromResult(scope); }
+
+  private sealed class FixedRestaurantScope(RestaurantScope granted) : IRestaurantScopeAccessor
+  {
+    public Task<RestaurantScope> ResolveRequiredAsync(string rfc, int legacySiteId, CancellationToken ct = default)
+      => Task.FromResult(granted with { LegacySiteId = legacySiteId });
+    public Task EnsureStillEnabledAsync(DbConnection connection, DbTransaction? transaction, RestaurantScope scope, CancellationToken ct = default)
+      => Task.CompletedTask;
+    public Task<IReadOnlySet<string>> GetEnabledCompanyRfcsAsync(IReadOnlyCollection<string> rfcs, CancellationToken ct = default)
+      => Task.FromResult<IReadOnlySet<string>>(rfcs.ToHashSet(StringComparer.OrdinalIgnoreCase));
+  }
 }

@@ -14,12 +14,27 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
 {
   private readonly IDbConnectionFactory _connectionFactory;
   private readonly IHospitalityScopeAccessor? _hospitalityScope;
+  private readonly IRestaurantScopeAccessor? _restaurantScope;
 
-  public RestaurantCatalogService(IDbConnectionFactory connectionFactory, IHospitalityScopeAccessor? hospitalityScope = null)
+  public RestaurantCatalogService(
+    IDbConnectionFactory connectionFactory,
+    IHospitalityScopeAccessor? hospitalityScope = null,
+    IRestaurantScopeAccessor? restaurantScope = null)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
     _hospitalityScope = hospitalityScope;
+    _restaurantScope = restaurantScope;
   }
+
+  /// <summary>
+  /// Operaciones de sede exigen el módulo habilitado. El catálogo público de Bruno
+  /// no construye este accessor y tampoco llama estos dos métodos: sin accessor la
+  /// operación se niega, nunca se exime.
+  /// </summary>
+  private Task<RestaurantScope> RequireScopeAsync(string rfc, int siteId, CancellationToken ct)
+    => (_restaurantScope ?? throw new UnauthorizedAccessException(
+          "Restaurante requiere el alcance de módulo autorizado."))
+        .ResolveRequiredAsync(rfc, siteId, ct);
 
   public async Task<IReadOnlyList<RestaurantSiteDto>> GetSitesAsync(string rfc, CancellationToken ct = default)
   {
@@ -1383,6 +1398,7 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
   public async Task<RestaurantSiteOperationsDto> GetSiteOperationsAsync(string rfc, int siteId, CancellationToken ct = default)
   {
     var normalizedRfc=LogisticsRfc.Require(rfc);
+    await RequireScopeAsync(normalizedRfc,siteId,ct);
     var sql=
       $$"""
       IF NOT EXISTS (SELECT 1 FROM restaurante.Site WHERE Rfc=@Rfc AND Id=@SiteId)
@@ -1421,11 +1437,13 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     var rfc=LogisticsRfc.Require(request.Rfc);
     if(request.LocationPriorities.GroupBy(item=>new{Code=item.StationCode.Trim().ToUpperInvariant(),item.Priority}).Any(group=>group.Count()>1))
       return RestaurantCommandResult.Fail("No se puede repetir la prioridad dentro de una estación.");
+    var scope=await RequireScopeAsync(rfc,request.SiteId,ct);
     await using var conn=await LogisticsLocationScope.OpenAsync(_connectionFactory,_hospitalityScope,ct);
     await LogisticsLocationScope.EnsureRfcAsync(conn,null,rfc,ct);
     await using var tx=await conn.BeginTransactionAsync(System.Data.IsolationLevel.Serializable,ct);
     try
     {
+      await _restaurantScope!.EnsureStillEnabledAsync(conn,tx,scope,ct);
       await LogisticsLocationScope.RefreshAsync(conn,tx,ct);
       await conn.ExecuteAsync(new CommandDefinition($$"""
         IF EXISTS (SELECT 1 FROM restaurante.SiteLocationPriority existing WITH (UPDLOCK,HOLDLOCK)
